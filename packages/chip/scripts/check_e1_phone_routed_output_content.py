@@ -139,22 +139,25 @@ def compact_component_model_record(model: dict[str, Any]) -> dict[str, Any]:
         "footprint": str(model.get("footprint", "")),
         "visual_package_class": str(model.get("visual_package_class", "")),
         "pinout_file": str(model.get("pinout_file", "")),
+        "pinout_bound": bool(model.get("pinout_bound") is True),
         "pinout_status": str(model.get("pinout_status", "")),
         "coverage": str(model.get("coverage", "")),
         "land_pattern_basis": str(model.get("land_pattern_basis", "")),
+        "pattern_bound": bool(model.get("pattern_bound") is True),
+        "pattern_binding_status": str(model.get("pattern_binding_status", "")),
+        "support_pattern_bound": bool(model.get("support_pattern_bound") is True),
         "support_pattern_has_explicit_provenance": bool(
             model.get("support_pattern_has_explicit_provenance") is True
         ),
         "pad_visual_count": int(model.get("pad_visual_count", 0) or 0),
         "pad_contract_covered_count": int(model.get("pad_contract_covered_count", 0) or 0),
         "terminal_contract_count": int(model.get("terminal_contract_count", 0) or 0),
+        "terminal_contract_bound": bool(model.get("terminal_contract_bound") is True),
         "non_signal_pad_contract_count": len(model.get("non_signal_pad_contract", [])),
         "npth_mechanical_feature_contract_count": len(
             model.get("npth_mechanical_feature_contract", [])
         ),
-        "all_pad_visuals_have_contract": bool(
-            model.get("all_pad_visuals_have_contract") is True
-        ),
+        "all_pad_visuals_have_contract": bool(model.get("all_pad_visuals_have_contract") is True),
         "terminal_contract_matches_pad_visuals": bool(
             model.get("terminal_contract_matches_pad_visuals") is True
         ),
@@ -165,6 +168,7 @@ def compact_component_model_record(model: dict[str, Any]) -> dict[str, Any]:
             model.get("npth_mechanical_feature_contract_matches_footprint") is True
         ),
         "local_discrete_step_file": str(model.get("local_discrete_step_file", "")),
+        "local_step_bound": bool(model.get("local_step_bound") is True),
         "local_discrete_step_sha256": str(model.get("local_discrete_step_sha256", "")),
         "local_discrete_step_bytes": int(model.get("local_discrete_step_bytes", 0) or 0),
         "local_discrete_step_imported_as_solid": bool(
@@ -1284,6 +1288,9 @@ def main() -> int:
             )
         ):
             raise ValueError("candidate_end_to_end_context nested summaries must be mappings")
+        assert isinstance(candidate_visual, dict)
+        assert isinstance(candidate_source_binding, dict)
+        assert isinstance(candidate_models, dict)
         contract_mismatches: list[str] = []
         expected_candidate_context = {
             "status": "blocked_local_candidate_outputs_not_release",
@@ -1335,6 +1342,12 @@ def main() -> int:
             for model in component_manifest_source.get("models", [])
             if isinstance(model, dict)
         ]
+        for model in component_models_source:
+            if bool(model.get("pinout_bound")) != bool(model.get("pinout_file")):
+                raise ValueError(
+                    "component model pinout_bound field diverges from pinout_file: "
+                    f"{model.get('reference', '')}"
+                )
         expected_candidate_counts: dict[str | tuple[str, str], Any] = {
             "source_step_size_bytes": source_step_path.stat().st_size,
             ("routed_candidate_source_binding", "source_board_sha256"): source_board_counts[
@@ -1352,19 +1365,22 @@ def main() -> int:
                 "routed_candidate_source_binding",
                 "candidate_is_zero_placeholder_real_footprint_board",
             ): True,
-            ("routed_candidate_source_binding", "source_placeholder_marker_count"): source_board_counts[
-                "placeholder_marker_count"
-            ],
-            ("routed_candidate_source_binding", "candidate_placeholder_marker_count"): candidate_board_counts[
-                "placeholder_marker_count"
-            ],
+            (
+                "routed_candidate_source_binding",
+                "source_placeholder_marker_count",
+            ): source_board_counts["placeholder_marker_count"],
+            (
+                "routed_candidate_source_binding",
+                "candidate_placeholder_marker_count",
+            ): candidate_board_counts["placeholder_marker_count"],
             (
                 "routed_candidate_source_binding",
                 "candidate_legacy_e1phone_footprint_ref_count",
             ): candidate_board_counts["legacy_e1phone_footprint_ref_count"],
-            ("routed_candidate_source_binding", "candidate_footprint_count"): candidate_board_counts[
-                "footprint_count"
-            ],
+            (
+                "routed_candidate_source_binding",
+                "candidate_footprint_count",
+            ): candidate_board_counts["footprint_count"],
             ("routed_candidate_source_binding", "candidate_segment_count"): candidate_board_counts[
                 "segment_count"
             ],
@@ -1374,9 +1390,10 @@ def main() -> int:
             ("routed_candidate_source_binding", "candidate_zone_count"): candidate_board_counts[
                 "zone_count"
             ],
-            ("routed_candidate_source_binding", "candidate_filled_zone_count"): candidate_board_counts[
-                "filled_zone_count"
-            ],
+            (
+                "routed_candidate_source_binding",
+                "candidate_filled_zone_count",
+            ): candidate_board_counts["filled_zone_count"],
             ("routed_step_visual_detail", "footprint_envelope_count"): step_intake.get(
                 "footprint_envelope_count"
             ),
@@ -1503,9 +1520,7 @@ def main() -> int:
             (
                 "cad_connection_coverage",
                 "represented_route_records_with_route_class_count_total",
-            ): cad_connection_summary.get(
-                "represented_route_records_with_route_class_count_total"
-            ),
+            ): cad_connection_summary.get("represented_route_records_with_route_class_count_total"),
             (
                 "cad_connection_coverage",
                 "represented_route_classification_gap_count",
@@ -1580,7 +1595,9 @@ def main() -> int:
             (
                 "kicad_cad_traceability",
                 "cad_connection_represented_route_classification_gap_count",
-            ): traceability_summary.get("cad_connection_represented_route_classification_gap_count"),
+            ): traceability_summary.get(
+                "cad_connection_represented_route_classification_gap_count"
+            ),
             (
                 "kicad_cad_traceability",
                 "cad_connection_visual_route_span_total_mm",
@@ -1589,12 +1606,14 @@ def main() -> int:
                 "kicad_cad_traceability",
                 "cad_connection_terminal_marker_count",
             ): traceability_summary.get("cad_connection_terminal_marker_count"),
-            ("kicad_cad_traceability", "cad_connection_terminal_pair_count"): traceability_summary.get(
-                "cad_connection_terminal_pair_count"
-            ),
-            ("kicad_cad_traceability", "cad_connection_solid_step_part_count"): traceability_summary.get(
-                "cad_connection_solid_step_part_count"
-            ),
+            (
+                "kicad_cad_traceability",
+                "cad_connection_terminal_pair_count",
+            ): traceability_summary.get("cad_connection_terminal_pair_count"),
+            (
+                "kicad_cad_traceability",
+                "cad_connection_solid_step_part_count",
+            ): traceability_summary.get("cad_connection_solid_step_part_count"),
             (
                 "kicad_cad_traceability",
                 "cad_connection_solid_step_part_set_count",
@@ -1619,6 +1638,18 @@ def main() -> int:
             ): traceability_summary.get("cad_connection_bend_radius_requirement_defined_count"),
             (
                 "kicad_cad_traceability",
+                "cad_connection_mechanical_envelope_defined_count",
+            ): traceability_summary.get("cad_connection_mechanical_envelope_defined_count"),
+            (
+                "kicad_cad_traceability",
+                "cad_connection_all_records_have_mechanical_envelope",
+            ): traceability_summary.get("cad_connection_all_records_have_mechanical_envelope"),
+            (
+                "kicad_cad_traceability",
+                "cad_connection_mechanical_envelope_release_credit",
+            ): traceability_summary.get("cad_connection_mechanical_envelope_release_credit"),
+            (
+                "kicad_cad_traceability",
                 "cad_connection_supplier_release_required_count",
             ): traceability_summary.get("cad_connection_supplier_release_required_count"),
             ("kicad_cad_traceability", "incomplete_footprint_count"): traceability_summary.get(
@@ -1627,9 +1658,10 @@ def main() -> int:
             ("kicad_cad_traceability", "incomplete_cad_connection_count"): traceability_summary.get(
                 "incomplete_cad_connection_count"
             ),
-            ("component_model_manifest_summary", "component_model_count"): component_manifest_source.get(
-                "component_model_count"
-            ),
+            (
+                "component_model_manifest_summary",
+                "component_model_count",
+            ): component_manifest_source.get("component_model_count"),
             (
                 "component_model_manifest_summary",
                 "supplier_approved_model_count",
@@ -1642,15 +1674,26 @@ def main() -> int:
                 "component_model_manifest_summary",
                 "total_mechanical_pad_count",
             ): component_package_summary.get("total_mechanical_pad_count"),
-            ("component_model_manifest_summary", "total_pad_visual_count"): component_package_summary.get(
-                "total_pad_visual_count"
-            ),
-            ("component_model_manifest_summary", "pinout_bound_model_count"): component_terminal_summary.get(
-                "pinout_bound_model_count"
-            ),
-            ("component_model_manifest_summary", "support_pattern_model_count"): component_terminal_summary.get(
-                "support_pattern_model_count"
-            ),
+            (
+                "component_model_manifest_summary",
+                "total_pad_visual_count",
+            ): component_package_summary.get("total_pad_visual_count"),
+            (
+                "component_model_manifest_summary",
+                "pinout_bound_model_count",
+            ): component_terminal_summary.get("pinout_bound_model_count"),
+            (
+                "component_model_manifest_summary",
+                "support_pattern_model_count",
+            ): component_terminal_summary.get("support_pattern_model_count"),
+            (
+                "component_model_manifest_summary",
+                "pattern_bound_model_count",
+            ): component_terminal_summary.get("pattern_bound_model_count"),
+            (
+                "component_model_manifest_summary",
+                "terminal_contract_bound_model_count",
+            ): component_terminal_summary.get("terminal_contract_bound_model_count"),
             (
                 "component_model_manifest_summary",
                 "models_with_terminal_contract_or_no_electrical_pads_count",
@@ -1661,12 +1704,14 @@ def main() -> int:
                 "component_model_manifest_summary",
                 "total_pad_contract_visual_count",
             ): component_terminal_summary.get("total_pad_contract_visual_count"),
-            ("component_model_manifest_summary", "uncovered_pad_visual_count"): component_terminal_summary.get(
-                "uncovered_pad_visual_count"
-            ),
-            ("component_model_manifest_summary", "non_signal_pad_contract_count"): component_terminal_summary.get(
-                "non_signal_pad_contract_count"
-            ),
+            (
+                "component_model_manifest_summary",
+                "uncovered_pad_visual_count",
+            ): component_terminal_summary.get("uncovered_pad_visual_count"),
+            (
+                "component_model_manifest_summary",
+                "non_signal_pad_contract_count",
+            ): component_terminal_summary.get("non_signal_pad_contract_count"),
             (
                 "component_model_manifest_summary",
                 "models_with_non_signal_pad_contract_count",
@@ -1678,9 +1723,7 @@ def main() -> int:
             (
                 "component_model_manifest_summary",
                 "models_with_npth_mechanical_feature_contract_count",
-            ): component_terminal_summary.get(
-                "models_with_npth_mechanical_feature_contract_count"
-            ),
+            ): component_terminal_summary.get("models_with_npth_mechanical_feature_contract_count"),
             (
                 "component_model_manifest_summary",
                 "local_discrete_step_file_count",
@@ -1701,6 +1744,10 @@ def main() -> int:
                 for model in component_models_source
                 if model.get("local_discrete_step_bbox_matches_envelope") is True
             ),
+            (
+                "component_model_manifest_summary",
+                "local_step_bound_model_count",
+            ): sum(1 for model in component_models_source if model.get("local_step_bound") is True),
             ("component_model_manifest_summary", "component_model_record_count"): len(
                 component_models_source
             ),
@@ -1708,12 +1755,14 @@ def main() -> int:
                 "component_model_manifest_summary",
                 "component_model_record_reference_count",
             ): len({str(model.get("reference", "")) for model in component_models_source}),
-            ("component_model_directory_summary", "model_record_count"): component_dir_manifest_source.get(
-                "model_record_count"
-            ),
-            ("component_model_directory_summary", "component_model_count"): component_dir_manifest_source.get(
-                "component_model_count"
-            ),
+            (
+                "component_model_directory_summary",
+                "model_record_count",
+            ): component_dir_manifest_source.get("model_record_count"),
+            (
+                "component_model_directory_summary",
+                "component_model_count",
+            ): component_dir_manifest_source.get("component_model_count"),
             (
                 "component_model_directory_summary",
                 "supplier_approved_model_count",
@@ -1728,8 +1777,16 @@ def main() -> int:
             ): component_dir_manifest_source.get("support_pattern_model_record_count"),
             (
                 "component_model_directory_summary",
+                "pattern_bound_model_record_count",
+            ): component_dir_manifest_source.get("pattern_bound_model_record_count"),
+            (
+                "component_model_directory_summary",
                 "terminal_contract_model_record_count",
             ): component_dir_manifest_source.get("terminal_contract_model_record_count"),
+            (
+                "component_model_directory_summary",
+                "terminal_contract_bound_model_record_count",
+            ): component_dir_manifest_source.get("terminal_contract_bound_model_record_count"),
             (
                 "component_model_directory_summary",
                 "terminal_contract_total_count",
@@ -1738,9 +1795,10 @@ def main() -> int:
                 "component_model_directory_summary",
                 "total_pad_contract_visual_count",
             ): component_dir_manifest_source.get("total_pad_contract_visual_count"),
-            ("component_model_directory_summary", "uncovered_pad_visual_count"): component_dir_manifest_source.get(
-                "uncovered_pad_visual_count"
-            ),
+            (
+                "component_model_directory_summary",
+                "uncovered_pad_visual_count",
+            ): component_dir_manifest_source.get("uncovered_pad_visual_count"),
             (
                 "component_model_directory_summary",
                 "non_signal_pad_contract_total_count",
@@ -1757,6 +1815,10 @@ def main() -> int:
                 "component_model_directory_summary",
                 "local_discrete_step_bbox_match_count",
             ): component_dir_manifest_source.get("local_discrete_step_bbox_match_count"),
+            (
+                "component_model_directory_summary",
+                "local_step_bound_model_record_count",
+            ): component_dir_manifest_source.get("local_step_bound_model_record_count"),
             (
                 "component_model_directory_summary",
                 "npth_mechanical_feature_contract_total_count",
@@ -1944,12 +2006,11 @@ def main() -> int:
             )
             != expected_supplier_lane_counts
         ):
-            contract_mismatches.append(
-                "candidate context supplier STEP intake lane counts stale"
-            )
+            contract_mismatches.append("candidate context supplier STEP intake lane counts stale")
         for section, field in [
             ("cad_connection_coverage", "release_credit"),
             ("kicad_cad_traceability", "release_credit"),
+            ("kicad_cad_traceability", "cad_connection_mechanical_envelope_release_credit"),
             ("component_model_manifest_summary", "release_allowed"),
             ("component_model_directory_summary", "release_allowed"),
         ]:
@@ -1965,6 +2026,10 @@ def main() -> int:
             (
                 "kicad_cad_traceability",
                 "cad_connection_all_represented_routes_have_layer_source_and_class",
+            ),
+            (
+                "kicad_cad_traceability",
+                "cad_connection_all_records_have_mechanical_envelope",
             ),
             ("component_model_manifest_summary", "all_model_pad_counts_match_visuals"),
             ("component_model_manifest_summary", "all_models_have_visual_package_class"),
@@ -1986,6 +2051,14 @@ def main() -> int:
             ),
             (
                 "component_model_manifest_summary",
+                "all_models_have_pattern_binding",
+            ),
+            (
+                "component_model_manifest_summary",
+                "all_models_have_terminal_contract_binding",
+            ),
+            (
+                "component_model_manifest_summary",
                 "all_model_pad_visuals_have_contract",
             ),
             (
@@ -1999,6 +2072,10 @@ def main() -> int:
             (
                 "component_model_manifest_summary",
                 "all_models_have_local_discrete_step_file",
+            ),
+            (
+                "component_model_manifest_summary",
+                "all_models_have_local_step_binding",
             ),
             (
                 "component_model_manifest_summary",
@@ -2063,6 +2140,10 @@ def main() -> int:
             ),
             (
                 "component_model_directory_summary",
+                "all_model_records_have_local_step_binding",
+            ),
+            (
+                "component_model_directory_summary",
                 "all_local_discrete_step_files_import_as_solids",
             ),
             (
@@ -2081,6 +2162,14 @@ def main() -> int:
             (
                 "component_model_directory_summary",
                 "all_support_pattern_records_have_explicit_provenance",
+            ),
+            (
+                "component_model_directory_summary",
+                "all_model_records_have_pattern_binding",
+            ),
+            (
+                "component_model_directory_summary",
+                "all_model_records_have_terminal_contract_binding",
             ),
             (
                 "component_model_directory_summary",
@@ -2123,18 +2212,14 @@ def main() -> int:
             else:
                 expected_component_model_records = [
                     compact_component_model_record(model)
-                    for model in sorted(
-                        models, key=lambda item: str(item.get("reference", ""))
-                    )
+                    for model in sorted(models, key=lambda item: str(item.get("reference", "")))
                     if isinstance(model, dict)
                 ]
                 if (
                     candidate_models.get("component_model_record_manifest")
                     != expected_component_model_records
                 ):
-                    contract_mismatches.append(
-                        "candidate component model record manifest stale"
-                    )
+                    contract_mismatches.append("candidate component model record manifest stale")
                 for index, model in enumerate(models):
                     if not isinstance(model, dict):
                         contract_mismatches.append(
@@ -2149,16 +2234,11 @@ def main() -> int:
                         contract_mismatches.append(
                             f"component 3D manifest local discrete STEP missing: {reference}"
                         )
-                    elif model.get("local_discrete_step_sha256") != file_sha256(
-                        local_step_path
-                    ):
+                    elif model.get("local_discrete_step_sha256") != file_sha256(local_step_path):
                         contract_mismatches.append(
                             f"component 3D manifest local discrete STEP hash stale: {reference}"
                         )
-                    elif (
-                        model.get("local_discrete_step_bytes")
-                        != local_step_path.stat().st_size
-                    ):
+                    elif model.get("local_discrete_step_bytes") != local_step_path.stat().st_size:
                         contract_mismatches.append(
                             f"component 3D manifest local discrete STEP size stale: {reference}"
                         )
@@ -2256,7 +2336,10 @@ def main() -> int:
                                 f"component model directory row supplier STEP grants release: {reference}"
                             )
                         supplier_step_file = row.get("supplier_step_intake_file")
-                        if expected_supplier_status == "present_local_surrogate_step_not_supplier_approved":
+                        if (
+                            expected_supplier_status
+                            == "present_local_surrogate_step_not_supplier_approved"
+                        ):
                             supplier_step_path = ROOT / str(supplier_step_file or "")
                             if not supplier_step_file or not supplier_step_path.is_file():
                                 contract_mismatches.append(
@@ -2269,7 +2352,10 @@ def main() -> int:
                                     contract_mismatches.append(
                                         f"component model supplier STEP intake hash stale: {reference}"
                                     )
-                                if row.get("supplier_step_intake_bytes") != supplier_step_path.stat().st_size:
+                                if (
+                                    row.get("supplier_step_intake_bytes")
+                                    != supplier_step_path.stat().st_size
+                                ):
                                     contract_mismatches.append(
                                         f"component model supplier STEP intake size stale: {reference}"
                                     )
@@ -2283,9 +2369,7 @@ def main() -> int:
                             contract_mismatches.append(
                                 f"component model local discrete STEP missing: {reference}"
                             )
-                        elif row.get("local_discrete_step_sha256") != file_sha256(
-                            local_step_path
-                        ):
+                        elif row.get("local_discrete_step_sha256") != file_sha256(local_step_path):
                             contract_mismatches.append(
                                 f"component model local discrete STEP hash stale: {reference}"
                             )
@@ -2426,9 +2510,14 @@ def main() -> int:
                         contract_mismatches.append("component 3D binding report missing")
                     if not COMPONENT_3D_BINDING_MATRIX.is_file():
                         contract_mismatches.append("component 3D binding matrix missing")
-                    if COMPONENT_3D_BINDING_REPORT.is_file() and COMPONENT_3D_BINDING_MATRIX.is_file():
+                    if (
+                        COMPONENT_3D_BINDING_REPORT.is_file()
+                        and COMPONENT_3D_BINDING_MATRIX.is_file()
+                    ):
                         binding_report = load_yaml_mapping(COMPONENT_3D_BINDING_REPORT)
-                        with COMPONENT_3D_BINDING_MATRIX.open(newline="", encoding="utf-8") as handle:
+                        with COMPONENT_3D_BINDING_MATRIX.open(
+                            newline="", encoding="utf-8"
+                        ) as handle:
                             binding_rows = list(csv.DictReader(handle))
                         if binding_report.get("schema") != (
                             "eliza.e1_phone_component_3d_binding_gap_matrix.v1"
@@ -2444,9 +2533,15 @@ def main() -> int:
                             COMPONENT_3D_BINDING_MATRIX
                         ):
                             contract_mismatches.append("component 3D binding CSV hash stale")
-                        if binding_report.get("csv_matrix_bytes") != COMPONENT_3D_BINDING_MATRIX.stat().st_size:
+                        if (
+                            binding_report.get("csv_matrix_bytes")
+                            != COMPONENT_3D_BINDING_MATRIX.stat().st_size
+                        ):
                             contract_mismatches.append("component 3D binding CSV size stale")
-                        if binding_report.get("supplier_lane_counts") != expected_supplier_lane_counts:
+                        if (
+                            binding_report.get("supplier_lane_counts")
+                            != expected_supplier_lane_counts
+                        ):
                             contract_mismatches.append(
                                 "component 3D binding supplier lane counts stale"
                             )
@@ -2517,9 +2612,10 @@ def main() -> int:
                                     contract_mismatches.append(
                                         f"component 3D binding CSV field stale: {reference}.{field}"
                                     )
-                            if (
-                                str(row.get("local_discrete_step_imported_as_solid") is True).lower()
-                                != str(csv_row.get("local_discrete_step_imported_as_solid") or "")
+                            if str(
+                                row.get("local_discrete_step_imported_as_solid") is True
+                            ).lower() != str(
+                                csv_row.get("local_discrete_step_imported_as_solid") or ""
                             ):
                                 contract_mismatches.append(
                                     "component 3D binding CSV field stale: "
@@ -2530,7 +2626,9 @@ def main() -> int:
                                 "supplier_step_intake_bytes",
                                 "terminal_contract_count",
                             ]:
-                                if str(int(row.get(field, 0) or 0)) != str(csv_row.get(field) or ""):
+                                if str(int(row.get(field, 0) or 0)) != str(
+                                    csv_row.get(field) or ""
+                                ):
                                     contract_mismatches.append(
                                         f"component 3D binding CSV numeric field stale: {reference}.{field}"
                                     )

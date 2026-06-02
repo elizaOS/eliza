@@ -254,6 +254,21 @@ function extractSlackUserIdFromMetadata(
   return null;
 }
 
+function isValidSlackEmojiName(emoji: string): boolean {
+  return /^[A-Za-z0-9_+-]+(::skin-tone-[2-6])?$/.test(emoji);
+}
+
+function normalizeConnectorLimit(
+  limit: number | undefined,
+  fallback: number,
+  max = 100,
+): number {
+  if (!Number.isFinite(limit) || !limit || limit <= 0) {
+    return fallback;
+  }
+  return Math.max(1, Math.min(Math.floor(limit), max));
+}
+
 // Define Slack event types inline to avoid import issues
 interface SlackMessageEventType {
   type: "message";
@@ -302,6 +317,8 @@ import {
   getSlackUserDisplayName,
   type ISlackService,
   isValidChannelId,
+  isValidMessageTs,
+  isValidUserId,
   MAX_SLACK_MESSAGE_LENGTH,
   SLACK_SERVICE_NAME,
   type SlackAttachment,
@@ -1088,6 +1105,25 @@ export class SlackService extends Service implements ISlackService {
     _client: WebClient,
     accountId = this.defaultAccountId,
   ): Promise<void> {
+    if (
+      !isValidChannelId(message.channel) ||
+      !isValidMessageTs(message.ts) ||
+      (message.user !== undefined && !isValidUserId(message.user))
+    ) {
+      this.runtime.logger.warn(
+        {
+          src: "plugin:slack",
+          agentId: this.runtime.agentId,
+          accountId,
+          channelId: message.channel,
+          messageTs: message.ts,
+          userId: message.user,
+        },
+        "Ignoring malformed Slack message event",
+      );
+      return;
+    }
+
     const settings = this.getSettingsForAccount(accountId);
     const botUserId = this.getBotUserIdForAccount(accountId);
 
@@ -1188,8 +1224,25 @@ export class SlackService extends Service implements ISlackService {
     _client: WebClient,
     accountId = this.defaultAccountId,
   ): Promise<void> {
-    // Skip if no user (optional in AppMentionEvent)
-    if (!event.user) return;
+    if (
+      !event.user ||
+      !isValidUserId(event.user) ||
+      !isValidChannelId(event.channel) ||
+      !isValidMessageTs(event.ts)
+    ) {
+      this.runtime.logger.warn(
+        {
+          src: "plugin:slack",
+          agentId: this.runtime.agentId,
+          accountId,
+          channelId: event.channel,
+          messageTs: event.ts,
+          userId: event.user,
+        },
+        "Ignoring malformed Slack app mention event",
+      );
+      return;
+    }
 
     // Build memory from mention
     const memory = await this.buildMemoryFromMention(
@@ -2489,9 +2542,7 @@ export class SlackService extends Service implements ISlackService {
       params.target,
       { ...params, accountId },
     );
-    const limit = Number.isFinite(params.limit)
-      ? Math.max(1, Math.min(Number(params.limit), 100))
-      : 25;
+    const limit = normalizeConnectorLimit(params.limit, 25);
 
     const rawMessages = threadTs
       ? (((
@@ -2546,9 +2597,10 @@ export class SlackService extends Service implements ISlackService {
       return [];
     }
 
+    const requestedLimit = normalizeConnectorLimit(params.limit, 25);
     const memories = await this.fetchConnectorMessages(context, {
       ...params,
-      limit: Math.max(params.limit ?? 100, 100),
+      limit: Math.max(requestedLimit, 100),
     });
     return memories
       .filter((memory) => {
@@ -2556,7 +2608,7 @@ export class SlackService extends Service implements ISlackService {
         const name = String(memory.content.name ?? "").toLowerCase();
         return text.includes(query) || name.includes(query);
       })
-      .slice(0, params.limit ?? 25);
+      .slice(0, requestedLimit);
   }
 
   async reactConnectorMessage(
@@ -2568,8 +2620,13 @@ export class SlackService extends Service implements ISlackService {
       params,
     );
     const messageTs = params.messageTs ?? params.messageId;
-    const emoji = params.emoji?.trim();
-    if (!messageTs || !emoji) {
+    const emoji = params.emoji?.trim().replace(/^:+|:+$/g, "");
+    if (
+      !messageTs ||
+      !isValidMessageTs(messageTs) ||
+      !emoji ||
+      !isValidSlackEmojiName(emoji)
+    ) {
       throw new Error("Slack reaction requires messageId/messageTs and emoji.");
     }
     if (params.remove) {
@@ -2587,7 +2644,7 @@ export class SlackService extends Service implements ISlackService {
       await this.resolveConnectorMessageLocation(params.target, params);
     const messageTs = params.messageTs ?? params.messageId;
     const text = params.content?.text ?? params.text;
-    if (!messageTs || !text?.trim()) {
+    if (!messageTs || !isValidMessageTs(messageTs) || !text?.trim()) {
       throw new Error("Slack edit requires messageId/messageTs and text.");
     }
 
@@ -2623,7 +2680,7 @@ export class SlackService extends Service implements ISlackService {
       params,
     );
     const messageTs = params.messageTs ?? params.messageId;
-    if (!messageTs) {
+    if (!messageTs || !isValidMessageTs(messageTs)) {
       throw new Error("Slack delete requires messageId/messageTs.");
     }
     await this.deleteMessage(channelId, messageTs, accountId);
@@ -2638,7 +2695,7 @@ export class SlackService extends Service implements ISlackService {
       params,
     );
     const messageTs = params.messageTs ?? params.messageId;
-    if (!messageTs) {
+    if (!messageTs || !isValidMessageTs(messageTs)) {
       throw new Error("Slack pin requires messageId/messageTs.");
     }
     if (params.pin === false) {
@@ -2962,7 +3019,17 @@ export class SlackService extends Service implements ISlackService {
     }
 
     // Remove colons if present
-    const cleanEmoji = emoji.replace(/^:/, "").replace(/:$/, "");
+    const cleanEmoji = emoji.trim().replace(/^:+|:+$/g, "");
+    if (
+      !isValidChannelId(channelId) ||
+      !isValidMessageTs(messageTs) ||
+      !cleanEmoji ||
+      !isValidSlackEmojiName(cleanEmoji)
+    ) {
+      throw new Error(
+        "Slack reaction requires valid channelId, messageTs, and emoji.",
+      );
+    }
 
     await client.reactions.add({
       channel: channelId,
@@ -2982,7 +3049,17 @@ export class SlackService extends Service implements ISlackService {
       throw new Error("Slack client not initialized");
     }
 
-    const cleanEmoji = emoji.replace(/^:/, "").replace(/:$/, "");
+    const cleanEmoji = emoji.trim().replace(/^:+|:+$/g, "");
+    if (
+      !isValidChannelId(channelId) ||
+      !isValidMessageTs(messageTs) ||
+      !cleanEmoji ||
+      !isValidSlackEmojiName(cleanEmoji)
+    ) {
+      throw new Error(
+        "Slack reaction requires valid channelId, messageTs, and emoji.",
+      );
+    }
 
     await client.reactions.remove({
       channel: channelId,
@@ -3001,6 +3078,9 @@ export class SlackService extends Service implements ISlackService {
     if (!client) {
       throw new Error("Slack client not initialized");
     }
+    if (!isValidChannelId(channelId) || !isValidMessageTs(messageTs)) {
+      throw new Error("Slack edit requires valid channelId and messageTs.");
+    }
 
     await client.chat.update({
       channel: channelId,
@@ -3018,6 +3098,9 @@ export class SlackService extends Service implements ISlackService {
     if (!client) {
       throw new Error("Slack client not initialized");
     }
+    if (!isValidChannelId(channelId) || !isValidMessageTs(messageTs)) {
+      throw new Error("Slack delete requires valid channelId and messageTs.");
+    }
 
     await client.chat.delete({
       channel: channelId,
@@ -3034,6 +3117,9 @@ export class SlackService extends Service implements ISlackService {
     if (!client) {
       throw new Error("Slack client not initialized");
     }
+    if (!isValidChannelId(channelId) || !isValidMessageTs(messageTs)) {
+      throw new Error("Slack pin requires valid channelId and messageTs.");
+    }
 
     await client.pins.add({
       channel: channelId,
@@ -3049,6 +3135,9 @@ export class SlackService extends Service implements ISlackService {
     const client = this.getClientForAccount(accountId);
     if (!client) {
       throw new Error("Slack client not initialized");
+    }
+    if (!isValidChannelId(channelId) || !isValidMessageTs(messageTs)) {
+      throw new Error("Slack pin requires valid channelId and messageTs.");
     }
 
     await client.pins.remove({

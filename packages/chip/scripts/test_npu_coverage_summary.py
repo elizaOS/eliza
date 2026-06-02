@@ -25,8 +25,22 @@ class NpuCoverageSummaryTests(unittest.TestCase):
     def setUp(self) -> None:
         self.gate = load_check_module()
 
+    def write_passing_results_xml(self, path: Path) -> None:
+        names = sorted(
+            {
+                name
+                for required in self.gate.REQUIRED_DIRECTED_TESTS.values()
+                for name in required
+            }
+        )
+        cases = "\n".join(f'    <testcase name="{name}" />' for name in names)
+        path.write_text(f"<testsuite>\n{cases}\n</testsuite>\n", encoding="utf-8")
+
     def test_current_summary_records_status_and_hashed_inputs(self) -> None:
-        summary = self.gate.build_summary(self.gate.DEFAULT_COCOTB_COVERAGE)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            results = Path(tmpdir) / "results.xml"
+            self.write_passing_results_xml(results)
+            summary = self.gate.build_summary(self.gate.DEFAULT_COCOTB_COVERAGE, results)
         self.assertEqual(summary["schema"], "eliza.npu_local_coverage_summary.v1")
         self.assertEqual(summary["status"], "pass")
         self.assertIn("generated_utc", summary)
@@ -36,6 +50,12 @@ class NpuCoverageSummaryTests(unittest.TestCase):
         self.assertFalse(summary["production_accelerator_claim_allowed"])
         self.assertFalse(summary["nnapi_claim_allowed"])
         self.assertFalse(summary["performance_claim_allowed"])
+        self.assertFalse(summary["android_driver_claim_allowed"])
+        self.assertFalse(summary["power_claim_allowed"])
+        self.assertFalse(summary["thermal_claim_allowed"])
+        self.assertFalse(summary["dma_backed_tensor_execution_claim_allowed"])
+        self.assertFalse(summary["hardware_benchmark_claim_allowed"])
+        self.assertEqual(summary["false_claim_flags"], self.gate.FALSE_CLAIM_FLAGS)
         for claim in self.gate.RAW_FALSE_CLAIM_FLAGS:
             self.assertIs(summary["raw_cocotb_claim_flags"][claim], False)
         self.assertIn(
@@ -56,15 +76,11 @@ class NpuCoverageSummaryTests(unittest.TestCase):
             "build/reports/npu_cocotb_coverage.json",
         )
         self.assertTrue(summary["artifacts"]["cocotb_results"]["exists"])
-        self.assertTrue(
-            all(result["all_passed"] for result in summary["directed_tests"].values())
-        )
+        self.assertTrue(all(result["all_passed"] for result in summary["directed_tests"].values()))
         self.assertTrue(summary["saturation_cases"]["relu4_negative_lanes_zeroed"])
         self.assertTrue(summary["invalid_programming_cases"]["descriptor_timeout"])
         self.assertTrue(summary["irq_paths"]["error_irq_clear_deasserts"])
-        self.assertTrue(
-            all(summary["software_fallback_cases"]["source_tests"].values())
-        )
+        self.assertTrue(all(summary["software_fallback_cases"]["source_tests"].values()))
 
     def test_invalid_coverage_records_fail_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -99,6 +115,8 @@ class NpuCoverageSummaryTests(unittest.TestCase):
             coverage.write_text(json.dumps(data) + "\n", encoding="utf-8")
 
             summary = self.gate.build_summary(coverage)
+            summary["false_claim_flags"]["nnapi_claim_allowed"] = True
+            errors = self.gate.validate_summary(summary)
 
         self.assertEqual(summary["status"], "fail")
         self.assertIn(
@@ -109,6 +127,7 @@ class NpuCoverageSummaryTests(unittest.TestCase):
             "raw_cocotb_claim_flags.nnapi_claim_allowed must be false",
             summary["validation_errors"],
         )
+        self.assertIn("false_claim_flags must match the NPU coverage non-claim map", errors)
 
     def test_missing_results_xml_fails_directed_test_bins(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

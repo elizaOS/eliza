@@ -1,16 +1,37 @@
 from __future__ import annotations
 
+import json
+
+import numpy as np
+import pytest
+
+import scripts.search_hiwonder_random_sine_gaits as random_sine_search
+from eliza_robot.rl.text_conditioned.profile_env import (
+    ProfileEnvConfig,
+    TextConditionedProfileEnv,
+)
 from scripts.search_hiwonder_open_loop_gaits import _candidate_specs, _failure_frontier
 from scripts.search_hiwonder_random_sine_gaits import (
     _candidate_params,
     _feedback_refinement_params,
     _hybrid_recovery_refinement_params,
     _local_refinement_params,
+    _max_self_collision_observed,
+    _refine_best_straight,
     _stable_bridge_refinement_params,
+    _top_by,
     _transition_refinement_params,
 )
 from scripts.search_hiwonder_stabilized_gaits import (
     _candidate_specs as _stabilized_candidate_specs,
+)
+from scripts.sweep_hiwonder_near_gait_hold import (
+    _candidate_entries_from_search_report,
+    _raw_distance_key,
+)
+from scripts.validate_task_feasibility import (
+    _make_sinusoidal_action,
+    _primitive_specs,
 )
 
 
@@ -26,6 +47,82 @@ def test_hiwonder_gait_search_includes_seeded_sinusoidal_probes() -> None:
     seeded = {spec.name: spec for spec in _candidate_specs() if spec.name.startswith("sinusoidal")}
     assert seeded["sinusoidal_seeded_4"].params is not None
     assert seeded["sinusoidal_seeded_5"].params is not None
+
+
+def test_hiwonder_feasibility_includes_env_locomotion_priors() -> None:
+    names = {spec.name for spec in _primitive_specs("hiwonder-ainex", "walk_forward")}
+
+    assert "configured_prior_hiwonder_sine" in names
+    assert "configured_prior_hiwonder_contact_sine" in names
+    assert "configured_prior_hiwonder_low_slip_contact_sine" in names
+    assert "env_prior_hiwonder_sine" in names
+    assert "env_prior_hiwonder_contact_sine" in names
+    assert "env_prior_hiwonder_low_slip_contact_sine" in names
+
+
+def test_hiwonder_backward_sine_remaps_full_gait_phase() -> None:
+    pytest.importorskip("mujoco")
+    env = TextConditionedProfileEnv(
+        "hiwonder-ainex",
+        ProfileEnvConfig(include_tasks=("walk_backward",), exclude_tasks=()),
+    )
+    env.reset(seed=0)
+    params = {
+        "scale": 0.4,
+        "hz": 1.3,
+        "phase0": 0.4,
+        "hip_bias": 0.1,
+        "hip_amp": 0.4,
+        "knee_bias": 0.2,
+        "knee_amp": 0.3,
+        "knee_phase": 0.7,
+        "ank_bias": 0.1,
+        "ank_amp": 0.25,
+        "ank_phase": -0.2,
+        "roll_bias": -0.1,
+        "roll_amp": 0.2,
+        "ank_roll_amp": 0.15,
+        "roll_phase": 0.5,
+        "ank_roll_phase_delta": 0.3,
+        "yaw_amp": 0.05,
+        "yaw_phase": 0.1,
+    }
+
+    forward = _make_sinusoidal_action(env, "walk_forward", params=params)(3)
+    backward = _make_sinusoidal_action(env, "walk_backward", params=params)(3)
+    changed = [
+        joint.name
+        for joint, fwd, back in zip(env._action_joints, forward, backward, strict=True)  # noqa: SLF001
+        if not np.isclose(fwd, back)
+    ]
+
+    assert any("knee" in name for name in changed)
+    assert any("hip_roll" in name for name in changed)
+
+
+def test_hiwonder_env_backward_prior_remaps_full_gait_phase() -> None:
+    pytest.importorskip("mujoco")
+    forward_env = TextConditionedProfileEnv(
+        "hiwonder-ainex",
+        ProfileEnvConfig(include_tasks=("walk_forward",), exclude_tasks=()),
+    )
+    backward_env = TextConditionedProfileEnv(
+        "hiwonder-ainex",
+        ProfileEnvConfig(include_tasks=("walk_backward",), exclude_tasks=()),
+    )
+    forward_env.reset(seed=0)
+    backward_env.reset(seed=0)
+
+    forward = forward_env._locomotion_hiwonder_contact_sine_prior_action()  # noqa: SLF001
+    backward = backward_env._locomotion_hiwonder_contact_sine_prior_action()  # noqa: SLF001
+    changed = [
+        joint.name
+        for joint, fwd, back in zip(forward_env._action_joints, forward, backward, strict=True)  # noqa: SLF001
+        if not np.isclose(fwd, back)
+    ]
+
+    assert any("knee" in name for name in changed)
+    assert any("hip_roll" in name for name in changed)
 
 
 def test_hiwonder_random_sine_search_candidates_are_reproducible() -> None:
@@ -118,6 +215,122 @@ def test_hiwonder_random_sine_stable_bridge_refinement_ablation_is_bounded() -> 
     assert params[-1]["hip_bias"] == base["hip_bias"] + 0.35
     assert "feedback" not in params[-1]
     assert "hybrid_recovery" not in params[-1]
+
+
+def test_hiwonder_random_sine_collision_observer_uses_episode_max() -> None:
+    observed = _max_self_collision_observed(
+        current_counts=[0.0, 3.0, 0.0],
+        max_counts=[0.0, 1.0, 2.0],
+        final_info={"self_collision_count": 0, "max_self_collision_count": 1},
+    )
+
+    assert observed == 3.0
+
+
+def test_hiwonder_random_sine_refinement_propagates_goal_failure_continuation(
+    monkeypatch,
+) -> None:
+    calls = []
+
+    def fake_run_candidates(*_args, **kwargs):
+        calls.append(kwargs)
+        return []
+
+    monkeypatch.setattr(random_sine_search, "_run_candidates", fake_run_candidates)
+
+    report = _refine_best_straight(
+        object(),  # type: ignore[arg-type]
+        broad_frontier={
+            "best_forward_straight": {
+                "controller": "near",
+                "controller_params": _candidate_params(seed=1, n_candidates=1)[0],
+            }
+        },
+        seed=2,
+        n_candidates=1,
+        max_steps=3,
+        continue_after_goal_failure=True,
+    )
+
+    assert report["base_controller"] == "near"
+    assert calls
+    assert calls[0]["continue_after_goal_failure"] is True
+
+
+def test_hiwonder_hold_sweep_top_k_selects_ranked_candidate_list(tmp_path) -> None:
+    report = {
+        "feedback_refinement": {
+            "best_by_success_window": {
+                "controller": "best_by_success_window",
+                "controller_params": {"scale": 0.5},
+            },
+            "candidates": [
+                {
+                    "controller": "far_unstable",
+                    "controller_params": {"scale": 0.8},
+                    "final_delta_x_m": 0.28,
+                    "max_success_window_s": 0.0,
+                    "max_abs_delta_yaw_rad": 0.8,
+                    "diagnostics": {
+                        "unmet_success_predicates": [
+                            "max_abs_delta_yaw_rad",
+                            "no_fall",
+                            "hold_s",
+                        ]
+                    },
+                },
+                {
+                    "controller": "clean_short",
+                    "controller_params": {"scale": 0.4},
+                    "final_delta_x_m": 0.18,
+                    "max_success_window_s": 0.0,
+                    "max_abs_delta_yaw_rad": 0.2,
+                    "diagnostics": {"unmet_success_predicates": ["delta_x_m_min"]},
+                },
+            ]
+        }
+    }
+    path = tmp_path / "search.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+
+    entries = _candidate_entries_from_search_report(
+        path,
+        section="feedback_refinement",
+        selector="best_by_success_window",
+        top_k=1,
+    )
+    top_entries = _candidate_entries_from_search_report(
+        path,
+        section="feedback_refinement",
+        selector="best_by_success_window",
+        top_k=2,
+        rank="physical-gates",
+    )
+
+    assert entries[0][0] == "best_by_success_window"
+    assert top_entries[0] == ("clean_short", {"scale": 0.4})
+    assert top_entries[1] == ("far_unstable", {"scale": 0.8})
+
+
+def test_hiwonder_random_sine_top_by_preserves_ranked_prefix() -> None:
+    rows = [{"score": 1}, {"score": 3}, {"score": 2}]
+
+    top = _top_by(rows, key=lambda row: row["score"], limit=2)
+
+    assert top == [{"score": 3}, {"score": 2}]
+
+
+def test_hiwonder_hold_sweep_raw_distance_key_uses_post_failure_frontier() -> None:
+    row = {
+        "final_delta_x_m": 0.10,
+        "max_delta_x_m": 0.12,
+        "post_goal_failure_max_delta_x_m": 0.21,
+        "max_abs_delta_yaw_rad": 0.30,
+        "max_foot_slip_m_s": 0.20,
+        "max_self_collision_count": 0,
+    }
+
+    assert _raw_distance_key(row)[0] == 0.21
 
 
 def test_hiwonder_stabilized_gait_search_includes_hold_strategies() -> None:

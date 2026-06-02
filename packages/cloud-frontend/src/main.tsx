@@ -23,8 +23,9 @@ import { I18nProvider, resolveInitialLang } from "./providers/I18nProvider";
 installApiFetchBridge();
 
 const initialLang = resolveInitialLang();
+const _rte = import.meta.env.VITE_ELIZA_RENDER_TELEMETRY;
 const renderTelemetryEnabled =
-  import.meta.env.VITE_ELIZA_RENDER_TELEMETRY !== "false";
+  _rte !== "false" && _rte !== "0" && _rte !== false;
 
 type RenderTelemetryGlobal = typeof globalThis & {
   __ELIZA_RENDER_TELEMETRY_DISABLED__?: boolean;

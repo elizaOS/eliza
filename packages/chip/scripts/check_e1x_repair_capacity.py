@@ -8,6 +8,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_repair_capacity.json"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "fuse_otp_claim_allowed": False,
+}
 
 ROM_CASES = {
     "real_graph_normal": {
@@ -51,7 +60,9 @@ def pass_fail(condition: bool, detail: str, fail_detail: str | None = None) -> t
     return ("pass", detail) if condition else ("fail", fail_detail or detail)
 
 
-def validate_rom_case(case: str, json_path: Path, hex_path: Path) -> tuple[list[dict[str, str]], dict]:
+def validate_rom_case(
+    case: str, json_path: Path, hex_path: Path
+) -> tuple[list[dict[str, str]], dict]:
     checks: list[dict[str, str]] = []
     case_summary: dict[str, int | str] = {"case": case}
     paths_exist = json_path.is_file() and hex_path.is_file()
@@ -60,13 +71,17 @@ def validate_rom_case(case: str, json_path: Path, hex_path: Path) -> tuple[list[
         f"{case} repair ROM JSON/HEX present",
         f"missing {json_path.relative_to(ROOT)} or {hex_path.relative_to(ROOT)}",
     )
-    checks.append({"id": f"e1x_repair_capacity_{case}_rom_paths", "status": status, "detail": detail})
+    checks.append(
+        {"id": f"e1x_repair_capacity_{case}_rom_paths", "status": status, "detail": detail}
+    )
     if not paths_exist:
         return checks, case_summary
 
     rom = load_json(json_path)
     words = rom.get("words", [])
-    hex_words = [line.strip() for line in hex_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    hex_words = [
+        line.strip() for line in hex_path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
     case_summary.update(
         {
             "rom_sha256": str(rom.get("artifact_sha256", "")),
@@ -95,19 +110,27 @@ def validate_rom_case(case: str, json_path: Path, hex_path: Path) -> tuple[list[
         f"{case} JSON words match HEX sidecar",
         f"{case} JSON/HEX word mismatch",
     )
-    checks.append({"id": f"e1x_repair_capacity_{case}_hex_matches_json", "status": status, "detail": detail})
+    checks.append(
+        {"id": f"e1x_repair_capacity_{case}_hex_matches_json", "status": status, "detail": detail}
+    )
 
-    count_ok = int(rom.get("total_word_count", -1)) == (
-        int(rom.get("header_word_count", -1))
-        + int(rom.get("remap_word_count", -1))
-        + int(rom.get("route_sample_word_count", -1))
-    ) == len(words)
+    count_ok = (
+        int(rom.get("total_word_count", -1))
+        == (
+            int(rom.get("header_word_count", -1))
+            + int(rom.get("remap_word_count", -1))
+            + int(rom.get("route_sample_word_count", -1))
+        )
+        == len(words)
+    )
     status, detail = pass_fail(
         count_ok,
         f"{case} word counts are internally consistent",
         f"{case} inconsistent repair ROM word counts",
     )
-    checks.append({"id": f"e1x_repair_capacity_{case}_word_counts", "status": status, "detail": detail})
+    checks.append(
+        {"id": f"e1x_repair_capacity_{case}_word_counts", "status": status, "detail": detail}
+    )
 
     sha_ok = word_list_sha256(words) == rom.get("rom_words_sha256")
     status, detail = pass_fail(
@@ -115,7 +138,9 @@ def validate_rom_case(case: str, json_path: Path, hex_path: Path) -> tuple[list[
         f"{case} ROM word SHA matches payload",
         f"{case} ROM word SHA mismatch",
     )
-    checks.append({"id": f"e1x_repair_capacity_{case}_word_sha", "status": status, "detail": detail})
+    checks.append(
+        {"id": f"e1x_repair_capacity_{case}_word_sha", "status": status, "detail": detail}
+    )
     return checks, case_summary
 
 
@@ -144,7 +169,10 @@ def main() -> int:
     capacity_checks = [
         (
             "fuse_window_fits_all_rom_cases",
-            all(int(case.get("total_word_count", 0)) <= production_fuse_window_words for case in cases),
+            all(
+                int(case.get("total_word_count", 0)) <= production_fuse_window_words
+                for case in cases
+            ),
             f"production fuse/ROM window {production_fuse_window_words}x64b covers all repair ROMs",
         ),
         (
@@ -168,7 +196,9 @@ def main() -> int:
     ]
     for check_id, condition, detail in capacity_checks:
         status, resolved_detail = pass_fail(condition, detail)
-        checks.append({"id": f"e1x_repair_capacity_{check_id}", "status": status, "detail": resolved_detail})
+        checks.append(
+            {"id": f"e1x_repair_capacity_{check_id}", "status": status, "detail": resolved_detail}
+        )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
@@ -195,6 +225,7 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "E1X production repair fuse/ROM and dedicated repair-SRAM capacity sizing "
             "against generated normal/high-failure architecture-simulation repair images. "

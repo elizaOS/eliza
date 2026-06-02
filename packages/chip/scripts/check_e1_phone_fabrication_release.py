@@ -58,6 +58,22 @@ def validate_report(report: dict[str, Any]) -> tuple[bool, str | None, int, Any,
     release_gates = report.get("release_gates")
     if not isinstance(release_gates, list) or not release_gates:
         raise ValueError("release_gates must be a non-empty list")
+    local_progress = report.get("local_non_release_progress")
+    if not isinstance(local_progress, dict):
+        raise ValueError("local_non_release_progress must be a mapping")
+    expected_routed_step_progress = {
+        "routed_step_candidate_footprint_envelope_count": 89,
+        "routed_step_candidate_pad_contact_visual_count": 1452,
+        "routed_step_candidate_route_segment_visual_count": 306,
+    }
+    for key, expected in expected_routed_step_progress.items():
+        if local_progress.get(key) != expected:
+            raise ValueError(
+                f"local_non_release_progress.{key} must be {expected}, "
+                f"got {local_progress.get(key)!r}"
+            )
+    if local_progress.get("routed_step_candidate_release_credit") is not False:
+        raise ValueError("local routed STEP candidate must not receive release credit")
 
     blocked_gate_count = summary.get("blocked_release_gate_count")
     total_blockers = summary.get("total_blocker_count")

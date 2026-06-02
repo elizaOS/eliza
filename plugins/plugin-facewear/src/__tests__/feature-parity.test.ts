@@ -19,14 +19,20 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import {
+  registerPluginViews,
+  unregisterPluginViews,
+} from "@elizaos/agent/api/views-registry";
+import { afterEach, describe, expect, it } from "vitest";
 import { viewHostRoute } from "../routes/view-host.ts";
+import { viewsRoute } from "../routes/views.ts";
 
 const repoRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../../../..",
 );
 const appXrRoot = resolve(repoRoot, "plugins/plugin-facewear/app-xr");
+const XR_ROUTE_TEST_PLUGIN = "@test/plugin-facewear-xr-route-registry";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -85,6 +91,10 @@ async function callViewHostRoute(input: unknown) {
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 describe("XR feature parity audit", () => {
+  afterEach(() => {
+    unregisterPluginViews(XR_ROUTE_TEST_PLUGIN);
+  });
+
   // 1. View registration parity — hearwear has gui, tui, and xr views ──────────
   it("axis 1 — plugin-facewear declares gui, tui, and xr views for the 'hearwear' id", () => {
     const source = readFile("plugins/plugin-facewear/src/index.ts");
@@ -128,14 +138,78 @@ describe("XR feature parity audit", () => {
     expect(failures, "view-host route failures").toEqual([]);
   });
 
-  it("axis 2 — viewsRoute source is registered as GET /xr/views with plugin enumeration logic", () => {
+  it("axis 2 — viewsRoute source is registered as GET /xr/views through the canonical registry", () => {
     const routeSrc = readFile("plugins/plugin-facewear/src/routes/views.ts");
     expect(routeSrc).toContain('"GET"');
     expect(routeSrc).toContain('"/xr/views"');
-    // Filters plugins for viewType === "xr"
-    expect(routeSrc).toContain('"xr"');
+    expect(routeSrc).toContain("@elizaos/agent/api/views-registry");
+    expect(routeSrc).toContain('viewType: "xr"');
     // Returns view list with count
     expect(routeSrc).toContain("count");
+  });
+
+  it("axis 2 — viewsRoute returns canonical registry XR entries", async () => {
+    await registerPluginViews({
+      name: XR_ROUTE_TEST_PLUGIN,
+      views: [
+        {
+          id: "facewear-xr-registry-route-smoke",
+          label: "Facewear XR Registry Route",
+          viewType: "xr",
+          path: "/apps/facewear-xr-registry-route-smoke/xr",
+          icon: "Glasses",
+          tags: ["xr", "registry"],
+          description: "Registry-backed facewear XR route smoke",
+          xrOptions: { placement: "panel" },
+          bundleUrl: "https://views.example.test/facewear-xr-route.js",
+        },
+        {
+          id: "facewear-gui-registry-route-smoke",
+          label: "Facewear GUI Registry Route",
+          viewType: "gui",
+          path: "/apps/facewear-gui-registry-route-smoke",
+          bundleUrl: "https://views.example.test/facewear-gui-route.js",
+        },
+      ],
+    } as never);
+
+    const routeHandler = viewsRoute.routeHandler;
+    if (!routeHandler) {
+      throw new Error("viewsRoute.routeHandler is required for this test");
+    }
+
+    const result = await routeHandler({
+      runtime: {
+        getService: () => ({
+          getConnections: () => [
+            { id: "glasses-1", deviceType: "smartglasses" },
+          ],
+        }),
+      },
+    } as never);
+
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({
+      count: expect.any(Number),
+      connections: [{ id: "glasses-1", deviceType: "smartglasses" }],
+    });
+    expect(
+      (result.body as { views: Array<Record<string, unknown>> }).views,
+    ).toContainEqual(
+      expect.objectContaining({
+        id: "facewear-xr-registry-route-smoke",
+        label: "Facewear XR Registry Route",
+        path: "/apps/facewear-xr-registry-route-smoke/xr",
+        pluginName: XR_ROUTE_TEST_PLUGIN,
+        available: true,
+        xrOptions: { placement: "panel" },
+      }),
+    );
+    expect(
+      (result.body as { views: Array<Record<string, unknown>> }).views.some(
+        (view) => view.id === "facewear-gui-registry-route-smoke",
+      ),
+    ).toBe(false);
   });
 
   // 3. Agent CRUD action surface ──────────────────────────────────────────────

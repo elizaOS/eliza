@@ -100,7 +100,9 @@ def main() -> int:
         "tensor output-checksum inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_tensor_output_checksum_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_tensor_output_checksum_inputs_present", "status": status, "detail": detail}
+    )
 
     proof = load_json(PROOF) if PROOF.is_file() else {}
     schedule = load_json(SCHEDULE) if SCHEDULE.is_file() else {}
@@ -120,7 +122,9 @@ def main() -> int:
         "proof, tensor schedule, and normal/high execution trace schemas link to the same placement",
         "schema or placement-link mismatch",
     )
-    checks.append({"id": "e1x_tensor_output_checksum_artifact_links", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_tensor_output_checksum_artifact_links", "status": status, "detail": detail}
+    )
 
     fabric_ok = (
         tensor_fabric.get("status") == "PASS"
@@ -132,7 +136,13 @@ def main() -> int:
         "sampled tensor fabric executor report is PASS",
         "sampled tensor fabric executor report missing or failing",
     )
-    checks.append({"id": "e1x_tensor_output_checksum_fabric_executor_pass", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_tensor_output_checksum_fabric_executor_pass",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     mismatches: list[str] = []
     layer_checksums: list[int] = []
@@ -153,21 +163,25 @@ def main() -> int:
                 mismatches.append(f"acc:{record.get('layer_index')}:{row.get('output_row')}")
             if requantized != int(row.get("requantized_s8", 0)):
                 mismatches.append(f"out:{record.get('layer_index')}:{row.get('output_row')}")
-            row_results.append({
-                "output_row": int(row.get("output_row", -1)),
-                "accumulator": accumulator,
-                "requantized_s8": requantized,
-            })
+            row_results.append(
+                {
+                    "output_row": int(row.get("output_row", -1)),
+                    "accumulator": accumulator,
+                    "requantized_s8": requantized,
+                }
+            )
             sampled_rows += 1
         layer_checksum = layer_output_checksum(int(record.get("layer_index", -1)), row_results)
         layer_checksums.append(layer_checksum)
         if len(sampled_layers) < 8:
-            sampled_layers.append({
-                "layer_index": int(record.get("layer_index", -1)),
-                "layer_name": str(record.get("layer_name", "")),
-                "sampled_output_rows": len(row_results),
-                "sampled_output_checksum": int(layer_checksum),
-            })
+            sampled_layers.append(
+                {
+                    "layer_index": int(record.get("layer_index", -1)),
+                    "layer_name": str(record.get("layer_name", "")),
+                    "sampled_output_rows": len(row_results),
+                    "sampled_output_checksum": int(layer_checksum),
+                }
+            )
 
     aggregate_checksum = aggregate_output_checksum(layer_checksums)
     checksum_ok = (
@@ -181,7 +195,9 @@ def main() -> int:
         f"recomputed sampled output checksum {aggregate_checksum} across {sampled_rows} rows",
         "sampled output mismatches: " + ", ".join(mismatches[:8]),
     )
-    checks.append({"id": "e1x_tensor_output_checksum_recomputes_outputs", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_tensor_output_checksum_recomputes_outputs", "status": status, "detail": detail}
+    )
 
     schedule_by_index = {
         int(layer["layer_index"]): layer
@@ -202,7 +218,9 @@ def main() -> int:
         "normal/high execution traces expose positive scenario output checksums and route-colored sampled layers",
         "normal/high execution trace checksum or sampled-layer linkage missing",
     )
-    checks.append({"id": "e1x_tensor_output_checksum_trace_links", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_tensor_output_checksum_trace_links", "status": status, "detail": detail}
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {

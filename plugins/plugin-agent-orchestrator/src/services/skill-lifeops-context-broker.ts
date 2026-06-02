@@ -9,10 +9,54 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import type { RecommendedSkill } from "./skill-recommender.js";
 import type { SessionInfo } from "./types.js";
 
 const LOG_PREFIX = "[LifeOpsContextBroker]";
+
+async function rewriteBrokerActionText(args: {
+  runtime: IAgentRuntime;
+  actionName: string;
+  text: string;
+}): Promise<string> {
+  const text = args.text.trim();
+  if (!text) return args.text;
+  const fallback = () =>
+    `I ran ${args.actionName} and got a LifeOps action result, but I couldn't format the details cleanly here.`;
+  if (typeof args.runtime.useModel !== "function") return fallback();
+  try {
+    const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt: [
+        "Rewrite this LifeOps broker action output in the assistant character's user-facing voice.",
+        'Return strict JSON only: {"response":"..."}.',
+        "",
+        "Rules:",
+        "- Preserve names, dates, counts, IDs, status, errors, and next steps.",
+        "- Do not expose raw JSON, schema names, stack traces, or internal action plumbing unless an exact value is necessary.",
+        "- Do not claim success if the payload says failed or pending.",
+        "- Keep it brief and natural.",
+        "",
+        `Character: ${JSON.stringify({
+          name: args.runtime.character?.name,
+          system: args.runtime.character?.system,
+          bio: args.runtime.character?.bio,
+          style: args.runtime.character?.style,
+        })}`,
+        `Action: ${JSON.stringify(args.actionName)}`,
+        `Payload: ${JSON.stringify(text)}`,
+      ].join("\n"),
+      maxTokens: 260,
+      providerOptions: { eliza: { thinking: "off" } },
+    });
+    const parsed = JSON.parse(String(raw).trim()) as { response?: unknown };
+    return typeof parsed.response === "string" && parsed.response.trim()
+      ? parsed.response.trim()
+      : fallback();
+  } catch {
+    return fallback();
+  }
+}
 
 export const LIFEOPS_CONTEXT_BROKER_SLUG = "lifeops-context";
 
@@ -404,7 +448,13 @@ async function invokeAction(args: {
   const captured: string[] = [];
   const callback: HandlerCallback = async (content) => {
     if (typeof content.text === "string" && content.text.trim()) {
-      captured.push(content.text.trim());
+      captured.push(
+        await rewriteBrokerActionText({
+          runtime: args.runtime,
+          actionName: args.action.name,
+          text: content.text,
+        }),
+      );
     }
     return [];
   };
@@ -489,9 +539,14 @@ export async function runLifeOpsContextBroker(
       parameters: plan.parameters,
     });
     const success = result?.success !== false;
+    const resultText = await rewriteBrokerActionText({
+      runtime: request.runtime,
+      actionName: action.name,
+      text: extractResultText(result, captured),
+    });
     const text = [
       `LifeOps context broker (${plan.category}) via ${action.name}:`,
-      extractResultText(result, captured),
+      resultText,
     ].join("\n\n");
 
     log?.info?.(

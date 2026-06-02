@@ -30,6 +30,18 @@ DRIVERS_ELIZA = ROOT / "sw/linux/drivers/eliza"
 REPORT = ROOT / "build/reports/linux_bsp_contract.json"
 SCHEMA = "eliza.linux_bsp_contract.v1"
 CLAIM_BOUNDARY = "static_linux_bsp_contract_only_not_external_kernel_build_or_boot_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_bsp_claim_allowed": False,
+    "display_driver_claim_allowed": False,
+    "drm_kms_claim_allowed": False,
+    "display_runtime_binding_claim_allowed": False,
+    "simple_framebuffer_runtime_claim_allowed": False,
+    "panel_dcs_init_claim_allowed": False,
+    "dsi_host_claim_allowed": False,
+}
 
 STALE_TOKENS = {
     "OpenPhone": "old BSP branding",
@@ -274,7 +286,10 @@ def payload(findings: list[Finding], evidence: Mapping[str, object]) -> dict[str
     return {
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
-        "generated_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "generated_utc": datetime.now(UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
         "claim_boundary": CLAIM_BOUNDARY,
         "phone_claim_allowed": False,
         "release_claim_allowed": False,
@@ -286,6 +301,7 @@ def payload(findings: list[Finding], evidence: Mapping[str, object]) -> dict[str
         "simple_framebuffer_runtime_claim_allowed": False,
         "panel_dcs_init_claim_allowed": False,
         "dsi_host_claim_allowed": False,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "summary": {"blockers": len(blockers), "findings": len(findings)},
         "findings": [asdict(finding) for finding in findings],
         "evidence": evidence,

@@ -7,6 +7,7 @@ import type {
   MobileSignalsPlatform,
   MobileSignalsPlugin,
   MobileSignalsScreenTimeStatus,
+  MobileSignalsSettingsTarget,
   MobileSignalsSetupAction,
   MobileSignalsSnapshot,
   MobileSignalsSnapshotResult,
@@ -17,8 +18,8 @@ import type {
 
 type Cleanup = () => void;
 interface BatteryLike {
-  charging: boolean;
-  level: number;
+  charging?: unknown;
+  level?: unknown;
 }
 
 const SCREEN_TIME_REQUIREMENTS = {
@@ -33,6 +34,26 @@ const SCREEN_TIME_REQUIREMENTS = {
     usageAccessSettingsAction: "android.settings.USAGE_ACCESS_SETTINGS",
   },
 };
+
+const SETTINGS_TARGETS = new Set<MobileSignalsSettingsTarget>([
+  "app",
+  "health",
+  "healthConnect",
+  "screenTime",
+  "usageAccess",
+  "notification",
+  "batteryOptimization",
+  "localNetwork",
+  "deviceSettings",
+]);
+
+function normalizeSettingsTarget(target: unknown): MobileSignalsSettingsTarget {
+  if (target === undefined) return "app";
+  if (typeof target !== "string" || !SETTINGS_TARGETS.has(target as never)) {
+    throw new Error("target must be a valid mobile settings target");
+  }
+  return target as MobileSignalsSettingsTarget;
+}
 
 function getPlatform(): MobileSignalsPlatform {
   if (typeof navigator === "undefined") {
@@ -114,14 +135,22 @@ async function getBatterySnapshot(): Promise<{
   if (!nav || typeof nav.getBattery !== "function") {
     return { onBattery: null, batteryLevel: null, isCharging: null };
   }
-  const battery = await nav.getBattery();
+  let battery: BatteryLike;
+  try {
+    battery = await nav.getBattery();
+  } catch {
+    return { onBattery: null, batteryLevel: null, isCharging: null };
+  }
+  const charging =
+    typeof battery.charging === "boolean" ? battery.charging : null;
+  const level =
+    typeof battery.level === "number" && Number.isFinite(battery.level)
+      ? Math.max(0, Math.min(1, battery.level))
+      : null;
   return {
-    onBattery: !battery.charging,
-    batteryLevel:
-      typeof battery.level === "number"
-        ? Math.max(0, Math.min(1, battery.level))
-        : null,
-    isCharging: battery.charging,
+    onBattery: charging === null ? null : !charging,
+    batteryLevel: level,
+    isCharging: charging,
   };
 }
 
@@ -238,9 +267,10 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
   async openSettings(
     options: MobileSignalsOpenSettingsOptions = {},
   ): Promise<MobileSignalsOpenSettingsResult> {
+    const target = normalizeSettingsTarget(options.target);
     return {
       opened: false,
-      target: options.target ?? "app",
+      target,
       actualTarget: "app",
       reason: "Web fallback cannot open native device settings.",
     };
@@ -254,7 +284,11 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
   };
 
   private attachListeners(): void {
-    if (typeof document !== "undefined") {
+    if (
+      typeof document !== "undefined" &&
+      typeof document.addEventListener === "function" &&
+      typeof document.removeEventListener === "function"
+    ) {
       const handleVisibilityChange = (): void => {
         void this.emitSignal("visibilitychange");
       };
@@ -267,7 +301,11 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
       );
     }
 
-    if (typeof window !== "undefined") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.addEventListener === "function" &&
+      typeof window.removeEventListener === "function"
+    ) {
       const handleFocus = (): void => {
         void this.emitSignal("focus");
       };

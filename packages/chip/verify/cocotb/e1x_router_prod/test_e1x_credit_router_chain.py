@@ -41,7 +41,7 @@ async def two_router_chain_burst_no_loss(dut):
         dut.prog_we.value = 0
         dut.prog_sel_b.value = 0
 
-    await prog(0, DIR_WEST, DIR_EAST)   # router A: West in -> East out
+    await prog(0, DIR_WEST, DIR_EAST)  # router A: West in -> East out
     await prog(1, DIR_WEST, DIR_LOCAL)  # router B: West in -> Local out
 
     dut.b_out_ready.value = 1

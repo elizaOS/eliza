@@ -140,6 +140,8 @@ def main() -> int:
     for flag, expected in FALSE_ROADMAP_CLAIM_FLAGS.items():
         if roadmap.get(flag) is not expected:
             errors.append(f"roadmap must keep {flag}=false")
+    if roadmap.get("false_claim_flags") != FALSE_ROADMAP_CLAIM_FLAGS:
+        errors.append("roadmap false_claim_flags must match denied NPU roadmap claims")
     if roadmap.get("current_phase") != "L0_MMIO_PROTOTYPE":
         errors.append("current_phase must remain L0_MMIO_PROTOTYPE until higher evidence exists")
     if roadmap.get("phase_order") != EXPECTED_PHASES:

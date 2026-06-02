@@ -135,6 +135,21 @@ import type {
 import { FORM_CONTROL_DEFAULTS, FORM_DEFINITION_DEFAULTS } from "./types";
 import { formatValue, validateField } from "./validation";
 
+const UNSAFE_OBJECT_KEYS = new Set(["__proto__", "prototype", "constructor"]);
+
+function assertSafeObjectKey(kind: string, key: unknown): asserts key is string {
+  if (typeof key !== "string" || key.trim() === "") {
+    throw new Error(`${kind} must be a non-empty string`);
+  }
+  if (UNSAFE_OBJECT_KEYS.has(key)) {
+    throw new Error(`${kind} uses unsafe object key: ${key}`);
+  }
+}
+
+function createValueMap<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>;
+}
+
 // ============================================================================
 // FORM SERVICE
 // ============================================================================
@@ -207,6 +222,24 @@ export class FormService extends Service {
    * Register a form definition
    */
   registerForm(definition: FormDefinition): void {
+    assertSafeObjectKey("Form id", definition?.id);
+    if (!Array.isArray(definition.controls)) {
+      throw new Error("Form controls must be an array");
+    }
+
+    const controlKeys = new Set<string>();
+    for (const control of definition.controls) {
+      assertSafeObjectKey("Control key", control?.key);
+      if (controlKeys.has(control.key)) {
+        throw new Error(`Duplicate control key: ${control.key}`);
+      }
+      controlKeys.add(control.key);
+
+      if (control.dbbind !== undefined) {
+        assertSafeObjectKey("Control dbbind", control.dbbind);
+      }
+    }
+
     // Apply defaults
     const form: FormDefinition = {
       ...definition,
@@ -390,21 +423,28 @@ export class FormService extends Service {
     const now = Date.now();
 
     // Initialize field states
-    const fields: Record<string, FieldState> = {};
+    const fields = createValueMap<FieldState>();
     for (const control of form.controls) {
       if (options?.initialValues?.[control.key] !== undefined) {
+        const validation = validateField(
+          options.initialValues[control.key],
+          control,
+        );
         fields[control.key] = {
-          status: "filled",
+          status: validation.valid ? "filled" : "invalid",
           value: options.initialValues[control.key],
           source: "manual",
           updatedAt: now,
+          error: validation.error,
         };
       } else if (control.defaultValue !== undefined) {
+        const validation = validateField(control.defaultValue, control);
         fields[control.key] = {
-          status: "filled",
+          status: validation.valid ? "filled" : "invalid",
           value: control.defaultValue,
           source: "default",
           updatedAt: now,
+          error: validation.error,
         };
       } else {
         fields[control.key] = { status: "empty" };
@@ -1146,13 +1186,21 @@ export class FormService extends Service {
     const now = Date.now();
 
     // Build submission values
-    const values: Record<string, JsonValue> = {};
-    const mappedValues: Record<string, JsonValue> = {};
-    const files: Record<string, NonNullable<FieldState["files"]>> = {};
+    const values = createValueMap<JsonValue>();
+    const mappedValues = createValueMap<JsonValue>();
+    const files = createValueMap<NonNullable<FieldState["files"]>>();
 
     for (const control of form.controls) {
       const fieldState = session.fields[control.key];
       if (fieldState?.value !== undefined) {
+        const validation = validateField(fieldState.value, control);
+        if (!validation.valid) {
+          const error = validation.error ?? "validation failed";
+          throw new Error(
+            `Field ${control.key} is invalid: ${error}`,
+          );
+        }
+
         values[control.key] = fieldState.value;
         const dbKey = control.dbbind || control.key;
         mappedValues[dbKey] = fieldState.value;
@@ -1490,7 +1538,7 @@ export class FormService extends Service {
    * Get current values from session
    */
   getValues(session: FormSession): Record<string, JsonValue> {
-    const values: Record<string, JsonValue> = {};
+    const values = createValueMap<JsonValue>();
     for (const [key, state] of Object.entries(session.fields)) {
       if (state.value !== undefined) {
         values[key] = state.value;
@@ -1506,7 +1554,7 @@ export class FormService extends Service {
     const form = this.getForm(session.formId);
     if (!form) return {};
 
-    const values: Record<string, JsonValue> = {};
+    const values = createValueMap<JsonValue>();
     for (const control of form.controls) {
       const state = session.fields[control.key];
       if (state?.value !== undefined) {

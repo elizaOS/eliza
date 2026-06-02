@@ -19,7 +19,12 @@ import type {
   TaskProviderPolicy,
 } from "../services/orchestrator-task-types.js";
 import type { RouteContext } from "./route-utils.js";
-import { parseBody, sendError, sendJson } from "./route-utils.js";
+import {
+  parseBody,
+  sendError,
+  sendJson,
+  sendServiceUnavailable,
+} from "./route-utils.js";
 
 const PREFIX = "/api/orchestrator";
 
@@ -147,7 +152,10 @@ async function dispatchOrchestratorRoutes(
 
   const service = await resolveService(ctx);
   if (!service) {
-    sendError(res, "Orchestrator task service not available", 503);
+    // Lazy service registration: the route is mounted before
+    // OrchestratorTaskService finishes start(). Honest 503 + backoff hint so
+    // polling clients (dashboard status/tasks) quiet down during the window.
+    sendServiceUnavailable(res, "Orchestrator task service not available");
     return true;
   }
 

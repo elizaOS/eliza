@@ -75,10 +75,7 @@ def bimodal_entry_ctr(entry_value):
 
 def tage_entry(valid, tag, ctr, useful):
     payload = (
-        (valid << (TAGE_TAG_W + TAGE_CTR_W + 2))
-        | (tag << (TAGE_CTR_W + 2))
-        | (ctr << 2)
-        | useful
+        (valid << (TAGE_TAG_W + TAGE_CTR_W + 2)) | (tag << (TAGE_CTR_W + 2)) | (ctr << 2) | useful
     )
     return (payload << 1) | _parity(payload)
 

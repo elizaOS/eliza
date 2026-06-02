@@ -32,6 +32,11 @@ export type DocumentRouteHelpers = RouteHelpers;
 export interface DocumentRouteContext extends RouteRequestContext {
   url: URL;
   runtime: AgentRuntime | null;
+  decodePathComponent?: (
+    raw: string,
+    res: DocumentRouteContext["res"],
+    label: string,
+  ) => string | null;
 }
 
 const DOCUMENTS_TABLE = "documents";
@@ -476,6 +481,23 @@ function serviceSearchScope(
     : undefined;
 }
 
+function decodeMatchedPathComponent(
+  ctx: DocumentRouteContext,
+  raw: string,
+  label: string,
+): string | null {
+  if (ctx.decodePathComponent) {
+    return ctx.decodePathComponent(raw, ctx.res, label);
+  }
+
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    ctx.error(ctx.res, `Invalid ${label}: malformed URL encoding`, 400);
+    return null;
+  }
+}
+
 async function countDocumentFragmentsForDocument(
   documentsService: DocumentsServiceLike,
   roomId: UUID | undefined,
@@ -794,7 +816,13 @@ export async function handleDocumentsRoutes(
     pathname,
   );
   if (method === "GET" && fragmentsMatch) {
-    const documentId = decodeURIComponent(fragmentsMatch[1]) as UUID;
+    const decodedDocumentId = decodeMatchedPathComponent(
+      ctx,
+      fragmentsMatch[1],
+      "document id",
+    );
+    if (!decodedDocumentId) return true;
+    const documentId = decodedDocumentId as UUID;
     const document = await runtime.getMemoryById(documentId);
     if (
       !document ||
@@ -863,7 +891,13 @@ export async function handleDocumentsRoutes(
 
   const docIdMatch = /^\/api\/documents\/([^/]+)$/.exec(pathname);
   if (method === "GET" && docIdMatch) {
-    const documentId = decodeURIComponent(docIdMatch[1]) as UUID;
+    const decodedDocumentId = decodeMatchedPathComponent(
+      ctx,
+      docIdMatch[1],
+      "document id",
+    );
+    if (!decodedDocumentId) return true;
+    const documentId = decodedDocumentId as UUID;
     const document = await runtime.getMemoryById(documentId);
     if (
       !document ||
@@ -891,7 +925,13 @@ export async function handleDocumentsRoutes(
   }
 
   if (method === "PATCH" && docIdMatch) {
-    const documentId = decodeURIComponent(docIdMatch[1]) as UUID;
+    const decodedDocumentId = decodeMatchedPathComponent(
+      ctx,
+      docIdMatch[1],
+      "document id",
+    );
+    if (!decodedDocumentId) return true;
+    const documentId = decodedDocumentId as UUID;
     const document = await runtime.getMemoryById(documentId);
     if (
       !document ||
@@ -937,7 +977,13 @@ export async function handleDocumentsRoutes(
   }
 
   if (method === "DELETE" && docIdMatch) {
-    const documentId = decodeURIComponent(docIdMatch[1]) as UUID;
+    const decodedDocumentId = decodeMatchedPathComponent(
+      ctx,
+      docIdMatch[1],
+      "document id",
+    );
+    if (!decodedDocumentId) return true;
+    const documentId = decodedDocumentId as UUID;
     const existingDocument = await runtime.getMemoryById(documentId);
     if (
       !existingDocument ||
@@ -1092,8 +1138,13 @@ export async function handleDocumentsRoutes(
     });
     if (!body) return true;
 
-    if (!body.content || !body.filename) {
-      error(res, "content and filename are required");
+    if (
+      typeof body.content !== "string" ||
+      typeof body.filename !== "string" ||
+      body.content.trim().length === 0 ||
+      body.filename.trim().length === 0
+    ) {
+      error(res, "content and filename must be non-empty strings");
       return true;
     }
 
@@ -1157,6 +1208,20 @@ export async function handleDocumentsRoutes(
     }> = [];
 
     for (const [index, document] of body.documents.entries()) {
+      if (
+        !document ||
+        typeof document !== "object" ||
+        Array.isArray(document)
+      ) {
+        results.push({
+          index,
+          ok: false,
+          filename: `document-${index + 1}`,
+          error: "content and filename must be non-empty strings",
+        });
+        continue;
+      }
+
       const filename = document.filename || `document-${index + 1}`;
       if (
         typeof document.content !== "string" ||
@@ -1231,12 +1296,12 @@ export async function handleDocumentsRoutes(
     }>(req, res);
     if (!body) return true;
 
-    if (!body.url.trim()) {
+    const urlToFetch = trimString(body.url);
+    if (!urlToFetch) {
       error(res, "url is required");
       return true;
     }
 
-    const urlToFetch = body.url.trim();
     let fetchedContent: Awaited<ReturnType<typeof fetchDocumentFromUrl>>;
     try {
       fetchedContent = await fetchDocumentFromUrl(urlToFetch, {

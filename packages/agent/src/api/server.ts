@@ -320,6 +320,11 @@ import {
   resolveWalletNetworkMode,
   resolveWalletRpcReadiness,
 } from "./wallet-rpc.ts";
+import {
+  DEFAULT_REPLAY_LIMIT,
+  parseEventCursor,
+  selectReplayEvents,
+} from "./ws-event-replay.ts";
 
 export {
   executeFallbackParsedActions,
@@ -2670,12 +2675,21 @@ async function handleRequest(
 
   // Coding Agent API routes (/api/coding-agents/*, /api/workspace/*,
   // /api/issues/*) are now provided by the @elizaos/plugin-agent-orchestrator
-  // plugin via the runtime route registry. Pre-runtime 503 responses for
-  // those paths are still emitted below.
+  // plugin via the runtime route registry. Most of those paths genuinely need
+  // the runtime, so a pre-runtime 503 is correct. The GET capability probes
+  // below are the exception: they have graceful builtin stubs
+  // (handleBuiltinOptionalRoutes → { available: false } / "unavailable"). The
+  // dashboard polls /preflight the instant agentStatus flips to "running", which
+  // can race ahead of state.runtime being assigned during a restart; serve those
+  // from the stub instead of a 503 the browser logs as a red console error.
+  const isCodingAgentBuiltinProbe =
+    pathname === "/api/coding-agents/preflight" ||
+    pathname === "/api/coding-agents/coordinator/status";
   if (
     !state.runtime &&
     method === "GET" &&
-    pathname.startsWith("/api/coding-agents")
+    pathname.startsWith("/api/coding-agents") &&
+    !isCodingAgentBuiltinProbe
   ) {
     error(res, "Coding agent runtime unavailable", 503);
     return;
@@ -3499,11 +3513,13 @@ export async function startApiServer(opts?: {
   };
 
   const pushEvent = (
-    event: Omit<StreamEventEnvelope, "eventId" | "version">,
+    event: Omit<StreamEventEnvelope, "eventId" | "version" | "bufferSeq">,
   ) => {
+    const seq = state.nextEventId;
     const envelope: StreamEventEnvelope = {
       ...event,
-      eventId: `evt-${state.nextEventId}`,
+      eventId: `evt-${seq}`,
+      bufferSeq: seq,
       version: 1,
     };
     state.nextEventId += 1;
@@ -3946,6 +3962,7 @@ export async function startApiServer(opts?: {
    */
   const wsSeenMessageIds = new Map<string, number>();
   const WS_DEDUPE_TTL_MS = 30_000;
+  let wsSeenLastSweepAt = 0;
   const isDuplicateWsMessage = (
     clientId: string | undefined,
     msgId: unknown,
@@ -3953,13 +3970,22 @@ export async function startApiServer(opts?: {
     if (typeof msgId !== "string" || msgId.length === 0) return false;
     const key = `${clientId ?? "anon"}:${msgId}`;
     const now = Date.now();
-    if (wsSeenMessageIds.size > 0) {
-      for (const [seenKey, seenAt] of wsSeenMessageIds) {
-        if (now - seenAt > WS_DEDUPE_TTL_MS) wsSeenMessageIds.delete(seenKey);
+    // O(1) TTL-aware dedupe: a still-fresh entry means this id was already seen
+    // within the window. Correctness no longer depends on first scanning the
+    // whole map — the previous full-scan-on-every-message was O(n) per message
+    // (O(n^2) under a burst).
+    const seenAt = wsSeenMessageIds.get(key);
+    if (seenAt !== undefined && now - seenAt <= WS_DEDUPE_TTL_MS) return true;
+    wsSeenMessageIds.set(key, now);
+    // Amortized eviction: sweep expired entries at most once per TTL window
+    // instead of on every message; keeps the map bounded without the per-
+    // message scan.
+    if (now - wsSeenLastSweepAt > WS_DEDUPE_TTL_MS) {
+      wsSeenLastSweepAt = now;
+      for (const [seenKey, ts] of wsSeenMessageIds) {
+        if (now - ts > WS_DEDUPE_TTL_MS) wsSeenMessageIds.delete(seenKey);
       }
     }
-    if (wsSeenMessageIds.has(key)) return true;
-    wsSeenMessageIds.set(key, now);
     return false;
   };
   bindRuntimeStreams(opts?.runtime ?? null);
@@ -4020,6 +4046,16 @@ export async function startApiServer(opts?: {
 
     let isAuthenticated = isWebSocketAuthorized(request, wsUrl);
 
+    // Optional reconnect cursor: a client that tracks the highest buffered
+    // event sequence it has applied can pass it back as `?lastEventId=` so the
+    // server replays only the envelopes it is missing instead of re-flooding
+    // the full tail on every (re)connect (loadperf research 05, Finding 4).
+    // Absent/invalid => null => the historical slice(-DEFAULT_REPLAY_LIMIT)
+    // behavior, so existing clients are unaffected.
+    const replayCursor = parseEventCursor(
+      wsUrl.searchParams.get("lastEventId") ?? wsUrl.searchParams.get("since"),
+    );
+
     const activateAuthenticatedConnection = () => {
       wsClients.add(ws);
       addLog("info", "WebSocket client connected", "websocket", [
@@ -4040,7 +4076,11 @@ export async function startApiServer(opts?: {
             pendingRestartReasons: state.pendingRestartReasons,
           }),
         );
-        const replay = state.eventBuffer.slice(-120);
+        const replay = selectReplayEvents(
+          state.eventBuffer,
+          replayCursor,
+          DEFAULT_REPLAY_LIMIT,
+        );
         for (const event of replay) {
           ws.send(JSON.stringify(event));
         }

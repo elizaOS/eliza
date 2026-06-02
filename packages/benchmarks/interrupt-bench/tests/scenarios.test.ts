@@ -9,18 +9,47 @@
 
 import { describe, expect, it } from "vitest";
 import { runScenario } from "../src/evaluator.ts";
+import {
+  countInterruptBenchScenarios,
+  loadScenarios,
+  validateInterruptBenchScenarios,
+} from "../src/scenarios.ts";
 import { scoreScenario } from "../src/scorer.ts";
-import { loadScenarios } from "../src/scenarios.ts";
 import { SimulatorState } from "../src/state.ts";
 import { Trace } from "../src/trace.ts";
 
 describe("scenarios", () => {
   const all = loadScenarios();
 
-  it("loads all 10 scenarios", () => {
-    expect(all.length).toBe(10);
-    const ids = all.map((s) => s.id).sort();
-    expect(ids).toEqual([
+  function mustFindScenario(id: string) {
+    const scenario = all.find((s) => s.id === id);
+    expect(scenario).toBeDefined();
+    if (!scenario) throw new Error(`Scenario ${id} not found`);
+    return scenario;
+  }
+
+  it("expands the authored base set by exactly 10x", () => {
+    expect(countInterruptBenchScenarios()).toEqual({
+      suite: "interrupt-bench",
+      existing: 10,
+      added: 100,
+      total: 110,
+      multiplierAdded: 10,
+    });
+    expect(validateInterruptBenchScenarios()).toEqual({
+      valid: true,
+      total: 110,
+      uniqueIds: 110,
+      duplicateIds: [],
+      emptyScriptSteps: [],
+      expansionMatches: true,
+    });
+  });
+
+  it("loads all 10 authored scenarios plus 100 edge variants", () => {
+    expect(all.length).toBe(110);
+    const ids = new Set(all.map((s) => s.id));
+    expect([...ids].filter((id) => !id.includes("--edge-")).sort()).toEqual([
       "A1-fragmented-email-draft",
       "A4-stream-with-retraction",
       "B1-pure-cancellation",
@@ -64,27 +93,26 @@ describe("scenarios", () => {
     "A1-fragmented-email-draft",
   ]) {
     it(`${id} scripted score >= 0.7`, async () => {
-      const scenario = all.find((s) => s.id === id);
-      expect(scenario).toBeDefined();
-      const result = await runScenario(scenario!, { mode: "scripted" });
+      const scenario = mustFindScenario(id);
+      const result = await runScenario(scenario, { mode: "scripted" });
       expect(result.score).toBeGreaterThanOrEqual(0.7);
     });
   }
 
   it("coalesces rapid same-channel fragments before Stage-1", async () => {
-    const scenario = all.find((s) => s.id === "A1-fragmented-email-draft");
-    expect(scenario).toBeDefined();
+    const scenario = mustFindScenario("A1-fragmented-email-draft");
 
-    const result = await runScenario(scenario!, { mode: "scripted" });
-    const stage1Calls = result.trace.filter((event) => event.type === "stage1_call");
+    const result = await runScenario(scenario, { mode: "scripted" });
+    const stage1Calls = result.trace.filter(
+      (event) => event.type === "stage1_call",
+    );
 
     expect(stage1Calls).toHaveLength(1);
     expect(result.score).toBe(1);
   });
 
   it("does not score live harness transport latency as behavior", async () => {
-    const scenario = all.find((s) => s.id === "B1-pure-cancellation");
-    expect(scenario).toBeDefined();
+    const scenario = mustFindScenario("B1-pure-cancellation");
     const trace = new Trace(() => 0);
     trace.push("stage1_response", {
       detail: {
@@ -94,15 +122,15 @@ describe("scenarios", () => {
     });
 
     const scripted = scoreScenario({
-      scenario: scenario!,
-      finalState: SimulatorState.fromSetup(scenario!.setup),
+      scenario,
+      finalState: SimulatorState.fromSetup(scenario.setup),
       trace,
       durationMs: 5000,
       mode: "scripted",
     });
     const harnessLike = scoreScenario({
-      scenario: scenario!,
-      finalState: SimulatorState.fromSetup(scenario!.setup),
+      scenario,
+      finalState: SimulatorState.fromSetup(scenario.setup),
       trace,
       durationMs: 5000,
       mode: "harness",
@@ -110,6 +138,8 @@ describe("scenarios", () => {
 
     expect(scripted.axes.latency.raw).toBeLessThan(1);
     expect(harnessLike.axes.latency.raw).toBe(1);
-    expect(harnessLike.axes.latency.notes[0]).toContain("skipped for harness mode");
+    expect(harnessLike.axes.latency.notes[0]).toContain(
+      "skipped for harness mode",
+    );
   });
 });

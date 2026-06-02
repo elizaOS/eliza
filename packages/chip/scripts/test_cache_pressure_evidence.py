@@ -36,6 +36,7 @@ def measured_report(**overrides: Any) -> dict[str, Any]:
         "claim_allowed": False,
         "phone_claim_allowed": False,
         "release_claim_allowed": False,
+        "false_claim_flags": gate.FALSE_CLAIM_FLAGS,
         "captured_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": (
             "This cocotb report measures RTL pressure behavior only. It is not "
@@ -77,6 +78,8 @@ def test_valid_cocotb_report_passes() -> None:
     for claim_field in ("claim_allowed", "phone_claim_allowed", "release_claim_allowed"):
         if report.get(claim_field) is not False:
             raise AssertionError(report)
+    if report.get("false_claim_flags") != gate.FALSE_CLAIM_FLAGS:
+        raise AssertionError(report)
     print("PASS valid cache pressure cocotb report accepted")
 
 
@@ -109,6 +112,20 @@ def test_missing_claim_flags_rejected() -> None:
     if not {"claim_allowed", "phone_claim_allowed", "release_claim_allowed"}.issubset(names):
         raise AssertionError(report["findings"])
     print("PASS cache pressure requires explicit false claim flags")
+
+
+def test_missing_nested_false_claim_flags_rejected() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "cache_pressure_report.json"
+        payload = measured_report()
+        payload.pop("false_claim_flags")
+        write_json(path, payload)
+        report = gate.build_report(path)
+    if report["status"] != "blocked":
+        raise AssertionError(report)
+    if not any(item["name"] == "false_claim_flags" for item in report["findings"]):
+        raise AssertionError(report["findings"])
+    print("PASS cache pressure requires nested false_claim_flags")
 
 
 def test_phone_claim_level_rejected() -> None:
@@ -274,6 +291,7 @@ def main() -> None:
     test_valid_cocotb_report_passes()
     test_generic_claim_flag_rejected()
     test_missing_claim_flags_rejected()
+    test_missing_nested_false_claim_flags_rejected()
     test_phone_claim_level_rejected()
     test_real_target_class_rejected()
     test_missing_measured_provenance_rejected()

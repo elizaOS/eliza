@@ -195,8 +195,18 @@ export function stripOptionalHostPort(value: string): string {
 export function isLoopbackBindHost(host: string): boolean {
   const normalized = stripOptionalHostPort(host);
   if (!normalized) return true;
-  if (LOOPBACK_BIND_RE.test(normalized)) return true;
-  return normalized.startsWith("127.");
+  if (!LOOPBACK_BIND_RE.test(normalized)) return false;
+  const ipv4 = normalized.startsWith("::ffff:")
+    ? normalized.slice("::ffff:".length)
+    : normalized;
+  if (/^127(?:\.\d{1,3}){3}$/.test(ipv4)) {
+    return ipv4
+      .split(".")
+      .every(
+        (octet) => Number.isInteger(Number(octet)) && Number(octet) <= 255,
+      );
+  }
+  return true;
 }
 
 export function isWildcardBindHost(host: string): boolean {

@@ -15,7 +15,7 @@ export const kmsRoundtrip: Check = {
   severity: "critical",
   async run(): Promise<CheckResult> {
     const kms = new MemoryKmsAdapter();
-    const keyId = "verify.kms.roundtrip";
+    const keyId = "system:verify-kms-roundtrip/v1";
     await kms.getOrCreateKey(keyId);
     const plaintext = enc.encode("soc2-verify-plaintext");
     const aad = enc.encode("verify-aad");
@@ -68,19 +68,23 @@ export const kmsHmacRoundtrip: Check = {
   severity: "high",
   async run(): Promise<CheckResult> {
     const kms = new MemoryKmsAdapter();
-    const keyId = "verify.kms.hmac";
+    const keyId = "system:verify-kms-hmac/v1";
     await kms.getOrCreateKey(keyId);
     const data = enc.encode("hmac-payload");
     const tag = await kms.hmac(keyId, data);
     const ok = await kms.hmacVerify(keyId, data, tag);
     if (!ok) {
-      return { status: "fail", evidence: `HMAC verify returned false for valid tag.` };
+      return {
+        status: "fail",
+        evidence: `HMAC verify returned false for valid tag.`,
+      };
     }
     const tampered = new Uint8Array(tag);
-    if (tampered.length === 0) {
+    const first = tampered[0];
+    if (first === undefined) {
       return { status: "fail", evidence: `HMAC tag empty.` };
     }
-    tampered[0] = (tampered[0]! ^ 0xff) & 0xff;
+    tampered[0] = (first ^ 0xff) & 0xff;
     const ok2 = await kms.hmacVerify(keyId, data, tampered);
     return ok2
       ? {
@@ -101,7 +105,7 @@ export const kmsSignatureRoundtrip: Check = {
   severity: "high",
   async run(): Promise<CheckResult> {
     const kms = new MemoryKmsAdapter();
-    const keyId = "verify.kms.signing";
+    const keyId = "system:verify-kms-signing/v1";
     await kms.getOrCreateKey(keyId);
     const data = enc.encode("artifact-bytes");
     const sig = await kms.sign(keyId, data, "ed25519");
@@ -110,7 +114,11 @@ export const kmsSignatureRoundtrip: Check = {
       return { status: "fail", evidence: `Valid Ed25519 signature rejected.` };
     }
     const bad = new Uint8Array(sig.signature);
-    bad[0] = (bad[0]! ^ 0x01) & 0xff;
+    const first = bad[0];
+    if (first === undefined) {
+      return { status: "fail", evidence: `Signature empty.` };
+    }
+    bad[0] = (first ^ 0x01) & 0xff;
     const ok2 = await kms.verify(keyId, data, bad, "ed25519");
     return ok2
       ? {
@@ -144,7 +152,13 @@ export const auditDispatcherEmits: Check = {
         evidence: `Expected 1 event in sink, found ${snap.length}.`,
       };
     }
-    const got = snap[0]!;
+    const got = snap[0];
+    if (!got) {
+      return {
+        status: "fail",
+        evidence: `Expected emitted event to be present in sink.`,
+      };
+    }
     if (got.event_id !== event.event_id) {
       return {
         status: "fail",
@@ -176,7 +190,13 @@ export const auditRedaction: Check = {
         ip: "203.0.113.1", // allowed
       },
     });
-    const got = sink.snapshot()[0]!;
+    const got = sink.snapshot()[0];
+    if (!got) {
+      return {
+        status: "fail",
+        evidence: `Expected audit event to be present in sink.`,
+      };
+    }
     const md = got.metadata ?? {};
     if ("email" in md) {
       return {

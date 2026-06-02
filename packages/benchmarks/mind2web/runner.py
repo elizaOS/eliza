@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from benchmarks.mind2web.dataset import Mind2WebDataset
+from benchmarks.mind2web.dataset import Mind2WebDataset, expand_tasks
 from benchmarks.mind2web.eliza_agent import (
     create_mind2web_agent,
 )
@@ -74,7 +74,8 @@ class Mind2WebRunner:
                 use_sample=self.use_sample,
             )
 
-            tasks = self.dataset.get_tasks(limit=self.config.max_tasks)
+            base_tasks = self.dataset.get_tasks(limit=self.config.max_tasks)
+            tasks = expand_tasks(base_tasks) if self.config.include_edge_scenarios else base_tasks
             if not tasks:
                 raise RuntimeError("No tasks loaded from dataset")
 

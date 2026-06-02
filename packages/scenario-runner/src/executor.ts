@@ -23,6 +23,7 @@ import {
   ChannelType,
   createMessageMemory,
   logger,
+  ModelType,
   stringToUuid,
 } from "@elizaos/core";
 import type {
@@ -52,6 +53,76 @@ export interface ExecutorOptions {
 }
 
 const DEFAULT_TURN_TIMEOUT_MS = 120_000;
+
+async function rewriteScenarioActionText(args: {
+  runtime: AgentRuntime;
+  actionName: string;
+  text: string;
+  content?: { text?: string };
+  result?: ActionResult;
+}): Promise<string> {
+  const text = args.text.trim();
+  if (!text) return args.text;
+  const fallback = () => {
+    const error =
+      typeof args.result?.error === "string" && args.result.error.trim()
+        ? ` It reported: ${args.result.error.trim()}`
+        : "";
+    return `I ran ${args.actionName} and got a result, but I couldn't format the details cleanly here.${error}`;
+  };
+  if (typeof args.runtime.useModel !== "function") return fallback();
+
+  try {
+    const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt: [
+        "Rewrite this scenario action output in the assistant character's user-facing voice.",
+        'Return strict JSON only: {"response":"..."}.',
+        "",
+        "Rules:",
+        "- Preserve status, IDs, names, URLs, counts, errors, and next steps.",
+        "- Do not expose raw JSON, shell output, schema names, stack traces, or internal action plumbing unless an exact value is necessary.",
+        "- Do not claim success if the payload says failed or pending.",
+        "- Keep it brief and natural.",
+        "",
+        `Character: ${JSON.stringify({
+          name: args.runtime.character?.name,
+          system: args.runtime.character?.system,
+          bio: args.runtime.character?.bio,
+          style: args.runtime.character?.style,
+        })}`,
+        `Action: ${JSON.stringify(args.actionName)}`,
+        `Payload: ${JSON.stringify(text)}`,
+        `Result metadata: ${JSON.stringify({
+          success: args.result?.success,
+          error: args.result?.error,
+          data: args.result?.data,
+        })}`,
+      ].join("\n"),
+      maxTokens: 260,
+      providerOptions: { eliza: { thinking: "off" } },
+    });
+    const rawText =
+      typeof raw === "string"
+        ? raw
+        : typeof (raw as { text?: unknown })?.text === "string"
+          ? String((raw as { text: string }).text)
+          : "";
+    const parsed = JSON.parse(rawText.trim()) as { response?: unknown };
+    return typeof parsed.response === "string" && parsed.response.trim()
+      ? parsed.response.trim()
+      : fallback();
+  } catch (err) {
+    logger.debug(
+      {
+        src: "scenario-runner",
+        actionName: args.actionName,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "Scenario action output voice rewrite failed",
+    );
+    return fallback();
+  }
+}
 
 type ScenarioRoomDefinition = {
   id: string;
@@ -1207,7 +1278,14 @@ async function executeActionTurn(
   const startedAt = Date.now();
   let responseText = "";
   const callback = async (content: { text?: string }): Promise<Memory[]> => {
-    if (content.text) responseText += content.text;
+    if (content.text) {
+      responseText += await rewriteScenarioActionText({
+        runtime,
+        actionName,
+        text: content.text,
+        content,
+      });
+    }
     return [];
   };
   const timeoutMs =
@@ -1234,11 +1312,28 @@ async function executeActionTurn(
     `executeAction(${turn.name})`,
   );
   const actionResult = result as ActionResult | undefined;
+  if (
+    !responseText &&
+    actionResult?.verifiedUserFacing === true &&
+    typeof actionResult.userFacingText === "string"
+  ) {
+    responseText = actionResult.userFacingText;
+  }
   if (!responseText && typeof actionResult?.text === "string") {
-    responseText = actionResult.text;
+    responseText = await rewriteScenarioActionText({
+      runtime,
+      actionName,
+      text: actionResult.text,
+      result: actionResult,
+    });
   }
   if (!responseText && typeof actionResult?.userFacingText === "string") {
-    responseText = actionResult.userFacingText;
+    responseText = await rewriteScenarioActionText({
+      runtime,
+      actionName,
+      text: actionResult.userFacingText,
+      result: actionResult,
+    });
   }
   return {
     responseText,
@@ -1735,7 +1830,11 @@ export async function runScenario(
           actionName: "REPLY",
           parameters: undefined,
           result: {
-            success: true,
+            // Do NOT claim success: this entry is fabricated because the LLM
+            // failed to select an action, so it must not satisfy a
+            // status:"success" actionCalled assertion. The `source` marker lets
+            // final-checks (and the native export) tell it apart from a real
+            // LLM-selected REPLY so it cannot mask a genuine selection failure.
             text: execution.responseText,
             data: { source: "synthesized-reply" },
           },

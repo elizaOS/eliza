@@ -31,3 +31,12 @@ BOARD_VENDOR_SEPOLICY_DIRS += device/eliza/cuttlefish_e1/sepolicy
 # vendor.eliza.e1_npu. Do not add another Cuttlefish DEVICE_MANIFEST_FILE here:
 # libvintf rejects duplicate @1.0::IE1Npu/default entries before the virtual
 # device can boot.
+
+# Declare the e1_npu HAL in the framework compatibility matrix. The device
+# manifest fragment advertises vendor.eliza.e1_npu@1.0::IE1Npu/default as a live
+# HAL, so check_vintf_compatible fails ("in the device manifest but not
+# specified in framework compatibility matrix") unless the framework matrix also
+# specifies it. The fragment marks it optional, so it does not force the HAL onto
+# other devices.
+DEVICE_FRAMEWORK_COMPATIBILITY_MATRIX_FILE += \
+    device/eliza/cuttlefish_e1/framework_compatibility_matrix.xml

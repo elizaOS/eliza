@@ -150,9 +150,7 @@ def run_checks() -> list[dict[str, str]]:
 
     colors = config.routing_colors
     bad_colors = [
-        str(layer["name"])
-        for layer in layers
-        if not (0 <= int(layer["routing_color"]) < colors)
+        str(layer["name"]) for layer in layers if not (0 <= int(layer["routing_color"]) < colors)
     ]
     if not bad_colors:
         checks.append(
@@ -246,7 +244,9 @@ def main() -> int:
     has_block = any(c["status"] == "blocked" for c in checks)
     if has_fail:
         status, blocker_id = "FAIL", "graph_mapper_check_failure"
-        blocker_reason = "; ".join(f"{c['id']}: {c['detail']}" for c in checks if c["status"] == "fail")
+        blocker_reason = "; ".join(
+            f"{c['id']}: {c['detail']}" for c in checks if c["status"] == "fail"
+        )
     elif has_block:
         status, blocker_id = "BLOCKED", "graph_mapper_dependency_missing"
         blocker_reason = "; ".join(

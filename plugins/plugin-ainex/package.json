@@ -30,6 +30,11 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"

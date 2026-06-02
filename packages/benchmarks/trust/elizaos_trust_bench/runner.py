@@ -213,6 +213,7 @@ class TrustBenchmarkRunner:
             categories=self.config.categories,
             difficulties=self.config.difficulties,
             tags=self.config.tags,
+            include_edge_scenarios=self.config.include_edge_scenarios,
         )
 
         if not corpus:

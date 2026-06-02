@@ -186,7 +186,12 @@ export class ProxyServer {
   }
 
   getUrl(): string {
-    return `http://${this.bindHost}:${this.port}`;
+    const address = this.server?.address();
+    const port =
+      address && typeof address === "object" && "port" in address
+        ? address.port
+        : this.port;
+    return `http://${this.bindHost}:${port}`;
   }
 
   isListening(): boolean {
@@ -202,15 +207,15 @@ export class ProxyServer {
   }
 
   private handleRequest(req: IncomingMessage, res: ServerResponse): void {
-    if (req.url === "/health" && req.method === "GET") {
-      this.handleHealth(res);
-      return;
-    }
     if (this.proxyAuthToken && !this.isAuthorized(req)) {
       res.writeHead(401, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({ type: "error", error: { message: "unauthorized" } }),
       );
+      return;
+    }
+    if (req.url === "/health" && req.method === "GET") {
+      this.handleHealth(res);
       return;
     }
 
@@ -235,9 +240,12 @@ export class ProxyServer {
 
       let bodyStr = body.toString("utf8");
       const originalSize = bodyStr.length;
-      const processed = processBody(bodyStr, this.buildPipelineConfig());
-      bodyStr = processed.body;
-      body = Buffer.from(bodyStr, "utf8");
+      const shouldProcessBody = bodyStr.trim().length > 0;
+      if (shouldProcessBody) {
+        const processed = processBody(bodyStr, this.buildPipelineConfig());
+        bodyStr = processed.body;
+        body = Buffer.from(bodyStr, "utf8");
+      }
 
       const headers: Record<string, string | number> = {};
       for (const [key, value] of Object.entries(req.headers)) {

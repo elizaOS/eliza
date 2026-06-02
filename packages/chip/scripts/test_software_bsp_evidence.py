@@ -233,9 +233,7 @@ class SoftwareBspEvidenceTest(unittest.TestCase):
             "targets": [
                 {
                     "tree": str(check_software_bsp.ROOT / "external/linux"),
-                    "blockers": [
-                        f"missing {check_software_bsp.ROOT / 'external/linux/Kconfig'}"
-                    ],
+                    "blockers": [f"missing {check_software_bsp.ROOT / 'external/linux/Kconfig'}"],
                     "commands": [
                         f"run {check_software_bsp.ROOT / 'external/linux'} /var/tmp/evidence"
                     ],

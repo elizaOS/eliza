@@ -30,6 +30,7 @@ import hashlib
 import json
 import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,16 @@ OUT = ROOT / "build/reports/tee_image_manifest.json"
 DIGEST = re.compile(r"^sha256:[a-f0-9]{64}$")
 ZERO_DIGEST = "sha256:" + "0" * 64
 COMPONENT_NAMES = ("kernel", "initrd", "rootfs", "appCompose")
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "reproducible_build_claim_allowed": False,
+    "measured_launch_claim_allowed": False,
+    "silicon_claim_allowed": False,
+}
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def recompute_digest(path: Path) -> str:
@@ -141,6 +152,7 @@ def main(argv: list[str]) -> int:
             {
                 "schema": "eliza.tee_image_manifest_check.v1",
                 "status": "tee_image_manifest_release_blocked",
+                "generated_utc": utc_now(),
                 "claim_boundary": (
                     "Schema-conformance + digest-shape + appCompose/compose binding + "
                     "present-artifact digest recompute only; not a reproducible build, "
@@ -152,6 +164,7 @@ def main(argv: list[str]) -> int:
                 "os_schema": "packages/os/release/schema/confidential-image-manifest.schema.json",
                 "reproducibility_confirmed": confirmed,
                 "errors": errors,
+                "false_claim_flags": FALSE_CLAIM_FLAGS,
                 "findings": [
                     {
                         "code": "tee_image_manifest_release_blocked",
@@ -163,7 +176,10 @@ def main(argv: list[str]) -> int:
                         "severity": "blocker",
                     }
                 ],
-                "summary": {"release_claim_allowed": confirmed and not errors},
+                "summary": {
+                    "release_claim_allowed": confirmed and not errors,
+                    "false_claim_flags": FALSE_CLAIM_FLAGS,
+                },
             },
             indent=2,
             sort_keys=True,

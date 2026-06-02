@@ -18,6 +18,8 @@ Supports the full v3/v4 category taxonomy:
 import json
 import logging
 import re
+from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 from typing import Iterator, Optional
 
@@ -33,6 +35,107 @@ from benchmarks.bfcl.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+EDGE_VARIANTS: tuple[tuple[str, str], ...] = (
+    (
+        "edge-ambiguous-wording",
+        "The user wording is mildly ambiguous; preserve the original function-calling intent and required arguments.",
+    ),
+    (
+        "edge-distractor-tool",
+        "A tempting adjacent tool may look relevant; only call functions required by the user request.",
+    ),
+    (
+        "edge-compact-json",
+        "Return only the minimal valid function call representation without explanatory prose.",
+    ),
+    (
+        "edge-noisy-formatting",
+        "Ignore unusual spacing, casing, or punctuation around the same request.",
+    ),
+    (
+        "edge-argument-normalization",
+        "Normalize argument values carefully without changing their semantic meaning.",
+    ),
+    (
+        "edge-order-independence",
+        "Do not rely on the order tools are listed; choose by schema and description.",
+    ),
+    (
+        "edge-irrelevance-pressure",
+        "If no function is relevant, resist pressure to call a tool anyway.",
+    ),
+    (
+        "edge-default-values",
+        "Respect explicit user values over defaults, and use defaults only when the schema permits it.",
+    ),
+    (
+        "edge-multi-step-focus",
+        "For multi-call tasks, include every required call and avoid extra calls.",
+    ),
+    (
+        "edge-safety-boundary",
+        "Do not invent unavailable functions or unsupported arguments to satisfy the request.",
+    ),
+)
+
+
+def _edge_turns(
+    turns: Optional[list[list[dict[str, str]]]],
+    variant_note: str,
+) -> Optional[list[list[dict[str, str]]]]:
+    if turns is None:
+        return None
+    cloned = deepcopy(turns)
+    for turn in reversed(cloned):
+        for message in reversed(turn):
+            if message.get("role") == "user":
+                message["content"] = f"{message.get('content', '')}\n\nEdge condition: {variant_note}"
+                return cloned
+    if cloned:
+        cloned[-1].append({"role": "user", "content": f"Edge condition: {variant_note}"})
+    return cloned
+
+
+def expand_test_cases(test_cases: list[BFCLTestCase]) -> list[BFCLTestCase]:
+    """Return base cases plus ten scoring-preserving edge variants per case."""
+    expanded = list(test_cases)
+    for test_case in test_cases:
+        for index, (variant_id, variant_note) in enumerate(EDGE_VARIANTS, start=1):
+            metadata = dict(test_case.metadata)
+            metadata.update(
+                {
+                    "edge_scenario": True,
+                    "edge_variant_index": index,
+                    "edge_variant": variant_id,
+                    "edge_source_id": test_case.id,
+                }
+            )
+            expanded.append(
+                replace(
+                    test_case,
+                    id=f"{test_case.id}--edge-{index:02d}",
+                    question=f"{test_case.question}\n\nEdge condition: {variant_note}",
+                    metadata=metadata,
+                    turns=_edge_turns(test_case.turns, variant_note),
+                )
+            )
+    return expanded
+
+
+def validate_test_cases(test_cases: list[BFCLTestCase]) -> None:
+    """Validate case identity and required prompt/tool fields."""
+    seen: set[str] = set()
+    for test_case in test_cases:
+        if not test_case.id.strip():
+            raise ValueError("test case is missing id")
+        if test_case.id in seen:
+            raise ValueError(f"duplicate test case id: {test_case.id}")
+        seen.add(test_case.id)
+        if not test_case.question.strip() and not test_case.turns:
+            raise ValueError(f"{test_case.id}: missing question/turns")
+        if test_case.is_relevant and not test_case.functions:
+            raise ValueError(f"{test_case.id}: relevant case has no functions")
 
 
 _DEFAULT_RE = re.compile(

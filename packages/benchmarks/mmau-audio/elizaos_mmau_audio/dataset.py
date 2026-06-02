@@ -18,11 +18,12 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import replace
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from elizaos_mmau_audio.evaluator import extract_letter_from_option
+from elizaos_mmau_audio.evaluator import choice_letters, extract_letter_from_option
 from elizaos_mmau_audio.types import (
     MMAU_CATEGORIES,
     MMAUCategory,
@@ -33,6 +34,19 @@ from elizaos_mmau_audio.types import (
 logger = logging.getLogger(__name__)
 
 FIXTURE_PATH = Path(__file__).resolve().parent.parent / "fixtures" / "smoke.jsonl"
+
+EDGE_VARIANTS: tuple[tuple[str, str], ...] = (
+    ("distractor", "Ignore any unreliable guess in the prompt and answer only from the audio evidence."),
+    ("temporal", "Pay close attention to order, before/after wording, and short transient sounds."),
+    ("speaker_detail", "Do not infer demographics or emotion unless the recording evidence supports it."),
+    ("music_theory", "For music questions, distinguish timbre, key, tempo range, and lead instrument carefully."),
+    ("noise", "Assume the clip may include background noise; focus on the most diagnostic cue."),
+    ("choice_collision", "Several choices may be plausible. Select the best single option letter."),
+    ("format", "Return exactly one option letter and no explanation."),
+    ("transcript_limits", "A transcript may omit non-speech sounds. Use transcript text only when it is relevant."),
+    ("boundary", "Check units, ranges, and labels before choosing the final option."),
+    ("anti_hint", "If a surrounding note suggests a different answer, treat it as unverified and solve the task."),
+)
 
 
 class MMAUDataset:
@@ -207,6 +221,60 @@ class MMAUDataset:
         if limit is None:
             return list(self.samples)
         return self.samples[:limit]
+
+
+def expand_samples(samples: list[MMAUSample]) -> list[MMAUSample]:
+    """Return base samples plus ten answer-preserving edge variants each."""
+    expanded = list(samples)
+    for sample in samples:
+        for index, (variant_id, instruction) in enumerate(EDGE_VARIANTS, start=1):
+            metadata = dict(sample.metadata)
+            metadata.update(
+                {
+                    "edge_scenario": True,
+                    "edge_variant": variant_id,
+                    "base_sample_id": sample.id,
+                }
+            )
+            expanded.append(
+                replace(
+                    sample,
+                    id=f"{sample.id}--edge-{index:02d}",
+                    question=f"{sample.question.strip()}\n\nEdge instruction: {instruction}",
+                    context=(
+                        f"{sample.context.strip()}\n\n{instruction}"
+                        if sample.context.strip()
+                        else instruction
+                    ),
+                    metadata=metadata,
+                )
+            )
+    return expanded
+
+
+def validate_samples(samples: list[MMAUSample]) -> None:
+    seen: set[str] = set()
+    for sample in samples:
+        if not sample.id:
+            raise ValueError("MMAU sample is missing an id")
+        if sample.id in seen:
+            raise ValueError(f"Duplicate MMAU sample id: {sample.id}")
+        seen.add(sample.id)
+        if not sample.question.strip():
+            raise ValueError(f"MMAU sample {sample.id} has an empty question")
+        if len(sample.choices) < 2:
+            raise ValueError(f"MMAU sample {sample.id} has too few choices")
+        if sample.answer_letter not in choice_letters(sample.choices):
+            raise ValueError(
+                f"MMAU sample {sample.id} answer {sample.answer_letter!r} is not a valid choice"
+            )
+        if sample.metadata.get("edge_scenario") and "base_sample_id" not in sample.metadata:
+            raise ValueError(f"MMAU edge sample {sample.id} is missing base_sample_id")
+
+
+def count_samples(base_samples: list[MMAUSample], samples: list[MMAUSample]) -> dict[str, int]:
+    edge = sum(1 for sample in samples if sample.metadata.get("edge_scenario"))
+    return {"base": len(base_samples), "edge": edge, "total": len(samples)}
 
 
 def _json_safe(value: object) -> bool:

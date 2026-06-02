@@ -1,8 +1,7 @@
-import { createHmac } from "node:crypto";
-import { describe, expect, it } from "vitest";
-import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "../src/accounts";
+import type { IAgentRuntime } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
+import { normalizeAccountId } from "../src/accounts";
 import linePlugin, {
-  buildLineDeepLink,
   chunkLineText,
   extractCodeBlocks,
   extractLinks,
@@ -16,13 +15,10 @@ import linePlugin, {
   hasMarkdownContent,
   isGroupChat,
   isValidLineId,
-  LINE_SERVICE_NAME,
-  LINE_TEXT_CHUNK_LIMIT,
   LineApiError,
   LineConfigurationError,
   LineEventTypes,
   LineService,
-  MAX_LINE_BATCH_SIZE,
   markdownToLineChunks,
   normalizeLineTarget,
   processLineMessage,
@@ -31,17 +27,13 @@ import linePlugin, {
   stripMarkdown,
   truncateText,
 } from "../src/index";
+import { LineWorkflowCredentialProvider } from "../src/workflow-credential-provider";
 
 // ===========================================================================
 // Plugin metadata
 // ===========================================================================
 
 describe("Plugin metadata", () => {
-  it("exports correct plugin name and description", () => {
-    expect(linePlugin.name).toBe("line");
-    expect(linePlugin.description).toContain("LINE");
-  });
-
   it("does not register legacy LINE message router actions", () => {
     expect(Array.isArray(linePlugin.actions)).toBe(true);
     expect(linePlugin.actions?.length).toBe(0);
@@ -51,14 +43,6 @@ describe("Plugin metadata", () => {
     expect(Array.isArray(linePlugin.providers)).toBe(true);
     expect(linePlugin.providers?.length).toBe(0);
   });
-
-  it("exports services array", () => {
-    expect(Array.isArray(linePlugin.services)).toBe(true);
-  });
-
-  it("exports all expected components", () => {
-    expect(LineService).toBeDefined();
-  });
 });
 
 // ===========================================================================
@@ -66,18 +50,6 @@ describe("Plugin metadata", () => {
 // ===========================================================================
 
 describe("Config validation", () => {
-  it("defines correct service name constant", () => {
-    expect(LINE_SERVICE_NAME).toBe("line");
-  });
-
-  it("defines correct batch size constant", () => {
-    expect(MAX_LINE_BATCH_SIZE).toBe(5);
-  });
-
-  it("defines text chunk limit", () => {
-    expect(LINE_TEXT_CHUNK_LIMIT).toBe(5000);
-  });
-
   it("creates LineConfigurationError with field", () => {
     const err = new LineConfigurationError("Token required", "LINE_CHANNEL_ACCESS_TOKEN");
     expect(err.name).toBe("LineConfigurationError");
@@ -214,28 +186,6 @@ describe("Type utilities", () => {
       const chunks = splitMessageForLine(text);
       expect(chunks).toHaveLength(2);
     });
-  });
-});
-
-// ===========================================================================
-// Event types
-// ===========================================================================
-
-describe("Event types", () => {
-  it("defines all expected event type constants", () => {
-    expect(LineEventTypes.CONNECTION_READY).toBe("line:connection_ready");
-    expect(LineEventTypes.MESSAGE_RECEIVED).toBe("line:message_received");
-    expect(LineEventTypes.MESSAGE_SENT).toBe("line:message_sent");
-    expect(LineEventTypes.FOLLOW).toBe("line:follow");
-    expect(LineEventTypes.UNFOLLOW).toBe("line:unfollow");
-    expect(LineEventTypes.JOIN_GROUP).toBe("line:join_group");
-    expect(LineEventTypes.LEAVE_GROUP).toBe("line:leave_group");
-    expect(LineEventTypes.POSTBACK).toBe("line:postback");
-  });
-
-  it("event types are readonly", () => {
-    const keys = Object.keys(LineEventTypes);
-    expect(keys.length).toBe(8);
   });
 });
 
@@ -447,13 +397,6 @@ describe("Messaging utilities", () => {
     });
   });
 
-  describe("buildLineDeepLink", () => {
-    it("builds deep link URL", () => {
-      const link = buildLineDeepLink("user", "U123");
-      expect(link).toBe("line://ti/p/U123");
-    });
-  });
-
   describe("resolveLineSystemLocation", () => {
     it("formats user chat location", () => {
       const result = resolveLineSystemLocation({
@@ -521,10 +464,6 @@ describe("Messaging utilities", () => {
 // ===========================================================================
 
 describe("Accounts utilities", () => {
-  it("DEFAULT_ACCOUNT_ID is 'default'", () => {
-    expect(DEFAULT_ACCOUNT_ID).toBe("default");
-  });
-
   it("normalizeAccountId returns default for null/undefined", () => {
     expect(normalizeAccountId(null)).toBe("default");
     expect(normalizeAccountId(undefined)).toBe("default");
@@ -542,140 +481,328 @@ describe("Accounts utilities", () => {
 });
 
 // ===========================================================================
-// Webhook signature validation
+// Webhook handling
 // ===========================================================================
 
-describe("Webhook signature validation", () => {
-  const channelSecret = "test_channel_secret";
-
-  function computeSignature(body: string, secret: string): string {
-    return createHmac("SHA256", secret).update(body).digest("base64");
+describe("Webhook handling", () => {
+  function createServiceWithRuntime() {
+    const runtime = {
+      emitEvent: vi.fn(),
+    };
+    const service = new LineService();
+    (service as unknown as { runtime: typeof runtime }).runtime = runtime;
+    return { runtime, service };
   }
 
-  it("produces consistent signatures for same input", () => {
-    const body = '{"events":[]}';
-    const sig1 = computeSignature(body, channelSecret);
-    const sig2 = computeSignature(body, channelSecret);
-    expect(sig1).toBe(sig2);
+  it("emits structured payloads for valid webhook events", async () => {
+    const { runtime, service } = createServiceWithRuntime();
+
+    await service.handleWebhookEvents([
+      {
+        type: "message",
+        timestamp: 1234567890,
+        source: { type: "group", userId: "U123", groupId: "C123" },
+        replyToken: "rt4",
+        message: { id: "msg1", type: "text", text: "Hello!" },
+      },
+      {
+        type: "postback",
+        timestamp: 1234567891,
+        source: { type: "user", userId: "U456" },
+        replyToken: "rt3",
+        postback: { data: "action=buy", params: { date: "2024-01-01" } },
+      },
+    ] as Parameters<LineService["handleWebhookEvents"]>[0]);
+
+    expect(runtime.emitEvent).toHaveBeenCalledWith(
+      [LineEventTypes.MESSAGE_RECEIVED],
+      expect.objectContaining({
+        lineSource: expect.objectContaining({ groupId: "C123" }),
+        message: expect.objectContaining({
+          groupId: "C123",
+          id: "msg1",
+          text: "Hello!",
+          type: "text",
+        }),
+        replyToken: "rt4",
+      })
+    );
+    expect(runtime.emitEvent).toHaveBeenCalledWith(
+      [LineEventTypes.POSTBACK],
+      expect.objectContaining({
+        data: "action=buy",
+        params: { date: "2024-01-01" },
+        userId: "U456",
+      })
+    );
   });
 
-  it("produces different signatures for different secrets", () => {
-    const body = '{"events":[]}';
-    const sig1 = computeSignature(body, channelSecret);
-    const sig2 = computeSignature(body, "other_secret");
-    expect(sig1).not.toBe(sig2);
-  });
+  it("ignores malformed or hostile webhook payloads without emitting", async () => {
+    const { runtime, service } = createServiceWithRuntime();
 
-  it("produces different signatures for different bodies", () => {
-    const sig1 = computeSignature("body1", channelSecret);
-    const sig2 = computeSignature("body2", channelSecret);
-    expect(sig1).not.toBe(sig2);
-  });
+    await service.handleWebhookEvents([
+      null,
+      { type: "message", timestamp: 1, source: { type: "user", userId: "U1" } },
+      { type: "message", timestamp: 1, message: { type: "text", text: "missing id" } },
+      { type: "postback", timestamp: 1, postback: null },
+      { type: "postback", timestamp: 1, postback: { params: { date: "2024-01-01" } } },
+      { type: "unknown", timestamp: 1 },
+    ] as Parameters<LineService["handleWebhookEvents"]>[0]);
 
-  it("signature is non-empty base64", () => {
-    const sig = computeSignature("{}", channelSecret);
-    expect(sig.length).toBeGreaterThan(0);
-    // Base64 chars: A-Z, a-z, 0-9, +, /, =
-    expect(sig).toMatch(/^[A-Za-z0-9+/=]+$/);
-  });
-
-  it("validates against correct recomputation", () => {
-    const body = '{"events":[{"type":"follow"}]}';
-    const sig = computeSignature(body, channelSecret);
-    const recomputed = computeSignature(body, channelSecret);
-    expect(sig).toBe(recomputed);
+    expect(runtime.emitEvent).not.toHaveBeenCalled();
   });
 });
 
 // ===========================================================================
-// Webhook event parsing
+// Send payload validation
 // ===========================================================================
 
-describe("Webhook event parsing", () => {
-  it("parses follow event structure", () => {
-    const event = {
-      type: "follow",
-      timestamp: 1234567890,
-      source: { type: "user", userId: "U123" },
-      replyToken: "rt1",
+describe("Send payload validation", () => {
+  function createServiceWithClient() {
+    const client = {
+      pushMessage: vi.fn().mockResolvedValue(undefined),
     };
-    expect(event.type).toBe("follow");
-    expect(event.source.userId).toBe("U123");
+    const service = new LineService();
+    (service as unknown as { client: typeof client }).client = client;
+    return { client, service };
+  }
+
+  it("rejects invalid location coordinates before sending", async () => {
+    const { client, service } = createServiceWithClient();
+
+    const result = await service.sendLocationMessage("U1234567890abcdef1234567890abcdef", {
+      type: "location",
+      title: "Invalid place",
+      address: "Unknown",
+      latitude: Number.NaN,
+      longitude: 139.7454,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("latitude");
+    expect(client.pushMessage).not.toHaveBeenCalled();
   });
 
-  it("parses unfollow event structure", () => {
-    const event = {
-      type: "unfollow",
-      timestamp: 1234567890,
-      source: { type: "user", userId: "U123" },
-    };
-    expect(event.type).toBe("unfollow");
+  it("rejects unsafe template URLs before sending", async () => {
+    const { client, service } = createServiceWithClient();
+
+    const result = await service.sendTemplateMessage("U1234567890abcdef1234567890abcdef", {
+      altText: "Choose",
+      template: {
+        type: "buttons",
+        text: "Pick one",
+        thumbnailImageUrl: "javascript:alert(1)",
+        actions: [{ type: "uri", label: "Open", uri: "https://example.com" }],
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("HTTPS");
+    expect(client.pushMessage).not.toHaveBeenCalled();
   });
 
-  it("parses join event structure", () => {
-    const event = {
-      type: "join",
-      timestamp: 1234567890,
-      source: { type: "group", groupId: "C123" },
-      replyToken: "rt2",
-    };
-    expect(event.type).toBe("join");
-    expect(event.source.groupId).toBe("C123");
+  it("rejects unsafe template URI actions before sending", async () => {
+    const { client, service } = createServiceWithClient();
+
+    const result = await service.sendTemplateMessage("U1234567890abcdef1234567890abcdef", {
+      altText: "Choose",
+      template: {
+        type: "confirm",
+        text: "Pick one",
+        actions: [{ type: "uri", label: "Open", uri: "http://example.com" }],
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("HTTPS");
+    expect(client.pushMessage).not.toHaveBeenCalled();
   });
 
-  it("parses leave event structure", () => {
-    const event = {
-      type: "leave",
-      timestamp: 1234567890,
-      source: { type: "room", roomId: "R123" },
-    };
-    expect(event.type).toBe("leave");
-    expect(event.source.roomId).toBe("R123");
-  });
+  it("batches long text sends and attaches quick replies only to the final chunk", async () => {
+    const { client, service } = createServiceWithClient();
+    const text = "a".repeat(25_001);
 
-  it("parses postback event structure", () => {
-    const event = {
-      type: "postback",
-      timestamp: 1234567890,
-      source: { type: "user", userId: "U123" },
-      replyToken: "rt3",
-      postback: { data: "action=buy", params: { date: "2024-01-01" } },
-    };
-    expect(event.type).toBe("postback");
-    expect(event.postback.data).toBe("action=buy");
-  });
-
-  it("parses message event structure", () => {
-    const event = {
-      type: "message",
-      timestamp: 1234567890,
-      source: { type: "user", userId: "U123" },
-      replyToken: "rt4",
-      message: { id: "msg1", type: "text", text: "Hello!" },
-    };
-    expect(event.type).toBe("message");
-    expect(event.message.text).toBe("Hello!");
-  });
-
-  it("handles multiple events in body", () => {
-    const body = {
-      events: [
+    const result = await service.sendMessage("U1234567890abcdef1234567890abcdef", text, {
+      quickReplyItems: [
         {
-          type: "follow",
-          timestamp: 1,
-          source: { type: "user", userId: "U1" },
-        },
-        {
-          type: "message",
-          timestamp: 2,
-          source: { type: "user", userId: "U2" },
-          message: { id: "m1", type: "text", text: "Hi" },
+          type: "action",
+          action: { type: "message", label: "Yes", text: "yes" },
         },
       ],
+    });
+
+    expect(result.success).toBe(true);
+    expect(client.pushMessage).toHaveBeenCalledTimes(2);
+    expect(client.pushMessage.mock.calls[0][0].messages).toHaveLength(5);
+    expect(client.pushMessage.mock.calls[0][0].messages).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ quickReply: expect.anything() })])
+    );
+    expect(client.pushMessage.mock.calls[1][0].messages).toEqual([
+      expect.objectContaining({
+        quickReply: {
+          items: [
+            {
+              type: "action",
+              action: { type: "message", label: "Yes", text: "yes" },
+            },
+          ],
+        },
+      }),
+    ]);
+  });
+});
+
+// ===========================================================================
+// Connector registration behavior
+// ===========================================================================
+
+describe("Connector registration behavior", () => {
+  function registerConnectorWithRooms() {
+    const roomA = {
+      id: "room-a",
+      name: "Line Support",
+      source: "line",
+      channelId: "C1234567890abcdef1234567890abcdef",
+      type: "group",
     };
-    expect(body.events).toHaveLength(2);
-    expect(body.events[0].type).toBe("follow");
-    expect(body.events[1].type).toBe("message");
+    const roomB = {
+      id: "room-b",
+      name: "Personal",
+      source: "line",
+      channelId: "U1234567890abcdef1234567890abcdef",
+      type: "dm",
+    };
+    const runtime = {
+      agentId: "agent-id",
+      registerMessageConnector: vi.fn(),
+      registerSendHandler: vi.fn(),
+      getRoomsForParticipant: vi.fn().mockResolvedValue(["room-a", "room-b", "foreign-room"]),
+      getRoom: vi.fn(async (roomId: string) => {
+        if (roomId === "room-a") return roomA;
+        if (roomId === "room-b") return roomB;
+        return {
+          id: "foreign-room",
+          name: "Other",
+          source: "discord",
+          channelId: "D123",
+          type: "group",
+        };
+      }),
+      getMemories: vi.fn(async ({ roomId }: { roomId: string }) => {
+        if (roomId === "room-a") {
+          return [
+            { id: "newer", content: { text: "incident followup" }, createdAt: 300 },
+            { id: "older", content: { text: "hello" }, createdAt: 100 },
+          ];
+        }
+        return [{ id: "dm", content: { text: "private incident" }, createdAt: 200 }];
+      }),
+    } as unknown as IAgentRuntime;
+    const service = Object.create(LineService.prototype) as LineService;
+    vi.spyOn(service, "leaveChat").mockResolvedValue(undefined);
+
+    LineService.registerSendHandlers(runtime, service);
+
+    return {
+      registration: vi.mocked(runtime.registerMessageConnector).mock.calls[0][0],
+      runtime,
+      service,
+    };
+  }
+
+  it("resolves exact LINE IDs ahead of stored rooms and ignores foreign rooms", async () => {
+    const { registration, runtime } = registerConnectorWithRooms();
+
+    const targets = await registration.resolveTargets("C1234567890abcdef1234567890abcdef", {
+      runtime,
+    });
+
+    expect(targets[0]).toEqual(
+      expect.objectContaining({
+        label: "C1234567890abcdef1234567890abcdef",
+        kind: "group",
+        score: 1,
+      })
+    );
+    expect(targets).toHaveLength(2);
+    expect(targets.map((target) => target.label)).toContain("Line Support");
+    expect(targets.map((target) => target.label)).not.toContain("Other");
+  });
+
+  it("fetches and searches stored LINE message memories with hostile limits normalized", async () => {
+    const { registration, runtime } = registerConnectorWithRooms();
+
+    const fetched = await registration.fetchMessages?.(
+      { runtime },
+      { limit: Number.POSITIVE_INFINITY }
+    );
+    const searched = await registration.searchMessages?.(
+      { runtime },
+      { query: "incident", limit: -1 }
+    );
+
+    expect(fetched?.map((memory) => memory.id)).toEqual(["newer", "dm", "older"]);
+    expect(searched?.map((memory) => memory.id)).toEqual(["newer", "dm"]);
+  });
+
+  it("rejects leave requests for user targets before calling the LINE API", async () => {
+    const { registration, runtime, service } = registerConnectorWithRooms();
+
+    await expect(
+      registration.leaveHandler?.(runtime, {
+        target: { source: "line", channelId: "U1234567890abcdef1234567890abcdef" },
+      })
+    ).rejects.toThrow("requires a group or room target");
+    expect(service.leaveChat).not.toHaveBeenCalled();
+  });
+
+  it("resolves leave targets from stored room channel IDs", async () => {
+    const { registration, runtime, service } = registerConnectorWithRooms();
+
+    await registration.leaveHandler?.(runtime, {
+      target: { source: "line", roomId: "room-a" },
+    });
+
+    expect(service.leaveChat).toHaveBeenCalledWith("C1234567890abcdef1234567890abcdef", "group");
+  });
+});
+
+// ===========================================================================
+// Workflow credentials
+// ===========================================================================
+
+describe("Workflow credential provider", () => {
+  it("returns bearer header credentials for supported workflow credential requests", async () => {
+    const runtime = {
+      getSetting: vi.fn(() => "  line-token  "),
+    } as unknown as IAgentRuntime;
+    const provider = new LineWorkflowCredentialProvider(runtime);
+
+    await expect(provider.resolve("user-1", "httpHeaderAuth")).resolves.toEqual({
+      status: "credential_data",
+      data: { name: "Authorization", value: "Bearer line-token" },
+    });
+  });
+
+  it("declines unsupported workflow credential types", async () => {
+    const runtime = {
+      getSetting: vi.fn(() => "line-token"),
+    } as unknown as IAgentRuntime;
+    const provider = new LineWorkflowCredentialProvider(runtime);
+
+    await expect(provider.resolve("user-1", "oauth2")).resolves.toBeNull();
+    expect(runtime.getSetting).not.toHaveBeenCalled();
+  });
+
+  it("returns null when runtime credential lookup fails", async () => {
+    const runtime = {
+      getSetting: vi.fn(() => {
+        throw new Error("settings unavailable");
+      }),
+    } as unknown as IAgentRuntime;
+    const provider = new LineWorkflowCredentialProvider(runtime);
+
+    await expect(provider.resolve("user-1", "httpHeaderAuth")).resolves.toBeNull();
   });
 });
 
@@ -684,10 +811,6 @@ describe("Webhook event parsing", () => {
 // ===========================================================================
 
 describe("Service lifecycle", () => {
-  it("has correct static service type", () => {
-    expect(LineService.serviceType).toBe("line");
-  });
-
   it("can be constructed without runtime", () => {
     const service = new LineService();
     expect(service.isConnected()).toBe(false);

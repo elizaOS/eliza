@@ -20,7 +20,7 @@ MASK64 = (1 << 64) - 1
 EXPECTED_PROOF_CHECKSUM = 32_681_797
 EXPECTED_WORKPLAN_SHA256 = "ce900472ec1f82ecc128179c77d4a04f09bbff546dc3dfbfbe36e34d018558e2"
 
-FALSE_CLAIM_FLAGS = {
+FALSE_CLAIM_FLAGS: dict[str, object] = {
     "release_claim_allowed": False,
     "silicon_claim_allowed": False,
     "production_accelerator_claim_allowed": False,
@@ -95,15 +95,15 @@ def main() -> int:
         "expanded real-weight row inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_expanded_real_weight_rows_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_expanded_real_weight_rows_inputs_present", "status": status, "detail": detail}
+    )
 
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
     proof = load_json(PROOF) if PROOF.is_file() else {}
     workplan = load_json(FULL_OUTPUT_WORKPLAN) if FULL_OUTPUT_WORKPLAN.is_file() else {}
     checksum_manifest = (
-        load_json(FULL_OUTPUT_CHECKSUM_MANIFEST)
-        if FULL_OUTPUT_CHECKSUM_MANIFEST.is_file()
-        else {}
+        load_json(FULL_OUTPUT_CHECKSUM_MANIFEST) if FULL_OUTPUT_CHECKSUM_MANIFEST.is_file() else {}
     )
 
     deps_ok = (
@@ -119,7 +119,13 @@ def main() -> int:
         "placement, canonical microkernel proof, workplan, and checksum manifest are linked",
         "expanded real-weight row dependency mismatch",
     )
-    checks.append({"id": "e1x_expanded_real_weight_rows_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_expanded_real_weight_rows_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     layers = [layer for layer in placement.get("layers", []) if isinstance(layer, dict)]
     layer_results: list[dict[str, object]] = []
@@ -140,25 +146,29 @@ def main() -> int:
             layer_checksum = mix64(layer_checksum, output_row)
             layer_checksum = mix64(layer_checksum, int(result["row_trace_checksum"]))
             if len(row_results) < 3:
-                row_results.append({
-                    "output_row": output_row,
-                    "accumulator": int(result["accumulator"]),
-                    "requantized_s8": int(result["requantized_s8"]),
-                    "lane_mac_count": int(result["lane_mac_count"]),
-                    "row_trace_checksum": int(result["row_trace_checksum"]),
-                })
+                row_results.append(
+                    {
+                        "output_row": output_row,
+                        "accumulator": int(result["accumulator"]),
+                        "requantized_s8": int(result["requantized_s8"]),
+                        "lane_mac_count": int(result["lane_mac_count"]),
+                        "row_trace_checksum": int(result["row_trace_checksum"]),
+                    }
+                )
         aggregate_checksum = mix64(aggregate_checksum, layer_index)
         aggregate_checksum = mix64(aggregate_checksum, layer_checksum)
         if len(layer_results) < 12:
-            layer_results.append({
-                "layer_index": layer_index,
-                "layer_name": str(layer["name"]),
-                "kind": str(layer["kind"]),
-                "rows": rows,
-                "cols": cols,
-                "sampled_full_k_rows": row_results,
-                "layer_full_k_checksum": layer_checksum,
-            })
+            layer_results.append(
+                {
+                    "layer_index": layer_index,
+                    "layer_name": str(layer["name"]),
+                    "kind": str(layer["kind"]),
+                    "rows": rows,
+                    "cols": cols,
+                    "sampled_full_k_rows": row_results,
+                    "layer_full_k_checksum": layer_checksum,
+                }
+            )
 
     full_output_rows = int(workplan.get("summary", {}).get("full_output_row_count", 0))
     full_macs = int(workplan.get("summary", {}).get("full_mac_count", 0))
@@ -178,7 +188,9 @@ def main() -> int:
         f"executed {total_rows} first/mid/last real-weight rows across full K for {total_macs} MACs",
         "expanded real-weight row execution mismatch",
     )
-    checks.append({"id": "e1x_expanded_real_weight_rows_execute_full_k", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_expanded_real_weight_rows_execute_full_k", "status": status, "detail": detail}
+    )
 
     boundary_ok = (
         total_macs > int(proof.get("sample_mac_count", 0)) * 100
@@ -190,7 +202,9 @@ def main() -> int:
         "expanded rows improve real-weight MAC coverage while preserving the full-output blocker",
         "expanded real-weight row claim boundary mismatch",
     )
-    checks.append({"id": "e1x_expanded_real_weight_rows_preserve_blocker", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_expanded_real_weight_rows_preserve_blocker", "status": status, "detail": detail}
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
@@ -215,7 +229,7 @@ def main() -> int:
         "sampled_layer_results": layer_results,
         "residual_blocker": "full_output_real_weight_checksum_missing",
     }
-    report = {
+    report: dict[str, object] = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x-expanded-real-weight-rows",
         "status": "PASS" if not failures else "BLOCKED",
@@ -244,8 +258,7 @@ def main() -> int:
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:
         print(
-            "BLOCKED: E1X expanded real-weight rows failed: "
-            + ", ".join(c["id"] for c in failures)
+            "BLOCKED: E1X expanded real-weight rows failed: " + ", ".join(c["id"] for c in failures)
         )
         return 1
     print(f"PASS: E1X expanded real-weight rows; report {REPORT.relative_to(ROOT)}")

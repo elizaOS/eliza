@@ -15,7 +15,9 @@ CHECKER_PATH = ROOT / "scripts/check_linux_external_bsp.py"
 
 
 def load_checker():
-    spec = importlib.util.spec_from_file_location("check_linux_external_bsp_under_test", CHECKER_PATH)
+    spec = importlib.util.spec_from_file_location(
+        "check_linux_external_bsp_under_test", CHECKER_PATH
+    )
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

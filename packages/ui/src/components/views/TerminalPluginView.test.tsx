@@ -29,9 +29,9 @@ describe("TerminalPluginView", () => {
 
     expect(screen.getByText("elizaos://wallet --type=tui")).toBeTruthy();
     expect(screen.getByText("Wallet")).toBeTruthy();
-    expect(
-      screen.getByText("Inspect balances from a terminal surface."),
-    ).toBeTruthy();
+    expect(container.querySelector("[title]")?.getAttribute("title")).toBe(
+      "Inspect balances from a terminal surface.",
+    );
     expect(screen.getByText("refresh-balances")).toBeTruthy();
     expect(screen.getByText("/api/wallet/balances")).toBeTruthy();
 

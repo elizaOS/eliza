@@ -24,7 +24,7 @@ import {
   redactWindowTitle,
   resolveRedactorConfigFromEnv,
 } from "./redactor.js";
-import { isSystemInactivityApp } from "./system-inactivity-apps.js";
+import { isSystemInactivityApp } from "@elizaos/plugin-health";
 
 export interface ActivityAppBreakdown {
   bundleId: string;

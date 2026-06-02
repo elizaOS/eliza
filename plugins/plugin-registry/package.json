@@ -8,12 +8,18 @@
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     }
   },
   "scripts": {
     "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "test": "vitest run",
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
@@ -27,7 +33,8 @@
   "devDependencies": {
     "bun-types": "^1.3.12",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.18"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

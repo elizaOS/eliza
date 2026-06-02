@@ -12,6 +12,7 @@ import { spawn } from "node:child_process";
  *   bun run benchmarks/app-eval/run-benchmarks.ts --type coding      # coding only
  *   bun run benchmarks/app-eval/run-benchmarks.ts --task code-001    # single task
  *   bun run benchmarks/app-eval/run-benchmarks.ts --dry-run          # show tasks without running
+ *   bun run benchmarks/app-eval/run-benchmarks.ts --expand-scenarios # add 10 edge variants per task
  *   bun run benchmarks/app-eval/run-benchmarks.ts --server           # use server mode (boot once)
  *   bun run benchmarks/app-eval/run-benchmarks.ts --timeout 60000    # custom timeout per task
  */
@@ -65,6 +66,8 @@ interface TaskDefinition {
       description: string;
     }>;
   };
+  edge_variant?: string;
+  edge_source_id?: string;
 }
 
 interface BenchmarkResult {
@@ -126,7 +129,53 @@ interface CliArgs {
   timeout: number;
   verbose: boolean;
   root?: string;
+  expandScenarios: boolean;
+  countScenarios: boolean;
+  validateScenarios: boolean;
 }
+
+const EDGE_VARIANTS: Array<{ id: string; note: string }> = [
+  {
+    id: "edge-ambiguous-user-wording",
+    note: "The request contains mildly ambiguous wording; preserve the original deliverable and resolve ambiguity using explicit requirements.",
+  },
+  {
+    id: "edge-distractor-requirement",
+    note: "Ignore one plausible but irrelevant adjacent requirement; only implement or answer what the task actually asks.",
+  },
+  {
+    id: "edge-tight-output-budget",
+    note: "Prioritize the minimum complete response or implementation because review time is limited.",
+  },
+  {
+    id: "edge-format-noise",
+    note: "Treat odd punctuation, casing, or markdown formatting as noise around the same task.",
+  },
+  {
+    id: "edge-conflicting-style-request",
+    note: "A surrounding style request may conflict with the rubric; the benchmark task and evaluation criteria remain authoritative.",
+  },
+  {
+    id: "edge-missing-context-check",
+    note: "If a detail appears missing, state the narrow assumption instead of inventing unsupported facts or APIs.",
+  },
+  {
+    id: "edge-regression-risk",
+    note: "Avoid changing unrelated behavior while satisfying the requested feature or analysis.",
+  },
+  {
+    id: "edge-accessibility-or-safety",
+    note: "Maintain accessibility, safety, and input-validation expectations even when the prompt emphasizes speed.",
+  },
+  {
+    id: "edge-order-independence",
+    note: "Do not rely on the order that requirements are presented; satisfy all explicit acceptance criteria.",
+  },
+  {
+    id: "edge-verification-focus",
+    note: "Include or perform a concise verification step that matches the task type and rubric.",
+  },
+];
 
 function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = {
@@ -134,6 +183,9 @@ function parseArgs(argv: string[]): CliArgs {
     server: false,
     timeout: 120_000,
     verbose: false,
+    expandScenarios: false,
+    countScenarios: false,
+    validateScenarios: false,
   };
 
   for (let i = 2; i < argv.length; i++) {
@@ -146,6 +198,12 @@ function parseArgs(argv: string[]): CliArgs {
       args.root = argv[++i];
     } else if (arg === "--dry-run") {
       args.dryRun = true;
+    } else if (arg === "--expand-scenarios") {
+      args.expandScenarios = true;
+    } else if (arg === "--count-scenarios") {
+      args.countScenarios = true;
+    } else if (arg === "--validate-scenarios") {
+      args.validateScenarios = true;
     } else if (arg === "--server") {
       args.server = true;
     } else if (arg === "--timeout" && argv[i + 1]) {
@@ -173,6 +231,9 @@ Options:
   --task <id>               Run a single task by ID
   --root <path>             App repo root (default: ELIZA_APP_ROOT env or auto-detect)
   --dry-run                 Show tasks without running them
+  --expand-scenarios        Add ten realistic edge variants per loaded base task
+  --count-scenarios         Print base/edge/total task counts and exit
+  --validate-scenarios      Validate loaded task definitions and exit
   --server                  Use server mode (boot runtime once, stream tasks)
   --timeout <ms>            Timeout per task in milliseconds (default: 120000)
   --verbose, -v             Show detailed output
@@ -223,6 +284,42 @@ function loadTasks(args: CliArgs): TaskDefinition[] {
   }
 
   return tasks;
+}
+
+function expandTasks(tasks: TaskDefinition[]): TaskDefinition[] {
+  const expanded = [...tasks];
+  for (const task of tasks) {
+    for (let index = 0; index < EDGE_VARIANTS.length; index++) {
+      const variant = EDGE_VARIANTS[index];
+      expanded.push({
+        ...task,
+        id: `${task.id}--edge-${String(index + 1).padStart(2, "0")}`,
+        prompt: `${task.prompt}\n\nEdge condition: ${variant.note}`,
+        edge_variant: variant.id,
+        edge_source_id: task.id,
+      });
+    }
+  }
+  return expanded;
+}
+
+function validateTasks(tasks: TaskDefinition[]): void {
+  const seen = new Set<string>();
+  for (const task of tasks) {
+    if (!task.id || !task.id.trim()) {
+      throw new Error("Task is missing id");
+    }
+    if (seen.has(task.id)) {
+      throw new Error(`Duplicate task id: ${task.id}`);
+    }
+    seen.add(task.id);
+    if (!task.type || !task.type.trim()) {
+      throw new Error(`${task.id}: missing type`);
+    }
+    if (!task.prompt || !task.prompt.trim()) {
+      throw new Error(`${task.id}: missing prompt`);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -678,13 +775,33 @@ function printReport(summary: RunSummary): void {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv);
   REPO_ROOT = resolveRepoRoot(args.root);
-  const tasks = loadTasks(args);
+  const baseTasks = loadTasks(args);
+  const tasks = args.expandScenarios ? expandTasks(baseTasks) : baseTasks;
 
   if (tasks.length === 0) {
     console.error(
       "[orchestrator] No tasks found. Check app-eval/tasks/ directory.",
     );
     process.exit(1);
+  }
+
+  if (args.validateScenarios) {
+    validateTasks(tasks);
+  }
+
+  if (args.countScenarios || args.validateScenarios) {
+    console.log(
+      JSON.stringify(
+        {
+          base: baseTasks.length,
+          edge: tasks.length - baseTasks.length,
+          total: tasks.length,
+        },
+        null,
+        2,
+      ),
+    );
+    process.exit(0);
   }
 
   console.log(`[orchestrator] Loaded ${tasks.length} task(s)`);

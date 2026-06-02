@@ -9,7 +9,8 @@ from elizaos_voiceagentbench.scorer import (
     pass_at_k,
     per_suite_pass_at_1,
 )
-from elizaos_voiceagentbench.types import Suite, VoiceTaskResult
+from elizaos_voiceagentbench.dataset import count_tasks, expand_tasks, validate_tasks
+from elizaos_voiceagentbench.types import AudioQuery, Suite, VoiceTask, VoiceTaskResult
 
 
 def _result(
@@ -98,3 +99,26 @@ def test_compile_report_aggregates_axes() -> None:
 def test_pass_at_k_rejects_zero() -> None:
     with pytest.raises(ValueError):
         pass_at_k([], 0)
+
+
+def test_edge_expansion_adds_ten_voice_variants() -> None:
+    task = VoiceTask(
+        task_id="voice-1",
+        suite=Suite.SINGLE,
+        queries=[AudioQuery(audio_bytes=None, transcript="Book a flight to Paris")],
+        expected_tool_calls=[],
+        tool_manifest=[],
+    )
+
+    expanded = expand_tasks([task])
+
+    assert count_tasks([task], include_edge_scenarios=True) == {
+        "base": 1,
+        "edge": 10,
+        "edge_multiplier": 10,
+        "total": 11,
+    }
+    assert len(expanded) == 11
+    assert expanded[1].task_id.startswith("voice-1__edge_")
+    assert expanded[1].queries[0].transcript != task.queries[0].transcript
+    validate_tasks([task], include_edge_scenarios=True)

@@ -509,9 +509,7 @@ def linux_hwprobe_scan() -> dict[str, object]:
         "log": rel(ACCEPTED_LINUX_TRANSCRIPT),
         "exists": ACCEPTED_LINUX_TRANSCRIPT.is_file(),
         "size_bytes": (
-            ACCEPTED_LINUX_TRANSCRIPT.stat().st_size
-            if ACCEPTED_LINUX_TRANSCRIPT.is_file()
-            else 0
+            ACCEPTED_LINUX_TRANSCRIPT.stat().st_size if ACCEPTED_LINUX_TRANSCRIPT.is_file() else 0
         ),
         "accepted_linux_transcript": accepted,
         "required_success_marker": HWPROBE_SUCCESS_MARKER,
@@ -541,8 +539,7 @@ def linux_hwprobe_scan() -> dict[str, object]:
             "size_bytes": LINUX_SMOKE_LOG.stat().st_size if LINUX_SMOKE_LOG.is_file() else 0,
             "observed_hwprobe_markers": live_observed_hwprobe,
             "missing_hwprobe_markers": live_missing_hwprobe,
-            "contains_riscv_hwprobe_success": HWPROBE_SUCCESS_MARKER
-            in live_observed_hwprobe,
+            "contains_riscv_hwprobe_success": HWPROBE_SUCCESS_MARKER in live_observed_hwprobe,
             "contains_config_mmu_y": LINUX_MMU_SUCCESS_MARKER in live_observed_hwprobe,
             "contains_riscv_hwprobe_key_markers": all(
                 marker in live_observed_hwprobe for marker in HWPROBE_KEY_MARKERS
@@ -656,13 +653,15 @@ def main(argv: list[str]) -> int:
     if not DTS.is_file():
         problems.append(f"missing generated DTS: {rel(DTS)}")
     dts_status = dts_contract_status()
+    _dts_missing_raw = dts_status.get("missing_strings", [])
     dts_missing = [
-        str(marker) for marker in dts_status.get("missing_strings", []) if str(marker)
+        str(marker)
+        for marker in (_dts_missing_raw if isinstance(_dts_missing_raw, list) else [])
+        if str(marker)
     ]
     if dts_missing:
         problems.append(
-            "generated DTS is missing ISA/cache/MMU contract markers: "
-            + ", ".join(dts_missing)
+            "generated DTS is missing ISA/cache/MMU contract markers: " + ", ".join(dts_missing)
         )
     if not simulator.is_file() or not os.access(simulator, os.X_OK):
         problems.append(f"missing executable generated simulator: {rel(simulator)}")
@@ -854,10 +853,12 @@ def main(argv: list[str]) -> int:
     if not linux_hwprobe["contains_riscv_hwprobe_success"]:
         combined_missing_final_markers.append(HWPROBE_SUCCESS_MARKER)
     if not linux_hwprobe["contains_riscv_hwprobe_key_markers"]:
+        _observed_hwprobe_raw = linux_hwprobe.get("observed_hwprobe_markers", [])
+        _observed_hwprobe: list[object] = (
+            _observed_hwprobe_raw if isinstance(_observed_hwprobe_raw, list) else []
+        )
         combined_missing_final_markers.extend(
-            marker
-            for marker in HWPROBE_KEY_MARKERS
-            if marker not in linux_hwprobe.get("observed_hwprobe_markers", [])
+            marker for marker in HWPROBE_KEY_MARKERS if marker not in _observed_hwprobe
         )
     archive_output = ""
     if not missing_baremetal and linux_hwprobe["contains_riscv_hwprobe_success"]:

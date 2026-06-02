@@ -25,7 +25,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // ---------------------------------------------------------------------------
 // Extracted modules — re-exported for backward compatibility
 // ---------------------------------------------------------------------------
-import { recordBootTelemetry, startMemorySampler } from "./boot-telemetry.ts";
+import {
+  recordBootEvent,
+  recordBootTelemetry,
+  startMemorySampler,
+} from "./boot-telemetry.ts";
 import { BootTimer } from "./boot-timer.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
 import { resolveConfigEnvForProcess } from "./operations/vault-bridge.ts";
@@ -597,11 +601,24 @@ async function registerStaticPluginPhase(
     }
   };
 
-  await Promise.all(registrations.map(trackImport));
-  if (phase === "blocking") {
-    _blockingStaticPluginsRegistered = true;
-  } else {
+  if (phase === "deferred") {
+    // Deferred plugins run in the background after the API server is already
+    // listening; they must not hold the ready gate. Importing them one at a
+    // time and yielding to the event loop (setImmediate) between each lets the
+    // bound HTTP server serve /api/health (and other I/O) between the CPU-bound
+    // module evaluations, instead of starving it until the whole batch finishes
+    // (observed ready was dominated by this on contended hosts). All plugins
+    // still register — only the scheduling changes.
+    for (const registration of registrations) {
+      await trackImport(registration);
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+    }
     _deferredStaticPluginsRegistered = true;
+  } else {
+    await Promise.all(registrations.map(trackImport));
+    _blockingStaticPluginsRegistered = true;
   }
 }
 
@@ -3183,6 +3200,10 @@ export async function startEliza(
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
   const bootTimer = new BootTimer("[eliza-boot]");
+  // Record the (re)start at the START of boot so a restart storm — where boots
+  // never complete — is still countable via /api/dev/boot-history. void: never
+  // delay readiness. recordBootTelemetry below captures the completed-boot case.
+  void recordBootEvent("[eliza-boot]");
 
   // Resolve and register baseline `@elizaos/plugin-*` modules into the
   // STATIC_ELIZA_PLUGINS blocking map BEFORE any plugin resolution happens. See the
@@ -3284,6 +3305,14 @@ export async function startEliza(
   //     tripping the 180s health check on every fresh provision.
   const isCloudProvisioned = process.env.ELIZA_CLOUD_PROVISIONED === "1";
   if (!isMobilePlatform() && !isCloudProvisioned) {
+    // pre-resolve-setup's two serial cost centers: the OS-keychain hydrate and
+    // the vault PGlite cold-start. Timed separately and surfaced below so the
+    // boot-history telemetry shows which is the long pole. NOTE: the order is
+    // load-bearing: hydrateWalletKeysFromNodePlatformSecureStore writes wallet
+    // keys into process.env that runVaultBootstrap then mirrors into the vault,
+    // so these must stay sequential unless that mirror is decoupled. Measure
+    // here before attempting to overlap them.
+    const keychainStartMs = Date.now();
     try {
       const { hydrateWalletKeysFromNodePlatformSecureStore } =
         await importAppCoreRuntime();
@@ -3293,12 +3322,14 @@ export async function startEliza(
         `[wallet][os-store] boot hydrate skipped: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    const keychainMs = Date.now() - keychainStartMs;
 
     const { runVaultBootstrap } = await importAppCoreRuntime();
     const { sharedVault } = await importAppCoreRuntime();
+    const vaultStartMs = Date.now();
     const bootResult = await runVaultBootstrap();
     logger.info(
-      `[vault-bootstrap] migrated=${bootResult.migrated} failed=${bootResult.failed.length}`,
+      `[vault-bootstrap] migrated=${bootResult.migrated} failed=${bootResult.failed.length} (keychain=${keychainMs}ms vault-pglite=${Date.now() - vaultStartMs}ms)`,
     );
 
     const { resolved, missing } = await resolveConfigEnvForProcess(
@@ -4420,14 +4451,18 @@ export async function startEliza(
   };
 
   // Keyless inline live-info fetch for every runtime (not just Anthropic).
-  // Opt out with ELIZA_WEB_FETCH=0, mirroring ELIZA_WEB_SEARCH.
+  // Opt out with ELIZA_WEB_FETCH=0|false|off, mirroring ELIZA_WEB_SEARCH.
   const registerWebFetchActionIfEnabled = async (): Promise<void> => {
-    if (process.env.ELIZA_WEB_FETCH === "0") {
-      logger.info("[eliza] WEB_FETCH action disabled via ELIZA_WEB_FETCH=0");
-      return;
-    }
     try {
-      const { webFetch } = await import("./actions/web-fetch.ts");
+      const { webFetch, isWebFetchEnabled } = await import(
+        "./actions/web-fetch.ts"
+      );
+      if (!isWebFetchEnabled()) {
+        logger.info(
+          "[eliza] WEB_FETCH action disabled via ELIZA_WEB_FETCH=0|false|off",
+        );
+        return;
+      }
       runtime.registerAction(webFetch);
       logger.info("[eliza] Registered keyless WEB_FETCH action");
     } catch (err) {
@@ -4478,6 +4513,89 @@ export async function startEliza(
   const startAgentSkillsWarmup = (): void => {
     void warmAgentSkillsService().catch((err) => {
       logger.warn(`[eliza] Skills warm-up failed: ${formatError(err)}`);
+    });
+  };
+
+  // Prefetch the local TEXT_EMBEDDING GGUF in the background so the first
+  // chat/memory request doesn't stall on a multi-second model download. The
+  // chat/inference provider is separate from embeddings (vector memory / RAG):
+  // API-based model plugins do not implement TEXT_EMBEDDING, so the local model
+  // is the default embedding backend unless Eliza Cloud embeddings are active.
+  // This only ensures the file is present on disk — the GGUF is loaded into
+  // memory lazily on first use — and runs entirely after the readiness gate so
+  // it can never block or crash boot.
+  const warmEmbeddingModel = async (): Promise<void> => {
+    if (process.env.NODE_ENV === "test") return;
+    // Mobile bundles do not ship node-llama-cpp and must not pull a multi-GB
+    // GGUF over a data plan; they embed via cloud/device-bridge instead.
+    if (isMobilePlatform() || isBundledMobileRuntime()) return;
+
+    const li = await getPluginLocalEmbedding();
+    if (!li) return;
+
+    const {
+      shouldWarmupLocalEmbeddingModel,
+      detectEmbeddingPreset,
+      embeddingGgufFilePresent,
+      findExistingEmbeddingModelForWarmupReuse,
+      isEmbeddingWarmupReuseDisabled,
+      ensureModel,
+      DEFAULT_MODELS_DIR,
+    } = await import("@elizaos/plugin-local-inference/runtime");
+
+    if (!shouldWarmupLocalEmbeddingModel()) {
+      logger.info(
+        "[eliza] Skipping local embedding (GGUF) warmup — not needed for this configuration (Eliza Cloud embeddings or local embeddings disabled).",
+      );
+      return;
+    }
+
+    // Populate the LOCAL_EMBEDDING_* env from config + hardware preset so the
+    // warmup and the lazy first-use load resolve the same model.
+    await configureLocalEmbeddingPlugin({} as Plugin, config);
+
+    const preset = detectEmbeddingPreset();
+    const modelsDir = process.env.MODELS_DIR?.trim() || DEFAULT_MODELS_DIR;
+    let model = process.env.LOCAL_EMBEDDING_MODEL?.trim() || preset.model;
+    let modelRepo =
+      process.env.LOCAL_EMBEDDING_MODEL_REPO?.trim() || preset.modelRepo;
+
+    if (
+      !isEmbeddingWarmupReuseDisabled() &&
+      !embeddingGgufFilePresent(modelsDir, model)
+    ) {
+      const reuse = findExistingEmbeddingModelForWarmupReuse(modelsDir);
+      if (reuse) {
+        logger.info(
+          `[eliza] Embedding warmup: configured file "${model}" not found in MODELS_DIR — reusing existing ${reuse.model} to avoid a large re-download.`,
+        );
+        process.env.LOCAL_EMBEDDING_MODEL = reuse.model;
+        process.env.LOCAL_EMBEDDING_MODEL_REPO = reuse.modelRepo;
+        process.env.LOCAL_EMBEDDING_DIMENSIONS = String(reuse.dimensions);
+        process.env.LOCAL_EMBEDDING_CONTEXT_SIZE = String(reuse.contextSize);
+        process.env.LOCAL_EMBEDDING_GPU_LAYERS = reuse.gpuLayers;
+        model = reuse.model;
+        modelRepo = reuse.modelRepo;
+      }
+    }
+
+    if (embeddingGgufFilePresent(modelsDir, model)) {
+      return;
+    }
+
+    logger.info(
+      `[eliza] Local embedding warmup: prefetching ${model} (preset: ${preset.label}). ` +
+        "This GGUF serves TEXT_EMBEDDING / memory only — not your conversation model.",
+    );
+    await ensureModel(modelsDir, modelRepo, model, false);
+  };
+
+  const startEmbeddingWarmup = (): void => {
+    void warmEmbeddingModel().catch((err) => {
+      // Non-fatal: the embedding plugin downloads on first use if this fails.
+      logger.warn(
+        `[eliza] Embedding model warmup failed (will retry on first use): ${formatError(err)}`,
+      );
     });
   };
 
@@ -4658,6 +4776,7 @@ export async function startEliza(
     await startAutonomyServiceIfEnabled(true);
     await enableAutonomyLoopIfAvailable(autonomyLoopEnabled);
     startAgentSkillsWarmup();
+    startEmbeddingWarmup();
     bootTimer.lap("deferred:autonomy+warmup");
 
     // Re-install action aliases now that deferred plugins have registered

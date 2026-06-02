@@ -8,7 +8,15 @@ function getEnvValue(key: string): string | undefined {
     return undefined;
   }
   const value = process.env[key];
-  return value === undefined ? undefined : String(value);
+  return normalizeSettingValue(value);
+}
+
+function normalizeSettingValue(value: unknown): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const trimmed = String(value).trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 export function getSetting(
@@ -16,9 +24,9 @@ export function getSetting(
   key: string,
   defaultValue?: string,
 ): string | undefined {
-  const runtimeValue = runtime.getSetting(key);
+  const runtimeValue = normalizeSettingValue(runtime.getSetting(key));
   if (runtimeValue !== undefined) {
-    return String(runtimeValue);
+    return runtimeValue;
   }
   return getEnvValue(key) ?? defaultValue;
 }

@@ -5,6 +5,7 @@ import json
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_window_repair_rom_linkage.json"
@@ -22,7 +23,8 @@ CASES = {
         "expected_rom_sha256": "7911d1a3f892202baa2f39f6277d7efda42ac1d7a35e37c9bc3b597f8473cd97",
     },
     "high_failure": {
-        "repair": ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json",
+        "repair": ROOT
+        / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json",
         "rom": ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_rom.json",
         "expected_rom_sha256": "9f2710a5266260fe9885f22954d14f3e6787840d5c6b0bf36781a051e42e29da",
     },
@@ -75,7 +77,9 @@ def u64_hex(value: int) -> str:
     return f"{value & ((1 << 64) - 1):016x}"
 
 
-def case_window_remap_words(case: str, placement: dict, touched_cores: list[int], paths: dict) -> tuple[list[str], list[str], dict]:
+def case_window_remap_words(
+    case: str, placement: dict, touched_cores: list[int], paths: dict
+) -> tuple[list[str], list[str], dict]:
     repair = load_json(paths["repair"])
     rom = load_json(paths["rom"])
     logical_cols = int(repair["logical_cols"])
@@ -85,13 +89,18 @@ def case_window_remap_words(case: str, placement: dict, touched_cores: list[int]
         for entry in repair.get("remapped_cores", [])
     }
     expected_words = []
-    sampled_words = []
+    sampled_words: list[str] = []
     for logical_core_index in touched_cores:
-        logical = (logical_core_index // int(placement["logical_cols"]), logical_core_index % int(placement["logical_cols"]))
+        logical = (
+            logical_core_index // int(placement["logical_cols"]),
+            logical_core_index % int(placement["logical_cols"]),
+        )
         physical = remap.get(logical)
         if physical is None:
             continue
-        word = u64_hex((coord_index(logical, logical_cols) << 32) | coord_index(physical, physical_cols))
+        word = u64_hex(
+            (coord_index(logical, logical_cols) << 32) | coord_index(physical, physical_cols)
+        )
         expected_words.append(word)
         if len(sampled_words) < 8:
             sampled_words.append(word)
@@ -117,14 +126,16 @@ def main() -> int:
     checks: list[dict[str, str]] = []
     paths = [PLACEMENT, WINDOW_REPAIR, WINDOW_ROUTE, REPAIR_ROM_COCOTB, BOOT_REPAIR_FW]
     for case_paths in CASES.values():
-        paths.extend([case_paths["repair"], case_paths["rom"]])
+        paths.extend([cast(Path, case_paths["repair"]), cast(Path, case_paths["rom"])])
     missing = [str(path.relative_to(ROOT)) for path in paths if not path.is_file()]
     status, detail = pass_fail(
         not missing,
         "window repair-ROM linkage inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_window_repair_rom_linkage_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_window_repair_rom_linkage_inputs_present", "status": status, "detail": detail}
+    )
 
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
     window_repair = load_json(WINDOW_REPAIR) if WINDOW_REPAIR.is_file() else {}
@@ -147,7 +158,13 @@ def main() -> int:
         "window repair/route reports, repair-ROM cocotb, and boot repair firmware are PASS",
         "window repair-ROM dependency report missing, stale, or failing",
     )
-    checks.append({"id": "e1x_window_repair_rom_linkage_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_window_repair_rom_linkage_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     touched_cores = touched_window_cores(placement)
     touched_ok = len(touched_cores) == int(
@@ -158,12 +175,16 @@ def main() -> int:
         "window touched-core set recovered from placement",
         "window touched-core count mismatch",
     )
-    checks.append({"id": "e1x_window_repair_rom_linkage_touched_cores", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_window_repair_rom_linkage_touched_cores", "status": status, "detail": detail}
+    )
 
     case_summaries: dict[str, dict] = {}
     all_missing_words: list[str] = []
     for case, case_paths in CASES.items():
-        _, missing_words, summary = case_window_remap_words(case, placement, touched_cores, case_paths)
+        _, missing_words, summary = case_window_remap_words(
+            case, placement, touched_cores, case_paths
+        )
         case_summaries[case] = summary
         all_missing_words.extend(f"{case}:{word}" for word in missing_words)
         expected_ok = (
@@ -178,7 +199,9 @@ def main() -> int:
             f"{case} repair ROM contains every window-touched remap word",
             f"{case} repair ROM window remap linkage mismatch",
         )
-        checks.append({"id": f"e1x_window_repair_rom_linkage_{case}", "status": status, "detail": detail})
+        checks.append(
+            {"id": f"e1x_window_repair_rom_linkage_{case}", "status": status, "detail": detail}
+        )
 
     rom_ok = not all_missing_words
     status, detail = pass_fail(
@@ -186,7 +209,13 @@ def main() -> int:
         "normal/high repair ROM remap payloads cover all window-touched remapped cores",
         "missing window remap ROM words: " + ", ".join(all_missing_words[:8]),
     )
-    checks.append({"id": "e1x_window_repair_rom_linkage_all_window_remaps_programmed", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_window_repair_rom_linkage_all_window_remaps_programmed",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     normal = case_summaries.get("normal", {})
@@ -203,8 +232,12 @@ def main() -> int:
         "high_failure_repair_rom_sha256": str(high.get("rom_sha256", "")),
         "normal_rom_total_word_count": int(normal.get("rom_total_word_count", 0)),
         "high_failure_rom_total_word_count": int(high.get("rom_total_word_count", 0)),
-        "repair_rom_cocotb_testcases": int(repair_rom_cocotb.get("summary", {}).get("testcases", 0)),
-        "boot_verified_rom_case_count": int(boot_fw.get("summary", {}).get("verified_rom_case_count", 0)),
+        "repair_rom_cocotb_testcases": int(
+            repair_rom_cocotb.get("summary", {}).get("testcases", 0)
+        ),
+        "boot_verified_rom_case_count": int(
+            boot_fw.get("summary", {}).get("verified_rom_case_count", 0)
+        ),
         "window_route_high_failure_checksum": int(
             window_route.get("summary", {}).get("high_failure_window_route_checksum", 0)
         ),
@@ -218,6 +251,15 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        "false_claim_flags": {
+            "claim_allowed": False,
+            "release_claim_allowed": False,
+            "production_claim_allowed": False,
+            "silicon_claim_allowed": False,
+            "tapeout_claim_allowed": False,
+            "phone_class_claim_allowed": False,
+            "fuse_otp_claim_allowed": False,
+        },
         "claim_boundary": (
             "Checks that normal/high repair ROM remap payloads contain the remap "
             "words needed by the executed vector-window touched cores, and links "
@@ -242,7 +284,9 @@ def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:
-        print("BLOCKED: E1X window repair-ROM linkage failed: " + ", ".join(c["id"] for c in failures))
+        print(
+            "BLOCKED: E1X window repair-ROM linkage failed: " + ", ".join(c["id"] for c in failures)
+        )
         return 1
     print(f"PASS: E1X window repair-ROM linkage; report {REPORT.relative_to(ROOT)}")
     return 0

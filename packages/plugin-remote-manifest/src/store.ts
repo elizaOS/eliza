@@ -432,8 +432,9 @@ export function resolveRemotePluginPathInside(
   rootDir: string,
   relativePath: string,
 ): string {
+  const safeRelativePath = normalizeRemotePluginRelativePath(relativePath);
   const normalizedRoot = resolve(rootDir);
-  const resolvedPath = resolve(rootDir, relativePath);
+  const resolvedPath = resolve(rootDir, safeRelativePath);
   if (
     resolvedPath !== normalizedRoot &&
     !resolvedPath.startsWith(`${normalizedRoot}${sep}`)
@@ -445,8 +446,30 @@ export function resolveRemotePluginPathInside(
   return resolvedPath;
 }
 
+function normalizeRemotePluginRelativePath(relativePath: string): string {
+  const normalized = relativePath.replace(/\\/g, "/");
+  if (
+    !normalized ||
+    normalized.startsWith("/") ||
+    /^[A-Za-z]:/.test(normalized)
+  ) {
+    throw new RemotePluginStoreError(
+      `Path escapes remote plugin root: ${relativePath || "<empty>"}`,
+    );
+  }
+  const segments = normalized.split("/");
+  if (
+    segments.some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    throw new RemotePluginStoreError(
+      `Path escapes remote plugin root: ${relativePath}`,
+    );
+  }
+  return segments.join("/");
+}
+
 export function toRemotePluginViewUrl(relativePath: string): string {
-  return `views://${relativePath.replace(/^\/+/, "")}`;
+  return `views://${normalizeRemotePluginRelativePath(relativePath)}`;
 }
 
 export function readRemotePluginManifestAt(
@@ -492,6 +515,20 @@ export function assertRemotePluginPayload(
     throw new RemotePluginStoreError(
       `Missing view entry for ${manifest.id}: ${viewPath}`,
     );
+  }
+
+  for (const [remoteUiId, remoteUi] of Object.entries(
+    manifest.remoteUIs ?? {},
+  )) {
+    const remoteUiPath = resolveRemotePluginPathInside(
+      payloadDir,
+      remoteUi.path,
+    );
+    if (!existsSync(remoteUiPath)) {
+      throw new RemotePluginStoreError(
+        `Missing remote UI ${remoteUiId} for ${manifest.id}: ${remoteUiPath}`,
+      );
+    }
   }
 
   return manifest;
@@ -807,13 +844,16 @@ export function installPrebuiltRemotePlugin(
     installedAt: previousInstall?.installedAt ?? now,
     updatedAt: now,
     permissionsGranted: normalizeRemotePluginPermissions(
-      options.permissionsGranted ?? manifest.permissions,
+      options.permissionsGranted ??
+        previousInstall?.permissionsGranted ??
+        manifest.permissions,
     ),
     devMode: options.devMode ?? previousInstall?.devMode ?? false,
     lastBuildAt: options.lastBuildAt ?? previousInstall?.lastBuildAt ?? null,
     lastBuildError: null,
     status: "installed",
-    source: options.source ?? { kind: "artifact", location: payloadDir },
+    source: options.source ??
+      previousInstall?.source ?? { kind: "artifact", location: payloadDir },
   });
 
   return loadInstalledRemotePluginRecord(storeRoot, installRecord);

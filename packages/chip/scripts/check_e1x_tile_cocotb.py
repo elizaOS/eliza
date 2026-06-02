@@ -10,15 +10,33 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_tile_cocotb.json"
-GENERATED_ROM_JSON = ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.json"
-GENERATED_ROM_HEX = ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.hex"
-GENERATED_MANIFEST_JSON = ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_manifest.json"
-REAL_GRAPH_NORMAL_ROM_JSON = ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_rom.json"
-REAL_GRAPH_NORMAL_ROM_HEX = ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_rom.hex"
-REAL_GRAPH_NORMAL_MANIFEST_JSON = ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_manifest.json"
-REAL_GRAPH_HIGH_ROM_JSON = ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_rom.json"
-REAL_GRAPH_HIGH_ROM_HEX = ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_rom.hex"
-REAL_GRAPH_HIGH_MANIFEST_JSON = ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json"
+GENERATED_ROM_JSON = (
+    ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.json"
+)
+GENERATED_ROM_HEX = (
+    ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.hex"
+)
+GENERATED_MANIFEST_JSON = (
+    ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_manifest.json"
+)
+REAL_GRAPH_NORMAL_ROM_JSON = (
+    ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_rom.json"
+)
+REAL_GRAPH_NORMAL_ROM_HEX = (
+    ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_rom.hex"
+)
+REAL_GRAPH_NORMAL_MANIFEST_JSON = (
+    ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_manifest.json"
+)
+REAL_GRAPH_HIGH_ROM_JSON = (
+    ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_rom.json"
+)
+REAL_GRAPH_HIGH_ROM_HEX = (
+    ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_rom.hex"
+)
+REAL_GRAPH_HIGH_MANIFEST_JSON = (
+    ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json"
+)
 RUNS = {
     "tile": {
         "top": "e1x_tile_tb",
@@ -42,7 +60,8 @@ RUNS = {
     "repair_routed_tile": {
         "top": "e1x_repair_routed_tile_tb",
         "module": "test_e1x_repair_routed_tile",
-        "result": ROOT / "verify/cocotb/results/e1x_repair_routed_tile_tb_test_e1x_repair_routed_tile.xml",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_repair_routed_tile_tb_test_e1x_repair_routed_tile.xml",
         "expected": {
             "repair_routed_tile_loads_rom_and_reroutes_fabric_wavelet",
             "repair_routed_tile_keeps_core_instruction_path_operational",
@@ -51,7 +70,8 @@ RUNS = {
     "repair_mmio_routed_tile": {
         "top": "e1x_repair_mmio_routed_tile_tb",
         "module": "test_e1x_repair_mmio_routed_tile",
-        "result": ROOT / "verify/cocotb/results/e1x_repair_mmio_routed_tile_tb_test_e1x_repair_mmio_routed_tile.xml",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_repair_mmio_routed_tile_tb_test_e1x_repair_mmio_routed_tile.xml",
         "expected": {
             "repair_mmio_routed_tile_programs_rom_and_reroutes_wavelet",
             "repair_mmio_routed_tile_clear_removes_programmed_repair_route",

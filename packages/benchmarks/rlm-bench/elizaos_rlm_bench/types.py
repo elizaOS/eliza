@@ -177,6 +177,7 @@ class RLMBenchConfig:
 
     # Task counts
     tasks_per_config: int = 5  # Tasks per length/position combination
+    include_edge_scenarios: bool = False
 
     # Benchmark types to run
     run_s_niah: bool = True

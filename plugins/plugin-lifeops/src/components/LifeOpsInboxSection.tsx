@@ -16,6 +16,7 @@ import {
   useApp,
   useMediaQuery,
 } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   AlarmClock,
   ArrowLeft,
@@ -33,6 +34,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import {
+  type ComponentProps,
   type JSX,
   type ReactNode,
   useCallback,
@@ -227,8 +229,17 @@ function ChannelChip({
   onClick: (ch: InboxChannel) => void;
 }) {
   const style = styleForFilter(channel);
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `inbox-filter-${channel}`,
+    role: "tab",
+    label: `${style.label} filter`,
+    group: "lifeops-inbox-filters",
+    status: active ? "active" : "inactive",
+    description: `Filter the inbox to ${style.label}`,
+  });
   return (
     <button
+      ref={ref}
       type="button"
       onClick={() => onClick(channel)}
       aria-pressed={active}
@@ -238,6 +249,7 @@ function ChannelChip({
           ? `${style.bg} ${style.text} ring-1 ${style.ring}`
           : "bg-bg-muted/30 text-muted hover:text-txt",
       ].join(" ")}
+      {...agentProps}
     >
       <span className={`shrink-0 ${active ? style.text : "text-muted/80"}`}>
         {style.icon}
@@ -256,6 +268,15 @@ function ChannelChip({
   );
 }
 
+function inboxSlug(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "item"
+  );
+}
+
 function PhoneAccountChip({
   label,
   active,
@@ -265,8 +286,17 @@ function PhoneAccountChip({
   active: boolean;
   onClick: () => void;
 }) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `inbox-phone-${inboxSlug(label)}`,
+    role: "tab",
+    label: `Phone ${label}`,
+    group: "lifeops-inbox-filters",
+    status: active ? "active" : "inactive",
+    description: `Filter the inbox to the ${label} phone account`,
+  });
   return (
     <button
+      ref={ref}
       type="button"
       aria-pressed={active}
       onClick={onClick}
@@ -276,6 +306,7 @@ function PhoneAccountChip({
           ? "bg-emerald-500/16 text-emerald-300 ring-1 ring-emerald-500/40"
           : "bg-bg-muted/30 text-muted hover:text-txt",
       ].join(" ")}
+      {...agentProps}
     >
       <Phone className="h-3.5 w-3.5" aria-hidden />
       <span>{label}</span>
@@ -293,8 +324,17 @@ function GmailAccountChip({
   onClick: () => void;
 }) {
   const style = CHANNEL_STYLES.gmail;
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `inbox-gmail-${inboxSlug(label)}`,
+    role: "tab",
+    label: `Gmail ${label}`,
+    group: "lifeops-inbox-filters",
+    status: active ? "active" : "inactive",
+    description: `Filter the inbox to the ${label} Gmail account`,
+  });
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onClick}
       aria-pressed={active}
@@ -304,6 +344,7 @@ function GmailAccountChip({
           ? `${style.bg} ${style.text} ring-1 ${style.ring}`
           : "bg-bg-muted/30 text-muted hover:text-txt",
       ].join(" ")}
+      {...agentProps}
     >
       <span className={`shrink-0 ${active ? style.text : "text-muted/80"}`}>
         {style.icon}
@@ -338,8 +379,17 @@ function MailWorkflowButton({
     ) : (
       <MessageSquareReply className="h-3.5 w-3.5" aria-hidden />
     );
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `inbox-workflow-${kind}`,
+    role: "tab",
+    label: `${label} workflow`,
+    group: "lifeops-inbox-filters",
+    status: active ? "active" : "inactive",
+    description: `Show the ${label} mail workflow`,
+  });
   return (
     <button
+      ref={ref}
       type="button"
       aria-pressed={active}
       disabled={loading}
@@ -350,6 +400,7 @@ function MailWorkflowButton({
           ? "bg-rose-500/16 text-rose-300 ring-1 ring-rose-500/40"
           : "bg-bg-muted/30 text-muted hover:text-txt",
       ].join(" ")}
+      {...agentProps}
     >
       {icon}
       <span>{loading ? "Loading..." : label}</span>
@@ -413,9 +464,27 @@ function ThreadRow({
     group.chatType === "group" && typeof group.participantCount === "number"
       ? `${message.sender.displayName} (${group.participantCount})`
       : message.sender.displayName;
+  const row = useAgentElement<HTMLDivElement>({
+    id: `inbox-thread-${group.threadId}`,
+    role: "list-item",
+    label: `${senderLabel}: ${subject}`,
+    group: "lifeops-inbox-threads",
+    status: selected ? "active" : "inactive",
+    description: `Open the conversation from ${senderLabel}`,
+    onActivate: onSelect,
+  });
+  const reply = useAgentElement<HTMLButtonElement>({
+    id: `inbox-thread-reply-${group.threadId}`,
+    role: "button",
+    label: `Reply to ${senderLabel}`,
+    group: "lifeops-inbox-threads",
+    description: `Reply to the conversation from ${senderLabel}`,
+    onActivate: onReply,
+  });
 
   return (
     <div
+      ref={row.ref}
       role="option"
       aria-selected={selected}
       tabIndex={0}
@@ -434,6 +503,7 @@ function ThreadRow({
             ? "border-transparent bg-bg/30 hover:bg-bg-muted/30"
             : "border-transparent hover:bg-bg-muted/20",
       ].join(" ")}
+      {...row.agentProps}
     >
       <div className="relative h-8 w-8 shrink-0">
         <div
@@ -528,6 +598,7 @@ function ThreadRow({
           </span>
         ) : null}
         <button
+          ref={reply.ref}
           type="button"
           aria-label="Reply"
           onClick={(e) => {
@@ -535,6 +606,7 @@ function ThreadRow({
             onReply();
           }}
           className="mt-0.5 rounded-full p-1.5 text-muted opacity-0 transition-opacity hover:bg-bg-muted/40 hover:text-txt group-hover:opacity-100"
+          {...reply.agentProps}
         >
           <MessageSquareReply className="h-3.5 w-3.5" />
         </button>
@@ -558,9 +630,27 @@ function MessageRow({
 }) {
   const style = styleFor(message.channel);
   const subject = message.subject?.trim() || `${style.label} message`;
+  const row = useAgentElement<HTMLDivElement>({
+    id: `inbox-message-${message.id}`,
+    role: "list-item",
+    label: `${message.sender.displayName}: ${subject}`,
+    group: "lifeops-inbox-messages",
+    status: selected ? "active" : "inactive",
+    description: `Open the message from ${message.sender.displayName}`,
+    onActivate: onSelect,
+  });
+  const reply = useAgentElement<HTMLButtonElement>({
+    id: `inbox-message-reply-${message.id}`,
+    role: "button",
+    label: `Reply to ${message.sender.displayName}`,
+    group: "lifeops-inbox-messages",
+    description: `Reply to the message from ${message.sender.displayName}`,
+    onActivate: onReply,
+  });
 
   return (
     <div
+      ref={row.ref}
       role="option"
       aria-selected={selected}
       tabIndex={0}
@@ -579,6 +669,7 @@ function MessageRow({
             ? "border-transparent bg-bg/30 hover:bg-bg-muted/30"
             : "border-transparent hover:bg-bg-muted/20",
       ].join(" ")}
+      {...row.agentProps}
     >
       <div className="relative h-8 w-8 shrink-0">
         <div
@@ -636,6 +727,7 @@ function MessageRow({
       </div>
 
       <button
+        ref={reply.ref}
         type="button"
         aria-label="Reply"
         onClick={(e) => {
@@ -643,10 +735,65 @@ function MessageRow({
           onReply();
         }}
         className="mt-0.5 shrink-0 rounded-full p-1.5 text-muted opacity-0 transition-opacity hover:bg-bg-muted/40 hover:text-txt group-hover:opacity-100"
+        {...reply.agentProps}
       >
         <MessageSquareReply className="h-3.5 w-3.5" />
       </button>
     </div>
+  );
+}
+
+function ReaderActionButton({
+  agentId,
+  label,
+  description,
+  children,
+  ...buttonProps
+}: {
+  agentId: string;
+  label: string;
+  description: string;
+  children: ReactNode;
+} & ComponentProps<typeof Button>) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group: "lifeops-inbox-reader",
+    description,
+  });
+  return (
+    <Button ref={ref} {...buttonProps} {...agentProps}>
+      {children}
+    </Button>
+  );
+}
+
+function ReaderBackButton({
+  label,
+  onBack,
+}: {
+  label: string;
+  onBack: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "inbox-reader-back",
+    role: "button",
+    label,
+    group: "lifeops-inbox-reader",
+    description: "Return to the inbox list",
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-label={label}
+      onClick={onBack}
+      className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-bg-muted/40 hover:text-txt"
+      {...agentProps}
+    >
+      <ArrowLeft className="h-4 w-4" />
+    </button>
   );
 }
 
@@ -691,16 +838,12 @@ function ReaderPane({
     <div className="flex flex-1 flex-col overflow-hidden bg-bg/10">
       <div className="flex items-start gap-3 border-b border-border/12 px-5 py-4">
         {onBack ? (
-          <button
-            type="button"
-            aria-label={t("lifeopsInbox.backToList", {
+          <ReaderBackButton
+            label={t("lifeopsInbox.backToList", {
               defaultValue: "Back to inbox list",
             })}
-            onClick={onBack}
-            className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-bg-muted/40 hover:text-txt"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
+            onBack={onBack}
+          />
         ) : null}
         <div
           className={`flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-semibold ${style.bg} ${style.text}`}
@@ -781,15 +924,21 @@ function ReaderPane({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-border/12 px-5 py-3">
-        <Button
+        <ReaderActionButton
+          agentId="inbox-reader-reply"
+          label="Reply to message"
+          description="Reply to the open message"
           size="sm"
           className="h-8 rounded-xl px-3 text-xs font-semibold"
           onClick={() => onReply(message)}
         >
           <MessageSquareReply className="mr-1.5 h-3.5 w-3.5" />
           {t("lifeopsInbox.reply", { defaultValue: "Reply" })}
-        </Button>
-        <Button
+        </ReaderActionButton>
+        <ReaderActionButton
+          agentId="inbox-reader-chat"
+          label="Chat about message"
+          description="Open chat about the open message"
           size="sm"
           variant="ghost"
           className="h-8 rounded-xl px-3 text-xs font-semibold text-muted"
@@ -797,12 +946,15 @@ function ReaderPane({
         >
           <MessageSquare className="mr-1.5 h-3.5 w-3.5" />
           {t("common.chat", { defaultValue: "Chat" })}
-        </Button>
+        </ReaderActionButton>
         {message.channel === "gmail" ? (
           <InboxUnsubscribeButton message={message} />
         ) : null}
         {message.deepLink ? (
-          <Button
+          <ReaderActionButton
+            agentId="inbox-reader-open-source"
+            label="Open message source"
+            description="Open the message in its source app"
             size="sm"
             variant="ghost"
             className="h-8 rounded-xl px-3 text-xs font-semibold text-muted"
@@ -812,7 +964,7 @@ function ReaderPane({
           >
             <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
             {t("lifeopsInbox.openSource", { defaultValue: "Open source" })}
-          </Button>
+          </ReaderActionButton>
         ) : null}
       </div>
     </div>
@@ -866,7 +1018,10 @@ function InboxUnsubscribeButton({
           : "Unsubscribe";
 
   return (
-    <Button
+    <ReaderActionButton
+      agentId="inbox-reader-unsubscribe"
+      label="Unsubscribe from sender"
+      description={`Send a one-click unsubscribe to ${senderEmail}`}
       size="sm"
       variant="ghost"
       className="h-8 rounded-xl px-3 text-xs font-semibold text-muted"
@@ -875,7 +1030,7 @@ function InboxUnsubscribeButton({
       title={`Send RFC 8058 one-click unsubscribe to ${senderEmail}`}
     >
       {label}
-    </Button>
+    </ReaderActionButton>
   );
 }
 
@@ -906,6 +1061,15 @@ function InboxListPane({
   const isEmpty = groupedMode
     ? visibleThreadGroups.length === 0
     : inbox.messages.length === 0;
+  const search = useAgentElement<HTMLInputElement>({
+    id: "inbox-search",
+    role: "text-input",
+    label: t("lifeopsInbox.searchAria", { defaultValue: "Search inbox" }),
+    group: "lifeops-inbox",
+    description: "Search the inbox messages",
+    getValue: () => inbox.searchQuery,
+    onFill: (value: string) => inbox.setSearchQuery(value),
+  });
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -913,6 +1077,7 @@ function InboxListPane({
         <div className="relative">
           <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted" />
           <Input
+            ref={search.ref}
             value={inbox.searchQuery}
             onChange={(e) => inbox.setSearchQuery(e.target.value)}
             placeholder={t("lifeopsInbox.search", {
@@ -922,6 +1087,7 @@ function InboxListPane({
               defaultValue: "Search inbox",
             })}
             className="h-8 pl-8 text-xs"
+            {...search.agentProps}
           />
         </div>
       </div>
@@ -983,6 +1149,46 @@ export interface LifeOpsInboxSectionProps {
   channels?: readonly LifeOpsInboxChannel[];
   title?: string;
   emptyLabel?: string;
+}
+
+function MissedToggleButton({
+  active,
+  label,
+  title,
+  onToggle,
+}: {
+  active: boolean;
+  label: string;
+  title: string;
+  onToggle: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "inbox-filter-missed",
+    role: "tab",
+    label: "Missed filter",
+    group: "lifeops-inbox-filters",
+    status: active ? "active" : "inactive",
+    description: "Filter to threads you have not replied to",
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-pressed={active}
+      onClick={onToggle}
+      title={title}
+      className={[
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+        active
+          ? "bg-amber-500/16 text-amber-300 ring-1 ring-amber-500/40"
+          : "bg-bg-muted/30 text-muted hover:text-txt",
+      ].join(" ")}
+      {...agentProps}
+    >
+      <AlarmClock className="h-3.5 w-3.5" aria-hidden />
+      {label}
+    </button>
+  );
 }
 
 export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
@@ -1372,24 +1578,15 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
           );
         })}
         {isMessagesMode ? (
-          <button
-            type="button"
-            aria-pressed={missedOnly}
-            onClick={() => setMissedOnly((prev) => !prev)}
+          <MissedToggleButton
+            active={missedOnly}
+            label={t("lifeopsInbox.missed", { defaultValue: "Missed" })}
             title={t("lifeopsInbox.missedTooltip", {
               defaultValue:
                 "Threads you have not replied to in 24h with priority ≥ 50",
             })}
-            className={[
-              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
-              missedOnly
-                ? "bg-amber-500/16 text-amber-300 ring-1 ring-amber-500/40"
-                : "bg-bg-muted/30 text-muted hover:text-txt",
-            ].join(" ")}
-          >
-            <AlarmClock className="h-3.5 w-3.5" aria-hidden />
-            {t("lifeopsInbox.missed", { defaultValue: "Missed" })}
-          </button>
+            onToggle={() => setMissedOnly((prev) => !prev)}
+          />
         ) : null}
         {isMailMode
           ? (["needs_response", "unresponded", "spam_review"] as const).map(

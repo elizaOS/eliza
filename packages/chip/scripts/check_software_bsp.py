@@ -240,6 +240,7 @@ def selected_bsp_targets() -> list[str]:
         names.append("u-boot")
     return names
 
+
 FORBIDDEN_TRANSCRIPT_MARKERS = [
     "placeholder transcript",
     "synthetic placeholder",

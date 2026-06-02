@@ -190,7 +190,7 @@ export class ComputerUseService extends Service {
     screenshotAfterAction: true,
     actionTimeoutMs: 10000,
     maxRecentActions: MAX_RECENT_ACTIONS,
-    approvalMode: "full_control",
+    approvalMode: "smart_approve",
     browserHeadless: false,
     mode: "yolo",
   };

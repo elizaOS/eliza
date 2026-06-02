@@ -81,6 +81,82 @@ interface ManagedLayer {
   ctx: CanvasRenderingContext2D;
 }
 
+const MAX_CANVAS_DIMENSION = 16_384;
+
+function assertFiniteNumber(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`${label} must be a finite number`);
+  }
+  return value;
+}
+
+function assertCanvasSize(size: CanvasSize, label = "size"): CanvasSize {
+  if (!size || typeof size !== "object") {
+    throw new Error(`${label} must include finite width and height`);
+  }
+
+  const width = assertFiniteNumber(size.width, `${label}.width`);
+  const height = assertFiniteNumber(size.height, `${label}.height`);
+  if (
+    width <= 0 ||
+    height <= 0 ||
+    width > MAX_CANVAS_DIMENSION ||
+    height > MAX_CANVAS_DIMENSION
+  ) {
+    throw new Error(
+      `${label}.width and ${label}.height must be between 1 and ${MAX_CANVAS_DIMENSION}`,
+    );
+  }
+
+  return { width, height };
+}
+
+function assertUnitInterval(value: unknown, label: string): number {
+  const numberValue = assertFiniteNumber(value, label);
+  if (numberValue < 0 || numberValue > 1) {
+    throw new Error(`${label} must be between 0 and 1`);
+  }
+  return numberValue;
+}
+
+function assertQuality(
+  value: unknown,
+  label: string,
+  fallback: number,
+): number {
+  if (value === undefined) return fallback;
+  const numberValue = assertFiniteNumber(value, label);
+  if (numberValue < 0 || numberValue > 100) {
+    throw new Error(`${label} must be between 0 and 100`);
+  }
+  return numberValue / 100;
+}
+
+function assertLayerInput(
+  layer: Omit<CanvasLayer, "id">,
+): Omit<CanvasLayer, "id"> {
+  if (!layer || typeof layer !== "object") {
+    throw new Error("layer must be an object");
+  }
+
+  if (typeof layer.visible !== "boolean") {
+    throw new Error("layer.visible must be a boolean");
+  }
+
+  return {
+    ...layer,
+    opacity: assertUnitInterval(layer.opacity, "layer.opacity"),
+    zIndex: assertFiniteNumber(layer.zIndex, "layer.zIndex"),
+  };
+}
+
+function assertAttachElement(element: HTMLElement): HTMLElement {
+  if (!element || typeof element.appendChild !== "function") {
+    throw new Error("element must be an HTMLElement-like append target");
+  }
+  return element;
+}
+
 export class CanvasWeb extends WebPlugin {
   private canvases = new Map<string, ManagedCanvas>();
   private nextCanvasId = 1;
@@ -97,11 +173,12 @@ export class CanvasWeb extends WebPlugin {
     size: CanvasSize;
     backgroundColor?: CanvasColor | string;
   }): Promise<{ canvasId: string }> {
+    const size = assertCanvasSize(options.size);
     const canvasId = `canvas_${this.nextCanvasId++}`;
 
     const canvas = document.createElement("canvas");
-    canvas.width = options.size.width;
-    canvas.height = options.size.height;
+    canvas.width = size.width;
+    canvas.height = size.height;
     canvas.style.width = "100%";
     canvas.style.height = "100%";
 
@@ -112,7 +189,7 @@ export class CanvasWeb extends WebPlugin {
 
     if (options.backgroundColor) {
       ctx.fillStyle = this.colorToString(options.backgroundColor);
-      ctx.fillRect(0, 0, options.size.width, options.size.height);
+      ctx.fillRect(0, 0, size.width, size.height);
     }
 
     const managedCanvas: ManagedCanvas = {
@@ -120,7 +197,7 @@ export class CanvasWeb extends WebPlugin {
       canvas,
       ctx,
       layers: new Map(),
-      size: options.size,
+      size,
       transform: {},
       touchEnabled: false,
     };
@@ -147,7 +224,7 @@ export class CanvasWeb extends WebPlugin {
     const managed = this.canvases.get(options.canvasId);
     if (!managed) throw new Error("Canvas not found");
 
-    options.element.appendChild(managed.canvas);
+    assertAttachElement(options.element).appendChild(managed.canvas);
     this.setupTouchHandlers(managed);
   }
 
@@ -161,6 +238,7 @@ export class CanvasWeb extends WebPlugin {
   async resize(options: { canvasId: string; size: CanvasSize }): Promise<void> {
     const managed = this.canvases.get(options.canvasId);
     if (!managed) throw new Error("Canvas not found");
+    const size = assertCanvasSize(options.size);
 
     const imageData = managed.ctx.getImageData(
       0,
@@ -169,9 +247,9 @@ export class CanvasWeb extends WebPlugin {
       managed.canvas.height,
     );
 
-    managed.canvas.width = options.size.width;
-    managed.canvas.height = options.size.height;
-    managed.size = options.size;
+    managed.canvas.width = size.width;
+    managed.canvas.height = size.height;
+    managed.size = size;
 
     managed.ctx.putImageData(imageData, 0, 0);
 
@@ -182,8 +260,8 @@ export class CanvasWeb extends WebPlugin {
         layer.canvas.width,
         layer.canvas.height,
       );
-      layer.canvas.width = options.size.width;
-      layer.canvas.height = options.size.height;
+      layer.canvas.width = size.width;
+      layer.canvas.height = size.height;
       layer.ctx.putImageData(layerImageData, 0, 0);
     }
   }
@@ -220,6 +298,7 @@ export class CanvasWeb extends WebPlugin {
   }): Promise<{ layerId: string }> {
     const managed = this.canvases.get(options.canvasId);
     if (!managed) throw new Error("Canvas not found");
+    const inputLayer = assertLayerInput(options.layer);
 
     const layerId = `layer_${this.nextLayerId++}`;
 
@@ -228,20 +307,20 @@ export class CanvasWeb extends WebPlugin {
     layerCanvas.height = managed.size.height;
     layerCanvas.style.position = "absolute";
     layerCanvas.style.pointerEvents = "none";
-    layerCanvas.style.display = options.layer.visible ? "block" : "none";
-    layerCanvas.style.opacity = String(options.layer.opacity);
-    layerCanvas.style.zIndex = String(options.layer.zIndex);
+    layerCanvas.style.display = inputLayer.visible ? "block" : "none";
+    layerCanvas.style.opacity = String(inputLayer.opacity);
+    layerCanvas.style.zIndex = String(inputLayer.zIndex);
 
     const layerCtx = layerCanvas.getContext("2d");
     if (!layerCtx) throw new Error("Failed to get layer context");
 
     const managedLayer: ManagedLayer = {
       id: layerId,
-      name: options.layer.name,
-      visible: options.layer.visible,
-      opacity: options.layer.opacity,
-      zIndex: options.layer.zIndex,
-      transform: options.layer.transform,
+      name: inputLayer.name,
+      visible: inputLayer.visible,
+      opacity: inputLayer.opacity,
+      zIndex: inputLayer.zIndex,
+      transform: inputLayer.transform,
       canvas: layerCanvas,
       ctx: layerCtx,
     };
@@ -268,18 +347,26 @@ export class CanvasWeb extends WebPlugin {
     if (!layer) throw new Error("Layer not found");
 
     if (options.layer.visible !== undefined) {
+      if (typeof options.layer.visible !== "boolean") {
+        throw new Error("layer.visible must be a boolean");
+      }
       layer.visible = options.layer.visible;
       layer.canvas.style.display = options.layer.visible ? "block" : "none";
     }
 
     if (options.layer.opacity !== undefined) {
-      layer.opacity = options.layer.opacity;
-      layer.canvas.style.opacity = String(options.layer.opacity);
+      const opacity = assertUnitInterval(
+        options.layer.opacity,
+        "layer.opacity",
+      );
+      layer.opacity = opacity;
+      layer.canvas.style.opacity = String(opacity);
     }
 
     if (options.layer.zIndex !== undefined) {
-      layer.zIndex = options.layer.zIndex;
-      layer.canvas.style.zIndex = String(options.layer.zIndex);
+      const zIndex = assertFiniteNumber(options.layer.zIndex, "layer.zIndex");
+      layer.zIndex = zIndex;
+      layer.canvas.style.zIndex = String(zIndex);
     }
 
     if (options.layer.name !== undefined) {
@@ -676,7 +763,7 @@ export class CanvasWeb extends WebPlugin {
     if (!managed) throw new Error("Canvas not found");
 
     const format = options.format || "png";
-    const quality = (options.quality || 100) / 100;
+    const quality = assertQuality(options.quality, "quality", 1);
 
     let sourceCanvas = managed.canvas;
 
@@ -869,11 +956,18 @@ export class CanvasWeb extends WebPlugin {
     }
 
     const format: SnapshotFormat = options?.format || "png";
-    const quality = (options?.quality || 85) / 100;
+    const quality = assertQuality(options?.quality, "quality", 0.85);
 
     const iframeRect = this.webViewIframe.getBoundingClientRect();
     let width = Math.round(iframeRect.width) || 800;
     let height = Math.round(iframeRect.height) || 600;
+
+    if (options?.maxWidth !== undefined) {
+      assertFiniteNumber(options.maxWidth, "maxWidth");
+      if (options.maxWidth <= 0) {
+        throw new Error("maxWidth must be a positive finite number");
+      }
+    }
 
     if (options?.maxWidth && width > options.maxWidth) {
       const scale = options.maxWidth / width;

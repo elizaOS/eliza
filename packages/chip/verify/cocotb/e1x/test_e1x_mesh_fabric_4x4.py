@@ -124,7 +124,7 @@ async def run_delivery(dut, src, dst, color, n_packets, base_payload):
     dst_n = node(dst_row, dst_col)
 
     visits = xy_path_nodes(src_row, src_col, dst_row, dst_col)
-    for (row, col, in_port, out_dir) in visits:
+    for row, col, in_port, out_dir in visits:
         await program_route(dut, row, col, color, in_port, out_dir)
 
     set_eject_ready(dut, dst_n, True)
@@ -181,7 +181,9 @@ def _lui(rd, imm20):
 
 def _sw(rs2, rs1, imm):
     imm &= 0xFFF
-    return ((imm >> 5) << 25) | (rs2 << 20) | (rs1 << 15) | (0x2 << 12) | ((imm & 0x1F) << 7) | STORE
+    return (
+        ((imm >> 5) << 25) | (rs2 << 20) | (rs1 << 15) | (0x2 << 12) | ((imm & 0x1F) << 7) | STORE
+    )
 
 
 async def boot_one_core(dut, src_n, program, boot_pc=0):
@@ -226,7 +228,7 @@ async def real_pe_core_emits_wavelet_routed_across_mesh(dut):
 
     # XY path from the source Local egress: at (1,1) the wavelet enters on Local
     # and must head East twice to reach column 3, then Local at (1,3).
-    for (row, col, in_port, out_dir) in xy_path_nodes(src[0], src[1], dst[0], dst[1]):
+    for row, col, in_port, out_dir in xy_path_nodes(src[0], src[1], dst[0], dst[1]):
         await program_route(dut, row, col, color, in_port, out_dir)
 
     set_eject_ready(dut, dst_n, True)
@@ -234,8 +236,8 @@ async def real_pe_core_emits_wavelet_routed_across_mesh(dut):
     payload = 0x33
     prog = [
         _lui(1, SRAM_BYTES >> 12),  # x1 = MMIO base
-        _addi(2, 0, payload),       # x2 = payload
-        _sw(2, 1, 0x10),            # WAVELET_TX_DATA = x2  -> launch wavelet
+        _addi(2, 0, payload),  # x2 = payload
+        _sw(2, 1, 0x10),  # WAVELET_TX_DATA = x2  -> launch wavelet
         ECALL,
     ]
     await boot_one_core(dut, src_n, prog, boot_pc=0)
@@ -286,11 +288,15 @@ async def two_independent_colors_share_mesh(dut):
     await reset(dut)
 
     n_a = 6
-    sent_a, recv_a = await run_delivery(dut, (0, 3), (0, 0), color=1, n_packets=n_a, base_payload=0xC200)
+    sent_a, recv_a = await run_delivery(
+        dut, (0, 3), (0, 0), color=1, n_packets=n_a, base_payload=0xC200
+    )
     assert sent_a == [0xC200 + i for i in range(n_a)], sent_a
     assert recv_a == sent_a, f"recv_a={recv_a} sent_a={sent_a}"
 
     n_b = 6
-    sent_b, recv_b = await run_delivery(dut, (0, 1), (3, 1), color=7, n_packets=n_b, base_payload=0xD300)
+    sent_b, recv_b = await run_delivery(
+        dut, (0, 1), (3, 1), color=7, n_packets=n_b, base_payload=0xD300
+    )
     assert sent_b == [0xD300 + i for i in range(n_b)], sent_b
     assert recv_b == sent_b, f"recv_b={recv_b} sent_b={sent_b}"

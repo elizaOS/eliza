@@ -19,7 +19,7 @@ FNV64_OFFSET = 0xCBF29CE484222325
 FNV64_PRIME = 0x100000001B3
 MASK64 = (1 << 64) - 1
 
-FALSE_CLAIM_FLAGS = {
+FALSE_CLAIM_FLAGS: dict[str, object] = {
     "release_claim_allowed": False,
     "silicon_claim_allowed": False,
     "production_accelerator_claim_allowed": False,
@@ -89,14 +89,14 @@ def main() -> int:
         "full norm real-weight row inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_full_norm_real_weight_rows_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_norm_real_weight_rows_inputs_present", "status": status, "detail": detail}
+    )
 
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
     workplan = load_json(FULL_OUTPUT_WORKPLAN) if FULL_OUTPUT_WORKPLAN.is_file() else {}
     checksum_manifest = (
-        load_json(FULL_OUTPUT_CHECKSUM_MANIFEST)
-        if FULL_OUTPUT_CHECKSUM_MANIFEST.is_file()
-        else {}
+        load_json(FULL_OUTPUT_CHECKSUM_MANIFEST) if FULL_OUTPUT_CHECKSUM_MANIFEST.is_file() else {}
     )
     expanded = load_json(EXPANDED_REAL_WEIGHT) if EXPANDED_REAL_WEIGHT.is_file() else {}
 
@@ -114,7 +114,13 @@ def main() -> int:
         "placement, full-output workplan, checksum manifest, and expanded real-weight rows are linked",
         "full norm real-weight dependency mismatch",
     )
-    checks.append({"id": "e1x_full_norm_real_weight_rows_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_norm_real_weight_rows_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     layers = [
         layer
@@ -137,23 +143,27 @@ def main() -> int:
             total_macs += int(result["lane_mac_count"])
             layer_checksum = mix64(layer_checksum, int(result["row_trace_checksum"]))
             if output_row in {0, rows // 2, rows - 1}:
-                sample_rows.append({
-                    "output_row": output_row,
-                    "accumulator": int(result["accumulator"]),
-                    "requantized_s8": int(result["requantized_s8"]),
-                    "row_trace_checksum": int(result["row_trace_checksum"]),
-                })
+                sample_rows.append(
+                    {
+                        "output_row": output_row,
+                        "accumulator": int(result["accumulator"]),
+                        "requantized_s8": int(result["requantized_s8"]),
+                        "row_trace_checksum": int(result["row_trace_checksum"]),
+                    }
+                )
         aggregate_checksum = mix64(aggregate_checksum, layer_index)
         aggregate_checksum = mix64(aggregate_checksum, layer_checksum)
         if len(layer_results) < 12:
-            layer_results.append({
-                "layer_index": layer_index,
-                "layer_name": str(layer["name"]),
-                "rows": rows,
-                "cols": cols,
-                "full_norm_layer_checksum": layer_checksum,
-                "sample_rows": sample_rows,
-            })
+            layer_results.append(
+                {
+                    "layer_index": layer_index,
+                    "layer_name": str(layer["name"]),
+                    "rows": rows,
+                    "cols": cols,
+                    "full_norm_layer_checksum": layer_checksum,
+                    "sample_rows": sample_rows,
+                }
+            )
 
     full_output_rows = int(workplan.get("summary", {}).get("full_output_row_count", 0))
     full_macs = int(workplan.get("summary", {}).get("full_mac_count", 0))
@@ -172,7 +182,13 @@ def main() -> int:
         f"executed all {total_rows} norm output rows across full K=1 real weights",
         "full norm real-weight execution mismatch",
     )
-    checks.append({"id": "e1x_full_norm_real_weight_rows_execute_all_norms", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_norm_real_weight_rows_execute_all_norms",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     boundary_ok = (
         int(checksum_manifest.get("summary", {}).get("missing_output_row_count", 0)) == 2_607_508
@@ -184,7 +200,13 @@ def main() -> int:
         "full norm execution improves whole-kind row coverage while preserving missing full-output checksum blocker",
         "full norm real-weight claim boundary mismatch",
     )
-    checks.append({"id": "e1x_full_norm_real_weight_rows_preserve_blocker", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_norm_real_weight_rows_preserve_blocker",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
@@ -202,7 +224,7 @@ def main() -> int:
         "sampled_norm_layer_results": layer_results,
         "residual_blocker": "full_output_real_weight_checksum_missing",
     }
-    report = {
+    report: dict[str, object] = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x-full-norm-real-weight-rows",
         "status": "PASS" if not failures else "BLOCKED",

@@ -111,9 +111,7 @@ L1D_ECC_COCOTB = {
     },
 }
 L1D_ECC_RESULT = (
-    ROOT
-    / "verify/cocotb/results"
-    / f"{L1D_ECC_COCOTB['top']}_{L1D_ECC_COCOTB['module']}.xml"
+    ROOT / "verify/cocotb/results" / f"{L1D_ECC_COCOTB['top']}_{L1D_ECC_COCOTB['module']}.xml"
 )
 
 REQUIRED_DOC_TOKENS = [
@@ -142,6 +140,10 @@ REQUIRED_BLOCKED_IDS = {
     "hawkeye_mockingjay_dpc3_replacement",
     "pythia_rl_prefetcher",
     "silicon_evidence",
+}
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
 }
 
 # Scoped local evidence rows that must carry an explicit `evidence_class` tag
@@ -318,6 +320,11 @@ def validate_scoped_artifact(
     require(
         data.get("release_claim_allowed") is False,
         f"{artifact}: release_claim_allowed must be false",
+        errors,
+    )
+    require(
+        data.get("false_claim_flags") == FALSE_CLAIM_FLAGS,
+        f"{artifact}: false_claim_flags must match denied phone/release claims",
         errors,
     )
     validate_scoped_artifact_semantics(artifact=artifact, data=data, errors=errors)
@@ -673,9 +680,7 @@ def parse_secded_data_cols(text: str) -> dict[int, int] | None:
         return None
     body = match.group(0)
     cols: dict[int, int] = {}
-    for entry in re.finditer(
-        r"32'd(\d+)\s*:\s*secded_data_col\s*=\s*8'h([0-9A-Fa-f]+)", body
-    ):
+    for entry in re.finditer(r"32'd(\d+)\s*:\s*secded_data_col\s*=\s*8'h([0-9A-Fa-f]+)", body):
         cols[int(entry.group(1))] = int(entry.group(2), 16)
     return cols
 
@@ -762,9 +767,7 @@ def check_l1d_ecc_injection(errors: list[str]) -> None:
         return
 
     if not L1D_ECC_RESULT.is_file():
-        errors.append(
-            f"L1D SECDED injection result missing: {L1D_ECC_RESULT.relative_to(ROOT)}"
-        )
+        errors.append(f"L1D SECDED injection result missing: {L1D_ECC_RESULT.relative_to(ROOT)}")
         return
     try:
         root = ET.parse(L1D_ECC_RESULT).getroot()
@@ -775,9 +778,7 @@ def check_l1d_ecc_injection(errors: list[str]) -> None:
     seen = {tc.get("name") or "<unnamed>" for tc in testcases}
     missing = sorted(expected - seen)
     if missing:
-        errors.append(
-            "L1D SECDED injection missing expected testcases: " + ", ".join(missing)
-        )
+        errors.append("L1D SECDED injection missing expected testcases: " + ", ".join(missing))
     for tc in testcases:
         name = tc.get("name") or "<unnamed>"
         for tag in ("failure", "error", "skipped"):
@@ -1134,6 +1135,7 @@ def main() -> int:
         ),
         "phone_claim_allowed": False,
         "release_claim_allowed": False,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "rtl_module_count": len(REQUIRED_RTL),
         "coherence_report": "build/reports/cache_coherence.json",
         "l1d_secded_injection_result": str(L1D_ECC_RESULT.relative_to(ROOT)),

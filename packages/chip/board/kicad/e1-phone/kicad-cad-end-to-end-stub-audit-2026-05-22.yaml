@@ -1,257 +1,162 @@
 schema: eliza.e1_phone_kicad_cad_end_to_end_stub_audit.v1
 date: 2026-05-22
 status: blocked_external_evidence_required_after_local_cad_geometry_fix
-claim_boundary: >
-  This file records concept-envelope CAD checks and fail-closed blockers for
-  the KiCad-to-CAD handoff. It does not claim supplier drawings, production
-  footprints, routed-board release output, or factory release artifacts exist.
+claim_boundary: 'This file records concept-envelope CAD checks and fail-closed blockers for the KiCad-to-CAD handoff. It does not claim supplier drawings, production footprints, routed-board release output, or factory release artifacts exist.
 
+  '
 concept_geometry_evidence:
-  - id: concept_pcb_split_island_geometry
-    status: fixed
-    evidence:
-      - mechanical/e1-phone/cad/e1_phone_params.yaml
-      - mechanical/e1-phone/review/board-step-readiness.json
-      - mechanical/e1-phone/review/board-step-readiness.md
-    result: >
-      CAD projected PCB islands match KiCad Edge.Cuts/layout-utilization:
-      top 64.0 x 29.0 mm at board y=0.0 and bottom 64.0 x 15.0 mm at board
-      y=117.0.
-  - id: full_cad_boolean_interference
-    status: pass_concept_geometry_only
-    evidence:
-      - mechanical/e1-phone/review/full-cad-boolean-interference.json
-      - mechanical/e1-phone/review/assembly-clearance.json
-    result: >
-      Regenerated concept AABB and assembly-clearance reviews include the
-      visible cable/terminal solids and report zero scoped concept-envelope
-      interferences. The full-CAD boolean artifact remains blocked for
-      release because supplier B-rep, routed-board STEP, and physical review
-      evidence are still missing, but the screen stack, rear camera/back
-      window, and cable terminal marker collisions are locally clear.
-  - id: molded_retention_and_assembly_sequence
-    status: pass
-    evidence:
-      - mechanical/e1-phone/review/assembly-verification.json
-      - mechanical/e1-phone/review/assembly-verification.md
-      - mechanical/e1-phone/review/assembly-gotcha-audit.json
-      - mechanical/e1-phone/review/compactness-optimization.json
-    result: >
-      The assembly checker covers all ten screw bosses plus eight snap hooks,
-      places the battery back-void foam pad before the pouch, and reports 20
-      ordered assembly steps with zero trapped parts. The outboard screw bosses
-      are outside the battery and foam envelopes, and the corner ribs extend
-      inward from the boss centers instead of widening the molded body. The
-      compactness audit passes with a 78.0 mm molded-body width and only local
-      side-control protrusion.
-  - id: camera_back_visibility
-    status: pass_concept_geometry_only
-    evidence:
-      - mechanical/e1-phone/review/full-cad-boolean-interference.json
-      - mechanical/e1-phone/out/rear_camera_lens_window.step
-      - mechanical/e1-phone/out/rear_camera_optical_sight_tunnel.step
-    result: >
-      Rear camera burial and window checks pass for the concept board island
-      geometry; camera/flash are modeled with explicit back-window apertures
-      and no unintentional back-cover clash.
-  - id: cad_visible_modules_and_markers
-    status: pass_concept_envelopes_only
-    evidence:
-      - mechanical/e1-phone/out/cellular_lga_module_keepout.step
-      - mechanical/e1-phone/out/wifi_bt_module_keepout.step
-      - mechanical/e1-phone/out/compute_som_sodimm_connector.step
-      - mechanical/e1-phone/out/compute_som_daughterboard_keepout.step
-      - mechanical/e1-phone/out/soc_package_marker.step
-      - mechanical/e1-phone/out/dram_package_marker.step
-      - mechanical/e1-phone/out/storage_package_marker.step
-      - mechanical/e1-phone/out/pmic_package_marker.step
-      - mechanical/e1-phone/out/rf_transceiver_package_marker.step
-      - mechanical/e1-phone/out/gnss_lna_package_marker.step
-      - mechanical/e1-phone/out/wifi_bt_rf_feed_development_envelope.step
-      - mechanical/e1-phone/out/cellular_rf_feed_development_envelope.step
-    result: >
-      Major off-board/OEM module envelopes and PCB package markers are present
-      in concept CAD. They are not release 3D package models until supplier STEP
-      or verified package drawings are linked.
-  - id: cad_visible_wires_cables_and_rf_feeds
-    status: pass_concept_envelopes_only
-    evidence:
-      - mechanical/e1-phone/review/cad-connection-coverage.json
-      - mechanical/e1-phone/review/cad-connection-coverage.md
-      - mechanical/e1-phone/out/display_fpc_tail.step
-      - mechanical/e1-phone/out/rear_camera_fpc_tail.step
-      - mechanical/e1-phone/out/front_camera_fpc_tail.step
-      - mechanical/e1-phone/out/side_key_flex_tail.step
-      - mechanical/e1-phone/out/battery_connector_lead_flex.step
-      - mechanical/e1-phone/out/usb_c_power_data_escape_tail.step
-      - mechanical/e1-phone/out/bottom_speaker_lead_pair.step
-      - mechanical/e1-phone/out/bottom_microphone_flex_leads.step
-      - mechanical/e1-phone/out/haptic_flex_tail.step
-      - mechanical/e1-phone/out/sim_esim_signal_flex_marker.step
-      - mechanical/e1-phone/out/usb_pd_controller_escape_trace_marker.step
-      - mechanical/e1-phone/out/pd_charger_control_trace_marker.step
-      - mechanical/e1-phone/out/charger_battery_power_sense_trace_marker.step
-      - mechanical/e1-phone/out/compute_som_sodimm_connector.step
-      - mechanical/e1-phone/out/compute_som_daughterboard_keepout.step
-      - mechanical/e1-phone/out/antenna_aperture_tuner.step
-      - mechanical/e1-phone/out/cellular_div_rf_feed_development_envelope.step
-      - mechanical/e1-phone/out/cellular_gnss_rf_feed_development_envelope.step
-      - mechanical/e1-phone/out/wifi_bt_rf1_feed_development_envelope.step
-    result: >
-      Display/touch FPC, front/rear camera FPC tails, side-key flex, battery
-      lead flex, USB-C escape, speaker/microphone/haptic leads, SIM/eSIM marker,
-      the top microphone tail, earpiece receiver lead flex, compute SoM SODIMM
-      connector/keepout, antenna aperture tuner marker, USB-PD/charger/battery
-      board-route markers, and the remaining RF feed markers are now explicit
-      STEP solids in the CAD. The CAD connection coverage gate maps 32 required
-      cables, flexes, board-route groups, RF feeds, and compute carrier
-      interfaces to visible STEP solids and routed-development nets, with 64
-      endpoint terminal STEP markers and 32 passing terminal pairs proving each
-      represented connection has explicit local from/to contact evidence. The
-      routed-output candidate
-      metadata now carries the full connection record for each marker: CAD part,
-      from/to endpoints, terminal STEP paths and byte counts, connection type,
-      STEP path and byte count, net list, pass flag, and release-credit=false
-      state. Concept AABB/clearance scans report zero unintentional
-      local-review clashes with 258 parts, including 64 explicit connection
-      terminal markers in the assembly manifest; the full supplier B-rep
-      boolean gate remains fail-closed until routed-board STEP and supplier
-      models are accepted.
-  - id: routed_development_board_snapshot
-    status: generated_non_release
-    evidence:
-      - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed-development.kicad_pcb
-      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
-      - board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml
-      - mechanical/e1-phone/review/board-step-readiness.json
-    result: >
-      A separate routed-development board snapshot contains 153 route
-      records and 306 KiCad copper segments. Its intake coverage audit reports
-      zero missing required shared nets and zero missing route-domain nets after
-      explicit alias normalization for stale contract names. Board-step
-      readiness keeps this separate from the concept PCB source, so production
-      routed_tracks_present and the concept-board local-review booleans remain
-      blocked. It is deliberately not counted as production routed-board release
-      evidence.
-  - id: development_footprint_library
-    status: generated_non_release
-    evidence:
-      - board/kicad/e1-phone/development-footprint-library-manifest-2026-05-22.yaml
-      - board/kicad/e1-phone/fp-lib-table
-      - board/kicad/e1-phone/e1-phone-dev.pretty/GCT_USB4105_GF_A_DEV.kicad_mod
-      - board/kicad/e1-phone/e1-phone-dev.pretty/PANASONIC_EVQ_P7_DEV.kicad_mod
-      - board/kicad/e1-phone/e1-phone-dev.pretty/DISPLAY_40P_0P30_DEV.kicad_mod
-      - board/kicad/e1-phone/e1-phone-dev.pretty/CAMERA_24P_0P50_DEV.kicad_mod
-      - board/kicad/e1-phone/e1-phone-dev.pretty/CAMERA_30P_0P50_DEV.kicad_mod
-      - board/kicad/e1-phone/e1-phone-dev.pretty/HIROSE_DF40_80P_0P4_DEV.kicad_mod
-      - board/kicad/e1-phone/e1-phone-dev.pretty/BATTERY_4P_1P00_DEV.kicad_mod
-      - board/kicad/e1-phone/e1-phone-dev.pretty/TI_TPS65987_RSH_56QFN_DEV.kicad_mod
-      - board/kicad/e1-phone/e1-phone-dev.pretty/ADI_MAX77860_WLP81_DEV.kicad_mod
-      - board/kicad/e1-phone/e1-phone-dev.pretty/AUDIO_CODEC_QFN48_DEV.kicad_mod
-      - board/kicad/e1-phone/e1-phone-dev.pretty/MURATA_TYPE_2EA_GEOMETRY_DEV.kicad_mod
-      - board/kicad/e1-phone/e1-phone-dev.pretty/QUECTEL_RG255C_GEOMETRY_DEV.kicad_mod
-      - board/kicad/e1-phone/e1-phone-dev.pretty/SODIMM_260P_0P5_COMPUTE_SOM_DEV.kicad_mod
-    result: >
-      Thirty-two concrete KiCad development footprint patterns exist and
-      are registered through the project fp-lib-table. The library covers the 13
-      major component/module patterns plus reusable support footprints for
-      ESD/TVS, test pads, fiducials, mounting holes, 0402 R/C/L networks,
-      RF pi-matches, shunts, USIM/eSIM/NFC/sensor, haptic, fuel-gauge, and
-      backlight/bias support. Public-data-complete footprints are separated from
-      geometry-only footprints that still require supplier pad maps before
-      production release.
-  - id: real_footprint_development_board_binding
-    status: generated_non_release
-    evidence:
-      - board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
-      - board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml
-    result: >
-      The routed-development board has a separate library-bound variant with
-      all concept placements rebuilt from the e1-phone-dev concrete development
-      footprint library bodies, with the combined PMIC/charger placeholder split
-      into separate MAX77860 charger and TPS65987 USB-PD package bodies. The 306
-      route segments are retained, the output board has 1452 concrete pads,
-      847 assigned pad-net clauses including 195 contract-sequence assignments,
-      78 public compute-SoM connector assignments, and 218 support-pattern
-      assignments for test points, ESD/TVS, RF
-      pi-matches, decoupling, pullup/damping, side-key, SIM/eSIM, NFC/sensor,
-      audio/haptic, fuel-gauge, and rail-access development patterns.
-      Of those contract assignments, 86 cover the top/bottom split-interconnect
-      allocation; the six explicit NC spare contacts remain intentionally
-      unnetted. The board has 89 development-bound markers, zero E1Phone
-      footprint references, and zero placeholder_not_fabrication_footprint
-      markers. Board-step readiness records this as
-      development_footprints_replaced_for_local_review while
-      placeholder_footprints_replaced remains blocked against the production
-      concept source. This remains non-release
-      because several footprint geometries are development envelopes pending
-      supplier land-pattern, FPC pin-order, and DFM signoff.
-  - id: development_pad_pin_coverage_audit
-    status: pass_non_release
-    evidence:
-      - board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
-      - board/kicad/e1-phone/e1-phone-dev.pretty/
-    result: >
-      The e1-phone-dev footprint library has 32 footprints, all electrical pad
-      counts match the development-footprint manifest, 17 records have exact
-      public pin/pad or aligned public SoM coverage, and the compute SoM
-      row-count is aligned. All 21 pinout-bound footprints carry explicit
-      local terminal contracts derived from captured public pinout evidence.
-      Eleven reusable local support patterns have explicit land-pattern basis
-      records and local terminal contracts rather than silent generic pads.
-      Thirteen records remain explicitly blocked on
-      supplier pad-map, selected-IC pinout, module-house FPC order, regional SKU,
-      or antenna-tuning evidence rather than local placeholder work.
-  - id: real_footprint_development_step
-    status: generated_non_release
-    evidence:
-      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
-      - board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml
-    result: >
-      A separate CadQuery STEP assembly exists for the real-footprint
-      development board. It contains two board islands, 89 placed footprint
-      envelopes, 1452 visible pad/contact solids, and 306 visible routed-copper
-      segment solids plus 24 visible via/barrel solids derived from the KiCad
-      board coordinates and e1-phone-dev footprint geometry. This is better
-      routed-board STEP evidence for local
-      CAD review, but remains non-release because it is generated from
-      development envelopes rather than native KiCad production STEP export with
-      supplier-approved component models.
-  - id: detailed_routed_step_candidate_intake
-    status: generated_non_release
-    evidence:
-      - board/kicad/e1-phone/production/step/routed-board-with-components.step
-      - board/kicad/e1-phone/production/step/routed-board-with-components.step.metadata.yaml
-      - board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
-      - board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
-      - mechanical/e1-phone/review/routed-board-step-intake-template.csv
-      - mechanical/e1-phone/review/board-step-readiness.json
-      - mechanical/e1-phone/review/routed-board-clearance.json
-    result: >
-      The routed-board STEP intake now distinguishes the 33,644,081 byte
-      detailed routed-output candidate from approved production STEP evidence.
-      The candidate hash matches the non-release routed-development STEP source,
-      carries blocked metadata, records 153 route records, 306 copper segments,
-      and 24 non-release vias, and has a blocked component-3D-model manifest listing 89
-      local development component envelopes, 1452 pad/contact visuals, 306
-      route-segment visuals, 306 route segments bound back to the routed intake,
-      96 controlled-impedance visual route segments, 151 net-named routed segment nets,
-      and 16 net-named via nets. The component-model manifest
-      binds every local development model back to its KiCad reference,
-      footprint name, board side, XY rotation, envelope, pad-name list, and
-      pinout/support terminal-contract provenance from the detailed STEP intake
-      and development pad/pin audit. The routed-board intake row is
-      populated with the candidate STEP hash and existing local artifact paths, but it is explicitly
-      evidence_class=blocked_local_candidate_outputs_not_release with DRC/ERC,
-      supplier-model approval, physical clearance, and release approval still
-      blocked. The routed-output candidate manifest and component-model manifest
-      also bind the KiCad/CAD traceability matrix summary, covering 32
-      development footprint patterns, 89 board-bound instances, 89 STEP
-      footprint instances, 21 captured public pinout files, and 32 visible CAD
-      connection records with zero local traceability gaps and release_credit=false.
-      It still grants no release credit and does not satisfy
-      production_board_step_present or routed_board_release_intake_complete.
+- id: concept_pcb_split_island_geometry
+  status: fixed
+  evidence:
+  - mechanical/e1-phone/cad/e1_phone_params.yaml
+  - mechanical/e1-phone/review/board-step-readiness.json
+  - mechanical/e1-phone/review/board-step-readiness.md
+  result: 'CAD projected PCB islands match KiCad Edge.Cuts/layout-utilization: top 64.0 x 29.0 mm at board y=0.0 and bottom 64.0 x 15.0 mm at board y=117.0.
 
+    '
+- id: full_cad_boolean_interference
+  status: pass_concept_geometry_only
+  evidence:
+  - mechanical/e1-phone/review/full-cad-boolean-interference.json
+  - mechanical/e1-phone/review/assembly-clearance.json
+  result: 'Regenerated concept AABB and assembly-clearance reviews include the visible cable/terminal solids and report zero scoped concept-envelope interferences. The full-CAD boolean artifact remains blocked for release because supplier B-rep, routed-board STEP, and physical review evidence are still missing, but the screen stack, rear camera/back window, and cable terminal marker collisions are locally clear.
+
+    '
+- id: molded_retention_and_assembly_sequence
+  status: pass
+  evidence:
+  - mechanical/e1-phone/review/assembly-verification.json
+  - mechanical/e1-phone/review/assembly-verification.md
+  - mechanical/e1-phone/review/assembly-gotcha-audit.json
+  - mechanical/e1-phone/review/compactness-optimization.json
+  result: 'The assembly checker covers all ten screw bosses plus eight snap hooks, places the battery back-void foam pad before the pouch, and reports 20 ordered assembly steps with zero trapped parts. The outboard screw bosses are outside the battery and foam envelopes, and the corner ribs extend inward from the boss centers instead of widening the molded body. The compactness audit passes with a 78.0 mm molded-body width and only local side-control protrusion.
+
+    '
+- id: camera_back_visibility
+  status: pass_concept_geometry_only
+  evidence:
+  - mechanical/e1-phone/review/full-cad-boolean-interference.json
+  - mechanical/e1-phone/out/rear_camera_lens_window.step
+  - mechanical/e1-phone/out/rear_camera_optical_sight_tunnel.step
+  result: 'Rear camera burial and window checks pass for the concept board island geometry; camera/flash are modeled with explicit back-window apertures and no unintentional back-cover clash.
+
+    '
+- id: cad_visible_modules_and_markers
+  status: pass_concept_envelopes_only
+  evidence:
+  - mechanical/e1-phone/out/cellular_lga_module_keepout.step
+  - mechanical/e1-phone/out/wifi_bt_module_keepout.step
+  - mechanical/e1-phone/out/compute_som_sodimm_connector.step
+  - mechanical/e1-phone/out/compute_som_daughterboard_keepout.step
+  - mechanical/e1-phone/out/soc_package_marker.step
+  - mechanical/e1-phone/out/dram_package_marker.step
+  - mechanical/e1-phone/out/storage_package_marker.step
+  - mechanical/e1-phone/out/pmic_package_marker.step
+  - mechanical/e1-phone/out/rf_transceiver_package_marker.step
+  - mechanical/e1-phone/out/gnss_lna_package_marker.step
+  - mechanical/e1-phone/out/wifi_bt_rf_feed_development_envelope.step
+  - mechanical/e1-phone/out/cellular_rf_feed_development_envelope.step
+  result: 'Major off-board/OEM module envelopes and PCB package markers are present in concept CAD. They are not release 3D package models until supplier STEP or verified package drawings are linked.
+
+    '
+- id: cad_visible_wires_cables_and_rf_feeds
+  status: pass_concept_envelopes_only
+  evidence:
+  - mechanical/e1-phone/review/cad-connection-coverage.json
+  - mechanical/e1-phone/review/cad-connection-coverage.md
+  - mechanical/e1-phone/out/display_fpc_tail.step
+  - mechanical/e1-phone/out/rear_camera_fpc_tail.step
+  - mechanical/e1-phone/out/front_camera_fpc_tail.step
+  - mechanical/e1-phone/out/side_key_flex_tail.step
+  - mechanical/e1-phone/out/battery_connector_lead_flex.step
+  - mechanical/e1-phone/out/usb_c_power_data_escape_tail.step
+  - mechanical/e1-phone/out/bottom_speaker_lead_pair.step
+  - mechanical/e1-phone/out/bottom_microphone_flex_leads.step
+  - mechanical/e1-phone/out/haptic_flex_tail.step
+  - mechanical/e1-phone/out/sim_esim_signal_flex_marker.step
+  - mechanical/e1-phone/out/usb_pd_controller_escape_trace_marker.step
+  - mechanical/e1-phone/out/pd_charger_control_trace_marker.step
+  - mechanical/e1-phone/out/charger_battery_power_sense_trace_marker.step
+  - mechanical/e1-phone/out/compute_som_sodimm_connector.step
+  - mechanical/e1-phone/out/compute_som_daughterboard_keepout.step
+  - mechanical/e1-phone/out/antenna_aperture_tuner.step
+  - mechanical/e1-phone/out/cellular_div_rf_feed_development_envelope.step
+  - mechanical/e1-phone/out/cellular_gnss_rf_feed_development_envelope.step
+  - mechanical/e1-phone/out/wifi_bt_rf1_feed_development_envelope.step
+  result: 'Display/touch FPC, front/rear camera FPC tails, side-key flex, battery lead flex, USB-C escape, speaker/microphone/haptic leads, SIM/eSIM marker, the top microphone tail, earpiece receiver lead flex, compute SoM SODIMM connector/keepout, antenna aperture tuner marker, USB-PD/charger/battery board-route markers, and the remaining RF feed markers are now explicit STEP solids in the CAD. The CAD connection coverage gate maps 32 required cables, flexes, board-route groups, RF feeds, and compute carrier interfaces to visible STEP solids and routed-development nets, with 64 endpoint terminal STEP markers and 32 passing terminal pairs proving each represented connection has explicit local from/to contact evidence. The routed-output candidate metadata now carries the full connection record for each marker: CAD part, from/to endpoints, terminal STEP paths and byte counts, connection type, STEP path and byte count, net list, pass flag, and release-credit=false state. Concept AABB/clearance
+    scans report zero unintentional local-review clashes with 258 parts, including 64 explicit connection terminal markers in the assembly manifest; the full supplier B-rep boolean gate remains fail-closed until routed-board STEP and supplier models are accepted.
+
+    '
+- id: routed_development_board_snapshot
+  status: generated_non_release
+  evidence:
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed-development.kicad_pcb
+  - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+  - board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml
+  - mechanical/e1-phone/review/board-step-readiness.json
+  result: 'A separate routed-development board snapshot contains 153 route records and 306 KiCad copper segments. Its intake coverage audit reports zero missing required shared nets and zero missing route-domain nets after explicit alias normalization for stale contract names. Board-step readiness keeps this separate from the concept PCB source, so production routed_tracks_present and the concept-board local-review booleans remain blocked. It is deliberately not counted as production routed-board release evidence.
+
+    '
+- id: development_footprint_library
+  status: generated_non_release
+  evidence:
+  - board/kicad/e1-phone/development-footprint-library-manifest-2026-05-22.yaml
+  - board/kicad/e1-phone/fp-lib-table
+  - board/kicad/e1-phone/e1-phone-dev.pretty/GCT_USB4105_GF_A_DEV.kicad_mod
+  - board/kicad/e1-phone/e1-phone-dev.pretty/PANASONIC_EVQ_P7_DEV.kicad_mod
+  - board/kicad/e1-phone/e1-phone-dev.pretty/DISPLAY_40P_0P30_DEV.kicad_mod
+  - board/kicad/e1-phone/e1-phone-dev.pretty/CAMERA_24P_0P50_DEV.kicad_mod
+  - board/kicad/e1-phone/e1-phone-dev.pretty/CAMERA_30P_0P50_DEV.kicad_mod
+  - board/kicad/e1-phone/e1-phone-dev.pretty/HIROSE_DF40_80P_0P4_DEV.kicad_mod
+  - board/kicad/e1-phone/e1-phone-dev.pretty/BATTERY_4P_1P00_DEV.kicad_mod
+  - board/kicad/e1-phone/e1-phone-dev.pretty/TI_TPS65987_RSH_56QFN_DEV.kicad_mod
+  - board/kicad/e1-phone/e1-phone-dev.pretty/ADI_MAX77860_WLP81_DEV.kicad_mod
+  - board/kicad/e1-phone/e1-phone-dev.pretty/AUDIO_CODEC_QFN48_DEV.kicad_mod
+  - board/kicad/e1-phone/e1-phone-dev.pretty/MURATA_TYPE_2EA_GEOMETRY_DEV.kicad_mod
+  - board/kicad/e1-phone/e1-phone-dev.pretty/QUECTEL_RG255C_GEOMETRY_DEV.kicad_mod
+  - board/kicad/e1-phone/e1-phone-dev.pretty/SODIMM_260P_0P5_COMPUTE_SOM_DEV.kicad_mod
+  result: 'Thirty-two concrete KiCad development footprint patterns exist and are registered through the project fp-lib-table. The library covers the 13 major component/module patterns plus reusable support footprints for ESD/TVS, test pads, fiducials, mounting holes, 0402 R/C/L networks, RF pi-matches, shunts, USIM/eSIM/NFC/sensor, haptic, fuel-gauge, and backlight/bias support. Public-data-complete footprints are separated from geometry-only footprints that still require supplier pad maps before production release.
+
+    '
+- id: real_footprint_development_board_binding
+  status: generated_non_release
+  evidence:
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
+  - board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml
+  result: 'The routed-development board has a separate library-bound variant with all concept placements rebuilt from the e1-phone-dev concrete development footprint library bodies, with the combined PMIC/charger placeholder split into separate MAX77860 charger and TPS65987 USB-PD package bodies. The 306 route segments are retained, the output board has 1452 concrete pads, 847 assigned pad-net clauses including 195 contract-sequence assignments, 78 public compute-SoM connector assignments, and 218 support-pattern assignments for test points, ESD/TVS, RF pi-matches, decoupling, pullup/damping, side-key, SIM/eSIM, NFC/sensor, audio/haptic, fuel-gauge, and rail-access development patterns. Of those contract assignments, 86 cover the top/bottom split-interconnect allocation; the six explicit NC spare contacts remain intentionally unnetted. The board has 89 development-bound markers, zero E1Phone footprint references, and zero placeholder_not_fabrication_footprint markers. Board-step readiness
+    records this as development_footprints_replaced_for_local_review while placeholder_footprints_replaced remains blocked against the production concept source. This remains non-release because several footprint geometries are development envelopes pending supplier land-pattern, FPC pin-order, and DFM signoff.
+
+    '
+- id: development_pad_pin_coverage_audit
+  status: pass_non_release
+  evidence:
+  - board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
+  - board/kicad/e1-phone/e1-phone-dev.pretty/
+  result: 'The e1-phone-dev footprint library has 32 footprints, all electrical pad counts match the development-footprint manifest, 17 records have exact public pin/pad or aligned public SoM coverage, and the compute SoM row-count is aligned. All 21 pinout-bound footprints carry explicit local terminal contracts derived from captured public pinout evidence. Eleven reusable local support patterns have explicit land-pattern basis records and local terminal contracts rather than silent generic pads. Thirteen records remain explicitly blocked on supplier pad-map, selected-IC pinout, module-house FPC order, regional SKU, or antenna-tuning evidence rather than local placeholder work.
+
+    '
+- id: real_footprint_development_step
+  status: generated_non_release
+  evidence:
+  - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+  - board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml
+  result: 'A separate CadQuery STEP assembly exists for the real-footprint development board. It contains two board islands, 89 placed footprint envelopes, 1452 visible pad/contact solids, and 306 visible routed-copper segment solids plus 24 visible via/barrel solids derived from the KiCad board coordinates and e1-phone-dev footprint geometry. This is better routed-board STEP evidence for local CAD review, but remains non-release because it is generated from development envelopes rather than native KiCad production STEP export with supplier-approved component models.
+
+    '
+- id: detailed_routed_step_candidate_intake
+  status: generated_non_release
+  evidence:
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step.metadata.yaml
+  - board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
+  - board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  - mechanical/e1-phone/review/routed-board-step-intake-template.csv
+  - mechanical/e1-phone/review/board-step-readiness.json
+  - mechanical/e1-phone/review/routed-board-clearance.json
+  result: 'The routed-board STEP intake now distinguishes the 33,644,081 byte detailed routed-output candidate from approved production STEP evidence. The candidate hash matches the non-release routed-development STEP source, carries blocked metadata, records 153 route records, 306 copper segments, and 24 non-release vias, and has a blocked component-3D-model manifest listing 89 local development component envelopes, 1452 pad/contact visuals, 306 route-segment visuals, 306 route segments bound back to the routed intake, 96 controlled-impedance visual route segments, 151 net-named routed segment nets, and 16 net-named via nets. The component-model manifest binds every local development model back to its KiCad reference, footprint name, board side, XY rotation, envelope, pad-name list, and pinout/support terminal-contract provenance from the detailed STEP intake and development pad/pin audit. The routed-board intake row is populated with the candidate STEP hash and existing local artifact
+    paths, but it is explicitly evidence_class=blocked_local_candidate_outputs_not_release with DRC/ERC, supplier-model approval, physical clearance, and release approval still blocked. The routed-output candidate manifest and component-model manifest also bind the KiCad/CAD traceability matrix summary, covering 32 development footprint patterns, 89 board-bound instances, 89 STEP footprint instances, 21 captured public pinout files, and 32 visible CAD connection records with zero local traceability gaps and release_credit=false. It still grants no release credit and does not satisfy production_board_step_present or routed_board_release_intake_complete.
+
+    '
 kicad_package_state:
   pcb_source: board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
   footprint_count: 87
@@ -314,11 +219,17 @@ kicad_package_state:
   component_model_manifest_terminal_contract_binding: true
   component_model_manifest_pinout_bound_model_count: 22
   component_model_manifest_support_pattern_model_count: 67
+  component_model_manifest_pattern_bound_model_count: 89
+  component_model_manifest_terminal_contract_bound_model_count: 89
   component_model_manifest_terminal_contract_or_no_pad_model_count: 89
+  component_model_manifest_local_step_bound_model_count: 89
   component_model_directory_manifest: board/kicad/e1-phone/production/step/component-models/release-manifest.yaml
   component_model_directory_status: blocked_local_component_model_directory_not_supplier_steps
   component_model_directory_component_model_count: 89
   component_model_directory_record_count: 89
+  component_model_directory_pattern_bound_model_record_count: 89
+  component_model_directory_terminal_contract_bound_model_record_count: 89
+  component_model_directory_local_step_bound_model_record_count: 89
   component_model_directory_source_routed_step_bound: true
   component_model_directory_records_release_credit_false: true
   component_model_directory_release_allowed: false
@@ -327,7 +238,7 @@ kicad_package_state:
   public_cad_source_record_count: 20
   public_cad_source_step_or_3d_observed_count: 12
   public_cad_source_footprint_or_eda_observed_count: 19
-  public_cad_source_local_downloaded_hashed_count: 1
+  public_cad_source_local_downloaded_hashed_count: 3
   public_cad_source_release_credit_record_count: 0
   public_market_bom_cost_category_count: 11
   public_market_bom_cost_volume_count: 5
@@ -349,7 +260,16 @@ kicad_package_state:
   routed_output_candidate_traceability_cad_connection_represented_route_records_with_source_domain_count_total: 153
   routed_output_candidate_traceability_cad_connection_represented_route_records_with_route_class_count_total: 153
   routed_output_candidate_traceability_cad_connection_represented_route_classification_gap_count: 0
+  routed_output_candidate_traceability_cad_connection_manufacturing_detail_defined_count: 32
+  routed_output_candidate_traceability_cad_connection_geometry_defined_count: 32
+  routed_output_candidate_traceability_cad_connection_bend_or_connector_basis_defined_count: 32
+  routed_output_candidate_traceability_cad_connection_impedance_or_current_basis_defined_count: 32
+  routed_output_candidate_traceability_cad_connection_supplier_drawing_requirement_medium_count: 9
   routed_output_candidate_traceability_cad_connection_all_represented_routes_have_layer_source_and_class: true
+  routed_output_candidate_traceability_cad_connection_all_records_have_manufacturing_geometry: true
+  routed_output_candidate_traceability_cad_connection_all_records_have_bend_or_connector_basis: true
+  routed_output_candidate_traceability_cad_connection_all_records_have_impedance_or_current_basis: true
+  routed_output_candidate_traceability_cad_connection_all_records_have_endpoint_distance: true
   routed_output_candidate_traceability_explicit_support_pattern_count: 11
   routed_output_candidate_traceability_all_support_patterns_have_explicit_provenance: true
   routed_output_candidate_traceability_gap_count: 0
@@ -387,6 +307,28 @@ kicad_package_state:
   cad_connection_coverage_all_records_have_solid_step_parts: true
   cad_connection_coverage_all_records_have_cad_step_bytes: true
   cad_connection_coverage_all_records_have_cad_parts: true
+  cad_connection_coverage_mechanical_envelope_defined_count: 32
+  cad_connection_coverage_all_records_have_mechanical_envelope: true
+  cad_connection_coverage_mechanical_envelope_release_credit: false
+  cad_connection_coverage_manufacturing_detail_defined_count: 32
+  cad_connection_coverage_connection_geometry_defined_count: 32
+  cad_connection_coverage_connection_bend_or_connector_basis_defined_count: 32
+  cad_connection_coverage_connection_impedance_or_current_basis_defined_count: 32
+  cad_connection_coverage_all_connections_have_manufacturing_geometry: true
+  cad_connection_coverage_all_connections_have_bend_or_connector_basis: true
+  cad_connection_coverage_all_connections_have_impedance_or_current_basis: true
+  cad_connection_coverage_all_connections_have_endpoint_distance: true
+  cad_connection_coverage_supplier_drawing_requirement_medium_count: 9
+  cad_connection_coverage_supplier_drawing_requirements_by_medium:
+    battery_power_flex: approved battery flex/lead drawing with conductor gauge, NTC/ID routing, current capacity, adhesive, bend radius, and connector retention
+    board_to_board_edge_connector: approved board-to-board connector/flex drawing with pin map, mating height, wipe, retention, keepout, and tolerance stack
+    flexible_antenna_loop: approved NFC antenna flex drawing with loop geometry, ferrite/adhesive stack, matching target, and bend radius
+    flexible_printed_circuit: approved FPC drawing with stackup, copper weights, stiffeners, adhesive, connector pinout, bend radius, and impedance/current constraints
+    ground_spring_contact: approved ground-spring drawing with contact force, wipe, plating, tolerance stack, and chassis bonding path
+    insulated_wire_pair: approved harness/lead drawing with wire gauge, insulation, strain relief, routing clip, service loop, and bend radius
+    pcb_copper_trace_group: approved routed PCB copper with clean or waived DRC/ERC, stackup, impedance/current validation, and SI/PI review
+    rf_50ohm_feed: approved RF feed drawing/layout with 50 ohm stackup, matching network, antenna clearance, VNA evidence, and coexistence review
+    rf_tuner_interconnect: approved antenna tuner interconnect with RF stackup, matching state table, control routing, aperture clearance, and VNA evidence
   cad_connection_coverage_all_records_release_credit_false: true
   cad_connection_coverage_physical_medium_counts:
     battery_power_flex: 1
@@ -427,6 +369,60 @@ kicad_package_state:
   cad_connection_coverage_controlled_impedance_requirement_defined_count: 32
   cad_connection_coverage_bend_radius_requirement_defined_count: 32
   cad_connection_coverage_supplier_release_required_count: 32
+  cad_connection_coverage_release_boundary_summary:
+    evidence_class: local_cad_connection_marker_coverage_not_release
+    critical_interface_connection_ids:
+      display_touch:
+      - display_bias_power_flex
+      - display_touch_fpc
+      rear_camera:
+      - rear_camera_csi_fpc
+      - rear_camera_power_flex
+      front_camera:
+      - front_camera_csi_fpc
+      - front_camera_power_flex
+      usb_power_battery:
+      - battery_lead_flex
+      - charger_to_battery_power_sense
+      - pd_controller_to_charger_control
+      - usb_c_escape_tail
+      - usb_c_to_pd_controller_escape
+      cellular_wifi_rf:
+      - cellular_antenna_aperture_tuner
+      - cellular_diversity_rf_feed
+      - cellular_gnss_rf_feed
+      - cellular_main_rf_feed
+      - wifi_bt_rf0_feed
+      - wifi_bt_rf1_feed
+      nfc:
+      - nfc_loop_antenna_flex
+      audio_haptic_sensor:
+      - bottom_microphone_flex
+      - bottom_speaker_lead_pair
+      - earpiece_receiver_lead_flex
+      - haptic_flex
+      - sensor_hub_i2c_flex
+      - top_microphone_flex
+      shield_ground:
+      - radio_shield_ground_spring
+      - soc_shield_ground_spring
+      board_to_board:
+      - compute_som_sodimm_carrier
+      - split_interconnect_side_flex
+    all_critical_interface_groups_present: true
+    all_connections_have_terminal_markers: true
+    all_connections_have_solid_step_parts: true
+    all_connections_bound_to_routed_development_records: true
+    all_connections_supplier_release_required: true
+    all_connections_release_credit_false: true
+    supplier_required_deliverables:
+    - approved FPC/flex drawings with stackup, bend radius, adhesive, stiffener, and connector detail
+    - approved RF feed, matching-network, antenna, and tuner layout with impedance evidence
+    - approved board-to-board connector, ground-spring, wire-lead, and harness drawings
+    - clean production DRC/ERC plus signed waivers for every remaining violation
+    - supplier-approved component STEP/B-rep models and mechanical drawings
+    - measured routed-board clearance and first-article signoff
+    release_credit: false
   cad_connection_coverage_records_bound_into_routed_output_metadata: true
   cad_connection_coverage_release_credit: false
   routed_output_candidate_traceability_cad_connection_physical_medium_counts:
@@ -444,163 +440,163 @@ kicad_package_state:
   routed_output_candidate_traceability_cad_connection_bend_radius_requirement_defined_count: 32
   routed_output_candidate_traceability_cad_connection_supplier_release_required_count: 32
   board_step_failed_cases:
-    - production_routed_tracks_signed_off
-    - production_board_step_present
-    - routed_board_release_intake_complete
-    - supplier_approved_footprints_replaced_development_patterns
-
+  - production_routed_tracks_signed_off
+  - production_board_step_present
+  - routed_board_release_intake_complete
+  - supplier_approved_footprints_replaced_development_patterns
 literal_todo_stub_sweep:
   scanned_code_file_count: 57
   scanned_code_files:
-    - scripts/check_e1_phone_assemblability.py
-    - scripts/check_e1_phone_board_package.py
-    - scripts/check_e1_phone_boolean_interference.py
-    - scripts/check_e1_phone_button_orientation.py
-    - scripts/check_e1_phone_enclosure_mechanical_content.py
-    - scripts/check_e1_phone_fabrication_release.py
-    - scripts/check_e1_phone_factory_output_content.py
-    - scripts/check_e1_phone_first_article_content.py
-    - scripts/check_e1_phone_release_approval_signatures.py
-    - scripts/check_e1_phone_release_evidence_regeneration.py
-    - scripts/check_e1_phone_routed_output_content.py
-    - scripts/check_e1_phone_supplier_return_content.py
-    - scripts/e1_phone_enclosure_readiness_gap_map.py
-    - scripts/e1_phone_fabrication_enclosure_e2e_release_gate.py
-    - scripts/e1_phone_first_article_bench_acceptance_matrix.py
-    - scripts/e1_phone_first_article_executed_log_contract.py
-    - scripts/e1_phone_first_article_missing_evidence_diagnostic.py
-    - scripts/e1_phone_kicad_cad_traceability_matrix.py
-    - scripts/e1_phone_kicad_route_inventory.py
-    - scripts/e1_phone_mechanical_cad_evidence_inventory.py
-    - scripts/e1_phone_objective_completion_audit.py
-    - scripts/e1_phone_production_factory_output_presence_inventory.py
-    - scripts/e1_phone_readiness_unblock_register.py
-    - scripts/e1_phone_release_evidence_content_contract.py
-    - scripts/e1_phone_release_evidence_validation_dry_run.py
-    - scripts/e1_phone_routed_board_release_acceptance_matrix.py
-    - scripts/generate_e1_phone_audio_acoustic_closure.py
-    - scripts/generate_e1_phone_cad.py
-    - scripts/generate_e1_phone_development_footprints.py
-    - scripts/generate_e1_phone_development_pad_pin_audit.py
-    - scripts/generate_e1_phone_display_fit.py
-    - scripts/generate_e1_phone_enclosure_placement_closure.py
-    - scripts/generate_e1_phone_explode_validation.py
-    - scripts/generate_e1_phone_exploded_animation.py
-    - scripts/generate_e1_phone_factory_output_candidates.py
-    - scripts/generate_e1_phone_interface_closure.py
-    - scripts/generate_e1_phone_layout_metrics.py
-    - scripts/generate_e1_phone_layout_optimization_execution.py
-    - scripts/generate_e1_phone_manufacturing_closure.py
-    - scripts/generate_e1_phone_module_rf_pinout_execution.py
-    - scripts/generate_e1_phone_pcb_footprint_scaffold.py
-    - scripts/generate_e1_phone_pinout_footprint_freeze.py
-    - scripts/generate_e1_phone_power_thermal.py
-    - scripts/generate_e1_phone_real_footprint_development_board.py
-    - scripts/generate_e1_phone_real_footprint_development_step.py
-    - scripts/generate_e1_phone_rf_connectivity.py
-    - scripts/generate_e1_phone_routed_development_board.py
-    - scripts/generate_e1_phone_routed_mainboard_demo.py
-    - scripts/generate_e1_phone_routed_output_candidates.py
-    - scripts/generate_e1_phone_routed_pcb_implementation_execution.py
-    - scripts/generate_e1_phone_routed_release_plan.py
-    - scripts/generate_e1_phone_schematic.py
-    - scripts/generate_e1_phone_spec_sheet.py
-    - scripts/generate_e1_phone_supplier_return_evidence_acceptance_matrix.py
-    - scripts/generate_e1_phone_supplier_return_intake_placeholders.py
-    - scripts/generate_e1_phone_supplier_sourcing_audit.py
-    - scripts/test_generate_e1_phone_cad.py
+  - scripts/check_e1_phone_assemblability.py
+  - scripts/check_e1_phone_board_package.py
+  - scripts/check_e1_phone_boolean_interference.py
+  - scripts/check_e1_phone_button_orientation.py
+  - scripts/check_e1_phone_enclosure_mechanical_content.py
+  - scripts/check_e1_phone_fabrication_release.py
+  - scripts/check_e1_phone_factory_output_content.py
+  - scripts/check_e1_phone_first_article_content.py
+  - scripts/check_e1_phone_release_approval_signatures.py
+  - scripts/check_e1_phone_release_evidence_regeneration.py
+  - scripts/check_e1_phone_routed_output_content.py
+  - scripts/check_e1_phone_supplier_return_content.py
+  - scripts/e1_phone_enclosure_readiness_gap_map.py
+  - scripts/e1_phone_fabrication_enclosure_e2e_release_gate.py
+  - scripts/e1_phone_first_article_bench_acceptance_matrix.py
+  - scripts/e1_phone_first_article_executed_log_contract.py
+  - scripts/e1_phone_first_article_missing_evidence_diagnostic.py
+  - scripts/e1_phone_kicad_cad_traceability_matrix.py
+  - scripts/e1_phone_kicad_route_inventory.py
+  - scripts/e1_phone_mechanical_cad_evidence_inventory.py
+  - scripts/e1_phone_objective_completion_audit.py
+  - scripts/e1_phone_production_factory_output_presence_inventory.py
+  - scripts/e1_phone_readiness_unblock_register.py
+  - scripts/e1_phone_release_evidence_content_contract.py
+  - scripts/e1_phone_release_evidence_validation_dry_run.py
+  - scripts/e1_phone_routed_board_release_acceptance_matrix.py
+  - scripts/generate_e1_phone_audio_acoustic_closure.py
+  - scripts/generate_e1_phone_cad.py
+  - scripts/generate_e1_phone_development_footprints.py
+  - scripts/generate_e1_phone_development_pad_pin_audit.py
+  - scripts/generate_e1_phone_display_fit.py
+  - scripts/generate_e1_phone_enclosure_placement_closure.py
+  - scripts/generate_e1_phone_explode_validation.py
+  - scripts/generate_e1_phone_exploded_animation.py
+  - scripts/generate_e1_phone_factory_output_candidates.py
+  - scripts/generate_e1_phone_interface_closure.py
+  - scripts/generate_e1_phone_layout_metrics.py
+  - scripts/generate_e1_phone_layout_optimization_execution.py
+  - scripts/generate_e1_phone_manufacturing_closure.py
+  - scripts/generate_e1_phone_module_rf_pinout_execution.py
+  - scripts/generate_e1_phone_pcb_footprint_scaffold.py
+  - scripts/generate_e1_phone_pinout_footprint_freeze.py
+  - scripts/generate_e1_phone_power_thermal.py
+  - scripts/generate_e1_phone_real_footprint_development_board.py
+  - scripts/generate_e1_phone_real_footprint_development_step.py
+  - scripts/generate_e1_phone_rf_connectivity.py
+  - scripts/generate_e1_phone_routed_development_board.py
+  - scripts/generate_e1_phone_routed_mainboard_demo.py
+  - scripts/generate_e1_phone_routed_output_candidates.py
+  - scripts/generate_e1_phone_routed_pcb_implementation_execution.py
+  - scripts/generate_e1_phone_routed_release_plan.py
+  - scripts/generate_e1_phone_schematic.py
+  - scripts/generate_e1_phone_spec_sheet.py
+  - scripts/generate_e1_phone_supplier_return_evidence_acceptance_matrix.py
+  - scripts/generate_e1_phone_supplier_return_intake_placeholders.py
+  - scripts/generate_e1_phone_supplier_sourcing_audit.py
+  - scripts/test_generate_e1_phone_cad.py
   searched_marker_classes:
-    - explicit_code_task_markers
-    - explicit_fixme_markers
-    - unresolved_implementation_phrases
-    - unresolved_release_fields
+  - explicit_code_task_markers
+  - explicit_fixme_markers
+  - unresolved_implementation_phrases
+  - unresolved_release_fields
   local_code_todo_or_fixme_count: 0
   local_code_marker_hit_count: 28
   local_code_marker_guard_or_prose_count: 28
   local_code_actionable_marker_count: 0
   remaining_hits_are_fail_closed_evidence_placeholders:
-    - path: mechanical/e1-phone/review/supplier-lock.md
-      marker: external source pending
-      disposition: external_supplier_source_not_received
-    - path: board/kicad/e1-phone/top-bottom-interconnect-plan.yaml
-      marker: bottom island decoupling, ESD, and test fixture edge pending KiCad capture
-      disposition: requires_real_bottom_island_schematic_layout_and_supplier_connector_stackup
-    - path: board/kicad/e1-phone/split-interconnect-schematic-net-binding.yaml
-      marker: bottom island ESD, decoupling, haptic drive return, and fixture pads are pending KiCad capture
-      disposition: requires_real_schematic_capture_and_routed_board
-    - path: board/kicad/e1-phone/split-interconnect-pin-allocation.yaml
-      marker: bottom island ESD, decoupling, haptic drive return, and fixture pads are pending KiCad capture
-      disposition: requires_real_schematic_capture_and_routed_board
-    - path: board/kicad/e1-phone/factory-probe-map.yaml
-      marker: secure provisioning and traceability flow pending factory process definition
-      disposition: requires_factory_test_process_and_first_article_fixture_definition
-    - path: board/kicad/e1-phone/usb-pd-controller-lifecycle-replacement-gate-2026-05-22.yaml
-      marker: pending_alt_mode_capable_controller
-      disposition: explicit_future_alternate_branch_not_selected_for_current_evt0_stack
-  conclusion: >
-    No local Python/CAD code-task or fixme markers remain in the KiCad-to-CAD
-    path. The remaining blocked evidence fields must not be replaced with
-    fabricated supplier, routing, or factory data.
+  - path: mechanical/e1-phone/review/supplier-lock.md
+    marker: external source pending
+    disposition: external_supplier_source_not_received
+  - path: board/kicad/e1-phone/top-bottom-interconnect-plan.yaml
+    marker: bottom island decoupling, ESD, and test fixture edge pending KiCad capture
+    disposition: requires_real_bottom_island_schematic_layout_and_supplier_connector_stackup
+  - path: board/kicad/e1-phone/split-interconnect-schematic-net-binding.yaml
+    marker: bottom island ESD, decoupling, haptic drive return, and fixture pads are pending KiCad capture
+    disposition: requires_real_schematic_capture_and_routed_board
+  - path: board/kicad/e1-phone/split-interconnect-pin-allocation.yaml
+    marker: bottom island ESD, decoupling, haptic drive return, and fixture pads are pending KiCad capture
+    disposition: requires_real_schematic_capture_and_routed_board
+  - path: board/kicad/e1-phone/factory-probe-map.yaml
+    marker: secure provisioning and traceability flow pending factory process definition
+    disposition: requires_factory_test_process_and_first_article_fixture_definition
+  - path: board/kicad/e1-phone/usb-pd-controller-lifecycle-replacement-gate-2026-05-22.yaml
+    marker: pending_alt_mode_capable_controller
+    disposition: explicit_future_alternate_branch_not_selected_for_current_evt0_stack
+  conclusion: 'No local Python/CAD code-task or fixme markers remain in the KiCad-to-CAD path. The remaining blocked evidence fields must not be replaced with fabricated supplier, routing, or factory data.
 
+    '
 remaining_blockers:
-  - id: supplier_land_patterns_and_3d_models
-    owner: external_supplier_or_verified_component_library_intake
-    local_action_available: false
-    required_to_close:
-      - supplier mechanical drawings
-      - verified pinouts
-      - fabrication land patterns
-      - STEP models or dimensioned package drawings
-    affected_items:
-      - display_touch_stack
-      - front_camera
-      - rear_camera
-      - cellular_module
-      - wifi_bluetooth_module
-      - usb_c_receptacle
-      - side_buttons
-      - battery_pack
-      - split_interconnect
-      - audio_haptics
-      - charger_pd
-  - id: routed_kicad_release_board
-    owner: pcb_layout
-    local_action_available: false
-    required_to_close:
-      - promote the local routed KiCad candidate only after supplier-approved production footprints replace development envelopes
-      - complete schematic/ERC closure
-      - complete release copper and filled zones with impedance/current constraints
-      - run DRC/SI/PI/RF review
-      - export production board STEP with component models
-    local_progress_already_done:
-      - local routed KiCad candidate exists with 306 segments and 24 vias
-      - local routed KiCad candidate has zero placeholder_not_fabrication_footprint markers
-      - local routed KiCad candidate remains release_credit=false and is not fabrication evidence
-  - id: routed_board_release_intake
-    owner: factory_or_release_engineering
-    local_action_available: false
-    required_to_close:
-      - completed routed-board-step-intake-template.csv
-      - production STEP artifact
-      - DRC and ERC reports
-      - Gerber job
-      - pick-and-place
-      - release BOM
-      - component 3D model manifest
-      - enclosure clearance rerun against the routed-board STEP
-  - id: physical_routed_board_clearance_results
-    owner: mechanical_release_engineering
-    local_action_available: false
-    required_to_close:
-      - import approved production routed-board STEP with supplier component models
-      - measure all 12 routed-clearance rerun cases
-      - record minimum gaps, zero interference counts, reviewer, and measurement artifact
-      - populate routed-board-clearance-results-template.csv with physical_routed_board_clearance_result evidence
-
+- id: supplier_land_patterns_and_3d_models
+  owner: external_supplier_or_verified_component_library_intake
+  local_action_available: false
+  required_to_close:
+  - supplier mechanical drawings
+  - verified pinouts
+  - fabrication land patterns
+  - STEP models or dimensioned package drawings
+  local_progress_already_done:
+  - local surrogate component-model manifest has 89/89 models pattern-bound
+  - local surrogate component-model manifest has 89/89 models terminal-contract-bound
+  - local surrogate component-model manifest has 89/89 models bound to local STEP envelopes
+  - all local component-model records remain release_credit=false until supplier-approved STEP or drawings are received
+  affected_items:
+  - display_touch_stack
+  - front_camera
+  - rear_camera
+  - cellular_module
+  - wifi_bluetooth_module
+  - usb_c_receptacle
+  - side_buttons
+  - battery_pack
+  - split_interconnect
+  - audio_haptics
+  - charger_pd
+- id: routed_kicad_release_board
+  owner: pcb_layout
+  local_action_available: false
+  required_to_close:
+  - promote the local routed KiCad candidate only after supplier-approved production footprints replace development envelopes
+  - complete schematic/ERC closure
+  - complete release copper and filled zones with impedance/current constraints
+  - run DRC/SI/PI/RF review
+  - export production board STEP with component models
+  local_progress_already_done:
+  - local routed KiCad candidate exists with 306 segments and 24 vias
+  - local routed KiCad candidate has zero placeholder_not_fabrication_footprint markers
+  - local routed KiCad candidate remains release_credit=false and is not fabrication evidence
+- id: routed_board_release_intake
+  owner: factory_or_release_engineering
+  local_action_available: false
+  required_to_close:
+  - completed routed-board-step-intake-template.csv
+  - production STEP artifact
+  - DRC and ERC reports
+  - Gerber job
+  - pick-and-place
+  - release BOM
+  - component 3D model manifest
+  - enclosure clearance rerun against the routed-board STEP
+- id: physical_routed_board_clearance_results
+  owner: mechanical_release_engineering
+  local_action_available: false
+  required_to_close:
+  - import approved production routed-board STEP with supplier component models
+  - measure all 12 routed-clearance rerun cases
+  - record minimum gaps, zero interference counts, reviewer, and measurement artifact
+  - populate routed-board-clearance-results-template.csv with physical_routed_board_clearance_result evidence
 decision:
   current_cad_is_valid_for: enclosure_concept_collision_envelope_review_and_local_routed_candidate_visual_review
   current_cad_is_not_valid_for: fabrication_release_or_final_routed_board_clearance
-  next_non_stub_work: >
-    Import verified supplier drawings/STEP and replace development footprint
-    patterns with supplier-approved production footprints before attempting to
-    claim routed-board or production CAD closure.
+  next_non_stub_work: 'Import verified supplier drawings/STEP and replace development footprint patterns with supplier-approved production footprints before attempting to claim routed-board or production CAD closure.
+
+    '

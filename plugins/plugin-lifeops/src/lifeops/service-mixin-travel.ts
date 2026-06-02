@@ -16,7 +16,7 @@ import {
   type SearchFlightsRequest,
   type SearchFlightsResult,
   searchFlights,
-} from "./travel-adapters/duffel.js";
+} from "@elizaos/plugin-elizacloud/cloud/duffel-client";
 import type {
   FlightBookingExecutionResult,
   PreparedFlightBooking,

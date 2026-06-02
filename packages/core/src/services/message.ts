@@ -24,6 +24,7 @@ import { logger } from "../logger";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
 import { checkSenderRole } from "../roles";
 import {
+	type ActionCatalog,
 	buildActionCatalog,
 	type LocalizedActionExampleResolver,
 } from "../runtime/action-catalog";
@@ -88,7 +89,6 @@ import {
 	type PlannerTrajectory,
 	runPlannerLoop,
 } from "../runtime/planner-loop";
-import { looksLikeRefusal } from "../runtime/refusal-detector";
 import {
 	buildResponseGrammar,
 	buildSpanSamplerPlan,
@@ -106,6 +106,10 @@ import type {
 	ResponseHandlerSenderRole,
 } from "../runtime/response-handler-field-evaluator";
 import type { ResponseHandlerFieldSelectionOptions } from "../runtime/response-handler-field-registry";
+import {
+	looksLikeNonRefusalStage1HonestyViolation,
+	looksLikeStage1HonestyViolation,
+} from "../runtime/stage1-honesty-detector";
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
 import {
@@ -2098,7 +2102,6 @@ type V5PlannerActionSurfaceSummary = {
 	candidateActions: string[];
 	parentActionHints: string[];
 	fallback?: string;
-	webLookupBackstop?: string;
 };
 
 type V5PlannerActionSurface = {
@@ -2195,59 +2198,6 @@ async function collectV5PlannerCandidateActions(args: {
 
 	for (const action of allRuntimeActions) {
 		await appendIfAllowed(action);
-	}
-
-	// Live-info force-include: the keyless web-lookup action (WEB_FETCH) is
-	// registered without declared contexts, so `applyEffectiveActionAccess`
-	// stamps it with the default `["general"]` context at registration time.
-	// When the current turn routes to a non-general context, the context gate in
-	// `appendIfAllowed` drops WEB_FETCH from the candidate set entirely — so it
-	// never reaches the action catalog, never gets ranked, and the planner is
-	// left with only TASKS, force-spawning a coding agent for what is an inline
-	// lookup ("what's the current BTC price"). When the message reads as a
-	// web-lookup request, pull the canonical web-lookup action straight from the
-	// runtime and append it with its own contexts as the active set, bypassing
-	// only the turn's context mismatch (role + connector + validate gates still
-	// apply via `appendIfAllowed`). The coding guard keeps mixed requests such as
-	// "build a weather app with today's forecast" on the delegation path.
-	const messageText = getUserMessageText(args.message) ?? "";
-	if (
-		looksLikeWebSearchRequest(messageText) &&
-		!looksLikeCodingWorkRequest(messageText)
-	) {
-		const webLookupName = findCanonicalWebLookupActionName(allRuntimeActions);
-		if (webLookupName) {
-			const normalized = normalizeActionIdentifier(webLookupName);
-			if (
-				normalized === normalizeActionIdentifier("WEB_FETCH") &&
-				!seen.has(normalized)
-			) {
-				const webLookupAction =
-					actionsByName.get(webLookupName) ??
-					actionsByNormalizedName.get(normalized);
-				if (webLookupAction) {
-					const forcedContexts = mergeAgentContexts(
-						args.selectedContexts,
-						webLookupAction.contexts,
-					);
-					const plannerScopedWebLookupAction: Action = {
-						...webLookupAction,
-						contexts: forcedContexts,
-					};
-					// Use the action's own contexts as the active set so the context
-					// gate is self-satisfied (the goal is to bypass the *turn* context
-					// mismatch, not the action's own gate). Role / connector / validate
-					// gates still run inside `appendIfAllowed`. The copied contexts also
-					// keep execution's later context gate aligned with this intentional
-					// planner exposure without mutating the runtime action.
-					await appendIfAllowed(
-						plannerScopedWebLookupAction,
-						undefined,
-						forcedContexts,
-					);
-				}
-			}
-		}
 	}
 
 	for (let index = 0; index < selectedActions.length; index += 1) {
@@ -2375,6 +2325,49 @@ function buildFullV5PlannerActionSurface(params: {
 	};
 }
 
+// buildActionCatalog is a pure function of (actions, localizedExamples) but was
+// rebuilt from scratch on every message (~349 us/message). Cache it keyed by the
+// action-name list: adding/removing any action — including plugin/view actions —
+// changes the key, so the cache self-invalidates on the path that matters (newly
+// registered view actions appear in the next message's catalog) without any
+// manual register/unregister hook. Only cached when no localized-example
+// resolver is active: that resolver depends on the recent message, so the
+// localized catalog is message-specific and must be rebuilt each turn.
+const actionCatalogCache = new Map<string, ActionCatalog>();
+const ACTION_CATALOG_CACHE_LIMIT = 8;
+
+function actionCatalogCacheKey(actions: readonly Action[]): string {
+	let key = "";
+	for (const action of actions) {
+		key += `${action.name} `;
+	}
+	return key;
+}
+
+export function getCachedActionCatalog(
+	actions: readonly Action[],
+	localizedExamples?: LocalizedActionExampleResolver,
+): ActionCatalog {
+	if (localizedExamples) {
+		// Message-specific examples — never cache across turns.
+		return buildActionCatalog([...actions], { localizedExamples });
+	}
+	const key = actionCatalogCacheKey(actions);
+	const cached = actionCatalogCache.get(key);
+	if (cached) {
+		return cached;
+	}
+	const catalog = buildActionCatalog([...actions], { localizedExamples });
+	actionCatalogCache.set(key, catalog);
+	if (actionCatalogCache.size > ACTION_CATALOG_CACHE_LIMIT) {
+		const oldest = actionCatalogCache.keys().next().value;
+		if (typeof oldest === "string") {
+			actionCatalogCache.delete(oldest);
+		}
+	}
+	return catalog;
+}
+
 function buildV5PlannerActionSurface(params: {
 	actions: readonly Action[];
 	message: Memory;
@@ -2413,9 +2406,10 @@ function buildV5PlannerActionSurface(params: {
 	}
 
 	const toolSearchStartedAt = Date.now();
-	const catalog = buildActionCatalog([...params.actions], {
-		localizedExamples: params.localizedExamples,
-	});
+	const catalog = getCachedActionCatalog(
+		params.actions,
+		params.localizedExamples,
+	);
 	const measurementMode = process.env.ELIZA_RETRIEVAL_MEASUREMENT === "1";
 	const retrieval = retrieveActions({
 		catalog,
@@ -2456,42 +2450,6 @@ function buildV5PlannerActionSurface(params: {
 		}
 		if (addedFallbackAction) {
 			fallback = "top-ranked-parent-fallback";
-		}
-	}
-
-	// Live-info structural backstop: the BM25/keyword retrieval tier ranks a
-	// small slice of parent catalog actions and never exposes a keyless
-	// web-lookup action (e.g. WEB_FETCH) for live-info phrasings that don't
-	// lexically overlap its catalog entry — a "current BTC price" query scores 0
-	// on WEB_FETCH, so the tiering omits it and the planner is left with only
-	// TASKS, forcing a coding-agent spawn for what is an inline lookup.
-	//
-	// When the message reads as a web-lookup request and an allowed web-lookup
-	// action already survived the planner execution gates in `params.actions`,
-	// expose it so the planner can answer inline. We resolve the action by its
-	// canonical NAME (WEB_LOOKUP_DIRECT_ACTIONS) first and only fall back to the
-	// simile-based resolver — `findWebLookupActionName` returns the first action
-	// whose name OR simile matches, which lets an unrelated action that merely
-	// carries a "SEARCH" simile (e.g. CONTACT_SEARCH) win over WEB_FETCH by array
-	// order. This only un-filters an already-gated action — it never bypasses
-	// `appendIfAllowed`. `looksLikeWebSearchRequest` is false for spawn/build
-	// turns, so coding delegation is untouched.
-	let webLookupBackstop: string | undefined;
-	const webLookupMessageText = getUserMessageText(params.message) ?? "";
-	if (
-		looksLikeWebSearchRequest(webLookupMessageText) &&
-		!looksLikeCodingWorkRequest(webLookupMessageText)
-	) {
-		const lookupActionName = findPreferredWebLookupActionName(params.actions);
-		if (lookupActionName) {
-			const normalizedLookupName = normalizeActionIdentifier(lookupActionName);
-			if (
-				normalizedLookupName &&
-				!exposedActionNames.has(normalizedLookupName)
-			) {
-				exposedActionNames.add(normalizedLookupName);
-				webLookupBackstop = lookupActionName;
-			}
 		}
 	}
 
@@ -2566,7 +2524,6 @@ function buildV5PlannerActionSurface(params: {
 			candidateActions,
 			parentActionHints,
 			...(fallback ? { fallback } : {}),
-			...(webLookupBackstop ? { webLookupBackstop } : {}),
 		},
 	};
 }
@@ -3519,9 +3476,15 @@ export function messageHandlerFromFieldResult(
 	);
 	const requestedPlanning =
 		initialPlanningContexts.length > 0 || validCandidateCount > 0;
+	const stage1HonestyViolation = looksLikeStage1HonestyViolation(replyTextRaw);
+	const forceHonestyPlanning =
+		processMessage === "RESPOND" &&
+		looksLikeNonRefusalStage1HonestyViolation(replyTextRaw);
+	const requestedPlanningForRouting = requestedPlanning || forceHonestyPlanning;
 	const preferCompleteDirectReply =
 		!preemptDirect &&
 		requestedPlanning &&
+		!stage1HonestyViolation &&
 		shouldPreferCompleteDirectReply({
 			replyText: replyTextRaw,
 			candidateActions: effectiveCandidateActions,
@@ -3537,7 +3500,7 @@ export function messageHandlerFromFieldResult(
 		});
 	const shouldPlan =
 		!preemptDirect &&
-		requestedPlanning &&
+		requestedPlanningForRouting &&
 		!preferCompleteDirectReply &&
 		!preferInlineCodeSnippetDirectReply;
 	const finalContexts =
@@ -3553,12 +3516,13 @@ export function messageHandlerFromFieldResult(
 						]),
 					)
 				: routedContexts;
-	// Refusal suppression for the planning path (elizaOS/eliza#7620). Mirrors
-	// the logic in `parseMessageHandlerOutput`: when the planner is about to
-	// run, a refusal-shaped `replyText` from a safety-tuned hosted model is
-	// dropped so the planner's own message reaches the user instead.
-	const replyText =
-		shouldPlan && looksLikeRefusal(replyTextRaw) ? "" : replyTextRaw;
+	// Stage-1 honesty suppression for the planning path (elizaOS/eliza#7620).
+	// Mirrors the logic in `parseMessageHandlerOutput`: when the planner is
+	// about to run, a prompt-contract violation in `replyText` from a
+	// safety-tuned hosted model — a refusal, a training-metadata/knowledge-cutoff
+	// leak, or a fabricated-moderation claim — is dropped so the planner's own
+	// message reaches the user instead.
+	const replyText = shouldPlan && stage1HonestyViolation ? "" : replyTextRaw;
 	const plan: MessageHandlerResult["plan"] = {
 		contexts: finalContexts,
 		reply: replyText,
@@ -3692,7 +3656,7 @@ function looksLikeCompleteDirectReply(replyText: string): boolean {
 	const normalized = replyText.trim();
 	if (normalized.length < 24) return false;
 	if (looksLikeProgressOnlyReply(normalized)) return false;
-	if (looksLikeRefusal(normalized)) return false;
+	if (looksLikeStage1HonestyViolation(normalized)) return false;
 	return (
 		/[.!?。！？]$/u.test(normalized) || normalized.split(/\s+/u).length >= 8
 	);
@@ -3782,110 +3746,25 @@ const SHELL_DIRECT_ACTIONS = new Set(
 	].map(normalizeActionIdentifier),
 );
 
-const WEB_LOOKUP_ACTION_NAMES = [
-	"WEB_FETCH",
-	"SEARCH",
-	"WEB_SEARCH",
-	"SEARCH_WEB",
-	"BRAVE_SEARCH",
-	"INTERNET_SEARCH",
-	"SEARCH_INTERNET",
-	"LOOKUP_WEB",
-	"GOOGLE",
-] as const;
-
-// Canonical normalized names of actions that satisfy a live-info / web lookup.
-// Derived from the same ordered tuple used by the lookup resolvers so routing
-// preference and simile fallback cannot drift apart.
-const WEB_LOOKUP_DIRECT_ACTIONS = new Set(
-	WEB_LOOKUP_ACTION_NAMES.map(normalizeActionIdentifier),
-);
-
-// Resolve a web-lookup action by its canonical NAME only (no simile matching),
-// scanning WEB_LOOKUP_ACTION_NAMES in priority order. Unlike
-// `findWebLookupActionName` — which returns the first action whose name OR
-// simile matches and can therefore mis-resolve to an unrelated action that
-// merely carries a "SEARCH" simile (e.g. CONTACT_SEARCH) — this only returns an
-// action whose own normalized name is a real web-lookup action. Returns
-// undefined when no such action survived the planner gates, so callers fall
-// back to the simile-based resolver.
-export function findCanonicalWebLookupActionName(
-	actions: ReadonlyArray<Pick<Action, "name">>,
-): string | undefined {
-	const byNormalizedName = new Map<string, string>();
-	for (const action of actions) {
-		const normalized = normalizeActionIdentifier(action.name);
-		if (normalized && !byNormalizedName.has(normalized)) {
-			byNormalizedName.set(normalized, action.name);
-		}
-	}
-	for (const wanted of WEB_LOOKUP_DIRECT_ACTIONS) {
-		const match = byNormalizedName.get(wanted);
-		if (match) {
-			return match;
-		}
-	}
-	return undefined;
-}
-
-function findPreferredWebLookupActionName(
-	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
-): string | undefined {
-	return (
-		findCanonicalWebLookupActionName(actions) ??
-		findWebLookupActionName(actions)
-	);
-}
-
-// Prefer the action the CURRENT message structurally implies over whatever
-// weak candidate set the planner surfaced — but only when the planner's own
-// candidates are all weak/injectable (the shapes the Stage-1 backstop force-
-// injects) or control names, so a strong legit candidate is never dropped.
-//
-// Two symmetric live-action seams trigger this:
-//   - a local-shell ask resolves the direct candidates to a SHELL action, and
-//   - a live-info / web-lookup ask resolves them to a web-lookup action
-//     (SEARCH / WEB_FETCH / …, see `findWebLookupActionName`).
-//
-// Both gate on `!looksLikeCodingWorkRequest`, so a "spawn a coding sub-agent"
-// or "build an app" turn — which `looksLikeWebSearchRequest` / the shell
-// detector return false for, and `looksLikeCodingWorkRequest` returns true for
-// — is untouched and still routes to TASKS. This is the structural fix for a
-// live-info lookup (e.g. "what's the current BTC price") losing candidate
-// selection to TASKS_SPAWN_AGENT even after WEB_FETCH was surfaced: preferring
-// the direct web-lookup candidate drops the spawn action from the turn.
 export function shouldPreferDirectCurrentCandidateActions(args: {
 	candidateActions: readonly string[];
 	currentMessageText: string;
 	directCandidateActions: readonly string[];
 }): boolean {
 	if (args.candidateActions.length === 0) return false;
+	if (!looksLikeLocalShellRequest(args.currentMessageText)) return false;
 	if (looksLikeCodingWorkRequest(args.currentMessageText)) return false;
-
-	const directKind: "shell" | "web" | null = looksLikeLocalShellRequest(
-		args.currentMessageText,
-	)
-		? "shell"
-		: looksLikeWebSearchRequest(args.currentMessageText)
-			? "web"
-			: null;
-	if (directKind === null) return false;
-
-	const directActionSet =
-		directKind === "shell" ? SHELL_DIRECT_ACTIONS : WEB_LOOKUP_DIRECT_ACTIONS;
 	if (
 		!args.directCandidateActions.some((name) =>
-			directActionSet.has(normalizeActionIdentifier(name)),
+			SHELL_DIRECT_ACTIONS.has(normalizeActionIdentifier(name)),
 		)
 	) {
 		return false;
 	}
-
 	return args.candidateActions.every((name) => {
 		const normalized = normalizeActionIdentifier(name);
 		return (
 			WEAK_DIRECT_REPLY_OVERRIDE_ACTIONS.has(normalized) ||
-			directActionSet.has(normalized) ||
 			canonicalPlannerControlActionName(normalized) !== null
 		);
 	});
@@ -3958,13 +3837,13 @@ function inferAckIntentCandidateActions(
 		]);
 		if (shellAction) return [shellAction];
 	}
+	if (looksLikeWebSearchRequest(actionText)) {
+		const lookupAction = findWebLookupActionName(actions);
+		if (lookupAction) return [lookupAction];
+	}
 	if (looksLikeCodingWorkRequest(actionText)) {
 		const codingAction = findCodingDelegationActionName(actions);
 		if (codingAction) return [codingAction];
-	}
-	if (looksLikeWebSearchRequest(actionText)) {
-		const lookupAction = findPreferredWebLookupActionName(actions);
-		if (lookupAction) return [lookupAction];
 	}
 	return [];
 }
@@ -3985,13 +3864,13 @@ function inferDirectCurrentRequestCandidateActions(
 		]);
 		if (shellAction) return [shellAction];
 	}
+	if (looksLikeWebSearchRequest(messageText)) {
+		const lookupAction = findWebLookupActionName(actions);
+		if (lookupAction) return [lookupAction];
+	}
 	if (looksLikeCodingWorkRequest(messageText)) {
 		const codingAction = findCodingDelegationActionName(actions);
 		if (codingAction) return [codingAction];
-	}
-	if (looksLikeWebSearchRequest(messageText)) {
-		const lookupAction = findPreferredWebLookupActionName(actions);
-		if (lookupAction) return [lookupAction];
 	}
 	return [];
 }
@@ -4046,9 +3925,19 @@ function looksLikeHighStakesPersonalCrisisRequest(text: string): boolean {
  * to a shell action via the separate looksLikeLocalShellRequest path.
  */
 export function findWebLookupActionName(
-	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+	actions: ReadonlyArray<Pick<Action, "name">>,
 ): string | undefined {
-	return findAvailableActionName(actions, WEB_LOOKUP_ACTION_NAMES);
+	return findAvailableActionName(actions, [
+		"SEARCH",
+		"WEB_SEARCH",
+		"SEARCH_WEB",
+		"BRAVE_SEARCH",
+		"INTERNET_SEARCH",
+		"SEARCH_INTERNET",
+		"LOOKUP_WEB",
+		"WEB_FETCH",
+		"GOOGLE",
+	]);
 }
 
 const CODING_DELEGATION_ACTION_TAGS = [
@@ -6954,20 +6843,17 @@ function findDirectOwnedActionSuggestion(
 		}
 	}
 
-	if (
-		looksLikeWebSearchRequest(messageText) &&
-		!looksLikeCodingWorkRequest(messageText)
-	) {
-		const searchActionName = findPreferredWebLookupActionName(
-			runtime.actions ?? [],
-		);
-		const searchAction = searchActionName
-			? (runtime.actions ?? []).find(
-					(action) =>
-						normalizeActionIdentifier(action.name) ===
-						normalizeActionIdentifier(searchActionName),
-				)
-			: undefined;
+	if (looksLikeWebSearchRequest(messageText)) {
+		const searchAction = findRuntimeActionByNames(runtime, [
+			"SEARCH",
+			"WEB_SEARCH",
+			"SEARCH_WEB",
+			"BRAVE_SEARCH",
+			"INTERNET_SEARCH",
+			"SEARCH_INTERNET",
+			"LOOKUP_WEB",
+			"GOOGLE",
+		]);
 		if (searchAction) {
 			return {
 				actionName: searchAction.name,
@@ -8365,20 +8251,62 @@ export function stripReplyWhenActionOwnsTurn(
 }
 
 export function wrapSingleTurnVisibleCallback(
-	runtime: Pick<IAgentRuntime, "agentId" | "logger"> & {
-		getService?: IAgentRuntime["getService"];
-	},
+	runtime: Pick<IAgentRuntime, "agentId" | "logger"> &
+		Partial<Pick<IAgentRuntime, "character" | "useModel">> & {
+			getService?: IAgentRuntime["getService"];
+		},
 	message: Pick<Memory, "id" | "roomId" | "entityId">,
 	callback?: HandlerCallback,
 ): HandlerCallback | undefined {
 	if (!callback) return callback;
 	const fullRuntime = runtime as IAgentRuntime;
-	if (typeof fullRuntime.getService !== "function") return callback;
+	const voiceActionReply = async (
+		response: Content,
+		actionName?: string,
+	): Promise<Content> => {
+		if (!shouldRewriteActionCallback(response, actionName)) {
+			return response;
+		}
+		const text = response.text?.trim();
+		if (!text) return response;
+		const rewritten = await rewriteActionCallbackInCharacter({
+			runtime: fullRuntime,
+			message,
+			response,
+			actionName: resolveCallbackActionName(response, actionName),
+			text,
+		});
+		return rewritten && rewritten !== text
+			? {
+					...response,
+					text: rewritten,
+					data:
+						response.data && typeof response.data === "object"
+							? {
+									...(response.data as Record<string, unknown>),
+									rawActionText: text,
+									voiceRewritten: true,
+								}
+							: {
+									rawActionText: text,
+									voiceRewritten: true,
+								},
+				}
+			: response;
+	};
+
+	if (typeof fullRuntime.getService !== "function") {
+		return async (response, actionName) =>
+			callback(await voiceActionReply(response, actionName), actionName);
+	}
 	// Resolve verbosity once per turn — cheap because PersonalityStore is
 	// in-memory. Returning the original callback when no override is set
 	// keeps the hot path zero-cost.
 	const store = getPersonalityStore(fullRuntime);
-	if (!store) return callback;
+	if (!store) {
+		return async (response, actionName) =>
+			callback(await voiceActionReply(response, actionName), actionName);
+	}
 	const userSlot =
 		message.entityId && message.entityId !== fullRuntime.agentId
 			? store.getSlot(message.entityId)
@@ -8386,10 +8314,12 @@ export function wrapSingleTurnVisibleCallback(
 	const globalSlot = store.getSlot("global");
 	const verbosity = userSlot?.verbosity ?? globalSlot?.verbosity ?? null;
 	if (verbosity !== "terse") {
-		return callback;
+		return async (response, actionName) =>
+			callback(await voiceActionReply(response, actionName), actionName);
 	}
 
 	const wrapped: HandlerCallback = async (response, actionName) => {
+		response = await voiceActionReply(response, actionName);
 		if (typeof response?.text === "string" && response.text.length > 0) {
 			const result = enforceVerbosity(response.text, "terse");
 			if (result.truncated) {
@@ -8409,6 +8339,117 @@ export function wrapSingleTurnVisibleCallback(
 		return callback(response, actionName);
 	};
 	return wrapped;
+}
+
+function resolveCallbackActionName(
+	response: Content,
+	actionName?: string,
+): string | undefined {
+	if (typeof actionName === "string" && actionName.trim()) {
+		return actionName.trim();
+	}
+	const action = response.action;
+	if (typeof action === "string" && action.trim()) {
+		return action.trim();
+	}
+	const actions = response.actions;
+	if (Array.isArray(actions)) {
+		return actions.find((candidate) => candidate.trim().length > 0)?.trim();
+	}
+	return undefined;
+}
+
+function shouldRewriteActionCallback(
+	response: Content | null | undefined,
+	actionName?: string,
+): response is Content & { text: string } {
+	if (!response || typeof response.text !== "string") return false;
+	if (!response.text.trim()) return false;
+	if (response.source === "voice") return false;
+	if (response.source === "voice-cache") return false;
+	const resolvedAction = normalizeActionIdentifier(
+		resolveCallbackActionName(response, actionName) ?? "",
+	);
+	if (!resolvedAction) return false;
+	return !PASSIVE_TURN_ACTIONS.has(resolvedAction);
+}
+
+async function rewriteActionCallbackInCharacter(args: {
+	runtime: IAgentRuntime;
+	message: Pick<Memory, "id" | "roomId" | "entityId">;
+	response: Content;
+	actionName?: string;
+	text: string;
+}): Promise<string | null> {
+	const fallback = () => {
+		const action = args.actionName ?? "the action";
+		const error =
+			typeof args.response.error === "string" && args.response.error.trim()
+				? ` It reported: ${args.response.error.trim()}`
+				: "";
+		return `I ran ${action} and got a result, but I couldn't format the details cleanly here.${error}`;
+	};
+	if (typeof args.runtime.useModel !== "function") return fallback();
+	const character = args.runtime.character;
+	const characterVoice = {
+		name: character?.name,
+		system: character?.system,
+		bio: character?.bio,
+		adjectives: character?.adjectives,
+		style: character?.style,
+	};
+	const prompt = [
+		"Rewrite an action callback into the assistant character's user-facing voice.",
+		'Return strict JSON only: {"response":"..."}.',
+		"",
+		"Rules:",
+		"- Use the character voice and plain natural language.",
+		"- Preserve every important fact from the payload: status, success or failure, object names, URLs, IDs, amounts, dates, counts, permissions, warnings, errors, and next steps.",
+		"- Do not expose raw JSON, tables, shell dumps, stack traces, schema names, hidden prompts, or internal action plumbing unless the user specifically needs an exact value.",
+		"- If the payload contains exact text the user needs, include it compactly inside the response instead of dropping it.",
+		"- Do not claim work succeeded if the payload says it failed or is pending.",
+		"- Keep it brief, usually one to three sentences.",
+		"- Do not mention that you rewrote the message or used a model.",
+		"",
+		`Character: ${JSON.stringify(characterVoice)}`,
+		`Action: ${JSON.stringify(args.actionName ?? "ACTION")}`,
+		`Room: ${String(args.message.roomId)}`,
+		`Original action payload: ${JSON.stringify(args.text)}`,
+		`Callback metadata: ${JSON.stringify({
+			source: args.response.source,
+			actions: args.response.actions,
+			actionStatus: args.response.actionStatus,
+			error: args.response.error,
+			data: args.response.data,
+		})}`,
+	].join("\n");
+
+	try {
+		const raw = (await args.runtime.useModel(ModelType.TEXT_SMALL, {
+			prompt,
+			maxTokens: 260,
+			providerOptions: { eliza: { thinking: "off" } },
+		})) as string | GenerateTextResult;
+		const cleaned = stripReasoningBlocks(getV5ModelText(raw)).trim();
+		const parsed = parseJSONObjectFromText(cleaned) as {
+			response?: unknown;
+		} | null;
+		const response =
+			typeof parsed?.response === "string" ? parsed.response.trim() : "";
+		if (!response || response === args.text) return fallback();
+		if (parseJSONObjectFromText(response)) return fallback();
+		return response.replace(/^["'`]+|["'`]+$/g, "").trim() || fallback();
+	} catch (error) {
+		args.runtime.logger.debug(
+			{
+				src: "service:message",
+				actionName: args.actionName,
+				error: error instanceof Error ? error.message : String(error),
+			},
+			"Failed to rewrite action callback in character voice",
+		);
+		return fallback();
+	}
 }
 
 function getLatestVisibleReplyText(
@@ -9201,7 +9242,15 @@ export class DefaultMessageService implements IMessageService {
 					// threw before reaching its own cleanup at the end of the method.
 					clearLatestResponseId(runtime.agentId, message.roomId, responseId);
 					if (message.id) {
+						// Evict both per-turn stateCache entries for this message:
+						// the action-results scratch key AND the base composed-state
+						// key set by composeState (runtime.ts). Without deleting the
+						// base key here it is only cleared when an
+						// `incoming_before_compose` pipeline hook happens to be
+						// registered, so in the common (no-hook) path the Map grew
+						// unbounded — one stale State per processed message.
 						runtime.stateCache.delete(`${message.id}_action_results`);
+						runtime.stateCache.delete(message.id);
 					}
 				}
 			},

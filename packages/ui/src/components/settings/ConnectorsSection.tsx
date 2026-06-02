@@ -12,6 +12,7 @@
  * each with its own bespoke setup surface.
  */
 
+import { Puzzle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PluginInfo } from "../../api";
 import {
@@ -59,7 +60,7 @@ function ConnectorIcon({ plugin }: { plugin: PluginInfo }) {
   const Brand = getBrandIcon(plugin.id);
   if (Brand) return <Brand className="h-4 w-4" />;
   const icon = resolveIcon(plugin);
-  if (!icon) return <span className="text-sm">🧩</span>;
+  if (!icon) return <Puzzle className="h-4 w-4" aria-hidden />;
   if (typeof icon === "string") {
     const src = iconImageSource(icon);
     return src ? (
@@ -69,7 +70,7 @@ function ConnectorIcon({ plugin }: { plugin: PluginInfo }) {
         className="h-4 w-4 shrink-0 rounded-sm object-contain"
       />
     ) : (
-      <span className="text-sm">{icon}</span>
+      <Puzzle className="h-4 w-4" aria-hidden />
     );
   }
   const IconComponent = icon;
@@ -92,11 +93,9 @@ function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
       return <WhatsAppQrOverlay />;
     default:
       return (
-        <p className="text-xs-tight text-muted">
-          No inline setup available for {plugin.name}. Toggle the connector to
-          enable it; further configuration (if any) lives in the plugin's own
-          surface.
-        </p>
+        <div className="text-xs-tight text-muted">
+          {plugin.name} uses its own setup surface.
+        </div>
       );
   }
 }

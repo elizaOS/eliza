@@ -46,6 +46,13 @@ export interface ListGroupsOptions {
 
 export interface ConnectorTargetCatalog {
   listGroups(opts?: ListGroupsOptions): Promise<TargetGroup[]>;
+  /**
+   * No-op lifecycle hook so the runtime service-stop loop (core/runtime.ts)
+   * does not warn "Service instance is missing stop(); skipping" on every
+   * restart. The catalog holds no own resources — its Discord REST cache is
+   * owned by the shared `discordCache` passed in by the host.
+   */
+  stop(): Promise<void>;
 }
 
 /**
@@ -128,6 +135,9 @@ export function createElizaConnectorTargetCatalog(
       // back to a free-text input when no catalog entries are available.
 
       return all;
+    },
+    async stop(): Promise<void> {
+      // No own resources; the shared discordCache is host-owned.
     },
   };
 }

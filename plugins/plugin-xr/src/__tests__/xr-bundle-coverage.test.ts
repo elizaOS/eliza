@@ -39,6 +39,16 @@ function fileSize(relPath: string): number {
   return statSync(p).size;
 }
 
+function bundlePathFor(pluginDir: string): string {
+  return `${pluginDir}/dist/views/bundle.js`;
+}
+
+function missingBundlePaths(): string[] {
+  return PLUGIN_BUNDLES.map(({ pluginDir }) => bundlePathFor(pluginDir)).filter(
+    (bundlePath) => !fileExists(bundlePath),
+  );
+}
+
 // Parses viewType/id/componentExport/bundlePath from plugin source
 function extractXrViews(
   source: string,
@@ -209,11 +219,17 @@ describe("XR view bundle coverage — all 24 plugin bundles built and valid", ()
     ).toEqual([]);
   });
 
+  it("dist/views/bundle.js exists for every plugin with an XR view", () => {
+    expect(
+      missingBundlePaths(),
+      "plugins with missing XR view bundles (run each plugin's build:views)",
+    ).toEqual([]);
+  });
+
   it("built bundle.js files are non-empty (at least 1 KB of content)", () => {
     const tooSmall: string[] = [];
     for (const { pluginDir } of PLUGIN_BUNDLES) {
-      const bundlePath = `${pluginDir}/dist/views/bundle.js`;
-      if (!fileExists(bundlePath)) continue;
+      const bundlePath = bundlePathFor(pluginDir);
       const size = fileSize(bundlePath);
       if (size < 1024) {
         tooSmall.push(`${bundlePath}: ${size} bytes`);
@@ -225,8 +241,11 @@ describe("XR view bundle coverage — all 24 plugin bundles built and valid", ()
   it("every bundle.js starts with valid JavaScript (not HTML or JSON)", () => {
     const invalid: string[] = [];
     for (const { pluginDir } of PLUGIN_BUNDLES) {
-      const bundlePath = `${pluginDir}/dist/views/bundle.js`;
-      if (!fileExists(bundlePath)) continue;
+      const bundlePath = bundlePathFor(pluginDir);
+      if (!fileExists(bundlePath)) {
+        invalid.push(`${bundlePath}: missing`);
+        continue;
+      }
       const first = readFile(bundlePath).trimStart().slice(0, 20);
       if (first.startsWith("<") || first.startsWith("{")) {
         invalid.push(`${bundlePath}: starts with "${first}"`);
@@ -238,8 +257,11 @@ describe("XR view bundle coverage — all 24 plugin bundles built and valid", ()
   it("every bundle.js contains the componentExport declared in the plugin manifest", () => {
     const mismatches: string[] = [];
     for (const { pluginDir, manifestPath } of PLUGIN_BUNDLES) {
-      const bundlePath = `${pluginDir}/dist/views/bundle.js`;
-      if (!fileExists(bundlePath)) continue;
+      const bundlePath = bundlePathFor(pluginDir);
+      if (!fileExists(bundlePath)) {
+        mismatches.push(`${bundlePath}: missing`);
+        continue;
+      }
 
       const manifestSource = readFile(manifestPath);
       const xrViews = extractXrViews(manifestSource);

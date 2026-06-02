@@ -19,7 +19,11 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { type EvaluatorMode, runScenario } from "./evaluator.ts";
 import { buildReport, renderJson, renderMarkdown } from "./report.ts";
-import { loadScenarios } from "./scenarios.ts";
+import {
+  countInterruptBenchScenarios,
+  loadScenarios,
+  validateInterruptBenchScenarios,
+} from "./scenarios.ts";
 import type { Scenario, ScenarioResult } from "./types.ts";
 
 interface Args {
@@ -36,7 +40,8 @@ function parseArgs(argv: string[]): Args {
     if (a === "--mode=cerebras" || a === "--cerebras") args.mode = "cerebras";
     else if (a.startsWith("--mode=")) {
       const v = a.slice(7);
-      if (v === "scripted" || v === "cerebras" || v === "harness") args.mode = v;
+      if (v === "scripted" || v === "cerebras" || v === "harness")
+        args.mode = v;
       else throw new Error(`unknown --mode value: ${v}`);
     } else if (a.startsWith("--scenario="))
       args.scenarioFilter = a.slice("--scenario=".length);
@@ -61,6 +66,8 @@ Flags:
   --judge                             enable LLM-as-judge bonus (requires CEREBRAS_API_KEY)
   --model=<id>                        override Cerebras model (default: gpt-oss-120b)
   --out=<dir>                         write report.md and report.json to <dir>
+  --count-scenarios                   print scenario expansion counts
+  --validate-scenarios                validate expanded scenario structure
   --help                              show this help
 
 Environment:
@@ -68,7 +75,19 @@ Environment:
 `;
 
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (argv.includes("--count-scenarios")) {
+    console.log(JSON.stringify(countInterruptBenchScenarios(), null, 2));
+    return;
+  }
+  if (argv.includes("--validate-scenarios")) {
+    const validation = validateInterruptBenchScenarios();
+    console.log(JSON.stringify(validation, null, 2));
+    if (!validation.valid) process.exitCode = 1;
+    return;
+  }
+
+  const args = parseArgs(argv);
   const all = loadScenarios();
   const scenarios = args.scenarioFilter
     ? all.filter((s) => s.id === args.scenarioFilter)

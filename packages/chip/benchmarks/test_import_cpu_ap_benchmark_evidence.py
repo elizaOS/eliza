@@ -36,6 +36,12 @@ class ImportCpuApBenchmarkEvidenceTests(unittest.TestCase):
         self.assertFalse(report["phone_claim_allowed"])
         self.assertFalse(report["release_claim_allowed"])
         self.assertTrue(report["results"])
+        self.assertEqual(
+            report["artifacts"]["target_metadata_contract"],
+            "benchmarks/configs/target-metadata.contract.json",
+        )
+        self.assertRegex(report["artifacts"]["target_metadata_contract_sha256"], r"^[0-9a-f]{64}$")
+        self.assertGreater(report["artifacts"]["target_metadata_contract_bytes"], 0)
         self.assertTrue(
             all(
                 result["metrics"]["claim_boundary"] == self.importer.CLAIM_BOUNDARY
@@ -47,7 +53,9 @@ class ImportCpuApBenchmarkEvidenceTests(unittest.TestCase):
         report = self.importer.build_report(self.importer.DEFAULT_EVIDENCE)
         metadata = report["source_transcript_metadata"]
 
-        self.assertEqual(metadata["source_transcript"], "build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log")
+        self.assertEqual(
+            metadata["source_transcript"], "build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log"
+        )
         self.assertTrue(metadata["source_transcript_sha256"])
         self.assertNotIn("/home/", metadata["source_command"])
         self.assertEqual(

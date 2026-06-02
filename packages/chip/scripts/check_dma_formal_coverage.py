@@ -4,13 +4,19 @@
 from __future__ import annotations
 
 import json
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FORMAL_MANIFEST = ROOT / "build/reports/formal_manifest.json"
 REPORT = ROOT / "build/reports/dma_formal_coverage.json"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "full_dma_correctness_claim_allowed": False,
+    "coherent_dma_claim_allowed": False,
+    "linux_dmaengine_driver_claim_allowed": False,
+}
 
 REQUIRED_TARGETS = {
     "e1_dma": {
@@ -71,6 +77,7 @@ def write_report(status: str, errors: list[str], manifest: dict | None) -> None:
                 "full_dma_correctness_claim_allowed": False,
                 "coherent_dma_claim_allowed": False,
                 "linux_dmaengine_driver_claim_allowed": False,
+                "false_claim_flags": FALSE_CLAIM_FLAGS,
                 "claim_boundary": (
                     "Checks that the formal manifest contains passing DMA status/accounting "
                     "and AXI-Lite master protocol targets with expected SBY specs, covered "
@@ -98,12 +105,14 @@ def validate_target(name: str, entry: dict, expected: dict) -> list[str]:
     if entry.get("evidence_class") != expected["evidence_class"]:
         errors.append(f"{name} evidence_class must be {expected['evidence_class']}")
 
-    paths = entry.get("paths") if isinstance(entry.get("paths"), dict) else {}
+    _paths_raw = entry.get("paths")
+    paths: dict = _paths_raw if isinstance(_paths_raw, dict) else {}
     for key in ("status", "status_sha256", "log", "log_sha256"):
         if key not in paths:
             errors.append(f"{name} paths missing {key}")
 
-    sby = entry.get("sby") if isinstance(entry.get("sby"), dict) else {}
+    _sby_raw = entry.get("sby")
+    sby: dict = _sby_raw if isinstance(_sby_raw, dict) else {}
     if sby.get("spec") != expected["spec"]:
         errors.append(f"{name} spec must be {expected['spec']}")
     covered = set(sby.get("covered_files") or [])

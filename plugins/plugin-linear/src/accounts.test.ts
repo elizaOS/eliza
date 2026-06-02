@@ -1,6 +1,11 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { readLinearAccounts, resolveLinearAccount, resolveLinearAccountId } from "./accounts";
+import {
+  hasLinearAccountConfig,
+  readLinearAccounts,
+  resolveLinearAccount,
+  resolveLinearAccountId,
+} from "./accounts";
 
 function runtime(settings: Record<string, unknown>): IAgentRuntime {
   return {
@@ -42,6 +47,44 @@ describe("Linear account resolution", () => {
       role: "OWNER",
       apiKey: "work-key",
     });
+  });
+
+  it("ignores malformed account records and nested non-string credentials", () => {
+    const rt = {
+      character: {
+        settings: {
+          linear: {
+            accounts: {
+              empty: { apiKey: "   " },
+              nested: {
+                credentials: { accessToken: " nested-key " },
+                settings: { defaultTeamKey: " ENG " },
+                metadata: { workspaceId: " workspace " },
+              },
+              invalid: null,
+            },
+          },
+        },
+      },
+      getSetting: vi.fn((key: string) =>
+        key === "LINEAR_ACCOUNTS"
+          ? JSON.stringify([{ id: "json-account", credentials: { token: 123 } }, false])
+          : undefined
+      ),
+    } as unknown as IAgentRuntime;
+
+    expect(readLinearAccounts(rt)).toEqual([
+      {
+        accountId: "nested",
+        role: "OWNER",
+        apiKey: "nested-key",
+        workspaceId: "workspace",
+        defaultTeamKey: "ENG",
+        label: undefined,
+      },
+    ]);
+    expect(hasLinearAccountConfig(rt, { accountId: "empty" })).toBe(false);
+    expect(hasLinearAccountConfig(rt, { accountId: "nested" })).toBe(true);
   });
 
   it("defaults to the first configured account only when no accountId is requested", () => {

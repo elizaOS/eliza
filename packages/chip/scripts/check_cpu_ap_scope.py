@@ -79,6 +79,11 @@ REQUIRED_PHONE_BLOCKERS = {
     "process_14a_corner_benchmark_derate_evidence",
     "android_cts_vts_and_userspace_evidence",
 }
+SUMMARY_CLAIM_FLAG_KEYS = (
+    "generated_ap_scope_claim_allowed",
+    "phone_2028_ap_claim_allowed",
+    "release_claim_allowed",
+)
 
 
 def utc_now() -> str:
@@ -420,6 +425,21 @@ def build_report() -> dict[str, Any]:
         for spec in transcript_specs(manifest).values()
         if isinstance(spec.get("path"), str)
     ]
+    summary = {
+        "check_count": len(checks),
+        "passing_check_count": len([check for check in checks if check["status"] == "pass"]),
+        "missing_transcript_count": len(evidence["missing_transcripts"]),
+        "invalid_transcript_problem_count": len(evidence["invalid_transcript_problems"]),
+        "generated_manifest_present": GENERATED_MANIFEST.is_file(),
+        "completion_claimed": completion_gate_passes,
+        "platform_contract_cpu_claimed": check_cpu_ap_completion_gate.completion_claimed(),
+        "generated_ap_scope_claim_allowed": status == "pass",
+        "phone_2028_ap_claim_allowed": False,
+        "release_claim_allowed": False,
+    }
+    summary["false_claim_flags"] = {
+        key: False for key in SUMMARY_CLAIM_FLAG_KEYS if summary.get(key) is False
+    }
     return {
         "schema": "eliza.cpu_ap_scope.v1",
         "status": status,
@@ -459,18 +479,7 @@ def build_report() -> dict[str, Any]:
             "Android userspace/CTS/VTS evidence proves the generated AP path is sufficient for Android-class software, not just Linux smoke",
             "reviewer approval that single-hart Rocket remains Linux bring-up only and is not promoted to a 2028 phone-class AP",
         ],
-        "summary": {
-            "check_count": len(checks),
-            "passing_check_count": len([check for check in checks if check["status"] == "pass"]),
-            "missing_transcript_count": len(evidence["missing_transcripts"]),
-            "invalid_transcript_problem_count": len(evidence["invalid_transcript_problems"]),
-            "generated_manifest_present": GENERATED_MANIFEST.is_file(),
-            "completion_claimed": completion_gate_passes,
-            "platform_contract_cpu_claimed": check_cpu_ap_completion_gate.completion_claimed(),
-            "generated_ap_scope_claim_allowed": status == "pass",
-            "phone_2028_ap_claim_allowed": False,
-            "release_claim_allowed": False,
-        },
+        "summary": summary,
         "checks": checks,
     }
 
@@ -509,8 +518,18 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         "phone_2028_ap_claim_allowed must stay false",
         errors,
     )
+    expected_false_claim_flags = {
+        key: False for key in SUMMARY_CLAIM_FLAG_KEYS if summary.get(key) is False
+    }
+    require(
+        summary.get("false_claim_flags") == expected_false_claim_flags,
+        "summary.false_claim_flags must match denied CPU/AP scope claims",
+        errors,
+    )
     if data.get("status") == "pass":
-        require(summary.get("completion_claimed") is True, "completion_claimed must be true", errors)
+        require(
+            summary.get("completion_claimed") is True, "completion_claimed must be true", errors
+        )
         require(
             summary.get("generated_ap_scope_claim_allowed") is True,
             "generated_ap_scope_claim_allowed must be true",
@@ -604,9 +623,7 @@ def main() -> int:
             print(f"FAIL: {error}", file=sys.stderr)
         return 1
     if report["status"] == "pass":
-        print(
-            f"CPU/AP scope check passed: {rel(OUT)} allows generated AP bring-up scope only."
-        )
+        print(f"CPU/AP scope check passed: {rel(OUT)} allows generated AP bring-up scope only.")
     else:
         print(f"CPU/AP scope check passed: {rel(OUT)} remains release-blocked.")
     return 0

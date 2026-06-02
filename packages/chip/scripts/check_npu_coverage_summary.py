@@ -4,12 +4,12 @@
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
 import hashlib
 import importlib.util
 import json
 import sys
 import xml.etree.ElementTree as ET
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,9 +21,7 @@ DEFAULT_COCOTB_RESULTS = ROOT / "verify/cocotb/results/e1_npu_test_e1_npu.xml"
 DEFAULT_OUT = ROOT / "build/reports/npu_coverage_summary.json"
 
 REQUIRED_DIRECTED_TESTS: dict[str, tuple[str, ...]] = {
-    "opcode_runtime_contract": (
-        "npu_runtime_abi_sequence_matches_rtl_and_writes_coverage",
-    ),
+    "opcode_runtime_contract": ("npu_runtime_abi_sequence_matches_rtl_and_writes_coverage",),
     "invalid_programming": (
         "npu_gemm_invalid_config_reports_error_without_touching_scratch",
         "npu_descriptor_timeout_engine_faults_stalled_memory_fetch",
@@ -82,6 +80,18 @@ RAW_FALSE_CLAIM_FLAGS = (
     "thermal_claim_allowed",
     "dma_backed_tensor_execution_claim_allowed",
 )
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_accelerator_claim_allowed": False,
+    "nnapi_claim_allowed": False,
+    "performance_claim_allowed": False,
+    "android_driver_claim_allowed": False,
+    "power_claim_allowed": False,
+    "thermal_claim_allowed": False,
+    "dma_backed_tensor_execution_claim_allowed": False,
+    "hardware_benchmark_claim_allowed": False,
+}
 
 
 def utc_now() -> str:
@@ -148,9 +158,7 @@ def fallback_test_sources() -> dict[str, bool]:
     return sources
 
 
-def build_summary(
-    cocotb_path: Path, results_path: Path = DEFAULT_COCOTB_RESULTS
-) -> dict[str, Any]:
+def build_summary(cocotb_path: Path, results_path: Path = DEFAULT_COCOTB_RESULTS) -> dict[str, Any]:
     runtime_cls = load_runtime_class()
     contract = load_json(CONTRACT)
     cocotb = load_json(cocotb_path)
@@ -179,6 +187,12 @@ def build_summary(
         "production_accelerator_claim_allowed": False,
         "nnapi_claim_allowed": False,
         "performance_claim_allowed": False,
+        "android_driver_claim_allowed": False,
+        "power_claim_allowed": False,
+        "thermal_claim_allowed": False,
+        "dma_backed_tensor_execution_claim_allowed": False,
+        "hardware_benchmark_claim_allowed": False,
+        "false_claim_flags": dict(FALSE_CLAIM_FLAGS),
         "artifacts": {
             "cocotb_coverage": artifact(cocotb_path),
             "cocotb_results": artifact(results_path),
@@ -194,9 +208,7 @@ def build_summary(
         },
         "precision_modes": runtime.precision_matrix(),
         "descriptor_fail_closed_paths": cocotb.get("descriptor_queue", {}),
-        "raw_cocotb_claim_flags": {
-            claim: cocotb.get(claim) for claim in RAW_FALSE_CLAIM_FLAGS
-        },
+        "raw_cocotb_claim_flags": {claim: cocotb.get(claim) for claim in RAW_FALSE_CLAIM_FLAGS},
         "counters": {
             "required": [
                 "unsupported_ops",
@@ -246,9 +258,18 @@ def validate_summary(summary: dict[str, Any]) -> list[str]:
         "production_accelerator_claim_allowed",
         "nnapi_claim_allowed",
         "performance_claim_allowed",
+        "android_driver_claim_allowed",
+        "power_claim_allowed",
+        "thermal_claim_allowed",
+        "dma_backed_tensor_execution_claim_allowed",
+        "hardware_benchmark_claim_allowed",
     ):
         if summary.get(claim) is not False:
             errors.append(f"{claim} must be false")
+
+    false_flags = summary.get("false_claim_flags", {})
+    if false_flags != FALSE_CLAIM_FLAGS:
+        errors.append("false_claim_flags must match the NPU coverage non-claim map")
 
     boundary = summary.get("claim_boundary", {})
     for claim in (

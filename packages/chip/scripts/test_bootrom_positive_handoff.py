@@ -47,6 +47,7 @@ class BootromPositiveHandoffTests(unittest.TestCase):
         self.assertEqual(report["blocker_id"], gate.BLOCKER_ID)
         self.assertEqual(report["evidence_paths"], [])
         for key in (
+            "claim_allowed",
             "phone_claim_allowed",
             "release_claim_allowed",
             "linux_boot_claim_allowed",
@@ -55,14 +56,30 @@ class BootromPositiveHandoffTests(unittest.TestCase):
         ):
             self.assertIs(report.get(key), False)
         self.assertEqual(
+            {key for key, value in report["false_claim_flags"].items() if value is False},
+            set(report["false_claim_flags"]),
+        )
+        self.assertEqual(
             {check["status"] for check in report["checks"]},
             {"blocked"},
+        )
+        self.assertEqual(report["capture_preflight"]["status"], "blocked")
+        self.assertFalse(report["capture_preflight"]["command_configured"])
+        self.assertEqual(report["summary"]["next_command_batch_count"], 1)
+        self.assertEqual(
+            report["next_command_plan"][0]["id"], "capture_bootrom_positive_handoff"
+        )
+        self.assertIn(
+            "ELIZA_BOOTROM_POSITIVE_HANDOFF_CMD",
+            " ".join(report["next_command_plan"][0]["commands"]),
         )
 
     def test_missing_marker_blocks_even_with_transcript(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir, PatchStack(self._patch_paths(Path(tmpdir))):
             gate.TRANSCRIPT.parent.mkdir(parents=True, exist_ok=True)
             gate.TRANSCRIPT.write_text(
+                "## claim_boundary: provisioned_test_root_signed_image_simulator_only_not_silicon_attestation\n"
+                "## command_exit_code: 0\n"
                 "reset-vector-fetch <_start>\n"
                 "<e1_secure_boot_main>\n"
                 "authenticated-image-verified\n",
@@ -73,17 +90,24 @@ class BootromPositiveHandoffTests(unittest.TestCase):
 
         self.assertEqual(rc, 1)
         self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["capture_preflight"]["status"], "blocked")
+        self.assertEqual(report["summary"]["next_command_batch_count"], 1)
+        self.assertTrue(report["next_command_plan"])
         failed = {check["id"] for check in report["checks"] if check["status"] != "pass"}
         self.assertEqual(
             failed,
             {"handoff_target_loaded_from_manifest", "opensbi_entry_reached"},
         )
-        self.assertEqual(report["evidence_paths"], [gate.TRANSCRIPT.relative_to(gate.CHIP_ROOT).as_posix()])
+        self.assertEqual(
+            report["evidence_paths"], [gate.TRANSCRIPT.relative_to(gate.CHIP_ROOT).as_posix()]
+        )
 
     def test_complete_transcript_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir, PatchStack(self._patch_paths(Path(tmpdir))):
             gate.TRANSCRIPT.parent.mkdir(parents=True, exist_ok=True)
             gate.TRANSCRIPT.write_text(
+                "## claim_boundary: provisioned_test_root_signed_image_simulator_only_not_silicon_attestation\n"
+                "## command_exit_code: 0\n"
                 "reset-vector-fetch <_start>\n"
                 "<e1_secure_boot_main>\n"
                 "authenticated-image-verified\n"
@@ -98,6 +122,7 @@ class BootromPositiveHandoffTests(unittest.TestCase):
         self.assertEqual(report["status"], "PASS")
         self.assertIsNone(report["blocker_id"])
         for key in (
+            "claim_allowed",
             "phone_claim_allowed",
             "release_claim_allowed",
             "linux_boot_claim_allowed",
@@ -108,6 +133,33 @@ class BootromPositiveHandoffTests(unittest.TestCase):
         self.assertEqual(
             {check["status"] for check in report["checks"]},
             {"pass"},
+        )
+        self.assertEqual(
+            {key for key, value in report["false_claim_flags"].items() if value is False},
+            set(report["false_claim_flags"]),
+        )
+        self.assertEqual(report["summary"]["next_command_batch_count"], 0)
+        self.assertEqual(report["next_command_plan"], [])
+
+    def test_marker_only_transcript_without_capture_provenance_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir, PatchStack(self._patch_paths(Path(tmpdir))):
+            gate.TRANSCRIPT.parent.mkdir(parents=True, exist_ok=True)
+            gate.TRANSCRIPT.write_text(
+                "reset-vector-fetch <_start>\n"
+                "<e1_secure_boot_main>\n"
+                "authenticated-image-verified\n"
+                "handoff-target-loaded-from-manifest 0x80200000\n"
+                "OpenSBI entry reached\n",
+                encoding="utf-8",
+            )
+            rc = gate.main()
+            report = json.loads(gate.REPORT_PATH.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 1)
+        failed = {check["id"] for check in report["checks"] if check["status"] != "pass"}
+        self.assertEqual(
+            failed,
+            {"capture_claim_boundary_recorded", "capture_command_exit_zero"},
         )
 
     def test_capture_wrapper_blocks_without_real_command(self) -> None:
@@ -131,10 +183,14 @@ class BootromPositiveHandoffTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-            self.assertIn("STATUS: BLOCKED bootrom.positive_handoff_capture_preflight", result.stdout)
+            self.assertIn(
+                "STATUS: BLOCKED bootrom.positive_handoff_capture_preflight", result.stdout
+            )
             payload = json.loads(report.read_text(encoding="utf-8"))
             self.assertEqual(payload["status"], "BLOCKED")
             self.assertEqual(payload["evidence_paths"], [])
+            self.assertEqual(payload["capture_preflight"]["status"], "blocked")
+            self.assertTrue(payload["next_command_plan"])
 
     def test_capture_wrapper_validates_emitted_markers(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -169,6 +225,7 @@ class BootromPositiveHandoffTests(unittest.TestCase):
             payload = json.loads(report.read_text(encoding="utf-8"))
             self.assertEqual(payload["status"], "PASS")
             self.assertEqual({check["status"] for check in payload["checks"]}, {"pass"})
+            self.assertEqual(payload["next_command_plan"], [])
 
 
 class PatchStack:

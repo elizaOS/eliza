@@ -6,6 +6,7 @@ import {
   getCoTBudget,
   getLargeModel,
   getSmallModel,
+  getThinkingConfig,
 } from "../utils/config";
 
 type Settings = Record<string, string | undefined>;
@@ -19,9 +20,14 @@ function runtimeWith(settings: Settings): IAgentRuntime {
 }
 
 const originalEnv = { ...process.env };
+const originalDocument = globalThis.document;
 
 afterEach(() => {
   process.env = { ...originalEnv };
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: originalDocument,
+  });
 });
 
 describe("z.ai config", () => {
@@ -41,6 +47,15 @@ describe("z.ai config", () => {
     const runtime = runtimeWith({ ZAI_API_KEY: "canonical-key", Z_AI_API_KEY: "legacy-key" });
 
     expect(getApiKeyOptional(runtime)).toBe("canonical-key");
+  });
+
+  it("falls back to environment values when runtime settings are empty", () => {
+    process.env.ZAI_API_KEY = "env-key";
+    process.env.ZAI_BASE_URL = "https://env.example.test/";
+    const runtime = runtimeWith({ ZAI_API_KEY: "", ZAI_BASE_URL: "" });
+
+    expect(getApiKeyOptional(runtime)).toBe("env-key");
+    expect(getBaseURL(runtime)).toBe("https://env.example.test");
   });
 
   it("uses z.ai endpoint and model defaults", () => {
@@ -69,6 +84,19 @@ describe("z.ai config", () => {
     expect(() => getBaseURL(runtime)).toThrow("Anthropic-compatible");
   });
 
+  it("prefers the browser proxy base URL in browser runtimes", () => {
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: {},
+    });
+    const runtime = runtimeWith({
+      ZAI_BASE_URL: "https://api.z.ai/api/coding/paas/v4",
+      ZAI_BROWSER_BASE_URL: "https://proxy.example.test/zai///",
+    });
+
+    expect(getBaseURL(runtime)).toBe("https://proxy.example.test/zai");
+  });
+
   it("uses specific chain-of-thought budgets before the shared budget", () => {
     const runtime = runtimeWith({
       ZAI_COT_BUDGET: "1000",
@@ -85,5 +113,18 @@ describe("z.ai config", () => {
 
     expect(getCoTBudget(runtime, "small")).toBe(0);
     expect(getCoTBudget(runtime, "large")).toBe(0);
+  });
+
+  it("rejects partially numeric chain-of-thought budgets", () => {
+    const runtime = runtimeWith({ ZAI_COT_BUDGET: "2048abc" });
+
+    expect(getCoTBudget(runtime, "small")).toBe(0);
+    expect(getThinkingConfig(runtime, "small")).toBeNull();
+  });
+
+  it("lets explicit thinking mode override deprecated budgets", () => {
+    const runtime = runtimeWith({ ZAI_THINKING_TYPE: " DISABLED ", ZAI_COT_BUDGET: "2048" });
+
+    expect(getThinkingConfig(runtime, "large")).toEqual({ type: "disabled" });
   });
 });

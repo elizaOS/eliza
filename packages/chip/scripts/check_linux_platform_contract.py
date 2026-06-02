@@ -251,7 +251,9 @@ def check_handoffs(errors: list[str]) -> None:
         errors.append(f"{LINUX_GATE.relative_to(ROOT)} must be a YAML mapping")
         return
     for key in REQUIRED_LINUX_GATE_FALSE_CLAIM_FLAGS:
-        require(gate.get(key) is False, f"{LINUX_GATE.relative_to(ROOT)} {key} must be false", errors)
+        require(
+            gate.get(key) is False, f"{LINUX_GATE.relative_to(ROOT)} {key} must be false", errors
+        )
 
 
 def main() -> int:

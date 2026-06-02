@@ -68,6 +68,63 @@ def _physical_side_gate_key(row: dict[str, Any]) -> tuple[float, float, float, f
     )
 
 
+def _raw_distance_key(row: dict[str, Any]) -> tuple[float, float, float, float]:
+    dx = max(
+        float(row.get("max_delta_x_m") or 0.0),
+        float(row.get("final_delta_x_m") or 0.0),
+        float(row.get("post_goal_failure_max_delta_x_m") or 0.0),
+    )
+    yaw = abs(float(row.get("max_abs_delta_yaw_rad") or 0.0))
+    slip = float(row.get("max_foot_slip_m_s") or 0.0)
+    collision = float(row.get("max_self_collision_count") or 0.0)
+    return (dx, -yaw, -slip, -collision)
+
+
+def _candidate_entries_from_search_report(
+    path: Path,
+    *,
+    section: str,
+    selector: str,
+    top_k: int = 1,
+    rank: str = "physical-gates",
+) -> list[tuple[str, dict[str, Any]]]:
+    if top_k <= 1:
+        return [
+            _candidate_from_search_report(
+                path,
+                section=section,
+                selector=selector,
+            )
+        ]
+    report = json.loads(path.read_text(encoding="utf-8"))
+    section_report = report.get(section)
+    if not isinstance(section_report, dict):
+        raise ValueError(f"search report has no section {section!r}")
+    candidates = section_report.get("candidates")
+    if not isinstance(candidates, list):
+        raise ValueError(
+            f"search report section {section!r} has no candidates list for top-k sweep"
+        )
+    rows = [row for row in candidates if isinstance(row, dict)]
+    if rank == "success-window":
+        rows = sorted(rows, key=_rank_key, reverse=True)
+    elif rank == "physical-gates":
+        rows = sorted(rows, key=_physical_side_gate_key, reverse=True)
+    else:
+        raise ValueError("rank must be one of: physical-gates, success-window")
+    entries = []
+    for row in rows[:top_k]:
+        params = row.get("controller_params")
+        if not isinstance(params, dict):
+            continue
+        entries.append((str(row.get("controller") or f"{section}_candidate"), params))
+    if not entries:
+        raise ValueError(
+            f"search report section {section!r} has no top-k candidates with controller_params"
+        )
+    return entries
+
+
 def _variants(
     base: dict[str, Any],
     *,
@@ -292,15 +349,19 @@ def sweep(
     search_report: Path,
     search_section: str,
     search_selector: str,
+    top_k: int,
+    top_k_rank: str,
     max_steps: int,
     variant_mode: str,
     continue_after_goal_failure: bool,
     out_dir: Path,
 ) -> dict[str, Any]:
-    controller, base_params = _candidate_from_search_report(
+    candidate_entries = _candidate_entries_from_search_report(
         search_report,
         section=search_section,
         selector=search_selector,
+        top_k=top_k,
+        rank=top_k_rank,
     )
     env = TextConditionedProfileEnv(
         "hiwonder-ainex",
@@ -312,25 +373,30 @@ def sweep(
         ),
     )
     rows = []
-    for name, params in _variants(base_params, mode=variant_mode):
-        rows.append(
-            _rollout_candidate(
-                env,
-                name=name,
-                params=params,
-                max_steps=max_steps,
-                continue_after_goal_failure=continue_after_goal_failure,
+    for controller, base_params in candidate_entries:
+        for name, params in _variants(base_params, mode=variant_mode):
+            rows.append(
+                _rollout_candidate(
+                    env,
+                    name=f"{controller}__{name}",
+                    params=params,
+                    max_steps=max_steps,
+                    continue_after_goal_failure=continue_after_goal_failure,
+                )
             )
-        )
     ranked = sorted(rows, key=_rank_key, reverse=True)
     side_gate_ranked = sorted(rows, key=_physical_side_gate_key, reverse=True)
+    raw_distance_ranked = sorted(rows, key=_raw_distance_key, reverse=True)
     best = ranked[0] if ranked else None
     report = {
         "schema": "hiwonder-near-gait-hold-sweep-v1",
         "source_report": str(search_report),
         "source_section": search_section,
         "source_selector": search_selector,
-        "source_controller": controller,
+        "top_k": top_k,
+        "top_k_rank": top_k_rank,
+        "source_controllers": [controller for controller, _params in candidate_entries],
+        "source_controller": candidate_entries[0][0],
         "max_steps": max_steps,
         "variant_mode": variant_mode,
         "continue_after_goal_failure": continue_after_goal_failure,
@@ -338,8 +404,10 @@ def sweep(
         "any_success": any(bool(row.get("success")) for row in rows),
         "best": best,
         "best_by_physical_side_gates": side_gate_ranked[0] if side_gate_ranked else None,
+        "best_by_raw_distance": raw_distance_ranked[0] if raw_distance_ranked else None,
         "top_20": ranked[:20],
         "top_20_by_physical_side_gates": side_gate_ranked[:20],
+        "top_20_by_raw_distance": raw_distance_ranked[:20],
     }
     out_dir.mkdir(parents=True, exist_ok=True)
     json_path = out_dir / "hiwonder_near_gait_hold_sweep.json"
@@ -348,7 +416,10 @@ def sweep(
     lines = [
         "# HiWonder Near-gait Hold Sweep",
         "",
-        f"Source controller: `{controller}`",
+        f"Source controller: `{candidate_entries[0][0]}`",
+        f"Source controllers: `{', '.join(controller for controller, _params in candidate_entries)}`",
+        f"Top-k: `{top_k}`",
+        f"Top-k rank: `{top_k_rank}`",
         f"Variants: `{len(rows)}`",
         f"Any success: `{report['any_success']}`",
     ]
@@ -361,6 +432,17 @@ def sweep(
                 f"Best max yaw rad: `{best.get('max_abs_delta_yaw_rad')}`",
                 f"Best success window s: `{best.get('max_success_window_s')}`",
                 f"Best unmet predicates: `{', '.join(best.get('diagnostics', {}).get('unmet_success_predicates') or [])}`",
+            ]
+        )
+    best_raw = report["best_by_raw_distance"]
+    if best_raw is not None:
+        lines.extend(
+            [
+                f"Best raw-distance controller: `{best_raw.get('controller')}`",
+                f"Best raw-distance final dx m: `{best_raw.get('final_delta_x_m')}`",
+                f"Best raw-distance max dx m: `{best_raw.get('max_delta_x_m')}`",
+                f"Best raw-distance max yaw rad: `{best_raw.get('max_abs_delta_yaw_rad')}`",
+                f"Best raw-distance unmet predicates: `{', '.join(best_raw.get('diagnostics', {}).get('unmet_success_predicates') or [])}`",
             ]
         )
     md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -378,6 +460,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--search-section", default="feedback_refinement")
     parser.add_argument("--search-selector", default="best_by_success_window")
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=1,
+        help=(
+            "when >1, ignore search-selector candidate contents and sweep the "
+            "top candidates list from search-section"
+        ),
+    )
+    parser.add_argument(
+        "--top-k-rank",
+        choices=("physical-gates", "success-window"),
+        default="physical-gates",
+    )
     parser.add_argument("--max-steps", type=int, default=160)
     parser.add_argument(
         "--variant-mode",
@@ -402,6 +498,8 @@ def main(argv: list[str] | None = None) -> int:
         search_report=args.search_report,
         search_section=args.search_section,
         search_selector=args.search_selector,
+        top_k=args.top_k,
+        top_k_rank=args.top_k_rank,
         max_steps=args.max_steps,
         variant_mode=args.variant_mode,
         continue_after_goal_failure=args.continue_after_goal_failure,

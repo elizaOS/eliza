@@ -24,6 +24,13 @@ BASE_REQUIRED_ARTIFACTS = {
 }
 
 
+def false_claim_flags(report: dict[str, Any]) -> dict[str, bool]:
+    flags = {"release_use_allowed": False}
+    if report.get("status") != "EXECUTED_REPLAY_EVIDENCE_READY":
+        flags["optimization_claim_allowed"] = False
+    return flags
+
+
 def rel(path: Path) -> str:
     try:
         return str(path.relative_to(ROOT))
@@ -95,6 +102,8 @@ def validate(report: dict[str, Any]) -> list[str]:
         and report.get("optimization_claim_allowed") is not False
     ):
         errors.append("optimization_claim_allowed must be false unless execution evidence is ready")
+    if report.get("false_claim_flags") != false_claim_flags(report):
+        errors.append("false_claim_flags must match denied replay execution claims")
     replay_role = report.get("replay_role", "candidate")
     if replay_role not in {"baseline", "candidate"}:
         errors.append("replay_role must be baseline or candidate")

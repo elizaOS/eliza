@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import {
@@ -172,6 +172,31 @@ describe("runActionsByMode", () => {
 		);
 		await runtime.runActionsByMode("ALWAYS_AFTER", makeMessage());
 		expect(ledger).toEqual(["first", "second"]);
+	});
+
+	it("attributes callback text to the hook action that emitted it", async () => {
+		const callback = vi.fn(async () => []);
+		runtime.actions.length = 0;
+		runtime.actions.push({
+			name: "HOOK_STATUS",
+			description: "hook status",
+			mode: ActionMode.ALWAYS_AFTER,
+			examples: [],
+			validate: async () => true,
+			handler: async (_runtime, _message, _state, _options, cb) => {
+				await cb?.({ text: "raw hook output" });
+				return { success: true };
+			},
+		} as Action);
+
+		await runtime.runActionsByMode("ALWAYS_AFTER", makeMessage(), undefined, {
+			callback,
+		});
+
+		expect(callback).toHaveBeenCalledWith(
+			{ text: "raw hook output" },
+			"HOOK_STATUS",
+		);
 	});
 
 	it("HOOK_MODES export covers all 9 hook positions", () => {

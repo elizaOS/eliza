@@ -96,6 +96,31 @@ const ES_TOOLKIT_COMPAT_DEFAULTS = {
   uniqBy: "uniqBy",
 } as const;
 
+function stringifyBuildLogMessage(message: unknown): string {
+  if (typeof message === "string") {
+    return message;
+  }
+  if (message == null || typeof message !== "object") {
+    return "";
+  }
+  const record = message as {
+    code?: unknown;
+    id?: unknown;
+    message?: unknown;
+    plugin?: unknown;
+  };
+  return [record.code, record.message, record.id, record.plugin]
+    .filter((value): value is string => typeof value === "string")
+    .join("\n");
+}
+
+function isKnownToleratedCloudBuildWarning(message: unknown): boolean {
+  const text = stringifyBuildLogMessage(message);
+  return (
+    text.includes("Use of direct eval") && text.includes("@protobufjs/inquire")
+  );
+}
+
 export default defineConfig(({ mode }) => {
   // `loadEnv` reads `.env`, `.env.local`, `.env.<mode>`, `.env.<mode>.local`
   // from ENV_DIR. Process env (e.g. CI/Pages build env) overrides.
@@ -129,6 +154,19 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [
+      {
+        name: "eliza-cloud-frontend-ssr-node-module",
+        enforce: "pre",
+        resolveId(source, _importer, options) {
+          if (options?.ssr && /^(node:)?module$/.test(source)) {
+            return { id: "node:module", external: true };
+          }
+          if (/^(node:)?module$/.test(source)) {
+            return r("./src/shims/empty.ts");
+          }
+          return null;
+        },
+      },
       {
         name: "eliza-blog-raw-mdx",
         enforce: "pre",
@@ -300,12 +338,16 @@ export default defineConfig(({ mode }) => {
         // server-side), but Rollup still has to resolve the module graph at
         // build time.
         {
-          find: /^node:(fs|fs\/promises|path|os|crypto|stream|http|https|zlib|net|tls|child_process|util|url|events|querystring|assert|vm|worker_threads|cluster|dgram|dns|punycode|readline|repl|string_decoder|tty|module|inspector|perf_hooks|async_hooks|trace_events|v8)$/,
+          find: /^node:(fs|fs\/promises|path|os|crypto|stream|http|https|zlib|net|tls|child_process|util|url|events|querystring|assert|vm|worker_threads|cluster|dgram|dns|punycode|readline|repl|string_decoder|tty|inspector|perf_hooks|async_hooks|trace_events|v8)$/,
           replacement: r("./src/shims/empty.ts"),
         },
         {
-          find: /^(fs|fs\/promises|path|os|crypto|stream|http|https|zlib|net|tls|child_process|vm|url|util|events|querystring|assert|punycode|readline|repl|string_decoder|tty|worker_threads|perf_hooks|module|inspector|async_hooks|trace_events|v8)$/,
+          find: /^(fs|fs\/promises|path|os|crypto|stream|http|https|zlib|net|tls|child_process|vm|url|util|events|querystring|assert|punycode|readline|repl|string_decoder|tty|worker_threads|perf_hooks|inspector|async_hooks|trace_events|v8)$/,
           replacement: r("./src/shims/empty.ts"),
+        },
+        {
+          find: /^@protobufjs\/inquire$/,
+          replacement: r("./src/shims/protobufjs-inquire.cjs"),
         },
 
         // Order matters: longer prefixes / subpath aliases must precede broader
@@ -435,7 +477,7 @@ export default defineConfig(({ mode }) => {
       // The cloud dashboard intentionally ships large wallet/docs/admin chunks.
       // Keep the build warning budget explicit so import and resolver warnings
       // still stand out in CI output.
-      chunkSizeWarningLimit: 3000,
+      chunkSizeWarningLimit: 7000,
       // Strip route-specific vendor chunks (wallet, docs, charts) from the
       // entry's <link rel="modulepreload"> set. Rolldown otherwise lists every
       // transitive dep of every lazy route in the entry's preload manifest,
@@ -449,6 +491,18 @@ export default defineConfig(({ mode }) => {
           deps.filter((dep) => !/vendor-(wallet|docs|charts)-/.test(dep)),
       },
       rolldownOptions: {
+        onLog(level, log, defaultHandler) {
+          if (level === "warn" && isKnownToleratedCloudBuildWarning(log)) {
+            return;
+          }
+          defaultHandler(level, log);
+        },
+        onwarn(warning, warn) {
+          if (isKnownToleratedCloudBuildWarning(warning)) {
+            return;
+          }
+          warn(warning);
+        },
         output: {
           // Explicit code-splitting groups. With `groups: []` (the previous
           // value) Rolldown auto-derives `vendor-wallet-*` chunks from the

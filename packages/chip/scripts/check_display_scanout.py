@@ -40,6 +40,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/display_scanout.json"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "panel_bringup_claim_allowed": False,
+    "dsi_phy_claim_allowed": False,
+    "drm_kms_claim_allowed": False,
+    "dts_binding_claim_allowed": False,
+    "panel_dcs_init_claim_allowed": False,
+    "async_pixel_clock_cdc_claim_allowed": False,
+    "hil_bandwidth_trace_claim_allowed": False,
+    "production_framebuffer_claim_allowed": False,
+    "e1_soc_top_replacement_claim_allowed": False,
+}
 
 AXI4_PKG = "rtl/interconnect/axi4/e1_axi4_pkg.sv"
 SCANOUT_RTL = "rtl/display/e1_display_scanout.sv"
@@ -99,7 +112,10 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
                 "schema": "eliza.gate_status.v1",
                 "gate": "display-scanout-check",
                 "status": status,
-                "generated_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+                "generated_utc": datetime.now(UTC)
+                .replace(microsecond=0)
+                .isoformat()
+                .replace("+00:00", "Z"),
                 "blocker_id": blocker_id,
                 "blocker_reason": blocker_reason,
                 "evidence_paths": [SCANOUT_RTL, AXI4_PKG, TB, TEST],
@@ -116,6 +132,7 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
                 "hil_bandwidth_trace_claim_allowed": False,
                 "production_framebuffer_claim_allowed": False,
                 "e1_soc_top_replacement_claim_allowed": False,
+                "false_claim_flags": FALSE_CLAIM_FLAGS,
                 "claim_boundary": (
                     "Proves the buildable display scanout subset: a real AXI4 "
                     "read master (INCR bursts, QoS=DISPLAY_RT, multiple "

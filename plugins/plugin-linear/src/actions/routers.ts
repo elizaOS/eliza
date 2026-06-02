@@ -313,8 +313,17 @@ async function dispatchRoute<T extends LinearRouterResultData>(
     };
   }
 
+  const routedCallback: HandlerCallback | undefined = callback
+    ? (response, actionName) => callback(response, actionName ?? route.action.name)
+    : undefined;
   const result =
-    (await route.action.handler(runtime, message, state, options as HandlerOptions, callback)) ??
+    (await route.action.handler(
+      runtime,
+      message,
+      state,
+      options as HandlerOptions,
+      routedCallback
+    )) ??
     ({
       success: true,
       text: `${routerName} routed to ${route.action.name}.`,

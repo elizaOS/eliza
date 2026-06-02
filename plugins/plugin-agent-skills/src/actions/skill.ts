@@ -191,8 +191,18 @@ export const skillAction: Action = {
 				data: { actionName: "SKILL", availableOps: ops },
 			};
 		}
+		const routedCallback: HandlerCallback | undefined = callback
+			? (response, actionName) =>
+					callback(response, actionName ?? route.action.name)
+			: undefined;
 		const result =
-			(await route.action.handler(runtime, message, state, options, callback)) ??
+			(await route.action.handler(
+				runtime,
+				message,
+				state,
+				options,
+				routedCallback,
+			)) ??
 			({ success: true } as ActionResult);
 		return {
 			...result,

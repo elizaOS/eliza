@@ -44,6 +44,7 @@ sys.path.insert(0, str(benchmark_root / "benchmarks" / "eliza-adapter"))
 # Now we can import
 from benchmarks.mint.types import MINTSubtask, MINTConfig
 from benchmarks.mint.runner import MINTRunner
+from benchmarks.mint.dataset import MINTDataset, count_tasks, expand_tasks, validate_tasks
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -116,6 +117,21 @@ def parse_args() -> argparse.Namespace:
         choices=["templated", "llm"],
         default="templated",
         help="Feedback mode (default: templated)",
+    )
+    parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Add 10 realistic edge variants for each selected base task",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print base/edge/total scenario counts and exit before model calls",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate selected scenarios before running",
     )
 
     # Execution settings
@@ -246,6 +262,7 @@ def create_config(args: argparse.Namespace) -> MINTConfig:
         cache_dir=args.cache_dir,
         output_dir=args.output_dir,
         max_tasks_per_subtask=args.max_tasks,
+        include_edge_scenarios=bool(args.expand_scenarios),
         timeout_per_task_ms=args.timeout * 1000,
         max_turns=args.max_turns,
         use_docker=not args.no_docker,
@@ -262,6 +279,24 @@ def create_config(args: argparse.Namespace) -> MINTConfig:
         auto_fetch_upstream=not bool(args.no_auto_fetch),
         allow_ground_truth_mock=False,
     )
+
+
+async def _selected_tasks_for_config(config: MINTConfig):
+    dataset = MINTDataset(
+        data_path=config.data_path,
+        use_sample_tasks=config.use_sample_tasks,
+        cache_dir=config.cache_dir,
+        auto_fetch=config.auto_fetch_upstream,
+    )
+    await dataset.load(subtasks=config.subtasks)
+    base_tasks = dataset.get_tasks(
+        subtasks=config.subtasks,
+        limit=config.max_tasks_per_subtask,
+    )
+    if config.max_total_tasks is not None:
+        base_tasks = base_tasks[: max(0, int(config.max_total_tasks))]
+    tasks = expand_tasks(base_tasks) if config.include_edge_scenarios else list(base_tasks)
+    return base_tasks, tasks
 
 
 @dataclass
@@ -583,7 +618,22 @@ def main() -> int:
     print(f"  Mock executor: {config.use_mock_executor}")
     print(f"  Sample tasks: {config.use_sample_tasks}")
     print(f"  Auto-fetch upstream data: {config.auto_fetch_upstream}")
+    print(f"  Expanded scenarios: {config.include_edge_scenarios}")
     print()
+
+    if args.count_scenarios or args.validate_scenarios:
+        base_tasks, selected_tasks = asyncio.run(_selected_tasks_for_config(config))
+        if args.validate_scenarios:
+            validate_tasks(selected_tasks)
+            if config.include_edge_scenarios and len(selected_tasks) != len(base_tasks) * 11:
+                raise RuntimeError(
+                    f"Expanded MINT scenario count mismatch: base={len(base_tasks)} total={len(selected_tasks)}"
+                )
+            print("Scenario validation: ok")
+        if args.count_scenarios:
+            print("Scenario counts:")
+            print(count_tasks(base_tasks, selected_tasks))
+        return 0
 
     return asyncio.run(
         run_benchmark(

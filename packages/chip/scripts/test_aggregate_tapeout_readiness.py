@@ -364,8 +364,7 @@ class BuildReportTests(unittest.TestCase):
             agg.E1_PHONE_BOOLEAN_INTERFERENCE_PATH,
         )
         originals = {
-            path: path.read_text(encoding="utf-8") if path.exists() else None
-            for path in paths
+            path: path.read_text(encoding="utf-8") if path.exists() else None for path in paths
         }
         try:
             agg.E1_PHONE_ASSEMBLY_VERIFICATION_PATH.parent.mkdir(
@@ -427,7 +426,9 @@ class BuildReportTests(unittest.TestCase):
                 "Current unintentional clash count: 2",
                 actions["e1-phone-boolean-interference-check"],
             )
-            self.assertIn("battery_pouch vs orange_side_frame", actions["e1-phone-boolean-interference-check"])
+            self.assertIn(
+                "battery_pouch vs orange_side_frame", actions["e1-phone-boolean-interference-check"]
+            )
         finally:
             for path, original in originals.items():
                 if original is None:
@@ -494,9 +495,7 @@ class BuildReportTests(unittest.TestCase):
                 ]
             )
 
-            action = report["blocker_action_plan"]["live_device_validation"][0][
-                "next_action"
-            ]
+            action = report["blocker_action_plan"]["live_device_validation"][0]["next_action"]
             self.assertIn("generated Eliza Rocket/RV64GC CPU/AP transcripts", action)
             self.assertIn("qemu-virt Linux boot evidence is reference-only", action)
             self.assertIn("missing generated CPU/AP transcripts: 1", action)
@@ -634,8 +633,7 @@ class BuildReportTests(unittest.TestCase):
             agg.E1_PHONE_FACTORY_OUTPUT_REPORT_PATH,
         )
         originals = {
-            path: path.read_text(encoding="utf-8") if path.exists() else None
-            for path in paths
+            path: path.read_text(encoding="utf-8") if path.exists() else None for path in paths
         }
         try:
             agg.E1_PHONE_ROUTED_OUTPUT_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -1106,8 +1104,7 @@ class BuildReportTests(unittest.TestCase):
             agg.ANDROID_SYSTEM_BRIDGE_REPORT_PATH,
         )
         originals = {
-            path: path.read_text(encoding="utf-8") if path.exists() else None
-            for path in paths
+            path: path.read_text(encoding="utf-8") if path.exists() else None for path in paths
         }
         try:
             agg.FPGA_RELEASE_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -1245,7 +1242,9 @@ class BuildReportTests(unittest.TestCase):
             }
             self.assertIn("TOP=e1_chip_top make -C board/fpga pack", actions["fpga-release-check"])
             self.assertIn("external=2, live=0, repo=0", actions["fpga-release-check"])
-            self.assertIn("ELIZA_OPENSBI_HANDOFF_CMD", actions["linux-firmware-boot-chain-contract-check"])
+            self.assertIn(
+                "ELIZA_OPENSBI_HANDOFF_CMD", actions["linux-firmware-boot-chain-contract-check"]
+            )
             self.assertIn(
                 "external=2, live=2, repo=0",
                 actions["android-release-readiness-contract-check"],
@@ -1282,8 +1281,7 @@ class BuildReportTests(unittest.TestCase):
             agg.OS_RV64_CHIP_BOOT_CONTRACT_REPORT_PATH,
         )
         originals = {
-            path: path.read_text(encoding="utf-8") if path.exists() else None
-            for path in paths
+            path: path.read_text(encoding="utf-8") if path.exists() else None for path in paths
         }
         try:
             agg.PD_SIGNOFF_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -1626,8 +1624,7 @@ class BuildReportTests(unittest.TestCase):
             agg.AOSP_LINUX_HANDOFF_CONTRACT_REPORT_PATH,
         )
         originals = {
-            path: path.read_text(encoding="utf-8") if path.exists() else None
-            for path in paths
+            path: path.read_text(encoding="utf-8") if path.exists() else None for path in paths
         }
         try:
             agg.BOOT_SECURITY_CHAIN_CONTRACT_REPORT_PATH.parent.mkdir(
@@ -3524,9 +3521,7 @@ class E1PhoneReleaseApprovalSignatureGateTests(unittest.TestCase):
             0,
         )
         blocker_categories = report["summary"]["approval_blocker_categories"]
-        for category_id in (
-            "release_disposition_not_unlocked",
-        ):
+        for category_id in ("release_disposition_not_unlocked",):
             self.assertIn(category_id, blocker_categories)
             self.assertGreater(blocker_categories[category_id]["blocked_rows"], 0)
             self.assertFalse(blocker_categories[category_id]["release_credit"])

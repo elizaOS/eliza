@@ -28,6 +28,7 @@ class MemoryUmaClaimGateTest(unittest.TestCase):
         local_rtl = data["separate_local_rtl_evidence"]
         bandwidth_latency = data["bandwidth_latency_evidence_contract"]
 
+        self.assertEqual(data["false_claim_flags"], gate.FALSE_CLAIM_FLAGS)
         self.assertEqual(target["claim_level_required"], "L6_COMPLETE_PHONE")
         self.assertGreaterEqual(target["external_memory"]["peak_bandwidth_gbps_min"], 180)
         self.assertGreaterEqual(target["cache_and_sram"]["shared_system_cache_mib_min"], 32)

@@ -16,6 +16,7 @@ protocol used here.
 
 from __future__ import annotations
 
+import os
 import time
 from collections.abc import Awaitable, Callable
 from typing import Protocol
@@ -127,6 +128,104 @@ class CascadedSTTAgent:
             predicted_letter=predicted_letter,
             raw_answer=raw_answer,
             raw_output={"mode": "cascaded_stt", "prompt": prompt},
+            transcript=transcript,
+            latency_ms=(time.time() - started) * 1000,
+        )
+
+
+class DirectOpenAICompatibleMMAUAgent:
+    """Text-only OpenAI-compatible agent for fixture and transcript smoke runs."""
+
+    def __init__(
+        self,
+        *,
+        provider: str,
+        model: str | None = None,
+        temperature: float = 0.0,
+    ) -> None:
+        self.provider = provider.strip().lower()
+        self.model = model or {
+            "openai": "openai/gpt-oss-120b",
+            "groq": "openai/gpt-oss-120b",
+            "openrouter": "openai/gpt-oss-120b",
+            "cerebras": "gpt-oss-120b",
+        }.get(self.provider, "gpt-oss-120b")
+        self.temperature = temperature
+        key_var = {
+            "openai": "OPENAI_API_KEY",
+            "groq": "GROQ_API_KEY",
+            "openrouter": "OPENROUTER_API_KEY",
+            "cerebras": "CEREBRAS_API_KEY",
+        }.get(self.provider)
+        self.api_key = os.environ.get(key_var or "", "")
+        if not self.api_key:
+            raise RuntimeError(f"{key_var or 'API key'} is required for MMAU provider={self.provider}")
+        self.base_url = (
+            os.environ.get(f"{self.provider.upper()}_BASE_URL")
+            or os.environ.get("OPENAI_BASE_URL")
+            or {
+                "openai": "https://api.openai.com/v1",
+                "groq": "https://api.groq.com/openai/v1",
+                "openrouter": "https://openrouter.ai/api/v1",
+                "cerebras": "https://api.cerebras.ai/v1",
+            }.get(self.provider, "https://api.cerebras.ai/v1")
+        ).rstrip("/")
+
+    async def initialize(self) -> None:
+        return None
+
+    async def close(self) -> None:
+        return None
+
+    async def predict(self, sample: MMAUSample) -> MMAUPrediction:
+        import aiohttp
+
+        started = time.time()
+        transcript = ""
+        metadata_transcript = sample.metadata.get("transcript")
+        if isinstance(metadata_transcript, str):
+            transcript = metadata_transcript
+        prompt = format_mcq_prompt(sample, transcript=transcript)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self.base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "Accept-Encoding": "identity",
+                    "User-Agent": "eliza-mmau-benchmark/1.0",
+                },
+                json={
+                    "model": self.model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "You answer MMAU multiple-choice audio questions from "
+                                "the provided context/transcript. Return only one letter."
+                            ),
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    "temperature": self.temperature,
+                    "max_tokens": 64,
+                },
+            ) as resp:
+                data = await resp.json(content_type=None)
+                if resp.status >= 400 or "error" in data:
+                    detail = data.get("error", data) if isinstance(data, dict) else data
+                    raise RuntimeError(f"{self.provider} chat completion failed: {detail}")
+                raw_answer = str(
+                    data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                )
+        letters = choice_letters(sample.choices)
+        predicted_letter = extract_answer_letter(raw_answer, valid_letters=letters)
+        return MMAUPrediction(
+            sample_id=sample.id,
+            predicted_letter=predicted_letter,
+            raw_answer=raw_answer,
+            raw_output={"mode": "direct_openai_compatible", "provider": self.provider},
             transcript=transcript,
             latency_ms=(time.time() - started) * 1000,
         )

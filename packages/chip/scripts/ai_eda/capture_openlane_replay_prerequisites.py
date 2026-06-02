@@ -30,6 +30,15 @@ DEFAULT_OPENLANE_CONFIGS = (
 )
 SCHEMA = "eliza.ai_eda.openlane_replay_prerequisites.v1"
 CLAIM_BOUNDARY = "openlane_replay_prerequisites_only_no_openlane_execution_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "downloads_assets": False,
+    "mutates_source_tree": False,
+    "optimization_claim_allowed": False,
+    "release_use_allowed": False,
+    "runs_openlane": False,
+    "runs_openroad": False,
+    "signoff_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -199,6 +208,7 @@ def main() -> int:
             "release_use_allowed": False,
             "signoff_claim_allowed": False,
             "optimization_claim_allowed": False,
+            "false_claim_flags": FALSE_CLAIM_FLAGS,
         },
         "source_replay_queue": queue,
         "tools": tools,

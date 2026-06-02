@@ -13,6 +13,66 @@ interface ElizaWindow extends Window {
   __ELIZA_API_TOKEN__?: string;
 }
 
+const HOSTNAME_RE =
+  /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/;
+
+function isString(value: string | null): value is string {
+  return typeof value === "string";
+}
+
+function normalizeHostname(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    if (!/^https?:\/\//i.test(trimmed)) return null;
+    try {
+      return normalizeHostname(new URL(trimmed).hostname);
+    } catch {
+      return null;
+    }
+  }
+  const withoutWildcard = trimmed.replace(/^\*\./, "");
+  const withoutTrailingDot = withoutWildcard.replace(/\.$/, "");
+  const ascii = withoutTrailingDot.toLowerCase();
+  return HOSTNAME_RE.test(ascii) ? ascii : null;
+}
+
+function validateStartBlockOptions(
+  options: StartWebsiteBlockOptions,
+): StartWebsiteBlockOptions {
+  const candidates = [
+    ...(Array.isArray(options?.websites) ? options.websites : []),
+    ...(typeof options?.websites === "string" ? [options.websites] : []),
+  ];
+  if (typeof options?.text === "string") {
+    candidates.push(...options.text.split(/[\s,]+/));
+  }
+  const websites = [
+    ...new Set(candidates.map(normalizeHostname).filter(isString)),
+  ];
+  if (websites.length === 0) {
+    throw new Error("Provide at least one public website hostname.");
+  }
+
+  let durationMinutes: number | null = null;
+  if (
+    options?.durationMinutes !== undefined &&
+    options.durationMinutes !== null
+  ) {
+    const parsed =
+      typeof options.durationMinutes === "number"
+        ? options.durationMinutes
+        : Number(options.durationMinutes);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new Error("durationMinutes must be a positive finite number");
+    }
+    durationMinutes = Math.trunc(parsed);
+  }
+
+  return { websites, durationMinutes };
+}
+
 export class WebsiteBlockerWeb extends WebPlugin {
   private apiBase(): string {
     const global =
@@ -88,11 +148,12 @@ export class WebsiteBlockerWeb extends WebPlugin {
   async startBlock(
     options: StartWebsiteBlockOptions,
   ): Promise<StartWebsiteBlockResult> {
+    const body = validateStartBlockOptions(options);
     return await this.requestJson<StartWebsiteBlockResult>(
       "/api/website-blocker",
       {
         method: "PUT",
-        body: JSON.stringify(options),
+        body: JSON.stringify(body),
       },
     );
   }

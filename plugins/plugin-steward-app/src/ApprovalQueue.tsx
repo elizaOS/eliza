@@ -89,10 +89,12 @@ function PendingApprovalActions({
 
 function RejectReasonInput({
   txId,
+  inputId,
   value,
   onChange,
 }: {
   txId: string;
+  inputId: string;
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -102,9 +104,12 @@ function RejectReasonInput({
     label: "Rejection reason",
     group: "approval-actions",
     description: "Optional reason for rejecting the transaction",
+    getValue: () => value,
+    onFill: onChange,
   });
   return (
     <input
+      id={inputId}
       ref={ref}
       {...agentProps}
       type="text"
@@ -114,6 +119,96 @@ function RejectReasonInput({
       aria-label="Rejection reason"
       className="mt-1 h-9 w-full rounded-lg border border-border/40 bg-card/60 px-3 text-sm text-txt placeholder:text-muted/40 focus:border-accent/40 focus:outline-none"
     />
+  );
+}
+
+function ApprovalAddressButton({
+  txId,
+  address,
+  onCopy,
+}: {
+  txId: string;
+  address: string;
+  onCopy: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `copy-address-${txId}`,
+    role: "button",
+    label: `Copy recipient address for transaction ${txId}`,
+    group: "approval-details",
+    description: "Copy the destination address to the clipboard",
+    onActivate: onCopy,
+  });
+  return (
+    <button
+      ref={ref}
+      {...agentProps}
+      type="button"
+      className="flex items-center gap-1 font-mono text-sm text-txt hover:text-accent transition-colors cursor-pointer"
+      onClick={onCopy}
+      title={address}
+    >
+      {truncateAddress(address)}
+      <Copy className="h-3 w-3 opacity-40" />
+    </button>
+  );
+}
+
+function ConfirmRejectButton({
+  txId,
+  onConfirm,
+}: {
+  txId: string;
+  onConfirm: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `action-confirm-reject-${txId}`,
+    role: "button",
+    label: `Confirm rejection of transaction ${txId}`,
+    group: "approval-actions",
+    description: "Confirm rejecting this transaction with the given reason",
+    onActivate: onConfirm,
+  });
+  return (
+    <Button
+      ref={ref}
+      {...agentProps}
+      variant="outline"
+      size="sm"
+      className="h-9 rounded-lg border-status-danger/30 px-3 text-xs text-status-danger hover:bg-status-danger-bg"
+      onClick={onConfirm}
+    >
+      Confirm Reject
+    </Button>
+  );
+}
+
+function CancelRejectButton({
+  txId,
+  onCancel,
+}: {
+  txId: string;
+  onCancel: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `action-cancel-reject-${txId}`,
+    role: "button",
+    label: `Cancel rejection of transaction ${txId}`,
+    group: "approval-actions",
+    description: "Close the rejection dialog without rejecting",
+    onActivate: onCancel,
+  });
+  return (
+    <Button
+      ref={ref}
+      {...agentProps}
+      variant="ghost"
+      size="sm"
+      className="h-9 rounded-lg px-3 text-xs text-muted"
+      onClick={onCancel}
+    >
+      Cancel
+    </Button>
   );
 }
 
@@ -359,28 +454,24 @@ export function ApprovalQueue({
                       <span className="text-2xs uppercase tracking-wider text-muted/60">
                         To
                       </span>
-                      <button
-                        type="button"
-                        className="flex items-center gap-1 font-mono text-sm text-txt hover:text-accent transition-colors cursor-pointer"
-                        onClick={() =>
+                      <ApprovalAddressButton
+                        txId={tx.id}
+                        address={tx.request?.to ?? ""}
+                        onCopy={() =>
                           void handleCopy(tx.request?.to ?? "", "Address")
                         }
-                        title={tx.request?.to}
-                      >
-                        {truncateAddress(tx.request?.to ?? "")}
-                        <Copy className="h-3 w-3 opacity-40" />
-                      </button>
+                      />
                     </div>
                     <div>
                       <span className="text-2xs uppercase tracking-wider text-muted/60">
                         Amount
                       </span>
-                      <p className="text-sm font-semibold text-txt">
+                      <div className="text-sm font-semibold text-txt">
                         {formatWeiValue(
                           tx.request?.value ?? "0",
                           tx.request?.chainId ?? 8453,
                         )}
-                      </p>
+                      </div>
                     </div>
                   </div>
 
@@ -391,12 +482,12 @@ export function ApprovalQueue({
                         Policy reason
                       </span>
                       {reasons.map((reason) => (
-                        <p
+                        <div
                           key={reason}
                           className="rounded-lg border border-status-warning/15 bg-status-warning-bg px-2.5 py-1.5 text-xs text-status-warning"
                         >
                           {reason}
-                        </p>
+                        </div>
                       ))}
                     </div>
                   )}
@@ -420,36 +511,32 @@ export function ApprovalQueue({
               {rejectDialogTxId === tx.id && (
                 <div className="mt-3 flex items-end gap-2 border-t border-border/20 pt-3">
                   <div className="flex-1">
-                    <label className="block text-2xs font-semibold uppercase tracking-wider text-muted/60 mb-1">
+                    <label
+                      className="block text-2xs font-semibold uppercase tracking-wider text-muted/60 mb-1"
+                      htmlFor={`reject-reason-${tx.id}`}
+                    >
                       Rejection reason (optional)
                       <RejectReasonInput
+                        inputId={`reject-reason-${tx.id}`}
                         txId={tx.id}
                         value={rejectReason}
                         onChange={setRejectReason}
                       />
                     </label>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 rounded-lg border-status-danger/30 px-3 text-xs text-status-danger hover:bg-status-danger-bg"
-                    onClick={() =>
+                  <ConfirmRejectButton
+                    txId={tx.id}
+                    onConfirm={() =>
                       void handleReject(tx.id, rejectReason || undefined)
                     }
-                  >
-                    Confirm Reject
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-9 rounded-lg px-3 text-xs text-muted"
-                    onClick={() => {
+                  />
+                  <CancelRejectButton
+                    txId={tx.id}
+                    onCancel={() => {
                       setRejectDialogTxId(null);
                       setRejectReason("");
                     }}
-                  >
-                    Cancel
-                  </Button>
+                  />
                 </div>
               )}
             </div>

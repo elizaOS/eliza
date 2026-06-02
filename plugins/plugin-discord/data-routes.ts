@@ -20,6 +20,7 @@ import type {
 	RouteResponse,
 } from "@elizaos/core";
 import { DISCORD_LOCAL_SERVICE_NAME } from "./discord-local-service";
+import { isValidSnowflake } from "./types";
 
 // ── Error envelope (mirror @elizaos/app-core/api/setup-contract) ────────
 
@@ -187,6 +188,12 @@ async function handleChannels(
 		res.status(400).json(setupError("bad_request", "guildId is required"));
 		return;
 	}
+	if (!isValidSnowflake(guildId)) {
+		res
+			.status(400)
+			.json(setupError("bad_request", "guildId must be a Discord snowflake"));
+		return;
+	}
 
 	try {
 		const channels = await service.listChannels(guildId);
@@ -238,6 +245,18 @@ async function handleSubscriptions(
 				),
 			)
 		: [];
+	const invalidChannelIds = channelIds.filter((id) => !isValidSnowflake(id));
+	if (invalidChannelIds.length > 0) {
+		res
+			.status(400)
+			.json(
+				setupError(
+					"bad_request",
+					"channelIds must contain only Discord snowflakes",
+				),
+			);
+		return;
+	}
 
 	try {
 		const subscribedChannelIds =

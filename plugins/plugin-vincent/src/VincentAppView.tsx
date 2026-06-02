@@ -88,9 +88,6 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
           </Button>
           <div className="min-w-0">
             <h1 className="text-base font-semibold text-txt">Vincent</h1>
-            <p className="truncate text-xs-tight text-muted leading-tight">
-              Hyperliquid and Polymarket trading access
-            </p>
           </div>
         </div>
 
@@ -165,12 +162,12 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
                   <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-accent/25 bg-accent/12 text-accent">
                     <ShieldCheck className="h-7 w-7" />
                   </div>
-                  <p className="mt-4 text-sm font-medium text-txt">
+                  <div className="mt-4 text-sm font-medium text-txt">
                     {t("vincent.connectPrompt", {
                       defaultValue:
                         "Connect your Vincent account to get started",
                     })}
-                  </p>
+                  </div>
                   <div className="mt-5 grid gap-2 sm:grid-cols-3">
                     {[
                       { label: "Wallet", icon: Wallet, tone: "text-info" },
@@ -273,6 +270,14 @@ export function VincentTuiView() {
     }
   }, []);
 
+  const tuiRefresh = useAgentElement<HTMLButtonElement>({
+    id: "tui-action-refresh",
+    role: "button",
+    label: "Refresh",
+    group: "vincent-tui-access",
+    description: "Reload Vincent connection, wallet, strategy and P&L state",
+  });
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -355,6 +360,8 @@ export function VincentTuiView() {
           >
             <strong style={{ color: "#e2e8f0" }}>access</strong>
             <button
+              ref={tuiRefresh.ref}
+              {...tuiRefresh.agentProps}
               type="button"
               onClick={() => void refresh()}
               disabled={loading}

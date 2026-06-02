@@ -7,6 +7,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { I18nProvider } from "@/providers/I18nProvider";
 
 const mocks = vi.hoisted(() => ({
   apiFetch: vi.fn(),
@@ -88,10 +89,18 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
+function renderPrivacyPanel() {
+  return render(
+    <I18nProvider initialLang="en">
+      <PrivacyPanel />
+    </I18nProvider>,
+  );
+}
+
 describe("PrivacyPanel DSR delete flow", () => {
   test("requires the typed confirmation phrase before calling the API", async () => {
     mocks.apiFetch.mockResolvedValue({} as Response);
-    render(<PrivacyPanel />);
+    renderPrivacyPanel();
 
     fireEvent.click(screen.getByTestId("delete-account-trigger"));
 
@@ -120,7 +129,7 @@ describe("PrivacyPanel DSR delete flow", () => {
   });
 
   test("toggling vision emits a vision audit event", async () => {
-    render(<PrivacyPanel />);
+    renderPrivacyPanel();
     const toggle = screen.getByTestId("vision-toggle");
     fireEvent.click(toggle);
     await waitFor(() =>

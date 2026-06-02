@@ -81,6 +81,17 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function normalizePositiveInteger(value: unknown, fallback: number): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number.parseInt(value, 10)
+        : Number.NaN;
+
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
 /**
  * Template for generating dialog and actions for a Twitter message handler.
  *
@@ -338,10 +349,9 @@ export class TwitterInteractionClient {
     tweets: ClientTweet[],
     username: string,
   ) {
-    const maxEngagementsPerRun = parseInt(
-      (getSetting(this.runtime, "TWITTER_MAX_ENGAGEMENTS_PER_RUN") as string) ||
-        process.env.TWITTER_MAX_ENGAGEMENTS_PER_RUN ||
-        "10",
+    const maxEngagementsPerRun = normalizePositiveInteger(
+      getSetting(this.runtime, "TWITTER_MAX_ENGAGEMENTS_PER_RUN") ??
+        process.env.TWITTER_MAX_ENGAGEMENTS_PER_RUN,
       10,
     );
 
@@ -680,10 +690,9 @@ Response (YES/NO):`;
     }
 
     // Get max interactions per run setting
-    const maxInteractionsPerRun = parseInt(
-      (getSetting(this.runtime, "TWITTER_MAX_ENGAGEMENTS_PER_RUN") as string) ||
-        process.env.TWITTER_MAX_ENGAGEMENTS_PER_RUN ||
-        "10",
+    const maxInteractionsPerRun = normalizePositiveInteger(
+      getSetting(this.runtime, "TWITTER_MAX_ENGAGEMENTS_PER_RUN") ??
+        process.env.TWITTER_MAX_ENGAGEMENTS_PER_RUN,
       10,
     );
 

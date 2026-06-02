@@ -45,7 +45,10 @@ export function getSetting(
  */
 export function getBaseURL(runtime: SettingsProvider): string {
   const raw = getSetting(runtime, "LMSTUDIO_BASE_URL") ?? DEFAULT_LMSTUDIO_URL;
-  const trimmed = raw.replace(/\/+$/, "");
+  const trimmed = raw.trim().replace(/\/+$/, "");
+  if (trimmed === "") {
+    return DEFAULT_LMSTUDIO_URL;
+  }
   if (/\/v\d+$/.test(trimmed)) {
     return trimmed;
   }

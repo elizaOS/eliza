@@ -441,7 +441,9 @@ class VendingBenchConfig:
     max_days_per_run: int = 90  # Paper: unbounded until bankruptcy / message cap
     initial_cash: Decimal = Decimal("500.00")  # Paper: $500
     random_seed: int | None = None
+    start_date: date | None = None
     starter_inventory: bool = False
+    include_edge_scenarios: bool = False
 
     # Environment settings
     daily_base_fee: Decimal = Decimal("2.00")  # Paper: $2/day daily fee

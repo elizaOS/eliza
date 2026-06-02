@@ -33,6 +33,29 @@ STATUS_ARTIFACTS = {
     "fail_closed_absent_device": ("absent_device_probe_log",),
 }
 
+ARTIFACT_CAPTURE_COMMANDS = {
+    "vts_result": [
+        "scripts/android/run_vts_smoke.sh",
+        "python3 scripts/assemble_e1_npu_android_proof_manifest.py",
+        "python3 scripts/check_e1_npu_android_proof_manifest.py",
+    ],
+    "cts_result": [
+        "scripts/android/run_cts_smoke.sh",
+        "python3 scripts/assemble_e1_npu_android_proof_manifest.py",
+        "python3 scripts/check_e1_npu_android_proof_manifest.py",
+    ],
+    "nnapi_query_log": [
+        "E1_NPU_WRITE_PROOF_JSON=1 scripts/android/capture_e1_npu_nnapi_evidence.sh",
+        "python3 scripts/assemble_e1_npu_android_proof_manifest.py",
+        "python3 scripts/check_e1_npu_android_proof_manifest.py",
+    ],
+}
+DEFAULT_CAPTURE_COMMANDS = [
+    "scripts/android/capture_e1_npu_android_proof_bundle.sh",
+    "python3 scripts/assemble_e1_npu_android_proof_manifest.py",
+    "python3 scripts/check_e1_npu_android_proof_manifest.py",
+]
+
 
 def rel(path: Path) -> str:
     try:
@@ -76,6 +99,59 @@ def artifact_state(name: str, entry: dict[str, Any], markers: list[str]) -> dict
     return state
 
 
+def artifact_commands(name: str) -> list[str]:
+    return ARTIFACT_CAPTURE_COMMANDS.get(name, DEFAULT_CAPTURE_COMMANDS)
+
+
+def finding_for_blocked_artifact(name: str, state: dict[str, Any]) -> dict[str, Any]:
+    commands = artifact_commands(name)
+    return {
+        "code": f"missing_or_invalid_android_npu_artifact_{name}",
+        "severity": "blocker",
+        "message": f"Android e1-NPU proof artifact {name} is not ready",
+        "evidence": state.get("path"),
+        "next_step": (
+            "Capture the required Android e1-NPU artifact with the template-listed "
+            "markers, then rerun scripts/assemble_e1_npu_android_proof_manifest.py."
+        ),
+        "next_command": commands[0],
+        "next_commands": commands,
+        "blocked_reason": state.get("blocked_reason", "missing_required_markers"),
+        "marker_errors": state.get("marker_errors", []),
+    }
+
+
+def next_command_plan(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    plan: list[dict[str, Any]] = []
+    for finding in findings:
+        commands = [
+            command
+            for command in finding.get("next_commands", [])
+            if isinstance(command, str) and command
+        ]
+        if not commands:
+            continue
+        artifact_name = str(finding.get("code", "android_npu_artifact")).removeprefix(
+            "missing_or_invalid_android_npu_artifact_"
+        )
+        plan.append(
+            {
+                "id": f"capture_e1_npu_android_{artifact_name}_proof_artifact",
+                "area": "npu",
+                "source": "packages/chip/build/reports/e1_npu_android_proof_manifest_assembly.json",
+                "claim_boundary": "operator_commands_only_not_android_npu_or_release_evidence",
+                "commands": commands,
+                "expected_output_files": [finding.get("evidence")] if finding.get("evidence") else [],
+                "requires": [
+                    "booted Android target or compatibility harness for the named e1-NPU proof artifact",
+                    "template-listed markers present in the captured artifact",
+                    "rerun of the Android e1-NPU proof manifest assembler and checker",
+                ],
+            }
+        )
+    return plan
+
+
 def build_manifest(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
     template = load_template(args.template)
     required_markers = template["required_markers"]
@@ -109,34 +185,23 @@ def build_manifest(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
     required_statuses: dict[str, str] = {}
     for status_name, artifact_names in STATUS_ARTIFACTS.items():
         required_statuses[status_name] = (
-            "blocked"
-            if any(name in blocked_artifacts for name in artifact_names)
-            else "passed"
+            "blocked" if any(name in blocked_artifacts for name in artifact_names) else "passed"
         )
 
     manifest_status = "blocked" if blocked_artifacts else "passed"
     findings = [
-        {
-            "code": f"missing_or_invalid_android_npu_artifact_{name}",
-            "severity": "blocker",
-            "message": f"Android e1-NPU proof artifact {name} is not ready",
-            "evidence": state.get("path"),
-            "next_step": (
-                "Capture the required Android e1-NPU artifact with the template-listed "
-                "markers, then rerun scripts/assemble_e1_npu_android_proof_manifest.py."
-            ),
-            "blocked_reason": state.get("blocked_reason", "missing_required_markers"),
-            "marker_errors": state.get("marker_errors", []),
-        }
-        for name, state in blocked_artifacts.items()
+        finding_for_blocked_artifact(name, state) for name, state in blocked_artifacts.items()
     ]
+    command_plan = next_command_plan(findings)
+    generated_utc = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     manifest = {
         "schema": "eliza.e1_npu_android_proof_manifest.v1",
         "claim_boundary": "android_e1_npu_artifact_manifest_only_not_full_android_compatibility_claim",
         "status": manifest_status,
         "target": args.target,
         "generated_by": args.generated_by,
-        "date_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "date_utc": generated_utc,
+        "generated_utc": generated_utc,
         "proof_gate": {
             "android_boot_claim": "artifact_bound_e1_npu_android_evidence"
             if manifest_status == "passed"
@@ -154,14 +219,20 @@ def build_manifest(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
     report = {
         "schema": "eliza.e1_npu_android_proof_manifest_assembly.v1",
         "status": manifest_status,
+        "claim_boundary": "assembly_status_only_not_android_boot_cts_vts_or_nnapi_release_evidence",
+        "generated_utc": generated_utc,
         "manifest": rel(args.output),
         "summary": {
             "artifacts": len(states),
             "blocked_artifacts": len(blocked_artifacts),
             "passed_statuses": sum(1 for value in required_statuses.values() if value == "passed"),
-            "blocked_statuses": sum(1 for value in required_statuses.values() if value == "blocked"),
+            "blocked_statuses": sum(
+                1 for value in required_statuses.values() if value == "blocked"
+            ),
+            "next_command_batch_count": len(command_plan),
         },
         "findings": findings,
+        "next_command_plan": command_plan,
         "artifact_states": states,
     }
     return manifest, report

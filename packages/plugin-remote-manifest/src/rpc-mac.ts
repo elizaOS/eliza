@@ -15,6 +15,9 @@ import type { JsonValue, WorkerRpcMessage } from "./types.js";
 /** Stable JSON: sort object keys recursively for deterministic encoding. */
 function stableStringify(value: JsonValue): string {
   if (value === null || typeof value !== "object") {
+    if (typeof value === "number" && !Number.isFinite(value)) {
+      throw new TypeError("RPC MAC args must contain only finite numbers.");
+    }
     return JSON.stringify(value ?? null);
   }
   if (Array.isArray(value)) {
@@ -44,6 +47,11 @@ export function pluginRpcKeyId(pluginId: string): KeyId {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+  if (safe.length === 0) {
+    throw new Error(
+      "Remote plugin id must contain at least one letter or digit.",
+    );
+  }
   return systemKey(`plugin-rpc-${safe}`);
 }
 

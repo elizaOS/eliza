@@ -6506,37 +6506,6 @@ export const allActionsSpec = {
 			similes: ["GOAL", "GOALS", "LONG_TERM_GOAL"],
 		},
 		{
-			name: "OWNER_HEALTH",
-			description:
-				"Owner health telemetry reads: HealthKit, Google Fit, Strava, Fitbit, Withings, Oura. Ops: today|trend|by_metric|status.",
-			parameters: [
-				{
-					name: "action",
-					description: "Owner health read op: today|trend|by_metric|status.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Owner health read op: today|trend|by_metric|status.",
-				},
-			],
-			descriptionCompressed:
-				"owner health: today|trend|by_metric|status; read-only telemetry",
-			similes: ["FITNESS", "WELLNESS"],
-			exampleCalls: [
-				{
-					user: "Use OWNER_HEALTH with the provided parameters.",
-					actions: ["OWNER_HEALTH"],
-					params: {
-						OWNER_HEALTH: {
-							action: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "OWNER_REMINDERS",
 			description:
 				"Owner reminders: create/update/delete/complete/skip/snooze/review one-off/recurring.",
@@ -7909,6 +7878,26 @@ export const allActionsSpec = {
 					descriptionCompressed:
 						"Operation: search, details, sync, toggle, install, uninstall. Infer if omitted.",
 				},
+				{
+					name: "slug",
+					description: "Skill slug for details, install, toggle, or uninstall.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Skill slug for details, install, toggle, or uninstall.",
+				},
+				{
+					name: "enabled",
+					description: "For action=toggle: true enables; false disables.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"For action=toggle: true enables. false disables.",
+				},
 			],
 			descriptionCompressed:
 				"Skill catalog: search, details, sync, toggle, install, uninstall.",
@@ -7932,6 +7921,8 @@ export const allActionsSpec = {
 					params: {
 						SKILL: {
 							action: "search",
+							slug: "example",
+							enabled: false,
 						},
 					},
 				},

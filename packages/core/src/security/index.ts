@@ -41,6 +41,8 @@ export {
 	type SecretsRedactOptions,
 } from "./redact.js";
 export {
+	BLOCKED_SPAWN_ENV_KEYS,
+	BLOCKED_SPAWN_ENV_PREFIXES,
 	isBlockedSpawnEnvKey,
 	sanitizeSpawnEnv,
 } from "./spawn-env-policy.js";

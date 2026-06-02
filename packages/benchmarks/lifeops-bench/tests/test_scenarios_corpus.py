@@ -13,7 +13,12 @@ from pathlib import Path
 
 import pytest
 
-from eliza_lifeops_bench.scenarios import ALL_SCENARIOS, SCENARIOS_BY_DOMAIN
+from eliza_lifeops_bench.scenarios import (
+    ALL_SCENARIOS,
+    SCENARIOS_BY_DOMAIN,
+    count_lifeops_scenarios,
+    validate_lifeops_scenarios,
+)
 from eliza_lifeops_bench.types import Domain
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -60,6 +65,24 @@ def test_corpus_size_meets_minimum() -> None:
     assert len(ALL_SCENARIOS) >= 40, (
         f"Wave 2A baseline is 40 hand-authored scenarios; have {len(ALL_SCENARIOS)}"
     )
+
+
+def test_corpus_expands_current_core_by_exactly_10x() -> None:
+    assert count_lifeops_scenarios() == {
+        "suite": "lifeops-bench",
+        "existing": 1020,
+        "added": 10200,
+        "total": 11220,
+        "multiplierAdded": 10,
+    }
+    assert validate_lifeops_scenarios() == {
+        "valid": True,
+        "total": 11220,
+        "uniqueIds": 11220,
+        "duplicateIds": [],
+        "emptyInstructions": [],
+        "expansionMatches": True,
+    }
 
 
 def test_unique_scenario_ids() -> None:

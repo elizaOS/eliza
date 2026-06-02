@@ -18,6 +18,7 @@ from elizaos_vending_bench.agent import LLMProvider, VendingAgent
 from elizaos_vending_bench.environment import VendingEnvironment
 from elizaos_vending_bench.evaluator import CoherenceEvaluator
 from elizaos_vending_bench.reporting import VendingBenchReporter
+from elizaos_vending_bench.scenarios import expanded_run_configs
 from elizaos_vending_bench.types import (
     LEADERBOARD_SCORES,
     LeaderboardComparison,
@@ -92,18 +93,28 @@ class VendingBenchRunner:
         self._start_time = time.time()
 
         logger.info("[VendingBenchRunner] Starting Vending-Bench evaluation")
+        run_configs = expanded_run_configs(self.config)
         logger.info(
-            f"[VendingBenchRunner] Config: {self.config.num_runs} runs, {self.config.max_days_per_run} days each"
+            f"[VendingBenchRunner] Config: {len(run_configs)} scenarios from "
+            f"{self.config.num_runs} base runs, {self.config.max_days_per_run} days each"
         )
 
         results: list[VendingBenchResult] = []
 
-        for run_idx in range(self.config.num_runs):
-            run_id = f"run_{run_idx + 1:03d}"
+        for scenario_idx, (suffix, base_run_idx, scenario_config) in enumerate(run_configs):
+            if suffix == "base":
+                run_id = f"run_{base_run_idx + 1:03d}"
+            else:
+                run_id = f"run_{base_run_idx + 1:03d}_{suffix}"
             logger.info(f"[VendingBenchRunner] Starting {run_id}")
 
             try:
-                result = await self._run_single(run_idx, run_id)
+                result = await self._run_single(
+                    base_run_idx,
+                    run_id,
+                    scenario_config,
+                    scenario_idx,
+                )
                 results.append(result)
 
                 logger.info(
@@ -120,8 +131,8 @@ class VendingBenchRunner:
                         run_id=run_id,
                         simulation_days=0,
                         final_net_worth=Decimal("0"),
-                        initial_cash=self.config.initial_cash,
-                        profit=Decimal("0") - self.config.initial_cash,
+                        initial_cash=scenario_config.initial_cash,
+                        profit=Decimal("0") - scenario_config.initial_cash,
                         total_revenue=Decimal("0"),
                         total_costs=Decimal("0"),
                         total_operational_fees=Decimal("0"),
@@ -140,8 +151,8 @@ class VendingBenchRunner:
                         run_id=run_id,
                         simulation_days=0,
                         final_net_worth=Decimal("0"),
-                        initial_cash=self.config.initial_cash,
-                        profit=Decimal("0") - self.config.initial_cash,
+                        initial_cash=scenario_config.initial_cash,
+                        profit=Decimal("0") - scenario_config.initial_cash,
                         total_revenue=Decimal("0"),
                         total_costs=Decimal("0"),
                         total_operational_fees=Decimal("0"),
@@ -198,35 +209,43 @@ class VendingBenchRunner:
 
         return report
 
-    async def _run_single(self, run_idx: int, run_id: str) -> VendingBenchResult:
+    async def _run_single(
+        self,
+        run_idx: int,
+        run_id: str,
+        scenario_config: VendingBenchConfig | None = None,
+        scenario_idx: int | None = None,
+    ) -> VendingBenchResult:
         """Run a single benchmark trial."""
+        config = scenario_config or self.config
         # Create environment with seed
         seed = None
-        if self.config.random_seed is not None:
-            seed = self.config.random_seed + run_idx
+        if config.random_seed is not None:
+            seed = config.random_seed + (scenario_idx if scenario_idx is not None else run_idx)
 
         environment = VendingEnvironment(
-            initial_cash=self.config.initial_cash,
+            initial_cash=config.initial_cash,
             seed=seed,
-            rows=self.config.machine_rows,
-            columns=self.config.machine_columns,
-            location=self.config.location,
-            daily_base_fee=self.config.daily_base_fee,
-            slot_fee=self.config.slot_fee,
-            starter_inventory=self.config.starter_inventory,
+            start_date=config.start_date,
+            rows=config.machine_rows,
+            columns=config.machine_columns,
+            location=config.location,
+            daily_base_fee=config.daily_base_fee,
+            slot_fee=config.slot_fee,
+            starter_inventory=config.starter_inventory,
         )
 
         # Create agent
         agent = VendingAgent(
             environment=environment,
             llm_provider=self.llm_provider,
-            temperature=self.config.temperature,
+            temperature=config.temperature,
         )
 
         # Run simulation
         result = await agent.run_simulation(
-            max_days=self.config.max_days_per_run,
-            max_actions_per_day=self.config.max_actions_per_day,
+            max_days=config.max_days_per_run,
+            max_actions_per_day=config.max_actions_per_day,
             run_id=run_id,
         )
 
@@ -234,25 +253,31 @@ class VendingBenchRunner:
         self.evaluator._reset_tracking()
         coherence_errors = self.evaluator.evaluate_run(result)
         result.coherence_errors = coherence_errors
-        result.starter_baseline_revenue = self._noop_baseline_revenue(seed)
+        result.starter_baseline_revenue = self._noop_baseline_revenue(seed, config)
         result.incremental_revenue = result.total_revenue - result.starter_baseline_revenue
 
         return result
 
-    def _noop_baseline_revenue(self, seed: int | None) -> Decimal:
+    def _noop_baseline_revenue(
+        self,
+        seed: int | None,
+        config: VendingBenchConfig | None = None,
+    ) -> Decimal:
         """Revenue a do-nothing policy earns from the same initial conditions."""
 
+        config = config or self.config
         environment = VendingEnvironment(
-            initial_cash=self.config.initial_cash,
+            initial_cash=config.initial_cash,
             seed=seed,
-            rows=self.config.machine_rows,
-            columns=self.config.machine_columns,
-            location=self.config.location,
-            daily_base_fee=self.config.daily_base_fee,
-            slot_fee=self.config.slot_fee,
-            starter_inventory=self.config.starter_inventory,
+            start_date=config.start_date,
+            rows=config.machine_rows,
+            columns=config.machine_columns,
+            location=config.location,
+            daily_base_fee=config.daily_base_fee,
+            slot_fee=config.slot_fee,
+            starter_inventory=config.starter_inventory,
         )
-        for _day in range(self.config.max_days_per_run):
+        for _day in range(config.max_days_per_run):
             environment.simulate_day()
         return sum((s.total_revenue for s in environment.state.daily_history), Decimal("0"))
 
@@ -553,6 +578,7 @@ class VendingBenchRunner:
                 "num_runs": report.config.num_runs,
                 "max_days_per_run": report.config.max_days_per_run,
                 "initial_cash": str(report.config.initial_cash),
+                "include_edge_scenarios": report.config.include_edge_scenarios,
                 "model_name": report.config.model_name,
             },
             "metrics": {

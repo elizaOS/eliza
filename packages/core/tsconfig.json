@@ -24,6 +24,7 @@
 			"@elizaos/contracts/*": ["../contracts/src/*"],
 			"@elizaos/prompts": ["../prompts/src/index.ts"],
 			"@elizaos/prompts/*": ["../prompts/src/*"],
+			"@elizaos/logger": ["../logger/src/index.ts"],
 			"@elizaos/core": ["./src/index.node.ts"],
 			"@elizaos/shared": ["../shared/src/index.ts"],
 			"@elizaos/plugin-elizacloud": [

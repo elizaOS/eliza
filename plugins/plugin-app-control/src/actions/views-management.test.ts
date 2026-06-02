@@ -545,6 +545,61 @@ describe("view management actions", () => {
 		);
 	});
 
+	it("includes explicit XR view type in window navigation payloads", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [view({ viewType: "xr" })]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({ ok: true }),
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			message(
+				"open the remote ledger spatial view in a separate window",
+			) as never,
+			undefined,
+			{
+				action: "window",
+				view: "remote-ledger",
+				viewType: "xr",
+			},
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			mode: "window",
+			viewId: "remote-ledger",
+			viewType: "xr",
+		});
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/remote-ledger/navigate?viewType=xr",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "open-window",
+					viewType: "xr",
+					alwaysOnTop: false,
+				}),
+			}),
+		);
+		expect(callback).toHaveBeenCalledWith(
+			expect.objectContaining({
+				text: 'Opened xr view "remote-ledger" in a separate window.',
+			}),
+		);
+	});
+
 	it("routes create, edit, and delete through the unified VIEWS action dispatcher", async () => {
 		const repo = createRepoFixture();
 		try {

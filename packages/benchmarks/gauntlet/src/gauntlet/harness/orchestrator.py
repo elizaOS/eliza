@@ -20,8 +20,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-import yaml
-
 from gauntlet.harness.metrics_collector import MetricsCollector, TransactionMetrics
 from gauntlet.harness.state_initializer import (
     AccountConfig,
@@ -31,6 +29,7 @@ from gauntlet.harness.state_initializer import (
     StateInitializer,
 )
 from gauntlet.sdk.interface import GauntletAgent
+from gauntlet.scenarios import ScenarioDefinition, load_scenarios
 from gauntlet.sdk.types import (
     AgentResponse,
     DecisionTrace,
@@ -52,20 +51,6 @@ def _pubkey(value: str):
         from gauntlet.sdk.types import Pubkey
 
         return Pubkey(value)
-
-
-@dataclass
-class ScenarioDefinition:
-    """Parsed scenario definition from YAML."""
-    id: str
-    level: int
-    name: str
-    description: str
-    category: str
-    expected_outcome: str  # "successful_execution", "correct_refusal", etc.
-    state: dict  # Raw state configuration
-    tasks: list[dict]  # Raw task definitions
-    scoring: dict  # Scoring rules
 
 
 @dataclass
@@ -128,28 +113,7 @@ class TestOrchestrator:
 
     def load_scenarios(self) -> None:
         """Load all scenario definitions from the scenarios directory."""
-        for level in range(4):  # Levels 0-3 per Phase 1
-            level_dir = self.scenarios_dir / f"level{level}"
-            if not level_dir.exists():
-                self._scenarios[level] = []
-                continue
-
-            scenarios = []
-            for scenario_file in level_dir.glob("*.yaml"):
-                with open(scenario_file) as f:
-                    data = yaml.safe_load(f)
-                    scenarios.append(ScenarioDefinition(
-                        id=data["id"],
-                        level=data["level"],
-                        name=data["name"],
-                        description=data.get("description", ""),
-                        category=data.get("category", ""),
-                        expected_outcome=data["expected_outcome"],
-                        state=data.get("state", {}),
-                        tasks=data.get("tasks", []),
-                        scoring=data.get("scoring", {}),
-                    ))
-            self._scenarios[level] = scenarios
+        self._scenarios = load_scenarios(self.scenarios_dir)
 
     async def run_benchmark(
         self,

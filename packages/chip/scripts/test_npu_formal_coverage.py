@@ -70,8 +70,11 @@ class NpuFormalCoverageTests(unittest.TestCase):
             "nnapi_claim_allowed",
             "performance_claim_allowed",
             "full_npu_correctness_claim_allowed",
+            "driver_claim_allowed",
+            "soc_fabric_claim_allowed",
         ):
             self.assertIs(payload.get(key), False)
+        self.assertEqual(payload.get("false_claim_flags"), gate.FALSE_CLAIM_FLAGS)
 
     def test_missing_formal_observability_token_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

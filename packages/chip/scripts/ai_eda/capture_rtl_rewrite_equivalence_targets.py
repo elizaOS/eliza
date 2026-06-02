@@ -131,6 +131,18 @@ def main() -> int:
             "equivalence_claim_allowed": False,
             "ppa_claim_allowed": False,
             "release_use_allowed": False,
+            "false_claim_flags": {
+                "changes_rtl": False,
+                "equivalence_claim_allowed": False,
+                "generates_rewrite": False,
+                "ppa_claim_allowed": False,
+                "prediction_generated": False,
+                "release_use_allowed": False,
+                "runs_equivalence": False,
+                "runs_llm": False,
+                "runs_simulation": False,
+                "runs_synthesis": False,
+            },
         },
         "input_artifacts": [artifact_entry(path) for path in INPUT_ARTIFACTS],
         "optional_backends": {

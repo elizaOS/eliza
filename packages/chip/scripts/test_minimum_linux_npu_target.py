@@ -11,10 +11,21 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECK = ROOT / "scripts/check_minimum_linux_npu_target.py"
+MINIMUM_LINUX_CHECK = ROOT / "scripts/check_minimum_linux_target.py"
 
 
 def load_check_module():
     spec = importlib.util.spec_from_file_location("check_minimum_linux_npu_target", CHECK)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_minimum_linux_module():
+    spec = importlib.util.spec_from_file_location(
+        "check_minimum_linux_target", MINIMUM_LINUX_CHECK
+    )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -79,6 +90,7 @@ class MinimumLinuxNpuTargetTest(unittest.TestCase):
         target_smoke = next(
             gate for gate in report["gates"] if gate["name"] == "target_side_npu_ml_smoke"
         )
+
         if target_smoke["status"] == "passed":
             self.assertEqual(benchmark_gate["status"], "passed")
             self.assertEqual(
@@ -359,6 +371,7 @@ class MinimumLinuxNpuTargetTest(unittest.TestCase):
             summary["claim_boundary"],
         )
         self.assertIn("observed_markers", summary)
+        instruction_trace = None
         if generated_boot["status"] == "blocked":
             generated_remaining = next(
                 item
@@ -410,15 +423,41 @@ class MinimumLinuxNpuTargetTest(unittest.TestCase):
                 self.assertIn("reached_simulator_runtime", active_attempt)
             self.assertIn("companion_report_next_safe_action", generated_boot)
             instruction_trace = generated_boot.get("companion_report_instruction_trace")
-            if isinstance(instruction_trace, dict):
-                self.assertIn("fresh_for_log", instruction_trace)
-                self.assertIn("bootrom_to_payload_handoff", instruction_trace)
-                if instruction_trace.get("bootrom_to_payload_handoff"):
-                    self.assertEqual(
-                        instruction_trace.get("first_payload_pc"),
-                        "0x0000000080000000",
-                    )
-                    self.assertIn("retired_instruction_count", instruction_trace)
+        if isinstance(instruction_trace, dict):
+            self.assertIn("fresh_for_log", instruction_trace)
+            self.assertIn("bootrom_to_payload_handoff", instruction_trace)
+            if instruction_trace.get("bootrom_to_payload_handoff"):
+                self.assertEqual(
+                    instruction_trace.get("first_payload_pc"),
+                    "0x0000000080000000",
+                )
+                self.assertIn("retired_instruction_count", instruction_trace)
+
+    def test_minimum_linux_kernel_prefers_accepted_cpu_ap_intake_over_live_log(self):
+        module = load_minimum_linux_module()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            live = root / "build/chipyard/eliza_rocket/verilator-linux-smoke.log"
+            accepted = root / "build/evidence/cpu_ap/eliza_e1_linux_boot.log"
+            live.parent.mkdir(parents=True)
+            accepted.parent.mkdir(parents=True)
+            live.write_text("OpenSBI\nLinux version\n", encoding="utf-8")
+            accepted.write_text(
+                "eliza-evidence: target=cpu_ap artifact=eliza_e1_linux_boot\n"
+                "OpenSBI\nLinux version\nRun /init as init process\n"
+                "eliza-evidence: status=PASS\n",
+                encoding="utf-8",
+            )
+            item = module.check_evidence(live, accepted_fallback=accepted)
+
+        self.assertEqual(item["status"], "present")
+        self.assertIs(item["accepted_intake_evidence"], True)
+        self.assertTrue(item["path"].endswith("build/evidence/cpu_ap/eliza_e1_linux_boot.log"))
+        self.assertTrue(
+            item["raw_source_path"].endswith(
+                "build/chipyard/eliza_rocket/verilator-linux-smoke.log"
+            )
+        )
 
     def test_generated_ap_gate_rejects_devmem_fallback_transcript(self):
         module = load_check_module()
@@ -720,9 +759,7 @@ class MinimumLinuxNpuTargetTest(unittest.TestCase):
             "0x0000000080b00000",
         )
         self.assertIs(
-            contract["opensbi_fdt_handoff_audit"][
-                "domain0_next_arg1_clear_of_kernel_low_window"
-            ],
+            contract["opensbi_fdt_handoff_audit"]["domain0_next_arg1_clear_of_kernel_low_window"],
             False,
         )
         self.assertIn("diagnostic", contract["claim_boundary"])

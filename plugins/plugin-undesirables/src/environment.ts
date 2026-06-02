@@ -23,6 +23,14 @@ export function validateUndesirableConfig(
     };
   }
 
+  if (!path.isAbsolute(workspacePath)) {
+    return {
+      valid: false,
+      error: `UNDESIRABLES_WORKSPACE must be an absolute path: "${workspacePath}". ` +
+        "Point it to the absolute path of your downloaded soul workspace folder.",
+    };
+  }
+
   if (!fs.existsSync(workspacePath)) {
     return {
       valid: false,

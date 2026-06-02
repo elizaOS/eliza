@@ -71,8 +71,8 @@
     "sys_boot_completed": "adb: no devices/emulators found",
     "uname_m": "adb: no devices/emulators found"
   },
-  "ended_utc": "2026-05-28T20:51:04Z",
-  "generated_utc": "2026-05-28T20:51:04Z",
+  "ended_utc": "2026-06-02T05:43:01Z",
+  "generated_utc": "2026-06-02T05:43:01Z",
   "logs": {
     "avc_denial_count": 0,
     "fatal_crash_count": 0,
@@ -92,31 +92,26 @@
         "artifact_inventory": {
           "blocker_dependency": "repo_artifact_generation",
           "missing": [
+            "vendor.img",
+            "system.img",
             "product.img",
             "system_ext.img"
           ],
           "next_step": "Finish the eliza_ai_soc AOSP build and produce every required image before staging a release archive.",
-          "present": [
-            "vendor.img",
-            "system.img"
-          ],
+          "present": [],
           "product_out": "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc",
           "records": [
             {
-              "exists": true,
-              "mtime_utc": "2026-05-27T23:11:34Z",
+              "exists": false,
               "name": "vendor.img",
               "path": "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc/vendor.img",
-              "required_for_bootable_chip_archive": true,
-              "size_bytes": 137453740
+              "required_for_bootable_chip_archive": true
             },
             {
-              "exists": true,
-              "mtime_utc": "2026-05-27T23:12:22Z",
+              "exists": false,
               "name": "system.img",
               "path": "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc/system.img",
-              "required_for_bootable_chip_archive": true,
-              "size_bytes": 951541760
+              "required_for_bootable_chip_archive": true
             },
             {
               "exists": false,
@@ -131,15 +126,15 @@
               "required_for_bootable_chip_archive": true
             }
           ],
-          "status": "partial"
+          "status": "missing"
         },
-        "expected_command": "AOSP_DIR=$AOSP_WORKSPACE python3 packages/chip/scripts/run_with_timeout.py --timeout-seconds 2400 --label aosp-build-only-evidence -- packages/chip/scripts/boot_android_simulator.sh --build-only",
+        "expected_command": "test -n \"$AOSP_WORKSPACE\" && python3 packages/chip/scripts/run_with_timeout.py --timeout-seconds 2400 --label aosp-build-only-evidence -- packages/chip/scripts/boot_android_simulator.sh --build-only",
         "expected_evidence_logs": [
           {
             "exists": true,
-            "mtime_utc": "2026-05-27T23:06:39Z",
+            "mtime_utc": "2026-06-02T02:13:38Z",
             "path": "docs/evidence/android/eliza_ai_soc_lunch.log",
-            "size_bytes": 946,
+            "size_bytes": 938,
             "tail": [
               "",
               "============================================",
@@ -157,24 +152,24 @@
               "OUT_DIR=out",
               "SOONG_ONLY=false",
               "============================================",
-              "eliza-evidence: ended_utc=2026-05-27T23:06:39Z",
+              "eliza-evidence: ended_utc=2026-06-02T02:13:38Z",
               "eliza-evidence: status=PASS",
-              "END_UTC=2026-05-27T23:06:39Z",
+              "END_UTC=2026-06-02T02:13:38Z",
               "RESULT=0"
             ]
           },
           {
             "exists": true,
-            "mtime_utc": "2026-05-27T23:11:35Z",
+            "mtime_utc": "2026-06-02T02:13:48Z",
             "path": "docs/evidence/android/eliza_ai_soc_vendorimage.log",
-            "size_bytes": 415511,
+            "size_bytes": 2225,
             "tail": [
-              "[ 99% 2920/2923 16m18s remaining] build out/target/product/eliza_ai_soc/vendor/etc/NOTICE.xml.gz",
-              "[ 99% 2921/2923 16m17s remaining] Creating linker config: out/target/product/eliza_ai_soc/vendor/etc/linker.config.pb",
-              "[ 99% 2922/2923 16m17s remaining] Installed file list: out/target/product/eliza_ai_soc/installed-files-vendor.txt",
-              "[100% 2923/2923 16m15s remaining] Target vendor fs image: out/target/product/eliza_ai_soc/vendor.img",
+              "No need to regenerate ninja file",
+              "No need to regenerate ninja file",
+              "Starting ninja...",
+              "ninja: no work to do.",
               "",
-              "#### build completed successfully (04:54 (mm:ss)) ####",
+              "#### build completed successfully (8 seconds) ####",
               "",
               "out/target/product/eliza_ai_soc/vendor.img",
               "out/target/product/eliza_ai_soc/installed-files-vendor.txt",
@@ -185,17 +180,17 @@
               "device/eliza/eliza_ai_soc/hal/e1_npu/vendor.eliza.e1_npu@1.0-service.rc:10:on property:vendor.e1_npu.ready=0",
               "out/target/product/eliza_ai_soc/vendor/build.prop:133:vendor.e1_npu.ready=0",
               "out/target/product/eliza_ai_soc/vendor/etc/init/vendor.eliza.e1_npu@1.0-service.rc:10:on property:vendor.e1_npu.ready=0",
-              "eliza-evidence: ended_utc=2026-05-27T23:11:35Z",
+              "eliza-evidence: ended_utc=2026-06-02T02:13:48Z",
               "eliza-evidence: status=PASS",
-              "END_UTC=2026-05-27T23:11:35Z",
+              "END_UTC=2026-06-02T02:13:48Z",
               "RESULT=0"
             ]
           },
           {
             "exists": true,
-            "mtime_utc": "2026-05-27T23:12:23Z",
+            "mtime_utc": "2026-06-02T02:13:59Z",
             "path": "docs/evidence/android/eliza_ai_soc_checkvintf.log",
-            "size_bytes": 10704,
+            "size_bytes": 10696,
             "tail": [
               "[INFO] Fetch 'out/target/product/eliza_ai_soc/system/etc/vintf/compatibility_matrix.202404.xml': OK",
               "[INFO] Fetch 'out/target/product/eliza_ai_soc/system/etc/vintf/compatibility_matrix.5.xml': OK",
@@ -213,17 +208,17 @@
               "[INFO] Get modified time 'out/target/product/eliza_ai_soc/apex/apex-info-list.xml': NAME_NOT_FOUND",
               "COMPATIBLE",
               "VINTF_COMPAT=ok",
-              "eliza-evidence: ended_utc=2026-05-27T23:12:23Z",
+              "eliza-evidence: ended_utc=2026-06-02T02:13:59Z",
               "eliza-evidence: status=PASS",
-              "END_UTC=2026-05-27T23:12:23Z",
+              "END_UTC=2026-06-02T02:13:59Z",
               "RESULT=0"
             ]
           },
           {
             "exists": true,
-            "mtime_utc": "2026-05-27T23:12:34Z",
+            "mtime_utc": "2026-06-02T02:14:07Z",
             "path": "docs/evidence/android/eliza_ai_soc_sepolicy_build.log",
-            "size_bytes": 85753,
+            "size_bytes": 67231,
             "tail": [
               "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:758:(type hal_e1_npu_default)",
               "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:759:(roletype object_r hal_e1_npu_default)",
@@ -241,17 +236,17 @@
               "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2093:(allow hal_e1_npu_default hidl_base_hwservice_202604 (hwservice_manager (add)))",
               "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2098:(typeattributeset base_typeattr_250_202604 (and (domain) (not (hal_e1_npu_default))))",
               "SEPOLICY_BUILD=ok",
-              "eliza-evidence: ended_utc=2026-05-27T23:12:34Z",
+              "eliza-evidence: ended_utc=2026-06-02T02:14:07Z",
               "eliza-evidence: status=PASS",
-              "END_UTC=2026-05-27T23:12:34Z",
+              "END_UTC=2026-06-02T02:14:07Z",
               "RESULT=0"
             ]
           },
           {
             "exists": true,
-            "mtime_utc": "2026-05-27T23:12:42Z",
+            "mtime_utc": "2026-06-02T02:14:14Z",
             "path": "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
-            "size_bytes": 106969,
+            "size_bytes": 107603,
             "tail": [
               "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2081:(neverallow base_typeattr_234_202604 vendor_e1_npu_prop (file (ioctl read write create setattr lock relabelfrom append unlink link rename open watch watch_mount watch_sb watch_with_perm watch_reads)))",
               "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2082:(allow init_202604 hal_e1_npu_default_exec (file (read getattr map execute open)))",
@@ -269,20 +264,20 @@
               "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2094:(neverallow base_typeattr_250_202604 hal_e1_npu_hwservice (hwservice_manager (add)))",
               "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2098:(typeattributeset base_typeattr_250_202604 (and (domain) (not (hal_e1_npu_default))))",
               "SEPOLICY_NEVERALLOW=ok",
-              "eliza-evidence: ended_utc=2026-05-27T23:12:42Z",
+              "eliza-evidence: ended_utc=2026-06-02T02:14:14Z",
               "eliza-evidence: status=PASS",
-              "END_UTC=2026-05-27T23:12:42Z",
+              "END_UTC=2026-06-02T02:14:14Z",
               "RESULT=0"
             ]
           }
         ],
         "expected_report": {
           "exists": true,
-          "mtime_utc": "2026-05-27T23:12:42Z",
+          "mtime_utc": "2026-06-02T02:24:33Z",
           "path": "build/reports/android_sim_boot.json",
-          "size_bytes": 3309
+          "size_bytes": 4677
         },
-        "full_runtime_command_after_build_only": "AOSP_DIR=$AOSP_WORKSPACE packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish --run-cts --run-vts --run-qemu --run-renode",
+        "full_runtime_command_after_build_only": "test -n \"$AOSP_WORKSPACE\" && packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish --run-cts --run-vts --run-qemu --run-renode",
         "purpose": "fail_closed_context_for_concurrent_android_build_only_attempt",
         "stdout_stderr_access": "run_with_timeout stdout/stderr are inherited pipes; use the evidence logs and android_sim_boot report below as durable artifacts",
         "validation_commands": [
@@ -294,8 +289,8 @@
         ]
       },
       "cuttlefish_runtime": "latest_instance=",
-      "runtime_processes": "1680       1  5-19:17:29 /usr/lib/cuttlefish-common/bin/operator --log_file=/run/cuttlefish/operator.log --https_port=1443 --tls_cert_dir=/etc/cuttlefish-common/operator/cert --socket_path=/run/cuttlefish/operator --listen_addr=0.0.0.0\n   1772       1  5-19:17:29 dnsmasq --port=0 --strict-order --except-interface=lo --interface=cvd-ebr --listen-address=192.168.98.1 --bind-interfaces --dhcp-range=192.168.98.2,192.168.98.255 --dhcp-option=option:dns-server,8.8.8.8,8.8.4.4 --dhcp-option=option6:dns-server,2001:4860:4860::8888,2001:4860:4860::8844 --conf-file= --pid-file=/var/run/cuttlefish-dnsmasq-cvd-ebr.pid --dhcp-leasefile=/var/run/cuttlefish-dnsmasq-cvd-ebr.leases --dhcp-no-override\n   1935       1  5-19:17:29 dnsmasq --port=0 --strict-order --except-interface=lo --interface=cvd-wbr --listen-address=192.168.96.1 --bind-interfaces --dhcp-range=192.168.96.2,192.168.96.255 --dhcp-option=option:dns-server,8.8.8.8,8.8.4.4 --dhcp-option=option6:dns-server,2001:4860:4860::8888,2001:4860:4860::8844 --conf-file= --pid-file=/var/run/cuttlefish-dnsmasq-cvd-wbr.pid --dhcp-leasefile=/var/run/cuttlefish-dnsmasq-cvd-wbr.leases --dhcp-no-override\n3718168 3718161       00:00 /usr/lib/llvm-18/bin/clang -cc1as -triple riscv64-unknown-unknown-elf -filetype obj -main-file-name csrli-01.S -target-cpu generic-rv64 -target-feature +m -target-feature +a -target-feature +f -target-feature +d -target-feature +c -target-feature +zicsr -target-feature +zifencei -target-feature +zba -target-feature +zbb -target-feature +zbc -target-feature +zbkb -target-feature +zbkx -target-feature +zbs -target-feature +zknd -target-feature +zkne -target-feature +zknh -target-feature -e -target-feature -h -target-feature -smaia -target-feature -smepmp -target-feature -ssaia -target-feature -svinval -target-feature -svnapot -target-feature -svpbmt -target-feature -v -target-feature -xcvalu -target-feature -xcvbi -target-feature -xcvbitmanip -target-feature -xcvelw -target-feature -xcvmac -target-feature -xcvmem -target-feature -xcvsimd -target-feature -xsfvcp -target-feature -xsfvfnrclipxfqf -target-feature -xsfvfwmaccqqq -target-feature -xsfvqmaccdod -target-feature -xsfvqmaccqoq -target-feature -xtheadba -target-feature -xtheadbb -target-feature -xtheadbs -target-feature -xtheadcmo -target-feature -xtheadcondmov -target-feature -xtheadfmemidx -target-feature -xtheadmac -target-feature -xtheadmemidx -target-feature -xtheadmempair -target-feature -xtheadsync -target-feature -xtheadvdot -target-feature -xventanacondops -target-feature -za128rs -target-feature -za64rs -target-feature -zawrs -target-feature -zbkc -target-feature -zca -target-feature -zcb -target-feature -zcd -target-feature -zce -target-feature -zcf -target-feature -zcmp -target-feature -zcmt -target-feature -zdinx -target-feature -zfa -target-feature -zfh -target-feature -zfhmin -target-feature -zfinx -target-feature -zhinx -target-feature -zhinxmin -target-feature -zic64b -target-feature -zicbom -target-feature -zicbop -target-feature -zicboz -target-feature -ziccamoa -target-feature -ziccif -target-feature -zicclsm -target-feature -ziccrse -target-feature -zicntr -target-feature -zicond -target-feature -zihintntl -target-feature -zihintpause -target-feature -zihpm -target-feature -zk -target-feature -zkn -target-feature -zkr -target-feature -zks -target-feature -zksed -target-feature -zksh -target-feature -zkt -target-feature -zmmul -target-feature -zvbb -target-feature -zvbc -target-feature -zve32f -target-feature -zve32x -target-feature -zve64d -target-feature -zve64f -target-feature -zve64x -target-feature -zvfh -target-feature -zvfhmin -target-feature -zvkb -target-feature -zvkg -target-feature -zvkn -target-feature -zvknc -target-feature -zvkned -target-feature -zvkng -target-feature -zvknha -target-feature -zvknhb -target-feature -zvks -target-feature -zvksc -target-feature -zvksed -target-feature -zvksg -target-feature -zvksh -target-feature -zvkt -target-feature -zvl1024b -target-feature -zvl128b -target-feature -zvl16384b -target-feature -zvl2048b -target-feature -zvl256b -target-feature -zvl32768b -target-feature -zvl32b -target-feature -zvl4096b -target-feature -zvl512b -target-feature -zvl64b -target-feature -zvl65536b -target-feature -zvl8192b -target-feature -experimental-zacas -target-feature -experimental-zcmop -target-feature -experimental-zfbfmin -target-feature -experimental-zicfilp -target-feature -experimental-zicfiss -target-feature -experimental-zimop -target-feature -experimental-ztso -target-feature -experimental-zvfbfmin -target-feature -experimental-zvfbfwma -target-feature +relax -I packages/chip/external/cva6/cva6/verif/tests/riscv-arch-test/riscv-test-suite/env/ -I packages/chip/external/cva6/cva6/verif/tests/riscv-arch-test/riscv-target/spike/ -fdebug-compilation-dir=packages/chip -dwarf-debug-producer Ubuntu clang version 18.1.3 (1ubuntu1) -I packages/chip/external/cva6/cva6/verif/tests/riscv-arch-test/riscv-test-suite/env/ -I packages/chip/external/cva6/cva6/verif/tests/riscv-arch-test/riscv-target/spike/ -dwarf-version=4 -mrelocation-model static -target-abi lp64d -mllvm -riscv-add-build-attributes -o <host-path>/csrli-01-74cc34.o <host-path>/csrli-01-a1f154.s\n3779127    3399  1-03:23:31 adb -L tcp:5037 fork-server server --reply-fd 4",
-      "tcp_listeners": "LISTEN 0      128        127.0.0.1:5037       0.0.0.0:*    users:((\"adb\",pid=3779127,fd=11))           \nLISTEN 0      4096               *:1443             *:*"
+      "runtime_processes": "3000       1    04:48:41 /usr/lib/cuttlefish-common/bin/operator --log_file=/run/cuttlefish/operator.log --https_port=1443 --tls_cert_dir=/etc/cuttlefish-common/operator/cert --socket_path=/run/cuttlefish/operator --listen_addr=0.0.0.0\n   3096       1    04:48:41 dnsmasq --port=0 --strict-order --except-interface=lo --interface=cvd-ebr --listen-address=192.168.98.1 --bind-interfaces --dhcp-range=192.168.98.2,192.168.98.255 --dhcp-option=option:dns-server,8.8.8.8,8.8.4.4 --dhcp-option=option6:dns-server,2001:4860:4860::8888,2001:4860:4860::8844 --conf-file= --pid-file=/var/run/cuttlefish-dnsmasq-cvd-ebr.pid --dhcp-leasefile=/var/run/cuttlefish-dnsmasq-cvd-ebr.leases --dhcp-no-override\n   3254       1    04:48:41 dnsmasq --port=0 --strict-order --except-interface=lo --interface=cvd-wbr --listen-address=192.168.96.1 --bind-interfaces --dhcp-range=192.168.96.2,192.168.96.255 --dhcp-option=option:dns-server,8.8.8.8,8.8.4.4 --dhcp-option=option6:dns-server,2001:4860:4860::8888,2001:4860:4860::8844 --conf-file= --pid-file=/var/run/cuttlefish-dnsmasq-cvd-wbr.pid --dhcp-leasefile=/var/run/cuttlefish-dnsmasq-cvd-wbr.leases --dhcp-no-override\n 203762    1859    04:17:29 adb -L tcp:5037 fork-server server --reply-fd 4",
+      "tcp_listeners": "LISTEN 0      128        127.0.0.1:5037      0.0.0.0:*    users:((\"adb\",pid=203762,fd=11))\nLISTEN 0      4096               *:1443            *:*"
     },
     "missing_or_false": [
       "adb_forward_ready",
@@ -311,8 +306,8 @@
       "system_privapp_apk_present"
     ],
     "next_operator_commands": [
-      "AOSP_DIR=$AOSP_WORKSPACE python3 packages/chip/scripts/run_with_timeout.py --timeout-seconds 2400 --label aosp-build-only-evidence -- packages/chip/scripts/boot_android_simulator.sh --build-only",
-      "AOSP_DIR=$AOSP_WORKSPACE packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish --run-cts --run-vts --run-qemu --run-renode",
+      "test -n \"$AOSP_WORKSPACE\" && python3 packages/chip/scripts/run_with_timeout.py --timeout-seconds 2400 --label aosp-build-only-evidence -- packages/chip/scripts/boot_android_simulator.sh --build-only",
+      "test -n \"$AOSP_WORKSPACE\" && packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish --run-cts --run-vts --run-qemu --run-renode",
       "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py",
       "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py"
     ],
@@ -335,7 +330,7 @@
   },
   "result": 2,
   "schema": "eliza.android_launcher_runtime_evidence.v1",
-  "started_utc": "2026-05-28T20:51:03Z",
+  "started_utc": "2026-06-02T05:43:01Z",
   "status": "BLOCKED",
   "target_label": "chip-riscv64"
 }

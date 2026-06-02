@@ -55,7 +55,7 @@ export class MessageManager {
 	async handleMessage(event: FeishuEventData): Promise<void> {
 		try {
 			const message = event.event?.message as FeishuMessage | undefined;
-			if (!message) {
+			if (!this.isValidIncomingMessage(message)) {
 				return;
 			}
 
@@ -138,7 +138,7 @@ export class MessageManager {
 					chatId,
 					messageId: message.messageId,
 				},
-				createdAt: Number.parseInt(message.createTime, 10),
+				createdAt: this.parseMessageTimestamp(message.createTime),
 			};
 
 			// Emit message received event
@@ -158,6 +158,26 @@ export class MessageManager {
 				`[Feishu] Error handling message: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
+	}
+
+	private isValidIncomingMessage(
+		message: FeishuMessage | undefined,
+	): message is FeishuMessage {
+		return Boolean(
+			message &&
+				typeof message.messageId === "string" &&
+				message.messageId.trim() &&
+				typeof message.chatId === "string" &&
+				message.chatId.trim() &&
+				typeof message.msgType === "string" &&
+				typeof message.content === "string" &&
+				typeof message.createTime === "string",
+		);
+	}
+
+	private parseMessageTimestamp(createTime: string): number {
+		const timestamp = Number.parseInt(createTime, 10);
+		return Number.isFinite(timestamp) ? timestamp : Date.now();
 	}
 
 	/**
@@ -206,6 +226,9 @@ export class MessageManager {
 
 			// Split long messages
 			const parts = this.splitMessage(text);
+			if (parts.length === 0) {
+				return messageIds;
+			}
 
 			for (const part of parts) {
 				const response = await this.client.im.message.create({
@@ -242,6 +265,9 @@ export class MessageManager {
 		try {
 			const text = content.text || "";
 			const parts = this.splitMessage(text);
+			if (parts.length === 0) {
+				return messageIds;
+			}
 
 			for (const part of parts) {
 				const response = await this.client.im.message.reply({
@@ -369,6 +395,10 @@ export class MessageManager {
 	 * Splits a long message into chunks.
 	 */
 	private splitMessage(content: string): string[] {
+		if (!content.trim()) {
+			return [];
+		}
+
 		if (content.length <= MAX_MESSAGE_LENGTH) {
 			return [content];
 		}

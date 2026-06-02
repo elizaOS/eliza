@@ -1,8 +1,9 @@
+// biome-ignore format: legacy debug script layout
 import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({
   baseURL: "https://api.cerebras.ai/v1",
-  apiKey: "csk-8c9hf68jfm6h955kx492dtnm8jwn682n6exhew4jpe85vwy6",
+  apiKey: process.env.CEREBRAS_API_KEY ?? "",
   defaultHeaders: { "x-cerebras-reasoning-effort": "low" },
 });
 
@@ -78,21 +79,61 @@ Output: {"ops":[...]}
 JSON only. No prose, fences, markdown, or thinking.`;
 
 const srExamples = [
-  { id: "sr-1", user: "@assistant can you help me schedule a meeting for tomorrow at 3pm?", expected: "YES" },
+  {
+    id: "sr-1",
+    user: "@assistant can you help me schedule a meeting for tomorrow at 3pm?",
+    expected: "YES",
+  },
   { id: "sr-2", user: "Hey John, can you grab lunch today?", expected: "NO" },
   { id: "sr-3", user: "What time is it in Tokyo right now?", expected: "YES" },
   { id: "sr-4", user: "lol that's hilarious", expected: "NO" },
-  { id: "sr-5", user: "I was talking to the assistant yesterday and it helped me", expected: "NO" },
-  { id: "sr-6", user: "Anyone else going to the party tonight?", expected: "NO" },
-  { id: "sr-7", user: "Hey assistant, can you summarize this article for me?", expected: "YES" },
+  {
+    id: "sr-5",
+    user: "I was talking to the assistant yesterday and it helped me",
+    expected: "NO",
+  },
+  {
+    id: "sr-6",
+    user: "Anyone else going to the party tonight?",
+    expected: "NO",
+  },
+  {
+    id: "sr-7",
+    user: "Hey assistant, can you summarize this article for me?",
+    expected: "YES",
+  },
   { id: "sr-8", user: "The meeting got moved to 4pm", expected: "NO" },
-  { id: "sr-9", user: "Can someone look up the flight status for AA 1234?", expected: "YES" },
-  { id: "sr-10", user: "alice: did you get my email? bob: yeah got it", expected: "NO" },
-  { id: "sr-11", user: "Can you help me write an email to my boss?", expected: "YES" },
-  { id: "sr-12", user: "Does anyone know where the conference room is?", expected: "YES" },
+  {
+    id: "sr-9",
+    user: "Can someone look up the flight status for AA 1234?",
+    expected: "YES",
+  },
+  {
+    id: "sr-10",
+    user: "alice: did you get my email? bob: yeah got it",
+    expected: "NO",
+  },
+  {
+    id: "sr-11",
+    user: "Can you help me write an email to my boss?",
+    expected: "YES",
+  },
+  {
+    id: "sr-12",
+    user: "Does anyone know where the conference room is?",
+    expected: "YES",
+  },
   { id: "sr-13", user: "ok ttyl everyone", expected: "NO" },
-  { id: "sr-14", user: "The report needs to be sent by Friday", expected: "NO" },
-  { id: "sr-15", user: "assistant what day of the week is it?", expected: "YES" },
+  {
+    id: "sr-14",
+    user: "The report needs to be sent by Friday",
+    expected: "NO",
+  },
+  {
+    id: "sr-15",
+    user: "assistant what day of the week is it?",
+    expected: "YES",
+  },
   { id: "sr-16", user: "🎉🎊🥳", expected: "NO" },
   { id: "sr-17", user: "Can the AI look into this?", expected: "YES" },
   { id: "sr-18", user: "Someone should check the server logs", expected: "NO" },
@@ -101,39 +142,151 @@ const srExamples = [
 ];
 
 const apExamples = [
-  { id: "ap-1", user: "User wants to schedule a dentist appointment for next Tuesday at 2pm.", expected: "SCHEDULE" },
-  { id: "ap-2", user: "User asked what the weather is like today in San Francisco.", expected: "SEARCH" },
-  { id: "ap-3", user: "User said hello and asked how you're doing.", expected: "REPLY" },
-  { id: "ap-4", user: "User wants to be reminded to call their doctor in 2 hours.", expected: "REMIND" },
-  { id: "ap-5", user: "User wants to save a note about a new project idea: a mobile app for tracking workouts.", expected: "NOTES" },
-  { id: "ap-6", user: "User said goodbye and that they'll talk later.", expected: "REPLY" },
-  { id: "ap-7", user: "User wants to find restaurants near downtown Seattle.", expected: "SEARCH" },
-  { id: "ap-8", user: "User wants a reminder to submit the quarterly report on Friday at 5pm.", expected: "REMIND" },
-  { id: "ap-9", user: "User is asking who won the Super Bowl last year.", expected: "SEARCH" },
-  { id: "ap-10", user: "User says 'block off 2-3pm Thursday for a team sync'.", expected: "SCHEDULE" },
-  { id: "ap-11", user: "User wants to jot down that they need to pick up milk and eggs.", expected: "NOTES" },
+  {
+    id: "ap-1",
+    user: "User wants to schedule a dentist appointment for next Tuesday at 2pm.",
+    expected: "SCHEDULE",
+  },
+  {
+    id: "ap-2",
+    user: "User asked what the weather is like today in San Francisco.",
+    expected: "SEARCH",
+  },
+  {
+    id: "ap-3",
+    user: "User said hello and asked how you're doing.",
+    expected: "REPLY",
+  },
+  {
+    id: "ap-4",
+    user: "User wants to be reminded to call their doctor in 2 hours.",
+    expected: "REMIND",
+  },
+  {
+    id: "ap-5",
+    user: "User wants to save a note about a new project idea: a mobile app for tracking workouts.",
+    expected: "NOTES",
+  },
+  {
+    id: "ap-6",
+    user: "User said goodbye and that they'll talk later.",
+    expected: "REPLY",
+  },
+  {
+    id: "ap-7",
+    user: "User wants to find restaurants near downtown Seattle.",
+    expected: "SEARCH",
+  },
+  {
+    id: "ap-8",
+    user: "User wants a reminder to submit the quarterly report on Friday at 5pm.",
+    expected: "REMIND",
+  },
+  {
+    id: "ap-9",
+    user: "User is asking who won the Super Bowl last year.",
+    expected: "SEARCH",
+  },
+  {
+    id: "ap-10",
+    user: "User says 'block off 2-3pm Thursday for a team sync'.",
+    expected: "SCHEDULE",
+  },
+  {
+    id: "ap-11",
+    user: "User wants to jot down that they need to pick up milk and eggs.",
+    expected: "NOTES",
+  },
   { id: "ap-12", user: "User just sent a thumbs up emoji.", expected: "NONE" },
-  { id: "ap-13", user: "User typed '...' with no other text.", expected: "NONE" },
-  { id: "ap-14", user: "User wants to look up today's top news headlines.", expected: "SEARCH" },
-  { id: "ap-15", user: "User says 'note to self: buy birthday card for mom before Saturday'.", expected: "NOTES" },
+  {
+    id: "ap-13",
+    user: "User typed '...' with no other text.",
+    expected: "NONE",
+  },
+  {
+    id: "ap-14",
+    user: "User wants to look up today's top news headlines.",
+    expected: "SEARCH",
+  },
+  {
+    id: "ap-15",
+    user: "User says 'note to self: buy birthday card for mom before Saturday'.",
+    expected: "NOTES",
+  },
   { id: "ap-16", user: "User asks 'what time is it?'", expected: "REPLY" },
-  { id: "ap-17", user: "User wants to put a 1-hour lunch break on their calendar for tomorrow at noon.", expected: "SCHEDULE" },
-  { id: "ap-18", user: "User typed a single period '.' with nothing else.", expected: "NONE" },
-  { id: "ap-19", user: "User wants to search for the best TypeScript ORM libraries in 2025.", expected: "SEARCH" },
-  { id: "ap-20", user: "User wants a reminder in 30 minutes to take their medication.", expected: "REMIND" },
+  {
+    id: "ap-17",
+    user: "User wants to put a 1-hour lunch break on their calendar for tomorrow at noon.",
+    expected: "SCHEDULE",
+  },
+  {
+    id: "ap-18",
+    user: "User typed a single period '.' with nothing else.",
+    expected: "NONE",
+  },
+  {
+    id: "ap-19",
+    user: "User wants to search for the best TypeScript ORM libraries in 2025.",
+    expected: "SEARCH",
+  },
+  {
+    id: "ap-20",
+    user: "User wants a reminder in 30 minutes to take their medication.",
+    expected: "REMIND",
+  },
 ];
 
 const feExamples = [
-  { id: "fe-1", user: `Message: "I'm a senior TypeScript developer with 8 years of backend experience."\nKnown durable facts: []\nKnown current facts: []`, expectedOp: "add_durable" },
-  { id: "fe-2", user: `Message: "I'm really anxious this morning — have a big presentation."\nKnown durable facts: []\nKnown current facts: []`, expectedOp: "add_current" },
-  { id: "fe-3", user: `Message: "Berlin's been treating me well lately."\nKnown durable facts: [fact_abc] (durable.identity) lives in Berlin\nKnown current facts: []`, expectedOp: "strengthen" },
-  { id: "fe-4", user: `Message: "Actually I moved to Tokyo last month."\nKnown durable facts: [fact_abc] (durable.identity) lives in Berlin\nKnown current facts: []`, expectedOp: "contradict" },
-  { id: "fe-5", user: `Message: "How's the weather in Paris?"\nKnown durable facts: []\nKnown current facts: []`, expectedOp: "empty" },
-  { id: "fe-6", user: `Message: "I love hiking on weekends, it's my main way to unwind."\nKnown durable facts: []\nKnown current facts: []`, expectedOp: "add_durable" },
-  { id: "fe-7", user: `Message: "I'm currently working on the auth migration for the payments system."\nKnown durable facts: []\nKnown current facts: []`, expectedOp: "add_current" },
-  { id: "fe-8", user: `Message: "lol yeah totally"\nKnown durable facts: []\nKnown current facts: []`, expectedOp: "empty" },
-  { id: "fe-9", user: `Message: "I graduated from MIT with a CS degree in 2018."\nKnown durable facts: []\nKnown current facts: []`, expectedOp: "add_durable" },
-  { id: "fe-10", user: `Message: "ok sounds good"\nKnown durable facts: [fact_x] (durable.identity) software engineer at Acme Corp\nKnown current facts: []`, expectedOp: "empty" },
+  {
+    id: "fe-1",
+    user: `Message: "I'm a senior TypeScript developer with 8 years of backend experience."\nKnown durable facts: []\nKnown current facts: []`,
+    expectedOp: "add_durable",
+  },
+  {
+    id: "fe-2",
+    user: `Message: "I'm really anxious this morning — have a big presentation."\nKnown durable facts: []\nKnown current facts: []`,
+    expectedOp: "add_current",
+  },
+  {
+    id: "fe-3",
+    user: `Message: "Berlin's been treating me well lately."\nKnown durable facts: [fact_abc] (durable.identity) lives in Berlin\nKnown current facts: []`,
+    expectedOp: "strengthen",
+  },
+  {
+    id: "fe-4",
+    user: `Message: "Actually I moved to Tokyo last month."\nKnown durable facts: [fact_abc] (durable.identity) lives in Berlin\nKnown current facts: []`,
+    expectedOp: "contradict",
+  },
+  {
+    id: "fe-5",
+    user: `Message: "How's the weather in Paris?"\nKnown durable facts: []\nKnown current facts: []`,
+    expectedOp: "empty",
+  },
+  {
+    id: "fe-6",
+    user: `Message: "I love hiking on weekends, it's my main way to unwind."\nKnown durable facts: []\nKnown current facts: []`,
+    expectedOp: "add_durable",
+  },
+  {
+    id: "fe-7",
+    user: `Message: "I'm currently working on the auth migration for the payments system."\nKnown durable facts: []\nKnown current facts: []`,
+    expectedOp: "add_current",
+  },
+  {
+    id: "fe-8",
+    user: `Message: "lol yeah totally"\nKnown durable facts: []\nKnown current facts: []`,
+    expectedOp: "empty",
+  },
+  {
+    id: "fe-9",
+    user: `Message: "I graduated from MIT with a CS degree in 2018."\nKnown durable facts: []\nKnown current facts: []`,
+    expectedOp: "add_durable",
+  },
+  {
+    id: "fe-10",
+    user: `Message: "ok sounds good"\nKnown durable facts: [fact_x] (durable.identity) software engineer at Acme Corp\nKnown current facts: []`,
+    expectedOp: "empty",
+  },
 ];
 
 const extractAction = (s: string) => {
@@ -154,7 +307,8 @@ const extractFirstOp = (s: string): string => {
 console.log("=== should_respond failures ===");
 for (const ex of srExamples) {
   const out = await call(SR_PROMPT, ex.user);
-  const aYes = out.toLowerCase().includes("yes") || out.toLowerCase().includes("respond");
+  const aYes =
+    out.toLowerCase().includes("yes") || out.toLowerCase().includes("respond");
   const verdict = aYes && !out.toLowerCase().includes("ignore") ? "yes" : "no";
   const expected = ex.expected.toLowerCase();
   if (verdict !== expected) {
@@ -168,7 +322,9 @@ for (const ex of apExamples) {
   const out = await call(AP_PROMPT, ex.user);
   const actual = extractAction(out);
   if (actual !== ex.expected) {
-    console.log(`FAIL ${ex.id}: output=${actual} (${out.trim()}) expected=${ex.expected}`);
+    console.log(
+      `FAIL ${ex.id}: output=${actual} (${out.trim()}) expected=${ex.expected}`,
+    );
   }
 }
 console.log("done ap");
@@ -178,7 +334,9 @@ for (const ex of feExamples) {
   const out = await call(FACT_PROMPT, ex.user);
   const actualOp = extractFirstOp(out);
   if (actualOp !== ex.expectedOp) {
-    console.log(`FAIL ${ex.id}: op=${actualOp} expected=${ex.expectedOp} | ${out.slice(0, 100)}`);
+    console.log(
+      `FAIL ${ex.id}: op=${actualOp} expected=${ex.expectedOp} | ${out.slice(0, 100)}`,
+    );
   }
 }
 console.log("done fe");

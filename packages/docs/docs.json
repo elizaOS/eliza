@@ -79,7 +79,7 @@
             "pages": [
               "changelog",
               "roadmap",
-              "guides/contributing"
+              "build-and-release"
             ]
           }
         ]
@@ -187,7 +187,7 @@
           {
             "group": "Connectors",
             "pages": [
-              "guides/connectors",
+              "tracks/agent/connect-channels",
               "connectors/discord",
               "connectors/telegram",
               "connectors/slack",
@@ -284,37 +284,20 @@
           {
             "group": "App developer guides",
             "pages": [
-              "guides/beginners-user-guide",
-              "guides/beginners-development-guide",
-              "guides/developer-playbook",
-              "guides/first-extension-walkthrough",
-              "guides/custom-actions",
-              "guides/hooks",
-              "guides/triggers",
-              "guides/coding-swarms",
-              "guides/config-includes",
-              "guides/config-templates",
-              "guides/agent-export",
-              "guides/autonomous-mode",
-              "guides/documents",
-              "guides/emotes",
-              "guides/media-generation",
-              "guides/themes",
               "guides/sandbox",
-              "guides/local-models",
-              "guides/training",
-              "guides/wallet-basics",
-              "guides/wallet",
-              "guides/whatsapp",
-              "guides/registry",
-              "guides/platform-secure-store",
-              "guides/onboarding-and-support",
-              "guides/onboarding-ui-flow",
-              "guides/developer-diagnostics-and-workspace",
-              "guides/tutorial-autonomous-agent",
-              "guides/tutorial-discord-bot",
-              "guides/tutorial-telegram-bot",
-              "guides/mcp-marketplace"
+              "apps/ui-library",
+              "apps/desktop-local-development",
+              "apps/desktop/native-modules",
+              "apps/mobile/build-guide",
+              "dashboard/chat",
+              "dashboard/apps",
+              "apps/dashboard/settings",
+              "plugins/testing",
+              "plugins/scenarios",
+              "plugins/decision-guide",
+              "plugins/local-plugins",
+              "plugin-resolution-and-node-path",
+              "action-catalog"
             ]
           }
         ]
@@ -417,8 +400,8 @@
           {
             "group": "Guides",
             "pages": [
-              "guides/cloud",
-              "guides/cloud-provider-routing",
+              "tracks/cloud/overview",
+              "tracks/cloud/inference",
               "eliza-cloud-deployment",
               "eliza-cloud-rollout"
             ]
@@ -513,6 +496,144 @@
       ]
     }
   },
+  "redirects": [
+    {
+      "source": "/guides/contributing",
+      "destination": "/index"
+    },
+    {
+      "source": "/guides/connectors",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/guides/beginners-user-guide",
+      "destination": "/user/apps-and-control"
+    },
+    {
+      "source": "/guides/beginners-development-guide",
+      "destination": "/tracks/framework-app/overview"
+    },
+    {
+      "source": "/guides/developer-playbook",
+      "destination": "/tracks/framework-app/overview"
+    },
+    {
+      "source": "/guides/first-extension-walkthrough",
+      "destination": "/tracks/framework-app/extend"
+    },
+    {
+      "source": "/guides/custom-actions",
+      "destination": "/tracks/framework/actions-providers-evaluators"
+    },
+    {
+      "source": "/guides/hooks",
+      "destination": "/plugins/patterns"
+    },
+    {
+      "source": "/guides/triggers",
+      "destination": "/plugins/patterns"
+    },
+    {
+      "source": "/guides/coding-swarms",
+      "destination": "/plugins/scenarios"
+    },
+    {
+      "source": "/guides/config-includes",
+      "destination": "/configuration"
+    },
+    {
+      "source": "/guides/config-templates",
+      "destination": "/configuration"
+    },
+    {
+      "source": "/guides/agent-export",
+      "destination": "/user/developer-docs"
+    },
+    {
+      "source": "/guides/autonomous-mode",
+      "destination": "/configuration"
+    },
+    {
+      "source": "/guides/documents",
+      "destination": "/cloud/documents"
+    },
+    {
+      "source": "/guides/emotes",
+      "destination": "/dashboard/chat"
+    },
+    {
+      "source": "/guides/media-generation",
+      "destination": "/cloud/image-generation"
+    },
+    {
+      "source": "/guides/themes",
+      "destination": "/apps/ui-library"
+    },
+    {
+      "source": "/guides/local-models",
+      "destination": "/model-providers"
+    },
+    {
+      "source": "/guides/training",
+      "destination": "/tracks/training/overview"
+    },
+    {
+      "source": "/guides/wallet-basics",
+      "destination": "/cloud/wallet-api"
+    },
+    {
+      "source": "/guides/wallet",
+      "destination": "/cloud/wallet-api"
+    },
+    {
+      "source": "/guides/whatsapp",
+      "destination": "/connectors/whatsapp"
+    },
+    {
+      "source": "/guides/registry",
+      "destination": "/tracks/plugin/publish"
+    },
+    {
+      "source": "/guides/platform-secure-store",
+      "destination": "/apps/desktop/native-modules"
+    },
+    {
+      "source": "/guides/onboarding-and-support",
+      "destination": "/user/apps-and-control"
+    },
+    {
+      "source": "/guides/onboarding-ui-flow",
+      "destination": "/user/apps-and-control"
+    },
+    {
+      "source": "/guides/developer-diagnostics-and-workspace",
+      "destination": "/apps/desktop-local-development"
+    },
+    {
+      "source": "/guides/tutorial-autonomous-agent",
+      "destination": "/tracks/agent/create"
+    },
+    {
+      "source": "/guides/tutorial-discord-bot",
+      "destination": "/connectors/discord"
+    },
+    {
+      "source": "/guides/tutorial-telegram-bot",
+      "destination": "/connectors/telegram"
+    },
+    {
+      "source": "/guides/mcp-marketplace",
+      "destination": "/cloud/mcp"
+    },
+    {
+      "source": "/guides/cloud",
+      "destination": "/tracks/cloud/overview"
+    },
+    {
+      "source": "/guides/cloud-provider-routing",
+      "destination": "/tracks/cloud/inference"
+    }
+  ],
   "topAnchor": {
     "name": "Documentation"
   },

@@ -8,7 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from elizaos_mmau_audio.dataset import FIXTURE_PATH, MMAUDataset
+from elizaos_mmau_audio.dataset import (
+    FIXTURE_PATH,
+    MMAUDataset,
+    count_samples,
+    expand_samples,
+    validate_samples,
+)
 from elizaos_mmau_audio.types import MMAUCategory
 
 
@@ -44,6 +50,19 @@ def test_fixture_respects_max_samples() -> None:
     asyncio.run(ds.load(use_fixture=True, max_samples=3))
     samples = ds.get_samples()
     assert len(samples) == 3
+
+
+def test_expand_samples_adds_ten_edge_variants_per_sample() -> None:
+    ds = MMAUDataset()
+    asyncio.run(ds.load(use_fixture=True, max_samples=2))
+    base = ds.get_samples()
+    expanded = expand_samples(base)
+
+    validate_samples(expanded)
+    assert count_samples(base, expanded) == {"base": 2, "edge": 20, "total": 22}
+    assert expanded[2].id == f"{base[0].id}--edge-01"
+    assert expanded[2].answer_letter == base[0].answer_letter
+    assert expanded[2].metadata["base_sample_id"] == base[0].id
 
 
 def test_fixture_parses_metadata_fields() -> None:

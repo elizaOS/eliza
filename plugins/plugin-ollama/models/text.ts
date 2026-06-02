@@ -299,10 +299,7 @@ function buildOllamaStreamTextResult(args: {
   const usagePromise = Promise.resolve(streamResult.usage)
     .then(async (usage) => {
       const fullText = await textPromise;
-      const normalized =
-        normalizeTokenUsage(usage) ?? estimateUsage(args.promptForEstimate, fullText);
-      emitModelUsed(args.runtime, args.modelType, args.model, normalized);
-      return normalized;
+      return normalizeTokenUsage(usage) ?? estimateUsage(args.promptForEstimate, fullText);
     })
     .catch(() => undefined);
 
@@ -324,7 +321,10 @@ function buildOllamaStreamTextResult(args: {
       throw streamErr;
     } finally {
       if (completed) {
-        await usagePromise.catch(() => undefined);
+        const usage = await usagePromise.catch(() => undefined);
+        if (usage) {
+          emitModelUsed(args.runtime, args.modelType, args.model, usage);
+        }
       }
     }
   }
@@ -390,10 +390,7 @@ function buildOllamaStreamWithToolsResult(args: {
   const usagePromise = Promise.resolve(streamResult.usage)
     .then(async (usage) => {
       const fullText = await sdkTextPromise;
-      const normalized =
-        normalizeTokenUsage(usage) ?? estimateUsage(args.promptForEstimate, fullText);
-      emitModelUsed(args.runtime, args.modelType, args.model, normalized);
-      return normalized;
+      return normalizeTokenUsage(usage) ?? estimateUsage(args.promptForEstimate, fullText);
     })
     .catch(() => undefined);
 
@@ -421,6 +418,11 @@ function buildOllamaStreamWithToolsResult(args: {
         const first = mapped[0];
         if (first) {
           yield stringifyPlannerToolArgs(first.arguments);
+        } else {
+          const fallbackText = await sdkTextPromise;
+          if (fallbackText) {
+            yield fallbackText;
+          }
         }
       } else {
         for await (const chunk of streamResult.textStream) {
@@ -439,7 +441,10 @@ function buildOllamaStreamWithToolsResult(args: {
       throw streamErr;
     } finally {
       if (completed) {
-        await usagePromise.catch(() => undefined);
+        const usage = await usagePromise.catch(() => undefined);
+        if (usage) {
+          emitModelUsed(args.runtime, args.modelType, args.model, usage);
+        }
       }
     }
   }
@@ -507,17 +512,6 @@ async function handleTextWithModelType(
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
   const extended = params as GenerateTextParamsWithNativeOptions;
-  const structuredDisabled = isOllamaStructuredOutputDisabled(runtime);
-  let responseSchema: unknown = extended.responseSchema;
-  if (structuredDisabled && extended.responseSchema) {
-    logger.debug(
-      "[Ollama] OLLAMA_DISABLE_STRUCTURED_OUTPUT is set — ignoring responseSchema for this call."
-    );
-    responseSchema = undefined;
-  }
-
-  const tools = normalizeNativeTools(extended.tools);
-
   const {
     prompt,
     maxTokens = 8192,
@@ -528,6 +522,17 @@ async function handleTextWithModelType(
 
   let modelIdForLog = "";
   try {
+    const structuredDisabled = isOllamaStructuredOutputDisabled(runtime);
+    let responseSchema: unknown = extended.responseSchema;
+    if (structuredDisabled && extended.responseSchema) {
+      logger.debug(
+        "[Ollama] OLLAMA_DISABLE_STRUCTURED_OUTPUT is set — ignoring responseSchema for this call."
+      );
+      responseSchema = undefined;
+    }
+
+    const tools = normalizeNativeTools(extended.tools);
+
     const baseURL = getBaseURL(runtime);
     const customFetch = runtime.fetch ?? undefined;
     const ollama = createOllama({

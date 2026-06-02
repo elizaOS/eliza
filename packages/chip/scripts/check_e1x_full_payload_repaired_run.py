@@ -54,7 +54,9 @@ def main() -> int:
         "full-payload repaired-run inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_full_payload_repaired_run_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_payload_repaired_run_inputs_present", "status": status, "detail": detail}
+    )
 
     full_payload = load_json(FULL_PAYLOAD) if FULL_PAYLOAD.is_file() else {}
     full_repair = load_json(FULL_PAYLOAD_REPAIR) if FULL_PAYLOAD_REPAIR.is_file() else {}
@@ -66,11 +68,13 @@ def main() -> int:
 
     deps_ok = (
         full_payload.get("status") == "PASS"
-        and int(full_payload.get("summary", {}).get("committed_loader_word_count", 0)) == 1_627_034_880
+        and int(full_payload.get("summary", {}).get("committed_loader_word_count", 0))
+        == 1_627_034_880
         and full_repair.get("status") == "PASS"
         and int(full_repair.get("summary", {}).get("payload_shard_record_count", 0)) == 151_367
         and full_rom.get("status") == "PASS"
-        and int(full_rom.get("summary", {}).get("high_failure_payload_remap_word_count", 0)) == 3_012
+        and int(full_rom.get("summary", {}).get("high_failure_payload_remap_word_count", 0))
+        == 3_012
         and window_trace.get("status") == "PASS"
         and benchmark.get("status") == "PASS"
         and normal_trace.get("schema") == "eliza.e1x.real_graph_execution_trace.v1"
@@ -81,7 +85,13 @@ def main() -> int:
         "full payload, repair mapping, repair ROM, benchmark, and execution traces are PASS",
         "dependency report missing, stale, or failing",
     )
-    checks.append({"id": "e1x_full_payload_repaired_run_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_payload_repaired_run_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     payload_summary = full_payload.get("summary", {})
     repair_summary = full_repair.get("summary", {})
@@ -106,7 +116,9 @@ def main() -> int:
         "full payload manifest, repair mapping, and repair ROM agree on shard/loader-word coverage",
         "full payload repaired-run payload linkage mismatch",
     )
-    checks.append({"id": "e1x_full_payload_repaired_run_payload_links", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_payload_repaired_run_payload_links", "status": status, "detail": detail}
+    )
 
     repair_link_ok = (
         int(repair_summary.get("normal_payload_remapped_records", 0))
@@ -127,7 +139,9 @@ def main() -> int:
         "normal/high payload remap counts and ROM hashes match repaired trace linkage",
         "full payload repaired-run repair/ROM linkage mismatch",
     )
-    checks.append({"id": "e1x_full_payload_repaired_run_repair_links", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_payload_repaired_run_repair_links", "status": status, "detail": detail}
+    )
 
     normal_cycles = int(normal_trace.get("total_cycles", 0))
     high_cycles = int(high_trace.get("total_cycles", 0))
@@ -158,13 +172,18 @@ def main() -> int:
         "normal/high repaired execution traces run successfully with stable slowdown and output checksums",
         "full payload repaired-run execution trace mismatch",
     )
-    checks.append({"id": "e1x_full_payload_repaired_run_trace_behavior", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_payload_repaired_run_trace_behavior", "status": status, "detail": detail}
+    )
 
     benchmark_link_ok = (
-        bench_summary.get("real_graph_normal_execution_trace_sha256") == normal_trace.get("artifact_sha256")
-        and bench_summary.get("real_graph_high_failure_execution_trace_sha256") == high_trace.get("artifact_sha256")
+        bench_summary.get("real_graph_normal_execution_trace_sha256")
+        == normal_trace.get("artifact_sha256")
+        and bench_summary.get("real_graph_high_failure_execution_trace_sha256")
+        == high_trace.get("artifact_sha256")
         and int(bench_summary.get("real_graph_normal_execution_trace_cycles", 0)) == normal_cycles
-        and int(bench_summary.get("real_graph_high_failure_execution_trace_cycles", 0)) == high_cycles
+        and int(bench_summary.get("real_graph_high_failure_execution_trace_cycles", 0))
+        == high_cycles
         and int(bench_summary.get("real_graph_high_failure_repair_rom_words", 0)) == 3_582
         and int(bench_summary.get("real_graph_high_failure_route_checks", 0)) == 8_192
     )
@@ -173,7 +192,9 @@ def main() -> int:
         "benchmark summary links repaired-run traces, repair ROMs, and route-check counts",
         "full payload repaired-run benchmark linkage mismatch",
     )
-    checks.append({"id": "e1x_full_payload_repaired_run_benchmark_links", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_payload_repaired_run_benchmark_links", "status": status, "detail": detail}
+    )
 
     combined_checksum = FNV64_OFFSET
     for value in (
@@ -196,9 +217,13 @@ def main() -> int:
         "payload_loader_word_count": int(payload_summary.get("committed_loader_word_count", 0)),
         "payload_manifest_checksum": int(payload_summary.get("payload_manifest_checksum", 0)),
         "normal_payload_remap_words": int(rom_summary.get("normal_payload_remap_word_count", 0)),
-        "high_failure_payload_remap_words": int(rom_summary.get("high_failure_payload_remap_word_count", 0)),
+        "high_failure_payload_remap_words": int(
+            rom_summary.get("high_failure_payload_remap_word_count", 0)
+        ),
         "normal_repair_rom_sha256": str(rom_summary.get("normal_repair_rom_sha256", "")),
-        "high_failure_repair_rom_sha256": str(rom_summary.get("high_failure_repair_rom_sha256", "")),
+        "high_failure_repair_rom_sha256": str(
+            rom_summary.get("high_failure_repair_rom_sha256", "")
+        ),
         "normal_trace_sha256": str(normal_trace.get("artifact_sha256", "")),
         "high_failure_trace_sha256": str(high_trace.get("artifact_sha256", "")),
         "normal_total_cycles": normal_cycles,
@@ -211,7 +236,9 @@ def main() -> int:
         "high_failure_output_checksum": int(high_trace.get("output_checksum", 0)),
         "normal_route_checks": int(normal_trace.get("route_checks", 0)),
         "high_failure_route_checks": int(high_trace.get("route_checks", 0)),
-        "high_failure_window_route_checksum": int(trace_summary.get("high_failure_window_route_checksum", 0)),
+        "high_failure_window_route_checksum": int(
+            trace_summary.get("high_failure_window_route_checksum", 0)
+        ),
         "combined_repaired_run_checksum": combined_checksum,
         "residual_blocker": "full_output_real_weight_checksum_missing",
     }
@@ -245,7 +272,9 @@ def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:
-        print("BLOCKED: E1X full-payload repaired run failed: " + ", ".join(c["id"] for c in failures))
+        print(
+            "BLOCKED: E1X full-payload repaired run failed: " + ", ".join(c["id"] for c in failures)
+        )
         return 1
     print(f"PASS: E1X full-payload repaired run; report {REPORT.relative_to(ROOT)}")
     return 0

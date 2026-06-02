@@ -1,5 +1,5 @@
-import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { Readable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import {
   type BridgeCredentialAdapter,
@@ -14,20 +14,20 @@ function fakeRequest(opts: {
   body?: unknown;
   remoteAddress?: string;
 }): IncomingMessage {
-  const emitter = new EventEmitter() as unknown as IncomingMessage;
-  (emitter as { method: string }).method = opts.method;
-  (emitter as { url: string }).url = opts.url;
-  (emitter as { socket: { remoteAddress: string } }).socket = {
+  // Back the request with a real paused Readable: it buffers the body until a
+  // consumer attaches its "data"/"end" listeners, so it is immune to however
+  // many microtasks the handler awaits before calling parseBody (e.g. the
+  // session-ownership gate). An EventEmitter that emits eagerly would lose
+  // those events to that race and hang parseBody.
+  const chunks =
+    opts.body !== undefined ? [Buffer.from(JSON.stringify(opts.body))] : [];
+  const req = Readable.from(chunks) as unknown as IncomingMessage;
+  (req as { method: string }).method = opts.method;
+  (req as { url: string }).url = opts.url;
+  (req as { socket: { remoteAddress: string } }).socket = {
     remoteAddress: opts.remoteAddress ?? "127.0.0.1",
   };
-  // Drive the data/end pump on next tick so parseBody sees them.
-  queueMicrotask(() => {
-    if (opts.body !== undefined) {
-      emitter.emit("data", Buffer.from(JSON.stringify(opts.body)));
-    }
-    emitter.emit("end");
-  });
-  return emitter;
+  return req;
 }
 
 function fakeResponse(): {
@@ -81,13 +81,23 @@ function makeAdapter(
   };
 }
 
-function makeCtx(adapter: BridgeCredentialAdapter | null): RouteContext {
+function makeCtx(
+  adapter: BridgeCredentialAdapter | null,
+  // The POST ownership gate resolves the session via acpService.getSession.
+  // Default to an active session so the existing happy-path tests pass; pass
+  // `null`/a terminal status to exercise the rejection paths.
+  sessionStatus: string | null = "running",
+): RouteContext {
+  const acpService =
+    sessionStatus === null
+      ? { getSession: () => null }
+      : { getSession: (id: string) => ({ id, status: sessionStatus }) };
   return {
     runtime: {
       getService: (name: string) =>
         name === "SubAgentCredentialBridgeAdapter" ? adapter : null,
     } as unknown as RouteContext["runtime"],
-    acpService: null,
+    acpService: acpService as unknown as RouteContext["acpService"],
     workspaceService: null,
   };
 }
@@ -161,6 +171,45 @@ describe("bridge-routes — credential bridge", () => {
     expect((body() as { code: string }).code).toBe("invalid_credential_keys");
   });
 
+  it("POST rejects an unknown sessionId before issuing a request", async () => {
+    const adapter = makeAdapter();
+    const req = fakeRequest({
+      method: "POST",
+      url: "/api/coding-agents/not-a-real-session/credentials/request",
+      body: { credentialKeys: ["OPENAI_API_KEY"] },
+    });
+    const { res, status, body } = fakeResponse();
+    await handleBridgeRoutes(
+      req,
+      res,
+      "/api/coding-agents/not-a-real-session/credentials/request",
+      makeCtx(adapter, null),
+    );
+    expect(status()).toBe(410);
+    expect((body() as { code: string }).code).toBe("session_not_active");
+    // The owner-facing approval flow must NOT be triggered for an unowned id.
+    expect(adapter.requestCredentials).not.toHaveBeenCalled();
+  });
+
+  it("POST rejects a terminal (stopped) session", async () => {
+    const adapter = makeAdapter();
+    const req = fakeRequest({
+      method: "POST",
+      url: "/api/coding-agents/pty-1-abc/credentials/request",
+      body: { credentialKeys: ["OPENAI_API_KEY"] },
+    });
+    const { res, status, body } = fakeResponse();
+    await handleBridgeRoutes(
+      req,
+      res,
+      "/api/coding-agents/pty-1-abc/credentials/request",
+      makeCtx(adapter, "stopped"),
+    );
+    expect(status()).toBe(410);
+    expect((body() as { code: string }).code).toBe("session_not_active");
+    expect(adapter.requestCredentials).not.toHaveBeenCalled();
+  });
+
   it("GET /credentials/:key returns the value when adapter resolves ready", async () => {
     const adapter = makeAdapter({
       tryRetrieveCredential: vi
@@ -218,6 +267,43 @@ describe("bridge-routes — credential bridge", () => {
     );
     expect(status()).toBe(400);
     expect((body() as { code: string }).code).toBe("missing_token");
+  });
+
+  it("GET rejects an unknown sessionId before redeeming a credential", async () => {
+    const adapter = makeAdapter();
+    const req = fakeRequest({
+      method: "GET",
+      url: "/api/coding-agents/not-a-real-session/credentials/OPENAI_API_KEY?token=deadbeef",
+    });
+    const { res, status, body } = fakeResponse();
+    await handleBridgeRoutes(
+      req,
+      res,
+      "/api/coding-agents/not-a-real-session/credentials/OPENAI_API_KEY",
+      makeCtx(adapter, null),
+    );
+    expect(status()).toBe(410);
+    expect((body() as { code: string }).code).toBe("session_not_active");
+    // The adapter must not be touched for an unowned session id.
+    expect(adapter.tryRetrieveCredential).not.toHaveBeenCalled();
+  });
+
+  it("GET rejects a terminal (stopped) session", async () => {
+    const adapter = makeAdapter();
+    const req = fakeRequest({
+      method: "GET",
+      url: "/api/coding-agents/pty-1-abc/credentials/OPENAI_API_KEY?token=deadbeef",
+    });
+    const { res, status, body } = fakeResponse();
+    await handleBridgeRoutes(
+      req,
+      res,
+      "/api/coding-agents/pty-1-abc/credentials/OPENAI_API_KEY",
+      makeCtx(adapter, "stopped"),
+    );
+    expect(status()).toBe(410);
+    expect((body() as { code: string }).code).toBe("session_not_active");
+    expect(adapter.tryRetrieveCredential).not.toHaveBeenCalled();
   });
 
   it("returns false for unrelated paths", async () => {

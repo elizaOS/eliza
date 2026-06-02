@@ -505,6 +505,39 @@ async function fetchWithPinnedTarget(
 /** Hard cap on the response body we read from a guarded GET. */
 const GUARDED_GET_MAX_BYTES = 256 * 1024;
 
+/** Hard cap on the response body we read from a legacy `http` custom action. */
+const CUSTOM_ACTION_HTTP_MAX_CHARS = 4_000;
+
+/**
+ * Read a fetch response body as text, streaming and stopping once `maxChars`
+ * characters have been collected. Avoids buffering an unbounded (or hostile)
+ * response into memory the way `response.text()` would before any slice.
+ */
+async function readBodyTextCapped(
+  response: Response,
+  maxChars: number,
+): Promise<string> {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  try {
+    while (text.length < maxChars) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+      if (text.length >= maxChars) {
+        text = text.slice(0, maxChars);
+        await reader.cancel();
+        break;
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return text;
+}
+
 export interface GuardedHttpGetOptions {
   /** Request timeout in milliseconds. Defaults to the custom-action cap. */
   timeoutMs?: number;
@@ -570,25 +603,7 @@ export async function performGuardedHttpGet(
     return { ok: false, status: response.status, text: "", blocked: true };
   }
 
-  let text = "";
-  if (response.body) {
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    try {
-      while (text.length < maxChars) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        text += decoder.decode(value, { stream: true });
-        if (text.length >= maxChars) {
-          text = text.slice(0, maxChars);
-          await reader.cancel();
-          break;
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
-  }
+  const text = await readBodyTextCapped(response, maxChars);
   return {
     ok: response.ok,
     status: response.status,
@@ -659,8 +674,11 @@ function buildHandler(
               "Blocked: redirects are not allowed for HTTP custom actions",
           };
         }
-        const text = await response.text();
-        return { ok: response.ok, output: text.slice(0, 4000) };
+        const text = await readBodyTextCapped(
+          response,
+          CUSTOM_ACTION_HTTP_MAX_CHARS,
+        );
+        return { ok: response.ok, output: text };
       };
 
     case "shell":

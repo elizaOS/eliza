@@ -46,6 +46,15 @@ REPORT = ROOT / "build/reports/npu_accelerator.json"
 
 NPU_RTL = "rtl/npu/e1_npu.sv"
 RUN_COCOTB = ROOT / "scripts/run_cocotb.sh"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_accelerator_release_claim_allowed": False,
+    "nnapi_claim_allowed": False,
+    "performance_claim_allowed": False,
+    "linux_android_driver_claim_allowed": False,
+    "soc_fabric_integration_claim_allowed": False,
+}
 
 EVIDENCE_PATHS = [
     NPU_RTL,
@@ -231,15 +240,19 @@ def build_report(checks: list[dict]) -> dict:
         "blocker_reason": blocker_reason,
         "evidence_paths": EVIDENCE_PATHS,
         "as_of": _now(),
-        "generated_utc": _dt.datetime.now(_dt.UTC).replace(microsecond=0).isoformat().replace(
-            "+00:00", "Z"
-        ),
+        "generated_utc": _dt.datetime.now(_dt.UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
         "subsystem": "npu",
         "phone_claim_allowed": False,
         "release_claim_allowed": False,
         "production_accelerator_release_claim_allowed": False,
         "nnapi_claim_allowed": False,
         "performance_claim_allowed": False,
+        "linux_android_driver_claim_allowed": False,
+        "soc_fabric_integration_claim_allowed": False,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "The E1 NPU (rtl/npu/e1_npu.sv) is a descriptor-queue accelerator: a "
             "memory-resident 16-byte-descriptor ring fetched over an AXI4-Lite "

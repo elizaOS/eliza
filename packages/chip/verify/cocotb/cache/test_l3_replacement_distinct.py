@@ -140,8 +140,7 @@ async def test_l3_replacement_policy_liveness(dut):
         )
         victim_after = (await sample_victims(dut, set_idx))[policy]
         dut._log.info(
-            f"{POLICY_NAMES[policy]} victim before hit={victim_before} "
-            f"after hit={victim_after}"
+            f"{POLICY_NAMES[policy]} victim before hit={victim_before} after hit={victim_after}"
         )
         assert victim_after != victim_before, (
             f"{POLICY_NAMES[policy]} did not react to a hit on its proposed "
@@ -199,12 +198,10 @@ async def test_l3_replacement_policies_distinct(dut):
     dut._log.info(f"Mockingjay victim seq: {mockingjay_seq}")
 
     assert drrip_seq != hawkeye_seq, (
-        "DRRIP and Hawkeye produced identical victim sequences; "
-        "policy selection is not distinct"
+        "DRRIP and Hawkeye produced identical victim sequences; policy selection is not distinct"
     )
     assert drrip_seq != mockingjay_seq, (
-        "DRRIP and Mockingjay produced identical victim sequences; "
-        "policy selection is not distinct"
+        "DRRIP and Mockingjay produced identical victim sequences; policy selection is not distinct"
     )
     assert hawkeye_seq != mockingjay_seq, (
         "Hawkeye and Mockingjay produced identical victim sequences; "
@@ -213,7 +210,7 @@ async def test_l3_replacement_policies_distinct(dut):
 
     print(
         "L3_REPLACEMENT_DISTINCT_SUMMARY "
-        f"drrip_vs_hawkeye_diff={sum(a != b for a, b in zip(drrip_seq, hawkeye_seq))} "
-        f"drrip_vs_mj_diff={sum(a != b for a, b in zip(drrip_seq, mockingjay_seq))} "
-        f"hawkeye_vs_mj_diff={sum(a != b for a, b in zip(hawkeye_seq, mockingjay_seq))}"
+        f"drrip_vs_hawkeye_diff={sum(a != b for a, b in zip(drrip_seq, hawkeye_seq, strict=True))} "
+        f"drrip_vs_mj_diff={sum(a != b for a, b in zip(drrip_seq, mockingjay_seq, strict=True))} "
+        f"hawkeye_vs_mj_diff={sum(a != b for a, b in zip(hawkeye_seq, mockingjay_seq, strict=True))}"
     )

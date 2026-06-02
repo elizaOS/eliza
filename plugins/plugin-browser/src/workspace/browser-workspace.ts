@@ -112,6 +112,7 @@ import {
   resolveBrowserWorkspaceCommandPartition,
   resolveConnectorBrowserWorkspacePartition,
   sleep,
+  writeBrowserWorkspaceFile,
 } from "./browser-workspace-helpers.js";
 
 export {
@@ -894,9 +895,6 @@ export async function executeBrowserWorkspaceCommand(
         const payload = { entries: target.entries };
         const filePath = command.filePath?.trim() || command.outputPath?.trim();
         if (filePath) {
-          const { writeBrowserWorkspaceFile } = await import(
-            "./browser-workspace-helpers.js"
-          );
           await writeBrowserWorkspaceFile(
             filePath,
             JSON.stringify(payload, null, 2),
@@ -960,9 +958,6 @@ export async function executeBrowserWorkspaceCommand(
       );
       const filePath = command.filePath?.trim() || command.outputPath?.trim();
       if (filePath) {
-        const { writeBrowserWorkspaceFile } = await import(
-          "./browser-workspace-helpers.js"
-        );
         await writeBrowserWorkspaceFile(
           filePath,
           JSON.stringify(payload, null, 2),
@@ -992,9 +987,6 @@ export async function executeBrowserWorkspaceCommand(
       const pdf = createBrowserWorkspacePdfBuffer(
         snapshot.title,
         snapshot.bodyText,
-      );
-      const { writeBrowserWorkspaceFile } = await import(
-        "./browser-workspace-helpers.js"
       );
       const resolved = await writeBrowserWorkspaceFile(filePath, pdf);
       return {

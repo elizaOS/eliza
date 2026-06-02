@@ -298,6 +298,24 @@ export function resolveTemplateSourceDir(options: {
   return path.join(options.templatesDir, options.template.id);
 }
 
+function normalizeManagedRelativePath(relativePath: string): string {
+  const normalized = relativePath.replace(/\\/g, "/");
+  if (
+    !normalized ||
+    normalized.startsWith("/") ||
+    /^[A-Za-z]:/.test(normalized)
+  ) {
+    throw new Error(`Unsafe managed file path: ${relativePath || "<empty>"}`);
+  }
+  const segments = normalized.split("/");
+  if (
+    segments.some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    throw new Error(`Unsafe managed file path: ${relativePath}`);
+  }
+  return path.join(...segments);
+}
+
 function copyRenderedTreeInternal(
   sourceDir: string,
   destinationDir: string,
@@ -312,7 +330,9 @@ function copyRenderedTreeInternal(
       continue;
     }
 
-    const renderedEntryName = replaceAll(entry.name, replacements);
+    const renderedEntryName = normalizeManagedRelativePath(
+      replaceAll(entry.name, replacements),
+    );
     const sourcePath = path.join(sourceDir, entry.name);
     const destinationPath = path.join(destinationDir, renderedEntryName);
     if (entry.isDirectory()) {
@@ -467,8 +487,9 @@ export function updateManagedFiles(options: {
   ]);
 
   for (const relativePath of allManagedPaths) {
-    const projectPath = path.join(options.projectRoot, relativePath);
-    const renderedPath = path.join(options.renderedDir, relativePath);
+    const safeRelativePath = normalizeManagedRelativePath(relativePath);
+    const projectPath = path.join(options.projectRoot, safeRelativePath);
+    const renderedPath = path.join(options.renderedDir, safeRelativePath);
     const previousHash = previousFiles[relativePath];
     const nextHash = options.renderedManagedFiles[relativePath];
     const hasCurrentFile = fs.existsSync(projectPath);

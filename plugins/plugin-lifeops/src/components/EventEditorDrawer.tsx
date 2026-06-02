@@ -22,8 +22,121 @@ import {
   Textarea,
   useApp,
 } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ComponentProps,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+type EditorMode = "edit" | "create";
+
+function EventEditorInput({
+  mode,
+  field,
+  label,
+  description,
+  inputType,
+  value,
+  placeholder,
+  ariaLabel,
+  onChange,
+}: {
+  mode: EditorMode;
+  field: string;
+  label: string;
+  description: string;
+  inputType?: string;
+  value: string;
+  placeholder?: string;
+  ariaLabel?: string;
+  onChange: (value: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: `event-${mode}-${field}`,
+    role: inputType === "datetime-local" ? "text-input" : "text-input",
+    label,
+    group: "lifeops-event-editor",
+    description,
+    getValue: () => value,
+    onFill: onChange,
+  });
+  return (
+    <Input
+      ref={ref}
+      id={`event-editor-${field}`}
+      type={inputType}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      aria-label={ariaLabel}
+      {...agentProps}
+    />
+  );
+}
+
+function EventEditorNotes({
+  mode,
+  value,
+  placeholder,
+  onChange,
+}: {
+  mode: EditorMode;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLTextAreaElement>({
+    id: `event-${mode}-notes`,
+    role: "textarea",
+    label: "Event notes",
+    group: "lifeops-event-editor",
+    description: "Notes for the calendar event",
+    getValue: () => value,
+    onFill: onChange,
+  });
+  return (
+    <Textarea
+      ref={ref}
+      id="event-editor-notes"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="min-h-20"
+      {...agentProps}
+    />
+  );
+}
+
+function EventEditorActionButton({
+  agentId,
+  label,
+  description,
+  children,
+  ...buttonProps
+}: {
+  agentId: string;
+  label: string;
+  description: string;
+  children: ReactNode;
+} & ComponentProps<typeof Button>) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group: "lifeops-event-editor",
+    description,
+  });
+  return (
+    <Button ref={ref} {...buttonProps} {...agentProps}>
+      {children}
+    </Button>
+  );
+}
 
 const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 const APPLE_CALENDAR_GRANT_ID = "apple-calendar";
@@ -156,6 +269,51 @@ function calendarOptionValue(
   return [calendar.side, calendar.grantId, calendar.calendarId]
     .map((part) => encodeURIComponent(part))
     .join(":");
+}
+
+function EventEditorCalendarSelect({
+  mode,
+  calendarOptions,
+  value,
+  placeholder,
+  ariaLabel,
+  onSelect,
+}: {
+  mode: EditorMode;
+  calendarOptions: LifeOpsCalendarSummary[];
+  value: string;
+  placeholder: string;
+  ariaLabel: string;
+  onSelect: (value: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `event-${mode}-calendar`,
+    role: "select",
+    label: "Calendar of record",
+    group: "lifeops-event-editor",
+    description: "Calendar that will own this event",
+    options: calendarOptions.map((calendar) => calendarOptionValue(calendar)),
+    getValue: () => value,
+    onFill: onSelect,
+  });
+  return (
+    <Select value={value} onValueChange={onSelect}>
+      <SelectTrigger ref={ref} id="event-editor-calendar" aria-label={ariaLabel} {...agentProps}>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {calendarOptions.map((calendar) => (
+          <SelectItem
+            key={`${calendar.side}:${calendar.grantId}:${calendar.calendarId}`}
+            value={calendarOptionValue(calendar)}
+          >
+            {calendar.summary}
+            {calendar.accountEmail ? ` · ${calendar.accountEmail}` : ""}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 }
 
 function sameCalendarIdentity(
@@ -536,14 +694,17 @@ export function EventEditorDrawer({
               >
                 {t("common.title", { defaultValue: "Title" })}
               </label>
-              <Input
-                id="event-editor-title"
+              <EventEditorInput
+                mode={mode}
+                field="title"
+                label="Event title"
+                description="Title of the calendar event"
                 value={form.title}
-                onChange={(e) => updateForm("title", e.target.value)}
+                onChange={(value) => updateForm("title", value)}
                 placeholder={t("eventEditor.titlePlaceholder", {
                   defaultValue: "Event title",
                 })}
-                aria-label={t("eventEditor.titleAria", {
+                ariaLabel={t("eventEditor.titleAria", {
                   defaultValue: "Event title",
                 })}
               />
@@ -557,12 +718,15 @@ export function EventEditorDrawer({
                 >
                   {t("eventEditor.startAt", { defaultValue: "Start" })}
                 </label>
-                <Input
-                  id="event-editor-start-at"
-                  type="datetime-local"
+                <EventEditorInput
+                  mode={mode}
+                  field="start-at"
+                  label="Event start time"
+                  description="Start date and time of the event"
+                  inputType="datetime-local"
                   value={form.startAt}
-                  onChange={(e) => updateForm("startAt", e.target.value)}
-                  aria-label={t("eventEditor.startAtAria", {
+                  onChange={(value) => updateForm("startAt", value)}
+                  ariaLabel={t("eventEditor.startAtAria", {
                     defaultValue: "Start time",
                   })}
                 />
@@ -574,12 +738,15 @@ export function EventEditorDrawer({
                 >
                   {t("eventEditor.endAt", { defaultValue: "End" })}
                 </label>
-                <Input
-                  id="event-editor-end-at"
-                  type="datetime-local"
+                <EventEditorInput
+                  mode={mode}
+                  field="end-at"
+                  label="Event end time"
+                  description="End date and time of the event"
+                  inputType="datetime-local"
                   value={form.endAt}
-                  onChange={(e) => updateForm("endAt", e.target.value)}
-                  aria-label={t("eventEditor.endAtAria", {
+                  onChange={(value) => updateForm("endAt", value)}
+                  ariaLabel={t("eventEditor.endAtAria", {
                     defaultValue: "End time",
                   })}
                 />
@@ -593,14 +760,17 @@ export function EventEditorDrawer({
               >
                 {t("eventEditor.location", { defaultValue: "Location" })}
               </label>
-              <Input
-                id="event-editor-location"
+              <EventEditorInput
+                mode={mode}
+                field="location"
+                label="Event location"
+                description="Location of the calendar event"
                 value={form.location}
-                onChange={(e) => updateForm("location", e.target.value)}
+                onChange={(value) => updateForm("location", value)}
                 placeholder={t("eventEditor.locationPlaceholder", {
                   defaultValue: "Location (optional)",
                 })}
-                aria-label={t("eventEditor.locationAria", {
+                ariaLabel={t("eventEditor.locationAria", {
                   defaultValue: "Event location",
                 })}
               />
@@ -637,9 +807,23 @@ export function EventEditorDrawer({
               >
                 {t("eventEditor.calendar", { defaultValue: "Calendar" })}
               </label>
-              <Select
+              <EventEditorCalendarSelect
+                mode={mode}
+                calendarOptions={calendarOptions}
                 value={calendarSelectValue}
-                onValueChange={(value) => {
+                placeholder={
+                  calendarsLoading
+                    ? t("eventEditor.calendarLoading", {
+                        defaultValue: "Loading…",
+                      })
+                    : t("eventEditor.calendarPlaceholder", {
+                        defaultValue: "Select calendar",
+                      })
+                }
+                ariaLabel={t("eventEditor.calendarAria", {
+                  defaultValue: "Calendar of record",
+                })}
+                onSelect={(value) => {
                   const match = calendarOptions.find(
                     (calendar) => calendarOptionValue(calendar) === value,
                   );
@@ -651,39 +835,7 @@ export function EventEditorDrawer({
                     side: match.side,
                   }));
                 }}
-              >
-                <SelectTrigger
-                  id="event-editor-calendar"
-                  aria-label={t("eventEditor.calendarAria", {
-                    defaultValue: "Calendar of record",
-                  })}
-                >
-                  <SelectValue
-                    placeholder={
-                      calendarsLoading
-                        ? t("eventEditor.calendarLoading", {
-                            defaultValue: "Loading…",
-                          })
-                        : t("eventEditor.calendarPlaceholder", {
-                            defaultValue: "Select calendar",
-                          })
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {calendarOptions.map((calendar) => (
-                    <SelectItem
-                      key={`${calendar.side}:${calendar.grantId}:${calendar.calendarId}`}
-                      value={calendarOptionValue(calendar)}
-                    >
-                      {calendar.summary}
-                      {calendar.accountEmail
-                        ? ` · ${calendar.accountEmail}`
-                        : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              />
               {calendarsError ? (
                 <div className="text-[10px] text-danger">{calendarsError}</div>
               ) : null}
@@ -696,14 +848,13 @@ export function EventEditorDrawer({
               >
                 {t("eventEditor.notes", { defaultValue: "Notes" })}
               </label>
-              <Textarea
-                id="event-editor-notes"
+              <EventEditorNotes
+                mode={mode}
                 value={form.notes}
-                onChange={(e) => updateForm("notes", e.target.value)}
+                onChange={(value) => updateForm("notes", value)}
                 placeholder={t("eventEditor.notesPlaceholder", {
                   defaultValue: "Add notes…",
                 })}
-                className="min-h-20"
               />
             </div>
           </div>
@@ -711,17 +862,23 @@ export function EventEditorDrawer({
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/12 px-5 py-4">
             <div className="flex flex-wrap items-center gap-2">
               {!isCreate && onChat && event ? (
-                <Button
+                <EventEditorActionButton
+                  agentId={`event-${mode}-chat`}
+                  label="Chat about event"
+                  description="Open chat about this event"
                   variant="ghost"
                   size="sm"
                   className="h-8 rounded-xl px-3 text-xs font-semibold text-muted"
                   onClick={() => onChat(event)}
                 >
                   {t("common.chat", { defaultValue: "Chat" })}
-                </Button>
+                </EventEditorActionButton>
               ) : null}
               {!isCreate ? (
-                <Button
+                <EventEditorActionButton
+                  agentId={`event-${mode}-delete`}
+                  label="Delete event"
+                  description="Delete this calendar event"
                   variant="surfaceDestructive"
                   size="sm"
                   className="h-8 rounded-xl px-3 text-xs font-semibold"
@@ -729,11 +886,14 @@ export function EventEditorDrawer({
                   onClick={() => setConfirmDeleteOpen(true)}
                 >
                   {t("common.delete", { defaultValue: "Delete" })}
-                </Button>
+                </EventEditorActionButton>
               ) : null}
             </div>
             <div className="flex gap-2">
-              <Button
+              <EventEditorActionButton
+                agentId={`event-${mode}-cancel`}
+                label="Cancel event editor"
+                description="Close the event editor without saving"
                 variant="outline"
                 size="sm"
                 className="h-8 rounded-xl px-3 text-xs font-semibold"
@@ -741,8 +901,11 @@ export function EventEditorDrawer({
                 disabled={saving}
               >
                 {t("common.cancel", { defaultValue: "Cancel" })}
-              </Button>
-              <Button
+              </EventEditorActionButton>
+              <EventEditorActionButton
+                agentId={`event-${mode}-save-continue`}
+                label="Save and continue"
+                description="Save the event and keep the editor open"
                 variant="outline"
                 size="sm"
                 className="h-8 rounded-xl px-3 text-xs font-semibold"
@@ -754,15 +917,18 @@ export function EventEditorDrawer({
                   : t("eventEditor.saveAndContinue", {
                       defaultValue: "Save & continue",
                     })}
-              </Button>
-              <Button
+              </EventEditorActionButton>
+              <EventEditorActionButton
+                agentId={`event-${mode}-save`}
+                label={isCreate ? "Create event" : "Save event"}
+                description="Save the calendar event and close the editor"
                 size="sm"
                 className="h-8 rounded-xl px-3 text-xs font-semibold"
                 disabled={saving || !form.title.trim()}
                 onClick={() => void handleSave()}
               >
                 {saving ? primaryActionLoadingLabel : primaryActionLabel}
-              </Button>
+              </EventEditorActionButton>
             </div>
           </div>
         </DialogContent>

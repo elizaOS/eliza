@@ -13,7 +13,15 @@ export function normalizeInventoryImageUrl(
   const value = raw?.trim();
   if (!value) return null;
 
-  if (/^(?:https?:|data:image\/|blob:)/i.test(value)) {
+  if (/^(?:https?:|blob:)/i.test(value)) {
+    return value;
+  }
+
+  if (
+    /^data:image\/(?:png|jpe?g|gif|webp|avif);base64,[a-z0-9+/]+=*$/i.test(
+      value,
+    )
+  ) {
     return value;
   }
 

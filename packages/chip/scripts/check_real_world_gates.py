@@ -107,6 +107,14 @@ FALSE_PD_CLAIM_FLAGS = {
 }
 
 
+def validate_false_claim_flags(
+    name: str, manifest: dict, claim_flags: set[str], failures: list[str]
+) -> None:
+    expected = {flag: False for flag in sorted(claim_flags)}
+    if manifest.get("false_claim_flags") != expected:
+        failures.append(f"{name} false_claim_flags must match denied claim fields")
+
+
 def load_yaml(path: Path) -> dict:
     data = yaml.safe_load(path.read_text())
     if not isinstance(data, dict):
@@ -160,6 +168,7 @@ def validate_gap_manifest(manifest: dict, failures: list[str]) -> None:
     for flag in sorted(FALSE_MANUFACTURING_CLAIM_FLAGS):
         if manifest.get(flag) is not False:
             failures.append(f"gap manifest {flag} must be false")
+    validate_false_claim_flags("gap manifest", manifest, FALSE_MANUFACTURING_CLAIM_FLAGS, failures)
     categories = manifest.get("required_gap_categories")
     if not isinstance(categories, list):
         failures.append("gap manifest must list required_gap_categories")
@@ -283,6 +292,10 @@ def validate_manifest_consistency(gaps: dict, release: dict, pd: dict, failures:
     for flag in sorted(FALSE_PD_CLAIM_FLAGS):
         if pd.get(flag) is not False:
             failures.append(f"pd signoff manifest {flag} must be false")
+    validate_false_claim_flags(
+        "manufacturing release manifest", release, FALSE_MANUFACTURING_CLAIM_FLAGS, failures
+    )
+    validate_false_claim_flags("pd signoff manifest", pd, FALSE_PD_CLAIM_FLAGS, failures)
 
     validate_gate_map("manufacturing.blocked_gates", release.get("blocked_gates"), failures)
     validate_gate_map("pd.blocked_gates", pd.get("blocked_gates"), failures)

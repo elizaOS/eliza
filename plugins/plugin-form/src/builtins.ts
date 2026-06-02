@@ -188,7 +188,7 @@ const numberType: ControlType = {
 
     const num = typeof value === "number" ? value : parseFloat(String(value));
 
-    if (Number.isNaN(num)) {
+    if (!Number.isFinite(num)) {
       return { valid: false, error: "Must be a valid number" };
     }
 

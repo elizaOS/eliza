@@ -13,6 +13,9 @@ const recording = !!process.env.E2E_RECORD;
 export default defineConfig({
   testDir: "./tests/e2e",
   testMatch: "**/*.spec.ts",
+  // Warm up Vite's dep optimizer before any timed test navigates. See
+  // tests/e2e/global-setup.ts for the rationale (fixes #8144).
+  globalSetup: "./tests/e2e/global-setup.ts",
   fullyParallel: true,
   reporter: [["list"], ["html", { open: "never" }]],
   expect: {

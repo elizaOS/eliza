@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { I18nProvider } from "@/providers/I18nProvider";
 
 const mocks = vi.hoisted(() => ({
   api: vi.fn(),
@@ -74,15 +75,17 @@ function renderPaymentPage(
   initialPath = "/payment/app-charge/app_five/charge_five",
 ) {
   return render(
-    <MemoryRouter initialEntries={[initialPath]}>
-      <Routes>
-        <Route
-          path="/payment/app-charge/:appId/:chargeId"
-          element={<AppChargePaymentPage />}
-        />
-        <Route path="/login" element={<div>login required</div>} />
-      </Routes>
-    </MemoryRouter>,
+    <I18nProvider initialLang="en">
+      <MemoryRouter initialEntries={[initialPath]}>
+        <Routes>
+          <Route
+            path="/payment/app-charge/:appId/:chargeId"
+            element={<AppChargePaymentPage />}
+          />
+          <Route path="/login" element={<div>login required</div>} />
+        </Routes>
+      </MemoryRouter>
+    </I18nProvider>,
   );
 }
 

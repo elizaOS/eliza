@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rename } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
@@ -41,10 +42,9 @@ if (configs.length === 0) {
   process.exit(0);
 }
 
-for (const configPath of configs) {
+async function buildView(configPath) {
   const cwd = path.dirname(configPath);
   const label = path.relative(repoRoot, cwd);
-  console.log(`[build-views] ${label}`);
   const config = await readViewConfig(configPath);
   const entry = path.resolve(cwd, config.entry);
   const outDir = path.resolve(cwd, config.outDir ?? "dist/views");
@@ -87,14 +87,12 @@ for (const configPath of configs) {
   for (const external of externals) {
     buildArgs.push("--external", external);
   }
-  const result = spawnSync("bun", buildArgs, {
-    cwd,
-    stdio: "inherit",
-    env: process.env,
-  });
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1);
+
+  const { status, output } = await runBun(buildArgs, cwd);
+  if (status !== 0) {
+    return { label, status: status ?? 1, output };
   }
+
   const emittedName = `${path.basename(entry, path.extname(entry))}.js`;
   const emittedPath = path.join(outDir, emittedName);
   const bundlePath = path.join(outDir, "bundle.js");
@@ -106,6 +104,62 @@ for (const configPath of configs) {
   if (emittedMapPath !== bundleMapPath && existsSync(emittedMapPath)) {
     await rename(emittedMapPath, bundleMapPath);
   }
+  return { label, status: 0, output };
+}
+
+function runBun(buildArgs, cwd) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("bun", buildArgs, {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: process.env,
+    });
+    const chunks = [];
+    child.stdout.on("data", (chunk) => chunks.push(chunk));
+    child.stderr.on("data", (chunk) => chunks.push(chunk));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      resolve({ status: code, output: Buffer.concat(chunks) });
+    });
+  });
+}
+
+const concurrency = Math.min(
+  configs.length,
+  Math.max(1, os.cpus().length - 1),
+);
+
+const failures = [];
+let nextIndex = 0;
+
+async function worker() {
+  while (true) {
+    const index = nextIndex++;
+    if (index >= configs.length) return;
+    const configPath = configs[index];
+    const result = await buildView(configPath);
+    console.log(`[build-views] ${result.label}`);
+    if (result.output.length > 0) {
+      process.stdout.write(result.output);
+    }
+    if (result.status !== 0) {
+      failures.push(result);
+    }
+  }
+}
+
+await Promise.all(
+  Array.from({ length: concurrency }, () => worker()),
+);
+
+if (failures.length > 0) {
+  console.error(
+    `[build-views] ${failures.length} view build(s) failed: ${failures
+      .map((failure) => failure.label)
+      .join(", ")}`,
+  );
+  const exitStatus = failures.find((failure) => failure.status > 0)?.status ?? 1;
+  process.exit(exitStatus);
 }
 
 async function readViewConfig(configPath) {

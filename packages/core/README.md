@@ -2,7 +2,7 @@
 
 ## Overview
 
-`@elizaos/core` is the runtime and contract layer of elizaOS. It defines the `AgentRuntime` and the plugin abstractions (actions, providers, evaluators, services, models, routes, events), the canonical type system, and the supporting subsystems (memory, search, settings, scheduling, prompts). It is consumed by `@elizaos/agent` (which also hosts the HTTP API server), `@elizaos/app-core` (the CLI), and every `@elizaos/*` plugin.
+`@elizaos/core` is the runtime and contract layer of elizaOS. It defines the `AgentRuntime` and the plugin abstractions (actions, providers, evaluators, services, models, routes, events), the canonical type system, and the supporting subsystems (memory, search, settings, scheduling, prompts). It is consumed by `@elizaos/agent` (which also hosts the HTTP API server), `@elizaos/app-core` (the API + dashboard host), and every `@elizaos/*` plugin.
 
 ## Key concepts
 

@@ -21,6 +21,14 @@ DEFAULT_REPORT = ROOT / "build/ai_eda/pd_surrogates/validation/gnn_training_run.
 CLAIM_BOUNDARY = "circuitnet3_gnn_training_pretraining_only_no_e1_ppa_signoff_or_release_claim"
 REQUIRED_SPLITS = ("train", "val", "test")
 ERROR_BAR_FIELDS = ("mae", "mae_std", "abs_error_p50", "abs_error_p90")
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "training_claim_allowed",
+    "inference_claim_allowed",
+    "e1_signoff_claim_allowed",
+    "ppa_signoff_claim_allowed",
+)
 
 
 def rel(path: Path) -> str:
@@ -55,6 +63,14 @@ def as_float(value: Any) -> float | None:
         return None
     parsed = float(value)
     return parsed if math.isfinite(parsed) else None
+
+
+def validate_false_claim_flags(record: dict[str, Any], label: str) -> list[str]:
+    return [
+        f"{label}: {field} must be false"
+        for field in REQUIRED_FALSE_CLAIM_FLAGS
+        if record.get(field) is not False
+    ]
 
 
 def validate_split_leakage(report: dict[str, Any]) -> list[str]:
@@ -94,6 +110,7 @@ def validate_metrics(
         errors.append("metrics claim_boundary is missing or incorrect")
     if metrics.get("release_use_allowed") is not False:
         errors.append("metrics release_use_allowed must be false")
+    errors.extend(validate_false_claim_flags(metrics, "metrics"))
     if metrics.get("device") != report.get("device"):
         errors.append("metrics device does not match report device")
     if metrics.get("epochs") != report.get("epochs"):
@@ -168,6 +185,7 @@ def validate(report: dict[str, Any], report_path: Path) -> tuple[list[str], list
         errors.append("report claim_boundary is missing or incorrect")
     if report.get("release_use_allowed") is not False:
         errors.append("report release_use_allowed must be false")
+    errors.extend(validate_false_claim_flags(report, "report"))
     if report.get("device") not in {"cpu", "cuda"}:
         errors.append("report device must be cpu or cuda")
     if not isinstance(report.get("epochs"), int) or int(report["epochs"]) <= 0:

@@ -6,8 +6,23 @@
 -keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
 -keep class com.getcapacitor.community.** { *; }
 
-# elizaOS custom plugins
+# elizaOS custom Capacitor plugins.
+#
+# Two package roots are in play and BOTH must be kept:
+#   - ai.elizaos.plugins.*  (only plugin-native-bun-runtime uses this)
+#   - ai.eliza.plugins.*    (every other @elizaos/capacitor-* native plugin:
+#                            websiteblocker, appblocker, camera, gateway,
+#                            location, screencapture, swabble, talkmode, …)
+#
+# The ai.eliza.plugins.* root in particular contains manifest-declared
+# components that Android instantiates by name — most critically
+# ai.eliza.plugins.websiteblocker.WebsiteBlockerBootReceiver (BOOT_COMPLETED)
+# and WebsiteBlockerVpnService. Those have no @CapacitorPlugin annotation and
+# no other code reference, so without an explicit keep R8 strips them from the
+# release dex and the merged-manifest receiver crash-loops the app at boot with
+# ClassNotFoundException. Keep the whole native-plugin namespace.
 -keep class ai.elizaos.plugins.** { *; }
+-keep class ai.eliza.plugins.** { *; }
 -keep class app.eliza.** { *; }
 
 # WebView JavaScript interface

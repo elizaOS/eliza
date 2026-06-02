@@ -33,7 +33,7 @@ export class SelectList implements Component {
   constructor(items: SelectItem[], maxVisible: number, theme: SelectListTheme) {
     this.items = items;
     this.filteredItems = items;
-    this.maxVisible = maxVisible;
+    this.maxVisible = Math.max(1, Math.floor(maxVisible));
     this.theme = theme;
   }
 

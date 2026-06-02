@@ -67,7 +67,9 @@ export async function uninstallAndRestart(
 
 export async function listInstalledPlugins(
   ...args: Parameters<typeof import("@elizaos/agent").listInstalledPlugins>
-): Promise<ReturnType<typeof import("@elizaos/agent").listInstalledPlugins>> {
+): Promise<
+  Awaited<ReturnType<typeof import("@elizaos/agent").listInstalledPlugins>>
+> {
   const mod = await load();
   return mod.listInstalledPlugins(...args);
 }

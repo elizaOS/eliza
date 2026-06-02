@@ -181,7 +181,7 @@
       },
       "OPENROUTER_EMBEDDING_DIMENSIONS": {
         "type": "number",
-        "description": "Number of dimensions for embedding vectors. Supported values: 256, 384, 512, 768, 1024, 1536, 2048, 3072.",
+        "description": "Number of dimensions for embedding vectors. Supported values: 384, 512, 768, 1024, 1536, 2048, 3072.",
         "required": false,
         "default": 1536,
         "sensitive": false

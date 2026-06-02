@@ -8,9 +8,8 @@ const ShellControllerContext = React.createContext<ShellController | null>(
 
 /**
  * Provides a single {@link useShellController} instance to the shell pill /
- * overlay and to surfaces that mirror its phase (e.g. the HomeView waveform),
- * so the waveform and the pill stay in lock-step without double-mounting the
- * controller (which would open two mic captures).
+ * overlay so shell controls stay in lock-step without double-mounting the
+ * controller, which would open two mic captures.
  */
 export function ShellControllerProvider({
   children,

@@ -12,12 +12,17 @@
     "typecheck": "tsgo --noEmit",
     "test": "bun test src",
     "test:e2e": "ELIZA_CLOUD_SDK_LIVE=1 vitest run --config vitest.live.config.ts src/live.e2e.test.ts",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write ."
+    "lint": "bunx @biomejs/biome check .",
+    "lint:fix": "bunx @biomejs/biome check --write ."
   },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },

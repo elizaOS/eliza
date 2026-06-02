@@ -174,7 +174,9 @@ export * from "./runtime/cleanup-scope";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/conversation-compaction-hook";
+export { looksLikeTrainingCutoffLeak } from "./runtime/cutoff-leak-detector";
 export * from "./runtime/execute-planned-tool-call";
+export { looksLikeFabricatedModeration } from "./runtime/fabricated-moderation-detector";
 export {
 	detectLocaleFromText,
 	type ResolveOwnerLocaleOptions,
@@ -204,6 +206,10 @@ export * from "./runtime/response-handler-field-registry";
 export * from "./runtime/rlm";
 export * from "./runtime/room-handler-queue";
 export * from "./runtime/schema-compat";
+export {
+	looksLikeNonRefusalStage1HonestyViolation,
+	looksLikeStage1HonestyViolation,
+} from "./runtime/stage1-honesty-detector";
 export * from "./runtime/sub-planner";
 export * from "./runtime/system-prompt";
 export * from "./runtime/trajectory-recorder";
@@ -332,6 +338,7 @@ export {
 export * from "./utils/description-compressed-lint";
 // Export browser-compatible utilities
 export * from "./utils/environment";
+export { getEnv } from "./utils/environment";
 export { formatError } from "./utils/format-error";
 // Export Node-specific utilities
 export * from "./utils/plugin-loader";

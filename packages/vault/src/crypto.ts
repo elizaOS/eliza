@@ -14,6 +14,8 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 export const KEY_BYTES = 32;
 const NONCE_BYTES = 12;
 const TAG_BYTES = 16;
+const BASE64_PATTERN =
+  /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
 export class CryptoError extends Error {
   constructor(message: string) {
@@ -60,9 +62,9 @@ export function decrypt(
   if (nonceB64 === undefined || tagB64 === undefined || ctB64 === undefined) {
     throw new CryptoError("malformed ciphertext");
   }
-  const nonce = Buffer.from(nonceB64, "base64");
-  const tag = Buffer.from(tagB64, "base64");
-  const ct = Buffer.from(ctB64, "base64");
+  const nonce = decodeBase64Field(nonceB64, false);
+  const tag = decodeBase64Field(tagB64, false);
+  const ct = decodeBase64Field(ctB64, true);
   if (nonce.length !== NONCE_BYTES || tag.length !== TAG_BYTES) {
     throw new CryptoError("malformed ciphertext");
   }
@@ -80,4 +82,11 @@ export function decrypt(
         : "decryption failed",
     );
   }
+}
+
+function decodeBase64Field(value: string, allowEmpty: boolean): Buffer {
+  if ((!allowEmpty && value.length === 0) || !BASE64_PATTERN.test(value)) {
+    throw new CryptoError("malformed ciphertext");
+  }
+  return Buffer.from(value, "base64");
 }

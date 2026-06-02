@@ -90,18 +90,20 @@ def build_manifest(records: list[dict]) -> tuple[list[dict], int, int]:
             for row in probe_rows
         ]
         probe_count += len(probes)
-        layer_commitments.append({
-            "layer_index": int(record["layer_index"]),
-            "layer_name": str(record["layer_name"]),
-            "kind": str(record["kind"]),
-            "routing_color": int(record["routing_color"]),
-            "rows": rows,
-            "cols": int(record["cols"]),
-            "vector_word_ops": int(record["vector_word_ops"]),
-            "macs": int(record["macs"]),
-            "row_identity_checksum": layer_checksum,
-            "row_identity_probes": probes,
-        })
+        layer_commitments.append(
+            {
+                "layer_index": int(record["layer_index"]),
+                "layer_name": str(record["layer_name"]),
+                "kind": str(record["kind"]),
+                "routing_color": int(record["routing_color"]),
+                "rows": rows,
+                "cols": int(record["cols"]),
+                "vector_word_ops": int(record["vector_word_ops"]),
+                "macs": int(record["macs"]),
+                "row_identity_checksum": layer_checksum,
+                "row_identity_probes": probes,
+            }
+        )
     return layer_commitments, manifest_checksum, probe_count
 
 
@@ -120,13 +122,21 @@ def main() -> int:
         "full-output checksum-manifest inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_full_output_checksum_manifest_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_output_checksum_manifest_inputs_present",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     workplan = load_json(FULL_OUTPUT_WORKPLAN) if FULL_OUTPUT_WORKPLAN.is_file() else {}
     tensor_output = load_json(TENSOR_OUTPUT) if TENSOR_OUTPUT.is_file() else {}
     coverage = load_json(FULL_OUTPUT_COVERAGE) if FULL_OUTPUT_COVERAGE.is_file() else {}
     execution_ladder = load_json(EXECUTION_LADDER) if EXECUTION_LADDER.is_file() else {}
-    repaired_run = load_json(FULL_PAYLOAD_REPAIRED_RUN) if FULL_PAYLOAD_REPAIRED_RUN.is_file() else {}
+    repaired_run = (
+        load_json(FULL_PAYLOAD_REPAIRED_RUN) if FULL_PAYLOAD_REPAIRED_RUN.is_file() else {}
+    )
 
     deps_ok = (
         workplan.get("status") == "PASS"
@@ -140,7 +150,13 @@ def main() -> int:
         "workplan, sampled checksum, coverage, ladder, and repaired-run reports are PASS",
         "checksum-manifest dependency report missing or failing",
     )
-    checks.append({"id": "e1x_full_output_checksum_manifest_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_output_checksum_manifest_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     workplan_summary = workplan.get("summary", {})
     output_summary = tensor_output.get("summary", {})
@@ -173,7 +189,9 @@ def main() -> int:
         f"checksum manifest commits {total_rows} scheduled row identities across {len(records)} layers",
         "checksum-manifest row identity accounting mismatch",
     )
-    checks.append({"id": "e1x_full_output_checksum_manifest_commits_rows", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_output_checksum_manifest_commits_rows", "status": status, "detail": detail}
+    )
 
     checksum_links_ok = (
         int(output_summary.get("sampled_output_checksum", 0)) == EXPECTED_SAMPLED_OUTPUT_CHECKSUM
@@ -192,7 +210,13 @@ def main() -> int:
         "checksum manifest links sampled output, routed-window, and normal/high repaired-run checksums",
         "checksum-manifest checksum linkage mismatch",
     )
-    checks.append({"id": "e1x_full_output_checksum_manifest_links_checksums", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_output_checksum_manifest_links_checksums",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     blocker_ok = (
         int(coverage_summary.get("missing_output_row_count", 0)) == 2_607_508
@@ -206,7 +230,13 @@ def main() -> int:
         "manifest preserves the real-weight full-output checksum blocker",
         "checksum-manifest blocker boundary mismatch",
     )
-    checks.append({"id": "e1x_full_output_checksum_manifest_preserves_blocker", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_output_checksum_manifest_preserves_blocker",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
@@ -232,7 +262,7 @@ def main() -> int:
         "sampled_layer_commitments": sampled_layer_commitments,
         "residual_blocker": "full_output_real_weight_checksum_missing",
     }
-    report = {
+    report: dict[str, object] = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x-full-output-checksum-manifest",
         "status": "PASS" if not failures else "BLOCKED",

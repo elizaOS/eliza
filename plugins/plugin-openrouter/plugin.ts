@@ -113,8 +113,7 @@ export const openrouterPlugin: Plugin = {
       runtime: IAgentRuntime,
       params: ImageDescriptionParams | string
     ) => {
-      const description = await handleImageDescription(runtime, params);
-      return { title: "", description };
+      return handleImageDescription(runtime, params);
     },
 
     [ModelType.IMAGE]: async (runtime: IAgentRuntime, params: ImageGenerationParams) => {

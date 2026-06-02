@@ -31,10 +31,12 @@
     "dist"
   ],
   "scripts": {
-    "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
+    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-websiteblocker -- bun run build:unlocked",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "test": "vitest run",
     "test:android:manual": "cd android && gradle test",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "build:unlocked": "bun run clean && tsc && bunx rollup -c rollup.config.mjs"
   },
   "author": "elizaOS",
   "license": "MIT",
@@ -55,7 +57,8 @@
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "rollup": "^4.60.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

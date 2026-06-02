@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import type { Content, IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 
 type TaskSpec = {
   id: string;
@@ -45,6 +46,49 @@ type CreateTaskActionLike = {
     callback?: (content: Content) => Promise<Memory[]>,
   ) => Promise<unknown>;
 };
+
+async function rewriteCodingActionText(args: {
+  runtime: IAgentRuntime;
+  actionName: string;
+  text: string;
+}): Promise<string> {
+  const text = args.text.trim();
+  if (!text) return args.text;
+  const fallback = () =>
+    `I ran ${args.actionName} and got a coding task result, but I couldn't format the details cleanly here.`;
+  if (typeof args.runtime.useModel !== "function") return fallback();
+  try {
+    const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt: [
+        "Rewrite this coding action output in the assistant character's user-facing voice.",
+        'Return strict JSON only: {"response":"..."}.',
+        "",
+        "Rules:",
+        "- Preserve task IDs, session IDs, file paths, status, errors, and next steps.",
+        "- Do not expose raw JSON, shell output, schema names, stack traces, or internal action plumbing unless an exact value is necessary.",
+        "- Do not claim success if the payload says failed or pending.",
+        "- Keep it brief and natural.",
+        "",
+        `Character: ${JSON.stringify({
+          name: args.runtime.character?.name,
+          system: args.runtime.character?.system,
+          bio: args.runtime.character?.bio,
+          style: args.runtime.character?.style,
+        })}`,
+        `Action: ${JSON.stringify(args.actionName)}`,
+        `Payload: ${JSON.stringify(text)}`,
+      ].join("\n"),
+      maxTokens: 260,
+      providerOptions: { eliza: { thinking: "off" } },
+    });
+    const parsed = JSON.parse(String(raw).trim()) as { response?: unknown };
+    return typeof parsed.response === "string" && parsed.response.trim()
+      ? parsed.response.trim()
+      : fallback();
+  } catch {
+    return fallback();
+  }
+}
 
 function findCreateTaskAction(
   runtime: IAgentRuntime,
@@ -116,7 +160,13 @@ export class CodingTaskExecutor implements TaskExecutor {
     const callbackLines: string[] = [];
     const callback = async (content: Content): Promise<Memory[]> => {
       if (typeof content.text === "string" && content.text.trim().length > 0) {
-        callbackLines.push(content.text);
+        callbackLines.push(
+          await rewriteCodingActionText({
+            runtime,
+            actionName: action.name,
+            text: content.text,
+          }),
+        );
       }
       return [];
     };
@@ -157,7 +207,15 @@ export class CodingTaskExecutor implements TaskExecutor {
         | undefined;
 
       const sessionId = result?.data?.agents?.[0]?.sessionId;
-      const output = sessionId || result?.text || callbackLines.join("\n");
+      const resultText =
+        typeof result?.text === "string" && result.text.trim()
+          ? await rewriteCodingActionText({
+              runtime,
+              actionName: action.name,
+              text: result.text,
+            })
+          : undefined;
+      const output = sessionId || resultText || callbackLines.join("\n");
       if (result?.success === false) {
         return {
           taskId: spec.id,

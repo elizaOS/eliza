@@ -1,3 +1,5 @@
+import { CheckCircle2 } from "lucide-react";
+import { useAgentElement } from "../../agent-surface";
 import type { PluginInfo } from "../../api";
 import { ConnectorSetupPanel } from "../connectors/ConnectorSetupPanel";
 import { AdminDialog } from "../ui/admin-dialog";
@@ -85,6 +87,53 @@ export function PluginSettingsDialog({
   saveSettingsLabel,
   savingLabel,
 }: PluginSettingsDialogProps) {
+  const dialogPluginId = settingsDialogPlugin?.id;
+  const installControl = useAgentElement<HTMLButtonElement>({
+    id: "plugin-dialog-install",
+    role: "button",
+    label: "Install plugin",
+    group: "plugin-dialog",
+    description: "Install the plugin package",
+    onActivate: () => {
+      if (settingsDialogPlugin) {
+        void onInstallPlugin(
+          settingsDialogPlugin.id,
+          settingsDialogPlugin.npmName ?? "",
+        );
+      }
+    },
+  });
+  const testControl = useAgentElement<HTMLButtonElement>({
+    id: "plugin-dialog-test",
+    role: "button",
+    label: "Test connection",
+    group: "plugin-dialog",
+    description: "Run a connection test for the plugin",
+    onActivate: () => {
+      if (dialogPluginId) void onTestConnection(dialogPluginId);
+    },
+  });
+  const resetControl = useAgentElement<HTMLButtonElement>({
+    id: "plugin-dialog-reset",
+    role: "button",
+    label: "Reset settings",
+    group: "plugin-dialog",
+    description: "Discard unsaved configuration changes",
+    onActivate: () => {
+      if (dialogPluginId) onConfigReset(dialogPluginId);
+    },
+  });
+  const saveControl = useAgentElement<HTMLButtonElement>({
+    id: "plugin-dialog-save",
+    role: "button",
+    label: "Save settings",
+    group: "plugin-dialog",
+    description: "Save the plugin configuration",
+    onActivate: () => {
+      if (dialogPluginId) void onConfigSave(dialogPluginId);
+    },
+  });
+
   if (!settingsDialogPlugin) return null;
 
   const plugin = settingsDialogPlugin;
@@ -128,18 +177,22 @@ export function PluginSettingsDialog({
           )}
         </AdminDialog.Header>
         <AdminDialog.BodyScroll>
-          <div className="px-5 pt-4 pb-1 flex items-center gap-3 flex-wrap text-xs text-muted">
+          <div className="px-5 pt-4 pb-1 flex items-center gap-3 text-xs text-muted">
             {plugin.description && (
-              <span className="text-xs text-muted leading-relaxed">
+              <span
+                className="min-w-0 flex-1 line-clamp-1 text-xs text-muted"
+                title={plugin.description}
+              >
                 {plugin.description}
               </span>
             )}
             {(plugin.tags?.length ?? 0) > 0 && (
-              <span className="flex items-center gap-1.5 flex-wrap">
+              <span className="flex shrink-0 items-center gap-1.5">
                 {plugin.tags?.map((tag) => (
                   <span
                     key={`${plugin.id}:${tag}:settings`}
-                    className="whitespace-nowrap border border-border/40 bg-bg-accent/80 px-1.5 py-px text-2xs lowercase tracking-wide text-muted-strong"
+                    className="max-w-24 truncate border border-border/40 bg-bg-accent/80 px-1.5 py-px text-2xs lowercase tracking-wide text-muted-strong"
+                    title={tag}
                   >
                     {tag}
                   </span>
@@ -198,6 +251,7 @@ export function PluginSettingsDialog({
               plugin.npmName &&
               !plugin.loadError && (
                 <Button
+                  ref={installControl.ref}
                   variant="default"
                   size="sm"
                   className="h-8 px-4 text-xs-tight font-bold tracking-wide "
@@ -205,6 +259,7 @@ export function PluginSettingsDialog({
                   onClick={() =>
                     void onInstallPlugin(plugin.id, plugin.npmName ?? "")
                   }
+                  {...installControl.agentProps}
                 >
                   {installingPlugins.has(plugin.id)
                     ? installProgressLabel(
@@ -242,19 +297,24 @@ export function PluginSettingsDialog({
                 }`}
                 disabled={testResults.get(plugin.id)?.loading}
                 onClick={() => void onTestConnection(plugin.id)}
+                ref={testControl.ref}
+                {...testControl.agentProps}
               >
                 {formatDialogTestConnectionLabel(testResults.get(plugin.id))}
               </Button>
             )}
             <Button
+              ref={resetControl.ref}
               variant="ghost"
               size="sm"
               className="h-8 px-4 text-xs font-bold text-muted hover:text-txt transition-all"
               onClick={() => onConfigReset(plugin.id)}
+              {...resetControl.agentProps}
             >
               {t("common.reset")}
             </Button>
             <Button
+              ref={saveControl.ref}
               variant={saveSuccess ? "default" : "secondary"}
               size="sm"
               className={`h-8 px-5 text-xs font-bold tracking-wide transition-all ${
@@ -264,14 +324,20 @@ export function PluginSettingsDialog({
               }`}
               onClick={() => void onConfigSave(plugin.id)}
               disabled={isSaving}
+              {...saveControl.agentProps}
             >
-              {isSaving
-                ? savingLabel
-                : saveSuccess
-                  ? t("pluginsview.SavedWithCheck", {
-                      defaultValue: "✓ Saved",
-                    })
-                  : saveSettingsLabel}
+              {isSaving ? (
+                savingLabel
+              ) : saveSuccess ? (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {t("pluginsview.Saved", {
+                    defaultValue: "Saved",
+                  })}
+                </>
+              ) : (
+                saveSettingsLabel
+              )}
             </Button>
           </AdminDialog.Footer>
         )}

@@ -41,7 +41,13 @@ def main() -> int:
         "window execution-trace linkage inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_window_execution_trace_linkage_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_window_execution_trace_linkage_inputs_present",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     benchmark = load_json(BENCHMARK) if BENCHMARK.is_file() else {}
     window_repair_rom = load_json(WINDOW_REPAIR_ROM) if WINDOW_REPAIR_ROM.is_file() else {}
@@ -52,7 +58,8 @@ def main() -> int:
     deps_ok = (
         benchmark.get("status") == "PASS"
         and window_repair_rom.get("status") == "PASS"
-        and int(window_repair_rom.get("summary", {}).get("high_failure_window_remap_word_count", 0)) >= 3_012
+        and int(window_repair_rom.get("summary", {}).get("high_failure_window_remap_word_count", 0))
+        >= 3_012
         and window_route.get("status") == "PASS"
         and int(window_route.get("summary", {}).get("window_neighbor_edge_count", 0)) >= 301_949
         and normal_trace.get("schema") == "eliza.e1x.real_graph_execution_trace.v1"
@@ -63,7 +70,13 @@ def main() -> int:
         "benchmark, window repair-ROM linkage, route validation, and normal/high traces are linked and PASS",
         "trace-linkage dependency report missing, stale, or failing",
     )
-    checks.append({"id": "e1x_window_execution_trace_linkage_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_window_execution_trace_linkage_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     bench_summary = benchmark.get("summary", {})
     rom_summary = window_repair_rom.get("summary", {})
@@ -82,7 +95,13 @@ def main() -> int:
         "normal/high execution traces and repair ROM hashes match benchmark and window linkage artifacts",
         "trace or repair-ROM artifact hash mismatch",
     )
-    checks.append({"id": "e1x_window_execution_trace_linkage_artifact_hashes", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_window_execution_trace_linkage_artifact_hashes",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     normal_cycles = int(normal_trace.get("total_cycles", 0))
     high_cycles = int(high_trace.get("total_cycles", 0))
@@ -109,7 +128,13 @@ def main() -> int:
         "high-failure execution trace is slower and carries higher repair penalty than normal trace",
         "normal/high execution trace scenario linkage mismatch",
     )
-    checks.append({"id": "e1x_window_execution_trace_linkage_scenario_behavior", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_window_execution_trace_linkage_scenario_behavior",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     checksum_ok = (
         int(normal_trace.get("output_checksum", 0)) == 8_263_636_289_739_888_019
@@ -125,7 +150,9 @@ def main() -> int:
         "trace output checksums and high-failure window route checksum are stable and linked",
         "execution trace or window route checksum mismatch",
     )
-    checks.append({"id": "e1x_window_execution_trace_linkage_checksums", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_window_execution_trace_linkage_checksums", "status": status, "detail": detail}
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
@@ -145,7 +172,9 @@ def main() -> int:
         "normal_route_checks": int(normal_trace.get("route_checks", 0)),
         "high_failure_route_checks": int(high_trace.get("route_checks", 0)),
         "normal_repair_rom_sha256": str(rom_summary.get("normal_repair_rom_sha256", "")),
-        "high_failure_repair_rom_sha256": str(rom_summary.get("high_failure_repair_rom_sha256", "")),
+        "high_failure_repair_rom_sha256": str(
+            rom_summary.get("high_failure_repair_rom_sha256", "")
+        ),
         "high_failure_window_remap_word_count": int(
             rom_summary.get("high_failure_window_remap_word_count", 0)
         ),
@@ -181,7 +210,10 @@ def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:
-        print("BLOCKED: E1X window execution-trace linkage failed: " + ", ".join(c["id"] for c in failures))
+        print(
+            "BLOCKED: E1X window execution-trace linkage failed: "
+            + ", ".join(c["id"] for c in failures)
+        )
         return 1
     print(f"PASS: E1X window execution-trace linkage; report {REPORT.relative_to(ROOT)}")
     return 0

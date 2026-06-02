@@ -32,14 +32,31 @@ async function runHandler(
 }
 
 describe("WEB_FETCH action", () => {
+  const originalWebFetchEnv = process.env.ELIZA_WEB_FETCH;
+
   afterEach(() => {
     __setPinnedFetchImplForTests(null);
+    if (originalWebFetchEnv === undefined) {
+      delete process.env.ELIZA_WEB_FETCH;
+    } else {
+      process.env.ELIZA_WEB_FETCH = originalWebFetchEnv;
+    }
   });
 
-  it("is always available (no key/service required)", async () => {
+  it("is available by default (no key/service required)", async () => {
+    delete process.env.ELIZA_WEB_FETCH;
     expect(await webFetch.validate({} as IAgentRuntime, {} as Memory)).toBe(
       true,
     );
+  });
+
+  it("is gated off when ELIZA_WEB_FETCH disables the capability", async () => {
+    for (const value of ["0", "false", "off"]) {
+      process.env.ELIZA_WEB_FETCH = value;
+      expect(await webFetch.validate({} as IAgentRuntime, {} as Memory)).toBe(
+        false,
+      );
+    }
   });
 
   it("returns the fetched text snippet and fires the callback", async () => {
@@ -57,6 +74,21 @@ describe("WEB_FETCH action", () => {
       url: TEST_URL,
       value: "hello world",
     });
+  });
+
+  it("caps an oversized response body (streaming read, not full buffer)", async () => {
+    // Body far larger than the 4 000-char snippet cap. The guarded reader
+    // stops streaming once the cap is reached rather than buffering all of it.
+    const huge = "x".repeat(50_000);
+    __setPinnedFetchImplForTests(
+      async () => new Response(huge, { status: 200 }),
+    );
+
+    const { result } = await runHandler({ url: TEST_URL });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toBeDefined();
+    expect((result.text ?? "").length).toBe(4_000);
   });
 
   it("extracts a JSON path when extract is provided", async () => {

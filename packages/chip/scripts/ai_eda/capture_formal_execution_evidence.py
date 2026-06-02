@@ -22,6 +22,13 @@ DEFAULT_STRICT_WORK_ROOT = ROOT / "build/formal"
 SCHEMA = "eliza.ai_eda.formal_execution_evidence.v1"
 FORMAL_MANIFEST_SCHEMA = "e1-chip-formal-evidence-v1"
 CLAIM_BOUNDARY = "formal_execution_evidence_only_no_release_claim"
+
+
+def false_claim_flags(status: str) -> dict[str, bool]:
+    flags = {"release_use_allowed": False}
+    if status != "STRICT_FORMAL_EVIDENCE_READY":
+        flags["formal_proof_claim_allowed"] = False
+    return flags
 STRICT_BLOCKS = ("e1_dbg_mmio_bridge", "e1_npu", "e1_dma", "e1_soc_top")
 
 
@@ -235,6 +242,7 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,
         "formal_proof_claim_allowed": status == "STRICT_FORMAL_EVIDENCE_READY",
+        "false_claim_flags": false_claim_flags(status),
         "status": status,
         "formal_manifest_mode": mode,
         "strict_deep_formal_ready": status == "STRICT_FORMAL_EVIDENCE_READY",

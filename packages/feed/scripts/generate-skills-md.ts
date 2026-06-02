@@ -56,11 +56,11 @@ export function parseAgentCardSkills(content: string): Array<{
   if (skillsStart === -1) return skills;
   const block = content.slice(skillsStart);
 
-  const idPattern = /id:\s*'([^']+)'/g;
+  const idPattern = /id:\s*(?:'([^']+)'|"([^"]+)")/g;
   const indices: { id: string; start: number }[] = [];
   let m: RegExpExecArray | null;
   while ((m = idPattern.exec(block)) !== null)
-    indices.push({ id: m[1], start: m.index });
+    indices.push({ id: m[1] ?? m[2], start: m.index });
   const blocks: { id: string; raw: string }[] = [];
   for (let i = 0; i < indices.length; i++) {
     // Find the end of this skill block: either the start of next skill or end of skills array
@@ -77,17 +77,23 @@ export function parseAgentCardSkills(content: string): Array<{
     blocks.push({ id: indices[i].id, raw });
   }
 
-  const nameRe = /name:\s*'([^']+)'/;
-  const descRe = /description:\s*\n\s*'((?:[^'\\]|\\.)*)'/;
+  const nameRe = /name:\s*(?:'([^']+)'|"([^"]+)")/;
+  const descRe =
+    /description:\s*\n\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")/;
   const tagsRe = /tags:\s*\[([^\]]+)\]/;
   const examplesRe = /examples:\s*\[([\s\S]*?)\],\s*(?:inputModes|outputModes)/;
 
   for (const { id, raw: blk } of blocks) {
-    const name = nameRe.exec(blk)?.[1] ?? "";
-    const description = descRe.exec(blk)?.[1]?.replace(/\\'/g, "'") ?? "";
+    const nameMatch = nameRe.exec(blk);
+    const name = nameMatch?.[1] ?? nameMatch?.[2] ?? "";
+    const descriptionMatch = descRe.exec(blk);
+    const description =
+      (descriptionMatch?.[1] ?? descriptionMatch?.[2])
+        ?.replace(/\\'/g, "'")
+        .replace(/\\"/g, '"') ?? "";
     const tagsMatch = tagsRe.exec(blk)?.[1];
     const tags = tagsMatch
-      ? tagsMatch.split(",").map((s) => s.trim().replace(/^'|'$/g, ""))
+      ? tagsMatch.split(",").map((s) => s.trim().replace(/^['"]|['"]$/g, ""))
       : [];
     const examplesMatch = examplesRe.exec(blk)?.[1];
     const examples = examplesMatch
@@ -96,8 +102,9 @@ export function parseAgentCardSkills(content: string): Array<{
           .map((s) =>
             s
               .trim()
-              .replace(/^\s*'|'\s*$/g, "")
-              .replace(/\\'/g, "'"),
+              .replace(/^\s*['"]|['"]\s*$/g, "")
+              .replace(/\\'/g, "'")
+              .replace(/\\"/g, '"'),
           )
           .filter(Boolean)
       : [];
@@ -110,10 +117,11 @@ export function parseAgentCardSkills(content: string): Array<{
 // WHY: Executor switch is the single list of supported operations; regex keeps generator in sync without importing runtime.
 export function parseExecutorOperations(content: string): string[] {
   const ops: string[] = [];
-  const re = /case\s+'([^']+)':/g;
+  const re = /case\s*(?:'([^']+)'|"([^"]+)"):/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(content)) !== null) {
-    if (m[1] !== "default") ops.push(m[1]);
+    const op = m[1] ?? m[2];
+    if (op !== "default") ops.push(op);
   }
   return [...new Set(ops)].sort();
 }
@@ -202,14 +210,15 @@ export function parseMCPTools(
   if (toolsStart === -1) return tools;
   const slice = content.slice(toolsStart);
   const re =
-    /{\s*name:\s*'([^']+)',\s*description:\s*(?:\n\s*'((?:[^'\\]|\\.)*)'|'([^']+)')/g;
+    /{\s*name:\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"),\s*description:\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(slice)) !== null) {
-    const desc = (m[2] ?? m[3] ?? "")
+    const desc = (m[3] ?? m[4] ?? "")
       .replace(/\\'/g, "'")
+      .replace(/\\"/g, '"')
       .replace(/\s+/g, " ")
       .trim();
-    tools.push({ name: m[1], description: desc });
+    tools.push({ name: m[1] ?? m[2], description: desc });
   }
   return tools;
 }

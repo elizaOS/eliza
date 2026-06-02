@@ -35,6 +35,7 @@ export {
   readCalendlyCredentialsFromEnv,
 } from "./calendly-client.js";
 export { createCalendlyConnectorAccountProvider } from "./connector-account-provider.js";
+export { CalendlyAdapter } from "./lifeops-message-adapter.js";
 export { calendlyEventTypesProvider } from "./providers/calendly-event-types.js";
 export { CalendlyService } from "./services/CalendlyService.js";
 export * from "./types.js";

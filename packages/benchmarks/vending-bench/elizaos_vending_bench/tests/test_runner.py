@@ -73,6 +73,25 @@ class TestVendingBenchRunner:
             assert len(md_files) >= 1
 
     @pytest.mark.asyncio
+    async def test_run_benchmark_expanded_scenarios(self) -> None:
+        """Test running benchmark with edge scenario expansion."""
+        config = VendingBenchConfig(
+            num_runs=1,
+            max_days_per_run=1,
+            random_seed=42,
+            generate_report=False,
+            compare_leaderboard=False,
+            include_edge_scenarios=True,
+        )
+        runner = VendingBenchRunner(config)
+
+        report = await runner.run_benchmark()
+
+        assert len(report.results) == 11
+        assert report.metadata["total_runs"] == 11
+        assert any(r.run_id.endswith("low_cash_launch") for r in report.results)
+
+    @pytest.mark.asyncio
     async def test_calculate_metrics(self) -> None:
         """Test metrics calculation."""
         config = VendingBenchConfig(

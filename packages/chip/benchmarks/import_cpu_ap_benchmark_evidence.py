@@ -26,9 +26,8 @@ from provenance_sanitize import sanitize_host_local_paths  # noqa: E402
 DEFAULT_EVIDENCE = ROOT / "build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log"
 DEFAULT_OUT = ROOT / "benchmarks/results/generated-ap-smoke/report.json"
 SCHEMA = "eliza.benchmark_run.v1"
-CLAIM_BOUNDARY = (
-    "generated_ap_verilator_transcript_only_not_silicon_or_phone_benchmark"
-)
+CLAIM_BOUNDARY = "generated_ap_verilator_transcript_only_not_silicon_or_phone_benchmark"
+TARGET_METADATA_CONTRACT = ROOT / run_benchmarks.TARGET_METADATA_CONTRACT_PATH
 
 
 def rel(path: Path) -> str:
@@ -275,6 +274,9 @@ def build_report(evidence: Path) -> dict[str, Any]:
             "version": "generated-ap-benchmark-import-v1",
         },
         "artifacts": {
+            "target_metadata_contract": run_benchmarks.TARGET_METADATA_CONTRACT_PATH,
+            "target_metadata_contract_sha256": sha256_file(TARGET_METADATA_CONTRACT),
+            "target_metadata_contract_bytes": TARGET_METADATA_CONTRACT.stat().st_size,
             "source_evidence": rel(evidence),
             "source_evidence_sha256": sha256_file(evidence),
             "source_evidence_bytes": evidence.stat().st_size,

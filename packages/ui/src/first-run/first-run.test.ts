@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 
+import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   applyFirstRunVoiceTranscript,
   buildFirstRunSubmitPlan,
   clearPersistedFirstRunState,
   DEFAULT_AGENT_NAME,
+  FIRST_RUN_STEPS,
   type FirstRunProfileDraft,
   firstRunDownloadsLocalModel,
   firstRunNeedsCloudConnect,
@@ -28,12 +30,38 @@ const fallbackDraft: FirstRunProfileDraft = {
   remoteToken: "",
 };
 
+function ensureLocalStorage(): Storage {
+  if (typeof window.localStorage?.clear === "function") {
+    return window.localStorage;
+  }
+  const values = new Map<string, string>();
+  const storage = {
+    get length() {
+      return values.size;
+    },
+    clear: () => values.clear(),
+    getItem: (key: string) => values.get(key) ?? null,
+    key: (index: number) => Array.from(values.keys())[index] ?? null,
+    removeItem: (key: string) => {
+      values.delete(key);
+    },
+    setItem: (key: string, value: string) => {
+      values.set(key, String(value));
+    },
+  } satisfies Storage;
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+  return storage;
+}
+
 beforeEach(() => {
-  window.localStorage.clear();
+  ensureLocalStorage().clear();
 });
 
 afterEach(() => {
-  window.localStorage.clear();
+  ensureLocalStorage().clear();
 });
 
 describe("first-run flow", () => {
@@ -110,6 +138,26 @@ describe("first-run flow", () => {
 
     clearPersistedFirstRunState();
     expect(loadPersistedFirstRunState(fallbackDraft)).toBeNull();
+  });
+
+  it("fuzzes corrupted persisted first-run state into a safe normalized draft", () => {
+    fc.assert(
+      fc.property(fc.jsonValue(), (value) => {
+        window.localStorage.setItem("eliza:first-run", JSON.stringify(value));
+        const loaded = loadPersistedFirstRunState(fallbackDraft);
+        if (loaded === null) return;
+
+        expect(FIRST_RUN_STEPS).toContain(loaded.step);
+        expect(["local", "cloud", "remote"]).toContain(loaded.draft.runtime);
+        expect(["all-local", "cloud-inference"]).toContain(
+          loaded.draft.localInference,
+        );
+        expect(typeof loaded.draft.agentName).toBe("string");
+        expect(typeof loaded.draft.remoteApiBase).toBe("string");
+        expect(typeof loaded.draft.remoteToken).toBe("string");
+      }),
+      { numRuns: 300 },
+    );
   });
 
   it("normalizes persisted cloud-only first-run state back to cloud runtime", () => {
@@ -204,6 +252,32 @@ describe("first-run flow", () => {
 
     expect(
       validateFirstRunSubmitDraft({ ...fallbackDraft, runtime: "local" }),
+    ).toMatchObject({ valid: true });
+  });
+
+  it("rejects hostile remote runtime targets before submission", () => {
+    for (const remoteApiBase of [
+      "javascript:alert(1)",
+      "data:text/html,<script>alert(1)</script>",
+      "file:///etc/passwd",
+      "http://",
+      "not a url",
+    ]) {
+      expect(
+        validateFirstRunSubmitDraft({
+          ...fallbackDraft,
+          runtime: "remote",
+          remoteApiBase,
+        }),
+      ).toMatchObject({ valid: false, step: "remote" });
+    }
+
+    expect(
+      validateFirstRunSubmitDraft({
+        ...fallbackDraft,
+        runtime: "remote",
+        remoteApiBase: "https://agent.example.com",
+      }),
     ).toMatchObject({ valid: true });
   });
 

@@ -17,7 +17,9 @@ def test_e1x_window_execution_trace_linkage_gate_passes() -> None:
         stdout=subprocess.PIPE,
     )
     assert "PASS: E1X window execution-trace linkage" in result.stdout
-    report = json.loads((ROOT / "build/reports/e1x_window_execution_trace_linkage.json").read_text())
+    report = json.loads(
+        (ROOT / "build/reports/e1x_window_execution_trace_linkage.json").read_text()
+    )
     assert report["status"] == "PASS"
     summary = report["summary"]
     assert summary["failing_check_count"] == 0

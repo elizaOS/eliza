@@ -44,6 +44,11 @@ function hasExplicitEmbeddingEndpoint(runtime: IAgentRuntime): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function hasExplicitEmbeddingDimensions(runtime: IAgentRuntime): boolean {
+  const value = getSetting(runtime, "OPENAI_EMBEDDING_DIMENSIONS");
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 function shouldUseLocalEmbeddingFallback(runtime: IAgentRuntime): boolean {
   return isCerebrasMode(runtime) && !hasExplicitEmbeddingEndpoint(runtime);
 }
@@ -141,6 +146,7 @@ export async function handleTextEmbedding(
     body: JSON.stringify({
       model: embeddingModel,
       input: trimmedText,
+      ...(hasExplicitEmbeddingDimensions(runtime) ? { dimensions: embeddingDimension } : {}),
     }),
   });
 
@@ -153,7 +159,7 @@ export async function handleTextEmbedding(
 
   const data = (await response.json()) as OpenAIEmbeddingResponse;
 
-  const firstResult = data.data[0];
+  const firstResult = Array.isArray(data.data) ? data.data[0] : undefined;
   if (!firstResult?.embedding) {
     throw new Error("OpenAI API returned invalid embedding response structure");
   }

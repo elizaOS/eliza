@@ -1,7 +1,7 @@
 /**
  * Duffel (travel) connector contribution.
  *
- * Wraps the Duffel travel adapter (`../travel-adapters/duffel.ts`).
+ * Wraps the Duffel travel client from `@elizaos/plugin-elizacloud`.
  * Duffel is a travel-booking provider; like Calendly it has no outbound
  * `send`. Read verbs return flight offers + order state.
  */
@@ -11,7 +11,7 @@ import {
   readDuffelConfigFromEnv,
   type SearchFlightsRequest,
   searchFlights,
-} from "../travel-adapters/duffel.js";
+} from "@elizaos/plugin-elizacloud/cloud/duffel-client";
 import type {
   ConnectorContribution,
   ConnectorStatus,

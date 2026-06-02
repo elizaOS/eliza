@@ -316,6 +316,7 @@ class MINTConfig:
     # Execution settings
     max_tasks_per_subtask: Optional[int] = None
     max_total_tasks: Optional[int] = None
+    include_edge_scenarios: bool = False
     timeout_per_task_ms: int = 120000  # 2 minutes per task
     max_turns: int = 5
     use_docker: bool = True

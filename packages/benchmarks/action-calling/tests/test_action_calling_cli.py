@@ -53,3 +53,40 @@ def test_selected_harness_prefers_env_over_provider(monkeypatch) -> None:
 
     assert cli._selected_harness("cerebras") == "hermes"
     assert cli._selected_harness("mock") == ""
+
+
+def test_expand_cases_adds_ten_edge_variants_per_case() -> None:
+    cases = cli._load_cases(cli.SMOKE_TEST, 100)
+
+    expanded = cli._expand_cases(cases)
+
+    assert len(cases) == 1
+    assert len(expanded) == 11
+    assert len({cli._case_id(case, index) for index, case in enumerate(expanded)}) == 11
+    assert all(expanded[index].expected_calls == cases[0].expected_calls for index in range(1, 11))
+    assert cli._validate_cases(expanded) == []
+
+
+def test_main_count_scenarios_does_not_require_out(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "action-calling",
+            "--provider",
+            "mock",
+            "--model",
+            "mock",
+            "--test-file",
+            str(cli.SMOKE_TEST),
+            "--max-examples",
+            "1",
+            "--expand-scenarios",
+            "--count-scenarios",
+        ],
+    )
+
+    assert cli.main() == 0
+
+    output = capsys.readouterr().out
+    assert '"base": 1' in output
+    assert '"edge": 10' in output

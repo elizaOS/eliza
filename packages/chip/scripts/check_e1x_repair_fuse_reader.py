@@ -116,17 +116,23 @@ def check_verilator_lint() -> dict[str, str]:
     return {"id": "e1x_repair_fuse_reader_verilator_lint", "status": status, "detail": detail}
 
 
-def marker_check(check_id: str, text: str, markers: tuple[str, ...], detail: str) -> tuple[dict[str, str], int]:
+def marker_check(
+    check_id: str, text: str, markers: tuple[str, ...], detail: str
+) -> tuple[dict[str, str], int]:
     missing = [marker for marker in markers if marker not in text]
     status, resolved_detail = pass_fail(
         not missing,
         detail,
         "missing markers: " + ", ".join(missing),
     )
-    return {"id": check_id, "status": status, "detail": resolved_detail}, len(markers) - len(missing)
+    return {"id": check_id, "status": status, "detail": resolved_detail}, len(markers) - len(
+        missing
+    )
 
 
-def simulate_fuse_stream(words: list[str], max_words: int, timeout_cycles: int) -> dict[str, object]:
+def simulate_fuse_stream(
+    words: list[str], max_words: int, timeout_cycles: int
+) -> dict[str, bool | str | int]:
     if not words or len(words) > max_words:
         return {"ok": False, "reason": "word count outside fuse-reader bounds"}
     emitted: list[str] = []
@@ -162,7 +168,9 @@ def main() -> int:
         "repair fuse-reader inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_repair_fuse_reader_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_repair_fuse_reader_inputs_present", "status": status, "detail": detail}
+    )
 
     rtl_text = RTL.read_text(encoding="utf-8") if RTL.is_file() else ""
     loader_text = LOADER_RTL.read_text(encoding="utf-8") if LOADER_RTL.is_file() else ""
@@ -190,16 +198,22 @@ def main() -> int:
         f"capacity report sizes production fuse window to {fuse_window_words} words",
         "repair capacity report missing or insufficient",
     )
-    checks.append({"id": "e1x_repair_fuse_reader_capacity_report_pass", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_repair_fuse_reader_capacity_report_pass", "status": status, "detail": detail}
+    )
 
-    case_summaries: list[dict[str, object]] = []
+    case_summaries: list[dict[str, str | int]] = []
     for case_id, paths in ROM_CASES.items():
         rom = load_json(paths["json"]) if paths["json"].is_file() else {}
-        hex_words = [
-            line.strip()
-            for line in paths["hex"].read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ] if paths["hex"].is_file() else []
+        hex_words = (
+            [
+                line.strip()
+                for line in paths["hex"].read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            if paths["hex"].is_file()
+            else []
+        )
         json_words = rom.get("words", [])
         words_ok = (
             rom.get("schema") == "eliza.e1x.repair_rom.v1"
@@ -213,7 +227,13 @@ def main() -> int:
             f"{case_id} repair ROM JSON/HEX words are streamable",
             f"{case_id} repair ROM JSON/HEX mismatch",
         )
-        checks.append({"id": f"e1x_repair_fuse_reader_{case_id}_rom_words", "status": status, "detail": detail})
+        checks.append(
+            {
+                "id": f"e1x_repair_fuse_reader_{case_id}_rom_words",
+                "status": status,
+                "detail": detail,
+            }
+        )
 
         sim = simulate_fuse_stream(hex_words, fuse_window_words, timeout_cycles=1024)
         sim_ok = bool(sim.get("ok")) and sim.get("stream_sha256") == rom.get("rom_words_sha256")
@@ -222,13 +242,21 @@ def main() -> int:
             f"{case_id} streams sequentially through OTP stalls and loader backpressure",
             f"{case_id} stream simulation failed: {sim.get('reason')}",
         )
-        checks.append({"id": f"e1x_repair_fuse_reader_{case_id}_stream_model", "status": status, "detail": detail})
-        case_summaries.append({
-            "case": case_id,
-            "rom_sha256": str(rom.get("artifact_sha256", "")),
-            "word_count": len(hex_words),
-            "stream_cycles": int(sim.get("cycles", 0)),
-        })
+        checks.append(
+            {
+                "id": f"e1x_repair_fuse_reader_{case_id}_stream_model",
+                "status": status,
+                "detail": detail,
+            }
+        )
+        case_summaries.append(
+            {
+                "case": case_id,
+                "rom_sha256": str(rom.get("artifact_sha256", "")),
+                "word_count": len(hex_words),
+                "stream_cycles": int(sim.get("cycles", 0)),
+            }
+        )
 
     timeout_probe = simulate_fuse_stream(["4531585245504149"], max_words=4096, timeout_cycles=1)
     status, detail = pass_fail(
@@ -236,7 +264,9 @@ def main() -> int:
         "behavioral model trips fail-closed timeout when OTP/loader stalls exceed budget",
         "timeout probe did not fail closed",
     )
-    checks.append({"id": "e1x_repair_fuse_reader_timeout_probe", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_repair_fuse_reader_timeout_probe", "status": status, "detail": detail}
+    )
 
     max_word_count = max((int(case["word_count"]) for case in case_summaries), default=0)
     failures = [check for check in checks if check["status"] != "pass"]

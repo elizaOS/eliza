@@ -17,6 +17,7 @@ from elizaos_experience_bench.hard_cases import (
     get_semantic_cases,
 )
 from elizaos_experience_bench.evaluators.hard_cases import HardCaseEvaluator
+from elizaos_experience_bench.edge_cases import expand_hard_cases
 
 
 # ---------------------------------------------------------------------------
@@ -70,6 +71,13 @@ class TestHardCaseData:
         names = [c.name for c in get_all_cases()]
         duplicates = [n for n in names if names.count(n) > 1]
         assert not duplicates, f"Duplicate case names: {set(duplicates)}"
+
+    def test_edge_expansion_adds_ten_variants_per_hard_case(self):
+        base = get_all_cases()
+        expanded = expand_hard_cases(base)
+
+        assert len(expanded) == len(base) * 11
+        assert len({case.name for case in expanded}) == len(expanded)
 
 
 # ---------------------------------------------------------------------------
@@ -150,3 +158,10 @@ class TestHardCaseEvaluator:
             f"Only {results.overall_passed}/{results.overall_total} passed. "
             f"More than half should pass."
         )
+
+    def test_expanded_evaluator_runs_without_error(self):
+        evaluator = HardCaseEvaluator(include_edge_scenarios=True)
+        results = evaluator.evaluate()
+
+        assert results.overall_total == len(get_all_cases()) * 11
+        assert results.overall_passed > 0

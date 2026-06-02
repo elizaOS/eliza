@@ -26,6 +26,11 @@ ASSET_ID = "intel-floorset"
 HF_ARCHIVE_RUN_ID = "codex-floorset-hf-archives-20260521"
 EXPECTED_SIZE_MARKER = "github_checkout_plus_hf_archives_29665773263_verified_bytes"
 RECORDED_INTAKE_STATUS = "RECORDED_IN_REVIEWED_INTAKE"
+FALSE_CLAIM_FLAGS = {
+    "release_use_allowed": False,
+    "unpack_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+}
 
 EXPECTED_ARCHIVES: tuple[dict[str, Any], ...] = (
     {
@@ -222,6 +227,7 @@ def main() -> int:
         "training_use_allowed": not blockers,
         "unpack_claim_allowed": False,
         "e1_signoff_claim_allowed": False,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "status": "VERIFIED_FULL_HF_ARCHIVE_SET"
         if not blockers
         else "BLOCKED_INCOMPLETE_HF_ARCHIVE_SET",

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +37,13 @@ from tee.teeevidence_quote import BASE_MEASUREMENT_ORDER  # noqa: E402
 
 MAP_PATH = ROOT / "docs/spec-db/tee-measured-launch-map.json"
 OUT = ROOT / "build/reports/tee_measured_launch_map.json"
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "measured_launch_claim_allowed": False,
+    "secure_boot_claim_allowed": False,
+    "signed_quote_claim_allowed": False,
+    "silicon_claim_allowed": False,
+}
 
 # The canonical TeeEvidence measurement set used by the chip-side launch chain,
 # mirroring packages/agent/src/services/tee-evidence.ts TeeMeasurementName and the
@@ -60,6 +68,10 @@ REQUIRED_CLAIMS = {
 SERIALIZER_BASE_ORDER = ("boot", "monitor", "os", "policy", "device", "agent")
 # Optional measurements assemble() can emit on the protected-inference path.
 SERIALIZER_OPTIONAL = {"npuFirmware", "modelWeights"}
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def validate(data: dict[str, Any]) -> list[str]:
@@ -172,6 +184,7 @@ def main(argv: list[str]) -> int:
             {
                 "schema": "eliza.tee_measured_launch_map_check.v1",
                 "status": "tee_measured_launch_map_release_blocked",
+                "generated_utc": utc_now(),
                 "claim_boundary": (
                     "Measurement-source map contract only; not a measured launch, "
                     "not secure boot, not a signed quote, not silicon."
@@ -180,6 +193,7 @@ def main(argv: list[str]) -> int:
                 if map_path.is_relative_to(ROOT)
                 else str(map_path),
                 "errors": errors,
+                "false_claim_flags": FALSE_CLAIM_FLAGS,
                 "findings": [
                     {
                         "code": "tee_measured_launch_map_release_blocked",
@@ -194,6 +208,7 @@ def main(argv: list[str]) -> int:
                 "summary": {
                     "measurement_count": len(data.get("measurements", [])),
                     "release_claim_allowed": False,
+                    "false_claim_flags": FALSE_CLAIM_FLAGS,
                 },
             },
             indent=2,

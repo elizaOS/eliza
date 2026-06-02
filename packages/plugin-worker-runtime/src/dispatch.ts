@@ -83,10 +83,39 @@ export function createWorkerRpcDispatcher(
       }
     }
 
+    const entry = registry.get(message.target);
+    if (!entry) {
+      reply({
+        type: "worker-rpc-result",
+        requestId: message.requestId,
+        ok: false,
+        error: {
+          name: "UnknownTargetError",
+          message: `No handler registered for ${message.surface}:${message.target}`,
+          code: "UNKNOWN_TARGET",
+        },
+      });
+      return;
+    }
+
+    if (entry.surface !== message.surface) {
+      reply({
+        type: "worker-rpc-result",
+        requestId: message.requestId,
+        ok: false,
+        error: {
+          name: "SurfaceMismatchError",
+          message: `RPC surface ${message.surface} does not match registered handler surface ${entry.surface} for target ${message.target}`,
+          code: "SURFACE_MISMATCH",
+        },
+      });
+      return;
+    }
+
     // SOC2 A-5: permission enforcement.
     if (context.permissions) {
       const denial = checkPermission(
-        message.surface,
+        entry.surface,
         context.permissions.granted,
       );
       if (denial) {
@@ -124,21 +153,6 @@ export function createWorkerRpcDispatcher(
         });
         return;
       }
-    }
-
-    const entry = registry.get(message.target);
-    if (!entry) {
-      reply({
-        type: "worker-rpc-result",
-        requestId: message.requestId,
-        ok: false,
-        error: {
-          name: "UnknownTargetError",
-          message: `No handler registered for ${message.surface}:${message.target}`,
-          code: "UNKNOWN_TARGET",
-        },
-      });
-      return;
     }
 
     try {

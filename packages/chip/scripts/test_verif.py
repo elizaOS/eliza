@@ -167,8 +167,9 @@ class SecurityRtlClaimBoundaryTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory(dir=mcie.ROOT / "build") as raw:
             report_path = Path(raw) / "mcie.json"
-            with mock.patch.object(mcie, "REPORT", report_path), mock.patch.object(
-                mcie, "_verilator", return_value=None
+            with (
+                mock.patch.object(mcie, "REPORT", report_path),
+                mock.patch.object(mcie, "_verilator", return_value=None),
             ):
                 rc = mcie.main()
             report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -183,8 +184,9 @@ class SecurityRtlClaimBoundaryTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory(dir=iopmp.ROOT / "build") as raw:
             report_path = Path(raw) / "iopmp.json"
-            with mock.patch.object(iopmp, "REPORT", report_path), mock.patch.object(
-                iopmp, "_verilator", return_value=None
+            with (
+                mock.patch.object(iopmp, "REPORT", report_path),
+                mock.patch.object(iopmp, "_verilator", return_value=None),
             ):
                 rc = iopmp.main()
             report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -199,8 +201,9 @@ class SecurityRtlClaimBoundaryTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory(dir=intc.ROOT / "build") as raw:
             report_path = Path(raw) / "interrupt-controller.json"
-            with mock.patch.object(intc, "REPORT", report_path), mock.patch.object(
-                intc, "_verilator", return_value=None
+            with (
+                mock.patch.object(intc, "REPORT", report_path),
+                mock.patch.object(intc, "_verilator", return_value=None),
             ):
                 rc = intc.main()
             report = json.loads(report_path.read_text(encoding="utf-8"))

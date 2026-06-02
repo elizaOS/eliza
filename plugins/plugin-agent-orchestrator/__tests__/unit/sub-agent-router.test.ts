@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { Content, HandlerCallback, Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setHostResolver } from "../../src/services/ssrf-guard.js";
 import {
   extractSubResources,
   normalizeUrlsInText,
@@ -188,6 +189,16 @@ describe("SubAgentRouter", () => {
   beforeEach(() => {
     session = makeSession();
     acp = makeAcpService(session);
+    // The SSRF guard resolves hostnames before fetching. URL-verification
+    // tests probe reserved (`*.test`) hosts against a stubbed `fetch`, which
+    // would NXDOMAIN under the real resolver. Map any non-loopback host to a
+    // public address so the guard passes and the stubbed fetch is exercised;
+    // loopback hosts are classified without DNS and need no mapping.
+    setHostResolver(async () => [{ address: "93.184.216.34" }]);
+  });
+
+  afterEach(() => {
+    setHostResolver();
   });
 
   it("posts a synthetic memory back to the origin room on task_complete", async () => {
@@ -805,6 +816,70 @@ describe("SubAgentRouter", () => {
     expect(stopSession).toHaveBeenCalledTimes(1);
   });
 
+  it("does not count cross-session-suppressed task_completes against the cap", async () => {
+    // Regression for the round-trip miscount: the counter incremented before
+    // the cross-session completion-dedupe suppression `return`, so a session
+    // whose every task_complete is absorbed (because another session already
+    // posted for the lineage) still climbed toward — and could spuriously trip
+    // — the runaway-loop cap, even though it never posted a single inbound.
+    const SESSION_ID_2 = "abcdef01-2345-6789-abcd-ef0123456789";
+    const session2 = makeSession({
+      id: SESSION_ID_2,
+      name: "demo-task-retry",
+      metadata: {
+        label: "fix-bug-42-retry",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+      },
+    });
+    const stopSession = vi.fn(async () => undefined);
+    const acp2: CapturedHandler = {};
+    const service = {
+      onSessionEvent: vi.fn((handler: typeof acp2.fn) => {
+        acp2.fn = handler;
+        return () => {
+          acp2.fn = undefined;
+        };
+      }),
+      getSession: vi.fn(async (id: string) => {
+        if (id === SESSION_ID) return session;
+        if (id === SESSION_ID_2) return session2;
+        return null;
+      }),
+      listSessions: vi.fn(async () => [session, session2]),
+      stopSession,
+    };
+    // Cap of 1: a single counted round-trip would trip it.
+    const { runtime, handleMessage } = makeRuntime({
+      acp: service,
+      setting: { ACPX_SUB_AGENT_ROUND_TRIP_CAP: "1" },
+    });
+    await SubAgentRouter.start(runtime);
+
+    // Session A posts once for the lineage.
+    acp2.fn?.(SESSION_ID, "task_complete", { response: "first session done" });
+    await new Promise((r) => setImmediate(r));
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+
+    // Session B emits several DISTINCT task_completes, all absorbed by the
+    // cross-session completion dedupe. None post. With the rollback, B's count
+    // never climbs past 0, so its cap (1) is never tripped — no force-stop.
+    for (let i = 0; i < 4; i++) {
+      acp2.fn?.(SESSION_ID_2, "task_complete", {
+        response: `retry done ${i}`,
+      });
+      await new Promise((r) => setImmediate(r));
+    }
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    // The suppressed session must not have been force-stopped for tripping the
+    // cap on events that never posted.
+    expect(stopSession).not.toHaveBeenCalledWith(SESSION_ID_2);
+  });
+
   describe("verify-retry on incomplete builds", () => {
     const origMax = process.env.ELIZA_BUILD_VERIFY_MAX_RETRIES;
     const origSettle = process.env.ELIZA_URL_VERIFY_SETTLE_MS;
@@ -1253,7 +1328,12 @@ describe("SubAgentRouter", () => {
       expect(fetchMock).toHaveBeenCalledWith(imageUrl, expect.anything());
     });
 
-    it("rejects mapped app URLs whose local target was not written this session by default", async () => {
+    it("does not reject a served-200 mapped app URL for stale local mtime (GAP-C: live 200 is authoritative)", async () => {
+      // A deploy step that copies a build into place preserves the source
+      // file's mtime, so a healthy app can have files older than the session.
+      // The live HTTP 200 is authoritative — the wall-clock freshness gate must
+      // not false-flag it as stale (which used to spuriously suppress
+      // task_complete and withhold the real diff from "what did you change?").
       const tmpRoot = fs.mkdtempSync(
         path.join(os.tmpdir(), "sub-agent-router-"),
       );
@@ -1299,13 +1379,14 @@ describe("SubAgentRouter", () => {
         });
         await new Promise((r) => setTimeout(r, 200));
 
+        // No spurious verify-retry, and the completion turn is posted as-is.
         expect(spawnSession).not.toHaveBeenCalled();
         expect(handleMessage).toHaveBeenCalledTimes(1);
         const posted = handleMessage.mock.calls[0]?.[1];
-        expect(posted?.content?.text).toContain(
+        expect(posted?.content?.text).not.toContain(
           "not updated during this session",
         );
-        expect(posted?.content?.text).toContain("[verification:");
+        expect(posted?.content?.text).not.toContain("[verification:");
       } finally {
         fs.rmSync(tmpRoot, { recursive: true, force: true });
       }

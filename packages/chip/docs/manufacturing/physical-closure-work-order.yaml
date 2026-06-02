@@ -9,6 +9,13 @@ claim_policy:
   board_fabrication_claim_allowed: false
   physical_signoff_claim_allowed: false
   lab_validation_claim_allowed: false
+  false_claim_flags:
+    claim_allowed: false
+    release_claim_allowed: false
+    tapeout_claim_allowed: false
+    board_fabrication_claim_allowed: false
+    physical_signoff_claim_allowed: false
+    lab_validation_claim_allowed: false
   allowed_local_claims:
     - Machine checks prove only manifest structure, path hygiene, and release-gate consistency.
     - Draft package, padframe, board, SI/PI, PDN, and first-article plans are planning artifacts only.

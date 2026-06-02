@@ -165,9 +165,7 @@ def test_capture_helper_skip_agent_writes_boot_only_evidence() -> None:
         tmp = Path(tmpdir)
         transcript = tmp / "generated-ap-firstboot-only.log"
         transcript.write_text(
-            "OpenSBI v1.4\n"
-            "Linux version 6.12.0-eliza\n"
-            "elizaos-firstboot-ready instance=fixture\n",
+            "OpenSBI v1.4\nLinux version 6.12.0-eliza\nelizaos-firstboot-ready instance=fixture\n",
             encoding="utf-8",
         )
         boot_json = tmp / "boot.json"
@@ -262,11 +260,15 @@ def test_generated_ap_wrapper_preflight_blocks_without_boot_command() -> None:
         raise AssertionError(report)
     if "qemu-virt reference transcripts" not in " ".join(report["blocked_reasons"]):
         raise AssertionError(report)
+    if not any("stage-agent-artifacts ARCH=riscv64" in command for command in report["next_commands"]):
+        raise AssertionError(report)
 
 
 def test_generated_ap_wrapper_preflight_reports_skip_agent_mode() -> None:
     env = {key: value for key, value in os.environ.items() if not key.startswith("ELIZA_")}
-    env["ELIZA_GENERATED_AP_CHIP_BOOT_CMD"] = "printf '%s\\n' OpenSBI 'Linux version' elizaos-firstboot-ready"
+    env["ELIZA_GENERATED_AP_CHIP_BOOT_CMD"] = (
+        "printf '%s\\n' OpenSBI 'Linux version' elizaos-firstboot-ready"
+    )
     env["ELIZA_GENERATED_AP_SKIP_AGENT"] = "1"
     result = subprocess.run(
         [str(WRAPPER), "preflight"],

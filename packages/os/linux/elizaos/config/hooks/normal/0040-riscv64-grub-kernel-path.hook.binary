@@ -1,0 +1,49 @@
+#!/bin/sh
+set -eu
+
+build_root="."
+if [ ! -f "${build_root}/config/bootstrap" ] && [ -f "../config/bootstrap" ]; then
+    build_root=".."
+fi
+
+case "$(cat "${build_root}/config/bootstrap" 2>/dev/null | sed -n 's/^LB_ARCHITECTURE="\(.*\)"$/\1/p')" in
+    riscv64) ;;
+    *) exit 0 ;;
+esac
+
+binary_root="${build_root}/binary"
+if [ -d "boot/grub" ] && [ -d "live" ]; then
+    binary_root="."
+fi
+
+grub_cfg="${binary_root}/boot/grub/grub.cfg"
+[ -f "${grub_cfg}" ] || exit 0
+config_cfg="${binary_root}/boot/grub/config.cfg"
+
+kernel="$(find "${binary_root}/live" -maxdepth 1 -type f -name 'vmlinux-*riscv64' -printf '%f\n' | sort | tail -n 1)"
+initrd="$(find "${binary_root}/live" -maxdepth 1 -type f -name 'initrd.img-*riscv64' -printf '%f\n' | sort | tail -n 1)"
+
+[ -n "${kernel}" ] || {
+    echo "ERROR: riscv64 live kernel not found under binary/live" >&2
+    exit 1
+}
+[ -n "${initrd}" ] || {
+    echo "ERROR: riscv64 live initrd not found under binary/live" >&2
+    exit 1
+}
+
+sed -i \
+    -e "s|/live/vmlinuz-\\*riscv64|/live/${kernel}|g" \
+    -e "s|/live/initrd.img-\\*riscv64|/live/${initrd}|g" \
+    "${grub_cfg}"
+
+echo "patched riscv64 GRUB live kernel path: ${kernel}"
+
+if [ -f "${config_cfg}" ]; then
+    sed -i \
+        -e 's|font=unicode|font=$prefix/unicode.pf2|g' \
+        -e '/^insmod play$/d' \
+        -e '/^play /d' \
+        "${config_cfg}"
+    echo "patched riscv64 GRUB config font/sound fallbacks"
+fi

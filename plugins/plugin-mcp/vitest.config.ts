@@ -6,13 +6,20 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   resolve: {
-    alias: {
-      "@elizaos/agent/security/mcp-server-config": path.resolve(
-        rootDir,
-        "../../packages/agent/src/security/mcp-server-config.ts"
-      ),
-      "@elizaos/core": path.resolve(rootDir, "../../packages/core/src/index.node.ts"),
-    },
+    alias: [
+      {
+        find: "@elizaos/security/mcp-server-config",
+        replacement: path.resolve(rootDir, "../../packages/security/src/mcp-server-config.ts"),
+      },
+      {
+        find: "@elizaos/security",
+        replacement: path.resolve(rootDir, "../../packages/security/src/index.ts"),
+      },
+      {
+        find: "@elizaos/core",
+        replacement: path.resolve(rootDir, "../../packages/core/src/index.node.ts"),
+      },
+    ],
   },
   test: {
     include: ["__tests__/**/*.test.ts", "src/**/__tests__/**/*.test.ts"],

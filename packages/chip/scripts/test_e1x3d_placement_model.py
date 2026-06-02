@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 
 from compiler.runtime.e1x3d_placement_model import (
+    PEFloorplan,
+    TierSplitResult,
     build_placement_report,
     evaluate_split,
     via_capacity_per_mm2,
@@ -45,8 +47,12 @@ def test_fine_logic_fold_needs_finer_bonding_than_block() -> None:
 
 
 def test_more_memory_tiers_shrink_footprint_further() -> None:
-    one = evaluate_split(E1X3DConfig(memory_tiers_per_core=1), _floorplan(), "block_sram_on_logic")
-    two = evaluate_split(E1X3DConfig(memory_tiers_per_core=2), _floorplan(), "block_sram_on_logic")
+    one: TierSplitResult = evaluate_split(
+        E1X3DConfig(memory_tiers_per_core=1), _floorplan(), "block_sram_on_logic"
+    )
+    two: TierSplitResult = evaluate_split(
+        E1X3DConfig(memory_tiers_per_core=2), _floorplan(), "block_sram_on_logic"
+    )
     assert two["xy_footprint_shrink"] > one["xy_footprint_shrink"]
     assert two["inter_tier_vias"] > one["inter_tier_vias"]
 
@@ -73,7 +79,5 @@ def test_placement_gate_emits_blocked(tmp_path: Path) -> None:
     assert report["summary"]["failing_check_count"] == 2
 
 
-def _floorplan():
-    from compiler.runtime.e1x3d_placement_model import PEFloorplan
-
+def _floorplan() -> PEFloorplan:
     return PEFloorplan()

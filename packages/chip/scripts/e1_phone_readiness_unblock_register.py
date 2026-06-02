@@ -144,9 +144,7 @@ def public_sourcing_context() -> dict[str, Any]:
         "public_cad_source_release_credit_record_count": int(
             public_cad_summary.get("release_credit_record_count") or 0
         ),
-        "public_market_bom_cost_category_count": int(
-            public_bom_summary.get("category_count") or 0
-        ),
+        "public_market_bom_cost_category_count": int(public_bom_summary.get("category_count") or 0),
         "public_market_bom_cost_volume_count": int(public_bom_summary.get("volume_count") or 0),
         "public_market_bom_cost_avl_quote_count": int(
             public_bom_summary.get("avl_quote_count") or 0
@@ -522,6 +520,12 @@ def main() -> int:
             "local_component_model_support_pattern_model_count": local_progress.get(
                 "component_model_support_pattern_model_count", 0
             ),
+            "local_component_model_pattern_bound_model_count": local_progress.get(
+                "component_model_pattern_bound_model_count", 0
+            ),
+            "local_component_model_terminal_contract_bound_model_count": local_progress.get(
+                "component_model_terminal_contract_bound_model_count", 0
+            ),
             "local_component_model_terminal_contract_or_no_pad_model_count": local_progress.get(
                 "component_model_terminal_contract_or_no_pad_model_count", 0
             ),
@@ -540,6 +544,9 @@ def main() -> int:
             "local_component_model_all_terminal_contract_flags_pass": local_progress.get(
                 "component_model_all_terminal_contract_flags_pass", False
             ),
+            "local_component_model_all_pattern_binding_flags_pass": local_progress.get(
+                "component_model_all_pattern_binding_flags_pass", False
+            ),
             "local_component_model_directory_record_count": local_progress.get(
                 "component_model_directory_record_count", 0
             ),
@@ -548,18 +555,24 @@ def main() -> int:
                     "component_model_directory_terminal_contract_model_record_count", 0
                 )
             ),
+            "local_component_model_directory_pattern_bound_model_record_count": (
+                local_progress.get(
+                    "component_model_directory_pattern_bound_model_record_count", 0
+                )
+            ),
+            "local_component_model_directory_terminal_contract_bound_model_record_count": (
+                local_progress.get(
+                    "component_model_directory_terminal_contract_bound_model_record_count", 0
+                )
+            ),
             "local_component_model_directory_terminal_contract_total_count": local_progress.get(
                 "component_model_directory_terminal_contract_total_count", 0
             ),
             "local_component_model_directory_total_pad_contract_visual_count": (
-                local_progress.get(
-                    "component_model_directory_total_pad_contract_visual_count", 0
-                )
+                local_progress.get("component_model_directory_total_pad_contract_visual_count", 0)
             ),
             "local_component_model_directory_uncovered_pad_visual_count": (
-                local_progress.get(
-                    "component_model_directory_uncovered_pad_visual_count", 0
-                )
+                local_progress.get("component_model_directory_uncovered_pad_visual_count", 0)
             ),
             "local_component_model_directory_non_signal_pad_contract_total_count": (
                 local_progress.get(
@@ -591,7 +604,14 @@ def main() -> int:
                 )
             ),
             "local_component_model_directory_local_discrete_step_bbox_match_count": (
-                local_progress.get("component_model_directory_local_discrete_step_bbox_match_count", 0)
+                local_progress.get(
+                    "component_model_directory_local_discrete_step_bbox_match_count", 0
+                )
+            ),
+            "local_component_model_directory_local_step_bound_model_record_count": (
+                local_progress.get(
+                    "component_model_directory_local_step_bound_model_record_count", 0
+                )
             ),
             "local_component_model_directory_local_discrete_step_bytes_total": (
                 local_progress.get("component_model_directory_local_discrete_step_bytes_total", 0)
@@ -622,17 +642,13 @@ def main() -> int:
                 )
             ),
             "local_component_model_directory_supplier_step_intake_lane_counts": (
-                local_progress.get(
-                    "component_model_directory_supplier_step_intake_lane_counts", {}
-                )
+                local_progress.get("component_model_directory_supplier_step_intake_lane_counts", {})
             ),
             "local_component_model_directory_release_allowed": local_progress.get(
                 "component_model_directory_release_allowed", False
             ),
             "public_sourcing_intake_ready": True,
-            "public_cad_source_record_count": public_sourcing[
-                "public_cad_source_record_count"
-            ],
+            "public_cad_source_record_count": public_sourcing["public_cad_source_record_count"],
             "public_cad_source_step_or_3d_observed_count": public_sourcing[
                 "public_cad_source_step_or_3d_observed_count"
             ],
@@ -657,12 +673,8 @@ def main() -> int:
             "public_market_bom_cost_signed_supplier_quote_count": public_sourcing[
                 "public_market_bom_cost_signed_supplier_quote_count"
             ],
-            "public_sourcing_release_credit": public_sourcing[
-                "public_sourcing_release_credit"
-            ],
-            "public_sourcing_release_allowed": public_sourcing[
-                "public_sourcing_release_allowed"
-            ],
+            "public_sourcing_release_credit": public_sourcing["public_sourcing_release_credit"],
+            "public_sourcing_release_allowed": public_sourcing["public_sourcing_release_allowed"],
         },
         "public_sourcing_intake_context": public_sourcing,
         "blockers": blockers,

@@ -15,8 +15,14 @@ import {
 
 export const RENDER_TELEMETRY_EVENT = "eliza:render-telemetry";
 
-const INFO_THRESHOLD = 2;
-const ERROR_THRESHOLD = 3;
+// Thresholds describe a *runaway render loop*, not ordinary churn. Normal
+// behaviour (startup settling, typing, dragging, token streaming) and React
+// StrictMode's dev mount double-invoke easily exceed the previous 2/3, firing
+// on healthy components. Only a sustained rate well above one commit per frame
+// indicates a real loop. Kept in lock-step with
+// eliza/packages/ui/src/hooks/useRenderGuard.ts.
+const INFO_THRESHOLD = 60;
+const ERROR_THRESHOLD = 120;
 const WINDOW_MS = 1000;
 
 type ImportMetaWithEnv = ImportMeta & {

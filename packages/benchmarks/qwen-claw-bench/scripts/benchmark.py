@@ -50,6 +50,72 @@ logger = logging.getLogger("benchmark")
 # Docker workspace snapshots are restricted to this directory for safety
 _WORKSPACE_SNAPSHOT_ROOT = Path("/tmp/qwenclawbench").resolve()
 
+EDGE_VARIANTS: tuple[tuple[str, str], ...] = (
+    ("cold_start", "Assume a cold-start workspace; verify all assumptions before editing."),
+    ("partial_work", "Some prior work may be present; preserve useful existing files."),
+    ("ambiguous_output", "If a command output is ambiguous, inspect artifacts before deciding."),
+    ("missing_optional", "Optional fixtures may be absent; handle missing files gracefully."),
+    ("large_output", "Commands may emit large output; summarize and focus on actionable failures."),
+    ("retry_failed_tool", "If a tool call fails transiently, retry once with a narrower command."),
+    ("no_network", "Do not rely on network access unless the task explicitly requires it."),
+    ("unicode_paths", "Handle Unicode content and filenames without corrupting them."),
+    ("minimal_change", "Prefer the smallest change that satisfies the grading criteria."),
+    ("explicit_validation", "After completing the task, run the most relevant validation check."),
+)
+
+
+def _expand_tasks(tasks: list[Task]) -> list[Task]:
+    expanded = list(tasks)
+    for task in tasks:
+        for index, (variant_id, note) in enumerate(EDGE_VARIANTS, start=1):
+            frontmatter = dict(task.frontmatter)
+            frontmatter["source_task_id"] = task.task_id
+            frontmatter["edge_condition"] = note
+            expanded.append(
+                Task(
+                    task_id=f"{task.task_id}__edge_{index:02d}",
+                    name=f"{task.name} ({variant_id})",
+                    category=task.category,
+                    grading_type=task.grading_type,
+                    timeout_seconds=task.timeout_seconds,
+                    workspace_files=list(task.workspace_files),
+                    prompt=f"{task.prompt}\n\nEdge condition: {note}",
+                    expected_behavior=task.expected_behavior,
+                    grading_criteria=list(task.grading_criteria),
+                    automated_checks=task.automated_checks,
+                    llm_judge_rubric=task.llm_judge_rubric,
+                    grading_weights=dict(task.grading_weights) if task.grading_weights else None,
+                    file_path=task.file_path,
+                    frontmatter=frontmatter,
+                )
+            )
+    return expanded
+
+
+def _count_tasks(tasks: list[Task], *, include_edge_scenarios: bool) -> dict[str, int]:
+    base = len(tasks)
+    edge = base * len(EDGE_VARIANTS) if include_edge_scenarios else 0
+    return {"base": base, "edge": edge, "total": base + edge}
+
+
+def _validate_tasks(tasks: list[Task], *, include_edge_scenarios: bool) -> list[str]:
+    expanded = _expand_tasks(tasks) if include_edge_scenarios else list(tasks)
+    errors: list[str] = []
+    ids: set[str] = set()
+    for task in expanded:
+        if not task.task_id.strip():
+            errors.append("task with empty id")
+        if task.task_id in ids:
+            errors.append(f"duplicate task id: {task.task_id}")
+        ids.add(task.task_id)
+        if not task.prompt.strip():
+            errors.append(f"{task.task_id}: empty prompt")
+        if task.grading_type not in {"automated", "llm_judge", "hybrid"}:
+            errors.append(f"{task.task_id}: unknown grading_type {task.grading_type!r}")
+    if include_edge_scenarios and len(expanded) != len(tasks) * 11:
+        errors.append(f"expected {len(tasks) * 11} expanded tasks, got {len(expanded)}")
+    return errors
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="QwenClawBench Runner")
@@ -167,6 +233,9 @@ def _parse_args() -> argparse.Namespace:
             "(default: auto≤0.75 → LLM contribution zeroed out)"
         ),
     )
+    parser.add_argument("--expand-scenarios", action="store_true")
+    parser.add_argument("--count-scenarios", action="store_true")
+    parser.add_argument("--validate-scenarios", action="store_true")
     return parser.parse_args()
 
 
@@ -507,7 +576,7 @@ def main():
         logger.info("Cleanup done. Removed %d container(s).", n)
         return
 
-    if not args.model:
+    if not args.model and not (args.count_scenarios or args.validate_scenarios):
         logger.error("--model is required (unless using --cleanup)")
         sys.exit(2)
 
@@ -534,6 +603,26 @@ def main():
     if not tasks_to_run:
         logger.error("No tasks matched suite '%s'", args.suite)
         sys.exit(1)
+    errors = _validate_tasks(tasks_to_run, include_edge_scenarios=bool(args.expand_scenarios))
+    if args.validate_scenarios:
+        payload = {
+            "valid": not errors,
+            **_count_tasks(tasks_to_run, include_edge_scenarios=bool(args.expand_scenarios)),
+            "errors": errors,
+        }
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        if errors:
+            sys.exit(1)
+        if not args.count_scenarios:
+            return
+    if args.count_scenarios:
+        print(json.dumps(
+            _count_tasks(tasks_to_run, include_edge_scenarios=bool(args.expand_scenarios)),
+            sort_keys=True,
+        ))
+        return
+    if args.expand_scenarios:
+        tasks_to_run = _expand_tasks(tasks_to_run)
 
     tasks_by_id = {t.task_id: t for t in tasks_to_run}
     model_slug = slugify_model(args.model)

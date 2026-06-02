@@ -6,9 +6,17 @@ source_ids:
   - codev-sva
 dut: e1_npu
 claim_boundary: assertion_candidates_only_no_rtl_bind_formal_pass_or_release_claim
+claim_allowed: false
+release_claim_allowed: false
+formal_pass_claim_allowed: false
+rtl_bind_claim_allowed: false
 review_policy:
   generated_assertions_committed_to_rtl: false
   generated_assertions_bound_to_rtl: false
+  claim_allowed: false
+  release_claim_allowed: false
+  formal_pass_claim_allowed: false
+  rtl_bind_claim_allowed: false
   requires_signal_mapping_review: true
   requires_formal_or_simulation_pass: true
   requires_human_review: true

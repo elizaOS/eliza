@@ -12,8 +12,11 @@ from elizaos_rlm_bench.types import (
 )
 from elizaos_rlm_bench.generator import (
     RLMBenchGenerator,
+    count_tasks,
+    expand_tasks,
     generate_random_value,
     estimate_tokens,
+    validate_tasks,
 )
 from elizaos_rlm_bench.evaluator import (
     RLMBenchEvaluator,
@@ -127,6 +130,53 @@ class TestGenerator:
         # S-NIAH: 5 positions * 2 tasks = 10
         # OOLONG: 1 * 2 tasks = 2
         assert len(tasks) == 12
+
+    def test_edge_scenario_expansion_adds_ten_per_base_task(self) -> None:
+        """Test generated tasks can be expanded with realistic edge variants."""
+        config = RLMBenchConfig(
+            context_lengths=[1000],
+            tasks_per_config=1,
+            run_s_niah=True,
+            run_s_niah_multi=False,
+            run_oolong=False,
+            run_oolong_pairs=False,
+        )
+        generator = RLMBenchGenerator(config)
+        base_tasks = generator.generate_all_tasks()
+
+        expanded = expand_tasks(base_tasks)
+
+        assert count_tasks(base_tasks, include_edge_scenarios=True) == {
+            "base": 5,
+            "edge": 50,
+            "edge_multiplier": 10,
+            "total": 55,
+        }
+        assert len(expanded) == 55
+        edge_tasks = [task for task in expanded if "__edge_" in task.id]
+        assert len(edge_tasks) == 50
+        assert edge_tasks[0].expected_answer == base_tasks[0].expected_answer
+        assert edge_tasks[0].metadata["base_task_id"] == base_tasks[0].id
+        assert edge_tasks[0].metadata["scenario_id"]
+        validate_tasks(base_tasks, include_edge_scenarios=True)
+
+    def test_generator_all_tasks_honors_edge_scenario_flag(self) -> None:
+        """Test config-level edge expansion is applied by the generator."""
+        config = RLMBenchConfig(
+            context_lengths=[1000],
+            tasks_per_config=1,
+            run_s_niah=True,
+            run_s_niah_multi=False,
+            run_oolong=False,
+            run_oolong_pairs=False,
+            include_edge_scenarios=True,
+        )
+        generator = RLMBenchGenerator(config)
+
+        tasks = generator.generate_all_tasks()
+
+        assert len(tasks) == 55
+        assert sum(1 for task in tasks if "__edge_" in task.id) == 50
 
     def test_insert_needle_at_start(self) -> None:
         """Test needle insertion at start."""
@@ -310,6 +360,28 @@ class TestRunner:
         assert len(results.results) > 0
 
     @pytest.mark.asyncio
+    async def test_runner_stub_mode_with_edge_scenarios(self) -> None:
+        """Test runner includes edge-expanded tasks when configured."""
+        from elizaos_rlm_bench.runner import RLMBenchRunner
+
+        config = RLMBenchConfig(
+            context_lengths=[1000],
+            tasks_per_config=1,
+            run_s_niah=True,
+            run_s_niah_multi=False,
+            run_oolong=False,
+            run_oolong_pairs=False,
+            include_edge_scenarios=True,
+        )
+
+        runner = RLMBenchRunner(config)
+        results = await runner.run_all(mode="stub")
+
+        assert results.metrics.total_tasks == 55
+        assert len(results.results) == 55
+        assert results.metadata["total_tasks"] == 55
+
+    @pytest.mark.asyncio
     async def test_runner_single_task(self) -> None:
         """Test running a single task."""
         from elizaos_rlm_bench.runner import RLMBenchRunner
@@ -372,6 +444,19 @@ class TestRunner:
 
         assert os.environ["BENCHMARK_MODEL_NAME"] == "openai/gpt-oss-120b"
         assert os.environ["OPENAI_LARGE_MODEL"] == "openai/gpt-oss-120b"
+
+    def test_custom_cerebras_requires_api_key(self, monkeypatch) -> None:
+        import run_benchmark
+
+        monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
+
+        with pytest.raises(RuntimeError, match="CEREBRAS_API_KEY"):
+            run_benchmark.build_custom_query_fn(RLMBenchConfig(), "cerebras")
+
+    def test_custom_non_cerebras_query_is_not_built(self) -> None:
+        import run_benchmark
+
+        assert run_benchmark.build_custom_query_fn(RLMBenchConfig(), "groq") is None
 
 
 class TestReporting:

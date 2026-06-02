@@ -357,7 +357,7 @@ export class MysticismService extends Service {
   ): string | null {
     const key = sessionKey(entityId, roomId);
     const session = this.sessions.get(key);
-    if (!session || session.type !== "tarot") return null;
+    if (session?.type !== "tarot") return null;
 
     const tarotState = this.tarotStates.get(key);
     if (!tarotState) return null;

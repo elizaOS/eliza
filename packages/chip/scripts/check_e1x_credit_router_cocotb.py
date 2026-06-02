@@ -18,6 +18,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_credit_router_cocotb.json"
 COCOTB_DIR = "verify/cocotb/e1x_router_prod"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "full_network_liveness_claim_allowed": False,
+}
 
 RUNS = {
     "credit_router": {
@@ -119,6 +128,7 @@ def main() -> int:
         "status": "PASS" if not failures else "BLOCKED",
         "as_of": datetime.now(UTC).isoformat(),
         "subsystem": "e1x",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "E1X input-buffered credit-flow-controlled mesh router cocotb verification only "
             "(routing, backpressure, round-robin arbitration, credit exhaustion/recovery, "

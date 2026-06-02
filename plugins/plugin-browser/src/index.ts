@@ -23,8 +23,14 @@ export {
   BrowserService,
   type BrowserTarget,
 } from "./browser-service.js";
+export * from "./bridge-policy.js";
+export * from "./bridge-readiness.js";
+export * from "./bridge-records.js";
+export * from "./companion-auth.js";
 export * from "./contracts.js";
+export { BrowserBridgeAdapter } from "./message-adapter.js";
 export * from "./packaging.js";
+export * from "./password-manager-bridge.js";
 export { browserPlugin } from "./plugin.js";
 export * from "./routes/bridge.js";
 export * from "./schema.js";
@@ -52,6 +58,9 @@ import {
   BROWSER_SERVICE_TYPE as _bs_1_BROWSER_SERVICE_TYPE,
   BrowserService as _bs_2_BrowserService,
 } from "./browser-service.js";
+import { resolveBrowserBridgeCompanionPairingTokenExpiresAt as _bs_13_resolveBrowserBridgeCompanionPairingTokenExpiresAt } from "./bridge-policy.js";
+import { resolveBrowserBridgeReadiness as _bs_11_resolveBrowserBridgeReadiness } from "./bridge-readiness.js";
+import { createBrowserBridgeCompanionStatus as _bs_12_createBrowserBridgeCompanionStatus } from "./bridge-records.js";
 import { browserPlugin as _bs_7_browserPlugin } from "./plugin.js";
 import {
   FRAME_FILE as _bs_8_FRAME_FILE,
@@ -73,6 +82,9 @@ const __bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__ = [
   _bs_8_FRAME_FILE,
   _bs_9_startBrowserCapture,
   _bs_10_stopBrowserCapture,
+  _bs_11_resolveBrowserBridgeReadiness,
+  _bs_12_createBrowserBridgeCompanionStatus,
+  _bs_13_resolveBrowserBridgeCompanionPairingTokenExpiresAt,
 ];
 const bundleSafetyGlobal = globalThis as typeof globalThis & {
   __bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__?: typeof __bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__;

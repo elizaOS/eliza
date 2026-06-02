@@ -91,14 +91,18 @@ def main() -> int:
         "vocab sampled-K real-weight row inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_vocab_sampled_k_real_weight_rows_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_vocab_sampled_k_real_weight_rows_inputs_present",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
     workplan = load_json(FULL_OUTPUT_WORKPLAN) if FULL_OUTPUT_WORKPLAN.is_file() else {}
     checksum_manifest = (
-        load_json(FULL_OUTPUT_CHECKSUM_MANIFEST)
-        if FULL_OUTPUT_CHECKSUM_MANIFEST.is_file()
-        else {}
+        load_json(FULL_OUTPUT_CHECKSUM_MANIFEST) if FULL_OUTPUT_CHECKSUM_MANIFEST.is_file() else {}
     )
     full_norm = load_json(FULL_NORM_REAL_WEIGHT) if FULL_NORM_REAL_WEIGHT.is_file() else {}
 
@@ -116,7 +120,13 @@ def main() -> int:
         "placement, full-output workplan, checksum manifest, and full norm evidence are linked",
         "vocab sampled-K real-weight dependency mismatch",
     )
-    checks.append({"id": "e1x_vocab_sampled_k_real_weight_rows_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_vocab_sampled_k_real_weight_rows_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     target_layers = [
         layer
@@ -143,26 +153,30 @@ def main() -> int:
             full_k_macs_represented += cols
             layer_checksum = mix64(layer_checksum, int(result["row_trace_checksum"]))
             if output_row in sample_row_indices:
-                sample_rows.append({
-                    "output_row": output_row,
-                    "accumulator": int(result["accumulator"]),
-                    "requantized_s8": int(result["requantized_s8"]),
-                    "sampled_k": sample_k,
-                    "row_trace_checksum": int(result["row_trace_checksum"]),
-                })
+                sample_rows.append(
+                    {
+                        "output_row": output_row,
+                        "accumulator": int(result["accumulator"]),
+                        "requantized_s8": int(result["requantized_s8"]),
+                        "sampled_k": sample_k,
+                        "row_trace_checksum": int(result["row_trace_checksum"]),
+                    }
+                )
         aggregate_checksum = mix64(aggregate_checksum, layer_index)
         aggregate_checksum = mix64(aggregate_checksum, layer_checksum)
-        layer_results.append({
-            "layer_index": layer_index,
-            "layer_name": str(layer["name"]),
-            "kind": str(layer["kind"]),
-            "rows": rows,
-            "cols": cols,
-            "sampled_k": sample_k,
-            "sampled_k_fraction": sample_k / cols if cols else 0.0,
-            "layer_sampled_k_checksum": layer_checksum,
-            "sample_rows": sample_rows,
-        })
+        layer_results.append(
+            {
+                "layer_index": layer_index,
+                "layer_name": str(layer["name"]),
+                "kind": str(layer["kind"]),
+                "rows": rows,
+                "cols": cols,
+                "sampled_k": sample_k,
+                "sampled_k_fraction": sample_k / cols if cols else 0.0,
+                "layer_sampled_k_checksum": layer_checksum,
+                "sample_rows": sample_rows,
+            }
+        )
 
     full_output_rows = int(workplan.get("summary", {}).get("full_output_row_count", 0))
     full_macs = int(workplan.get("summary", {}).get("full_mac_count", 0))
@@ -184,7 +198,13 @@ def main() -> int:
         f"executed every vocab singleton output row over sampled K={SAMPLED_K} for {total_macs} real MACs",
         "vocab sampled-K real-weight execution mismatch",
     )
-    checks.append({"id": "e1x_vocab_sampled_k_real_weight_rows_execute_all_vocab_rows", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_vocab_sampled_k_real_weight_rows_execute_all_vocab_rows",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     boundary_ok = (
         checksum_manifest.get("summary", {}).get("residual_blocker")
@@ -196,7 +216,13 @@ def main() -> int:
         "vocab singleton rows improve matmul row coverage while preserving missing full-K/full-output blocker",
         "vocab sampled-K claim boundary mismatch",
     )
-    checks.append({"id": "e1x_vocab_sampled_k_real_weight_rows_preserve_blocker", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_vocab_sampled_k_real_weight_rows_preserve_blocker",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
@@ -217,7 +243,7 @@ def main() -> int:
         "sampled_layer_results": layer_results,
         "residual_blocker": "full_output_real_weight_checksum_missing",
     }
-    report = {
+    report: dict[str, object] = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x-vocab-sampled-k-real-weight-rows",
         "status": "PASS" if not failures else "BLOCKED",

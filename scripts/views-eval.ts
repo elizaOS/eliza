@@ -46,11 +46,12 @@ const CANDIDATES = Number.parseInt(process.env.VIEWS_CANDIDATES ?? "3", 10);
 const EXPORT_DIR =
   process.env.VIEWS_EXPORT_DIR ?? `/tmp/views-eval-${Date.now()}`;
 const GEPA = process.argv.includes("--gepa");
-
-if (!API_KEY) {
-  console.error("CEREBRAS_API_KEY is required.");
-  process.exit(1);
-}
+const MAX_SCENARIOS = Number.parseInt(
+  process.env.VIEWS_MAX_SCENARIOS ?? "0",
+  10,
+);
+const COUNT_SCENARIOS = process.argv.includes("--count-scenarios");
+const VALIDATE_SCENARIOS = process.argv.includes("--validate-scenarios");
 
 // ── Cerebras client with backoff (the key is rate-limited; 429s are common) ──
 
@@ -181,6 +182,54 @@ const VIEW_CATALOG: ViewCatalogEntry[] = [
     path: "/lifeops",
     keywords: ["tasks", "habits", "planner"],
   },
+  {
+    id: "calendar",
+    label: "Calendar",
+    path: "/calendar",
+    keywords: ["schedule", "meetings", "agenda", "events"],
+  },
+  {
+    id: "mail",
+    label: "Mail",
+    path: "/mail",
+    keywords: ["email", "inbox", "messages"],
+  },
+  {
+    id: "files",
+    label: "Files",
+    path: "/files",
+    keywords: ["documents", "uploads", "drive"],
+  },
+  {
+    id: "health",
+    label: "Health",
+    path: "/health",
+    keywords: ["fitness", "sleep", "meds", "symptoms"],
+  },
+  {
+    id: "browser",
+    label: "Browser",
+    path: "/browser",
+    keywords: ["web", "tabs", "internet"],
+  },
+  {
+    id: "media",
+    label: "Media",
+    path: "/media",
+    keywords: ["music", "video", "playlist"],
+  },
+  {
+    id: "memory",
+    label: "Memory",
+    path: "/memory",
+    keywords: ["facts", "profile", "remembered"],
+  },
+  {
+    id: "automations",
+    label: "Automations",
+    path: "/automations",
+    keywords: ["workflows", "triggers", "routines"],
+  },
 ];
 
 // Expose each view's aliases (keywords) too — the grader resolves targets via
@@ -241,7 +290,7 @@ interface Scenario {
   target?: string;
 }
 
-const SCENARIOS: Scenario[] = [
+const BASE_SCENARIOS: Scenario[] = [
   { id: "list", utterance: "what views are available?", mode: "list" },
   {
     id: "show-wallet",
@@ -361,6 +410,476 @@ const SCENARIOS: Scenario[] = [
     target: "settings",
   },
 ];
+
+const scenario = (
+  id: string,
+  utterance: string,
+  mode: ViewsMode,
+  target?: string,
+): Scenario => ({
+  id,
+  utterance,
+  mode,
+  ...(target ? { target } : {}),
+});
+
+const targetViews = [
+  { id: "chat", aliases: ["home", "chat", "conversation", "main screen"] },
+  {
+    id: "wallet.inventory",
+    aliases: ["wallet", "crypto", "tokens", "balance"],
+  },
+  {
+    id: "settings",
+    aliases: ["settings", "preferences", "config", "account controls"],
+  },
+  { id: "lifeops", aliases: ["lifeops", "habits", "tasks", "planner"] },
+  { id: "calendar", aliases: ["calendar", "schedule", "meetings", "agenda"] },
+  { id: "mail", aliases: ["mail", "email", "inbox", "messages"] },
+  { id: "files", aliases: ["files", "documents", "uploads", "drive"] },
+  { id: "health", aliases: ["health", "fitness", "sleep", "meds"] },
+  { id: "browser", aliases: ["browser", "web", "tabs", "internet"] },
+  { id: "memory", aliases: ["memory", "facts", "profile", "remembered facts"] },
+] as const;
+
+const expandedShow = targetViews.flatMap((view) => [
+  scenario(
+    `edge-show-${view.id}-open`,
+    `open ${view.aliases[0]}`,
+    "show",
+    view.id,
+  ),
+  scenario(
+    `edge-show-${view.id}-go`,
+    `go to the ${view.aliases[1]} view`,
+    "show",
+    view.id,
+  ),
+  scenario(
+    `edge-show-${view.id}-semantic`,
+    `I need to check my ${view.aliases[2]}`,
+    "show",
+    view.id,
+  ),
+  scenario(
+    `edge-show-${view.id}-switch`,
+    `switch over to ${view.aliases[3]}`,
+    "show",
+    view.id,
+  ),
+]);
+
+const expandedSearch = [
+  "find any views related to invoices",
+  "search views for project planning",
+  "look for a view about travel",
+  "show me views matching customer support",
+  "search the app list for research tools",
+  "find anything connected to photos",
+  "look up views for code review",
+  "search for views about groceries",
+  "what views mention privacy",
+  "find a view category for legal docs",
+  "search views for anything about podcasts",
+  "look for all views connected to personal finance",
+  "find tools related to calendar invites",
+  "search the view catalog for recipes",
+  "look for a dashboard about shipping",
+  "find any view that deals with notifications",
+  "search for something about subscriptions",
+  "which views are useful for writing",
+  "look for views related to reminders",
+  "find views for debugging automations",
+  "search views around social accounts",
+  "look for a view that can handle PDFs",
+  "find tools for trip packing",
+  "search the catalog for voice settings",
+  "which installed views mention banking",
+].map((utterance, index) =>
+  scenario(
+    `edge-search-${String(index + 1).padStart(2, "0")}`,
+    utterance,
+    "search",
+  ),
+);
+
+const expandedManager = [
+  "show all installed apps",
+  "open the app drawer",
+  "take me to the plugins overview",
+  "where can I manage views",
+  "close the current view and show the app manager",
+  "show the view marketplace",
+  "open the screen with every plugin",
+  "let me rearrange my views",
+  "show me the view admin panel",
+  "open all-apps",
+  "take me back to the launcher",
+  "show installed extensions",
+  "open the panel for enabling and disabling views",
+  "bring up the view management surface",
+  "show me every app I have",
+].map((utterance, index) =>
+  scenario(
+    `edge-manager-${String(index + 1).padStart(2, "0")}`,
+    utterance,
+    "manager",
+  ),
+);
+
+const expandedListCurrent = [
+  scenario(
+    "edge-list-capabilities",
+    "which views can you open for me?",
+    "list",
+  ),
+  scenario("edge-list-short", "views?", "list"),
+  scenario("edge-list-installed", "list installed views", "list"),
+  scenario("edge-list-available-tabs", "what tabs are available", "list"),
+  scenario(
+    "edge-list-plugin-surfaces",
+    "name the plugin screens I can use",
+    "list",
+  ),
+  scenario(
+    "edge-list-without-opening",
+    "tell me the views without opening anything",
+    "list",
+  ),
+  scenario(
+    "edge-list-after-confusion",
+    "wait, what view choices do I have",
+    "list",
+  ),
+  scenario("edge-list-navigation-help", "where can I go in this app", "list"),
+  scenario("edge-list-shortcuts", "what screens are in the sidebar", "list"),
+  scenario(
+    "edge-list-capability-query",
+    "what UI surfaces exist right now",
+    "list",
+  ),
+  scenario("edge-current-short", "where am I", "current"),
+  scenario("edge-current-active-tab", "which tab is active", "current"),
+  scenario(
+    "edge-current-view-name",
+    "tell me the current view name",
+    "current",
+  ),
+  scenario(
+    "edge-current-after-switch",
+    "did we switch views already",
+    "current",
+  ),
+  scenario("edge-current-no-target", "what screen is this", "current"),
+  scenario("edge-current-location", "what part of the app am I in", "current"),
+  scenario("edge-current-status", "report the active view status", "current"),
+  scenario("edge-current-route", "what route are we on", "current"),
+  scenario("edge-current-visible", "which view is visible", "current"),
+  scenario("edge-current-focus", "what view has focus", "current"),
+];
+
+const broadcastTargets = [
+  ["wallet.inventory", "wallet", "refresh balances"],
+  ["wallet.inventory", "crypto", "resync token prices"],
+  ["calendar", "calendar", "reload events"],
+  ["mail", "inbox", "fetch new mail"],
+  ["files", "files", "sync uploads"],
+  ["health", "health", "refresh sleep data"],
+  ["browser", "browser", "reload the current tab"],
+  ["media", "media", "pause playback"],
+  ["memory", "memory", "reindex remembered facts"],
+  ["automations", "automations", "run due triggers"],
+] as const;
+const expandedBroadcast = broadcastTargets.flatMap(
+  ([target, label, command], index) => [
+    scenario(
+      `edge-broadcast-${index + 1}-${target}-imperative`,
+      `tell ${label} to ${command}`,
+      "broadcast",
+      target,
+    ),
+    scenario(
+      `edge-broadcast-${index + 1}-${target}-send-event`,
+      `send a ${command} event to the ${label} view`,
+      "broadcast",
+      target,
+    ),
+    scenario(
+      `edge-broadcast-${index + 1}-${target}-bare`,
+      `${command} in ${label}`,
+      "broadcast",
+      target,
+    ),
+  ],
+);
+
+const interactTargets = [
+  ["settings", "settings", "toggle dark mode"],
+  ["wallet.inventory", "wallet", "press the send button"],
+  ["calendar", "calendar", "click next week"],
+  ["mail", "mail", "open the first unread message"],
+  ["files", "files", "select the latest upload"],
+  ["health", "health", "read the medication card"],
+  ["browser", "browser", "type into the address bar"],
+  ["media", "media", "drag the volume slider down"],
+  ["lifeops", "lifeops", "check off the morning habit"],
+  ["memory", "memory", "open the profile facts row"],
+] as const;
+const expandedInteract = interactTargets.flatMap(([target, label, command]) => [
+  scenario(
+    `edge-interact-${target}-direct`,
+    `${command} in ${label}`,
+    "interact",
+    target,
+  ),
+  scenario(
+    `edge-interact-${target}-inside`,
+    `inside the ${label} view, ${command}`,
+    "interact",
+    target,
+  ),
+  scenario(
+    `edge-interact-${target}-element`,
+    `use the ${label} view to ${command}`,
+    "interact",
+    target,
+  ),
+]);
+
+const expandedCreate = [
+  "create a new view for tracking migraines",
+  "build a dashboard view for my rental properties",
+  "make a plugin view for weekly meal planning",
+  "scaffold a new CRM view",
+  "create a view that watches CI deploys",
+  "make a new dashboard for livestream controls",
+  "create a study planner view",
+  "build me a view for household inventory",
+  "create a personal OKR tracker view",
+  "make a view for monitoring server health",
+  "create a new travel itinerary view",
+  "build a workout programming view",
+  "create a view for client invoices",
+  "make a writing sprint view",
+  "scaffold a medication log view",
+].map((utterance, index) =>
+  scenario(
+    `edge-create-${String(index + 1).padStart(2, "0")}`,
+    utterance,
+    "create",
+  ),
+);
+
+const expandedEdit = [
+  ["wallet.inventory", "wallet", "add a profit and loss chart"],
+  ["settings", "settings", "add a developer mode toggle"],
+  ["lifeops", "lifeops", "add a weekly review panel"],
+  ["calendar", "calendar", "show travel time on events"],
+  ["mail", "mail", "add a priority inbox column"],
+  ["files", "files", "add file type filters"],
+  ["health", "health", "add medication reminders"],
+  ["browser", "browser", "add a pinned tabs strip"],
+  ["memory", "memory", "show source confidence badges"],
+  ["automations", "automations", "add failure retry controls"],
+  ["media", "media", "add a queue sidebar"],
+  ["chat", "home", "make the composer taller"],
+  ["wallet.inventory", "crypto dashboard", "add gas fee warnings"],
+  ["calendar", "agenda", "add time-zone labels"],
+  ["mail", "inbox", "add sender avatars"],
+] as const;
+const expandedEditScenarios = expandedEdit.map(
+  ([target, label, command], index) =>
+    scenario(
+      `edge-edit-${String(index + 1).padStart(2, "0")}`,
+      `edit the ${label} view to ${command}`,
+      "edit",
+      target,
+    ),
+);
+
+const expandedDelete = [
+  ["lifeops", "remove the habits view"],
+  ["wallet.inventory", "delete the crypto dashboard"],
+  ["mail", "uninstall the mail view"],
+  ["files", "remove the files plugin"],
+  ["health", "delete the health dashboard"],
+  ["browser", "remove the browser surface"],
+  ["media", "uninstall the media view"],
+  ["memory", "delete the memory view"],
+  ["automations", "remove automations"],
+  ["calendar", "delete the calendar view"],
+] as const;
+const expandedDeleteScenarios = expandedDelete.map(
+  ([target, utterance], index) =>
+    scenario(
+      `edge-delete-${String(index + 1).padStart(2, "0")}`,
+      utterance,
+      "delete",
+      target,
+    ),
+);
+
+const expandedPinWindow = [
+  scenario(
+    "edge-pin-calendar",
+    "pin calendar as a desktop tab",
+    "pin",
+    "calendar",
+  ),
+  scenario("edge-pin-mail", "keep the inbox pinned", "pin", "mail"),
+  scenario(
+    "edge-pin-browser",
+    "pin the browser view beside chat",
+    "pin",
+    "browser",
+  ),
+  scenario(
+    "edge-pin-health",
+    "make health a pinned workspace tab",
+    "pin",
+    "health",
+  ),
+  scenario(
+    "edge-pin-memory",
+    "pin remembered facts for quick access",
+    "pin",
+    "memory",
+  ),
+  scenario(
+    "edge-window-wallet",
+    "open wallet in its own window",
+    "window",
+    "wallet.inventory",
+  ),
+  scenario(
+    "edge-window-calendar",
+    "pop calendar out into a separate window",
+    "window",
+    "calendar",
+  ),
+  scenario(
+    "edge-window-mail",
+    "open the inbox in another window",
+    "window",
+    "mail",
+  ),
+  scenario(
+    "edge-window-browser",
+    "launch browser as a standalone window",
+    "window",
+    "browser",
+  ),
+  scenario(
+    "edge-window-settings",
+    "put settings in a new window",
+    "window",
+    "settings",
+  ),
+];
+
+const EXPANDED_SCENARIOS: Scenario[] = [
+  ...expandedShow,
+  ...expandedSearch,
+  ...expandedManager,
+  ...expandedListCurrent,
+  ...expandedBroadcast,
+  ...expandedInteract,
+  ...expandedCreate,
+  ...expandedEditScenarios,
+  ...expandedDeleteScenarios,
+  ...expandedPinWindow,
+];
+
+if (EXPANDED_SCENARIOS.length !== BASE_SCENARIOS.length * 10) {
+  throw new Error(
+    `views scenario expansion must add exactly 10x (${BASE_SCENARIOS.length * 10}); got ${EXPANDED_SCENARIOS.length}`,
+  );
+}
+
+const SCENARIOS: Scenario[] = [...BASE_SCENARIOS, ...EXPANDED_SCENARIOS];
+const EVAL_SCENARIOS =
+  Number.isFinite(MAX_SCENARIOS) && MAX_SCENARIOS > 0
+    ? SCENARIOS.slice(0, MAX_SCENARIOS)
+    : SCENARIOS;
+
+if (COUNT_SCENARIOS) {
+  console.log(
+    JSON.stringify(
+      {
+        suite: "views",
+        existing: BASE_SCENARIOS.length,
+        added: EXPANDED_SCENARIOS.length,
+        total: SCENARIOS.length,
+        multiplierAdded: EXPANDED_SCENARIOS.length / BASE_SCENARIOS.length,
+      },
+      null,
+      2,
+    ),
+  );
+  process.exit(0);
+}
+
+if (VALIDATE_SCENARIOS) {
+  const ids = new Set<string>();
+  const duplicates = SCENARIOS.filter((s) => {
+    if (ids.has(s.id)) return true;
+    ids.add(s.id);
+    return false;
+  }).map((s) => s.id);
+  const badTargets = SCENARIOS.filter(
+    (s) => s.target && resolveTarget(s.target) !== s.target,
+  ).map((s) => ({
+    id: s.id,
+    target: s.target,
+    resolved: resolveTarget(s.target),
+  }));
+  const badModes = SCENARIOS.filter(
+    (s) =>
+      ![
+        "list",
+        "current",
+        "show",
+        "search",
+        "manager",
+        "broadcast",
+        "interact",
+        "create",
+        "edit",
+        "delete",
+        "pin",
+        "window",
+      ].includes(s.mode),
+  ).map((s) => s.id);
+  if (duplicates.length || badTargets.length || badModes.length) {
+    console.error(
+      JSON.stringify(
+        { suite: "views", duplicates, badTargets, badModes },
+        null,
+        2,
+      ),
+    );
+    process.exit(1);
+  }
+  console.log(
+    JSON.stringify(
+      {
+        suite: "views",
+        valid: true,
+        scenarios: SCENARIOS.length,
+        uniqueIds: ids.size,
+        targeted: SCENARIOS.filter((s) => s.target).length,
+      },
+      null,
+      2,
+    ),
+  );
+  process.exit(0);
+}
+
+if (!API_KEY) {
+  console.error("CEREBRAS_API_KEY is required.");
+  process.exit(1);
+}
 
 // ── Output extraction ────────────────────────────────────────────────────────
 
@@ -500,7 +1019,7 @@ async function evalPass(
   label: string,
 ): Promise<{ mean: number; details: ScoreDetail[] }> {
   const details: ScoreDetail[] = [];
-  for (const scenario of SCENARIOS) {
+  for (const scenario of EVAL_SCENARIOS) {
     const raw = await cerebras(
       [
         { role: "system", content: systemPrompt },
@@ -613,7 +1132,7 @@ async function runGepa(): Promise<void> {
 
 async function runProof(): Promise<void> {
   console.log(
-    `\nReal-Cerebras proof · model ${MODEL} · ${SCENARIOS.length} scenarios\n`,
+    `\nReal-Cerebras proof · model ${MODEL} · ${EVAL_SCENARIOS.length}${EVAL_SCENARIOS.length !== SCENARIOS.length ? `/${SCENARIOS.length}` : ""} scenarios\n`,
   );
   const { mean, details } = await evalPass(BASELINE_SYSTEM, "proof");
   const correct = details.filter((d) => d.score === 1).length;

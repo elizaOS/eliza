@@ -47,6 +47,10 @@ function normalizeSearchQuery(query: string): string {
   return query.trim().toLowerCase();
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function matrixRoomSearchText(room: MatrixRoom): string {
   return [room.roomId, room.name, room.topic, room.canonicalAlias]
     .filter((value): value is string => typeof value === "string" && value.length > 0)
@@ -547,16 +551,16 @@ export class MatrixService extends Service implements IMatrixService {
 
     // Only handle text messages for now
     if (msgType !== "m.text") return;
+    if (typeof content.body !== "string") return;
 
     const roomId = event.getRoomId();
     if (!roomId || !room) return;
 
     // Check mention requirement
     if (state.settings.requireMention) {
-      const body = content.body || "";
       const localpart = getMatrixLocalpart(state.settings.userId);
-      const mentionPattern = new RegExp(`@?${localpart}`, "i");
-      if (!mentionPattern.test(body)) {
+      const mentionPattern = new RegExp(`@?${escapeRegExp(localpart)}`, "i");
+      if (!mentionPattern.test(content.body)) {
         return;
       }
     }
@@ -581,9 +585,10 @@ export class MatrixService extends Service implements IMatrixService {
       roomId,
       sender: sender || "",
       senderInfo,
-      content: content.body || "",
+      content: content.body,
       msgType,
-      formattedBody: content.formatted_body,
+      formattedBody:
+        typeof content.formatted_body === "string" ? content.formatted_body : undefined,
       timestamp: event.getTs(),
       threadId,
       replyTo,
@@ -716,14 +721,14 @@ export class MatrixService extends Service implements IMatrixService {
     }
 
     const roomId = options?.roomId;
-    if (!roomId) {
+    if (!roomId?.trim()) {
       return { success: false, error: "Room ID is required" };
     }
 
     // Resolve room ID from alias if needed
-    let resolvedRoomId = roomId;
-    if (isValidMatrixRoomAlias(roomId)) {
-      const resolved = await state.client.getRoomIdForAlias(roomId);
+    let resolvedRoomId = roomId.trim();
+    if (isValidMatrixRoomAlias(resolvedRoomId)) {
+      const resolved = await state.client.getRoomIdForAlias(resolvedRoomId);
       resolvedRoomId = resolved.room_id;
     }
 
@@ -797,21 +802,31 @@ export class MatrixService extends Service implements IMatrixService {
     if (!state.connected || !state.syncing) {
       throw new MatrixNotConnectedError();
     }
+    const normalizedRoomId = roomId.trim();
+    const normalizedEventId = eventId.trim();
+    const normalizedEmoji = emoji.trim();
+    if (!normalizedRoomId || !normalizedEventId || !normalizedEmoji) {
+      return { success: false, error: "Room ID, event ID, and emoji are required" };
+    }
 
     const content = {
       "m.relates_to": {
         rel_type: sdk.RelationType.Annotation as const,
-        event_id: eventId,
-        key: emoji,
+        event_id: normalizedEventId,
+        key: normalizedEmoji,
       },
     };
 
-    const response = await state.client.sendEvent(roomId, sdk.EventType.Reaction, content);
+    const response = await state.client.sendEvent(
+      normalizedRoomId,
+      sdk.EventType.Reaction,
+      content
+    );
 
     return {
       success: true,
       eventId: response.event_id,
-      roomId,
+      roomId: normalizedRoomId,
     };
   }
 
@@ -820,8 +835,12 @@ export class MatrixService extends Service implements IMatrixService {
     if (!state.connected || !state.syncing) {
       throw new MatrixNotConnectedError();
     }
+    const normalizedRoomIdOrAlias = roomIdOrAlias.trim();
+    if (!normalizedRoomIdOrAlias) {
+      throw new Error("Matrix room ID or alias is required");
+    }
 
-    const response = await state.client.joinRoom(roomIdOrAlias);
+    const response = await state.client.joinRoom(normalizedRoomIdOrAlias);
     const roomId = response.roomId;
 
     logger.info(`Joined room ${roomId}`);
@@ -839,11 +858,15 @@ export class MatrixService extends Service implements IMatrixService {
     if (!state.connected || !state.syncing) {
       throw new MatrixNotConnectedError();
     }
+    const normalizedRoomId = roomId.trim();
+    if (!normalizedRoomId) {
+      throw new Error("Matrix room ID is required");
+    }
 
-    await state.client.leave(roomId);
-    logger.info(`Left room ${roomId}`);
+    await state.client.leave(normalizedRoomId);
+    logger.info(`Left room ${normalizedRoomId}`);
     this.runtime.emitEvent(MatrixEventTypes.ROOM_LEFT, {
-      roomId,
+      roomId: normalizedRoomId,
       runtime: this.runtime,
       accountId: state.accountId,
     } as EventPayload);

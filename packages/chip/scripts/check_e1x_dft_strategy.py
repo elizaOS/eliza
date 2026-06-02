@@ -8,6 +8,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DOC = ROOT / "docs/arch/e1x-dft.md"
 REPORT = ROOT / "build/reports/e1x_dft_strategy.json"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "atpg_coverage_claim_allowed": False,
+    "scan_signoff_claim_allowed": False,
+}
 
 REQUIRED_SECTIONS = (
     "## Scope and Fail-Closed Boundary",
@@ -61,11 +71,7 @@ def main() -> int:
     text = DOC.read_text(encoding="utf-8") if doc_exists else ""
     missing_sections = [section for section in REQUIRED_SECTIONS if section not in text]
     missing_phrases = [phrase for phrase in REQUIRED_PHRASES if phrase not in text]
-    missing_paths = [
-        path
-        for path in EVIDENCE_PATHS
-        if not (ROOT / path).is_file()
-    ]
+    missing_paths = [path for path in EVIDENCE_PATHS if not (ROOT / path).is_file()]
     blocked_markers = (
         text.count("BLOCKED"),
         text.count("foundry"),
@@ -106,7 +112,9 @@ def main() -> int:
         ),
     ]:
         status, resolved_detail = pass_fail(condition, detail, fail_detail)
-        checks.append({"id": f"e1x_dft_strategy_{check_id}", "status": status, "detail": resolved_detail})
+        checks.append(
+            {"id": f"e1x_dft_strategy_{check_id}", "status": status, "detail": resolved_detail}
+        )
 
     failures = [check for check in checks if check["status"] != "pass"]
     report = {
@@ -116,6 +124,7 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "E1X DFT strategy document completeness gate only. It couples the SECDED ECC "
             "and March C- MBIST RTL/cocotb evidence to the fail-closed foundry scan/ATPG "
@@ -136,9 +145,14 @@ def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:
-        print("BLOCKED: e1x-dft strategy doc incomplete: " + ", ".join(check["id"] for check in failures))
+        print(
+            "BLOCKED: e1x-dft strategy doc incomplete: "
+            + ", ".join(check["id"] for check in failures)
+        )
         return 1
-    print(f"PASS: e1x-dft strategy doc has all required sections; report {REPORT.relative_to(ROOT)}")
+    print(
+        f"PASS: e1x-dft strategy doc has all required sections; report {REPORT.relative_to(ROOT)}"
+    )
     return 0
 
 

@@ -1,4 +1,5 @@
 import { Button, client, Switch, useApp } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Cloud, DollarSign, Loader2, LogIn, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
@@ -7,6 +8,122 @@ import type {
   LifeOpsFeatureFlagsSyncResponse,
   LifeOpsFeatureToggleResponse,
 } from "../lifeops/feature-flags.types";
+
+function slugifyFeatureKey(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "feature"
+  );
+}
+
+function FeatureToggleSwitch({
+  feature,
+  disabled,
+  onToggle,
+}: {
+  feature: LifeOpsFeatureFlagRowDto;
+  disabled: boolean;
+  onToggle: (feature: LifeOpsFeatureFlagRowDto, next: boolean) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `settings-feature-${slugifyFeatureKey(feature.featureKey)}`,
+    role: "toggle",
+    label: `Toggle ${feature.label}`,
+    group: "lifeops-features",
+    status: feature.enabled ? "active" : "inactive",
+    description: `Enable or disable the ${feature.label} feature`,
+    getValue: () => feature.enabled,
+    onActivate: () => {
+      if (!disabled) onToggle(feature, !feature.enabled);
+    },
+    onFill: (value: string) => {
+      if (disabled) return;
+      const next = value === "true" || value === "1" || value === "on";
+      onToggle(feature, next);
+    },
+  });
+  return (
+    <Switch
+      ref={ref}
+      checked={feature.enabled}
+      disabled={disabled}
+      onCheckedChange={(value: boolean) => onToggle(feature, value)}
+      aria-label={`Toggle ${feature.label}`}
+      {...agentProps}
+    />
+  );
+}
+
+function FeatureFlagsSignInButton({
+  busy,
+  onSignIn,
+}: {
+  busy: boolean;
+  onSignIn: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "settings-features-sign-in",
+    role: "button",
+    label: "Sign in to Cloud",
+    group: "lifeops-features",
+    description: "Sign in to Eliza Cloud to manage cloud features",
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="outline"
+      size="sm"
+      className="!mt-0 h-9 rounded-lg"
+      onClick={onSignIn}
+      disabled={busy}
+      title="Sign in to Cloud"
+      {...agentProps}
+    >
+      {busy ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+      ) : (
+        <LogIn className="h-3.5 w-3.5" aria-hidden />
+      )}
+      <span>{busy ? "Opening" : "Sign in"}</span>
+    </Button>
+  );
+}
+
+function FeatureFlagsSyncButton({
+  syncing,
+  onSync,
+}: {
+  syncing: boolean;
+  onSync: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "settings-features-sync",
+    role: "button",
+    label: "Sync features from Cloud",
+    group: "lifeops-features",
+    description: "Sync cloud-managed feature flags from Eliza Cloud",
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="outline"
+      size="sm"
+      className="!mt-0 h-9 rounded-lg"
+      onClick={onSync}
+      disabled={syncing}
+      title="Sync from Cloud"
+      {...agentProps}
+    >
+      <RefreshCw
+        className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`}
+        aria-hidden
+      />
+      <span>{syncing ? "Syncing" : "Sync"}</span>
+    </Button>
+  );
+}
 
 export function LifeOpsFeatureTogglesSection() {
   const { elizaCloudConnected, handleCloudLogin } = useApp();
@@ -101,38 +218,14 @@ export function LifeOpsFeatureTogglesSection() {
   const headerCta = useMemo(() => {
     if (!elizaCloudConnected) {
       return (
-        <Button
-          variant="outline"
-          size="sm"
-          className="!mt-0 h-9 rounded-lg"
-          onClick={() => void handleSignIn()}
-          disabled={signInBusy}
-          title="Sign in to Cloud"
-        >
-          {signInBusy ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-          ) : (
-            <LogIn className="h-3.5 w-3.5" aria-hidden />
-          )}
-          <span>{signInBusy ? "Opening" : "Sign in"}</span>
-        </Button>
+        <FeatureFlagsSignInButton
+          busy={signInBusy}
+          onSignIn={() => void handleSignIn()}
+        />
       );
     }
     return (
-      <Button
-        variant="outline"
-        size="sm"
-        className="!mt-0 h-9 rounded-lg"
-        onClick={() => void handleSync()}
-        disabled={syncing}
-        title="Sync from Cloud"
-      >
-        <RefreshCw
-          className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`}
-          aria-hidden
-        />
-        <span>{syncing ? "Syncing" : "Sync"}</span>
-      </Button>
+      <FeatureFlagsSyncButton syncing={syncing} onSync={() => void handleSync()} />
     );
   }, [elizaCloudConnected, handleSignIn, handleSync, signInBusy, syncing]);
 
@@ -213,13 +306,12 @@ export function LifeOpsFeatureTogglesSection() {
                     </p>
                   )}
                 </div>
-                <Switch
-                  checked={feature.enabled}
+                <FeatureToggleSwitch
+                  feature={feature}
                   disabled={isCloudManaged || isBusy}
-                  onCheckedChange={(value: boolean) =>
-                    void handleToggle(feature, value)
+                  onToggle={(target, value) =>
+                    void handleToggle(target, value)
                   }
-                  aria-label={`Toggle ${feature.label}`}
                 />
               </li>
             );

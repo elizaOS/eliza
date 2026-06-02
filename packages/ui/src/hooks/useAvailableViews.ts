@@ -21,7 +21,7 @@ export interface ViewRegistryEntry {
   /** Human-readable label shown in the view manager. */
   label: string;
   /** Presentation/runtime family. Defaults to "gui". */
-  viewType?: "gui" | "tui";
+  viewType?: "gui" | "tui" | "xr";
   /** One-line description shown in the view card. */
   description?: string;
   /** Lucide icon name or data-URI for the card icon. */
@@ -70,7 +70,7 @@ interface UseAvailableViewsResult {
 const POLL_INTERVAL_MS = 30_000;
 
 async function fetchViewList(
-  viewType?: "gui" | "tui",
+  viewType?: "gui" | "tui" | "xr",
 ): Promise<ViewRegistryEntry[]> {
   const platform = getFrontendPlatform();
   const response = await fetchWithCsrf(
@@ -92,20 +92,27 @@ async function fetchViewList(
 }
 
 async function fetchViews(): Promise<ViewRegistryEntry[]> {
-  const [guiResult, tuiResult] = await Promise.allSettled([
+  const [guiResult, tuiResult, xrResult] = await Promise.allSettled([
     fetchViewList(),
     fetchViewList("tui"),
+    fetchViewList("xr"),
   ]);
   const guiViews = guiResult.status === "fulfilled" ? guiResult.value : [];
   const tuiViews =
     tuiResult.status === "fulfilled"
       ? tuiResult.value.filter((view) => view.viewType === "tui")
       : [];
+  const xrViews =
+    xrResult.status === "fulfilled"
+      ? xrResult.value.filter((view) => view.viewType === "xr")
+      : [];
   if (
     guiResult.status === "rejected" &&
     tuiResult.status === "rejected" &&
+    xrResult.status === "rejected" &&
     !String(guiResult.reason).includes("404") &&
-    !String(tuiResult.reason).includes("404")
+    !String(tuiResult.reason).includes("404") &&
+    !String(xrResult.reason).includes("404")
   ) {
     throw guiResult.reason;
   }
@@ -115,6 +122,9 @@ async function fetchViews(): Promise<ViewRegistryEntry[]> {
   }
   for (const view of tuiViews) {
     merged.set(`tui:${view.id}`, view);
+  }
+  for (const view of xrViews) {
+    merged.set(`xr:${view.id}`, view);
   }
   return [...merged.values()];
 }

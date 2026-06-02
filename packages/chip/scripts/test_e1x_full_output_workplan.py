@@ -31,7 +31,10 @@ def test_e1x_full_output_workplan_gate_passes() -> None:
     assert summary["placed_core_count"] == 151_367
     assert summary["usable_bytes_per_core"] == 45_056
     assert summary["peak_core_shard_bytes"] == 43_520
-    assert summary["workplan_sha256"] == "ce900472ec1f82ecc128179c77d4a04f09bbff546dc3dfbfbe36e34d018558e2"
+    assert (
+        summary["workplan_sha256"]
+        == "ce900472ec1f82ecc128179c77d4a04f09bbff546dc3dfbfbe36e34d018558e2"
+    )
     assert len(summary["all_workplan_records"]) == 283
     assert len(summary["sampled_workplan_records"]) == 8
     assert summary["sampled_executed_partial_count"] == 1_132

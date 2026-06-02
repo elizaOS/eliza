@@ -42,6 +42,48 @@ declare module "@elizaos/plugin-capacitor-bridge" {
   export function runAndroidBridgeCli(): Promise<void>;
   export function runIosBridgeCli(argv?: string[]): Promise<void>;
 }
+declare module "@elizaos/capacitor-mobile-agent-bridge" {
+  export interface MobileAgentBridgeStartOptions {
+    relayUrl: string;
+    deviceId: string;
+    pairingToken?: string;
+    localAgentApiBase?: string;
+  }
+
+  export type MobileAgentTunnelState =
+    | "idle"
+    | "connecting"
+    | "registered"
+    | "disconnected"
+    | "error";
+
+  export interface MobileAgentTunnelStatus {
+    state: MobileAgentTunnelState;
+    relayUrl: string | null;
+    deviceId: string | null;
+    lastError: string | null;
+  }
+
+  export interface MobileAgentTunnelStateEvent {
+    state: MobileAgentTunnelState;
+    reason?: string;
+  }
+
+  export interface MobileAgentBridgePlugin {
+    startInboundTunnel(
+      options: MobileAgentBridgeStartOptions,
+    ): Promise<MobileAgentTunnelStatus>;
+    stopInboundTunnel(): Promise<void>;
+    getTunnelStatus(): Promise<MobileAgentTunnelStatus>;
+    addListener(
+      eventName: "stateChange",
+      listenerFunc: (event: MobileAgentTunnelStateEvent) => void,
+    ): Promise<{ remove(): Promise<void> }>;
+    removeAllListeners(): Promise<void>;
+  }
+
+  export const MobileAgentBridge: MobileAgentBridgePlugin;
+}
 declare module "qrcode-terminal" {
   export function generate(
     input: string,
@@ -639,7 +681,7 @@ declare module "@elizaos/plugin-wallet" {
 }
 
 declare module "@elizaos/ui" {
-  import type { ComponentType } from "react";
+  import type { ComponentType, RefObject } from "react";
 
   // biome-ignore lint/suspicious/noExplicitAny: server-side ambient UI shim
   type AnyValue = any;
@@ -658,6 +700,53 @@ declare module "@elizaos/ui" {
     availability?: "enabled" | "disabled" | string;
     disabledReason?: string;
     [key: string]: unknown;
+  }
+
+  export type AgentElementRole =
+    | "button"
+    | "link"
+    | "text-input"
+    | "number-input"
+    | "textarea"
+    | "select"
+    | "toggle"
+    | "slider"
+    | "tab"
+    | "menu-item"
+    | "list-item"
+    | "card"
+    | "metric"
+    | "status"
+    | "image"
+    | "chart"
+    | "region"
+    | "heading"
+    | "custom";
+
+  export interface AgentElementDescriptor {
+    id: string;
+    role?: AgentElementRole;
+    label: string;
+    group?: string;
+    description?: string;
+    status?: string;
+    order?: number;
+    fillable?: boolean;
+    clickable?: boolean;
+    options?: readonly string[];
+    getValue?: () => unknown;
+    onFill?: (value: string) => void;
+    onActivate?: () => void;
+  }
+
+  export interface AgentElementHandle<T extends HTMLElement> {
+    ref: RefObject<T | null>;
+    agentProps: {
+      "data-agent-id": string;
+      "data-agent-role": string;
+      "data-agent-label": string;
+      "data-state"?: string;
+    };
   }
 
   export interface AutomationNodeCatalogResponse {
@@ -777,6 +866,9 @@ declare module "@elizaos/ui" {
   export const toneForHealthState: AnyFunction;
   export const toneForStatusText: AnyFunction;
   export const toneForViewerAttachment: AnyFunction;
+  export function useAgentElement<T extends HTMLElement = HTMLElement>(
+    descriptor: AgentElementDescriptor,
+  ): AgentElementHandle<T>;
   export const useApp: AnyFunction;
 
   export const applyForceFreshFirstRunReset: AnyFunction;

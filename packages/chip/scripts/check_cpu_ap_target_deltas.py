@@ -20,6 +20,9 @@ BLOCKED_STATUSES = {
     "blocked_after_selected_bringup",
     "blocked_until_generated_and_transcripted",
 }
+FALSE_CLAIM_FLAGS = {
+    "phone_class_claim_allowed": False,
+}
 
 
 def require(condition: bool, message: str, errors: list[str]) -> None:
@@ -99,6 +102,11 @@ def main() -> int:
     require(
         claim_policy.get("phone_class_claim_allowed") is False,
         "phone-class claim must remain blocked",
+        errors,
+    )
+    require(
+        claim_policy.get("false_claim_flags") == FALSE_CLAIM_FLAGS,
+        "claim policy false_claim_flags must match denied CPU/AP target claims",
         errors,
     )
 

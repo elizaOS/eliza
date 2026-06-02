@@ -1,3 +1,4 @@
+import { listViews } from "@elizaos/agent/api/views-registry";
 import type { Route } from "@elizaos/core";
 import {
   XR_SERVICE_TYPE,
@@ -14,49 +15,19 @@ export const xrViewsRoute: Route = {
   path: "/xr/views",
   description: "Lists all XR-capable views from registered plugins",
   routeHandler: async (ctx) => {
-    const plugins =
-      (
-        ctx.runtime as unknown as {
-          plugins?: Array<{
-            name?: string;
-            views?: Array<{
-              id: string;
-              label: string;
-              viewType?: string;
-              icon?: string;
-              description?: string;
-              tags?: string[];
-              xrOptions?: Record<string, unknown>;
-            }>;
-          }>;
-        }
-      ).plugins ?? [];
-
-    const views: Array<{
-      id: string;
-      label: string;
-      icon?: string;
-      description?: string;
-      tags?: string[];
-      xrOptions?: Record<string, unknown>;
-    }> = [];
-
-    const seen = new Set<string>();
-    for (const plugin of plugins) {
-      for (const v of plugin.views ?? []) {
-        if (v.viewType === "xr" && !seen.has(v.id)) {
-          seen.add(v.id);
-          views.push({
-            id: v.id,
-            label: v.label,
-            icon: v.icon,
-            description: v.description,
-            tags: v.tags,
-            xrOptions: v.xrOptions,
-          });
-        }
-      }
-    }
+    const views = listViews({ developerMode: true, viewType: "xr" })
+      .filter((v) => v.viewType === "xr")
+      .map((v) => ({
+        id: v.id,
+        label: v.label,
+        icon: v.icon,
+        description: v.description,
+        tags: v.tags,
+        xrOptions: v.xrOptions,
+        path: v.path,
+        pluginName: v.pluginName,
+        available: v.available,
+      }));
 
     const connections =
       ctx.runtime

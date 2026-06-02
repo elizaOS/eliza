@@ -340,6 +340,14 @@ def child_env(cell: MatrixCell) -> dict[str, str]:
     return env
 
 
+def _expand_scenarios_env_enabled() -> bool:
+    truthy = {"1", "true", "yes", "on"}
+    return (
+        os.environ.get("EXPAND_SCENARIOS", "").strip().lower() in truthy
+        or os.environ.get("INCLUDE_EDGE_SCENARIOS", "").strip().lower() in truthy
+    )
+
+
 def _opencode_bin(root: Path, env: dict[str, str]) -> str | None:
     configured = env.get("OPENCODE_BIN")
     if configured:
@@ -1273,6 +1281,18 @@ def default_command(
             cmd.append("--mock")
         if no_docker:
             cmd.append("--no-docker")
+        if os.environ.get("EXPAND_SCENARIOS", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        } or os.environ.get("INCLUDE_EDGE_SCENARIOS", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            cmd.append("--expand-scenarios")
         return cmd, root
 
     if benchmark == "terminal_bench":
@@ -1298,6 +1318,8 @@ def default_command(
             cmd.extend(["--use-sample-tasks", "--local-sandbox", "--mock"])
         elif no_docker:
             cmd.append("--local-sandbox")
+        if _expand_scenarios_env_enabled():
+            cmd.append("--expand-scenarios")
         return cmd, b_root / "terminal-bench"
 
     if benchmark == "mind2web":
@@ -1318,6 +1340,8 @@ def default_command(
             cmd.extend(["--max-tasks", str(max_tasks)])
         if smoke:
             cmd.append("--mock")
+        if _expand_scenarios_env_enabled():
+            cmd.append("--expand-scenarios")
         return cmd, root
 
     if benchmark == "visualwebbench":
@@ -1337,6 +1361,8 @@ def default_command(
             cmd.extend(["--max-tasks", str(max_tasks)])
         if smoke:
             cmd.extend(["--use-sample-tasks", "--mock"])
+        if _expand_scenarios_env_enabled():
+            cmd.append("--expand-scenarios")
         return cmd, root
 
     if benchmark == "webshop":
@@ -1360,6 +1386,8 @@ def default_command(
             if max_tasks is not None and max_tasks > 1:
                 cmd.extend(["--split", "train"])
             cmd.append("--bridge")
+        if _expand_scenarios_env_enabled():
+            cmd.append("--expand-scenarios")
         return cmd, b_root / "webshop"
 
     if benchmark == "osworld":
@@ -1382,6 +1410,8 @@ def default_command(
                 cmd.extend(["--provider_name", provider_name])
             if path_to_vm:
                 cmd.extend(["--path_to_vm", path_to_vm])
+        if _expand_scenarios_env_enabled():
+            cmd.append("--expand-scenarios")
         return cmd, b_root / "OSWorld"
 
     if benchmark == "nl2repo":
@@ -1412,6 +1442,18 @@ def default_command(
             cmd.append("--mock")
         if no_docker:
             cmd.append("--no-docker")
+        if os.environ.get("EXPAND_SCENARIOS", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        } or os.environ.get("INCLUDE_EDGE_SCENARIOS", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            cmd.append("--expand-scenarios")
         return cmd, root
 
     if benchmark == "standard_humaneval":
@@ -1489,6 +1531,18 @@ def default_command(
             cmd.append("--mock")
         if no_docker:
             cmd.append("--no-docker")
+        if os.environ.get("EXPAND_SCENARIOS", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        } or os.environ.get("INCLUDE_EDGE_SCENARIOS", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            cmd.append("--expand-scenarios")
         return cmd, root
 
     if benchmark == "openclaw_benchmark":
@@ -1514,6 +1568,18 @@ def default_command(
             cmd.append("--mock")
         if no_docker:
             cmd.append("--no-docker")
+        if os.environ.get("EXPAND_SCENARIOS", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        } or os.environ.get("INCLUDE_EDGE_SCENARIOS", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            cmd.append("--expand-scenarios")
         return cmd, root
 
     if benchmark == "clawbench":
@@ -1539,6 +1605,18 @@ def default_command(
             cmd.append("--mock")
         if no_docker:
             cmd.append("--no-docker")
+        if os.environ.get("EXPAND_SCENARIOS", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        } or os.environ.get("INCLUDE_EDGE_SCENARIOS", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            cmd.append("--expand-scenarios")
         return cmd, root
 
     if benchmark == "agentbench":
@@ -1564,6 +1642,8 @@ def default_command(
             cmd.append("--mock")
         if no_docker:
             cmd.append("--no-docker")
+        if _expand_scenarios_env_enabled():
+            cmd.append("--expand-scenarios")
         return cmd, root
 
     if benchmark == "qwen_claw_bench":
@@ -1592,6 +1672,8 @@ def default_command(
             cmd.append("--mock")
         if no_docker:
             cmd.append("--no-docker")
+        if _expand_scenarios_env_enabled():
+            cmd.append("--expand-scenarios")
         return cmd, root
 
     if benchmark == "claw_eval":
@@ -1620,6 +1702,8 @@ def default_command(
             cmd.append("--mock")
         if no_docker:
             cmd.append("--no-docker")
+        if _expand_scenarios_env_enabled():
+            cmd.append("--expand-scenarios")
         return cmd, root
 
     if benchmark == "swe_bench_pro":
@@ -1654,6 +1738,18 @@ def default_command(
             cmd.append("--mock")
         if no_docker:
             cmd.extend(["--no-docker", "--skip-clone"])
+        if os.environ.get("EXPAND_SCENARIOS", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        } or os.environ.get("INCLUDE_EDGE_SCENARIOS", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            cmd.append("--expand-scenarios")
         return cmd, root
 
     if benchmark == "vision_language":
@@ -1678,6 +1774,10 @@ def default_command(
             cmd.extend(["--samples", str(max_tasks)])
         if smoke:
             cmd.append("--smoke")
+        if os.environ.get("EXPAND_SCENARIOS", "").strip().lower() in {"1", "true", "yes", "on"} or os.environ.get(
+            "INCLUDE_EDGE_SCENARIOS", ""
+        ).strip().lower() in {"1", "true", "yes", "on"}:
+            cmd.append("--expand-scenarios")
         return cmd, root / "packages" / "benchmarks" / "vision-language"
 
     raise ValueError(f"unsupported benchmark for code-agent matrix: {benchmark}")

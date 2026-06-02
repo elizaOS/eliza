@@ -165,7 +165,7 @@ export class CloudTailscaleService extends Service implements ITunnelService {
       return;
     }
 
-    if (port < 1 || port > 65535) {
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
       throw new Error("Invalid port number");
     }
 

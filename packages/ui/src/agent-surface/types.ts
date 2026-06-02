@@ -117,7 +117,7 @@ export interface AgentSurfaceSnapshot {
   updatedAt: number;
 }
 
-export type AgentViewType = "gui" | "tui";
+export type AgentViewType = "gui" | "tui" | "xr";
 
 /** Result of an agent action on an element. */
 export interface AgentActionResult {

@@ -37,6 +37,8 @@ class TaskRunResult:
     domain: DomainName
     reward: float  # upstream env reward (action + outputs match) in [0,1]
     success: bool  # reward >= 1.0 after gating by judge / data hash
+    scenario_id: str = "base"
+    scenario_note: str = ""
     judge_passed: Optional[bool] = None  # only when outputs are present
     judge_explanation: str = ""
     r_actions: Optional[float] = None
@@ -82,6 +84,8 @@ class BenchmarkReport:
                     {
                         "task_id": r.task_id,
                         "trial": r.trial,
+                        "scenario_id": r.scenario_id,
+                        "scenario_note": r.scenario_note,
                         "reward": r.reward,
                         "success": r.success,
                         "judge_passed": r.judge_passed,
@@ -123,6 +127,7 @@ class TauBenchConfig:
     end_index: int = -1  # -1 = run all
     max_tasks_per_domain: Optional[int] = None
     use_sample_tasks: bool = False
+    include_edge_scenarios: bool = False
 
     # Agent
     use_mock: bool = False
@@ -164,6 +169,7 @@ class TauBenchConfig:
             "end_index": self.end_index,
             "max_tasks_per_domain": self.max_tasks_per_domain,
             "use_sample_tasks": self.use_sample_tasks,
+            "include_edge_scenarios": self.include_edge_scenarios,
             "use_mock": self.use_mock,
             "agent_harness": self.agent_harness,
             "agent_model": self.agent_model,

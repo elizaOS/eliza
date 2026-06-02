@@ -63,9 +63,7 @@ def repair_validation_from_scenario(scenario: dict) -> dict[str, int | float | s
         "route_check_mode": str(scenario["route_check_mode"]),
         "extra_repair_hops": int(scenario["extra_repair_hops"]),
         "max_repaired_neighbor_hops": int(scenario["max_repaired_neighbor_hops"]),
-        "average_extra_hops_per_neighbor": float(
-            scenario["average_extra_hops_per_neighbor"]
-        ),
+        "average_extra_hops_per_neighbor": float(scenario["average_extra_hops_per_neighbor"]),
     }
 
 
@@ -83,9 +81,7 @@ def write_real_graph_evidence(manifest_path: Path, out: Path) -> dict:
     normal_repair_rom_path = out.with_name(out.stem + ".normal_repair_rom.json")
     normal_repair_rom_hex_path = out.with_name(out.stem + ".normal_repair_rom.hex")
     high_defect_map_path = out.with_name(out.stem + ".high_failure_defect_map.json")
-    high_repair_manifest_path = out.with_name(
-        out.stem + ".high_failure_repair_manifest.json"
-    )
+    high_repair_manifest_path = out.with_name(out.stem + ".high_failure_repair_manifest.json")
     high_repair_rom_path = out.with_name(out.stem + ".high_failure_repair_rom.json")
     high_repair_rom_hex_path = out.with_name(out.stem + ".high_failure_repair_rom.hex")
     normal_trace_path = out.with_name(out.stem + ".normal_execution_trace.json")
@@ -117,9 +113,7 @@ def write_real_graph_evidence(manifest_path: Path, out: Path) -> dict:
         normal_execution,
         repair_hop_penalty=float(report["normal_repair_hop_penalty"]),
         route_checks=int(
-            report["defect_testing"][NORMAL_DEFECT_SCENARIO.name][
-                "logical_neighbor_paths_checked"
-            ]
+            report["defect_testing"][NORMAL_DEFECT_SCENARIO.name]["logical_neighbor_paths_checked"]
         ),
     )
     high_trace = real_graph_execution_trace_artifact(
@@ -189,9 +183,7 @@ def write_real_graph_evidence(manifest_path: Path, out: Path) -> dict:
                 "path": display_path(normal_repair_manifest_path),
                 "schema": normal_repair_manifest["schema"],
                 "artifact_sha256": normal_repair_manifest["artifact_sha256"],
-                "source_defect_map_sha256": normal_repair_manifest[
-                    "source_defect_map_sha256"
-                ],
+                "source_defect_map_sha256": normal_repair_manifest["source_defect_map_sha256"],
                 "remapped_core_count": normal_repair_manifest["remapped_core_count"],
                 "sampled_route_count": len(normal_repair_manifest["sampled_routes"]),
             },
@@ -200,9 +192,7 @@ def write_real_graph_evidence(manifest_path: Path, out: Path) -> dict:
                 "hex_path": display_path(normal_repair_rom_hex_path),
                 "schema": normal_repair_rom["schema"],
                 "artifact_sha256": normal_repair_rom["artifact_sha256"],
-                "source_repair_manifest_sha256": normal_repair_rom[
-                    "source_repair_manifest_sha256"
-                ],
+                "source_repair_manifest_sha256": normal_repair_rom["source_repair_manifest_sha256"],
                 "total_word_count": normal_repair_rom["total_word_count"],
                 "rom_words_sha256": normal_repair_rom["rom_words_sha256"],
             },
@@ -219,9 +209,7 @@ def write_real_graph_evidence(manifest_path: Path, out: Path) -> dict:
                 "path": display_path(high_repair_manifest_path),
                 "schema": high_repair_manifest["schema"],
                 "artifact_sha256": high_repair_manifest["artifact_sha256"],
-                "source_defect_map_sha256": high_repair_manifest[
-                    "source_defect_map_sha256"
-                ],
+                "source_defect_map_sha256": high_repair_manifest["source_defect_map_sha256"],
                 "remapped_core_count": high_repair_manifest["remapped_core_count"],
                 "sampled_route_count": len(high_repair_manifest["sampled_routes"]),
             },
@@ -230,9 +218,7 @@ def write_real_graph_evidence(manifest_path: Path, out: Path) -> dict:
                 "hex_path": display_path(high_repair_rom_hex_path),
                 "schema": high_repair_rom["schema"],
                 "artifact_sha256": high_repair_rom["artifact_sha256"],
-                "source_repair_manifest_sha256": high_repair_rom[
-                    "source_repair_manifest_sha256"
-                ],
+                "source_repair_manifest_sha256": high_repair_rom["source_repair_manifest_sha256"],
                 "total_word_count": high_repair_rom["total_word_count"],
                 "rom_words_sha256": high_repair_rom["rom_words_sha256"],
             },
@@ -339,9 +325,7 @@ def main() -> int:
 
     manifest_path = args.manifest if args.manifest.is_absolute() else ROOT / args.manifest
     real_graph_out = (
-        args.real_graph_out
-        if args.real_graph_out.is_absolute()
-        else ROOT / args.real_graph_out
+        args.real_graph_out if args.real_graph_out.is_absolute() else ROOT / args.real_graph_out
     )
     write_real_graph_evidence(manifest_path, real_graph_out)
     return 0

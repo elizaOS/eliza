@@ -101,6 +101,22 @@ describe("PluginsView", () => {
     expect(screen.queryByText("Nothing to show")).toBeNull();
   });
 
+  it("does not render raw emoji icon strings from plugin metadata", () => {
+    appMock.value = makeContext({
+      plugins: [
+        makePlugin({
+          icon: "🔌",
+          iconName: "Puzzle",
+        } as Partial<PluginInfo>),
+      ],
+    });
+
+    render(<PluginsView />);
+
+    expect(screen.getByText("Weather Plugin")).toBeTruthy();
+    expect(screen.queryByText("🔌")).toBeNull();
+  });
+
   it("clicking a plugin's enable toggle dispatches handlePluginToggle with the inverted state", async () => {
     const plugin = makePlugin({ enabled: true });
     appMock.value = makeContext({ plugins: [plugin] });

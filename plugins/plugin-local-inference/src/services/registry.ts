@@ -31,7 +31,7 @@ async function readElizaOwned(): Promise<InstalledModel[]> {
 	try {
 		const raw = await fs.readFile(registryPath(), "utf8");
 		const parsed = JSON.parse(raw) as RegistryFile;
-		if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.models)) {
+		if (parsed?.version !== 1 || !Array.isArray(parsed.models)) {
 			return [];
 		}
 		return parsed.models.filter(

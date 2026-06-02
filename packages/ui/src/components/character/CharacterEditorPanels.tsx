@@ -5,6 +5,7 @@ import {
   type KeyboardEvent,
   useState,
 } from "react";
+import { useAgentElement } from "../../agent-surface";
 import type { CharacterData } from "../../api/client-types-config";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -143,6 +144,16 @@ export function CharacterIdentityPanel({
   handleFieldEdit,
   t,
 }: CharacterIdentityPanelProps) {
+  const { ref: bioRef, agentProps: bioAgentProps } =
+    useAgentElement<HTMLTextAreaElement>({
+      id: "identity-bio",
+      role: "textarea",
+      label: t("charactereditor.AboutMe", { defaultValue: "About Me" }),
+      group: "identity",
+      description: "Edit the agent's bio / about-me description",
+      getValue: () => bioText,
+      onFill: (value) => handleFieldEdit("bio", value),
+    });
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-2">
@@ -150,6 +161,7 @@ export function CharacterIdentityPanel({
           {t("charactereditor.AboutMe", { defaultValue: "About Me" })}
         </span>
         <Textarea
+          ref={bioRef}
           value={bioText}
           rows={8}
           placeholder={t("charactereditor.AboutMePlaceholder", {
@@ -159,6 +171,7 @@ export function CharacterIdentityPanel({
             handleFieldEdit("bio", e.target.value)
           }
           className="w-full resize-none min-h-[8rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
+          {...bioAgentProps}
         />
       </div>
     </div>
@@ -166,6 +179,194 @@ export function CharacterIdentityPanel({
 }
 
 /* ── CharacterStylePanel ─────────────────────────────────────────── */
+
+function StyleRuleRow({
+  sectionKey,
+  index,
+  value,
+  isDuplicate,
+  isDragging,
+  draftValue,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
+  onDraftChange,
+  onCommit,
+  onRemove,
+  t,
+}: {
+  sectionKey: string;
+  index: number;
+  value: string;
+  isDuplicate: boolean;
+  isDragging: boolean;
+  draftValue: string;
+  onDragStart: (e: DragEvent<HTMLFieldSetElement>) => void;
+  onDragOver: (e: DragEvent<HTMLFieldSetElement>) => void;
+  onDrop: (e: DragEvent<HTMLFieldSetElement>) => void;
+  onDragEnd: () => void;
+  onDraftChange: (value: string) => void;
+  onCommit: () => void;
+  onRemove: () => void;
+  t: (key: string, opts?: { defaultValue?: string }) => string;
+}) {
+  const ruleLabel = `${t(`charactereditor.StyleRules.${sectionKey}`, {
+    defaultValue: "Style rule",
+  })} ${index + 1}`;
+  const { ref: inputRef, agentProps: inputAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: `style-rule-${sectionKey}-${index}`,
+      role: "text-input",
+      label: ruleLabel,
+      group: "style-rules",
+      description: `Edit ${ruleLabel}`,
+      getValue: () => draftValue,
+      onFill: onDraftChange,
+    });
+  const { ref: removeRef, agentProps: removeAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `style-rule-remove-${sectionKey}-${index}`,
+      role: "button",
+      label: `${t("common.remove")} ${ruleLabel}`,
+      group: "style-rules",
+      description: `Remove ${ruleLabel}`,
+      onActivate: onRemove,
+    });
+  return (
+    <fieldset
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      className={`group flex min-w-0 items-center gap-2 px-0 py-1 transition-opacity ${
+        isDuplicate ? "" : ""
+      } ${isDragging ? "opacity-40" : ""}`}
+    >
+      <span
+        className="shrink-0 text-muted opacity-60 cursor-grab active:cursor-grabbing select-none"
+        aria-hidden="true"
+        title={t("charactereditor.DragToReorder", {
+          defaultValue: "Drag to reorder",
+        })}
+      >
+        <GripIconSvg />
+      </span>
+      <Input
+        ref={inputRef}
+        value={value}
+        onChange={(e: ChangeEvent<HTMLInputElement>) =>
+          onDraftChange(e.target.value)
+        }
+        onBlur={onCommit}
+        aria-label={ruleLabel}
+        className={`h-8 min-w-0 flex-1 rounded-none border-0 border-b bg-transparent px-0 text-sm text-txt focus-visible:ring-0 ${
+          isDuplicate
+            ? "border-warning/60 focus-visible:border-warning"
+            : "border-border/30 focus-visible:border-accent/60"
+        }`}
+        {...inputAgentProps}
+      />
+      {isDuplicate ? (
+        <span className="shrink-0 rounded-sm bg-warning/15 px-1.5 py-0.5 text-[0.68rem] font-medium text-warning">
+          {t("charactereditor.DuplicateRule", {
+            defaultValue: "duplicate",
+          })}
+        </span>
+      ) : null}
+      <Button
+        ref={removeRef}
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted opacity-0 transition-colors hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
+        onClick={onRemove}
+        title={t("common.remove")}
+        aria-label={`${t("common.remove")} ${ruleLabel}`}
+        {...removeAgentProps}
+      >
+        <TrashIconSvg />
+      </Button>
+    </fieldset>
+  );
+}
+
+function StyleAddRow({
+  sectionKey,
+  pendingValue,
+  onChange,
+  onAdd,
+  t,
+}: {
+  sectionKey: string;
+  pendingValue: string;
+  onChange: (value: string) => void;
+  onAdd: () => void;
+  t: (key: string, opts?: { defaultValue?: string }) => string;
+}) {
+  const placeholder = t(STYLE_SECTION_PLACEHOLDERS[sectionKey].key, {
+    defaultValue: STYLE_SECTION_PLACEHOLDERS[sectionKey].defaultValue,
+  });
+  const addLabel = t("charactereditor.AddStyleRule", {
+    defaultValue: "Add style rule",
+  });
+  const { ref: inputRef, agentProps: inputAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: `style-add-input-${sectionKey}`,
+      role: "text-input",
+      label: placeholder,
+      group: "style-rules",
+      description: "New style rule to add",
+      getValue: () => pendingValue,
+      onFill: onChange,
+    });
+  const { ref: addRef, agentProps: addAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `style-add-${sectionKey}`,
+      role: "button",
+      label: addLabel,
+      group: "style-rules",
+      description: "Add the pending style rule",
+      onActivate: onAdd,
+    });
+  return (
+    <div className="flex items-center gap-2">
+      <Input
+        ref={inputRef}
+        type="text"
+        value={pendingValue}
+        placeholder={placeholder}
+        onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+          onChange(e.target.value)
+        }
+        onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            onAdd();
+          }
+        }}
+        className="h-9 min-w-0 flex-1 rounded-sm border border-border/40 bg-bg/70 px-3 text-sm text-txt outline-none focus:border-accent"
+        {...inputAgentProps}
+      />
+      <button
+        ref={addRef}
+        type="button"
+        className="inline-flex h-9 shrink-0 items-center gap-2 rounded-sm border border-accent/35 px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+        onClick={onAdd}
+        disabled={!pendingValue.trim()}
+        title={addLabel}
+        aria-label={addLabel}
+        {...addAgentProps}
+      >
+        <PlusIconSvg />
+        {t("charactereditor.AddStyleRuleShort", {
+          defaultValue: "Add rule",
+        })}
+      </button>
+    </div>
+  );
+}
 
 export function CharacterStylePanel({
   d,
@@ -242,14 +443,19 @@ export function CharacterStylePanel({
                       dragStyleIndex.index === index;
                     const isDuplicate = duplicateIndices.has(index);
                     return (
-                      <fieldset
+                      <StyleRuleRow
                         key={`${key}:${comparableKey}:${occurrence}`}
-                        draggable
-                        onDragStart={(e: DragEvent<HTMLFieldSetElement>) => {
+                        sectionKey={key}
+                        index={index}
+                        value={styleEntryDrafts[key]?.[index] ?? item}
+                        draftValue={styleEntryDrafts[key]?.[index] ?? item}
+                        isDuplicate={isDuplicate}
+                        isDragging={isDragging}
+                        onDragStart={(e) => {
                           setDragStyleIndex({ key, index });
                           e.dataTransfer.effectAllowed = "move";
                         }}
-                        onDragOver={(e: DragEvent<HTMLFieldSetElement>) => {
+                        onDragOver={(e) => {
                           if (
                             dragStyleIndex === null ||
                             dragStyleIndex.key !== key ||
@@ -259,7 +465,7 @@ export function CharacterStylePanel({
                           e.preventDefault();
                           e.dataTransfer.dropEffect = "move";
                         }}
-                        onDrop={(e: DragEvent<HTMLFieldSetElement>) => {
+                        onDrop={(e) => {
                           e.preventDefault();
                           if (
                             dragStyleIndex === null ||
@@ -274,65 +480,13 @@ export function CharacterStylePanel({
                           setDragStyleIndex(null);
                         }}
                         onDragEnd={() => setDragStyleIndex(null)}
-                        className={`group flex min-w-0 items-center gap-2 px-0 py-1 transition-opacity ${
-                          isDuplicate ? "" : ""
-                        } ${isDragging ? "opacity-40" : ""}`}
-                      >
-                        <span
-                          className="shrink-0 text-muted opacity-60 cursor-grab active:cursor-grabbing select-none"
-                          aria-hidden="true"
-                          title={t("charactereditor.DragToReorder", {
-                            defaultValue: "Drag to reorder",
-                          })}
-                        >
-                          <GripIconSvg />
-                        </span>
-                        <Input
-                          value={styleEntryDrafts[key]?.[index] ?? item}
-                          onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                            handleStyleEntryDraftChange(
-                              key,
-                              index,
-                              e.target.value,
-                            )
-                          }
-                          onBlur={() => handleCommitStyleEntry(key, index)}
-                          aria-label={`${t(
-                            `charactereditor.StyleRules.${key}`,
-                            {
-                              defaultValue: "Style rule",
-                            },
-                          )} ${index + 1}`}
-                          className={`h-8 min-w-0 flex-1 rounded-none border-0 border-b bg-transparent px-0 text-sm text-txt focus-visible:ring-0 ${
-                            isDuplicate
-                              ? "border-warning/60 focus-visible:border-warning"
-                              : "border-border/30 focus-visible:border-accent/60"
-                          }`}
-                        />
-                        {isDuplicate ? (
-                          <span className="shrink-0 rounded-sm bg-warning/15 px-1.5 py-0.5 text-[0.68rem] font-medium text-warning">
-                            {t("charactereditor.DuplicateRule", {
-                              defaultValue: "duplicate",
-                            })}
-                          </span>
-                        ) : null}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted opacity-0 transition-colors hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
-                          onClick={() => handleRemoveStyleEntry(key, index)}
-                          title={t("common.remove")}
-                          aria-label={`${t("common.remove")} ${t(
-                            `charactereditor.StyleRules.${key}`,
-                            {
-                              defaultValue: "style rule",
-                            },
-                          )} ${index + 1}`}
-                        >
-                          <TrashIconSvg />
-                        </Button>
-                      </fieldset>
+                        onDraftChange={(value) =>
+                          handleStyleEntryDraftChange(key, index, value)
+                        }
+                        onCommit={() => handleCommitStyleEntry(key, index)}
+                        onRemove={() => handleRemoveStyleEntry(key, index)}
+                        t={t}
+                      />
                     );
                   })
                 ) : (
@@ -344,42 +498,13 @@ export function CharacterStylePanel({
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="text"
-                  value={pendingStyleEntries[key]}
-                  placeholder={t(STYLE_SECTION_PLACEHOLDERS[key].key, {
-                    defaultValue: STYLE_SECTION_PLACEHOLDERS[key].defaultValue,
-                  })}
-                  onChange={(
-                    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-                  ) => handlePendingStyleEntryChange(key, e.target.value)}
-                  onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleAddStyleEntry(key);
-                    }
-                  }}
-                  className="h-9 min-w-0 flex-1 rounded-sm border border-border/40 bg-bg/70 px-3 text-sm text-txt outline-none focus:border-accent"
-                />
-                <button
-                  type="button"
-                  className="inline-flex h-9 shrink-0 items-center gap-2 rounded-sm border border-accent/35 px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
-                  onClick={() => handleAddStyleEntry(key)}
-                  disabled={!pendingStyleEntries[key].trim()}
-                  title={t("charactereditor.AddStyleRule", {
-                    defaultValue: "Add style rule",
-                  })}
-                  aria-label={t("charactereditor.AddStyleRule", {
-                    defaultValue: "Add style rule",
-                  })}
-                >
-                  <PlusIconSvg />
-                  {t("charactereditor.AddStyleRuleShort", {
-                    defaultValue: "Add rule",
-                  })}
-                </button>
-              </div>
+              <StyleAddRow
+                sectionKey={key}
+                pendingValue={pendingStyleEntries[key]}
+                onChange={(value) => handlePendingStyleEntryChange(key, value)}
+                onAdd={() => handleAddStyleEntry(key)}
+                t={t}
+              />
             </div>
           );
         })}
@@ -389,6 +514,220 @@ export function CharacterStylePanel({
 }
 
 /* ── CharacterExamplesPanel ──────────────────────────────────────── */
+
+function ConversationTurnTextarea({
+  ci,
+  mi,
+  isUser,
+  value,
+  onChange,
+}: {
+  ci: number;
+  mi: number;
+  isUser: boolean;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const speaker = isUser ? "User" : "Agent";
+  const label = `${speaker} message, conversation ${ci + 1}, turn ${mi + 1}`;
+  const { ref, agentProps } = useAgentElement<HTMLTextAreaElement>({
+    id: `example-message-${ci}-${mi}`,
+    role: "textarea",
+    label,
+    group: "chat-examples",
+    description: `Edit ${label}`,
+    getValue: () => value,
+    onFill: onChange,
+  });
+  return (
+    <Textarea
+      ref={ref}
+      value={value}
+      rows={2}
+      aria-label={label}
+      onChange={(e) => onChange(e.target.value)}
+      className="min-h-[3rem] w-full resize-none rounded-sm border border-border/30 bg-bg/70 px-2 py-1.5 text-sm leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
+      {...agentProps}
+    />
+  );
+}
+
+function ConversationFooter({
+  ci,
+  onAddTurn,
+  onRemove,
+  t,
+}: {
+  ci: number;
+  onAddTurn: () => void;
+  onRemove: () => void;
+  t: (key: string, opts?: { defaultValue?: string }) => string;
+}) {
+  const addTurnLabel = t("charactereditor.AddTurn", {
+    defaultValue: "Add turn",
+  });
+  const { ref: addTurnRef, agentProps: addTurnAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `example-add-turn-${ci}`,
+      role: "button",
+      label: `${addTurnLabel} (conversation ${ci + 1})`,
+      group: "chat-examples",
+      description: `Add a turn to conversation ${ci + 1}`,
+      onActivate: onAddTurn,
+    });
+  const { ref: removeRef, agentProps: removeAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `example-remove-conversation-${ci}`,
+      role: "button",
+      label: `${t("common.remove")} conversation ${ci + 1}`,
+      group: "chat-examples",
+      description: `Remove conversation ${ci + 1}`,
+      onActivate: onRemove,
+    });
+  return (
+    <div className="mt-1 flex items-center justify-end gap-2">
+      <button
+        ref={addTurnRef}
+        type="button"
+        className="inline-flex h-8 items-center gap-2 rounded-sm border border-border/40 px-2.5 text-xs font-medium text-txt transition-colors hover:bg-bg-muted/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
+        onClick={onAddTurn}
+        title={addTurnLabel}
+        aria-label={addTurnLabel}
+        {...addTurnAgentProps}
+      >
+        <PlusIconSvg />
+        {addTurnLabel}
+      </button>
+      <button
+        ref={removeRef}
+        type="button"
+        className={compactIconBtn}
+        onClick={onRemove}
+        title={t("charactereditor.RemoveExample", {
+          defaultValue: "Remove conversation",
+        })}
+        aria-label={`${t("common.remove")} conversation ${ci + 1}`}
+        {...removeAgentProps}
+      >
+        <TrashIconSvg />
+      </button>
+    </div>
+  );
+}
+
+function PostExampleRow({
+  pi,
+  post,
+  isDuplicate,
+  isDragging,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
+  onChange,
+  onRemove,
+  t,
+}: {
+  pi: number;
+  post: string;
+  isDuplicate: boolean;
+  isDragging: boolean;
+  onDragStart: (e: DragEvent<HTMLFieldSetElement>) => void;
+  onDragOver: (e: DragEvent<HTMLFieldSetElement>) => void;
+  onDrop: (e: DragEvent<HTMLFieldSetElement>) => void;
+  onDragEnd: () => void;
+  onChange: (value: string) => void;
+  onRemove: () => void;
+  t: (key: string, opts?: { defaultValue?: string }) => string;
+}) {
+  const postLabel = `Post example ${pi + 1}`;
+  const { ref: textRef, agentProps: textAgentProps } =
+    useAgentElement<HTMLTextAreaElement>({
+      id: `post-example-${pi}`,
+      role: "textarea",
+      label: postLabel,
+      group: "post-examples",
+      description: `Edit ${postLabel}`,
+      getValue: () => post,
+      onFill: onChange,
+    });
+  const { ref: removeRef, agentProps: removeAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `post-example-remove-${pi}`,
+      role: "button",
+      label: `${t("common.remove")} post ${pi + 1}`,
+      group: "post-examples",
+      description: `Remove ${postLabel}`,
+      onActivate: onRemove,
+    });
+  return (
+    <fieldset
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      className={`group flex min-w-0 items-start gap-2 rounded-sm border p-2.5 transition-opacity ${
+        isDuplicate
+          ? "border-warning/50 bg-warning/5"
+          : "border-border/35 bg-bg-muted/15"
+      } ${isDragging ? "opacity-40" : ""}`}
+    >
+      <span
+        className="mt-2 text-muted opacity-60 cursor-grab active:cursor-grabbing select-none"
+        aria-hidden="true"
+        title={t("charactereditor.DragToReorder", {
+          defaultValue: "Drag to reorder",
+        })}
+      >
+        <GripIconSvg />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="mb-1.5 flex flex-wrap items-center gap-2">
+          <span className="text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-accent">
+            {t("charactereditor.PostExample", {
+              defaultValue: "Post",
+            })}{" "}
+            #{pi + 1}
+          </span>
+          {isDuplicate ? (
+            <span className="rounded-sm bg-warning/15 px-1.5 py-0.5 text-[0.68rem] font-medium text-warning">
+              {t("charactereditor.DuplicatePost", {
+                defaultValue: "duplicate",
+              })}
+            </span>
+          ) : null}
+        </div>
+        <Textarea
+          ref={textRef}
+          value={post}
+          rows={3}
+          aria-label={postLabel}
+          onChange={(e) => onChange(e.target.value)}
+          className="min-h-[4.25rem] w-full resize-none rounded-sm border border-border/30 bg-bg/70 px-2 py-1.5 text-sm leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
+          {...textAgentProps}
+        />
+      </div>
+      <div className="flex shrink-0 flex-col gap-1">
+        <Button
+          ref={removeRef}
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0 rounded-sm border border-border/35 p-0 text-muted transition-colors hover:border-danger/45 hover:bg-danger/10 hover:text-danger"
+          onClick={onRemove}
+          aria-label={`${t("common.remove")} post ${pi + 1}`}
+          title={t("charactereditor.RemovePost", {
+            defaultValue: "Remove post",
+          })}
+          {...removeAgentProps}
+        >
+          <TrashIconSvg />
+        </Button>
+      </div>
+    </fieldset>
+  );
+}
 
 export function CharacterExamplesPanel({
   d,
@@ -406,6 +745,50 @@ export function CharacterExamplesPanel({
     next.splice(to, 0, moved);
     return next;
   };
+
+  const addConversationLabel = t("charactereditor.AddConversation", {
+    defaultValue: "Add conversation",
+  });
+  const addPostLabel = t("charactereditor.AddPost", {
+    defaultValue: "Add Post",
+  });
+
+  const addConversation = () => {
+    const agentName =
+      typeof d.name === "string" && d.name.trim() ? d.name.trim() : "Agent";
+    const updated = [
+      ...normalizedMessageExamples,
+      {
+        examples: [
+          { name: "{{user1}}", content: { text: "" } },
+          { name: agentName, content: { text: "" } },
+        ],
+      },
+    ];
+    handleFieldEdit("messageExamples", updated);
+  };
+  const addPost = () => {
+    handleFieldEdit("postExamples", [...postExamples, ""]);
+  };
+
+  const { ref: addConversationRef, agentProps: addConversationAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "example-add-conversation",
+      role: "button",
+      label: addConversationLabel,
+      group: "chat-examples",
+      description: "Add a new chat-example conversation",
+      onActivate: addConversation,
+    });
+  const { ref: addPostRef, agentProps: addPostAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "post-example-add",
+      role: "button",
+      label: addPostLabel,
+      group: "post-examples",
+      description: "Add a new post example",
+      onActivate: addPost,
+    });
 
   return (
     <div className="flex flex-col gap-6">
@@ -452,74 +835,51 @@ export function CharacterExamplesPanel({
                   >
                     {msg.name === "{{user1}}" ? "user" : "agent"}
                   </span>
-                  <Textarea
+                  <ConversationTurnTextarea
+                    ci={ci}
+                    mi={mi}
+                    isUser={msg.name === "{{user1}}"}
                     value={msg.content?.text ?? ""}
-                    rows={2}
-                    aria-label={`${msg.name === "{{user1}}" ? "User" : "Agent"} message, conversation ${ci + 1}, turn ${mi + 1}`}
-                    onChange={(e) => {
+                    onChange={(text) => {
                       const updated = [...normalizedMessageExamples];
                       const convoClone = {
                         examples: [...updated[ci].examples],
                       };
                       convoClone.examples[mi] = {
                         ...convoClone.examples[mi],
-                        content: { text: e.target.value },
+                        content: { text },
                       };
                       updated[ci] = convoClone;
                       handleFieldEdit("messageExamples", updated);
                     }}
-                    className="min-h-[3rem] w-full resize-none rounded-sm border border-border/30 bg-bg/70 px-2 py-1.5 text-sm leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
                   />
                 </div>
               ))}
-              <div className="mt-1 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  className="inline-flex h-8 items-center gap-2 rounded-sm border border-border/40 px-2.5 text-xs font-medium text-txt transition-colors hover:bg-bg-muted/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
-                  onClick={() => {
-                    const agentName =
-                      typeof d.name === "string" && d.name.trim()
-                        ? d.name.trim()
-                        : "Agent";
-                    const updated = [...normalizedMessageExamples];
-                    const convoClone = {
-                      examples: [
-                        ...updated[ci].examples,
-                        { name: "{{user1}}", content: { text: "" } },
-                        { name: agentName, content: { text: "" } },
-                      ],
-                    };
-                    updated[ci] = convoClone;
-                    handleFieldEdit("messageExamples", updated);
-                  }}
-                  title={t("charactereditor.AddTurn", {
-                    defaultValue: "Add turn",
-                  })}
-                  aria-label={t("charactereditor.AddTurn", {
-                    defaultValue: "Add turn",
-                  })}
-                >
-                  <PlusIconSvg />
-                  {t("charactereditor.AddTurn", {
-                    defaultValue: "Add turn",
-                  })}
-                </button>
-                <button
-                  type="button"
-                  className={compactIconBtn}
-                  onClick={() => {
-                    const updated = [...normalizedMessageExamples];
-                    updated.splice(ci, 1);
-                    handleFieldEdit("messageExamples", updated);
-                  }}
-                  title={t("charactereditor.RemoveExample", {
-                    defaultValue: "Remove conversation",
-                  })}
-                  aria-label={`${t("common.remove")} conversation ${ci + 1}`}
-                >
-                  <TrashIconSvg />
-                </button>
-              </div>
+              <ConversationFooter
+                ci={ci}
+                onAddTurn={() => {
+                  const agentName =
+                    typeof d.name === "string" && d.name.trim()
+                      ? d.name.trim()
+                      : "Agent";
+                  const updated = [...normalizedMessageExamples];
+                  const convoClone = {
+                    examples: [
+                      ...updated[ci].examples,
+                      { name: "{{user1}}", content: { text: "" } },
+                      { name: agentName, content: { text: "" } },
+                    ],
+                  };
+                  updated[ci] = convoClone;
+                  handleFieldEdit("messageExamples", updated);
+                }}
+                onRemove={() => {
+                  const updated = [...normalizedMessageExamples];
+                  updated.splice(ci, 1);
+                  handleFieldEdit("messageExamples", updated);
+                }}
+                t={t}
+              />
             </div>
           ))}
           {normalizedMessageExamples.length === 0 && (
@@ -531,35 +891,16 @@ export function CharacterExamplesPanel({
           )}
         </div>
         <button
+          ref={addConversationRef}
           type="button"
           className="inline-flex h-9 self-start items-center gap-2 rounded-sm border border-accent/35 px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
-          onClick={() => {
-            const agentName =
-              typeof d.name === "string" && d.name.trim()
-                ? d.name.trim()
-                : "Agent";
-            const updated = [
-              ...normalizedMessageExamples,
-              {
-                examples: [
-                  { name: "{{user1}}", content: { text: "" } },
-                  { name: agentName, content: { text: "" } },
-                ],
-              },
-            ];
-            handleFieldEdit("messageExamples", updated);
-          }}
-          title={t("charactereditor.AddConversation", {
-            defaultValue: "Add conversation",
-          })}
-          aria-label={t("charactereditor.AddConversation", {
-            defaultValue: "Add conversation",
-          })}
+          onClick={addConversation}
+          title={addConversationLabel}
+          aria-label={addConversationLabel}
+          {...addConversationAgentProps}
         >
           <PlusIconSvg />
-          {t("charactereditor.AddConversation", {
-            defaultValue: "Add conversation",
-          })}
+          {addConversationLabel}
         </button>
       </section>
 
@@ -600,20 +941,23 @@ export function CharacterExamplesPanel({
             const isDragging = dragPostIndex === pi;
             const isDuplicate = duplicatePostIndices.has(pi);
             return (
-              <fieldset
+              <PostExampleRow
                 // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
                 key={`post-${pi}`}
-                draggable
-                onDragStart={(e: DragEvent<HTMLFieldSetElement>) => {
+                pi={pi}
+                post={post}
+                isDuplicate={isDuplicate}
+                isDragging={isDragging}
+                onDragStart={(e) => {
                   setDragPostIndex(pi);
                   e.dataTransfer.effectAllowed = "move";
                 }}
-                onDragOver={(e: DragEvent<HTMLFieldSetElement>) => {
+                onDragOver={(e) => {
                   if (dragPostIndex === null || dragPostIndex === pi) return;
                   e.preventDefault();
                   e.dataTransfer.dropEffect = "move";
                 }}
-                onDrop={(e: DragEvent<HTMLFieldSetElement>) => {
+                onDrop={(e) => {
                   e.preventDefault();
                   if (dragPostIndex === null || dragPostIndex === pi) return;
                   handleFieldEdit(
@@ -623,69 +967,18 @@ export function CharacterExamplesPanel({
                   setDragPostIndex(null);
                 }}
                 onDragEnd={() => setDragPostIndex(null)}
-                className={`group flex min-w-0 items-start gap-2 rounded-sm border p-2.5 transition-opacity ${
-                  isDuplicate
-                    ? "border-warning/50 bg-warning/5"
-                    : "border-border/35 bg-bg-muted/15"
-                } ${isDragging ? "opacity-40" : ""}`}
-              >
-                <span
-                  className="mt-2 text-muted opacity-60 cursor-grab active:cursor-grabbing select-none"
-                  aria-hidden="true"
-                  title={t("charactereditor.DragToReorder", {
-                    defaultValue: "Drag to reorder",
-                  })}
-                >
-                  <GripIconSvg />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                    <span className="text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-accent">
-                      {t("charactereditor.PostExample", {
-                        defaultValue: "Post",
-                      })}{" "}
-                      #{pi + 1}
-                    </span>
-                    {isDuplicate ? (
-                      <span className="rounded-sm bg-warning/15 px-1.5 py-0.5 text-[0.68rem] font-medium text-warning">
-                        {t("charactereditor.DuplicatePost", {
-                          defaultValue: "duplicate",
-                        })}
-                      </span>
-                    ) : null}
-                  </div>
-                  <Textarea
-                    value={post}
-                    rows={3}
-                    aria-label={`Post example ${pi + 1}`}
-                    onChange={(e) => {
-                      const updated = [...postExamples];
-                      updated[pi] = e.target.value;
-                      handleFieldEdit("postExamples", updated);
-                    }}
-                    className="min-h-[4.25rem] w-full resize-none rounded-sm border border-border/30 bg-bg/70 px-2 py-1.5 text-sm leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
-                  />
-                </div>
-                <div className="flex shrink-0 flex-col gap-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 shrink-0 rounded-sm border border-border/35 p-0 text-muted transition-colors hover:border-danger/45 hover:bg-danger/10 hover:text-danger"
-                    onClick={() => {
-                      const updated = [...postExamples];
-                      updated.splice(pi, 1);
-                      handleFieldEdit("postExamples", updated);
-                    }}
-                    aria-label={`${t("common.remove")} post ${pi + 1}`}
-                    title={t("charactereditor.RemovePost", {
-                      defaultValue: "Remove post",
-                    })}
-                  >
-                    <TrashIconSvg />
-                  </Button>
-                </div>
-              </fieldset>
+                onChange={(value) => {
+                  const updated = [...postExamples];
+                  updated[pi] = value;
+                  handleFieldEdit("postExamples", updated);
+                }}
+                onRemove={() => {
+                  const updated = [...postExamples];
+                  updated.splice(pi, 1);
+                  handleFieldEdit("postExamples", updated);
+                }}
+                t={t}
+              />
             );
           })}
           {postExamples.length === 0 && (
@@ -696,23 +989,16 @@ export function CharacterExamplesPanel({
             </div>
           )}
           <button
+            ref={addPostRef}
             type="button"
             className="mt-1 inline-flex h-9 self-start items-center gap-2 rounded-sm border border-accent/35 px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
-            onClick={() => {
-              const updated = [...postExamples, ""];
-              handleFieldEdit("postExamples", updated);
-            }}
-            title={t("charactereditor.AddPost", {
-              defaultValue: "Add Post",
-            })}
-            aria-label={t("charactereditor.AddPost", {
-              defaultValue: "Add Post",
-            })}
+            onClick={addPost}
+            title={addPostLabel}
+            aria-label={addPostLabel}
+            {...addPostAgentProps}
           >
             <PlusIconSvg />
-            {t("charactereditor.AddPost", {
-              defaultValue: "Add Post",
-            })}
+            {addPostLabel}
           </button>
         </div>
       </section>

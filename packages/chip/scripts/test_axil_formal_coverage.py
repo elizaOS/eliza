@@ -4,9 +4,9 @@
 from __future__ import annotations
 
 import json
-from copy import deepcopy
 import tempfile
 import unittest
+from copy import deepcopy
 from pathlib import Path
 from unittest import mock
 
@@ -68,8 +68,11 @@ class AxilFormalCoverageTests(unittest.TestCase):
             "full_soc_routing_claim_allowed",
             "unbounded_protocol_claim_allowed",
             "coherency_claim_allowed",
+            "qos_claim_allowed",
+            "production_fabric_claim_allowed",
         ):
             self.assertIs(payload.get(key), False)
+        self.assertEqual(payload.get("false_claim_flags"), gate.FALSE_CLAIM_FLAGS)
 
     def test_missing_interconnect_prove_task_blocks(self) -> None:
         manifest_payload = valid_manifest()

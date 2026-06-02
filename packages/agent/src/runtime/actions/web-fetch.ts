@@ -8,8 +8,10 @@
  * picks it up with no core change, so non-Anthropic models can answer
  * live-info questions inline instead of force-delegating to a coding agent.
  *
- * Always available (validate => true). The fetch itself is hardened by the
- * shared SSRF-guarded, https-only, GET-only helper.
+ * Enabled by default; `validate` honors the same `ELIZA_WEB_FETCH=0|false|off`
+ * capability gate as registration, so a disabled capability never runs. The
+ * fetch itself is hardened by the shared SSRF-guarded, https-only, GET-only
+ * helper.
  *
  * @module runtime/actions/web-fetch
  */
@@ -28,6 +30,18 @@ import { performGuardedHttpGet } from "../custom-actions.ts";
 
 /** Max characters of fetched text we return when no extract path matches. */
 const WEB_FETCH_SNIPPET_CHARS = 4_000;
+
+/**
+ * Capability gate: WEB_FETCH is enabled by default and opted out with
+ * `ELIZA_WEB_FETCH=0|false|off`, mirroring the registration-time check in
+ * `eliza.ts` and the `ELIZA_WEB_SEARCH` convention in `web-search-tools.ts`.
+ * Checked at `validate` time (not just registration) so a disabled capability
+ * never runs even when the action is registered by another path.
+ */
+export function isWebFetchEnabled(): boolean {
+  const raw = process.env.ELIZA_WEB_FETCH?.toLowerCase();
+  return !(raw === "0" || raw === "false" || raw === "off");
+}
 
 interface WebFetchParams {
   url?: string;
@@ -109,7 +123,7 @@ export const webFetch: Action & Record<string, unknown> = {
     },
   ],
 
-  validate: async (): Promise<boolean> => true,
+  validate: async (): Promise<boolean> => isWebFetchEnabled(),
 
   handler: async (
     _runtime: IAgentRuntime,

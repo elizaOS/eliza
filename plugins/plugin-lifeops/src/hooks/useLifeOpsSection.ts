@@ -25,7 +25,7 @@ interface ReadHashShape {
 function readFromHash(initial?: string | null): ReadHashShape {
   const fallbackSection: LifeOpsSection = isLifeOpsSection(initial)
     ? initial
-    : "overview";
+    : "assistant";
   if (typeof window === "undefined") {
     return { section: fallbackSection, eventId: null, messageId: null };
   }

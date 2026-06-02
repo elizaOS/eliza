@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 import random
 
-from elizaos_trust_bench.corpus import TEST_CORPUS
+from elizaos_trust_bench.corpus import TEST_CORPUS, expand_corpus
 from elizaos_trust_bench.types import TrustTestCase
 
 
@@ -25,7 +25,9 @@ from elizaos_trust_bench.types import TrustTestCase
 # Lookup helpers
 # ---------------------------------------------------------------------------
 
-_CORPUS_BY_INPUT: dict[str, TrustTestCase] = {tc.input: tc for tc in TEST_CORPUS}
+_CORPUS_BY_INPUT: dict[str, TrustTestCase] = {
+    tc.input: tc for tc in expand_corpus(TEST_CORPUS)
+}
 
 
 def _ground_truth(text: str) -> dict[str, bool | float]:

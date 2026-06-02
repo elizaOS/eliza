@@ -35,12 +35,12 @@ def _pass_hat_k_for_task(num_successes: int, num_trials: int, k: int) -> float:
 def calculate_pass_hat_k(results: Iterable[TaskRunResult], k: int) -> tuple[float, int]:
     """Return (pass^k, num_tasks).
 
-    Results are grouped by (domain, task_id); each task contributes one
+    Results are grouped by (domain, task_id, scenario_id); each scenario contributes one
     pass^k score and the mean is returned.
     """
-    grouped: dict[tuple[str, int], list[TaskRunResult]] = {}
+    grouped: dict[tuple[str, int, str], list[TaskRunResult]] = {}
     for r in results:
-        grouped.setdefault((r.domain, r.task_id), []).append(r)
+        grouped.setdefault((r.domain, r.task_id, r.scenario_id), []).append(r)
 
     if not grouped:
         return 0.0, 0

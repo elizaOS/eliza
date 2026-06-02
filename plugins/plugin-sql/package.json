@@ -9,6 +9,11 @@
     "./package.json": "./package.json",
     ".": {
       "types": "./src/dist/index.node.d.ts",
+      "eliza-source": {
+        "types": "./src/index.node.ts",
+        "import": "./src/index.node.ts",
+        "default": "./src/index.node.ts"
+      },
       "bun": {
         "types": "./src/dist/index.node.d.ts",
         "import": "./src/dist/node/index.node.js",

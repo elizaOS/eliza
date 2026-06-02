@@ -22,6 +22,10 @@ VIRTUAL_SMOKE_EVIDENCE = {
     "docs/evidence/android/qemu_riscv64_smoke.log",
     "docs/evidence/android/renode_e1_soc_smoke.log",
 }
+VIRTUAL_SMOKE_CLAIM_BOUNDARY = (
+    "eliza-evidence: "
+    "claim_boundary=virtual_device_smoke_only_not_boot_or_compatibility_evidence"
+)
 CTS_VTS_PLAN_EVIDENCE = "docs/evidence/android/eliza_ai_soc_cts_vts_plan.log"
 # A "pass" Android simulator boot must be backed by the structured launcher
 # runtime evidence (booted launcher as HOME + live local agent), not just a
@@ -146,6 +150,14 @@ def main() -> int:
                 "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
             }:
                 errors.append(f"AOSP virtual smoke spec for {path} has unsafe claim boundary")
+            evidence_path = ROOT / path
+            if evidence_path.is_file():
+                text = evidence_path.read_text(encoding="utf-8", errors="replace")
+                if VIRTUAL_SMOKE_CLAIM_BOUNDARY not in text:
+                    errors.append(
+                        f"AOSP virtual smoke evidence {path} missing "
+                        "virtual_device_smoke_only claim boundary"
+                    )
         if path == CTS_VTS_PLAN_EVIDENCE:
             forbidden_claims = spec.get("forbidden_claims", [])
             for claim in (
@@ -180,9 +192,7 @@ def main() -> int:
 
     if data.get("schema") != "eliza.android_sim_boot.v1":
         errors.append("android sim report schema mismatch")
-    if data.get("aosp_dir_source") is not None and not isinstance(
-        data.get("aosp_dir_source"), str
-    ):
+    if data.get("aosp_dir_source") is not None and not isinstance(data.get("aosp_dir_source"), str):
         errors.append("android sim report aosp_dir_source must be string when present")
     status = data.get("status")
     if status not in VALID_STATUSES:

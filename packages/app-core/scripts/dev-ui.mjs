@@ -216,9 +216,9 @@ const devLogLevel =
     .toLowerCase() || "info";
 const quietApiLogs = process.env.ELIZA_DEV_QUIET_LOGS === "1";
 const verboseApiLogs = process.env.ELIZA_DEV_VERBOSE_LOGS !== "0";
-// Keep `bun --watch` opt-in for the API server. Concurrent package builds,
+// Keep `node --watch` opt-in for the API server. Concurrent package builds,
 // native plugin builds, and staged plugin copies rewrite workspace `dist/`
-// files; Bun follows imports into those files and can hot-reload while the
+// files; Node follows imports into those files and can hot-reload while the
 // runtime is still bootstrapping, leaving PGlite locked by the previous
 // process. The supervisor still restarts the API on explicit restart exits.
 const skipBunWatch = process.env.ELIZA_DEV_NO_WATCH !== "0";
@@ -641,7 +641,7 @@ function createStartupFilter(dest) {
 }
 
 // ---------------------------------------------------------------------------
-// Concurrent build detection — bun --watch follows imports into workspace
+// Concurrent build detection — node --watch follows imports into workspace
 // `dist/` files. If a build is rewriting those files (worse: its `clean` step
 // deletes `dist/` out from under the running server), --watch hot-reloads on
 // every write and prevents the agent from finishing initialization. We detect
@@ -716,7 +716,14 @@ function detectConcurrentBuilds(scanRoots = []) {
     /\bturbo\s+run\s+build\b/i,
     /\bbun\s+run\s+build\b/i,
     /\btsup\b.*\bbuild\b/i,
-    /\btsc\b.*\b(--noEmit|tsconfig\.build)\b/i,
+    // No \b before --noEmit / tsconfig.build: a hyphen and a dot are non-word
+    // chars, so \b never matches at that boundary — the prior
+    // /\btsc\b.*\b(--noEmit|tsconfig\.build)\b/i was dead code that matched
+    // neither `tsc --noEmit` nor `vite build`, the exact commands that drive
+    // the node --watch hot-reload loop. Match them loosely instead.
+    /\btsc\b.*--noEmit/i,
+    /\btsc\b.*tsconfig\.build/i,
+    /\bvite\b.*\bbuild\b/i,
   ];
   for (const line of psOut.split("\n")) {
     const trimmed = line.trim();
@@ -822,7 +829,7 @@ function isPortListening(port) {
 // ---------------------------------------------------------------------------
 // Wait for the agent runtime to be ready (not just the TCP port).
 // Polls GET /api/health and resolves when { ready: true }.
-// Handles bun --watch restarts gracefully (connection resets → retry).
+// Handles node --watch restarts gracefully (connection resets → retry).
 // ---------------------------------------------------------------------------
 
 async function waitForAgentReady(
@@ -959,6 +966,12 @@ let viteRestartCount = 0;
 let viteRestartTimer = null;
 let viteHealthTimer = null;
 let viteStartedAt = 0;
+
+// Vite cold-start of the full raw-source module graph can exceed 60s on slow
+// shared CI runners (2-4 cores). Allow CI to widen the health-check kill window
+// via env; dev machines keep the 60s default.
+const VITE_READY_BUDGET_MS =
+  Number(process.env.ELIZA_DEV_VITE_READY_BUDGET_MS) || 60_000;
 
 function terminateChild(proc, signal = "SIGTERM") {
   if (!proc) return;
@@ -1141,7 +1154,7 @@ function scheduleViteHealthCheck(delayMs = 15_000) {
     const listening = await isPortListening(UI_PORT);
     if (!listening) {
       const ageMs = Date.now() - viteStartedAt;
-      if (ageMs > 60_000) {
+      if (ageMs > VITE_READY_BUDGET_MS) {
         console.log(
           `  ${green(logPrefix)} ${dim(
             `Vite process is running but port ${UI_PORT} is not accepting connections — restarting UI.`,
@@ -1255,19 +1268,35 @@ if (uiOnly) {
   // Node (not Bun) for node: built-ins, so this persists compiled module
   // bytecode across boots and --watch restarts, trimming plugin-import cost.
   // Node 22.8+ honors it; older node and Bun ignore the var (safe no-op).
-  // Co-located with tsx's transpile cache in tmpdir so both share a lifecycle.
+  // Pinned under the state dir (not os.tmpdir()) so an OS temp reap doesn't
+  // wipe the warm ~100MB cache and force a multi-second cold recompile on the
+  // next boot. Content-hash-keyed, so a stale entry self-invalidates.
   const apiCompileCacheDir =
     childEnv.NODE_COMPILE_CACHE?.trim() ||
-    path.join(os.tmpdir(), "eliza-node-compile-cache");
+    path.join(
+      process.env.ELIZA_STATE_DIR?.trim() ||
+        process.env.MILADY_STATE_DIR?.trim() ||
+        path.join(os.homedir(), ".local", "state", cliName),
+      "cache",
+      "node-compile",
+    );
   const apiSpawnEnv = extendNodePathEnv(
     {
       ...childEnv,
       NODE_ENV: "development",
       NODE_COMPILE_CACHE: apiCompileCacheDir,
-      NODE_OPTIONS: appendNodeOption(
-        childEnv.NODE_OPTIONS,
+      NODE_OPTIONS: [
         "--disable-warning=ExperimentalWarning",
-      ),
+        // Bound the dev API child's V8 old-space so a runaway JS module/state
+        // graph fails fast (the api-supervisor restarts it) instead of slowly
+        // swap-dying. Healthy boots sit ~230-440MB; only a stuck/looping child
+        // exceeds this. Most of a stuck child's RSS is native/WASM (PGlite,
+        // llama) living OUTSIDE old-space, so this is a backstop, not the
+        // primary bound. Override with MILADY_DEV_API_MAX_OLD_SPACE_MB.
+        `--max-old-space-size=${process.env.MILADY_DEV_API_MAX_OLD_SPACE_MB?.trim() || "4096"}`,
+        // Let the dev heap-report timer force a GC for an accurate heapUsed.
+        "--expose-gc",
+      ].reduce(appendNodeOption, childEnv.NODE_OPTIONS),
       ELIZA_NAMESPACE: cliName,
       ELIZA_API_PORT: String(API_PORT),
       ELIZA_UI_PORT: String(UI_PORT),

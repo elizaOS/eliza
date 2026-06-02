@@ -123,7 +123,10 @@ class AntennaMetadataBlockedStateTests(unittest.TestCase):
             )
             self.assertTrue(payload["summary"]["source_report_missing_e1_chip_top"])
             self.assertEqual(payload["summary"]["missing_e1_chip_top_report_count"], 1)
-            self.assertIn("Regenerate the OpenLane antenna metadata report", payload["findings"][0]["next_step"])
+            self.assertIn(
+                "Regenerate the OpenLane antenna metadata report",
+                payload["findings"][0]["next_step"],
+            )
 
     def test_latest_report_accepts_any_openlane_step_number_and_derived_reports(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -143,6 +146,25 @@ class AntennaMetadataBlockedStateTests(unittest.TestCase):
                 os.utime(older_report, (1, 1))
                 os.utime(newer_report, (2, 2))
                 self.assertEqual(gate.latest_report(), newer_report)
+
+    def test_latest_report_ignores_newer_reports_for_other_designs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            target = root / "runs" / "target" / "61-odb-checkdesignantennaproperties"
+            unrelated = root / "runs" / "unrelated" / "62-odb-checkdesignantennaproperties"
+            target.mkdir(parents=True)
+            unrelated.mkdir(parents=True)
+            target_report = target / "report.yaml"
+            unrelated_report = unrelated / "report.yaml"
+            target_report.write_text("- cell: e1_chip_top\n", encoding="utf-8")
+            unrelated_report.write_text("- cell: e1x3d_router7\n", encoding="utf-8")
+            with (
+                patch.object(gate, "RUNS", root / "runs"),
+                patch.object(gate, "DERIVED_RUNS", root / "derived-runs"),
+            ):
+                os.utime(target_report, (1, 1))
+                os.utime(unrelated_report, (2, 2))
+                self.assertEqual(gate.latest_report(), target_report)
 
     def test_missing_pin_report_records_actionable_buckets(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

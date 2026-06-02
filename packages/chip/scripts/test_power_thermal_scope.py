@@ -75,7 +75,41 @@ def test_structured_findings_cover_blocked_real_evidence() -> None:
         raise AssertionError(
             f"power/thermal findings must include missing real evidence: {findings}"
         )
+    if not all(item.get("next_command") and item.get("next_commands") for item in findings):
+        raise AssertionError(f"power/thermal findings must be actionable: {findings}")
     print("PASS structured power/thermal findings cover blocked real evidence")
+
+
+def test_power_thermal_command_plan_is_checked() -> None:
+    report = check_power_thermal_scope.build_report()
+    plans = report.get("next_command_plan", [])
+    if len(plans) != 1:
+        raise AssertionError(f"expected one power/thermal command plan: {plans!r}")
+    plan = plans[0]
+    if (
+        plan.get("claim_boundary")
+        != check_power_thermal_scope.POWER_THERMAL_COMMAND_PLAN_CLAIM_BOUNDARY
+    ):
+        raise AssertionError(f"power/thermal claim boundary drifted: {plan!r}")
+    command_text = "\n".join(str(item) for item in plan.get("commands", []))
+    for token in (
+        "ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND",
+        check_power_thermal_scope.MEASURED_SUSTAINED_MANIFEST,
+        "check_sustained_run_evidence.py",
+        "check_power_thermal_scope.py",
+    ):
+        if token not in command_text:
+            raise AssertionError(f"power/thermal command plan missing {token!r}: {plan!r}")
+    commands = report.get("next_capture_commands", {})
+    if (
+        commands.get("sustained_power_thermal_manifest")
+        != check_power_thermal_scope.POWER_THERMAL_CAPTURE_COMMANDS[1]
+    ):
+        raise AssertionError(f"capture command drifted: {commands!r}")
+    mutated = copy.deepcopy(report)
+    mutated["next_command_plan"][0]["commands"] = ["python3 scripts/check_power_thermal_scope.py"]
+    expect_error(mutated, "ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND")
+    print("PASS power/thermal command plan checked")
 
 
 def test_failed_structural_check_fails() -> None:
@@ -100,6 +134,7 @@ def main() -> None:
     test_release_claim_flip_fails()
     test_blocker_removal_fails()
     test_structured_findings_cover_blocked_real_evidence()
+    test_power_thermal_command_plan_is_checked()
     test_failed_structural_check_fails()
     test_scaffold_removal_fails()
 

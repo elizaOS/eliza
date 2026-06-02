@@ -520,10 +520,8 @@ def run_cpu_ap_transcript_bundle_check() -> dict[str, Any]:
         CPU_AP_ISA_CACHE_MMU_REPORT, CPU_AP_ISA_CACHE_MMU_LEGACY_REPORT
     )
     ap_benchmark_report = load_json(CPU_AP_BENCHMARK_REPORT)
-    accepted_requirements, accepted_requirement_blockers = (
-        minimum_cpu_ap_evidence_requirements(
-            transcript_states, isa_cache_mmu_report, ap_benchmark_report
-        )
+    accepted_requirements, accepted_requirement_blockers = minimum_cpu_ap_evidence_requirements(
+        transcript_states, isa_cache_mmu_report, ap_benchmark_report
     )
     companion_reports = {
         "opensbi_boot": {
@@ -608,9 +606,7 @@ def run_cpu_ap_transcript_bundle_check() -> dict[str, Any]:
                 'eval "$(python3 scripts/wire_cpu_ap_capture_commands.py --format shell)" '
                 "&& scripts/capture_chipyard_linux_evidence.sh linux-boot"
             ),
-            "linux_docs_sync": (
-                "python3 scripts/capture_cpu_ap_evidence.py sync-linux-docs"
-            ),
+            "linux_docs_sync": ("python3 scripts/capture_cpu_ap_evidence.py sync-linux-docs"),
             "remaining_after_linux_boot": (
                 'eval "$(python3 scripts/wire_cpu_ap_capture_commands.py --format shell)" '
                 "&& scripts/capture_chipyard_linux_evidence.sh remaining-after-linux-boot"
@@ -874,7 +870,9 @@ def generated_ap_linux_boot_gate(
         marker for marker in GENERATED_AP_FORBIDDEN_NPU_MARKERS if marker in attempt_text
     ]
     accepted_evidence_present = ACCEPTED_LINUX_BOOT_EVIDENCE.is_file()
-    accepted_evidence_current = accepted_evidence_present and accepted_transcript_state == "accepted"
+    accepted_evidence_current = (
+        accepted_evidence_present and accepted_transcript_state == "accepted"
+    )
     generated_ap_linux_boot_passed = (
         accepted_evidence_current
         and not accepted_missing_userland_npu_markers
@@ -1005,7 +1003,8 @@ def remaining_blocker_records(blockers: list[dict[str, Any]]) -> list[dict[str, 
         if gate.get("blocker"):
             record["blocker"] = gate["blocker"]
         if name == "minimum_linux_kernel_target":
-            report = gate.get("report") if isinstance(gate.get("report"), dict) else {}
+            _raw_report = gate.get("report")
+            report: dict[str, Any] = _raw_report if isinstance(_raw_report, dict) else {}
             record["upstream_blockers"] = report.get("blockers", [])
             record["report"] = "build/reports/minimum-linux-kernel-target.json"
         elif name == "cpu_ap_transcript_bundle":
@@ -1017,9 +1016,7 @@ def remaining_blocker_records(blockers: list[dict[str, Any]]) -> list[dict[str, 
             record["accepted_minimum_evidence_blockers"] = gate.get(
                 "accepted_minimum_evidence_blockers", {}
             )
-            record["minimum_required_transcripts"] = gate.get(
-                "minimum_required_transcripts", {}
-            )
+            record["minimum_required_transcripts"] = gate.get("minimum_required_transcripts", {})
             record["minimum_missing_transcript_states"] = gate.get(
                 "minimum_missing_transcript_states", {}
             )
@@ -1082,12 +1079,8 @@ def remaining_blocker_records(blockers: list[dict[str, Any]]) -> list[dict[str, 
                         gate.get("observed_source") == "diagnostic_attempt_log"
                     ),
                     "readiness_state": gate.get("readiness_state", ""),
-                    "accepted_transcript_present": gate.get(
-                        "accepted_transcript_present", False
-                    ),
-                    "accepted_transcript_state": gate.get(
-                        "accepted_transcript_state", ""
-                    ),
+                    "accepted_transcript_present": gate.get("accepted_transcript_present", False),
+                    "accepted_transcript_state": gate.get("accepted_transcript_state", ""),
                     "accepted_userland_npu_markers_complete": gate.get(
                         "accepted_userland_npu_markers_complete", False
                     ),
@@ -1142,7 +1135,8 @@ def build_report() -> dict[str, Any]:
         boot_report,
         str(
             (cpu_ap_transcript_bundle.get("accepted_transcript_states") or {}).get(
-                "linux_boot", "missing" if not ACCEPTED_LINUX_BOOT_EVIDENCE.is_file() else "accepted"
+                "linux_boot",
+                "missing" if not ACCEPTED_LINUX_BOOT_EVIDENCE.is_file() else "accepted",
             )
         ),
     )
@@ -1267,9 +1261,7 @@ def build_report() -> dict[str, Any]:
             "accepted_transcript_present": generated_boot_gate.get(
                 "accepted_transcript_present", False
             ),
-            "accepted_transcript_state": generated_boot_gate.get(
-                "accepted_transcript_state", ""
-            ),
+            "accepted_transcript_state": generated_boot_gate.get("accepted_transcript_state", ""),
             "accepted_userland_npu_markers_complete": generated_boot_gate.get(
                 "accepted_userland_npu_markers_complete", False
             ),

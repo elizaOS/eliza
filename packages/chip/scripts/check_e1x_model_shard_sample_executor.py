@@ -10,7 +10,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_model_shard_sample_executor.json"
 
-SHARD_SAMPLE = ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_model_shard_sample.json"
+SHARD_SAMPLE = (
+    ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_model_shard_sample.json"
+)
 PROOF = ROOT / "benchmarks/results/e1x-real-graph-w4a8-microkernel-proof.json"
 MODEL_LOAD_STREAM = ROOT / "build/reports/e1x_model_load_stream.json"
 VECTOR_WINDOW = ROOT / "build/reports/e1x_vector_kernel_window_executor.json"
@@ -96,7 +98,9 @@ def main() -> int:
         "model-shard sample executor inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_model_shard_sample_executor_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_model_shard_sample_executor_inputs_present", "status": status, "detail": detail}
+    )
 
     shard = load_json(SHARD_SAMPLE) if SHARD_SAMPLE.is_file() else {}
     proof = load_json(PROOF) if PROOF.is_file() else {}
@@ -119,7 +123,13 @@ def main() -> int:
         "model shard sample, proof activations, full deterministic window, and loader RTL cocotb are linked and PASS",
         "dependency report missing, stale, or failing",
     )
-    checks.append({"id": "e1x_model_shard_sample_executor_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_model_shard_sample_executor_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     words = [
         {"word_addr": int(entry["word_addr"]), "word": int(entry["word"])}
@@ -128,7 +138,11 @@ def main() -> int:
     ]
     shard_word_count = int(shard.get("weight_shard_word_count", 0))
     contiguous_shard = [entry for entry in words if int(entry["word_addr"]) < shard_word_count]
-    sentinel = [entry for entry in words if int(entry["word_addr"]) == int(shard.get("capacity_words", 0)) - 1]
+    sentinel = [
+        entry
+        for entry in words
+        if int(entry["word_addr"]) == int(shard.get("capacity_words", 0)) - 1
+    ]
     checksum = loader_checksum(words)
     payload_ok = (
         shard_word_count == 9_281
@@ -136,7 +150,8 @@ def main() -> int:
         and len(contiguous_shard) == shard_word_count
         and [int(entry["word_addr"]) for entry in contiguous_shard] == list(range(shard_word_count))
         and len(sentinel) == 1
-        and int(shard.get("expected_loaded_bytes", 0)) == len(words) * int(shard.get("word_bytes", 0))
+        and int(shard.get("expected_loaded_bytes", 0))
+        == len(words) * int(shard.get("word_bytes", 0))
         and checksum == int(shard.get("expected_checksum", -1))
         and all(0 <= int(entry["word"]) <= 0xFFFF_FFFF for entry in words)
     )
@@ -145,17 +160,27 @@ def main() -> int:
         f"model-shard sample payload has {len(contiguous_shard)} contiguous shard words plus one sentinel and checksum {checksum}",
         "model-shard sample payload/checksum mismatch",
     )
-    checks.append({"id": "e1x_model_shard_sample_executor_payload_integrity", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_model_shard_sample_executor_payload_integrity",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     records = proof.get("records", [])
     first_record = records[0] if isinstance(records, list) and records else {}
     activations = [int(value) for value in first_record.get("activation_s8", [])]
-    result = execute_sample_words(words, activations) if words and activations else {
-        "accumulator": 0,
-        "requantized_s8": 0,
-        "lane_mac_count": 0,
-        "trace_checksum": 0,
-    }
+    result = (
+        execute_sample_words(words, activations)
+        if words and activations
+        else {
+            "accumulator": 0,
+            "requantized_s8": 0,
+            "lane_mac_count": 0,
+            "trace_checksum": 0,
+        }
+    )
     execution_ok = (
         len(activations) == 32
         and int(result["lane_mac_count"]) == len(words) * 8
@@ -167,9 +192,17 @@ def main() -> int:
         f"executed {len(words)} actual loaded shard-sample W4 words through W4A8 vector semantics",
         "model-shard sample vector execution mismatch",
     )
-    checks.append({"id": "e1x_model_shard_sample_executor_runs_loaded_words", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_model_shard_sample_executor_runs_loaded_words",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
-    total_loader_words = int(model_load.get("summary", {}).get("stream_loader_word_transactions", 0))
+    total_loader_words = int(
+        model_load.get("summary", {}).get("stream_loader_word_transactions", 0)
+    )
     coverage_ok = (
         total_loader_words == 1_627_034_880
         and 0.0 < len(words) / total_loader_words < 0.00001
@@ -181,13 +214,22 @@ def main() -> int:
         "sample execution is tied to loaded payload format while preserving the missing full payload executor boundary",
         "model-shard sample coverage boundary mismatch",
     )
-    checks.append({"id": "e1x_model_shard_sample_executor_preserves_full_payload_blocker", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_model_shard_sample_executor_preserves_full_payload_blocker",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     sampled_records = [
-        {"word_addr": int(entry["word_addr"]), "word": int(entry["word"])}
-        for entry in words[:8]
-    ] + ([{"word_addr": int(sentinel[0]["word_addr"]), "word": int(sentinel[0]["word"])}] if sentinel else [])
+        {"word_addr": int(entry["word_addr"]), "word": int(entry["word"])} for entry in words[:8]
+    ] + (
+        [{"word_addr": int(sentinel[0]["word_addr"]), "word": int(sentinel[0]["word"])}]
+        if sentinel
+        else []
+    )
     summary = {
         "check_count": len(checks),
         "failing_check_count": len(failures),
@@ -199,7 +241,9 @@ def main() -> int:
         "recomputed_loader_checksum": checksum,
         "sampled_loaded_bytes": int(shard.get("expected_loaded_bytes", 0)),
         "total_loader_word_transactions": total_loader_words,
-        "sample_word_coverage_fraction": len(words) / total_loader_words if total_loader_words else 0.0,
+        "sample_word_coverage_fraction": len(words) / total_loader_words
+        if total_loader_words
+        else 0.0,
         "activation_source_layer_index": int(first_record.get("layer_index", -1)),
         "activation_value_count": len(activations),
         "executed_lane_mac_count": int(result["lane_mac_count"]),
@@ -238,7 +282,10 @@ def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:
-        print("BLOCKED: E1X model-shard sample executor failed: " + ", ".join(c["id"] for c in failures))
+        print(
+            "BLOCKED: E1X model-shard sample executor failed: "
+            + ", ".join(c["id"] for c in failures)
+        )
         return 1
     print(f"PASS: E1X model-shard sample executor; report {REPORT.relative_to(ROOT)}")
     return 0

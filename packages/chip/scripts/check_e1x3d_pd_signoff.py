@@ -207,7 +207,11 @@ def build_summary(
 ) -> dict[str, object]:
     def metric_value(key: str) -> float | None:
         value = metrics.get(key)
-        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+        return (
+            float(value)
+            if isinstance(value, (int, float)) and not isinstance(value, bool)
+            else None
+        )
 
     summary: dict[str, object] = {
         "design_name": run_design_name(run_dir) if run_dir else None,
@@ -261,7 +265,7 @@ def main() -> int:
             }
         ]
         status = "BLOCKED"
-        summary = {
+        summary: dict[str, object] = {
             "design_name": PRIMARY_DESIGN,
             "accepted_design_names": sorted(DESIGN_NAMES),
             "selected_run": None,
@@ -344,7 +348,9 @@ def main() -> int:
     emit(status, checks, summary, run_dir=run_dir)
 
     if failures:
-        print("BLOCKED: E1X3D logic-tier PD signoff failed: " + ", ".join(c["id"] for c in failures))
+        print(
+            "BLOCKED: E1X3D logic-tier PD signoff failed: " + ", ".join(c["id"] for c in failures)
+        )
         for check in failures:
             print(f"  - {check['id']}: {check['detail']}")
         return 2

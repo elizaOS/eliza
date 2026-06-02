@@ -29,7 +29,7 @@ from elizaos_adhdbench.baselines import (
     compute_random_baseline,
 )
 from elizaos_adhdbench.config import ADHDBenchConfig
-from elizaos_adhdbench.scenarios import get_scenarios
+from elizaos_adhdbench.scenarios import count_scenarios, get_scenarios, validate_scenarios
 from elizaos_adhdbench.types import ScalePoint
 
 
@@ -63,6 +63,9 @@ def parse_args() -> argparse.Namespace:
     run_parser.add_argument("--levels", nargs="+", type=int, default=[0, 1, 2], help="Levels to run (0, 1, 2)")
     run_parser.add_argument("--tags", nargs="+", default=[], help="Filter by scenario tags")
     run_parser.add_argument("--ids", nargs="+", default=[], help="Filter by scenario IDs")
+    run_parser.add_argument("--expand-scenarios", action="store_true", help="Include generated edge scenarios")
+    run_parser.add_argument("--count-scenarios", action="store_true", help="Print authored, added, and total scenario counts")
+    run_parser.add_argument("--validate-scenarios", action="store_true", help="Validate expanded scenario corpus")
     run_parser.add_argument("--output", default="./adhdbench_results", help="Output directory")
     run_parser.add_argument("--quick", action="store_true", help="Quick mode: L0 only, 2 scale points, basic only")
     run_parser.add_argument("--full", action="store_true", help="Full mode: all levels, all scales, both configs")
@@ -78,6 +81,9 @@ def parse_args() -> argparse.Namespace:
     list_parser = sub.add_parser("list", help="List all scenarios")
     list_parser.add_argument("--levels", nargs="+", type=int, default=[0, 1, 2])
     list_parser.add_argument("--tags", nargs="+", default=[])
+    list_parser.add_argument("--expand-scenarios", action="store_true", help="Include generated edge scenarios")
+    list_parser.add_argument("--count-scenarios", action="store_true", help="Print authored, added, and total scenario counts")
+    list_parser.add_argument("--validate-scenarios", action="store_true", help="Validate expanded scenario corpus")
 
     return parser.parse_args()
 
@@ -116,6 +122,13 @@ def cmd_run(args: argparse.Namespace) -> None:
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     )
 
+    if args.count_scenarios:
+        print(count_scenarios())
+        return
+    if args.validate_scenarios:
+        print(validate_scenarios())
+        return
+
     if args.provider is None:
         raise SystemExit(
             "ERROR: --provider is required. Choices: mock-passthrough (smoke "
@@ -135,6 +148,7 @@ def cmd_run(args: argparse.Namespace) -> None:
             levels=(0,),
             tags=tuple(args.tags),
             scenario_ids=tuple(args.ids),
+            include_edge_scenarios=args.expand_scenarios,
             model_name=args.model,
             model_provider=args.provider,
             output_dir=args.output,
@@ -147,6 +161,7 @@ def cmd_run(args: argparse.Namespace) -> None:
             levels=tuple(args.levels),
             tags=tuple(args.tags),
             scenario_ids=tuple(args.ids),
+            include_edge_scenarios=args.expand_scenarios,
         )
     else:
         config = ADHDBenchConfig(
@@ -156,6 +171,7 @@ def cmd_run(args: argparse.Namespace) -> None:
             levels=tuple(args.levels),
             tags=tuple(args.tags),
             scenario_ids=tuple(args.ids),
+            include_edge_scenarios=args.expand_scenarios,
             run_basic=not args.full_only,
             run_full=not args.basic_only,
         )
@@ -225,9 +241,15 @@ def cmd_baselines(args: argparse.Namespace) -> None:
 
 def cmd_list(args: argparse.Namespace) -> None:
     """List all scenarios matching filters."""
+    if args.count_scenarios:
+        print(count_scenarios())
+        return
+    if args.validate_scenarios:
+        print(validate_scenarios())
+        return
     levels = tuple(args.levels)
     tags = tuple(args.tags)
-    scenarios = get_scenarios(levels=levels, tags=tags)
+    scenarios = get_scenarios(levels=levels, tags=tags, include_edge_scenarios=args.expand_scenarios)
 
     print(f"{'ID':<10} {'Level':<10} {'Name':<40} {'Tags'}")
     print("-" * 100)

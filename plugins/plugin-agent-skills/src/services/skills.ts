@@ -745,7 +745,7 @@ export class AgentSkillsService extends Service {
 			const slugs = await this.workspaceStorage.listSkills();
 			for (const slug of slugs) {
 				const existing = this.loadedSkills.get(slug);
-				if (!existing || existing.source !== "workspace") {
+				if (existing?.source !== "workspace") {
 					// New skill or overriding from different source
 					await this.loadSkill(slug, { validate: true });
 				}

@@ -5,6 +5,14 @@ export const JOB_TYPES = {
   AGENT_RESUME: "agent_resume",
   AGENT_RESTART: "agent_restart",
   AGENT_LOGS: "agent_logs",
+  /**
+   * Patron chat turn: forward a `message.send` to a running agent's bridge
+   * from the daemon (which, unlike the CF edge worker, can reach the
+   * container's raw bridge port). Used by the synchronous patron chat proxy
+   * at /api/v1/agents/:id/message: the route enqueues this job, triggers the
+   * daemon immediately, then polls the job row for the reply.
+   */
+  AGENT_MESSAGE: "agent_message",
   AGENT_SNAPSHOT: "agent_snapshot",
   /**
    * Fleet-upgrade: blue/green swap an agent onto the currently-deployed

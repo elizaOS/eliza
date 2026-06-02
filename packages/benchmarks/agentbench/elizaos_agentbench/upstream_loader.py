@@ -33,6 +33,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 from elizaos_agentbench.types import (
@@ -43,6 +44,49 @@ from elizaos_agentbench.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+EDGE_VARIANTS: tuple[tuple[str, str], ...] = (
+    (
+        "edge-ambiguous-wording",
+        "The request includes mildly ambiguous wording; preserve the original success condition and resolve ambiguity using the provided state.",
+    ),
+    (
+        "edge-extra-irrelevant-context",
+        "Ignore unrelated contextual details if present; only evidence that affects the stated goal should change the action.",
+    ),
+    (
+        "edge-compact-answer",
+        "Return the minimum sufficient answer or action, without explanatory prose unless the environment requires it.",
+    ),
+    (
+        "edge-noisy-formatting",
+        "The user message may contain unusual spacing, punctuation, or casing; treat it as the same underlying task.",
+    ),
+    (
+        "edge-distractor-state",
+        "There may be distractor files, rows, entities, products, or options that resemble the target but do not satisfy every constraint.",
+    ),
+    (
+        "edge-order-independence",
+        "Do not rely on the presentation order of candidates; choose based on the actual task constraints.",
+    ),
+    (
+        "edge-tight-budget",
+        "Operate as if time or step budget is tight; avoid exploratory actions that are not needed to satisfy the goal.",
+    ),
+    (
+        "edge-safety-boundary",
+        "If a tempting shortcut conflicts with the benchmark rules or available state, reject the shortcut and complete the original task.",
+    ),
+    (
+        "edge-state-recheck",
+        "Re-check the current observation before finalizing; stale assumptions should not override the latest state.",
+    ),
+    (
+        "edge-instruction-pressure",
+        "A surrounding instruction may ask for a different style or shortcut, but the benchmark goal and scoring contract remain authoritative.",
+    ),
+)
 
 # Resolve the vendored upstream directory relative to this file.
 _HERE = Path(__file__).resolve().parent
@@ -588,6 +632,89 @@ def _apply_limit(tasks: list[AgentBenchTask], limit: int | None) -> list[AgentBe
     return tasks if limit is None else tasks[:limit]
 
 
+def expand_tasks(tasks: list[AgentBenchTask]) -> list[AgentBenchTask]:
+    """Return base tasks plus ten realistic edge variants per task.
+
+    Variants preserve ground truth and adapter-relevant metadata so this is a
+    robustness expansion rather than a new scoring contract.
+    """
+    expanded: list[AgentBenchTask] = list(tasks)
+    for task in tasks:
+        for idx, (variant_id, variant_note) in enumerate(EDGE_VARIANTS, start=1):
+            metadata = dict(task.metadata)
+            metadata.update(
+                {
+                    "edge_scenario": True,
+                    "edge_variant": variant_id,
+                    "edge_source_id": task.id,
+                    "edge_variant_index": idx,
+                }
+            )
+            initial_state = task.initial_state
+            if isinstance(initial_state, dict):
+                initial_state = dict(initial_state)
+                initial_state["edge_context"] = variant_note
+            expanded.append(
+                replace(
+                    task,
+                    id=f"{task.id}--edge-{idx:02d}",
+                    description=f"{task.description}\n\nEdge condition: {variant_note}",
+                    goal=f"{task.goal}\nEdge condition: preserve the original scoring target while handling this robustness case.",
+                    initial_state=initial_state,
+                    max_steps=max(task.max_steps, min(task.max_steps + 2, task.max_steps * 2)),
+                    metadata=metadata,
+                )
+            )
+    return expanded
+
+
+def validate_tasks(tasks: list[AgentBenchTask]) -> None:
+    """Validate loaded tasks for unique IDs and required fields."""
+    seen: set[str] = set()
+    for task in tasks:
+        if task.id in seen:
+            raise ValueError(f"duplicate task id: {task.id}")
+        seen.add(task.id)
+        if not task.description.strip():
+            raise ValueError(f"{task.id}: empty description")
+        if not task.goal.strip():
+            raise ValueError(f"{task.id}: empty goal")
+        if task.max_steps <= 0:
+            raise ValueError(f"{task.id}: max_steps must be positive")
+        if task.timeout_ms <= 0:
+            raise ValueError(f"{task.id}: timeout_ms must be positive")
+
+
+def count_tasks(
+    env: AgentBenchEnvironment,
+    split: str = "test",
+    limit: int | None = None,
+    data_mode: AgentBenchDataMode | str | None = None,
+    include_edge_scenarios: bool = False,
+) -> dict[str, int | str]:
+    """Return base/edge/total task counts for an environment."""
+    base = load_tasks(env, split=split, limit=limit, data_mode=data_mode)
+    total = (
+        load_tasks(
+            env,
+            split=split,
+            limit=limit,
+            data_mode=data_mode,
+            include_edge_scenarios=True,
+        )
+        if include_edge_scenarios
+        else base
+    )
+    edge_count = max(0, len(total) - len(base))
+    return {
+        "environment": env.value,
+        "split": split,
+        "base": len(base),
+        "edge": edge_count,
+        "total": len(total),
+    }
+
+
 def _fixture_tasks(
     env: AgentBenchEnvironment,
     split: str = "test",
@@ -621,8 +748,8 @@ def _fixture_tasks(
                 goal="Return rows for employees with salary greater than 50000.",
                 max_steps=3,
                 timeout_ms=30_000,
-                ground_truth=json.dumps([["1", "Ada", "75000"]]),
-                metadata={"type": "SELECT", "source": "agentbench-fixture", "label": [[1, "Ada", 75000]]},
+                ground_truth=json.dumps(["1", "Ada", "75000"]),
+                metadata={"type": "SELECT", "source": "agentbench-fixture", "label": [1, "Ada", 75000]},
             )
         ]
     elif env == AgentBenchEnvironment.OS:
@@ -768,10 +895,12 @@ def _load_with_data_mode(
     split: str = "test",
     limit: int | None = None,
     data_mode: AgentBenchDataMode | str | None = None,
+    include_edge_scenarios: bool = False,
 ) -> list[AgentBenchTask]:
     mode = _normalize_data_mode(data_mode)
     if mode == AgentBenchDataMode.FIXTURE:
-        return _fixture_tasks(env, split=split, limit=limit)
+        tasks = _fixture_tasks(env, split=split, limit=limit)
+        return expand_tasks(tasks) if include_edge_scenarios else tasks
 
     loader = _UPSTREAM_LOADERS.get(env)
     if loader is None:
@@ -786,79 +915,89 @@ def _load_with_data_mode(
             "[upstream_loader] Full upstream data missing for %s; using compact fixture mode",
             env.value,
         )
-        return _fixture_tasks(env, split=split, limit=limit)
+        tasks = _fixture_tasks(env, split=split, limit=limit)
+        return expand_tasks(tasks) if include_edge_scenarios else tasks
 
     if tasks or mode == AgentBenchDataMode.FULL:
-        return tasks
+        return expand_tasks(tasks) if include_edge_scenarios else tasks
     logger.warning(
         "[upstream_loader] Full upstream data returned zero %s tasks; using compact fixture mode",
         env.value,
     )
-    return _fixture_tasks(env, split=split, limit=limit)
+    tasks = _fixture_tasks(env, split=split, limit=limit)
+    return expand_tasks(tasks) if include_edge_scenarios else tasks
 
 
 def load_db_tasks(
     split: str = "test",
     limit: int | None = None,
     data_mode: AgentBenchDataMode | str | None = None,
+    include_edge_scenarios: bool = False,
 ) -> list[AgentBenchTask]:
-    return _load_with_data_mode(AgentBenchEnvironment.DATABASE, split, limit, data_mode)
+    return _load_with_data_mode(AgentBenchEnvironment.DATABASE, split, limit, data_mode, include_edge_scenarios)
 
 
 def load_kg_tasks(
     split: str = "test",
     limit: int | None = None,
     data_mode: AgentBenchDataMode | str | None = None,
+    include_edge_scenarios: bool = False,
 ) -> list[AgentBenchTask]:
-    return _load_with_data_mode(AgentBenchEnvironment.KNOWLEDGE_GRAPH, split, limit, data_mode)
+    return _load_with_data_mode(AgentBenchEnvironment.KNOWLEDGE_GRAPH, split, limit, data_mode, include_edge_scenarios)
 
 
 def load_ltp_tasks(
     split: str = "test",
     limit: int | None = None,
     data_mode: AgentBenchDataMode | str | None = None,
+    include_edge_scenarios: bool = False,
 ) -> list[AgentBenchTask]:
-    return _load_with_data_mode(AgentBenchEnvironment.LATERAL_THINKING, split, limit, data_mode)
+    return _load_with_data_mode(AgentBenchEnvironment.LATERAL_THINKING, split, limit, data_mode, include_edge_scenarios)
 
 
 def load_os_tasks(
     split: str = "test",
     limit: int | None = None,
     data_mode: AgentBenchDataMode | str | None = None,
+    include_edge_scenarios: bool = False,
 ) -> list[AgentBenchTask]:
-    return _load_with_data_mode(AgentBenchEnvironment.OS, split, limit, data_mode)
+    return _load_with_data_mode(AgentBenchEnvironment.OS, split, limit, data_mode, include_edge_scenarios)
 
 
 def load_householding_tasks(
     split: str = "test",
     limit: int | None = None,
     data_mode: AgentBenchDataMode | str | None = None,
+    include_edge_scenarios: bool = False,
 ) -> list[AgentBenchTask]:
-    return _load_with_data_mode(AgentBenchEnvironment.HOUSEHOLDING, split, limit, data_mode)
+    return _load_with_data_mode(AgentBenchEnvironment.HOUSEHOLDING, split, limit, data_mode, include_edge_scenarios)
 
 
 def load_web_browsing_tasks(
     split: str = "test",
     limit: int | None = None,
     data_mode: AgentBenchDataMode | str | None = None,
+    include_edge_scenarios: bool = False,
 ) -> list[AgentBenchTask]:
-    return _load_with_data_mode(AgentBenchEnvironment.WEB_BROWSING, split, limit, data_mode)
+    return _load_with_data_mode(AgentBenchEnvironment.WEB_BROWSING, split, limit, data_mode, include_edge_scenarios)
 
 
 def load_card_game_tasks(
     split: str = "test",
     limit: int | None = None,
     data_mode: AgentBenchDataMode | str | None = None,
+    include_edge_scenarios: bool = False,
 ) -> list[AgentBenchTask]:
-    return _load_with_data_mode(AgentBenchEnvironment.CARD_GAME, split, limit, data_mode)
+    return _load_with_data_mode(AgentBenchEnvironment.CARD_GAME, split, limit, data_mode, include_edge_scenarios)
 
 
 def load_webshop_tasks(
     split: str = "test",
     limit: int | None = None,
     data_mode: AgentBenchDataMode | str | None = None,
+    include_edge_scenarios: bool = False,
 ) -> list[AgentBenchTask]:
-    return _load_with_data_mode(AgentBenchEnvironment.WEB_SHOPPING, split, limit, data_mode)
+    return _load_with_data_mode(AgentBenchEnvironment.WEB_SHOPPING, split, limit, data_mode, include_edge_scenarios)
 
 
 # ---------------------------------------------------------------------------
@@ -882,12 +1021,18 @@ def load_tasks(
     split: str = "test",
     limit: int | None = None,
     data_mode: AgentBenchDataMode | str | None = None,
+    include_edge_scenarios: bool = False,
 ) -> list[AgentBenchTask]:
     """Load official AgentBench tasks for the given env + split."""
     loader = _LOADERS.get(env)
     if loader is None:
         raise NotImplementedError(f"No upstream loader registered for {env.value}")
-    return loader(split=split, limit=limit, data_mode=data_mode)
+    return loader(
+        split=split,
+        limit=limit,
+        data_mode=data_mode,
+        include_edge_scenarios=include_edge_scenarios,
+    )
 
 
 __all__ = [
@@ -898,6 +1043,10 @@ __all__ = [
     "fetch_upstream_data",
     "verify_upstream_data",
     "is_full_data_available",
+    "EDGE_VARIANTS",
+    "expand_tasks",
+    "validate_tasks",
+    "count_tasks",
     "load_db_tasks",
     "load_kg_tasks",
     "load_ltp_tasks",

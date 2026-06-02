@@ -58,8 +58,10 @@ vi.mock("@capacitor/keyboard", () => ({
 vi.mock("./bridge/electrobun-rpc", () => desktopBridgeMock);
 
 vi.mock("./platform/init", () => ({
+  isDesktopPlatform: () => false,
   isIOS: false,
   isNative: false,
+  isWebPlatform: () => true,
 }));
 
 vi.mock("./hooks/useDesktopTabs", () => ({
@@ -155,10 +157,6 @@ vi.mock("./components/shell/ShellControllerContext", () => ({
   }),
 }));
 
-vi.mock("./components/voice/VoiceWaveform", () => ({
-  VoiceWaveform: () => <div data-testid="voice-waveform" />,
-}));
-
 vi.mock("./components/views/DynamicViewLoader", () => ({
   DynamicViewLoader: dynamicViewLoaderMock.render,
 }));
@@ -195,6 +193,11 @@ vi.mock("./components/shell/ShellOverlays", () => ({
 
 vi.mock("./components/chat/SaveCommandModal", () => ({
   SaveCommandModal: () => null,
+}));
+
+vi.mock("./components/pages/ChatView", () => ({
+  ChatView: () => <div data-testid="chat-view" />,
+  __resetCompanionSpeechMemoryForTests: vi.fn(),
 }));
 
 vi.mock("./components/settings/SecretsManagerSection", () => ({

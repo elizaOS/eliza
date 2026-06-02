@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/pd_predictor_dataset"
 OPENLANE_RUNS = ROOT / "pd/openlane/runs"
 CLAIM_BOUNDARY = "predictor_dataset_advisory_only_not_signoff_or_release_evidence"
+FALSE_CLAIM_FLAGS = {"signoff_claim_allowed": False}
 
 ARTIFACT_CANDIDATES = (
     ("final_def", ("results/final/def/e1_soc.def", "final/def/e1_soc.def")),
@@ -114,6 +115,7 @@ def main() -> int:
         "status": "DRY_RUN_LABEL_CAPTURE",
         "claim_boundary": CLAIM_BOUNDARY,
         "signoff_claim_allowed": False,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "labels": {
             "timing": "not_extracted",
             "power": "not_extracted",

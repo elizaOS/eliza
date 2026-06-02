@@ -96,9 +96,7 @@ class E1XConfig:
 
     @property
     def fabric_bisection_gbps(self) -> float:
-        return (
-            self.logical_rows * self.link_bits_per_cycle_bidirectional * self.core_clock_hz / 1e9
-        )
+        return self.logical_rows * self.link_bits_per_cycle_bidirectional * self.core_clock_hz / 1e9
 
 
 @dataclass(frozen=True, order=True)
@@ -170,12 +168,23 @@ class QuantizedRunSpec:
 
 
 WORKLOADS = (
-    Workload("mesh_gemm_tile_stream", 4096 * 4096 * 4096, 4096 * 4096 * 3, 4096 * 4096 * 24, 5, 0.82),
+    Workload(
+        "mesh_gemm_tile_stream", 4096 * 4096 * 4096, 4096 * 4096 * 3, 4096 * 4096 * 24, 5, 0.82
+    ),
     Workload("stencil_halo_exchange", 1024 * 1024 * 96, 1024 * 1024 * 2, 1024 * 1024 * 18, 1, 0.91),
-    Workload("sparse_attention_wavelets", 16 * 2048 * 2048 * 128, 16 * 2048 * 128 * 3, 16 * 2048 * 2048 * 8, 8, 0.68),
+    Workload(
+        "sparse_attention_wavelets",
+        16 * 2048 * 2048 * 128,
+        16 * 2048 * 128 * 3,
+        16 * 2048 * 2048 * 8,
+        8,
+        0.68,
+    ),
 )
 
-SCALED_8GB_MODEL = QuantizedModelSpec("e1x_llm_13b_w4a8_static_graph", 13_000_000_000, 4, 512, 256, 96)
+SCALED_8GB_MODEL = QuantizedModelSpec(
+    "e1x_llm_13b_w4a8_static_graph", 13_000_000_000, 4, 512, 256, 96
+)
 SCALED_8GB_RUN = QuantizedRunSpec(
     name="prefill_2048_decode_128_static_int4",
     prefill_tokens=2048,
@@ -187,7 +196,9 @@ SCALED_8GB_RUN = QuantizedRunSpec(
     activation_exchange_fraction=0.28,
 )
 NORMAL_DEFECT_SCENARIO = DefectScenario("normal_wafer_sort", 0.002, 0.0005, "e1x-normal-v1", 4096)
-HIGH_DEFECT_SCENARIO = DefectScenario("high_failure_rate_repair_stress", 0.02, 0.005, "e1x-high-failure-v1", 8192)
+HIGH_DEFECT_SCENARIO = DefectScenario(
+    "high_failure_rate_repair_stress", 0.02, 0.005, "e1x-high-failure-v1", 8192
+)
 
 
 def scaled_8gb_config() -> E1XConfig:
@@ -203,10 +214,20 @@ def scaled_8gb_config() -> E1XConfig:
 
 def deterministic_defects(config: E1XConfig) -> tuple[set[Coord], set[Link]]:
     blocked_cores = {
-        Coord(0, 7), Coord(3, 3), Coord(5, 19), Coord(9, 9), Coord(12, 23),
-        Coord(16, 4), Coord(18, 30), Coord(25, 11), Coord(31, 31), Coord(33, 5),
+        Coord(0, 7),
+        Coord(3, 3),
+        Coord(5, 19),
+        Coord(9, 9),
+        Coord(12, 23),
+        Coord(16, 4),
+        Coord(18, 30),
+        Coord(25, 11),
+        Coord(31, 31),
+        Coord(33, 5),
     }
-    blocked_cores = {c for c in blocked_cores if c.row < config.physical_rows and c.col < config.physical_cols}
+    blocked_cores = {
+        c for c in blocked_cores if c.row < config.physical_rows and c.col < config.physical_cols
+    }
     blocked_links = {
         Link(Coord(2, 2), Coord(2, 3)).normalized(),
         Link(Coord(7, 14), Coord(8, 14)).normalized(),
@@ -215,9 +236,12 @@ def deterministic_defects(config: E1XConfig) -> tuple[set[Coord], set[Link]]:
         Link(Coord(30, 29), Coord(30, 30)).normalized(),
     }
     blocked_links = {
-        link for link in blocked_links
-        if link.a.row < config.physical_rows and link.b.row < config.physical_rows
-        and link.a.col < config.physical_cols and link.b.col < config.physical_cols
+        link
+        for link in blocked_links
+        if link.a.row < config.physical_rows
+        and link.b.row < config.physical_rows
+        and link.a.col < config.physical_cols
+        and link.b.col < config.physical_cols
     }
     return blocked_cores, blocked_links
 
@@ -228,20 +252,29 @@ def _stable_fraction(parts: tuple[object, ...]) -> float:
 
 
 def physical_nodes(config: E1XConfig) -> list[Coord]:
-    return [Coord(row, col) for row in range(config.physical_rows) for col in range(config.physical_cols)]
+    return [
+        Coord(row, col)
+        for row in range(config.physical_rows)
+        for col in range(config.physical_cols)
+    ]
 
 
 def generated_defects(config: E1XConfig, scenario: DefectScenario) -> tuple[set[Coord], set[Link]]:
     blocked_cores = {
-        coord for coord in physical_nodes(config)
-        if _stable_fraction((scenario.seed, "core", coord.row, coord.col)) < scenario.core_failure_rate
+        coord
+        for coord in physical_nodes(config)
+        if _stable_fraction((scenario.seed, "core", coord.row, coord.col))
+        < scenario.core_failure_rate
     }
     blocked_links: set[Link] = set()
     for coord in physical_nodes(config):
         for nxt in (Coord(coord.row + 1, coord.col), Coord(coord.row, coord.col + 1)):
             if nxt.row >= config.physical_rows or nxt.col >= config.physical_cols:
                 continue
-            if _stable_fraction((scenario.seed, "link", coord.row, coord.col, nxt.row, nxt.col)) < scenario.link_failure_rate:
+            if (
+                _stable_fraction((scenario.seed, "link", coord.row, coord.col, nxt.row, nxt.col))
+                < scenario.link_failure_rate
+            ):
                 blocked_links.add(Link(coord, nxt).normalized())
     return blocked_cores, blocked_links
 
@@ -265,14 +298,25 @@ def json_dumps_canonical(data: dict) -> str:
 
 
 def neighbors(config: E1XConfig, coord: Coord) -> list[Coord]:
-    candidates = (Coord(coord.row - 1, coord.col), Coord(coord.row + 1, coord.col), Coord(coord.row, coord.col - 1), Coord(coord.row, coord.col + 1))
-    return [nxt for nxt in candidates if 0 <= nxt.row < config.physical_rows and 0 <= nxt.col < config.physical_cols]
+    candidates = (
+        Coord(coord.row - 1, coord.col),
+        Coord(coord.row + 1, coord.col),
+        Coord(coord.row, coord.col - 1),
+        Coord(coord.row, coord.col + 1),
+    )
+    return [
+        nxt
+        for nxt in candidates
+        if 0 <= nxt.row < config.physical_rows and 0 <= nxt.col < config.physical_cols
+    ]
 
 
 def repair_map(config: E1XConfig, blocked_cores: set[Coord]) -> dict[Coord, Coord]:
     spare_nodes = [
-        node for node in physical_nodes(config)
-        if node not in blocked_cores and (node.row >= config.logical_rows or node.col >= config.logical_cols)
+        node
+        for node in physical_nodes(config)
+        if node not in blocked_cores
+        and (node.row >= config.logical_rows or node.col >= config.logical_cols)
     ]
     blocked_logical = [
         Coord(row, col)
@@ -307,7 +351,13 @@ def remap_records(mapping: dict[Coord, Coord]) -> list[dict[str, dict[str, int]]
     ]
 
 
-def route(config: E1XConfig, start: Coord, goal: Coord, blocked_cores: set[Coord], blocked_links: set[Link]) -> list[Coord]:
+def route(
+    config: E1XConfig,
+    start: Coord,
+    goal: Coord,
+    blocked_cores: set[Coord],
+    blocked_links: set[Link],
+) -> list[Coord]:
     if start in blocked_cores or goal in blocked_cores:
         raise ValueError("cannot route through a blocked endpoint")
     frontier: list[tuple[int, int, Coord]] = []
@@ -385,7 +435,13 @@ def sampled_route_records(
     return records
 
 
-def validate_repaired_mesh(config: E1XConfig, mapping: dict[Coord, Coord], blocked_cores: set[Coord], blocked_links: set[Link], max_paths: int | None = None) -> dict[str, int | float | str]:
+def validate_repaired_mesh(
+    config: E1XConfig,
+    mapping: dict[Coord, Coord],
+    blocked_cores: set[Coord],
+    blocked_links: set[Link],
+    max_paths: int | None = None,
+) -> dict[str, int | float | str]:
     edges = [
         (Coord(row, col), peer)
         for row in range(config.logical_rows)
@@ -428,7 +484,7 @@ def repair_hop_penalty_for_scenario(config: E1XConfig, scenario: DefectScenario)
     return float(mesh["average_extra_hops_per_neighbor"])
 
 
-def mesh_validation_fields(mesh: dict[str, object]) -> dict[str, int | float | str]:
+def mesh_validation_fields(mesh: dict[str, int | float | str]) -> dict[str, int | float | str]:
     return {
         "logical_neighbor_paths_checked": int(mesh["logical_neighbor_paths_checked"]),
         "logical_neighbor_paths_total": int(mesh["logical_neighbor_paths_total"]),
@@ -440,19 +496,34 @@ def mesh_validation_fields(mesh: dict[str, object]) -> dict[str, int | float | s
 
 
 def workload_metrics(config: E1XConfig, workload: Workload, repair_hop_penalty: float) -> dict:
-    active_ops_per_cycle = config.logical_cores * config.int8_lanes_per_core * 2 * workload.active_fraction
+    active_ops_per_cycle = (
+        config.logical_cores * config.int8_lanes_per_core * 2 * workload.active_fraction
+    )
     compute_cycles = ceil(workload.macs * 2 / active_ops_per_cycle)
     fabric_bytes = workload.external_bytes + workload.local_bytes // 16
-    fabric_cycles = ceil(fabric_bytes * (workload.average_hops + repair_hop_penalty) * 8 / max(1, config.link_bits_per_cycle_bidirectional * config.logical_rows))
+    fabric_cycles = ceil(
+        fabric_bytes
+        * (workload.average_hops + repair_hop_penalty)
+        * 8
+        / max(1, config.link_bits_per_cycle_bidirectional * config.logical_rows)
+    )
     cycles = max(compute_cycles, fabric_cycles)
     elapsed_s = cycles / config.core_clock_hz
     observed_tops = workload.macs * 2 / elapsed_s / 1e12
     dynamic_nj = (
         workload.macs * 2 * config.energy_pj_per_int8_op
         + workload.local_bytes * config.local_sram_pj_per_byte
-        + fabric_bytes * (workload.average_hops + repair_hop_penalty) * config.fabric_pj_per_byte_hop
+        + fabric_bytes
+        * (workload.average_hops + repair_hop_penalty)
+        * config.fabric_pj_per_byte_hop
     ) / 1000.0
-    static_nj = config.static_power_w_per_core * config.logical_cores * workload.active_fraction * elapsed_s * 1e9
+    static_nj = (
+        config.static_power_w_per_core
+        * config.logical_cores
+        * workload.active_fraction
+        * elapsed_s
+        * 1e9
+    )
     average_power_w = (dynamic_nj + static_nj) / 1e9 / elapsed_s
     return {
         "name": workload.name,
@@ -478,7 +549,12 @@ def e1_baseline_summary() -> dict[str, float | int | str]:
     }
 
 
-def model_load_plan(config: E1XConfig, model: QuantizedModelSpec, blocked_cores: set[Coord], mapping: dict[Coord, Coord]) -> dict[str, int | float | bool | str]:
+def model_load_plan(
+    config: E1XConfig,
+    model: QuantizedModelSpec,
+    blocked_cores: set[Coord],
+    mapping: dict[Coord, Coord],
+) -> dict[str, int | float | bool | str]:
     usable_logical_cores = sum(1 for physical in mapping.values() if physical not in blocked_cores)
     reserved_mib = config.logical_cores * 4 / 1024
     usable_model_sram_mib = config.local_sram_mib - reserved_mib
@@ -500,7 +576,8 @@ def model_load_plan(config: E1XConfig, model: QuantizedModelSpec, blocked_cores:
         "weight_shard_bytes_per_core": weight_shard_bytes,
         "per_core_model_capacity_bytes": per_core_capacity_bytes,
         "fabric_load_wavelets": ceil(model.weight_bytes / (config.fabric_payload_bits // 8)),
-        "placement_successful": model.total_required_mib <= usable_model_sram_mib and weight_shard_bytes <= per_core_capacity_bytes,
+        "placement_successful": model.total_required_mib <= usable_model_sram_mib
+        and weight_shard_bytes <= per_core_capacity_bytes,
         "load_mode": "resident_on_wafer_static_graph",
     }
 
@@ -517,11 +594,17 @@ def _packed_w4_sample_word(seed: str, word_index: int) -> int:
 def _sram_loader_checksum(words: list[dict[str, int]]) -> int:
     checksum = 0
     for entry in words:
-        checksum = (((checksum << 1) | (checksum >> 31)) & 0xFFFF_FFFF) ^ int(entry["word"]) ^ int(entry["word_addr"])
+        checksum = (
+            (((checksum << 1) | (checksum >> 31)) & 0xFFFF_FFFF)
+            ^ int(entry["word"])
+            ^ int(entry["word_addr"])
+        )
     return checksum & 0xFFFF_FFFF
 
 
-def model_shard_sample_artifact(config: E1XConfig, model: QuantizedModelSpec, load: dict[str, int | float | bool | str]) -> dict:
+def model_shard_sample_artifact(
+    config: E1XConfig, model: QuantizedModelSpec, load: dict[str, int | float | bool | str]
+) -> dict:
     word_bytes = config.fabric_payload_bits // 8
     capacity_bytes = config.local_sram_kib_per_core * 1024
     word_count = capacity_bytes // word_bytes
@@ -532,7 +615,12 @@ def model_shard_sample_artifact(config: E1XConfig, model: QuantizedModelSpec, lo
         for idx in range(shard_word_count)
     ]
     if word_count - 1 >= shard_word_count:
-        words.append({"word_addr": word_count - 1, "word": _packed_w4_sample_word(model.name, word_count - 1)})
+        words.append(
+            {
+                "word_addr": word_count - 1,
+                "word": _packed_w4_sample_word(model.name, word_count - 1),
+            }
+        )
     artifact = {
         "schema": "eliza.e1x.quantized_model_shard_sample.v1",
         "chip": config.name,
@@ -564,12 +652,17 @@ def _trace_word(parts: tuple[object, ...]) -> int:
     return int.from_bytes(digest, "big") & ((1 << 63) - 1)
 
 
-def _layer_checksum(model: QuantizedModelSpec, run: QuantizedRunSpec, scenario: DefectScenario, layer: int) -> int:
+def _layer_checksum(
+    model: QuantizedModelSpec, run: QuantizedRunSpec, scenario: DefectScenario, layer: int
+) -> int:
     return _trace_word((model.name, run.name, scenario.name, layer, "layer"))
 
 
 def _output_checksum(
-    model: QuantizedModelSpec, run: QuantizedRunSpec, scenario: DefectScenario, repair_hop_penalty: float
+    model: QuantizedModelSpec,
+    run: QuantizedRunSpec,
+    scenario: DefectScenario,
+    repair_hop_penalty: float,
 ) -> int:
     return _trace_word(
         (
@@ -805,10 +898,14 @@ def real_graph_execution_trace_artifact(
     return artifact
 
 
-def defect_scenario_report(config: E1XConfig, scenario: DefectScenario, model: QuantizedModelSpec) -> dict:
+def defect_scenario_report(
+    config: E1XConfig, scenario: DefectScenario, model: QuantizedModelSpec
+) -> dict:
     blocked_cores, blocked_links = generated_defects(config, scenario)
     mapping = repair_map(config, blocked_cores)
-    mesh = validate_repaired_mesh(config, mapping, blocked_cores, blocked_links, scenario.max_route_checks)
+    mesh = validate_repaired_mesh(
+        config, mapping, blocked_cores, blocked_links, scenario.max_route_checks
+    )
     load = model_load_plan(config, model, blocked_cores, mapping)
     return {
         "scenario": scenario.name,
@@ -836,7 +933,9 @@ def defect_map_artifact(config: E1XConfig, scenario: DefectScenario) -> dict:
         "core_failure_rate": scenario.core_failure_rate,
         "link_failure_rate": scenario.link_failure_rate,
         "blocked_cores": [coord_record(coord) for coord in sorted(blocked_cores)],
-        "blocked_links": [link_record(link) for link in sorted(blocked_links, key=lambda item: (item.a, item.b))],
+        "blocked_links": [
+            link_record(link) for link in sorted(blocked_links, key=lambda item: (item.a, item.b))
+        ],
         "blocked_core_count": len(blocked_cores),
         "blocked_link_count": len(blocked_links),
     }
@@ -952,7 +1051,9 @@ def repair_rom_artifact(repair_manifest: dict) -> dict:
     return artifact
 
 
-def build_scaled_8gb_report(config: E1XConfig | None = None, model: QuantizedModelSpec = SCALED_8GB_MODEL) -> dict:
+def build_scaled_8gb_report(
+    config: E1XConfig | None = None, model: QuantizedModelSpec = SCALED_8GB_MODEL
+) -> dict:
     cfg = config or scaled_8gb_config()
     normal = defect_scenario_report(cfg, NORMAL_DEFECT_SCENARIO, model)
     high = defect_scenario_report(cfg, HIGH_DEFECT_SCENARIO, model)
@@ -1099,7 +1200,8 @@ def build_scaled_8gb_report(config: E1XConfig | None = None, model: QuantizedMod
                 "logical_cores": cfg.logical_cores,
             },
             "ratios": {
-                "dense_int8_peak_tops_vs_e1": cfg.dense_int8_peak_tops / float(e1["dense_int8_peak_tops"]),
+                "dense_int8_peak_tops_vs_e1": cfg.dense_int8_peak_tops
+                / float(e1["dense_int8_peak_tops"]),
                 "local_sram_vs_e1": cfg.local_sram_mib / float(e1["local_sram_mib"]),
             },
         },
@@ -1184,14 +1286,10 @@ def build_real_graph_report(
         "high_failure_repaired_logical_mesh": 1,
         "high_failure_model_run_successful": int(bool(high_execution["execution_successful"])),
         "high_failure_output_checksum": int(high_execution["output_checksum"]),
-        "high_failure_decode_tokens_per_second": float(
-            high_execution["decode_tokens_per_second"]
-        ),
+        "high_failure_decode_tokens_per_second": float(high_execution["decode_tokens_per_second"]),
         "high_failure_route_checks": int(high_mesh["logical_neighbor_paths_checked"]),
         "normal_repair_hop_penalty": float(normal_mesh["average_extra_hops_per_neighbor"]),
-        "high_failure_repair_hop_penalty": float(
-            high_mesh["average_extra_hops_per_neighbor"]
-        ),
+        "high_failure_repair_hop_penalty": float(high_mesh["average_extra_hops_per_neighbor"]),
         "high_failure_blocked_core_count": len(high_blocked_cores),
         "high_failure_blocked_link_count": len(high_blocked_links),
         "model_load": normal_load,
@@ -1280,7 +1378,8 @@ def build_e1x_report(config: E1XConfig | None = None) -> dict:
                 "min_observed_tops": min_tops,
             },
             "ratios": {
-                "dense_int8_peak_tops_vs_e1": cfg.dense_int8_peak_tops / float(e1["dense_int8_peak_tops"]),
+                "dense_int8_peak_tops_vs_e1": cfg.dense_int8_peak_tops
+                / float(e1["dense_int8_peak_tops"]),
                 "local_sram_vs_e1": cfg.local_sram_mib / float(e1["local_sram_mib"]),
             },
         },

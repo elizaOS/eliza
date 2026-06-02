@@ -185,6 +185,8 @@ const STANDARD_CAPABILITY_IDS = new Set([
   "refresh",
   "focus-element",
   "get-text",
+  "click-element",
+  "fill-input",
 ]);
 
 /** Module-level map of pending interact requests awaiting a frontend result. */

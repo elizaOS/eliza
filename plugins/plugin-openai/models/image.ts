@@ -44,7 +44,7 @@ export async function handleImageGeneration(
 
   logger.debug(`[OpenAI] Using IMAGE model: ${modelName}`);
 
-  if (params.prompt.trim().length === 0) {
+  if (typeof params.prompt !== "string" || params.prompt.trim().length === 0) {
     throw new Error("IMAGE generation requires a non-empty prompt");
   }
 
@@ -123,7 +123,11 @@ export async function handleImageDescription(
   params: ImageDescriptionParams | string
 ): Promise<ImageDescriptionResult> {
   const modelName = getImageDescriptionModel(runtime);
-  const maxTokens = getImageDescriptionMaxTokens(runtime);
+  const paramsWithMaxTokens = params as ImageDescriptionParams & { maxTokens?: number };
+  const maxTokens =
+    typeof params === "object" && typeof paramsWithMaxTokens.maxTokens === "number"
+      ? paramsWithMaxTokens.maxTokens
+      : getImageDescriptionMaxTokens(runtime);
 
   logger.debug(`[OpenAI] Using IMAGE_DESCRIPTION model: ${modelName}`);
 

@@ -69,6 +69,7 @@ class ADHDBenchRunner:
             levels=self.config.levels,
             tags=self.config.tags,
             scenario_ids=self.config.scenario_ids,
+            include_edge_scenarios=self.config.include_edge_scenarios,
         )
         results: list[ScenarioResult] = []
 

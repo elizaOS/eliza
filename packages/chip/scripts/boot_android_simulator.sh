@@ -12,9 +12,9 @@ fi
 report="${ANDROID_SIM_BOOT_REPORT:-$repo_root/build/reports/android_sim_boot.json}"
 evidence_dir="$repo_root/docs/evidence/android"
 aosp_dir=${AOSP_DIR:-}
-aosp_dir_source=unset
+aosp_dir_source='unset'
 if [ -n "$aosp_dir" ]; then
-	aosp_dir_source=env
+	aosp_dir_source='env'
 elif [ "${ELIZA_DISABLE_AOSP_DIR_DEFAULTS:-0}" != "1" ] &&
 	[ -f /home/shaw/aosp/build/envsetup.sh ] &&
 	[ -d /home/shaw/aosp/device ]; then
@@ -119,6 +119,31 @@ json_bool() {
 	fi
 }
 
+portable_aosp_dir() {
+	if [ -z "${aosp_dir:-}" ]; then
+		printf ''
+		return
+	fi
+	case "$aosp_dir" in
+		/home/*|/Users/*|/tmp/*|/var/tmp/*)
+			printf '<host-aosp-checkout>'
+			;;
+		*)
+			printf '%s' "$aosp_dir"
+			;;
+	esac
+}
+
+portable_report_text() {
+	text=$1
+	portable=$(portable_aosp_dir)
+	if [ -n "${aosp_dir:-}" ] && [ "$portable" != "$aosp_dir" ]; then
+		printf '%s' "$text" | sed "s#$(printf '%s' "$aosp_dir" | sed 's/[.[\\*^$()+?{}|]/\\&/g')#$portable#g"
+	else
+		printf '%s' "$text"
+	fi
+}
+
 linux_requirements_json() {
 	python3 - <<'PY'
 import json
@@ -151,6 +176,30 @@ print(json.dumps([
 PY
 }
 
+next_command_plan_json() {
+	python3 - "$1" <<'PY'
+import json
+import sys
+
+commands = json.loads(sys.argv[1])
+print(json.dumps([
+    {
+        "id": "android_sim_full_virtual_device_evidence",
+        "area": "aosp",
+        "source": "packages/chip/build/reports/android_sim_boot.json",
+        "claim_boundary": "operator_commands_only_not_android_boot_or_release_evidence",
+        "commands": commands,
+        "requires": [
+            "Linux host with hardware virtualization support",
+            "AOSP_DIR set to a valid AOSP checkout",
+            "Cuttlefish, CTS/VTS intake, QEMU, and Renode evidence rerun",
+            "rerun of Android simulator and software BSP checks after capture",
+        ],
+    }
+], indent=2))
+PY
+}
+
 findings_json() {
 	status=$1
 	reason=$2
@@ -161,6 +210,20 @@ import json
 import sys
 
 status, reason, next_step, host_requirements_text = sys.argv[1:5]
+handoff_commands = [
+    "python3 scripts/check_aosp_linux_preflight.py --write-report",
+    "AOSP_DIR=$AOSP_DIR scripts/run_aosp_linux_handoff.sh --build-only",
+    "sw/aosp-device/import-aosp-device.sh --check \"$AOSP_DIR\"",
+    "make aosp-bsp-check",
+    "AOSP_DIR=$AOSP_DIR scripts/boot_android_simulator.sh --run-cuttlefish --run-cts --run-vts --run-qemu --run-renode",
+    "python3 scripts/check_android_sim_boot.py",
+    "python3 scripts/check_software_bsp.py aosp --require-evidence",
+]
+next_command = next(
+    command
+    for command in handoff_commands
+    if "boot_android_simulator.sh --run-cuttlefish" in command
+)
 
 def code_from_text(text: str, fallback: str) -> str:
     cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
@@ -180,6 +243,8 @@ for item in host_requirements.get("missing", []):
         "message": text,
         "evidence": "host_requirements.missing",
         "next_step": next_step,
+        "next_command": next_command,
+        "next_commands": handoff_commands,
     })
 if status != "pass" and reason:
     findings.append({
@@ -188,6 +253,8 @@ if status != "pass" and reason:
         "message": reason,
         "evidence": "android_sim_boot.status",
         "next_step": next_step,
+        "next_command": next_command,
+        "next_commands": handoff_commands,
     })
 print(json.dumps(findings, indent=2))
 PY
@@ -316,12 +383,16 @@ write_report() {
 	status=$1
 	reason=$2
 	next=$3
+	report_reason=$(portable_report_text "$reason")
+	report_next=$(portable_report_text "$next")
 	host_requirements=$(host_requirements_json)
 	linux_requirements=$(linux_requirements_json)
 	handoff_commands=$(handoff_commands_json)
-	findings=$(findings_json "$status" "$reason" "$next" "$host_requirements")
+	next_command_plan=$(next_command_plan_json "$handoff_commands")
+	findings=$(findings_json "$status" "$report_reason" "$report_next" "$host_requirements")
 	required_evidence=$(evidence_json full)
 	attempted_evidence=$(evidence_json build)
+	report_aosp_dir=$(portable_aosp_dir)
 	if [ "$require_full_evidence" -eq 1 ]; then
 		attempted_evidence=$(evidence_json full)
 	fi
@@ -331,9 +402,9 @@ write_report() {
   "schema": "eliza.android_sim_boot.v1",
   "generated_utc": "$(date -u +%FT%TZ)",
   "status": $(json_escape "$status"),
-  "reason": $(json_escape "$reason"),
-  "next_step": $(json_escape "$next"),
-  "aosp_dir": $(json_escape "${aosp_dir:-}"),
+  "reason": $(json_escape "$report_reason"),
+  "next_step": $(json_escape "$report_next"),
+  "aosp_dir": $(json_escape "$report_aosp_dir"),
   "aosp_dir_source": $(json_escape "$aosp_dir_source"),
   "aosp_product": $(json_escape "$aosp_product"),
   "run_cuttlefish": $(json_bool "$run_cuttlefish"),
@@ -350,6 +421,7 @@ write_report() {
   "findings": $findings,
   "linux_requirements": $linux_requirements,
   "handoff_commands": $handoff_commands,
+  "next_command_plan": $next_command_plan,
   "phone_claim_allowed": false,
   "release_claim_allowed": false,
   "e1_chip_hardware_claim_allowed": false,
@@ -412,6 +484,7 @@ capture_aosp_shell() {
 		echo "START_UTC=$start_utc"
 		echo "COMPATIBILITY_CLAIM=none"
 		if [ "$metadata_kind" = "virtual" ]; then
+			echo "eliza-evidence: claim_boundary=virtual_device_smoke_only_not_boot_or_compatibility_evidence"
 			echo "BOOT_CLAIM=none"
 			echo "SCHEMA=docs/android/boot-transcript.schema.json"
 		fi

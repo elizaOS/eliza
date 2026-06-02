@@ -1,4 +1,5 @@
 import type { proto } from "@whiskeysockets/baileys";
+import { assertValidWhatsAppMediaLink } from "../media";
 import type {
   NormalizedMessage,
   WhatsAppMediaMessage,
@@ -46,28 +47,22 @@ export class MessageAdapter {
     key: "image" | "video",
     media: WhatsAppMediaMessage
   ): Record<string, unknown> {
-    if (!media.link) {
-      throw new Error(`${key} message requires a media link`);
-    }
+    const link = assertValidWhatsAppMediaLink(media.link, key);
     return {
-      [key]: { url: media.link },
+      [key]: { url: link },
       ...(media.caption ? { caption: media.caption } : {}),
     };
   }
 
   private mediaNoCaption(key: "audio", media: WhatsAppMediaMessage): Record<string, unknown> {
-    if (!media.link) {
-      throw new Error(`${key} message requires a media link`);
-    }
-    return { [key]: { url: media.link } };
+    const link = assertValidWhatsAppMediaLink(media.link, key);
+    return { [key]: { url: link } };
   }
 
   private mediaWithFilename(media: WhatsAppMediaMessage): Record<string, unknown> {
-    if (!media.link) {
-      throw new Error("document message requires a media link");
-    }
+    const link = assertValidWhatsAppMediaLink(media.link, "document");
     return {
-      document: { url: media.link },
+      document: { url: link },
       ...(media.filename ? { fileName: media.filename } : {}),
       ...(media.caption ? { caption: media.caption } : {}),
     };

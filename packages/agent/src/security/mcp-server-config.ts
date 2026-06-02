@@ -6,6 +6,10 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import net from "node:net";
 import {
+  BLOCKED_SPAWN_ENV_KEYS,
+  BLOCKED_SPAWN_ENV_PREFIXES,
+} from "@elizaos/core";
+import {
   isBlockedPrivateOrLinkLocalIp,
   normalizeHostLike,
 } from "./network-policy.ts";
@@ -40,41 +44,11 @@ const ALLOWED_MCP_COMMANDS = new Set([
   "podman",
 ]);
 
-const BLOCKED_MCP_ENV_KEYS = new Set([
-  "LD_PRELOAD",
-  "LD_LIBRARY_PATH",
-  "DYLD_INSERT_LIBRARIES",
-  "DYLD_LIBRARY_PATH",
-  "NODE_OPTIONS",
-  "NODE_EXTRA_CA_CERTS",
-  "NODE_TLS_REJECT_UNAUTHORIZED",
-  "HTTP_PROXY",
-  "HTTPS_PROXY",
-  "ALL_PROXY",
-  "NO_PROXY",
-  "NODE_PATH",
-  "SSL_CERT_FILE",
-  "SSL_CERT_DIR",
-  "CURL_CA_BUNDLE",
-  "PATH",
-  "HOME",
-  "SHELL",
-]);
-
-const BLOCKED_MCP_ENV_PREFIXES = [
-  "NPM_CONFIG_",
-  "PNPM_",
-  "YARN_",
-  "BUN_CONFIG_",
-  "UV_",
-  "PIP_",
-  "PIPX_",
-  "PYX_",
-  "DENO_",
-  "DOCKER_",
-  "PODMAN_",
-  "BASH_FUNC_",
-] as const;
+// The env denylist is a single source of truth shared with the shell/spawn
+// path. The canonical lists (BLOCKED_SPAWN_ENV_KEYS / BLOCKED_SPAWN_ENV_PREFIXES)
+// are imported from @elizaos/core and referenced inside the functions below at
+// call time (never captured at module-init) to stay robust against ESM
+// circular-import load ordering through the core barrel.
 
 const INTERPRETER_MCP_COMMANDS = new Set([
   "node",
@@ -110,30 +84,69 @@ const BLOCKED_INTERPRETER_FLAGS = new Set([
   "--diagnostic-dir",
 ]);
 
-const BLOCKED_PACKAGE_RUNNER_FLAGS = new Set(["-c", "--call", "-e", "--eval"]);
+const BLOCKED_PACKAGE_RUNNER_FLAGS = new Set([
+  "-c",
+  "--call",
+  "-e",
+  "--eval",
+  "--registry",
+  "--userconfig",
+  "--globalconfig",
+  "--index-url",
+  "--extra-index-url",
+  "--default-index",
+  "--find-links",
+  "--config-file",
+]);
 const BLOCKED_CONTAINER_FLAGS = new Set([
   "--privileged",
   "-v",
   "--volume",
+  "--volumes-from",
   "--mount",
   "--cap-add",
   "--security-opt",
   "--pid",
   "--network",
+  "--net",
   "--device",
+  "--device-cgroup-rule",
   "--ipc",
   "--uts",
   "--userns",
   "--cgroupns",
 ]);
 const BLOCKED_DENO_SUBCOMMANDS = new Set(["eval"]);
+// deno's capability sandbox is opt-out via these flags; block them so a stdio
+// MCP config cannot grant the spawned deno process host access (-A / --allow-*),
+// load unstable APIs, or disable its security prompts.
+const BLOCKED_DENO_FLAGS = new Set([
+  "-A",
+  "-R",
+  "-W",
+  "-N",
+  "-E",
+  "-S",
+  "--allow-all",
+  "--allow-run",
+  "--allow-ffi",
+  "--allow-read",
+  "--allow-write",
+  "--allow-net",
+  "--allow-env",
+  "--allow-sys",
+  "--allow-import",
+  "--allow-scripts",
+  "--no-prompt",
+]);
+const BLOCKED_DENO_FLAG_PREFIXES = ["--unstable"] as const;
 const BLOCKED_MCP_REMOTE_HOST_LITERALS = new Set([
   "localhost",
   "metadata.google.internal",
 ]);
 
 function blockedMcpEnvPrefix(upperKey: string): string | null {
-  for (const prefix of BLOCKED_MCP_ENV_PREFIXES) {
+  for (const prefix of BLOCKED_SPAWN_ENV_PREFIXES) {
     if (upperKey.startsWith(prefix)) {
       return prefix;
     }
@@ -146,7 +159,7 @@ function rejectMcpEnvEntry(key: string, value: string): string | null {
     return `env key "${key}" is blocked for security reasons`;
   }
   const upper = key.toUpperCase();
-  if (BLOCKED_MCP_ENV_KEYS.has(upper)) {
+  if (BLOCKED_SPAWN_ENV_KEYS.has(upper)) {
     return `env variable "${key}" is not allowed for security reasons`;
   }
   const prefix = blockedMcpEnvPrefix(upper);
@@ -191,6 +204,37 @@ function firstPositionalArg(args: string[]): string | null {
     const trimmed = arg.trim();
     if (!trimmed || trimmed === "--" || trimmed.startsWith("-")) continue;
     return trimmed.toLowerCase();
+  }
+  return null;
+}
+
+function hasBlockedFlagPrefix(
+  args: string[],
+  blockedPrefixes: readonly string[],
+): string | null {
+  for (const arg of args) {
+    const trimmed = arg.trim().toLowerCase();
+    for (const prefix of blockedPrefixes) {
+      if (trimmed === prefix || trimmed.startsWith(`${prefix}-`)) {
+        return prefix;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Return the first positional arg that looks like an http(s) URL so deno `run`
+ * remote scripts get routed through the SSRF/private-IP guard like remote
+ * transport configs do.
+ */
+function firstRemoteUrlPositionalArg(args: string[]): string | null {
+  for (const arg of args) {
+    const trimmed = arg.trim();
+    if (!trimmed || trimmed === "--" || trimmed.startsWith("-")) continue;
+    if (/^https?:\/\//i.test(trimmed)) {
+      return trimmed;
+    }
   }
   return null;
 }
@@ -309,6 +353,22 @@ export async function validateMcpServerConfig(
         const subcommand = firstPositionalArg(args);
         if (subcommand && BLOCKED_DENO_SUBCOMMANDS.has(subcommand)) {
           return `Subcommand "${subcommand}" is not allowed for deno MCP servers`;
+        }
+        const blockedDenoFlag = hasBlockedFlag(args, BLOCKED_DENO_FLAGS);
+        if (blockedDenoFlag) {
+          return `Flag "${blockedDenoFlag}" is not allowed for deno MCP servers`;
+        }
+        const blockedDenoFlagPrefix = hasBlockedFlagPrefix(
+          args,
+          BLOCKED_DENO_FLAG_PREFIXES,
+        );
+        if (blockedDenoFlagPrefix) {
+          return `Flag "${blockedDenoFlagPrefix}" is not allowed for deno MCP servers`;
+        }
+        const remoteUrlArg = firstRemoteUrlPositionalArg(args);
+        if (remoteUrlArg) {
+          const urlRejection = await resolveMcpRemoteUrlRejection(remoteUrlArg);
+          if (urlRejection) return urlRejection;
         }
       }
     }

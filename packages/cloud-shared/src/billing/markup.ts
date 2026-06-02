@@ -167,9 +167,7 @@ export function resolveTwilioSmsCostPerSegment(
   }
 
   const parsed =
-    typeof rawCostPerSegment === "number"
-      ? rawCostPerSegment
-      : Number.parseFloat(rawCostPerSegment);
+    typeof rawCostPerSegment === "number" ? rawCostPerSegment : Number(rawCostPerSegment.trim());
 
   if (!Number.isFinite(parsed) || parsed < 0) {
     return fallbackCostPerSegment;

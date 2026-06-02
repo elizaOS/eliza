@@ -27,11 +27,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from heapq import heappop, heappush
 from math import exp
+from typing import cast
 
 from compiler.runtime.e1_npu_scale_model import OPEN_2028_SOTA
 from compiler.runtime.e1x_wafer_model import (
     SCALED_8GB_MODEL,
     SCALED_8GB_RUN,
+    Coord,
+    DefectScenario,
+    E1XConfig,
     QuantizedModelSpec,
     _stable_fraction,
     _u64_hex,
@@ -194,7 +198,11 @@ NORMAL_DEFECT_SCENARIO_3D = DefectScenario3D(
     "normal_wafer_sort_3d", 0.002, 0.0005, 0.001, "e1x3d-normal-v1", max_route_checks=4096
 )
 HIGH_DEFECT_SCENARIO_3D = DefectScenario3D(
-    "high_failure_rate_repair_stress_3d", 0.02, 0.005, 0.008, "e1x3d-high-failure-v1",
+    "high_failure_rate_repair_stress_3d",
+    0.02,
+    0.005,
+    0.008,
+    "e1x3d-high-failure-v1",
     max_route_checks=8192,
 )
 # A localized dead-tier region (a knocked-out block on one tier) proves Z-reroute
@@ -202,8 +210,15 @@ HIGH_DEFECT_SCENARIO_3D = DefectScenario3D(
 # (spare_tiers >= 1), which is a separately-budgeted resource the scaled wafer
 # config does not carry; that case fails closed in stack_yield_model instead.
 DEAD_TIER_SCENARIO_3D = DefectScenario3D(
-    "dead_tier_region_graceful_degradation_3d", 0.004, 0.001, 0.002, "e1x3d-dead-tier-v1",
-    dead_tier=1, dead_tier_rows=8, dead_tier_cols=8, max_route_checks=8192,
+    "dead_tier_region_graceful_degradation_3d",
+    0.004,
+    0.001,
+    0.002,
+    "e1x3d-dead-tier-v1",
+    dead_tier=1,
+    dead_tier_rows=8,
+    dead_tier_cols=8,
+    max_route_checks=8192,
 )
 
 
@@ -229,12 +244,21 @@ def scaled_e1x3d_config() -> E1X3DConfig:
 
 def deterministic_defects(config: E1X3DConfig) -> tuple[set[Coord3], set[Link3]]:
     candidates = [
-        Coord3(0, 7, 0), Coord3(3, 3, 1), Coord3(5, 9, 0), Coord3(9, 9, 1),
-        Coord3(12, 3, 0), Coord3(2, 14, 1), Coord3(15, 4, 0), Coord3(11, 11, 1),
+        Coord3(0, 7, 0),
+        Coord3(3, 3, 1),
+        Coord3(5, 9, 0),
+        Coord3(9, 9, 1),
+        Coord3(12, 3, 0),
+        Coord3(2, 14, 1),
+        Coord3(15, 4, 0),
+        Coord3(11, 11, 1),
     ]
     blocked_cores = {
-        c for c in candidates
-        if c.row < config.physical_rows and c.col < config.physical_cols and c.tier < config.physical_tiers
+        c
+        for c in candidates
+        if c.row < config.physical_rows
+        and c.col < config.physical_cols
+        and c.tier < config.physical_tiers
     }
     raw_links = [
         Link3(Coord3(2, 2, 0), Coord3(2, 3, 0)),
@@ -243,7 +267,8 @@ def deterministic_defects(config: E1X3DConfig) -> tuple[set[Coord3], set[Link3]]
         Link3(Coord3(10, 8, 0), Coord3(10, 8, 1)),
     ]
     blocked_links = {
-        link.normalized() for link in raw_links
+        link.normalized()
+        for link in raw_links
         if _in_bounds(config, link.a) and _in_bounds(config, link.b)
     }
     return blocked_cores, blocked_links
@@ -279,7 +304,10 @@ def generated_defects(
         ):
             blocked_cores.add(coord)
             continue
-        if _stable_fraction((scenario.seed, "core", coord.row, coord.col, coord.tier)) < scenario.core_failure_rate:
+        if (
+            _stable_fraction((scenario.seed, "core", coord.row, coord.col, coord.tier))
+            < scenario.core_failure_rate
+        ):
             blocked_cores.add(coord)
     blocked_links: set[Link3] = set()
     for coord in physical_nodes(config):
@@ -291,7 +319,22 @@ def generated_defects(
         for nxt, rate, kind in planar:
             if not _in_bounds(config, nxt):
                 continue
-            if _stable_fraction((scenario.seed, "link", kind, coord.row, coord.col, coord.tier, nxt.row, nxt.col, nxt.tier)) < rate:
+            if (
+                _stable_fraction(
+                    (
+                        scenario.seed,
+                        "link",
+                        kind,
+                        coord.row,
+                        coord.col,
+                        coord.tier,
+                        nxt.row,
+                        nxt.col,
+                        nxt.tier,
+                    )
+                )
+                < rate
+            ):
                 blocked_links.add(Link3(coord, nxt).normalized())
     return blocked_cores, blocked_links
 
@@ -344,7 +387,8 @@ def repair_map(config: E1X3DConfig, blocked_cores: set[Coord3]) -> dict[Coord3, 
     guarantees a spare is found while any remains.
     """
     available: set[Coord3] = {
-        node for node in physical_nodes(config)
+        node
+        for node in physical_nodes(config)
         if node not in blocked_cores and _is_spare(config, node)
     }
     blocked_logical = [
@@ -625,9 +669,7 @@ def thermal_model(config: E1X3DConfig) -> dict[str, object]:
     return artifact
 
 
-def stack_yield_model(
-    config: E1X3DConfig, scenario: DefectScenario3D
-) -> dict[str, object]:
+def stack_yield_model(config: E1X3DConfig, scenario: DefectScenario3D) -> dict[str, object]:
     """Per-tier Poisson core yield, multiplicative bond yield, spare-plane repair.
 
     Stack bond yield compounds across the Z bonds (logic-to-logic) and the folded
@@ -640,11 +682,11 @@ def stack_yield_model(
     blocked_logical = sum(1 for c in blocked_cores if not _is_spare(config, c))
     per_core_yield = exp(-config.defect_density_per_mm2 * config.core_xy_area_mm2)
     bond_interfaces = max(0, config.logical_tiers - 1) + config.memory_tiers_total
-    stack_bond_yield = config.bond_yield_per_interface ** bond_interfaces
+    stack_bond_yield = config.bond_yield_per_interface**bond_interfaces
     repair_feasible = blocked_logical <= config.spare_cores
     harvest_fraction = (
-        (config.logical_cores - max(0, blocked_logical - config.spare_cores)) / config.logical_cores
-    )
+        config.logical_cores - max(0, blocked_logical - config.spare_cores)
+    ) / config.logical_cores
     bond_ok = stack_bond_yield >= config.target_stack_bond_yield
     status = "PASS" if (repair_feasible and bond_ok) else "BLOCKED"
     reasons: list[str] = []
@@ -695,8 +737,7 @@ def defect_map_artifact(config: E1X3DConfig, scenario: DefectScenario3D) -> dict
         "z_link_failure_rate": scenario.z_link_failure_rate,
         "blocked_cores": [coord_record(c) for c in sorted(blocked_cores)],
         "blocked_links": [
-            link_record(link)
-            for link in sorted(blocked_links, key=lambda item: (item.a, item.b))
+            link_record(link) for link in sorted(blocked_links, key=lambda item: (item.a, item.b))
         ],
         "blocked_core_count": len(blocked_cores),
         "blocked_link_count": len(blocked_links),
@@ -712,7 +753,9 @@ def repair_manifest_artifact(
 ) -> dict:
     blocked_cores, blocked_links = generated_defects(config, scenario)
     mapping = repair_map(config, blocked_cores)
-    mesh = validate_repaired_mesh(config, mapping, blocked_cores, blocked_links, scenario.max_route_checks)
+    mesh = validate_repaired_mesh(
+        config, mapping, blocked_cores, blocked_links, scenario.max_route_checks
+    )
     routes = sampled_route_records(config, mapping, blocked_cores, blocked_links)
     source_map = defect_map or defect_map_artifact(config, scenario)
     remaps = remap_records(mapping)
@@ -780,7 +823,9 @@ def repair_rom_artifact(repair_manifest: dict) -> dict:
     header_words = [
         _u64_hex(E1X3D_REPAIR_MAGIC),
         _u64_hex((rows << 32) | cols),
-        _u64_hex((int(repair_manifest["logical_tiers"]) << 32) | int(repair_manifest["physical_tiers"])),
+        _u64_hex(
+            (int(repair_manifest["logical_tiers"]) << 32) | int(repair_manifest["physical_tiers"])
+        ),
         _u64_hex((prows << 32) | pcols),
         _u64_hex(len(remap_words)),
         _u64_hex(len(route_words)),
@@ -838,8 +883,15 @@ def defect_scenario_report(
 ) -> dict:
     blocked_cores, blocked_links = generated_defects(config, scenario)
     mapping = repair_map(config, blocked_cores)
-    mesh = validate_repaired_mesh(config, mapping, blocked_cores, blocked_links, scenario.max_route_checks)
-    load = model_load_plan(config, model, blocked_cores, mapping)
+    mesh = validate_repaired_mesh(
+        config, mapping, blocked_cores, blocked_links, scenario.max_route_checks
+    )
+    load = model_load_plan(
+        cast(E1XConfig, config),
+        model,
+        cast(set[Coord], blocked_cores),
+        cast(dict[Coord, Coord], mapping),
+    )
     return {
         "scenario": scenario.name,
         "dead_tier": scenario.dead_tier,
@@ -869,7 +921,7 @@ def build_e1x3d_report(config: E1X3DConfig | None = None) -> dict:
         "schema": "eliza.e1x3d.stacked_mesh_model.v1",
         "claim_boundary": "architecture_simulation_only_not_rtl_not_pdk_not_silicon",
         "benchmark_success_allowed": True,
-        "target_cycles": int(mesh["logical_neighbor_paths_checked"] + 1),
+        "target_cycles": int(mesh["logical_neighbor_paths_checked"]) + 1,
         "simulated_frequency_hz": cfg.core_clock_hz,
         "ipc": cfg.logical_cores * cfg.int8_lanes_per_core,
         "architecture": {
@@ -918,7 +970,8 @@ def build_e1x3d_report(config: E1X3DConfig | None = None) -> dict:
                 "cores_vs_e1x_planar": cfg.logical_cores / float(e1x["logical_cores"]),
                 "sram_vs_e1x_planar": cfg.local_sram_mib / float(e1x["local_sram_mib"]),
                 "packing_density_vs_planar": cfg.packing_density_ratio,
-                "dense_int8_peak_tops_vs_e1": cfg.dense_int8_peak_tops / float(e1["dense_int8_peak_tops"]),
+                "dense_int8_peak_tops_vs_e1": cfg.dense_int8_peak_tops
+                / float(e1["dense_int8_peak_tops"]),
             },
         },
     }
@@ -934,9 +987,15 @@ def build_scaled_e1x3d_report(
     high_defect_map = defect_map_artifact(cfg, HIGH_DEFECT_SCENARIO_3D)
     high_repair_manifest = repair_manifest_artifact(cfg, HIGH_DEFECT_SCENARIO_3D, high_defect_map)
     high_repair_rom = repair_rom_artifact(high_repair_manifest)
-    high_model_shard_sample = model_shard_sample_artifact(cfg, model, high["model_load"])
+    high_model_shard_sample = model_shard_sample_artifact(
+        cast(E1XConfig, cfg), model, high["model_load"]
+    )
     high_execution = model_execution_plan(
-        cfg, model, SCALED_8GB_RUN, HIGH_DEFECT_SCENARIO_3D, high["model_load"],
+        cast(E1XConfig, cfg),
+        model,
+        SCALED_8GB_RUN,
+        cast(DefectScenario, HIGH_DEFECT_SCENARIO_3D),
+        high["model_load"],
         float(high["average_extra_hops_per_neighbor"]),
     )
     thermal = thermal_model(cfg)
@@ -966,7 +1025,9 @@ def build_scaled_e1x3d_report(
         "high_failure_defect_map_sha256": high_defect_map["artifact_sha256"],
         "high_failure_repair_manifest_sha256": high_repair_manifest["artifact_sha256"],
         "high_failure_repair_manifest_remaps": int(high_repair_manifest["remapped_core_count"]),
-        "high_failure_repair_manifest_sampled_routes": int(len(high_repair_manifest["sampled_routes"])),
+        "high_failure_repair_manifest_sampled_routes": int(
+            len(high_repair_manifest["sampled_routes"])
+        ),
         "high_failure_repair_rom_words": int(high_repair_rom["total_word_count"]),
         "high_failure_repair_rom_sha256": high_repair_rom["artifact_sha256"],
         "high_failure_model_shard_sample_sha256": high_model_shard_sample["artifact_sha256"],
@@ -1056,7 +1117,8 @@ def build_scaled_e1x3d_report(
                 "cores_vs_e1x_planar": cfg.logical_cores / float(e1x["logical_cores"]),
                 "sram_vs_e1x_planar": cfg.local_sram_mib / float(e1x["local_sram_mib"]),
                 "packing_density_vs_planar": cfg.packing_density_ratio,
-                "dense_int8_peak_tops_vs_e1": cfg.dense_int8_peak_tops / float(e1["dense_int8_peak_tops"]),
+                "dense_int8_peak_tops_vs_e1": cfg.dense_int8_peak_tops
+                / float(e1["dense_int8_peak_tops"]),
                 "sram_vs_e1": cfg.local_sram_mib / float(e1["local_sram_mib"]),
             },
         },

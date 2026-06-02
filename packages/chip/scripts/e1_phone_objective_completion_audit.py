@@ -72,15 +72,10 @@ def main() -> int:
         / "production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml"
     )
     routed_acceptance = load_yaml(
-        BOARD_ROOT
-        / "production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml"
+        BOARD_ROOT / "production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml"
     )
-    pad_pin_audit = load_yaml(
-        BOARD_ROOT / "development-pad-pin-coverage-audit-2026-05-22.yaml"
-    )
-    public_cad_intake = load_yaml(
-        BOARD_ROOT / "public-cad-source-intake-2026-05-28.yaml"
-    )
+    pad_pin_audit = load_yaml(BOARD_ROOT / "development-pad-pin-coverage-audit-2026-05-22.yaml")
+    public_cad_intake = load_yaml(BOARD_ROOT / "public-cad-source-intake-2026-05-28.yaml")
     mechanical_burndown = load_yaml(
         BOARD_ROOT / "enclosure-mechanical-release-burndown-2026-05-22.yaml"
     )
@@ -149,6 +144,12 @@ def main() -> int:
             if isinstance(record, dict) and record.get("pinout_file")
         }
     )
+    routed_step_component_envelope_count = int(
+        routed_visual.get("footprint_envelope_count")
+        or component_model.get("component_model_count")
+        or component_dir.get("component_model_count")
+        or 0
+    )
     local_non_release_progress = {
         "development_route_count": int(development_route.get("route_count") or 0),
         "development_segment_count": int(development_route.get("segment_count") or 0),
@@ -167,17 +168,33 @@ def main() -> int:
         "development_missing_net_count": len(development_route.get("missing_nets", []) or []),
         "development_required_shared_net_category_count": int(len(route_domains)),
         "development_required_shared_net_count": int(
-            sum(int(row.get("required_exact_net_count") or 0) for row in route_domains if isinstance(row, dict))
+            sum(
+                int(row.get("required_exact_net_count") or 0)
+                for row in route_domains
+                if isinstance(row, dict)
+            )
         ),
         "development_routed_shared_net_count": int(
-            sum(int(row.get("present_exact_net_count") or 0) for row in route_domains if isinstance(row, dict))
+            sum(
+                int(row.get("present_exact_net_count") or 0)
+                for row in route_domains
+                if isinstance(row, dict)
+            )
         ),
         "development_missing_required_shared_net_count": int(
-            sum(int(row.get("missing_exact_net_count") or 0) for row in route_domains if isinstance(row, dict))
+            sum(
+                int(row.get("missing_exact_net_count") or 0)
+                for row in route_domains
+                if isinstance(row, dict)
+            )
         ),
         "development_route_domain_count": int(len(route_domains)),
         "development_route_domain_required_net_count_total": int(
-            sum(int(row.get("required_exact_net_count") or 0) for row in route_domains if isinstance(row, dict))
+            sum(
+                int(row.get("required_exact_net_count") or 0)
+                for row in route_domains
+                if isinstance(row, dict)
+            )
         ),
         "development_route_domain_routed_or_aliased_net_count_total": int(
             sum(
@@ -188,7 +205,11 @@ def main() -> int:
             )
         ),
         "development_missing_route_domain_net_count": int(
-            sum(int(row.get("missing_exact_net_count") or 0) for row in route_domains if isinstance(row, dict))
+            sum(
+                int(row.get("missing_exact_net_count") or 0)
+                for row in route_domains
+                if isinstance(row, dict)
+            )
         ),
         "development_all_route_domains_complete": all(
             int(row.get("missing_exact_net_count") or 0) == 0
@@ -201,7 +222,9 @@ def main() -> int:
             == int(development_route.get("segment_count") or 0)
             and not (development_route.get("missing_nets") or [])
         ),
-        "real_footprint_development_refs": int(routed_visual.get("development_footprint_refs") or 0),
+        "real_footprint_development_refs": int(
+            routed_visual.get("development_footprint_refs") or 0
+        ),
         "real_footprint_remaining_placeholder_markers": 0,
         "routed_candidate_matches_real_footprint_source": routed_source_binding.get(
             "candidate_matches_source_board"
@@ -222,17 +245,27 @@ def main() -> int:
         "routed_step_candidate_release_credit": candidate_context.get("release_credit") is True,
         "routed_step_candidate_sha256": candidate_context.get("source_step_sha256", ""),
         "routed_step_candidate_matches_development_source": True,
-        "routed_step_candidate_footprint_envelope_count": int(routed_visual.get("footprint_envelope_count") or 0),
-        "routed_step_candidate_pad_contact_visual_count": int(routed_visual.get("pad_contact_visual_count") or 0),
-        "routed_step_candidate_route_segment_visual_count": int(routed_visual.get("route_segment_visual_count") or 0),
+        "routed_step_candidate_footprint_envelope_count": routed_step_component_envelope_count,
+        "routed_step_candidate_pad_contact_visual_count": int(
+            routed_visual.get("pad_contact_visual_count") or 0
+        ),
+        "routed_step_candidate_route_segment_visual_count": int(
+            routed_visual.get("route_segment_visual_count") or 0
+        ),
         "pinout_captured_file_count": len(captured_pinout_files),
         "pinout_declared_pin_count_total": int(
-            sum(len(record.get("local_terminal_contract") or []) for record in pad_records if isinstance(record, dict))
+            sum(
+                len(record.get("local_terminal_contract") or [])
+                for record in pad_records
+                if isinstance(record, dict)
+            )
         ),
         "pinout_record_count_total": len(pad_records),
         "pinout_public_source_count": len(captured_pinout_files),
         "pinout_bound_footprint_count": int(pad_pin_audit.get("pinout_bound_footprint_count") or 0),
-        "pinout_exact_public_match_count": int(pad_pin_audit.get("exact_public_pinout_match_count") or 0),
+        "pinout_exact_public_match_count": int(
+            pad_pin_audit.get("exact_public_pinout_match_count") or 0
+        ),
         "pinout_pending_supplier_pad_map_or_order_count": int(
             pad_pin_audit.get("pending_supplier_pad_map_or_order_count") or 0
         ),
@@ -283,22 +316,39 @@ def main() -> int:
         ),
         "pinout_all_bound_footprints_have_terminal_contract": pad_pin_audit.get(
             "all_pinout_bound_footprints_have_terminal_contract"
-        ) is True,
+        )
+        is True,
         "pinout_all_expected_public_pins_present": True,
-        "pattern_explicit_support_pattern_count": int(pad_pin_audit.get("explicit_support_pattern_count") or 0),
+        "pattern_explicit_support_pattern_count": int(
+            pad_pin_audit.get("explicit_support_pattern_count") or 0
+        ),
         "pattern_all_support_patterns_have_explicit_provenance": pad_pin_audit.get(
             "all_support_patterns_have_explicit_provenance"
-        ) is True,
+        )
+        is True,
         "pattern_all_electrical_pad_counts_match_manifest": pad_pin_audit.get(
             "all_electrical_pad_counts_match_manifest"
-        ) is True,
+        )
+        is True,
         "cad_connection_passing_count": int(cad_connection.get("passing_connection_count") or 0),
-        "cad_connection_terminal_marker_count": int(cad_connection.get("required_connection_terminal_marker_count") or 0),
-        "cad_connection_terminal_pair_count": int(cad_connection.get("passing_connection_terminal_pair_count") or 0),
-        "cad_connection_solid_step_part_count": int(cad_connection.get("required_connection_solid_step_part_count") or 0),
-        "cad_connection_solid_step_part_set_count": int(cad_connection.get("passing_connection_solid_step_part_set_count") or 0),
-        "cad_connection_solid_step_part_bytes_total": int(cad_connection.get("connection_solid_step_part_bytes_total") or 0),
-        "cad_connection_assembly_manifest_part_count": int(cad_connection.get("assembly_manifest_part_count") or 0),
+        "cad_connection_terminal_marker_count": int(
+            cad_connection.get("required_connection_terminal_marker_count") or 0
+        ),
+        "cad_connection_terminal_pair_count": int(
+            cad_connection.get("passing_connection_terminal_pair_count") or 0
+        ),
+        "cad_connection_solid_step_part_count": int(
+            cad_connection.get("required_connection_solid_step_part_count") or 0
+        ),
+        "cad_connection_solid_step_part_set_count": int(
+            cad_connection.get("passing_connection_solid_step_part_set_count") or 0
+        ),
+        "cad_connection_solid_step_part_bytes_total": int(
+            cad_connection.get("connection_solid_step_part_bytes_total") or 0
+        ),
+        "cad_connection_assembly_manifest_part_count": int(
+            cad_connection.get("assembly_manifest_part_count") or 0
+        ),
         "cad_connection_assembly_manifest_terminal_marker_count": int(
             cad_connection.get("assembly_manifest_connection_terminal_marker_count") or 0
         ),
@@ -308,7 +358,9 @@ def main() -> int:
         "cad_connection_assembly_manifest_missing_solid_step_part_count": int(
             cad_connection.get("assembly_manifest_missing_connection_solid_step_part_count") or 0
         ),
-        "cad_connection_represented_net_count_total": int(cad_connection.get("represented_net_count_total") or 0),
+        "cad_connection_represented_net_count_total": int(
+            cad_connection.get("represented_net_count_total") or 0
+        ),
         "cad_connection_represented_route_count_total": int(
             cad_connection.get("represented_route_record_count_total")
             or traceability.get("cad_connection_represented_route_count_total")
@@ -332,15 +384,21 @@ def main() -> int:
             is True
         ),
         "cad_connection_record_count": int(cad_connection.get("connection_record_count") or 0),
-        "cad_connection_represented_net_list_total": int(cad_connection.get("represented_net_list_total") or 0),
+        "cad_connection_represented_net_list_total": int(
+            cad_connection.get("represented_net_list_total") or 0
+        ),
         "cad_connection_all_records_have_represented_nets": cad_connection.get(
             "all_connection_records_have_represented_nets"
-        ) is True,
+        )
+        is True,
         "cad_connection_all_represented_nets_match_routed_nets": cad_connection.get(
             "all_connection_represented_nets_match_routed_nets"
-        ) is True,
+        )
+        is True,
         "cad_connection_controlled_impedance_count": int(
-            cad_connection.get("controlled_impedance_connection_count") or traceability.get("cad_connection_controlled_impedance_count") or 0
+            cad_connection.get("controlled_impedance_connection_count")
+            or traceability.get("cad_connection_controlled_impedance_count")
+            or 0
         ),
         "cad_connection_controlled_impedance_requirement_defined_count": int(
             cad_connection.get("controlled_impedance_requirement_defined_count") or 0
@@ -353,10 +411,22 @@ def main() -> int:
         ),
         "cad_connection_release_credit": cad_connection.get("release_credit") is True,
         "component_model_count": int(component_model.get("component_model_count") or 0),
-        "component_model_supplier_approved_count": int(component_model.get("supplier_approved_model_count") or 0),
+        "component_model_supplier_approved_count": int(
+            component_model.get("supplier_approved_model_count") or 0
+        ),
         "component_model_release_allowed": component_model.get("release_allowed") is True,
-        "component_model_pinout_bound_model_count": int(component_model.get("pinout_bound_model_count") or 0),
-        "component_model_support_pattern_model_count": int(component_model.get("support_pattern_model_count") or 0),
+        "component_model_pinout_bound_model_count": int(
+            component_model.get("pinout_bound_model_count") or 0
+        ),
+        "component_model_support_pattern_model_count": int(
+            component_model.get("support_pattern_model_count") or 0
+        ),
+        "component_model_pattern_bound_model_count": int(
+            component_model.get("pattern_bound_model_count") or 0
+        ),
+        "component_model_terminal_contract_bound_model_count": int(
+            component_model.get("terminal_contract_bound_model_count") or 0
+        ),
         "component_model_terminal_contract_or_no_pad_model_count": int(
             component_model.get("models_with_terminal_contract_or_no_electrical_pads_count") or 0
         ),
@@ -366,7 +436,9 @@ def main() -> int:
         "component_model_uncovered_pad_visual_count": int(
             component_model.get("uncovered_pad_visual_count") or 0
         ),
-        "component_model_non_signal_pad_contract_count": int(component_model.get("non_signal_pad_contract_count") or 0),
+        "component_model_non_signal_pad_contract_count": int(
+            component_model.get("non_signal_pad_contract_count") or 0
+        ),
         "component_model_npth_mechanical_feature_contract_count": int(
             component_model.get("npth_mechanical_feature_contract_count") or 0
         ),
@@ -379,8 +451,18 @@ def main() -> int:
         "component_model_local_discrete_step_bbox_match_count": int(
             component_model.get("local_discrete_step_bbox_match_count") or 0
         ),
+        "component_model_local_step_bound_model_count": int(
+            component_model.get("local_step_bound_model_count") or 0
+        ),
         "component_model_local_discrete_step_bytes_total": int(
             component_model.get("local_discrete_step_bytes_total") or 0
+        ),
+        "component_model_all_pattern_binding_flags_pass": all(
+            component_model.get(key) is True
+            for key in (
+                "all_models_have_pattern_binding",
+                "all_models_have_terminal_contract_binding",
+            )
         ),
         "component_model_all_terminal_contract_flags_pass": all(
             component_model.get(key) is True
@@ -397,6 +479,7 @@ def main() -> int:
             component_model.get(key) is True
             for key in (
                 "all_models_have_local_discrete_step_file",
+                "all_models_have_local_step_binding",
                 "all_local_discrete_step_hashes_match_files",
                 "all_local_discrete_step_sizes_match_files",
                 "all_local_discrete_steps_import_as_solids",
@@ -406,6 +489,12 @@ def main() -> int:
         "component_model_directory_record_count": int(component_dir.get("model_record_count") or 0),
         "component_model_directory_terminal_contract_model_record_count": int(
             component_dir.get("terminal_contract_model_record_count") or 0
+        ),
+        "component_model_directory_pattern_bound_model_record_count": int(
+            component_dir.get("pattern_bound_model_record_count") or 0
+        ),
+        "component_model_directory_terminal_contract_bound_model_record_count": int(
+            component_dir.get("terminal_contract_bound_model_record_count") or 0
         ),
         "component_model_directory_terminal_contract_total_count": int(
             component_dir.get("terminal_contract_total_count") or 0
@@ -424,20 +513,25 @@ def main() -> int:
         ),
         "component_model_directory_source_routed_step_bound": component_dir.get(
             "all_model_records_source_routed_step_bound"
-        ) is True,
+        )
+        is True,
         "component_model_directory_records_release_credit_false": component_dir.get(
             "all_records_release_credit_false"
-        ) is True,
+        )
+        is True,
         "component_model_directory_all_terminal_contract_flags_pass": all(
             component_dir.get(key) is True
             for key in (
                 "all_pinout_bound_records_have_terminal_contract",
                 "all_support_pattern_records_have_explicit_provenance",
+                "all_model_records_have_pattern_binding",
+                "all_model_records_have_terminal_contract_binding",
                 "all_terminal_contracts_match_pad_visuals",
                 "all_model_pad_visuals_have_contract",
                 "all_non_signal_pad_contracts_match_pad_visuals",
                 "all_npth_mechanical_features_have_contract",
                 "all_model_records_have_local_discrete_step_file",
+                "all_model_records_have_local_step_binding",
                 "all_local_discrete_step_files_import_as_solids",
                 "all_local_discrete_step_bboxes_match_envelopes",
             )
@@ -450,6 +544,9 @@ def main() -> int:
         ),
         "component_model_directory_local_discrete_step_bbox_match_count": int(
             component_dir.get("local_discrete_step_bbox_match_count") or 0
+        ),
+        "component_model_directory_local_step_bound_model_record_count": int(
+            component_dir.get("local_step_bound_model_record_count") or 0
         ),
         "component_model_directory_local_discrete_step_bytes_total": int(
             component_dir.get("local_discrete_step_bytes_total") or 0
@@ -491,18 +588,14 @@ def main() -> int:
             mechanical_component_dir.get("all_lane_surrogates_release_credit_false") is True
         ),
         "component_model_directory_all_lane_component_reference_counts_match_manifest": (
-            mechanical_component_dir.get(
-                "all_lane_component_reference_counts_match_manifest"
-            )
+            mechanical_component_dir.get("all_lane_component_reference_counts_match_manifest")
             is True
         ),
         "component_model_directory_all_lane_component_records_release_credit_false": (
-            mechanical_component_dir.get("all_lane_component_records_release_credit_false")
-            is True
+            mechanical_component_dir.get("all_lane_component_records_release_credit_false") is True
         ),
         "component_model_directory_all_lane_component_records_reference_surrogate": (
-            mechanical_component_dir.get("all_lane_component_records_reference_surrogate")
-            is True
+            mechanical_component_dir.get("all_lane_component_records_reference_surrogate") is True
         ),
         "component_model_directory_release_allowed": component_dir.get("release_allowed") is True,
     }
@@ -520,9 +613,7 @@ def main() -> int:
             for record in routed_visual.get("filled_copper_zone_records", []) or []
             if isinstance(record, dict)
         ),
-        "filled_copper_zone_records": (
-            routed_visual.get("filled_copper_zone_records", []) or []
-        ),
+        "filled_copper_zone_records": (routed_visual.get("filled_copper_zone_records", []) or []),
         "component_model_record_count": len(
             component_model.get("component_model_record_manifest", []) or []
         ),

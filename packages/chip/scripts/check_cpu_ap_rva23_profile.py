@@ -21,6 +21,11 @@ REQUIRED_EXIT_ARTIFACTS = {
     "build/evidence/cpu_ap/eliza_e1_rva23_hwprobe.log",
     "build/evidence/cpu_ap/eliza_e1_rva23_compliance.log",
 }
+FALSE_CLAIM_FLAGS = {
+    "phone_2028_claim_allowed": False,
+    "rva23_candidate_claim_allowed": False,
+    "rva23_compliant_claim_allowed": False,
+}
 
 
 def require(condition: bool, message: str, errors: list[str]) -> None:
@@ -132,6 +137,11 @@ def main() -> int:
     require(
         policy.get("phone_2028_claim_allowed") is False,
         "phone-class claim must remain blocked",
+        errors,
+    )
+    require(
+        policy.get("false_claim_flags") == FALSE_CLAIM_FLAGS,
+        "claim policy false_claim_flags must match denied RVA23 claims",
         errors,
     )
 

@@ -46,7 +46,9 @@ def main() -> int:
         "execution coverage-ladder inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_execution_coverage_ladder_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_execution_coverage_ladder_inputs_present", "status": status, "detail": detail}
+    )
 
     full_coverage = load_json(FULL_OUTPUT_COVERAGE) if FULL_OUTPUT_COVERAGE.is_file() else {}
     workplan = load_json(FULL_OUTPUT_WORKPLAN) if FULL_OUTPUT_WORKPLAN.is_file() else {}
@@ -64,7 +66,13 @@ def main() -> int:
         "full-output coverage, workplan, sampled output checksum, and vector-window fabric checksum reports are PASS",
         "coverage-ladder dependency report missing or failing",
     )
-    checks.append({"id": "e1x_execution_coverage_ladder_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_execution_coverage_ladder_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     full_summary = full_coverage.get("summary", {})
     workplan_summary = workplan.get("summary", {})
@@ -101,7 +109,9 @@ def main() -> int:
         f"coverage ladder separates {real_sampled_rows} real sampled rows from {window_rows} deterministic vector-window rows",
         "coverage-ladder arithmetic mismatch",
     )
-    checks.append({"id": "e1x_execution_coverage_ladder_arithmetic", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_execution_coverage_ladder_arithmetic", "status": status, "detail": detail}
+    )
 
     checksum_ok = (
         int(output_summary.get("sampled_output_checksum", 0)) == EXPECTED_SAMPLED_OUTPUT_CHECKSUM
@@ -114,21 +124,31 @@ def main() -> int:
         "coverage ladder records both real sampled-output checksum and routed deterministic window checksum",
         "coverage-ladder checksum linkage mismatch",
     )
-    checks.append({"id": "e1x_execution_coverage_ladder_checksums", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_execution_coverage_ladder_checksums", "status": status, "detail": detail}
+    )
 
     blocker_ok = (
         0.0 < real_fraction < 0.001
         and window_fraction == 1.0
         and window_remaining_rows == 0
-        and full_summary.get("residual_blocker") == "full_output_vectorized_tensor_fabric_executor_missing"
-        and window_summary.get("residual_blocker") == "full_output_vectorized_tensor_fabric_executor_missing"
+        and full_summary.get("residual_blocker")
+        == "full_output_vectorized_tensor_fabric_executor_missing"
+        and window_summary.get("residual_blocker")
+        == "full_output_vectorized_tensor_fabric_executor_missing"
     )
     status, detail = pass_fail(
         blocker_ok,
         "coverage ladder improves execution coverage while preserving the full-output blocker",
         "coverage-ladder blocker boundary mismatch",
     )
-    checks.append({"id": "e1x_execution_coverage_ladder_preserves_blocker", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_execution_coverage_ladder_preserves_blocker",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
@@ -152,7 +172,7 @@ def main() -> int:
         "merged_group_count": int(window_summary.get("merged_group_count", 0)),
         "residual_blocker": "full_output_vectorized_tensor_fabric_executor_missing",
     }
-    report = {
+    report: dict[str, object] = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x-execution-coverage-ladder",
         "status": "PASS" if not failures else "BLOCKED",
@@ -179,7 +199,9 @@ def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:
-        print("BLOCKED: E1X execution coverage ladder failed: " + ", ".join(c["id"] for c in failures))
+        print(
+            "BLOCKED: E1X execution coverage ladder failed: " + ", ".join(c["id"] for c in failures)
+        )
         return 1
     print(f"PASS: E1X execution coverage ladder; report {REPORT.relative_to(ROOT)}")
     return 0

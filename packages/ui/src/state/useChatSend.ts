@@ -20,7 +20,7 @@ import {
   loadSavedCustomCommands,
   normalizeSlashCommandName,
 } from "../chat";
-import type { Tab } from "../navigation";
+import { getWindowNavigationPath, type Tab } from "../navigation";
 import { clearChatDraft } from "./ChatComposerContext";
 import { isConversationRecord } from "./chat-conversation-guards";
 import {
@@ -81,7 +81,42 @@ function abortServerConversationTurn(
   void client.abortConversationTurn(roomId, reason).catch(() => {});
 }
 
-function resolveChatViewRouting(tab: Tab): ChatViewRouting {
+function normalizeViewPath(path: string | null | undefined): string {
+  const trimmed = path?.trim() ?? "";
+  if (!trimmed) return "/";
+  const withoutQuery = trimmed.split("?")[0]?.split("#")[0] ?? "/";
+  const normalized = withoutQuery.startsWith("/")
+    ? withoutQuery
+    : `/${withoutQuery}`;
+  return normalized.length > 1 && normalized.endsWith("/")
+    ? normalized.slice(0, -1)
+    : normalized;
+}
+
+function dynamicViewNameFromPath(path: string): string {
+  const slug = normalizeViewPath(path).split("/").filter(Boolean)[0];
+  return slug || "views";
+}
+
+function resolveChatViewRouting(
+  tab: Tab,
+  navigationPath: string,
+): ChatViewRouting {
+  const viewPath = normalizeViewPath(navigationPath).toLowerCase();
+  if (viewPath === "/orchestrator" || viewPath.startsWith("/orchestrator/")) {
+    return {
+      view: "orchestrator",
+      primaryContext: "code",
+      secondaryContexts: ["admin", "documents"],
+      capabilities: [
+        "orchestrator-task",
+        "coding-agent",
+        "task-history",
+        "workspace-control",
+      ],
+    };
+  }
+
   switch (tab) {
     case "apps":
       return {
@@ -156,6 +191,13 @@ function resolveChatViewRouting(tab: Tab): ChatViewRouting {
         secondaryContexts: ["admin", "social_posting"],
         capabilities: ["documents", "memory", "relationships"],
       };
+    case "views":
+      return {
+        view: dynamicViewNameFromPath(viewPath),
+        primaryContext: "apps",
+        secondaryContexts: ["admin", "documents"],
+        capabilities: ["view-actions", "inspect-view", "navigate-view"],
+      };
     default:
       return {
         view: "chat",
@@ -170,7 +212,10 @@ function buildChatViewMetadata(
   tab: Tab,
   metadata?: Record<string, unknown>,
 ): Record<string, unknown> {
-  const viewRouting = resolveChatViewRouting(tab);
+  const navigationPath =
+    typeof window === "undefined" ? "/" : getWindowNavigationPath();
+  const normalizedViewPath = normalizeViewPath(navigationPath);
+  const viewRouting = resolveChatViewRouting(tab, normalizedViewPath);
   const existingRouting = asRecord(metadata?.[CONTEXT_ROUTING_METADATA_KEY]);
   const secondaryContexts = uniq([
     ...viewRouting.secondaryContexts,
@@ -182,6 +227,7 @@ function buildChatViewMetadata(
     ...(metadata ?? {}),
     uiView: viewRouting.view,
     uiTab: tab,
+    uiViewPath: normalizedViewPath,
     uiViewCapabilities: viewRouting.capabilities,
     [CONTEXT_ROUTING_METADATA_KEY]: {
       ...(existingRouting ?? {}),

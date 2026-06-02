@@ -66,9 +66,7 @@ async def mbist_detects_stuck_at_one(dut):
     assert int(dut.fail_addr.value) == addr, (
         f"wrong failing address: {int(dut.fail_addr.value)} != {addr}"
     )
-    assert int(dut.fail_bit.value) == bit, (
-        f"wrong failing bit: {int(dut.fail_bit.value)} != {bit}"
-    )
+    assert int(dut.fail_bit.value) == bit, f"wrong failing bit: {int(dut.fail_bit.value)} != {bit}"
     # Expected 0 background, actual has the stuck bit set.
     assert int(dut.fail_expected.value) == 0
     assert int(dut.fail_actual.value) == (1 << bit)

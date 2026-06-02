@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import cast
 
 import yaml
-
 from provenance_sanitize import sanitize_host_local_paths
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1176,7 +1175,10 @@ def write_report(
     ]
     payload = {
         "schema": SCHEMA,
-        "generated_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "generated_utc": datetime.now(UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
         "status": status,
         "blocked_state": (
             "known_fail_closed_release_evidence_blocked" if status == "blocked" else None

@@ -63,10 +63,13 @@ export class PasteHandler {
    */
   handleInput(data: string): PasteHandlerResult {
     // Check if we're starting a bracketed paste
-    if (data.includes(PASTE_START)) {
+    let prefix = "";
+    const startIndex = data.indexOf(PASTE_START);
+    if (startIndex !== -1) {
       this.isInPaste = true;
       this.buffer = "";
-      data = data.replace(PASTE_START, "");
+      prefix = data.slice(0, startIndex);
+      data = data.slice(startIndex + PASTE_START.length);
     }
 
     // If we're in a paste, buffer the data
@@ -82,7 +85,8 @@ export class PasteHandler {
         this.isInPaste = false;
 
         // Get any remaining input after the paste marker
-        const remaining = this.buffer.substring(endIndex + PASTE_END.length);
+        const remaining =
+          prefix + this.buffer.substring(endIndex + PASTE_END.length);
         this.buffer = "";
 
         return {
@@ -95,7 +99,7 @@ export class PasteHandler {
       // Still buffering, waiting for end marker
       return {
         consumed: true,
-        remaining: "",
+        remaining: prefix,
         pasteContent: null,
       };
     }

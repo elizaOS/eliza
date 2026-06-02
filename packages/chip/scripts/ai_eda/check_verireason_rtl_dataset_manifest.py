@@ -26,6 +26,12 @@ EXPECTED_DATASETS = {
     "verireason-rtl-coder-reasoning-hard",
     "verireason-rtl-coder-reasoning-combined",
 }
+FALSE_CLAIM_FLAGS = {
+    "release_use_allowed": False,
+    "rtl_execution_claim_allowed": False,
+    "e1_signoff_evidence": False,
+    "optimization_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -194,6 +200,8 @@ def validate(report: dict[str, Any]) -> list[str]:
         errors.append("e1_signoff_evidence must be false")
     if report.get("optimization_claim_allowed") is not False:
         errors.append("optimization_claim_allowed must be false")
+    if report.get("false_claim_flags") != FALSE_CLAIM_FLAGS:
+        errors.append("false_claim_flags must match denied VeriReason dataset claims")
     summary = report.get("summary")
     if not isinstance(summary, dict):
         errors.append("summary must be a mapping")

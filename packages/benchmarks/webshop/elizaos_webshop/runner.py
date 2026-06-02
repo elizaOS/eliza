@@ -9,7 +9,7 @@ from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
-from elizaos_webshop.dataset import WebShopDataset
+from elizaos_webshop.dataset import WebShopDataset, expand_tasks, validate_tasks
 from elizaos_webshop.environment import WebShopEnvironment
 from elizaos_webshop.evaluator import WebShopEvaluator
 from elizaos_webshop.eliza_agent import create_webshop_agent
@@ -138,6 +138,9 @@ class WebShopRunner:
             tasks = self.dataset.get_tasks(limit=self.config.max_tasks)
             if not tasks:
                 raise RuntimeError("No tasks loaded")
+            validate_tasks(tasks, include_edge_scenarios=self.config.include_edge_scenarios)
+            if self.config.include_edge_scenarios:
+                tasks = expand_tasks(tasks)
 
             results: list[WebShopResult] = []
             for task in tasks:
@@ -293,6 +296,7 @@ class WebShopRunner:
             "split": self.split,
             "profile": self.profile,
             "use_hf": self.use_hf,
+            "include_edge_scenarios": self.config.include_edge_scenarios,
             "benchmark_task_agent": os.environ.get("BENCHMARK_TASK_AGENT", ""),
             "acp_default_agent": os.environ.get("ELIZA_ACP_DEFAULT_AGENT", ""),
             "default_agent_type": os.environ.get("ELIZA_DEFAULT_AGENT_TYPE", ""),
@@ -350,6 +354,7 @@ class WebShopRunner:
             "split": str(report.summary.get("split", "")),
             "profile": str(report.summary.get("profile", "")),
             "use_hf": bool(report.summary.get("use_hf", False)),
+            "include_edge_scenarios": bool(report.summary.get("include_edge_scenarios", False)),
             "summary": report.summary,
         }
 

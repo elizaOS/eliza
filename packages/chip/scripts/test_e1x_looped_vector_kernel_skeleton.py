@@ -22,7 +22,10 @@ def test_e1x_looped_vector_kernel_skeleton_gate_passes() -> None:
     summary = report["summary"]
     assert summary["failing_check_count"] == 0
     assert summary["skeleton_instruction_words"] == 11
-    assert summary["skeleton_sha256"] == "9422315bcb1a9f158be7d795c6fc386a3c65e31907b80cb5a3cc743d4145dfd3"
+    assert (
+        summary["skeleton_sha256"]
+        == "9422315bcb1a9f158be7d795c6fc386a3c65e31907b80cb5a3cc743d4145dfd3"
+    )
     assert summary["branch_instruction_count"] == 4
     assert summary["opimm_instruction_count"] == 6
     assert summary["full_output_row_count"] == 2_608_640

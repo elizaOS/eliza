@@ -14,12 +14,16 @@ from typing import Any
 from benchmarks.nl2repo.adapter_matrix import token_metrics_from_usage
 from benchmarks.standard.humaneval import (
     DATASET_VERSION,
+    EXPANDED_DATASET_VERSION,
     EMPTY_RETRY_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
     _build_program,
     _execute_program,
+    expand_humaneval_examples,
     _load_dataset_examples,
+    validate_humaneval_examples,
 )
+from benchmarks.standard.scenarios import count_dict_examples
 
 
 def _adapter_command_env_name(task_agent: str) -> str:
@@ -230,6 +234,7 @@ def build_result(
     model_provider: str,
     model: str,
     mode: str,
+    include_edge_scenarios: bool = False,
 ) -> dict[str, Any]:
     total = len(results)
     resolved = sum(1 for item in results if item.get("success") is True)
@@ -239,7 +244,7 @@ def build_result(
         "model_provider": model_provider,
         "model": model,
         "mode": mode,
-        "dataset_version": DATASET_VERSION,
+        "dataset_version": EXPANDED_DATASET_VERSION if include_edge_scenarios else DATASET_VERSION,
         "summary": {
             "total_instances": total,
             "resolved": resolved,
@@ -263,6 +268,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--timeout-seconds", type=int, default=3600)
     parser.add_argument("--eval-timeout-seconds", type=float, default=10.0)
     parser.add_argument("--mock", action="store_true")
+    parser.add_argument("--expand-scenarios", action="store_true")
+    parser.add_argument("--count-scenarios", action="store_true")
+    parser.add_argument("--validate-scenarios", action="store_true")
     parser.add_argument("--json", action="store_true")
     return parser.parse_args(argv)
 
@@ -272,7 +280,20 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = Path(args.output)
     trajectory_dir = Path(args.trajectory_dir) if args.trajectory_dir else None
     output_dir.mkdir(parents=True, exist_ok=True)
-    examples = _load_dataset_examples(args.max_tasks)
+    base_examples = _load_dataset_examples(args.max_tasks)
+    examples = expand_humaneval_examples(base_examples) if args.expand_scenarios else base_examples
+
+    if args.count_scenarios or args.validate_scenarios:
+        if args.validate_scenarios:
+            validate_humaneval_examples(examples)
+            if args.expand_scenarios and len(examples) != len(base_examples) * 11:
+                raise RuntimeError(
+                    f"Expanded HumanEval count mismatch: base={len(base_examples)} total={len(examples)}"
+                )
+            print("Scenario validation: ok")
+        if args.count_scenarios:
+            print(json.dumps(count_dict_examples(base_examples, examples), sort_keys=True))
+        return 0
 
     if args.mock:
         results = [
@@ -294,6 +315,7 @@ def main(argv: list[str] | None = None) -> int:
             model_provider=args.model_provider,
             model=args.model,
             mode="mock",
+            include_edge_scenarios=args.expand_scenarios,
         )
         (output_dir / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
         if args.json:
@@ -314,6 +336,7 @@ def main(argv: list[str] | None = None) -> int:
             model_provider=args.model_provider,
             model=args.model,
             mode="configuration_error",
+            include_edge_scenarios=args.expand_scenarios,
         )
         result["error"] = "HumanEval code-agent command template is not configured"
         (output_dir / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
@@ -338,6 +361,7 @@ def main(argv: list[str] | None = None) -> int:
         model_provider=args.model_provider,
         model=args.model,
         mode="live",
+        include_edge_scenarios=args.expand_scenarios,
     )
     (output_dir / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
     if args.json:

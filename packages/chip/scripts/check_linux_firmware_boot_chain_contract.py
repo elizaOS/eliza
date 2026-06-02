@@ -10,13 +10,13 @@ or when reference-only qemu-virt evidence can be mistaken for chip boot proof.
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
 import hashlib
 import json
 import re
 import sys
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -433,6 +433,7 @@ def check_reference_only_qemu(findings: list[Finding]) -> None:
                 "Buildroot qemu-virt smoke is explicitly reference-only and cannot prove chip boot",
                 f"paths={hits}",
                 "Keep qemu-virt evidence separate from chip-target boot readiness and capture generated-AP or chip-emulator Buildroot boot evidence.",
+                "python3 scripts/check_software_bsp.py buildroot --evidence-plan",
             )
         )
 
@@ -472,8 +473,9 @@ def check_preflight(findings: list[Finding], preflight: Mapping[str, Any]) -> No
         "OpenSBI fw_dynamic handoff evidence still uses a placeholder command",
         rel(PREFLIGHT_REPORT),
         "Set ELIZA_OPENSBI_HANDOFF_CMD to the exact QEMU, Renode, or board handoff command and recapture the OpenSBI handoff transcript.",
-        "ELIZA_OPENSBI_HANDOFF_CMD='<exact qemu, renode, or board handoff command>' "
-        "python3 scripts/check_software_bsp_external_preflight.py --write-report",
+        "python3 scripts/check_software_bsp.py external-preflight opensbi "
+        "--opensbi-handoff-cmd '<exact qemu, renode, or board handoff command>' "
+        "--write-report",
         blocker_dependency="live_device_validation",
     )
 

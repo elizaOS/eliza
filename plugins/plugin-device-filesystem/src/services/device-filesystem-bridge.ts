@@ -1,4 +1,11 @@
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import {
+	mkdir,
+	readdir,
+	readFile,
+	realpath,
+	stat,
+	writeFile,
+} from "node:fs/promises";
 import * as path from "node:path";
 
 import {
@@ -156,6 +163,7 @@ export class DeviceFilesystemBridge extends Service {
 			return result.data;
 		}
 		const absolute = this.resolveNodePath(relative);
+		await this.assertRealPathWithinRoot(absolute);
 		return readFile(absolute, nodeEncodingFor(encoding));
 	}
 
@@ -178,6 +186,7 @@ export class DeviceFilesystemBridge extends Service {
 		}
 		const absolute = this.resolveNodePath(relative);
 		await mkdir(path.dirname(absolute), { recursive: true });
+		await this.assertRealPathWithinRoot(path.dirname(absolute));
 		await writeFile(absolute, content, nodeEncodingFor(encoding));
 	}
 
@@ -195,6 +204,7 @@ export class DeviceFilesystemBridge extends Service {
 			}));
 		}
 		const absolute = this.resolveNodePath(relative);
+		await this.assertRealPathWithinRoot(absolute);
 		const entries = await readdir(absolute, { withFileTypes: true });
 		const out: DirectoryEntry[] = [];
 		for (const entry of entries) {
@@ -239,6 +249,29 @@ export class DeviceFilesystemBridge extends Service {
 			);
 		}
 		return absolute;
+	}
+
+	private async assertRealPathWithinRoot(targetPath: string): Promise<void> {
+		if (!this.nodeRoot) {
+			throw new Error(
+				`${DEVICE_FILESYSTEM_LOG_PREFIX} Node backend root not initialised. Did init() run?`,
+			);
+		}
+		const [rootRealPath, targetRealPath] = await Promise.all([
+			realpath(this.nodeRoot),
+			realpath(targetPath),
+		]);
+		const rootWithSep = rootRealPath.endsWith(path.sep)
+			? rootRealPath
+			: rootRealPath + path.sep;
+		if (
+			targetRealPath !== rootRealPath &&
+			!targetRealPath.startsWith(rootWithSep)
+		) {
+			throw new Error(
+				`${DEVICE_FILESYSTEM_LOG_PREFIX} resolved path escapes workspace root: ${targetRealPath}`,
+			);
+		}
 	}
 }
 

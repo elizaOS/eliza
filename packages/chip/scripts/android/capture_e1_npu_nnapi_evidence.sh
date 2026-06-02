@@ -189,6 +189,17 @@ def env_nonnegative_int(name: str) -> int:
     return parsed
 
 
+def env_nonnegative_float(name: str) -> float:
+    value = require_env(name)
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise SystemExit(f"{name} must be numeric") from exc
+    if not math.isfinite(parsed) or parsed < 0.0:
+        raise SystemExit(f"{name} must be non-negative")
+    return parsed
+
+
 def env_float(name: str) -> float:
     value = require_env(name)
     try:
@@ -220,6 +231,12 @@ if write_proof_json:
     total = env_int("E1_NPU_NNAPI_TOTAL_NODE_COUNT")
     if delegated > total:
         raise SystemExit("E1_NPU_NNAPI_DELEGATED_NODE_COUNT must be <= E1_NPU_NNAPI_TOTAL_NODE_COUNT")
+    cpu_fallback_percent = env_nonnegative_float("E1_NPU_CPU_FALLBACK_PERCENT")
+    unsupported_op_count = env_nonnegative_int("E1_NPU_UNSUPPORTED_OP_COUNT")
+    if cpu_fallback_percent != 0.0:
+        raise SystemExit("E1_NPU_CPU_FALLBACK_PERCENT must be 0 for e1-npu NNAPI proof JSON")
+    if unsupported_op_count != 0:
+        raise SystemExit("E1_NPU_UNSUPPORTED_OP_COUNT must be 0 for e1-npu NNAPI proof JSON")
     dataflow_name = require_env("E1_NPU_DATAFLOW_NAME")
     generated_by = require_env("E1_NPU_GENERATED_BY")
     target = require_env("E1_NPU_TARGET")
@@ -243,8 +260,8 @@ if write_proof_json:
             "accelerator_name": "e1-npu",
             "delegated_node_count": delegated,
             "total_node_count": total,
-            "cpu_fallback_percent": 0,
-            "unsupported_op_count": 0,
+            "cpu_fallback_percent": cpu_fallback_percent,
+            "unsupported_op_count": unsupported_op_count,
         },
         "dataflow": {
             "name": dataflow_name,

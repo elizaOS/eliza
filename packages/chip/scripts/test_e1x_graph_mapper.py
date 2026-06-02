@@ -147,9 +147,7 @@ def test_rejects_block_count_mismatch(manifest_data: dict) -> None:
 def test_rejects_oversized_row(manifest_data: dict, config: E1XConfig) -> None:
     bad = copy.deepcopy(manifest_data)
     # One output row of cols * weight_bits/8 that overflows the per-core budget.
-    bad["layers"].append(
-        {"name": "huge", "kind": "lm_head", "rows": 2, "cols": 10_000_000}
-    )
+    bad["layers"].append({"name": "huge", "kind": "lm_head", "rows": 2, "cols": 10_000_000})
     manifest = parse_manifest(bad)
     with pytest.raises(ManifestError):
         map_graph(manifest, config)

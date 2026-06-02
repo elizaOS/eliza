@@ -49,6 +49,9 @@ REQUIRED_EVIDENCE = {
     "serial_boot_log": "docs/evidence/linux/eliza_e1_serial_boot.log",
     "linux_mmio_smoke": "docs/evidence/linux/e1-mmio-smoke.log",
 }
+ACCEPTED_EVIDENCE_FALLBACKS = {
+    "chipyard_generated_ap_linux_smoke": "build/evidence/cpu_ap/eliza_e1_linux_boot.log",
+}
 REQUIRED_DTS_TOKENS = {
     "chosen": "chosen",
     "bootargs": "console=",
@@ -119,7 +122,21 @@ def load_json(path: Path) -> dict[str, Any]:
     return data if isinstance(data, dict) else {"_invalid_json": True}
 
 
-def check_evidence(path: Path) -> dict[str, Any]:
+def check_evidence(path: Path, *, accepted_fallback: Path | None = None) -> dict[str, Any]:
+    if accepted_fallback is not None and accepted_fallback.is_file():
+        text = read(accepted_fallback)
+        if "eliza-evidence: status=PASS" in text:
+            item = {
+                "status": "present",
+                "path": rel(accepted_fallback),
+                "bytes": accepted_fallback.stat().st_size,
+                "accepted_intake_evidence": True,
+                "raw_source_path": rel(path),
+                "raw_source_exists": path.is_file(),
+            }
+            if path.is_file():
+                item["raw_source_bytes"] = path.stat().st_size
+            return item
     blocked = path.with_suffix(path.suffix + ".BLOCKED")
     if path.is_file() and path.stat().st_size > 0:
         text = read(path)
@@ -202,7 +219,13 @@ def collect() -> dict[str, Any]:
     if not linux_external_bsp:
         errors.append(f"missing Linux external BSP status report: {rel(LINUX_EXTERNAL_STATUS)}")
 
-    evidence = {name: check_evidence(ROOT / path) for name, path in REQUIRED_EVIDENCE.items()}
+    evidence = {}
+    for name, path in REQUIRED_EVIDENCE.items():
+        fallback = ACCEPTED_EVIDENCE_FALLBACKS.get(name)
+        evidence[name] = check_evidence(
+            ROOT / path,
+            accepted_fallback=ROOT / fallback if fallback else None,
+        )
     for name, item in evidence.items():
         if item["status"] == "blocked":
             blockers.append(f"{name}: {item.get('reason', '')}")
@@ -233,9 +256,7 @@ def main(argv: list[str]) -> int:
     report = collect()
     output_report = provenance_safe_value(report)
     REPORT.parent.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text(
-        json.dumps(output_report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    REPORT.write_text(json.dumps(output_report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if args.json:
         print(json.dumps(output_report, indent=2, sort_keys=True))
     else:

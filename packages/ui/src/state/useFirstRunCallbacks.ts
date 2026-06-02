@@ -428,7 +428,7 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
         options?.launchCompanionOverlay === true &&
         COMPANION_ENABLED &&
         APPS_ENABLED;
-      if (launchCompanionOverlay && landingTab !== "home") {
+      if (launchCompanionOverlay && landingTab !== "chat") {
         setActiveOverlayApp("@elizaos/plugin-companion");
         replaceNavigationPathForCompanionLaunch();
         setTab("apps");
@@ -594,7 +594,7 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
           }
           await ensureFirstRunAgentRunning(client);
 
-          completeFirstRun("home", { launchCompanionOverlay: true });
+          completeFirstRun("chat", { launchCompanionOverlay: true });
           return;
         }
 
@@ -762,7 +762,7 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
         }
         await ensureFirstRunAgentRunning(client);
 
-        completeFirstRun("home", { launchCompanionOverlay: true });
+        completeFirstRun("chat", { launchCompanionOverlay: true });
       } catch (err) {
         const message =
           err instanceof Error && err.message.trim()

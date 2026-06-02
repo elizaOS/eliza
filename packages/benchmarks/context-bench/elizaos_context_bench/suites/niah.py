@@ -10,6 +10,7 @@ import time
 from collections.abc import Awaitable, Callable
 
 from elizaos_context_bench.evaluators.retrieval import RetrievalEvaluator
+from elizaos_context_bench.edge_cases import expand_tasks
 from elizaos_context_bench.generator import ContextGenerator
 from elizaos_context_bench.types import (
     ContextBenchConfig,
@@ -99,7 +100,7 @@ class NIAHBenchmarkSuite:
                     )
                     tasks.append(task)
 
-        return tasks
+        return expand_tasks(tasks) if self.config.include_edge_scenarios else tasks
 
     async def _run_single_task(
         self,
@@ -211,6 +212,9 @@ class NIAHBenchmarkSuite:
                     )
                     tasks.append(task)
 
+        if self.config.include_edge_scenarios:
+            tasks = expand_tasks(tasks)
+
         results: list[ContextBenchResult] = []
         total = len(tasks)
 
@@ -241,7 +245,7 @@ class NIAHBenchmarkSuite:
         lengths = context_lengths or self.config.context_lengths
         pos_list = positions or self.config.positions
 
-        results: list[ContextBenchResult] = []
+        tasks: list[ContextBenchTask] = []
 
         for length in lengths:
             for position in pos_list:
@@ -250,8 +254,15 @@ class NIAHBenchmarkSuite:
                     context_length=length,
                     position=position,
                 )
-                result = await self._run_single_task(task)
-                results.append(result)
+                tasks.append(task)
+
+        if self.config.include_edge_scenarios:
+            tasks = expand_tasks(tasks)
+
+        results: list[ContextBenchResult] = []
+        for task in tasks:
+            result = await self._run_single_task(task)
+            results.append(result)
 
         return results
 
@@ -272,7 +283,7 @@ class NIAHBenchmarkSuite:
             NeedlePosition.END,
         ]
 
-        results: list[ContextBenchResult] = []
+        tasks: list[ContextBenchTask] = []
 
         for length in quick_lengths:
             for position in quick_positions:
@@ -283,8 +294,15 @@ class NIAHBenchmarkSuite:
                     position=position,
                     needle_type=needle_type,
                 )
-                result = await self._run_single_task(task)
-                results.append(result)
+                tasks.append(task)
+
+        if self.config.include_edge_scenarios:
+            tasks = expand_tasks(tasks)
+
+        results: list[ContextBenchResult] = []
+        for task in tasks:
+            result = await self._run_single_task(task)
+            results.append(result)
 
         return results
 

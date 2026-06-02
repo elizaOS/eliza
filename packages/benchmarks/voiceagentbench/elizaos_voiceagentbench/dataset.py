@@ -11,6 +11,7 @@ in priority order:
 from __future__ import annotations
 
 import base64
+import dataclasses
 import json
 import os
 from pathlib import Path
@@ -27,6 +28,19 @@ from .types import (
 )
 
 HF_REPO = "krutrim-ai-labs/VoiceAgentBench"
+
+EDGE_VARIANTS: tuple[dict[str, str], ...] = (
+    {"id": "background_noise", "prefix": "There is background noise, but the request is: "},
+    {"id": "hesitation", "prefix": "Um, please help with this: "},
+    {"id": "correction", "suffix": " Correction: use the exact details I just said."},
+    {"id": "fast_speech", "prefix": "Spoken quickly: "},
+    {"id": "polite_form", "prefix": "Could you please "},
+    {"id": "strict_args", "suffix": " Make sure every tool argument matches the spoken request."},
+    {"id": "no_extra_tools", "suffix": " Do not call any unrelated tools."},
+    {"id": "confirmation_noise", "prefix": "After a short confirmation beep, the user says: "},
+    {"id": "accent_note", "prefix": "With a non-native accent, the user says: "},
+    {"id": "trailing_chatter", "suffix": " That is all; ignore any room chatter after this."},
+)
 
 HF_SUITE_FILES: dict[Suite, str] = {
     Suite.SINGLE: "data/single_tool_data/english/single_tool_english.json",
@@ -296,11 +310,70 @@ def _synthesize_missing_audio(tasks: list[VoiceTask]) -> list[VoiceTask]:
     return out
 
 
+def _apply_edge_variant(task: VoiceTask, variant: dict[str, str]) -> VoiceTask:
+    queries = [
+        dataclasses.replace(
+            query,
+            transcript=f"{variant.get('prefix', '')}{query.transcript}{variant.get('suffix', '')}",
+            audio_bytes=None if query.audio_bytes is not None else query.audio_bytes,
+        )
+        for query in task.queries
+    ]
+    description = f"{task.description} [{variant['id']}]".strip()
+    return dataclasses.replace(
+        task,
+        task_id=f"{task.task_id}__edge_{variant['id']}",
+        queries=queries,
+        description=description,
+    )
+
+
+def expand_tasks(tasks: list[VoiceTask]) -> list[VoiceTask]:
+    expanded: list[VoiceTask] = []
+    for task in tasks:
+        expanded.append(task)
+        expanded.extend(_apply_edge_variant(task, variant) for variant in EDGE_VARIANTS)
+    return expanded
+
+
+def count_tasks(tasks: list[VoiceTask], include_edge_scenarios: bool = False) -> dict[str, int]:
+    base = len(tasks)
+    edge = base * len(EDGE_VARIANTS) if include_edge_scenarios else 0
+    return {
+        "base": base,
+        "edge": edge,
+        "edge_multiplier": len(EDGE_VARIANTS),
+        "total": base + edge,
+    }
+
+
+def validate_tasks(tasks: list[VoiceTask], include_edge_scenarios: bool = False) -> None:
+    ids = [task.task_id for task in tasks]
+    duplicates = {task_id for task_id in ids if ids.count(task_id) > 1}
+    if duplicates:
+        raise DatasetError(f"Duplicate VoiceAgentBench task ids: {sorted(duplicates)[:5]}")
+    if not include_edge_scenarios:
+        return
+    expanded = expand_tasks(tasks)
+    expanded_ids = [task.task_id for task in expanded]
+    expanded_duplicates = {
+        task_id for task_id in expanded_ids if expanded_ids.count(task_id) > 1
+    }
+    if expanded_duplicates:
+        raise DatasetError(
+            f"Duplicate expanded VoiceAgentBench task ids: {sorted(expanded_duplicates)[:5]}"
+        )
+    for task in expanded:
+        if "__edge_" in task.task_id and not task.queries:
+            raise DatasetError(f"Expanded task {task.task_id} has no queries")
+
+
 def load_tasks(
     *,
     data_path: Path | None = None,
     suite_filter: Suite | None = None,
     limit: int | None = None,
+    include_edge_scenarios: bool = False,
 ) -> list[VoiceTask]:
     """Load tasks from the configured source, optionally filtered."""
     if data_path is None:
@@ -318,6 +391,10 @@ def load_tasks(
 
     if limit is not None and limit > 0:
         tasks = tasks[:limit]
+
+    validate_tasks(tasks, include_edge_scenarios=include_edge_scenarios)
+    if include_edge_scenarios:
+        tasks = expand_tasks(tasks)
 
     if os.environ.get("VOICEAGENTBENCH_SYNTHESIZE_AUDIO", "").strip() in {"1", "true", "yes"}:
         tasks = _synthesize_missing_audio(tasks)

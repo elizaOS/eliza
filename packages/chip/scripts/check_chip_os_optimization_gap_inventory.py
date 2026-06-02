@@ -9,10 +9,11 @@ Linux/AOSP merely boot or actually run the launcher and agent without issues.
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
 import json
 import re
+import shlex
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +53,47 @@ EMBEDDED_PAYLOAD_KEYS = {
     "diagnostic",
     "diagnostics",
 }
+FALLBACK_COMMANDS: dict[str, tuple[str, ...]] = {
+    "sota_parity": ("make sota-parity-audit-strict", "make cpu-npu-tapeout-readiness-audit"),
+    "cpu_ap_scope": ("make cpu-ap-capture-plan-shell", "make cpu-ap-evidence-check"),
+    "cpu_ap_boot_readiness": ("make cpu-ap-boot-readiness-check",),
+    "minimum_linux_npu_target": (
+        "make minimum-linux-npu-target-strict",
+        "python3 scripts/run_mvp_simulator.py",
+    ),
+    "npu_scope": ("make npu-scope-check", "make e1-npu-nnapi-proof-check"),
+    "npu_coverage_summary": ("make cocotb-npu", "python3 scripts/check_npu_coverage_summary.py"),
+    "mvp_npu_scale_sim": ("make npu-scale-sim-check",),
+    "power_thermal_scope": ("make power-thermal-scope-check", "make power-thermal-evidence-check"),
+    "power_thermal_projection": ("make soc-thermal-sweep",),
+    "phone_runtime_readiness": ("python3 scripts/check_phone_runtime_readiness_contract.py",),
+    "cache_hierarchy_gate": ("make cache-hierarchy-claim-gate",),
+    "memory_uma_claim_gate": ("make memory-uma-claim-gate",),
+    "android_identity_contract": ("make chip-os-identity-contract",),
+    "android_app_runtime_contract": ("python3 scripts/check_android_app_runtime_contract.py",),
+    "android_system_apk_payload": ("python3 scripts/check_android_system_apk_payload.py",),
+    "aosp_hal_service_liveness": ("python3 scripts/check_aosp_hal_service_contract.py",),
+    "android_evidence_capture_strictness": (
+        "python3 scripts/check_android_evidence_capture_contract.py",
+    ),
+    "android_release_readiness": ("python3 scripts/check_android_release_readiness_contract.py",),
+}
+
+SUBSTANTIVE_COMMAND_TOKENS = (
+    "capture_e1_npu_nnapi_evidence.sh",
+    "capture_e1_npu_android_proof_bundle.sh",
+    "ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND",
+    "capture_launcher_runtime_evidence.py",
+    "capture_system_bridge_runtime_evidence.py",
+    "capture_simulated_peripheral_evidence.py",
+    "capture_chipyard_linux_evidence.sh",
+    "capture_cpu_ap_evidence.py",
+    "run_benchmarks.py run",
+    "boot_android_simulator.sh --run-cuttlefish",
+    "boot-chip-android",
+)
+SETUP_ONLY_COMMANDS = {"adb devices"}
+SETUP_ONLY_PREFIXES = ("export ", "test -n ")
 
 
 def utc_now() -> str:
@@ -293,6 +335,7 @@ def status_value(data: object) -> str | None:
 
 def bool_false_fields(data: object) -> list[str]:
     fields: list[str] = []
+
     def walk(value: object, prefix: str) -> None:
         if isinstance(value, dict):
             for key, child in value.items():
@@ -338,7 +381,7 @@ def finding(
         "code": code,
         "severity": severity,
         "message": message,
-        "evidence": evidence[:400],
+        "evidence": provenance_safe_command(evidence)[:400],
         "source": spec.path,
         "required_for": spec.required_for,
         "next_step": (
@@ -436,12 +479,180 @@ def evaluate_artifact(spec: ArtifactSpec) -> tuple[dict[str, Any], list[dict[str
     )
 
 
+COMMAND_KEYS = (
+    "next_command_plan",
+    "next_capture_commands",
+    "next_commands",
+    "next_command",
+    "capture_commands",
+    "collectionCommands",
+    "validation_commands",
+    "validationCommand",
+    "generationCommands",
+    "commands",
+    "command",
+)
+COMMAND_KEY_SET = set(COMMAND_KEYS)
+ARGV_COMMAND_NAMES = {
+    "bash",
+    "bun",
+    "env",
+    "make",
+    "node",
+    "python",
+    "python3",
+    "sh",
+}
+
+
+def shell_token(value: str) -> str:
+    return shlex.quote(value)
+
+
+def provenance_safe_command(value: str) -> str:
+    safe = value.replace("/home/shaw/aosp", "$AOSP_WORKSPACE")
+    safe = re.sub(r"/home/[^/\s\"']+/aosp", "$AOSP_WORKSPACE", safe)
+    safe = re.sub(r"/Users/[^/\s\"']+/aosp", "$AOSP_WORKSPACE", safe)
+    return safe
+
+
+def looks_like_argv_command(values: list[str]) -> bool:
+    if len(values) < 2:
+        return False
+    first = values[0].strip()
+    if not first or re.search(r"\s", first):
+        return False
+    first_name = Path(first).name
+    if first.startswith(("/", "./", "../")) or first_name in ARGV_COMMAND_NAMES:
+        return any(
+            re.search(r"\s", value)
+            or value.startswith("-")
+            or value.endswith((".py", ".sh", ".js", ".mjs"))
+            or value.startswith(("/", "./", "../"))
+            for value in values[1:]
+        )
+    return any(value.startswith("-") for value in values[1:])
+
+
+def command_strings(value: object) -> list[str]:
+    commands: list[str] = []
+    if isinstance(value, str) and value.strip():
+        return [provenance_safe_command(value.strip())]
+    if isinstance(value, list):
+        string_items = [item.strip() for item in value if isinstance(item, str) and item.strip()]
+        if len(string_items) == len(value) and looks_like_argv_command(string_items):
+            return [provenance_safe_command(" ".join(shell_token(item) for item in string_items))]
+        for item in value:
+            commands.extend(command_strings(item))
+    elif isinstance(value, dict):
+        for key in COMMAND_KEYS:
+            commands.extend(command_strings(value.get(key)))
+    return commands
+
+
+def recursive_command_strings(value: object, *, in_command_context: bool = False) -> list[str]:
+    commands: list[str] = []
+    if in_command_context and not isinstance(value, dict):
+        return command_strings(value)
+    if isinstance(value, dict):
+        command_key_set = {str(key) for key in value}
+        command_map = in_command_context and not (command_key_set & COMMAND_KEY_SET)
+        if in_command_context:
+            for key in COMMAND_KEYS:
+                if key in value:
+                    commands.extend(
+                        recursive_command_strings(value.get(key), in_command_context=True)
+                    )
+        for key, child in value.items():
+            if in_command_context and str(key) in COMMAND_KEY_SET:
+                continue
+            commands.extend(
+                recursive_command_strings(
+                    child, in_command_context=command_map or str(key) in COMMAND_KEY_SET
+                )
+            )
+    elif isinstance(value, list):
+        for child in value:
+            commands.extend(recursive_command_strings(child, in_command_context=in_command_context))
+    return commands
+
+
+def artifact_command_plan(spec: ArtifactSpec) -> dict[str, Any] | None:
+    data = load_structured(resolve(spec.path))
+    commands: list[str] = []
+    if isinstance(data, dict):
+        for key in COMMAND_KEYS:
+            commands.extend(recursive_command_strings(data.get(key), in_command_context=True))
+        remainder = {key: value for key, value in data.items() if str(key) not in COMMAND_KEY_SET}
+        commands.extend(recursive_command_strings(remainder))
+    commands.extend(FALLBACK_COMMANDS.get(spec.ident, ()))
+    deduped = list(dict.fromkeys(provenance_safe_command(command) for command in commands))
+    if not deduped:
+        return None
+    return {
+        "id": f"capture_{spec.ident}_optimization_evidence",
+        "area": spec.area,
+        "source": spec.path,
+        "claim_boundary": "operator_commands_only_not_optimization_runtime_evidence",
+        "commands": deduped,
+        "requires": [
+            "target-specific Linux or AOSP runtime measurement source",
+            "non-placeholder PASS evidence with timestamps and claim boundaries",
+            "rerun of the optimization gap inventory after capture",
+        ],
+    }
+
+
+def attach_command_plan_to_findings(
+    rows: list[dict[str, Any]], batch: dict[str, Any] | None
+) -> None:
+    if not batch:
+        return
+    commands = batch.get("commands")
+    if not isinstance(commands, list) or not commands:
+        return
+    command_values = [command for command in commands if isinstance(command, str) and command]
+    if not command_values:
+        return
+    next_command = preferred_next_command(command_values)
+    for row in rows:
+        row["next_command"] = next_command
+        row["next_commands"] = command_values
+
+
+def is_setup_only_command(command: str) -> bool:
+    stripped = command.strip()
+    return stripped in SETUP_ONLY_COMMANDS or stripped.startswith(SETUP_ONLY_PREFIXES)
+
+
+def is_substantive_capture_command(command: str) -> bool:
+    return any(token in command for token in SUBSTANTIVE_COMMAND_TOKENS) or re.search(
+        r"\b(capture|collect)-[A-Za-z0-9_.:/=-]+", command
+    ) is not None
+
+
+def preferred_next_command(commands: list[str]) -> str:
+    for command in commands:
+        if is_substantive_capture_command(command):
+            return command
+    for command in commands:
+        if not is_setup_only_command(command):
+            return command
+    return commands[0]
+
+
 def build_report() -> dict[str, Any]:
     artifacts: list[dict[str, Any]] = []
     findings: list[dict[str, Any]] = []
+    command_plan: list[dict[str, Any]] = []
     for spec in ARTIFACTS:
         artifact, artifact_findings = evaluate_artifact(spec)
         artifacts.append(artifact)
+        if artifact_findings:
+            batch = artifact_command_plan(spec)
+            if batch:
+                command_plan.append(batch)
+            attach_command_plan_to_findings(artifact_findings, batch)
         findings.extend(artifact_findings)
     by_area: dict[str, int] = {}
     for item in findings:
@@ -456,9 +667,11 @@ def build_report() -> dict[str, Any]:
             "artifacts": len(artifacts),
             "findings": len(findings),
             "areas": dict(sorted(by_area.items())),
+            "next_command_batch_count": len(command_plan),
         },
         "artifacts": artifacts,
         "findings": findings,
+        "next_command_plan": command_plan,
     }
 
 

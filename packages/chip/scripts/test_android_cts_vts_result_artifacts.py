@@ -17,8 +17,12 @@ def require(text: str, needle: str, label: str) -> None:
 
 def test_cts_emits_manifest_ready_result_json() -> None:
     text = CTS.read_text(encoding="utf-8")
-    require(text, "RESULT_JSON=\"${CTS_RESULT_JSON:-docs/evidence/android/e1-npu/cts-result.json}\"", "CTS")
-    require(text, "REFRESH_ANDROID_MANIFEST=\"${E1_NPU_REFRESH_ANDROID_MANIFEST:-1}\"", "CTS")
+    require(
+        text,
+        'RESULT_JSON="${CTS_RESULT_JSON:-docs/evidence/android/e1-npu/cts-result.json}"',
+        "CTS",
+    )
+    require(text, 'REFRESH_ANDROID_MANIFEST="${E1_NPU_REFRESH_ANDROID_MANIFEST:-1}"', "CTS")
     require(text, "scripts/assemble_e1_npu_android_proof_manifest.py", "CTS")
     require(text, "--module CtsNNAPITestCases", "CTS")
     require(text, "TRADEFED_RC=${PIPESTATUS[0]}", "CTS")
@@ -34,8 +38,12 @@ def test_cts_emits_manifest_ready_result_json() -> None:
 
 def test_vts_emits_manifest_ready_result_json() -> None:
     text = VTS.read_text(encoding="utf-8")
-    require(text, "RESULT_JSON=\"${VTS_RESULT_JSON:-docs/evidence/android/e1-npu/vts-result.json}\"", "VTS")
-    require(text, "REFRESH_ANDROID_MANIFEST=\"${E1_NPU_REFRESH_ANDROID_MANIFEST:-1}\"", "VTS")
+    require(
+        text,
+        'RESULT_JSON="${VTS_RESULT_JSON:-docs/evidence/android/e1-npu/vts-result.json}"',
+        "VTS",
+    )
+    require(text, 'REFRESH_ANDROID_MANIFEST="${E1_NPU_REFRESH_ANDROID_MANIFEST:-1}"', "VTS")
     require(text, "scripts/assemble_e1_npu_android_proof_manifest.py", "VTS")
     require(text, "TRADEFED_RC=${PIPESTATUS[0]}", "VTS")
     require(text, "vendor\\.eliza\\.e1_npu\\|e1_npu", "VTS")

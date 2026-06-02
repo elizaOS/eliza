@@ -205,7 +205,7 @@ class AgentBenchRunner:
                 tasks = self._load_tasks(env)
                 env_config = self.config.get_env_config(env)
 
-                for task in tasks[: env_config.max_tasks]:
+                for task in tasks:
                     # Use injected bridge harness when present, otherwise run adapter directly.
                     if self._harness is not None:
                         result = await self._harness.run_task(task, adapter)
@@ -258,6 +258,7 @@ class AgentBenchRunner:
                 split=split,
                 limit=limit,
                 data_mode=self.config.data_mode,
+                include_edge_scenarios=self.config.include_edge_scenarios,
             )
         except upstream_loader.UpstreamDataMissingError as e:
             raise RuntimeError(f"{env.value}: upstream data missing ({e})") from e

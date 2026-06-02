@@ -111,6 +111,8 @@ printf 'Building AP benchmark target tools with %s\n' "$cc"
 "$cc" -O2 -static -o "$tool_out/ap-bench-lite" "$workload_dir/ap-bench-lite.c"
 chmod 0755 "$tool_out/ap-bench-lite"
 
+# Single-item loop is intentional; the pattern allows adding more tools without restructuring
+# shellcheck disable=SC2043
 for tool in ap-bench-lite; do
 	if ! file "$tool_out/$tool" | grep -q 'RISC-V'; then
 		printf 'STATUS: BLOCKED firemarshal.eliza_e1_ap_benchmarks_payload\n'

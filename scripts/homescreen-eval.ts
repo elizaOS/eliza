@@ -57,11 +57,9 @@ const CANDIDATES = Number.parseInt(process.env.HS_CANDIDATES ?? "3", 10);
 const EXPORT_DIR =
   process.env.HS_EXPORT_DIR ?? `/tmp/homescreen-eval-${Date.now()}`;
 const GEPA = process.argv.includes("--gepa");
-
-if (!API_KEY) {
-  console.error("CEREBRAS_API_KEY is required.");
-  process.exit(1);
-}
+const MAX_SCENARIOS = Number.parseInt(process.env.HS_MAX_SCENARIOS ?? "0", 10);
+const COUNT_SCENARIOS = process.argv.includes("--count-scenarios");
+const VALIDATE_SCENARIOS = process.argv.includes("--validate-scenarios");
 
 // ── Cerebras client with backoff (the key is rate-limited; 429s are common) ──
 
@@ -174,7 +172,7 @@ interface Scenario {
   intent: (scene: HomescreenScene) => boolean;
 }
 
-const SCENARIOS: Scenario[] = [
+const BASE_SCENARIOS: Scenario[] = [
   {
     id: "background-black",
     mode: "edit",
@@ -220,6 +218,405 @@ const SCENARIOS: Scenario[] = [
       s.background.kind === "preset" || s.background.kind === "script",
   },
 ];
+
+const backgroundScenario = (
+  id: string,
+  request: string,
+  background: number,
+): Scenario => ({
+  id,
+  mode: "edit",
+  request,
+  base: createDefaultScene,
+  intent: (s) => s.theme.background === background,
+});
+
+const accentScenario = (
+  id: string,
+  request: string,
+  intent: Scenario["intent"],
+): Scenario => ({
+  id,
+  mode: "edit",
+  request,
+  base: createDefaultScene,
+  intent,
+});
+
+const blockScenario = (
+  id: string,
+  request: string,
+  intent: Scenario["intent"],
+): Scenario => ({
+  id,
+  mode: "edit",
+  request,
+  base: createDefaultScene,
+  intent,
+});
+
+const createSceneScenario = (
+  id: string,
+  request: string,
+  intent: Scenario["intent"] = (s) =>
+    s.background.kind === "preset" || s.background.kind === "script",
+): Scenario => ({
+  id,
+  mode: "create",
+  request,
+  base: createDefaultScene,
+  intent,
+});
+
+const scriptScene = (s: HomescreenScene) => s.background.kind === "script";
+const renderableScene = (s: HomescreenScene) =>
+  s.background.kind === "preset" || s.background.kind === "script";
+
+const EXPANDED_SCENARIOS: Scenario[] = [
+  // Theme color precision and named-color grounding.
+  backgroundScenario(
+    "edge-background-white",
+    "make the background pure white",
+    0xffffff,
+  ),
+  backgroundScenario(
+    "edge-background-navy",
+    "set the page background to midnight navy",
+    0x000020,
+  ),
+  backgroundScenario(
+    "edge-background-charcoal",
+    "make the background dark charcoal, almost black but not pure black",
+    0x111111,
+  ),
+  backgroundScenario(
+    "edge-background-red",
+    "turn the background into a saturated red",
+    0xff0000,
+  ),
+  backgroundScenario(
+    "edge-background-green",
+    "make the background a clean matrix green",
+    0x00ff00,
+  ),
+  backgroundScenario(
+    "edge-background-blue",
+    "make the background pure electric blue",
+    0x0000ff,
+  ),
+  backgroundScenario(
+    "edge-background-magenta",
+    "change the background to hot magenta",
+    0xff00ff,
+  ),
+  backgroundScenario(
+    "edge-background-cyan",
+    "change the background to bright cyan",
+    0x00ffff,
+  ),
+  backgroundScenario(
+    "edge-background-yellow",
+    "make the background warning-sign yellow",
+    0xffff00,
+  ),
+  backgroundScenario(
+    "edge-background-orange-brand",
+    "restore the original brand-orange background",
+    0xff5800,
+  ),
+
+  // Accent edits: broad predicates leave room for different exact shades.
+  accentScenario(
+    "edge-accent-cyan",
+    "make the assistant accent glow cyan",
+    (s) => {
+      const [r, g, b] = s.theme.accent;
+      return g > 0.55 && b > 0.55 && r < 0.35;
+    },
+  ),
+  accentScenario("edge-accent-lime", "change the accent to lime green", (s) => {
+    const [r, g, b] = s.theme.accent;
+    return g > 0.65 && r > 0.35 && b < 0.25;
+  }),
+  accentScenario("edge-accent-rose", "make the accent soft rose pink", (s) => {
+    const [r, g, b] = s.theme.accent;
+    return r > 0.65 && b > 0.35 && g < r;
+  }),
+  accentScenario("edge-accent-gold", "change the accent to gold", (s) => {
+    const [r, g, b] = s.theme.accent;
+    return r > 0.75 && g > 0.55 && b < 0.25;
+  }),
+  accentScenario(
+    "edge-accent-ice-blue",
+    "make the accent an icy pale blue",
+    (s) => {
+      const [r, g, b] = s.theme.accent;
+      return b > 0.65 && g > 0.45 && r < b;
+    },
+  ),
+  accentScenario(
+    "edge-accent-red",
+    "change only the accent to alert red",
+    (s) => {
+      const [r, g, b] = s.theme.accent;
+      return r > 0.75 && g < 0.25 && b < 0.25;
+    },
+  ),
+  accentScenario(
+    "edge-accent-violet",
+    "make the accent violet instead of orange",
+    (s) => {
+      const [r, g, b] = s.theme.accent;
+      return r > 0.35 && b > 0.55 && g < 0.35;
+    },
+  ),
+  accentScenario("edge-accent-teal", "switch the accent to teal", (s) => {
+    const [r, g, b] = s.theme.accent;
+    return g > 0.4 && b > 0.35 && r < 0.25;
+  }),
+  accentScenario("edge-accent-white", "make the accent clean white", (s) => {
+    const [r, g, b] = s.theme.accent;
+    return r > 0.85 && g > 0.85 && b > 0.85;
+  }),
+  accentScenario(
+    "edge-accent-keep-background",
+    "make the accent blue but keep the current background color",
+    (s) => {
+      const [r, _g, b] = s.theme.accent;
+      return (
+        b > 0.55 &&
+        r < b &&
+        s.theme.background === createDefaultScene().theme.background
+      );
+    },
+  ),
+
+  // Block layout, hiding, collapsing, and visual overrides.
+  blockScenario(
+    "edge-hide-apps",
+    "hide the apps block so the canvas has more room",
+    (s) => s.blocks.apps.layout.hidden,
+  ),
+  blockScenario(
+    "edge-show-apps",
+    "make sure the apps block is visible",
+    (s) => !s.blocks.apps.layout.hidden,
+  ),
+  blockScenario(
+    "edge-collapse-chat",
+    "collapse the chat block into a small handle",
+    (s) => s.blocks.chat.layout.collapsed,
+  ),
+  blockScenario(
+    "edge-collapse-notifications",
+    "collapse notifications but do not hide them",
+    (s) =>
+      s.blocks.notifications.layout.collapsed &&
+      !s.blocks.notifications.layout.hidden,
+  ),
+  blockScenario(
+    "edge-chat-top-left",
+    "move chat to the top left corner",
+    (s) => s.blocks.chat.layout.anchor === "top-left",
+  ),
+  blockScenario(
+    "edge-chat-bottom-left",
+    "move chat to the bottom left",
+    (s) => s.blocks.chat.layout.anchor === "bottom-left",
+  ),
+  blockScenario(
+    "edge-apps-bottom-center",
+    "put apps at the bottom center",
+    (s) => s.blocks.apps.layout.anchor === "bottom-center",
+  ),
+  blockScenario(
+    "edge-notifications-bottom-right",
+    "move notifications to the bottom right",
+    (s) => s.blocks.notifications.layout.anchor === "bottom-right",
+  ),
+  blockScenario(
+    "edge-chat-offset-up",
+    "nudge the chat panel upward by about 80 pixels",
+    (s) => s.blocks.chat.layout.offset.y < -40,
+  ),
+  blockScenario(
+    "edge-apps-offset-right",
+    "nudge the apps block to the right without changing its anchor",
+    (s) => s.blocks.apps.layout.offset.x > 20,
+  ),
+  blockScenario(
+    "edge-rounder-chat",
+    "make the chat panel corners noticeably rounder",
+    (s) => (s.blocks.chat.theme.radius ?? 0) >= 12,
+  ),
+  blockScenario(
+    "edge-frosted-apps",
+    "make the apps block more frosted and blurry",
+    (s) => (s.blocks.apps.theme.blur ?? 0) >= 8,
+  ),
+
+  // Create-mode coverage: realistic visual requests with broad renderability checks.
+  createSceneScenario(
+    "edge-create-radar",
+    "create a green radar sweep interface that reacts to voice energy",
+    scriptScene,
+  ),
+  createSceneScenario(
+    "edge-create-orbit-map",
+    "create an orbital map with small nodes circling the assistant",
+    scriptScene,
+  ),
+  createSceneScenario(
+    "edge-create-rain-window",
+    "create a rainy cyberpunk window scene with slow droplets",
+    scriptScene,
+  ),
+  createSceneScenario(
+    "edge-create-audio-rings",
+    "create concentric rings that expand when either user or assistant audio is active",
+    scriptScene,
+  ),
+  createSceneScenario(
+    "edge-create-minimal-focus",
+    "create a minimal distraction-free focus scene",
+    renderableScene,
+  ),
+  createSceneScenario(
+    "edge-create-retro-terminal",
+    "create a retro terminal homescreen with subtle scanlines",
+    scriptScene,
+  ),
+  createSceneScenario(
+    "edge-create-solar-system",
+    "create a tiny solar-system scene with slow orbiting planets",
+    scriptScene,
+  ),
+  createSceneScenario(
+    "edge-create-particle-nebula",
+    "create a purple particle nebula that stays lightweight",
+    scriptScene,
+  ),
+  createSceneScenario(
+    "edge-create-glass-dashboard",
+    "create a glass dashboard background with soft depth",
+    renderableScene,
+  ),
+  createSceneScenario(
+    "edge-create-meditation",
+    "create a calm meditation scene with a slow breathing glow",
+    scriptScene,
+  ),
+  createSceneScenario(
+    "edge-create-night-drive",
+    "create a night-drive dashboard vibe with moving horizon lights",
+    scriptScene,
+  ),
+  createSceneScenario(
+    "edge-create-ocean-depths",
+    "create an ocean-depths scene with slow drifting light beams",
+    scriptScene,
+  ),
+
+  // Boundary behavior: keep valid JSON, preserve renderability, and use script when required by live inputs.
+  createSceneScenario(
+    "edge-react-listening-phase",
+    "create a scene that visibly changes when inputs.phase is listening",
+    scriptScene,
+  ),
+  createSceneScenario(
+    "edge-react-speaking-phase",
+    "create a scene that pulses when the assistant is speaking",
+    scriptScene,
+  ),
+  createSceneScenario(
+    "edge-react-pointer",
+    "create a scene where the pointer position gently pulls particles around",
+    scriptScene,
+  ),
+  createSceneScenario(
+    "edge-react-frequency-bands",
+    "create an equalizer background driven by low, mid, and high frequency bands",
+    scriptScene,
+  ),
+  createSceneScenario(
+    "edge-performance-low-poly",
+    "create a low-poly scene with an optimize(tier) method for slow devices",
+    scriptScene,
+  ),
+  {
+    id: "edge-edit-preserve-renderable-after-complex-request",
+    mode: "edit",
+    request:
+      "make it feel like a holographic command center, but keep it valid and renderable",
+    base: createDefaultScene,
+    intent: renderableScene,
+  },
+];
+
+if (EXPANDED_SCENARIOS.length !== BASE_SCENARIOS.length * 10) {
+  throw new Error(
+    `homescreen scenario expansion must add exactly 10x (${BASE_SCENARIOS.length * 10}); got ${EXPANDED_SCENARIOS.length}`,
+  );
+}
+
+const SCENARIOS: Scenario[] = [...BASE_SCENARIOS, ...EXPANDED_SCENARIOS];
+const EVAL_SCENARIOS =
+  Number.isFinite(MAX_SCENARIOS) && MAX_SCENARIOS > 0
+    ? SCENARIOS.slice(0, MAX_SCENARIOS)
+    : SCENARIOS;
+
+if (COUNT_SCENARIOS) {
+  console.log(
+    JSON.stringify(
+      {
+        suite: "homescreen",
+        existing: BASE_SCENARIOS.length,
+        added: EXPANDED_SCENARIOS.length,
+        total: SCENARIOS.length,
+        multiplierAdded: EXPANDED_SCENARIOS.length / BASE_SCENARIOS.length,
+      },
+      null,
+      2,
+    ),
+  );
+  process.exit(0);
+}
+
+if (VALIDATE_SCENARIOS) {
+  const ids = new Set<string>();
+  const duplicates = SCENARIOS.filter((s) => {
+    if (ids.has(s.id)) return true;
+    ids.add(s.id);
+    return false;
+  }).map((s) => s.id);
+  const badModes = SCENARIOS.filter(
+    (s) => s.mode !== "edit" && s.mode !== "create",
+  ).map((s) => s.id);
+  if (duplicates.length || badModes.length) {
+    console.error(
+      JSON.stringify({ suite: "homescreen", duplicates, badModes }, null, 2),
+    );
+    process.exit(1);
+  }
+  console.log(
+    JSON.stringify(
+      {
+        suite: "homescreen",
+        valid: true,
+        scenarios: SCENARIOS.length,
+        uniqueIds: ids.size,
+      },
+      null,
+      2,
+    ),
+  );
+  process.exit(0);
+}
+
+if (!API_KEY) {
+  console.error("CEREBRAS_API_KEY is required.");
+  process.exit(1);
+}
 
 // ── Scoring — the hard metric ────────────────────────────────────────────────
 
@@ -283,7 +680,7 @@ async function evalPass(
   label: string,
 ): Promise<{ mean: number; details: ScoreDetail[] }> {
   const details: ScoreDetail[] = [];
-  for (const scenario of SCENARIOS) {
+  for (const scenario of EVAL_SCENARIOS) {
     const user = buildHomescreenPrompt({
       mode: scenario.mode,
       request: scenario.request,
@@ -406,7 +803,7 @@ async function runGepa(): Promise<void> {
 
 async function runProof(): Promise<void> {
   console.log(
-    `\nReal-Cerebras proof · model ${MODEL} · ${SCENARIOS.length} scenarios\n`,
+    `\nReal-Cerebras proof · model ${MODEL} · ${EVAL_SCENARIOS.length}${EVAL_SCENARIOS.length !== SCENARIOS.length ? `/${SCENARIOS.length}` : ""} scenarios\n`,
   );
   const { mean, details } = await evalPass(BASELINE_SYSTEM, "proof");
   const fullPass = details.filter((d) => d.score === 1).length;

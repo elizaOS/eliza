@@ -24,6 +24,7 @@ Example:
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -36,7 +37,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 from elizaos_rlm_bench import (
     RLMBenchConfig,
     RLMBenchRunner,
+    count_tasks,
     save_results,
+    validate_tasks,
 )
 
 logging.basicConfig(
@@ -117,6 +120,52 @@ def _load_env_file(env_path: Path) -> None:
             continue
         if key not in os.environ:
             os.environ[key] = value
+
+
+def build_custom_query_fn(config: RLMBenchConfig, backend: str) -> Callable[[str, str], str] | None:
+    """Build a small provider query function for ``--mode custom``."""
+    if backend.strip().lower() != "cerebras":
+        return None
+
+    api_key = os.environ.get("CEREBRAS_API_KEY")
+    if not api_key:
+        raise RuntimeError("--mode custom --backend cerebras requires CEREBRAS_API_KEY")
+
+    model = (config.root_model or config.subcall_model or "gpt-oss-120b").strip()
+
+    def query(context: str, question: str) -> str:
+        try:
+            from openai import OpenAI
+        except ImportError as exc:
+            raise RuntimeError(
+                "--mode custom --backend cerebras requires the openai Python package"
+            ) from exc
+
+        client = OpenAI(api_key=api_key, base_url="https://api.cerebras.ai/v1")
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Answer long-context benchmark questions with only the requested "
+                        "final value or values. Do not include explanations."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"Context:\n{context}\n\nQuestion: {question}\n\nAnswer:",
+                },
+            ],
+            temperature=0,
+            max_completion_tokens=256,
+        )
+        if not response.choices:
+            return ""
+        content = response.choices[0].message.content or ""
+        return content.strip() if isinstance(content, str) else ""
+
+    return query
 
 
 def parse_args() -> argparse.Namespace:
@@ -221,6 +270,21 @@ Examples:
         "-v",
         action="store_true",
         help="Enable verbose logging",
+    )
+    parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Run each generated base task plus ten realistic edge variants.",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print base/edge/total task counts before running.",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate generated task ids and edge scenario metadata before running.",
     )
 
     return parser.parse_args()
@@ -348,6 +412,7 @@ async def main() -> int:
         use_dual_model=args.dual_model,
         root_model=args.root_model,
         subcall_model=args.subcall_model,
+        include_edge_scenarios=args.expand_scenarios,
     )
 
     logger.info("=" * 60)
@@ -361,7 +426,32 @@ async def main() -> int:
     logger.info(f"OOLONG: {'enabled' if not args.no_oolong else 'disabled'}")
     if args.dual_model:
         logger.info(f"Dual-model: root={args.root_model}, subcall={args.subcall_model}")
+    logger.info(f"Edge scenarios: {'enabled' if args.expand_scenarios else 'disabled'}")
     logger.info("=" * 60)
+
+    if args.count_scenarios or args.validate_scenarios:
+        base_config = RLMBenchConfig(
+            output_dir=args.output_dir,
+            context_lengths=context_lengths,
+            max_context_length=max(context_lengths),
+            tasks_per_config=args.tasks_per_config,
+            run_s_niah=not args.no_s_niah,
+            run_s_niah_multi=not args.no_s_niah,
+            run_oolong=not args.no_oolong,
+            run_oolong_pairs=not args.no_oolong,
+            rlm_backend=args.backend,
+            rlm_max_iterations=args.max_iterations,
+            rlm_max_depth=args.max_depth,
+            use_dual_model=args.dual_model,
+            root_model=args.root_model,
+            subcall_model=args.subcall_model,
+            include_edge_scenarios=False,
+        )
+        base_tasks = RLMBenchRunner(base_config).generator.generate_all_tasks()
+        if args.validate_scenarios:
+            validate_tasks(base_tasks, include_edge_scenarios=args.expand_scenarios)
+        if args.count_scenarios:
+            print(json.dumps(count_tasks(base_tasks, args.expand_scenarios)))
 
     # Special handling for eliza mode (FULL canonical agent loop)
     if args.mode == "eliza":
@@ -372,7 +462,10 @@ async def main() -> int:
         )
 
     # Create runner and execute (stub, rlm, custom modes)
-    runner = RLMBenchRunner(config)
+    runner = RLMBenchRunner(
+        config,
+        llm_query_fn=build_custom_query_fn(config, args.backend) if args.mode == "custom" else None,
+    )
 
     print("\nRunning benchmark tasks...")
     results = await runner.run_all(mode=args.mode, progress_callback=progress_callback)

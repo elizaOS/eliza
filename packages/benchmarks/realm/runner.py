@@ -60,6 +60,7 @@ class REALMRunner:
             config.data_path,
             max_instances_per_problem=config.max_instances_per_problem,
             use_sample_tasks=config.use_sample_tasks,
+            include_edge_scenarios=config.include_edge_scenarios,
         )
         if agent is None:
             if not use_mock:
@@ -183,6 +184,7 @@ class REALMRunner:
                     "model": self.config.model_name,
                     "use_sample_tasks": self.config.use_sample_tasks,
                     "max_instances_per_problem": self.config.max_instances_per_problem,
+                    "include_edge_scenarios": self.config.include_edge_scenarios,
                     "auto_install_ortools": self.config.auto_install_ortools,
                 },
                 "leaderboard_note": LEADERBOARD_NOTE,

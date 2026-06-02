@@ -20,10 +20,10 @@ ECALL = 0x0000_0073
 X0 = 0
 X1 = 1
 X2 = 2
-X5 = 5   # row_count limit, preloaded by layer dispatch
-X6 = 6   # vector-word limit, preloaded by layer dispatch
-X20 = 20 # row counter
-X21 = 21 # vector-word counter
+X5 = 5  # row_count limit, preloaded by layer dispatch
+X6 = 6  # vector-word limit, preloaded by layer dispatch
+X20 = 20  # row counter
+X21 = 21  # vector-word counter
 
 
 def utc_now() -> str:
@@ -83,16 +83,16 @@ def loop_skeleton_words() -> list[int]:
     #   x5: row_count limit, x6: vector_word_count limit.
     # Template body is inserted at the inner-loop marker by the real codegen pass.
     return [
-        rv_addi(X20, X0, 0),       # row = 0
-        rv_bge(X20, X5, 32),       # if row >= rows goto done
-        rv_addi(X21, X0, 0),       # vector = 0
-        rv_bge(X21, X6, 20),       # if vector >= vector_words goto next_row
-        rv_addi(X1, X1, 8),        # advance activation pointer
-        rv_addi(X2, X2, 4),        # advance packed weight pointer
-        rv_addi(X21, X21, 1),      # vector++
-        rv_bne(X21, X6, -16),      # loop inner
-        rv_addi(X20, X20, 1),      # row++
-        rv_bne(X20, X5, -32),      # loop outer
+        rv_addi(X20, X0, 0),  # row = 0
+        rv_bge(X20, X5, 32),  # if row >= rows goto done
+        rv_addi(X21, X0, 0),  # vector = 0
+        rv_bge(X21, X6, 20),  # if vector >= vector_words goto next_row
+        rv_addi(X1, X1, 8),  # advance activation pointer
+        rv_addi(X2, X2, 4),  # advance packed weight pointer
+        rv_addi(X21, X21, 1),  # vector++
+        rv_bne(X21, X6, -16),  # loop inner
+        rv_addi(X20, X20, 1),  # row++
+        rv_bne(X20, X5, -32),  # loop outer
         ECALL,
     ]
 
@@ -114,7 +114,13 @@ def main() -> int:
         "looped vector-kernel skeleton inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_looped_vector_kernel_skeleton_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_looped_vector_kernel_skeleton_inputs_present",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     workplan = load_json(WORKPLAN) if WORKPLAN.is_file() else {}
     template = load_json(VECTOR_TEMPLATE) if VECTOR_TEMPLATE.is_file() else {}
@@ -131,7 +137,13 @@ def main() -> int:
         "PE RTL supports branch control needed by looped vector kernels",
         "missing PE branch markers: " + ", ".join(missing_markers),
     )
-    checks.append({"id": "e1x_looped_vector_kernel_skeleton_branch_support", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_looped_vector_kernel_skeleton_branch_support",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     skeleton_ok = (
         len(words) == 11
@@ -145,7 +157,9 @@ def main() -> int:
         f"generated {len(words)} RV64IM loop-control words for row/vector iteration",
         "unexpected loop skeleton opcode mix or hash",
     )
-    checks.append({"id": "e1x_looped_vector_kernel_skeleton_opcode_mix", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_looped_vector_kernel_skeleton_opcode_mix", "status": status, "detail": detail}
+    )
 
     workplan_summary = workplan.get("summary", {})
     template_summary = template.get("summary", {})
@@ -170,7 +184,13 @@ def main() -> int:
         f"loop skeleton scales to {total_control_estimate} control instructions over the full-output workplan",
         "loop skeleton scale inputs mismatch",
     )
-    checks.append({"id": "e1x_looped_vector_kernel_skeleton_scales_to_workplan", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_looped_vector_kernel_skeleton_scales_to_workplan",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
@@ -186,7 +206,8 @@ def main() -> int:
         "template_instruction_words": template_words,
         "template_instruction_estimate": total_template_estimate,
         "loop_control_instruction_estimate": total_control_estimate,
-        "combined_template_plus_loop_instruction_estimate": total_template_estimate + total_control_estimate,
+        "combined_template_plus_loop_instruction_estimate": total_template_estimate
+        + total_control_estimate,
         "workplan_sha256": str(workplan_summary.get("workplan_sha256", "")),
         "template_sha256": str(template_summary.get("template_sha256", "")),
         "residual_blocker": "per_layer_looped_vector_kernel_codegen_execution_missing",
@@ -216,7 +237,10 @@ def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:
-        print("BLOCKED: E1X looped vector-kernel skeleton failed: " + ", ".join(c["id"] for c in failures))
+        print(
+            "BLOCKED: E1X looped vector-kernel skeleton failed: "
+            + ", ".join(c["id"] for c in failures)
+        )
         return 1
     print(f"PASS: E1X looped vector-kernel skeleton; report {REPORT.relative_to(ROOT)}")
     return 0

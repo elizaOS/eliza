@@ -7,6 +7,7 @@ import sys
 from argparse import ArgumentParser
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TypedDict
 
 import yaml
 
@@ -187,9 +188,15 @@ def release_config_blockers(configs: dict[str, dict]) -> list[str]:
             "SETUP_VIOLATION_CORNERS", "HOLD_VIOLATION_CORNERS"
         ):
             fail_open.append("QUIT_ON_TIMING_VIOLATIONS or SETUP/HOLD_VIOLATION_CORNERS=['*']")
-        if config.get("QUIT_ON_MAGIC_DRC") is not True and config.get("ERROR_ON_MAGIC_DRC") is not True:
+        if (
+            config.get("QUIT_ON_MAGIC_DRC") is not True
+            and config.get("ERROR_ON_MAGIC_DRC") is not True
+        ):
             fail_open.append("QUIT_ON_MAGIC_DRC or ERROR_ON_MAGIC_DRC")
-        if config.get("QUIT_ON_LVS_ERROR") is not True and config.get("ERROR_ON_LVS_ERROR") is not True:
+        if (
+            config.get("QUIT_ON_LVS_ERROR") is not True
+            and config.get("ERROR_ON_LVS_ERROR") is not True
+        ):
             fail_open.append("QUIT_ON_LVS_ERROR or ERROR_ON_LVS_ERROR")
         if config.get("QUIT_ON_SLEW_VIOLATIONS") is not True and not corners_fail_closed(
             "MAX_SLEW_VIOLATION_CORNERS"
@@ -445,7 +452,17 @@ def release_dependency_for_category(category: str, *, release: bool) -> str:
     return "actionable_external_dependency"
 
 
-def action_inventory(blockers: list[str], *, release: bool) -> list[dict[str, object]]:
+class ActionRow(TypedDict):
+    category: str
+    count: int
+    dependency: str
+    next_step: str
+    sample_blockers: list[str]
+    validation_command: str
+    release_credit: bool
+
+
+def action_inventory(blockers: list[str], *, release: bool) -> list[ActionRow]:
     counts = blocker_category_counts(blockers)
     samples: dict[str, list[str]] = {}
     for blocker in blockers:
@@ -510,9 +527,7 @@ def write_report(
             row["count"] for row in actions if row["dependency"] == "repo_artifact_generation"
         ),
         "actionable_external_dependency": sum(
-            row["count"]
-            for row in actions
-            if row["dependency"] == "actionable_external_dependency"
+            row["count"] for row in actions if row["dependency"] == "actionable_external_dependency"
         ),
         "live_device_validation": 0,
     }
@@ -538,9 +553,7 @@ def write_report(
         "release_unblock_action_inventory": actions,
         "next_command_by_dependency": {
             dependency: [
-                row["validation_command"]
-                for row in actions
-                if row["dependency"] == dependency
+                row["validation_command"] for row in actions if row["dependency"] == dependency
             ]
             for dependency in dependency_counts
             if dependency_counts[dependency] > 0

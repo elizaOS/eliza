@@ -63,6 +63,7 @@ import math
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TypedDict
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -73,6 +74,30 @@ from compiler.runtime.e1x3d_wafer_model import (  # noqa: E402
     scaled_e1x3d_config,
     thermal_model,
 )
+
+
+class _PhysicalTier(TypedDict):
+    z: int
+    kind: str
+    logic_index: int
+    depth_from_nearest_sink: int
+
+
+class _PerTierResult(TypedDict):
+    z: int
+    kind: str
+    logic_index: int
+    depth_from_nearest_sink: int
+    resistance_to_sink_c_per_w: float
+    active_power_w_at_ref: float
+    converged_power_w: float
+    converged_junction_c: float
+    leakage_uplift_w: float
+    power_density_w_per_mm2: float
+    power_density_ceiling_w_per_mm2: float
+    junction_le_max: bool
+    density_le_ceiling: bool
+
 
 SCHEMA = "eliza.e1x3d.stacked_electrothermal.v1"
 DEFAULT_OUTPUT = ROOT / "benchmarks/results/e1x3d-stacked-electrothermal.json"
@@ -120,7 +145,7 @@ THETA_BOND_SPECIFIC_K_MM2_PER_W = 3.0
 STACK_COUPLING_SPECIFIC_K_MM2_PER_W = 0.5
 
 
-def _physical_stack(config: E1X3DConfig) -> list[dict[str, object]]:
+def _physical_stack(config: E1X3DConfig) -> list[_PhysicalTier]:
     """Physical Z tiers from the substrate-side sink upward.
 
     Memory-on-logic: each logic plane is [logic, then its memory tiers]. The
@@ -129,18 +154,22 @@ def _physical_stack(config: E1X3DConfig) -> list[dict[str, object]]:
     tier boundaries to the closer of the two surfaces (0 = touching a sink).
     """
     mem_per_logic = max(0, config.memory_tiers_per_core)
-    tiers: list[dict[str, object]] = []
+    tiers: list[_PhysicalTier] = []
     z = 0
     for logic_index in range(config.logical_tiers):
-        tiers.append({"z": z, "kind": "logic", "logic_index": logic_index})
+        tiers.append(
+            {"z": z, "kind": "logic", "logic_index": logic_index, "depth_from_nearest_sink": 0}
+        )
         z += 1
         for _ in range(mem_per_logic):
-            tiers.append({"z": z, "kind": "memory", "logic_index": logic_index})
+            tiers.append(
+                {"z": z, "kind": "memory", "logic_index": logic_index, "depth_from_nearest_sink": 0}
+            )
             z += 1
     total = len(tiers)
     dual_side = config.cooling == "dual_side"
     for tier in tiers:
-        z_pos = int(tier["z"])
+        z_pos = tier["z"]
         depth_bottom = z_pos
         depth_top = (total - 1 - z_pos) if dual_side else (total - 1 + 1)
         tier["depth_from_nearest_sink"] = min(depth_bottom, depth_top)
@@ -196,7 +225,7 @@ LEAKAGE_RELAXATION = 0.5
 
 
 def _resistance_to_sink(
-    tier: dict[str, object],
+    tier: _PhysicalTier,
     theta_tier_logic: float,
     theta_tier_memory: float,
     theta_bond: float,
@@ -207,7 +236,7 @@ def _resistance_to_sink(
     shortest path to a sink.
     """
     own = theta_tier_logic if tier["kind"] == "logic" else theta_tier_memory
-    depth = int(tier["depth_from_nearest_sink"])
+    depth = tier["depth_from_nearest_sink"]
     return own + depth * theta_bond
 
 
@@ -233,7 +262,7 @@ RUNAWAY_JUNCTION_BOUND_C = 1000.0
 
 
 def _solve_fixed_point(
-    stack: list[dict[str, object]],
+    stack: list[_PhysicalTier],
     r_to_sink: list[float],
     theta_coupling: float,
     p_dynamic: float,
@@ -259,12 +288,12 @@ def _solve_fixed_point(
             for i in range(n)
         ]
         target_power = [
-            _leakage_power_w(p_dynamic, p_leak0, new_temps[i]) if stack[i]["kind"] == "logic" else 0.0
+            _leakage_power_w(p_dynamic, p_leak0, new_temps[i])
+            if stack[i]["kind"] == "logic"
+            else 0.0
             for i in range(n)
         ]
-        new_power = [
-            power[i] + LEAKAGE_RELAXATION * (target_power[i] - power[i]) for i in range(n)
-        ]
+        new_power = [power[i] + LEAKAGE_RELAXATION * (target_power[i] - power[i]) for i in range(n)]
         delta = max(abs(new_temps[i] - temps[i]) for i in range(n))
         temps, power = new_temps, new_power
         trace.append(
@@ -307,18 +336,21 @@ def stacked_coanalyze(config: E1X3DConfig) -> dict[str, object]:
     )
 
     baseline = thermal_model(config)
+    _baseline_peak = baseline["peak_junction_c"]
+    assert isinstance(_baseline_peak, (int, float)), "thermal_model peak_junction_c must be numeric"
+    baseline_peak_junction_c = float(_baseline_peak)
     ceiling_density = config.tier_power_density_ceiling_w_per_mm2
     max_tj_c = config.max_junction_temp_c
 
-    per_tier: list[dict[str, object]] = []
+    per_tier: list[_PerTierResult] = []
     for i, t in enumerate(stack):
         density = config.tier_power_density_w_per_mm2 if t["kind"] == "logic" else 0.0
         per_tier.append(
             {
-                "z": int(t["z"]),
-                "kind": str(t["kind"]),
-                "logic_index": int(t["logic_index"]),
-                "depth_from_nearest_sink": int(t["depth_from_nearest_sink"]),
+                "z": t["z"],
+                "kind": t["kind"],
+                "logic_index": t["logic_index"],
+                "depth_from_nearest_sink": t["depth_from_nearest_sink"],
                 "resistance_to_sink_c_per_w": round(r_to_sink[i], 4),
                 "active_power_w_at_ref": round(base_power[i], 4),
                 "converged_power_w": round(power[i], 4),
@@ -331,9 +363,9 @@ def stacked_coanalyze(config: E1X3DConfig) -> dict[str, object]:
             }
         )
 
-    hottest = max(per_tier, key=lambda entry: float(entry["converged_junction_c"]))
-    all_tj_ok = all(bool(entry["junction_le_max"]) for entry in per_tier) and not runaway
-    all_density_ok = all(bool(entry["density_le_ceiling"]) for entry in per_tier)
+    hottest = max(per_tier, key=lambda entry: entry["converged_junction_c"])
+    all_tj_ok = all(entry["junction_le_max"] for entry in per_tier) and not runaway
+    all_density_ok = all(entry["density_le_ceiling"] for entry in per_tier)
 
     artifact: dict[str, object] = {
         "schema": SCHEMA,
@@ -354,9 +386,7 @@ def stacked_coanalyze(config: E1X3DConfig) -> dict[str, object]:
             "physical_tiers": len(stack),
             "cooling": config.cooling,
             "dual_side_rise_reduction": config.dual_side_rise_reduction,
-            "physical_order_bottom_to_top": [
-                {"z": int(t["z"]), "kind": str(t["kind"])} for t in stack
-            ],
+            "physical_order_bottom_to_top": [{"z": t["z"], "kind": t["kind"]} for t in stack],
         },
         "model_assumptions": {
             "t_ambient_c": T_AMBIENT_C,
@@ -398,16 +428,16 @@ def stacked_coanalyze(config: E1X3DConfig) -> dict[str, object]:
             "tier_power_density_ceiling_w_per_mm2": ceiling_density,
             "status": baseline["status"],
             "stacked_minus_baseline_peak_junction_c": round(
-                float(hottest["converged_junction_c"]) - float(baseline["peak_junction_c"]), 3
+                hottest["converged_junction_c"] - baseline_peak_junction_c, 3
             ),
         },
         "per_tier": per_tier,
         "iterations": iterations,
         "totals": {
             "converged_total_active_power_w": round(sum(power), 4),
-            "max_junction_c": float(hottest["converged_junction_c"]),
-            "hottest_tier_z": int(hottest["z"]),
-            "hottest_tier_kind": str(hottest["kind"]),
+            "max_junction_c": hottest["converged_junction_c"],
+            "hottest_tier_z": hottest["z"],
+            "hottest_tier_kind": hottest["kind"],
             "max_junction_temp_c": max_tj_c,
             "tier_power_density_ceiling_w_per_mm2": ceiling_density,
         },
@@ -447,9 +477,7 @@ def main(argv: list[str]) -> int:
     config = scaled_e1x3d_config() if args.scaled else E1X3DConfig()
     artifact = stacked_coanalyze(config)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    args.output.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(artifact, indent=2, sort_keys=True))
     return 0
 

@@ -67,7 +67,11 @@ export function mergeStreamingText(existing: string, incoming: string): string {
   const existingNorm = existing.normalize("NFC");
   const incomingNorm = incoming.normalize("NFC");
 
-  if (incomingNorm === existingNorm) return incoming;
+  if (incomingNorm === existingNorm) {
+    return incoming.length === 1 && /\S/u.test(incoming)
+      ? `${existing}${incoming}`
+      : incoming;
+  }
 
   // Common case: the stream sends the full text-so-far.
   if (incomingNorm.startsWith(existingNorm)) {

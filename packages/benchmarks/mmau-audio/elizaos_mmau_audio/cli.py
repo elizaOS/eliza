@@ -17,6 +17,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from elizaos_mmau_audio.dataset import count_samples, expand_samples, validate_samples
+from elizaos_mmau_audio.dataset import MMAUDataset
 from elizaos_mmau_audio.runner import MMAURunner
 from elizaos_mmau_audio.types import (
     MMAU_CATEGORIES,
@@ -42,7 +44,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--agent",
         type=str,
         default=None,
-        choices=["mock", "eliza", "hermes", "openclaw"],
+        choices=["mock", "eliza", "hermes", "openclaw", "direct", "cerebras"],
         help="Which adapter to dispatch to. Default: mock when --mock is set, else eliza.",
     )
     parser.add_argument(
@@ -98,6 +100,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--timeout", type=int, default=60000, help="Per-sample timeout (ms).")
     parser.add_argument("--no-traces", action="store_true")
+    parser.add_argument("--expand-scenarios", action="store_true")
+    parser.add_argument("--count-scenarios", action="store_true")
+    parser.add_argument("--validate-scenarios", action="store_true")
     parser.add_argument("--json", action="store_true", help="Print aggregate JSON to stdout.")
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args(argv)
@@ -154,6 +159,7 @@ def create_config(args: argparse.Namespace) -> MMAUConfig:
         split=split,
         categories=parse_categories(args.category),
         max_samples=args.limit,
+        include_edge_scenarios=bool(args.expand_scenarios),
         use_huggingface=use_hf,
         use_fixture=use_fixture,
         agent=agent,
@@ -165,6 +171,23 @@ def create_config(args: argparse.Namespace) -> MMAUConfig:
         save_traces=not args.no_traces,
         verbose=args.verbose,
     )
+
+
+async def _selected_samples_for_config(config: MMAUConfig):
+    dataset = MMAUDataset(
+        fixture_path=config.fixture_path,
+        hf_repo=config.hf_repo,
+        split=config.split,
+        categories=config.categories,
+    )
+    await dataset.load(
+        use_huggingface=config.use_huggingface,
+        use_fixture=config.use_fixture,
+        max_samples=config.max_samples,
+    )
+    base_samples = dataset.get_samples(config.max_samples)
+    samples = expand_samples(base_samples) if config.include_edge_scenarios else list(base_samples)
+    return base_samples, samples
 
 
 async def _run(config: MMAUConfig) -> dict[str, object]:
@@ -187,6 +210,25 @@ def main(argv: list[str] | None = None) -> int:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
     config = create_config(args)
+
+    if args.count_scenarios or args.validate_scenarios:
+        try:
+            base_samples, samples = asyncio.run(_selected_samples_for_config(config))
+            if args.validate_scenarios:
+                validate_samples(samples)
+                if config.include_edge_scenarios and len(samples) != len(base_samples) * 11:
+                    raise RuntimeError(
+                        f"Expanded MMAU count mismatch: base={len(base_samples)} total={len(samples)}"
+                    )
+                print("Scenario validation: ok")
+            if args.count_scenarios:
+                print(json.dumps(count_samples(base_samples, samples), sort_keys=True))
+            return 0
+        except Exception as exc:
+            logger.error("MMAU scenario check failed: %s", exc)
+            if args.json:
+                print(json.dumps({"error": str(exc)}, indent=2))
+            return 1
 
     try:
         results = asyncio.run(_run(config))

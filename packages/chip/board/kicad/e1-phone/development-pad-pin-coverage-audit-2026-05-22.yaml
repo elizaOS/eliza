@@ -23,7 +23,8 @@ pending_supplier_pad_map_or_order_records:
   electrical_pad_count: 48
   missing_expected_pads: &id001 []
   extra_footprint_pads: &id002 []
-  land_pattern_basis: ''
+  land_pattern_basis: local QFN48 audio-codec development pattern from codec signal
+    contract; pending exact codec MPN land pattern and pinout
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
   release_allowed: false
@@ -37,7 +38,8 @@ pending_supplier_pad_map_or_order_records:
   electrical_pad_count: 24
   missing_expected_pads: &id003 []
   extra_footprint_pads: &id004 []
-  land_pattern_basis: ''
+  land_pattern_basis: local QFN24 backlight/bias power development pattern from display-power
+    signal contract; pending exact driver package selection
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
   release_allowed: false
@@ -51,7 +53,8 @@ pending_supplier_pad_map_or_order_records:
   electrical_pad_count: 4
   missing_expected_pads: &id006 []
   extra_footprint_pads: &id007 []
-  land_pattern_basis: ''
+  land_pattern_basis: local 4-pin 1.00mm battery-pack flex development pad row from
+    pack signal contract; pending pack supplier lead/connector drawing
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
   release_allowed: false
@@ -65,7 +68,8 @@ pending_supplier_pad_map_or_order_records:
   electrical_pad_count: 24
   missing_expected_pads: &id008 []
   extra_footprint_pads: &id009 []
-  land_pattern_basis: ''
+  land_pattern_basis: local 24-pin 0.50mm rear-camera FPC development pad row from
+    public CSI signal set; pending signed camera FPC drawing
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
   release_allowed: false
@@ -79,7 +83,8 @@ pending_supplier_pad_map_or_order_records:
   electrical_pad_count: 30
   missing_expected_pads: &id010 []
   extra_footprint_pads: &id011 []
-  land_pattern_basis: ''
+  land_pattern_basis: local 30-pin 0.50mm front-camera FPC development pad row from
+    public CSI signal set; pending signed camera FPC drawing
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
   release_allowed: false
@@ -93,7 +98,8 @@ pending_supplier_pad_map_or_order_records:
   electrical_pad_count: 40
   missing_expected_pads: &id012 []
   extra_footprint_pads: &id013 []
-  land_pattern_basis: ''
+  land_pattern_basis: local 40-pin 0.30mm display FPC development pad row from public
+    signal set; pending signed display FPC pin order and land-pattern drawing
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
   release_allowed: false
@@ -107,7 +113,8 @@ pending_supplier_pad_map_or_order_records:
   electrical_pad_count: 12
   missing_expected_pads: &id014 []
   extra_footprint_pads: &id015 []
-  land_pattern_basis: ''
+  land_pattern_basis: local WLCSP12 fuel-gauge development grid from battery gauge
+    signal contract; pending exact gauge ball map
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
   release_allowed: false
@@ -121,7 +128,8 @@ pending_supplier_pad_map_or_order_records:
   electrical_pad_count: 9
   missing_expected_pads: &id017 []
   extra_footprint_pads: &id018 []
-  land_pattern_basis: ''
+  land_pattern_basis: local WLCSP9 haptic-driver development grid from haptic signal
+    contract; pending exact driver ball map
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
   release_allowed: false
@@ -135,7 +143,8 @@ pending_supplier_pad_map_or_order_records:
   electrical_pad_count: 32
   missing_expected_pads: &id019 []
   extra_footprint_pads: &id020 []
-  land_pattern_basis: ''
+  land_pattern_basis: local QFN32 NFC-controller development pattern from NFC signal
+    contract; pending exact controller MPN land pattern
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
   release_allowed: false
@@ -149,7 +158,8 @@ pending_supplier_pad_map_or_order_records:
   electrical_pad_count: 5
   missing_expected_pads: &id021 []
   extra_footprint_pads: &id022 []
-  land_pattern_basis: ''
+  land_pattern_basis: local five-terminal NFC loop matching development pattern; pending
+    antenna tuning and selected matching network
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
   release_allowed: false
@@ -163,7 +173,8 @@ pending_supplier_pad_map_or_order_records:
   electrical_pad_count: 204
   missing_expected_pads: &id023 []
   extra_footprint_pads: &id024 []
-  land_pattern_basis: ''
+  land_pattern_basis: public Quectel RG255C pin table with synthetic LGA development
+    grid; pending selected regional SKU land-pattern drawing
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
   release_allowed: false
@@ -177,7 +188,8 @@ pending_supplier_pad_map_or_order_records:
   electrical_pad_count: 24
   missing_expected_pads: &id025 []
   extra_footprint_pads: &id026 []
-  land_pattern_basis: ''
+  land_pattern_basis: local QFN24 sensor-hub development pattern from sensor signal
+    contract; pending exact sensor/IMU package selection
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
   release_allowed: false
@@ -191,7 +203,8 @@ pending_supplier_pad_map_or_order_records:
   electrical_pad_count: 10
   missing_expected_pads: &id028 []
   extra_footprint_pads: &id029 []
-  land_pattern_basis: ''
+  land_pattern_basis: local 10-terminal USIM ESD/level-shift development pattern from
+    public signal contract; pending selected device land pattern
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
   release_allowed: false
@@ -297,7 +310,8 @@ records:
   missing_expected_pads: []
   extra_footprint_pads: []
   pinout_signal_group_count: 46
-  land_pattern_basis: ''
+  land_pattern_basis: public MAX77860 WLP81 ball map with local 0.40mm WLP development
+    grid; pending Analog Devices package drawing and assembler DFM approval
   local_terminal_contract:
   - A1
   - A2
@@ -416,7 +430,8 @@ records:
   missing_expected_pads: *id001
   extra_footprint_pads: *id002
   pinout_signal_group_count: 25
-  land_pattern_basis: ''
+  land_pattern_basis: local QFN48 audio-codec development pattern from codec signal
+    contract; pending exact codec MPN land pattern and pinout
   local_terminal_contract:
   - '1'
   - '2'
@@ -502,7 +517,8 @@ records:
   missing_expected_pads: *id003
   extra_footprint_pads: *id004
   pinout_signal_group_count: 8
-  land_pattern_basis: ''
+  land_pattern_basis: local QFN24 backlight/bias power development pattern from display-power
+    signal contract; pending exact driver package selection
   local_terminal_contract:
   - '1'
   - '2'
@@ -571,7 +587,8 @@ records:
   missing_expected_pads: *id006
   extra_footprint_pads: *id007
   pinout_signal_group_count: 11
-  land_pattern_basis: ''
+  land_pattern_basis: local 4-pin 1.00mm battery-pack flex development pad row from
+    pack signal contract; pending pack supplier lead/connector drawing
   local_terminal_contract:
   - '1'
   - '2'
@@ -649,7 +666,8 @@ records:
   missing_expected_pads: *id008
   extra_footprint_pads: *id009
   pinout_signal_group_count: 24
-  land_pattern_basis: ''
+  land_pattern_basis: local 24-pin 0.50mm rear-camera FPC development pad row from
+    public CSI signal set; pending signed camera FPC drawing
   local_terminal_contract:
   - '1'
   - '2'
@@ -709,7 +727,8 @@ records:
   missing_expected_pads: *id010
   extra_footprint_pads: *id011
   pinout_signal_group_count: 18
-  land_pattern_basis: ''
+  land_pattern_basis: local 30-pin 0.50mm front-camera FPC development pad row from
+    public CSI signal set; pending signed camera FPC drawing
   local_terminal_contract:
   - '1'
   - '2'
@@ -775,7 +794,8 @@ records:
   missing_expected_pads: *id012
   extra_footprint_pads: *id013
   pinout_signal_group_count: 29
-  land_pattern_basis: ''
+  land_pattern_basis: local 40-pin 0.30mm display FPC development pad row from public
+    signal set; pending signed display FPC pin order and land-pattern drawing
   local_terminal_contract:
   - '1'
   - '2'
@@ -896,7 +916,8 @@ records:
   missing_expected_pads: []
   extra_footprint_pads: []
   pinout_signal_group_count: 21
-  land_pattern_basis: ''
+  land_pattern_basis: public MFF2/eSIM 8-pad pinout with local QFN/LGA development
+    footprint; pending eSIM supplier package drawing approval
   local_terminal_contract:
   - '1'
   - '2'
@@ -977,7 +998,8 @@ records:
   missing_expected_pads: *id014
   extra_footprint_pads: *id015
   pinout_signal_group_count: 6
-  land_pattern_basis: ''
+  land_pattern_basis: local WLCSP12 fuel-gauge development grid from battery gauge
+    signal contract; pending exact gauge ball map
   local_terminal_contract:
   - A1
   - A2
@@ -1038,7 +1060,8 @@ records:
   missing_expected_pads: []
   extra_footprint_pads: []
   pinout_signal_group_count: 2
-  land_pattern_basis: ''
+  land_pattern_basis: public USB4105 signal pinout with local 0.5mm receptacle development
+    pad row; pending GCT drawing/DFM land-pattern approval
   local_terminal_contract:
   - A1
   - A2
@@ -1098,7 +1121,8 @@ records:
   missing_expected_pads: *id017
   extra_footprint_pads: *id018
   pinout_signal_group_count: 4
-  land_pattern_basis: ''
+  land_pattern_basis: local WLCSP9 haptic-driver development grid from haptic signal
+    contract; pending exact driver ball map
   local_terminal_contract:
   - A1
   - A2
@@ -1143,7 +1167,9 @@ records:
   missing_expected_pads: []
   extra_footprint_pads: []
   pinout_signal_group_count: 12
-  land_pattern_basis: ''
+  land_pattern_basis: local 80-contact 0.40mm board-to-board development pattern bound
+    to public Hirose numbering; pending selected connector drawing and stack-height
+    approval
   local_terminal_contract:
   - A1
   - A2
@@ -1351,7 +1377,8 @@ records:
   missing_expected_pads: []
   extra_footprint_pads: []
   pinout_signal_group_count: 72
-  land_pattern_basis: ''
+  land_pattern_basis: public Murata Type 2EA terminal table/DXF development geometry;
+    pending Murata/CM approved footprint import
   local_terminal_contract:
   - '1'
   - '2'
@@ -1588,7 +1615,8 @@ records:
   missing_expected_pads: *id019
   extra_footprint_pads: *id020
   pinout_signal_group_count: 9
-  land_pattern_basis: ''
+  land_pattern_basis: local QFN32 NFC-controller development pattern from NFC signal
+    contract; pending exact controller MPN land pattern
   local_terminal_contract:
   - '1'
   - '2'
@@ -1656,7 +1684,8 @@ records:
   missing_expected_pads: *id021
   extra_footprint_pads: *id022
   pinout_signal_group_count: 3
-  land_pattern_basis: ''
+  land_pattern_basis: local five-terminal NFC loop matching development pattern; pending
+    antenna tuning and selected matching network
   local_terminal_contract:
   - '1'
   - '2'
@@ -1697,7 +1726,8 @@ records:
   missing_expected_pads: []
   extra_footprint_pads: []
   pinout_signal_group_count: 7
-  land_pattern_basis: ''
+  land_pattern_basis: public Panasonic EVQ-P7 four-terminal switch pinout with local
+    tactile-switch development pads; pending selected switch drawing approval
   local_terminal_contract:
   - '1'
   - '2'
@@ -1778,7 +1808,8 @@ records:
   missing_expected_pads: *id023
   extra_footprint_pads: *id024
   pinout_signal_group_count: 55
-  land_pattern_basis: ''
+  land_pattern_basis: public Quectel RG255C pin table with synthetic LGA development
+    grid; pending selected regional SKU land-pattern drawing
   local_terminal_contract:
   - '1'
   - '2'
@@ -2103,7 +2134,8 @@ records:
   missing_expected_pads: *id025
   extra_footprint_pads: *id026
   pinout_signal_group_count: 9
-  land_pattern_basis: ''
+  land_pattern_basis: local QFN24 sensor-hub development pattern from sensor signal
+    contract; pending exact sensor/IMU package selection
   local_terminal_contract:
   - '1'
   - '2'
@@ -2209,7 +2241,8 @@ records:
   missing_expected_pads: []
   extra_footprint_pads: []
   pinout_signal_group_count: 127
-  land_pattern_basis: ''
+  land_pattern_basis: public 260-position SoM connector count with local dual-row
+    development footprint; pending selected connector and SoM pin-order drawing
   local_terminal_contract:
   - A1
   - B1
@@ -2542,7 +2575,8 @@ records:
   missing_expected_pads: []
   extra_footprint_pads: []
   pinout_signal_group_count: 34
-  land_pattern_basis: ''
+  land_pattern_basis: public TPS65987 RSH56 QFN pin table with local exposed-pad development
+    pattern; pending TI land-pattern/DFM release review
   local_terminal_contract:
   - '1'
   - '2'
@@ -2675,7 +2709,8 @@ records:
   missing_expected_pads: *id028
   extra_footprint_pads: *id029
   pinout_signal_group_count: 7
-  land_pattern_basis: ''
+  land_pattern_basis: local 10-terminal USIM ESD/level-shift development pattern from
+    public signal contract; pending selected device land pattern
   local_terminal_contract:
   - '1'
   - '2'

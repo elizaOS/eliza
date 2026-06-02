@@ -41,6 +41,19 @@ def _reward_totals(steps: list[dict[str, Any]]) -> dict[str, float]:
     return {key: float(value) for key, value in sorted(totals.items())}
 
 
+def _scheduled_final_float(
+    manifest: dict[str, Any],
+    *,
+    value_key: str,
+    schedule_key: str,
+    default: float,
+) -> float:
+    schedule = manifest.get(schedule_key)
+    if isinstance(schedule, dict) and schedule.get("final_scale") is not None:
+        return _float(schedule.get("final_scale"), default)
+    return _float(manifest.get(value_key), default)
+
+
 def _first_step(steps: list[dict[str, Any]], predicate) -> int | None:
     for step in steps:
         if predicate(step):
@@ -71,6 +84,26 @@ def _episode_summary(
     )
     below_floor_steps = sum(
         1 for step in steps if int(_float(step.get("below_floor_robot_geom_count"))) > 0
+    )
+    landing_guard_step_count = sum(
+        1 for step in steps if _float(step.get("locomotion_prior_landing_guard_scale")) > 0.0
+    )
+    landing_gap_guard_step_count = sum(
+        1
+        for step in steps
+        if _float(step.get("locomotion_prior_landing_gap_guard_scale")) > 0.0
+    )
+    stance_slip_guard_step_count = sum(
+        1
+        for step in steps
+        if _float(step.get("locomotion_prior_stance_slip_guard_scale")) > 0.0
+    )
+    first_negative_landing_gap_guard_step = _first_step(
+        steps,
+        lambda step: (
+            _float(step.get("locomotion_prior_landing_gap_guard_scale")) > 0.0
+            and _float(step.get("locomotion_prior_landing_gap_m")) <= 0.0
+        ),
     )
     max_tracked_dx = max((_float(step.get("tracked_delta_x")) for step in steps), default=0.0)
     max_abs_yaw = max(abs(_float(step.get("delta_yaw"))) for step in steps) if steps else 0.0
@@ -127,6 +160,10 @@ def _episode_summary(
         "floor_penetration_tolerance_m": floor_tolerance,
         "below_floor_step_count": int(below_floor_steps),
         "geometry_floor_ok": below_floor_steps == 0 and min_floor_clearance >= -floor_tolerance,
+        "landing_guard_step_count": int(landing_guard_step_count),
+        "landing_gap_guard_step_count": int(landing_gap_guard_step_count),
+        "stance_slip_guard_step_count": int(stance_slip_guard_step_count),
+        "first_negative_landing_gap_guard_step": first_negative_landing_gap_guard_step,
         "foot_contact_switch_count": int(_float(final_info.get("foot_contact_switch_count"))),
         "first_slip_limit_step": first_slip_step,
         "first_required_contacts_step": first_required_contacts_step,
@@ -152,10 +189,18 @@ def diagnose(args: argparse.Namespace) -> dict[str, Any]:
             exclude_tasks=(),
             pca_dim=int(manifest.get("pca_dim", 32)),
             episode_steps=int(args.max_steps or manifest.get("episode_steps", 200)),
-            action_scale=float(manifest.get("action_scale", 1.0)),
+            action_scale=_scheduled_final_float(
+                manifest,
+                value_key="action_scale",
+                schedule_key="action_scale_schedule",
+                default=1.0,
+            ),
             locomotion_action_prior=str(manifest.get("locomotion_action_prior", "none")),
-            locomotion_prior_residual_scale=float(
-                manifest.get("locomotion_prior_residual_scale", 0.0)
+            locomotion_prior_residual_scale=_scheduled_final_float(
+                manifest,
+                value_key="locomotion_prior_residual_scale",
+                schedule_key="locomotion_prior_residual_scale_schedule",
+                default=0.0,
             ),
             locomotion_prior_residual_mode=str(
                 manifest.get("locomotion_prior_residual_mode", "joint")
@@ -223,6 +268,8 @@ def diagnose(args: argparse.Namespace) -> dict[str, Any]:
                     "foot_contact_switch_count": int(
                         _float(info.get("foot_contact_switch_count"))
                     ),
+                    "left_foot_z": _float(info.get("left_foot_z")),
+                    "right_foot_z": _float(info.get("right_foot_z")),
                     "left_foot_slip_m_s": _float(info.get("left_foot_slip_m_s")),
                     "right_foot_slip_m_s": _float(info.get("right_foot_slip_m_s")),
                     "max_foot_slip_m_s": _float(info.get("max_foot_slip_m_s")),
@@ -242,6 +289,33 @@ def diagnose(args: argparse.Namespace) -> dict[str, Any]:
                     "locomotion_prior_goal_hold_scale": _float(
                         info.get("locomotion_prior_goal_hold_scale"),
                         1.0,
+                    ),
+                    "locomotion_prior_landing_guard_scale": _float(
+                        info.get("locomotion_prior_landing_guard_scale"),
+                        0.0,
+                    ),
+                    "locomotion_prior_landing_gap_guard_scale": _float(
+                        info.get("locomotion_prior_landing_gap_guard_scale"),
+                        0.0,
+                    ),
+                    "locomotion_prior_stance_slip_guard_scale": _float(
+                        info.get("locomotion_prior_stance_slip_guard_scale"),
+                        0.0,
+                    ),
+                    "locomotion_prior_landing_gap_m": _float(
+                        info.get("locomotion_prior_landing_gap_m"),
+                        0.0,
+                    ),
+                    "locomotion_prior_stance_slip_m_s": _float(
+                        info.get("locomotion_prior_stance_slip_m_s"),
+                        0.0,
+                    ),
+                    "locomotion_prior_stance_slip_ratio": _float(
+                        info.get("locomotion_prior_stance_slip_ratio"),
+                        0.0,
+                    ),
+                    "locomotion_prior_swing_left": bool(
+                        info.get("locomotion_prior_swing_left")
                     ),
                     "locomotion_prior_residual_stability_scale": _float(
                         info.get("locomotion_prior_residual_stability_scale"),

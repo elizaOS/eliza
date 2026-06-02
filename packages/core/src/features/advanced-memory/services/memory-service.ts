@@ -436,7 +436,15 @@ export class MemoryService extends Service {
 				),
 			)
 		).flat();
-		return memories
+		// The storage layer already expands the full identity cluster per entity,
+		// so fanning out across related entity IDs returns the same records N times.
+		// Dedupe by id so a cluster of N members yields `limit` distinct memories,
+		// not `limit` copies of the same one.
+		const deduped = new Map<UUID, LongTermMemory>();
+		for (const memory of memories) {
+			if (!deduped.has(memory.id)) deduped.set(memory.id, memory);
+		}
+		return [...deduped.values()]
 			.sort((left, right) => memoryCreatedAtMs(right) - memoryCreatedAtMs(left))
 			.slice(0, limit);
 	}
@@ -584,30 +592,39 @@ export class MemoryService extends Service {
 
 	async getFormattedLongTermMemories(entityId: UUID): Promise<string> {
 		const memories = await this.getLongTermMemories(entityId, undefined, 20);
-		if (memories.length === 0) return "";
-
-		const grouped = new Map<LongTermMemoryCategory, LongTermMemory[]>();
-		for (const memory of memories) {
-			const existing = grouped.get(memory.category);
-			if (existing) {
-				existing.push(memory);
-			} else {
-				grouped.set(memory.category, [memory]);
-			}
-		}
-
-		const sections: string[] = [];
-		for (const [category, categoryMemories] of grouped.entries()) {
-			const categoryName = category
-				.split("_")
-				.map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
-				.join(" ");
-			const items = categoryMemories.map((m) => `- ${m.content}`).join("\n");
-			sections.push(`**${categoryName}**:\n${items}`);
-		}
-
-		return sections.join("\n\n");
+		return formatLongTermMemories(memories);
 	}
+}
+
+/**
+ * Render long-term memories as a category-grouped markdown string. Pure helper
+ * so callers that already have the memories (e.g. the long-term provider) can
+ * format them without a second storage round-trip.
+ */
+export function formatLongTermMemories(memories: LongTermMemory[]): string {
+	if (memories.length === 0) return "";
+
+	const grouped = new Map<LongTermMemoryCategory, LongTermMemory[]>();
+	for (const memory of memories) {
+		const existing = grouped.get(memory.category);
+		if (existing) {
+			existing.push(memory);
+		} else {
+			grouped.set(memory.category, [memory]);
+		}
+	}
+
+	const sections: string[] = [];
+	for (const [category, categoryMemories] of grouped.entries()) {
+		const categoryName = category
+			.split("_")
+			.map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
+			.join(" ");
+		const items = categoryMemories.map((m) => `- ${m.content}`).join("\n");
+		sections.push(`**${categoryName}**:\n${items}`);
+	}
+
+	return sections.join("\n\n");
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {

@@ -94,7 +94,11 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
     if scaled_metrics.get("thermal_status") != "PASS":
         return False, f"scaled E1X3D thermal gate is {scaled_metrics.get('thermal_status')}", {}
     if scaled_metrics.get("stack_yield_status") != "PASS":
-        return False, f"scaled E1X3D stack-yield gate is {scaled_metrics.get('stack_yield_status')}", {}
+        return (
+            False,
+            f"scaled E1X3D stack-yield gate is {scaled_metrics.get('stack_yield_status')}",
+            {},
+        )
 
     ratios = scaled_metrics.get("comparison", {}).get("ratios", {})
     if float(ratios.get("cores_vs_e1x_planar", 0)) < 2.0:
@@ -113,9 +117,23 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
     stack_yield = scaled_metrics.get("stack_yield")
     if not all(
         isinstance(item, dict)
-        for item in (defect_map, repair_manifest, repair_rom, model_shard_sample, thermal, stack_yield)
+        for item in (
+            defect_map,
+            repair_manifest,
+            repair_rom,
+            model_shard_sample,
+            thermal,
+            stack_yield,
+        )
     ):
         return False, "scaled E1X3D handoff missing repair/thermal/yield sidecars", {}
+
+    assert isinstance(defect_map, dict)
+    assert isinstance(repair_manifest, dict)
+    assert isinstance(repair_rom, dict)
+    assert isinstance(model_shard_sample, dict)
+    assert isinstance(thermal, dict)
+    assert isinstance(stack_yield, dict)
 
     defect_map_path = _required_repo_file(defect_map.get("path"))
     repair_manifest_path = _required_repo_file(repair_manifest.get("path"))
@@ -127,11 +145,24 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
     if not all(
         path is not None
         for path in (
-            defect_map_path, repair_manifest_path, repair_rom_path, repair_rom_hex_path,
-            model_shard_sample_path, thermal_path, stack_yield_path,
+            defect_map_path,
+            repair_manifest_path,
+            repair_rom_path,
+            repair_rom_hex_path,
+            model_shard_sample_path,
+            thermal_path,
+            stack_yield_path,
         )
     ):
         return False, "scaled E1X3D handoff sidecar path is missing or invalid", {}
+
+    assert defect_map_path is not None
+    assert repair_manifest_path is not None
+    assert repair_rom_path is not None
+    assert repair_rom_hex_path is not None
+    assert model_shard_sample_path is not None
+    assert thermal_path is not None
+    assert stack_yield_path is not None
 
     defect_map_data = json.loads(defect_map_path.read_text(encoding="utf-8"))
     repair_manifest_data = json.loads(repair_manifest_path.read_text(encoding="utf-8"))
@@ -148,24 +179,37 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
         return False, "repair-ROM sidecar sha does not match scaled report", {}
     if model_shard_data.get("artifact_sha256") != model_shard_sample.get("artifact_sha256"):
         return False, "model-shard sidecar sha does not match scaled report", {}
-    if repair_manifest_data.get("source_defect_map_sha256") != defect_map_data.get("artifact_sha256"):
+    if repair_manifest_data.get("source_defect_map_sha256") != defect_map_data.get(
+        "artifact_sha256"
+    ):
         return False, "repair manifest does not reference the defect-map artifact", {}
-    if repair_rom_data.get("source_repair_manifest_sha256") != repair_manifest_data.get("artifact_sha256"):
+    if repair_rom_data.get("source_repair_manifest_sha256") != repair_manifest_data.get(
+        "artifact_sha256"
+    ):
         return False, "repair ROM does not reference the repair-manifest artifact", {}
     rom_hex_words = repair_rom_hex_path.read_text(encoding="utf-8").strip().splitlines()
     if rom_hex_words != repair_rom_data.get("words"):
         return False, "repair-ROM hex image does not match JSON ROM words", {}
-    if thermal_data.get("status") != "PASS" or thermal_data.get("status") != scaled_metrics.get("thermal_status"):
+    if thermal_data.get("status") != "PASS" or thermal_data.get("status") != scaled_metrics.get(
+        "thermal_status"
+    ):
         return False, "thermal sidecar status mismatch or not PASS", {}
     if stack_yield_data.get("status") != "PASS" or not stack_yield_data.get("repair_feasible"):
         return False, "stack-yield sidecar not PASS or repair not feasible", {}
-    for path in (defect_map_path, repair_manifest_path, repair_rom_path, model_shard_sample_path, thermal_path, stack_yield_path):
+    for path in (
+        defect_map_path,
+        repair_manifest_path,
+        repair_rom_path,
+        model_shard_sample_path,
+        thermal_path,
+        stack_yield_path,
+    ):
         if not _file_sha256_is_stable(path):
             return False, f"handoff sidecar {path.name} is empty or unreadable", {}
 
     high = scenarios[1]
     dead_tier = scenarios[2]
-    summary = {
+    summary: dict[str, int | float | str] = {
         "base_logical_cores": int(base_metrics["architecture"]["logical_cores"]),
         "base_logical_tiers": int(base_metrics["architecture"]["logical_tiers"]),
         "scaled_logical_cores": int(scaled_metrics["architecture"]["logical_cores"]),

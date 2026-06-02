@@ -5,6 +5,14 @@ import json
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
+from typing import TypedDict
+
+
+class _CaseEntry(TypedDict):
+    defect: Path
+    repair: Path
+    expected_repair_sha256: str
+
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_window_repair_linkage.json"
@@ -13,15 +21,17 @@ PLACEMENT = ROOT / "benchmarks/results/e1x-real-graph-model-load.placement.json"
 WINDOW_SHARD = ROOT / "build/reports/e1x_window_shard_linkage.json"
 YIELD_REPAIR = ROOT / "build/reports/e1x_yield_repair_margin.json"
 
-CASES = {
+CASES: dict[str, _CaseEntry] = {
     "normal": {
         "defect": ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_defect_map.json",
         "repair": ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_manifest.json",
         "expected_repair_sha256": "157f8f7eab101ae4f9e6cc6d69c150b9403189ca3e31523e56b6c331104d0528",
     },
     "high_failure": {
-        "defect": ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_defect_map.json",
-        "repair": ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json",
+        "defect": ROOT
+        / "benchmarks/results/e1x-real-graph-model-load.high_failure_defect_map.json",
+        "repair": ROOT
+        / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json",
         "expected_repair_sha256": "c8ad0a7c1a907447b0624aecbb73ef36f763be20b43d253a35c56899a153d781",
     },
 }
@@ -75,7 +85,9 @@ def coord_key(coord: dict) -> tuple[int, int]:
     return int(coord["row"]), int(coord["col"])
 
 
-def validate_case(case: str, placement: dict, touched_cores: list[int], paths: dict) -> tuple[list[str], dict]:
+def validate_case(
+    case: str, placement: dict, touched_cores: list[int], paths: _CaseEntry
+) -> tuple[list[str], dict]:
     defect = load_json(paths["defect"])
     repair = load_json(paths["repair"])
     logical_cols = int(placement.get("logical_cols", 0))
@@ -99,13 +111,15 @@ def validate_case(case: str, placement: dict, touched_cores: list[int], paths: d
                 continue
             remapped_count += 1
             if len(remapped_records) < 8:
-                remapped_records.append({
-                    "logical_core_index": logical_core_index,
-                    "logical_row": logical[0],
-                    "logical_col": logical[1],
-                    "physical_row": physical[0],
-                    "physical_col": physical[1],
-                })
+                remapped_records.append(
+                    {
+                        "logical_core_index": logical_core_index,
+                        "logical_row": logical[0],
+                        "logical_col": logical[1],
+                        "physical_row": physical[0],
+                        "physical_col": physical[1],
+                    }
+                )
         else:
             direct_count += 1
         if physical in blocked:
@@ -135,7 +149,9 @@ def main() -> int:
         "window-repair linkage inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_window_repair_linkage_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_window_repair_linkage_inputs_present", "status": status, "detail": detail}
+    )
 
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
     window_shard = load_json(WINDOW_SHARD) if WINDOW_SHARD.is_file() else {}
@@ -153,7 +169,9 @@ def main() -> int:
         "placement, window-shard linkage, and yield/repair-margin reports are linked and PASS",
         "window-repair dependency report missing, stale, or failing",
     )
-    checks.append({"id": "e1x_window_repair_linkage_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_window_repair_linkage_dependencies_pass", "status": status, "detail": detail}
+    )
 
     touched_cores = touched_window_cores(placement)
     touched_sha256 = canonical_sha256(touched_cores)
@@ -165,7 +183,9 @@ def main() -> int:
         "window touched-core set matches window-shard linkage coverage",
         "window touched-core count mismatch",
     )
-    checks.append({"id": "e1x_window_repair_linkage_touched_cores", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_window_repair_linkage_touched_cores", "status": status, "detail": detail}
+    )
 
     case_summaries: dict[str, dict] = {}
     all_errors: list[str] = []
@@ -188,7 +208,9 @@ def main() -> int:
             f"{case} repair manifest maps touched window cores to usable physical cores",
             f"{case} touched-core repair mapping mismatch",
         )
-        checks.append({"id": f"e1x_window_repair_linkage_{case}_coverage", "status": status, "detail": detail})
+        checks.append(
+            {"id": f"e1x_window_repair_linkage_{case}_coverage", "status": status, "detail": detail}
+        )
 
     route_ok = not all_errors
     status, detail = pass_fail(
@@ -196,7 +218,13 @@ def main() -> int:
         "normal and high-failure repair manifests cover every window-touched logical core",
         "window repair mapping errors: " + ", ".join(all_errors[:8]),
     )
-    checks.append({"id": "e1x_window_repair_linkage_all_touched_cores_repaired", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_window_repair_linkage_all_touched_cores_repaired",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     normal = case_summaries.get("normal", {})
@@ -217,10 +245,12 @@ def main() -> int:
             / max(1, int(normal.get("window_remapped_core_count", 0)))
         ),
         "case_summaries": case_summaries,
-        "routed_window_checksum": int(window_shard.get("summary", {}).get("routed_window_checksum", 0)),
+        "routed_window_checksum": int(
+            window_shard.get("summary", {}).get("routed_window_checksum", 0)
+        ),
         "residual_blocker": "full_output_vectorized_tensor_fabric_executor_missing",
     }
-    report = {
+    report: dict[str, object] = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x-window-repair-linkage",
         "status": "PASS" if not failures else "BLOCKED",

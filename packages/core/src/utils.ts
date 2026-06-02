@@ -145,14 +145,17 @@ function upgradeDoubleToTriple(tpl: string) {
 function getCompiledTemplate(
 	template: string,
 ): Handlebars.TemplateDelegate<Record<string, unknown>> {
-	const upgraded = upgradeDoubleToTriple(template);
-	const cached = COMPILED_TEMPLATE_CACHE.get(upgraded);
+	// Key by the raw template. upgradeDoubleToTriple is a pure function, so the
+	// raw string maps 1:1 to its upgraded form — keying on the raw template lets
+	// a cache hit skip the regex transform entirely (it only runs on a miss).
+	const cached = COMPILED_TEMPLATE_CACHE.get(template);
 	if (cached) {
 		return cached;
 	}
 
+	const upgraded = upgradeDoubleToTriple(template);
 	const compiled = Handlebars.compile(upgraded);
-	COMPILED_TEMPLATE_CACHE.set(upgraded, compiled);
+	COMPILED_TEMPLATE_CACHE.set(template, compiled);
 	if (COMPILED_TEMPLATE_CACHE.size > COMPILED_TEMPLATE_CACHE_LIMIT) {
 		const oldestKey = COMPILED_TEMPLATE_CACHE.keys().next().value;
 		if (typeof oldestKey === "string") {
@@ -352,6 +355,12 @@ const composeRandomUser = (
 	length: number,
 	seed = "prompt-users",
 ) => {
+	// {{nameX}}/{{userX}} placeholders only appear in example-conversation
+	// templates; production system/response templates have none. Skip the name
+	// generation + 20 full-string replaceAll passes when no placeholder exists.
+	if (!template.includes("{{name") && !template.includes("{{user")) {
+		return template;
+	}
 	const exampleNames = getDeterministicNames(length, seed);
 	let result = template;
 	for (let i = 0; i < exampleNames.length; i++) {

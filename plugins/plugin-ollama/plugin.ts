@@ -116,7 +116,8 @@ export const ollamaPlugin: Plugin = {
     }
 
     try {
-      const response = await fetch(`${apiBase}/api/tags`, {
+      const fetchImpl = (runtime as { fetch?: typeof fetch }).fetch ?? fetch;
+      const response = await fetchImpl(`${apiBase}/api/tags`, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
       });

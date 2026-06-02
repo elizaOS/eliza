@@ -36,6 +36,15 @@ CONTRACT_DOC = ROOT / "docs/arch/branch-prediction.md"
 MANIFEST_PATH = ROOT / "docs/generators/xiangshan/eliza-kunminghu-manifest.json"
 EVIDENCE_PATH = ROOT / "docs/evidence/cpu_ap/branch-prediction-params.json"
 TARGET_2028_MPKI = 4.0
+FALSE_CLAIM_FLAGS = {
+    "spec2017_mpki_claim": False,
+    "android_mpki_claim": False,
+    "two_taken_per_cycle_claim": False,
+    "fdip_claim": False,
+    "cbp5_mpki_claim": False,
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+}
 CBP5_TRACE_MANIFEST_REL = "docs/evidence/cpu_ap/cbp5-trace-manifest.json"
 WORKLOAD_TRACE_MANIFEST_REL = "docs/evidence/cpu_ap/bpu-workload-trace-manifest.json"
 FULL_PROXY_SHARD_SWEEP_REL = "docs/evidence/cpu_ap/bpu_sweep_full_proxy_shard.json"
@@ -933,7 +942,7 @@ def validate_full_trace_shard_sweep(
                 and isinstance(other_mpki, (int, float))
                 and float(best_mpki) > float(other_mpki)
             ):
-                    failures.append(f"{artifact} best_config must not regress versus {config}")
+                failures.append(f"{artifact} best_config must not regress versus {config}")
 
 
 def validate_workload_rtl_shard(
@@ -1969,6 +1978,7 @@ def build_evidence(
             "two_taken_per_cycle_claim": False,
             "fdip_claim": False,
             "cbp5_mpki_claim": False,
+            "false_claim_flags": FALSE_CLAIM_FLAGS,
             "reason": (
                 "Open RTL geometry verified against 2028 thresholds. CBP-5"
                 " train-trace RTL evidence is on file but aggregate RTL MPKI"

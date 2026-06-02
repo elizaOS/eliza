@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
@@ -24,9 +24,9 @@ const getSourceAliasEntry = (
     return undefined;
   }
 
-  const packageJson = JSON.parse(
-    readFileSync(packageJsonPath, "utf8"),
-  ) as { name?: string };
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
+    name?: string;
+  };
   if (!packageJson.name?.startsWith("@elizaos/")) {
     return undefined;
   }
@@ -89,6 +89,46 @@ export default defineConfig({
       {
         find: /^@elizaos\/core\/testing$/,
         replacement: path.join(repoRoot, "packages/core/src/testing/index.ts"),
+      },
+      {
+        find: /^@elizaos\/scenario-runner\/schema$/,
+        replacement: path.join(
+          repoRoot,
+          "packages/scenario-runner/schema/index.js",
+        ),
+      },
+      {
+        find: /^@elizaos\/core\/node$/,
+        replacement: path.join(repoRoot, "packages/core/src/index.node.ts"),
+      },
+      {
+        find: /^@elizaos\/shared\/brand$/,
+        replacement: path.join(repoRoot, "packages/shared/src/brand/index.ts"),
+      },
+      {
+        find: /^@elizaos\/shared\/brand-classic$/,
+        replacement: path.join(
+          repoRoot,
+          "packages/shared/src/brand-classic/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/shared\/types$/,
+        replacement: path.join(repoRoot, "packages/shared/src/types/index.ts"),
+      },
+      {
+        find: /^@elizaos\/ui\/agent-surface$/,
+        replacement: path.join(
+          repoRoot,
+          "packages/ui/src/agent-surface/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/ui\/components\/ui\/(.*)$/,
+        replacement: path.join(
+          repoRoot,
+          "packages/ui/src/components/ui/$1.tsx",
+        ),
       },
       ...workspaceSourceAliases,
     ],

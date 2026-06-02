@@ -59,13 +59,8 @@ def normalize_payload(path: Path, payload: Any) -> tuple[Any, bool]:
         isinstance(claim_boundary, str)
         and bool(claim_boundary.strip())
         and claim_boundary != OLD_DEFAULT_CLAIM_BOUNDARY
-    ) or (
-        isinstance(claim_boundary, (dict, list))
-        and bool(claim_boundary)
-    )
-    if (
-        not has_claim_boundary
-    ):
+    ) or (isinstance(claim_boundary, (dict, list)) and bool(claim_boundary))
+    if not has_claim_boundary:
         payload["claim_boundary"] = DEFAULT_CLAIM_BOUNDARY
         changed = True
     if not has_timestamp(payload):

@@ -3,16 +3,8 @@
  */
 
 import { Keyboard } from "@capacitor/keyboard";
-import {
-  PanelLeftClose,
-  PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
-} from "lucide-react";
-
 import "./components/chat/chat-source-registration";
 import {
-  type ComponentProps,
   type ComponentType,
   type LazyExoticComponent,
   lazy,
@@ -24,24 +16,20 @@ import {
   useState,
 } from "react";
 import { createNavigateViewHandler } from "./app-navigate-view";
-import { HomescreenBackdrop } from "./backgrounds/HomescreenBackdrop";
 import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "./bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "./bridge/electrobun-runtime";
 import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
 import { LoginView } from "./components/auth/LoginView";
 import { SaveCommandModal } from "./components/chat/SaveCommandModal";
-import { TasksEventsPanel } from "./components/chat/TasksEventsPanel";
-import { DeferredSetupChecklist } from "./components/cloud/FlaminaGuide";
-import { ConversationsSidebar } from "./components/conversations/ConversationsSidebar";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
 import { ChatView } from "./components/pages/ChatView";
-import { HomeView } from "./components/pages/HomeView";
 import type { PageScope } from "./components/pages/page-scoped-conversations";
 import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSection";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
@@ -69,11 +57,11 @@ import {
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
 } from "./events";
+import { FirstRunScreen } from "./first-run/FirstRunScreen";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
-import { useActivityEvents } from "./hooks/useActivityEvents";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
-import { Z_SHELL_OVERLAY } from "./lib/floating-layers";
+import { Z_OVERLAY } from "./lib/floating-layers";
 import {
   APPS_ENABLED,
   getAppSlugFromPath,
@@ -87,10 +75,8 @@ import { isIOS, isNative } from "./platform/init";
 import { type ActionNotice, useApp } from "./state";
 import type { FlaminaGuideTopic } from "./state/types";
 
-const CHAT_MOBILE_BREAKPOINT_PX = 820;
 const MOBILE_NAV_PADDING_CLASS =
   "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px))]";
-type MobileChatSurface = "left" | "center" | "right";
 type ExtractComponent<TValue> =
   TValue extends ComponentType<infer Props> ? ComponentType<Props> : never;
 
@@ -247,33 +233,6 @@ function LazyViewBoundary({ children }: { children: ReactNode }) {
     >
       {children}
     </Suspense>
-  );
-}
-
-interface MobileChatSurfaceButtonProps {
-  icon: typeof PanelLeftOpen;
-  label: string;
-  onClick: () => void;
-  surface: MobileChatSurface;
-}
-
-function MobileChatSurfaceButton({
-  icon: Icon,
-  label,
-  onClick,
-  surface,
-}: MobileChatSurfaceButtonProps) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      data-testid={`chat-mobile-surface-${surface}`}
-      onClick={onClick}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted  transition-colors hover:text-txt"
-    >
-      <Icon className="h-4 w-4" aria-hidden />
-    </button>
   );
 }
 
@@ -557,6 +516,20 @@ function renderRemoteView(view: ViewRegistryEntry): ReactNode {
   );
 }
 
+/**
+ * Fallback shown when a view/tab is unavailable. Chat is the floating overlay
+ * (GlobalChatOverlay on the chat tab) + the always-present pill — views never
+ * embed an inline ChatView — so an unavailable view falls back to the app/view
+ * launcher, not a chat surface.
+ */
+function ViewUnavailableFallback(): ReactNode {
+  return (
+    <TabContentView chatDisabled>
+      <ViewManagerPage />
+    </TabContentView>
+  );
+}
+
 function renderPhoneSurface(
   enabled: boolean,
   Component: ComponentType,
@@ -566,12 +539,12 @@ function renderPhoneSurface(
       <Component />
     </TabContentView>
   ) : (
-    <ChatView />
+    <ViewUnavailableFallback />
   );
 }
 
 function renderAppsSurface(navigationPath: string): ReactNode {
-  if (!APPS_ENABLED) return <ChatView />;
+  if (!APPS_ENABLED) return <ViewUnavailableFallback />;
   return (
     <TabContentView chatScope="page-apps">
       {getAppSlugFromPath(navigationPath) ? (
@@ -597,10 +570,10 @@ function renderStaticViewRouterTab({
   LifeOpsPageView: ComponentType | null | undefined;
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
-    home: <HomeView />,
-    chat: <ChatView />,
+    onboarding: <FirstRunScreen />,
+    chat: <ViewUnavailableFallback />,
     browser: <BrowserWorkspaceView />,
-    companion: <ChatView />,
+    companion: <ViewUnavailableFallback />,
     stream: <StreamView />,
     tasks: (
       <TabContentView>
@@ -666,7 +639,7 @@ function renderStaticViewRouterTab({
     ),
   };
   if (tab === "lifeops") {
-    return LifeOpsPageView ? <LifeOpsPageView /> : <ChatView />;
+    return LifeOpsPageView ? <LifeOpsPageView /> : <ViewUnavailableFallback />;
   }
   if (tab === "phone") {
     return renderPhoneSurface(androidPhoneSurfaceEnabled, PhonePageView);
@@ -707,7 +680,7 @@ function renderStaticViewRouterTab({
       </TabContentView>
     );
   }
-  return directViews[tab] ?? <ChatView />;
+  return directViews[tab] ?? <ViewUnavailableFallback />;
 }
 
 function renderViewRouterContent({
@@ -825,51 +798,28 @@ function greetingForTimeOfDay(): string {
 const APP_SHELL_CLASS =
   "flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg";
 
-function canRenderStartupHome(
-  phase: ReturnType<typeof useApp>["startupCoordinator"]["phase"],
-  firstRunComplete: boolean,
-): boolean {
-  if (!firstRunComplete) return false;
-  return (
-    phase === "restoring-session" ||
-    phase === "resolving-target" ||
-    phase === "polling-backend" ||
-    phase === "starting-runtime" ||
-    phase === "hydrating"
-  );
-}
-
 type ShellContentProps = {
   CompanionShell: ComponentType<CompanionShellComponentProps> | undefined;
   actionNotice: ActionNotice | null;
-  activityEvents: ComponentProps<typeof TasksEventsPanel>["events"];
   characterHeaderActions: ReactNode | null;
-  clearActivityEvents: ComponentProps<typeof TasksEventsPanel>["clearEvents"];
   customActionsPanelOpen: boolean;
   desktopTabBar: ReactNode;
   handleDeferredTaskOpen: (task: FlaminaGuideTopic) => void;
-  handleToggleWidgetsCollapsed: (next: boolean) => void;
   isAppsToolPage: boolean;
   isCharacterPage: boolean;
   isChat: boolean;
-  isChatMobileLayout: boolean;
-  isChatWorkspace: boolean;
   isCompanionTab: boolean;
   isDesktopWorkspacePage: boolean;
   isHeartbeats: boolean;
   isSettingsPage: boolean;
   isWallets: boolean;
-  mobileChatControls: { left: ReactNode; right: ReactNode } | null;
-  mobileChatSurface: MobileChatSurface;
   setCharacterHeaderActions: (actions: ReactNode | null) => void;
   setCustomActionsEditorOpen: (open: boolean) => void;
   setCustomActionsPanelOpen: (open: boolean) => void;
   setEditingAction: (action: import("./api").CustomActionDef | null) => void;
-  setMobileChatSurface: (surface: MobileChatSurface) => void;
   settingsInitialSection: string | null;
   tab: string;
   uiShellMode: string;
-  widgetsPanelCollapsed: boolean;
 };
 
 function CompanionShellContent(props: ShellContentProps): ReactNode {
@@ -900,27 +850,10 @@ function StreamShellContent(): ReactNode {
   );
 }
 
-function ChatWorkspaceShellContent(props: ShellContentProps): ReactNode {
+function ChatRouteShellContent(props: ShellContentProps): ReactNode {
   return (
-    <div key={`chat-shell-${props.tab}`} className={APP_SHELL_CLASS}>
-      <Header
-        mobileLeft={props.mobileChatControls?.left}
-        pageRightExtras={props.mobileChatControls?.right}
-        tasksEventsPanelOpen={props.isChat && !props.isChatMobileLayout}
-        hideNav={props.isChat}
-      />
+    <div key="chat-route-shell" className={APP_SHELL_CLASS}>
       <div className="flex flex-1 min-h-0 relative">
-        {!props.isChatMobileLayout && props.isChat ? (
-          <div
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-[5.75rem]"
-            data-chat-shell-composer-underlay
-          />
-        ) : null}
-        {props.isChatMobileLayout ? (
-          <MobileChatWorkspaceShellContent {...props} />
-        ) : (
-          <DesktopChatWorkspaceShellContent {...props} />
-        )}
         <CustomActionsPanel
           open={props.customActionsPanelOpen}
           onClose={() => props.setCustomActionsPanelOpen(false)}
@@ -931,63 +864,6 @@ function ChatWorkspaceShellContent(props: ShellContentProps): ReactNode {
         />
       </div>
     </div>
-  );
-}
-
-function MobileChatWorkspaceShellContent(props: ShellContentProps): ReactNode {
-  const surfacePadding =
-    props.mobileChatSurface === "center" ? "px-2 pt-2" : "";
-  return (
-    <div
-      className={`flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden ${surfacePadding}`}
-    >
-      {props.mobileChatSurface === "left" ? (
-        <ConversationsSidebar
-          key="chat-sidebar-mobile"
-          mobile
-          onClose={() => props.setMobileChatSurface("center")}
-        />
-      ) : props.mobileChatSurface === "right" && props.isChat ? (
-        <TasksEventsPanel
-          open
-          events={props.activityEvents}
-          clearEvents={props.clearActivityEvents}
-          mobile
-        />
-      ) : (
-        <>
-          <DeferredSetupChecklist
-            className="mb-3"
-            onOpenTask={props.handleDeferredTaskOpen}
-          />
-          <ChatView />
-        </>
-      )}
-    </div>
-  );
-}
-
-function DesktopChatWorkspaceShellContent(props: ShellContentProps): ReactNode {
-  return (
-    <>
-      <ConversationsSidebar key="chat-sidebar-desktop" />
-      <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-        <DeferredSetupChecklist
-          className="mx-3 mb-3 mt-3 xl:mx-5"
-          onOpenTask={props.handleDeferredTaskOpen}
-        />
-        <ChatView key="chat-view-desktop" />
-      </div>
-      {props.isChat ? (
-        <TasksEventsPanel
-          open
-          events={props.activityEvents}
-          clearEvents={props.clearActivityEvents}
-          collapsed={props.widgetsPanelCollapsed}
-          onToggleCollapsed={props.handleToggleWidgetsCollapsed}
-        />
-      ) : null}
-    </>
   );
 }
 
@@ -1127,21 +1003,11 @@ function DesktopWorkspaceShellContent(props: ShellContentProps): ReactNode {
   );
 }
 
-function HomeShellContent(): ReactNode {
-  return (
-    <div key="home-shell" className={`${APP_SHELL_CLASS} overflow-hidden`}>
-      <HomeView />
-    </div>
-  );
-}
-
 function ShellContent(props: ShellContentProps): ReactNode {
-  if (props.tab === "home") return <HomeShellContent />;
+  if (props.isChat) return <ChatRouteShellContent {...props} />;
   const companionContent = CompanionShellContent(props);
   if (companionContent) return companionContent;
-  if (props.tab === "home") return <HomeShellContent />;
   if (props.tab === "stream") return <StreamShellContent />;
-  if (props.isChatWorkspace) return <ChatWorkspaceShellContent {...props} />;
   if (props.isHeartbeats) return <HeartbeatsShellContent />;
   if (props.isSettingsPage) return <SettingsShellContent {...props} />;
   if (props.isWallets) return <WalletsShellContent />;
@@ -1178,15 +1044,45 @@ function ShellFoundationMount() {
   );
 }
 
-function shouldSuppressShellPill(tab: string): boolean {
-  return tab === "home" || tab === "chat" || tab === "orchestrator";
+/**
+ * Web/mobile embedded floating pill. The persistent collapsible chat/voice pill
+ * floats bottom-center on top of whichever view is active, so no view embeds its
+ * own chat surface. On desktop (Electrobun) the pill instead lives in its own
+ * always-on-top OS window (`pill-window.ts` → `chat-overlay` shell), so it is
+ * never embedded here; on OS kiosk it is mounted in-canvas by `KioskShell`. The
+ * wrapper is pointer-events-none so only the pill itself is interactive, and it
+ * clears the mobile bottom nav.
+ */
+function EmbeddedShellPill(): ReactNode {
+  if (isElectrobunRuntime()) return null;
+  return (
+    <div
+      data-testid="embedded-shell-pill"
+      className={`pointer-events-none fixed inset-0 flex items-end justify-center ${MOBILE_NAV_PADDING_CLASS}`}
+    >
+      <ShellFoundationMount />
+    </div>
+  );
+}
+
+function GlobalChatOverlay(): ReactNode {
+  return (
+    <div
+      className="pointer-events-none fixed inset-0 flex justify-center"
+      data-testid="global-chat-overlay"
+      style={{ zIndex: Z_OVERLAY }}
+    >
+      <div className="pointer-events-auto flex h-full w-full min-w-0 max-w-[54rem] flex-col bg-bg">
+        <ChatView />
+      </div>
+    </div>
+  );
 }
 
 export function App() {
   const {
     startupError,
     startupCoordinator,
-    firstRunComplete,
     retryStartup,
     tab,
     setTab,
@@ -1208,10 +1104,7 @@ export function App() {
   // During first-run setup / pairing / startup phases the StartupScreen handles
   // its own gate (bootstrap step), so we skip the check.
   const isCoordinatorReady = startupCoordinator.phase === "ready";
-  const renderStartupHome = canRenderStartupHome(
-    startupCoordinator.phase,
-    firstRunComplete,
-  );
+
   const { state: authState, refetch: refetchAuth } = useAuthStatus({
     skip: !isCoordinatorReady || isPopout,
   });
@@ -1246,16 +1139,11 @@ export function App() {
     return () => cancel(id);
   }, [startupCoordinator.phase]);
 
-  // While the startup-home surface is showing, reflect it in the tab — but
-  // only when the user is on the root route. An explicit deep-link (e.g.
-  // /settings or /apps/<view>) must survive startup; pushing "home" here would
-  // rewrite the URL and strand the requested route on the home shell once the
-  // coordinator reaches "ready". Mirrors the isRoot gate in ready-phase hydration.
   useEffect(() => {
-    if (!renderStartupHome || tab === "home") return;
+    if (!isCoordinatorReady || isPopout || shellMode !== "full") return;
     if (!isRouteRootPath(getWindowNavigationPath())) return;
-    setTab("home");
-  }, [renderStartupHome, setTab, tab]);
+    setTab("chat");
+  }, [isCoordinatorReady, isPopout, setTab, shellMode]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -1329,46 +1217,15 @@ export function App() {
   );
   const { views: availableViewsForDesktopTabs } = useAvailableViews();
 
-  const [widgetsPanelCollapsed, setWidgetsPanelCollapsed] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      return (
-        window.localStorage.getItem("elizaos:chat:widgets-collapsed") === "true"
-      );
-    } catch {
-      return false;
-    }
-  });
-  const handleToggleWidgetsCollapsed = useCallback((next: boolean) => {
-    setWidgetsPanelCollapsed(next);
-    try {
-      window.localStorage.setItem(
-        "elizaos:chat:widgets-collapsed",
-        String(next),
-      );
-    } catch {
-      // localStorage unavailable in sandboxed environments — non-fatal.
-    }
-  }, []);
-  const { events: activityEvents, clearEvents: clearActivityEvents } =
-    useActivityEvents();
   const [editingAction, setEditingAction] = useState<
     import("./api").CustomActionDef | null
   >(null);
-  const [isChatMobileLayout, setIsChatMobileLayout] = useState(() =>
-    typeof window !== "undefined"
-      ? window.innerWidth < CHAT_MOBILE_BREAKPOINT_PX
-      : false,
-  );
-  const [mobileChatSurface, setMobileChatSurface] =
-    useState<MobileChatSurface>("center");
   const [desktopShuttingDown, setDesktopShuttingDown] = useState(false);
   const [characterHeaderActions, setCharacterHeaderActions] =
     useState<ReactNode | null>(null);
 
   const isCompanionTab = tab === "companion";
   const isChat = tab === "chat";
-  const isChatWorkspace = isChat;
   const isCharacterPage =
     tab === "character" || tab === "character-select" || tab === "documents";
   const isWallets = tab === "inventory";
@@ -1376,39 +1233,6 @@ export function App() {
   const isSettingsPage = tab === "settings" || tab === "voice";
   const isAppsToolPage = isAppsToolTab(tab);
   const isDesktopWorkspacePage = tab === "desktop";
-  const mobileChatControls = useMemo(() => {
-    if (!isChatMobileLayout) return null;
-
-    const leftLabel = t("conversations.chats", { defaultValue: "Chats" });
-    const rightLabel = t("taskseventspanel.Title", {
-      defaultValue: "Tasks & Events",
-    });
-    const leftOpen = mobileChatSurface === "left";
-    const rightOpen = mobileChatSurface === "right";
-
-    return {
-      // Left toggle: only render when nothing else is open OR it's the active one.
-      // Tapping again returns to center.
-      left: rightOpen ? null : (
-        <MobileChatSurfaceButton
-          icon={leftOpen ? PanelLeftClose : PanelLeftOpen}
-          label={leftOpen ? `Hide ${leftLabel}` : `Show ${leftLabel}`}
-          onClick={() => setMobileChatSurface(leftOpen ? "center" : "left")}
-          surface="left"
-        />
-      ),
-      // Right toggle: only on chat tab, hidden when left is open.
-      right:
-        isChat && !leftOpen ? (
-          <MobileChatSurfaceButton
-            icon={rightOpen ? PanelRightClose : PanelRightOpen}
-            label={rightOpen ? `Hide ${rightLabel}` : `Show ${rightLabel}`}
-            onClick={() => setMobileChatSurface(rightOpen ? "center" : "right")}
-            surface="right"
-          />
-        ) : null,
-    };
-  }, [isChat, isChatMobileLayout, mobileChatSurface, t]);
 
   // Keep hook order stable across first-run/auth state transitions.
   // Otherwise React can throw when first-run setup completes and the main shell mounts.
@@ -1475,31 +1299,6 @@ export function App() {
     return () =>
       window.removeEventListener("eliza:navigate:view", handleNavigateView);
   }, [setTab, availableViewsForDesktopTabs, openDesktopTab]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handleResize = () => {
-      setIsChatMobileLayout(window.innerWidth < CHAT_MOBILE_BREAKPOINT_PX);
-    };
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  useEffect(() => {
-    if (!isChatMobileLayout) {
-      setMobileChatSurface("center");
-    }
-  }, [isChatMobileLayout]);
-
-  useEffect(() => {
-    if (!isChatWorkspace) {
-      setMobileChatSurface("center");
-    }
-    if (!isChat && mobileChatSurface === "right") {
-      setMobileChatSurface("center");
-    }
-  }, [isChat, isChatWorkspace, mobileChatSurface]);
 
   useEffect(() => {
     if (isSettingsPage || settingsInitialSection === null) {
@@ -1607,34 +1406,25 @@ export function App() {
       <ShellContent
         CompanionShell={CompanionShell}
         actionNotice={actionNotice}
-        activityEvents={activityEvents}
         characterHeaderActions={characterHeaderActions}
-        clearActivityEvents={clearActivityEvents}
         customActionsPanelOpen={customActionsPanelOpen}
         desktopTabBar={desktopTabBar}
         handleDeferredTaskOpen={handleDeferredTaskOpen}
-        handleToggleWidgetsCollapsed={handleToggleWidgetsCollapsed}
         isAppsToolPage={isAppsToolPage}
         isCharacterPage={isCharacterPage}
         isChat={isChat}
-        isChatMobileLayout={isChatMobileLayout}
-        isChatWorkspace={isChatWorkspace}
         isCompanionTab={isCompanionTab}
         isDesktopWorkspacePage={isDesktopWorkspacePage}
         isHeartbeats={isHeartbeats}
         isSettingsPage={isSettingsPage}
         isWallets={isWallets}
-        mobileChatControls={mobileChatControls}
-        mobileChatSurface={mobileChatSurface}
         setCharacterHeaderActions={setCharacterHeaderActions}
         setCustomActionsEditorOpen={setCustomActionsEditorOpen}
         setCustomActionsPanelOpen={setCustomActionsPanelOpen}
         setEditingAction={setEditingAction}
-        setMobileChatSurface={setMobileChatSurface}
         settingsInitialSection={settingsInitialSection}
         tab={tab}
         uiShellMode={uiShellMode}
-        widgetsPanelCollapsed={widgetsPanelCollapsed}
       />
     ),
     [
@@ -1644,24 +1434,16 @@ export function App() {
       isCompanionTab,
       actionNotice,
       isChat,
-      isChatWorkspace,
       isCharacterPage,
       isHeartbeats,
       isSettingsPage,
       isWallets,
       isAppsToolPage,
       isDesktopWorkspacePage,
-      isChatMobileLayout,
-      mobileChatSurface,
-      mobileChatControls,
       characterHeaderActions,
       handleDeferredTaskOpen,
-      activityEvents,
-      clearActivityEvents,
       customActionsPanelOpen,
-      handleToggleWidgetsCollapsed,
       settingsInitialSection,
-      widgetsPanelCollapsed,
       desktopTabBar,
     ],
   );
@@ -1691,44 +1473,10 @@ export function App() {
     );
   }
 
-  // StartupCoordinator gate — onboarding/pairing/error stay on the dedicated
-  // startup surfaces. Once first-run is complete, startup can continue in the
-  // background while the static home shell renders immediately.
-  if (
-    (startupCoordinator.phase !== "ready" || !firstRunComplete) &&
-    !renderStartupHome
-  ) {
-    // Pre-agent / first-run setup surface: the living crystal-ball-over-orange
-    // homescreen backdrop is a true full-viewport background; the first-run
-    // shell layers above it in Z and scrolls within itself.
+  if (!isCoordinatorReady) {
     return (
       <BugReportProvider value={bugReport}>
-        <HomescreenBackdrop style={{ position: "fixed", inset: 0 }}>
-          <div
-            data-testid="pre-agent-cloud-shell"
-            className="flex h-full min-h-0 w-full flex-col overflow-y-auto text-txt"
-            style={{ borderRadius: "var(--radius-xs, 2px)" }}
-          >
-            <StartupScreen />
-          </div>
-        </HomescreenBackdrop>
-        <BugReportModal />
-      </BugReportProvider>
-    );
-  }
-
-  if (renderStartupHome) {
-    return (
-      <BugReportProvider value={bugReport}>
-        <ShellControllerProvider>
-          <div
-            data-testid="pre-agent-home-shell"
-            className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden"
-          >
-            <HomeShellContent />
-          </div>
-          <ShellOverlays actionNotice={actionNotice} />
-        </ShellControllerProvider>
+        <StartupScreen />
         <BugReportModal />
       </BugReportProvider>
     );
@@ -1820,15 +1568,8 @@ export function App() {
           gameOverlayEnabled &&
           tab !== "apps" &&
           tab !== "views" && <GameViewOverlay />}
+        {isChat ? <GlobalChatOverlay /> : <EmbeddedShellPill />}
         <ShellOverlays actionNotice={actionNotice} />
-        {isCoordinatorReady && !shouldSuppressShellPill(tab) ? (
-          <div
-            className="pointer-events-none fixed inset-x-0 bottom-0 flex justify-center"
-            style={{ zIndex: Z_SHELL_OVERLAY }}
-          >
-            <ShellFoundationMount />
-          </div>
-        ) : null}
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}
           text={contextMenu.saveCommandText}

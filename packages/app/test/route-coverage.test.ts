@@ -1,11 +1,11 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildRouteCatalog } from "../../app-core/src/api/dev-route-catalog";
 import {
   DIRECT_ROUTE_CASES,
-  SAFE_VIEW_TILE_CASES,
+  MANAGER_VISIBLE_VIEW_TILE_CASES,
 } from "./ui-smoke/apps-session-route-cases";
 
 /**
@@ -32,10 +32,15 @@ const ALL_PAGES_SPEC = path.join(
   "ui-smoke",
   "all-pages-clicksafe.spec.ts",
 );
-const PLUGIN_VIEWS_SPEC = path.join(
+const PLUGIN_VIEW_CASES_SOURCE = path.join(
   HERE,
   "ui-smoke",
-  "plugin-views-visual.spec.ts",
+  "plugin-view-cases.ts",
+);
+const PLUGIN_VIEW_VISUAL_REVIEW_REPORT = path.resolve(
+  HERE,
+  "fixtures",
+  "plugin-view-visual-review.md",
 );
 const INTERNAL_TOOL_APPS_SOURCE = path.resolve(
   HERE,
@@ -52,6 +57,10 @@ type PluginViewCase = {
   id: string;
   viewType: "gui" | "tui" | "xr";
   path: string;
+};
+
+type PluginViewManifestContract = PluginViewCase & {
+  componentExport: string;
 };
 
 const PLUGIN_VIEW_MANIFESTS = [
@@ -84,8 +93,16 @@ const PLUGIN_VIEW_MANIFESTS = [
 const APP_SHELL_REGISTRATION_SOURCES = [
   "plugins/plugin-facewear/src/register.ts",
   "plugins/plugin-phone/src/register-companion-page.ts",
+  "plugins/plugin-task-coordinator/src/register.ts",
   "plugins/plugin-wallet-ui/src/register-routes.ts",
 ] as const;
+
+const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
+  "plugins/plugin-app-control/src/index.ts":
+    "View manager routes are built into the app shell and tested through /views; this plugin supplies agent actions plus the manager view declaration.",
+  "plugins/plugin-screenshare/src/index.ts":
+    "Screenshare is registered by runtime capability loading, not the app boot side-effect loader.",
+};
 
 const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/app-core": null,
@@ -282,6 +299,199 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
   },
 ];
 
+const OPERATOR_VIEW_MANIFEST_CONTRACTS: readonly PluginViewManifestContract[] =
+  [
+    {
+      manifestPath: "plugins/plugin-2004scape/src/index.ts",
+      id: "2004scape",
+      viewType: "gui",
+      path: "/2004scape",
+      componentExport: "TwoThousandFourScapeOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-2004scape/src/index.ts",
+      id: "2004scape",
+      viewType: "xr",
+      path: "/2004scape",
+      componentExport: "TwoThousandFourScapeOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-2004scape/src/index.ts",
+      id: "2004scape",
+      viewType: "tui",
+      path: "/2004scape/tui",
+      componentExport: "TwoThousandFourScapeTuiView",
+    },
+    {
+      manifestPath: "plugins/plugin-clawville/src/index.ts",
+      id: "clawville",
+      viewType: "gui",
+      path: "/clawville",
+      componentExport: "ClawvilleOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-clawville/src/index.ts",
+      id: "clawville",
+      viewType: "xr",
+      path: "/clawville",
+      componentExport: "ClawvilleOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-clawville/src/index.ts",
+      id: "clawville",
+      viewType: "tui",
+      path: "/clawville/tui",
+      componentExport: "ClawvilleTuiView",
+    },
+    {
+      manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
+      id: "defense-of-the-agents",
+      viewType: "gui",
+      path: "/defense-of-the-agents",
+      componentExport: "DefenseAgentsOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
+      id: "defense-of-the-agents",
+      viewType: "xr",
+      path: "/defense-of-the-agents",
+      componentExport: "DefenseAgentsOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
+      id: "defense-of-the-agents",
+      viewType: "tui",
+      path: "/defense-of-the-agents/tui",
+      componentExport: "DefenseAgentsTuiView",
+    },
+    {
+      manifestPath: "plugins/plugin-feed/src/index.ts",
+      id: "feed",
+      viewType: "gui",
+      path: "/feed",
+      componentExport: "FeedOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-feed/src/index.ts",
+      id: "feed",
+      viewType: "xr",
+      path: "/feed",
+      componentExport: "FeedOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-feed/src/index.ts",
+      id: "feed",
+      viewType: "tui",
+      path: "/feed/tui",
+      componentExport: "FeedTuiView",
+    },
+    {
+      manifestPath: "plugins/plugin-hyperscape/src/index.ts",
+      id: "hyperscape",
+      viewType: "gui",
+      path: "/hyperscape",
+      componentExport: "HyperscapeOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-hyperscape/src/index.ts",
+      id: "hyperscape",
+      viewType: "xr",
+      path: "/hyperscape",
+      componentExport: "HyperscapeOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-hyperscape/src/index.ts",
+      id: "hyperscape",
+      viewType: "tui",
+      path: "/hyperscape/tui",
+      componentExport: "HyperscapeTuiView",
+    },
+    {
+      manifestPath: "plugins/plugin-scape/src/index.ts",
+      id: "scape",
+      viewType: "gui",
+      path: "/scape",
+      componentExport: "ScapeOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-scape/src/index.ts",
+      id: "scape",
+      viewType: "xr",
+      path: "/scape",
+      componentExport: "ScapeOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-scape/src/index.ts",
+      id: "scape",
+      viewType: "tui",
+      path: "/scape/tui",
+      componentExport: "ScapeTuiView",
+    },
+    {
+      manifestPath: "plugins/plugin-screenshare/src/index.ts",
+      id: "screenshare",
+      viewType: "gui",
+      path: "/screenshare",
+      componentExport: "ScreenshareOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-screenshare/src/index.ts",
+      id: "screenshare",
+      viewType: "xr",
+      path: "/screenshare",
+      componentExport: "ScreenshareOperatorSurface",
+    },
+    {
+      manifestPath: "plugins/plugin-screenshare/src/index.ts",
+      id: "screenshare",
+      viewType: "tui",
+      path: "/screenshare/tui",
+      componentExport: "ScreenshareTuiView",
+    },
+    {
+      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
+      id: "task-coordinator",
+      viewType: "gui",
+      path: "/task-coordinator",
+      componentExport: "CodingAgentTasksPanel",
+    },
+    {
+      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
+      id: "task-coordinator",
+      viewType: "xr",
+      path: "/task-coordinator",
+      componentExport: "CodingAgentTasksPanel",
+    },
+    {
+      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
+      id: "task-coordinator",
+      viewType: "tui",
+      path: "/task-coordinator/tui",
+      componentExport: "TaskCoordinatorTuiView",
+    },
+    {
+      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
+      id: "orchestrator",
+      viewType: "gui",
+      path: "/orchestrator",
+      componentExport: "OrchestratorWorkbench",
+    },
+    {
+      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
+      id: "orchestrator",
+      viewType: "xr",
+      path: "/orchestrator",
+      componentExport: "OrchestratorWorkbench",
+    },
+    {
+      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
+      id: "orchestrator",
+      viewType: "tui",
+      path: "/orchestrator/tui",
+      componentExport: "OrchestratorTuiView",
+    },
+  ];
+
 function pathsFromSource(filePath: string): Set<string> {
   const source = readFileSync(filePath, "utf8");
   return new Set(
@@ -357,6 +567,47 @@ function pluginViewCasesFromManifest(manifestPath: string): PluginViewCase[] {
   });
 }
 
+function discoverPluginViewManifestPaths(): string[] {
+  const pluginRoot = path.resolve(REPO_ROOT, "plugins");
+  const discovered: string[] = [];
+  const visit = (directory: string) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const fullPath = path.join(directory, entry.name);
+      const relativePath = path.relative(REPO_ROOT, fullPath);
+      if (entry.isDirectory()) {
+        if (
+          ["dist", "node_modules", "coverage"].includes(entry.name) ||
+          relativePath.includes(`${path.sep}test${path.sep}`) ||
+          relativePath.includes(`${path.sep}__tests__${path.sep}`)
+        ) {
+          continue;
+        }
+        visit(fullPath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (!/\.(ts|tsx)$/.test(entry.name)) continue;
+      if (
+        entry.name.endsWith(".d.ts") ||
+        entry.name.includes(".test.") ||
+        entry.name.includes(".spec.") ||
+        entry.name === "vite.config.views.ts"
+      ) {
+        continue;
+      }
+
+      const source = readFileSync(fullPath, "utf8");
+      if (!source.includes("views:") || !source.includes("componentExport:")) {
+        continue;
+      }
+      if (viewObjects(source).length === 0) continue;
+      discovered.push(relativePath.split(path.sep).join("/"));
+    }
+  };
+  visit(pluginRoot);
+  return sorted(discovered);
+}
+
 function appNavTabPathsFromManifest(manifestPath: string): string[] {
   const source = readFileSync(path.resolve(REPO_ROOT, manifestPath), "utf8");
   return arrayObjectChunks(source, "navTabs").flatMap((object) => {
@@ -372,13 +623,13 @@ function registeredAppShellPagePaths(): string[] {
 }
 
 function pluginViewCasesFromVisualSpec(): PluginViewCase[] {
-  const source = readFileSync(PLUGIN_VIEWS_SPEC, "utf8");
+  const source = readFileSync(PLUGIN_VIEW_CASES_SOURCE, "utf8");
   return [
     ...source.matchAll(
       /\["([^"]+)",\s*"(gui|tui)",\s*"([^"]+)"(?:,\s*\{[^}\]]*\})?\]/g,
     ),
   ].map((match) => ({
-    manifestPath: PLUGIN_VIEWS_SPEC,
+    manifestPath: PLUGIN_VIEW_CASES_SOURCE,
     id: match[1] ?? "",
     viewType: (match[2] ?? "gui") as "gui" | "tui" | "xr",
     path: match[3] ?? "",
@@ -417,6 +668,17 @@ function sideEffectPluginIds(): string[] {
   return sorted(
     [...source.matchAll(/key:\s*"([^"]+)"/g)].map((match) => match[1] ?? ""),
   );
+}
+
+function appPackageDependencies(): Record<string, string> {
+  const packageJson = JSON.parse(
+    readFileSync(path.resolve(REPO_ROOT, "packages/app/package.json"), "utf8"),
+  ) as { dependencies?: Record<string, string> };
+  return packageJson.dependencies ?? {};
+}
+
+function packageNameForBootModule(moduleId: string): string {
+  return moduleId.replace(/\/register$/, "");
 }
 
 function internalToolWindowPaths(): string[] {
@@ -492,15 +754,25 @@ describe("app route coverage gate", () => {
     ).toEqual([]);
   });
 
-  it("safe view tile smoke matrix targets manager-visible gui views", () => {
+  it("manager-visible view tile matrix tracks every manager-visible gui view", () => {
     const managerViews = managerVisibleGuiViewPaths();
+    const safeTileIds = new Set(
+      MANAGER_VISIBLE_VIEW_TILE_CASES.map((tile) => tile.viewId),
+    );
+    const missingTiles = [...managerViews.keys()].filter(
+      (viewId) => !safeTileIds.has(viewId),
+    );
 
     expect(
-      SAFE_VIEW_TILE_CASES.length,
-      "SAFE_VIEW_TILE_CASES must not be empty",
+      MANAGER_VISIBLE_VIEW_TILE_CASES.length,
+      "MANAGER_VISIBLE_VIEW_TILE_CASES must not be empty",
     ).toBeGreaterThan(0);
+    expect(
+      missingTiles,
+      "Every manager-visible gui view must have a View Manager tile case.",
+    ).toEqual([]);
 
-    for (const tile of SAFE_VIEW_TILE_CASES) {
+    for (const tile of MANAGER_VISIBLE_VIEW_TILE_CASES) {
       const viewPath = managerViews.get(tile.viewId);
       expect(
         viewPath,
@@ -511,6 +783,27 @@ describe("app route coverage gate", () => {
         `Safe view tile "${tile.viewId}" expectedPath must match its manifest view path`,
       ).toBe(viewPath);
     }
+  });
+
+  it("discovers every production plugin view manifest in the manifest ratchet", () => {
+    const discovered = discoverPluginViewManifestPaths();
+
+    const missing = discovered.filter(
+      (manifest) =>
+        !(PLUGIN_VIEW_MANIFESTS as readonly string[]).includes(manifest),
+    );
+    const stale = PLUGIN_VIEW_MANIFESTS.filter(
+      (manifest) => !discovered.includes(manifest),
+    );
+
+    expect(
+      missing,
+      `PLUGIN_VIEW_MANIFESTS is missing production plugin view manifests: ${missing.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      stale,
+      `PLUGIN_VIEW_MANIFESTS references files that no longer declare production plugin views: ${stale.join(", ")}`,
+    ).toEqual([]);
   });
 
   it("plugin views visual matrix covers every bundled gui/tui view", () => {
@@ -557,6 +850,115 @@ describe("app route coverage gate", () => {
     expect(
       pathMismatches,
       `Plugin-views visual paths drifted from manifests: ${pathMismatches.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("operator plugin view manifests keep explicit gui/xr/tui contracts", () => {
+    const contractsByManifest = new Map<string, PluginViewManifestContract[]>();
+    for (const contract of OPERATOR_VIEW_MANIFEST_CONTRACTS) {
+      const contracts = contractsByManifest.get(contract.manifestPath) ?? [];
+      contracts.push(contract);
+      contractsByManifest.set(contract.manifestPath, contracts);
+    }
+
+    const failures = [...contractsByManifest].flatMap(
+      ([manifestPath, contracts]) => {
+        const source = readFileSync(
+          path.resolve(REPO_ROOT, manifestPath),
+          "utf8",
+        );
+        const objectsByKey = new Map(
+          viewObjects(source).map((object) => {
+            const id = stringField(object, "id") ?? "";
+            const viewType = stringField(object, "viewType") ?? "gui";
+            return [`${id}:${viewType}`, object];
+          }),
+        );
+
+        return contracts.flatMap((contract) => {
+          const object = objectsByKey.get(
+            `${contract.id}:${contract.viewType}`,
+          );
+          if (!object) {
+            return [
+              `${manifestPath}:${contract.id}:${contract.viewType} missing view declaration`,
+            ];
+          }
+          const bundlePath = stringField(object, "bundlePath");
+          const componentExport = stringField(object, "componentExport");
+          const pathValue = stringField(object, "path");
+          return [
+            pathValue === contract.path
+              ? null
+              : `${manifestPath}:${contract.id}:${contract.viewType} path expected ${contract.path} got ${pathValue}`,
+            bundlePath === "dist/views/bundle.js"
+              ? null
+              : `${manifestPath}:${contract.id}:${contract.viewType} bundle expected dist/views/bundle.js got ${bundlePath}`,
+            componentExport === contract.componentExport
+              ? null
+              : `${manifestPath}:${contract.id}:${contract.viewType} component expected ${contract.componentExport} got ${componentExport}`,
+          ].filter((failure): failure is string => Boolean(failure));
+        });
+      },
+    );
+
+    expect(
+      failures,
+      `Operator plugin view manifest contracts drifted: ${failures.join("; ")}`,
+    ).toEqual([]);
+  });
+
+  it("tracked plugin view visual review report covers every visual matrix case", () => {
+    const visualCases = pluginViewCasesFromVisualSpec();
+    const report = readFileSync(PLUGIN_VIEW_VISUAL_REVIEW_REPORT, "utf8");
+    const reportRows = [
+      ...report.matchAll(
+        /^\| `([^`]+)` \| `(gui|tui)` \| `([^`]+)` \| .+ \| .+ \| .+ \|$/gm,
+      ),
+    ].map((match) => ({
+      id: match[1] ?? "",
+      viewType: (match[2] ?? "gui") as "gui" | "tui" | "xr",
+      path: match[3] ?? "",
+      manifestPath: PLUGIN_VIEW_VISUAL_REVIEW_REPORT,
+    }));
+    const visualByKey = new Map(
+      visualCases.map((viewCase) => [pluginViewCaseKey(viewCase), viewCase]),
+    );
+    const reportByKey = new Map(
+      reportRows.map((viewCase) => [pluginViewCaseKey(viewCase), viewCase]),
+    );
+
+    const missing = visualCases
+      .filter((viewCase) => !reportByKey.has(pluginViewCaseKey(viewCase)))
+      .map(
+        (viewCase) => `${viewCase.id}:${viewCase.viewType}:${viewCase.path}`,
+      );
+    const stale = reportRows
+      .filter((viewCase) => !visualByKey.has(pluginViewCaseKey(viewCase)))
+      .map(
+        (viewCase) => `${viewCase.id}:${viewCase.viewType}:${viewCase.path}`,
+      );
+    const pathMismatches = visualCases
+      .filter((viewCase) => {
+        const reportCase = reportByKey.get(pluginViewCaseKey(viewCase));
+        return reportCase && reportCase.path !== viewCase.path;
+      })
+      .map((viewCase) => {
+        const reportCase = reportByKey.get(pluginViewCaseKey(viewCase));
+        return `${viewCase.id}:${viewCase.viewType} expected ${viewCase.path} got ${reportCase?.path}`;
+      });
+
+    expect(
+      missing,
+      `Missing tracked visual-review rows for: ${missing.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      stale,
+      `Tracked visual-review report has stale rows: ${stale.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      pathMismatches,
+      `Tracked visual-review report paths drifted: ${pathMismatches.join(", ")}`,
     ).toEqual([]);
   });
 
@@ -622,6 +1024,67 @@ describe("app route coverage gate", () => {
     expect(
       missingManifestCoverage,
       `Boot plugin view manifests missing from PLUGIN_VIEW_MANIFESTS: ${missingManifestCoverage.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("compiled app plugin loaders have packaged workspace dependencies", () => {
+    const dependencies = appPackageDependencies();
+    const bootPluginIds = unique([
+      ...appMainPluginIds(),
+      ...sideEffectPluginIds(),
+    ]);
+    const missingDependencies = bootPluginIds
+      .map(packageNameForBootModule)
+      .filter((packageName) => packageName.startsWith("@elizaos/"))
+      .filter((packageName) => dependencies[packageName] !== "workspace:*");
+
+    expect(
+      missingDependencies,
+      `Boot-loaded app plugin modules must be declared in packages/app/package.json dependencies: ${missingDependencies.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("every plugin view manifest is app-boot mapped or explicitly classified", () => {
+    const bootMappedManifests = new Set(
+      Object.values(BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE).filter(
+        (manifest): manifest is (typeof PLUGIN_VIEW_MANIFESTS)[number] =>
+          typeof manifest === "string",
+      ),
+    );
+    const allowlisted = new Set(
+      Object.keys(NOT_APP_BOOT_LOADED_VIEW_MANIFESTS),
+    );
+
+    const unclassified = PLUGIN_VIEW_MANIFESTS.filter(
+      (manifest) =>
+        !bootMappedManifests.has(manifest) && !allowlisted.has(manifest),
+    );
+    const staleAllowlist = [...allowlisted].filter(
+      (manifest) =>
+        !(PLUGIN_VIEW_MANIFESTS as readonly string[]).includes(manifest),
+    );
+    const mappedAllowlist = [...allowlisted].filter((manifest) =>
+      bootMappedManifests.has(manifest),
+    );
+    const missingReasons = [...allowlisted].filter(
+      (manifest) => !NOT_APP_BOOT_LOADED_VIEW_MANIFESTS[manifest]?.trim(),
+    );
+
+    expect(
+      unclassified,
+      `Plugin view manifests must be app-boot mapped or explicitly classified: ${unclassified.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      staleAllowlist,
+      `NOT_APP_BOOT_LOADED_VIEW_MANIFESTS references removed manifests: ${staleAllowlist.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      mappedAllowlist,
+      `Remove app-boot mapped manifests from NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: ${mappedAllowlist.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      missingReasons,
+      `Every non-app-boot-loaded manifest classification needs a reason: ${missingReasons.join(", ")}`,
     ).toEqual([]);
   });
 });

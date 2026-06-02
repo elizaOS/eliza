@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from hashlib import blake2s, sha256
 from math import ceil
+from typing import cast
 
 from compiler.runtime.e1x_wafer_model import E1XConfig, artifact_sha256, json_dumps_canonical
 
@@ -70,9 +71,9 @@ def rv_sw(rs2: int, rs1: int, imm: int) -> int:
     _check_reg(rs2)
     _check_reg(rs1)
     enc = _signed_imm12(imm)
-    return ((enc >> 5) << 25) | (rs2 << 20) | (rs1 << 15) | (0b010 << 12) | (
-        (enc & 0x1F) << 7
-    ) | 0x23
+    return (
+        ((enc >> 5) << 25) | (rs2 << 20) | (rs1 << 15) | (0b010 << 12) | ((enc & 0x1F) << 7) | 0x23
+    )
 
 
 def rv_ecall() -> int:
@@ -189,15 +190,15 @@ def build_kernel_dispatch_plan(
                     "dispatch_payload": layer_dispatch_payload(layer),
                     "instruction_word_count": len(words),
                     "boot_words_hex": _hex_words(words),
-                    "program_sha256": sha256(("\n".join(_hex_words(words)) + "\n").encode()).hexdigest(),
+                    "program_sha256": sha256(
+                        ("\n".join(_hex_words(words)) + "\n").encode()
+                    ).hexdigest(),
                 }
             )
 
     plan = {
         "schema": KERNEL_PLAN_SCHEMA,
-        "claim_boundary": (
-            "deterministic_rv64im_layer_dispatch_codegen_not_full_mac_scheduler"
-        ),
+        "claim_boundary": ("deterministic_rv64im_layer_dispatch_codegen_not_full_mac_scheduler"),
         "chip": config.name,
         "model": placement["model"],
         "source_manifest": source_manifest,
@@ -228,9 +229,7 @@ def _layer_microkernel_record(layer: dict, *, k_sample: int, output_rows: int) -
     for row in range(rows):
         weights = [_s4_from_seed(("w4", layer_index, row, k_idx)) for k_idx in range(k)]
         packed_words = pack_signed_w4(weights)
-        unpacked = [
-            value for word in packed_words for value in unpack_signed_w4_word(word)
-        ][:k]
+        unpacked = [value for word in packed_words for value in unpack_signed_w4_word(word)][:k]
         accumulator = sum(a * w for a, w in zip(activations, unpacked, strict=True))
         # Q8.8-style downshift for a deterministic bounded activation sample.
         requantized = max(-128, min(127, accumulator >> 7))
@@ -485,9 +484,9 @@ def build_fabric_color_pressure(schedule: dict, config: E1XConfig) -> dict:
         {**record, "sampled_layers": color_layer_samples[color]}
         for color, record in by_color.items()
     ]
-    total_wavelets = sum(int(record["total_wavelets"]) for record in color_records)
-    used = [record for record in color_records if int(record["layer_count"]) > 0]
-    peak = max((int(record["total_wavelets"]) for record in color_records), default=0)
+    total_wavelets = sum(cast(int, record["total_wavelets"]) for record in color_records)
+    used = [record for record in color_records if cast(int, record["layer_count"]) > 0]
+    peak = max((cast(int, record["total_wavelets"]) for record in color_records), default=0)
     pressure = {
         "schema": COLOR_PRESSURE_SCHEMA,
         "claim_boundary": (
@@ -505,10 +504,10 @@ def build_fabric_color_pressure(schedule: dict, config: E1XConfig) -> dict:
         "total_k_wave_count": int(schedule["total_k_wave_count"]),
         "total_core_wave_count": int(schedule["total_core_wave_count"]),
         "total_activation_wavelets": sum(
-            int(record["activation_wavelets"]) for record in color_records
+            cast(int, record["activation_wavelets"]) for record in color_records
         ),
         "total_reduction_wavelets": sum(
-            int(record["reduction_wavelets"]) for record in color_records
+            cast(int, record["reduction_wavelets"]) for record in color_records
         ),
         "total_fabric_wavelets": total_wavelets,
         "peak_color_wavelets": peak,
@@ -527,9 +526,7 @@ def build_fabric_color_timing(
 ) -> dict:
     """Estimate per-color fabric cycles from scheduled wavelet pressure."""
     if color_pressure.get("schema") != COLOR_PRESSURE_SCHEMA:
-        raise ValueError(
-            f"unsupported color-pressure schema {color_pressure.get('schema')!r}"
-        )
+        raise ValueError(f"unsupported color-pressure schema {color_pressure.get('schema')!r}")
     records = color_pressure.get("color_records")
     if not isinstance(records, list) or not records:
         raise ValueError("color pressure has no color records")
@@ -539,8 +536,7 @@ def build_fabric_color_timing(
         total_wavelets = int(record["total_wavelets"])
         fabric_bit_hops = total_wavelets * config.fabric_payload_bits * average_hops
         fabric_cycles = ceil(
-            fabric_bit_hops
-            / max(1, config.link_bits_per_cycle_bidirectional * config.logical_rows)
+            fabric_bit_hops / max(1, config.link_bits_per_cycle_bidirectional * config.logical_rows)
         )
         color_timings.append(
             {
@@ -551,9 +547,7 @@ def build_fabric_color_timing(
                 "estimated_fabric_cycles": fabric_cycles,
             }
         )
-    total_color_cycles = sum(
-        int(record["estimated_fabric_cycles"]) for record in color_timings
-    )
+    total_color_cycles = sum(int(record["estimated_fabric_cycles"]) for record in color_timings)
     peak_record = max(color_timings, key=lambda record: int(record["estimated_fabric_cycles"]))
     timing = {
         "schema": COLOR_TIMING_SCHEMA,
@@ -668,9 +662,7 @@ def build_schedule_execution_estimate(
     total_compute_cycles = sum(int(record["compute_cycles"]) for record in layer_estimates)
     total_fabric_cycles = sum(int(record["fabric_cycles"]) for record in layer_estimates)
     total_dispatch_cycles = sum(int(record["dispatch_cycles"]) for record in layer_estimates)
-    total_schedule_cycles = sum(
-        int(record["estimated_layer_cycles"]) for record in layer_estimates
-    )
+    total_schedule_cycles = sum(int(record["estimated_layer_cycles"]) for record in layer_estimates)
     elapsed_s = total_schedule_cycles / config.core_clock_hz
     estimate = {
         "schema": SCHEDULE_EXECUTION_SCHEMA,

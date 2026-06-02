@@ -99,9 +99,17 @@ function matchesQuery(contact: ContactSummary, q: string): boolean {
   return false;
 }
 
+function normalizeContactsLimit(value: unknown, fallback = 200): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(500, Math.max(1, Math.trunc(value)));
+}
+
 async function loadContactsState(options?: { query?: string; limit?: number }) {
   const query = options?.query?.trim() ?? "";
-  const limit = options?.limit;
+  const limit =
+    typeof options?.limit === "number"
+      ? normalizeContactsLimit(options.limit)
+      : undefined;
   const result = await Contacts.listContacts({
     ...(query ? { query } : {}),
     ...(typeof limit === "number" ? { limit } : {}),
@@ -826,6 +834,73 @@ function Avatar({
   );
 }
 
+function ContactsTuiListItem({
+  contact,
+  index,
+  selected,
+  onSelect,
+}: {
+  contact: ContactSummary;
+  index: number;
+  selected: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const name = contact.displayName || "Unnamed";
+  const subtitle =
+    contact.phoneNumbers[0] ?? contact.emailAddresses[0] ?? "no contact method";
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `tui-contact-${contact.id}`,
+    role: "list-item",
+    label: name,
+    group: "contacts-tui-list",
+    description: "Open this contact's terminal detail",
+    order: index,
+    status: selected ? "active" : "inactive",
+  });
+  return (
+    <button
+      ref={ref}
+      {...agentProps}
+      type="button"
+      aria-current={selected ? "true" : undefined}
+      onClick={() => onSelect(contact.id)}
+      style={{
+        width: "100%",
+        display: "grid",
+        gridTemplateColumns: "4ch minmax(8ch, 1fr) 2ch",
+        gap: 10,
+        border: "none",
+        borderTop: index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
+        background: selected ? "rgba(125,211,252,0.12)" : "transparent",
+        color: "#cbd5e1",
+        padding: "8px 0",
+        cursor: "pointer",
+        fontFamily: "inherit",
+        textAlign: "left",
+      }}
+    >
+      <span style={{ color: "#64748b" }}>
+        {String(index + 1).padStart(2, "0")}
+      </span>
+      <span style={{ color: "#e2e8f0", overflow: "hidden" }}>{name}</span>
+      <span
+        aria-label={contact.starred ? "Starred" : "Not starred"}
+        role="img"
+        style={{ color: contact.starred ? "#facc15" : "#64748b" }}
+        title={contact.starred ? "Starred" : "Not starred"}
+      >
+        <Star
+          aria-hidden
+          fill={contact.starred ? "currentColor" : "none"}
+          size={14}
+          strokeWidth={contact.starred ? 0 : 1.8}
+        />
+      </span>
+      <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>{subtitle}</span>
+    </button>
+  );
+}
+
 export function ContactsTuiView() {
   const [contacts, setContacts] = useState<ContactSummary[]>([]);
   const [query, setQuery] = useState("");
@@ -862,6 +937,76 @@ export function ContactsTuiView() {
     () => contacts.find((contact) => contact.id === selectedId) ?? null,
     [contacts, selectedId],
   );
+
+  const refreshEl = useAgentElement<HTMLButtonElement>({
+    id: "tui-action-refresh",
+    role: "button",
+    label: "Refresh",
+    group: "contacts-tui-list",
+    description: "Reload the terminal contacts list",
+    status: loading ? "disabled" : undefined,
+  });
+  const searchEl = useAgentElement<HTMLInputElement>({
+    id: "tui-input-search",
+    role: "text-input",
+    label: "Search contacts",
+    group: "contacts-tui-list",
+    description: "Filter the terminal contacts by name, phone, or email",
+    getValue: () => query,
+    onFill: setQuery,
+  });
+  const nameEl = useAgentElement<HTMLInputElement>({
+    id: "tui-input-name",
+    role: "text-input",
+    label: "Name",
+    group: "contacts-tui-create",
+    description: "Display name for the new terminal contact",
+    getValue: () => displayName,
+    onFill: setDisplayName,
+  });
+  const phoneEl = useAgentElement<HTMLInputElement>({
+    id: "tui-input-phone",
+    role: "text-input",
+    label: "Phone",
+    group: "contacts-tui-create",
+    description: "Phone number for the new terminal contact",
+    getValue: () => phoneNumber,
+    onFill: setPhoneNumber,
+  });
+  const emailEl = useAgentElement<HTMLInputElement>({
+    id: "tui-input-email",
+    role: "text-input",
+    label: "Email",
+    group: "contacts-tui-create",
+    description: "Email address for the new terminal contact",
+    getValue: () => emailAddress,
+    onFill: setEmailAddress,
+  });
+  const createEl = useAgentElement<HTMLButtonElement>({
+    id: "tui-action-create",
+    role: "button",
+    label: "Create contact",
+    group: "contacts-tui-create",
+    description: "Create the contact from the terminal form",
+    status: !displayName.trim() || submitting ? "disabled" : undefined,
+  });
+  const vcardEl = useAgentElement<HTMLTextAreaElement>({
+    id: "tui-input-vcard",
+    role: "textarea",
+    label: "vCard text",
+    group: "contacts-tui-create",
+    description: "Raw vCard text to import as contacts",
+    getValue: () => vcardText,
+    onFill: setVcardText,
+  });
+  const importEl = useAgentElement<HTMLButtonElement>({
+    id: "tui-action-import",
+    role: "button",
+    label: "Import vCard",
+    group: "contacts-tui-create",
+    description: "Import contacts from the pasted vCard text",
+    status: !vcardText.trim() || submitting ? "disabled" : undefined,
+  });
 
   const createContact = useCallback(async () => {
     const name = displayName.trim();
@@ -968,6 +1113,8 @@ export function ContactsTuiView() {
           >
             <strong style={{ color: "#e2e8f0" }}>address book</strong>
             <button
+              ref={refreshEl.ref}
+              {...refreshEl.agentProps}
               type="button"
               onClick={() => void refresh()}
               disabled={loading}
@@ -992,6 +1139,8 @@ export function ContactsTuiView() {
             search
           </label>
           <input
+            ref={searchEl.ref}
+            {...searchEl.agentProps}
             id="contacts-tui-search"
             name="query"
             value={query}
@@ -1013,55 +1162,18 @@ export function ContactsTuiView() {
           {!loading && !error && contacts.length === 0 && (
             <div style={{ color: "#64748b" }}>no contacts</div>
           )}
-          {contacts.map((contact, index) => {
-            const subtitle =
-              contact.phoneNumbers[0] ??
-              contact.emailAddresses[0] ??
-              "no contact method";
-            return (
-              <button
-                key={contact.id}
-                type="button"
-                onClick={() => {
-                  setSelectedId(contact.id);
-                  setLastAction(`open ${contact.id}`);
-                }}
-                style={{
-                  width: "100%",
-                  display: "grid",
-                  gridTemplateColumns: "4ch minmax(8ch, 1fr) 2ch",
-                  gap: 10,
-                  border: "none",
-                  borderTop:
-                    index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
-                  background:
-                    contact.id === selectedId
-                      ? "rgba(125,211,252,0.12)"
-                      : "transparent",
-                  color: "#cbd5e1",
-                  padding: "8px 0",
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                  textAlign: "left",
-                }}
-              >
-                <span style={{ color: "#64748b" }}>
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <span style={{ color: "#e2e8f0", overflow: "hidden" }}>
-                  {contact.displayName || "Unnamed"}
-                </span>
-                <span
-                  style={{ color: contact.starred ? "#facc15" : "#64748b" }}
-                >
-                  {contact.starred ? "*" : "-"}
-                </span>
-                <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
-                  {subtitle}
-                </span>
-              </button>
-            );
-          })}
+          {contacts.map((contact, index) => (
+            <ContactsTuiListItem
+              key={contact.id}
+              contact={contact}
+              index={index}
+              selected={contact.id === selectedId}
+              onSelect={(id) => {
+                setSelectedId(id);
+                setLastAction(`open ${id}`);
+              }}
+            />
+          ))}
         </section>
 
         <section
@@ -1109,6 +1221,8 @@ export function ContactsTuiView() {
             name
           </label>
           <input
+            ref={nameEl.ref}
+            {...nameEl.agentProps}
             id="contacts-tui-name"
             name="displayName"
             value={displayName}
@@ -1132,6 +1246,8 @@ export function ContactsTuiView() {
             phone
           </label>
           <input
+            ref={phoneEl.ref}
+            {...phoneEl.agentProps}
             id="contacts-tui-phone"
             name="phoneNumber"
             value={phoneNumber}
@@ -1155,6 +1271,8 @@ export function ContactsTuiView() {
             email
           </label>
           <input
+            ref={emailEl.ref}
+            {...emailEl.agentProps}
             id="contacts-tui-email"
             name="emailAddress"
             value={emailAddress}
@@ -1172,6 +1290,8 @@ export function ContactsTuiView() {
             }}
           />
           <button
+            ref={createEl.ref}
+            {...createEl.agentProps}
             type="button"
             onClick={() => void createContact()}
             disabled={!displayName.trim() || submitting}
@@ -1197,6 +1317,8 @@ export function ContactsTuiView() {
             vcard
           </label>
           <textarea
+            ref={vcardEl.ref}
+            {...vcardEl.agentProps}
             id="contacts-tui-vcard"
             name="vcardText"
             value={vcardText}
@@ -1216,6 +1338,8 @@ export function ContactsTuiView() {
             }}
           />
           <button
+            ref={importEl.ref}
+            {...importEl.agentProps}
             type="button"
             onClick={() => void importVCard()}
             disabled={!vcardText.trim() || submitting}

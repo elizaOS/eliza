@@ -24,9 +24,15 @@ import yaml
 
 from .sandbox import SandboxExecutor, SandboxConfig
 from .scoring import score_episode, format_score_summary
+from .scenarios import (
+    SCENARIOS_DIR,
+    base_scenario_name,
+    count_scenarios,
+    load_scenarios,
+    validate_scenarios,
+)
 
 # Configuration
-SCENARIOS_DIR = Path(__file__).parent / "scenarios"
 DEFAULT_MODEL = (
     os.environ.get("BENCHMARK_MODEL_NAME")
     or os.environ.get("GROQ_MODEL")
@@ -79,18 +85,17 @@ class BenchmarkRunner:
 
     def load_scenario(self, name: str) -> dict:
         """Load a scenario YAML file."""
-        scenario_path = SCENARIOS_DIR / f"{name}.yaml"
-        if not scenario_path.exists():
-            available = [f.stem for f in SCENARIOS_DIR.glob("*.yaml")]
+        scenarios = load_scenarios()
+        if name not in scenarios:
+            available = sorted(scenarios)
             raise FileNotFoundError(
                 f"Scenario '{name}' not found. Available: {', '.join(available)}"
             )
-        with open(scenario_path) as f:
-            return yaml.safe_load(f)
+        return scenarios[name]
 
     def list_scenarios(self) -> list[str]:
         """List available scenarios."""
-        return sorted([f.stem for f in SCENARIOS_DIR.glob("*.yaml")])
+        return sorted(load_scenarios())
 
     def call_llm(self, messages: list) -> str:
         """Call the LLM API."""
@@ -321,7 +326,7 @@ class BenchmarkRunner:
                 deps[name] = []
                 continue
             prereqs = cfg.get("prerequisites") or []
-            deps[name] = [p for p in prereqs if p in scenarios]
+            deps[name] = [base_scenario_name(p) for p in prereqs if base_scenario_name(p) in scenarios]
 
         ordered: list[str] = []
         visited: set[str] = set()
@@ -411,6 +416,10 @@ def main():
                         help="Run all scenarios")
     parser.add_argument("--list", "-l", action="store_true",
                         help="List available scenarios")
+    parser.add_argument("--count-scenarios", action="store_true",
+                        help="Print authored, added, and total scenario counts")
+    parser.add_argument("--validate-scenarios", action="store_true",
+                        help="Validate expanded scenario corpus and exit")
     parser.add_argument("--model", "-m", type=str, default=DEFAULT_MODEL,
                         help="Model to use")
     parser.add_argument("--output-dir", "-o", type=str, default=None,
@@ -422,11 +431,20 @@ def main():
 
     args = parser.parse_args()
 
+    if args.count_scenarios:
+        print(json.dumps(count_scenarios(), indent=2))
+        return
+
+    if args.validate_scenarios:
+        validate_scenarios()
+        print("OpenClaw scenarios valid")
+        return
+
     if args.list:
         runner = BenchmarkRunner.__new__(BenchmarkRunner)
         print("Available scenarios:")
-        for scenario in sorted(SCENARIOS_DIR.glob("*.yaml")):
-            print(f"  - {scenario.stem}")
+        for scenario in runner.list_scenarios():
+            print(f"  - {scenario}")
         return
 
     try:

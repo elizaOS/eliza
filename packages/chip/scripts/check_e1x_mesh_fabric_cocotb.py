@@ -10,11 +10,21 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_mesh_fabric_cocotb.json"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "full_network_liveness_claim_allowed": False,
+}
 RUNS = {
     "mesh_fabric_4x4": {
         "top": "e1x_mesh_fabric_4x4_tb",
         "module": "test_e1x_mesh_fabric_4x4",
-        "result": ROOT / "verify/cocotb/results/e1x_mesh_fabric_4x4_tb_test_e1x_mesh_fabric_4x4.xml",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_mesh_fabric_4x4_tb_test_e1x_mesh_fabric_4x4.xml",
         "expected": {
             "real_pe_core_emits_wavelet_routed_across_mesh",
             "multi_hop_corner_to_corner_lossless",
@@ -103,6 +113,7 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "E1X full-wafer (parameterized RxC, default 4x4) mesh fabric cocotb verification: the "
             "production input-buffered credit router (e1x_credit_router) instantiated across an NxM "

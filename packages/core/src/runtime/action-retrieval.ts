@@ -511,6 +511,47 @@ function scoreCandidateRegex(
 	return scores;
 }
 
+interface ParentScoringTokens {
+	tokens: string[];
+	length: number;
+	set: Set<string>;
+	termFrequency: Map<string, number>;
+}
+
+// Per-catalog-parent scoring tokens, memoized by the parent object. The parent's
+// searchText is static, so tokenization + the term-frequency map are pure
+// functions of it; previously scoreBm25 recomputed both on every message. Keyed
+// by object identity in a WeakMap so it's recomputed only when the catalog
+// rebuilds (new parent objects) and auto-collected when the catalog is dropped.
+// The returned termFrequency map is read-only at the call sites, so sharing it
+// across calls is safe.
+const parentScoringCache = new WeakMap<
+	ActionCatalogParent,
+	ParentScoringTokens
+>();
+
+function getParentScoringTokens(
+	parent: ActionCatalogParent,
+): ParentScoringTokens {
+	const cached = parentScoringCache.get(parent);
+	if (cached) {
+		return cached;
+	}
+	const tokens = tokenizeActionSearchText(parent.searchText);
+	const termFrequency = new Map<string, number>();
+	for (const token of tokens) {
+		termFrequency.set(token, (termFrequency.get(token) ?? 0) + 1);
+	}
+	const computed: ParentScoringTokens = {
+		tokens,
+		length: tokens.length,
+		set: new Set(tokens),
+		termFrequency,
+	};
+	parentScoringCache.set(parent, computed);
+	return computed;
+}
+
 function scoreBm25(
 	parents: ActionCatalogParent[],
 	queryTokens: string[],
@@ -522,10 +563,10 @@ function scoreBm25(
 
 	const documents = parents.map((parent) => ({
 		parent,
-		tokens: tokenizeActionSearchText(parent.searchText),
+		scoring: getParentScoringTokens(parent),
 	}));
 	const averageDocumentLength =
-		documents.reduce((sum, document) => sum + document.tokens.length, 0) /
+		documents.reduce((sum, document) => sum + document.scoring.length, 0) /
 		Math.max(1, documents.length);
 	const documentFrequency = new Map<string, number>();
 	const queryVocabulary = Array.from(new Set(queryTokens));
@@ -533,7 +574,7 @@ function scoreBm25(
 	for (const token of queryVocabulary) {
 		let count = 0;
 		for (const document of documents) {
-			if (document.tokens.includes(token)) {
+			if (document.scoring.set.has(token)) {
 				count += 1;
 			}
 		}
@@ -541,10 +582,7 @@ function scoreBm25(
 	}
 
 	for (const document of documents) {
-		const termFrequency = new Map<string, number>();
-		for (const token of document.tokens) {
-			termFrequency.set(token, (termFrequency.get(token) ?? 0) + 1);
-		}
+		const { termFrequency, length: documentLength } = document.scoring;
 
 		let score = 0;
 		for (const token of queryTokens) {
@@ -564,8 +602,7 @@ function scoreBm25(
 				BM25_K1 *
 					(1 -
 						BM25_B +
-						BM25_B *
-							(document.tokens.length / Math.max(1, averageDocumentLength)));
+						BM25_B * (documentLength / Math.max(1, averageDocumentLength)));
 			score += idf * ((frequency * (BM25_K1 + 1)) / denominator);
 		}
 

@@ -12,7 +12,7 @@ import type { LifeOpsService } from "../../lifeops/service.js";
 import {
   readTwilioCredentialsFromEnv,
   sendTwilioSms,
-} from "../../lifeops/twilio.js";
+} from "@elizaos/plugin-phone";
 
 export type CrossChannelSendChannel =
   | "telegram"

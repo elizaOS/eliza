@@ -23,6 +23,13 @@ from cpu_ap_evidence_lib import (
 )
 
 REPORT = ROOT / "build/reports/cpu_ap_completion_gate.json"
+CLAIM_FLAG_KEYS = (
+    "phone_2028_ap_claim_allowed",
+    "release_claim_allowed",
+    "linux_capable_cpu_claim_allowed",
+    "privileged_boot_claim_allowed",
+    "generated_cpu_ap_completion_claim_allowed",
+)
 
 
 def utc_now() -> str:
@@ -64,6 +71,15 @@ def run_generated_gate() -> int:
 def write_report(report: dict[str, Any]) -> None:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def false_claim_flags(report: dict[str, Any]) -> dict[str, bool]:
+    return {key: False for key in CLAIM_FLAG_KEYS if report.get(key) is False}
+
+
+def with_false_claim_flags(report: dict[str, Any]) -> dict[str, Any]:
+    report["false_claim_flags"] = false_claim_flags(report)
+    return report
 
 
 def missing_cpu_ap_evidence() -> tuple[list[str], list[str], list[str]]:
@@ -135,7 +151,8 @@ def blocked_report(
                 ),
             }
         )
-    return {
+    return with_false_claim_flags(
+        {
         "schema": "eliza.cpu_ap_completion_gate.v1",
         "status": "blocked",
         "generated_utc": utc_now(),
@@ -173,7 +190,8 @@ def blocked_report(
             "python3 scripts/check_cpu_ap_completion_gate.py. QEMU virt Linux boot evidence "
             "does not satisfy this CPU/AP completion claim."
         ),
-    }
+        }
+    )
 
 
 def main() -> int:
@@ -186,7 +204,8 @@ def main() -> int:
         rc = run_generated_gate()
         if rc != 0:
             write_report(
-                {
+                with_false_claim_flags(
+                    {
                     "schema": "eliza.cpu_ap_completion_gate.v1",
                     "status": "fail",
                     "generated_utc": utc_now(),
@@ -198,14 +217,16 @@ def main() -> int:
                     "generated_cpu_ap_completion_claim_allowed": False,
                     "summary": {"failures": 1},
                     "next_step": "Run scripts/check_cpu_ap_evidence.py --require-evidence and repair the failing CPU/AP artifact or transcript.",
-                }
+                    }
+                )
             )
             print(
                 "STATUS: FAIL cpu_ap.completion_gate - real RV64GC/Linux AP claim is not backed by required artifacts"
             )
             return rc
         write_report(
-            {
+            with_false_claim_flags(
+                {
                 "schema": "eliza.cpu_ap_completion_gate.v1",
                 "status": "pass",
                 "generated_utc": utc_now(),
@@ -217,7 +238,8 @@ def main() -> int:
                 "generated_cpu_ap_completion_claim_allowed": True,
                 "summary": {"blockers": 0, "failures": 0},
                 "next_step": "none",
-            }
+                }
+            )
         )
         print(
             "STATUS: PASS cpu_ap.completion_gate - generated Rocket RV64GC AP artifacts and boot evidence are present"

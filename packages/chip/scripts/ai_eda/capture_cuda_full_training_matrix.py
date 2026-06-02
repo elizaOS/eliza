@@ -371,6 +371,10 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,
         "large_training_claim_allowed": False,
+        "false_claim_flags": {
+            "release_use_allowed": False,
+            "large_training_claim_allowed": False,
+        },
         "status": status,
         "evidence_run_ids": {
             "payload": payload_run_id,

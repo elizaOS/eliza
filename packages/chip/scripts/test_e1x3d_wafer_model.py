@@ -61,7 +61,9 @@ def test_e1x3d_thermal_gate_fails_closed_past_ceiling() -> None:
     assert thermal_model(E1X3DConfig(logical_tiers=2))["status"] == "PASS"
     over_tiers = thermal_model(E1X3DConfig(logical_tiers=6))
     assert over_tiers["status"] == "BLOCKED"
-    assert any("logic tiers" in reason for reason in over_tiers["reasons"])
+    reasons = over_tiers["reasons"]
+    assert isinstance(reasons, list)
+    assert any("logic tiers" in reason for reason in reasons)
     over_density = thermal_model(E1X3DConfig(tier_power_density_w_per_mm2=2.0))
     assert over_density["status"] == "BLOCKED"
 
@@ -73,7 +75,11 @@ def test_e1x3d_stack_yield_gate_fails_closed_on_low_bond_yield() -> None:
         HIGH_DEFECT_SCENARIO_3D,
     )
     assert weak["status"] == "BLOCKED"
-    assert weak["stack_bond_yield"] < weak["target_stack_bond_yield"]
+    stack_bond_yield = weak["stack_bond_yield"]
+    target_stack_bond_yield = weak["target_stack_bond_yield"]
+    assert isinstance(stack_bond_yield, float)
+    assert isinstance(target_stack_bond_yield, float)
+    assert stack_bond_yield < target_stack_bond_yield
 
 
 def test_e1x3d_dead_tier_region_reroutes_and_remaps() -> None:

@@ -12,6 +12,10 @@
   "pass_threshold_abs_or_rel": 0.1,
   "passed_threshold": true,
   "phone_claim_allowed": false,
+  "false_claim_flags": {
+    "phone_claim_allowed": false,
+    "release_claim_allowed": false
+  },
   "phone_class_claim_blocked": true,
   "phone_class_claim_blocked_reason": "cocotb synthetic stream is not phone-class; remains blocked until full-system-simulator or silicon evidence.",
   "previous_results_for_reference": [

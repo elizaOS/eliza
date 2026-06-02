@@ -262,53 +262,194 @@ export function ClawvilleOperatorSurface({
   const primaryActions: GameOperatorAction[] = PRIMARY_COMMANDS.map((item) => ({
     ...item,
   }));
-  const suggestedActions = (run.session?.suggestedPrompts ?? []).map(
-    (prompt: string) => ({
-      id: prompt,
-      label: prompt,
-      command: prompt,
-      testId: "clawville-suggested-command",
-    }),
-  );
+  const suggestedPrompts = run.session?.suggestedPrompts ?? [];
+  const suggestedActions = suggestedPrompts.map((prompt: string) => ({
+    id: prompt,
+    label: prompt,
+    command: prompt,
+    testId: "clawville-suggested-command",
+  }));
   const events = collectRunEvents(run, localEvents);
 
   return (
-    <GameOperatorShell
-      surfaceTestId={
-        variant === "live"
-          ? "clawville-live-operator-surface"
-          : "clawville-detail-operator-surface"
-      }
-      title="ClawVille chat"
-      statusLabel={statusLabel(run.status)}
-      statusTone={statusTone(run.status)}
-      objective={run.session?.goalLabel ?? `Near ${nearestBuilding}`}
-      detailItems={[
-        { label: "Location", value: nearestBuilding },
-        {
-          label: "Skills",
-          value:
-            knowledgeCount === null
-              ? "Not loaded"
-              : `${knowledgeCount} learned`,
-        },
-      ]}
-      primaryActions={primaryActions}
-      suggestedActions={suggestedActions}
-      events={events}
-      emptyEventsLabel="Movement, NPC chat, and visit results will appear here. Start by visiting the nearest building or asking an NPC what to learn."
-      draft={draft}
-      inputPlaceholder="Tell ClawVille what to do..."
-      canSend={canSend}
-      sending={Boolean(sendingCommand)}
-      chatInputTestId="clawville-chat-input"
-      chatSendTestId="clawville-chat-send"
-      noticeTestId="clawville-command-notice"
-      variant={variant}
-      onDraftChange={setDraft}
-      onSendDraft={() => void sendCommand(draft, true)}
-      onCommand={(command: string) => void sendCommand(command)}
-    />
+    <>
+      <ClawvilleOperatorRegistrar
+        suggestedPrompts={suggestedPrompts}
+        getDraft={() => draft}
+        onDraftChange={setDraft}
+        onCommand={(command) => void sendCommand(command)}
+        onSendDraft={() => void sendCommand(draft, true)}
+      />
+      <GameOperatorShell
+        surfaceTestId={
+          variant === "live"
+            ? "clawville-live-operator-surface"
+            : "clawville-detail-operator-surface"
+        }
+        title="ClawVille chat"
+        statusLabel={statusLabel(run.status)}
+        statusTone={statusTone(run.status)}
+        objective={run.session?.goalLabel ?? `Near ${nearestBuilding}`}
+        detailItems={[
+          { label: "Location", value: nearestBuilding },
+          {
+            label: "Skills",
+            value:
+              knowledgeCount === null
+                ? "Not loaded"
+                : `${knowledgeCount} learned`,
+          },
+        ]}
+        primaryActions={primaryActions}
+        suggestedActions={suggestedActions}
+        events={events}
+        emptyEventsLabel="Movement, NPC chat, and visit results will appear here. Start by visiting the nearest building or asking an NPC what to learn."
+        draft={draft}
+        inputPlaceholder="Tell ClawVille what to do..."
+        canSend={canSend}
+        sending={Boolean(sendingCommand)}
+        chatInputTestId="clawville-chat-input"
+        chatSendTestId="clawville-chat-send"
+        noticeTestId="clawville-command-notice"
+        variant={variant}
+        onDraftChange={setDraft}
+        onSendDraft={() => void sendCommand(draft, true)}
+        onCommand={(command: string) => void sendCommand(command)}
+      />
+    </>
+  );
+}
+
+function slugifyPrompt(prompt: string, index: number): string {
+  const slug = prompt
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return slug ? `${slug}-${index}` : `prompt-${index}`;
+}
+
+function ClawvillePrimaryCommandRegistrar({
+  id,
+  label,
+  command,
+  onCommand,
+}: {
+  id: string;
+  label: string;
+  command: string;
+  onCommand: (command: string) => void;
+}) {
+  useAgentElement<HTMLButtonElement>({
+    id: `command-${id}`,
+    role: "button",
+    label,
+    group: "clawville-primary-commands",
+    description: `Send the ClawVille command: ${command}`,
+    onActivate: () => onCommand(command),
+  });
+  return null;
+}
+
+function ClawvilleSuggestedCommandRegistrar({
+  prompt,
+  index,
+  onCommand,
+}: {
+  prompt: string;
+  index: number;
+  onCommand: (command: string) => void;
+}) {
+  useAgentElement<HTMLButtonElement>({
+    id: `suggested-command-${slugifyPrompt(prompt, index)}`,
+    role: "button",
+    label: prompt,
+    group: "clawville-suggested-commands",
+    description: `Send the suggested ClawVille command: ${prompt}`,
+    onActivate: () => onCommand(prompt),
+  });
+  return null;
+}
+
+function ClawvilleDraftInputRegistrar({
+  getDraft,
+  onDraftChange,
+}: {
+  getDraft: () => string;
+  onDraftChange: (value: string) => void;
+}) {
+  useAgentElement<HTMLInputElement>({
+    id: "chat-command-input",
+    role: "text-input",
+    label: "ClawVille command",
+    group: "clawville-chat",
+    description: "Type a command to send to ClawVille",
+    getValue: getDraft,
+    onFill: onDraftChange,
+  });
+  return null;
+}
+
+function ClawvilleSendDraftRegistrar({
+  onSendDraft,
+}: {
+  onSendDraft: () => void;
+}) {
+  useAgentElement<HTMLButtonElement>({
+    id: "chat-send",
+    role: "button",
+    label: "Send command",
+    group: "clawville-chat",
+    description: "Send the typed command to ClawVille",
+    onActivate: onSendDraft,
+  });
+  return null;
+}
+
+/**
+ * Registers the operator surface's interactive controls with the agent surface.
+ * The controls themselves are rendered by GameOperatorShell (which does not
+ * forward refs), so each control is registered as a callback-driven element
+ * wired to the same handlers the shell invokes.
+ */
+function ClawvilleOperatorRegistrar({
+  suggestedPrompts,
+  getDraft,
+  onDraftChange,
+  onCommand,
+  onSendDraft,
+}: {
+  suggestedPrompts: string[];
+  getDraft: () => string;
+  onDraftChange: (value: string) => void;
+  onCommand: (command: string) => void;
+  onSendDraft: () => void;
+}) {
+  return (
+    <>
+      {PRIMARY_COMMANDS.map((item) => (
+        <ClawvillePrimaryCommandRegistrar
+          key={item.id}
+          id={item.id}
+          label={item.label}
+          command={item.command}
+          onCommand={onCommand}
+        />
+      ))}
+      {suggestedPrompts.map((prompt, index) => (
+        <ClawvilleSuggestedCommandRegistrar
+          key={prompt}
+          prompt={prompt}
+          index={index}
+          onCommand={onCommand}
+        />
+      ))}
+      <ClawvilleDraftInputRegistrar
+        getDraft={getDraft}
+        onDraftChange={onDraftChange}
+      />
+      <ClawvilleSendDraftRegistrar onSendDraft={onSendDraft} />
+    </>
   );
 }
 

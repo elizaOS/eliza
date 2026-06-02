@@ -20,7 +20,7 @@ function normalizeOptionalRecord(
   value: unknown,
   field: string,
 ): Record<string, unknown> | undefined {
-  if (value === undefined) return undefined;
+  if (value === undefined || value === null) return undefined;
   return requireRecord(value, field);
 }
 

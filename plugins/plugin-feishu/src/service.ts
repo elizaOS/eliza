@@ -861,11 +861,14 @@ export class FeishuService extends Service {
 		if (feishuData?.card) {
 			feishuContent.card = feishuData.card as FeishuMessageContent["card"];
 		}
-		if (feishuData?.imageKey) {
-			feishuContent.imageKey = feishuData.imageKey as string;
+		if (
+			typeof feishuData?.imageKey === "string" &&
+			feishuData.imageKey.trim()
+		) {
+			feishuContent.imageKey = feishuData.imageKey.trim();
 		}
-		if (feishuData?.fileKey) {
-			feishuContent.fileKey = feishuData.fileKey as string;
+		if (typeof feishuData?.fileKey === "string" && feishuData.fileKey.trim()) {
+			feishuContent.fileKey = feishuData.fileKey.trim();
 		}
 
 		await this.messageManager.sendMessage(chatId, feishuContent);

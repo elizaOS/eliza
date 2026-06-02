@@ -50,12 +50,25 @@ const DEFAULT_AOSP_ROOT = path.join(os.homedir(), "aosp");
 const DEFAULT_VARIANT = "trunk_staging-userdebug";
 const DEFAULT_DEVICE_DIR = "vsoc_x86_64_only";
 
+// The Cuttlefish product output lives at out/target/product/<deviceDir>, where
+// deviceDir is the `vsoc_*` segment of the brand's AOSP device tree path (e.g.
+// "device/google/cuttlefish/vsoc_riscv64/phone/aosp_cf.mk" -> "vsoc_riscv64").
+// Deriving it from the brand keeps arm64/riscv64 from falling back to the
+// x86_64 default and pointing at the wrong (or missing) system.img.
+function deriveDeviceDir(brand) {
+  for (const treePath of brand.aospDeviceTreePaths ?? []) {
+    const segment = treePath.split("/").find((s) => s.startsWith("vsoc_"));
+    if (segment) return segment;
+  }
+  return DEFAULT_DEVICE_DIR;
+}
+
 export function parseSubArgs(argv, brand) {
   const args = {
     aospRoot: DEFAULT_AOSP_ROOT,
     product: brand.productName,
     variant: DEFAULT_VARIANT,
-    deviceDir: DEFAULT_DEVICE_DIR,
+    deviceDir: deriveDeviceDir(brand),
     outDir: path.join(repoRoot, "reports", "aosp-sim"),
     noLaunch: false,
     stopAfter: false,

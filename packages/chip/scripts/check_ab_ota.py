@@ -36,6 +36,13 @@ ABOTA_BIN = CHIP_ROOT / "build/avb/test_ab_ota"
 REPORT_PATH = CHIP_ROOT / "build/reports/ab_ota.json"
 GATE = "ab-ota"
 BLOCKER_ID = "ab_ota_check_failed"
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "production_verified_boot_claim_allowed": False,
+    "production_ota_claim_allowed": False,
+    "on_device_update_engine_claim_allowed": False,
+    "silicon_rot_claim_allowed": False,
+}
 
 EVIDENCE_PATHS = [
     "docs/security/avb-a-b-ota.md",
@@ -162,6 +169,7 @@ def main() -> int:
             "evidence_paths": [],
             "as_of": now,
             "subsystem": "security",
+            "false_claim_flags": FALSE_CLAIM_FLAGS,
         }
         REPORT_PATH.write_text(json.dumps(report, indent=2) + "\n")
         print(f"BLOCKED: missing {missing}", file=sys.stderr)
@@ -228,7 +236,9 @@ def main() -> int:
             "required_case_count": len(REQUIRED_CASES),
             "failures": failures,
             "release_claim_allowed": False,
+            "false_claim_flags": FALSE_CLAIM_FLAGS,
         },
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "checks": checks,
     }
     REPORT_PATH.write_text(json.dumps(report, indent=2) + "\n")

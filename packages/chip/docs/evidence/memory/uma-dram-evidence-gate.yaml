@@ -193,6 +193,17 @@ blocked_real_claims:
   - Negative tests proving DMA cannot read or mutate timer, software-interrupt, pending,
     enable, priority, threshold, or claim/complete state.
 claim_boundary: scope_limited_to_structural_metadata_inventory_and_gate_diagnostics
+false_claim_flags:
+  android_shared_buffer_claim_allowed: false
+  cache_coherency_claim_allowed: false
+  iommu_smmu_claim_allowed: false
+  linux_boot_memory_handoff_claim_allowed: false
+  lpddr_phy_claim_allowed: false
+  memory_qos_claim_allowed: false
+  memory_uma_claim_allowed: false
+  phone_claim_allowed: false
+  real_dram_claim_allowed: false
+  release_claim_allowed: false
 claim_rules:
 - The scaffold may be described only as SRAM-backed DMA containment evidence.
 - Reset ROM and boot SRAM work may be described only as scaffold planning until OpenSBI

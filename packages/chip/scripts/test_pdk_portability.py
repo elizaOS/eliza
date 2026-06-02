@@ -16,6 +16,7 @@ if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
 import check_pdk_access_gate  # noqa: E402
+
 SCRIPT = ROOT / "scripts/check_pdk_portability.py"
 INDEX = ROOT / "pd/openlane/portability-index.yaml"
 
@@ -241,9 +242,7 @@ def test_pdk_access_report_keeps_false_claim_flags() -> None:
     rc = check_pdk_access_gate.main()
     if rc != 2:
         raise AssertionError(f"expected blocked PDK access gate, got rc={rc}")
-    report = json.loads(
-        (ROOT / "build/reports/pdk_access_gate.json").read_text(encoding="utf-8")
-    )
+    report = json.loads((ROOT / "build/reports/pdk_access_gate.json").read_text(encoding="utf-8"))
     if report["claim_boundary"] != check_pdk_access_gate.CLAIM_BOUNDARY:
         raise AssertionError(report["claim_boundary"])
     for key, expected in check_pdk_access_gate.FALSE_CLAIM_FLAGS.items():

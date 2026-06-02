@@ -5,6 +5,41 @@ import type {
   MobileAgentTunnelStatus,
 } from "./definitions";
 
+function assertRelayUrl(value: unknown): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error("relayUrl must be a non-empty URL");
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("relayUrl must be a valid URL");
+  }
+  if (
+    parsed.protocol !== "wss:" &&
+    parsed.protocol !== "ws:" &&
+    parsed.protocol !== "https:" &&
+    parsed.protocol !== "http:"
+  ) {
+    throw new Error("relayUrl protocol is not allowed");
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error("relayUrl must not contain embedded credentials");
+  }
+  return parsed.toString();
+}
+
+function assertDeviceId(value: unknown): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error("deviceId must be a non-empty string");
+  }
+  const normalized = value.trim();
+  if (!/^[a-zA-Z0-9._:-]{1,128}$/.test(normalized)) {
+    throw new Error("deviceId contains invalid characters");
+  }
+  return normalized;
+}
+
 /**
  * Web fallback for the MobileAgentBridge.
  *
@@ -24,10 +59,12 @@ export class MobileAgentBridgeWeb extends WebPlugin implements MobileAgentBridge
   async startInboundTunnel(
     options: MobileAgentBridgeStartOptions,
   ): Promise<MobileAgentTunnelStatus> {
+    const relayUrl = assertRelayUrl(options.relayUrl);
+    const deviceId = assertDeviceId(options.deviceId);
     this.status = {
       state: "error",
-      relayUrl: options.relayUrl,
-      deviceId: options.deviceId,
+      relayUrl,
+      deviceId,
       lastError: "MobileAgentBridge.startInboundTunnel is only available on iOS and Android.",
     };
     this.notifyListeners("stateChange", {

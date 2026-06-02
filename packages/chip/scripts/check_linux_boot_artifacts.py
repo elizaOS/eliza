@@ -36,9 +36,7 @@ SERIAL_EVIDENCE_MARKERS = [
     "eliza-evidence: status=PASS",
 ]
 DEFAULT_EXTERNAL_PATHS = {
-    "ELIZA_LINUX_TREE": (
-        ROOT / "external/chipyard/software/firemarshal/boards/firechip/linux",
-    ),
+    "ELIZA_LINUX_TREE": (ROOT / "external/chipyard/software/firemarshal/boards/firechip/linux",),
     "ELIZA_BUILDROOT_TREE": (
         ROOT / "external/chipyard/software/firemarshal/boards/firechip/distros/br/buildroot",
     ),
@@ -317,8 +315,7 @@ def payload_locator_is_release_blocking(
     if payload_locator.get("state") != "blocked":
         return False
     return any(
-        item.get("id") == SERIAL_ARTIFACT_ID and item.get("state") != "pass"
-        for item in artifacts
+        item.get("id") == SERIAL_ARTIFACT_ID and item.get("state") != "pass" for item in artifacts
     )
 
 

@@ -480,14 +480,14 @@ def build_report(
                 "routed_step_candidate_matches_development_source"
             ],
             "routed_step_candidate_footprint_envelope_count": objective_local_progress[
-                "routed_step_visual_detail"
-            ]["footprint_envelope_count"],
+                "routed_step_candidate_footprint_envelope_count"
+            ],
             "routed_step_candidate_pad_contact_visual_count": objective_local_progress[
-                "routed_step_visual_detail"
-            ]["pad_contact_visual_count"],
+                "routed_step_candidate_pad_contact_visual_count"
+            ],
             "routed_step_candidate_route_segment_visual_count": objective_local_progress[
-                "routed_step_visual_detail"
-            ]["route_segment_visual_count"],
+                "routed_step_candidate_route_segment_visual_count"
+            ],
             "pinout_captured_file_count": objective_local_progress["pinout_captured_file_count"],
             "pinout_declared_pin_count_total": objective_local_progress[
                 "pinout_declared_pin_count_total"
@@ -605,6 +605,12 @@ def build_report(
             "component_model_support_pattern_model_count": objective_local_progress[
                 "component_model_support_pattern_model_count"
             ],
+            "component_model_pattern_bound_model_count": objective_local_progress[
+                "component_model_pattern_bound_model_count"
+            ],
+            "component_model_terminal_contract_bound_model_count": objective_local_progress[
+                "component_model_terminal_contract_bound_model_count"
+            ],
             "component_model_terminal_contract_or_no_pad_model_count": objective_local_progress[
                 "component_model_terminal_contract_or_no_pad_model_count"
             ],
@@ -620,6 +626,12 @@ def build_report(
             "component_model_npth_mechanical_feature_contract_count": objective_local_progress[
                 "component_model_npth_mechanical_feature_contract_count"
             ],
+            "component_model_local_step_bound_model_count": objective_local_progress[
+                "component_model_local_step_bound_model_count"
+            ],
+            "component_model_all_pattern_binding_flags_pass": objective_local_progress[
+                "component_model_all_pattern_binding_flags_pass"
+            ],
             "component_model_all_terminal_contract_flags_pass": objective_local_progress[
                 "component_model_all_terminal_contract_flags_pass"
             ],
@@ -631,6 +643,16 @@ def build_report(
                     "component_model_directory_terminal_contract_model_record_count"
                 ]
             ),
+            "component_model_directory_pattern_bound_model_record_count": (
+                objective_local_progress[
+                    "component_model_directory_pattern_bound_model_record_count"
+                ]
+            ),
+            "component_model_directory_terminal_contract_bound_model_record_count": (
+                objective_local_progress[
+                    "component_model_directory_terminal_contract_bound_model_record_count"
+                ]
+            ),
             "component_model_directory_terminal_contract_total_count": objective_local_progress[
                 "component_model_directory_terminal_contract_total_count"
             ],
@@ -640,9 +662,7 @@ def build_report(
                 ]
             ),
             "component_model_directory_uncovered_pad_visual_count": (
-                objective_local_progress[
-                    "component_model_directory_uncovered_pad_visual_count"
-                ]
+                objective_local_progress["component_model_directory_uncovered_pad_visual_count"]
             ),
             "component_model_directory_non_signal_pad_contract_total_count": (
                 objective_local_progress[
@@ -666,9 +686,7 @@ def build_report(
                 ]
             ),
             "component_model_directory_local_discrete_step_file_count": (
-                objective_local_progress[
-                    "component_model_directory_local_discrete_step_file_count"
-                ]
+                objective_local_progress["component_model_directory_local_discrete_step_file_count"]
             ),
             "component_model_directory_local_discrete_step_imported_solid_count": (
                 objective_local_progress[
@@ -678,6 +696,11 @@ def build_report(
             "component_model_directory_local_discrete_step_bbox_match_count": (
                 objective_local_progress[
                     "component_model_directory_local_discrete_step_bbox_match_count"
+                ]
+            ),
+            "component_model_directory_local_step_bound_model_record_count": (
+                objective_local_progress[
+                    "component_model_directory_local_step_bound_model_record_count"
                 ]
             ),
             "component_model_directory_local_discrete_step_bytes_total": (

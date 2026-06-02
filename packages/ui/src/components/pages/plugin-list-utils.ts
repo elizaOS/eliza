@@ -574,10 +574,14 @@ const ICON_BY_LUCIDE_NAME: Record<string, LucideIcon> = {
   Zap,
 };
 
-/** Resolve display icon. Order: explicit URL/emoji on PluginInfo.icon →
+/** Resolve display icon. Order: explicit image URL on PluginInfo.icon →
  *  registry-provided Lucide name (PluginInfo.iconName) → null. */
 export function resolveIcon(p: PluginInfo): LucideIcon | string | null {
-  if (p.icon) return p.icon;
+  if (p.icon) {
+    if (iconImageSource(p.icon)) return p.icon;
+    const namedIcon = ICON_BY_LUCIDE_NAME[p.icon];
+    if (namedIcon) return namedIcon;
+  }
   if (p.iconName) return ICON_BY_LUCIDE_NAME[p.iconName] ?? null;
   return null;
 }

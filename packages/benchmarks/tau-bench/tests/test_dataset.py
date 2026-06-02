@@ -1,6 +1,15 @@
 """Confirm the vendored upstream task corpus loads correctly."""
 
-from elizaos_tau_bench.dataset import iter_sample_tasks, iter_tasks, load_domain_tasks, task_count
+from elizaos_tau_bench.dataset import (
+    EDGE_VARIANTS,
+    count_task_items,
+    expand_task_items,
+    iter_sample_tasks,
+    iter_tasks,
+    load_domain_tasks,
+    task_count,
+    validate_task_items,
+)
 from elizaos_tau_bench.types import Task
 
 
@@ -43,3 +52,20 @@ def test_retail_dev_and_train_splits_load():
     train = load_domain_tasks("retail", "train")
     assert len(dev) > 0
     assert len(train) > 0
+
+
+def test_edge_expansion_adds_ten_variants_per_task():
+    base = list(iter_sample_tasks(["retail"], "test", max_per_domain=1))
+    expanded = expand_task_items(base)
+
+    assert len(EDGE_VARIANTS) == 10
+    assert count_task_items(base, include_edge_scenarios=True) == {
+        "base": 1,
+        "edge": 10,
+        "total": 11,
+        "edge_multiplier": 10,
+    }
+    assert len(expanded) == 11
+    assert expanded[0][3] == "base"
+    assert {item[3] for item in expanded[1:]} == {variant_id for variant_id, _ in EDGE_VARIANTS}
+    assert validate_task_items(base, include_edge_scenarios=True) == []

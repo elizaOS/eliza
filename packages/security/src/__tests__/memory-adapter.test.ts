@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { MemoryKmsAdapter } from "../kms/memory-adapter.js";
 import { orgKey, systemKey } from "../kms/key-namespace.js";
+import { MemoryKmsAdapter } from "../kms/memory-adapter.js";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const dec = (b: Uint8Array) => new TextDecoder().decode(b);
@@ -31,8 +31,26 @@ describe("MemoryKmsAdapter", () => {
     const keyId = systemKey("webhook-stripe");
     const result = await kms.encrypt(keyId, enc("secret"), enc("aad-a"));
     await expect(
-      kms.decrypt(keyId, result.ciphertext, result.nonce, result.authTag, enc("aad-b")),
+      kms.decrypt(
+        keyId,
+        result.ciphertext,
+        result.nonce,
+        result.authTag,
+        enc("aad-b"),
+      ),
     ).rejects.toThrow();
+  });
+
+  it("requires AAD for encryption", async () => {
+    const kms = new MemoryKmsAdapter();
+    const keyId = orgKey("acme", "dek");
+
+    await expect(kms.encrypt(keyId, enc("secret"))).rejects.toThrow(
+      "AEAD aad is required",
+    );
+    await expect(
+      kms.encrypt(keyId, enc("secret"), new Uint8Array()),
+    ).rejects.toThrow("AEAD aad is required");
   });
 
   it("HMAC matches itself, rejects tampered tag", async () => {
@@ -84,5 +102,23 @@ describe("MemoryKmsAdapter", () => {
     );
     const pub = await kms.getPublicKey(keyId);
     expect(pub.length).toBeGreaterThan(0);
+  });
+
+  it("rejects malformed key ids at adapter boundaries", async () => {
+    const kms = new MemoryKmsAdapter();
+    const malformed = "system:webhook-stripe";
+
+    await expect(kms.getOrCreateKey(malformed)).rejects.toThrow(
+      "malformed key id",
+    );
+    await expect(
+      kms.encrypt(malformed, enc("secret"), enc("aad")),
+    ).rejects.toThrow("malformed key id");
+    await expect(kms.hmac(malformed, enc("payload"))).rejects.toThrow(
+      "malformed key id",
+    );
+    await expect(kms.sign(malformed, enc("payload"))).rejects.toThrow(
+      "malformed key id",
+    );
   });
 });

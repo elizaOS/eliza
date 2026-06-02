@@ -8,7 +8,7 @@
   "boot_command_env": "ELIZA_GENERATED_AP_CHIP_BOOT_CMD",
   "boot_transcript": "evidence/generated_eliza_ap_boot.transcript.log",
   "claim_boundary": "generated_eliza_ap_chip_emulator_required_no_qemu_virt_substitution",
-  "generated_utc": "2026-05-29T02:14:53Z",
+  "generated_utc": "2026-06-02T05:58:12Z",
   "latest_chipyard_verilator_linux_smoke": {
     "active_smoke_attempt": {
       "bootrom_to_payload_handoff": false,
@@ -21,20 +21,22 @@
       "first_pc": null,
       "last_cycle": null,
       "last_pc": null,
-      "last_progress_marker": "[    0.118036] Kernel panic - not syncing: Attempted to kill init! exitcode=0x00007f00",
+      "last_progress_marker": "OpenSBI v1.2",
       "last_symbol": null,
       "last_symbol_address": null,
       "last_symbol_objdump": "",
       "last_symbol_offset": null,
-      "mtime": 1779910988.7989588,
-      "path": "build/chipyard/eliza_rocket/verilator-linux-smoke.0CZMBO.raw.tmp",
-      "payload": "packages/chip/external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk",
+      "mtime": 1780379819.257469,
+      "path": "build/chipyard/eliza_rocket/verilator-linux-smoke.B9pbYS.raw.tmp",
+      "payload": "packages/chip/external/chipyard/software/firemarshal/images/firechip/eliza-e1-ap-benchmarks/eliza-e1-ap-benchmarks-bin-nodisk",
       "reached_simulator_runtime": true,
       "retired_instruction_count": 0,
-      "size_bytes": 7906,
+      "size_bytes": 3273,
       "stage": "simulator_runtime_in_progress"
     },
-    "blockers": [],
+    "blockers": [
+      "generated AP Linux smoke is currently running; canonical evidence remains blocked until the wrapper records raw_transcript_end and status=PASS; active attempt stage: simulator_runtime_in_progress; active attempt progress: OpenSBI v1.2; latest live simulator progress: - packages/chip/external/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.ElizaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish; live log: external/chipyard/sims/verilator/output/chipyard.harness.TestHarness.ElizaRocketConfig/eliza-e1-linux-smoke-bin-nodisk.log"
+    ],
     "latest_live_sim_output": {
       "exists": true,
       "has_kernel_panic": false,
@@ -65,16 +67,17 @@
       "run_target": "run-binary-fast",
       "timeout_after_seconds": "14400"
     },
-    "next_command": "CHIPYARD_LINUX_BINARY=packages/chip/external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk scripts/run_chipyard_eliza_linux_smoke.sh",
+    "next_command": "",
     "progress": {
-      "next_step": "use the generated AP Linux workload transcript as completion evidence; capture or refresh CPU/AP evidence archives as needed",
-      "stage": "generated_linux_workload_completed"
+      "next_step": "wait for the active generated AP Linux smoke wrapper to finish; latest active progress: OpenSBI v1.2",
+      "stage": "simulator_runtime_in_progress"
     },
     "report": "packages/chip/build/chipyard/eliza_rocket/verilator-linux-smoke.json",
-    "status": "pass"
+    "status": "blocked"
   },
   "next_commands": [
     "cd ../../../chip && python3 scripts/wire_cpu_ap_capture_commands.py --format json",
+    "make -C ../../../os/linux/elizaos stage-agent-artifacts ARCH=riscv64 RISCV64_RUNTIME=node && make -C ../../../os/linux/elizaos riscv64-agent-runtime-smoke && make -C ../../../os/linux/elizaos build ARCH=riscv64 PROFILE=default",
     "cd ../../../chip && ELIZA_LINUX_BOOT_CMD=<command from wire output> python3 scripts/capture_cpu_ap_evidence.py intake linux-boot --source build/chipyard/eliza_rocket/verilator-linux-smoke.log --command '<exact generated-AP boot command>'",
     "ELIZA_GENERATED_AP_CHIP_BOOT_CMD='<real generated-AP boot command that prints serial transcript>' scripts/capture-generated-ap-chip-evidence.sh run",
     "python3 ../../../chip/scripts/check_os_rv64_chip_boot_contract.py"

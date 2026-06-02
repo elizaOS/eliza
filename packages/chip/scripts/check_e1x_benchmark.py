@@ -107,9 +107,7 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
     repair_manifest_data = json.loads(repair_manifest_path.read_text(encoding="utf-8"))
     repair_rom_data = json.loads(repair_rom_path.read_text(encoding="utf-8"))
     model_shard_sample_data = json.loads(model_shard_sample_path.read_text(encoding="utf-8"))
-    model_execution_trace_data = json.loads(
-        model_execution_trace_path.read_text(encoding="utf-8")
-    )
+    model_execution_trace_data = json.loads(model_execution_trace_path.read_text(encoding="utf-8"))
     if defect_map_data.get("artifact_sha256") != defect_map.get("artifact_sha256"):
         return False, "defect-map sidecar sha does not match scaled report", {}
     if repair_manifest_data.get("artifact_sha256") != repair_manifest.get("artifact_sha256"):
@@ -118,24 +116,25 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
         return False, "repair-ROM sidecar sha does not match scaled report", {}
     if model_shard_sample_data.get("artifact_sha256") != model_shard_sample.get("artifact_sha256"):
         return False, "model-shard sidecar sha does not match scaled report", {}
-    if (
-        model_execution_trace_data.get("artifact_sha256")
-        != model_execution_trace.get("artifact_sha256")
+    if model_execution_trace_data.get("artifact_sha256") != model_execution_trace.get(
+        "artifact_sha256"
     ):
         return False, "execution-trace sidecar sha does not match scaled report", {}
-    if repair_manifest_data.get("source_defect_map_sha256") != defect_map_data.get("artifact_sha256"):
+    if repair_manifest_data.get("source_defect_map_sha256") != defect_map_data.get(
+        "artifact_sha256"
+    ):
         return False, "repair manifest does not reference the defect-map artifact", {}
-    if repair_rom_data.get("source_repair_manifest_sha256") != repair_manifest_data.get("artifact_sha256"):
+    if repair_rom_data.get("source_repair_manifest_sha256") != repair_manifest_data.get(
+        "artifact_sha256"
+    ):
         return False, "repair ROM does not reference the repair-manifest artifact", {}
-    if (
-        model_execution_trace_data.get("source_repair_manifest_sha256")
-        != repair_manifest_data.get("artifact_sha256")
+    if model_execution_trace_data.get("source_repair_manifest_sha256") != repair_manifest_data.get(
+        "artifact_sha256"
     ):
         return False, "execution trace does not reference the repair-manifest artifact", {}
-    if (
-        model_execution_trace_data.get("source_model_shard_sample_sha256")
-        != model_shard_sample_data.get("artifact_sha256")
-    ):
+    if model_execution_trace_data.get(
+        "source_model_shard_sample_sha256"
+    ) != model_shard_sample_data.get("artifact_sha256"):
         return False, "execution trace does not reference the model-shard artifact", {}
     if model_execution_trace_data.get("output_checksum") != scaled_metrics.get(
         "high_failure_output_checksum"
@@ -146,7 +145,11 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
     rom_hex_words = repair_rom_hex_path.read_text(encoding="utf-8").strip().splitlines()
     if rom_hex_words != repair_rom_data.get("words"):
         return False, "repair-ROM hex image does not match JSON ROM words", {}
-    if not _file_sha256_is_stable(defect_map_path) or not _file_sha256_is_stable(repair_manifest_path) or not _file_sha256_is_stable(repair_rom_path):
+    if (
+        not _file_sha256_is_stable(defect_map_path)
+        or not _file_sha256_is_stable(repair_manifest_path)
+        or not _file_sha256_is_stable(repair_rom_path)
+    ):
         return False, "repair handoff sidecars are empty or unreadable", {}
     if not _file_sha256_is_stable(model_shard_sample_path):
         return False, "model-shard sidecar is empty or unreadable", {}
@@ -165,9 +168,7 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
         return False, "real-graph high-failure execution did not pass", {}
     executions_by_scenario = real_graph_data.get("model_execution_by_scenario", {})
     normal_graph_execution = executions_by_scenario.get("normal_wafer_sort")
-    high_graph_execution = executions_by_scenario.get(
-        "high_failure_rate_repair_stress"
-    )
+    high_graph_execution = executions_by_scenario.get("high_failure_rate_repair_stress")
     if (
         not isinstance(normal_graph_execution, dict)
         or normal_graph_execution.get("golden_trace_match") is not True
@@ -206,12 +207,16 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
         defect_map_meta = audit.get("defect_map")
         repair_manifest_meta = audit.get("repair_manifest")
         repair_rom_meta = audit.get("repair_rom")
-        if not isinstance(defect_map_meta, dict) or not isinstance(
-            repair_manifest_meta,
-            dict,
-        ) or not isinstance(
-            repair_rom_meta,
-            dict,
+        if (
+            not isinstance(defect_map_meta, dict)
+            or not isinstance(
+                repair_manifest_meta,
+                dict,
+            )
+            or not isinstance(
+                repair_rom_meta,
+                dict,
+            )
         ):
             return False, f"real-graph repair audit sidecars malformed for {scenario_name}", {}
         defect_map_path = _required_repo_file(defect_map_meta.get("path"))
@@ -226,9 +231,7 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
         ):
             return False, f"real-graph repair audit path invalid for {scenario_name}", {}
         defect_map_data = json.loads(defect_map_path.read_text(encoding="utf-8"))
-        repair_manifest_data = json.loads(
-            repair_manifest_path.read_text(encoding="utf-8")
-        )
+        repair_manifest_data = json.loads(repair_manifest_path.read_text(encoding="utf-8"))
         repair_rom_data = json.loads(repair_rom_path.read_text(encoding="utf-8"))
         if defect_map_data.get("schema") != "eliza.e1x.wafer_sort_defect_map.v1":
             return False, f"real-graph defect-map schema invalid for {scenario_name}", {}
@@ -236,26 +239,30 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
             return False, f"real-graph repair-manifest schema invalid for {scenario_name}", {}
         if repair_rom_data.get("schema") != "eliza.e1x.repair_rom.v1":
             return False, f"real-graph repair-ROM schema invalid for {scenario_name}", {}
-        if defect_map_data.get("artifact_sha256") != defect_map_meta.get(
-            "artifact_sha256"
-        ):
+        if defect_map_data.get("artifact_sha256") != defect_map_meta.get("artifact_sha256"):
             return False, f"real-graph defect-map sha mismatch for {scenario_name}", {}
         if repair_manifest_data.get("artifact_sha256") != repair_manifest_meta.get(
             "artifact_sha256"
         ):
             return False, f"real-graph repair-manifest sha mismatch for {scenario_name}", {}
-        if repair_rom_data.get("artifact_sha256") != repair_rom_meta.get(
-            "artifact_sha256"
-        ):
+        if repair_rom_data.get("artifact_sha256") != repair_rom_meta.get("artifact_sha256"):
             return False, f"real-graph repair-ROM sha mismatch for {scenario_name}", {}
         if repair_manifest_data.get("source_defect_map_sha256") != defect_map_data.get(
             "artifact_sha256"
         ):
-            return False, f"real-graph repair manifest does not link defect map for {scenario_name}", {}
+            return (
+                False,
+                f"real-graph repair manifest does not link defect map for {scenario_name}",
+                {},
+            )
         if repair_rom_data.get("source_repair_manifest_sha256") != repair_manifest_data.get(
             "artifact_sha256"
         ):
-            return False, f"real-graph repair ROM does not link repair manifest for {scenario_name}", {}
+            return (
+                False,
+                f"real-graph repair ROM does not link repair manifest for {scenario_name}",
+                {},
+            )
         if int(defect_map_data.get("blocked_core_count", -1)) != int(
             scenario_report.get("blocked_core_count", -2)
         ):
@@ -277,7 +284,11 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
             return False, f"real-graph repair hop penalty mismatch for {scenario_name}", {}
         sampled_routes = repair_manifest_data.get("sampled_routes")
         if not isinstance(sampled_routes, list) or not sampled_routes:
-            return False, f"real-graph repair manifest has no sampled routes for {scenario_name}", {}
+            return (
+                False,
+                f"real-graph repair manifest has no sampled routes for {scenario_name}",
+                {},
+            )
         if int(repair_rom_data.get("word_bits", 0)) != 64:
             return False, f"real-graph repair ROM word width invalid for {scenario_name}", {}
         if int(repair_rom_data.get("total_word_count", 0)) <= int(
@@ -288,16 +299,16 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
             repair_manifest_data["remapped_core_count"]
         ):
             return False, f"real-graph repair ROM remap count mismatch for {scenario_name}", {}
-        if int(repair_rom_data.get("route_sample_word_count", -1)) != len(
-            sampled_routes
-        ):
+        if int(repair_rom_data.get("route_sample_word_count", -1)) != len(sampled_routes):
             return False, f"real-graph repair ROM route count mismatch for {scenario_name}", {}
         rom_hex_words = repair_rom_hex_path.read_text(encoding="utf-8").strip().splitlines()
         if rom_hex_words != repair_rom_data.get("words"):
             return False, f"real-graph repair-ROM hex mismatch for {scenario_name}", {}
-        if not _file_sha256_is_stable(defect_map_path) or not _file_sha256_is_stable(
-            repair_manifest_path
-        ) or not _file_sha256_is_stable(repair_rom_path):
+        if (
+            not _file_sha256_is_stable(defect_map_path)
+            or not _file_sha256_is_stable(repair_manifest_path)
+            or not _file_sha256_is_stable(repair_rom_path)
+        ):
             return False, f"real-graph repair audit sidecar unreadable for {scenario_name}", {}
         repair_audit_summary[f"{summary_prefix}_defect_map_sha256"] = str(
             defect_map_data["artifact_sha256"]
@@ -311,9 +322,7 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
         repair_audit_summary[f"{summary_prefix}_remapped_cores"] = int(
             repair_manifest_data["remapped_core_count"]
         )
-        repair_audit_summary[f"{summary_prefix}_sampled_repair_routes"] = len(
-            sampled_routes
-        )
+        repair_audit_summary[f"{summary_prefix}_sampled_repair_routes"] = len(sampled_routes)
         repair_audit_summary[f"{summary_prefix}_repair_rom_words"] = int(
             repair_rom_data["total_word_count"]
         )
@@ -327,10 +336,7 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
     normal_graph_trace_data = json.loads(normal_graph_trace_path.read_text(encoding="utf-8"))
     if normal_graph_trace_data.get("schema") != "eliza.e1x.real_graph_execution_trace.v1":
         return False, "real-graph normal execution trace sidecar schema is invalid", {}
-    if (
-        normal_graph_trace_data.get("artifact_sha256")
-        != normal_graph_trace.get("artifact_sha256")
-    ):
+    if normal_graph_trace_data.get("artifact_sha256") != normal_graph_trace.get("artifact_sha256"):
         return False, "real-graph normal execution trace sidecar sha does not match report", {}
     if normal_graph_trace_data.get("source_placement_sha256") != placement_data.get(
         "artifact_sha256"
@@ -340,9 +346,7 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
         "output_checksum"
     ):
         return False, "real-graph normal execution trace checksum does not match report", {}
-    if normal_graph_trace_data.get("total_cycles") != normal_graph_execution.get(
-        "total_cycles"
-    ):
+    if normal_graph_trace_data.get("total_cycles") != normal_graph_execution.get("total_cycles"):
         return False, "real-graph normal execution trace cycles do not match report", {}
     if normal_graph_trace_data.get("golden_trace_match") is not True:
         return False, "real-graph normal execution trace did not match golden trace", {}
@@ -392,12 +396,13 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
     microkernel_proof_data = _load_microkernel_proof()
     if microkernel_proof_data is None:
         return False, "W4A8 microkernel proof is missing or malformed", {}
-    if (
-        microkernel_proof_data.get("source_kernel_plan_sha256")
-        != kernel_plan_data.get("artifact_sha256")
+    if microkernel_proof_data.get("source_kernel_plan_sha256") != kernel_plan_data.get(
+        "artifact_sha256"
     ):
         return False, "W4A8 microkernel proof does not reference the kernel-dispatch plan", {}
-    if microkernel_proof_data.get("proved_layer_record_count") != real_graph_data.get("graph_layers"):
+    if microkernel_proof_data.get("proved_layer_record_count") != real_graph_data.get(
+        "graph_layers"
+    ):
         return False, "W4A8 microkernel proof does not cover every real-graph layer", {}
     tensor_schedule_data = _load_tensor_schedule()
     if tensor_schedule_data is None:
@@ -415,14 +420,12 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
     color_pressure_data = _load_color_pressure()
     if color_pressure_data is None:
         return False, "fabric color pressure report is missing or malformed", {}
-    if (
-        color_pressure_data.get("source_tensor_schedule_sha256")
-        != tensor_schedule_data.get("artifact_sha256")
+    if color_pressure_data.get("source_tensor_schedule_sha256") != tensor_schedule_data.get(
+        "artifact_sha256"
     ):
         return False, "fabric color pressure does not reference the tensor schedule", {}
-    if (
-        color_pressure_data.get("scheduled_layer_count")
-        != tensor_schedule_data.get("scheduled_layer_count")
+    if color_pressure_data.get("scheduled_layer_count") != tensor_schedule_data.get(
+        "scheduled_layer_count"
     ):
         return False, "fabric color pressure does not cover every scheduled layer", {}
     if int(color_pressure_data.get("used_routing_color_count", 0)) != 24:
@@ -434,39 +437,33 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
     color_timing_data = _load_color_timing()
     if color_timing_data is None:
         return False, "fabric color timing report is missing or malformed", {}
-    if (
-        color_timing_data.get("source_color_pressure_sha256")
-        != color_pressure_data.get("artifact_sha256")
+    if color_timing_data.get("source_color_pressure_sha256") != color_pressure_data.get(
+        "artifact_sha256"
     ):
         return False, "fabric color timing does not reference color pressure", {}
-    if (
-        color_timing_data.get("used_routing_color_count")
-        != color_pressure_data.get("used_routing_color_count")
+    if color_timing_data.get("used_routing_color_count") != color_pressure_data.get(
+        "used_routing_color_count"
     ):
         return False, "fabric color timing used-color count changed", {}
-    if (
-        color_timing_data.get("total_fabric_wavelets")
-        != color_pressure_data.get("total_fabric_wavelets")
+    if color_timing_data.get("total_fabric_wavelets") != color_pressure_data.get(
+        "total_fabric_wavelets"
     ):
         return False, "fabric color timing wavelet count changed", {}
     schedule_execution_data = _load_schedule_execution_estimate()
     if schedule_execution_data is None:
         return False, "schedule execution estimate is missing or malformed", {}
-    if (
-        schedule_execution_data.get("source_tensor_schedule_sha256")
-        != tensor_schedule_data.get("artifact_sha256")
+    if schedule_execution_data.get("source_tensor_schedule_sha256") != tensor_schedule_data.get(
+        "artifact_sha256"
     ):
         return False, "schedule execution estimate does not reference the tensor schedule", {}
-    if (
-        schedule_execution_data.get("estimated_layer_count")
-        != tensor_schedule_data.get("scheduled_layer_count")
+    if schedule_execution_data.get("estimated_layer_count") != tensor_schedule_data.get(
+        "scheduled_layer_count"
     ):
         return False, "schedule execution estimate does not cover every scheduled layer", {}
     if int(schedule_execution_data.get("total_schedule_cycles", 0)) <= 0:
         return False, "schedule execution estimate has no cycles", {}
-    if (
-        float(schedule_execution_data.get("repair_hop_penalty", -1.0))
-        != float(real_graph_data.get("high_failure_repair_hop_penalty", -2.0))
+    if float(schedule_execution_data.get("repair_hop_penalty", -1.0)) != float(
+        real_graph_data.get("high_failure_repair_hop_penalty", -2.0)
     ):
         return False, "schedule execution estimate does not use high-failure repair penalty", {}
     if float(real_graph_trace_data.get("repair_hop_penalty", -1.0)) != float(
@@ -487,9 +484,8 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
     )
     if high_vs_normal_trace_cycles < 1.0:
         return False, "high-failure real-graph trace is unexpectedly faster than normal", {}
-    if (
-        float(color_timing_data.get("repair_hop_penalty", -1.0))
-        != float(schedule_execution_data.get("repair_hop_penalty", -2.0))
+    if float(color_timing_data.get("repair_hop_penalty", -1.0)) != float(
+        schedule_execution_data.get("repair_hop_penalty", -2.0)
     ):
         return False, "fabric color timing does not use schedule repair penalty", {}
     if int(color_timing_data.get("peak_color_fabric_cycles", 0)) > int(
@@ -506,7 +502,7 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
     if float(real_graph_load.get("total_required_mib", 0.0)) <= float(
         e1_baseline["local_sram_mib"]
     ):
-        return False, "real-graph resident model unexpectedly fits in E1 local SRAM"
+        return False, "real-graph resident model unexpectedly fits in E1 local SRAM", {}
     schedule_vs_e1_peak = float(schedule_execution_data["effective_tops"]) / float(
         e1_baseline["dense_int8_peak_tops"]
     )
@@ -529,7 +525,9 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
         "high_failure_blocked_cores": int(high["blocked_core_count"]),
         "high_failure_blocked_links": int(high["blocked_link_count"]),
         "high_failure_route_checks": int(high["logical_neighbor_paths_checked"]),
-        "scaled_dense_int8_peak_tops": float(scaled_metrics["architecture"]["dense_int8_peak_tops"]),
+        "scaled_dense_int8_peak_tops": float(
+            scaled_metrics["architecture"]["dense_int8_peak_tops"]
+        ),
         "high_failure_prefill_ms": float(scaled_metrics["high_failure_prefill_ms"]),
         "high_failure_decode_tokens_per_second": float(
             scaled_metrics["high_failure_decode_tokens_per_second"]
@@ -557,9 +555,7 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
         "real_graph_model_required_mib": float(real_graph_load["total_required_mib"]),
         "real_graph_model_required_vs_e1_sram": required_vs_e1_sram,
         "real_graph_model_required_vs_e1x_sram": required_vs_e1x_sram,
-        "real_graph_high_failure_route_checks": int(
-            real_graph_data["high_failure_route_checks"]
-        ),
+        "real_graph_high_failure_route_checks": int(real_graph_data["high_failure_route_checks"]),
         "real_graph_high_failure_repair_hop_penalty": float(
             real_graph_data["high_failure_repair_hop_penalty"]
         ),
@@ -567,12 +563,8 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
             real_graph_data["high_failure_output_checksum"]
         ),
         **repair_audit_summary,
-        "real_graph_normal_execution_trace_cycles": int(
-            normal_graph_trace_data["total_cycles"]
-        ),
-        "real_graph_normal_execution_trace_sha256": str(
-            normal_graph_trace_data["artifact_sha256"]
-        ),
+        "real_graph_normal_execution_trace_cycles": int(normal_graph_trace_data["total_cycles"]),
+        "real_graph_normal_execution_trace_sha256": str(normal_graph_trace_data["artifact_sha256"]),
         "real_graph_high_failure_execution_trace_cycles": int(
             real_graph_trace_data["total_cycles"]
         ),
@@ -585,25 +577,13 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
         "real_graph_kernel_dispatch_layers": int(kernel_plan_data["programmed_layer_count"]),
         "real_graph_kernel_dispatch_words": int(kernel_plan_data["total_instruction_words"]),
         "real_graph_microkernel_sample_macs": int(microkernel_proof_data["sample_mac_count"]),
-        "real_graph_microkernel_checksum": int(
-            microkernel_proof_data["aggregate_checksum"]
-        ),
-        "real_graph_tensor_schedule_core_waves": int(
-            tensor_schedule_data["total_core_wave_count"]
-        ),
+        "real_graph_microkernel_checksum": int(microkernel_proof_data["aggregate_checksum"]),
+        "real_graph_tensor_schedule_core_waves": int(tensor_schedule_data["total_core_wave_count"]),
         "real_graph_tensor_schedule_k_waves": int(tensor_schedule_data["total_k_wave_count"]),
-        "real_graph_fabric_color_used_colors": int(
-            color_pressure_data["used_routing_color_count"]
-        ),
-        "real_graph_fabric_color_total_wavelets": int(
-            color_pressure_data["total_fabric_wavelets"]
-        ),
-        "real_graph_fabric_color_peak_fraction": float(
-            color_pressure_data["peak_color_fraction"]
-        ),
-        "real_graph_fabric_color_timing_peak_color": int(
-            color_timing_data["peak_routing_color"]
-        ),
+        "real_graph_fabric_color_used_colors": int(color_pressure_data["used_routing_color_count"]),
+        "real_graph_fabric_color_total_wavelets": int(color_pressure_data["total_fabric_wavelets"]),
+        "real_graph_fabric_color_peak_fraction": float(color_pressure_data["peak_color_fraction"]),
+        "real_graph_fabric_color_timing_peak_color": int(color_timing_data["peak_routing_color"]),
         "real_graph_fabric_color_timing_peak_cycles": int(
             color_timing_data["peak_color_fabric_cycles"]
         ),
@@ -783,6 +763,16 @@ def main() -> int:
         "generated_utc": datetime.now(UTC).isoformat(),
         "as_of": datetime.now(UTC).isoformat(),
         "subsystem": "e1x",
+        "false_claim_flags": {
+            "claim_allowed": False,
+            "release_claim_allowed": False,
+            "production_claim_allowed": False,
+            "silicon_claim_allowed": False,
+            "tapeout_claim_allowed": False,
+            "phone_class_claim_allowed": False,
+            "fpga_claim_allowed": False,
+            "full_wafer_rtl_claim_allowed": False,
+        },
         "claim_boundary": "E1X L2 architecture-simulator benchmark only; not silicon, FPGA, board, PD, DFT, package, or full-wafer RTL benchmark evidence.",
         "evidence_paths": [
             "benchmarks/configs/benchmark_plan.json",

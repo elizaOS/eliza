@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from math import ceil
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_full_payload_repair_mapping.json"
@@ -23,8 +24,10 @@ CASES = {
         "expected_payload_remapped_records": 279,
     },
     "high_failure": {
-        "defect": ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_defect_map.json",
-        "repair": ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json",
+        "defect": ROOT
+        / "benchmarks/results/e1x-real-graph-model-load.high_failure_defect_map.json",
+        "repair": ROOT
+        / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json",
         "expected_repair_sha256": "c8ad0a7c1a907447b0624aecbb73ef36f763be20b43d253a35c56899a153d781",
         "expected_payload_remapped_records": 3_012,
     },
@@ -175,14 +178,16 @@ def main() -> int:
     checks: list[dict[str, str]] = []
     input_paths = [PLACEMENT, FULL_PAYLOAD, WINDOW_REPAIR, WINDOW_ROUTE]
     for paths in CASES.values():
-        input_paths.extend([paths["defect"], paths["repair"]])
+        input_paths.extend([cast(Path, paths["defect"]), cast(Path, paths["repair"])])
     missing = [str(path.relative_to(ROOT)) for path in input_paths if not path.is_file()]
     status, detail = pass_fail(
         not missing,
         "full-payload repair mapping inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_full_payload_repair_mapping_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_payload_repair_mapping_inputs_present", "status": status, "detail": detail}
+    )
 
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
     full_payload = load_json(FULL_PAYLOAD) if FULL_PAYLOAD.is_file() else {}
@@ -203,7 +208,13 @@ def main() -> int:
         "placement, full-payload manifest, window repair, and window route reports are PASS",
         "dependency report missing, stale, or failing",
     )
-    checks.append({"id": "e1x_full_payload_repair_mapping_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_payload_repair_mapping_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     records = placement_records(placement)
     records_ok = (
@@ -217,7 +228,13 @@ def main() -> int:
         "full payload repair mapping enumerates every placed shard record",
         "placed shard record reconstruction mismatch",
     )
-    checks.append({"id": "e1x_full_payload_repair_mapping_records_reconstructed", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_payload_repair_mapping_records_reconstructed",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     case_summaries: dict[str, dict[str, object]] = {}
     all_errors: list[str] = []
@@ -228,21 +245,26 @@ def main() -> int:
         case_ok = (
             not errors
             and summary["repair_manifest_sha256"] == paths["expected_repair_sha256"]
-            and int(summary["payload_remapped_record_count"]) == int(paths["expected_payload_remapped_records"])
-            and int(summary["payload_direct_record_count"]) == len(records) - int(summary["payload_remapped_record_count"])
-            and int(summary["payload_unique_physical_core_count"]) == len(records)
-            and int(summary["payload_mapping_checksum"]) > 0
+            and cast(int, summary["payload_remapped_record_count"])
+            == cast(int, paths["expected_payload_remapped_records"])
+            and cast(int, summary["payload_direct_record_count"])
+            == len(records) - cast(int, summary["payload_remapped_record_count"])
+            and cast(int, summary["payload_unique_physical_core_count"]) == len(records)
+            and cast(int, summary["payload_mapping_checksum"]) > 0
         )
         status, detail = pass_fail(
             case_ok,
             f"{case} repair manifest maps all payload shards to usable physical cores",
             f"{case} full-payload repair mapping mismatch",
         )
-        checks.append({"id": f"e1x_full_payload_repair_mapping_{case}", "status": status, "detail": detail})
+        checks.append(
+            {"id": f"e1x_full_payload_repair_mapping_{case}", "status": status, "detail": detail}
+        )
 
     route_boundary_ok = (
         not all_errors
-        and int(window_route.get("summary", {}).get("normal_window_route_checksum", 0)) == 3_286_450_877_122_388_120
+        and int(window_route.get("summary", {}).get("normal_window_route_checksum", 0))
+        == 3_286_450_877_122_388_120
         and int(window_route.get("summary", {}).get("high_failure_window_route_checksum", 0))
         == 8_141_847_437_961_269_241
     )
@@ -251,18 +273,20 @@ def main() -> int:
         "full-payload repair mapping inherits validated normal/high repaired route checksums",
         "full-payload repair route linkage mismatch: " + ", ".join(all_errors[:8]),
     )
-    checks.append({"id": "e1x_full_payload_repair_mapping_route_boundary", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_payload_repair_mapping_route_boundary", "status": status, "detail": detail}
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     normal = case_summaries.get("normal", {})
     high = case_summaries.get("high_failure", {})
     combined_checksum = FNV64_OFFSET
     for value in (
-        int(full_payload.get("summary", {}).get("payload_manifest_checksum", 0)),
-        int(normal.get("payload_mapping_checksum", 0)),
-        int(high.get("payload_mapping_checksum", 0)),
-        int(window_route.get("summary", {}).get("normal_window_route_checksum", 0)),
-        int(window_route.get("summary", {}).get("high_failure_window_route_checksum", 0)),
+        cast(int, full_payload.get("summary", {}).get("payload_manifest_checksum", 0)),
+        cast(int, normal.get("payload_mapping_checksum", 0)),
+        cast(int, high.get("payload_mapping_checksum", 0)),
+        cast(int, window_route.get("summary", {}).get("normal_window_route_checksum", 0)),
+        cast(int, window_route.get("summary", {}).get("high_failure_window_route_checksum", 0)),
     ):
         combined_checksum = mix64(combined_checksum, value)
     summary = {
@@ -271,20 +295,30 @@ def main() -> int:
         "payload_shard_record_count": len(records),
         "payload_loader_word_count": sum(int(record["loader_words"]) for record in records),
         "payload_stream_bytes": sum(int(record["shard_bytes"]) for record in records),
-        "payload_manifest_checksum": int(full_payload.get("summary", {}).get("payload_manifest_checksum", 0)),
-        "normal_payload_remapped_records": int(normal.get("payload_remapped_record_count", 0)),
-        "high_failure_payload_remapped_records": int(high.get("payload_remapped_record_count", 0)),
-        "normal_payload_direct_records": int(normal.get("payload_direct_record_count", 0)),
-        "high_failure_payload_direct_records": int(high.get("payload_direct_record_count", 0)),
-        "normal_payload_mapping_checksum": int(normal.get("payload_mapping_checksum", 0)),
-        "high_failure_payload_mapping_checksum": int(high.get("payload_mapping_checksum", 0)),
-        "high_vs_normal_payload_remap_ratio": (
-            int(high.get("payload_remapped_record_count", 0))
-            / max(1, int(normal.get("payload_remapped_record_count", 0)))
+        "payload_manifest_checksum": cast(
+            int, full_payload.get("summary", {}).get("payload_manifest_checksum", 0)
         ),
-        "normal_route_checksum": int(window_route.get("summary", {}).get("normal_window_route_checksum", 0)),
-        "high_failure_route_checksum": int(
-            window_route.get("summary", {}).get("high_failure_window_route_checksum", 0)
+        "normal_payload_remapped_records": cast(
+            int, normal.get("payload_remapped_record_count", 0)
+        ),
+        "high_failure_payload_remapped_records": cast(
+            int, high.get("payload_remapped_record_count", 0)
+        ),
+        "normal_payload_direct_records": cast(int, normal.get("payload_direct_record_count", 0)),
+        "high_failure_payload_direct_records": cast(
+            int, high.get("payload_direct_record_count", 0)
+        ),
+        "normal_payload_mapping_checksum": cast(int, normal.get("payload_mapping_checksum", 0)),
+        "high_failure_payload_mapping_checksum": cast(int, high.get("payload_mapping_checksum", 0)),
+        "high_vs_normal_payload_remap_ratio": (
+            cast(int, high.get("payload_remapped_record_count", 0))
+            / max(1, cast(int, normal.get("payload_remapped_record_count", 0)))
+        ),
+        "normal_route_checksum": cast(
+            int, window_route.get("summary", {}).get("normal_window_route_checksum", 0)
+        ),
+        "high_failure_route_checksum": cast(
+            int, window_route.get("summary", {}).get("high_failure_window_route_checksum", 0)
         ),
         "combined_payload_repair_checksum": combined_checksum,
         "case_summary_sha256": canonical_sha256(case_summaries),
@@ -322,7 +356,10 @@ def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:
-        print("BLOCKED: E1X full-payload repair mapping failed: " + ", ".join(c["id"] for c in failures))
+        print(
+            "BLOCKED: E1X full-payload repair mapping failed: "
+            + ", ".join(c["id"] for c in failures)
+        )
         return 1
     print(f"PASS: E1X full-payload repair mapping; report {REPORT.relative_to(ROOT)}")
     return 0

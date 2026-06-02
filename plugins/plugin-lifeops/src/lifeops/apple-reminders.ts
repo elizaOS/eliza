@@ -8,6 +8,10 @@ import {
 } from "@elizaos/app-core/platform/native-library-policy";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import {
+  APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME,
+  appleRemindersMacosBridgeCandidates,
+} from "@elizaos/macosreminders";
 import type { FeatureResult, IPermissionsRegistry } from "@elizaos/shared";
 import { isDarwin } from "../platform/host.js";
 
@@ -133,31 +137,15 @@ type NativeReminderBridge = {
 let nativeReminderBridge: NativeReminderBridge | null | undefined;
 let nativeReminderBridgeOverride: NativeReminderBridge | null | undefined;
 
-const NATIVE_DYLIB_BASENAME = "libMacWindowEffects.dylib";
 const MODULE_DIR =
   typeof import.meta.dir === "string"
     ? import.meta.dir
     : dirname(fileURLToPath(import.meta.url));
 
 function nativeDylibCandidates(): NativeLibraryCandidate[] {
-  return [
-    {
-      label: "ELIZA_NATIVE_PERMISSIONS_DYLIB",
-      path: process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "",
-    },
-    {
-      label: "packaged Apple permissions bridge",
-      path: `../../../../../../../${NATIVE_DYLIB_BASENAME}`,
-    },
-    {
-      label: "packaged Apple permissions bridge",
-      path: `../../../../../../${NATIVE_DYLIB_BASENAME}`,
-    },
-    {
-      label: "local Apple permissions bridge",
-      path: `../../../../packages/app-core/platforms/electrobun/src/${NATIVE_DYLIB_BASENAME}`,
-    },
-  ].filter((candidate) => candidate.path.trim().length > 0);
+  return appleRemindersMacosBridgeCandidates({
+    envDylibPath: process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "",
+  });
 }
 
 function cStringBuffer(value: string): Buffer {
@@ -177,7 +165,7 @@ async function loadNativeReminderBridge(): Promise<NativeReminderBridge | null> 
 
   for (const candidate of nativeDylibCandidates()) {
     const dylibPath = resolveNativeLibraryCandidate(candidate, {
-      expectedBasename: NATIVE_DYLIB_BASENAME,
+      expectedBasename: APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME,
       moduleDir: MODULE_DIR,
       warn: (message) => logger.warn(`[AppleReminders] ${message}`),
     });

@@ -19,8 +19,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import {
+  registerPluginViews,
+  unregisterPluginViews,
+} from "@elizaos/agent/api/views-registry";
+import { afterEach, describe, expect, it } from "vitest";
 import { xrViewHostRoute } from "../routes/xr-view-host.ts";
+import { xrViewsRoute } from "../routes/xr-views.ts";
 
 const repoRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -31,6 +36,7 @@ const hearwearAndroidRoot = resolve(
   repoRoot,
   "plugins/plugin-facewear/native/android",
 );
+const XR_ROUTE_TEST_PLUGIN = "@test/plugin-xr-route-registry";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -162,6 +168,10 @@ const VIEW_MANIFESTS = [
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 describe("XR feature parity audit", () => {
+  afterEach(() => {
+    unregisterPluginViews(XR_ROUTE_TEST_PLUGIN);
+  });
+
   // 1. View registration parity ───────────────────────────────────────────────
 
   it("axis 1 — every gui plugin view has a matching xr view in the plugin manifest", () => {
@@ -208,14 +218,71 @@ describe("XR feature parity audit", () => {
     expect(failures, "view-host route failures").toEqual([]);
   });
 
-  it("axis 2 — xrViewsRoute source is registered as GET /xr/views with plugin enumeration logic", () => {
+  it("axis 2 — xrViewsRoute source is registered as GET /xr/views through the canonical registry", () => {
     const routeSrc = readFile("plugins/plugin-xr/src/routes/xr-views.ts");
     expect(routeSrc).toContain('"GET"');
     expect(routeSrc).toContain('"/xr/views"');
-    // Filters plugins for viewType === "xr"
-    expect(routeSrc).toContain('"xr"');
+    expect(routeSrc).toContain("@elizaos/agent/api/views-registry");
+    expect(routeSrc).toContain('viewType: "xr"');
     // Returns view list with count
     expect(routeSrc).toContain("count");
+  });
+
+  it("axis 2 — xrViewsRoute returns canonical registry XR entries", async () => {
+    await registerPluginViews({
+      name: XR_ROUTE_TEST_PLUGIN,
+      views: [
+        {
+          id: "xr-registry-route-smoke",
+          label: "XR Registry Route",
+          viewType: "xr",
+          path: "/apps/xr-registry-route-smoke/xr",
+          icon: "Glasses",
+          tags: ["xr", "registry"],
+          description: "Registry-backed XR route smoke",
+          xrOptions: { placement: "panel" },
+          bundleUrl: "https://views.example.test/xr-registry-route.js",
+        },
+        {
+          id: "gui-registry-route-smoke",
+          label: "GUI Registry Route",
+          viewType: "gui",
+          path: "/apps/gui-registry-route-smoke",
+          bundleUrl: "https://views.example.test/gui-registry-route.js",
+        },
+      ],
+    } as never);
+
+    const result = await xrViewsRoute.routeHandler({
+      runtime: {
+        getService: () => ({
+          getConnections: () => [{ id: "headset-1", deviceType: "webxr" }],
+        }),
+      },
+    } as never);
+
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({
+      count: expect.any(Number),
+      connections: [{ id: "headset-1", deviceType: "webxr" }],
+    });
+    expect(
+      (result.body as { views: Array<Record<string, unknown>> }).views,
+    ).toContainEqual(
+      expect.objectContaining({
+        id: "xr-registry-route-smoke",
+        label: "XR Registry Route",
+        path: "/apps/xr-registry-route-smoke/xr",
+        pluginName: XR_ROUTE_TEST_PLUGIN,
+        available: true,
+        xrOptions: { placement: "panel" },
+      }),
+    );
+    expect(
+      (result.body as { views: Array<Record<string, unknown>> }).views.some(
+        (view) => view.id === "gui-registry-route-smoke",
+      ),
+    ).toBe(false);
   });
 
   // 3. Agent CRUD action surface ──────────────────────────────────────────────

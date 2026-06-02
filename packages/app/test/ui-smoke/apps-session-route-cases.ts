@@ -200,12 +200,69 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     ],
     timeoutMs: 90_000,
   },
+  {
+    name: "orchestrator app shell page",
+    path: "/orchestrator",
+    selector: '[data-testid="orchestrator-workbench"]',
+    timeoutMs: 90_000,
+  },
+  {
+    name: "orchestrator tui app shell page",
+    path: "/orchestrator/tui",
+    readyChecks: [
+      { text: "elizaos://orchestrator --type=tui" },
+      { text: "orchestrator-status" },
+    ],
+    timeoutMs: 90_000,
+  },
+];
+
+const managerVisibleViewTileCases = [
+  { viewId: "2004scape", path: "/2004scape" },
+  { viewId: "clawville", path: "/clawville" },
+  { viewId: "companion", path: "/companion" },
+  { viewId: "contacts", path: "/contacts" },
+  { viewId: "defense-of-the-agents", path: "/defense-of-the-agents" },
+  { viewId: "facewear", path: "/apps/hearwear" },
+  { viewId: "feed", path: "/feed" },
+  { viewId: "hyperliquid", path: "/hyperliquid" },
+  { viewId: "hyperscape", path: "/hyperscape" },
+  { viewId: "lifeops", path: "/lifeops" },
+  { viewId: "messages", path: "/messages" },
+  { viewId: "model-tester", path: "/model-tester" },
+  { viewId: "orchestrator", path: "/orchestrator" },
+  { viewId: "phone", path: "/phone" },
+  { viewId: "polymarket", path: "/polymarket" },
+  { viewId: "scape", path: "/scape" },
+  { viewId: "screenshare", path: "/screenshare" },
+  { viewId: "shopify", path: "/shopify" },
+  { viewId: "smartglasses", path: "/apps/smartglasses" },
+  { viewId: "steward", path: "/steward" },
+  { viewId: "task-coordinator", path: "/task-coordinator" },
+  { viewId: "training", path: "/training" },
+  { viewId: "trajectory-logger", path: "/trajectory-logger" },
+  { viewId: "views-manager", path: "/views" },
+  { viewId: "vincent", path: "/vincent" },
+  { viewId: "wallet", path: "/wallet" },
 ];
 
 /**
- * The View Manager (`/apps`) is the user-facing launcher. These manager-visible
- * gui views are the click targets the smoke suite verifies are click-safe; the
- * route-coverage gate keeps this list in sync with the plugin view manifests.
+ * The View Manager (`/apps`) is the user-facing launcher. This full static list
+ * mirrors every manager-visible GUI view declared by plugin manifests; the
+ * route-coverage gate keeps it in sync.
+ */
+export const MANAGER_VISIBLE_VIEW_TILE_CASES: readonly SafeViewTileCase[] =
+  managerVisibleViewTileCases.map(({ viewId, path }) => ({
+    viewId,
+    testId: viewCardTestId(viewId),
+    name: `view tile ${viewId}`,
+    expectedPath: path,
+  }));
+
+/**
+ * Browser click-safe subset. The full dynamic-view matrix is covered by
+ * plugin-views-visual; this suite samples representative View Manager tiles
+ * without turning all-pages click safety into a long game/app bootstrap loop.
  */
 export const SAFE_VIEW_TILE_CASES: readonly SafeViewTileCase[] = [
   { viewId: "companion", path: "/companion" },

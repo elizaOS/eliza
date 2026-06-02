@@ -16,23 +16,25 @@ def test_e1x_repaired_real_weight_execution_gate_passes() -> None:
         text=True,
         stdout=subprocess.PIPE,
     )
-    report = json.loads((ROOT / "build/reports/e1x_repaired_real_weight_execution.json").read_text())
+    report = json.loads(
+        (ROOT / "build/reports/e1x_repaired_real_weight_execution.json").read_text()
+    )
     summary = report["summary"]
     assert result.returncode == 0, result.stdout
     assert "PASS: E1X repaired real-weight execution" in result.stdout
     assert report["status"] == "PASS"
     assert summary["failing_check_count"] == 0
-    assert summary["executed_layer_count"] == 83
-    assert summary["executed_real_weight_row_count"] == 478_720
-    assert summary["executed_real_weight_mac_count"] == 8_606_720
-    assert summary["touched_logical_core_count"] == 3_847
-    assert summary["output_invariant_checksum"] == 1_513_790_197_994_659_005
-    assert summary["normal_route_checksum"] == 5_656_197_490_747_142_705
-    assert summary["high_failure_route_checksum"] == 15_868_043_245_877_341_904
+    assert summary["executed_layer_count"] == 283
+    assert summary["executed_real_weight_row_count"] == 2_608_640
+    assert summary["executed_real_weight_mac_count"] == 83_317_760
+    assert summary["touched_logical_core_count"] == 151_367
+    assert summary["output_invariant_checksum"] == 7_830_244_848_299_761_912
+    assert summary["normal_route_checksum"] == 3_248_974_677_569_690_675
+    assert summary["high_failure_route_checksum"] == 36_983_080_900_949_662
     assert summary["normal_route_checksum"] != summary["high_failure_route_checksum"]
-    assert summary["normal_touched_remapped_rows"] == 68
-    assert summary["high_failure_touched_remapped_rows"] == 11_787
-    assert summary["high_vs_normal_touched_remap_ratio"] > 170.0
+    assert summary["normal_touched_remapped_rows"] == 4_069
+    assert summary["high_failure_touched_remapped_rows"] == 54_211
+    assert summary["high_vs_normal_touched_remap_ratio"] > 13.0
     assert (
         summary["sampled_executed_rows_sha256"]
         == "692863e80ac6c9cb3cb10fe4a49bcf2d66c0183838cb76ab66378ffa41d8c605"

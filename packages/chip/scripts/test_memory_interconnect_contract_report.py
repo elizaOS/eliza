@@ -6,7 +6,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/memory_interconnect_contract.json"
 CHECKER = ROOT / "scripts/check_memory_interconnect_contract.py"
@@ -45,6 +44,19 @@ def main() -> int:
     ):
         if data.get(key) is not False:
             errors.append(f"{key} must be false")
+    expected_false_claim_flags = {
+        "phone_claim_allowed": False,
+        "release_claim_allowed": False,
+        "production_fabric_claim_allowed": False,
+        "coherency_claim_allowed": False,
+        "iommu_claim_allowed": False,
+        "qos_claim_allowed": False,
+        "android_claim_allowed": False,
+        "production_npu_memory_fabric_claim_allowed": False,
+        "production_display_framebuffer_claim_allowed": False,
+    }
+    if data.get("false_claim_flags") != expected_false_claim_flags:
+        errors.append("false_claim_flags must match memory/interconnect non-claim map")
 
     boundary = data.get("claim_boundary", "")
     for token in (

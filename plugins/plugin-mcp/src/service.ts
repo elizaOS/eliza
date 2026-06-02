@@ -1,5 +1,5 @@
-import { validateMcpServerConfig } from "@elizaos/agent/security/mcp-server-config";
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { validateMcpServerConfig } from "@elizaos/security/mcp-server-config";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -332,9 +332,19 @@ export class McpService extends Service {
   async deleteConnection(name: string): Promise<void> {
     const connection = this.connections.get(name);
     if (connection) {
-      await connection.transport.close();
-      await connection.client.close();
+      const closeResults = await Promise.allSettled([
+        connection.transport.close(),
+        connection.client.close(),
+      ]);
       this.connections.delete(name);
+      for (const result of closeResults) {
+        if (result.status === "rejected") {
+          logger.warn(
+            { error: result.reason, serverName: name },
+            `Failed to close MCP connection resource for "${name}"`
+          );
+        }
+      }
     }
     const state = this.connectionStates.get(name);
     if (state) {

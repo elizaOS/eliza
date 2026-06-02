@@ -1,6 +1,10 @@
 """Tests for the synthetic experience generator."""
 
 from elizaos_experience_bench.generator import ExperienceGenerator
+from elizaos_experience_bench.edge_cases import (
+    expand_learning_scenarios,
+    expand_retrieval_queries,
+)
 
 
 def test_generate_experiences_count():
@@ -90,3 +94,26 @@ def test_reproducibility():
         assert a.domain == b.domain
         assert a.confidence == b.confidence
         assert a.learning == b.learning
+
+
+def test_edge_expansion_adds_ten_retrieval_query_variants():
+    gen = ExperienceGenerator(seed=42)
+    exps = gen.generate_experiences(count=100)
+    queries = gen.generate_retrieval_queries(exps, num_queries=5)
+
+    expanded = expand_retrieval_queries(queries)
+
+    assert len(expanded) == len(queries) * 11
+    assert len({q.query_text for q in expanded}) == len(expanded)
+    assert all(q.relevant_indices for q in expanded)
+
+
+def test_edge_expansion_adds_ten_learning_scenario_variants():
+    gen = ExperienceGenerator(seed=42)
+    scenarios = gen.generate_learning_scenarios(num_scenarios=3)
+
+    expanded = expand_learning_scenarios(scenarios)
+
+    assert len(expanded) == len(scenarios) * 11
+    assert len({s.similar_query for s in expanded}) == len(expanded)
+    assert all(s.expected_learning_keywords for s in expanded)

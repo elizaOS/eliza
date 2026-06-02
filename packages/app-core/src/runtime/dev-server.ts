@@ -546,6 +546,28 @@ process.on("uncaughtException", (error) => {
   process.exit(1);
 });
 
+// ── Dev memory instrumentation ──────────────────────────────────────
+// Agents cannot see the native window; surface RSS/heap so a runaway child
+// (a stuck boot was observed climbing 399MB→1.8GB over minutes) is visible in
+// the dev log and correlatable with restart events. .unref() so it never holds
+// the process open. Silence with ELIZA_DEV_HEAP_REPORT=0.
+if (process.env.ELIZA_DEV_HEAP_REPORT !== "0") {
+  const mb = (n: number) => Math.round(n / 1048576);
+  const heapReportTimer = setInterval(() => {
+    // --expose-gc (set by dev-ui) lets us report post-collection RETAINED heap,
+    // which separates a real leak from uncollected garbage. rss stays the
+    // headline runaway signal either way.
+    if (typeof global.gc === "function") {
+      global.gc();
+    }
+    const m = process.memoryUsage();
+    logger.info(
+      `${getLogPrefix()} mem rss=${mb(m.rss)}MB heapUsed=${mb(m.heapUsed)}MB heapTotal=${mb(m.heapTotal)}MB external=${mb(m.external)}MB arrayBuffers=${mb(m.arrayBuffers)}MB`,
+    );
+  }, 60_000);
+  heapReportTimer.unref();
+}
+
 main().catch((err: unknown) => {
   const error = err instanceof Error ? err : new Error(String(err));
   console.error(`${getLogPrefix()} Fatal error:`, error.stack ?? error.message);

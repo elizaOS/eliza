@@ -415,7 +415,7 @@ export class Downloader {
     try {
       const raw = fs.readFileSync(terminalDownloadsPath(), "utf8");
       const parsed = JSON.parse(raw) as TerminalDownloadsFile;
-      if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.jobs)) {
+      if (parsed?.version !== 1 || !Array.isArray(parsed.jobs)) {
         return;
       }
       for (const job of parsed.jobs) {

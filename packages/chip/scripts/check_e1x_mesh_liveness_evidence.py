@@ -7,6 +7,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_mesh_liveness_evidence.json"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "full_network_liveness_claim_allowed": False,
+    "deadlock_proof_claim_allowed": False,
+}
 
 MESH_REPORT = ROOT / "build/reports/e1x_mesh_fabric_cocotb.json"
 CREDIT_REPORT = ROOT / "build/reports/e1x_credit_router_cocotb.json"
@@ -66,7 +76,9 @@ def pass_fail(condition: bool, detail: str, fail_detail: str | None = None) -> t
     return ("pass", detail) if condition else ("fail", fail_detail or detail)
 
 
-def marker_check(check_id: str, text: str, markers: tuple[str, ...], detail: str) -> tuple[dict[str, str], int]:
+def marker_check(
+    check_id: str, text: str, markers: tuple[str, ...], detail: str
+) -> tuple[dict[str, str], int]:
     normalized_text = " ".join(text.split())
     missing = [marker for marker in markers if " ".join(marker.split()) not in normalized_text]
     status, resolved_detail = pass_fail(
@@ -74,7 +86,9 @@ def marker_check(check_id: str, text: str, markers: tuple[str, ...], detail: str
         detail,
         "missing markers: " + ", ".join(missing),
     )
-    return {"id": check_id, "status": status, "detail": resolved_detail}, len(markers) - len(missing)
+    return {"id": check_id, "status": status, "detail": resolved_detail}, len(markers) - len(
+        missing
+    )
 
 
 def main() -> int:
@@ -139,7 +153,13 @@ def main() -> int:
         "formal report includes credit-router BMC and induction checks",
         "missing formal checks: " + ", ".join(missing_formal),
     )
-    checks.append({"id": "e1x_mesh_liveness_credit_router_formal_checks_present", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_mesh_liveness_credit_router_formal_checks_present",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     mesh_text = MESH_RTL.read_text(encoding="utf-8") if MESH_RTL.is_file() else ""
     credit_text = CREDIT_RTL.read_text(encoding="utf-8") if CREDIT_RTL.is_file() else ""
@@ -174,7 +194,9 @@ def main() -> int:
         "mesh cocotb contains expected PE, corner-to-corner, X-then-Y, and independent-color tests",
         "missing mesh tests/helpers: " + ", ".join(missing_tests),
     )
-    checks.append({"id": "e1x_mesh_liveness_expected_mesh_tests_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_mesh_liveness_expected_mesh_tests_present", "status": status, "detail": detail}
+    )
 
     residual_blocker = "full_formal_network_liveness_proof_missing"
     failures = [check for check in checks if check["status"] != "pass"]
@@ -197,6 +219,7 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "E1X mesh route-discipline and liveness evidence aggregation: validates "
             "strict XY route-discipline documentation, production mesh/credit-router "

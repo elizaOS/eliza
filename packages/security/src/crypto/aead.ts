@@ -21,6 +21,13 @@ function asBuffer(value: Uint8Array): Buffer {
   return Buffer.isBuffer(value) ? value : Buffer.from(value);
 }
 
+function requireAad(aad: Uint8Array | undefined): Uint8Array {
+  if (!aad || aad.length === 0) {
+    throw new AeadError("AEAD aad is required");
+  }
+  return aad;
+}
+
 export function aeadEncrypt(
   key: Uint8Array,
   plaintext: Uint8Array,
@@ -29,10 +36,14 @@ export function aeadEncrypt(
   if (key.length !== AEAD_KEY_BYTES) {
     throw new AeadError(`AEAD key must be ${AEAD_KEY_BYTES} bytes`);
   }
+  const requiredAad = requireAad(aad);
   const nonce = randomBytes(AEAD_NONCE_BYTES);
   const cipher = createCipheriv("aes-256-gcm", asBuffer(key), nonce);
-  if (aad && aad.length > 0) cipher.setAAD(asBuffer(aad));
-  const ct = Buffer.concat([cipher.update(asBuffer(plaintext)), cipher.final()]);
+  cipher.setAAD(asBuffer(requiredAad));
+  const ct = Buffer.concat([
+    cipher.update(asBuffer(plaintext)),
+    cipher.final(),
+  ]);
   const authTag = cipher.getAuthTag();
   return {
     ciphertext: new Uint8Array(ct),
@@ -57,7 +68,11 @@ export function aeadDecrypt(
   if (authTag.length !== AEAD_TAG_BYTES) {
     throw new AeadError(`AEAD tag must be ${AEAD_TAG_BYTES} bytes`);
   }
-  const decipher = createDecipheriv("aes-256-gcm", asBuffer(key), asBuffer(nonce));
+  const decipher = createDecipheriv(
+    "aes-256-gcm",
+    asBuffer(key),
+    asBuffer(nonce),
+  );
   if (aad && aad.length > 0) decipher.setAAD(asBuffer(aad));
   decipher.setAuthTag(asBuffer(authTag));
   try {
@@ -68,7 +83,9 @@ export function aeadDecrypt(
     return new Uint8Array(pt);
   } catch (err) {
     throw new AeadError(
-      err instanceof Error ? `AEAD decrypt failed: ${err.message}` : "AEAD decrypt failed",
+      err instanceof Error
+        ? `AEAD decrypt failed: ${err.message}`
+        : "AEAD decrypt failed",
     );
   }
 }

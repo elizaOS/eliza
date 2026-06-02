@@ -17,12 +17,22 @@
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./*.css": "./dist/*.css",
     "./*": {
       "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     }
@@ -51,6 +61,7 @@
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts",
     "clean": "rm -rf dist",
+    "test": "vitest run",
     "typecheck": "tsgo --noEmit",
     "lint": "echo \"Lint skipped\"",
     "lint:check": "bun run lint"
@@ -63,7 +74,8 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.18"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"

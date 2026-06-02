@@ -78,6 +78,37 @@ const getSpeechRecognition = (): SpeechRecognitionCtor | null =>
   (window as unknown as SpeechRecognitionWindow).webkitSpeechRecognition ||
   null;
 
+function normalizeConfig(config: SwabbleConfig): SwabbleConfig {
+  if (!config || !Array.isArray(config.triggers)) {
+    throw new Error("Swabble config requires a triggers array");
+  }
+  const triggers = config.triggers
+    .filter((trigger): trigger is string => typeof trigger === "string")
+    .map((trigger) => trigger.trim())
+    .filter(Boolean);
+  if (triggers.length === 0) {
+    throw new Error("Swabble config requires at least one non-empty trigger");
+  }
+  const minCommandLength =
+    typeof config.minCommandLength === "number" &&
+    Number.isFinite(config.minCommandLength) &&
+    config.minCommandLength > 0
+      ? Math.floor(config.minCommandLength)
+      : 1;
+  const sampleRate =
+    typeof config.sampleRate === "number" &&
+    Number.isFinite(config.sampleRate) &&
+    config.sampleRate > 0
+      ? Math.floor(config.sampleRate)
+      : 16000;
+  return {
+    ...config,
+    triggers,
+    minCommandLength,
+    sampleRate,
+  };
+}
+
 /**
  * WakeWordGate detects trigger phrases in transcripts.
  *
@@ -91,16 +122,25 @@ class WakeWordGate {
   private minCommandLength: number;
 
   constructor(config: SwabbleConfig) {
-    this.triggers = config.triggers.map((t) => t.toLowerCase().trim());
+    const normalized = normalizeConfig(config);
+    this.triggers = normalized.triggers.map((t) => t.toLowerCase());
     this.minCommandLength = config.minCommandLength ?? 1;
     // Note: minPostTriggerGap cannot be enforced - Web Speech API lacks timing data
   }
 
   updateConfig(config: Partial<SwabbleConfig>): void {
-    if (config.triggers)
-      this.triggers = config.triggers.map((t) => t.toLowerCase().trim());
-    if (config.minCommandLength !== undefined)
-      this.minCommandLength = config.minCommandLength;
+    if (config.triggers) {
+      this.triggers = normalizeConfig({
+        triggers: config.triggers,
+      }).triggers.map((t) => t.toLowerCase());
+    }
+    if (
+      typeof config.minCommandLength === "number" &&
+      Number.isFinite(config.minCommandLength) &&
+      config.minCommandLength > 0
+    ) {
+      this.minCommandLength = Math.floor(config.minCommandLength);
+    }
   }
 
   /**
@@ -261,6 +301,7 @@ export class SwabbleWeb extends WebPlugin {
   }
 
   private computeRms(samples: Float32Array): number {
+    if (samples.length === 0) return 0;
     let sum = 0;
     for (let i = 0; i < samples.length; i++) {
       sum += samples[i] * samples[i];
@@ -290,6 +331,7 @@ export class SwabbleWeb extends WebPlugin {
 
   async start(options: SwabbleStartOptions): Promise<SwabbleStartResult> {
     if (this.isActive) return { started: true };
+    const config = normalizeConfig(options.config);
 
     // Delegate to the native desktop bridge when available.
     const rpc = this.getRendererRpc();
@@ -298,16 +340,14 @@ export class SwabbleWeb extends WebPlugin {
         const result = await this.invokeDesktopRequest<SwabbleStartResult>({
           rpcMethod: "swabbleStart",
           ipcChannel: "swabble:start",
-          params: options,
+          params: { ...options, config },
         });
         if (result?.started) {
           this.isActive = true;
           this.usingNativeIpc = true;
-          this.config = options.config;
+          this.config = config;
           this.setupNativeListeners();
-          await this.startNativeAudioCapture(
-            options.config.sampleRate ?? 16000,
-          );
+          await this.startNativeAudioCapture(config.sampleRate ?? 16000);
           return result;
         }
       } catch {
@@ -323,14 +363,14 @@ export class SwabbleWeb extends WebPlugin {
       };
     }
 
-    this.config = options.config;
-    this.wakeGate = new WakeWordGate(options.config);
+    this.config = config;
+    this.wakeGate = new WakeWordGate(config);
     this.segments = [];
 
     const recognition = new SpeechRecognitionAPI();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = options.config.locale || "en-US";
+    recognition.lang = config.locale || "en-US";
 
     recognition.onstart = () => {
       this.isActive = true;
@@ -376,9 +416,13 @@ export class SwabbleWeb extends WebPlugin {
     let isFinal = false;
 
     for (let i = 0; i < event.results.length; i++) {
-      transcript += event.results[i][0].transcript;
-      if (event.results[i].isFinal) isFinal = true;
+      const result = event.results[i];
+      const first = result?.[0];
+      if (!first || typeof first.transcript !== "string") continue;
+      transcript += first.transcript;
+      if (result.isFinal) isFinal = true;
     }
+    if (!transcript.trim()) return;
 
     // Web Speech API does not provide word-level timing.
     // Segments are provided for API compatibility but timing values are approximations.
@@ -502,10 +546,16 @@ export class SwabbleWeb extends WebPlugin {
   async checkPermissions(): Promise<SwabblePermissionStatus> {
     let microphone: SwabblePermissionStatus["microphone"] = "prompt";
     try {
-      const result = await navigator.permissions.query({
+      const result = await navigator.permissions?.query?.({
         name: "microphone" as PermissionName,
       });
-      microphone = result.state as SwabblePermissionStatus["microphone"];
+      if (
+        result?.state === "granted" ||
+        result?.state === "denied" ||
+        result?.state === "prompt"
+      ) {
+        microphone = result.state;
+      }
     } catch {
       /* permissions.query not supported for microphone in some browsers */
     }
@@ -529,7 +579,10 @@ export class SwabbleWeb extends WebPlugin {
 
   async requestPermissions(): Promise<SwabblePermissionStatus> {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices?.getUserMedia?.({
+        audio: true,
+      });
+      if (!stream) throw new Error("mediaDevices.getUserMedia unavailable");
       stream.getTracks().forEach((track) => {
         track.stop();
       });
@@ -546,7 +599,8 @@ export class SwabbleWeb extends WebPlugin {
     devices: Array<{ id: string; name: string; isDefault: boolean }>;
   }> {
     try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
+      const devices = await navigator.mediaDevices?.enumerateDevices?.();
+      if (!devices) return { devices: [] };
       const audioInputs = devices
         .filter((d) => d.kind === "audioinput")
         .map((d, i) => ({

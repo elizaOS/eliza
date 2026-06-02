@@ -22,15 +22,9 @@ ROUTED_CLEARANCE = MECH_REVIEW / "routed-board-clearance.json"
 STEP_VALIDATION = MECH_REVIEW / "step-validation.json"
 FULL_CAD_BOOLEAN = MECH_REVIEW / "full-cad-boolean-interference.json"
 CAD_CONNECTION_COVERAGE = MECH_REVIEW / "cad-connection-coverage.json"
-SUPPLIER_STEP_SURROGATE_INTAKE_DETAIL = (
-    MECH_REVIEW / "supplier-step-surrogate-intake-detail.json"
-)
-PUBLIC_CAD_SOURCE_INTAKE = (
-    ROOT / "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml"
-)
-PUBLIC_BOM_MARKET_COST_BANDS = (
-    MECH_REVIEW / "bom-public-market-cost-bands-2026-05-28.yaml"
-)
+SUPPLIER_STEP_SURROGATE_INTAKE_DETAIL = MECH_REVIEW / "supplier-step-surrogate-intake-detail.json"
+PUBLIC_CAD_SOURCE_INTAKE = ROOT / "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml"
+PUBLIC_BOM_MARKET_COST_BANDS = MECH_REVIEW / "bom-public-market-cost-bands-2026-05-28.yaml"
 ROUTED_CLEARANCE_EXECUTION = ROOT / "board/kicad/e1-phone/routed-clearance-release-execution.yaml"
 COMPONENT_MODEL_DIR_MANIFEST = (
     ROOT / "board/kicad/e1-phone/production/step/component-models/release-manifest.yaml"
@@ -120,6 +114,9 @@ def present_unique(items: list[Any]) -> list[Any]:
 
 
 def compact_connection_record(record: dict[str, Any]) -> dict[str, Any]:
+    mechanical_envelope = record.get("mechanical_envelope")
+    if not isinstance(mechanical_envelope, dict):
+        mechanical_envelope = {}
     return {
         "id": record.get("id"),
         "connection_type": record.get("connection_type"),
@@ -132,9 +129,7 @@ def compact_connection_record(record: dict[str, Any]) -> dict[str, Any]:
         "represented_route_ids": record.get("represented_route_ids", []),
         "represented_net_count": int(record.get("represented_net_count") or 0),
         "represented_route_count": int(record.get("represented_route_count") or 0),
-        "represented_route_record_count": int(
-            record.get("represented_route_record_count") or 0
-        ),
+        "represented_route_record_count": int(record.get("represented_route_record_count") or 0),
         "represented_route_records_with_layer_count": int(
             record.get("represented_route_records_with_layer_count") or 0
         ),
@@ -160,6 +155,26 @@ def compact_connection_record(record: dict[str, Any]) -> dict[str, Any]:
         ),
         "all_represented_routes_have_layer_source_and_class": (
             record.get("all_represented_routes_have_layer_source_and_class") is True
+        ),
+        "mechanical_envelope": mechanical_envelope,
+        "mechanical_envelope_defined": bool(mechanical_envelope),
+        "mechanical_envelope_release_credit": mechanical_envelope.get("release_credit") is True,
+        "manufacturing_geometry_defined": bool(
+            mechanical_envelope.get("cad_span_mm")
+            and mechanical_envelope.get("nominal_visual_width_mm") is not None
+            and mechanical_envelope.get("nominal_visual_thickness_mm") is not None
+            and mechanical_envelope.get("visual_marker_length_mm") is not None
+            and mechanical_envelope.get("endpoint_center_distance_mm") is not None
+        ),
+        "bend_or_connector_basis_defined": bool(
+            mechanical_envelope.get("bend_radius_basis")
+            and (
+                mechanical_envelope.get("min_bend_radius_mm") is not None
+                or record.get("physical_medium") == "board_to_board_edge_connector"
+            )
+        ),
+        "impedance_or_current_basis_defined": bool(
+            mechanical_envelope.get("impedance_requirement")
         ),
         "release_credit": record.get("release_credit") is True,
     }
@@ -939,13 +954,12 @@ def handoff_packet_failures(packet: dict[str, Any]) -> list[str]:
     unpopulated = data.get("required_fields_unpopulated")
     if isinstance(unpopulated, list) and unpopulated:
         failures.append(f"{packet_id}:template_intake_not_executed:{expected_path}")
-        failures.extend(
-            f"{packet_id}:required_field_unpopulated:{field}" for field in unpopulated
-        )
+        failures.extend(f"{packet_id}:required_field_unpopulated:{field}" for field in unpopulated)
         return failures
-    for field in required_fields:
-        if str(field) not in data or data.get(str(field)) in (None, "", []):
-            failures.append(f"{packet_id}:missing_field:{field}")
+    if isinstance(required_fields, list):
+        for field in required_fields:
+            if str(field) not in data or data.get(str(field)) in (None, "", []):
+                failures.append(f"{packet_id}:missing_field:{field}")
     return failures
 
 
@@ -1063,12 +1077,8 @@ def compact_component_model_record(record: dict[str, Any]) -> dict[str, Any]:
             record.get("terminal_contract_matches_pad_visuals") is True
         ),
         "pad_contract_covered_count": int(record.get("pad_contract_covered_count") or 0),
-        "all_pad_visuals_have_contract": (
-            record.get("all_pad_visuals_have_contract") is True
-        ),
-        "non_signal_pad_contract_count": int(
-            record.get("non_signal_pad_contract_count") or 0
-        ),
+        "all_pad_visuals_have_contract": (record.get("all_pad_visuals_have_contract") is True),
+        "non_signal_pad_contract_count": int(record.get("non_signal_pad_contract_count") or 0),
         "non_signal_pad_contract_matches_pad_visuals": (
             record.get("non_signal_pad_contract_matches_pad_visuals") is True
         ),
@@ -1098,9 +1108,7 @@ def compact_component_model_record(record: dict[str, Any]) -> dict[str, Any]:
         "public_cad_step_overlay_status": record.get("public_cad_step_overlay_status"),
         "public_cad_step_overlay_file": record.get("public_cad_step_overlay_file"),
         "public_cad_step_overlay_sha256": record.get("public_cad_step_overlay_sha256"),
-        "public_cad_step_overlay_bytes": int(
-            record.get("public_cad_step_overlay_bytes") or 0
-        ),
+        "public_cad_step_overlay_bytes": int(record.get("public_cad_step_overlay_bytes") or 0),
         "public_cad_source_record": record.get("public_cad_source_record"),
         "public_cad_step_overlay_release_credit": (
             record.get("public_cad_step_overlay_release_credit") is True
@@ -1122,9 +1130,7 @@ def compact_step_component_model_record(record: dict[str, Any]) -> dict[str, Any
         ),
         "terminal_contract_count": int(record.get("terminal_contract_count") or 0),
         "pad_contract_covered_count": int(record.get("pad_contract_covered_count") or 0),
-        "all_pad_visuals_have_contract": (
-            record.get("all_pad_visuals_have_contract") is True
-        ),
+        "all_pad_visuals_have_contract": (record.get("all_pad_visuals_have_contract") is True),
         "local_step_status": record.get("local_discrete_step_status"),
         "local_step_file": record.get("local_discrete_step_file"),
         "local_step_sha256": record.get("local_discrete_step_sha256"),
@@ -1140,6 +1146,9 @@ def compact_step_component_model_record(record: dict[str, Any]) -> dict[str, Any
 
 
 def compact_step_connection_record(record: dict[str, Any]) -> dict[str, Any]:
+    mechanical_envelope = record.get("mechanical_envelope")
+    if not isinstance(mechanical_envelope, dict):
+        mechanical_envelope = {}
     return {
         "id": record.get("id"),
         "connection_type": record.get("connection_type"),
@@ -1152,9 +1161,7 @@ def compact_step_connection_record(record: dict[str, Any]) -> dict[str, Any]:
         "represented_route_ids": record.get("represented_route_ids", []),
         "represented_net_count": int(record.get("represented_net_count") or 0),
         "represented_route_count": int(record.get("represented_route_count") or 0),
-        "represented_route_record_count": int(
-            record.get("represented_route_record_count") or 0
-        ),
+        "represented_route_record_count": int(record.get("represented_route_record_count") or 0),
         "cad_step_bytes": int(record.get("cad_step_bytes") or 0),
         "terminal_marker_count": int(record.get("terminal_marker_count") or 0),
         "solid_step_part_count": int(record.get("solid_step_part_count") or 0),
@@ -1163,6 +1170,26 @@ def compact_step_connection_record(record: dict[str, Any]) -> dict[str, Any]:
         "solid_step_parts_present": record.get("solid_step_parts_present") is True,
         "all_represented_routes_have_layer_source_and_class": (
             record.get("all_represented_routes_have_layer_source_and_class") is True
+        ),
+        "mechanical_envelope": mechanical_envelope,
+        "mechanical_envelope_defined": bool(mechanical_envelope),
+        "mechanical_envelope_release_credit": mechanical_envelope.get("release_credit") is True,
+        "manufacturing_geometry_defined": bool(
+            mechanical_envelope.get("cad_span_mm")
+            and mechanical_envelope.get("nominal_visual_width_mm") is not None
+            and mechanical_envelope.get("nominal_visual_thickness_mm") is not None
+            and mechanical_envelope.get("visual_marker_length_mm") is not None
+            and mechanical_envelope.get("endpoint_center_distance_mm") is not None
+        ),
+        "bend_or_connector_basis_defined": bool(
+            mechanical_envelope.get("bend_radius_basis")
+            and (
+                mechanical_envelope.get("min_bend_radius_mm") is not None
+                or record.get("physical_medium") == "board_to_board_edge_connector"
+            )
+        ),
+        "impedance_or_current_basis_defined": bool(
+            mechanical_envelope.get("impedance_requirement")
         ),
         "release_credit": record.get("release_credit") is True,
     }
@@ -1245,9 +1272,7 @@ def main() -> int:
             solid_handoff_generated or expected_fallback_complete
         )
         connection_records = [
-            item
-            for item in connection_coverage.get("connections", [])
-            if isinstance(item, dict)
+            item for item in connection_coverage.get("connections", []) if isinstance(item, dict)
         ]
         expected_connection_record_manifest = [
             compact_connection_record(item)
@@ -1311,9 +1336,7 @@ def main() -> int:
                 connection_coverage.get("represented_route_records_with_layer_count_total")
             ),
             "cad_connection_represented_route_records_with_source_domain_count_total": (
-                connection_coverage.get(
-                    "represented_route_records_with_source_domain_count_total"
-                )
+                connection_coverage.get("represented_route_records_with_source_domain_count_total")
             ),
             "cad_connection_represented_route_records_with_route_class_count_total": (
                 connection_coverage.get("represented_route_records_with_route_class_count_total")
@@ -1407,6 +1430,12 @@ def main() -> int:
             ),
             "cad_connection_bend_radius_requirement_defined_count": connection_coverage.get(
                 "bend_radius_requirement_defined_count"
+            ),
+            "cad_connection_mechanical_envelope_defined_count": connection_coverage.get(
+                "mechanical_envelope_defined_count"
+            ),
+            "cad_connection_mechanical_envelope_release_credit": connection_coverage.get(
+                "mechanical_envelope_release_credit"
             ),
             "cad_connection_supplier_release_required_count": connection_coverage.get(
                 "supplier_release_required_connection_count"
@@ -1601,9 +1630,10 @@ def main() -> int:
         supplier_lane_records = supplier_surrogate_detail.get("lane_records")
         if not isinstance(supplier_lane_records, list):
             raise ValueError("supplier surrogate intake detail lane_records must be a list")
-        if component_model_directory_ready.get(
-            "supplier_lane_surrogate_records"
-        ) != supplier_lane_records:
+        if (
+            component_model_directory_ready.get("supplier_lane_surrogate_records")
+            != supplier_lane_records
+        ):
             raise ValueError("mechanical inventory supplier surrogate lane records stale")
         if len(supplier_lane_records) != 13:
             raise ValueError("supplier surrogate intake detail lane count stale")
@@ -1630,13 +1660,9 @@ def main() -> int:
             "component_model_record_manifest"
         )
         if not isinstance(actual_component_model_record_manifest, list):
-            raise ValueError(
-                "mechanical inventory component model record manifest must be a list"
-            )
+            raise ValueError("mechanical inventory component model record manifest must be a list")
         if actual_component_model_record_manifest != expected_component_model_record_manifest:
-            raise ValueError(
-                "mechanical inventory component model record manifest is stale"
-            )
+            raise ValueError("mechanical inventory component model record manifest is stale")
         if len(actual_component_model_record_manifest) != 89:
             raise ValueError("mechanical inventory component model record count is stale")
         if not all(
@@ -1679,9 +1705,7 @@ def main() -> int:
                 public_cad_summary.get("release_credit_record_count") or 0
             ),
             "public_market_bom_cost_category_count": len(public_bom_records),
-            "public_market_bom_cost_volume_count": int(
-                public_bom_summary.get("volume_count") or 0
-            ),
+            "public_market_bom_cost_volume_count": int(public_bom_summary.get("volume_count") or 0),
             "public_market_bom_cost_avl_quote_count": int(
                 public_bom_summary.get("avl_quote_count") or 0
             ),
@@ -1770,7 +1794,11 @@ def main() -> int:
         handoff_external_items = list(handoff_required_items)
         handoff_present = present_count(handoff_paths)
         handoff_output_path_present = present_count(
-            [str(path) for path in handoff_outputs if str(path).startswith(("board/", "mechanical/"))]
+            [
+                str(path)
+                for path in handoff_outputs
+                if str(path).startswith(("board/", "mechanical/"))
+            ]
         )
 
         production_step_files = board_step.get("production_step_files")
@@ -1844,6 +1872,11 @@ def main() -> int:
                 ),
                 "component_model_record_count": len(expected_component_records),
                 "cad_connection_record_count": len(expected_connection_records),
+                "connection_mechanical_envelope_count": sum(
+                    1
+                    for record in expected_connection_records
+                    if record["mechanical_envelope_defined"]
+                ),
             }
             for key, expected in expected_detailed_counts.items():
                 if int(detailed_routed_step_candidate.get(key) or 0) != expected:
@@ -1852,6 +1885,7 @@ def main() -> int:
                 "all_route_records_have_net_layer_class_and_source": True,
                 "all_component_records_have_local_step": True,
                 "all_connection_records_have_cad_step": True,
+                "all_connection_records_have_mechanical_envelope": True,
             }
             for key, expected in expected_detailed_flags.items():
                 if detailed_routed_step_candidate.get(key) is not expected:
@@ -2144,6 +2178,51 @@ def main() -> int:
             is not True
         ):
             raise ValueError("CAD connection coverage lost route layer/source/class binding")
+        release_boundary = connection_coverage.get("release_boundary_summary")
+        if not isinstance(release_boundary, dict):
+            raise ValueError("CAD connection coverage missing release-boundary summary")
+        if (
+            release_boundary.get("evidence_class")
+            != "local_cad_connection_marker_coverage_not_release"
+        ):
+            raise ValueError("CAD connection coverage release-boundary evidence class stale")
+        if release_boundary.get("release_credit") is not False:
+            raise ValueError("CAD connection release-boundary summary cannot grant release credit")
+        critical_groups = release_boundary.get("critical_interface_connection_ids")
+        if not isinstance(critical_groups, dict):
+            raise ValueError("CAD connection release-boundary critical interface groups missing")
+        required_critical_groups = {
+            "display_touch",
+            "rear_camera",
+            "front_camera",
+            "usb_power_battery",
+            "cellular_wifi_rf",
+            "nfc",
+            "audio_haptic_sensor",
+            "shield_ground",
+            "board_to_board",
+        }
+        if set(critical_groups) != required_critical_groups:
+            raise ValueError("CAD connection release-boundary critical interface groups diverge")
+        if release_boundary.get("all_critical_interface_groups_present") is not True:
+            raise ValueError("CAD connection coverage lost a critical interface group")
+        if any(not isinstance(ids, list) or not ids for ids in critical_groups.values()):
+            raise ValueError("CAD connection release-boundary contains empty critical group")
+        if release_boundary.get("all_connections_have_terminal_markers") is not True:
+            raise ValueError("CAD connection release-boundary lost terminal marker coverage")
+        if release_boundary.get("all_connections_have_solid_step_parts") is not True:
+            raise ValueError("CAD connection release-boundary lost solid STEP coverage")
+        if (
+            release_boundary.get("all_connections_bound_to_routed_development_records")
+            is not True
+        ):
+            raise ValueError("CAD connection release-boundary lost routed-record binding")
+        if release_boundary.get("all_connections_supplier_release_required") is not True:
+            raise ValueError("CAD connection release-boundary lost supplier-release requirement")
+        if release_boundary.get("all_connections_release_credit_false") is not True:
+            raise ValueError("CAD connection release-boundary lost fail-closed release credit")
+        if len(release_boundary.get("supplier_required_deliverables", [])) < 6:
+            raise ValueError("CAD connection release-boundary supplier deliverables incomplete")
         required_connection_ids = {
             "display_touch_fpc",
             "rear_camera_csi_fpc",
@@ -2193,9 +2272,8 @@ def main() -> int:
             or row.get("all_represented_routes_have_layer_source_and_class") is not True
             or int(row.get("represented_route_classification_gap_count") or 0) != 0
             or int(row.get("represented_route_count") or 0) <= 0
-            or len(row.get("represented_route_ids", [])) != int(
-                row.get("represented_route_count") or 0
-            )
+            or len(row.get("represented_route_ids", []))
+            != int(row.get("represented_route_count") or 0)
             or int(row.get("cad_step_bytes") or 0) <= 1000
             or row.get("release_credit") is not False
         ]
@@ -2550,9 +2628,7 @@ def main() -> int:
                     "dependency": "actionable_external_dependency"
                     if blocker_dependency_counts["actionable_external_dependency"] > 0
                     else "repo_artifact_generation",
-                    "blocked_rows": blocker_dependency_counts[
-                        "actionable_external_dependency"
-                    ],
+                    "blocked_rows": blocker_dependency_counts["actionable_external_dependency"],
                     "actionable_external_dependency_rows": blocker_dependency_counts[
                         "actionable_external_dependency"
                     ],
@@ -2598,9 +2674,7 @@ def main() -> int:
                         "evidence_class": full_cad_boolean.get("evidence_class"),
                         "local_concept_passed": full_cad_boolean_passed,
                         "release_credit": False,
-                        "release_gap": summary[
-                            "full_cad_boolean_release_blocker_category"
-                        ],
+                        "release_gap": summary["full_cad_boolean_release_blocker_category"],
                         "required_release_evidence_class": (
                             "routed_full_cad_boolean_interference_report"
                         ),

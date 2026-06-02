@@ -30,7 +30,7 @@ function idParam(params: Record<string, unknown> | undefined): string | null {
 export interface ShellViewAgentSurfaceProps {
   /** Stable builtin view id (matches the entry in builtin-views.ts). */
   viewId: string;
-  viewType?: Extract<AgentViewType, "gui" | "tui">;
+  viewType?: AgentViewType;
   children: ReactNode;
 }
 

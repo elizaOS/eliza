@@ -170,35 +170,19 @@ describe("Group A: auth + sessions", () => {
   });
 
   // --------------------------------------------------------------------
-  // /api/auth/steward-debug — POST. Public path. Verifies a steward token.
+  // /api/auth/steward-debug — removed. It must not be public/reachable.
   // --------------------------------------------------------------------
-  describe("POST /api/auth/steward-debug", () => {
-    test("validation: missing token returns 400", async () => {
+  describe("/api/auth/steward-debug", () => {
+    test("removed debug route is not publicly reachable", async () => {
       if (!reachableOnly()) return;
-      const res = await api.post("/api/auth/steward-debug", {});
-      expect(res.status).toBe(400);
-      const body = (await res.json()) as { error?: string };
-      expect(body.error).toBe("no token");
-    });
 
-    test("auth gate: invalid steward token returns failure payload", async () => {
-      if (!reachableOnly()) return;
-      const res = await api.post("/api/auth/steward-debug", {
+      const getRes = await api.get("/api/auth/steward-debug");
+      expect([401, 404]).toContain(getRes.status);
+
+      const postRes = await api.post("/api/auth/steward-debug", {
         token: "not-a-real-steward-jwt",
       });
-      // verifyStewardTokenCached returns null → handler returns 200 with
-      // `{ error: "verification failed", step: "verify" }` (no explicit
-      // status code in handler, so Hono defaults to 200). Accept either
-      // shape but assert the `error` channel is populated.
-      expect([200, 400, 401, 500]).toContain(res.status);
-      const body = (await res.json()) as {
-        error?: string;
-        step?: string;
-        ok?: boolean;
-      };
-      // Either `error` is set OR `ok: true` (if a real token is leaking
-      // into env). For a fake token we expect `error`.
-      expect(body.error || body.ok).toBeTruthy();
+      expect([401, 404]).toContain(postRes.status);
     });
   });
 

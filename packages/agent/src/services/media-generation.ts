@@ -101,7 +101,7 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
         providerOptions,
       ).generate({
         prompt: request.prompt,
-        duration: request.duration,
+        duration: request.duration ?? config.media?.video?.defaultDuration,
         aspectRatio: request.aspectRatio,
         imageUrl: request.imageUrl,
       });

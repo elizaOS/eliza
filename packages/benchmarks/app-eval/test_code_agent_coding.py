@@ -143,3 +143,32 @@ def test_cli_mock_outputs_matrix_summary(tmp_path: Path) -> None:
     assert payload["benchmark"] == "app_eval_coding"
     assert payload["summary"]["resolved"] == 1
     assert load_tasks(max_tasks=1)
+
+
+def test_cli_expanded_count_and_validate(tmp_path: Path) -> None:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = "packages"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "benchmarks.app_eval.code_agent_coding",
+            "--output",
+            str(tmp_path / "out"),
+            "--max-tasks",
+            "1",
+            "--expand-scenarios",
+            "--count-scenarios",
+            "--validate-scenarios",
+        ],
+        cwd=Path(__file__).resolve().parents[3],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == {"base": 1, "edge": 10, "total": 11}
+    assert len(load_tasks(max_tasks=1, include_edge_scenarios=True)) == 11

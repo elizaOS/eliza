@@ -1,17 +1,27 @@
-import { createHmac, randomBytes, scryptSync } from "node:crypto";
+import {
+  createHmac,
+  createPrivateKey,
+  createPublicKey,
+  sign as nodeSign,
+  verify as nodeVerify,
+  randomBytes,
+  scryptSync,
+  timingSafeEqual,
+} from "node:crypto";
 import { aeadDecrypt, aeadEncrypt } from "../crypto/aead.js";
 import { hkdfSha256 } from "../crypto/hkdf.js";
+import { parseKeyId } from "./key-namespace.js";
 import { MemoryKmsAdapter } from "./memory-adapter.js";
 import {
-  KmsError,
   type EncryptResult,
   type GetOrCreateKeyOptions,
   type KeyHandle,
   type KeyId,
   type KeyVersion,
   type KmsClient,
-  type SignResult,
+  KmsError,
   type SignatureAlgorithm,
+  type SignResult,
 } from "./types.js";
 
 /**
@@ -63,14 +73,25 @@ export class LocalKmsAdapter implements KmsClient {
   }
 
   private deriveSym(keyId: KeyId, version: KeyVersion): Uint8Array {
-    const info = Buffer.from(
-      `${HKDF_DOMAIN}|sym|${keyId}|v${version}`,
-      "utf8",
-    );
+    const info = Buffer.from(`${HKDF_DOMAIN}|sym|${keyId}|v${version}`, "utf8");
     return hkdfSha256(this.rootKey, 32, info);
   }
 
+  private deriveEd25519PrivateKey(keyId: KeyId, version: KeyVersion) {
+    const info = Buffer.from(
+      `${HKDF_DOMAIN}|sign|ed25519|${keyId}|v${version}`,
+      "utf8",
+    );
+    const seed = Buffer.from(hkdfSha256(this.rootKey, 32, info));
+    const pkcs8 = Buffer.concat([
+      Buffer.from("302e020100300506032b657004220420", "hex"),
+      seed,
+    ]);
+    return createPrivateKey({ key: pkcs8, format: "der", type: "pkcs8" });
+  }
+
   private ensureState(keyId: KeyId): VersionState {
+    parseKeyId(keyId);
     let s = this.state.get(keyId);
     if (!s) {
       s = { current: 1, versions: new Set([1]) };
@@ -123,9 +144,10 @@ export class LocalKmsAdapter implements KmsClient {
   ): Promise<Uint8Array> {
     const s = this.ensureState(keyId);
     const version = keyVersion ?? s.current;
-    s.versions.add(version);
     const k = this.deriveSym(keyId, version);
-    return aeadDecrypt(k, ciphertext, nonce, authTag, aad);
+    const plaintext = aeadDecrypt(k, ciphertext, nonce, authTag, aad);
+    s.versions.add(version);
+    return plaintext;
   }
 
   async hmac(keyId: KeyId, data: Uint8Array): Promise<Uint8Array> {
@@ -148,41 +170,61 @@ export class LocalKmsAdapter implements KmsClient {
   ): Promise<boolean> {
     const s = this.ensureState(keyId);
     for (const v of s.versions) {
-      const info = Buffer.from(
-        `${HKDF_DOMAIN}|hmac|${keyId}|v${v}`,
-        "utf8",
-      );
+      const info = Buffer.from(`${HKDF_DOMAIN}|hmac|${keyId}|v${v}`, "utf8");
       const macKey = hkdfSha256(this.rootKey, 32, info);
       const expected = createHmac("sha256", Buffer.from(macKey))
         .update(Buffer.from(data))
         .digest();
       if (expected.length !== tag.length) continue;
-      if (Buffer.compare(expected, Buffer.from(tag)) === 0) return true;
+      if (timingSafeEqual(expected, Buffer.from(tag))) return true;
     }
     return false;
   }
 
-  // Signing currently delegates to the in-memory adapter — desktop signing
-  // keys live only in-process for now. Persistent signing on desktop is
-  // tracked separately; the vault crypto module doesn't expose ed25519
-  // primitives today.
-  sign(
+  async sign(
     keyId: KeyId,
     data: Uint8Array,
-    algo?: SignatureAlgorithm,
+    algo: SignatureAlgorithm = "ed25519",
   ): Promise<SignResult> {
+    if (algo === "ed25519") {
+      const s = this.ensureState(keyId);
+      const privateKey = this.deriveEd25519PrivateKey(keyId, s.current);
+      const signature = nodeSign(null, Buffer.from(data), privateKey);
+      return {
+        signature: new Uint8Array(signature),
+        algorithm: algo,
+        keyId,
+        keyVersion: s.current,
+      };
+    }
     return this.inner.sign(keyId, data, algo);
   }
-  verify(
+  async verify(
     keyId: KeyId,
     data: Uint8Array,
     signature: Uint8Array,
-    algo?: SignatureAlgorithm,
+    algo: SignatureAlgorithm = "ed25519",
   ): Promise<boolean> {
+    if (algo === "ed25519") {
+      const s = this.ensureState(keyId);
+      for (const version of s.versions) {
+        const privateKey = this.deriveEd25519PrivateKey(keyId, version);
+        const publicKey = createPublicKey(privateKey);
+        if (
+          nodeVerify(null, Buffer.from(data), publicKey, Buffer.from(signature))
+        ) {
+          return true;
+        }
+      }
+      return false;
+    }
     return this.inner.verify(keyId, data, signature, algo);
   }
-  getPublicKey(keyId: KeyId): Promise<Uint8Array> {
-    return this.inner.getPublicKey(keyId);
+  async getPublicKey(keyId: KeyId): Promise<Uint8Array> {
+    const s = this.ensureState(keyId);
+    const privateKey = this.deriveEd25519PrivateKey(keyId, s.current);
+    const publicKey = createPublicKey(privateKey);
+    return new Uint8Array(publicKey.export({ format: "der", type: "spki" }));
   }
 }
 

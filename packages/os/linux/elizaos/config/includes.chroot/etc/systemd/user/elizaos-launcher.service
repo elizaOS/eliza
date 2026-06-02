@@ -1,0 +1,19 @@
+[Unit]
+Description=elizaOS application launcher (home surface)
+PartOf=graphical-session.target
+After=graphical-session.target
+Wants=elizaos-chat-overlay.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/elizaos/start-launcher
+Restart=always
+RestartSec=2
+SyslogIdentifier=elizaos-launcher
+KillMode=mixed
+Nice=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=graphical-session.target
