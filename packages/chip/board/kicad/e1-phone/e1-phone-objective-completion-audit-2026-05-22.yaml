@@ -6638,8 +6638,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AMP.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 5cd4feef1eb0a3374cee2264b0e06c9eabadee2742d5160bcbf1798d450b0f31
+    local_step_bound: true
+    local_discrete_step_sha256: 746c408460eb0ffc9a327e65d394ee0c7efac975de883738d2592b447baca9e4
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -6667,8 +6667,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AON.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 5964f8e4e4192321c1583231ee23b91e29fe2ac224388034f6ea108f1285b0ed
+    local_step_bound: true
+    local_discrete_step_sha256: 42fa54500494067a54600caeca770797d444df490663351301b316e40c75b5b6
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -6696,8 +6696,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AP_RAILS.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 5275015697fde4e5e2e23fdf7c7787611e5e69560ac2bf93d6e32e3e580dc282
+    local_step_bound: true
+    local_discrete_step_sha256: ba6acef52f3832ebd1e0de9fe2a4e4e7ae971dd88959be442d812d11e175aa6b
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -6725,8 +6725,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AUDIO.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: bd7c6d420a9148870b620e59f337aa5b151d6d6209677dfae9085402ea1eaa55
+    local_step_bound: true
+    local_discrete_step_sha256: 5db74d291790cd3ab0371996fcdd973fc61d8083f12b094f656b6e2bbd540551
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -6754,8 +6754,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_CAM_RAILS.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 70b282f277c742d8a84393ac36537406e225bacdb22820c1ce3998bfd8e46597
+    local_step_bound: true
+    local_discrete_step_sha256: 04594625abe7ada02920f14a0435bcc5b6bfe1d8ede0fd76cb3e4caa3e265635
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -6783,8 +6783,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_DISP_RAILS.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 0ae877cc454740159ba6b896dcfae60a9087e1acfbfdae50066584b753aa47c1
+    local_step_bound: true
+    local_discrete_step_sha256: 3ab4b7df4e044cae27828e3c6a50c98e784b6e1a818ce2cd5c60eceba836faba
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -6812,8 +6812,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_PMIC_IN.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 86878d8b31c603a5539143957c40e5cec266bd8201addbed8bfbfdc696084f67
+    local_step_bound: true
+    local_discrete_step_sha256: 61b3feaea771a8e0bc9ff8040d63177aff53a0e85a014576d9e665fa056b12de
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -6841,8 +6841,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_RF_RAILS.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 0da5390d81425a58a61268b2257c3c446cc2cca719ef838e7745c0f67c66fc6b
+    local_step_bound: true
+    local_discrete_step_sha256: 1f5a7a57cc06f218127f8e3a470fb42175b9ee8a1c7e8ea97b909703fff1e7f9
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -6870,8 +6870,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_SOC_CORE.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 7630ac5669231dde0484fd4ba54f22ccc870d9610eeccf11afa82f22fa5994fc
+    local_step_bound: true
+    local_discrete_step_sha256: ced4c03908ab6ecbb4b5fa52bb865cbf466f9710789f7c1dbfa04c5d613e61ba
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -6899,8 +6899,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_USBPD.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: a0ac0987db667ebbd083d7eb02167e20ebc4ebd99c650e12f0bf0ab3d1f116e6
+    local_step_bound: true
+    local_discrete_step_sha256: b228be85e8555e9bb2c11b774bea84df36deefe264fc7fc22aaddb85b47a72c2
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -6929,8 +6929,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_CAM0_ESD.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 13c69c8d3c91aab19e04e57a9c5a68bbc0573d7015a47af39a6b6631fa81de1b
+    local_step_bound: true
+    local_discrete_step_sha256: cb5581ef6c294df3e99fe915511c12b1f5b81696753a258417bdd3112989a0bf
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -6959,8 +6959,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_CAM1_ESD.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 9a56e7e5f98c2f6b16a69e157d60721b6a165fc479f951bcdccab6bb62c59772
+    local_step_bound: true
+    local_discrete_step_sha256: 5404027bc1f3a1b7ab7adfd3faf7f000f2b180a6935598fda47beb49fb0c6e78
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -6989,8 +6989,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_CC_ESD.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: b91d5fa6e404a9f2f69ddbc93d7ce543eeb7ec647993169108cfcded38b6bf26
+    local_step_bound: true
+    local_discrete_step_sha256: 877c425b13f67c72cc72ed65a46a00a4a80afcb0a822960b1eae0ed431409c50
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7019,8 +7019,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_DSI_ESD.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 81abbc8438383f40dd4b84ef3e6f3db3fa9d960c6cbeb66dd4fcacdc7c202fa0
+    local_step_bound: true
+    local_discrete_step_sha256: f4a444c28eda262c137bea28b4b2ad991fa690feda240f2229fb2017ad03c8f9
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7049,8 +7049,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_KEYS_ESD.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 5f31ac511c75ed829c78eeb810757a595ae64a07973f4b8cac3ac3d0fe6b85b5
+    local_step_bound: true
+    local_discrete_step_sha256: 38d9bfdf89acd70f3b44875cbdc689947fd55f86803f41e042ee471224c05e8c
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7079,8 +7079,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_MIC.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: c50761f1854c6c79be9fc00e2189b8870c9d8df958c1249ac87e6c83ba8790ef
+    local_step_bound: true
+    local_discrete_step_sha256: 1432d212e1d52c2684ef5e9bf87da5b295b3468fa2e35ef130a313c50da609a4
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7108,8 +7108,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_SPK.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 3b47f1c08c477fec7fb17f9e797561bed55deb36285a8cdba8e4d6fd58b44aa7
+    local_step_bound: true
+    local_discrete_step_sha256: f757fd157457d7f133f71638b6cf7476e3da673e072ea1a5b6c52f285ed0de9d
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7138,8 +7138,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_TOUCH_ESD.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: de7f39bdc3cd5f11e9f03c1d8b72f761e7741a86cbe81454d6de883f52fa2e26
+    local_step_bound: true
+    local_discrete_step_sha256: 2e940cb5a78800723c54c46e2d6d1ed491cc3e24786899ad795d7a62e8a17f87
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7168,8 +7168,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_USB2_ESD.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 7539072e61e508c353ad582c0fa795af0329125d89528489247a897a524285eb
+    local_step_bound: true
+    local_discrete_step_sha256: 492cdb3632bb9ca0db09a62495b6d6879c08b452233d83f3cafbd92556611e42
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7197,8 +7197,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_USIM.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 935bd093c5044f005996f37a380d53c990eefa76f69ae31869dfc140aa98dc72
+    local_step_bound: true
+    local_discrete_step_sha256: 3fb8284f3e68199c74d3428bd829b002185aa923e67524ef0092f7a927c30d36
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7226,8 +7226,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_VBUS_TVS.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 084a81a10584dd68996bfff0ce56915af3c77961b356679ed3e6b000454a0d0d
+    local_step_bound: true
+    local_discrete_step_sha256: 3ac697f433ca97b21e0a6d33dce9423327a4c74cd464261069a945498c5eb09b
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7255,8 +7255,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FID_BR.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: ee616bc0727a6f31ebdbd5598dfc26b998ad62ffb57981fcd4233029fd872209
+    local_step_bound: true
+    local_discrete_step_sha256: 0076696120897e50e5b19b52189ec7092cc79c20d40a7d777ec6cafc6ffd2cc3
     local_discrete_step_bytes: 15628
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7284,8 +7284,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FID_TL.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: dc6a8ad1096cd864d944aa3f7c3463a19161df7d29035cda4dce78c63cdafa33
+    local_step_bound: true
+    local_discrete_step_sha256: 00d0ba3095150b6901c3cd441b7da87a80ff30903fa94c4fa1f2c8a41e2bfea0
     local_discrete_step_bytes: 15628
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7313,8 +7313,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FID_TR.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 1e22a0038996d9f3ccc61acf817eb64b7ecad1352f4fcb5c237338f280e591e1
+    local_step_bound: true
+    local_discrete_step_sha256: f7747a3527be4295a96a4b3030cc65f6f2a738daa8467f46fe5abd4d785fb649
     local_discrete_step_bytes: 15628
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7342,8 +7342,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FL_CHG_IN.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 0d4e31188be37511b94600e10afee4c0637f7b4b8b49194f426f0ffa1f3a9a1a
+    local_step_bound: true
+    local_discrete_step_sha256: a8e059966fe96c477a1c6635520206ffa71254c0072bccef0ffdb7e7cb50b4fe
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7371,8 +7371,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_BATTERY.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: ecc1981b7d9d76b01e28056a6278a9a8bcdd21f8689597c2640e6e95518e99a6
+    local_step_bound: true
+    local_discrete_step_sha256: 0ab76afe1ad906d971ca5d2fd7a86a8a9ef6eab683d2cbaffa7c749e03ec3054
     local_discrete_step_bytes: 15486
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7400,8 +7400,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_DEBUG.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: b9aa9a22d608e89ca191e3e47e2bb0983323d2d0880f49ee5c7a3bf49459e4e6
+    local_step_bound: true
+    local_discrete_step_sha256: ac3d2a5f7598cb5dc579228345c772d81242c864d6681e4b62adbaf1208c7157
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7429,8 +7429,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_DISPLAY_TOUCH.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: ece64c8fea583b08a34b9929324a52a97bffc0a9cb6c06fc3ae3b4acd8cb1cd2
+    local_step_bound: true
+    local_discrete_step_sha256: e01d2933d61ea1b292fd60863cd6f5d741042ccbef5704dc003efec8ecaef579
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7458,8 +7458,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_FRONT_CAMERA.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 0a500fe8ff181b15c6d6f492fded94793db083801b04e4d0da96a3d2ff0dfdbe
+    local_step_bound: true
+    local_discrete_step_sha256: 9045db2d056a2b7f91c2921169cf19636840d6263829d4fdc8f9f63ade5ea5f6
     local_discrete_step_bytes: 15490
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7487,8 +7487,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_REAR_CAMERA.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 0c50d7e8ab572dd77efeafed5d5ec9a358154e7a797f8496a2d402a890c6eabd
+    local_step_bound: true
+    local_discrete_step_sha256: 4ecf82c284873627f9f9a52bcc0e4b627fe483c45bdc685d51992f761e2e348e
     local_discrete_step_bytes: 15490
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7516,8 +7516,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_TOP_BOTTOM_FLEX_BOTTOM.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: c0221056f99116ebb301c559e756b9220be567d14da7e78629148425ab4dbace
+    local_step_bound: true
+    local_discrete_step_sha256: 9afc53afc3a90f648e2bc9c2e8b26774b3224fd0292d199c4452d1ca8049361c
     local_discrete_step_bytes: 15546
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7545,8 +7545,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_TOP_BOTTOM_FLEX_TOP.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 9b1c61c2719c1123252832fa5055e4242c71950e2d1f87264c8da8772631b5dc
+    local_step_bound: true
+    local_discrete_step_sha256: caa6ee60619954e53e9511ea9e85f35db5a91bb0f9364df126985ca3e31d2648
     local_discrete_step_bytes: 15546
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7574,8 +7574,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_USB_C.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 5a2b31ecb44d8385c5464007fa6ac1247e240e3ddd991447849de6fe948dbc62
+    local_step_bound: true
+    local_discrete_step_sha256: 5799cd9d05e7ed93775eff57120e9a31632b91ab8b6be43b7545b0584517424c
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7603,8 +7603,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_BL.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: e92eb9977cbc7d3a035b630dde2b71249a00b61ac82a6f282f693d28ac954f59
+    local_step_bound: true
+    local_discrete_step_sha256: 2317cb9d7016686b9515edfcc049438f4fc2dcfafc6d211650f85cae00349d96
     local_discrete_step_bytes: 15638
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7632,8 +7632,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_BR.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: fb5ec041dc74710ef95b2b4317c12feccd83b448818030ff4a3eeecd739dee4c
+    local_step_bound: true
+    local_discrete_step_sha256: 777536a4dcf1c343bb71b7ec17f665ed097e440532e9fe68e05b564aa9a345a0
     local_discrete_step_bytes: 15638
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7661,8 +7661,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_TL.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: e65b3466745fa03cdcf905ad4fbe09826836ec57dc02655f59d3dcd6d5e9b769
+    local_step_bound: true
+    local_discrete_step_sha256: 41bca4298d0c1bf50d8f6e0c7965e7a12e9804c2cc454c21a9cc7056136dfe0c
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7690,8 +7690,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_TR.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: ee9a51546c413336e26e47356e58917776febd8280f4df3d59668fc988cb8fdf
+    local_step_bound: true
+    local_discrete_step_sha256: d964800a9f127c595ddef15acc1d26bcf6e97b944a18c8ef93681562f7c542e0
     local_discrete_step_bytes: 15638
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7719,8 +7719,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_CELL_DIV.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: b9c36a4aafec9d877132bfede7f1b3d2735601b393ee6eaf367646fd33e0f39d
+    local_step_bound: true
+    local_discrete_step_sha256: 2a6bd54ed50ba9c693a6d0173d2125e03fafc50f5f8e5899ef4f68e8ec3db050
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7748,8 +7748,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_CELL_MAIN.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 6fa38140160d7b2433fb7b7c36c9296e666cb327421d3b9e4e9a79478f6c5f29
+    local_step_bound: true
+    local_discrete_step_sha256: 21d8f9f24cc860c7b035937a6032c164598f405b7fe123182794f2666a3e7694
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7777,8 +7777,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_GNSS.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 9d0f313e6647503945d4e2f56837ed39bf642740a92db16ff3f83ed89becfac2
+    local_step_bound: true
+    local_discrete_step_sha256: 98a375a99b909115c53e85188d1574acadf038af7e6fd7a6a10fe68818dccf83
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7806,8 +7806,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_NFC.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: f69d8ea3bfb00c1bbe20b456fb35fefd73fe487b63e211acb2d141a665a647f5
+    local_step_bound: true
+    local_discrete_step_sha256: 550000fd59caa4110c621e9620c38b2cbab8968ded0ed51fff977e47cb804e0a
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7835,8 +7835,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_WIFI0.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: e161c01abb684658218a062232bd091070a7973cdb94552fdee94ae75f4d9af9
+    local_step_bound: true
+    local_discrete_step_sha256: 19a97804ec2143f517d22a2ff6d5641c7be86ed957fb628b6227d934c4a6c927
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7864,8 +7864,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_WIFI1.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 32378c777f0893aa9ca04241d4228200ffe430f427d6d29252695546d4735db1
+    local_step_bound: true
+    local_discrete_step_sha256: 06108c62027e64362a6595311f8de5970cec58fad6b2da5f141d69223bca371e
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7894,8 +7894,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RC_1.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 7fe5358c83a3d6cd25fb95dee3dd0d1bdf33965e7897ab15eaca9aa7eb965455
+    local_step_bound: true
+    local_discrete_step_sha256: bbe9fc9aa892930cb878e16fe26aa06b08f5fa1edc84c42eef45fd8b4616dcdd
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7924,8 +7924,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RC_2.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 1125fcf336eeedcf61c1f080c6f3b3b1d1339e45c16e970d0a70ec510e3a9c2b
+    local_step_bound: true
+    local_discrete_step_sha256: 9a44b5698b6b9fcb8781fcbb706cb559685fd00170226e1b99141797552a77e6
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7954,8 +7954,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RC_3.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: b1cbcccf87f2bf899b90e56f80fa87c5d25cb249c32046bf3ba04a64f950f1a4
+    local_step_bound: true
+    local_discrete_step_sha256: 8ca74844c9b2d685520b839eec111e7b2a9ae58ff90e9d6560190ed23e67d268
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -7983,8 +7983,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_CELL_DIV.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: c8beb3ad9aefe4eaaa1c8ae3fd918271fc7128dac09762054024a19e7c015f3f
+    local_step_bound: true
+    local_discrete_step_sha256: c4d71bb563f4cbab6da34849f912c4ec7bd0ea5d8ed97c32e044406d16097586
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8012,8 +8012,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_CELL_MAIN.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 882f8ae2a57e10fe48dd0ea9705b5584b3ba040c286e8ec8f948d4fef9da1aae
+    local_step_bound: true
+    local_discrete_step_sha256: a22475c463164e31182c52768ffb718a62334cfa0f7776ebe6a01f2ed57bef16
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8041,8 +8041,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_GNSS.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: c21139d89490857a05339dc957be1bbfb91acf5495d4295ccb687f105d0e10e0
+    local_step_bound: true
+    local_discrete_step_sha256: fa90a62f72c036b79fae5ef0f49d213cf9136d813c4d20349335186db007c4ec
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8070,8 +8070,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_WIFI0.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 890b2e989c54680212f8d1a61305f660104d1c656d692efb86a406a9586c99a7
+    local_step_bound: true
+    local_discrete_step_sha256: a9f3386ce06b2d4ba19ef233989d86fe92f14e19cf48addca64b4e1d25216885
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8099,8 +8099,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_WIFI1.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 7431fc6394a7c81931d508fe248e68f79341af1339297f83b7da571ba7927990
+    local_step_bound: true
+    local_discrete_step_sha256: 6708b74ba87c99fa51dd3023b7297664f3a719b9506cd49d0c4b436a1616649b
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8128,8 +8128,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_AUDIO_CTL.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 1a6016d02abd4c959afa64dd724f15a8056c1d440ab1da463deb46af59ff0ec3
+    local_step_bound: true
+    local_discrete_step_sha256: d016417221fba12ff865a265a9be1c9ac3175cc986afaec1dbbcdb3c3390a9ed
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8157,8 +8157,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_AUDIO_DIG.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: d941052a1a18d2d2eaa4cf3c2e0937fc6a899fb8eb7af912cf6c546429a5b0c2
+    local_step_bound: true
+    local_discrete_step_sha256: f0483398eb4c005a6cfeb23c07ef86cff0f4f593e59893841d372fb67e6e1f61
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8186,8 +8186,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_BAT_SENSE.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 9ea9fdb6ec0ac8f4ca68489c2673e914c047e5f850c02065c6cd764fca052137
+    local_step_bound: true
+    local_discrete_step_sha256: 220f2776b0e6da738be3f0fc117c5663d3f2887150069e38dd03212e0f23c23b
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8215,8 +8215,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_CAM_I2C.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 410ce3cb7ab8950eeada854dba7d3617ee76e4d6a002c42b1bc1a075d92e3a7e
+    local_step_bound: true
+    local_discrete_step_sha256: e737958882c9a8256a7294027eeeb5cff9da593099dbf1aa50680009ebed0885
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8244,8 +8244,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_CA.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 2ce8e94114caf18524e747221db6557f7651694abb61fcd426b1100ce56fe27d
+    local_step_bound: true
+    local_discrete_step_sha256: fcc50af1f332b543c446cb23f609b98fa8968f2b38c70dd944737fb6e096a4f0
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8273,8 +8273,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_DIFF.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 95b222ab21b487816b47cc55d478490f4af7b8e1ba5508cc073b09537a920cb5
+    local_step_bound: true
+    local_discrete_step_sha256: 64e782a518a5d733c83cebe21c6601ee3889f38c4879840e283f957f10ac3965
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8302,8 +8302,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_DQ.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 39b11c9a7cb9b600ad174c15580d7c95190cbdf0545cd6bc87ede3c4b661151e
+    local_step_bound: true
+    local_discrete_step_sha256: c7d66bfcc7d672c5f131756a9d6b0b5aeb1714bfa48e9c846589a3a02387aa3d
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8331,8 +8331,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_PMIC_CTL.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 818c1a2619e71ddc1a8072cf91adf1079335208ffaf957226be474cd08cd22c2
+    local_step_bound: true
+    local_discrete_step_sha256: 27c30177d02edb4cb55bbc70c928da5f80a22880d9a1864687a03e8983c10bee
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8361,8 +8361,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_UFS.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: a6765b7f6076ef7cb1ab45458df841878ddc53e98d01f402a2be60a2f8431c20
+    local_step_bound: true
+    local_discrete_step_sha256: 54a48381589e4daf904bdb4bc4324c29efee021aff3dc83446ca7c60f22a8e85
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8390,8 +8390,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RS_PWR.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 4a4684a5afff9d94b34eca40a9c498269a1dea84a8c6d06312d292976198480d
+    local_step_bound: true
+    local_discrete_step_sha256: aa895e11833e923c0e1c01a421771ea8ce4fa4947810f9ad75c0628ace31aac1
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8419,8 +8419,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/SW_POWER_VOL.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: d13485f90bacd0435562a952d78d28e732475a1feb31a598839742dd52316911
+    local_step_bound: true
+    local_discrete_step_sha256: 32846bdc38297acd63910e33a327b6d5a42d7d3ee8da71055bbcbdf1194e7dc8
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8448,8 +8448,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_AON_1V8.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 7549d7448d45b380227411b8d79aab75aa8983a89e378f23786157ef1a86ce16
+    local_step_bound: true
+    local_discrete_step_sha256: 43e7dcc1ff73a77a0242b566867cbc00f799f8adc084a9c08c31dc38f67429e3
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8477,8 +8477,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_CAM_AVDD_2V8.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: bf30980e2333d59d5cdedd2ed10b59984448886dc4a94889259fa8772783dccb
+    local_step_bound: true
+    local_discrete_step_sha256: 0917ad2e2d2d808fc40e6a8948c1e4e68b44192ceeeb3dafa13cface113d36f9
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8506,8 +8506,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_DISP_AVDD_5V5.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: c04162eec0629f72a00c98133542535e030e2b4a5b9adfda8bccde5d94f8c40e
+    local_step_bound: true
+    local_discrete_step_sha256: 04df0a92bf1131d7564949313fa297d0aa0ed897833024c3839554d59a30b88c
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8535,8 +8535,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_IO_1V8.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 053e56d78c3d827b319aa8af07824670a58c018a62cd8797c551a24db3d560b3
+    local_step_bound: true
+    local_discrete_step_sha256: 0c91043369f0f154e7e5a26d6c5ee71fab611d27dfc75b4c6b3fb87cbfd0f2c6
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8564,8 +8564,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_RF_VBAT.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 7f0722bee7e7148af9f8d0875b47017f0d6fcfe6989c931d594aa9682d3b6823
+    local_step_bound: true
+    local_discrete_step_sha256: 0b05ca126519846b98a94f512b763a6804030fdce793b1d3820952eca5304d2b
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8593,8 +8593,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_SYS.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 7d23317fd114499b668ad4f5ac421087d984a67c9ab9cf588623be6170427a3e
+    local_step_bound: true
+    local_discrete_step_sha256: 87cbd9ac1d9eaa8d5c49a5ba0676188c3479aace2706d9621e3e4b8aff68bf65
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8622,8 +8622,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_VBAT.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 5010d92be51bf21db0dbadb57faf8d9fca7d9c02dadc5462b5cabb914d496817
+    local_step_bound: true
+    local_discrete_step_sha256: bb3d4ad0230d0af19442a82fd731b97904fd511166d976c3b25192f4dafa7ff6
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8651,8 +8651,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_VBUS.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 9ab3cabea058fb4bbca0cd68d0a54b718f7bb6a9134f1154e6994da0aac4ad5a
+    local_step_bound: true
+    local_discrete_step_sha256: a8d2ec1cd38b7ccee17b3373828caf6b6a3ebf7d04facc63a5724619210cde25
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8680,8 +8680,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_CC1.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 1cfb7729677eba4137ff291f0a3c2f31bbd6e6e09261605a4087c57512ad69c2
+    local_step_bound: true
+    local_discrete_step_sha256: 339f4ea29086ef1efd6f4247a5e11d1161e612a08b8192888cc2f32e3e7aa83e
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8709,8 +8709,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_CC2.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 09614027a68b5230646b2e5968c102225eb34f04d2ff5ab67d5b1d86a54e7349
+    local_step_bound: true
+    local_discrete_step_sha256: bfd0e9063aea87960e397278f2b0ded0d28e43c26e741e71b157053dccaaf08c
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8738,8 +8738,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_DN.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 1e941d0525f432e6cedacba8f65df3fe8addb846d1566a2eb771110a5c0caa6f
+    local_step_bound: true
+    local_discrete_step_sha256: 8a3496a717ddcac25fa05cc6dfd99a9326c531d95ef85196bbfc1fa27cd72887
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8767,8 +8767,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_DP.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: c8a749e8b2969ce1dadea44deec52e28af2a5dded64b8ba3e6f60e9f358aa4e5
+    local_step_bound: true
+    local_discrete_step_sha256: 4ad7c6736f177069d94d83880a381492bd1923e92ddcfb0dc2849aaaeed67dc6
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8796,8 +8796,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_VBUS.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: c39b7b0be377daca1e0c7a1ec2e4c24fbcb4483ef3d69166ceb81ead66d36f72
+    local_step_bound: true
+    local_discrete_step_sha256: 7ad563bb2020e41ff6956b1637d59b3dc490832a5b6451cdb5821fbbdcbffea3
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8825,8 +8825,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_AUDIO_SPK_MIC.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: abb1211092e43cc2add179c85aa7173d3c333b99f321498d98239e20bb4010c7
+    local_step_bound: true
+    local_discrete_step_sha256: af7700c6b65d74c3185f8e5239be3c72c29b98638162103fa3f1f2d4fcda6c6b
     local_discrete_step_bytes: 15538
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8855,8 +8855,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_CAM_PWR.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 47aacf957b31cdda01921e6f977b7a62d78f239a0974467190fc7c9b6712bb83
+    local_step_bound: true
+    local_discrete_step_sha256: 0fa3bfe045fd8711972cde3e5d18a30351a8d03b945884c99032680a226271c3
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8884,8 +8884,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_CELL.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 7a16d87fc070524a6482cc7b1832688b6e64239d21fb950ff71ddfb4903c1a79
+    local_step_bound: true
+    local_discrete_step_sha256: 46ef74b9ed3dfce387a460fa81f205708fb5e559db80d458a2ab696735fb214a
     local_discrete_step_bytes: 15546
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8913,8 +8913,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_CHARGER.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 63c21811d912cc11bdf6529d68428193a37b1632a9ea1851e601a226b3ee052d
+    local_step_bound: true
+    local_discrete_step_sha256: 1761eeff7356d7b2629417130796abd4c619d7174519671d441bdf194c771d0b
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8942,8 +8942,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_DISP_BIAS.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: acba2b805f3162c6c6839ba16ecfec63bd0e9bc83bb984cac4c4506eecc23f45
+    local_step_bound: true
+    local_discrete_step_sha256: 67837414470dd4fdbf4b30491956f6040b5fc6f30a85ca23d4215d12d7f0341d
     local_discrete_step_bytes: 15486
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -8971,8 +8971,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_ESIM.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: cca1663461e8f2bf41388bc0ff916c98d5ccaadea93d6a6ec6d609d58d81c3bc
+    local_step_bound: true
+    local_discrete_step_sha256: 23f50bd3765133049e9bc0cd8a5743d21b6672567cf65f0a3d4df46d70be651d
     local_discrete_step_bytes: 15512
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9000,8 +9000,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_FG.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 07b1cd4ec81b894e99c2da7bf27b90c55d4e01739034cf0323f359ecbca2472b
+    local_step_bound: true
+    local_discrete_step_sha256: e987891354e8e4cb8ace6d3ab5dc26b5ede4ee79c77d57b3ba5931c1478a9a58
     local_discrete_step_bytes: 15546
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9029,8 +9029,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_GNSS_RF.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: c27fd80f0512729c9cf7f7828a27da0bfc6fa1e3254088123aed0d85052a06ea
+    local_step_bound: true
+    local_discrete_step_sha256: adcc5e4c9a5c1e1ef1976e5357bd6e0b2b738ac77b9d045092401d3c14f34d2c
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9058,8 +9058,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_HAPTIC.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 3416ff2a4ce3a4ff98c411660e279a825ac7fa7aac4ea13445344d284004db86
+    local_step_bound: true
+    local_discrete_step_sha256: 7bb999d62e497b6d6b9ad67e4ed4dce3e2c62717f8a34f9daae74122ec0697b1
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9087,8 +9087,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_NFC.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 950d40fb404e460c8b59794c3712a9c52dea7c4a2752ecadd52a7a6ded47eed7
+    local_step_bound: true
+    local_discrete_step_sha256: 2c4fc4d4ada5f275779a4dffcab2b65ae7fea69bfac7d5f97be0b9e04f3eb3cd
     local_discrete_step_bytes: 15538
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9116,8 +9116,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_SENS.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 1ab8f00696c47316a6bcc967ae94da607290e680b494e03face7e8f832fd7af6
+    local_step_bound: true
+    local_discrete_step_sha256: bff5093a1db4335e5b0cb4f661868b990484b1c89f667fd3d67bdaa1644d67f6
     local_discrete_step_bytes: 15486
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9145,8 +9145,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_SOC_LPDDR_UFS.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 902f725dcf8590b0e9a1f4a528545de8828f169950c2aa2112bb277c46b8d222
+    local_step_bound: true
+    local_discrete_step_sha256: b1b9a7ffb130fa417c2de1dd605c2c41848dcb7682ea84fa833618d56b77e546
     local_discrete_step_bytes: 15516
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9174,8 +9174,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_USB_PD.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: c4f8acc5e7be03304175218f1d1a3be63f1a79f9ff12bdb295f2584224cb654f
+    local_step_bound: true
+    local_discrete_step_sha256: 3f664f2e0d92759b67aa76b62732cef5ab527884d2effb98ab7847bb3de87b88
     local_discrete_step_bytes: 15538
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9203,8 +9203,8 @@ detailed_trace_manifests:
     non_signal_pad_contract_matches_pad_visuals: true
     npth_mechanical_feature_contract_matches_footprint: true
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_WIFI_BT.local-envelope.step
-    local_step_bound: false
-    local_discrete_step_sha256: 97d14e818a721ef3ad3735f36e8c657b21ed8f9247cbf88f172e05c0a28b8b10
+    local_step_bound: true
+    local_discrete_step_sha256: ebb119913c4e21694e3808e36d611617ce94ccae5026a2b18df4b5b093fc957f
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9225,7 +9225,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 01_J_USB_C_GCT_USB4105_GF_A_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_USB_C.local-envelope.step
-    local_discrete_step_sha256: 5a2b31ecb44d8385c5464007fa6ac1247e240e3ddd991447849de6fe948dbc62
+    local_discrete_step_sha256: 5799cd9d05e7ed93775eff57120e9a31632b91ab8b6be43b7545b0584517424c
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9256,7 +9256,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 02_SW_POWER_VOL_PANASONIC_EVQ_P7_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/SW_POWER_VOL.local-envelope.step
-    local_discrete_step_sha256: d13485f90bacd0435562a952d78d28e732475a1feb31a598839742dd52316911
+    local_discrete_step_sha256: 32846bdc38297acd63910e33a327b6d5a42d7d3ee8da71055bbcbdf1194e7dc8
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9287,7 +9287,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 03_J_DISPLAY_TOUCH_DISPLAY_40P_0P30_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_DISPLAY_TOUCH.local-envelope.step
-    local_discrete_step_sha256: ece64c8fea583b08a34b9929324a52a97bffc0a9cb6c06fc3ae3b4acd8cb1cd2
+    local_discrete_step_sha256: e01d2933d61ea1b292fd60863cd6f5d741042ccbef5704dc003efec8ecaef579
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9318,7 +9318,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 04_J_REAR_CAMERA_CAMERA_24P_0P50_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_REAR_CAMERA.local-envelope.step
-    local_discrete_step_sha256: 0c50d7e8ab572dd77efeafed5d5ec9a358154e7a797f8496a2d402a890c6eabd
+    local_discrete_step_sha256: 4ecf82c284873627f9f9a52bcc0e4b627fe483c45bdc685d51992f761e2e348e
     local_discrete_step_bytes: 15490
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9349,7 +9349,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 05_J_FRONT_CAMERA_CAMERA_30P_0P50_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_FRONT_CAMERA.local-envelope.step
-    local_discrete_step_sha256: 0a500fe8ff181b15c6d6f492fded94793db083801b04e4d0da96a3d2ff0dfdbe
+    local_discrete_step_sha256: 9045db2d056a2b7f91c2921169cf19636840d6263829d4fdc8f9f63ade5ea5f6
     local_discrete_step_bytes: 15490
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9380,7 +9380,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 06_U_CELL_QUECTEL_RG255C_GEOMETRY_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_CELL.local-envelope.step
-    local_discrete_step_sha256: 7a16d87fc070524a6482cc7b1832688b6e64239d21fb950ff71ddfb4903c1a79
+    local_discrete_step_sha256: 46ef74b9ed3dfce387a460fa81f205708fb5e559db80d458a2ab696735fb214a
     local_discrete_step_bytes: 15546
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9411,7 +9411,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 07_U_WIFI_BT_MURATA_TYPE_2EA_GEOMETRY_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_WIFI_BT.local-envelope.step
-    local_discrete_step_sha256: 97d14e818a721ef3ad3735f36e8c657b21ed8f9247cbf88f172e05c0a28b8b10
+    local_discrete_step_sha256: ebb119913c4e21694e3808e36d611617ce94ccae5026a2b18df4b5b093fc957f
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9442,7 +9442,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 08_U_CHARGER_ADI_MAX77860_WLP81_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_CHARGER.local-envelope.step
-    local_discrete_step_sha256: 63c21811d912cc11bdf6529d68428193a37b1632a9ea1851e601a226b3ee052d
+    local_discrete_step_sha256: 1761eeff7356d7b2629417130796abd4c619d7174519671d441bdf194c771d0b
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9473,7 +9473,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 09_U_USB_PD_TI_TPS65987_RSH_56QFN_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_USB_PD.local-envelope.step
-    local_discrete_step_sha256: c4f8acc5e7be03304175218f1d1a3be63f1a79f9ff12bdb295f2584224cb654f
+    local_discrete_step_sha256: 3f664f2e0d92759b67aa76b62732cef5ab527884d2effb98ab7847bb3de87b88
     local_discrete_step_bytes: 15538
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9504,7 +9504,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 10_J_BATTERY_BATTERY_4P_1P00_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_BATTERY.local-envelope.step
-    local_discrete_step_sha256: ecc1981b7d9d76b01e28056a6278a9a8bcdd21f8689597c2640e6e95518e99a6
+    local_discrete_step_sha256: 0ab76afe1ad906d971ca5d2fd7a86a8a9ef6eab683d2cbaffa7c749e03ec3054
     local_discrete_step_bytes: 15486
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9535,7 +9535,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 11_U_SOC_LPDDR_UFS_SODIMM_260P_0P5_COMPUTE_SOM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_SOC_LPDDR_UFS.local-envelope.step
-    local_discrete_step_sha256: 902f725dcf8590b0e9a1f4a528545de8828f169950c2aa2112bb277c46b8d222
+    local_discrete_step_sha256: b1b9a7ffb130fa417c2de1dd605c2c41848dcb7682ea84fa833618d56b77e546
     local_discrete_step_bytes: 15516
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9566,7 +9566,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 12_U_AUDIO_SPK_MIC_AUDIO_CODEC_QFN48_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_AUDIO_SPK_MIC.local-envelope.step
-    local_discrete_step_sha256: abb1211092e43cc2add179c85aa7173d3c333b99f321498d98239e20bb4010c7
+    local_discrete_step_sha256: af7700c6b65d74c3185f8e5239be3c72c29b98638162103fa3f1f2d4fcda6c6b
     local_discrete_step_bytes: 15538
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9597,7 +9597,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 13_J_TOP_BOTTOM_FLEX_TOP_HIROSE_DF40_80P_0P4_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_TOP_BOTTOM_FLEX_TOP.local-envelope.step
-    local_discrete_step_sha256: 9b1c61c2719c1123252832fa5055e4242c71950e2d1f87264c8da8772631b5dc
+    local_discrete_step_sha256: caa6ee60619954e53e9511ea9e85f35db5a91bb0f9364df126985ca3e31d2648
     local_discrete_step_bytes: 15546
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9628,7 +9628,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 14_J_TOP_BOTTOM_FLEX_BOTTOM_HIROSE_DF40_80P_0P4_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_TOP_BOTTOM_FLEX_BOTTOM.local-envelope.step
-    local_discrete_step_sha256: c0221056f99116ebb301c559e756b9220be567d14da7e78629148425ab4dbace
+    local_discrete_step_sha256: 9afc53afc3a90f648e2bc9c2e8b26774b3224fd0292d199c4452d1ca8049361c
     local_discrete_step_bytes: 15546
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9659,7 +9659,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 15_D_USB2_ESD_ESD_ARRAY_6CH_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_USB2_ESD.local-envelope.step
-    local_discrete_step_sha256: 7539072e61e508c353ad582c0fa795af0329125d89528489247a897a524285eb
+    local_discrete_step_sha256: 492cdb3632bb9ca0db09a62495b6d6879c08b452233d83f3cafbd92556611e42
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9690,7 +9690,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 16_D_CC_ESD_ESD_ARRAY_6CH_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_CC_ESD.local-envelope.step
-    local_discrete_step_sha256: b91d5fa6e404a9f2f69ddbc93d7ce543eeb7ec647993169108cfcded38b6bf26
+    local_discrete_step_sha256: 877c425b13f67c72cc72ed65a46a00a4a80afcb0a822960b1eae0ed431409c50
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9721,7 +9721,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 17_D_VBUS_TVS_TVS_DIODE_2P_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_VBUS_TVS.local-envelope.step
-    local_discrete_step_sha256: 084a81a10584dd68996bfff0ce56915af3c77961b356679ed3e6b000454a0d0d
+    local_discrete_step_sha256: 3ac697f433ca97b21e0a6d33dce9423327a4c74cd464261069a945498c5eb09b
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9752,7 +9752,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 18_USBTP_VBUS_TESTPOINT_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_VBUS.local-envelope.step
-    local_discrete_step_sha256: c39b7b0be377daca1e0c7a1ec2e4c24fbcb4483ef3d69166ceb81ead66d36f72
+    local_discrete_step_sha256: 7ad563bb2020e41ff6956b1637d59b3dc490832a5b6451cdb5821fbbdcbffea3
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9783,7 +9783,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 19_USBTP_CC1_TESTPOINT_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_CC1.local-envelope.step
-    local_discrete_step_sha256: 1cfb7729677eba4137ff291f0a3c2f31bbd6e6e09261605a4087c57512ad69c2
+    local_discrete_step_sha256: 339f4ea29086ef1efd6f4247a5e11d1161e612a08b8192888cc2f32e3e7aa83e
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9814,7 +9814,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 20_USBTP_CC2_TESTPOINT_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_CC2.local-envelope.step
-    local_discrete_step_sha256: 09614027a68b5230646b2e5968c102225eb34f04d2ff5ab67d5b1d86a54e7349
+    local_discrete_step_sha256: bfd0e9063aea87960e397278f2b0ded0d28e43c26e741e71b157053dccaaf08c
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9845,7 +9845,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 21_USBTP_DP_TESTPOINT_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_DP.local-envelope.step
-    local_discrete_step_sha256: c8a749e8b2969ce1dadea44deec52e28af2a5dded64b8ba3e6f60e9f358aa4e5
+    local_discrete_step_sha256: 4ad7c6736f177069d94d83880a381492bd1923e92ddcfb0dc2849aaaeed67dc6
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9876,7 +9876,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 22_USBTP_DN_TESTPOINT_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_DN.local-envelope.step
-    local_discrete_step_sha256: 1e941d0525f432e6cedacba8f65df3fe8addb846d1566a2eb771110a5c0caa6f
+    local_discrete_step_sha256: 8a3496a717ddcac25fa05cc6dfd99a9326c531d95ef85196bbfc1fa27cd72887
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9907,7 +9907,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 23_D_KEYS_ESD_ESD_ARRAY_6CH_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_KEYS_ESD.local-envelope.step
-    local_discrete_step_sha256: 5f31ac511c75ed829c78eeb810757a595ae64a07973f4b8cac3ac3d0fe6b85b5
+    local_discrete_step_sha256: 38d9bfdf89acd70f3b44875cbdc689947fd55f86803f41e042ee471224c05e8c
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9938,7 +9938,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 24_RC_1_RC_ARRAY_4CH_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RC_1.local-envelope.step
-    local_discrete_step_sha256: 7fe5358c83a3d6cd25fb95dee3dd0d1bdf33965e7897ab15eaca9aa7eb965455
+    local_discrete_step_sha256: bbe9fc9aa892930cb878e16fe26aa06b08f5fa1edc84c42eef45fd8b4616dcdd
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -9969,7 +9969,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 25_RC_2_RC_ARRAY_4CH_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RC_2.local-envelope.step
-    local_discrete_step_sha256: 1125fcf336eeedcf61c1f080c6f3b3b1d1339e45c16e970d0a70ec510e3a9c2b
+    local_discrete_step_sha256: 9a44b5698b6b9fcb8781fcbb706cb559685fd00170226e1b99141797552a77e6
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10000,7 +10000,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 26_RC_3_RC_ARRAY_4CH_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RC_3.local-envelope.step
-    local_discrete_step_sha256: b1cbcccf87f2bf899b90e56f80fa87c5d25cb249c32046bf3ba04a64f950f1a4
+    local_discrete_step_sha256: 8ca74844c9b2d685520b839eec111e7b2a9ae58ff90e9d6560190ed23e67d268
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10031,7 +10031,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 27_D_DSI_ESD_ESD_ARRAY_6CH_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_DSI_ESD.local-envelope.step
-    local_discrete_step_sha256: 81abbc8438383f40dd4b84ef3e6f3db3fa9d960c6cbeb66dd4fcacdc7c202fa0
+    local_discrete_step_sha256: f4a444c28eda262c137bea28b4b2ad991fa690feda240f2229fb2017ad03c8f9
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10062,7 +10062,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 28_D_TOUCH_ESD_ESD_ARRAY_6CH_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_TOUCH_ESD.local-envelope.step
-    local_discrete_step_sha256: de7f39bdc3cd5f11e9f03c1d8b72f761e7741a86cbe81454d6de883f52fa2e26
+    local_discrete_step_sha256: 2e940cb5a78800723c54c46e2d6d1ed491cc3e24786899ad795d7a62e8a17f87
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10093,7 +10093,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 29_U_DISP_BIAS_BACKLIGHT_BIAS_POWER_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_DISP_BIAS.local-envelope.step
-    local_discrete_step_sha256: acba2b805f3162c6c6839ba16ecfec63bd0e9bc83bb984cac4c4506eecc23f45
+    local_discrete_step_sha256: 67837414470dd4fdbf4b30491956f6040b5fc6f30a85ca23d4215d12d7f0341d
     local_discrete_step_bytes: 15486
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10124,7 +10124,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 30_D_CAM0_ESD_ESD_ARRAY_6CH_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_CAM0_ESD.local-envelope.step
-    local_discrete_step_sha256: 13c69c8d3c91aab19e04e57a9c5a68bbc0573d7015a47af39a6b6631fa81de1b
+    local_discrete_step_sha256: cb5581ef6c294df3e99fe915511c12b1f5b81696753a258417bdd3112989a0bf
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10155,7 +10155,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 31_D_CAM1_ESD_ESD_ARRAY_6CH_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_CAM1_ESD.local-envelope.step
-    local_discrete_step_sha256: 9a56e7e5f98c2f6b16a69e157d60721b6a165fc479f951bcdccab6bb62c59772
+    local_discrete_step_sha256: 5404027bc1f3a1b7ab7adfd3faf7f000f2b180a6935598fda47beb49fb0c6e78
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10186,7 +10186,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 32_U_CAM_PWR_RC_ARRAY_4CH_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_CAM_PWR.local-envelope.step
-    local_discrete_step_sha256: 47aacf957b31cdda01921e6f977b7a62d78f239a0974467190fc7c9b6712bb83
+    local_discrete_step_sha256: 0fa3bfe045fd8711972cde3e5d18a30351a8d03b945884c99032680a226271c3
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10217,7 +10217,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 33_RN_CAM_I2C_R0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_CAM_I2C.local-envelope.step
-    local_discrete_step_sha256: 410ce3cb7ab8950eeada854dba7d3617ee76e4d6a002c42b1bc1a075d92e3a7e
+    local_discrete_step_sha256: e737958882c9a8256a7294027eeeb5cff9da593099dbf1aa50680009ebed0885
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10248,7 +10248,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 34_C_AUDIO_C0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AUDIO.local-envelope.step
-    local_discrete_step_sha256: bd7c6d420a9148870b620e59f337aa5b151d6d6209677dfae9085402ea1eaa55
+    local_discrete_step_sha256: 5db74d291790cd3ab0371996fcdd973fc61d8083f12b094f656b6e2bbd540551
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10279,7 +10279,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 35_C_AMP_C0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AMP.local-envelope.step
-    local_discrete_step_sha256: 5cd4feef1eb0a3374cee2264b0e06c9eabadee2742d5160bcbf1798d450b0f31
+    local_discrete_step_sha256: 746c408460eb0ffc9a327e65d394ee0c7efac975de883738d2592b447baca9e4
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10310,7 +10310,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 36_RN_AUDIO_DIG_R0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_AUDIO_DIG.local-envelope.step
-    local_discrete_step_sha256: d941052a1a18d2d2eaa4cf3c2e0937fc6a899fb8eb7af912cf6c546429a5b0c2
+    local_discrete_step_sha256: f0483398eb4c005a6cfeb23c07ef86cff0f4f593e59893841d372fb67e6e1f61
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10341,7 +10341,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 37_RN_AUDIO_CTL_R0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_AUDIO_CTL.local-envelope.step
-    local_discrete_step_sha256: 1a6016d02abd4c959afa64dd724f15a8056c1d440ab1da463deb46af59ff0ec3
+    local_discrete_step_sha256: d016417221fba12ff865a265a9be1c9ac3175cc986afaec1dbbcdb3c3390a9ed
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10372,7 +10372,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 38_D_MIC_ESD_ARRAY_6CH_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_MIC.local-envelope.step
-    local_discrete_step_sha256: c50761f1854c6c79be9fc00e2189b8870c9d8df958c1249ac87e6c83ba8790ef
+    local_discrete_step_sha256: 1432d212e1d52c2684ef5e9bf87da5b295b3468fa2e35ef130a313c50da609a4
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10403,7 +10403,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 39_D_SPK_TVS_DIODE_2P_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_SPK.local-envelope.step
-    local_discrete_step_sha256: 3b47f1c08c477fec7fb17f9e797561bed55deb36285a8cdba8e4d6fd58b44aa7
+    local_discrete_step_sha256: f757fd157457d7f133f71638b6cf7476e3da673e072ea1a5b6c52f285ed0de9d
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10434,7 +10434,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 40_U_HAPTIC_HAPTIC_DRIVER_WLCSP_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_HAPTIC.local-envelope.step
-    local_discrete_step_sha256: 3416ff2a4ce3a4ff98c411660e279a825ac7fa7aac4ea13445344d284004db86
+    local_discrete_step_sha256: 7bb999d62e497b6d6b9ad67e4ed4dce3e2c62717f8a34f9daae74122ec0697b1
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10465,7 +10465,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 41_C_USBPD_C0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_USBPD.local-envelope.step
-    local_discrete_step_sha256: a0ac0987db667ebbd083d7eb02167e20ebc4ebd99c650e12f0bf0ab3d1f116e6
+    local_discrete_step_sha256: b228be85e8555e9bb2c11b774bea84df36deefe264fc7fc22aaddb85b47a72c2
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10496,7 +10496,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 42_FL_CHG_IN_C0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FL_CHG_IN.local-envelope.step
-    local_discrete_step_sha256: 0d4e31188be37511b94600e10afee4c0637f7b4b8b49194f426f0ffa1f3a9a1a
+    local_discrete_step_sha256: a8e059966fe96c477a1c6635520206ffa71254c0072bccef0ffdb7e7cb50b4fe
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10527,7 +10527,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 43_RN_BAT_SENSE_R0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_BAT_SENSE.local-envelope.step
-    local_discrete_step_sha256: 9ea9fdb6ec0ac8f4ca68489c2673e914c047e5f850c02065c6cd764fca052137
+    local_discrete_step_sha256: 220f2776b0e6da738be3f0fc117c5663d3f2887150069e38dd03212e0f23c23b
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10558,7 +10558,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 44_U_FG_FUEL_GAUGE_WLCSP_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_FG.local-envelope.step
-    local_discrete_step_sha256: 07b1cd4ec81b894e99c2da7bf27b90c55d4e01739034cf0323f359ecbca2472b
+    local_discrete_step_sha256: e987891354e8e4cb8ace6d3ab5dc26b5ede4ee79c77d57b3ba5931c1478a9a58
     local_discrete_step_bytes: 15546
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10589,7 +10589,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 45_RN_PMIC_CTL_R0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_PMIC_CTL.local-envelope.step
-    local_discrete_step_sha256: 818c1a2619e71ddc1a8072cf91adf1079335208ffaf957226be474cd08cd22c2
+    local_discrete_step_sha256: 27c30177d02edb4cb55bbc70c928da5f80a22880d9a1864687a03e8983c10bee
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10620,7 +10620,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 46_C_PMIC_IN_C0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_PMIC_IN.local-envelope.step
-    local_discrete_step_sha256: 86878d8b31c603a5539143957c40e5cec266bd8201addbed8bfbfdc696084f67
+    local_discrete_step_sha256: 61b3feaea771a8e0bc9ff8040d63177aff53a0e85a014576d9e665fa056b12de
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10651,7 +10651,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 47_C_AP_RAILS_C0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AP_RAILS.local-envelope.step
-    local_discrete_step_sha256: 5275015697fde4e5e2e23fdf7c7787611e5e69560ac2bf93d6e32e3e580dc282
+    local_discrete_step_sha256: ba6acef52f3832ebd1e0de9fe2a4e4e7ae971dd88959be442d812d11e175aa6b
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10682,7 +10682,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 48_C_RF_RAILS_C0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_RF_RAILS.local-envelope.step
-    local_discrete_step_sha256: 0da5390d81425a58a61268b2257c3c446cc2cca719ef838e7745c0f67c66fc6b
+    local_discrete_step_sha256: 1f5a7a57cc06f218127f8e3a470fb42175b9ee8a1c7e8ea97b909703fff1e7f9
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10713,7 +10713,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 49_C_CAM_RAILS_C0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_CAM_RAILS.local-envelope.step
-    local_discrete_step_sha256: 70b282f277c742d8a84393ac36537406e225bacdb22820c1ce3998bfd8e46597
+    local_discrete_step_sha256: 04594625abe7ada02920f14a0435bcc5b6bfe1d8ede0fd76cb3e4caa3e265635
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10744,7 +10744,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 50_C_DISP_RAILS_C0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_DISP_RAILS.local-envelope.step
-    local_discrete_step_sha256: 0ae877cc454740159ba6b896dcfae60a9087e1acfbfdae50066584b753aa47c1
+    local_discrete_step_sha256: 3ab4b7df4e044cae27828e3c6a50c98e784b6e1a818ce2cd5c60eceba836faba
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10775,7 +10775,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 51_C_AON_C0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AON.local-envelope.step
-    local_discrete_step_sha256: 5964f8e4e4192321c1583231ee23b91e29fe2ac224388034f6ea108f1285b0ed
+    local_discrete_step_sha256: 42fa54500494067a54600caeca770797d444df490663351301b316e40c75b5b6
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10806,7 +10806,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 52_RS_PWR_SHUNT_1206_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RS_PWR.local-envelope.step
-    local_discrete_step_sha256: 4a4684a5afff9d94b34eca40a9c498269a1dea84a8c6d06312d292976198480d
+    local_discrete_step_sha256: aa895e11833e923c0e1c01a421771ea8ce4fa4947810f9ad75c0628ace31aac1
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10837,7 +10837,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 53_C_SOC_CORE_C0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_SOC_CORE.local-envelope.step
-    local_discrete_step_sha256: 7630ac5669231dde0484fd4ba54f22ccc870d9610eeccf11afa82f22fa5994fc
+    local_discrete_step_sha256: ced4c03908ab6ecbb4b5fa52bb865cbf466f9710789f7c1dbfa04c5d613e61ba
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10868,7 +10868,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 54_RN_LPDDR_DIFF_R0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_DIFF.local-envelope.step
-    local_discrete_step_sha256: 95b222ab21b487816b47cc55d478490f4af7b8e1ba5508cc073b09537a920cb5
+    local_discrete_step_sha256: 64e782a518a5d733c83cebe21c6601ee3889f38c4879840e283f957f10ac3965
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10899,7 +10899,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 55_RN_LPDDR_CA_R0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_CA.local-envelope.step
-    local_discrete_step_sha256: 2ce8e94114caf18524e747221db6557f7651694abb61fcd426b1100ce56fe27d
+    local_discrete_step_sha256: fcc50af1f332b543c446cb23f609b98fa8968f2b38c70dd944737fb6e096a4f0
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10930,7 +10930,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 56_RN_LPDDR_DQ_R0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_DQ.local-envelope.step
-    local_discrete_step_sha256: 39b11c9a7cb9b600ad174c15580d7c95190cbdf0545cd6bc87ede3c4b661151e
+    local_discrete_step_sha256: c7d66bfcc7d672c5f131756a9d6b0b5aeb1714bfa48e9c846589a3a02387aa3d
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10961,7 +10961,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 57_RN_UFS_ESD_ARRAY_6CH_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_UFS.local-envelope.step
-    local_discrete_step_sha256: a6765b7f6076ef7cb1ab45458df841878ddc53e98d01f402a2be60a2f8431c20
+    local_discrete_step_sha256: 54a48381589e4daf904bdb4bc4324c29efee021aff3dc83446ca7c60f22a8e85
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -10992,7 +10992,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 58_J_DEBUG_R0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_DEBUG.local-envelope.step
-    local_discrete_step_sha256: b9aa9a22d608e89ca191e3e47e2bb0983323d2d0880f49ee5c7a3bf49459e4e6
+    local_discrete_step_sha256: ac3d2a5f7598cb5dc579228345c772d81242c864d6681e4b62adbaf1208c7157
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11023,7 +11023,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 59_D_USIM_USIM_ESD_LEVELSHIFT_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_USIM.local-envelope.step
-    local_discrete_step_sha256: 935bd093c5044f005996f37a380d53c990eefa76f69ae31869dfc140aa98dc72
+    local_discrete_step_sha256: 3fb8284f3e68199c74d3428bd829b002185aa923e67524ef0092f7a927c30d36
     local_discrete_step_bytes: 15572
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11054,7 +11054,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 60_U_ESIM_ESIM_LGA_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_ESIM.local-envelope.step
-    local_discrete_step_sha256: cca1663461e8f2bf41388bc0ff916c98d5ccaadea93d6a6ec6d609d58d81c3bc
+    local_discrete_step_sha256: 23f50bd3765133049e9bc0cd8a5743d21b6672567cf65f0a3d4df46d70be651d
     local_discrete_step_bytes: 15512
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11085,7 +11085,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 61_U_GNSS_RF_L0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_GNSS_RF.local-envelope.step
-    local_discrete_step_sha256: c27fd80f0512729c9cf7f7828a27da0bfc6fa1e3254088123aed0d85052a06ea
+    local_discrete_step_sha256: adcc5e4c9a5c1e1ef1976e5357bd6e0b2b738ac77b9d045092401d3c14f34d2c
     local_discrete_step_bytes: 15598
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11116,7 +11116,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 62_U_NFC_NFC_CONTROLLER_QFN_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_NFC.local-envelope.step
-    local_discrete_step_sha256: 950d40fb404e460c8b59794c3712a9c52dea7c4a2752ecadd52a7a6ded47eed7
+    local_discrete_step_sha256: 2c4fc4d4ada5f275779a4dffcab2b65ae7fea69bfac7d5f97be0b9e04f3eb3cd
     local_discrete_step_bytes: 15538
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11147,7 +11147,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 63_MN_NFC_NFC_LOOP_MATCH_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_NFC.local-envelope.step
-    local_discrete_step_sha256: f69d8ea3bfb00c1bbe20b456fb35fefd73fe487b63e211acb2d141a665a647f5
+    local_discrete_step_sha256: 550000fd59caa4110c621e9620c38b2cbab8968ded0ed51fff977e47cb804e0a
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11178,7 +11178,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 64_U_SENS_SENSOR_HUB_QFN_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_SENS.local-envelope.step
-    local_discrete_step_sha256: 1ab8f00696c47316a6bcc967ae94da607290e680b494e03face7e8f832fd7af6
+    local_discrete_step_sha256: bff5093a1db4335e5b0cb4f661868b990484b1c89f667fd3d67bdaa1644d67f6
     local_discrete_step_bytes: 15486
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11209,7 +11209,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 65_MN_CELL_MAIN_PI_MATCH_0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_CELL_MAIN.local-envelope.step
-    local_discrete_step_sha256: 6fa38140160d7b2433fb7b7c36c9296e666cb327421d3b9e4e9a79478f6c5f29
+    local_discrete_step_sha256: 21d8f9f24cc860c7b035937a6032c164598f405b7fe123182794f2666a3e7694
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11240,7 +11240,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 66_RFTP_CELL_MAIN_TESTPOINT_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_CELL_MAIN.local-envelope.step
-    local_discrete_step_sha256: 882f8ae2a57e10fe48dd0ea9705b5584b3ba040c286e8ec8f948d4fef9da1aae
+    local_discrete_step_sha256: a22475c463164e31182c52768ffb718a62334cfa0f7776ebe6a01f2ed57bef16
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11271,7 +11271,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 67_MN_CELL_DIV_PI_MATCH_0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_CELL_DIV.local-envelope.step
-    local_discrete_step_sha256: b9c36a4aafec9d877132bfede7f1b3d2735601b393ee6eaf367646fd33e0f39d
+    local_discrete_step_sha256: 2a6bd54ed50ba9c693a6d0173d2125e03fafc50f5f8e5899ef4f68e8ec3db050
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11302,7 +11302,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 68_RFTP_CELL_DIV_TESTPOINT_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_CELL_DIV.local-envelope.step
-    local_discrete_step_sha256: c8beb3ad9aefe4eaaa1c8ae3fd918271fc7128dac09762054024a19e7c015f3f
+    local_discrete_step_sha256: c4d71bb563f4cbab6da34849f912c4ec7bd0ea5d8ed97c32e044406d16097586
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11333,7 +11333,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 69_MN_GNSS_PI_MATCH_0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_GNSS.local-envelope.step
-    local_discrete_step_sha256: 9d0f313e6647503945d4e2f56837ed39bf642740a92db16ff3f83ed89becfac2
+    local_discrete_step_sha256: 98a375a99b909115c53e85188d1574acadf038af7e6fd7a6a10fe68818dccf83
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11364,7 +11364,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 70_RFTP_GNSS_TESTPOINT_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_GNSS.local-envelope.step
-    local_discrete_step_sha256: c21139d89490857a05339dc957be1bbfb91acf5495d4295ccb687f105d0e10e0
+    local_discrete_step_sha256: fa90a62f72c036b79fae5ef0f49d213cf9136d813c4d20349335186db007c4ec
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11395,7 +11395,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 71_MN_WIFI0_PI_MATCH_0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_WIFI0.local-envelope.step
-    local_discrete_step_sha256: e161c01abb684658218a062232bd091070a7973cdb94552fdee94ae75f4d9af9
+    local_discrete_step_sha256: 19a97804ec2143f517d22a2ff6d5641c7be86ed957fb628b6227d934c4a6c927
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11426,7 +11426,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 72_RFTP_WIFI0_TESTPOINT_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_WIFI0.local-envelope.step
-    local_discrete_step_sha256: 890b2e989c54680212f8d1a61305f660104d1c656d692efb86a406a9586c99a7
+    local_discrete_step_sha256: a9f3386ce06b2d4ba19ef233989d86fe92f14e19cf48addca64b4e1d25216885
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11457,7 +11457,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 73_MN_WIFI1_PI_MATCH_0402_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_WIFI1.local-envelope.step
-    local_discrete_step_sha256: 32378c777f0893aa9ca04241d4228200ffe430f427d6d29252695546d4735db1
+    local_discrete_step_sha256: 06108c62027e64362a6595311f8de5970cec58fad6b2da5f141d69223bca371e
     local_discrete_step_bytes: 15576
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11488,7 +11488,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 74_RFTP_WIFI1_TESTPOINT_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_WIFI1.local-envelope.step
-    local_discrete_step_sha256: 7431fc6394a7c81931d508fe248e68f79341af1339297f83b7da571ba7927990
+    local_discrete_step_sha256: 6708b74ba87c99fa51dd3023b7297664f3a719b9506cd49d0c4b436a1616649b
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11519,7 +11519,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 75_TP_VBUS_TESTPOINT_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_VBUS.local-envelope.step
-    local_discrete_step_sha256: 9ab3cabea058fb4bbca0cd68d0a54b718f7bb6a9134f1154e6994da0aac4ad5a
+    local_discrete_step_sha256: a8d2ec1cd38b7ccee17b3373828caf6b6a3ebf7d04facc63a5724619210cde25
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11550,7 +11550,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 76_TP_VBAT_TESTPOINT_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_VBAT.local-envelope.step
-    local_discrete_step_sha256: 5010d92be51bf21db0dbadb57faf8d9fca7d9c02dadc5462b5cabb914d496817
+    local_discrete_step_sha256: bb3d4ad0230d0af19442a82fd731b97904fd511166d976c3b25192f4dafa7ff6
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11581,7 +11581,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 77_TP_SYS_TESTPOINT_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_SYS.local-envelope.step
-    local_discrete_step_sha256: 7d23317fd114499b668ad4f5ac421087d984a67c9ab9cf588623be6170427a3e
+    local_discrete_step_sha256: 87cbd9ac1d9eaa8d5c49a5ba0676188c3479aace2706d9621e3e4b8aff68bf65
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11612,7 +11612,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 78_TP_AON_1V8_TESTPOINT_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_AON_1V8.local-envelope.step
-    local_discrete_step_sha256: 7549d7448d45b380227411b8d79aab75aa8983a89e378f23786157ef1a86ce16
+    local_discrete_step_sha256: 43e7dcc1ff73a77a0242b566867cbc00f799f8adc084a9c08c31dc38f67429e3
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11643,7 +11643,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 79_TP_IO_1V8_TESTPOINT_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_IO_1V8.local-envelope.step
-    local_discrete_step_sha256: 053e56d78c3d827b319aa8af07824670a58c018a62cd8797c551a24db3d560b3
+    local_discrete_step_sha256: 0c91043369f0f154e7e5a26d6c5ee71fab611d27dfc75b4c6b3fb87cbfd0f2c6
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11674,7 +11674,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 80_TP_RF_VBAT_TESTPOINT_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_RF_VBAT.local-envelope.step
-    local_discrete_step_sha256: 7f0722bee7e7148af9f8d0875b47017f0d6fcfe6989c931d594aa9682d3b6823
+    local_discrete_step_sha256: 0b05ca126519846b98a94f512b763a6804030fdce793b1d3820952eca5304d2b
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11705,7 +11705,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 81_TP_CAM_AVDD_2V8_TESTPOINT_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_CAM_AVDD_2V8.local-envelope.step
-    local_discrete_step_sha256: bf30980e2333d59d5cdedd2ed10b59984448886dc4a94889259fa8772783dccb
+    local_discrete_step_sha256: 0917ad2e2d2d808fc40e6a8948c1e4e68b44192ceeeb3dafa13cface113d36f9
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11736,7 +11736,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 82_TP_DISP_AVDD_5V5_TESTPOINT_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_DISP_AVDD_5V5.local-envelope.step
-    local_discrete_step_sha256: c04162eec0629f72a00c98133542535e030e2b4a5b9adfda8bccde5d94f8c40e
+    local_discrete_step_sha256: 04df0a92bf1131d7564949313fa297d0aa0ed897833024c3839554d59a30b88c
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11767,7 +11767,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 83_FID_TL_FIDUCIAL_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FID_TL.local-envelope.step
-    local_discrete_step_sha256: dc6a8ad1096cd864d944aa3f7c3463a19161df7d29035cda4dce78c63cdafa33
+    local_discrete_step_sha256: 00d0ba3095150b6901c3cd441b7da87a80ff30903fa94c4fa1f2c8a41e2bfea0
     local_discrete_step_bytes: 15628
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11798,7 +11798,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 84_FID_TR_FIDUCIAL_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FID_TR.local-envelope.step
-    local_discrete_step_sha256: 1e22a0038996d9f3ccc61acf817eb64b7ecad1352f4fcb5c237338f280e591e1
+    local_discrete_step_sha256: f7747a3527be4295a96a4b3030cc65f6f2a738daa8467f46fe5abd4d785fb649
     local_discrete_step_bytes: 15628
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11829,7 +11829,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 85_FID_BR_FIDUCIAL_1MM_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FID_BR.local-envelope.step
-    local_discrete_step_sha256: ee616bc0727a6f31ebdbd5598dfc26b998ad62ffb57981fcd4233029fd872209
+    local_discrete_step_sha256: 0076696120897e50e5b19b52189ec7092cc79c20d40a7d777ec6cafc6ffd2cc3
     local_discrete_step_bytes: 15628
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11860,7 +11860,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 86_MH_TL_MOUNTING_HOLE_1P2_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_TL.local-envelope.step
-    local_discrete_step_sha256: e65b3466745fa03cdcf905ad4fbe09826836ec57dc02655f59d3dcd6d5e9b769
+    local_discrete_step_sha256: 41bca4298d0c1bf50d8f6e0c7965e7a12e9804c2cc454c21a9cc7056136dfe0c
     local_discrete_step_bytes: 15636
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11891,7 +11891,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 87_MH_TR_MOUNTING_HOLE_1P2_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_TR.local-envelope.step
-    local_discrete_step_sha256: ee9a51546c413336e26e47356e58917776febd8280f4df3d59668fc988cb8fdf
+    local_discrete_step_sha256: d964800a9f127c595ddef15acc1d26bcf6e97b944a18c8ef93681562f7c542e0
     local_discrete_step_bytes: 15638
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11922,7 +11922,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 88_MH_BL_MOUNTING_HOLE_1P2_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_BL.local-envelope.step
-    local_discrete_step_sha256: e92eb9977cbc7d3a035b630dde2b71249a00b61ac82a6f282f693d28ac954f59
+    local_discrete_step_sha256: 2317cb9d7016686b9515edfcc049438f4fc2dcfafc6d211650f85cae00349d96
     local_discrete_step_bytes: 15638
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11953,7 +11953,7 @@ detailed_trace_manifests:
     npth_mechanical_feature_contract_matches_footprint: true
     combined_step_assembly_name: 89_MH_BR_MOUNTING_HOLE_1P2_DEV
     local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_BR.local-envelope.step
-    local_discrete_step_sha256: fb5ec041dc74710ef95b2b4317c12feccd83b448818030ff4a3eeecd739dee4c
+    local_discrete_step_sha256: 777536a4dcf1c343bb71b7ec17f665ed097e440532e9fe68e05b564aa9a345a0
     local_discrete_step_bytes: 15638
     local_discrete_step_imported_as_solid: true
     local_discrete_step_bbox_matches_envelope: true
@@ -11976,8 +11976,8 @@ detailed_trace_manifests:
     status: present_local_surrogate_step_not_supplier_approved
     file: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/supplier-model.step
     file_present: true
-    sha256: ef917c4cb8e6d5cb5ac4e64a1d0a3f6a47814ce0111d2684765549f30cf120bb
-    actual_sha256: ef917c4cb8e6d5cb5ac4e64a1d0a3f6a47814ce0111d2684765549f30cf120bb
+    sha256: 0c62a049e1606ff4c36cdb87b095d28dfa252ca853738b659e90d02475a56165
+    actual_sha256: 0c62a049e1606ff4c36cdb87b095d28dfa252ca853738b659e90d02475a56165
     bytes: 15716
     actual_bytes: 15716
     hash_matches_file: true
@@ -12017,8 +12017,8 @@ detailed_trace_manifests:
     status: present_local_surrogate_step_not_supplier_approved
     file: board/kicad/e1-phone/production/sourcing/battery_pack/supplier-model.step
     file_present: true
-    sha256: 717488d8096fcaaf2fd156237fbaf00a64be819fcf160de93cfc98541f19e30f
-    actual_sha256: 717488d8096fcaaf2fd156237fbaf00a64be819fcf160de93cfc98541f19e30f
+    sha256: 3c5c6d1c07780785ec9aca4e43c8ff22cecf338dc367bff54ea3d137a4d11854
+    actual_sha256: 3c5c6d1c07780785ec9aca4e43c8ff22cecf338dc367bff54ea3d137a4d11854
     bytes: 15574
     actual_bytes: 15574
     hash_matches_file: true
@@ -12043,8 +12043,8 @@ detailed_trace_manifests:
     status: present_local_surrogate_step_not_supplier_approved
     file: board/kicad/e1-phone/production/sourcing/cellular/supplier-model.step
     file_present: true
-    sha256: f0a853a2bcbcaaab7527919846f4642bf7ed6e52a45c66638a714ce12b4b3a60
-    actual_sha256: f0a853a2bcbcaaab7527919846f4642bf7ed6e52a45c66638a714ce12b4b3a60
+    sha256: e1060557559314cdf23828377cddd39886da400a9225a16b7b31387bbc9c41f6
+    actual_sha256: e1060557559314cdf23828377cddd39886da400a9225a16b7b31387bbc9c41f6
     bytes: 15608
     actual_bytes: 15608
     hash_matches_file: true
@@ -12083,8 +12083,8 @@ detailed_trace_manifests:
     status: present_local_surrogate_step_not_supplier_approved
     file: board/kicad/e1-phone/production/sourcing/charger_power_path/supplier-model.step
     file_present: true
-    sha256: 0fa10af76893c2f35c5eb61bb78e67aced35d3a41d3fa26a0e569c1521a0e80e
-    actual_sha256: 0fa10af76893c2f35c5eb61bb78e67aced35d3a41d3fa26a0e569c1521a0e80e
+    sha256: ffab779464b904c0307de00582151916c726c50b989b2be94fac0fe57b523034
+    actual_sha256: ffab779464b904c0307de00582151916c726c50b989b2be94fac0fe57b523034
     bytes: 15600
     actual_bytes: 15600
     hash_matches_file: true
@@ -12106,8 +12106,8 @@ detailed_trace_manifests:
     status: present_local_surrogate_step_not_supplier_approved
     file: board/kicad/e1-phone/production/sourcing/display_touch/supplier-model.step
     file_present: true
-    sha256: 921f7cae783ae936946c61cad1c0086806d8aa8b119d0348a05b32c849d72fb9
-    actual_sha256: 921f7cae783ae936946c61cad1c0086806d8aa8b119d0348a05b32c849d72fb9
+    sha256: 068f99d9dfcd5f0c6a97ecd1729046fb4dac3b1c364766e21bc43e54b404ca8e
+    actual_sha256: 068f99d9dfcd5f0c6a97ecd1729046fb4dac3b1c364766e21bc43e54b404ca8e
     bytes: 15660
     actual_bytes: 15660
     hash_matches_file: true
@@ -12134,8 +12134,8 @@ detailed_trace_manifests:
     status: present_local_surrogate_step_not_supplier_approved
     file: board/kicad/e1-phone/production/sourcing/front_camera/supplier-model.step
     file_present: true
-    sha256: ca0cc98eb409986980bccdcfbaeeb47dda482126b645b0c14d7a733b85e0fcf8
-    actual_sha256: ca0cc98eb409986980bccdcfbaeeb47dda482126b645b0c14d7a733b85e0fcf8
+    sha256: 1d2b4c09fdc59a36e6bbac7f3ebb390c6638ce9b739afa5e48223432678e2240
+    actual_sha256: 1d2b4c09fdc59a36e6bbac7f3ebb390c6638ce9b739afa5e48223432678e2240
     bytes: 15574
     actual_bytes: 15574
     hash_matches_file: true
@@ -12160,8 +12160,8 @@ detailed_trace_manifests:
     status: present_local_surrogate_step_not_supplier_approved
     file: board/kicad/e1-phone/production/sourcing/pmic/supplier-model.step
     file_present: true
-    sha256: 45bc35d9bfa63af05183556f6eca48a7d6592b621ee770887df1b5542f395917
-    actual_sha256: 45bc35d9bfa63af05183556f6eca48a7d6592b621ee770887df1b5542f395917
+    sha256: 2591aa5e429168790c524a9f6856ed36cbb0b3db14d5df1a017fb377f8077a41
+    actual_sha256: 2591aa5e429168790c524a9f6856ed36cbb0b3db14d5df1a017fb377f8077a41
     bytes: 15694
     actual_bytes: 15694
     hash_matches_file: true
@@ -12200,8 +12200,8 @@ detailed_trace_manifests:
     status: present_local_surrogate_step_not_supplier_approved
     file: board/kicad/e1-phone/production/sourcing/rear_camera/supplier-model.step
     file_present: true
-    sha256: 69c34c7ba8eabf3fa108131e3fcec91759a8d354c5e03c3da41a92160356711f
-    actual_sha256: 69c34c7ba8eabf3fa108131e3fcec91759a8d354c5e03c3da41a92160356711f
+    sha256: 8239ceec02a777dde7e207a5f31d9894c58a63f15f79daa75df604938980d4c5
+    actual_sha256: 8239ceec02a777dde7e207a5f31d9894c58a63f15f79daa75df604938980d4c5
     bytes: 15574
     actual_bytes: 15574
     hash_matches_file: true
@@ -12226,8 +12226,8 @@ detailed_trace_manifests:
     status: present_local_surrogate_step_not_supplier_approved
     file: board/kicad/e1-phone/production/sourcing/side_buttons/supplier-model.step
     file_present: true
-    sha256: 88c7ef04ef7f83b52308a5d10ecdeb50a580809e3e68f6bd86ec48d172cc78ff
-    actual_sha256: 88c7ef04ef7f83b52308a5d10ecdeb50a580809e3e68f6bd86ec48d172cc78ff
+    sha256: 6b206a71ab14c8694a6b4e9c6c18538e96326cb4f5ed3a08fd9791be8b091c0f
+    actual_sha256: 6b206a71ab14c8694a6b4e9c6c18538e96326cb4f5ed3a08fd9791be8b091c0f
     bytes: 15716
     actual_bytes: 15716
     hash_matches_file: true
@@ -12255,8 +12255,8 @@ detailed_trace_manifests:
     status: present_local_surrogate_step_not_supplier_approved
     file: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/supplier-model.step
     file_present: true
-    sha256: 4dd6703bcd958c92eb0575931427455148c70bf65b2965a009b26c045aa2b3c8
-    actual_sha256: 4dd6703bcd958c92eb0575931427455148c70bf65b2965a009b26c045aa2b3c8
+    sha256: a81c77438e046589e4a52f5efb50fc643edd7956978061f9ad300b78250bf09e
+    actual_sha256: a81c77438e046589e4a52f5efb50fc643edd7956978061f9ad300b78250bf09e
     bytes: 15546
     actual_bytes: 15546
     hash_matches_file: true
@@ -12280,8 +12280,8 @@ detailed_trace_manifests:
     status: present_local_surrogate_step_not_supplier_approved
     file: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/supplier-model.step
     file_present: true
-    sha256: 18f91ceec205806532d45f2507f37ecfb6484fd5ea3c255efa82434a0e5f2940
-    actual_sha256: 18f91ceec205806532d45f2507f37ecfb6484fd5ea3c255efa82434a0e5f2940
+    sha256: 735949c2c8d4351a43cacb3be8df98ecd2c629ab1bfc30abfe8ebe45bda22c17
+    actual_sha256: 735949c2c8d4351a43cacb3be8df98ecd2c629ab1bfc30abfe8ebe45bda22c17
     bytes: 15576
     actual_bytes: 15576
     hash_matches_file: true
@@ -12303,8 +12303,8 @@ detailed_trace_manifests:
     status: present_local_surrogate_step_not_supplier_approved
     file: board/kicad/e1-phone/production/sourcing/usb_pd_controller/supplier-model.step
     file_present: true
-    sha256: 01be3d25657e640748c8c97e9c42ef11e60d5ebf89d0573cf2b7212c3359e58e
-    actual_sha256: 01be3d25657e640748c8c97e9c42ef11e60d5ebf89d0573cf2b7212c3359e58e
+    sha256: d89582268dfe12f76a0e26b445e7d94a4075f36751123a40539abf25e4d1f8ec
+    actual_sha256: d89582268dfe12f76a0e26b445e7d94a4075f36751123a40539abf25e4d1f8ec
     bytes: 15538
     actual_bytes: 15538
     hash_matches_file: true
@@ -12326,8 +12326,8 @@ detailed_trace_manifests:
     status: present_local_surrogate_step_not_supplier_approved
     file: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/supplier-model.step
     file_present: true
-    sha256: 581f7d06347735f5918ea73eb3c70b6e59190635c1426691851b2460ec13b967
-    actual_sha256: 581f7d06347735f5918ea73eb3c70b6e59190635c1426691851b2460ec13b967
+    sha256: b0fd37b6e734520e8939fe4f0499da0edcebd2d9f4f4a273ca853358ebe22782
+    actual_sha256: b0fd37b6e734520e8939fe4f0499da0edcebd2d9f4f4a273ca853358ebe22782
     bytes: 15640
     actual_bytes: 15640
     hash_matches_file: true
