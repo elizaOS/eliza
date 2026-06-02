@@ -965,7 +965,9 @@ export async function interact(
   params?: Record<string, unknown>,
 ): Promise<unknown> {
   if (capability === "terminal-list-threads") {
-    const state = await loadMessagesState(normalizeMessagesLimit(params?.limit));
+    const state = await loadMessagesState(
+      normalizeMessagesLimit(params?.limit),
+    );
     return {
       viewType: "tui",
       threads: state.threads.map((thread) => ({
