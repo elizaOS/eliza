@@ -15,7 +15,7 @@ intake_metadata:
   review_id: local-routed-candidate-clearance-intake-2026-05-28
   board_revision: EVT1-routed-first-article
   routed_pcb_path: packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
-  routed_pcb_sha256: f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f
+  routed_pcb_sha256: 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b
   routed_board_step_path: packages/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
   routed_board_step_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
   routed_board_step_size_bytes: 33644081

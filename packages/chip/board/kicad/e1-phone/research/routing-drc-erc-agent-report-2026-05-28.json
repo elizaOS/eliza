@@ -36,8 +36,8 @@
     "existing_candidate_erc_json": "packages/chip/board/kicad/e1-phone/production/reports/erc.json"
   },
   "file_hashes": {
-    "routed_candidate_board_sha256": "f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f",
-    "real_footprint_development_board_sha256": "f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f",
+    "routed_candidate_board_sha256": "158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b",
+    "real_footprint_development_board_sha256": "158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b",
     "schematic_sha256": "e00ee14ca4e49ff754b788ebf534bf141a525b9ae2ed72df2716b7d10c345df5",
     "candidate_board_matches_development_board": true
   },
@@ -81,7 +81,7 @@
     },
     {
       "command": "sha256sum packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb packages/chip/board/kicad/e1-phone/schematic/e1-phone.kicad_sch",
-      "summary": "The routed candidate board and real-footprint development board have identical SHA-256 f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f; the schematic SHA-256 is e00ee14ca4e49ff754b788ebf534bf141a525b9ae2ed72df2716b7d10c345df5.",
+      "summary": "The routed candidate board and real-footprint development board have identical SHA-256 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b; the schematic SHA-256 is e00ee14ca4e49ff754b788ebf534bf141a525b9ae2ed72df2716b7d10c345df5.",
       "exit_code": 0
     },
     {

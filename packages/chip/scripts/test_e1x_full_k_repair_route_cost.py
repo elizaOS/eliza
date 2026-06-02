@@ -33,6 +33,6 @@ def test_e1x_full_k_repair_route_cost_gate_passes() -> None:
     assert summary["hyper_dense_high_vs_normal_remap_distance_ratio"] > 5.0
     assert (
         summary["route_cost_ladder_sha256"]
-        == "21bc811a87936ae2da3546ddc491a7129bdbd13f0804b1748c9d754d6ed47123"
+        == "0580b6c27b4aa4347ffcf0e167b251cb1b6c85444947fb58dda5989d2ba5e1dc"
     )
     assert summary["residual_blocker"] == "full_output_real_weight_checksum_missing"

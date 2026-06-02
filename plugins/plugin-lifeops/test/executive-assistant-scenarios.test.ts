@@ -8,6 +8,9 @@ const scenarioDir = resolve(here, "scenarios");
 
 const requiredScenarioIds = [
   "bill-approval-and-payment",
+  "board-meeting-prebrief-risk-register",
+  "childcare-backup-plan",
+  "conference-agenda-relationship-map",
   "daily-brief-cross-channel",
   "delegation-map-status-compression",
   "document-signature-chase",
@@ -16,6 +19,7 @@ const requiredScenarioIds = [
   "group-chat-handoff-proposal",
   "hiring-loop-candidate-coordination",
   "home-repair-contractor-coordination",
+  "household-move-utilities-transfer",
   "insurance-claim-paperwork",
   "investor-update-digest",
   "legal-deadline-redline",
@@ -23,7 +27,9 @@ const requiredScenarioIds = [
   "passport-renewal-travel-readiness",
   "priority-triage-mixed-sources",
   "privacy-redaction-forward",
+  "recurring-report-chase-metrics",
   "school-family-calendar-carpool",
+  "security-incident-account-lockdown",
   "subscription-cancel-save",
   "tax-deadline-prep",
   "travel-blackout-bulk-reschedule",
@@ -67,7 +73,7 @@ describe("executive assistant scenario coverage", () => {
   it("keeps expanding LifeOps beyond habit reminders", () => {
     const files = scenarioFiles();
 
-    expect(files.length).toBeGreaterThanOrEqual(50);
+    expect(files.length).toBeGreaterThanOrEqual(56);
     for (const id of requiredScenarioIds) {
       expect(files).toContain(`${id}.scenario.ts`);
       expect(readScenario(id)).toContain("executive-assistant");
