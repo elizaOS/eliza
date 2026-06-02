@@ -9,6 +9,7 @@ import {
 import { useAgentElement } from "../../agent-surface";
 import { fetchWithCsrf } from "../../api/csrf-client";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
+import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useApp } from "../../state";
@@ -219,7 +220,14 @@ export function DesktopWorkspaceSection({
     }
   }, [desktopRuntime]);
 
+  const documentVisible = useDocumentVisibility();
   useEffect(() => {
+    // The 2s dev-diagnostics poll (/api/dev/stack + /api/dev/console-log) is
+    // aggressive; run it only while the document is visible so a backgrounded
+    // window stops polling entirely. Refreshes once on becoming visible.
+    if (!documentVisible) {
+      return;
+    }
     void refreshDevDiagnostics();
     if (!desktopRuntime) {
       return;
@@ -232,7 +240,7 @@ export function DesktopWorkspaceSection({
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [desktopRuntime, refreshDevDiagnostics]);
+  }, [desktopRuntime, documentVisible, refreshDevDiagnostics]);
 
   const runAction = useCallback(
     async (
