@@ -111,7 +111,7 @@ export function buildVerificationPrompt(input: GoalVerificationInput): string {
     "Respond with a SINGLE JSON object and nothing else. Do not wrap it in ```. Schema:",
     '{ "passed": <true|false>, "summary": "<one sentence under 200 chars>", "missing": ["<criterion text that was NOT confirmed>", ...] }',
     "",
-    '`passed` MUST be false whenever `missing` is non-empty.',
+    "`passed` MUST be false whenever `missing` is non-empty.",
     "If every criterion is confirmed, `missing` must be an empty array and `passed` true.",
   ].join("\n");
 }
