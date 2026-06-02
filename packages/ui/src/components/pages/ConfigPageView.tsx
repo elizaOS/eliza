@@ -6,6 +6,7 @@
  *   2. Secrets (modal)
  */
 
+import { Check } from "lucide-react";
 import {
   buildWalletRpcUpdateRequest,
   resolveInitialWalletRpcSelections,
@@ -430,7 +431,7 @@ export function ConfigPageView({
             </span>
             {rpcMode === "cloud" && (
               <span className="absolute top-3 right-3 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-2xs font-bold text-accent-fg">
-                {"\u2713"}
+                <Check className="h-3 w-3" aria-hidden />
               </span>
             )}
           </Button>
@@ -478,7 +479,7 @@ export function ConfigPageView({
             </span>
             {rpcMode === "custom" && (
               <span className="absolute top-3 right-3 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-2xs font-bold text-accent-fg">
-                ✓
+                <Check className="h-3 w-3" aria-hidden />
               </span>
             )}
           </Button>
