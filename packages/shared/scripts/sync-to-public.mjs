@@ -27,6 +27,7 @@
 
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   readdirSync,
   rmSync,
@@ -159,10 +160,13 @@ if (include.background) {
   synced.push(includeBackgroundVideos ? "background+videos" : "background");
 }
 if (includeClouds) {
-  copyDirClean(
-    join(ASSETS_ROOT, "clouds"),
-    join(resolvedTarget, "clouds"),
-    (entry) => {
+  // Asset trees that are not part of the git checkout (e.g. the optional
+  // `clouds/` directory on a fresh sparse checkout) must not hard-fail the
+  // consumer's prebuild. Skip with a synced-list breadcrumb instead so the
+  // caller's log makes the absence obvious.
+  const cloudsSrc = join(ASSETS_ROOT, "clouds");
+  if (existsSync(cloudsSrc)) {
+    copyDirClean(cloudsSrc, join(resolvedTarget, "clouds"), (entry) => {
       if (entry.startsWith("poster-")) {
         return /^poster-(?:640|960)\.jpg$/.test(entry);
       }
@@ -171,13 +175,15 @@ if (includeClouds) {
       return [...selectedCloudSpeeds].some((speed) =>
         entry.startsWith(`clouds_${speed}_`),
       );
-    },
-  );
-  synced.push(
-    selectedCloudSpeeds
-      ? `clouds(${[...selectedCloudSpeeds].join(",")})`
-      : "clouds",
-  );
+    });
+    synced.push(
+      selectedCloudSpeeds
+        ? `clouds(${[...selectedCloudSpeeds].join(",")})`
+        : "clouds",
+    );
+  } else {
+    synced.push("clouds(skipped:missing-source)");
+  }
 }
 
 console.log(
