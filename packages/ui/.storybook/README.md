@@ -44,7 +44,8 @@ bun run --cwd packages/ui build-storybook  # static build
    These are valid CSF + Biome-clean + correctly wired (mock state via
    `mockApp({...})`); render-verification is pending a resourced build.
 3. **Feature-surface stories coupled to `@elizaos/core` can't render in the
-   browser catalog yet.** Components that transitively `import { logger } from
+   browser catalog yet** (tracked: elizaOS/eliza#8177). Components that
+   transitively `import { logger } from
    "@elizaos/core"` drag in core's **Node** entry. The clearest path is
    `state/TranslationContext` → `state/persistence` (`import { logger } from
    "@elizaos/core"`), which every `useTranslation()` component hits — i.e. the
