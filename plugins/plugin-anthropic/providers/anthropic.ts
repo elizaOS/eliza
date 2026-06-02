@@ -102,8 +102,13 @@ function createOAuthFetch(innerFetch?: FetchWithOptionalPreconnect): typeof fetc
   ) satisfies typeof fetch;
 }
 
-function getApiKeyOrPlaceholder(runtime: IAgentRuntime, useOAuth: boolean): string | undefined {
-  if (useOAuth) return "oauth-placeholder";
+const OAUTH_SDK_API_KEY_SENTINEL = "oauth-bearer-auth";
+
+function getApiKeyForSdk(runtime: IAgentRuntime, useOAuth: boolean): string | undefined {
+  // The Anthropic AI SDK requires a non-empty apiKey option even when the
+  // request auth is supplied by a custom fetch implementation. OAuth mode
+  // deletes the SDK x-api-key header and injects the Bearer token per request.
+  if (useOAuth) return OAUTH_SDK_API_KEY_SENTINEL;
   return isBrowser() ? undefined : (getApiKeyOptional(runtime) ?? undefined);
 }
 
@@ -146,7 +151,7 @@ export function createAnthropicClientWithTopPSupport(runtime: IAgentRuntime) {
   const finalFetch = useOAuth ? createOAuthFetch(topPFetch) : topPFetch;
 
   return createAnthropic({
-    apiKey: getApiKeyOrPlaceholder(runtime, useOAuth),
+    apiKey: getApiKeyForSdk(runtime, useOAuth),
     baseURL: getBaseURL(runtime),
     fetch: finalFetch,
   });
