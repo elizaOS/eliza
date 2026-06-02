@@ -52,7 +52,13 @@ describe("LifeOps visual copy", () => {
 
     expect(source).toContain("LifeOpsOverviewAssistantDock");
     expect(source).toContain("lifeops-overview-assistant-dock");
+    expect(source).toContain("lifeops-overview-signals");
+    expect(source).not.toContain('title="Sleep"');
+    expect(source).not.toContain('title="Screen Time"');
+    expect(source).not.toContain('title="Social"');
     expect(source).not.toContain("Loading dashboard");
+    expect(source).not.toContain("Reading screen time");
+    expect(source).not.toContain("Weekly comparison unavailable");
   });
 
   it("keeps desktop navigation compact and active-label only", () => {

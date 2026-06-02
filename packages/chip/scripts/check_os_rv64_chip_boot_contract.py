@@ -59,6 +59,14 @@ GENERATED_AP_CAPTURE_WRAPPER = (
 CPU_AP_CAPTURE_COMMAND_DERIVER = (
     "python3 packages/chip/scripts/wire_cpu_ap_capture_commands.py --format json"
 )
+CPU_AP_CAPTURE_SHELL_DERIVER = (
+    "python3 packages/chip/scripts/wire_cpu_ap_capture_commands.py --format shell"
+)
+GENERATED_AP_BOOT_CAPTURE_COMMAND = (
+    f'eval "$({CPU_AP_CAPTURE_SHELL_DERIVER})" && '
+    'ELIZA_GENERATED_AP_CHIP_BOOT_CMD="$ELIZA_LINUX_BOOT_CMD" '
+    f"{GENERATED_AP_CAPTURE_WRAPPER} run"
+)
 STAGE_RISCV64_AGENT_RUNTIME_COMMAND = (
     "make -C packages/os/linux/elizaos stage-agent-artifacts ARCH=riscv64 "
     "RISCV64_RUNTIME=node && "
@@ -214,13 +222,9 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
                 "id": "capture_generated_ap_boot_and_agent",
                 "scope": "host",
                 "claim_boundary": "generated_eliza_ap_chip_emulator_required_no_qemu_virt_substitution",
-                "command": (
-                    "ELIZA_GENERATED_AP_CHIP_BOOT_CMD='<command from derive_generated_ap_boot_command>' "
-                    "ELIZA_GENERATED_AP_CHIP_AGENT_CMD='<target agent/TUI probe command if not in boot transcript>' "
-                    f"{GENERATED_AP_CAPTURE_WRAPPER} run"
-                ),
+                "command": GENERATED_AP_BOOT_CAPTURE_COMMAND,
                 "requires": [
-                    "real generated Eliza AP/chip-emulator boot command",
+                    "real generated Eliza AP/chip-emulator boot command derived from current wiring",
                     "serial transcript containing OpenSBI, Linux, and elizaos-firstboot-ready",
                     "agent/TUI transcript containing service, process, /api/health, and elizaos-tui-ready",
                 ],
@@ -379,9 +383,32 @@ def finding_payload(finding: Finding, command_plan: list[dict[str, object]]) -> 
         if command_id in commands_by_id
     ]
     if commands:
-        row["next_command"] = commands[0]
+        row["next_command"] = preferred_finding_command(finding.code, commands)
         row["next_commands"] = commands
     return row
+
+
+def preferred_finding_command(code: str, commands: list[str]) -> str:
+    if code.startswith("agent_live") or code in {
+        "missing_agent_live_evidence_row",
+        "riscv64_agent_runtime_smoke_not_pass",
+    }:
+        return next(
+            (
+                command
+                for command in commands
+                if "stage-agent-artifacts ARCH=riscv64" in command
+            ),
+            commands[0],
+        )
+    return next(
+        (
+            command
+            for command in commands
+            if "capture-generated-ap-chip-evidence.sh run" in command
+        ),
+        commands[0],
+    )
 
 
 def read_text(path: Path) -> str:

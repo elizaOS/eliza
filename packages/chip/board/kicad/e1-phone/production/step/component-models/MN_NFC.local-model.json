@@ -20,7 +20,7 @@
   "expected_supplier_brep_or_step_status": "missing_supplier_approved_discrete_component_model",
   "expected_supplier_step_file": "MN_NFC.step",
   "footprint": "NFC_LOOP_MATCH_DEV",
-  "land_pattern_basis": "",
+  "land_pattern_basis": "local five-terminal NFC loop matching development pattern; pending antenna tuning and selected matching network",
   "layer": "F.Cu",
   "local_discrete_step_bbox_matches_envelope": true,
   "local_discrete_step_bbox_mm": {
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/MN_NFC.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "8e7b5f0e6684fd60dfccbdaa7b4a6668e4bba37d3ff81e3dd2345743d9306492",
+  "local_discrete_step_sha256": "8f35f68afdf4feaa135d68eb24f684d816aca8f476af2ee97ebbebae12cbce21",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

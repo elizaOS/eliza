@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/FL_CHG_IN.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "ace4a7dbbf8dc21f6c33b0b3d2a4e8ddbb730f0e7590a0a6c2d588d32c4f6564",
+  "local_discrete_step_sha256": "00e7df74307543562117089e41366f9888efefe85e5f60cf9bd368d50e91d749",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

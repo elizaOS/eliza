@@ -210,8 +210,9 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
             for finding in report["findings"]
             if finding["code"] == "missing_chip_target_boot_evidence_row"
         )
-        self.assertIn("wire_cpu_ap_capture_commands.py", missing_boot["next_command"])
-        self.assertIn("capture-generated-ap-chip-evidence.sh", missing_boot["next_commands"][1])
+        self.assertIn("capture-generated-ap-chip-evidence.sh run", missing_boot["next_command"])
+        self.assertIn("wire_cpu_ap_capture_commands.py --format json", missing_boot["next_commands"][0])
+        self.assertIn("wire_cpu_ap_capture_commands.py --format shell", missing_boot["next_command"])
         missing_agent = next(
             finding
             for finding in report["findings"]
@@ -248,6 +249,7 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
         )
         self.assertIn("capture-generated-ap-chip-evidence.sh", generated_ap_capture["command"])
         self.assertIn("ELIZA_GENERATED_AP_CHIP_BOOT_CMD", generated_ap_capture["command"])
+        self.assertIn("wire_cpu_ap_capture_commands.py --format shell", generated_ap_capture["command"])
         derive = next(
             item
             for item in report["next_command_plan"]

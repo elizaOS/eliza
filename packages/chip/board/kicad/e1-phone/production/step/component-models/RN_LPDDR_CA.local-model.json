@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/RN_LPDDR_CA.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "849900d69a5ea9b992871bc331b22a920e9ba27248975f40e041ee418d64b32b",
+  "local_discrete_step_sha256": "e70fef80a0c0acb9ad085cffa4c606d8f466733d056847aa5bed75c1d79d9064",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

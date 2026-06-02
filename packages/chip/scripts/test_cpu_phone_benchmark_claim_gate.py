@@ -1643,6 +1643,49 @@ def test_report_target_execution_transcript_hash_mismatch_blocks_claim() -> None
     print("PASS report target transcript hash mismatch blocks phone CPU claim")
 
 
+def test_report_level_findings_are_actionable() -> None:
+    tmp, root = with_temp_root()
+    with tmp:
+        report_path = populate_valid_root(root)
+        payload = valid_benchmark_report()
+        payload["artifacts"] = {}
+        payload["claim_level"] = "L2_ARCH_SIM"
+        payload["dry_run"] = True
+        payload["results"] = [
+            {
+                "name": "lmbench_bw_mem",
+                "status": "blocked",
+                "blocked_requirements": [
+                    {"id": "target.raw_output", "status": "missing"},
+                ],
+            }
+        ]
+        write_json(report_path, payload)
+        report = gate.build_report(report_path)
+        report_level = [
+            item
+            for item in report["findings"]
+            if item["name"] in {
+                "benchmark_report_schema",
+                "benchmark_report_claim_level",
+                "benchmark_report_dry_run",
+                "lmbench_bw_mem",
+                "lmbench_lat_mem_rd",
+            }
+        ]
+        if not report_level:
+            raise AssertionError(report["findings"])
+        for finding in report_level:
+            if finding.get("next_command") != gate.CPU_PHONE_REPORT_COMMAND:
+                raise AssertionError(finding)
+            if finding.get("requirements") != gate.CPU_PHONE_REPORT_REQUIREMENTS:
+                raise AssertionError(finding)
+        plan_names = {row["id"] for row in report["next_command_plan"]}
+        if "capture_cpu_phone_benchmark_report_schema_benchmark_evidence" not in plan_names:
+            raise AssertionError(report["next_command_plan"])
+    print("PASS report-level benchmark blockers carry actionable report command")
+
+
 def test_coremark_side_result_requires_binary_calibration_asset() -> None:
     tmp, root = with_temp_root()
     with tmp:
@@ -1730,6 +1773,7 @@ def main() -> None:
     test_l5_l6_rollup_schema_validator_rejects_drift()
     test_report_process_contract_hash_mismatch_blocks_claim()
     test_report_target_execution_transcript_hash_mismatch_blocks_claim()
+    test_report_level_findings_are_actionable()
     test_coremark_side_result_requires_binary_calibration_asset()
     test_dhrystone_and_jetstream_side_results_require_binary_assets()
 

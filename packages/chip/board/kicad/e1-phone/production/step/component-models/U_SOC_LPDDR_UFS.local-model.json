@@ -20,7 +20,7 @@
   "expected_supplier_brep_or_step_status": "missing_supplier_approved_discrete_component_model",
   "expected_supplier_step_file": "U_SOC_LPDDR_UFS.step",
   "footprint": "SODIMM_260P_0P5_COMPUTE_SOM_DEV",
-  "land_pattern_basis": "",
+  "land_pattern_basis": "public 260-position SoM connector count with local dual-row development footprint; pending selected connector and SoM pin-order drawing",
   "layer": "F.Cu",
   "local_discrete_step_bbox_matches_envelope": true,
   "local_discrete_step_bbox_mm": {
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/U_SOC_LPDDR_UFS.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "818d7883a87a7d8b13e615dabb188189214379ee2b0464c9d3fd1b451691ca85",
+  "local_discrete_step_sha256": "7e85c4de2588cae65a0309c3968d763128cccfb0855b03a9918785335c6454da",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

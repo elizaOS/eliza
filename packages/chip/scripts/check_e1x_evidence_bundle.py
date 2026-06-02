@@ -42,6 +42,10 @@ REQUIRED_REPORTS = {
     / "build/reports/e1x_ultra_dense_stratified_full_k_repair_execution.json",
     "hyper_dense_stratified_full_k_repair_execution": ROOT
     / "build/reports/e1x_hyper_dense_stratified_full_k_repair_execution.json",
+    "full_k_repair_coverage_ladder": ROOT
+    / "build/reports/e1x_full_k_repair_coverage_ladder.json",
+    "full_k_repair_kind_coverage": ROOT
+    / "build/reports/e1x_full_k_repair_kind_coverage.json",
     "full_norm_real_weight_rows": ROOT / "build/reports/e1x_full_norm_real_weight_rows.json",
     "vocab_sampled_k_real_weight_rows": ROOT
     / "build/reports/e1x_vocab_sampled_k_real_weight_rows.json",
@@ -380,6 +384,8 @@ def main() -> int:
     hyper_dense_stratified_full_k_repair = reports.get(
         "hyper_dense_stratified_full_k_repair_execution", {}
     ).get("summary", {})
+    full_k_repair_ladder = reports.get("full_k_repair_coverage_ladder", {}).get("summary", {})
+    full_k_repair_kind = reports.get("full_k_repair_kind_coverage", {}).get("summary", {})
     full_norm_real_weight = reports.get("full_norm_real_weight_rows", {}).get("summary", {})
     vocab_sampled_k = reports.get("vocab_sampled_k_real_weight_rows", {}).get("summary", {})
     repaired_real_weight = reports.get("repaired_real_weight_execution", {}).get("summary", {})
@@ -1042,6 +1048,58 @@ def main() -> int:
             == "full_output_real_weight_checksum_missing"
             and int(hyper_dense_stratified_full_k_repair.get("failing_check_count", 1)) == 0,
             "hyper-dense 128-row repair-aware full-K execution doubles ultra-dense coverage while preserving route divergence",
+        ),
+        (
+            "full_k_repair_coverage_ladder_monotonic",
+            int(full_k_repair_ladder.get("rung_count", 0)) == 4
+            and int(full_k_repair_ladder.get("full_output_row_count", 0)) == 2_608_640
+            and int(full_k_repair_ladder.get("full_mac_count", 0)) == 13_015_864_320
+            and int(full_k_repair_ladder.get("max_repaired_full_k_row_count", 0)) == 36_224
+            and int(full_k_repair_ladder.get("max_repaired_full_k_mac_count", 0))
+            == 176_957_568
+            and 0.013
+            < float(full_k_repair_ladder.get("max_repaired_full_k_row_fraction", 0.0))
+            < 0.014
+            and 0.013
+            < float(full_k_repair_ladder.get("max_repaired_full_k_mac_fraction", 0.0))
+            < 0.014
+            and int(full_k_repair_ladder.get("missing_full_k_output_row_count", 0))
+            == 2_572_416
+            and int(full_k_repair_ladder.get("missing_full_k_mac_count", 0))
+            == 12_838_906_752
+            and float(full_k_repair_ladder.get("row_gain_vs_first_rung", 0.0)) == 8.0
+            and float(full_k_repair_ladder.get("mac_gain_vs_first_rung", 0.0)) == 8.0
+            and int(full_k_repair_ladder.get("max_touched_logical_core_count", 0)) == 25_937
+            and int(full_k_repair_ladder.get("max_high_failure_touched_remapped_rows", 0))
+            == 760
+            and full_k_repair_ladder.get("rung_summary_sha256")
+            == "d9f0a9cffa3338ba27f2f4996bd9082c6a38d5bb7ccdb9fd6ee85eb8e2f9bcd9"
+            and full_k_repair_ladder.get("residual_blocker")
+            == "full_output_real_weight_checksum_missing"
+            and int(full_k_repair_ladder.get("failing_check_count", 1)) == 0,
+            "full-K repair coverage ladder proves monotonic 16/32/64/128-row gains and preserves remaining full-output gap",
+        ),
+        (
+            "full_k_repair_kind_coverage_all_kinds",
+            int(full_k_repair_kind.get("rung_count", 0)) == 4
+            and int(full_k_repair_kind.get("kind_count", 0)) == 8
+            and int(full_k_repair_kind.get("hyper_dense_row_count", 0)) == 36_224
+            and int(full_k_repair_kind.get("hyper_dense_mac_count", 0)) == 176_957_568
+            and int(full_k_repair_kind.get("hyper_dense_touched_logical_core_count", 0))
+            == 25_937
+            and int(full_k_repair_kind.get("hyper_dense_normal_remapped_rows", 0)) == 44
+            and int(full_k_repair_kind.get("hyper_dense_high_failure_remapped_rows", 0)) == 760
+            and int(full_k_repair_kind.get("hyper_dense_embedding_rows", 0)) == 128
+            and int(full_k_repair_kind.get("hyper_dense_lm_head_rows", 0)) == 128
+            and int(full_k_repair_kind.get("hyper_dense_norm_rows", 0)) == 10_368
+            and int(full_k_repair_kind.get("hyper_dense_attn_qkv_macs", 0)) == 26_214_400
+            and int(full_k_repair_kind.get("hyper_dense_mlp_down_macs", 0)) == 70_778_880
+            and full_k_repair_kind.get("kind_rung_summary_sha256")
+            == "6d950882a3ecc98af6f0ae571a8c9715579b8850467694b18bcbf524976b4635"
+            and full_k_repair_kind.get("residual_blocker")
+            == "full_output_real_weight_checksum_missing"
+            and int(full_k_repair_kind.get("failing_check_count", 1)) == 0,
+            "full-K repair kind coverage proves every layer kind is represented and remap counts match executed rungs",
         ),
         (
             "full_norm_real_weight_rows_execute_whole_kind",
@@ -2044,6 +2102,62 @@ def main() -> int:
         ),
         "hyper_dense_stratified_full_k_repair_residual_blocker": str(
             hyper_dense_stratified_full_k_repair.get("residual_blocker", "")
+        ),
+        "full_k_repair_ladder_rungs": int(full_k_repair_ladder.get("rung_count", 0)),
+        "full_k_repair_ladder_max_rows": int(
+            full_k_repair_ladder.get("max_repaired_full_k_row_count", 0)
+        ),
+        "full_k_repair_ladder_max_macs": int(
+            full_k_repair_ladder.get("max_repaired_full_k_mac_count", 0)
+        ),
+        "full_k_repair_ladder_row_fraction": float(
+            full_k_repair_ladder.get("max_repaired_full_k_row_fraction", 0.0)
+        ),
+        "full_k_repair_ladder_mac_fraction": float(
+            full_k_repair_ladder.get("max_repaired_full_k_mac_fraction", 0.0)
+        ),
+        "full_k_repair_ladder_missing_rows": int(
+            full_k_repair_ladder.get("missing_full_k_output_row_count", 0)
+        ),
+        "full_k_repair_ladder_missing_macs": int(
+            full_k_repair_ladder.get("missing_full_k_mac_count", 0)
+        ),
+        "full_k_repair_ladder_row_gain": float(
+            full_k_repair_ladder.get("row_gain_vs_first_rung", 0.0)
+        ),
+        "full_k_repair_ladder_mac_gain": float(
+            full_k_repair_ladder.get("mac_gain_vs_first_rung", 0.0)
+        ),
+        "full_k_repair_ladder_sha256": str(
+            full_k_repair_ladder.get("rung_summary_sha256", "")
+        ),
+        "full_k_repair_ladder_residual_blocker": str(
+            full_k_repair_ladder.get("residual_blocker", "")
+        ),
+        "full_k_repair_kind_rungs": int(full_k_repair_kind.get("rung_count", 0)),
+        "full_k_repair_kind_count": int(full_k_repair_kind.get("kind_count", 0)),
+        "full_k_repair_kind_hyper_rows": int(full_k_repair_kind.get("hyper_dense_row_count", 0)),
+        "full_k_repair_kind_hyper_macs": int(full_k_repair_kind.get("hyper_dense_mac_count", 0)),
+        "full_k_repair_kind_hyper_touched_cores": int(
+            full_k_repair_kind.get("hyper_dense_touched_logical_core_count", 0)
+        ),
+        "full_k_repair_kind_hyper_high_failure_remaps": int(
+            full_k_repair_kind.get("hyper_dense_high_failure_remapped_rows", 0)
+        ),
+        "full_k_repair_kind_hyper_embedding_rows": int(
+            full_k_repair_kind.get("hyper_dense_embedding_rows", 0)
+        ),
+        "full_k_repair_kind_hyper_lm_head_rows": int(
+            full_k_repair_kind.get("hyper_dense_lm_head_rows", 0)
+        ),
+        "full_k_repair_kind_hyper_norm_rows": int(
+            full_k_repair_kind.get("hyper_dense_norm_rows", 0)
+        ),
+        "full_k_repair_kind_sha256": str(
+            full_k_repair_kind.get("kind_rung_summary_sha256", "")
+        ),
+        "full_k_repair_kind_residual_blocker": str(
+            full_k_repair_kind.get("residual_blocker", "")
         ),
         "full_norm_real_weight_layers": int(
             full_norm_real_weight.get("executed_norm_layer_count", 0)

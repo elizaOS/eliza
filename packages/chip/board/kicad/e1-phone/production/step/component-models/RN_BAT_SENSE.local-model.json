@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/RN_BAT_SENSE.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "e6787f57e4899a7f90f6922b3436f77eebff7209e0e5fb43799317546b52d8f8",
+  "local_discrete_step_sha256": "74e97695d18f6b0e24246c95e9e01a16f3ae131ef9b8bafa3fa696edec5ee2f5",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

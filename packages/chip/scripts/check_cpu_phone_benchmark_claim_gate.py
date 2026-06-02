@@ -845,6 +845,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                 "path": rel(report_path),
                 "status": "invalid",
                 "reason": "; ".join(validation_errors),
+                "next_command": CPU_PHONE_REPORT_COMMAND,
+                "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
             }
         )
 
@@ -870,6 +872,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                 "status": "blocked",
                 "reason": "claim_level must be L5_PROTOTYPE_SILICON or L6_COMPLETE_PHONE",
                 "claim_level": claim_level,
+                "next_command": CPU_PHONE_REPORT_COMMAND,
+                "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
             }
         )
 
@@ -880,6 +884,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                 "path": rel(report_path),
                 "status": "blocked",
                 "reason": "phone-class claim report must be a real run, not dry-run",
+                "next_command": CPU_PHONE_REPORT_COMMAND,
+                "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
             }
         )
 
@@ -898,7 +904,6 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
         )
 
     results = {item.get("name"): item for item in data.get("results", []) if isinstance(item, dict)}
-    results = {item.get("name"): item for item in data.get("results", []) if isinstance(item, dict)}
     for bench in sorted(REQUIRED_REPORT_BENCHES):
         result = results.get(bench)
         if result is None:
@@ -908,6 +913,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                     "path": rel(report_path),
                     "status": "missing",
                     "reason": "required lmbench result absent from report",
+                    "next_command": CPU_PHONE_REPORT_COMMAND,
+                    "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
                 }
             )
             continue
@@ -922,6 +929,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                     **(
                         {"blocked_requirements_summary": blocked_summary} if blocked_summary else {}
                     ),
+                    "next_command": CPU_PHONE_REPORT_COMMAND,
+                    "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
                 }
             )
             continue
@@ -939,6 +948,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                     "path": rel(report_path),
                     "status": "invalid",
                     "reason": "; ".join(raw_errors + metadata_errors),
+                    "next_command": CPU_PHONE_REPORT_COMMAND,
+                    "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
                 }
             )
             continue
@@ -952,6 +963,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                         "passed result must include measured provenance "
                         f"({', '.join(sorted(REQUIRED_SIDE_PROVENANCE))})"
                     ),
+                    "next_command": CPU_PHONE_REPORT_COMMAND,
+                    "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
                 }
             )
             continue
@@ -963,6 +976,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                     "path": rel(report_path),
                     "status": "invalid",
                     "reason": "; ".join(metric_errors),
+                    "next_command": CPU_PHONE_REPORT_COMMAND,
+                    "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
                 }
             )
             continue
@@ -974,6 +989,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                     "path": rel(report_path),
                     "status": "invalid",
                     "reason": "; ".join(calibration_errors),
+                    "next_command": CPU_PHONE_REPORT_COMMAND,
+                    "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
                 }
             )
             continue
@@ -985,6 +1002,8 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                     "path": rel(report_path),
                     "status": "invalid",
                     "reason": "; ".join(result_target_errors),
+                    "next_command": CPU_PHONE_REPORT_COMMAND,
+                    "requirements": CPU_PHONE_REPORT_REQUIREMENTS,
                 }
             )
             continue

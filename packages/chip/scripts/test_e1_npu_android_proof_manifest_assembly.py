@@ -118,6 +118,19 @@ def test_assembly_blocks_with_missing_artifacts() -> None:
             raise AssertionError(json.dumps(check_report, indent=2))
         if "not_android_boot" not in str(check_report.get("claim_boundary", "")):
             raise AssertionError(json.dumps(check_report, indent=2))
+        check_plan = check_report.get("next_command_plan", [])
+        if check_report.get("summary", {}).get("next_command_batch_count") != len(check_plan):
+            raise AssertionError(json.dumps(check_report, indent=2))
+        if len(check_plan) != 1:
+            raise AssertionError(json.dumps(check_report, indent=2))
+        check_batch = check_plan[0]
+        if check_batch.get("id") != "capture_e1_npu_android_proof_bundle":
+            raise AssertionError(json.dumps(check_batch, indent=2))
+        if not any(
+            "capture_e1_npu_android_proof_bundle.sh" in command
+            for command in check_batch.get("commands", [])
+        ):
+            raise AssertionError(json.dumps(check_batch, indent=2))
 
 
 def test_assembly_passes_with_all_artifacts() -> None:

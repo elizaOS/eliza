@@ -130,7 +130,8 @@ footprint_traceability:
   pinout_status: public_supplier_datasheet
   pinout_release_allowed: false
   coverage: exact_public_pin_table
-  land_pattern_basis: ''
+  land_pattern_basis: public MAX77860 WLP81 ball map with local 0.40mm WLP development grid; pending Analog
+    Devices package drawing and assembler DFM approval
   local_terminal_contract:
   - A1
   - A2
@@ -237,7 +238,8 @@ footprint_traceability:
   pinout_status: public_audio_interface_contract_pending_selected_codec_package_pinout
   pinout_release_allowed: false
   coverage: exact_public_audio_signal_contract_pending_selected_codec_pinout
-  land_pattern_basis: ''
+  land_pattern_basis: local QFN48 audio-codec development pattern from codec signal contract; pending
+    exact codec MPN land pattern and pinout
   local_terminal_contract:
   - '1'
   - '2'
@@ -311,7 +313,8 @@ footprint_traceability:
   pinout_status: public_backlight_bias_signal_contract_pending_selected_driver_pinout
   pinout_release_allowed: false
   coverage: exact_public_backlight_bias_signal_contract_pending_selected_driver_pinout
-  land_pattern_basis: ''
+  land_pattern_basis: local QFN24 backlight/bias power development pattern from display-power signal contract;
+    pending exact driver package selection
   local_terminal_contract:
   - '1'
   - '2'
@@ -361,7 +364,8 @@ footprint_traceability:
   pinout_status: public_pack_connector_signal_contract_pending_supplier_connector_pin_order
   pinout_release_allowed: false
   coverage: exact_public_pack_signal_contract_pending_supplier_pin_order
-  land_pattern_basis: ''
+  land_pattern_basis: local 4-pin 1.00mm battery-pack flex development pad row from pack signal contract;
+    pending pack supplier lead/connector drawing
   local_terminal_contract:
   - '1'
   - '2'
@@ -419,7 +423,8 @@ footprint_traceability:
   pinout_status: per_pin_fpc_pinout_requires_module_house_signed_drawing
   pinout_release_allowed: false
   coverage: signal_set_only_pending_signed_fpc_order
-  land_pattern_basis: ''
+  land_pattern_basis: local 24-pin 0.50mm rear-camera FPC development pad row from public CSI signal set;
+    pending signed camera FPC drawing
   local_terminal_contract:
   - '1'
   - '2'
@@ -469,7 +474,8 @@ footprint_traceability:
   pinout_status: per_pin_fpc_pinout_requires_module_house_signed_drawing
   pinout_release_allowed: false
   coverage: signal_set_only_pending_signed_fpc_order
-  land_pattern_basis: ''
+  land_pattern_basis: local 30-pin 0.50mm front-camera FPC development pad row from public CSI signal
+    set; pending signed camera FPC drawing
   local_terminal_contract:
   - '1'
   - '2'
@@ -525,7 +531,8 @@ footprint_traceability:
   pinout_status: per_pin_fpc_pinout_requires_module_house_signed_specification
   pinout_release_allowed: false
   coverage: signal_set_only_pending_signed_fpc_order
-  land_pattern_basis: ''
+  land_pattern_basis: local 40-pin 0.30mm display FPC development pad row from public signal set; pending
+    signed display FPC pin order and land-pattern drawing
   local_terminal_contract:
   - '1'
   - '2'
@@ -623,7 +630,8 @@ footprint_traceability:
   pinout_status: public_supplier_datasheet
   pinout_release_allowed: false
   coverage: exact_public_mff2_esim_pin_table
-  land_pattern_basis: ''
+  land_pattern_basis: public MFF2/eSIM 8-pad pinout with local QFN/LGA development footprint; pending
+    eSIM supplier package drawing approval
   local_terminal_contract:
   - '1'
   - '2'
@@ -684,7 +692,8 @@ footprint_traceability:
   pinout_status: public_fuel_gauge_signal_contract_pending_selected_gauge_pinout
   pinout_release_allowed: false
   coverage: exact_public_fuel_gauge_signal_contract_pending_selected_gauge_pinout
-  land_pattern_basis: ''
+  land_pattern_basis: local WLCSP12 fuel-gauge development grid from battery gauge signal contract; pending
+    exact gauge ball map
   local_terminal_contract:
   - A1
   - A2
@@ -722,7 +731,8 @@ footprint_traceability:
   pinout_status: public_supplier_datasheet
   pinout_release_allowed: false
   coverage: exact_public_pin_table
-  land_pattern_basis: ''
+  land_pattern_basis: public USB4105 signal pinout with local 0.5mm receptacle development pad row; pending
+    GCT drawing/DFM land-pattern approval
   local_terminal_contract:
   - A1
   - A2
@@ -772,7 +782,8 @@ footprint_traceability:
   pinout_status: public_haptic_signal_contract_pending_selected_driver_pinout
   pinout_release_allowed: false
   coverage: exact_public_haptic_signal_contract_pending_selected_driver_pinout
-  land_pattern_basis: ''
+  land_pattern_basis: local WLCSP9 haptic-driver development grid from haptic signal contract; pending
+    exact driver ball map
   local_terminal_contract:
   - A1
   - A2
@@ -807,7 +818,8 @@ footprint_traceability:
   pinout_status: public_supplier_datasheet
   pinout_release_allowed: false
   coverage: mechanical_numbering_public_signal_assignment_local
-  land_pattern_basis: ''
+  land_pattern_basis: local 80-contact 0.40mm board-to-board development pattern bound to public Hirose
+    numbering; pending selected connector drawing and stack-height approval
   local_terminal_contract:
   - A1
   - A2
@@ -967,7 +979,8 @@ footprint_traceability:
   pinout_status: public_supplier_datasheet
   pinout_release_allowed: false
   coverage: exact_public_terminal_table_and_public_dxf_land_pattern
-  land_pattern_basis: ''
+  land_pattern_basis: public Murata Type 2EA terminal table/DXF development geometry; pending Murata/CM
+    approved footprint import
   local_terminal_contract:
   - '1'
   - '2'
@@ -1192,7 +1205,8 @@ footprint_traceability:
   pinout_status: public_nfc_signal_contract_pending_selected_controller_pinout
   pinout_release_allowed: false
   coverage: exact_public_nfc_signal_contract_pending_selected_controller_pinout
-  land_pattern_basis: ''
+  land_pattern_basis: local QFN32 NFC-controller development pattern from NFC signal contract; pending
+    exact controller MPN land pattern
   local_terminal_contract:
   - '1'
   - '2'
@@ -1250,7 +1264,8 @@ footprint_traceability:
   pinout_status: public_nfc_loop_match_contract_pending_antenna_tuning
   pinout_release_allowed: false
   coverage: exact_public_nfc_loop_match_contract_pending_antenna_tuning
-  land_pattern_basis: ''
+  land_pattern_basis: local five-terminal NFC loop matching development pattern; pending antenna tuning
+    and selected matching network
   local_terminal_contract:
   - '1'
   - '2'
@@ -1281,7 +1296,8 @@ footprint_traceability:
   pinout_status: public_supplier_datasheet
   pinout_release_allowed: false
   coverage: exact_public_pin_table
-  land_pattern_basis: ''
+  land_pattern_basis: public Panasonic EVQ-P7 four-terminal switch pinout with local tactile-switch development
+    pads; pending selected switch drawing approval
   local_terminal_contract:
   - '1'
   - '2'
@@ -1342,7 +1358,8 @@ footprint_traceability:
   pinout_status: public_hardware_design_pdf_captured_non_release_until_supplier_sku_pack
   pinout_release_allowed: false
   coverage: exact_public_pin_table_pending_final_regional_sku_pack
-  land_pattern_basis: ''
+  land_pattern_basis: public Quectel RG255C pin table with synthetic LGA development grid; pending selected
+    regional SKU land-pattern drawing
   local_terminal_contract:
   - '1'
   - '2'
@@ -1634,7 +1651,8 @@ footprint_traceability:
   pinout_status: public_sensor_hub_signal_contract_pending_selected_sensor_pinout
   pinout_release_allowed: false
   coverage: exact_public_sensor_hub_signal_contract_pending_selected_sensor_pinout
-  land_pattern_basis: ''
+  land_pattern_basis: local QFN24 sensor-hub development pattern from sensor signal contract; pending
+    exact sensor/IMU package selection
   local_terminal_contract:
   - '1'
   - '2'
@@ -1712,7 +1730,8 @@ footprint_traceability:
   pinout_status: public_som_connector_pinout
   pinout_release_allowed: false
   coverage: public_som_pinout_pad_count_aligned
-  land_pattern_basis: ''
+  land_pattern_basis: public 260-position SoM connector count with local dual-row development footprint;
+    pending selected connector and SoM pin-order drawing
   local_terminal_contract:
   - A1
   - B1
@@ -2025,7 +2044,8 @@ footprint_traceability:
   pinout_status: public_supplier_datasheet
   pinout_release_allowed: false
   coverage: exact_public_pin_table
-  land_pattern_basis: ''
+  land_pattern_basis: public TPS65987 RSH56 QFN pin table with local exposed-pad development pattern;
+    pending TI land-pattern/DFM release review
   local_terminal_contract:
   - '1'
   - '2'
@@ -2138,7 +2158,8 @@ footprint_traceability:
   pinout_status: public_usim_signal_contract_pending_selected_levelshift_pinout
   pinout_release_allowed: false
   coverage: exact_public_usim_signal_contract_pending_selected_levelshift_pinout
-  land_pattern_basis: ''
+  land_pattern_basis: local 10-terminal USIM ESD/level-shift development pattern from public signal contract;
+    pending selected device land pattern
   local_terminal_contract:
   - '1'
   - '2'

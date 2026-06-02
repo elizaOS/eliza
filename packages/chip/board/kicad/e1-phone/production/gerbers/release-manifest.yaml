@@ -5,7 +5,7 @@ owner: local-factory-output-candidate-generator
 created_at: '2026-05-22'
 tool_or_supplier_revision: generate_e1_phone_factory_output_candidates.py
 input_artifact_hashes:
-  board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb: f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f
+  board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb: 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b
   board/kicad/e1-phone/component-height-step-integration.yaml: 9343f603961eb11f780221f3dd40cc8f8bc5ad46083085b541797ddfcc5e3dbc
   board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml: 434679db9c6a7b8ab506d62808a03ca7a1425a57853b2ca5b110eecd9de30af7
 reviewer: unreviewed
@@ -36,7 +36,7 @@ pass_fail_disposition: not_evaluated_until_executed_first_article
 waivers:
 - none_recorded_until_executed_first_article
 kicad_project_revision: development_real_footprint_snapshot
-routed_pcb_hash: f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f
+routed_pcb_hash: 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b
 erc_result: not_run
 drc_result: not_run
 stackup_revision: not_fabricator_approved
@@ -7953,94 +7953,94 @@ candidate_child_bytes_total: 2430613
 candidate_child_hashes:
 - path: e1-phone-mainboard-routed-B_Adhesive.gba
   bytes: 507
-  sha256: 20f441781190ea5ff749a9cdd28215f40a7618cb4575e52d65ed185279e6b022
+  sha256: f7fa79b8ee0b99b2292c1af784f9c16d7c1a19f84eab9d0a61958128123ff70c
 - path: e1-phone-mainboard-routed-B_Courtyard.gbr
   bytes: 481
-  sha256: 3b172daf428b55a7c7ada2f4c00779ce582efd50fd00f2c56658bfbf74623bca
+  sha256: 92c56ff52e864ff2a1d576ebb46c82a30896b547c7e66869723bfa42c90f1f0b
 - path: e1-phone-mainboard-routed-B_Cu.gbl
   bytes: 2858
-  sha256: 711c72881560ec76accfda588dfcb60dabb9653bdc2b98bcd10fa7493e57a68f
+  sha256: d484fe6390f20480bb9f07c0c17082c22e783c166d6e5f958e9efbd8199f67c9
 - path: e1-phone-mainboard-routed-B_Fab.gbr
   bytes: 490
-  sha256: a2805fa37a89cb739fbfb15f596791c04703c878162930dde5ac90abbe084992
+  sha256: dee72548ee408da7ac73ee576b649c1d3c5ad17b66c4e129e9869c0608977c3e
 - path: e1-phone-mainboard-routed-B_Mask.gbs
   bytes: 713
-  sha256: bde5531a4a7767cc03ac387a7f14fa8ce12b6f2eb988cdf7c8acd5f5759e1f3e
+  sha256: da21846539b5f551e1d04b59b7916e64cf9b4c0456feb3805976e4308befb90e
 - path: e1-phone-mainboard-routed-B_Paste.gbp
   bytes: 508
-  sha256: 8173df8785b11dec76842e0d8b4072cb962f1e9139a35951bf66a804d2c11b8f
+  sha256: fb9e2ac2a68a3702220642d387c9fb045080923f718b322ee42d7157dcccf963
 - path: e1-phone-mainboard-routed-B_Silkscreen.gbo
   bytes: 509
-  sha256: 5da4e01b8c64eba9fa127585e35800cecbc1a9432272dfeb93f60d583787e8da
+  sha256: ed51d0f02d39700bbf14eb4a1458d2d8db9a69296fede24def3be4a63bdfd199
 - path: e1-phone-mainboard-routed-Edge_Cuts.gm1
   bytes: 717
-  sha256: ec057e3d1edf32ec360e409aac445712bcb8f83d29b4a5d235e53543e69f5b78
+  sha256: ff85f5b7bc806a2d71ab3bcffeaa689f52c1eb54d9f050604b3d16f0a4c633c2
 - path: e1-phone-mainboard-routed-F_Adhesive.gta
   bytes: 507
-  sha256: a375eb7c12a5b54afa687b1782ff85fb15b25d1813e668f50394914ff0ed5954
+  sha256: 9a941e3a9719b470f745a23ac8ca0e82f38f52c9aa8f75a1acc1337670d886f6
 - path: e1-phone-mainboard-routed-F_Courtyard.gbr
   bytes: 12827
-  sha256: cba55c97d41df0ee6a6890242bcb213857a0df23fc83c8b91c2ff8f4832c3208
+  sha256: 82f979a36716e4d9913018a75cb3fcd66498adc63e6ffe6556641f9a026d0d40
 - path: e1-phone-mainboard-routed-F_Cu.gtl
   bytes: 106759
-  sha256: a34503f5186a89f3391ffcbe713fafa33e5d034c4544900708dae7cb38e45144
+  sha256: ab67478e1115fc870a31a3b79e9c4a415bd50558d00a0adec7571c16e79edffa
 - path: e1-phone-mainboard-routed-F_Fab.gbr
   bytes: 728669
-  sha256: 17c843b601fd7e29b87cc97d49ea818e3d279fb44e1fbaf6a4d310443c0803f8
+  sha256: 5350b80f0008e57161aad5774133038e7238b7b770d8fd3232d58dfc9e2ebbd3
 - path: e1-phone-mainboard-routed-F_Mask.gts
   bytes: 40535
-  sha256: 6def826cd9538692db6b528d56f193c511a039cb58aa21c4723b063756f30ccd
+  sha256: cd2d5bcb62e046ae1da7437d136ee389417a7bcd33d2f38ee0f39934841a82d4
 - path: e1-phone-mainboard-routed-F_Paste.gtp
   bytes: 39213
-  sha256: 210d93bdc153ed9a7df9258038348cd67a590883a3f74eb4ad19f54d5fe69dd5
+  sha256: 7086d597807a34bba8d741b7544daaf0f2425c0be0025bfe97451e8c1db279fe
 - path: e1-phone-mainboard-routed-F_Silkscreen.gto
   bytes: 322873
-  sha256: faeff638601ba3402947581cf630b01a9d48f59936302bd0fb62f0e7ab8ec431
+  sha256: 562838c887812e207cbec3d9cd2ec6743316ff7d37de60952b327a6b642d3dc8
 - path: e1-phone-mainboard-routed-In1_Cu.g1
   bytes: 2376
-  sha256: c974bddd8b9ae43fe5e3799bb431df0c4630d36aa6c4dbb7b25e9e6fba3d7e0b
+  sha256: 184b28f8a36bc37da4661e308409a7875b390be61e68655d4a0d93f572da8434
 - path: e1-phone-mainboard-routed-In2_Cu.g2
   bytes: 1932
-  sha256: 52a947d0bef0644fbccefe757f9f234cc8394cccada9f838a6f3b1fce2b39901
+  sha256: f85312c328b1121351fdcc76b3ba0e14eec2e2dc2caecd7db301ad799db2d668
 - path: e1-phone-mainboard-routed-In3_Cu.g3
   bytes: 1932
-  sha256: f151413a184d8672c726a4b260bb6d70fcc9a27ae707361af7c5ea511db87cc2
+  sha256: 5e2372d6e5ba6888e55c16efda1d79d9d7d03b384deaeef756594732cd48e268
 - path: e1-phone-mainboard-routed-In4_Cu.g4
   bytes: 1932
-  sha256: eccd72247eb58c5b6995c4f564de3e9afd4d8b2393e2e0566485621454ef7ff6
+  sha256: 4c21a8991008b3b54daa8c3fa7e9597dd2badceb58d14c4757d8659de2c7f7d1
 - path: e1-phone-mainboard-routed-In5_Cu.g5
   bytes: 1932
-  sha256: f6624e3f15f6444dca6d15adc0c89b20e4134da101a03f2ba5b401f1fc0e3375
+  sha256: 1300a83f2310a33698a10befb3699866556bfb330441881fa874791026eb31b3
 - path: e1-phone-mainboard-routed-In6_Cu.g6
   bytes: 1932
-  sha256: c850755f7b1656e51f30af09bcc28a6462b273dbfa8d1f5f146a35abc7a3498b
+  sha256: ec7e25cef38107c92d1487e6be339b6f8080c510b3ecbe37468962ad50052c5c
 - path: e1-phone-mainboard-routed-In7_Cu.g7
   bytes: 1932
-  sha256: 3ced5382e1f218529d8cf5f2cf20cb9adf48f19461e7015099468d9b71d8ffbf
+  sha256: bac55c95300b68979b6341bc889d9d7d6d4f2d60f05d03c1ba72d2ce185edfa6
 - path: e1-phone-mainboard-routed-In8_Cu.g8
   bytes: 2409
-  sha256: ab71c7f7a8eef504d8bd0c54056fb248881e6513efd60d97e7100c4f0adae68f
+  sha256: f4fefa21c67896a35966e81da06e72b8006819c29471436ad44ff1b6e83272ec
 - path: e1-phone-mainboard-routed-Margin.gbr
   bytes: 481
-  sha256: 3b172daf428b55a7c7ada2f4c00779ce582efd50fd00f2c56658bfbf74623bca
+  sha256: 92c56ff52e864ff2a1d576ebb46c82a30896b547c7e66869723bfa42c90f1f0b
 - path: e1-phone-mainboard-routed-User_Comments.gbr
   bytes: 844101
-  sha256: 8ecc97d87e669678cb37bbc4fb409e91908661437c207184d62bb415c5fa515a
+  sha256: becaec76531e7bd612db017a47334fb60f3e86289307cf8b285c34cf3d748ada
 - path: e1-phone-mainboard-routed-User_Drawings.gbr
   bytes: 80865
-  sha256: b02809fc4f23052762eb01baf069be292317d45b485a854fa4ae32bd5ce656f1
+  sha256: 8d4c70062a8e9e8f61b68bcf6db97cc76a1a93eef8b2beb5068abc7ee76d6792
 - path: e1-phone-mainboard-routed-User_Eco1.gbr
   bytes: 481
-  sha256: 36a1d7fae14b5ee66ec5788865edb0636716580f34b3548961e7c609f336a713
+  sha256: 09707d43444a841600d1ba20bdde232232f50f6b1f5fae6f4dd5949598b3f808
 - path: e1-phone-mainboard-routed-User_Eco2.gbr
   bytes: 481
-  sha256: c84d1333344332dfd46f054c7bc6f903b11fcbb5bae3198eadaddd7b14ed777d
+  sha256: 22f1225ddf7c71348b5795c2c735ccb8c549c54d57780b0101ca98a40575b4f9
 - path: e1-phone-mainboard-routed-job.gbrjob
   bytes: 7480
-  sha256: 8e6a9d810ce64b2831de9460ee73aebb9db9e23e9e05e11664e7832447330874
+  sha256: fbc20df62c72c000d1bb6eb1e63cb806ff82244d731a2e56c40d2a73bac2a11f
 - path: release-manifest.yaml
   bytes: 222181
-  sha256: 60110aec46c0c57cdc2ccb1eb2a2a48f7578d13736a37d9953dc799027920499
+  sha256: f74672ac5dbeafe2144a56c5cfbc7b219c7df283ccc67e5c15f8f9115e9d26bd
 candidate_children_generated_from_routed_kicad: true
 release_children_complete: false
 release_blockers:

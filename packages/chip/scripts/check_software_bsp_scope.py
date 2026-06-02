@@ -235,7 +235,7 @@ def next_command_plan(
             linux=None,
             opensbi=None,
             u_boot=None,
-            aosp=None,
+            aosp="$AOSP_DIR" if target == "aosp" else None,
             target_host=None,
             opensbi_handoff_cmd=None,
             qemu_smoke_cmd=None,
@@ -292,9 +292,38 @@ def finding_payload(
         commands.extend(command_batch_commands(batch))
     commands = list(dict.fromkeys(commands))
     if commands:
-        row["next_command"] = commands[0]
+        row["next_command"] = preferred_finding_command(row, commands)
         row["next_commands"] = commands
     return row
+
+
+def preferred_finding_command(finding: dict[str, Any], commands: list[str]) -> str:
+    evidence = str(finding.get("evidence", ""))
+    stage_by_evidence = {
+        "cuttlefish_riscv64_smoke.log": "cuttlefish-smoke",
+        "qemu_riscv64_smoke.log": "qemu-smoke",
+        "renode_e1_soc_smoke.log": "renode-smoke",
+        "eliza_ai_soc_cvd_hal_smoke.log": "cuttlefish-smoke",
+        "eliza_ai_soc_cts_vts_plan.log": "cts-vts-plan",
+        "eliza_ai_soc_lunch.log": " lunch",
+        "eliza_ai_soc_vendorimage.log": " vendorimage",
+        "eliza_ai_soc_checkvintf.log": " checkvintf",
+        "eliza_ai_soc_sepolicy_build.log": " sepolicy-build",
+        "eliza_ai_soc_selinux_neverallow.log": " selinux-neverallow",
+    }
+    for marker, stage in stage_by_evidence.items():
+        if marker in evidence:
+            for command in commands:
+                if stage in command and "capture-aosp-evidence.sh" in command:
+                    return command
+    return next(
+        (
+            command
+            for command in commands
+            if "capture-" in command or "capture-aosp-evidence.sh" in command
+        ),
+        commands[0],
+    )
 
 
 def evidence_paths_for_target(manifest: dict[str, Any], target: str) -> set[str]:

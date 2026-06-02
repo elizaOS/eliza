@@ -20,7 +20,7 @@ summary:
   artifact_presence_complete_blocker_count: 4
   acceptance_artifact_count: 174
   missing_acceptance_artifact_count: 0
-  non_release_acceptance_artifact_count: 158
+  non_release_acceptance_artifact_count: 137
   production_presence_release_output_count: 0
   production_presence_blocked_candidate_output_file_count: 47
   production_presence_has_blocked_candidate_outputs: true
@@ -1104,12 +1104,7 @@ blockers:
     - sentinel_small_binary_artifact
     board/kicad/e1-phone/production/first-article:
     - blocked_candidate_not_approved
-    - candidate_not_release
-    - local candidate artifact only
     - not_approved
-    - not_measured
-    - 'release_allowed: false'
-    - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/gerbers:
     - blocked_candidate_not_approved
@@ -1165,10 +1160,6 @@ blockers:
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/camera-capture-log.json:
-    - placeholder
-    board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json:
-    - placeholder
     board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
@@ -1178,12 +1169,6 @@ blockers:
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/display-touch-bringup-log.json:
-    - placeholder
-    board/kicad/e1-phone/production/reports/drc.json:
-    - placeholder
-    board/kicad/e1-phone/production/reports/erc.json:
-    - placeholder
     board/kicad/e1-phone/production/reports/escape-density-via-count.yaml:
     - blocked_candidate_not_approved
     - not_approved
@@ -1215,8 +1200,6 @@ blockers:
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json:
-    - placeholder
     board/kicad/e1-phone/production/reports/radio-module-integration.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
@@ -1239,14 +1222,6 @@ blockers:
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/rf/cellular-conducted.json:
-    - placeholder
-    board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json:
-    - placeholder
-    board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json:
-    - placeholder
-    board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json:
-    - placeholder
     board/kicad/e1-phone/production/reports/route-feasibility-density.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
@@ -1282,10 +1257,6 @@ blockers:
     - blocked_candidate_not_approved
     - not_approved
     - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json:
-    - placeholder
-    board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json:
-    - placeholder
     board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
@@ -1295,12 +1266,6 @@ blockers:
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json:
-    - placeholder
-    board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json:
-    - placeholder
-    board/kicad/e1-phone/production/reports/zone-fill.json:
-    - placeholder
     board/kicad/e1-phone/production/stackup/coupon-geometry.pdf:
     - not release evidence
     - sentinel_small_binary_artifact
@@ -1315,15 +1280,8 @@ blockers:
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/test/factory-test-limits.yaml:
     - blocked_candidate_not_approved
-    - candidate_not_release
-    - local candidate artifact only
     - not_approved
-    - not_measured
-    - 'release_allowed: false'
-    - 'release_credit: false'
     - unreviewed_local_candidate
-    board/kicad/e1-phone/production/test/first-article-test-transcript.json:
-    - placeholder
     board/kicad/e1-phone/production/test/fixture-quote/ict-or-flying-probe-quote.pdf:
     - not release evidence
     - sentinel_small_binary_artifact
@@ -1348,7 +1306,7 @@ blockers:
     board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf:
     - not release evidence
     - sentinel_small_binary_artifact
-  non_release_acceptance_artifact_count: 55
+  non_release_acceptance_artifact_count: 39
   acceptance_complete: false
   missing_acceptance_artifact_count: 0
   next_unblock_action: Generate production/factory outputs from routed board package
@@ -1425,24 +1383,9 @@ blockers:
   non_release_acceptance_artifacts:
     board/kicad/e1-phone/production/first-article:
     - blocked_candidate_not_approved
-    - candidate_not_release
-    - local candidate artifact only
     - not_approved
-    - not_measured
-    - 'release_allowed: false'
-    - 'release_credit: false'
     - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json:
-    - placeholder
-    board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json:
-    - placeholder
-    board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json:
-    - placeholder
-    board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json:
-    - placeholder
-    board/kicad/e1-phone/production/test/first-article-test-transcript.json:
-    - placeholder
-  non_release_acceptance_artifact_count: 6
+  non_release_acceptance_artifact_count: 1
   acceptance_complete: false
   missing_acceptance_artifact_count: 0
   next_unblock_action: Run first article on routed hardware and replace templates

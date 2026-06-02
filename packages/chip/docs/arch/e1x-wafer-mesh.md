@@ -263,6 +263,22 @@ normal/high repair-route invariants, with:
 python3 scripts/check_e1x_hyper_dense_stratified_full_k_repair_execution.py
 ```
 
+Run the full-K repair coverage ladder gate, which aggregates the 16/32/64/128
+row-per-layer repair-aware full-K reports, proves monotonic coverage growth,
+and quantifies the remaining full-output real-weight checksum gap, with:
+
+```sh
+python3 scripts/check_e1x_full_k_repair_coverage_ladder.py
+```
+
+Run the full-K repair kind-coverage gate, which reconstructs the selected
+full-K rows from placement and repair manifests to prove every layer kind is
+covered at every ladder rung and remap counts match the executed reports, with:
+
+```sh
+python3 scripts/check_e1x_full_k_repair_kind_coverage.py
+```
+
 Run the full norm real-weight row gate, which executes every output row for the
 complete `norm` layer class across its full K dimension and records the
 remaining matmul-heavy full-output checksum blocker, with:

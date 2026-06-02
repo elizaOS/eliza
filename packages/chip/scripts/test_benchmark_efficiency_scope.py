@@ -177,8 +177,8 @@ def test_capture_command_removal_fails() -> None:
 def test_generated_ap_benchmark_command_plan_is_checked() -> None:
     report = check_benchmark_efficiency_scope.build_report()
     plans = report.get("next_command_plan", [])
-    if len(plans) != 1:
-        raise AssertionError(f"expected one generated-AP command plan: {plans!r}")
+    if len(plans) != 3:
+        raise AssertionError(f"expected generated-AP, target-phone, and NPU command plans: {plans!r}")
     plan = plans[0]
     if plan.get("claim_boundary") != check_benchmark_efficiency_scope.GENERATED_AP_CLAIM_BOUNDARY:
         raise AssertionError(f"generated-AP claim boundary drifted: {plan!r}")
@@ -189,6 +189,45 @@ def test_generated_ap_benchmark_command_plan_is_checked() -> None:
     mutated = copy.deepcopy(report)
     mutated["next_command_plan"][0]["commands"] = ["scripts/build_firemarshal_eliza_ap_benchmarks_payload.sh"]
     expect_error(mutated, "capture_cpu_ap_evidence.py intake ap-benchmarks")
+    plans_by_id = {item.get("id"): item for item in plans}
+    target_plan = plans_by_id.get("capture_target_phone_l5_benchmark_report")
+    if not isinstance(target_plan, dict):
+        raise AssertionError(f"target-phone benchmark command plan missing: {plans!r}")
+    target_commands = "\n".join(str(item) for item in target_plan.get("commands", []))
+    for token in (
+        "run_benchmarks.py run",
+        "benchmarks/results/target-phone",
+        "run_benchmarks.py validate-report",
+        "check_benchmark_efficiency_scope.py",
+    ):
+        if token not in target_commands:
+            raise AssertionError(f"target-phone command plan missing {token!r}: {target_plan!r}")
+    if (
+        target_plan.get("claim_boundary")
+        != check_benchmark_efficiency_scope.TARGET_PHONE_BENCHMARK_CLAIM_BOUNDARY
+    ):
+        raise AssertionError(f"target-phone claim boundary drifted: {target_plan!r}")
+    npu_plan = plans_by_id.get("capture_measured_npu_nnapi_proof")
+    if not isinstance(npu_plan, dict):
+        raise AssertionError(f"NPU NNAPI command plan missing: {plans!r}")
+    npu_commands = "\n".join(str(item) for item in npu_plan.get("commands", []))
+    for token in (
+        "capture_e1_npu_nnapi_evidence.sh",
+        "E1_NPU_CPU_FALLBACK_PERCENT=0",
+        "E1_NPU_UNSUPPORTED_OP_COUNT=0",
+        "check_e1_npu_nnapi_proof.py",
+        "check_npu_scope.py",
+    ):
+        if token not in npu_commands:
+            raise AssertionError(f"NPU NNAPI command plan missing {token!r}: {npu_plan!r}")
+    if npu_plan.get("claim_boundary") != check_benchmark_efficiency_scope.NPU_NNAPI_PROOF_CLAIM_BOUNDARY:
+        raise AssertionError(f"NPU NNAPI claim boundary drifted: {npu_plan!r}")
+    mutated = copy.deepcopy(report)
+    mutated["next_command_plan"] = [plans[0]]
+    expect_error(mutated, "target-phone benchmark report batch")
+    mutated = copy.deepcopy(report)
+    mutated["next_command_plan"] = [plans[0], target_plan]
+    expect_error(mutated, "measured NPU NNAPI proof batch")
     print("PASS generated-AP benchmark command plan checked")
 
 

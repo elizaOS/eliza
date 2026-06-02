@@ -185,6 +185,11 @@ NPU_NNAPI_CAPTURE_COMMAND = (
     "packages/chip/scripts/android/capture_e1_npu_nnapi_evidence.sh"
 )
 BENCHMARK_CAPTURE_COMMANDS = (
+    "python3 packages/chip/benchmarks/run_benchmarks.py run "
+    "--config packages/chip/benchmarks/configs/benchmark_plan.json "
+    "--out-dir packages/chip/benchmarks/results/target-phone "
+    "--claim-level L5_PROTOTYPE_SILICON "
+    "--metadata packages/chip/benchmarks/results/target-phone/target-metadata.json",
     "python3 packages/chip/benchmarks/run_benchmarks.py validate-report "
     "packages/chip/benchmarks/results/target-phone/report.json --artifact-root packages/chip",
     "python3 packages/chip/scripts/check_benchmark_efficiency_scope.py",

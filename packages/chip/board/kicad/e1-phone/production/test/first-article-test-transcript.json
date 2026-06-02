@@ -110,7 +110,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
           "cad_span_mm": [
             10.0,
             6.0,
@@ -216,7 +216,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
           "cad_span_mm": [
             12.0,
             0.8,
@@ -320,7 +320,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
           "cad_span_mm": [
             9.0,
             0.8,
@@ -416,7 +416,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
           "cad_span_mm": [
             1.0,
             28.0,
@@ -498,7 +498,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_battery_flex_min_bend_radius_requirement_1.5mm_pending_pack_supplier_lead_drawing",
           "cad_span_mm": [
             8.0,
             1.2,
@@ -582,7 +582,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
           "cad_span_mm": [
             18.0,
             1.0,
@@ -670,7 +670,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review",
           "cad_span_mm": [
             9.0,
             1.0,
@@ -758,7 +758,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review",
           "cad_span_mm": [
             10.0,
             1.0,
@@ -852,7 +852,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review",
           "cad_span_mm": [
             4.0,
             4.8,
@@ -936,7 +936,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
           "cad_span_mm": [
             6.0,
             1.0,
@@ -1016,7 +1016,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
           "cad_span_mm": [
             8.0,
             0.7,
@@ -1098,7 +1098,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
           "cad_span_mm": [
             7.0,
             0.7,
@@ -1180,7 +1180,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review",
           "cad_span_mm": [
             13.0,
             1.0,
@@ -1293,7 +1293,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review",
           "cad_span_mm": [
             12.0,
             1.0,
@@ -1387,7 +1387,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_insulated_wire_pair_min_bend_radius_requirement_1mm_pending_wire_gauge_insulation_and_strain_relief_drawing",
           "cad_span_mm": [
             10.0,
             1.0,
@@ -1467,7 +1467,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
           "cad_span_mm": [
             8.0,
             1.0,
@@ -1547,7 +1547,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
           "cad_span_mm": [
             0.8,
             18.0,
@@ -1627,7 +1627,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_insulated_wire_pair_min_bend_radius_requirement_1mm_pending_wire_gauge_insulation_and_strain_relief_drawing",
           "cad_span_mm": [
             14.0,
             0.8,
@@ -1707,7 +1707,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
           "cad_span_mm": [
             12.0,
             1.0,
@@ -1785,7 +1785,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
           "cad_span_mm": [
             5.0,
             0.8,
@@ -1865,7 +1865,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
           "cad_span_mm": [
             1.0,
             9.0,
@@ -1959,7 +1959,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_flexible_antenna_loop_min_bend_radius_requirement_1mm_pending_antenna_supplier_ferrite_and_adhesive_drawing",
           "cad_span_mm": [
             6.0,
             1.0,
@@ -2043,7 +2043,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_board_to_board_connector_mating_height_and_wipe_basis_no_bend_radius_pending_connector_supplier_stack_drawing",
           "cad_span_mm": [
             65.0,
             2.6,
@@ -2139,7 +2139,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_ground_spring_contact_deflection_basis_no_flex_bend_radius_pending_supplier_force_wipe_plating_drawing",
           "cad_span_mm": [
             3.6,
             0.7,
@@ -2217,7 +2217,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_ground_spring_contact_deflection_basis_no_flex_bend_radius_pending_supplier_force_wipe_plating_drawing",
           "cad_span_mm": [
             3.6,
             0.7,
@@ -2299,7 +2299,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence",
           "cad_span_mm": [
             0.45,
             15.0,
@@ -2379,7 +2379,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence",
           "cad_span_mm": [
             0.45,
             12.0,
@@ -2459,7 +2459,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_rf_tuner_interconnect_min_bend_radius_requirement_1.5mm_pending_tuner_state_table_matching_and_vna_evidence",
           "cad_span_mm": [
             2.0,
             2.0,
@@ -2541,7 +2541,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence",
           "cad_span_mm": [
             0.45,
             10.0,
@@ -2621,7 +2621,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence",
           "cad_span_mm": [
             10.0,
             0.45,
@@ -2701,7 +2701,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence",
           "cad_span_mm": [
             10.0,
             0.45,
@@ -2781,7 +2781,7 @@
         "manufacturing_geometry_defined": false,
         "mechanical_envelope": {
           "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
-          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
           "cad_span_mm": [
             2.4,
             88.0,
@@ -3005,7 +3005,7 @@
   "impedance_coupon_reference": "missing_fabricator_coupon",
   "input_artifact_hashes": {
     "board/kicad/e1-phone/component-height-step-integration.yaml": "9343f603961eb11f780221f3dd40cc8f8bc5ad46083085b541797ddfcc5e3dbc",
-    "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb": "f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f",
+    "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb": "158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b",
     "board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml": "434679db9c6a7b8ab506d62808a03ca7a1425a57853b2ca5b110eecd9de30af7"
   },
   "kicad_project_revision": "development_real_footprint_snapshot",
@@ -3025,7 +3025,7 @@
   "release_package_revision": "local_candidate_not_release",
   "reviewed_at": "unreviewed_local_candidate_2026-05-22",
   "reviewer": "unreviewed",
-  "routed_pcb_hash": "f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f",
+  "routed_pcb_hash": "158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b",
   "routed_step_metadata": "board/kicad/e1-phone/production/step/routed-board-with-components.step.metadata.yaml",
   "routed_step_reference": "board/kicad/e1-phone/production/step/routed-board-with-components.step",
   "routed_step_sha256": "fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3",
@@ -10420,9 +10420,9 @@
     },
     "routed_development_intake": "board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml",
     "routed_intake_step_sha256": "fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3",
-    "source_board_sha256": "f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f",
+    "source_board_sha256": "158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b",
     "source_step_intake": "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml",
-    "source_step_sha256": "592fad3df9a619b125d28f322aa22803ca37c3a825e0b4e8170b277cf7e16ae7",
+    "source_step_sha256": "fbb8b372614d6b9ed8dbe7b5fb01e2472cbc2ee784b786b1a0c2cf85e5a11fec",
     "via_net_name_count": 16,
     "via_visual_all_records_have_layers": true,
     "via_visual_all_records_have_net": true,

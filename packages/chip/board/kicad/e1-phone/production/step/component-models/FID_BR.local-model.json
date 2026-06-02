@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/FID_BR.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "d82982e0100202ae68532a2b631223230ddd18e9bb0ba7f6e8afd638cd475675",
+  "local_discrete_step_sha256": "00a3fa2842bc730f08af5b27ff2e1a45ebc87078fdda771139b7fa7dabe27ea0",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

@@ -153,6 +153,12 @@ REQUIRED_GENERATED_AP_CAPTURE_SNIPPETS = (
 GENERATED_AP_CLAIM_BOUNDARY = (
     "operator_commands_only_not_calibrated_efficiency_evidence_not_L5_or_L6_release_evidence"
 )
+TARGET_PHONE_BENCHMARK_CLAIM_BOUNDARY = (
+    "operator_commands_only_not_target_phone_benchmark_evidence_until_report_validates"
+)
+NPU_NNAPI_PROOF_CLAIM_BOUNDARY = (
+    "operator_commands_only_not_nnapi_acceleration_evidence_until_measured_proof_validates"
+)
 FORBIDDEN_SIMULATOR_SCORE_METRICS = {
     "wall_clock_score",
     "phone_score",
@@ -469,6 +475,43 @@ def generated_ap_benchmark_command_plan(wiring_report: dict[str, Any]) -> dict[s
     }
 
 
+def target_phone_benchmark_command_plan() -> dict[str, Any]:
+    return {
+        "id": "capture_target_phone_l5_benchmark_report",
+        "source": rel(BENCHMARK_PLAN),
+        "claim_boundary": TARGET_PHONE_BENCHMARK_CLAIM_BOUNDARY,
+        "commands": [
+            REQUIRED_CAPTURE_COMMANDS["target_benchmark_report"],
+            REQUIRED_CAPTURE_COMMANDS["target_benchmark_validation"],
+            "python3 scripts/check_benchmark_efficiency_scope.py",
+        ],
+        "requires": [
+            "prototype or phone target metadata with board, OS/BSP, clock, power, thermal, memory, process, and calibration sections",
+            "raw benchmark transcripts and parser-derived metrics from the selected target",
+            "runner report validates with dry_run=false and L5/L6 claim level",
+        ],
+    }
+
+
+def npu_nnapi_proof_command_plan() -> dict[str, Any]:
+    return {
+        "id": "capture_measured_npu_nnapi_proof",
+        "source": "scripts/android/capture_e1_npu_nnapi_evidence.sh",
+        "claim_boundary": NPU_NNAPI_PROOF_CLAIM_BOUNDARY,
+        "commands": [
+            REQUIRED_CAPTURE_COMMANDS["npu_nnapi_proof"],
+            "python3 scripts/check_e1_npu_nnapi_proof.py",
+            "python3 scripts/check_npu_scope.py",
+            "python3 scripts/check_benchmark_efficiency_scope.py",
+        ],
+        "requires": [
+            "measured delegated and total NNAPI node counts from the target runtime",
+            "zero measured CPU fallback percent and zero unsupported op count",
+            "measured MACs, cycles, frequency, DMA bytes, dataflow name, target id, and operator/job provenance",
+        ],
+    }
+
+
 def build_report() -> dict[str, Any]:
     plan = load_json_object(BENCHMARK_PLAN)
     schema = load_yaml_object(REPORT_SCHEMA)
@@ -564,6 +607,8 @@ def build_report() -> dict[str, Any]:
     findings = structured_findings(blocked_until_real_evidence, checks)
     command_plan = [
         generated_ap_benchmark_command_plan(ap_benchmark_wiring),
+        target_phone_benchmark_command_plan(),
+        npu_nnapi_proof_command_plan(),
     ]
     return {
         "schema": "eliza.benchmark_efficiency_scope.v1",
@@ -601,7 +646,7 @@ def build_report() -> dict[str, Any]:
             "check_count": len(checks),
             "passing_check_count": len([check for check in checks if check["status"] == "pass"]),
             "release_claim_allowed": False,
-            "next_command_batch_count": 1,
+            "next_command_batch_count": len(command_plan),
         },
     }
 
@@ -717,6 +762,42 @@ def validate_report(data: dict[str, Any]) -> list[str]:
                     f"generated-AP benchmark command plan missing {snippet}",
                     errors,
                 )
+        plans_by_id = {
+            str(item.get("id")): item for item in command_plan if isinstance(item, dict)
+        }
+        target_plan = plans_by_id.get("capture_target_phone_l5_benchmark_report")
+        if not isinstance(target_plan, dict):
+            errors.append("next_command_plan missing target-phone benchmark report batch")
+        else:
+            require(
+                target_plan.get("claim_boundary") == TARGET_PHONE_BENCHMARK_CLAIM_BOUNDARY,
+                "target-phone benchmark command plan claim boundary drifted",
+                errors,
+            )
+            target_text = "\n".join(str(item) for item in list_values(target_plan.get("commands")))
+            for key in ("target_benchmark_report", "target_benchmark_validation"):
+                require(
+                    REQUIRED_CAPTURE_COMMANDS[key] in target_text,
+                    f"target-phone benchmark command plan missing {key}",
+                    errors,
+                )
+        npu_plan = plans_by_id.get("capture_measured_npu_nnapi_proof")
+        if not isinstance(npu_plan, dict):
+            errors.append("next_command_plan missing measured NPU NNAPI proof batch")
+        else:
+            require(
+                npu_plan.get("claim_boundary") == NPU_NNAPI_PROOF_CLAIM_BOUNDARY,
+                "NPU NNAPI proof command plan claim boundary drifted",
+                errors,
+            )
+            npu_text = "\n".join(str(item) for item in list_values(npu_plan.get("commands")))
+            require(
+                REQUIRED_CAPTURE_COMMANDS["npu_nnapi_proof"] in npu_text,
+                "NPU NNAPI proof command plan missing measured proof command",
+                errors,
+            )
+            for token in ("E1_NPU_CPU_FALLBACK_PERCENT=0", "E1_NPU_UNSUPPORTED_OP_COUNT=0"):
+                require(token in npu_text, f"NPU NNAPI proof command plan missing {token}", errors)
     return errors
 
 

@@ -7,7 +7,7 @@ artifact_count: 45
 release_credit: false
 routed_release_provenance:
   kicad_project_revision: development_real_footprint_snapshot
-  routed_pcb_hash: f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f
+  routed_pcb_hash: 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b
   erc_result: not_run
   drc_result: not_run
   stackup_revision: not_fabricator_approved

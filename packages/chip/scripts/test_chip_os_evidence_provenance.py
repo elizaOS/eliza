@@ -632,6 +632,44 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
         self.assertIn("E1_NPU_NNAPI_DELEGATED_NODE_COUNT=<measured-delegated-nodes>", commands)
         self.assertIn("capture_e1_npu_nnapi_evidence.sh", commands)
 
+    def test_benchmark_provenance_remediation_routes_to_benchmark_gates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            root = repo / "packages/chip"
+            report = root / "build/reports/benchmark_efficiency_scope.json"
+            report.parent.mkdir(parents=True)
+            report.write_text(
+                json.dumps(
+                    {
+                        "schema": "eliza.benchmark_efficiency_scope.v1",
+                        "status": "benchmark_efficiency_scope_release_blocked",
+                        "generated_utc": "2026-05-21T00:00:00Z",
+                        "claim_boundary": (
+                            "benchmark scope audit only; not measured target efficiency"
+                        ),
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(provenance, "REPO", repo),
+                mock.patch.object(provenance, "ROOT", root),
+            ):
+                data = provenance.build_report(["packages/chip/build/reports"])
+
+        assert_actionable_findings(self, data)
+        commands = "\n".join(
+            command
+            for finding in data["findings"]
+            for command in finding.get("next_commands", [])
+        )
+        self.assertIn("run_benchmarks.py run", commands)
+        self.assertIn("--claim-level L5_PROTOTYPE_SILICON", commands)
+        self.assertIn("run_benchmarks.py validate-report", commands)
+        self.assertIn("check_benchmark_efficiency_scope.py", commands)
+        self.assertIn("check_cpu_phone_benchmark_claim_gate.py", commands)
+
     def test_runtime_capture_contract_keeps_scope_without_marker_line_expansion(
         self,
     ) -> None:
