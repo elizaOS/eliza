@@ -15,6 +15,7 @@ import {
   InMemorySessionStore,
   type SessionStoreBackend,
 } from "./session-store.js";
+import { writeWorkspaceIdentity } from "./sub-agent-identity.js";
 import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
   type AcpEventCallback,
@@ -86,6 +87,10 @@ const DEFAULT_WORKDIR_ROOT = join(tmpdir(), "eliza-acp");
 const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 const ACP_HEALTH_CHECK_INTERVAL_MS = 60_000;
+// Terminal (stopped/errored) sessions are kept this long for any post-completion
+// reference, then reclaimed by the health-check sweep so the durable session
+// store and the per-session maps don't grow without bound on a long-lived bot.
+const ACP_SESSION_RETENTION_MS = 60 * 60_000;
 // Sessions that are genuinely mid-flight (have in-progress work that could be
 // lost if the process died). "ready" is idle/finished and must NOT be treated
 // as a crash by the health-check — see runHealthCheck.
@@ -122,6 +127,11 @@ const DENY_ENV_PATTERNS = [
   /SLACK.*TOKEN/i,
   /BOT.*TOKEN/i,
   /ELIZA_VAULT_PASSPHRASE/i,
+  // Host-API shell-exec / stdio-MCP auth secret — consumed only by
+  // packages/agent/src/api/*, never by a coding sub-agent. Forwarding it would
+  // hand a child process a credential that re-authorizes arbitrary host command
+  // execution with zero legitimate use for it.
+  /TERMINAL_RUN_TOKEN/i,
 ];
 
 export class AcpService extends Service {
@@ -417,12 +427,21 @@ export class AcpService extends Service {
         // The structural signal is failureKind, not the prose.
         const message =
           "Sub-agent state was lost (process exited without persisting). No automatic action taken.";
-        await this.store.updateStatus(s.id, "errored", message).catch((err) =>
-          this.log("warn", "health-check: failed to mark errored", {
-            sessionId: s.id,
-            err,
-          }),
-        );
+        const persisted = await this.store
+          .updateStatus(s.id, "errored", message)
+          .then(() => true)
+          .catch((err) => {
+            this.log("warn", "health-check: failed to mark errored", {
+              sessionId: s.id,
+              err,
+            });
+            return false;
+          });
+        // Only surface the state-loss (and count it healed) once the terminal
+        // status is actually persisted. Emitting unconditionally left the
+        // session mid-flight on a transient store failure, so the next tick
+        // re-emitted the same error event every 60s until the store recovered.
+        if (!persisted) continue;
         this.emitSessionEvent(s.id, "error", {
           message,
           failureKind: "session_state_lost",
@@ -432,6 +451,23 @@ export class AcpService extends Service {
     }
     if (healed > 0) {
       this.log("info", "health-check self-healed sessions", { healed });
+    }
+    // Reclaim terminal sessions past the retention window so the durable store
+    // and the per-session maps don't grow without bound. sweepStale removes only
+    // stopped/errored sessions older than the window; clear their satellite map
+    // entries (output buffers, changed paths, native clients) in lockstep.
+    const swept = await this.store
+      .sweepStale(ACP_SESSION_RETENTION_MS)
+      .catch(() => [] as string[]);
+    for (const id of swept) {
+      this.outputBuffers.delete(id);
+      this.changedPathsBySession.delete(id);
+      this.nativeClients.delete(id);
+    }
+    if (swept.length > 0) {
+      this.log("debug", "health-check reclaimed terminal sessions", {
+        count: swept.length,
+      });
     }
     await this.cleanReverseOrphanedAcpxFiles();
   }
@@ -471,6 +507,13 @@ export class AcpService extends Service {
       normalizeTaskAgentAdapter(opts.agentType ?? this.defaultAgent) ??
       this.defaultAgent;
     const approvalPreset = opts.approvalPreset ?? this.defaultApprovalPreset;
+    // Orchestrated spawns (via tasks.ts → resolveSpawnWorkdir) always pass
+    // opts.workdir, which already applies route/convention/explicit resolution
+    // and the same ELIZA_ACP_WORKSPACE_ROOT/ACPX_DEFAULT_CWD settings, falling
+    // back to process.cwd() to preserve the self-checkout workflow. This env
+    // tail is therefore the resolver for DIRECT (non-orchestrated) callers of
+    // spawnSession; its last resort is the scratch DEFAULT_WORKDIR_ROOT rather
+    // than process.cwd() because a direct caller has no self-checkout intent.
     const workdir = resolve(
       opts.workdir ??
         this.setting("ELIZA_ACP_WORKSPACE_ROOT") ??
@@ -478,6 +521,10 @@ export class AcpService extends Service {
         DEFAULT_WORKDIR_ROOT,
     );
     await mkdir(workdir, { recursive: true });
+    // Give the sub-agent its eliza-context + non-interactive operating manual on
+    // disk (where every backend reads it) — only when the workspace is bare, so
+    // a real repo's own AGENTS.md/CLAUDE.md is never clobbered.
+    await writeWorkspaceIdentity(workdir);
 
     // Record the workspace HEAD + already-dirty files at spawn so the change
     // set captured at task_complete is scoped to exactly what this sub-agent
@@ -1105,6 +1152,10 @@ export class AcpService extends Service {
       return toSpawnResult(updated ?? { ...session, status: "ready" });
     } catch (err) {
       await client.close().catch(() => undefined);
+      // A failed spawn must not leave a closed client registered: the entry is
+      // set above before the store writes that can throw here. Idempotent when
+      // the failure happened before the set.
+      this.nativeClients.delete(id);
       const message = stderr.join("").trim() || errorMessage(err);
       await this.store.updateStatus(id, "errored", message);
       this.emitSessionEvent(id, "error", {
@@ -1860,8 +1911,7 @@ export class AcpService extends Service {
     const env: NodeJS.ProcessEnv = {};
     for (const [key, value] of Object.entries(process.env)) {
       if (typeof value !== "string") continue;
-      if (DENY_ENV_PATTERNS.some((pattern) => pattern.test(key))) continue;
-      if (shouldForwardEnv(key)) env[key] = value;
+      if (isEnvForwardableToSubAgent(key)) env[key] = value;
     }
     for (const [key, value] of Object.entries(customCredentials ?? {})) {
       if (typeof value === "string") env[key] = value;
@@ -1873,6 +1923,20 @@ export class AcpService extends Service {
       env.OPENAI_MODEL = model;
       if (agentType === "claude") env.ANTHROPIC_MODEL = model;
       if (agentType === "opencode") env.OPENCODE_MODEL = model;
+    }
+    if (
+      agentType === "claude" &&
+      isClaudeOAuthSubscriptionToken(env.ANTHROPIC_API_KEY)
+    ) {
+      // claude-agent-acp wraps Claude Code, which would try API-key auth with
+      // this OAuth token and fail "Invalid API key". Strip it so the sub-agent
+      // falls back to native subscription OAuth (~/.claude). See
+      // isClaudeOAuthSubscriptionToken for why a real sk-ant-api… key is kept.
+      delete env.ANTHROPIC_API_KEY;
+      this.log(
+        "debug",
+        "Stripped OAuth-token ANTHROPIC_API_KEY for claude sub-agent (uses native OAuth)",
+      );
     }
     if (agentType === "opencode") {
       const opencode = buildOpencodeAcpEnv(this.runtime, env, model);
@@ -2077,7 +2141,20 @@ function normalizeTransportMode(
   return undefined;
 }
 
-function shouldForwardEnv(key: string): boolean {
+/**
+ * True when a value is a Claude subscription OAuth token (`sk-ant-oat…`). Such
+ * a token cannot authenticate Claude Code as an API key, so when it is misfiled
+ * in `ANTHROPIC_API_KEY` it must be stripped from a claude sub-agent's env (the
+ * sub-agent then uses native subscription OAuth). A real API key (`sk-ant-api…`)
+ * returns false and is preserved.
+ */
+export function isClaudeOAuthSubscriptionToken(
+  value: string | undefined,
+): boolean {
+  return value?.startsWith("sk-ant-oat") ?? false;
+}
+
+export function shouldForwardEnv(key: string): boolean {
   return (
     key === "PATH" ||
     key === "HOME" ||
@@ -2089,6 +2166,10 @@ function shouldForwardEnv(key: string): boolean {
     key === "TERM" ||
     key.startsWith("ACPX_AUTH_") ||
     key.startsWith("ELIZA_") ||
+    // Parent-context bridge session id (ELIZA_HOOK_PORT already passes via the
+    // ELIZA_ prefix). Without this the loopback /api/coding-agents/<id>/* bridge
+    // is unreachable from an ACP-spawned sub-agent.
+    key === "PARALLAX_SESSION_ID" ||
     [
       "OPENAI_API_KEY",
       "ANTHROPIC_API_KEY",
@@ -2104,6 +2185,17 @@ function shouldForwardEnv(key: string): boolean {
       "CODEX_HOME",
     ].includes(key)
   );
+}
+
+/**
+ * The single forwarding decision buildEnv applies per host env var: the
+ * deny-list wins over the allowlist. A few keys (the privileged host secrets in
+ * DENY_ENV_PATTERNS) match shouldForwardEnv — e.g. via the broad ELIZA_ prefix —
+ * yet must never reach a coding sub-agent, so the deny check runs first.
+ */
+export function isEnvForwardableToSubAgent(key: string): boolean {
+  if (DENY_ENV_PATTERNS.some((pattern) => pattern.test(key))) return false;
+  return shouldForwardEnv(key);
 }
 
 function extractSessionId(event: AcpJsonRpcMessage): string | undefined {
