@@ -13,7 +13,11 @@
  * `runtime.useModel` (which would loop back to us and recurse).
  */
 
-import { AgentRuntime, type IAgentRuntime } from "@elizaos/core";
+// Type-only import: pulling the `AgentRuntime` *value* here would drag core's
+// ~2MB browser bundle into the eager first-paint graph. Local inference is
+// opt-in, so the prototype patch is installed lazily from the runtime instance
+// passed to `installOn()` (see below) — we never need the static class.
+import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 
 export interface HandlerRegistration {
   modelType: string;
@@ -107,7 +111,12 @@ class HandlerRegistry {
    * fallback for runtimes constructed before the patch ran.
    */
   installOn(runtime: AgentRuntime): void {
-    installPrototypePatch();
+    // Patch the prototype via the live instance (no static `AgentRuntime`
+    // import needed). Idempotent and benign — forwards to the original.
+    const proto = Object.getPrototypeOf(runtime) as {
+      registerModel?: RegisterModelMethod;
+    } | null;
+    if (proto) installPrototypePatch(proto);
     const rt = runtime as AgentRuntime & {
       registerModel?: unknown;
     };
@@ -183,12 +192,15 @@ function isPatchedRegisterModel(
  * One-shot patch of `AgentRuntime.prototype.registerModel` so every runtime
  * instance — including ones constructed later in boot — records through
  * the singleton handler registry. Idempotent.
+ *
+ * Takes the prototype object (obtained from a live runtime instance) rather
+ * than referencing the static `AgentRuntime` class, so this module never
+ * value-imports `@elizaos/core` and stays off the eager bundle graph.
  */
-function installPrototypePatch(): void {
+function installPrototypePatch(proto: {
+  registerModel?: RegisterModelMethod;
+}): void {
   if (prototypePatched) return;
-  const proto = AgentRuntime.prototype as {
-    registerModel: RegisterModelMethod;
-  };
   const original = proto.registerModel;
   if (typeof original !== "function") return;
   if (isPatchedRegisterModel(original)) {
@@ -196,7 +208,7 @@ function installPrototypePatch(): void {
     return;
   }
   const patched = function patchedRegisterModel(
-    this: AgentRuntime,
+    this: unknown,
     modelType: string,
     handler: HandlerRegistration["handler"],
     provider: string,
@@ -213,16 +225,23 @@ function installPrototypePatch(): void {
     } catch {
       // Never let registry bookkeeping break the registration path.
     }
-    original.call(this, modelType, handler, provider, priority);
+    (original as RegisterModelMethod).call(
+      this as AgentRuntime,
+      modelType,
+      handler,
+      provider,
+      priority,
+    );
   } as typeof original & { [PATCH_MARK]?: true };
   patched[PATCH_MARK] = true;
   proto.registerModel = patched;
   prototypePatched = true;
 }
 
-// Install at module-import time. This is a process-wide side effect but a
-// benign one: the patch is idempotent and forwards to the original.
-installPrototypePatch();
+// NOTE: no module-load patch. The prototype is patched lazily from the first
+// runtime instance handed to `handlerRegistry.installOn(runtime)` during
+// local-inference setup. This keeps `@elizaos/core` (and its ~2MB bundle) out
+// of the eager first-paint graph for every app that never opens local inference.
 
 export const handlerRegistry = new HandlerRegistry();
 
