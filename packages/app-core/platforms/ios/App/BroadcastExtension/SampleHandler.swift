@@ -1,4 +1,4 @@
-// TODO: validate on device — checklist in
+// Requires device validation — checklist in
 // eliza/plugins/plugin-computeruse/docs/IOS_CONSTRAINTS.md
 //
 // ReplayKit broadcast extension target. Runs in a separate process with a

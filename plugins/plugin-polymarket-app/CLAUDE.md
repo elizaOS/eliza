@@ -104,7 +104,7 @@ Public reads (markets, orderbook, positions) require no credentials. The `GET /a
 ## Conventions / gotchas
 
 - **Orderbook token id vs condition id.** Use the CLOB `token_id` for orderbook queries, not the Gamma `conditionId`. A market has one condition id but one or more CLOB token ids (one per outcome).
-- **Signed trading is not implemented.** `POST /api/polymarket/orders` returns 501. The `place_order` action reports readiness only; it does not place trades.
+- **Signed trading is disabled.** `POST /api/polymarket/orders` returns 501. The `place_order` action reports readiness only; it does not place trades.
 - **Views use a separate Vite build.** `build:js` (tsup) produces the runtime entry; `build:views` (Vite) produces `dist/views/bundle.js` consumed by the view registry. Both must run for a complete build.
 - **Route handler receives Node `http.IncomingMessage` / `ServerResponse`.** The plugin.ts adapter casts `RouteRequest` / `RouteResponse` to Node types; routes.ts depends on real Node HTTP objects.
 - **Context gating.** The action fires only when the agent context includes `finance`, `crypto`, `prediction-market`, or `payments`, or when the message contains recognized keywords (multilingual list in actions.ts). Outside those contexts the action is skipped.

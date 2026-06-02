@@ -19,6 +19,7 @@
 		"paths": {
 			"@elizaos/agent": ["../../packages/agent/src/index.ts"],
 			"@elizaos/agent/*": ["../../packages/agent/src/*"],
+			"@elizaos/app-core": ["./src/type-shims/app-core-root.ts"],
 			"@elizaos/app-core/agent-bridge": [
 				"../../packages/app-core/src/agent-bridge.ts"
 			],
