@@ -89,15 +89,20 @@ function run(executable, args, cwd) {
 }
 
 function resolveTsdownCli() {
-  const p = path.join(rootDir, "node_modules", "tsdown", "dist", "run.mjs");
-  if (!fs.existsSync(p)) {
-    throw new Error("tsdown not found under node_modules; run bun install");
+  const candidates = [
+    path.join(rootDir, "node_modules", "tsdown", "dist", "run.mjs"),
+    path.join(process.cwd(), "node_modules", "tsdown", "dist", "run.mjs"),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      return p;
+    }
   }
-  return p;
+  throw new Error("tsdown not found under node_modules; run bun install");
 }
 
 function resolveViteCli() {
-  for (const base of [appDir, rootDir]) {
+  for (const base of [appDir, rootDir, process.cwd()]) {
     const p = path.join(base, "node_modules", "vite", "bin", "vite.js");
     if (fs.existsSync(p)) {
       return p;

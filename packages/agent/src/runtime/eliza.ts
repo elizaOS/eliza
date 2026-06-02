@@ -3292,6 +3292,14 @@ export async function startEliza(
   //     tripping the 180s health check on every fresh provision.
   const isCloudProvisioned = process.env.ELIZA_CLOUD_PROVISIONED === "1";
   if (!isMobilePlatform() && !isCloudProvisioned) {
+    // pre-resolve-setup's two serial cost centers: the OS-keychain hydrate and
+    // the vault PGlite cold-start. Timed separately and surfaced below so the
+    // boot-history telemetry shows which is the long pole. NOTE: the order is
+    // load-bearing: hydrateWalletKeysFromNodePlatformSecureStore writes wallet
+    // keys into process.env that runVaultBootstrap then mirrors into the vault,
+    // so these must stay sequential unless that mirror is decoupled. Measure
+    // here before attempting to overlap them.
+    const keychainStartMs = Date.now();
     try {
       const { hydrateWalletKeysFromNodePlatformSecureStore } =
         await importAppCoreRuntime();
@@ -3301,12 +3309,14 @@ export async function startEliza(
         `[wallet][os-store] boot hydrate skipped: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    const keychainMs = Date.now() - keychainStartMs;
 
     const { runVaultBootstrap } = await importAppCoreRuntime();
     const { sharedVault } = await importAppCoreRuntime();
+    const vaultStartMs = Date.now();
     const bootResult = await runVaultBootstrap();
     logger.info(
-      `[vault-bootstrap] migrated=${bootResult.migrated} failed=${bootResult.failed.length}`,
+      `[vault-bootstrap] migrated=${bootResult.migrated} failed=${bootResult.failed.length} (keychain=${keychainMs}ms vault-pglite=${Date.now() - vaultStartMs}ms)`,
     );
 
     const { resolved, missing } = await resolveConfigEnvForProcess(

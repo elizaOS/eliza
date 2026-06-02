@@ -11,10 +11,10 @@
     "directory": "eliza/plugins/plugin-wallet"
   },
   "main": "dist/index.mjs",
-  "types": "dist/index.d.ts",
+  "types": "dist/index.d.mts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./dist/index.d.mts",
       "eliza-source": {
         "types": "./src/index.ts",
         "import": "./src/index.ts",

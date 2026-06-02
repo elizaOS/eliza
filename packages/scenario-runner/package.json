@@ -76,6 +76,7 @@
     "@elizaos/plugin-health": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-agent-skills": "workspace:*",
+    "@elizaos/plugin-app-control": "workspace:*",
     "@elizaos/plugin-github": "workspace:*",
     "@elizaos/plugin-streaming": "workspace:*",
     "@elizaos/plugin-todos": "workspace:*",
