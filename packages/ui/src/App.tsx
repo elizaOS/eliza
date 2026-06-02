@@ -1533,6 +1533,19 @@ export function App() {
           tab !== "apps" &&
           tab !== "views" && <GameViewOverlay />}
         {isChat ? <GlobalChatOverlay /> : null}
+        {/*
+          Always-present continuous chat overlay. The floating glass chat
+          (HomePill → AssistantOverlay → ChatSurface), previously mounted only in
+          the standalone chat-overlay / kiosk OS windows, now lives in the main
+          app shell so a single continuous conversation floats over EVERY view.
+          It is wired to the app's one active conversation via
+          useShellController (controller.messages / controller.send), sits at
+          Z_SHELL_OVERLAY (above all views), and survives tab/view changes
+          because it renders here in the persistent sibling region. This revives
+          the "floating pill is the only chat" direction; the heavier in-view
+          ChatView above remains for now and can be retired as this matures.
+        */}
+        <ShellFoundationMount />
         <ShellOverlays actionNotice={actionNotice} />
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}

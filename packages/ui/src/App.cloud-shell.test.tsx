@@ -31,13 +31,15 @@ const WINDOW_SHELL_TS = readFileSync(
 );
 
 describe("App standalone chat-overlay wiring", () => {
-  it("keeps the assistant pill out of the full app shell", () => {
+  it("mounts the always-present continuous chat overlay in the full app shell", () => {
     expect(APP_TSX).toContain('shellMode === "chat-overlay"');
     expect(APP_TSX).toContain("<ShellFoundationMount />");
     expect(APP_TSX).toContain("pointer-events-none fixed inset-0");
-    expect(APP_TSX).not.toContain(
-      "{isCoordinatorReady && <ShellFoundationMount />}",
-    );
+    // The floating glass chat (HomePill → AssistantOverlay → ChatSurface) is now
+    // mounted globally in the main shell so one continuous conversation floats
+    // over every view — reviving the "floating pill is the only chat" direction.
+    // It is no longer kept out of the full app shell.
+    expect(APP_TSX).toContain("Always-present continuous chat overlay");
   });
 
   it("classifies chat-overlay as a standalone shell, not the main app", () => {
