@@ -1,4 +1,6 @@
 import * as React from "react";
+import { TRAY_ACTION_EVENT } from "../events";
+import { trayActionToOnboardingChoice } from "./onboarding-intent";
 import { useFirstRunController } from "./use-first-run-controller";
 
 /**
@@ -29,6 +31,21 @@ export function CompactOnboarding(): React.ReactElement {
     },
     [c],
   );
+
+  // Let the macOS tray menu drive the same choice ("decide from the menu bar"):
+  // tray item clicks dispatch TRAY_ACTION_EVENT; map onboarding ids → choose.
+  React.useEffect(() => {
+    const onTrayAction = (event: Event) => {
+      const itemId =
+        (event as CustomEvent<{ itemId?: string }>).detail?.itemId ?? "";
+      const choice = trayActionToOnboardingChoice(itemId);
+      if (choice === "local" || choice === "cloud") {
+        choose(choice);
+      }
+    };
+    document.addEventListener(TRAY_ACTION_EVENT, onTrayAction);
+    return () => document.removeEventListener(TRAY_ACTION_EVENT, onTrayAction);
+  }, [choose]);
 
   const message =
     error ??
