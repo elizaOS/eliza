@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
@@ -39,6 +40,10 @@ const _require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
 const nativePluginsRoot = path.join(elizaRoot, "plugins");
+const bunLinkedPackageCacheRoot = path.join(
+  os.homedir(),
+  ".bun/install/cache/links",
+);
 
 // Authoritative PascalCase-icon-name → kebab-file map, parsed from lucide's own
 // ESM barrel so there is zero name-guessing. Used to rewrite the app's
@@ -1475,6 +1480,148 @@ function workspaceJsxInJsPlugin(): Plugin {
   };
 }
 
+const DEV_CJS_INTEROP_SHIM_ALIASES: Array<[RegExp, string]> = [
+  [/^cookie$/, "src/shims/cookie.ts"],
+  [
+    /^set-cookie-parser(?:\/lib\/set-cookie(?:\.js)?)?$/,
+    "src/shims/set-cookie-parser.ts",
+  ],
+  [
+    /^use-sync-external-store\/(?:shim\/)?with-selector(?:\.js)?$/,
+    "src/shims/use-sync-external-store-with-selector.ts",
+  ],
+  [/^style-to-js(?:\/cjs\/index(?:\.js)?)?$/, "src/shims/style-to-js.ts"],
+  [/^debug(?:\/src\/browser(?:\.js)?)?$/, "src/shims/debug.ts"],
+  [/^extend(?:\/index(?:\.js)?)?$/, "src/shims/extend.ts"],
+  [/^es-toolkit\/compat\/get(?:\.js)?$/, "src/shims/es-toolkit-compat-get.ts"],
+  [
+    /^es-toolkit\/compat\/uniqBy(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-uniqBy.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/sortBy(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-sortBy.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/throttle(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-throttle.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/last(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-last.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/maxBy(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-maxBy.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/minBy(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-minBy.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/range(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-range.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/omit(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-omit.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/sumBy(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-sumBy.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/isPlainObject(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-isPlainObject.ts",
+  ],
+  [
+    /^decimal\.js-light(?:\/decimal(?:\.(?:js|mjs))?)?$/,
+    "src/shims/decimal-js-light.ts",
+  ],
+  [/^eventemitter3$/, "src/shims/eventemitter3.ts"],
+  [/^react-is$/, "src/shims/react-is.ts"],
+  [/^nprogress(?:\/nprogress(?:\.js)?)?$/, "src/shims/nprogress.ts"],
+];
+
+function devCjsInteropShimAliasesPlugin(): Plugin {
+  return {
+    name: "dev-cjs-interop-shim-aliases",
+    apply: "serve",
+    enforce: "pre",
+    resolveId(source) {
+      const sourceWithoutQuery = source.split("?")[0] ?? source;
+      for (const [find, replacement] of DEV_CJS_INTEROP_SHIM_ALIASES) {
+        if (find.test(sourceWithoutQuery)) {
+          return path.resolve(here, replacement);
+        }
+      }
+      return null;
+    },
+  };
+}
+
+// Builds a Vite/Rolldown plugin that resolves `es-toolkit/compat/<name>` to
+// its ESM `dist/compat/**/<name>.mjs` and re-exports the named binding as
+// default, bypassing the CJS-only export map. Must be registered in both
+// `plugins` (raw-serve path) and `optimizeDeps.rolldownOptions.plugins`
+// (dep-optimizer path) so neither path touches the broken CJS entry.
+function makeEsToolkitCompatEsmPlugin(
+  pluginName: string,
+  isRaw = false,
+): Plugin {
+  const PREFIX = `\0estk-${pluginName}:`;
+  return {
+    name: `es-toolkit-compat-esm-${pluginName}`,
+    enforce: isRaw ? ("pre" as const) : undefined,
+    resolveId(source, importer) {
+      const m = /^es-toolkit\/compat\/([A-Za-z0-9_]+)$/.exec(source);
+      if (!m) return null;
+      let dir: string | null = null;
+      try {
+        const req = createRequire(
+          importer || path.join(elizaRoot, "node_modules", "x.js"),
+        );
+        dir = path.dirname(req.resolve("es-toolkit/package.json"));
+      } catch {
+        return null;
+      }
+      const stack = [path.join(dir, "dist", "compat")];
+      let mjs: string | null = null;
+      while (stack.length) {
+        const d = stack.pop()!;
+        let entries: fs.Dirent[];
+        try {
+          entries = fs.readdirSync(d, { withFileTypes: true });
+        } catch {
+          continue;
+        }
+        for (const ent of entries) {
+          const full = path.join(d, ent.name);
+          if (ent.isDirectory()) stack.push(full);
+          else if (ent.name === `${m[1]}.mjs`) {
+            mjs = full;
+            break;
+          }
+        }
+        if (mjs) break;
+      }
+      if (!mjs) return null;
+      return `${PREFIX}${m[1]}\0${mjs}`;
+    },
+    load(id) {
+      if (!id.startsWith(PREFIX)) return null;
+      const rest = id.slice(PREFIX.length);
+      const sep = rest.indexOf("\0");
+      const name = rest.slice(0, sep);
+      const spec = JSON.stringify(rest.slice(sep + 1));
+      return (
+        `export { ${name} as default } from ${spec};\n` +
+        `export * from ${spec};\n`
+      );
+    },
+  };
+}
+
 export default defineConfig({
   root: here,
   customLogger: viteLogger,
@@ -1512,6 +1659,14 @@ export default defineConfig({
     ),
   },
   plugins: [
+    // es-toolkit@1.47's `./compat/*` export map exposes only a CJS condition
+    // (no ESM `import`), so `import get from "es-toolkit/compat/get"` (recharts
+    // default-imports 11 such subpaths) resolves to a CJS shim Vite can't
+    // surface a `default` for when served raw -> blank app. Rewrite each to the
+    // real ESM `dist/compat/**/<name>.mjs` (resolved relative to the importer)
+    // and re-export the named binding as default. Mirrors the optimizer-path
+    // plugin in optimizeDeps.rolldownOptions so both serve paths are covered.
+    makeEsToolkitCompatEsmPlugin("raw", true),
     {
       // lucide-react ships ~1500 icons but the app uses ~130. The barrel is not
       // tree-shaken (the directory alias hides the package's sideEffects:false,
@@ -1659,6 +1814,7 @@ export const INVALID_TRACER_PROVIDER = {};
     iosLocalAgentKernelEsbuildPlugin(),
     watchWorkspacePackagesPlugin(),
     workspaceJsxInJsPlugin(),
+    devCjsInteropShimAliasesPlugin(),
     tailwindcss(),
     react(),
     desktopCorsPlugin(),
@@ -2232,6 +2388,15 @@ export const INVALID_TRACER_PROVIDER = {};
             );
           },
         },
+        // es-toolkit@1.47 `./compat/*` is CJS-only and its CJS impl names a
+        // local `require_isUnsafeProperty` that collides with the dep
+        // optimizer's CJS-interop helper -> self-shadowing
+        // `var require_isUnsafeProperty = require_isUnsafeProperty()` (TDZ ->
+        // "is not a function") -> blank app. Resolve each
+        // `es-toolkit/compat/<name>` to its ESM `dist/compat/**/<name>.mjs`
+        // and re-export the named binding as default so the optimizer never
+        // touches the broken CJS path. (Raw-serve counterpart is in `plugins`.)
+        makeEsToolkitCompatEsmPlugin("optimize"),
       ],
     },
     exclude: [
@@ -2494,7 +2659,13 @@ export const INVALID_TRACER_PROVIDER = {};
     },
     fs: {
       // Allow serving files from the app directory and eliza src
-      allow: [here, elizaRoot],
+      allow: [
+        here,
+        elizaRoot,
+        ...(fs.existsSync(bunLinkedPackageCacheRoot)
+          ? [bunLinkedPackageCacheRoot]
+          : []),
+      ],
     },
     watch: {
       // Polling is only needed in Docker/WSL where native fs events are unreliable

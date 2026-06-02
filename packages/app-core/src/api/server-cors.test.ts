@@ -10,6 +10,7 @@ describe("server CORS origin allowlist", () => {
   const originalEnv = {
     ELIZA_ALLOWED_ORIGINS: process.env.ELIZA_ALLOWED_ORIGINS,
     ELIZA_API_PORT: process.env.ELIZA_API_PORT,
+    ELIZA_UI_PORT: process.env.ELIZA_UI_PORT,
     ELIZA_PORT: process.env.ELIZA_PORT,
     ELIZA_GATEWAY_PORT: process.env.ELIZA_GATEWAY_PORT,
     ELIZA_HOME_PORT: process.env.ELIZA_HOME_PORT,
@@ -34,8 +35,9 @@ describe("server CORS origin allowlist", () => {
     expect(isAllowedOrigin("evil://localhost")).toBe(false);
   });
 
-  it("allows localhost on configured API, UI, gateway, home, and Electrobun dev ports", () => {
+  it("allows localhost on configured API, Vite UI, single-process UI, gateway, home, and Electrobun dev ports", () => {
     process.env.ELIZA_API_PORT = "43137";
+    process.env.ELIZA_UI_PORT = "44056";
     process.env.ELIZA_PORT = "42138";
     process.env.ELIZA_GATEWAY_PORT = "48789";
     process.env.ELIZA_HOME_PORT = "42142";
@@ -43,10 +45,19 @@ describe("server CORS origin allowlist", () => {
 
     const ports = buildCorsAllowedPorts();
 
-    for (const port of ["43137", "42138", "48789", "42142", "5174", "5200"]) {
+    for (const port of [
+      "43137",
+      "44056",
+      "42138",
+      "48789",
+      "42142",
+      "5174",
+      "5200",
+    ]) {
       expect(ports.has(port)).toBe(true);
     }
     expect(isAllowedOrigin("http://localhost:43137")).toBe(true);
+    expect(isAllowedOrigin("http://127.0.0.1:44056")).toBe(true);
     expect(isAllowedOrigin("http://127.0.0.1:42138")).toBe(true);
     expect(isAllowedOrigin("http://[::1]:48789")).toBe(true);
     expect(isAllowedOrigin("http://localhost:42142")).toBe(true);
