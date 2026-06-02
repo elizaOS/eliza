@@ -515,6 +515,20 @@ function renderRemoteView(view: ViewRegistryEntry): ReactNode {
   );
 }
 
+/**
+ * Fallback shown when a view/tab is unavailable. Chat is the floating overlay
+ * (GlobalChatOverlay on the chat tab) + the always-present pill — views never
+ * embed an inline ChatView — so an unavailable view falls back to the app/view
+ * launcher, not a chat surface.
+ */
+function ViewUnavailableFallback(): ReactNode {
+  return (
+    <TabContentView chatDisabled>
+      <ViewManagerPage />
+    </TabContentView>
+  );
+}
+
 function renderPhoneSurface(
   enabled: boolean,
   Component: ComponentType,
@@ -524,12 +538,12 @@ function renderPhoneSurface(
       <Component />
     </TabContentView>
   ) : (
-    <ChatView />
+    <ViewUnavailableFallback />
   );
 }
 
 function renderAppsSurface(navigationPath: string): ReactNode {
-  if (!APPS_ENABLED) return <ChatView />;
+  if (!APPS_ENABLED) return <ViewUnavailableFallback />;
   return (
     <TabContentView chatScope="page-apps">
       {getAppSlugFromPath(navigationPath) ? (
@@ -556,9 +570,9 @@ function renderStaticViewRouterTab({
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
     onboarding: <FirstRunScreen />,
-    chat: <ChatView />,
+    chat: <ViewUnavailableFallback />,
     browser: <BrowserWorkspaceView />,
-    companion: <ChatView />,
+    companion: <ViewUnavailableFallback />,
     stream: <StreamView />,
     tasks: (
       <TabContentView>
@@ -624,7 +638,7 @@ function renderStaticViewRouterTab({
     ),
   };
   if (tab === "lifeops") {
-    return LifeOpsPageView ? <LifeOpsPageView /> : <ChatView />;
+    return LifeOpsPageView ? <LifeOpsPageView /> : <ViewUnavailableFallback />;
   }
   if (tab === "phone") {
     return renderPhoneSurface(androidPhoneSurfaceEnabled, PhonePageView);
@@ -665,7 +679,7 @@ function renderStaticViewRouterTab({
       </TabContentView>
     );
   }
-  return directViews[tab] ?? <ChatView />;
+  return directViews[tab] ?? <ViewUnavailableFallback />;
 }
 
 function renderViewRouterContent({
