@@ -1,4 +1,5 @@
 import * as React from "react";
+import { VoicePill } from "../components/voice-pill";
 import { TRAY_ACTION_EVENT } from "../events";
 import { trayActionToOnboardingChoice } from "./onboarding-intent";
 import { useFirstRunController } from "./use-first-run-controller";
@@ -15,7 +16,16 @@ import { useFirstRunController } from "./use-first-run-controller";
  * NOTE: Electrobun's native notifications are text-only (no action buttons), so
  * this is an in-app notification card rather than an OS notification.
  */
-export function CompactOnboarding(): React.ReactElement {
+export function CompactOnboarding({
+  showVoicePill = false,
+}: {
+  /**
+   * Render the full VoicePill below the card (wired to the same first-run voice
+   * controller). Used by the desktop onboarding overlay; the in-app StartupScreen
+   * leaves it off and relies on the card's inline mic affordance.
+   */
+  showVoicePill?: boolean;
+} = {}): React.ReactElement {
   const c = useFirstRunController();
   const { busyText, error, localRuntimeAvailable, voice, cloudOnly } = c;
   const busy = busyText !== null;
@@ -62,50 +72,66 @@ export function CompactOnboarding(): React.ReactElement {
 
   return (
     <div className="pointer-events-none fixed inset-0 flex items-start justify-end p-4">
-      <div
-        data-testid="onboarding-toast"
-        className="pointer-events-auto flex w-full max-w-[22rem] flex-col gap-3 rounded-2xl border border-border bg-bg/95 p-4 shadow-2xl backdrop-blur"
-      >
-        <div className="flex items-start gap-3">
-          <span
-            aria-hidden
-            className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full ${
-              voice.listening
-                ? "bg-accent/15 ring-1 ring-accent"
-                : "bg-bg-hover"
-            }`}
-          >
-            🎙️
-          </span>
-          <div className="flex flex-col">
-            <span className="text-sm font-semibold text-txt-strong">
-              Set up your agent
+      <div className="flex w-full max-w-[22rem] flex-col items-stretch gap-3">
+        <div
+          data-testid="onboarding-toast"
+          className="pointer-events-auto flex flex-col gap-3 rounded-2xl border border-border bg-bg/95 p-4 shadow-2xl backdrop-blur"
+        >
+          <div className="flex items-start gap-3">
+            <span
+              aria-hidden
+              className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full ${
+                voice.listening
+                  ? "bg-accent/15 ring-1 ring-accent"
+                  : "bg-bg-hover"
+              }`}
+            >
+              🎙️
             </span>
-            <span className={`text-xs ${error ? "text-danger" : "text-muted"}`}>
-              {message}
-            </span>
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold text-txt-strong">
+                Set up your agent
+              </span>
+              <span
+                className={`text-xs ${error ? "text-danger" : "text-muted"}`}
+              >
+                {message}
+              </span>
+            </div>
           </div>
-        </div>
-        <div className="flex justify-end gap-2">
-          {localRuntimeAvailable ? (
+          <div className="flex justify-end gap-2">
+            {localRuntimeAvailable ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => choose("local")}
+                className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                Use Local
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={busy}
-              onClick={() => choose("local")}
-              className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-50"
+              onClick={() => choose("cloud")}
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-bg-hover disabled:opacity-50"
             >
-              Use Local
+              Eliza Cloud
             </button>
-          ) : null}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => choose("cloud")}
-            className="rounded-md border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-bg-hover disabled:opacity-50"
-          >
-            Eliza Cloud
-          </button>
+          </div>
         </div>
+        {showVoicePill ? (
+          <div className="pointer-events-auto flex justify-end rounded-2xl border border-border bg-bg/95 p-3 shadow-2xl backdrop-blur">
+            <VoicePill
+              ariaLabel="Eliza"
+              recording={voice.listening}
+              onRecordingChange={(recording) => {
+                if (recording) void c.startVoice().catch(() => {});
+                else void c.stopVoice().catch(() => {});
+              }}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );

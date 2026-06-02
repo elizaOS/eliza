@@ -61,7 +61,10 @@ export function createOnboardingOverlayWindow(args: {
   // still fall through where the platform honours it.) The renderer keeps the
   // card pinned top-right within this frame (`items-start justify-end`).
   const CARD_WIDTH = 384;
-  const CARD_HEIGHT = 220;
+  // Tall enough for the onboarding card plus the VoicePill stacked below it
+  // (App renders <CompactOnboarding showVoicePill />). The card alone is ~180px;
+  // the pill adds its own surface beneath.
+  const CARD_HEIGHT = 380;
   const workArea = Screen.getPrimaryDisplay().workArea;
   const width = Math.min(CARD_WIDTH, workArea.width);
   const height = Math.min(CARD_HEIGHT, workArea.height);
