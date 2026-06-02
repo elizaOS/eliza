@@ -7875,10 +7875,10 @@ candidate_child_bytes_total: 2056
 candidate_child_hashes:
 - path: drill-report.rpt
   bytes: 1125
-  sha256: a4a1d488d215723adedf5e3a78800d2793e99b1530798b9dcfa1c3f6a6e25f61
+  sha256: f33e39e750586e5e16ea0990dd4c73b2c11b62dd99625eab21919be676e67aba
 - path: e1-phone-mainboard-routed.drl
   bytes: 931
-  sha256: c03aed72d26c355013313c5e2838397d759fb3b2f7d6ab83c0e52d7c2f33ab12
+  sha256: 957241e063ab32ce3ac3f729f72061ceb9fbfb88a18535539b2bac6760d70999
 candidate_children_generated_from_routed_kicad: true
 release_children_complete: false
 release_blockers:

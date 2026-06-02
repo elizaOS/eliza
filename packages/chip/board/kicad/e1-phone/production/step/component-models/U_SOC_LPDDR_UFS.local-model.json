@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/U_SOC_LPDDR_UFS.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "7e85c4de2588cae65a0309c3968d763128cccfb0855b03a9918785335c6454da",
+  "local_discrete_step_sha256": "2df862c228857a42567de6a6d87844804c8a6be8490d7c51607da7c67b1de145",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

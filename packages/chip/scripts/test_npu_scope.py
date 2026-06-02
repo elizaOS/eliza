@@ -129,6 +129,13 @@ def test_structured_findings_use_specific_capture_commands() -> None:
     power_commands = "\n".join(power.get("next_commands", []))
     if "ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND" not in power_commands:
         raise AssertionError(power)
+    for token in (
+        "e1-npu-sustained-capture.measured.json",
+        "check_sustained_run_evidence.py",
+        "check_power_thermal_scope.py",
+    ):
+        if token not in power_commands:
+            raise AssertionError(f"Power finding commands missing {token!r}: {power}")
     if power.get("next_command") == "adb devices":
         raise AssertionError(f"Power finding used generic adb command: {power}")
     print("PASS structured NPU findings use specific capture commands")
@@ -151,6 +158,8 @@ def test_next_command_plan_covers_target_side_npu_capture() -> None:
         "capture_e1_npu_nnapi_evidence.sh",
         "check_e1_npu_nnapi_proof.py --probe-adb",
         "check_e1_npu_android_proof_manifest.py",
+        "check_sustained_run_evidence.py",
+        "check_power_thermal_scope.py",
     ):
         if token not in command_text:
             raise AssertionError(command_text)

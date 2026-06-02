@@ -7868,14 +7868,14 @@ candidate_children:
 - positions.csv
 - release-manifest.yaml
 candidate_child_count: 2
-candidate_child_bytes_total: 222469
+candidate_child_bytes_total: 223566
 candidate_child_hashes:
 - path: positions.csv
   bytes: 7920
   sha256: 631558412a886f8a9b5b97883274f7989efcf0b2149101a7645a77f2be563bc8
 - path: release-manifest.yaml
-  bytes: 214549
-  sha256: 8f0261faaef8f0ecc2f7805b4495a9acce0e458726aaecbe6185479fd95c9ecf
+  bytes: 215646
+  sha256: 7a7f86eb49ad37e6fe6fc74ef61e65fc000c5e950732b0f873495d05c8b9704c
 candidate_children_generated_from_routed_kicad: true
 release_children_complete: false
 release_blockers:

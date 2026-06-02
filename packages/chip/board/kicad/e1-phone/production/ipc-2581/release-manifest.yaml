@@ -7866,14 +7866,14 @@ candidate_children:
 - e1-phone-mainboard-routed.ipc2581.xml
 - release-manifest.yaml
 candidate_child_count: 2
-candidate_child_bytes_total: 5658617
+candidate_child_bytes_total: 5659714
 candidate_child_hashes:
 - path: e1-phone-mainboard-routed.ipc2581.xml
   bytes: 5444098
-  sha256: 4014fa06d6734d44f12e47c57a61f2d2afb03e68f9e741982394672537d2281e
+  sha256: ade753ca217e6c948ce0c82cc7dfdf94c86088e717d73a5beee2b846b196e1da
 - path: release-manifest.yaml
-  bytes: 214519
-  sha256: e68b197735a6501d94529db2b27cdddace414b427aff49bd2c4245127cc5e16c
+  bytes: 215616
+  sha256: 814aacbb23d2cbe889c970730ea92ca5308a21a2b6386b6b386fd893c18329a7
 candidate_children_generated_from_routed_kicad: true
 release_children_complete: false
 release_blockers:

@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/USBTP_CC1.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "6a74365c50166561ed9df14940f5683aae1a85619caa3bdf9572d3c4ea85542b",
+  "local_discrete_step_sha256": "66e56c5be9efcc0834af8fd82a9a737678f876d7cd617eb241795cc5722c483e",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

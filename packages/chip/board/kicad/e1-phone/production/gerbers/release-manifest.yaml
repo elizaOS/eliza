@@ -51,8 +51,8 @@ routed_step_metadata: board/kicad/e1-phone/production/step/routed-board-with-com
 routed_step_visual_detail:
   source_step_intake: board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml
   routed_development_intake: board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml
-  source_board_sha256: f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f
-  source_step_sha256: 592fad3df9a619b125d28f322aa22803ca37c3a825e0b4e8170b277cf7e16ae7
+  source_board_sha256: 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b
+  source_step_sha256: fbb8b372614d6b9ed8dbe7b5fb01e2472cbc2ee784b786b1a0c2cf85e5a11fec
   routed_intake_step_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
   footprint_envelope_count: 89
   pad_contact_visual_count: 1452
@@ -5408,7 +5408,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 64.869
       routed_trace_length_total_mm: 260.817
       min_bend_radius_mm: 1.0
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
       controlled_impedance_required: true
       controlled_impedance_targets:
       - mipi_dphy_diff_impedance_ohm=100ohm
@@ -5504,7 +5504,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 61.498
       routed_trace_length_total_mm: 216.992
       min_bend_radius_mm: 1.0
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
       controlled_impedance_required: true
       controlled_impedance_targets:
       - mipi_dphy_diff_impedance_ohm=100ohm
@@ -5592,7 +5592,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 70.48
       routed_trace_length_total_mm: 141.7
       min_bend_radius_mm: 1.0
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
       controlled_impedance_required: true
       controlled_impedance_targets:
       - mipi_dphy_diff_impedance_ohm=100ohm
@@ -5668,7 +5668,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 44.352
       routed_trace_length_total_mm: 138.528
       min_bend_radius_mm: 0.8
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
       controlled_impedance_required: false
       controlled_impedance_targets: []
       impedance_requirement: not_controlled_impedance
@@ -5745,7 +5745,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 7.04
       routed_trace_length_total_mm: 250.581
       min_bend_radius_mm: 1.5
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_battery_flex_min_bend_radius_requirement_1.5mm_pending_pack_supplier_lead_drawing
       controlled_impedance_required: false
       controlled_impedance_targets: []
       impedance_requirement: current_capacity_and_ntc_id_sense_required
@@ -5824,7 +5824,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 72.702
       routed_trace_length_total_mm: 65.552
       min_bend_radius_mm: 1.0
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
       controlled_impedance_required: true
       controlled_impedance_targets:
       - usb2_diff_impedance_ohm=90ohm
@@ -5904,7 +5904,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 19.281
       routed_trace_length_total_mm: 65.552
       min_bend_radius_mm: 0.0
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review
       controlled_impedance_required: true
       controlled_impedance_targets:
       - usb2_diff_impedance_ohm=90ohm
@@ -5992,7 +5992,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 11.0
       routed_trace_length_total_mm: 572.622
       min_bend_radius_mm: 0.0
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review
       controlled_impedance_required: false
       controlled_impedance_targets: []
       impedance_requirement: VBUS/SYS current capacity plus I2C/IRQ routing and sequencing review
@@ -6069,7 +6069,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 4.833
       routed_trace_length_total_mm: 250.581
       min_bend_radius_mm: 0.0
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review
       controlled_impedance_required: false
       controlled_impedance_targets: []
       impedance_requirement: VBAT/SYS current capacity plus NTC/ID kelvin-sense review
@@ -6142,7 +6142,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 19.548
       routed_trace_length_total_mm: 235.979
       min_bend_radius_mm: 1.0
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
       controlled_impedance_required: false
       controlled_impedance_targets: []
       impedance_requirement: display_bias_voltage_and_current_capacity_required
@@ -6217,7 +6217,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 61.498
       routed_trace_length_total_mm: 414.213
       min_bend_radius_mm: 1.0
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
       controlled_impedance_required: false
       controlled_impedance_targets: []
       impedance_requirement: camera_rail_current_capacity_and_sequencing_required
@@ -6292,7 +6292,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 70.48
       routed_trace_length_total_mm: 414.029
       min_bend_radius_mm: 1.0
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
       controlled_impedance_required: false
       controlled_impedance_targets: []
       impedance_requirement: camera_rail_current_capacity_and_sequencing_required
@@ -6395,7 +6395,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 29.981
       routed_trace_length_total_mm: 306.456
       min_bend_radius_mm: 0.0
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review
       controlled_impedance_required: true
       controlled_impedance_targets:
       - pcie_diff_impedance_ohm=85ohm
@@ -6482,7 +6482,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 13.13
       routed_trace_length_total_mm: 168.906
       min_bend_radius_mm: 0.0
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review
       controlled_impedance_required: true
       controlled_impedance_targets:
       - pcie_diff_impedance_ohm=85ohm
@@ -6556,7 +6556,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 66.429
       routed_trace_length_total_mm: 24.56
       min_bend_radius_mm: 1.0
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_insulated_wire_pair_min_bend_radius_requirement_1mm_pending_wire_gauge_insulation_and_strain_relief_drawing
       controlled_impedance_required: false
       controlled_impedance_targets: []
       impedance_requirement: not_controlled_impedance
@@ -6629,7 +6629,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 70.927
       routed_trace_length_total_mm: 212.34
       min_bend_radius_mm: 0.8
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
       controlled_impedance_required: false
       controlled_impedance_targets: []
       impedance_requirement: not_controlled_impedance
@@ -6702,7 +6702,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 70.927
       routed_trace_length_total_mm: 212.34
       min_bend_radius_mm: 0.8
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
       controlled_impedance_required: false
       controlled_impedance_targets: []
       impedance_requirement: not_controlled_impedance
@@ -6775,7 +6775,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 68.87
       routed_trace_length_total_mm: 24.56
       min_bend_radius_mm: 1.0
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_insulated_wire_pair_min_bend_radius_requirement_1mm_pending_wire_gauge_insulation_and_strain_relief_drawing
       controlled_impedance_required: false
       controlled_impedance_targets: []
       impedance_requirement: not_controlled_impedance
@@ -6846,7 +6846,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 56.546
       routed_trace_length_total_mm: 19.874
       min_bend_radius_mm: 0.8
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
       controlled_impedance_required: false
       controlled_impedance_targets: []
       impedance_requirement: not_controlled_impedance
@@ -6919,7 +6919,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 35.75
       routed_trace_length_total_mm: 58.442
       min_bend_radius_mm: 0.8
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
       controlled_impedance_required: false
       controlled_impedance_targets: []
       impedance_requirement: not_controlled_impedance
@@ -7006,7 +7006,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 36.564
       routed_trace_length_total_mm: 429.167
       min_bend_radius_mm: 0.8
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
       controlled_impedance_required: false
       controlled_impedance_targets: []
       impedance_requirement: not_controlled_impedance
@@ -7083,7 +7083,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 28.284
       routed_trace_length_total_mm: 39.621
       min_bend_radius_mm: 1.0
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_flexible_antenna_loop_min_bend_radius_requirement_1mm_pending_antenna_supplier_ferrite_and_adhesive_drawing
       controlled_impedance_required: true
       controlled_impedance_targets: []
       impedance_requirement: NFC loop matching and antenna vendor review required
@@ -7170,7 +7170,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 45.036
       routed_trace_length_total_mm: 149.445
       min_bend_radius_mm: null
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_board_to_board_connector_mating_height_and_wipe_basis_no_bend_radius_pending_connector_supplier_stack_drawing
       controlled_impedance_required: true
       controlled_impedance_targets:
       - usb2_diff_impedance_ohm=90ohm
@@ -7242,7 +7242,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 55.457
       routed_trace_length_total_mm: 104.168
       min_bend_radius_mm: 0.0
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_ground_spring_contact_deflection_basis_no_flex_bend_radius_pending_supplier_force_wipe_plating_drawing
       controlled_impedance_required: false
       controlled_impedance_targets: []
       impedance_requirement: low_inductance_chassis_ground_contact_required
@@ -7315,7 +7315,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 54.639
       routed_trace_length_total_mm: 111.982
       min_bend_radius_mm: 0.0
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_ground_spring_contact_deflection_basis_no_flex_bend_radius_pending_supplier_force_wipe_plating_drawing
       controlled_impedance_required: false
       controlled_impedance_targets:
       - usb2_diff_impedance_ohm=90ohm
@@ -7387,7 +7387,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 30.621
       routed_trace_length_total_mm: 10.612
       min_bend_radius_mm: 1.5
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence
       controlled_impedance_required: true
       controlled_impedance_targets:
       - rf_single_impedance_ohm=50ohm
@@ -7459,7 +7459,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 117.429
       routed_trace_length_total_mm: 9.583
       min_bend_radius_mm: 1.5
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence
       controlled_impedance_required: true
       controlled_impedance_targets:
       - rf_single_impedance_ohm=50ohm
@@ -7533,7 +7533,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 117.429
       routed_trace_length_total_mm: 223.896
       min_bend_radius_mm: 1.5
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_rf_tuner_interconnect_min_bend_radius_requirement_1.5mm_pending_tuner_state_table_matching_and_vna_evidence
       controlled_impedance_required: true
       controlled_impedance_targets:
       - rf_single_impedance_ohm=50ohm
@@ -7605,7 +7605,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 22.739
       routed_trace_length_total_mm: 7.202
       min_bend_radius_mm: 1.5
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence
       controlled_impedance_required: true
       controlled_impedance_targets:
       - rf_single_impedance_ohm=50ohm
@@ -7677,7 +7677,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 1.418
       routed_trace_length_total_mm: 12.139
       min_bend_radius_mm: 1.5
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence
       controlled_impedance_required: true
       controlled_impedance_targets:
       - rf_single_impedance_ohm=50ohm
@@ -7749,7 +7749,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 1.418
       routed_trace_length_total_mm: 12.139
       min_bend_radius_mm: 1.5
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence
       controlled_impedance_required: true
       controlled_impedance_targets:
       - rf_single_impedance_ohm=50ohm
@@ -7835,7 +7835,7 @@ cad_connection_coverage:
       endpoint_center_distance_mm: 90.0
       routed_trace_length_total_mm: 719.498
       min_bend_radius_mm: 1.0
-      bend_radius_basis: local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing
+      bend_radius_basis: local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing
       controlled_impedance_required: true
       controlled_impedance_targets:
       - usb2_diff_impedance_ohm=90ohm
@@ -7953,94 +7953,94 @@ candidate_child_bytes_total: 2430613
 candidate_child_hashes:
 - path: e1-phone-mainboard-routed-B_Adhesive.gba
   bytes: 507
-  sha256: f7fa79b8ee0b99b2292c1af784f9c16d7c1a19f84eab9d0a61958128123ff70c
+  sha256: cc4de5b8b80f9ab751d1dd977b16df6357f54edd903a2ca5755b88fec80c7ba2
 - path: e1-phone-mainboard-routed-B_Courtyard.gbr
   bytes: 481
-  sha256: 92c56ff52e864ff2a1d576ebb46c82a30896b547c7e66869723bfa42c90f1f0b
+  sha256: 702530200546c646554b6f53607da1a87e2bddd400315ae96c2d9f47b6a5f126
 - path: e1-phone-mainboard-routed-B_Cu.gbl
   bytes: 2858
-  sha256: d484fe6390f20480bb9f07c0c17082c22e783c166d6e5f958e9efbd8199f67c9
+  sha256: 5abc124b23f3df9d752b1280eb3741ccdb28fe97fcb1a6b2452d6504da420151
 - path: e1-phone-mainboard-routed-B_Fab.gbr
   bytes: 490
-  sha256: dee72548ee408da7ac73ee576b649c1d3c5ad17b66c4e129e9869c0608977c3e
+  sha256: b22b447a653fa42b6021bc3000b6ba969ff89f9eb4891e733db325e325aa1364
 - path: e1-phone-mainboard-routed-B_Mask.gbs
   bytes: 713
-  sha256: da21846539b5f551e1d04b59b7916e64cf9b4c0456feb3805976e4308befb90e
+  sha256: 4e95a788edbba44c2fb038ef3001508707c8bf2bf28926abb6aeef2ffe8b7cb7
 - path: e1-phone-mainboard-routed-B_Paste.gbp
   bytes: 508
-  sha256: fb9e2ac2a68a3702220642d387c9fb045080923f718b322ee42d7157dcccf963
+  sha256: f11572956b9481ec15c6aa6a598fca058cdd5f2163e28dc1884e939e14dbcde4
 - path: e1-phone-mainboard-routed-B_Silkscreen.gbo
   bytes: 509
-  sha256: ed51d0f02d39700bbf14eb4a1458d2d8db9a69296fede24def3be4a63bdfd199
+  sha256: ec7a09925dc645bec641c3fe362c53c548edddd841e791de23fd199f40ab5dfd
 - path: e1-phone-mainboard-routed-Edge_Cuts.gm1
   bytes: 717
-  sha256: ff85f5b7bc806a2d71ab3bcffeaa689f52c1eb54d9f050604b3d16f0a4c633c2
+  sha256: 8a6c9b58146dd84503df4a0cfd1c8cef3bd55c53e2922583d2a91314158bbc4e
 - path: e1-phone-mainboard-routed-F_Adhesive.gta
   bytes: 507
-  sha256: 9a941e3a9719b470f745a23ac8ca0e82f38f52c9aa8f75a1acc1337670d886f6
+  sha256: 893401a57b87576729cf76f8c795cb74f3a60ec79ae0d06e5095e5ba767df778
 - path: e1-phone-mainboard-routed-F_Courtyard.gbr
   bytes: 12827
-  sha256: 82f979a36716e4d9913018a75cb3fcd66498adc63e6ffe6556641f9a026d0d40
+  sha256: 29cf78264ba2236460e56cf1fe88c84bebb340e9aa102d591c9579c6f7200ce1
 - path: e1-phone-mainboard-routed-F_Cu.gtl
   bytes: 106759
-  sha256: ab67478e1115fc870a31a3b79e9c4a415bd50558d00a0adec7571c16e79edffa
+  sha256: edc295d5fd9757cbc29358beca09f04f549643d901849884fe8bfdd451621a26
 - path: e1-phone-mainboard-routed-F_Fab.gbr
   bytes: 728669
-  sha256: 5350b80f0008e57161aad5774133038e7238b7b770d8fd3232d58dfc9e2ebbd3
+  sha256: 30a86293a48719eb4cc9675e14f474c02b00dd906ecc61fb06db3620ee6578aa
 - path: e1-phone-mainboard-routed-F_Mask.gts
   bytes: 40535
-  sha256: cd2d5bcb62e046ae1da7437d136ee389417a7bcd33d2f38ee0f39934841a82d4
+  sha256: abe78b1310ccdce633c9471696413b623fc674ed90cec72f278ccf7f14c00566
 - path: e1-phone-mainboard-routed-F_Paste.gtp
   bytes: 39213
-  sha256: 7086d597807a34bba8d741b7544daaf0f2425c0be0025bfe97451e8c1db279fe
+  sha256: 7b594bc7265ff050f6926988cfb114dabda93be49713fac780fe0033ce328997
 - path: e1-phone-mainboard-routed-F_Silkscreen.gto
   bytes: 322873
-  sha256: 562838c887812e207cbec3d9cd2ec6743316ff7d37de60952b327a6b642d3dc8
+  sha256: dbc84dcf08ce872c6c30ecb1d19d64e84902550af1c85cadce227fe35e4e48b1
 - path: e1-phone-mainboard-routed-In1_Cu.g1
   bytes: 2376
-  sha256: 184b28f8a36bc37da4661e308409a7875b390be61e68655d4a0d93f572da8434
+  sha256: 5b9d0ccd96fb977eb0b722ed79290b9c49fbb90fb72dfc51d79de19dc12ed652
 - path: e1-phone-mainboard-routed-In2_Cu.g2
   bytes: 1932
-  sha256: f85312c328b1121351fdcc76b3ba0e14eec2e2dc2caecd7db301ad799db2d668
+  sha256: e2a361ec8d572a54ff05f584954809f7a4038618addb1616d929882ec7acbb23
 - path: e1-phone-mainboard-routed-In3_Cu.g3
   bytes: 1932
-  sha256: 5e2372d6e5ba6888e55c16efda1d79d9d7d03b384deaeef756594732cd48e268
+  sha256: a9f802c12ddf4543de8af02d5cfe783e823f01d5d6d2d4ca96dc6e244dfab50f
 - path: e1-phone-mainboard-routed-In4_Cu.g4
   bytes: 1932
-  sha256: 4c21a8991008b3b54daa8c3fa7e9597dd2badceb58d14c4757d8659de2c7f7d1
+  sha256: d936298e6e1bcb176c205ec54aea1c334165b63b00307d555bb9f9a439b6583b
 - path: e1-phone-mainboard-routed-In5_Cu.g5
   bytes: 1932
-  sha256: 1300a83f2310a33698a10befb3699866556bfb330441881fa874791026eb31b3
+  sha256: 169b4e982a7ca87f53552a8f31cb88d1ea9c835897ebb2c26b805cba1b3bdbc8
 - path: e1-phone-mainboard-routed-In6_Cu.g6
   bytes: 1932
-  sha256: ec7e25cef38107c92d1487e6be339b6f8080c510b3ecbe37468962ad50052c5c
+  sha256: 219e34f7abaaf6db6065a651a5682f01b2998b88106d85a27bc2de0d77c57114
 - path: e1-phone-mainboard-routed-In7_Cu.g7
   bytes: 1932
-  sha256: bac55c95300b68979b6341bc889d9d7d6d4f2d60f05d03c1ba72d2ce185edfa6
+  sha256: bf4c68364f164a0a637f403e1df20231328f2ea74d7bae6f48077c0a86325f32
 - path: e1-phone-mainboard-routed-In8_Cu.g8
   bytes: 2409
-  sha256: f4fefa21c67896a35966e81da06e72b8006819c29471436ad44ff1b6e83272ec
+  sha256: 3e61f582f696f04330ae50c07b6a0b978d3fe0a6eb1eaa36de6a586f007f84d6
 - path: e1-phone-mainboard-routed-Margin.gbr
   bytes: 481
-  sha256: 92c56ff52e864ff2a1d576ebb46c82a30896b547c7e66869723bfa42c90f1f0b
+  sha256: 702530200546c646554b6f53607da1a87e2bddd400315ae96c2d9f47b6a5f126
 - path: e1-phone-mainboard-routed-User_Comments.gbr
   bytes: 844101
-  sha256: becaec76531e7bd612db017a47334fb60f3e86289307cf8b285c34cf3d748ada
+  sha256: de0ee7eb569bc1dd85c548e3059e5d049084eedc39f5f8185ecab930f834b4f1
 - path: e1-phone-mainboard-routed-User_Drawings.gbr
   bytes: 80865
-  sha256: 8d4c70062a8e9e8f61b68bcf6db97cc76a1a93eef8b2beb5068abc7ee76d6792
+  sha256: 04a688f25a8ecc2181c0b5f9a3c735e9d6ed80fa8a967858d3f89efc61688c53
 - path: e1-phone-mainboard-routed-User_Eco1.gbr
   bytes: 481
-  sha256: 09707d43444a841600d1ba20bdde232232f50f6b1f5fae6f4dd5949598b3f808
+  sha256: d5d146bf18d147af7f3fb5f52716251a8cca06809e821d0098f2807f1aaf8f42
 - path: e1-phone-mainboard-routed-User_Eco2.gbr
   bytes: 481
-  sha256: 22f1225ddf7c71348b5795c2c735ccb8c549c54d57780b0101ca98a40575b4f9
+  sha256: 7b6b041c7df35495c160e1cd83d2575bdd3033ed02b0424b44edd7bd9802c35c
 - path: e1-phone-mainboard-routed-job.gbrjob
   bytes: 7480
-  sha256: fbc20df62c72c000d1bb6eb1e63cb806ff82244d731a2e56c40d2a73bac2a11f
+  sha256: 2e5f1ed6a53a415ff5db68bd8f3342b94535801d7b0b31efaf1d088c216b2415
 - path: release-manifest.yaml
   bytes: 222181
-  sha256: f74672ac5dbeafe2144a56c5cfbc7b219c7df283ccc67e5c15f8f9115e9d26bd
+  sha256: 24ca594e7528f1f2e4c03de7b0213d35cd5cd44ac24aa1678cc1d89dd6541d43
 candidate_children_generated_from_routed_kicad: true
 release_children_complete: false
 release_blockers:
