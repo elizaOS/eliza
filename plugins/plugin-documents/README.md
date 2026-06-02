@@ -62,6 +62,6 @@ const character = {
 
 ## Limitations
 
-- Image uploads are converted to text descriptions when `includeImageDescriptions: true` is set in metadata (requires a vision model). Otherwise a stub text is stored.
+- Image uploads are converted to text descriptions when `includeImageDescriptions: true` is set in metadata (requires a vision model). If a real description cannot be produced, the upload is rejected instead of storing placeholder text.
 - Bundled documents (seeded by the runtime) and character documents (from character source files) cannot be edited or deleted through this API.
 - Bulk upload is capped at 100 documents per request; individual upload bodies are capped at 32 MB.

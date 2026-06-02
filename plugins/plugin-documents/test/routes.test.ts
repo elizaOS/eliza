@@ -24,7 +24,12 @@ type MockResponse = {
   end: (chunk?: string) => void;
 };
 
-function buildCtx(args: { method: string; pathname: string; body?: unknown }): {
+function buildCtx(args: {
+  method: string;
+  pathname: string;
+  body?: unknown;
+  runtime?: Partial<NonNullable<DocumentRouteContext["runtime"]>>;
+}): {
   ctx: DocumentRouteContext;
   res: MockResponse;
 } {
@@ -51,6 +56,7 @@ function buildCtx(args: { method: string; pathname: string; body?: unknown }): {
       agentId: "agent-id",
       getSetting: () => undefined,
       getMemoryById,
+      ...args.runtime,
     } as DocumentRouteContext["runtime"],
     json(response, data, status = 200) {
       response.statusCode = status;
@@ -126,6 +132,94 @@ describe("document routes", () => {
     expect(res.statusCode).toBe(400);
     expect(res.body).toEqual({
       error: "content and filename must be non-empty strings",
+    });
+    expect(addDocument).not.toHaveBeenCalled();
+  });
+
+  it("rejects image uploads that would otherwise store placeholder text", async () => {
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/documents",
+      body: {
+        content: "iVBORw0KGgo=",
+        filename: "photo.png",
+        contentType: "image/png",
+      },
+    });
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({
+      error:
+        "Failed to add document: Image uploads require metadata.includeImageDescriptions=true so the document store can persist real searchable text.",
+    });
+    expect(addDocument).not.toHaveBeenCalled();
+  });
+
+  it("stores image uploads only after a real image description is produced", async () => {
+    const useModel = vi.fn(async () => ({
+      description: "A receipt for coffee with total $4.50.",
+    }));
+    addDocument.mockResolvedValueOnce({
+      clientDocumentId: "doc-id",
+      fragmentCount: 1,
+    });
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/documents",
+      runtime: { useModel } as Partial<
+        NonNullable<DocumentRouteContext["runtime"]>
+      >,
+      body: {
+        content: "iVBORw0KGgo=",
+        filename: "receipt.png",
+        contentType: "image/png",
+        metadata: { includeImageDescriptions: true },
+      },
+    });
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(200);
+    expect(addDocument).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contentType: "text/plain",
+        content:
+          "[Image: receipt.png]\n\nA receipt for coffee with total $4.50.",
+      }),
+    );
+    expect(res.body).toEqual({
+      ok: true,
+      documentId: "doc-id",
+      fragmentCount: 1,
+    });
+  });
+
+  it("rejects image uploads when the image description model fails", async () => {
+    const useModel = vi.fn(async () => {
+      throw new Error("vision unavailable");
+    });
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/documents",
+      runtime: { useModel } as Partial<
+        NonNullable<DocumentRouteContext["runtime"]>
+      >,
+      body: {
+        content: "iVBORw0KGgo=",
+        filename: "receipt.png",
+        contentType: "image/png",
+        metadata: { includeImageDescriptions: true },
+      },
+    });
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({
+      error:
+        "Failed to add document: Image description model failed: Error: vision unavailable",
     });
     expect(addDocument).not.toHaveBeenCalled();
   });

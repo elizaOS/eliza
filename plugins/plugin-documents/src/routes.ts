@@ -1043,33 +1043,39 @@ export async function handleDocumentsRoutes(
     if (contentType.startsWith("image/")) {
       const includeDescriptions =
         asRecord(document.metadata)?.includeImageDescriptions === true;
-      if (includeDescriptions && runtime) {
-        try {
-          const { ModelType } = await import("@elizaos/core");
-          const dataUri = `data:${contentType};base64,${content}`;
-          const description = await runtime.useModel(
-            ModelType.IMAGE_DESCRIPTION,
-            {
-              imageUrl: dataUri,
-              prompt: `Describe this image in detail for a document store. Focus on text content, data, charts, and key visual elements. Image filename: ${document.filename}`,
-            },
-          );
-          const descText =
-            typeof description === "string"
-              ? description
-              : (description as { description?: string }).description ||
-                "Image uploaded";
-          content = `[Image: ${document.filename}]\n\n${descText}`;
-          contentType = "text/plain";
-        } catch (modelErr) {
-          warnings.push(`Image description failed: ${String(modelErr)}`);
-          content = `[Image: ${document.filename}] - Image description unavailable (model error).`;
-          contentType = "text/plain";
-        }
-      } else {
-        content = `[Image: ${document.filename}] - Image uploaded without text extraction.`;
-        contentType = "text/plain";
+      if (!includeDescriptions) {
+        throw new Error(
+          "Image uploads require metadata.includeImageDescriptions=true so the document store can persist real searchable text.",
+        );
       }
+      if (!runtime || typeof runtime.useModel !== "function") {
+        throw new Error(
+          "Image uploads require an IMAGE_DESCRIPTION model handler; no runtime model handler is available.",
+        );
+      }
+      const { ModelType } = await import("@elizaos/core");
+      const dataUri = `data:${contentType};base64,${content}`;
+      let description: unknown;
+      try {
+        description = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+          imageUrl: dataUri,
+          prompt: `Describe this image in detail for a document store. Focus on text content, data, charts, and key visual elements. Image filename: ${document.filename}`,
+        });
+      } catch (modelErr) {
+        throw new Error(`Image description model failed: ${String(modelErr)}`);
+      }
+      const descText =
+        typeof description === "string"
+          ? description.trim()
+          : typeof (description as { description?: unknown }).description ===
+              "string"
+            ? (description as { description: string }).description.trim()
+            : "";
+      if (!descText) {
+        throw new Error("Image description model returned empty text.");
+      }
+      content = `[Image: ${document.filename}]\n\n${descText}`;
+      contentType = "text/plain";
     }
 
     if (document.filename.endsWith(".mdx")) {
@@ -1160,7 +1166,11 @@ export async function handleDocumentsRoutes(
       error(
         res,
         `Failed to add document: ${message}`,
-        /Only the owner|Users can only/i.test(message) ? 403 : 500,
+        /Only the owner|Users can only/i.test(message)
+          ? 403
+          : /Image uploads require|Image description model/i.test(message)
+            ? 400
+            : 500,
       );
       return true;
     }
