@@ -55,6 +55,7 @@ interface ApiPredictionPositionPayload {
   currentProbability?: NumericLike;
   resolved?: boolean;
   resolution?: boolean | null;
+  closesAt?: string | null;
   status?: string;
 }
 
@@ -202,6 +203,7 @@ export function useUserPositions(
             unrealizedPnL: toNumber(pos.unrealizedPnL ?? 0),
             resolved: Boolean(pos.resolved),
             resolution: pos.resolution ?? null,
+            closesAt: pos.closesAt ?? null,
             status: pos.status,
           };
         },
