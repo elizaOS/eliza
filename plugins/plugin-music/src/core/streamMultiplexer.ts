@@ -73,6 +73,7 @@ export class StreamMultiplexer {
   private isActive = false;
   private sourceErrorHandler: ((error: Error) => void) | null = null;
   private sourceEndHandler: (() => void) | null = null;
+  private blockingDrainConsumers = new Set<string>();
 
   /**
    * Ogg header cache: the first N bytes containing OpusHead + OpusTags pages.
@@ -210,6 +211,8 @@ export class StreamMultiplexer {
     }
 
     this.consumers.delete(id);
+    this.blockingDrainConsumers.delete(id);
+    this.resumeBlockedSourceIfReady();
     logger.debug(
       `[StreamMultiplexer] Removed consumer: ${id} (remaining: ${this.consumers.size})`,
     );
@@ -323,7 +326,7 @@ export class StreamMultiplexer {
    *     If consumer's buffer is full (returns false):
    *       - LIVE_DROP: Drop frame immediately (radio-style)
    *       - BUFFER_THEN_DROP: Drop only if buffer >90% full
-   *       - BLOCKING: Wait (not implemented fully - would need async)
+   *       - BLOCKING: Pause source until slow consumers drain
    *
    * WHY TRACK STATS:
    * Knowing drop rates helps debug. If Discord shows 50% drops, it's a Discord
@@ -371,10 +374,8 @@ export class StreamMultiplexer {
           break;
 
         case "BLOCKING":
-          // Wait for drain before continuing (blocks source)
           if (!consumer.stream.write(chunk)) {
-            // In blocking mode, we'd need to pause source
-            // This is complex, so for now just log and continue
+            this.pauseForBlockingDrain(consumer);
             logger.warn(
               `[StreamMultiplexer] Consumer ${consumer.id} causing backpressure in BLOCKING mode`,
             );
@@ -384,12 +385,30 @@ export class StreamMultiplexer {
     }
   }
 
+  private pauseForBlockingDrain(consumer: Consumer): void {
+    if (this.blockingDrainConsumers.has(consumer.id)) return;
+
+    this.blockingDrainConsumers.add(consumer.id);
+    this.source?.pause();
+
+    consumer.stream.once("drain", () => {
+      this.blockingDrainConsumers.delete(consumer.id);
+      this.resumeBlockedSourceIfReady();
+    });
+  }
+
+  private resumeBlockedSourceIfReady(): void {
+    if (this.blockingDrainConsumers.size > 0) return;
+    this.source?.resume();
+  }
+
   /**
    * Handle source stream end
    */
   private handleSourceEnd(): void {
     logger.debug("[StreamMultiplexer] Source stream ended");
     this.isActive = false;
+    this.blockingDrainConsumers.clear();
 
     // End all consumer streams
     for (const consumer of this.consumers.values()) {
