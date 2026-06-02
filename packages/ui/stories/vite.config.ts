@@ -7,8 +7,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../..");
 const uiSrc = path.resolve(here, "../src");
 const sharedSrc = path.resolve(here, "../../shared/src");
-const coreSrc = path.resolve(repoRoot, "packages/core/src");
-const coreBrowserEntry = path.join(coreSrc, "index.browser.ts");
+const coreBrowserShim = path.resolve(here, "src/eliza-core-browser-shim.ts");
 const loggerSrc = path.resolve(repoRoot, "packages/logger/src/index.ts");
 
 export default defineConfig({
@@ -41,7 +40,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@ui-src": uiSrc,
-      "@elizaos/core": coreBrowserEntry,
+      "@elizaos/core": coreBrowserShim,
       "@elizaos/logger": loggerSrc,
       "@elizaos/shared": sharedSrc,
     },
@@ -53,10 +52,10 @@ export default defineConfig({
           name: "elizaos-core-browser-entry",
           setup(build) {
             build.onResolve({ filter: /^@elizaos\/core$/ }, () => ({
-              path: coreBrowserEntry,
+              path: coreBrowserShim,
             }));
             build.onResolve({ filter: /^@elizaos\/core\/browser$/ }, () => ({
-              path: coreBrowserEntry,
+              path: coreBrowserShim,
             }));
             build.onResolve({ filter: /^@elizaos\/logger$/ }, () => ({
               path: loggerSrc,

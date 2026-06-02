@@ -4,7 +4,14 @@ import { DockerSandboxProvider, requiresHeadscaleRoute } from "../docker-sandbox
 const savedEnv = { ...process.env };
 
 afterEach(() => {
-  process.env = { ...savedEnv };
+  // Restore env by mutation, never by reassigning `process.env`. Replacing the
+  // global env object swaps out Bun's special process.env, which breaks env
+  // reads (and the DNS resolver config) for every later test in the same
+  // process — surfacing as unrelated env/DNS failures elsewhere in the run.
+  for (const key of Object.keys(process.env)) {
+    if (!(key in savedEnv)) delete process.env[key];
+  }
+  Object.assign(process.env, savedEnv);
 });
 
 describe("requiresHeadscaleRoute", () => {

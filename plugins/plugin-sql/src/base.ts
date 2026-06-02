@@ -4820,12 +4820,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         conditions.push(eq(entityTable.agentId, params.agentId));
       }
 
-      // Build a single EXISTS subquery when filtering by componentType and/or worldId.
+      // Build a single EXISTS subquery when filtering by componentType,
+      // component data, and/or worldId.
       // Both predicates apply to the component table so they share one subquery.
-      if (params.componentType || params.worldId) {
+      if (params.componentType || params.componentDataFilter || params.worldId) {
         const subConditions: SQL[] = [sql`${componentTable.entityId} = ${entityTable.id}`];
         if (params.componentType) {
           subConditions.push(sql`${componentTable.type} = ${params.componentType}`);
+        }
+        if (params.componentDataFilter) {
+          subConditions.push(
+            sql`${componentTable.data} @> ${JSON.stringify(params.componentDataFilter)}::jsonb`
+          );
         }
         if (params.worldId) {
           subConditions.push(sql`${componentTable.worldId} = ${params.worldId}`);

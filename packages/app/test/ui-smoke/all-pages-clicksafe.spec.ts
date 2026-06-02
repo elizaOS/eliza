@@ -280,7 +280,7 @@ const MOBILE_PROBE: ViewportProbe = {
   routes: [
     coreRouteProbe("assistant home"),
     MOBILE_CHAT_ROUTE_PROBE,
-    ...CORE_ROUTE_PROBES.slice(2),
+    ...CORE_ROUTE_PROBES.slice(3),
     ...APP_TOOL_ROUTE_PROBES,
   ],
 };
