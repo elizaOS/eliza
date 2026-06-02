@@ -1370,7 +1370,7 @@ async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
   await expect(
     page
       .locator(
-        "main, [data-testid='home-view'], [role='main'], h1, [role='region'], [aria-label='Chat workspace']",
+        "main, [data-testid='home-view'], [data-testid='lifeops-shell'], [role='main'], h1, [role='region'], [aria-label='Chat workspace']",
       )
       .first(),
   ).toBeVisible({
