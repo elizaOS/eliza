@@ -350,21 +350,27 @@ export class SubAgentRouter extends Service {
   // of message-events per hour at most.
   private readonly completionFirstPostedSession: Map<string, string> =
     new Map();
-  private completionHasPostedFromOtherSession(
+  // Synchronous compare-and-set: claim the lineage's completion slot for this
+  // session, or return false if another session already holds it. Re-claiming
+  // from the SAME session returns true, so same-session progressive completes
+  // still post. There must be NO await between the get and the set, so a
+  // concurrent same-lineage retry can't slip a second post past the guard. The
+  // previous design split the check and the mark across the awaited delivery
+  // loop, leaving a TOCTOU window where two retry sessions both passed the check
+  // and double-posted (eliza#7967).
+  private tryClaimCompletion(
     completionKey: string,
     sessionId: string,
   ): boolean {
-    const firstSession = this.completionFirstPostedSession.get(completionKey);
-    return firstSession !== undefined && firstSession !== sessionId;
-  }
-  private markCompletionPosted(completionKey: string, sessionId: string): void {
-    if (this.completionFirstPostedSession.has(completionKey)) return;
+    const holder = this.completionFirstPostedSession.get(completionKey);
+    if (holder !== undefined) return holder === sessionId;
     this.completionFirstPostedSession.set(completionKey, sessionId);
     while (this.completionFirstPostedSession.size > 1024) {
       const oldestKey = this.completionFirstPostedSession.keys().next().value;
       if (!oldestKey) break;
       this.completionFirstPostedSession.delete(oldestKey);
     }
+    return true;
   }
   private started = false;
   private roundTripCap = DEFAULT_ROUND_TRIP_CAP;
@@ -749,20 +755,21 @@ export class SubAgentRouter extends Service {
     // suppressed.
     const completionKey =
       event === "task_complete" ? completionLineageKey(session, origin) : null;
-    if (completionKey) {
-      if (this.completionHasPostedFromOtherSession(completionKey, sessionId)) {
-        this.log(
-          "debug",
-          "suppressing duplicate sub-agent task_complete for lineage; another session already posted for this task",
-          {
-            sessionId,
-            completionKey,
-            event,
-          },
-        );
-        rollbackRoundTrip();
-        return;
-      }
+    // Atomically claim the lineage's completion slot BEFORE the awaited delivery
+    // loop, so two same-lineage retry sessions completing in the same window
+    // cannot both pass the check and double-post (eliza#7967).
+    if (completionKey && !this.tryClaimCompletion(completionKey, sessionId)) {
+      this.log(
+        "debug",
+        "suppressing duplicate sub-agent task_complete for lineage; another session already claimed this task",
+        {
+          sessionId,
+          completionKey,
+          event,
+        },
+      );
+      rollbackRoundTrip();
+      return;
     }
     if (event === "task_complete" && verifiedUrls.length > 0) {
       text = verifiedUrlCompletionFallback(text, verifiedUrls);
@@ -905,16 +912,12 @@ export class SubAgentRouter extends Service {
       }
     }
 
-    // Record this session as the "first poster" for this origin so any
-    // later retry sub-agent (different sessionId) for the same parent
-    // prompt is absorbed silently (issue elizaOS/eliza#7967). Same-
-    // session progressive task_completes are unaffected because the
-    // dedupe check compares sessionIds. Must run AFTER the handleMessage
-    // / createMemory loop so an early failure doesn't poison future
-    // retries that might actually succeed.
-    if (completionKey) {
-      this.markCompletionPosted(completionKey, sessionId);
-    }
+    // The lineage slot was already claimed atomically before the delivery loop
+    // (tryClaimCompletion), so there is nothing to mark here. The claim suppresses
+    // a later retry sub-agent (different sessionId) for the same parent prompt
+    // (issue elizaOS/eliza#7967); same-session progressive task_completes are
+    // unaffected because the claim is keyed by sessionId, and a verify-retry
+    // handoff returns earlier (above) so an incomplete build never claims.
   }
 
   private buildReplyCallback(
