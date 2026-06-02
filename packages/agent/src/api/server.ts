@@ -258,11 +258,6 @@ import { persistConfigEnv } from "./config-env.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
 import { pushWithBatchEvict } from "./memory-bounds.ts";
 import {
-  DEFAULT_REPLAY_LIMIT,
-  parseEventCursor,
-  selectReplayEvents,
-} from "./ws-event-replay.ts";
-import {
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
   hasPersistedFirstRunState,
@@ -325,6 +320,11 @@ import {
   resolveWalletNetworkMode,
   resolveWalletRpcReadiness,
 } from "./wallet-rpc.ts";
+import {
+  DEFAULT_REPLAY_LIMIT,
+  parseEventCursor,
+  selectReplayEvents,
+} from "./ws-event-replay.ts";
 
 export {
   executeFallbackParsedActions,
@@ -4053,8 +4053,7 @@ export async function startApiServer(opts?: {
     // Absent/invalid => null => the historical slice(-DEFAULT_REPLAY_LIMIT)
     // behavior, so existing clients are unaffected.
     const replayCursor = parseEventCursor(
-      wsUrl.searchParams.get("lastEventId") ??
-        wsUrl.searchParams.get("since"),
+      wsUrl.searchParams.get("lastEventId") ?? wsUrl.searchParams.get("since"),
     );
 
     const activateAuthenticatedConnection = () => {
