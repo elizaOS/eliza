@@ -187,6 +187,18 @@ platform no-ops are separated from actionable runtime gaps.
   - `bunx biome check plugins/plugin-ainex/src/types.ts plugins/plugin-ainex/test/service-actions.test.ts`
   - marker scan on the touched AiNex files
 
+### plugins/plugin-2004scape
+
+- Finished gateway WebSocket backpressure handling in `src/gateway/index.ts`.
+  Gateway sends now go through a helper that consumes Bun's `ServerWebSocket`
+  send result, records sockets whose messages were queued under backpressure,
+  clears that state on `drain`, and closes/removes unhealthy sockets when Bun
+  reports a dropped send.
+- Verified with:
+  - `bun run --cwd plugins/plugin-2004scape build:types`
+  - `bunx biome check plugins/plugin-2004scape/src/gateway/index.ts`
+  - marker scan and `git diff --check` on the touched gateway file
+
 ### plugins/plugin-coding-tools
 
 - Fixed the Windows `local-safe` shell sandbox gap in
