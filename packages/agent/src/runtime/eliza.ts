@@ -601,11 +601,24 @@ async function registerStaticPluginPhase(
     }
   };
 
-  await Promise.all(registrations.map(trackImport));
-  if (phase === "blocking") {
-    _blockingStaticPluginsRegistered = true;
-  } else {
+  if (phase === "deferred") {
+    // Deferred plugins run in the background after the API server is already
+    // listening; they must not hold the ready gate. Importing them one at a
+    // time and yielding to the event loop (setImmediate) between each lets the
+    // bound HTTP server serve /api/health (and other I/O) between the CPU-bound
+    // module evaluations, instead of starving it until the whole batch finishes
+    // (observed ready was dominated by this on contended hosts). All plugins
+    // still register — only the scheduling changes.
+    for (const registration of registrations) {
+      await trackImport(registration);
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+    }
     _deferredStaticPluginsRegistered = true;
+  } else {
+    await Promise.all(registrations.map(trackImport));
+    _blockingStaticPluginsRegistered = true;
   }
 }
 
