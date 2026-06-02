@@ -105,14 +105,7 @@ export interface GaitParams {
 }
 
 /** (roll, pitch, yaw, x, y, z) relative to mount_link. */
-export type ExtrinsicsRpyXyz = [
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-];
+export type ExtrinsicsRpyXyz = [number, number, number, number, number, number];
 
 export interface CameraSpec {
   name: string;
@@ -167,8 +160,8 @@ export interface SafetyLimits {
 
 /**
  * Full robot profile descriptor as fetched from the bridge `profile.describe`
- * command or loaded from a local YAML manifest. Replaces the earlier
- * placeholder; field-for-field mirror of the Python RobotProfile model.
+ * command or loaded from a local YAML manifest. Mirrors the Python
+ * RobotProfile model field-for-field.
  */
 export interface RobotProfileDescriptor {
   id: string;

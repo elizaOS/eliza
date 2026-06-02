@@ -174,6 +174,19 @@ platform no-ops are separated from actionable runtime gaps.
 - Added focused adapter tests.
 - Verified with focused test, typecheck, and diff check.
 
+### plugins/plugin-ainex
+
+- Removed stale placeholder wording from `src/types.ts`; the
+  `RobotProfileDescriptor` is the concrete bridge/Python profile mirror.
+- Reworded the focused action test helper comment to avoid marking a deliberate
+  minimal test fake as a source stub, and applied Biome's mechanical cleanup in
+  the touched test file.
+- Verified with:
+  - `bun run --cwd plugins/plugin-ainex test test/service-actions.test.ts`
+  - `bun run --cwd plugins/plugin-ainex typecheck`
+  - `bunx biome check plugins/plugin-ainex/src/types.ts plugins/plugin-ainex/test/service-actions.test.ts`
+  - marker scan on the touched AiNex files
+
 ### plugins/plugin-coding-tools
 
 - Fixed the Windows `local-safe` shell sandbox gap in
@@ -228,6 +241,24 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd plugins/plugin-elevenlabs typecheck`
   - `bunx biome check plugins/plugin-elevenlabs/src/index.ts plugins/plugin-elevenlabs/__tests__/streaming.test.ts plugins/plugin-elevenlabs/CLAUDE.md plugins/plugin-elevenlabs/AGENTS.md`
   - marker scan on the touched ElevenLabs files
+
+### plugins/plugin-instagram
+
+- Removed synthetic Instagram API behavior from `src/service.ts`. DM sends,
+  comment posts, user lookups, social actions, thread listing, and thread
+  message listing now fail explicitly until a concrete Instagram client backend
+  is configured, rather than logging and returning generated IDs, generated
+  users, or empty success data.
+- Replaced `console.*` service logging with the structured `logger` import.
+- Updated `README.md`, `CLAUDE.md`, and `AGENTS.md` to describe the connector
+  surface and concrete API backend boundary.
+- Added regression coverage in `src/__tests__/accounts.test.ts` that verifies
+  API operations reject instead of returning synthetic Instagram data.
+- Verified with:
+  - `bun run --cwd plugins/plugin-instagram test src/__tests__/accounts.test.ts`
+  - `bun run --cwd plugins/plugin-instagram typecheck`
+  - `bunx biome check plugins/plugin-instagram/src/service.ts plugins/plugin-instagram/src/__tests__/accounts.test.ts plugins/plugin-instagram/CLAUDE.md plugins/plugin-instagram/AGENTS.md plugins/plugin-instagram/README.md`
+  - marker scan and `git diff --check` on the touched Instagram files
 
 ### plugins/plugin-music
 
