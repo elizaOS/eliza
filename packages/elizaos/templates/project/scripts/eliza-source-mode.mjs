@@ -79,17 +79,63 @@ function run(command, args, cwd, env = process.env) {
 
 async function cloneLocalElizaIfMissing(env) {
   const elizaRoot = path.join(repoRoot, "eliza");
-  if (fs.existsSync(elizaRoot)) return;
+  if (fs.existsSync(elizaRoot)) {
+    // A complete clone has a .git directory. A clone that was interrupted
+    // mid-transfer (the network reset this guards against) can leave a partial
+    // tree behind; reusing it would silently build against a broken checkout,
+    // so treat an incomplete directory as missing and re-clone.
+    if (fs.existsSync(path.join(elizaRoot, ".git"))) return;
+    console.log(
+      "[eliza-source-mode] removing incomplete eliza/ checkout before re-clone",
+    );
+    fs.rmSync(elizaRoot, { recursive: true, force: true });
+  }
 
   const gitUrl = getElizaGitUrl(env);
   const branch = getElizaGitBranch(env);
-  console.log(`[eliza-source-mode] cloning ${gitUrl}#${branch} into eliza/`);
-  await run(
-    "git",
-    ["clone", "--branch", branch, "--single-branch", gitUrl, "eliza"],
-    repoRoot,
-    env,
-  );
+  // Shallow, single-branch, tag-free clone. The elizaOS monorepo carries a
+  // multi-GB history (benchmarks, OS images, model assets); a full clone often
+  // resets mid-transfer on slower links ("RPC failed; curl 56 ... early EOF;
+  // fetch-pack: invalid index-pack output"). Source mode only needs the working
+  // tree at the branch tip — no history, no tags — so --depth 1 cuts the
+  // transfer by orders of magnitude and avoids the giant pack entirely.
+  const args = [
+    "clone",
+    "--branch",
+    branch,
+    "--single-branch",
+    "--depth",
+    "1",
+    "--no-tags",
+    gitUrl,
+    "eliza",
+  ];
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    console.log(
+      `[eliza-source-mode] cloning ${gitUrl}#${branch} into eliza/ (shallow, attempt ${attempt}/${maxAttempts})`,
+    );
+    try {
+      await run("git", args, repoRoot, env);
+      return;
+    } catch (error) {
+      // git removes its own target dir on a failed clone, but guard against a
+      // killed process leaving a partial tree behind.
+      fs.rmSync(elizaRoot, { recursive: true, force: true });
+      const detail = error instanceof Error ? error.message : String(error);
+      if (attempt === maxAttempts) {
+        throw new Error(
+          `git clone failed after ${maxAttempts} attempts: ${detail}. ` +
+            "This is usually a network interruption while pulling the elizaOS " +
+            "repository. Re-run the command, or pre-clone it manually with " +
+            `\`git clone --depth 1 --branch ${branch} ${gitUrl} eliza\`.`,
+        );
+      }
+      console.warn(
+        `[eliza-source-mode] clone attempt ${attempt} failed (${detail}); retrying…`,
+      );
+    }
+  }
 }
 
 async function runLocalMode(options) {
