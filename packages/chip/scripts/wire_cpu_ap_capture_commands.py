@@ -352,7 +352,9 @@ def ap_payload_sidecar_problems(
     linux_record = data.get("accepted_linux_boot")
     linux_path = linux_transcript_status.get("path")
     _linux_intake_raw = linux_transcript_status.get("intake_utc")
-    linux_intake = parse_evidence_utc(_linux_intake_raw if isinstance(_linux_intake_raw, str) else None)
+    linux_intake = parse_evidence_utc(
+        _linux_intake_raw if isinstance(_linux_intake_raw, str) else None
+    )
     if not isinstance(linux_record, dict):
         problems.append(
             f"generated-AP benchmark payload freshness sidecar lacks accepted_linux_boot record: {rel(sidecar)}"

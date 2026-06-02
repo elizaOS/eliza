@@ -1790,31 +1790,31 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
     for model in models:
         if not isinstance(model, dict):
             continue
-        record: dict[str, Any] | None = records_by_reference.get(str(model.get("reference", "")))
-        if not record:
+        matched_record: dict[str, Any] | None = records_by_reference.get(str(model.get("reference", "")))
+        if not matched_record:
             continue
-        model["local_discrete_step_file"] = record["local_discrete_step_file"]
-        model["local_discrete_step_sha256"] = record["local_discrete_step_sha256"]
-        model["local_discrete_step_bytes"] = record["local_discrete_step_bytes"]
-        model["local_discrete_step_status"] = record["local_discrete_step_status"]
-        model["local_discrete_step_import_status"] = record["local_discrete_step_import_status"]
-        model["local_discrete_step_solid_type"] = record["local_discrete_step_solid_type"]
-        model["local_discrete_step_imported_as_solid"] = record[
+        model["local_discrete_step_file"] = matched_record["local_discrete_step_file"]
+        model["local_discrete_step_sha256"] = matched_record["local_discrete_step_sha256"]
+        model["local_discrete_step_bytes"] = matched_record["local_discrete_step_bytes"]
+        model["local_discrete_step_status"] = matched_record["local_discrete_step_status"]
+        model["local_discrete_step_import_status"] = matched_record["local_discrete_step_import_status"]
+        model["local_discrete_step_solid_type"] = matched_record["local_discrete_step_solid_type"]
+        model["local_discrete_step_imported_as_solid"] = matched_record[
             "local_discrete_step_imported_as_solid"
         ]
-        model["local_discrete_step_bbox_mm"] = record["local_discrete_step_bbox_mm"]
-        model["local_discrete_step_expected_bbox_mm"] = record[
+        model["local_discrete_step_bbox_mm"] = matched_record["local_discrete_step_bbox_mm"]
+        model["local_discrete_step_expected_bbox_mm"] = matched_record[
             "local_discrete_step_expected_bbox_mm"
         ]
-        model["local_discrete_step_bbox_matches_envelope"] = record[
+        model["local_discrete_step_bbox_matches_envelope"] = matched_record[
             "local_discrete_step_bbox_matches_envelope"
         ]
-        model["public_cad_step_overlay_status"] = record["public_cad_step_overlay_status"]
-        model["public_cad_step_overlay_file"] = record["public_cad_step_overlay_file"]
-        model["public_cad_step_overlay_sha256"] = record["public_cad_step_overlay_sha256"]
-        model["public_cad_step_overlay_bytes"] = record["public_cad_step_overlay_bytes"]
-        model["public_cad_source_record"] = record["public_cad_source_record"]
-        model["public_cad_step_overlay_release_credit"] = record[
+        model["public_cad_step_overlay_status"] = matched_record["public_cad_step_overlay_status"]
+        model["public_cad_step_overlay_file"] = matched_record["public_cad_step_overlay_file"]
+        model["public_cad_step_overlay_sha256"] = matched_record["public_cad_step_overlay_sha256"]
+        model["public_cad_step_overlay_bytes"] = matched_record["public_cad_step_overlay_bytes"]
+        model["public_cad_source_record"] = matched_record["public_cad_source_record"]
+        model["public_cad_step_overlay_release_credit"] = matched_record[
             "public_cad_step_overlay_release_credit"
         ]
     component_manifest["local_discrete_step_binding"] = {

@@ -75,6 +75,7 @@ from compiler.runtime.e1x3d_wafer_model import (  # noqa: E402
     thermal_model,
 )
 
+
 class _PhysicalTier(TypedDict):
     z: int
     kind: str
@@ -156,10 +157,14 @@ def _physical_stack(config: E1X3DConfig) -> list[_PhysicalTier]:
     tiers: list[_PhysicalTier] = []
     z = 0
     for logic_index in range(config.logical_tiers):
-        tiers.append({"z": z, "kind": "logic", "logic_index": logic_index, "depth_from_nearest_sink": 0})
+        tiers.append(
+            {"z": z, "kind": "logic", "logic_index": logic_index, "depth_from_nearest_sink": 0}
+        )
         z += 1
         for _ in range(mem_per_logic):
-            tiers.append({"z": z, "kind": "memory", "logic_index": logic_index, "depth_from_nearest_sink": 0})
+            tiers.append(
+                {"z": z, "kind": "memory", "logic_index": logic_index, "depth_from_nearest_sink": 0}
+            )
             z += 1
     total = len(tiers)
     dual_side = config.cooling == "dual_side"
@@ -331,7 +336,9 @@ def stacked_coanalyze(config: E1X3DConfig) -> dict[str, object]:
     )
 
     baseline = thermal_model(config)
-    baseline_peak_junction_c = float(baseline["peak_junction_c"])  # type: ignore[arg-type]
+    _baseline_peak = baseline["peak_junction_c"]
+    assert isinstance(_baseline_peak, (int, float)), "thermal_model peak_junction_c must be numeric"
+    baseline_peak_junction_c = float(_baseline_peak)
     ceiling_density = config.tier_power_density_ceiling_w_per_mm2
     max_tj_c = config.max_junction_temp_c
 
@@ -379,9 +386,7 @@ def stacked_coanalyze(config: E1X3DConfig) -> dict[str, object]:
             "physical_tiers": len(stack),
             "cooling": config.cooling,
             "dual_side_rise_reduction": config.dual_side_rise_reduction,
-            "physical_order_bottom_to_top": [
-                {"z": t["z"], "kind": t["kind"]} for t in stack
-            ],
+            "physical_order_bottom_to_top": [{"z": t["z"], "kind": t["kind"]} for t in stack],
         },
         "model_assumptions": {
             "t_ambient_c": T_AMBIENT_C,
@@ -423,7 +428,7 @@ def stacked_coanalyze(config: E1X3DConfig) -> dict[str, object]:
             "tier_power_density_ceiling_w_per_mm2": ceiling_density,
             "status": baseline["status"],
             "stacked_minus_baseline_peak_junction_c": round(
-                float(hottest["converged_junction_c"]) - float(baseline["peak_junction_c"]), 3
+                hottest["converged_junction_c"] - baseline_peak_junction_c, 3
             ),
         },
         "per_tier": per_tier,

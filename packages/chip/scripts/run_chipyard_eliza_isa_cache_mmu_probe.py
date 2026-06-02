@@ -654,7 +654,11 @@ def main(argv: list[str]) -> int:
         problems.append(f"missing generated DTS: {rel(DTS)}")
     dts_status = dts_contract_status()
     _dts_missing_raw = dts_status.get("missing_strings", [])
-    dts_missing = [str(marker) for marker in (_dts_missing_raw if isinstance(_dts_missing_raw, list) else []) if str(marker)]
+    dts_missing = [
+        str(marker)
+        for marker in (_dts_missing_raw if isinstance(_dts_missing_raw, list) else [])
+        if str(marker)
+    ]
     if dts_missing:
         problems.append(
             "generated DTS is missing ISA/cache/MMU contract markers: " + ", ".join(dts_missing)
@@ -850,11 +854,11 @@ def main(argv: list[str]) -> int:
         combined_missing_final_markers.append(HWPROBE_SUCCESS_MARKER)
     if not linux_hwprobe["contains_riscv_hwprobe_key_markers"]:
         _observed_hwprobe_raw = linux_hwprobe.get("observed_hwprobe_markers", [])
-        _observed_hwprobe: list[object] = _observed_hwprobe_raw if isinstance(_observed_hwprobe_raw, list) else []
+        _observed_hwprobe: list[object] = (
+            _observed_hwprobe_raw if isinstance(_observed_hwprobe_raw, list) else []
+        )
         combined_missing_final_markers.extend(
-            marker
-            for marker in HWPROBE_KEY_MARKERS
-            if marker not in _observed_hwprobe
+            marker for marker in HWPROBE_KEY_MARKERS if marker not in _observed_hwprobe
         )
     archive_output = ""
     if not missing_baremetal and linux_hwprobe["contains_riscv_hwprobe_success"]:

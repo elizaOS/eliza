@@ -17250,7 +17250,9 @@ def check_kicad_cad_stub_audit() -> None:
         disposition = str(hit.get("disposition") or "")
         placeholder_key: tuple[str, str] = (str(hit.get("path") or ""), marker)
         if placeholder_key in seen_placeholder_hits:
-            raise SystemExit(f"KiCad/CAD stub audit duplicate placeholder marker record: {placeholder_key}")
+            raise SystemExit(
+                f"KiCad/CAD stub audit duplicate placeholder marker record: {placeholder_key}"
+            )
         seen_placeholder_hits.add(placeholder_key)
         require_path(marker_path)
         if not marker:

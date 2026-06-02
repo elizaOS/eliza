@@ -14,7 +14,7 @@ import re
 import shutil
 import uuid
 from pathlib import Path
-from typing import cast, Any
+from typing import Any, cast
 
 import yaml
 
@@ -381,9 +381,13 @@ def route_metadata_index() -> dict[str, dict[str, object]]:
                     route_class.split("_")[0] in key
                     or net_to_group.get(canonical, "").split("_")[0] in key
                 ):
-                    cast(list[Any], entry["length_limits_mm"]).append({"constraint": key, "value": value})
+                    cast(list[Any], entry["length_limits_mm"]).append(
+                        {"constraint": key, "value": value}
+                    )
                 if key.endswith("skew_mm_max") and route_class.split("_")[0] in key:
-                    cast(list[Any], entry["skew_limits_mm"]).append({"constraint": key, "value": value})
+                    cast(list[Any], entry["skew_limits_mm"]).append(
+                        {"constraint": key, "value": value}
+                    )
     for entry in metadata.values():
         for key in (
             "domains",
@@ -721,8 +725,12 @@ def main() -> int:
                 {"route_count": 0, "segment_count": 0, "length_mm": 0.0, "nets": []},
             )
             summary["route_count"] = cast(int, summary["route_count"]) + 1
-            summary["segment_count"] = cast(int, summary["segment_count"]) + cast(int, route["segment_count"])
-            summary["length_mm"] = cast(float, summary["length_mm"]) + cast(float, route["length_mm"])
+            summary["segment_count"] = cast(int, summary["segment_count"]) + cast(
+                int, route["segment_count"]
+            )
+            summary["length_mm"] = cast(float, summary["length_mm"]) + cast(
+                float, route["length_mm"]
+            )
             cast(list[Any], summary["nets"]).append(route["canonical_net"])
         for domain in domains:
             summary = domain_summary.setdefault(
@@ -730,8 +738,12 @@ def main() -> int:
                 {"route_count": 0, "segment_count": 0, "length_mm": 0.0, "nets": []},
             )
             summary["route_count"] = cast(int, summary["route_count"]) + 1
-            summary["segment_count"] = cast(int, summary["segment_count"]) + cast(int, route["segment_count"])
-            summary["length_mm"] = cast(float, summary["length_mm"]) + cast(float, route["length_mm"])
+            summary["segment_count"] = cast(int, summary["segment_count"]) + cast(
+                int, route["segment_count"]
+            )
+            summary["length_mm"] = cast(float, summary["length_mm"]) + cast(
+                float, route["length_mm"]
+            )
             cast(list[Any], summary["nets"]).append(route["canonical_net"])
     for summary in list(class_summary.values()) + list(domain_summary.values()):
         summary["length_mm"] = round(float(cast(float, summary["length_mm"])), 3)
@@ -783,7 +795,9 @@ def main() -> int:
             int(cast(int, item["filled_polygon_count"])) for item in zone_records
         ),
         "local_copper_zone_release_credit": False,
-        "route_length_total_mm": round(sum(float(cast(float, item["length_mm"])) for item in route_records), 3),
+        "route_length_total_mm": round(
+            sum(float(cast(float, item["length_mm"])) for item in route_records), 3
+        ),
         "controlled_impedance_route_count": sum(
             1 for item in route_records if item["controlled_impedance_targets_ohm"]
         ),

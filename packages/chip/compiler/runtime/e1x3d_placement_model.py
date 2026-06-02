@@ -56,6 +56,7 @@ class TierSplitResult(TypedDict):
     configured_bonding_sufficient: bool
     wirelength_delta_vs_planar: float
 
+
 # Catalog of inter-tier bonding technologies:
 #   (name, pitch_um, geometric_hard_cap_vias_per_mm2, realizable_signal_density_per_mm2)
 #

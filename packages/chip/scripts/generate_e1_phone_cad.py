@@ -2863,7 +2863,13 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
             "cad_step": part.get("step", ""),
             "cad_step_bytes": int(part.get("bytes", 0) or 0),
             "cad_part_bbox_mm": part_bbox,
-            "visual_route_span_mm": round(max([float(value) for value in (part_span if part_span is not None else [])] or [0.0]), 3),
+            "visual_route_span_mm": round(
+                max(
+                    [float(value) for value in (part_span if part_span is not None else [])]
+                    or [0.0]
+                ),
+                3,
+            ),
             "represented_nets": represented_nets,
             "represented_net_count": len(represented_nets),
             "represented_route_ids": [str(route.get("id")) for route in represented_route_records],
@@ -3315,7 +3321,7 @@ def write_solid_cad_handoff_artifacts(
                 raise RuntimeError("STEP write failed for e1-phone-solid-assembly")
 
             connection_coverage = refresh_ocp_connection_coverage(part_rows)
-            required_solid_presence = {
+            required_solid_presence: dict[str, Any] = {
                 row["name"]: {
                     "present": Path(ROOT / row["step"]).is_file(),
                     "bytes": row["bytes"],
@@ -3389,7 +3395,7 @@ def write_solid_cad_handoff_artifacts(
             return report
         except Exception as fallback_exc:
             fallback_error = f"{type(fallback_exc).__name__}: {fallback_exc}"
-        report: dict[str, Any] = {
+        report = {
             "claim_boundary": "STEP/B-rep handoff preflight; neither CadQuery nor OCP fallback succeeded.",
             "status": "blocked",
             "tool": "cadquery_or_ocp",
@@ -5337,7 +5343,7 @@ def write_solid_cad_handoff_artifacts(
         "service_label_recess",
     ]
     solid_names = {row["name"] for row in part_rows}
-    required_solid_presence: dict[str, Any] = {name: name in solid_names for name in required_solid_names}
+    required_solid_presence = {name: name in solid_names for name in required_solid_names}
     all_required_solids_present = all(required_solid_presence.values())
     all_steps_nonempty = all(row["bytes"] > 1000 for row in part_rows)
     routed_intake_path = (
@@ -17475,19 +17481,21 @@ def write_full_cad_boolean_interference_artifacts(
                 inner_half_x - abs(float(disp_center[0])) - float(disp_half[0]),
                 inner_half_y - abs(float(disp_center[1])) - float(disp_half[1]),
             ]
-            min_gap = min(aperture_gaps)
+            aperture_min_gap = min(aperture_gaps)
             return {
                 "scope_id": scope_id,
                 "pair": pair,
                 "missing_parts": [],
                 "component_pair_count": 1,
-                "min_gap_mm": round(min_gap, 3),
-                "max_overlap_volume_mm3": 0.0 if min_gap >= 0 else round(abs(min_gap), 3),
-                "interference_count": 0 if min_gap >= 0 else 1,
-                "pass": min_gap >= 0,
+                "min_gap_mm": round(aperture_min_gap, 3),
+                "max_overlap_volume_mm3": 0.0
+                if aperture_min_gap >= 0
+                else round(abs(aperture_min_gap), 3),
+                "interference_count": 0 if aperture_min_gap >= 0 else 1,
+                "pass": aperture_min_gap >= 0,
                 "method": "side_frame_inner_aperture_clearance",
             }
-        min_gap = None  # float | None; updated in component-pair loop below
+        min_gap: float | None = None  # updated in component-pair loop below
         max_overlap_volume = 0.0
         interference_count = 0
         component_pair_count = 0

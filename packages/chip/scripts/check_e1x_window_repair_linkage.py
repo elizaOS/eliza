@@ -13,6 +13,7 @@ class _CaseEntry(TypedDict):
     repair: Path
     expected_repair_sha256: str
 
+
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_window_repair_linkage.json"
 

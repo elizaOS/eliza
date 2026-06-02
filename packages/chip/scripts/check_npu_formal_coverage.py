@@ -136,7 +136,9 @@ def validate_manifest(manifest: dict) -> list[str]:
     if sby.get("spec") != EXPECTED["spec"]:
         errors.append(f"{TARGET} spec must be {EXPECTED['spec']}")
     raw_engines = sby.get("engines")
-    engines_list: list[object] = list(raw_engines) if isinstance(raw_engines, (list, tuple, set)) else []
+    engines_list: list[object] = (
+        list(raw_engines) if isinstance(raw_engines, (list, tuple, set)) else []
+    )
     if EXPECTED["engine"] not in engines_list:
         errors.append(f"{TARGET} must record {EXPECTED['engine']} engine")
     raw_covered = sby.get("covered_files")

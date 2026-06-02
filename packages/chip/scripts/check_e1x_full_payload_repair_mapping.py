@@ -298,10 +298,16 @@ def main() -> int:
         "payload_manifest_checksum": cast(
             int, full_payload.get("summary", {}).get("payload_manifest_checksum", 0)
         ),
-        "normal_payload_remapped_records": cast(int, normal.get("payload_remapped_record_count", 0)),
-        "high_failure_payload_remapped_records": cast(int, high.get("payload_remapped_record_count", 0)),
+        "normal_payload_remapped_records": cast(
+            int, normal.get("payload_remapped_record_count", 0)
+        ),
+        "high_failure_payload_remapped_records": cast(
+            int, high.get("payload_remapped_record_count", 0)
+        ),
         "normal_payload_direct_records": cast(int, normal.get("payload_direct_record_count", 0)),
-        "high_failure_payload_direct_records": cast(int, high.get("payload_direct_record_count", 0)),
+        "high_failure_payload_direct_records": cast(
+            int, high.get("payload_direct_record_count", 0)
+        ),
         "normal_payload_mapping_checksum": cast(int, normal.get("payload_mapping_checksum", 0)),
         "high_failure_payload_mapping_checksum": cast(int, high.get("payload_mapping_checksum", 0)),
         "high_vs_normal_payload_remap_ratio": (

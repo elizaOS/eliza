@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import math
 import re
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TypedDict, cast
 
@@ -300,6 +301,12 @@ def parse_segments(
         start = (round(sx, 3), round(sy, 3))
         end = (round(ex, 3), round(ey, 3))
         route = routed_lookup.get((net_name, start, end), {})
+        route_id: str = str(route.get("id", ""))
+        route_classes: list[str] = cast(list[str], route.get("route_classes", []))
+        source_domains: list[str] = cast(list[str], route.get("source_domains", []))
+        controlled_impedance_targets_ohm: list[float] = cast(
+            list[float], route.get("controlled_impedance_targets_ohm", [])
+        )
         segments.append(
             {
                 "start_mm": {"x": round(sx, 3), "y": round(sy, 3)},
@@ -308,12 +315,10 @@ def parse_segments(
                 "layer": layer,
                 "net_id": net_id,
                 "net": net_name,
-                "route_id": str(route.get("id", "")),
-                "route_classes": cast(list[str], route.get("route_classes", [])),
-                "source_domains": cast(list[str], route.get("source_domains", [])),
-                "controlled_impedance_targets_ohm": cast(
-                    list[float], route.get("controlled_impedance_targets_ohm", [])
-                ),
+                "route_id": route_id,
+                "route_classes": route_classes,
+                "source_domains": source_domains,
+                "controlled_impedance_targets_ohm": controlled_impedance_targets_ohm,
             }
         )
     return segments
@@ -434,13 +439,13 @@ def board_context() -> dict[str, object]:
 def common_report(
     *,
     board_text: str,
-    records: list[dict[str, object]],
-    segments: list[dict[str, object]],
-    vias: list[dict[str, object]],
-    zones: list[dict[str, object]],
+    records: Sequence[FootprintRecord],
+    segments: Sequence[SegmentRecord],
+    vias: Sequence[ViaRecord],
+    zones: Sequence[dict[str, object]],
     generator_backend: str,
 ) -> dict[str, object]:
-    pad_count = sum(int(cast(int, item["pad_count"])) for item in records)
+    pad_count = sum(item["pad_count"] for item in records)
     routed_trace_bound_count = sum(1 for segment in segments if segment.get("route_id"))
     controlled_impedance_segment_count = sum(
         1 for segment in segments if segment.get("controlled_impedance_targets_ohm")
@@ -480,7 +485,7 @@ def common_report(
         "via_net_name_count": len(via_net_names),
         "filled_copper_zone_visual_count": len(zones),
         "filled_copper_zone_polygon_count": sum(
-            int(cast(int, zone.get("filled_polygon_count", 0) or 0)) for zone in zones
+            cast(int, zone.get("filled_polygon_count", 0) or 0) for zone in zones
         ),
         "filled_copper_zone_net_name_count": len(zone_net_names),
         "e1phone_footprint_refs": board_text.count('(footprint "E1Phone:'),
@@ -531,16 +536,16 @@ def generate_with_ocp(context: dict[str, object]) -> dict[str, object]:
 
     board_text = str(context["board_text"])
     params = cast(dict[str, object], context["params"])
-    records = cast(list[dict[str, object]], context["records"])
-    segments = cast(list[dict[str, object]], context["segments"])
-    vias = cast(list[dict[str, object]], context["vias"])
+    records = cast(list[FootprintRecord], context["records"])
+    segments = cast(list[SegmentRecord], context["segments"])
+    vias = cast(list[ViaRecord], context["vias"])
     zones = cast(list[dict[str, object]], context["zones"])
     pcb = cast(dict[str, object], params["pcb"])
-    board_w, board_h, board_t = [float(v) for v in cast(list[object], pcb["outline_mm"])]
-    top_w, top_h, _ = [float(v) for v in cast(list[object], pcb["top_island_outline_mm"])]
-    bot_w, bot_h, _ = [float(v) for v in cast(list[object], pcb["bottom_island_outline_mm"])]
-    top_y = float(cast(float, pcb["top_island_center_y_mm"]))
-    bot_y = float(cast(float, pcb["bottom_island_center_y_mm"]))
+    board_w, board_h, board_t = cast(list[float], pcb["outline_mm"])
+    top_w, top_h, _ = cast(list[float], pcb["top_island_outline_mm"])
+    bot_w, bot_h, _ = cast(list[float], pcb["bottom_island_outline_mm"])
+    top_y = cast(float, pcb["top_island_center_y_mm"])
+    bot_y = cast(float, pcb["bottom_island_center_y_mm"])
     z_top = board_t / 2.0
     z_bot = -board_t / 2.0
     copper_thickness = 0.035
@@ -657,10 +662,10 @@ def generate_with_ocp(context: dict[str, object]) -> dict[str, object]:
         add_shape(transform_shape(shape, move))
 
     for zone in zones:
-        bbox = zone["bbox_mm"]
-        x = float(bbox["x_min"]) + float(bbox["width"]) / 2.0 - board_w / 2.0
-        y = board_h / 2.0 - (float(bbox["y_min"]) + float(bbox["height"]) / 2.0)
-        layers = zone.get("layers", [])
+        bbox = cast(dict[str, float], zone["bbox_mm"])
+        x = bbox["x_min"] + bbox["width"] / 2.0 - board_w / 2.0
+        y = board_h / 2.0 - (bbox["y_min"] + bbox["height"] / 2.0)
+        layers = cast(list[str], zone.get("layers", []))
         visual_layers = [
             layer for layer in layers if layer in {"F.Cu", "B.Cu", "In1.GND", "In8.GND"}
         ]
@@ -673,7 +678,7 @@ def generate_with_ocp(context: dict[str, object]) -> dict[str, object]:
                 z = board_t * 0.25
             else:
                 z = -board_t * 0.25
-            add_box_center(x, y, z, float(bbox["width"]), float(bbox["height"]), copper_thickness)
+            add_box_center(x, y, z, bbox["width"], bbox["height"], copper_thickness)
 
     OUT_STEP.parent.mkdir(parents=True, exist_ok=True)
     writer = STEPControl_Writer()
@@ -699,17 +704,17 @@ def generate_with_cadquery(context: dict[str, object]) -> dict[str, object]:
 
     board_text = str(context["board_text"])
     params = cast(dict[str, object], context["params"])
-    records = cast(list[dict[str, object]], context["records"])
-    segments = cast(list[dict[str, object]], context["segments"])
-    vias = cast(list[dict[str, object]], context["vias"])
+    records = cast(list[FootprintRecord], context["records"])
+    segments = cast(list[SegmentRecord], context["segments"])
+    vias = cast(list[ViaRecord], context["vias"])
     zones = cast(list[dict[str, object]], context["zones"])
 
     pcb = cast(dict[str, object], params["pcb"])
-    board_w, board_h, board_t = [float(v) for v in cast(list[object], pcb["outline_mm"])]
-    top_w, top_h, _ = [float(v) for v in cast(list[object], pcb["top_island_outline_mm"])]
-    bot_w, bot_h, _ = [float(v) for v in cast(list[object], pcb["bottom_island_outline_mm"])]
-    top_y = float(cast(float, pcb["top_island_center_y_mm"]))
-    bot_y = float(cast(float, pcb["bottom_island_center_y_mm"]))
+    board_w, board_h, board_t = cast(list[float], pcb["outline_mm"])
+    top_w, top_h, _ = cast(list[float], pcb["top_island_outline_mm"])
+    bot_w, bot_h, _ = cast(list[float], pcb["bottom_island_outline_mm"])
+    top_y = cast(float, pcb["top_island_center_y_mm"])
+    bot_y = cast(float, pcb["bottom_island_center_y_mm"])
     z_top = board_t / 2.0
     z_bot = -board_t / 2.0
 
@@ -835,10 +840,10 @@ def generate_with_cadquery(context: dict[str, object]) -> dict[str, object]:
         assembly.add(barrel, name=via_name, color=pad_color)
 
     for zone_idx, zone in enumerate(zones, start=1):
-        bbox = zone["bbox_mm"]
-        x = float(bbox["x_min"]) + float(bbox["width"]) / 2.0 - board_w / 2.0
-        y = board_h / 2.0 - (float(bbox["y_min"]) + float(bbox["height"]) / 2.0)
-        layers = zone.get("layers", [])
+        bbox = cast(dict[str, float], zone["bbox_mm"])
+        x = bbox["x_min"] + bbox["width"] / 2.0 - board_w / 2.0
+        y = board_h / 2.0 - (bbox["y_min"] + bbox["height"] / 2.0)
+        layers = cast(list[str], zone.get("layers", []))
         visual_layers = [
             layer for layer in layers if layer in {"F.Cu", "B.Cu", "In1.GND", "In8.GND"}
         ]
@@ -854,8 +859,8 @@ def generate_with_cadquery(context: dict[str, object]) -> dict[str, object]:
             zone_shape = (
                 cq.Workplane("XY")
                 .box(
-                    max(float(bbox["width"]), 0.05),
-                    max(float(bbox["height"]), 0.05),
+                    max(bbox["width"], 0.05),
+                    max(bbox["height"], 0.05),
                     copper_thickness,
                 )
                 .translate((x, y, z))

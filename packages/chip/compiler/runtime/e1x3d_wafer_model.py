@@ -987,7 +987,9 @@ def build_scaled_e1x3d_report(
     high_defect_map = defect_map_artifact(cfg, HIGH_DEFECT_SCENARIO_3D)
     high_repair_manifest = repair_manifest_artifact(cfg, HIGH_DEFECT_SCENARIO_3D, high_defect_map)
     high_repair_rom = repair_rom_artifact(high_repair_manifest)
-    high_model_shard_sample = model_shard_sample_artifact(cast(E1XConfig, cfg), model, high["model_load"])
+    high_model_shard_sample = model_shard_sample_artifact(
+        cast(E1XConfig, cfg), model, high["model_load"]
+    )
     high_execution = model_execution_plan(
         cast(E1XConfig, cfg),
         model,

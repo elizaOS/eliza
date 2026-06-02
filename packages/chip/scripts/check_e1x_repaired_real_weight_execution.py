@@ -5,7 +5,7 @@ import json
 from datetime import UTC, datetime
 from hashlib import blake2s, sha256
 from pathlib import Path
-from typing import TypedDict
+from typing import Any, TypedDict, cast
 
 
 class CaseSummary(TypedDict):
@@ -17,6 +17,7 @@ class CaseSummary(TypedDict):
     route_checksum: int
     sampled_remapped_rows: list[dict[str, object]]
 
+
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_repaired_real_weight_execution.json"
 
@@ -25,6 +26,7 @@ FULL_NORM_REAL_WEIGHT = ROOT / "build/reports/e1x_full_norm_real_weight_rows.jso
 VOCAB_SAMPLED_K_REAL_WEIGHT = ROOT / "build/reports/e1x_vocab_sampled_k_real_weight_rows.json"
 FULL_PAYLOAD_REPAIR = ROOT / "build/reports/e1x_full_payload_repair_mapping.json"
 WINDOW_REPAIR = ROOT / "build/reports/e1x_window_repair_linkage.json"
+
 
 class CasePaths:
     def __init__(self, defect: Path, repair: Path, expected_repair_sha256: str) -> None:
@@ -52,7 +54,7 @@ FNV64_OFFSET = 0xCBF29CE484222325
 FNV64_PRIME = 0x100000001B3
 MASK64 = (1 << 64) - 1
 
-FALSE_CLAIM_FLAGS = {
+FALSE_CLAIM_FLAGS: dict[str, object] = {
     "release_claim_allowed": False,
     "silicon_claim_allowed": False,
     "production_accelerator_claim_allowed": False,
@@ -65,8 +67,8 @@ def utc_now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def load_json(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
+def load_json(path: Path) -> dict[str, Any]:
+    return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
 
 
 def pass_fail(condition: bool, detail: str, fail_detail: str | None = None) -> tuple[str, str]:
@@ -95,11 +97,11 @@ def s4_from_seed(parts: tuple[object, ...]) -> int:
     return (stable_u32(parts) & 0xF) - 8
 
 
-def coord_key(coord: dict) -> tuple[int, int]:
+def coord_key(coord: dict[str, Any]) -> tuple[int, int]:
     return int(coord["row"]), int(coord["col"])
 
 
-def logical_core_for_row(layer: dict, output_row: int) -> int:
+def logical_core_for_row(layer: dict[str, Any], output_row: int) -> int:
     rows_per_core = int(layer["rows_per_core"])
     ordinal = output_row // rows_per_core
     return int(layer["core_index_start"]) + ordinal
@@ -124,7 +126,7 @@ def execute_row(layer_index: int, output_row: int, k_count: int) -> dict[str, in
     }
 
 
-def target_layers(placement: dict) -> list[dict]:
+def target_layers(placement: dict[str, Any]) -> list[dict[str, Any]]:
     layers = []
     for layer in placement.get("layers", []):
         if not isinstance(layer, dict):
@@ -138,8 +140,8 @@ def target_layers(placement: dict) -> list[dict]:
 class CaseData:
     def __init__(
         self,
-        defect: dict,
-        repair: dict,
+        defect: dict[str, Any],
+        repair: dict[str, Any],
         blocked: set[tuple[int, int]],
         remap: dict[tuple[int, int], tuple[int, int]],
     ) -> None:
@@ -165,7 +167,7 @@ def load_case(paths: CasePaths) -> CaseData:
 
 def main() -> int:
     checks: list[dict[str, str]] = []
-    input_paths = [
+    input_paths: list[Path] = [
         PLACEMENT,
         FULL_NORM_REAL_WEIGHT,
         VOCAB_SAMPLED_K_REAL_WEIGHT,
@@ -338,7 +340,9 @@ def main() -> int:
     normal_summary = case_summaries.get("normal")
     high_failure_summary = case_summaries.get("high_failure")
     normal_route_checksum = normal_summary["route_checksum"] if normal_summary is not None else 0
-    normal_touched = normal_summary["touched_remapped_core_count"] if normal_summary is not None else 0
+    normal_touched = (
+        normal_summary["touched_remapped_core_count"] if normal_summary is not None else 0
+    )
     high_failure_route_checksum = (
         high_failure_summary["route_checksum"] if high_failure_summary is not None else 0
     )
@@ -377,9 +381,7 @@ def main() -> int:
         "high_failure_route_checksum": high_failure_route_checksum,
         "normal_touched_remapped_rows": normal_touched,
         "high_failure_touched_remapped_rows": high_failure_touched,
-        "high_vs_normal_touched_remap_ratio": (
-            high_failure_touched / max(1, normal_touched)
-        ),
+        "high_vs_normal_touched_remap_ratio": (high_failure_touched / max(1, normal_touched)),
         "sampled_executed_rows_sha256": canonical_sha256(sampled_rows),
         "case_summaries": case_summaries,
         "sampled_executed_rows": sampled_rows,

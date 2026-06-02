@@ -27,6 +27,7 @@ class CaseSummary(TypedDict):
     payload_remap_program_checksum: int
     sampled_payload_remap_records: list[dict[str, int | str]]
 
+
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_full_payload_repair_rom.json"
 

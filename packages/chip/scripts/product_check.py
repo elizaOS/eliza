@@ -968,7 +968,8 @@ def product_release_execution_plan(
                         summary
                         for summary in existing_summaries
                         if isinstance(summary, dict)
-                        and summary.get("report_path") != "build/reports/manufacturing_artifacts.json"
+                        and summary.get("report_path")
+                        != "build/reports/manufacturing_artifacts.json"
                     ]
                     filtered.insert(
                         0,
