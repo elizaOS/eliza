@@ -567,6 +567,13 @@ async function repairRuntimeAfterBoot(
 
   await ensureConnectorTargetCatalog(runtime);
 
+  // Warm local voice models (Whisper STT + Kokoro TTS) in the background now
+  // that the runtime is ready. repairRuntimeAfterBoot is the single chokepoint
+  // every boot path funnels through (bootElizaRuntime AND startEliza's
+  // server-only + restart paths), so the warmup fires regardless of entry
+  // point. Fire-and-forget; gated + non-fatal inside startDeferredVoiceWarmup.
+  void startDeferredVoiceWarmup(runtime);
+
   return runtime;
 }
 
@@ -947,12 +954,8 @@ export async function bootElizaRuntime(
     }
 
     const runtime = await upstreamBootElizaRuntime(opts);
-    if (!runtime) return runtime;
-    const repaired = await repairRuntimeAfterBoot(runtime);
-    // Warm local voice models in the background now that the runtime is ready
-    // (fire-and-forget; never blocks the boot return).
-    void startDeferredVoiceWarmup(repaired);
-    return repaired;
+    // Voice warmup fires inside repairRuntimeAfterBoot (the shared ready-point).
+    return runtime ? await repairRuntimeAfterBoot(runtime) : runtime;
   } finally {
     syncElizaEnvAliases();
   }
