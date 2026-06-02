@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { rename, rm } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,19 @@ const packageRoot = path.resolve(
 const finalDistDir = path.join(packageRoot, ".next");
 const tempDistDirName = `.next-build-${process.pid}`;
 const tempDistDir = path.join(packageRoot, tempDistDirName);
+const tempPackagePath = path.join(tempDistDir, "package.json");
+const tempPackageWritePath = path.join(tempDistDir, ".package.json.tmp");
+const nextEnvPath = path.join(packageRoot, "next-env.d.ts");
+const tsconfigPath = path.join(packageRoot, "tsconfig.json");
+const tsbuildInfoPath = path.join(packageRoot, "tsconfig.tsbuildinfo");
+const originalNextEnv = await readFile(nextEnvPath, "utf8").catch((error) => {
+  if (error?.code === "ENOENT") return null;
+  throw error;
+});
+const originalTsconfig = await readFile(tsconfigPath, "utf8").catch((error) => {
+  if (error?.code === "ENOENT") return null;
+  throw error;
+});
 
 await rm(tempDistDir, {
   force: true,
@@ -21,9 +34,17 @@ await rm(tempDistDir, {
   retryDelay: 100,
 });
 
-async function runNextBuild(args) {
+async function writeTempPackageMarker() {
+  await mkdir(path.dirname(tempPackagePath), { recursive: true });
+  await writeFile(tempPackageWritePath, '{"type":"commonjs"}\n');
+  await rename(tempPackageWritePath, tempPackagePath);
+}
+
+async function runNextBuild() {
+  await writeTempPackageMarker();
+
   const exitCode = await new Promise((resolve) => {
-    const child = spawn(process.execPath, [nextCliPath, "build", ...args], {
+    const child = spawn(process.execPath, [nextCliPath, "build"], {
       cwd: packageRoot,
       env: {
         ...process.env,
@@ -40,28 +61,37 @@ async function runNextBuild(args) {
   return exitCode;
 }
 
-// Next 15 can hang indefinitely in the default monolithic build mode for this
-// workspace example after the server compile emits. The same work completes
-// deterministically when split into Next's documented compile/generate phases.
-let exitCode = await runNextBuild(["--experimental-build-mode", "compile"]);
+let exitCode = 1;
 
-if (exitCode === 0) {
-  exitCode = await runNextBuild(["--experimental-build-mode", "generate"]);
-}
+try {
+  exitCode = await runNextBuild();
 
-if (exitCode === 0) {
-  await rm(finalDistDir, {
+  if (exitCode === 0) {
+    await rm(finalDistDir, {
+      force: true,
+      maxRetries: 5,
+      recursive: true,
+      retryDelay: 100,
+    });
+    await rename(tempDistDir, finalDistDir);
+  } else {
+    await rm(tempDistDir, {
+      force: true,
+      maxRetries: 5,
+      recursive: true,
+      retryDelay: 100,
+    });
+  }
+} finally {
+  if (originalNextEnv !== null) {
+    await writeFile(nextEnvPath, originalNextEnv);
+  }
+  if (originalTsconfig !== null) {
+    await writeFile(tsconfigPath, originalTsconfig);
+  }
+  await rm(tsbuildInfoPath, {
     force: true,
     maxRetries: 5,
-    recursive: true,
-    retryDelay: 100,
-  });
-  await rename(tempDistDir, finalDistDir);
-} else {
-  await rm(tempDistDir, {
-    force: true,
-    maxRetries: 5,
-    recursive: true,
     retryDelay: 100,
   });
 }
