@@ -319,12 +319,12 @@ def main() -> int:
                 summary["route_checksum"] = route_checksum
 
     for case, paths in CASES.items():
-        summary = case_summaries.get(case)
+        case_summary = case_summaries.get(case)
         case_ok = (
-            summary is not None
-            and summary["repair_manifest_sha256"] == paths.expected_repair_sha256
-            and summary["touched_remapped_core_count"] > 0
-            and summary["route_checksum"] > 0
+            case_summary is not None
+            and case_summary["repair_manifest_sha256"] == paths.expected_repair_sha256
+            and case_summary["touched_remapped_core_count"] > 0
+            and case_summary["route_checksum"] > 0
         )
         status, detail = pass_fail(
             case_ok,

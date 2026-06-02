@@ -713,8 +713,8 @@ def main() -> int:
                     "missing_route_classes": not bool(route["route_classes"]),
                 }
             )
-        classes = route["route_classes"] or ["unclassified"]
-        domains = route["source_domains"] or ["unmapped"]
+        classes = cast(list[Any], route["route_classes"]) or ["unclassified"]
+        domains = cast(list[Any], route["source_domains"]) or ["unmapped"]
         for route_class in classes:
             summary = class_summary.setdefault(
                 str(route_class),
@@ -780,10 +780,10 @@ def main() -> int:
         "via_count": len(via_records),
         "local_copper_zone_count": len(zone_records),
         "local_copper_zone_filled_polygon_count": sum(
-            int(item["filled_polygon_count"]) for item in zone_records
+            int(cast(int, item["filled_polygon_count"])) for item in zone_records
         ),
         "local_copper_zone_release_credit": False,
-        "route_length_total_mm": round(sum(float(item["length_mm"]) for item in route_records), 3),
+        "route_length_total_mm": round(sum(float(cast(float, item["length_mm"])) for item in route_records), 3),
         "controlled_impedance_route_count": sum(
             1 for item in route_records if item["controlled_impedance_targets_ohm"]
         ),

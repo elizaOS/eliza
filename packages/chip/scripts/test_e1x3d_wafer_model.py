@@ -75,7 +75,11 @@ def test_e1x3d_stack_yield_gate_fails_closed_on_low_bond_yield() -> None:
         HIGH_DEFECT_SCENARIO_3D,
     )
     assert weak["status"] == "BLOCKED"
-    assert weak["stack_bond_yield"] < weak["target_stack_bond_yield"]
+    stack_bond_yield = weak["stack_bond_yield"]
+    target_stack_bond_yield = weak["target_stack_bond_yield"]
+    assert isinstance(stack_bond_yield, float)
+    assert isinstance(target_stack_bond_yield, float)
+    assert stack_bond_yield < target_stack_bond_yield
 
 
 def test_e1x3d_dead_tier_region_reroutes_and_remaps() -> None:

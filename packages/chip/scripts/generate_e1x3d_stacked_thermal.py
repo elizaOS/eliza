@@ -331,18 +331,19 @@ def stacked_coanalyze(config: E1X3DConfig) -> dict[str, object]:
     )
 
     baseline = thermal_model(config)
+    baseline_peak_junction_c = float(baseline["peak_junction_c"])  # type: ignore[arg-type]
     ceiling_density = config.tier_power_density_ceiling_w_per_mm2
     max_tj_c = config.max_junction_temp_c
 
-    per_tier: list[dict[str, object]] = []
+    per_tier: list[_PerTierResult] = []
     for i, t in enumerate(stack):
         density = config.tier_power_density_w_per_mm2 if t["kind"] == "logic" else 0.0
         per_tier.append(
             {
-                "z": int(t["z"]),
-                "kind": str(t["kind"]),
-                "logic_index": int(t["logic_index"]),
-                "depth_from_nearest_sink": int(t["depth_from_nearest_sink"]),
+                "z": t["z"],
+                "kind": t["kind"],
+                "logic_index": t["logic_index"],
+                "depth_from_nearest_sink": t["depth_from_nearest_sink"],
                 "resistance_to_sink_c_per_w": round(r_to_sink[i], 4),
                 "active_power_w_at_ref": round(base_power[i], 4),
                 "converged_power_w": round(power[i], 4),
@@ -355,9 +356,9 @@ def stacked_coanalyze(config: E1X3DConfig) -> dict[str, object]:
             }
         )
 
-    hottest = max(per_tier, key=lambda entry: float(entry["converged_junction_c"]))
-    all_tj_ok = all(bool(entry["junction_le_max"]) for entry in per_tier) and not runaway
-    all_density_ok = all(bool(entry["density_le_ceiling"]) for entry in per_tier)
+    hottest = max(per_tier, key=lambda entry: entry["converged_junction_c"])
+    all_tj_ok = all(entry["junction_le_max"] for entry in per_tier) and not runaway
+    all_density_ok = all(entry["density_le_ceiling"] for entry in per_tier)
 
     artifact: dict[str, object] = {
         "schema": SCHEMA,
@@ -379,7 +380,7 @@ def stacked_coanalyze(config: E1X3DConfig) -> dict[str, object]:
             "cooling": config.cooling,
             "dual_side_rise_reduction": config.dual_side_rise_reduction,
             "physical_order_bottom_to_top": [
-                {"z": int(t["z"]), "kind": str(t["kind"])} for t in stack
+                {"z": t["z"], "kind": t["kind"]} for t in stack
             ],
         },
         "model_assumptions": {
@@ -429,9 +430,9 @@ def stacked_coanalyze(config: E1X3DConfig) -> dict[str, object]:
         "iterations": iterations,
         "totals": {
             "converged_total_active_power_w": round(sum(power), 4),
-            "max_junction_c": float(hottest["converged_junction_c"]),
-            "hottest_tier_z": int(hottest["z"]),
-            "hottest_tier_kind": str(hottest["kind"]),
+            "max_junction_c": hottest["converged_junction_c"],
+            "hottest_tier_z": hottest["z"],
+            "hottest_tier_kind": hottest["kind"],
             "max_junction_temp_c": max_tj_c,
             "tier_power_density_ceiling_w_per_mm2": ceiling_density,
         },

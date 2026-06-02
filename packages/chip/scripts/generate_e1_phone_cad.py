@@ -17487,7 +17487,7 @@ def write_full_cad_boolean_interference_artifacts(
                 "pass": min_gap >= 0,
                 "method": "side_frame_inner_aperture_clearance",
             }
-        min_gap: float | None = None
+        min_gap = None  # float | None; updated in component-pair loop below
         max_overlap_volume = 0.0
         interference_count = 0
         component_pair_count = 0

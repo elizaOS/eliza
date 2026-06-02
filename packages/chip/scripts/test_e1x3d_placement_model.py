@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from compiler.runtime.e1x3d_placement_model import (
+    PEFloorplan,
     build_placement_report,
     evaluate_split,
     via_capacity_per_mm2,
@@ -73,7 +74,5 @@ def test_placement_gate_emits_blocked(tmp_path: Path) -> None:
     assert report["summary"]["failing_check_count"] == 2
 
 
-def _floorplan() -> "PEFloorplan":
-    from compiler.runtime.e1x3d_placement_model import PEFloorplan
-
+def _floorplan() -> PEFloorplan:
     return PEFloorplan()
