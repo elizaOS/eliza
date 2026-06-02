@@ -797,6 +797,106 @@ describe("AcpService", () => {
     expect((await service.getSession(sessionId))?.status).toBe("ready");
   });
 
+  it("native sendPrompt re-spaces word-split terminal result text blocks", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-wordsplit",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.prompt.mockImplementationOnce(async () => {
+      client.emit({
+        jsonrpc: "2.0",
+        id: "prompt",
+        sessionId: "protocol-session",
+        result: {
+          stopReason: "end_turn",
+          content: [
+            { type: "text", text: "the change" },
+            { type: "text", text: "is" },
+            { type: "text", text: "proven and" },
+            { type: "text", text: "received" },
+            { type: "text", text: "at runtime" },
+          ],
+        },
+      } as AcpJsonRpcMessage);
+      return { stopReason: "end_turn" };
+    });
+
+    const result = await service.sendPrompt(sessionId, "answer");
+
+    expect(result.response).toBe(
+      "the change is proven and received at runtime",
+    );
+    expect(result.finalText).toBe(
+      "the change is proven and received at runtime",
+    );
+  });
+
+  it("native sendPrompt forwards sanitized ACP plan updates", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const planPayloads: Array<{ entries?: unknown }> = [];
+    service.onSessionEvent((_sid, event, payload) => {
+      if (event === "plan") planPayloads.push(payload as { entries?: unknown });
+    });
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-plan",
+      agentType: "opencode",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.prompt.mockImplementationOnce(async () => {
+      client.emit({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "protocol-session",
+          update: {
+            sessionUpdate: "plan",
+            entries: [
+              {
+                content: "Write the file",
+                status: "in_progress",
+                priority: "medium",
+                ignored: "not forwarded",
+              },
+              {
+                content: "Read it back",
+                status: "pending",
+                priority: "low",
+              },
+              {
+                content: "Defaults apply",
+                status: "",
+                priority: 1,
+              },
+              { content: "", status: "pending", priority: "medium" },
+              "not an entry",
+            ],
+          },
+        },
+      } as AcpJsonRpcMessage);
+      client.emit({
+        jsonrpc: "2.0",
+        id: "prompt",
+        result: { stopReason: "end_turn" },
+      } as AcpJsonRpcMessage);
+      return { stopReason: "end_turn" };
+    });
+
+    await service.sendPrompt(sessionId, "go");
+
+    expect(planPayloads).toHaveLength(1);
+    expect(planPayloads[0]?.entries).toEqual([
+      { content: "Write the file", status: "in_progress", priority: "medium" },
+      { content: "Read it back", status: "pending", priority: "low" },
+      { content: "Defaults apply", status: "pending", priority: "medium" },
+    ]);
+  });
+
   it("native sendPrompt rejects overlapping prompts before swapping event handlers", async () => {
     const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
     await service.start();
