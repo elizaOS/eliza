@@ -51,6 +51,7 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/rot_integration.json"
@@ -1162,7 +1163,7 @@ def main() -> int:
         shimmed=shimmed,
         blocker_id=blocker_id,
         blocker_reason=blocker_reason,
-        evidence_paths=report["evidence_paths"],
+        evidence_paths=evidence_paths,
     )
     REPORT.write_text(json.dumps(report, indent=2) + "\n")
 

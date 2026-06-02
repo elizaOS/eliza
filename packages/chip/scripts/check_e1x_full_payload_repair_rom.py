@@ -310,31 +310,27 @@ def main() -> int:
     combined_checksum = FNV64_OFFSET
     for value in (
         int(full_payload_repair.get("summary", {}).get("combined_payload_repair_checksum", 0)),
-        int(normal.get("payload_remap_program_checksum", 0)),
-        int(high.get("payload_remap_program_checksum", 0)),
+        normal["payload_remap_program_checksum"],
+        high["payload_remap_program_checksum"],
         int(repair_rom_cocotb.get("summary", {}).get("testcases", 0)),
         int(boot_fw.get("summary", {}).get("verified_rom_case_count", 0)),
     ):
         combined_checksum = mix64(combined_checksum, value)
-    summary = {
+    gate_summary = {
         "check_count": len(checks),
         "failing_check_count": len(failures),
         "payload_shard_record_count": len(records),
         "payload_loader_word_count": sum(int(record["loader_words"]) for record in records),
-        "normal_payload_remap_word_count": int(normal.get("payload_remap_word_count", 0)),
-        "high_failure_payload_remap_word_count": int(high.get("payload_remap_word_count", 0)),
-        "normal_payload_remap_words_sha256": str(normal.get("payload_remap_words_sha256", "")),
-        "high_failure_payload_remap_words_sha256": str(high.get("payload_remap_words_sha256", "")),
-        "normal_payload_remap_program_checksum": int(
-            normal.get("payload_remap_program_checksum", 0)
-        ),
-        "high_failure_payload_remap_program_checksum": int(
-            high.get("payload_remap_program_checksum", 0)
-        ),
-        "normal_repair_rom_sha256": str(normal.get("rom_sha256", "")),
-        "high_failure_repair_rom_sha256": str(high.get("rom_sha256", "")),
-        "normal_rom_total_word_count": int(normal.get("rom_total_word_count", 0)),
-        "high_failure_rom_total_word_count": int(high.get("rom_total_word_count", 0)),
+        "normal_payload_remap_word_count": normal["payload_remap_word_count"],
+        "high_failure_payload_remap_word_count": high["payload_remap_word_count"],
+        "normal_payload_remap_words_sha256": normal["payload_remap_words_sha256"],
+        "high_failure_payload_remap_words_sha256": high["payload_remap_words_sha256"],
+        "normal_payload_remap_program_checksum": normal["payload_remap_program_checksum"],
+        "high_failure_payload_remap_program_checksum": high["payload_remap_program_checksum"],
+        "normal_repair_rom_sha256": normal["rom_sha256"],
+        "high_failure_repair_rom_sha256": high["rom_sha256"],
+        "normal_rom_total_word_count": normal["rom_total_word_count"],
+        "high_failure_rom_total_word_count": high["rom_total_word_count"],
         "repair_rom_cocotb_testcases": int(
             repair_rom_cocotb.get("summary", {}).get("testcases", 0)
         ),
@@ -372,7 +368,7 @@ def main() -> int:
             "scripts/check_e1x_full_payload_repair_rom.py",
         ],
         "checks": checks,
-        "summary": summary,
+        "summary": gate_summary,
     }
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")

@@ -14,7 +14,7 @@ import re
 import shutil
 import uuid
 from pathlib import Path
-from typing import cast
+from typing import cast, Any
 
 import yaml
 
@@ -368,22 +368,22 @@ def route_metadata_index() -> dict[str, dict[str, object]]:
                     "skew_limits_mm": [],
                 },
             )
-            entry["domains"].append(domain["id"])
+            cast(list[Any], entry["domains"]).append(domain["id"])
             if canonical in net_to_group:
-                entry["net_groups"].append(net_to_group[canonical])
-            entry["route_classes"].append(route_class)
+                cast(list[Any], entry["net_groups"]).append(net_to_group[canonical])
+            cast(list[Any], entry["route_classes"]).append(route_class)
             for key, value in constraints.items():
                 if "impedance_ohm" in key and route_class.split("_")[0] in key:
-                    entry["controlled_impedance_targets_ohm"].append(
+                    cast(list[Any], entry["controlled_impedance_targets_ohm"]).append(
                         {"constraint": key, "value": value}
                     )
                 if key.endswith("length_mm_max") and (
                     route_class.split("_")[0] in key
                     or net_to_group.get(canonical, "").split("_")[0] in key
                 ):
-                    entry["length_limits_mm"].append({"constraint": key, "value": value})
+                    cast(list[Any], entry["length_limits_mm"]).append({"constraint": key, "value": value})
                 if key.endswith("skew_mm_max") and route_class.split("_")[0] in key:
-                    entry["skew_limits_mm"].append({"constraint": key, "value": value})
+                    cast(list[Any], entry["skew_limits_mm"]).append({"constraint": key, "value": value})
     for entry in metadata.values():
         for key in (
             "domains",
@@ -393,10 +393,10 @@ def route_metadata_index() -> dict[str, dict[str, object]]:
             "length_limits_mm",
             "skew_limits_mm",
         ):
-            values = entry[key]
+            values = cast(list[Any], entry[key])
             if values and isinstance(values[0], dict):
-                deduped = []
-                seen = set()
+                deduped: list[Any] = []
+                seen: set[tuple[Any, ...]] = set()
                 for value in values:
                     marker = tuple(sorted(value.items()))
                     if marker not in seen:
@@ -636,24 +636,26 @@ def main() -> int:
             }
         )
 
-    routes_by_net = {}
+    routes_by_net: dict[str, list[dict[str, object]]] = {}
     for route in route_records:
         routes_by_net.setdefault(str(route["canonical_net"]), []).append(route)
     for via_record in via_records:
+        via_at_mm = cast(dict[str, float], via_record["at_mm"])
+        via_size_mm = float(cast(float, via_record["size_mm"]))
         linked = [
             str(route["id"])
             for route in routes_by_net.get(str(via_record["net"]), [])
             if any(
                 math.hypot(
-                    float(point["x"]) - float(via_record["at_mm"]["x"]),
-                    float(point["y"]) - float(via_record["at_mm"]["y"]),
+                    float(cast(float, point["x"])) - float(via_at_mm["x"]),
+                    float(cast(float, point["y"])) - float(via_at_mm["y"]),
                 )
-                <= max(float(via_record["size_mm"]), 0.6)
-                for point in route["points_mm"]
+                <= max(via_size_mm, 0.6)
+                for point in cast(list[dict[str, object]], route["points_mm"])
             )
         ]
         via_record["linked_route_ids"] = linked
-    via_ids_by_net = {}
+    via_ids_by_net: dict[str, list[str]] = {}
     for via_record in via_records:
         via_ids_by_net.setdefault(str(via_record["net"]), []).append(str(via_record["id"]))
     for route in route_records:
@@ -665,8 +667,8 @@ def main() -> int:
         zone_id = str(zone["id"])
         net_name = str(zone["net"])
         net_id = ids.get(net_name)
-        points = list(zone["points"])
-        layers = list(zone["layers"])
+        points = list(cast(list[tuple[float, float]], zone["points"]))
+        layers = list(cast(list[str], zone["layers"]))
         if net_id is None:
             missing_nets.append(net_name)
             continue
@@ -718,22 +720,22 @@ def main() -> int:
                 str(route_class),
                 {"route_count": 0, "segment_count": 0, "length_mm": 0.0, "nets": []},
             )
-            summary["route_count"] += 1
-            summary["segment_count"] += route["segment_count"]
-            summary["length_mm"] += route["length_mm"]
-            summary["nets"].append(route["canonical_net"])
+            summary["route_count"] = cast(int, summary["route_count"]) + 1
+            summary["segment_count"] = cast(int, summary["segment_count"]) + cast(int, route["segment_count"])
+            summary["length_mm"] = cast(float, summary["length_mm"]) + cast(float, route["length_mm"])
+            cast(list[Any], summary["nets"]).append(route["canonical_net"])
         for domain in domains:
             summary = domain_summary.setdefault(
                 str(domain),
                 {"route_count": 0, "segment_count": 0, "length_mm": 0.0, "nets": []},
             )
-            summary["route_count"] += 1
-            summary["segment_count"] += route["segment_count"]
-            summary["length_mm"] += route["length_mm"]
-            summary["nets"].append(route["canonical_net"])
+            summary["route_count"] = cast(int, summary["route_count"]) + 1
+            summary["segment_count"] = cast(int, summary["segment_count"]) + cast(int, route["segment_count"])
+            summary["length_mm"] = cast(float, summary["length_mm"]) + cast(float, route["length_mm"])
+            cast(list[Any], summary["nets"]).append(route["canonical_net"])
     for summary in list(class_summary.values()) + list(domain_summary.values()):
-        summary["length_mm"] = round(float(summary["length_mm"]), 3)
-        summary["nets"] = sorted(set(str(net) for net in summary["nets"]))
+        summary["length_mm"] = round(float(cast(float, summary["length_mm"])), 3)
+        summary["nets"] = sorted(set(str(net) for net in cast(list[Any], summary["nets"])))
 
     OUT.write_text(body + "\n" + "\n".join(lines + via_lines + zone_lines) + "\n)\n")
     detailed_step_intake = (

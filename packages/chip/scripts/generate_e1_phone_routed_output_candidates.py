@@ -1790,7 +1790,7 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
     for model in models:
         if not isinstance(model, dict):
             continue
-        record = records_by_reference.get(str(model.get("reference", "")))
+        record: dict[str, Any] | None = records_by_reference.get(str(model.get("reference", "")))
         if not record:
             continue
         model["local_discrete_step_file"] = record["local_discrete_step_file"]
@@ -2588,8 +2588,8 @@ def generate() -> dict[str, Any]:
         for value in (artifact.get("path"), artifact.get("metadata"))
         if value
     }
-    for directory in directory_manifest_paths:
-        refresh_dir_manifest(directory, artifact_paths)
+    for dir_path in directory_manifest_paths:
+        refresh_dir_manifest(dir_path, artifact_paths)
 
     manifest = {
         "schema": "eliza.e1_phone_routed_output_candidate_manifest.v1",

@@ -63,6 +63,7 @@ import math
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TypedDict
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -73,6 +74,29 @@ from compiler.runtime.e1x3d_wafer_model import (  # noqa: E402
     scaled_e1x3d_config,
     thermal_model,
 )
+
+class _PhysicalTier(TypedDict):
+    z: int
+    kind: str
+    logic_index: int
+    depth_from_nearest_sink: int
+
+
+class _PerTierResult(TypedDict):
+    z: int
+    kind: str
+    logic_index: int
+    depth_from_nearest_sink: int
+    resistance_to_sink_c_per_w: float
+    active_power_w_at_ref: float
+    converged_power_w: float
+    converged_junction_c: float
+    leakage_uplift_w: float
+    power_density_w_per_mm2: float
+    power_density_ceiling_w_per_mm2: float
+    junction_le_max: bool
+    density_le_ceiling: bool
+
 
 SCHEMA = "eliza.e1x3d.stacked_electrothermal.v1"
 DEFAULT_OUTPUT = ROOT / "benchmarks/results/e1x3d-stacked-electrothermal.json"
@@ -120,7 +144,7 @@ THETA_BOND_SPECIFIC_K_MM2_PER_W = 3.0
 STACK_COUPLING_SPECIFIC_K_MM2_PER_W = 0.5
 
 
-def _physical_stack(config: E1X3DConfig) -> list[dict[str, object]]:
+def _physical_stack(config: E1X3DConfig) -> list[_PhysicalTier]:
     """Physical Z tiers from the substrate-side sink upward.
 
     Memory-on-logic: each logic plane is [logic, then its memory tiers]. The
@@ -129,18 +153,18 @@ def _physical_stack(config: E1X3DConfig) -> list[dict[str, object]]:
     tier boundaries to the closer of the two surfaces (0 = touching a sink).
     """
     mem_per_logic = max(0, config.memory_tiers_per_core)
-    tiers: list[dict[str, object]] = []
+    tiers: list[_PhysicalTier] = []
     z = 0
     for logic_index in range(config.logical_tiers):
-        tiers.append({"z": z, "kind": "logic", "logic_index": logic_index})
+        tiers.append({"z": z, "kind": "logic", "logic_index": logic_index, "depth_from_nearest_sink": 0})
         z += 1
         for _ in range(mem_per_logic):
-            tiers.append({"z": z, "kind": "memory", "logic_index": logic_index})
+            tiers.append({"z": z, "kind": "memory", "logic_index": logic_index, "depth_from_nearest_sink": 0})
             z += 1
     total = len(tiers)
     dual_side = config.cooling == "dual_side"
     for tier in tiers:
-        z_pos = int(tier["z"])
+        z_pos = tier["z"]
         depth_bottom = z_pos
         depth_top = (total - 1 - z_pos) if dual_side else (total - 1 + 1)
         tier["depth_from_nearest_sink"] = min(depth_bottom, depth_top)
@@ -196,7 +220,7 @@ LEAKAGE_RELAXATION = 0.5
 
 
 def _resistance_to_sink(
-    tier: dict[str, object],
+    tier: _PhysicalTier,
     theta_tier_logic: float,
     theta_tier_memory: float,
     theta_bond: float,
@@ -207,7 +231,7 @@ def _resistance_to_sink(
     shortest path to a sink.
     """
     own = theta_tier_logic if tier["kind"] == "logic" else theta_tier_memory
-    depth = int(tier["depth_from_nearest_sink"])
+    depth = tier["depth_from_nearest_sink"]
     return own + depth * theta_bond
 
 
@@ -233,7 +257,7 @@ RUNAWAY_JUNCTION_BOUND_C = 1000.0
 
 
 def _solve_fixed_point(
-    stack: list[dict[str, object]],
+    stack: list[_PhysicalTier],
     r_to_sink: list[float],
     theta_coupling: float,
     p_dynamic: float,

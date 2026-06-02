@@ -269,6 +269,43 @@ describe("bridge-routes — credential bridge", () => {
     expect((body() as { code: string }).code).toBe("missing_token");
   });
 
+  it("GET rejects an unknown sessionId before redeeming a credential", async () => {
+    const adapter = makeAdapter();
+    const req = fakeRequest({
+      method: "GET",
+      url: "/api/coding-agents/not-a-real-session/credentials/OPENAI_API_KEY?token=deadbeef",
+    });
+    const { res, status, body } = fakeResponse();
+    await handleBridgeRoutes(
+      req,
+      res,
+      "/api/coding-agents/not-a-real-session/credentials/OPENAI_API_KEY",
+      makeCtx(adapter, null),
+    );
+    expect(status()).toBe(410);
+    expect((body() as { code: string }).code).toBe("session_not_active");
+    // The adapter must not be touched for an unowned session id.
+    expect(adapter.tryRetrieveCredential).not.toHaveBeenCalled();
+  });
+
+  it("GET rejects a terminal (stopped) session", async () => {
+    const adapter = makeAdapter();
+    const req = fakeRequest({
+      method: "GET",
+      url: "/api/coding-agents/pty-1-abc/credentials/OPENAI_API_KEY?token=deadbeef",
+    });
+    const { res, status, body } = fakeResponse();
+    await handleBridgeRoutes(
+      req,
+      res,
+      "/api/coding-agents/pty-1-abc/credentials/OPENAI_API_KEY",
+      makeCtx(adapter, "stopped"),
+    );
+    expect(status()).toBe(410);
+    expect((body() as { code: string }).code).toBe("session_not_active");
+    expect(adapter.tryRetrieveCredential).not.toHaveBeenCalled();
+  });
+
   it("returns false for unrelated paths", async () => {
     const adapter = makeAdapter();
     const req = fakeRequest({

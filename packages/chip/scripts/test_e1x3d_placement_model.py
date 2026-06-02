@@ -73,7 +73,7 @@ def test_placement_gate_emits_blocked(tmp_path: Path) -> None:
     assert report["summary"]["failing_check_count"] == 2
 
 
-def _floorplan():
+def _floorplan() -> "PEFloorplan":
     from compiler.runtime.e1x3d_placement_model import PEFloorplan
 
     return PEFloorplan()

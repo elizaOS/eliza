@@ -7,7 +7,7 @@ import hashlib
 import math
 import re
 from pathlib import Path
-from typing import TypedDict
+from typing import TypedDict, cast
 
 import yaml
 
@@ -308,11 +308,11 @@ def parse_segments(
                 "layer": layer,
                 "net_id": net_id,
                 "net": net_name,
-                "route_id": route.get("id", ""),
-                "route_classes": route.get("route_classes", []),
-                "source_domains": route.get("source_domains", []),
-                "controlled_impedance_targets_ohm": route.get(
-                    "controlled_impedance_targets_ohm", []
+                "route_id": str(route.get("id", "")),
+                "route_classes": cast(list[str], route.get("route_classes", [])),
+                "source_domains": cast(list[str], route.get("source_domains", [])),
+                "controlled_impedance_targets_ohm": cast(
+                    list[float], route.get("controlled_impedance_targets_ohm", [])
                 ),
             }
         )
@@ -440,7 +440,7 @@ def common_report(
     zones: list[dict[str, object]],
     generator_backend: str,
 ) -> dict[str, object]:
-    pad_count = sum(int(item["pad_count"]) for item in records)
+    pad_count = sum(int(cast(int, item["pad_count"])) for item in records)
     routed_trace_bound_count = sum(1 for segment in segments if segment.get("route_id"))
     controlled_impedance_segment_count = sum(
         1 for segment in segments if segment.get("controlled_impedance_targets_ohm")
@@ -480,7 +480,7 @@ def common_report(
         "via_net_name_count": len(via_net_names),
         "filled_copper_zone_visual_count": len(zones),
         "filled_copper_zone_polygon_count": sum(
-            int(zone.get("filled_polygon_count", 0) or 0) for zone in zones
+            int(cast(int, zone.get("filled_polygon_count", 0) or 0)) for zone in zones
         ),
         "filled_copper_zone_net_name_count": len(zone_net_names),
         "e1phone_footprint_refs": board_text.count('(footprint "E1Phone:'),
@@ -496,7 +496,7 @@ def common_report(
             "vias_with_net_names": len([item for item in vias if item.get("net")]),
             "filled_copper_zones": len(zones),
             "filled_copper_zone_polygons": sum(
-                int(zone.get("filled_polygon_count", 0) or 0) for zone in zones
+                int(cast(int, zone.get("filled_polygon_count", 0) or 0)) for zone in zones
             ),
             "copper_thickness_mm": 0.035,
         },
@@ -530,17 +530,17 @@ def generate_with_ocp(context: dict[str, object]) -> dict[str, object]:
     from OCP.TopoDS import TopoDS_Compound
 
     board_text = str(context["board_text"])
-    params = context["params"]
-    records = context["records"]
-    segments = context["segments"]
-    vias = context["vias"]
-    zones = context["zones"]
-    pcb = params["pcb"]
-    board_w, board_h, board_t = [float(v) for v in pcb["outline_mm"]]
-    top_w, top_h, _ = [float(v) for v in pcb["top_island_outline_mm"]]
-    bot_w, bot_h, _ = [float(v) for v in pcb["bottom_island_outline_mm"]]
-    top_y = float(pcb["top_island_center_y_mm"])
-    bot_y = float(pcb["bottom_island_center_y_mm"])
+    params = cast(dict[str, object], context["params"])
+    records = cast(list[dict[str, object]], context["records"])
+    segments = cast(list[dict[str, object]], context["segments"])
+    vias = cast(list[dict[str, object]], context["vias"])
+    zones = cast(list[dict[str, object]], context["zones"])
+    pcb = cast(dict[str, object], params["pcb"])
+    board_w, board_h, board_t = [float(v) for v in cast(list[object], pcb["outline_mm"])]
+    top_w, top_h, _ = [float(v) for v in cast(list[object], pcb["top_island_outline_mm"])]
+    bot_w, bot_h, _ = [float(v) for v in cast(list[object], pcb["bottom_island_outline_mm"])]
+    top_y = float(cast(float, pcb["top_island_center_y_mm"]))
+    bot_y = float(cast(float, pcb["bottom_island_center_y_mm"]))
     z_top = board_t / 2.0
     z_bot = -board_t / 2.0
     copper_thickness = 0.035
@@ -698,18 +698,18 @@ def generate_with_cadquery(context: dict[str, object]) -> dict[str, object]:
     import cadquery as cq
 
     board_text = str(context["board_text"])
-    params = context["params"]
-    records = context["records"]
-    segments = context["segments"]
-    vias = context["vias"]
-    zones = context["zones"]
+    params = cast(dict[str, object], context["params"])
+    records = cast(list[dict[str, object]], context["records"])
+    segments = cast(list[dict[str, object]], context["segments"])
+    vias = cast(list[dict[str, object]], context["vias"])
+    zones = cast(list[dict[str, object]], context["zones"])
 
-    pcb = params["pcb"]
-    board_w, board_h, board_t = [float(v) for v in pcb["outline_mm"]]
-    top_w, top_h, _ = [float(v) for v in pcb["top_island_outline_mm"]]
-    bot_w, bot_h, _ = [float(v) for v in pcb["bottom_island_outline_mm"]]
-    top_y = float(pcb["top_island_center_y_mm"])
-    bot_y = float(pcb["bottom_island_center_y_mm"])
+    pcb = cast(dict[str, object], params["pcb"])
+    board_w, board_h, board_t = [float(v) for v in cast(list[object], pcb["outline_mm"])]
+    top_w, top_h, _ = [float(v) for v in cast(list[object], pcb["top_island_outline_mm"])]
+    bot_w, bot_h, _ = [float(v) for v in cast(list[object], pcb["bottom_island_outline_mm"])]
+    top_y = float(cast(float, pcb["top_island_center_y_mm"]))
+    bot_y = float(cast(float, pcb["bottom_island_center_y_mm"]))
     z_top = board_t / 2.0
     z_bot = -board_t / 2.0
 

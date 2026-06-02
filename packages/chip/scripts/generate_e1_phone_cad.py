@@ -2748,7 +2748,7 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
         },
     ]
     for contract in supplemental_contracts:
-        existing_connections.setdefault(contract["id"], contract)
+        existing_connections.setdefault(str(contract["id"]), contract)
 
     part_rows_by_name = {str(row["name"]): row for row in part_rows}
     solid_names = set(part_rows_by_name)
@@ -2802,7 +2802,8 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
             part_rows_by_name.get(from_terminal, {}),
             part_rows_by_name.get(to_terminal, {}),
         ]
-        represented_nets = [str(net) for net in contract.get("nets", [])]
+        contract_nets = contract.get("nets") if isinstance(contract, dict) else None
+        represented_nets = [str(net) for net in (contract_nets or [])]
         represented_route_records = [
             {
                 "id": route.get("id", ""),
@@ -2862,7 +2863,7 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
             "cad_step": part.get("step", ""),
             "cad_step_bytes": int(part.get("bytes", 0) or 0),
             "cad_part_bbox_mm": part_bbox,
-            "visual_route_span_mm": round(max([float(value) for value in part_span] or [0.0]), 3),
+            "visual_route_span_mm": round(max([float(value) for value in (part_span or [])] or [0.0]), 3),
             "represented_nets": represented_nets,
             "represented_net_count": len(represented_nets),
             "represented_route_ids": [str(route.get("id")) for route in represented_route_records],
@@ -3321,7 +3322,7 @@ def write_solid_cad_handoff_artifacts(
                 }
                 for row in part_rows
             }
-            report = {
+            report: dict[str, Any] = {
                 "claim_boundary": (
                     "OCP STEP box-envelope handoff for EVT0 mechanical review; supplier STEP, "
                     "routed-board STEP, detailed fillets, and toolmaker steel design are still required."
@@ -5336,7 +5337,7 @@ def write_solid_cad_handoff_artifacts(
         "service_label_recess",
     ]
     solid_names = {row["name"] for row in part_rows}
-    required_solid_presence = {name: name in solid_names for name in required_solid_names}
+    required_solid_presence: dict[str, Any] = {name: name in solid_names for name in required_solid_names}
     all_required_solids_present = all(required_solid_presence.values())
     all_steps_nonempty = all(row["bytes"] > 1000 for row in part_rows)
     routed_intake_path = (

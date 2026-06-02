@@ -7,6 +7,7 @@ import sys
 from argparse import ArgumentParser
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TypedDict
 
 import yaml
 
@@ -451,7 +452,17 @@ def release_dependency_for_category(category: str, *, release: bool) -> str:
     return "actionable_external_dependency"
 
 
-def action_inventory(blockers: list[str], *, release: bool) -> list[dict[str, object]]:
+class ActionRow(TypedDict):
+    category: str
+    count: int
+    dependency: str
+    next_step: str
+    sample_blockers: list[str]
+    validation_command: str
+    release_credit: bool
+
+
+def action_inventory(blockers: list[str], *, release: bool) -> list[ActionRow]:
     counts = blocker_category_counts(blockers)
     samples: dict[str, list[str]] = {}
     for blocker in blockers:

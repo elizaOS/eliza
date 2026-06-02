@@ -508,7 +508,7 @@ def report_payload(errors: list[str]) -> dict[str, object]:
         }
         for error in errors
     ]
-    report = {
+    report: dict[str, object] = {
         "schema": "eliza.platform_contract.v1",
         "status": "fail" if errors else "pass",
         "generated_utc": datetime.now(UTC).isoformat(),

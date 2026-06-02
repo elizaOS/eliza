@@ -85,7 +85,7 @@ def coord_key(coord: dict) -> tuple[int, int]:
 
 
 def validate_case(
-    case: str, placement: dict, touched_cores: list[int], paths: dict
+    case: str, placement: dict, touched_cores: list[int], paths: _CaseEntry
 ) -> tuple[list[str], dict]:
     defect = load_json(paths["defect"])
     repair = load_json(paths["repair"])
@@ -249,7 +249,7 @@ def main() -> int:
         ),
         "residual_blocker": "full_output_vectorized_tensor_fabric_executor_missing",
     }
-    report = {
+    report: dict[str, object] = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x-window-repair-linkage",
         "status": "PASS" if not failures else "BLOCKED",

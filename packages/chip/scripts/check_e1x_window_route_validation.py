@@ -327,7 +327,7 @@ def main() -> int:
         "case_summaries": case_summaries,
         "residual_blocker": "full_output_vectorized_tensor_fabric_executor_missing",
     }
-    report = {
+    report: dict[str, Any] = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x-window-route-validation",
         "status": "PASS" if not failures else "BLOCKED",

@@ -135,10 +135,14 @@ def validate_manifest(manifest: dict) -> list[str]:
     sby: dict[str, object] = raw_sby if isinstance(raw_sby, dict) else {}
     if sby.get("spec") != EXPECTED["spec"]:
         errors.append(f"{TARGET} spec must be {EXPECTED['spec']}")
-    if EXPECTED["engine"] not in set(sby.get("engines") or []):
+    raw_engines = sby.get("engines")
+    engines_list: list[object] = list(raw_engines) if isinstance(raw_engines, (list, tuple, set)) else []
+    if EXPECTED["engine"] not in engines_list:
         errors.append(f"{TARGET} must record {EXPECTED['engine']} engine")
-    covered: set[str] = set(sby.get("covered_files") or [])
-    missing_files = sorted(EXPECTED["covered_files"] - covered)
+    raw_covered = sby.get("covered_files")
+    covered: set[str] = set(raw_covered) if isinstance(raw_covered, (list, tuple, set)) else set()
+    expected_files: set[str] = EXPECTED["covered_files"]  # type: ignore[assignment]
+    missing_files = sorted(expected_files - covered)
     if missing_files:
         errors.append(f"{TARGET} missing covered_files: {', '.join(missing_files)}")
 
@@ -148,7 +152,8 @@ def validate_manifest(manifest: dict) -> list[str]:
     if not isinstance(task_meta, dict):
         errors.append(f"{TARGET} missing default task")
     else:
-        for key, value in EXPECTED["task"].items():
+        expected_task: dict[str, str] = EXPECTED["task"]  # type: ignore[assignment]
+        for key, value in expected_task.items():
             if str(task_meta.get(key)) != value:
                 errors.append(f"{TARGET} default task {key} must be {value}")
     return errors

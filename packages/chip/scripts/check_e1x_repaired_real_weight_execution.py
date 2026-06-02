@@ -5,6 +5,17 @@ import json
 from datetime import UTC, datetime
 from hashlib import blake2s, sha256
 from pathlib import Path
+from typing import TypedDict
+
+
+class CaseSummary(TypedDict):
+    case: str
+    repair_manifest_sha256: str
+    blocked_core_count: int
+    total_remapped_core_count: int
+    touched_remapped_core_count: int
+    route_checksum: int
+    sampled_remapped_rows: list[dict[str, object]]
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_repaired_real_weight_execution.json"
@@ -223,16 +234,16 @@ def main() -> int:
     total_rows = 0
     total_macs = 0
     touched_logical_cores: set[int] = set()
-    case_summaries: dict[str, dict[str, object]] = {
-        case: {
-            "case": case,
-            "repair_manifest_sha256": str(data.repair.get("artifact_sha256", "")),
-            "blocked_core_count": int(data.defect.get("blocked_core_count", 0)),
-            "total_remapped_core_count": int(data.repair.get("remapped_core_count", 0)),
-            "touched_remapped_core_count": 0,
-            "route_checksum": FNV64_OFFSET,
-            "sampled_remapped_rows": [],
-        }
+    case_summaries: dict[str, CaseSummary] = {
+        case: CaseSummary(
+            case=case,
+            repair_manifest_sha256=str(data.repair.get("artifact_sha256", "")),
+            blocked_core_count=int(data.defect.get("blocked_core_count", 0)),
+            total_remapped_core_count=int(data.repair.get("remapped_core_count", 0)),
+            touched_remapped_core_count=0,
+            route_checksum=FNV64_OFFSET,
+            sampled_remapped_rows=[],
+        )
         for case, data in case_data.items()
     }
     errors: list[str] = []
@@ -283,7 +294,7 @@ def main() -> int:
                         int(summary["touched_remapped_core_count"]) + 1
                     )
                     sampled = summary["sampled_remapped_rows"]
-                    if isinstance(sampled, list) and len(sampled) < 8:
+                    if len(sampled) < 8:
                         sampled.append(
                             {
                                 "layer_index": layer_index,
@@ -308,12 +319,12 @@ def main() -> int:
                 summary["route_checksum"] = route_checksum
 
     for case, paths in CASES.items():
-        summary = case_summaries.get(case, {})
+        summary = case_summaries.get(case)
         case_ok = (
-            bool(summary)
-            and summary.get("repair_manifest_sha256") == paths["expected_repair_sha256"]
-            and int(summary.get("touched_remapped_core_count", 0)) > 0
-            and int(summary.get("route_checksum", 0)) > 0
+            summary is not None
+            and summary["repair_manifest_sha256"] == paths.expected_repair_sha256
+            and summary["touched_remapped_core_count"] > 0
+            and summary["route_checksum"] > 0
         )
         status, detail = pass_fail(
             case_ok,
@@ -324,14 +335,25 @@ def main() -> int:
             {"id": f"e1x_repaired_real_weight_execution_{case}", "status": status, "detail": detail}
         )
 
+    normal_summary = case_summaries.get("normal")
+    high_failure_summary = case_summaries.get("high_failure")
+    normal_route_checksum = normal_summary["route_checksum"] if normal_summary is not None else 0
+    normal_touched = normal_summary["touched_remapped_core_count"] if normal_summary is not None else 0
+    high_failure_route_checksum = (
+        high_failure_summary["route_checksum"] if high_failure_summary is not None else 0
+    )
+    high_failure_touched = (
+        high_failure_summary["touched_remapped_core_count"]
+        if high_failure_summary is not None
+        else 0
+    )
     repaired_ok = (
         not errors
         and len(layers) == 83
         and total_rows == 478_720
         and total_macs == 8_606_720
         and len(touched_logical_cores) == 3_847
-        and int(case_summaries.get("normal", {}).get("route_checksum", 0))
-        != int(case_summaries.get("high_failure", {}).get("route_checksum", 0))
+        and normal_route_checksum != high_failure_route_checksum
     )
     status, detail = pass_fail(
         repaired_ok,
@@ -343,7 +365,7 @@ def main() -> int:
     )
 
     failures = [check for check in checks if check["status"] != "pass"]
-    summary = {
+    report_summary: dict[str, object] = {
         "check_count": len(checks),
         "failing_check_count": len(failures),
         "executed_layer_count": len(layers),
@@ -351,26 +373,19 @@ def main() -> int:
         "executed_real_weight_mac_count": total_macs,
         "touched_logical_core_count": len(touched_logical_cores),
         "output_invariant_checksum": int(output_checksum),
-        "normal_route_checksum": int(case_summaries.get("normal", {}).get("route_checksum", 0)),
-        "high_failure_route_checksum": int(
-            case_summaries.get("high_failure", {}).get("route_checksum", 0)
-        ),
-        "normal_touched_remapped_rows": int(
-            case_summaries.get("normal", {}).get("touched_remapped_core_count", 0)
-        ),
-        "high_failure_touched_remapped_rows": int(
-            case_summaries.get("high_failure", {}).get("touched_remapped_core_count", 0)
-        ),
+        "normal_route_checksum": normal_route_checksum,
+        "high_failure_route_checksum": high_failure_route_checksum,
+        "normal_touched_remapped_rows": normal_touched,
+        "high_failure_touched_remapped_rows": high_failure_touched,
         "high_vs_normal_touched_remap_ratio": (
-            int(case_summaries.get("high_failure", {}).get("touched_remapped_core_count", 0))
-            / max(1, int(case_summaries.get("normal", {}).get("touched_remapped_core_count", 0)))
+            high_failure_touched / max(1, normal_touched)
         ),
         "sampled_executed_rows_sha256": canonical_sha256(sampled_rows),
         "case_summaries": case_summaries,
         "sampled_executed_rows": sampled_rows,
         "residual_blocker": "full_output_real_weight_checksum_missing",
     }
-    report = {
+    report: dict[str, object] = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x-repaired-real-weight-execution",
         "status": "PASS" if not failures else "BLOCKED",
@@ -398,7 +413,7 @@ def main() -> int:
             "scripts/check_e1x_repaired_real_weight_execution.py",
         ],
         "checks": checks,
-        "summary": summary,
+        "summary": report_summary,
     }
     report.update(FALSE_CLAIM_FLAGS)
     REPORT.parent.mkdir(parents=True, exist_ok=True)
