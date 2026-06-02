@@ -6857,4 +6857,19 @@ export const ODYSSEUS_CSS = `
 .odysseus-root .od-emoji-body::-webkit-scrollbar-thumb,
 .odysseus-root .od-emoji-tabs::-webkit-scrollbar-thumb {
   background:color-mix(in srgb, var(--fg) 18%, transparent); border-radius:4px; }
+
+/* ── window-manager: draggable + edge/corner-resizable tool windows
+   (windowDrag.js + windowResize.js). Grips render only when a panel is
+   windowed (position:absolute via inline style), anchored to it. ── */
+.odysseus-root .od-window-header { cursor:grab; }
+.odysseus-root .od-window-header:active { cursor:grabbing; }
+.odysseus-root .od-rz-handle { position:absolute; z-index:30; touch-action:none; }
+.odysseus-root .od-rz-n { top:-3px; left:10px; right:10px; height:7px; cursor:ns-resize; }
+.odysseus-root .od-rz-s { bottom:-3px; left:10px; right:10px; height:7px; cursor:ns-resize; }
+.odysseus-root .od-rz-e { right:-3px; top:10px; bottom:10px; width:7px; cursor:ew-resize; }
+.odysseus-root .od-rz-w { left:-3px; top:10px; bottom:10px; width:7px; cursor:ew-resize; }
+.odysseus-root .od-rz-ne { top:-5px; right:-5px; width:14px; height:14px; cursor:nesw-resize; }
+.odysseus-root .od-rz-nw { top:-5px; left:-5px; width:14px; height:14px; cursor:nwse-resize; }
+.odysseus-root .od-rz-se { bottom:-5px; right:-5px; width:14px; height:14px; cursor:nwse-resize; }
+.odysseus-root .od-rz-sw { bottom:-5px; left:-5px; width:14px; height:14px; cursor:nesw-resize; }
 `;

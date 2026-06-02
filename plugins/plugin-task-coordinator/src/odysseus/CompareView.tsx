@@ -37,6 +37,8 @@ import {
 } from "react";
 import { formatRelativeTime } from "../view-format";
 import { useEscapeClose } from "./hooks/useEscapeClose";
+import { useWindowControls } from "./hooks/useWindowControls";
+import { ResizeHandles } from "./ResizeHandles";
 import { readPref, writePref } from "./util/storage";
 
 // localStorage key for the persisted vote scoreboard, matching odysseus's
@@ -133,6 +135,7 @@ export function CompareView({
   locale?: string;
 }): ReactNode {
   useEscapeClose(open, onClose);
+  const win = useWindowControls("win-compare", { w: 1180, h: 880 });
   const [blindMode, setBlindMode] = useState(true);
   const [panes, setPanes] = useState<PaneModel[]>([
     { paneId: "pane-a", provider: "openai", modelId: "", modelName: "" },
@@ -289,7 +292,7 @@ export function CompareView({
 
   return (
     <div
-      className="od-search-overlay"
+      className={`od-search-overlay${win.windowed ? " od-windowed" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Compare models"
@@ -300,9 +303,13 @@ export function CompareView({
         onClick={onClose}
         className="od-search-backdrop"
       />
-      <div className="od-search-panel od-compare-panel">
+      <div className="od-search-panel od-compare-panel" style={win.panelStyle}>
+        <ResizeHandles controls={win} />
         {/* ── Header bar (compare/index.js _buildCompareUI step 8) ── */}
-        <div className="od-compare-header-bar">
+        <div
+          className="od-compare-header-bar od-window-header"
+          onPointerDown={win.onDragStart}
+        >
           <div className="od-compare-header-left">
             <span className="od-compare-header-icon" aria-hidden="true">
               <svg
