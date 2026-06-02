@@ -75,6 +75,7 @@ import chalk from "chalk";
 import { allocateFirstFreeLoopbackPort } from "./lib/allocate-loopback-port.mjs";
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
+import { resolveDesktopStartupEmbeddingWarmupPolicy } from "./lib/desktop-startup-embedding-warmup-policy.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import { killUiListenPort } from "./lib/kill-ui-listen-port.mjs";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
@@ -779,6 +780,9 @@ async function launch() {
   }
 
   const serviceLine = namesForLog.join(", ");
+  const apiEmbeddingWarmupPolicy = resolveDesktopStartupEmbeddingWarmupPolicy(
+    process.env,
+  );
   const orchestratorBanner = formatOrchestratorDesktopDevBanner({
     worktreePath: _worktreeEnvPath,
     worktreeLoaded: existsSync(_worktreeEnvPath),
@@ -806,6 +810,7 @@ async function launch() {
     desktopDevLogPath,
     desktopDevLogOptOut,
     childrenList: serviceLine,
+    apiEmbeddingWarmupPolicy,
     elizaNamespace:
       process.env.ELIZA_NAMESPACE?.trim() || defaultElizaNamespace,
     elizaNamespaceUnset: !process.env.ELIZA_NAMESPACE?.trim(),
@@ -849,6 +854,7 @@ async function launch() {
     ...(desktopDevLogPath
       ? { ELIZA_DESKTOP_DEV_LOG_PATH: desktopDevLogPath }
       : {}),
+    ...apiEmbeddingWarmupPolicy.env,
   };
   const apiWatchEnabled = envFlagEnabled("ELIZA_DESKTOP_API_WATCH");
   const apiArgs = apiWatchEnabled

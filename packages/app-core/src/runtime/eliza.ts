@@ -32,6 +32,7 @@ import {
   AutonomyService,
   ChannelType,
   logger,
+  ModelType,
   type Plugin,
   stringToUuid,
 } from "@elizaos/core";
@@ -52,6 +53,7 @@ import {
   type AppRoutePluginRegistryEntry,
   listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
+import { shouldWarmupVoice, warmVoiceModels } from "./voice-warmup";
 
 type EmbeddingProgressCallback = (
   phase: EmbeddingWarmupPhase,
@@ -740,6 +742,35 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
 // uncaughtException and kills the agent.
 let warmupInFlight: Promise<void> | null = null;
 
+function isTruthyEnvValue(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on"
+  );
+}
+
+function isLocalEmbeddingWarmupDeferredByEnv(): boolean {
+  return isTruthyEnvValue(process.env.ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP);
+}
+
+function startLocalEmbeddingWarmup(
+  onProgress?: EmbeddingProgressCallback,
+): void {
+  void warmupEmbeddingModel(onProgress);
+}
+
+export function startDeferredLocalEmbeddingWarmup(
+  onProgress?: EmbeddingProgressCallback,
+): boolean {
+  if (!isLocalEmbeddingWarmupDeferredByEnv()) return false;
+  logger.info("[eliza] Starting deferred local embedding warmup");
+  startLocalEmbeddingWarmup(onProgress);
+  return true;
+}
+
 async function warmupEmbeddingModel(
   onProgress?: EmbeddingProgressCallback,
 ): Promise<void> {
@@ -835,6 +866,46 @@ async function warmupEmbeddingModelImpl(
   }
 }
 
+/**
+ * Warm local voice models (Whisper STT + Kokoro TTS) in the background AFTER
+ * the runtime is ready, by firing one tiny useModel request at each. Voice
+ * models only load through the live runtime (the Kokoro bridge auto-starts on
+ * the first TEXT_TO_SPEECH call), so unlike embedding — which warms pre-boot
+ * via a runtime-free facade — this runs post-ready. Fire-and-forget; gated to
+ * the local-inference path so cloud-only setups never make a paid TTS/STT call.
+ */
+async function startDeferredVoiceWarmup(runtime: AgentRuntime): Promise<void> {
+  let localInferenceActive = false;
+  try {
+    localInferenceActive = (
+      await _localInference()
+    ).shouldWarmupLocalEmbeddingModel();
+  } catch {
+    localInferenceActive = false;
+  }
+  if (
+    !shouldWarmupVoice({
+      mobile: isMobilePlatform(),
+      skipEnv: isTruthyEnvValue(process.env.ELIZA_SKIP_LOCAL_VOICE_WARMUP),
+      localInferenceActive,
+    })
+  ) {
+    return;
+  }
+  logger.info("[eliza] Starting deferred local voice warmup");
+  await warmVoiceModels(
+    runtime as unknown as Parameters<typeof warmVoiceModels>[0],
+    {
+      ttsType: ModelType.TEXT_TO_SPEECH,
+      transcriptionType: ModelType.TRANSCRIPTION,
+    },
+    {
+      info: (m: string) => logger.info(m),
+      warn: (m: string) => logger.warn(m),
+    },
+  );
+}
+
 export interface BootElizaRuntimeOptionsExt extends BootElizaRuntimeOptions {
   /** Optional callback for embedding model download/init progress. */
   onEmbeddingProgress?: EmbeddingProgressCallback;
@@ -856,7 +927,13 @@ export async function bootElizaRuntime(
     // port never bound and dev-ui.mjs's 300s watchdog tore the stack down
     // (W-016). Voiding lets bootstrap proceed; the renderer's startup overlay
     // still surfaces progress via updateStartupEmbeddingProgress.
-    void warmupEmbeddingModel(opts.onEmbeddingProgress);
+    if (isLocalEmbeddingWarmupDeferredByEnv()) {
+      logger.info(
+        "[eliza] Deferring local embedding warmup until runtime ready",
+      );
+    } else {
+      startLocalEmbeddingWarmup(opts.onEmbeddingProgress);
+    }
 
     // Default the embedding-vector dimension plugin-sql provisions to 384 when
     // unset: that is the compact SQL-safe column and the native width of the
@@ -870,7 +947,12 @@ export async function bootElizaRuntime(
     }
 
     const runtime = await upstreamBootElizaRuntime(opts);
-    return runtime ? await repairRuntimeAfterBoot(runtime) : runtime;
+    if (!runtime) return runtime;
+    const repaired = await repairRuntimeAfterBoot(runtime);
+    // Warm local voice models in the background now that the runtime is ready
+    // (fire-and-forget; never blocks the boot return).
+    void startDeferredVoiceWarmup(repaired);
+    return repaired;
   } finally {
     syncElizaEnvAliases();
   }
@@ -1189,7 +1271,13 @@ export async function startEliza(
     // Fire-and-forget — see comment at the matching call in bootElizaRuntime
     // (W-016): awaiting parks bootstrap; voiding lets the API port bind on
     // time while the warmup runs alongside.
-    void warmupEmbeddingModel(options?.onEmbeddingProgress);
+    if (isLocalEmbeddingWarmupDeferredByEnv()) {
+      logger.info(
+        "[eliza] Deferring local embedding warmup until runtime ready",
+      );
+    } else {
+      startLocalEmbeddingWarmup(options?.onEmbeddingProgress);
+    }
 
     // Cap embedding dimension to 384 — see comment in bootElizaRuntime.
     if (!process.env.EMBEDDING_DIMENSION) {

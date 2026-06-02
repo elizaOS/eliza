@@ -56,7 +56,10 @@ Key environment variables (all optional unless noted):
 | `MODELS_DIR` | Override the GGUF model directory (default: `~/.eliza/models`) |
 | `LOCAL_SMALL_MODEL` | Small model filename (mobile/Capacitor adapter) |
 | `LOCAL_LARGE_MODEL` | Large model filename (mobile/Capacitor adapter) |
-| `ELIZA_DISABLE_LOCAL_EMBEDDINGS` | Set `1` to skip local embedding warm-up at boot |
+| `ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP` | Set truthy to defer startup GGUF embedding prefetch until the dev/runtime server is ready |
+| `ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP` | Set truthy to skip GGUF embedding prefetch entirely while leaving local embedding settings intact |
+| `ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP` | Desktop startup opt-in that starts GGUF embedding warmup during runtime bootstrap when no skip/defer override is set |
+| `ELIZA_DISABLE_LOCAL_EMBEDDINGS` | Set `1` to disable local `TEXT_EMBEDDING` registration entirely |
 | `ELIZA_IMAGEGEN_ACCELERATOR` | Force image-gen backend: `coreml`, `mflux`, `sd-cpp`, `tensorrt` |
 | `ELIZA_DEVICE_BRIDGE_ENABLED` | Enable iOS/AOSP physical device bridge |
 | `HF_TOKEN` | HuggingFace token for gated model downloads |

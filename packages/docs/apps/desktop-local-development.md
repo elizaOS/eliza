@@ -56,6 +56,10 @@ ELIZA_DESKTOP_VITE_WATCH=1 ELIZA_DESKTOP_VITE_BUILD_WATCH=1 bun eliza/packages/a
 | `--vite-force` | Pass `vite --force` when the Vite dev server starts (clear dep optimization cache) |
 | `--rollup-watch` | With `ELIZA_DESKTOP_VITE_WATCH=1`, use `vite build --watch` instead of `vite dev` |
 | `--no-api` | Electrobun only; no `dev-server.ts` child |
+| `ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP` | **Default `1` for desktop dev startup:** defers GGUF embedding prefetch until the API runtime is ready, then warms in the background. |
+| `ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP` | Skips GGUF embedding prefetch entirely. Desktop dev sets this by default only when `CI` is truthy; explicit values are preserved. |
+| `ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP=1` | Opt in to starting GGUF embedding warmup during runtime bootstrap when neither defer nor skip is set. |
+| `ELIZA_DISABLE_LOCAL_EMBEDDINGS=1` | Stronger switch: disables local `TEXT_EMBEDDING` registration entirely. Use this when another provider handles embeddings or local embeddings must be unavailable. |
 | `ELIZA_DESKTOP_SCREENSHOT_SERVER` | **Default on** for `dev:desktop` / `bun run dev`: Electrobun listens on `127.0.0.1:ELIZA_SCREENSHOT_SERVER_PORT` (default **31339**); the Eliza API proxies **`GET /api/dev/cursor-screenshot`** (loopback) as a **full-screen PNG** for agents/tools (macOS needs Screen Recording permission). Set to **`0`**, **`false`**, **`no`**, or **`off`** to disable. |
 | `ELIZA_DESKTOP_DEV_LOG` | **Default on:** child logs (vite / api / electrobun) are mirrored to **`<stateDir>/desktop-dev-console.log`** at the repo root. **`GET /api/dev/console-log`** on the API (loopback) returns a tail (`?maxLines=`, `?maxBytes=`). Set to **`0`** / **`false`** / **`no`** / **`off`** to disable. |
 
