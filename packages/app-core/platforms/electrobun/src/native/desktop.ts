@@ -1674,6 +1674,17 @@ X-GNOME-Autostart-enabled=true
   }
 
   /**
+   * Signal that a main window has been attached/shown. Reveals the Dock icon in
+   * tray-first mode regardless of how the window was opened — including
+   * createMainWindow()/attachMainWindow() paths (boot, restoreWindow() from a
+   * deep link) that bypass showWindow()/showMainWindow(). No-op outside
+   * tray-first.
+   */
+  markMainWindowShown(): void {
+    this.syncTrayFirstDock(true);
+  }
+
+  /**
    * Toggle the Dock icon to match window presence, only in tray-first mode.
    * Routed through every show/hide path so reopen-from-tray (which bypasses
    * the window create path) keeps the Dock icon correct.
