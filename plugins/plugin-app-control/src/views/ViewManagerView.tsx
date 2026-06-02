@@ -20,6 +20,22 @@ import {
 
 export { interact } from "./viewManagerData";
 
+// Shell theme tokens — inherit the host shell chrome instead of hardcoding a
+// dark cyan palette. Fallbacks avoid the forbidden literal colors.
+const viewManagerTheme = {
+	background: "var(--background)",
+	surface: "var(--card)",
+	surfaceMuted: "var(--muted)",
+	border: "var(--border)",
+	borderAccent: "var(--accent)",
+	foreground: "var(--foreground)",
+	muted: "var(--muted-foreground)",
+	accent: "var(--accent)",
+	success: "var(--success, #34d399)",
+	danger: "var(--destructive)",
+	shadowInset: "var(--ring, #1e293b)",
+};
+
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 function ViewCard({
@@ -53,10 +69,10 @@ function ViewCard({
 			style={{
 				textAlign: "left",
 				font: "inherit",
-				border: "1px solid rgba(255,255,255,0.08)",
+				border: `1px solid ${viewManagerTheme.border}`,
 				borderRadius: 12,
 				overflow: "hidden",
-				background: "rgba(255,255,255,0.03)",
+				background: viewManagerTheme.surface,
 				display: "flex",
 				flexDirection: "column",
 				cursor: "pointer",
@@ -72,7 +88,7 @@ function ViewCard({
 					aspectRatio: "4/3",
 					objectFit: "cover",
 					display: "block",
-					background: "#1a1a2e",
+					background: viewManagerTheme.surfaceMuted,
 				}}
 				onError={(e) => {
 					// Hide broken image — the placeholder SVG served by the agent
@@ -85,7 +101,7 @@ function ViewCard({
 					style={{
 						fontWeight: 600,
 						fontSize: 14,
-						color: "#e0e0e0",
+						color: viewManagerTheme.foreground,
 						marginBottom: 4,
 					}}
 				>
@@ -95,7 +111,7 @@ function ViewCard({
 					<div
 						style={{
 							fontSize: 12,
-							color: "rgba(255,255,255,0.45)",
+							color: viewManagerTheme.muted,
 							lineHeight: 1.4,
 							marginBottom: 8,
 						}}
@@ -107,8 +123,8 @@ function ViewCard({
 					style={{
 						fontSize: 11,
 						color: view.available
-							? "rgba(110,231,183,0.8)"
-							: "rgba(255,255,255,0.25)",
+							? viewManagerTheme.success
+							: viewManagerTheme.muted,
 					}}
 				>
 					{view.available ? "Bundle ready" : "Not built"}
@@ -128,7 +144,7 @@ function EmptyState() {
 				justifyContent: "center",
 				gap: 12,
 				padding: "64px 24px",
-				color: "rgba(255,255,255,0.35)",
+				color: viewManagerTheme.muted,
 				textAlign: "center",
 			}}
 		>
@@ -167,9 +183,9 @@ function RefreshButton({
 			{...agentProps}
 			style={{
 				background: "transparent",
-				border: "1px solid rgba(255,255,255,0.12)",
+				border: `1px solid ${viewManagerTheme.border}`,
 				borderRadius: 8,
-				color: "rgba(255,255,255,0.6)",
+				color: viewManagerTheme.muted,
 				cursor: loading ? "not-allowed" : "pointer",
 				display: "flex",
 				alignItems: "center",
@@ -220,15 +236,15 @@ export function ViewManagerView() {
 		<div
 			style={{
 				minHeight: "100vh",
-				background: "#0f0f1a",
-				color: "#e0e0e0",
+				background: viewManagerTheme.background,
+				color: viewManagerTheme.foreground,
 				fontFamily: "system-ui, -apple-system, sans-serif",
 			}}
 		>
 			{/* Header */}
 			<div
 				style={{
-					borderBottom: "1px solid rgba(255,255,255,0.06)",
+					borderBottom: `1px solid ${viewManagerTheme.border}`,
 					padding: "20px 24px",
 					display: "flex",
 					alignItems: "center",
@@ -236,13 +252,13 @@ export function ViewManagerView() {
 				}}
 			>
 				<div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-					<LayoutGrid size={20} style={{ color: "#6c63ff" }} />
+					<LayoutGrid size={20} style={{ color: viewManagerTheme.accent }} />
 					<span style={{ fontWeight: 600, fontSize: 16 }}>View Manager</span>
 					{!loading && (
 						<span
 							style={{
 								fontSize: 12,
-								color: "rgba(255,255,255,0.35)",
+								color: viewManagerTheme.muted,
 								marginLeft: 4,
 							}}
 						>
@@ -260,7 +276,7 @@ export function ViewManagerView() {
 						style={{
 							textAlign: "center",
 							padding: "48px 0",
-							color: "rgba(255,255,255,0.35)",
+							color: viewManagerTheme.muted,
 							fontSize: 14,
 						}}
 					>
@@ -273,7 +289,7 @@ export function ViewManagerView() {
 						style={{
 							textAlign: "center",
 							padding: "48px 0",
-							color: "rgba(239,68,68,0.8)",
+							color: viewManagerTheme.danger,
 							fontSize: 14,
 						}}
 					>
@@ -310,7 +326,7 @@ function TuiStatusBadge({ view }: { view: ViewEntry }) {
 	return (
 		<span
 			style={{
-				color: view.available ? "#7dd3fc" : "#fca5a5",
+				color: view.available ? viewManagerTheme.accent : viewManagerTheme.danger,
 				minWidth: 10,
 				display: "inline-block",
 			}}
@@ -345,8 +361,8 @@ function TuiRefreshButton({
 			{...agentProps}
 			style={{
 				background: "transparent",
-				color: "#a7f3d0",
-				border: "1px solid rgba(167,243,208,0.45)",
+				color: viewManagerTheme.success,
+				border: `1px solid ${viewManagerTheme.borderAccent}`,
 				borderRadius: 4,
 				padding: "4px 8px",
 				cursor: loading ? "not-allowed" : "pointer",
@@ -382,17 +398,17 @@ function TuiViewRow({
 				gap: 12,
 				alignItems: "center",
 				padding: "8px 0",
-				borderTop: index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
+				borderTop: index === 0 ? "none" : `1px solid ${viewManagerTheme.borderAccent}`,
 			}}
 		>
-			<span style={{ color: "#64748b" }}>
+			<span style={{ color: viewManagerTheme.muted }}>
 				{String(index + 1).padStart(2, "0")}
 			</span>
-			<span style={{ color: "#e2e8f0", fontWeight: 700 }}>{view.label}</span>
-			<span style={{ color: "#a7f3d0" }}>{view.viewType ?? "gui"}</span>
+			<span style={{ color: viewManagerTheme.foreground, fontWeight: 700 }}>{view.label}</span>
+			<span style={{ color: viewManagerTheme.success }}>{view.viewType ?? "gui"}</span>
 			<span
 				style={{
-					color: "#94a3b8",
+					color: viewManagerTheme.muted,
 					overflow: "hidden",
 					textOverflow: "ellipsis",
 				}}
@@ -400,7 +416,7 @@ function TuiViewRow({
 				{view.id}
 			</span>
 			<TuiStatusBadge view={view} />
-			<div style={{ gridColumn: "2 / 5", color: "#94a3b8", fontSize: 12 }}>
+			<div style={{ gridColumn: "2 / 5", color: viewManagerTheme.muted, fontSize: 12 }}>
 				{view.description ?? view.pluginName}
 			</div>
 			<button
@@ -413,8 +429,8 @@ function TuiViewRow({
 					gridColumn: "5",
 					gridRow: "1 / span 2",
 					background: "transparent",
-					color: "#7dd3fc",
-					border: "1px solid rgba(125,211,252,0.45)",
+					color: viewManagerTheme.accent,
+					border: `1px solid ${viewManagerTheme.borderAccent}`,
 					borderRadius: 4,
 					padding: "4px 8px",
 					cursor: "pointer",
@@ -469,29 +485,29 @@ export function ViewManagerTuiView() {
 			})}
 			style={{
 				minHeight: "100vh",
-				background: "#020617",
-				color: "#cbd5e1",
+				background: viewManagerTheme.background,
+				color: viewManagerTheme.foreground,
 				fontFamily:
 					'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
 				padding: 20,
 			}}
 		>
-			<div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+			<div style={{ color: viewManagerTheme.accent, marginBottom: 4 }}>
 				elizaos://views-manager --type=tui
 			</div>
 			<div
 				data-status={lastAction}
-				style={{ color: "#475569", marginBottom: 16 }}
+				style={{ color: viewManagerTheme.muted, marginBottom: 16 }}
 			>
 				{loading ? "loading" : `${views.length} entries`} | {lastAction}
 			</div>
 
 			<div
 				style={{
-					border: "1px solid rgba(125,211,252,0.3)",
+					border: `1px solid ${viewManagerTheme.borderAccent}`,
 					borderRadius: 6,
 					padding: 16,
-					boxShadow: "inset 0 0 0 1px rgba(15,23,42,0.8)",
+					boxShadow: `inset 0 0 0 1px ${viewManagerTheme.shadowInset}`,
 				}}
 			>
 				<div
@@ -502,16 +518,16 @@ export function ViewManagerTuiView() {
 						marginBottom: 10,
 					}}
 				>
-					<strong style={{ color: "#e2e8f0" }}>registered tui views</strong>
+					<strong style={{ color: viewManagerTheme.foreground }}>registered tui views</strong>
 					<TuiRefreshButton
 						loading={loading}
 						onClick={() => void fetchViews()}
 					/>
 				</div>
 
-				{error && <div style={{ color: "#fca5a5" }}>{error}</div>}
+				{error && <div style={{ color: viewManagerTheme.danger }}>{error}</div>}
 				{!error && views.length === 0 && !loading && (
-					<div style={{ color: "#64748b" }}>no tui views registered</div>
+					<div style={{ color: viewManagerTheme.muted }}>no tui views registered</div>
 				)}
 				{views.map((view, index) => (
 					<TuiViewRow

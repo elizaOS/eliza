@@ -1219,6 +1219,15 @@ function classifyAssistantAction(text) {
 
 function createDeterministicAssistantText({ body, conversationId, transport }) {
   const inputText = normalizeAssistantInput(body?.text ?? body?.message);
+  if (/\bbroken[_ -]?llm[_ -]?response\b/i.test(inputText)) {
+    return `BROKEN_MOCK_LLM_RESPONSE:${JSON.stringify({
+      fixture: "ui-smoke-assistant-v1",
+      conversationId,
+      transport,
+      input: { text: inputText },
+      action: classifyAssistantAction(inputText),
+    }).slice(0, -2)}`;
+  }
   const payload = {
     fixture: "ui-smoke-assistant-v1",
     registrySeam: "strict-fixture-registry",

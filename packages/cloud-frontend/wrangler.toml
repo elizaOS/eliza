@@ -7,3 +7,8 @@ API_UPSTREAM = "https://api.elizacloud.ai"
 
 [env.preview.vars]
 API_UPSTREAM = "https://api-staging.elizacloud.ai"
+# Pin the Steward tenant for the staging build so the SPA initialises the
+# SDK with `tenantId=elizacloud-staging` and OAuth `/authorize` carries
+# `tenant_id=elizacloud-staging` (Steward backend resolves OAuth tenant
+# from the query param, not the proxy `X-Steward-Tenant` header).
+NEXT_PUBLIC_STEWARD_TENANT_ID = "elizacloud-staging"

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, test, vi } from "vitest";
 
 const lookupMock = vi.fn();
 
@@ -7,6 +7,17 @@ vi.mock("node:dns/promises", () => ({
 }));
 
 const { assertSafeOutboundUrl, isForbiddenIpAddress } = await import("./outbound-url");
+
+// `vi.mock("node:dns/promises")` is process-global in bun:test, so this stub
+// leaks into every suite loaded afterwards. Left in its reset (undefined-
+// returning) state it makes `assertSafeOutboundUrl` treat every host as
+// unresolvable — which silently broke waifu-webhook delivery tests downstream.
+// Restore a benign default (a public IP) once this suite finishes so inherited
+// callers resolve cleanly without real DNS.
+afterAll(() => {
+  lookupMock.mockReset();
+  lookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+});
 
 describe("outbound URL SSRF validation", () => {
   beforeEach(() => {

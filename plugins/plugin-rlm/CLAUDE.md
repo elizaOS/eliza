@@ -4,7 +4,7 @@ RLM (Recursive Language Model) adapter — enables Eliza agents to process arbit
 
 ## Purpose / role
 
-This plugin integrates the Recursive Language Model technique (arXiv:2512.24601) into elizaOS. It registers model handlers so that any call to `runtime.useModel(ModelType.TEXT_LARGE, ...)` (and related model types) is routed through an RLM backend, which processes long inputs by spawning a Python subprocess and communicating over JSON-RPC IPC. When the Python backend is absent the plugin falls back to stub mode and returns a clearly labelled placeholder instead of throwing. The plugin is opt-in: add `@elizaos/plugin-rlm` to your character's plugin list to enable it.
+This plugin integrates the Recursive Language Model technique (arXiv:2512.24601) into elizaOS. It registers model handlers so that any call to `runtime.useModel(ModelType.TEXT_LARGE, ...)` (and related model types) is routed through an RLM backend, which processes long inputs by spawning a Python subprocess and communicating over JSON-RPC IPC. When the Python backend is absent, model calls fail explicitly instead of returning placeholder text. The plugin is opt-in: add `@elizaos/plugin-rlm` to your character's plugin list to enable it.
 
 ## Plugin surface
 
@@ -27,7 +27,7 @@ plugins/plugin-rlm/
 ├── index.ts                  # Plugin definition (rlmPlugin), singleton client management,
 │                             # handleTextGeneration, resetClient()
 ├── client.ts                 # RLMClient class — spawns Python subprocess, JSON-RPC IPC,
-│                             # retry logic, metrics; configFromEnv(); stubResult()
+│                             # retry logic, metrics; configFromEnv()
 ├── server.ts                 # RLMServer class — TCP-based IPC server wrapping RLMClient
 │                             # (used when the TS side acts as server, not subprocess caller)
 ├── cost.ts                   # estimateCost(), estimateTokenCount(), detectStrategy(),
@@ -80,7 +80,7 @@ Most vars are defined in `types.ts` (`ENV_VARS` const) and consumed in `index.ts
 
 Backend API keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, etc.) are forwarded to the Python subprocess via `process.env` — the plugin does not read them directly.
 
-None of the env vars are strictly required; all have defaults and the plugin operates in stub mode when the Python backend is unavailable.
+None of the env vars are strictly required for plugin initialization. Real inference requires the Python backend; if it is unavailable, `RLMClient.infer()` throws and `getStatus()` reports `available: false`.
 
 ## How to extend
 
@@ -102,7 +102,7 @@ Use `RLMTrajectoryIntegration` from `trajectory-integration.ts`. It accepts an o
 ## Conventions / gotchas
 
 - **Singleton client:** `index.ts` keeps a module-level singleton `clientState`. Config changes (detected by hash) trigger a shutdown + recreation. Call `resetClient()` (exported) to force teardown in tests.
-- **Stub mode is silent success:** When the Python subprocess fails to start, `RLMClient.infer()` returns a `stubResult()` rather than throwing. Callers cannot distinguish stub from real without inspecting `result.metadata.stub`.
+- **No placeholder inference:** When the Python subprocess fails to start, `RLMClient.infer()` throws. Use `getStatus()` for diagnostics before routing traffic through RLM.
 - **Python subprocess path:** The subprocess is spawned relative to `__dirname/../python`. The Python package must be installed as `elizaos_plugin_rlm` (i.e. `pip install git+https://github.com/alexzhang13/rlm.git` followed by packaging it under that module name, or use the provided server shim).
 - **`assertRecordedLlmCall` enforcement:** `RLMClient.infer()` calls `assertRecordedLlmCall` from `@elizaos/core` at entry, requiring that all calls go through `recordLlmCall()`. The plugin's `handleTextGeneration` satisfies this by wrapping the client call in `recordLlmCall`. If you call `RLMClient.infer()` directly outside a `recordLlmCall` context it will throw.
 - **No streaming:** Streaming is not supported; all model type handlers return `Promise<string>`.

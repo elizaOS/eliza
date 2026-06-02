@@ -3004,6 +3004,14 @@ async function preregisterCorePluginsInDependencyWaves(args: {
     await Promise.all(
       wave.map(([name, resolved]) => registerOne(name, resolved)),
     );
+    // Yield to the event loop between waves so the bound HTTP server can serve
+    // /api/health and other I/O between CPU-bound wave registrations, instead
+    // of starving it until every wave finishes. Mirrors the deferred
+    // static-import yield above; pure scheduling, every plugin still registers
+    // in the same wave order.
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
   }
 }
 
@@ -3689,37 +3697,16 @@ export async function startEliza(
     }
   }
 
-  // 5-pre. Ensure each agent has its own EVM + Solana keypair in the vault.
-  // The runtime-wide EVM_PRIVATE_KEY / SOLANA_PRIVATE_KEY (process.env) is
-  // the *user* wallet; per-agent wallets live inside the encrypted vault and
-  // are surfaced separately in the in-app browser. Idempotent — existing
-  // wallets are preserved. Opt-out via ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP=1.
-  // Auto-disabled in cloud containers (ELIZA_CLOUD_PROVISIONED=1) — same
-  // PGlite vault init hang as the earlier vault hydration block.
-  if (
-    process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP !== "1" &&
-    process.env.ELIZA_CLOUD_PROVISIONED !== "1"
-  ) {
-    try {
-      const { sharedVault } = await importAppCoreRuntime();
-      const { ensureAgentWallets } = await import("./agent-wallets.ts");
-      const descriptors = await ensureAgentWallets(
-        sharedVault(),
-        agentId,
-        "agent-bootstrap",
-      );
-      const summary = descriptors
-        .map((d) => `${d.chain}:${d.address}`)
-        .join(" ");
-      logger.info(
-        `[agent-wallets] agent="${agentId}" wallets ready (${summary})`,
-      );
-    } catch (err) {
-      logger.warn(
-        `[agent-wallets] failed to ensure wallets for agent="${agentId}": ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
+  // 5-pre. Per-agent EVM + Solana wallet bootstrap is DEFERRED off the boot
+  // critical path — see startDeferredAgentWalletBootstrap(), fired from the
+  // deferred-services phase after the runtime is ready. The per-agent wallets
+  // are only consumed later by the in-app browser, never during boot or plugin
+  // resolution, and generating them (heavy EVM/Solana crypto import + encrypted
+  // vault writes) measured ~50s on the critical path. Firing it fire-and-forget
+  // after readiness cut agent boot from ~56s to ~6s. The opt-out
+  // (ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP), the cloud-container skip
+  // (ELIZA_CLOUD_PROVISIONED), and the TEE-gate suppression all still apply in
+  // the deferred path.
 
   bootTimer.lap("pre-resolve-setup");
 
@@ -4617,6 +4604,42 @@ export async function startEliza(
     });
   };
 
+  // Per-agent EVM + Solana wallet bootstrap, deferred off the boot critical
+  // path (see the "5-pre" note above). Fire-and-forget: generating the keypairs
+  // (heavy EVM/Solana crypto import + encrypted vault writes) measured ~50s and
+  // must never block the agent becoming ready — the wallets are only consumed
+  // later by the in-app browser. The opt-out and cloud-container skip are kept
+  // here; the TEE-gate suppression lives inside ensureAgentWallets.
+  const startDeferredAgentWalletBootstrap = (): void => {
+    if (
+      process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP === "1" ||
+      process.env.ELIZA_CLOUD_PROVISIONED === "1"
+    ) {
+      return;
+    }
+    void (async () => {
+      try {
+        const { sharedVault } = await importAppCoreRuntime();
+        const { ensureAgentWallets } = await import("./agent-wallets.ts");
+        const descriptors = await ensureAgentWallets(
+          sharedVault(),
+          agentId,
+          "agent-bootstrap",
+        );
+        const summary = descriptors
+          .map((d) => `${d.chain}:${d.address}`)
+          .join(" ");
+        logger.info(
+          `[agent-wallets] agent="${agentId}" wallets ready (${summary})`,
+        );
+      } catch (err) {
+        logger.warn(
+          `[agent-wallets] failed to ensure wallets for agent="${agentId}": ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    })();
+  };
+
   // Essential boot: only what the runtime needs to become reachable (sql +
   // local-inference are already registered above; deferred provider/connector
   // plugins continue after the ready gate unless legacy blocking mode is
@@ -4810,6 +4833,7 @@ export async function startEliza(
     await enableAutonomyLoopIfAvailable(autonomyLoopEnabled);
     startAgentSkillsWarmup();
     startEmbeddingWarmup();
+    startDeferredAgentWalletBootstrap();
     bootTimer.lap("deferred:autonomy+warmup");
 
     // Re-install action aliases now that deferred plugins have registered

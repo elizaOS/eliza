@@ -53,3 +53,32 @@ export function shouldStartTrayFirst(
   }
   return true;
 }
+
+/**
+ * Whether the app should launch into the first-run onboarding overlay: a
+ * full-screen, borderless, transparent, click-through (passthrough)
+ * always-on-top window that renders only the floating onboarding card instead
+ * of the opaque dashboard. Empty (transparent) regions pass clicks straight
+ * through to the desktop behind; the card itself is interactive.
+ *
+ * Opt-in (default OFF). macOS-only — transparent + region-based passthrough is
+ * a WKWebView capability we only rely on there — and excludes kiosk shell mode
+ * (kiosk wants the fullscreen appliance window). Enable with
+ * ELIZA_DESKTOP_ONBOARDING_OVERLAY=1.
+ */
+export function shouldStartOnboardingOverlay(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  argv: readonly string[] = process.argv,
+): boolean {
+  if (platform !== "darwin") {
+    return false;
+  }
+  if (!parseTruthy(env.ELIZA_DESKTOP_ONBOARDING_OVERLAY)) {
+    return false;
+  }
+  if (isKioskShellMode(env, argv)) {
+    return false;
+  }
+  return true;
+}

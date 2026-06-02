@@ -33,6 +33,7 @@ import { shouldCreateDesktopPill } from "./desktop-pill-config";
 import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
 import {
   shouldCreateDesktopTray,
+  shouldStartOnboardingOverlay,
   shouldStartTrayFirst,
 } from "./desktop-tray-config";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
@@ -79,6 +80,10 @@ import {
 import { getPermissionManager } from "./native/permissions";
 import { getRemotePluginHost } from "./native/remote-plugin-host";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
+import {
+  createOnboardingOverlayWindow,
+  getOnboardingOverlayWindow,
+} from "./onboarding-overlay-window";
 import { createPillWindow, getPillWindow } from "./pill-window";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
 import {
@@ -1182,6 +1187,37 @@ async function ensureBackgroundWindow(): Promise<void> {
   showBackgroundRunNoticeOnce();
 }
 
+/**
+ * Create — or focus, if already open — the transparent onboarding overlay
+ * window and wire its API base. Shared by the first-run boot branch and the
+ * dock-reopen path so the overlay (not the dashboard) is always the surface
+ * shown while onboarding is the active first-run mode.
+ */
+async function openOnboardingOverlayWindow(): Promise<BrowserWindow> {
+  const existing = getOnboardingOverlayWindow();
+  if (existing) {
+    try {
+      existing.focus();
+    } catch {
+      // focus may be unavailable on this platform
+    }
+    return existing;
+  }
+  const { rpc } = createDesktopRpc("onboarding-overlay");
+  const rendererUrl = await resolveRendererUrl();
+  let preload = "";
+  try {
+    preload = readResolvedPreloadScript(import.meta.dir);
+  } catch {
+    // Dev fallback — an unbuilt preload should not block the overlay.
+  }
+  const win = createOnboardingOverlayWindow({ rendererUrl, preload, rpc });
+  win.webview.on("dom-ready", () => {
+    injectApiBase(win);
+  });
+  return win;
+}
+
 /** Restore or recreate the main window (called on dock icon click). */
 async function restoreWindow(): Promise<void> {
   if (currentWindow) {
@@ -1193,6 +1229,15 @@ async function restoreWindow(): Promise<void> {
     }
     // Re-reveal the Dock icon for an already-open window (tray-first only).
     getDesktopManager().markMainWindowShown();
+    return;
+  }
+  // Onboarding-overlay mode: the correct first-run surface is the transparent
+  // overlay card, NOT the opaque dashboard. Re-show (or recreate) the overlay
+  // instead of building a main window. Once onboarding completes and a
+  // dashboard is attached, `currentWindow` is set and the branch above wins.
+  if (shouldStartOnboardingOverlay()) {
+    await openOnboardingOverlayWindow();
+    logger.info("[Main] Reopened onboarding overlay (dock reopen)");
     return;
   }
   if (backgroundWindowPromise) {
@@ -2323,9 +2368,23 @@ async function main(): Promise<void> {
   // Create window first — on Windows (CEF) the UI message loop must be
   // running before any synchronous FFI calls like setApplicationMenu().
   // Calling setupApplicationMenu() before createMainWindow() deadlocks.
+  const onboardingOverlay = shouldStartOnboardingOverlay();
   const trayFirst = shouldStartTrayFirst();
   let mainWin: BrowserWindow | null = null;
-  if (trayFirst) {
+  if (onboardingOverlay) {
+    // First-run onboarding overlay (macOS, opt-in): instead of the opaque
+    // dashboard, launch a full-screen transparent click-through window that
+    // renders only the floating onboarding card. Empty (transparent) regions
+    // pass clicks through to the desktop behind; the card is interactive.
+    logger.info(
+      "[Main] Onboarding-overlay startup — transparent click-through overlay instead of dashboard",
+    );
+    recordStartupPhase("creating_window", { pid: process.pid });
+    await openOnboardingOverlayWindow();
+    recordStartupPhase("window_ready", {
+      pid: process.pid,
+    });
+  } else if (trayFirst) {
     // Tray-first (macOS, opt-in): no window at launch. The tray icon is the
     // only surface; the main window is created lazily via restoreWindow() /
     // DesktopManager.showWindow() on tray "Show Window", Dock reopen, or a

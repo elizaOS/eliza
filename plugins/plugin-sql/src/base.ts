@@ -3668,6 +3668,31 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     });
   }
 
+  async getMemoriesByServerId(params: {
+    serverId: UUID;
+    count?: number;
+    tableName?: string;
+  }): Promise<Memory[]> {
+    return this.withDatabase(async () => {
+      const rooms = await this.db
+        .select({ id: roomTable.id })
+        .from(roomTable)
+        .where(
+          and(eq(roomTable.messageServerId, params.serverId), eq(roomTable.agentId, this.agentId))
+        );
+
+      if (rooms.length === 0) {
+        return [];
+      }
+
+      return this.getMemoriesByRoomIds({
+        roomIds: rooms.map((room) => room.id as UUID),
+        tableName: params.tableName || "messages",
+        limit: params.count,
+      });
+    });
+  }
+
   async deleteRoomsByWorldId(worldId: UUID): Promise<void> {
     return this.withDatabase(async () => {
       const rooms = await this.db
@@ -4795,12 +4820,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         conditions.push(eq(entityTable.agentId, params.agentId));
       }
 
-      // Build a single EXISTS subquery when filtering by componentType and/or worldId.
+      // Build a single EXISTS subquery when filtering by componentType,
+      // component data, and/or worldId.
       // Both predicates apply to the component table so they share one subquery.
-      if (params.componentType || params.worldId) {
+      if (params.componentType || params.componentDataFilter || params.worldId) {
         const subConditions: SQL[] = [sql`${componentTable.entityId} = ${entityTable.id}`];
         if (params.componentType) {
           subConditions.push(sql`${componentTable.type} = ${params.componentType}`);
+        }
+        if (params.componentDataFilter) {
+          subConditions.push(
+            sql`${componentTable.data} @> ${JSON.stringify(params.componentDataFilter)}::jsonb`
+          );
         }
         if (params.worldId) {
           subConditions.push(sql`${componentTable.worldId} = ${params.worldId}`);

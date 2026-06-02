@@ -153,6 +153,19 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
   const request = new Request(upstreamUrl.toString(), c.req.raw);
   request.headers.set("x-forwarded-host", url.host);
   request.headers.set("x-forwarded-proto", url.protocol.replace(":", ""));
+  // Pin the tenant per-env. Steward's email/passkey routes resolve tenant
+  // from `X-Steward-Tenant || body.tenantId || STEWARD_DEFAULT_TENANT_ID`
+  // (auth.ts:2171,2200,2246), so forcing the header keeps those flows scoped
+  // even when the SPA's `NEXT_PUBLIC_STEWARD_TENANT_ID` isn't inlined.
+  // OAuth `/authorize` is NOT covered: it reads tenant only from the
+  // `tenant_id` query param (auth.ts:2294), so OAuth tenant isolation still
+  // depends on the SPA building the URL with the right id — that's wired
+  // separately via `NEXT_PUBLIC_STEWARD_TENANT_ID` in cloud-frontend's
+  // wrangler.toml `[env.preview.vars]`.
+  const pinnedTenantId = c.env.STEWARD_TENANT_ID;
+  if (typeof pinnedTenantId === "string" && pinnedTenantId.trim().length > 0) {
+    request.headers.set("x-steward-tenant", pinnedTenantId.trim());
+  }
 
   const response = await fetch(request);
   if (c.req.method === "GET" && isAuthProvidersPath(url.pathname)) {

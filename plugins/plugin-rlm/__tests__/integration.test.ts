@@ -58,15 +58,12 @@ describe("RLM Integration", () => {
   });
 
   describe("RLMClient without Python", () => {
-    it("should return stub response when Python unavailable", async () => {
+    it("should reject when Python is unavailable", async () => {
       const { RLMClient } = await import("../client");
 
       // Use invalid python path to simulate unavailable Python
       const client = new RLMClient({ pythonPath: "/nonexistent/python" });
-      const result = await client.infer("Hello");
-
-      expect(result.metadata.stub).toBe(true);
-      expect(result.text).toContain("[RLM STUB]");
+      await expect(client.infer("Hello")).rejects.toThrow();
     });
   });
 
@@ -146,7 +143,6 @@ describe("RLM trajectory wrapping", () => {
         };
       }),
       configFromEnv: vi.fn(() => ({})),
-      stubResult: vi.fn(() => ({ text: "[RLM STUB]", metadata: { stub: true } })),
     }));
 
     const { rlmPlugin } = await import("../index");

@@ -10,7 +10,7 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "types": ["node"],
-    "lib": ["ES2022"]
+    "lib": ["ES2022", "DOM"]
   },
   "include": ["src/**/*.ts", "src/**/*.json", "__tests__/**/*.ts"]
 }

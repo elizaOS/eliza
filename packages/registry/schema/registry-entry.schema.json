@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://plugins.elizacloud.ai/schema/registry-entry.schema.json",
+  "title": "elizaOS third-party registry entry",
+  "description": "One JSON file per community package under entries/third-party/. Mirrors src/schema.ts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["package", "repository", "kind"],
+  "properties": {
+    "package": {
+      "type": "string",
+      "description": "npm package name. The @elizaos/* scope is reserved for first-party.",
+      "pattern": "^(?:@[a-z0-9][a-z0-9._-]*\\/)?[a-z0-9][a-z0-9._-]*$",
+      "not": { "pattern": "^@elizaos\\/" }
+    },
+    "repository": {
+      "type": "string",
+      "description": "GitHub repository as github:owner/repo.",
+      "pattern": "^github:[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
+    },
+    "kind": {
+      "type": "string",
+      "description": "What the package is.",
+      "enum": ["plugin", "connector", "app"]
+    },
+    "description": {
+      "type": "string",
+      "description": "One-line description."
+    },
+    "homepage": {
+      "type": "string",
+      "description": "Project homepage URL."
+    },
+    "version": {
+      "type": "string",
+      "description": "Published npm version this entry was registered against."
+    },
+    "directory": {
+      "type": "string",
+      "description": "Monorepo subdirectory when the package lives inside a larger repo."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Discovery tags (npm keywords minus elizaos boilerplate).",
+      "items": { "type": "string" }
+    }
+  }
+}

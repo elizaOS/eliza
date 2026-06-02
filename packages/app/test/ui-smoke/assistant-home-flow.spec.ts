@@ -365,8 +365,9 @@ async function openReadyHome(page: Page): Promise<void> {
 
 async function openReadyChat(page: Page, targetPath = "/"): Promise<void> {
   await openAppPath(page, targetPath);
-  await expect(page.getByTestId("pre-agent-cloud-shell")).toHaveCount(0);
-  await expect(page.getByTestId("pre-agent-home-shell")).toHaveCount(0);
+  await expect(page.getByTestId("startup-shell-loading")).toHaveCount(0);
+  await expect(page.getByTestId("first-run-shell")).toHaveCount(0);
+  await expect(page.getByTestId("onboarding-toast")).toHaveCount(0);
   const composer = page.locator('[data-testid="chat-composer-textarea"]');
   await expect(composer).toBeVisible({ timeout: 15_000 });
   await expect(composer).toBeEnabled({ timeout: 30_000 });
@@ -553,6 +554,9 @@ test.describe("assistant home app flow", () => {
         localStorage.clear();
         sessionStorage.clear();
         sessionStorage.setItem(clearKey, "1");
+        // Force the fresh first-run surface on the initial load; cleared once
+        // the test advances to the ready phase below.
+        localStorage.setItem("elizaos:first-run:force-fresh", "1");
       }
       localStorage.setItem("eliza:voice:prefix-done", "1");
     });
@@ -562,12 +566,17 @@ test.describe("assistant home app flow", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#root")).toBeVisible({ timeout: 20_000 });
     await expect(page).not.toHaveURL(/first-run/, { timeout: 12_000 });
-    await expect(page.getByTestId("pre-agent-cloud-shell")).toBeVisible();
+    await expect(
+      page
+        .getByTestId("onboarding-toast")
+        .or(page.getByTestId("first-run-shell")),
+    ).toBeVisible();
     await screenshot(page, "01-first-run-clouds");
 
     await page.unroute("**/api/first-run/status");
     await seedAppStorage(page);
     await page.evaluate(() => {
+      localStorage.removeItem("elizaos:first-run:force-fresh");
       localStorage.setItem("eliza:first-run-complete", "1");
       localStorage.setItem("eliza:setup:step", "activate");
       localStorage.setItem("eliza:ui-shell-mode", "native");
