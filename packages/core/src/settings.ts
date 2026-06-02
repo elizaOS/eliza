@@ -179,15 +179,24 @@ export function encryptStringValue(value: string, salt: string): string {
  */
 export function decryptStringValue(value: string, salt: string): string {
 	try {
-		const parts = value.split(":");
+		const encryptedV2 = isEncryptedV2(value);
+		const encryptedV1 = !encryptedV2 && isEncryptedV1(value);
 
+		// Non-encrypted values are the overwhelmingly common case (plain settings
+		// read many times per turn). Return before deriving the SHA-256 key so the
+		// crypto work only happens when an actual decrypt will follow.
+		if (!encryptedV2 && !encryptedV1) {
+			return value;
+		}
+
+		const parts = value.split(":");
 		const key = cryptoUtils
 			.createHash("sha256")
 			.update(salt)
 			.digest()
 			.slice(0, 32);
 
-		if (isEncryptedV2(value)) {
+		if (encryptedV2) {
 			const iv = BufferUtils.fromHex(parts[1]);
 			const ciphertext = BufferUtils.fromHex(parts[2]);
 			const tag = BufferUtils.fromHex(parts[3]);
@@ -202,16 +211,12 @@ export function decryptStringValue(value: string, salt: string): string {
 			return BufferUtils.bufferToString(plaintextBytes, "utf8");
 		}
 
-		if (isEncryptedV1(value)) {
-			const iv = BufferUtils.fromHex(parts[0]);
-			const encryptedText = parts[1];
-			const decipher = cryptoUtils.createDecipheriv("aes-256-cbc", key, iv);
-			let decrypted = decipher.update(encryptedText, "hex", "utf8");
-			decrypted += decipher.final("utf8");
-			return decrypted;
-		}
-
-		return value;
+		const iv = BufferUtils.fromHex(parts[0]);
+		const encryptedText = parts[1];
+		const decipher = cryptoUtils.createDecipheriv("aes-256-cbc", key, iv);
+		let decrypted = decipher.update(encryptedText, "hex", "utf8");
+		decrypted += decipher.final("utf8");
+		return decrypted;
 	} catch (error) {
 		logger.error({ src: "core:settings", error }, "Decryption failed");
 		// Return the original value on error

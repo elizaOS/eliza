@@ -95,9 +95,19 @@ function parsePattern(raw: string): RegExp | null {
 	}
 }
 
-function resolvePatterns(value?: string[]): RegExp[] {
-	const source = value?.length ? value : DEFAULT_REDACT_PATTERNS;
-	return source.map(parsePattern).filter((re): re is RegExp => Boolean(re));
+// Compiled once at module load. The default patterns never change, and
+// String.prototype.replace resets a global regex's lastIndex before each call,
+// so the same compiled array is safe to reuse across every redaction — no need
+// to allocate 16 fresh RegExp objects per call.
+const DEFAULT_REDACT_REGEXPS: readonly RegExp[] = DEFAULT_REDACT_PATTERNS.map(
+	parsePattern,
+).filter((re): re is RegExp => Boolean(re));
+
+function resolvePatterns(value?: string[]): readonly RegExp[] {
+	if (!value?.length) {
+		return DEFAULT_REDACT_REGEXPS;
+	}
+	return value.map(parsePattern).filter((re): re is RegExp => Boolean(re));
 }
 
 function maskToken(token: string): string {
@@ -132,7 +142,7 @@ function redactMatch(match: string, groups: string[]): string {
 	return match.replace(token, masked);
 }
 
-function redactText(text: string, patterns: RegExp[]): string {
+function redactText(text: string, patterns: readonly RegExp[]): string {
 	let next = text;
 	for (const pattern of patterns) {
 		next = next.replace(pattern, (...args: string[]) =>
@@ -199,6 +209,29 @@ function escapeRegex(str: string): string {
 	return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// Per-secret compiled regexes. Secret values are stable within a character
+// config and small in number; caching avoids recompiling the same escaped
+// RegExp on every redaction call (redactSecrets runs 3+× per composeState).
+// Bounded so runtime secret rotation can't grow it without limit.
+const SECRET_REGEX_CACHE = new Map<string, RegExp>();
+const SECRET_REGEX_CACHE_LIMIT = 256;
+
+function getSecretRegex(value: string): RegExp {
+	const cached = SECRET_REGEX_CACHE.get(value);
+	if (cached) {
+		return cached;
+	}
+	const regex = new RegExp(escapeRegex(value), "g");
+	SECRET_REGEX_CACHE.set(value, regex);
+	if (SECRET_REGEX_CACHE.size > SECRET_REGEX_CACHE_LIMIT) {
+		const oldest = SECRET_REGEX_CACHE.keys().next().value;
+		if (typeof oldest === "string") {
+			SECRET_REGEX_CACHE.delete(oldest);
+		}
+	}
+	return regex;
+}
+
 /**
  * Redact known secrets from text.
  *
@@ -229,9 +262,8 @@ export function redactSecrets(
 		.sort(([, a], [, b]) => b.length - a.length);
 
 	for (const [name, value] of sortedEntries) {
-		// Create a case-sensitive regex for the exact value
-		const escaped = escapeRegex(value);
-		const regex = new RegExp(escaped, "g");
+		// Case-sensitive regex for the exact value (compiled once, then cached).
+		const regex = getSecretRegex(value);
 		result = result.replace(regex, `[REDACTED:${name}]`);
 	}
 
