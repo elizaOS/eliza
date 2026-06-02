@@ -24,11 +24,14 @@ import { useTaskRoom } from "./hooks/useTaskRoom";
 import { IconRail } from "./IconRail";
 import { MemoryPanel } from "./MemoryPanel";
 import {
+  buildThemeVars,
   FONT_MAP,
   ODYSSEUS_CSS,
+  ODYSSEUS_THEMES,
   type ThemeDensity,
   type ThemeFont,
   type ThemeName,
+  type ThemePalette,
   themeVars,
 } from "./odysseus-theme";
 import { SearchPalette } from "./SearchPalette";
@@ -55,6 +58,9 @@ export function OdysseusShell(): ReactNode {
   );
   const [density, setDensity] = useState<ThemeDensity>(() =>
     readPref<ThemeDensity>(PREF_KEYS.density, "comfortable"),
+  );
+  const [customColors, setCustomColors] = useState<ThemePalette>(() =>
+    readPref<ThemePalette>(PREF_KEYS.customTheme, ODYSSEUS_THEMES.dark),
   );
 
   const refreshThreads = useCallback(async () => {
@@ -141,6 +147,19 @@ export function OdysseusShell(): ReactNode {
     setDensity(next);
   }, []);
 
+  const onCustomChange = useCallback(
+    (key: "bg" | "fg" | "panel" | "border" | "red", value: string) => {
+      setCustomColors((prev) => {
+        const next = { ...prev, [key]: value };
+        writePref(PREF_KEYS.customTheme, next);
+        return next;
+      });
+      writePref(PREF_KEYS.themeMode, "custom");
+      setThemeName("custom");
+    },
+    [],
+  );
+
   // Ctrl/Cmd+K toggles the search palette (odysseus keyboard shortcut).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -154,11 +173,15 @@ export function OdysseusShell(): ReactNode {
   }, []);
 
   const title = detail?.title?.trim() || "Orchestrator Chat";
+  const themeStyle =
+    themeName === "custom"
+      ? buildThemeVars(customColors)
+      : themeVars(themeName);
 
   return (
     <div
       className={`odysseus-root od-density-${density}`}
-      style={{ ...themeVars(themeName), fontFamily: FONT_MAP[font] }}
+      style={{ ...themeStyle, fontFamily: FONT_MAP[font] }}
       data-od-theme={themeName}
       data-testid="odysseus-shell"
     >
@@ -178,6 +201,8 @@ export function OdysseusShell(): ReactNode {
         density={density}
         onSetFont={pickFont}
         onSetDensity={pickDensity}
+        custom={customColors}
+        onCustomChange={onCustomChange}
       />
       <MemoryPanel open={memoryOpen} onClose={() => setMemoryOpen(false)} />
       <SearchPalette

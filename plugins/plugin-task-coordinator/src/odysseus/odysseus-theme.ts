@@ -485,6 +485,11 @@ export const ODYSSEUS_CSS = `
   background:none; color:var(--fg); font-size:11px; cursor:pointer; text-transform:capitalize; transition:border-color .12s; }
 .odysseus-root .od-theme-pill:hover { border-color:var(--red); }
 .odysseus-root .od-theme-pill.active { border-color:var(--red); color:var(--red); }
+.odysseus-root .od-theme-custom { display:flex; gap:6px; justify-content:space-between; }
+.odysseus-root .od-theme-color { display:flex; flex-direction:column; align-items:center; gap:3px; font-size:9px;
+  color:color-mix(in srgb, var(--fg) 55%, transparent); text-transform:capitalize; cursor:pointer; }
+.odysseus-root .od-theme-color input[type=color] { width:34px; height:24px; border:1px solid var(--border);
+  border-radius:6px; background:none; padding:0; cursor:pointer; }
 
 /* ── welcome ── */
 .odysseus-root .od-welcome { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;

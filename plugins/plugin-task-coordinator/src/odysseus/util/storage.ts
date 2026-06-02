@@ -31,4 +31,5 @@ export const PREF_KEYS = {
   activeThread: "active-thread",
   themeMode: "theme-mode",
   font: "font",
+  customTheme: "custom-theme",
 } as const;

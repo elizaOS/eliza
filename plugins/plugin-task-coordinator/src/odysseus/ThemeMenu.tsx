@@ -9,10 +9,13 @@ import {
   type ThemeDensity,
   type ThemeFont,
   type ThemeName,
+  type ThemePalette,
 } from "./odysseus-theme";
 
 const FONTS: ThemeFont[] = ["mono", "sans", "serif"];
 const DENSITIES: ThemeDensity[] = ["compact", "comfortable", "spacious"];
+type CustomKey = "bg" | "fg" | "panel" | "border" | "red";
+const CUSTOM_KEYS: CustomKey[] = ["bg", "fg", "panel", "border", "red"];
 
 export function ThemeMenu({
   open,
@@ -23,6 +26,8 @@ export function ThemeMenu({
   density,
   onSetFont,
   onSetDensity,
+  custom,
+  onCustomChange,
 }: {
   open: boolean;
   current: ThemeName;
@@ -32,6 +37,8 @@ export function ThemeMenu({
   density: ThemeDensity;
   onSetFont: (font: ThemeFont) => void;
   onSetDensity: (density: ThemeDensity) => void;
+  custom: ThemePalette;
+  onCustomChange: (key: CustomKey, value: string) => void;
 }): ReactNode {
   if (!open) return null;
   return (
@@ -96,6 +103,20 @@ export function ThemeMenu({
             >
               {d}
             </button>
+          ))}
+        </div>
+        <div className="od-theme-section">Custom</div>
+        <div className="od-theme-custom">
+          {CUSTOM_KEYS.map((k) => (
+            <label key={k} className="od-theme-color">
+              <input
+                type="color"
+                value={custom[k]}
+                onChange={(e) => onCustomChange(k, e.target.value)}
+                aria-label={`Custom ${k} colour`}
+              />
+              {k}
+            </label>
           ))}
         </div>
       </div>
