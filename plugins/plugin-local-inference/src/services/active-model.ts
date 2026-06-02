@@ -979,9 +979,10 @@ export class ActiveModelCoordinator {
 			this.lastReady = { installed, overrides, state: ready };
 		} catch (err) {
 			const failure = err instanceof Error ? err.message : String(err);
-			if (!loader && previous) {
+			if (previous) {
 				previousDisplaced =
-					localInferenceEngine.currentModelPath() !== previous.installed.path;
+					(loader?.currentModelPath() ?? localInferenceEngine.currentModelPath()) !==
+					previous.installed.path;
 			}
 			// Attempt to restore the previously-active model. The unload-then-load
 			// already tore it down, so without this the host has no model loaded.

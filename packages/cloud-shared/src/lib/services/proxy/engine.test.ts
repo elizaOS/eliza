@@ -1,11 +1,11 @@
 /**
  * Tests for resolveBillableCost — the proxy engine's billing decision.
  *
- * Regression: a synthesized 5xx upstream-error Response (e.g. solana-rpc
- * returning a 502 after both primary and fallback URLs fail their retries, or
- * a 503 circuit-open response) used to reconcile the full reserved `cost`,
- * over-billing the org for a request that returned no service. A *thrown*
- * error refunds (reconcile(0)); a *returned* 5xx must do the same.
+ * Regression: a no-upstream fast-fail 5xx response (for example a circuit-open
+ * 503) used to reconcile the full reserved `cost`, over-billing the org for a
+ * request that returned no service. Provider-attempted 5xx responses may still
+ * represent real upstream spend, so handlers must report actualCost: 0 when no
+ * upstream work happened.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -31,12 +31,12 @@ describe("resolveBillableCost", () => {
     expect(resolveBillableCost({ response: res(302) }, RESERVED)).toBe(RESERVED);
   });
 
-  test("502 upstream-down refunds to 0 (the regression)", () => {
-    expect(resolveBillableCost({ response: res(502) }, RESERVED)).toBe(0);
+  test("5xx without actualCost preserves reserved cost for provider-attempted failures", () => {
+    expect(resolveBillableCost({ response: res(502) }, RESERVED)).toBe(RESERVED);
   });
 
-  test("503 circuit-open refunds to 0", () => {
-    expect(resolveBillableCost({ response: res(503) }, RESERVED)).toBe(0);
+  test("503 circuit-open with explicit zero actualCost refunds to 0", () => {
+    expect(resolveBillableCost({ response: res(503), actualCost: 0 }, RESERVED)).toBe(0);
   });
 
   test("500 with an explicit partial actualCost bills only that partial cost", () => {
