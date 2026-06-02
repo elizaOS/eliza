@@ -317,6 +317,19 @@ const vitestResolveAlias: ModuleAlias[] = [
   },
   ...workspacePluginSourceAliases,
   ...getOptionalPluginSdkAliases(repoRoot),
+  {
+    // @elizaos/core imports @elizaos/logger; the package's default export points
+    // at an unbuilt ./dist, so — like every other @elizaos workspace package in
+    // this config — resolve it to its source so vitest doesn't need a build.
+    find: /^@elizaos\/logger$/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "packages",
+      "logger",
+      "src",
+      "index.ts",
+    ),
+  },
   ...(elizaCoreEntry
     ? [
         {
