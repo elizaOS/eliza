@@ -406,6 +406,25 @@ export function getSkippedAppRoutePluginIds(): Set<string> {
 }
 
 /**
+ * Opt-in dev knob: when set to the literal token `"1"`, the post-ready boot
+ * tail (app-route plugins, training hooks, sensitive-request adapters, telegram
+ * polling, trigger bridge, connector catalog, voice warmup) runs in the
+ * background instead of blocking the readiness gate, so `/api/health` flips
+ * `ready:true` and "Agent ready" prints sooner. Composes with
+ * {@link getSkippedAppRoutePluginIds}: `ELIZA_SKIP_APP_ROUTE_PLUGINS` filters
+ * WHICH route plugins load; this controls WHETHER that tail blocks ready.
+ *
+ * Returns true ONLY for `"1"` (undefined / `""` / `"0"` / `"false"` / `"true"`
+ * all return false) so the default boot is byte-identical: the tail is awaited
+ * inline exactly as before.
+ */
+export function getDeferAppRoutesEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return env.ELIZA_DEFER_APP_ROUTES?.trim() === "1";
+}
+
+/**
  * Normalize an app-route-plugin id (or a user-supplied skip token) to a short
  * alias for forgiving matching: lowercase, drop the `@elizaos/plugin-` prefix
  * and the `:routes` / `-app` / `-ui` / `-routes` suffixes. So
@@ -556,6 +575,14 @@ async function registerTrainingRuntimeHooks(
   await hookMod.registerTrainingRuntimeHooks(runtime);
 }
 
+// The most recent runtime handed to the post-ready boot tail. A backgrounded
+// (deferred) tail compares against this so a hot-restart that boots a newer
+// runtime supersedes the old one's still-running tail, preventing route/service
+// registration onto a torn-down runtime. In the default inline-await path the
+// tail completes before the next repair call reassigns this, so the guard never
+// trips and default behavior stays byte-identical.
+let latestBootTailRuntime: AgentRuntime | null = null;
+
 async function repairRuntimeAfterBoot(
   runtime: AgentRuntime,
 ): Promise<AgentRuntime> {
@@ -579,7 +606,6 @@ async function repairRuntimeAfterBoot(
     return runtime;
   }
 
-  await ensureTextToSpeechHandler(runtime);
   await (await _localInference()).ensureLocalInferenceHandler(runtime);
   const autonomyLoopEnabled = isRuntimeAutonomyEnabled(process.env);
   if (autonomyLoopEnabled) {
@@ -589,17 +615,6 @@ async function repairRuntimeAfterBoot(
       "[eliza] Autonomy bootstrap deferred — autonomous loop disabled",
     );
   }
-
-  // ── Register app-specific route plugins ─────────────────────────────
-  // The registry and explicit registration API own the package bindings; the
-  // runtime only consumes app route plugin loaders.
-  await registerAppRoutePlugins(runtime);
-
-  await registerTrainingRuntimeHooks(runtime);
-
-  // Register first-party sensitive-request delivery adapters with the
-  // dispatch registry (no-op when the registry service isn't present).
-  registerCoreSensitiveRequestAdapters(runtime);
 
   if (!runtime.getService("AUTONOMY")) {
     try {
@@ -633,6 +648,55 @@ async function repairRuntimeAfterBoot(
     );
   }
 
+  // Post-ready tail: feature-route plugins, training hooks, sensitive-request
+  // adapters, telegram polling, the trigger bridge, the connector catalog, and
+  // voice warmup. None of these gate correctness of the first turn, so when
+  // ELIZA_DEFER_APP_ROUTES=1 they run in the background and ready flips before
+  // the tail completes (feature routes may 404 for a brief window — same
+  // audience as ELIZA_SKIP_APP_ROUTE_PLUGINS). When the knob is unset the tail
+  // is awaited inline, identical in steps and order to the pre-split path.
+  latestBootTailRuntime = runtime;
+  if (getDeferAppRoutesEnabled()) {
+    void runPostReadyBootTail(runtime);
+    return runtime;
+  }
+  await runPostReadyBootTail(runtime);
+  return runtime;
+}
+
+/**
+ * Post-ready boot steps split out of {@link repairRuntimeAfterBoot}. Each step
+ * keeps its original error behavior verbatim — there is no wrapping try/catch:
+ * registerAppRoutePlugins isolates per-loader failures internally,
+ * ensureTriggerEventBridge / ensureConnectorTargetCatalog swallow into
+ * logger.warn internally, and ensureTextToSpeechHandler /
+ * registerTrainingRuntimeHooks throw (preserved in the default inline-await
+ * dispatch above).
+ */
+async function runPostReadyBootTail(runtime: AgentRuntime): Promise<void> {
+  // Liveness guard: a hot-restart can swap runtimes mid-tail. If a newer boot
+  // has already claimed the tail slot, this runtime is superseded — bail before
+  // the first mutation so we never register routes/services onto a torn-down
+  // runtime. (In the default inline-await path the tail completes before the
+  // next repair call reassigns the slot, so this never trips.)
+  if (latestBootTailRuntime !== runtime) {
+    logger.info("[eliza] post-ready boot tail skipped — runtime superseded");
+    return;
+  }
+
+  await ensureTextToSpeechHandler(runtime);
+
+  // ── Register app-specific route plugins ─────────────────────────────
+  // The registry and explicit registration API own the package bindings; the
+  // runtime only consumes app route plugin loaders.
+  await registerAppRoutePlugins(runtime);
+
+  await registerTrainingRuntimeHooks(runtime);
+
+  // Register first-party sensitive-request delivery adapters with the
+  // dispatch registry (no-op when the registry service isn't present).
+  registerCoreSensitiveRequestAdapters(runtime);
+
   if (shouldStartTelegramStandaloneBot()) {
     await ensureTelegramBotPolling(runtime);
   } else {
@@ -654,8 +718,6 @@ async function repairRuntimeAfterBoot(
   // server-only + restart paths), so the warmup fires regardless of entry
   // point. Fire-and-forget; gated + non-fatal inside startDeferredVoiceWarmup.
   void startDeferredVoiceWarmup(runtime);
-
-  return runtime;
 }
 
 // Module-level handle for the trigger event bridge. Reset across
