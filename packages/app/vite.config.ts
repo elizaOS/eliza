@@ -1512,6 +1512,63 @@ export default defineConfig({
     ),
   },
   plugins: [
+    // es-toolkit@1.47's `./compat/*` export map exposes only a CJS condition
+    // (no ESM `import`), so `import get from "es-toolkit/compat/get"` (recharts
+    // default-imports 11 such subpaths) resolves to a CJS shim Vite can't
+    // surface a `default` for when served raw -> blank app. Rewrite each to the
+    // real ESM `dist/compat/**/<name>.mjs` (resolved relative to the importer)
+    // and re-export the named binding as default. Mirrors the optimizer-path
+    // plugin in optimizeDeps.rolldownOptions so both serve paths are covered.
+    {
+      name: "es-toolkit-compat-esm-raw",
+      enforce: "pre",
+      resolveId(source, importer) {
+        const m = /^es-toolkit\/compat\/([A-Za-z0-9_]+)$/.exec(source);
+        if (!m) return null;
+        let dir = null;
+        try {
+          const req = createRequire(
+            importer || path.join(elizaRoot, "node_modules", "x.js"),
+          );
+          dir = path.dirname(req.resolve("es-toolkit/package.json"));
+        } catch {
+          return null;
+        }
+        const stack = [path.join(dir, "dist", "compat")];
+        let mjs = null;
+        while (stack.length) {
+          const d = stack.pop();
+          let entries;
+          try {
+            entries = fs.readdirSync(d, { withFileTypes: true });
+          } catch {
+            continue;
+          }
+          for (const ent of entries) {
+            const full = path.join(d, ent.name);
+            if (ent.isDirectory()) stack.push(full);
+            else if (ent.name === `${m[1]}.mjs`) {
+              mjs = full;
+              break;
+            }
+          }
+          if (mjs) break;
+        }
+        if (!mjs) return null;
+        return `\0estk-raw:${m[1]}\0${mjs}`;
+      },
+      load(id) {
+        if (!id.startsWith("\0estk-raw:")) return null;
+        const rest = id.slice("\0estk-raw:".length);
+        const sep = rest.indexOf("\0");
+        const name = rest.slice(0, sep);
+        const spec = JSON.stringify(rest.slice(sep + 1));
+        return (
+          `export { ${name} as default } from ${spec};\n` +
+          `export * from ${spec};\n`
+        );
+      },
+    },
     {
       // lucide-react ships ~1500 icons but the app uses ~130. The barrel is not
       // tree-shaken (the directory alias hides the package's sideEffects:false,
@@ -2202,6 +2259,63 @@ export const INVALID_TRACER_PROVIDER = {};
             return generateNodeBuiltinStub(
               id.slice("\0node-stub:".length),
               _require,
+            );
+          },
+        },
+        {
+          // es-toolkit@1.47 `./compat/*` is CJS-only and its CJS impl names a
+          // local `require_isUnsafeProperty` that collides with the dep
+          // optimizer's CJS-interop helper -> self-shadowing
+          // `var require_isUnsafeProperty = require_isUnsafeProperty()` (TDZ ->
+          // "is not a function") -> blank app. Resolve each
+          // `es-toolkit/compat/<name>` to its ESM `dist/compat/**/<name>.mjs`
+          // and re-export the named binding as default so the optimizer never
+          // touches the broken CJS path. (Raw-serve counterpart is in `plugins`.)
+          name: "es-toolkit-compat-esm-optimize",
+          resolveId(source, importer) {
+            const m = /^es-toolkit\/compat\/([A-Za-z0-9_]+)$/.exec(source);
+            if (!m) return null;
+            let dir = null;
+            try {
+              const req = createRequire(
+                importer || path.join(elizaRoot, "node_modules", "x.js"),
+              );
+              dir = path.dirname(req.resolve("es-toolkit/package.json"));
+            } catch {
+              return null;
+            }
+            const stack = [path.join(dir, "dist", "compat")];
+            let mjs = null;
+            while (stack.length) {
+              const d = stack.pop();
+              let entries;
+              try {
+                entries = fs.readdirSync(d, { withFileTypes: true });
+              } catch {
+                continue;
+              }
+              for (const ent of entries) {
+                const full = path.join(d, ent.name);
+                if (ent.isDirectory()) stack.push(full);
+                else if (ent.name === `${m[1]}.mjs`) {
+                  mjs = full;
+                  break;
+                }
+              }
+              if (mjs) break;
+            }
+            if (!mjs) return null;
+            return `\0estk-compat:${m[1]}\0${mjs}`;
+          },
+          load(id) {
+            if (!id.startsWith("\0estk-compat:")) return null;
+            const rest = id.slice("\0estk-compat:".length);
+            const sep = rest.indexOf("\0");
+            const name = rest.slice(0, sep);
+            const spec = JSON.stringify(rest.slice(sep + 1));
+            return (
+              `export { ${name} as default } from ${spec};\n` +
+              `export * from ${spec};\n`
             );
           },
         },
