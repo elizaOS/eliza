@@ -100,7 +100,10 @@ test("onboarding exposes local, cloud, and remote runtimes and each is configura
     ).toBeVisible();
     await page.getByRole("button", { name: "Use Local" }).click();
     await expect(toast).toBeVisible();
-    await expectNoRenderTelemetryErrors(page, "compact runtime configurability");
+    await expectNoRenderTelemetryErrors(
+      page,
+      "compact runtime configurability",
+    );
     return;
   }
 
@@ -168,7 +171,10 @@ test("onboarding survives browser back and forward while runtime choices churn",
     await expectFirstRunSurface(page);
     await page.goForward({ waitUntil: "domcontentloaded" });
     await expectFirstRunSurface(page);
-    await expectNoRenderTelemetryErrors(page, "compact runtime browser history");
+    await expectNoRenderTelemetryErrors(
+      page,
+      "compact runtime browser history",
+    );
     return;
   }
   await expect(page.getByRole("button", { name: /runtime/i })).toBeVisible({

@@ -230,7 +230,8 @@ export function postOnboardingNotification(
 
 /** Poll the onboarding notification choice. */
 export function getOnboardingChoice(): OnboardingChoice {
-  return (getLib()?.symbols.elizaOnboardingGetChoice() ?? 0) as OnboardingChoice;
+  return (getLib()?.symbols.elizaOnboardingGetChoice() ??
+    0) as OnboardingChoice;
 }
 
 /** Dismiss the onboarding notification if still showing. */

@@ -74,7 +74,8 @@ export function serialize(
   if (options.maxAge !== undefined) segments.push(`Max-Age=${options.maxAge}`);
   if (options.domain) segments.push(`Domain=${options.domain}`);
   if (options.path) segments.push(`Path=${options.path}`);
-  if (options.expires) segments.push(`Expires=${options.expires.toUTCString()}`);
+  if (options.expires)
+    segments.push(`Expires=${options.expires.toUTCString()}`);
   if (options.httpOnly) segments.push("HttpOnly");
   if (options.secure) segments.push("Secure");
   if (options.partitioned) segments.push("Partitioned");

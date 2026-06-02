@@ -4620,8 +4620,12 @@ export async function startEliza(
   // call retries. This closure is local to startEliza — it is not attached to
   // the runtime object. If a wallet route or signer needs true on-demand
   // generation, wire it onto the runtime and call it from that path.
-  let walletInitPromise: Promise<readonly import("./agent-wallets.ts").AgentWalletDescriptor[]> | null = null;
-  const ensureAgentWalletsLazy = (): Promise<readonly import("./agent-wallets.ts").AgentWalletDescriptor[]> => {
+  let walletInitPromise: Promise<
+    readonly import("./agent-wallets.ts").AgentWalletDescriptor[]
+  > | null = null;
+  const ensureAgentWalletsLazy = (): Promise<
+    readonly import("./agent-wallets.ts").AgentWalletDescriptor[]
+  > => {
     if (
       process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP === "1" ||
       process.env.ELIZA_CLOUD_PROVISIONED === "1"

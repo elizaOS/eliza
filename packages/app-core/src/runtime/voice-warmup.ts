@@ -119,8 +119,9 @@ export async function warmVoiceModels(
   log: LogSink = noopLog,
 ): Promise<void> {
   try {
-    await withRetry(() =>
-      runtime.useModel(types.ttsType, "Warming up voice.") as Promise<void>,
+    await withRetry(
+      () =>
+        runtime.useModel(types.ttsType, "Warming up voice.") as Promise<void>,
     );
     log.info("[eliza] Voice TTS model: ready");
   } catch (err) {
@@ -132,11 +133,12 @@ export async function warmVoiceModels(
   }
 
   try {
-    await withRetry(() =>
-      runtime.useModel(
-        types.transcriptionType,
-        buildSilentWarmupWav(),
-      ) as Promise<void>,
+    await withRetry(
+      () =>
+        runtime.useModel(
+          types.transcriptionType,
+          buildSilentWarmupWav(),
+        ) as Promise<void>,
     );
     log.info("[eliza] Voice STT model: ready");
   } catch (err) {

@@ -83,30 +83,28 @@ export function splitCookiesString(cookiesString: unknown): string[] {
   if (Array.isArray(cookiesString)) return cookiesString;
   if (typeof cookiesString !== "string") return [];
 
+  const source = cookiesString;
   const cookiesStrings: string[] = [];
   let position = 0;
 
   function skipWhitespace(): boolean {
-    while (
-      position < cookiesString.length &&
-      /\s/.test(cookiesString.charAt(position))
-    ) {
+    while (position < source.length && /\s/.test(source.charAt(position))) {
       position += 1;
     }
-    return position < cookiesString.length;
+    return position < source.length;
   }
 
   function notSpecialChar(): boolean {
-    const character = cookiesString.charAt(position);
+    const character = source.charAt(position);
     return character !== "=" && character !== ";" && character !== ",";
   }
 
-  while (position < cookiesString.length) {
+  while (position < source.length) {
     let start = position;
     let separatorFound = false;
 
     while (skipWhitespace()) {
-      const character = cookiesString.charAt(position);
+      const character = source.charAt(position);
       if (character !== ",") {
         position += 1;
         continue;
@@ -117,25 +115,22 @@ export function splitCookiesString(cookiesString: unknown): string[] {
       skipWhitespace();
       const nextStart = position;
 
-      while (position < cookiesString.length && notSpecialChar()) {
+      while (position < source.length && notSpecialChar()) {
         position += 1;
       }
 
-      if (
-        position < cookiesString.length &&
-        cookiesString.charAt(position) === "="
-      ) {
+      if (position < source.length && source.charAt(position) === "=") {
         separatorFound = true;
         position = nextStart;
-        cookiesStrings.push(cookiesString.substring(start, lastComma));
+        cookiesStrings.push(source.substring(start, lastComma));
         start = position;
       } else {
         position = lastComma + 1;
       }
     }
 
-    if (!separatorFound || position >= cookiesString.length) {
-      cookiesStrings.push(cookiesString.substring(start));
+    if (!separatorFound || position >= source.length) {
+      cookiesStrings.push(source.substring(start));
     }
   }
 

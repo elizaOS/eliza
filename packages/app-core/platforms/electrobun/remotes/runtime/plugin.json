@@ -4,11 +4,11 @@
   "version": "0.1.0",
   "description": "Runtime Remote that supervises the local elizaOS runtime.",
   "mode": "background",
-	"permissions": {
-		"host": {
-			"storage": true,
-			"manage-remote-plugins": true
-		},
+  "permissions": {
+    "host": {
+      "storage": true,
+      "manage-remote-plugins": true
+    },
     "bun": {
       "read": true,
       "write": true,

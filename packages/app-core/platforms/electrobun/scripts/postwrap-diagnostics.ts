@@ -301,17 +301,17 @@ export function ensureMacPermissionUsageDescriptions(
 }
 
 export function ensureMacAppIcon(
-	resourcesDir: string,
-	osName: string,
+  resourcesDir: string,
+  osName: string,
 ): boolean {
-	if (osName !== "macos") return false;
-	const sourcePath = path.resolve(scriptDir, "..", "assets", "appIcon.icns");
-	if (!fs.existsSync(sourcePath)) return false;
+  if (osName !== "macos") return false;
+  const sourcePath = path.resolve(scriptDir, "..", "assets", "appIcon.icns");
+  if (!fs.existsSync(sourcePath)) return false;
 
-	const destinationPath = joinPortable(resourcesDir, "AppIcon.icns");
-	fs.mkdirSync(dirnamePortable(destinationPath), { recursive: true });
-	fs.copyFileSync(sourcePath, destinationPath);
-	return true;
+  const destinationPath = joinPortable(resourcesDir, "AppIcon.icns");
+  fs.mkdirSync(dirnamePortable(destinationPath), { recursive: true });
+  fs.copyFileSync(sourcePath, destinationPath);
+  return true;
 }
 
 export function resolveDiagnosticsOutputPath(
@@ -436,26 +436,26 @@ export function main(
     );
   }
 
-	if (ensureMacAppIcon(resourcesDir, osName)) {
-		console.log("[postwrap-diagnostics] installed wrapper AppIcon.icns");
-	}
+  if (ensureMacAppIcon(resourcesDir, osName)) {
+    console.log("[postwrap-diagnostics] installed wrapper AppIcon.icns");
+  }
 
-	if (shouldApplyLocalAdhocSigning(env)) {
-		const entitlements = electrobunConfig.build?.mac?.entitlements;
-		if (!entitlements) {
-			throw new Error(
-				"[postwrap-diagnostics] missing macOS entitlements in Electrobun config",
-			);
-		}
-		signLocalAppBundle({
-			appBundlePath: wrapperBundlePath,
-			entitlements,
-			expectedIdentifier: electrobunConfig.app.identifier,
-		});
-		console.log(
-			`[postwrap-diagnostics] applied local ad-hoc signing for ${wrapperBundlePath}`,
-		);
-	}
+  if (shouldApplyLocalAdhocSigning(env)) {
+    const entitlements = electrobunConfig.build?.mac?.entitlements;
+    if (!entitlements) {
+      throw new Error(
+        "[postwrap-diagnostics] missing macOS entitlements in Electrobun config",
+      );
+    }
+    signLocalAppBundle({
+      appBundlePath: wrapperBundlePath,
+      entitlements,
+      expectedIdentifier: electrobunConfig.app.identifier,
+    });
+    console.log(
+      `[postwrap-diagnostics] applied local ad-hoc signing for ${wrapperBundlePath}`,
+    );
+  }
 
   const binaryNames = [
     osName === "win" ? "launcher.exe" : "launcher",
