@@ -304,7 +304,7 @@ function viewKey(view: Pick<VisualViewCase, "id" | "viewType">) {
 function readVisualMatrixCases(): VisualViewCase[] {
   const source = readFileSync(VISUAL_MATRIX_SPEC, "utf8");
   const match = source.match(
-    /const VIEW_CASES: ViewCase\[] = \[([\s\S]*?)\]\.map/,
+    /const VIEW_CASES: ViewCase\[] = \(?\s*\[([\s\S]*?)\]\.map/,
   );
   expect(match?.[1], "VIEW_CASES declaration was not found").toBeTruthy();
   const viewCasesSource = match?.[1] ?? "";

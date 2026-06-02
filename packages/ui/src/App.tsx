@@ -1532,7 +1532,7 @@ export function App() {
           gameOverlayEnabled &&
           tab !== "apps" &&
           tab !== "views" && <GameViewOverlay />}
-        <GlobalChatOverlay />
+        {isChat ? <GlobalChatOverlay /> : null}
         <ShellOverlays actionNotice={actionNotice} />
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}
