@@ -27,6 +27,13 @@ const GLOBAL_TYPES_CACHE_DIR = path.join(
   "cache",
   "@types",
 );
+const GLOBAL_PACKAGE_CACHE_DIR = path.join(
+  process.env.HOME || "",
+  ".bun",
+  "install",
+  "cache",
+);
+const NODE_MODULE_ROOTS = [ROOT_NODE_MODULES, ELIZA_NODE_MODULES];
 const TYPE_ROOTS = [
   path.join(ROOT_NODE_MODULES, "@types"),
   path.join(ELIZA_NODE_MODULES, "@types"),
@@ -49,6 +56,7 @@ const MATERIALIZED_TYPE_PACKAGES = [
   "three",
   "ws",
 ];
+const MATERIALIZED_PACKAGES = ["bun-types"];
 
 function collectBrokenBundledTypePackages() {
   const packageNames = new Set();
@@ -80,12 +88,16 @@ function collectBrokenBundledTypePackages() {
 }
 
 function findCachedTypePackageDir(packageName) {
-  if (!existsSync(GLOBAL_TYPES_CACHE_DIR)) {
+  return findCachedPackageDir(GLOBAL_TYPES_CACHE_DIR, packageName);
+}
+
+function findCachedPackageDir(cacheDir, packageName) {
+  if (!existsSync(cacheDir)) {
     return null;
   }
 
   const prefix = `${packageName}@`;
-  const matches = readdirSync(GLOBAL_TYPES_CACHE_DIR)
+  const matches = readdirSync(cacheDir)
     .filter((entry) => entry.startsWith(prefix))
     .sort((a, b) =>
       b.localeCompare(a, undefined, {
@@ -98,7 +110,7 @@ function findCachedTypePackageDir(packageName) {
     return null;
   }
 
-  return path.join(GLOBAL_TYPES_CACHE_DIR, matches[0]);
+  return path.join(cacheDir, matches[0]);
 }
 
 function repairBrokenDirectoryLink(dir) {
@@ -187,6 +199,21 @@ function materializeTypePackage(targetTypesDir, packageName) {
   return true;
 }
 
+function materializePackage(targetNodeModulesDir, packageName) {
+  const sourceDir = findCachedPackageDir(GLOBAL_PACKAGE_CACHE_DIR, packageName);
+  if (!sourceDir || !existsSync(targetNodeModulesDir)) {
+    return false;
+  }
+
+  const targetDir = path.join(targetNodeModulesDir, packageName);
+  removeExistingTypeEntry(targetDir);
+  cpSync(sourceDir, targetDir, {
+    recursive: true,
+    force: true,
+  });
+  return true;
+}
+
 function ensureTypeEntryPoint(targetDir, packageName) {
   const entryPoint = path.join(targetDir, "index.d.ts");
   if (existsSync(entryPoint)) {
@@ -238,12 +265,21 @@ export function ensureBunTypesAlias(targetTypesDir) {
 
 function main() {
   let materializedCount = 0;
+  let materializedPackageCount = 0;
   const packageNames = [
     ...new Set([
       ...MATERIALIZED_TYPE_PACKAGES,
       ...collectBrokenBundledTypePackages(),
     ]),
   ].sort();
+
+  for (const targetNodeModulesDir of NODE_MODULE_ROOTS) {
+    for (const packageName of MATERIALIZED_PACKAGES) {
+      if (materializePackage(targetNodeModulesDir, packageName)) {
+        materializedPackageCount++;
+      }
+    }
+  }
 
   for (const targetTypesDir of TYPE_ROOTS) {
     for (const packageName of packageNames) {
@@ -255,7 +291,7 @@ function main() {
   }
 
   console.log(
-    `[ensure-type-package-aliases] materialized ${materializedCount} @types package copies and refreshed Bun shims`,
+    `[ensure-type-package-aliases] materialized ${materializedCount} @types package copies, ${materializedPackageCount} package copies, and refreshed Bun shims`,
   );
 }
 
