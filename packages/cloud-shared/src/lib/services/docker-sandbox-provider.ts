@@ -259,16 +259,22 @@ function isCloudDeploymentEnvironment(value: string | undefined): boolean {
 }
 
 export function requiresHeadscaleRoute(
-  env: HeadscaleRouteEnv = {
-    AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK:
-      getCloudAwareEnv().AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK,
-    CONTAINERS_PUBLIC_BASE_DOMAIN: getCloudAwareEnv().CONTAINERS_PUBLIC_BASE_DOMAIN,
-    ELIZA_CLOUD_AGENT_BASE_DOMAIN: getCloudAwareEnv().ELIZA_CLOUD_AGENT_BASE_DOMAIN,
-    ENVIRONMENT: getCloudAwareEnv().ENVIRONMENT,
-    HEADSCALE_API_KEY: getCloudAwareEnv().HEADSCALE_API_KEY,
-    HEADSCALE_API_URL: getCloudAwareEnv().HEADSCALE_API_URL,
-    HEADSCALE_PUBLIC_URL: getCloudAwareEnv().HEADSCALE_PUBLIC_URL,
-  },
+  env: HeadscaleRouteEnv = (() => {
+    // Bind once: calling getCloudAwareEnv() per-key creates a fresh Proxy
+    // per call. If the underlying CF bindings flip mid-evaluation, the eight
+    // reads would not see a consistent snapshot. Pin a single proxy and read
+    // every key from it (Copilot review on #8152).
+    const cloudEnv = getCloudAwareEnv();
+    return {
+      AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: cloudEnv.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK,
+      CONTAINERS_PUBLIC_BASE_DOMAIN: cloudEnv.CONTAINERS_PUBLIC_BASE_DOMAIN,
+      ELIZA_CLOUD_AGENT_BASE_DOMAIN: cloudEnv.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+      ENVIRONMENT: cloudEnv.ENVIRONMENT,
+      HEADSCALE_API_KEY: cloudEnv.HEADSCALE_API_KEY,
+      HEADSCALE_API_URL: cloudEnv.HEADSCALE_API_URL,
+      HEADSCALE_PUBLIC_URL: cloudEnv.HEADSCALE_PUBLIC_URL,
+    };
+  })(),
 ): boolean {
   if (isBridgeHostFallbackEnabled(env)) return false;
   return (
