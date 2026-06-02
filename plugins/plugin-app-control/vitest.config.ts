@@ -3,6 +3,7 @@ import { defineConfig } from "vitest/config";
 
 const sharedSrc = path.resolve(__dirname, "../../packages/shared/src");
 const coreSrc = path.resolve(__dirname, "../../packages/core/src");
+const loggerSrc = path.resolve(__dirname, "../../packages/logger/src");
 
 export default defineConfig({
 	resolve: {
@@ -29,6 +30,10 @@ export default defineConfig({
 			{
 				find: "@elizaos/core",
 				replacement: path.join(coreSrc, "index.node.ts"),
+			},
+			{
+				find: "@elizaos/logger",
+				replacement: path.join(loggerSrc, "index.ts"),
 			},
 		],
 	},
