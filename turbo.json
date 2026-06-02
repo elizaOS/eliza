@@ -355,6 +355,14 @@
       "dependsOn": ["@elizaos/plugin-lifeops#build", "@elizaos/ui#build"],
       "outputs": []
     },
+    "@elizaos/plugin-contacts#typecheck": {
+      "dependsOn": [
+        "@elizaos/capacitor-contacts#build",
+        "@elizaos/ui#build",
+        "^build"
+      ],
+      "outputs": []
+    },
     "@elizaos/example-autonomous#typecheck": {
       "dependsOn": [
         "@elizaos/app-core#build",
