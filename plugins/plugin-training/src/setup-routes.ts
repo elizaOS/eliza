@@ -328,7 +328,7 @@ export const trainingPlugin: Plugin = {
       description:
         "Fine-tuning jobs, data collection, analysis, evals, benchmarks, trained models, and trajectory management",
       icon: "BrainCircuit",
-      path: "/training",
+      path: "/apps/fine-tuning",
       bundlePath: "dist/views/bundle.js",
       componentExport: "FineTuningView",
       tags: [

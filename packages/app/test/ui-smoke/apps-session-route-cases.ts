@@ -239,7 +239,7 @@ const managerVisibleViewTileCases = [
   { viewId: "smartglasses", path: "/apps/smartglasses" },
   { viewId: "steward", path: "/steward" },
   { viewId: "task-coordinator", path: "/task-coordinator" },
-  { viewId: "training", path: "/training" },
+  { viewId: "training", path: "/apps/fine-tuning" },
   { viewId: "trajectory-logger", path: "/trajectory-logger" },
   { viewId: "views-manager", path: "/views" },
   { viewId: "vincent", path: "/vincent" },
