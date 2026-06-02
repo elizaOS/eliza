@@ -4,6 +4,7 @@ import {
   isAutonomousTradingEnabled,
 } from "@feed/agents";
 import { logger, toISO, toISOOrNull } from "@feed/shared";
+import { getAgent0TokenIdsByAgentId } from "./agent0-token-ids";
 
 export type AgentModelTier = "free" | "pro";
 
@@ -45,6 +46,9 @@ export async function listOwnedAgentSummaries(
   filters?: { autonomousTrading?: boolean },
 ): Promise<OwnedAgentSummary[]> {
   const agents = await agentService.listUserAgents(managerUserId, filters);
+  const agent0TokenIdsByAgentId = await getAgent0TokenIdsByAgentId(
+    agents.map((agent) => agent.id),
+  );
 
   return Promise.all(
     agents.map(async (agent) => {
@@ -120,7 +124,7 @@ export async function listOwnedAgentSummaries(
         lastTickAt: toISOOrNull(config?.lastTickAt),
         lastChatAt: toISOOrNull(config?.lastChatAt),
         walletAddress: agent.walletAddress,
-        agent0TokenId: null, // TODO: source from AgentRegistry table
+        agent0TokenId: agent0TokenIdsByAgentId.get(agent.id) ?? null,
         createdAt: toISO(agent.createdAt),
         updatedAt: toISO(agent.updatedAt),
       };

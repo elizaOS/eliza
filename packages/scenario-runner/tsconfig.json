@@ -53,6 +53,12 @@
       "@elizaos/plugin-agent-orchestrator": [
         "../../plugins/plugin-agent-orchestrator/src/index.ts"
       ],
+      "@elizaos/plugin-app-control": [
+        "../../plugins/plugin-app-control/src/index.ts"
+      ],
+      "@elizaos/plugin-app-control/*": [
+        "../../plugins/plugin-app-control/src/*"
+      ],
       "@elizaos/plugin-app-manager": [
         "../../plugins/plugin-app-manager/src/index.ts"
       ],
@@ -92,10 +98,10 @@
       ],
       "@elizaos/plugin-xr": ["../../plugins/plugin-xr/src/index.ts"],
       "@elizaos/capacitor-appblocker": [
-        "../native-plugins/appblocker/src/index.ts"
+        "../../plugins/plugin-native-appblocker/src/index.ts"
       ],
       "@elizaos/capacitor-mobile-signals": [
-        "../native-plugins/mobile-signals/src/index.ts"
+        "../../plugins/plugin-native-mobile-signals/src/index.ts"
       ]
     }
   },

@@ -1273,8 +1273,9 @@ test.describe("Facewear and smartglasses GUI interactions", () => {
     await expect(page.getByText("Native Wi-Fi setup requested")).toBeVisible();
 
     await page.getByRole("button", { name: "Android" }).click();
+    await expect(page.getByText("Native bridge preferred")).toBeVisible();
     await expect(
-      page.getByText("native bridge for headset pairing"),
+      page.getByText("Use the host for pairing, Wi-Fi scan, and credentials."),
     ).toBeVisible();
     await page.getByRole("button", { name: "Guided Validation" }).click();
     await expect(

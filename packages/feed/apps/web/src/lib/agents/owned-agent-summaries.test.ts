@@ -5,6 +5,17 @@ const mockGetPerformance = mock();
 const mockGetAgentConfig = mock();
 const mockIsAutonomousTradingEnabled = mock();
 const mockLoggerWarn = mock();
+const mockAgentRegistryRows: Array<{
+  agentId: string;
+  agent0TokenId: string | null;
+}> = [];
+const mockAgentRegistryWhere = mock(async () => mockAgentRegistryRows);
+const mockAgentRegistryFrom = mock(() => ({ where: mockAgentRegistryWhere }));
+const mockDbSelect = mock(() => ({ from: mockAgentRegistryFrom }));
+const agentRegistriesTable = {
+  agentId: "AgentRegistry.agentId",
+  agent0TokenId: "AgentRegistry.agent0TokenId",
+};
 
 mock.module("@feed/agents", () => ({
   agentService: {
@@ -24,6 +35,17 @@ mock.module("@feed/shared", () => ({
     value ? value.toISOString() : null,
 }));
 
+mock.module("@feed/db", () => ({
+  agentRegistries: agentRegistriesTable,
+  db: {
+    select: mockDbSelect,
+  },
+  inArray: (column: unknown, values: unknown[]) => ({
+    column,
+    values,
+  }),
+}));
+
 const { listOwnedAgentSummaries } = await import("./owned-agent-summaries");
 
 describe("listOwnedAgentSummaries", () => {
@@ -33,6 +55,10 @@ describe("listOwnedAgentSummaries", () => {
     mockGetAgentConfig.mockReset();
     mockIsAutonomousTradingEnabled.mockReset();
     mockLoggerWarn.mockReset();
+    mockAgentRegistryRows.length = 0;
+    mockDbSelect.mockClear();
+    mockAgentRegistryFrom.mockClear();
+    mockAgentRegistryWhere.mockClear();
     mockIsAutonomousTradingEnabled.mockImplementation(
       (config: { autonomousTrading?: boolean } | null) =>
         config?.autonomousTrading ?? false,
@@ -68,6 +94,10 @@ describe("listOwnedAgentSummaries", () => {
         updatedAt: new Date("2026-03-02T00:00:00.000Z"),
       },
     ]);
+    mockAgentRegistryRows.push(
+      { agentId: "agent-1", agent0TokenId: "101" },
+      { agentId: "agent-2", agent0TokenId: null },
+    );
     mockGetPerformance
       .mockRejectedValueOnce(new Error("broken trade row"))
       .mockResolvedValueOnce({
@@ -98,6 +128,7 @@ describe("listOwnedAgentSummaries", () => {
         profitableTrades: 0,
         winRate: 0,
         autonomousTrading: false,
+        agent0TokenId: 101,
       }),
     );
     expect(summaries[1]).toEqual(
@@ -108,6 +139,7 @@ describe("listOwnedAgentSummaries", () => {
         winRate: 0.75,
         autonomousTrading: true,
         modelTier: "pro",
+        agent0TokenId: null,
       }),
     );
     expect(mockLoggerWarn).toHaveBeenCalledTimes(1);

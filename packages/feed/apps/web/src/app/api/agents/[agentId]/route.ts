@@ -183,6 +183,7 @@ import { authenticateUser, withErrorHandling } from "@feed/api";
 import { logger, toISO, toISOOrNull } from "@feed/shared";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { getAgent0TokenIdByAgentId } from "@/lib/agents/agent0-token-ids";
 
 export const GET = withErrorHandling(async function GET(
   req: NextRequest,
@@ -196,6 +197,7 @@ export const GET = withErrorHandling(async function GET(
     agentService.getPerformance(agentId),
     getAgentConfig(agentId),
   ]);
+  const agent0TokenId = agent ? await getAgent0TokenIdByAgentId(agentId) : null;
 
   const tradingEnabled = isAutonomousTradingEnabled(config);
 
@@ -281,7 +283,7 @@ export const GET = withErrorHandling(async function GET(
       lastTickAt: toISOOrNull(config?.lastTickAt),
       lastChatAt: toISOOrNull(config?.lastChatAt),
       walletAddress: agent?.walletAddress,
-      agent0TokenId: null, // TODO: source from AgentRegistry table
+      agent0TokenId,
       createdAt: toISO(agent?.createdAt),
       updatedAt: toISO(agent?.updatedAt),
     },
