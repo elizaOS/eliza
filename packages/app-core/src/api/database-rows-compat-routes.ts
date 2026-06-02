@@ -152,7 +152,12 @@ export async function handleDatabaseRowsCompatRoute(
 
     // Only successful introspection is cached (never 404/409) — a table that
     // appears later must not be shadowed by a negative entry.
-    rememberTableIntrospection(introspectionKey, resolvedSchema, columns, nowMs);
+    rememberTableIntrospection(
+      introspectionKey,
+      resolvedSchema,
+      columns,
+      nowMs,
+    );
   }
 
   const limit = Math.max(
