@@ -30,6 +30,7 @@
     "simulator:watch": "cd simulator && bun run build:watch"
   },
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "ws": "^8.18.0",
     "zod": "^4.4.3"

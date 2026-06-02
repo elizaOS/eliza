@@ -11,11 +11,10 @@ import {
   ModelType,
   runWithTrajectoryContext,
 } from "@elizaos/core";
-import {
-  LIFEOPS_SCHEDULE_DEVICE_KINDS,
-  type SyncLifeOpsScheduleObservationInput,
-  type SyncLifeOpsScheduleObservationsRequest,
-  type SyncLifeOpsScheduleObservationsResponse,
+import type {
+  SyncLifeOpsScheduleObservationInput,
+  SyncLifeOpsScheduleObservationsRequest,
+  SyncLifeOpsScheduleObservationsResponse,
 } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
 import {
   buildSleepRecapFromSchedule,
@@ -29,7 +28,7 @@ import {
   readTwilioCredentialsFromEnv,
   sendTwilioSms,
   sendTwilioVoiceCall,
-} from "@elizaos/plugin-phone";
+} from "@elizaos/plugin-phone/twilio";
 import type { LifeOpsScheduleMealLabel } from "@elizaos/shared";
 import { readProfileFromMetadata } from "../activity-profile/profile-metadata.js";
 import type { ActivityProfile } from "../activity-profile/types.js";
@@ -209,6 +208,15 @@ import {
   runTelemetryRetention,
 } from "./telemetry-retention.js";
 import { addMinutes, getZonedDateParts } from "./time.js";
+
+const LIFEOPS_SCHEDULE_DEVICE_KINDS = [
+  "iphone",
+  "ipad",
+  "mac",
+  "watch",
+  "cloud",
+  "unknown",
+] as const;
 
 const DEFAULT_SCHEDULED_TASK_PROCESS_LIMIT = 25;
 

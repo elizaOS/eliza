@@ -25,6 +25,10 @@ export default defineConfig({
         replacement: path.join(repoRoot, "packages/core/src/index.ts"),
       },
       {
+        find: "@elizaos/logger",
+        replacement: path.join(repoRoot, "packages/logger/src/index.ts"),
+      },
+      {
         find: "@elizaos/agent",
         replacement: path.join(repoRoot, "packages/agent/src/index.ts"),
       },

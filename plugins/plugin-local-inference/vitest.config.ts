@@ -8,6 +8,9 @@ export default defineConfig({
 			"@elizaos/core": fileURLToPath(
 				new URL("../../packages/core/src/index.node.ts", import.meta.url),
 			),
+			"@elizaos/logger": fileURLToPath(
+				new URL("../../packages/logger/src/index.ts", import.meta.url),
+			),
 			"@elizaos/agent": fileURLToPath(
 				new URL("../../packages/agent/src/index.ts", import.meta.url),
 			),

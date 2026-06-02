@@ -8,11 +8,11 @@
  */
 
 import type { ActionResult, IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsService } from "../../lifeops/service.js";
 import {
   readTwilioCredentialsFromEnv,
   sendTwilioSms,
-} from "@elizaos/plugin-phone";
+} from "@elizaos/plugin-phone/twilio";
+import type { LifeOpsService } from "../../lifeops/service.js";
 
 export type CrossChannelSendChannel =
   | "telegram"

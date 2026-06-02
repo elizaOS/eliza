@@ -46,6 +46,7 @@
     "verify:app": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package vitest@4.1.5 vitest --root ../.. run packages/app-core/src/registry/facewear-registry.test.ts packages/app/src/plugin-registrations.test.ts"
   },
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",

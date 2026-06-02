@@ -18,6 +18,43 @@ type RuntimeWithScenarioLlmFixtures = {
   };
 };
 
+const views = [
+  {
+    id: "__view-manager__",
+    label: "View Manager",
+    viewType: "gui",
+    description: "Manage available local views.",
+    path: "/views",
+    pluginName: "@elizaos/plugin-app-control",
+    available: true,
+    tags: ["views", "manager"],
+  },
+  {
+    id: "remote-ledger",
+    label: "Remote Ledger",
+    viewType: "gui",
+    description: "Track finance balances and remote ledger entries.",
+    path: "/remote-ledger",
+    pluginName: "@elizaos/plugin-remote-ledger",
+    available: true,
+    tags: ["finance", "ledger"],
+    capabilities: [
+      {
+        name: "fill-input",
+        description: "Fill a named input in the view.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            value: { type: "string" },
+          },
+          required: ["name", "value"],
+        },
+      },
+    ],
+  },
+];
+
 function readParameters(action: CapturedAction): Record<string, unknown> {
   return action.parameters &&
     typeof action.parameters === "object" &&
@@ -102,14 +139,28 @@ export default scenario({
         runtime.scenarioLlmFixtures?.register({
           name: "pr-smoke-deterministic-reply",
           match: {
-            modelType: ModelType.TEXT_SMALL,
+            modelType: ModelType.RESPONSE_HANDLER,
             input: matchesScenarioInput("hello deterministic proxy"),
+            toolName: "HANDLE_RESPONSE",
           },
-          response: "deterministic-test-response: hello deterministic proxy",
+          response: {
+            shouldRespond: "RESPOND",
+            contexts: ["simple"],
+            intents: ["hello deterministic proxy"],
+            replyText: "deterministic-test-response: hello deterministic proxy",
+            candidateActionNames: [],
+            facts: [],
+            relationships: [],
+            addressedTo: [],
+            emotion: "none",
+          },
           times: 1,
         });
         registerAppControlHttpHandler((request) => {
           if (!request.pathname.startsWith("/api/views")) return undefined;
+          if (request.method === "GET" && request.pathname === "/api/views") {
+            return jsonResponse({ views });
+          }
           if (request.pathname.endsWith("/interact")) {
             return jsonResponse({
               ok: true,
@@ -249,10 +300,24 @@ export default scenario({
             search: "",
           },
           {
+            body: undefined,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
+            search: "",
+          },
+          {
             body: { action: "pin-tab", alwaysOnTop: false },
             method: "POST",
             pathname: "/api/views/remote-ledger/navigate",
             response: { body: { ok: true }, status: 200 },
+            search: "",
+          },
+          {
+            body: undefined,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
             search: "",
           },
           {

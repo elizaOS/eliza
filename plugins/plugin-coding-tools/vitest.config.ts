@@ -16,6 +16,14 @@ export default defineConfig({
         find: /^@elizaos\/core\/(.+)$/,
         replacement: path.join(repoRoot, "packages/core/src/$1"),
       },
+      {
+        find: /^@elizaos\/logger$/,
+        replacement: path.join(repoRoot, "packages/logger/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/logger\/(.+)$/,
+        replacement: path.join(repoRoot, "packages/logger/src/$1"),
+      },
     ],
     conditions: ["node"],
   },

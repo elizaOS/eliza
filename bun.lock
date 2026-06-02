@@ -2878,6 +2878,7 @@
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.0.0",
+        "react": "^19.0.0",
       },
       "devDependencies": {
         "tsup": "^8.5.1",
@@ -3566,6 +3567,7 @@
       "name": "@elizaos/plugin-facewear",
       "version": "2.0.3-beta.0",
       "dependencies": {
+        "@elizaos/agent": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.0.0",
@@ -5453,6 +5455,7 @@
       "name": "@elizaos/plugin-xr",
       "version": "2.0.3-beta.0",
       "dependencies": {
+        "@elizaos/agent": "workspace:*",
         "@elizaos/core": "workspace:*",
         "ws": "^8.18.0",
         "zod": "^4.4.3",

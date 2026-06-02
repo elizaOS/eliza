@@ -7,7 +7,7 @@ const twilioMocks = vi.hoisted(() => ({
   sendTwilioVoiceCall: vi.fn(),
 }));
 
-vi.mock("@elizaos/plugin-phone", () => ({
+vi.mock("@elizaos/plugin-phone/twilio", () => ({
   readTwilioCredentialsFromEnv: () => {
     const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
     const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();

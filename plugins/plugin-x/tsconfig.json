@@ -8,6 +8,7 @@
     "ignoreDeprecations": "6.0",
     "forceConsistentCasingInFileNames": true,
     "allowImportingTsExtensions": true,
+    "types": ["node"],
     "noEmit": true,
     "allowSyntheticDefaultImports": true
   },

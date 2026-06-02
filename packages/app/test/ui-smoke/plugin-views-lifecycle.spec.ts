@@ -34,6 +34,18 @@ async function expectLoadedView(page: Page, view: ViewCase, phase: string) {
   );
 }
 
+async function expectViewManagerPage(page: Page) {
+  const main = page.locator("main").first();
+  await expect(
+    main.getByRole("heading", { level: 1, name: "Views" }),
+  ).toBeVisible();
+  await expect(main.getByPlaceholder(/Search views/)).toBeVisible();
+  await expect(
+    main.getByRole("heading", { level: 2, name: "Plugins" }),
+  ).toBeVisible();
+  await expect(main.getByText("dynamic view smoke surface")).toHaveCount(0);
+}
+
 test.describe("registered plugin view lifecycle coverage", () => {
   for (const view of VIEW_CASES) {
     test(`${view.id} ${view.viewType} loads, unmounts, reopens, and reloads cleanly`, async ({
@@ -47,7 +59,7 @@ test.describe("registered plugin view lifecycle coverage", () => {
       await expectLoadedView(page, view, "initial open");
 
       await openAppPath(page, "/views");
-      await expect(page.locator("main").first()).toContainText("View Manager");
+      await expectViewManagerPage(page);
       await expectNoRenderTelemetryErrors(
         page,
         `${view.id} ${view.viewType} after unmount`,

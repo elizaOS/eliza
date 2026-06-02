@@ -487,14 +487,19 @@ async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
   });
 }
 
-async function installHomeSpeechRecognitionShim(page: Page): Promise<void> {
+async function installChatSpeechRecognitionShim(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    type ResultHandler = (event: unknown) => void;
+    type Listener = (event: unknown) => void;
     const instances: Array<{
-      onresult: ResultHandler | null;
-      onend: (() => void) | null;
+      onresult: Listener | null;
+      onerror: Listener | null;
+      onend: Listener | null;
+      onstart: Listener | null;
+      continuous: boolean;
+      interimResults: boolean;
+      lang: string;
       started: boolean;
-      stop: () => void;
+      stopCount: number;
     }> = [];
 
     Object.defineProperty(navigator, "mediaDevices", {
@@ -535,23 +540,34 @@ async function installHomeSpeechRecognitionShim(page: Page): Promise<void> {
 
     function makeRecognition() {
       const rec = {
+        onresult: null as Listener | null,
+        onerror: null as Listener | null,
+        onend: null as Listener | null,
+        onstart: null as Listener | null,
         continuous: false,
         interimResults: false,
         lang: "en-US",
-        onresult: null as ResultHandler | null,
-        onerror: null as ResultHandler | null,
-        onend: null as (() => void) | null,
         started: false,
+        stopCount: 0,
         start() {
           this.started = true;
+          this.onstart?.({});
         },
         stop() {
           this.started = false;
-          this.onend?.();
+          this.stopCount += 1;
+          this.onend?.({});
         },
         abort() {
           this.stop();
         },
+        addEventListener(name: string, handler: Listener) {
+          if (name === "result") this.onresult = handler;
+          if (name === "error") this.onerror = handler;
+          if (name === "end") this.onend = handler;
+          if (name === "start") this.onstart = handler;
+        },
+        removeEventListener() {},
       };
       instances.push(rec);
       return rec;

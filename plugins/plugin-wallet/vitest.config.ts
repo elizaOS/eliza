@@ -11,6 +11,10 @@ export default defineConfig({
         rootDir,
         "../../packages/core/src/index.node.ts",
       ),
+      "@elizaos/logger": path.resolve(
+        rootDir,
+        "../../packages/logger/src/index.ts",
+      ),
     },
   },
   test: {

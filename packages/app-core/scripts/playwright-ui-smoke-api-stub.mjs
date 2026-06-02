@@ -1608,13 +1608,378 @@ function safeComponentExportName(value) {
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value) ? value : "SmokeView";
 }
 
-function smokeViewBundleSource(view) {
-  const exportName = safeComponentExportName(view.componentExport);
+function smokeTuiViewBundleSource(view, exportName) {
   const label = JSON.stringify(view.label);
   const id = JSON.stringify(view.id);
   const viewType = JSON.stringify(view.viewType);
   const pluginName = JSON.stringify(view.pluginName);
-  const isTui = view.viewType === "tui";
+  const commands =
+    view.id === "feed"
+      ? [
+          "refresh-agent-status",
+          "refresh-feed",
+          "list-agents",
+          "summarize-feed",
+        ]
+      : ["status", "refresh", "inspect", "help"];
+  return `import React from "react";
+
+const viewMeta = {
+  id: ${id},
+  label: ${label},
+  viewType: ${viewType},
+  pluginName: ${pluginName}
+};
+const commands = ${JSON.stringify(commands)};
+
+function SmokeView() {
+  const [outputs, setOutputs] = React.useState([]);
+  const runCommand = async (command) => {
+    window.dispatchEvent(new CustomEvent("eliza:tui-command", {
+      detail: { viewId: viewMeta.id, command }
+    }));
+    let result;
+    try {
+      const response = await fetch("/api/views/" + encodeURIComponent(viewMeta.id) + "/interact?viewType=tui", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ capability: command, timeoutMs: 5000 })
+      });
+      result = await response.json();
+    } catch (error) {
+      result = { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+    setOutputs((current) => [...current, { command, result }]);
+  };
+  const state = JSON.stringify({
+    viewId: viewMeta.id,
+    viewType: "tui",
+    status: "ready",
+    fixture: "ui-smoke",
+    commandCount: commands.length
+  });
+  return React.createElement(
+    "div",
+    {
+      "data-view-state": state,
+      style: {
+        minHeight: "100vh",
+        background: "#020617",
+        color: "#cbd5e1",
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+        padding: 20
+      }
+    },
+    React.createElement("div", { style: { color: "#7dd3fc", marginBottom: 4 } }, "elizaos://" + viewMeta.id + " --type=tui"),
+    React.createElement("div", { style: { color: "#94a3b8", marginBottom: 16 } }, viewMeta.label + " smoke terminal"),
+    React.createElement(
+      "div",
+      { style: { display: "flex", flexWrap: "wrap", gap: 8 } },
+      ...commands.map((command) =>
+        React.createElement(
+          "button",
+          {
+            key: command,
+            type: "button",
+            "data-terminal-command": command,
+            onClick: () => void runCommand(command),
+            style: {
+              border: "1px solid #38bdf8",
+              borderRadius: 4,
+              color: "#e0f2fe",
+              background: "transparent",
+              padding: "6px 10px"
+            }
+          },
+          command
+        )
+      )
+    ),
+    ...outputs.map((entry, index) =>
+      React.createElement(
+        "pre",
+        {
+          key: entry.command + index,
+          "data-terminal-output": entry.result?.ok ? "ok" : "error",
+          style: {
+            marginTop: 8,
+            whiteSpace: "pre-wrap",
+            color: entry.result?.ok ? "#bbf7d0" : "#fecaca"
+          }
+        },
+        "$ " + entry.command + "\\n" + JSON.stringify(entry.result, null, 2)
+      )
+    )
+  );
+}
+
+export { SmokeView as ${exportName} };
+export default SmokeView;
+export async function interact(capability, params = {}) {
+  return { ok: true, viewId: viewMeta.id, viewType: viewMeta.viewType, capability, params };
+}
+`;
+}
+
+function smokeScreenshareBundleSource(view, exportName) {
+  const label = JSON.stringify(view.label);
+  const id = JSON.stringify(view.id);
+  const viewType = JSON.stringify(view.viewType);
+  const pluginName = JSON.stringify(view.pluginName);
+  return `import React from "react";
+
+const viewMeta = {
+  id: ${id},
+  label: ${label},
+  viewType: ${viewType},
+  pluginName: ${pluginName}
+};
+
+function maskSession(value) {
+  if (!value) return "";
+  return value.slice(0, 6) + "\\u2026" + value.slice(-4);
+}
+
+function maskToken(value) {
+  if (!value) return "";
+  return "\\u2022\\u2022\\u2022\\u2022 " + value.slice(-4);
+}
+
+function SmokeView() {
+  const [capabilities, setCapabilities] = React.useState(null);
+  const [host, setHost] = React.useState(null);
+  const [token, setToken] = React.useState("");
+  const [viewerUrl, setViewerUrl] = React.useState("");
+  const [remoteBase, setRemoteBase] = React.useState("");
+  const [remoteSession, setRemoteSession] = React.useState("");
+  const [remoteToken, setRemoteToken] = React.useState("");
+
+  const refreshCapabilities = React.useCallback(async () => {
+    const response = await fetch("/api/apps/screenshare/capabilities");
+    setCapabilities(await response.json());
+  }, []);
+
+  React.useEffect(() => {
+    void refreshCapabilities();
+  }, [refreshCapabilities]);
+
+  const startHost = async () => {
+    const response = await fetch("/api/apps/screenshare/session", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ label: "This machine" })
+    });
+    const result = await response.json();
+    setHost(result.session);
+    setToken(result.token);
+    setViewerUrl(result.viewerUrl);
+  };
+
+  const copyDetails = async () => {
+    await navigator.clipboard.writeText(JSON.stringify({
+      sessionId: host?.id,
+      token
+    }));
+  };
+
+  const openHostViewer = () => {
+    if (viewerUrl) window.open(viewerUrl);
+  };
+
+  const openRemote = () => {
+    const url = new URL("/api/apps/screenshare/viewer", remoteBase);
+    url.searchParams.set("sessionId", remoteSession);
+    url.searchParams.set("token", remoteToken);
+    url.searchParams.set("remoteBase", remoteBase);
+    window.open(url.toString());
+  };
+
+  const stopHost = async () => {
+    if (!host?.id) return;
+    const response = await fetch("/api/apps/screenshare/session/" + encodeURIComponent(host.id) + "/stop", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-screenshare-token": token
+      },
+      body: JSON.stringify({ token })
+    });
+    const result = await response.json();
+    setHost(result.session);
+  };
+
+  const capabilityList = capabilities?.capabilities ?? {};
+  return React.createElement(
+    "section",
+    { "aria-label": viewMeta.label, style: { minHeight: "100vh", padding: 24 } },
+    React.createElement("h1", null, viewMeta.label),
+    React.createElement("p", null, viewMeta.pluginName + " dynamic view smoke surface is ready."),
+    React.createElement("h2", null, "Host"),
+    React.createElement("button", { type: "button", onClick: startHost }, "Start host session"),
+    host && React.createElement("button", { type: "button", onClick: copyDetails }, "Copy host details"),
+    host && React.createElement("button", { type: "button", onClick: openHostViewer }, "Open host viewer"),
+    host && React.createElement("button", { type: "button", onClick: stopHost }, "Stop host session"),
+    host && React.createElement("div", null,
+      React.createElement("input", { placeholder: "Session", readOnly: true, value: maskSession(host.id) }),
+      React.createElement("input", { placeholder: "Token", readOnly: true, value: maskToken(token) }),
+      React.createElement("span", null, String(host.frameCount ?? 0)),
+      React.createElement("span", null, String(host.inputCount ?? 0)),
+      React.createElement("span", null, host.status)
+    ),
+    React.createElement("h2", null, "Capabilities"),
+    React.createElement("button", { type: "button", onClick: () => void refreshCapabilities() }, "Refresh capabilities"),
+    React.createElement("div", null,
+      React.createElement("span", null, "Screenshot"),
+      React.createElement("span", null, capabilityList.screenshot?.available ? "Ready" : "Unavailable")
+    ),
+    React.createElement("div", null,
+      React.createElement("span", null, "Keyboard"),
+      React.createElement("span", null, capabilityList.keyboard?.available ? "Ready" : "Unavailable")
+    ),
+    React.createElement("h2", null, "Remote"),
+    React.createElement("input", { placeholder: "Server URL", value: remoteBase, onChange: (event) => setRemoteBase(event.target.value) }),
+    React.createElement("input", { placeholder: "Session", value: remoteSession, onChange: (event) => setRemoteSession(event.target.value) }),
+    React.createElement("input", { placeholder: "Token", value: remoteToken, onChange: (event) => setRemoteToken(event.target.value) }),
+    React.createElement("button", { type: "button", onClick: openRemote }, "Connect to remote")
+  );
+}
+
+export { SmokeView as ${exportName} };
+export default SmokeView;
+export async function interact(capability, params = {}) {
+  return { ok: true, viewId: viewMeta.id, viewType: viewMeta.viewType, capability, params };
+}
+`;
+}
+
+function smokeTaskCoordinatorBundleSource(view, exportName) {
+  const label = JSON.stringify(view.label);
+  const id = JSON.stringify(view.id);
+  const viewType = JSON.stringify(view.viewType);
+  const pluginName = JSON.stringify(view.pluginName);
+  return `import React from "react";
+
+const viewMeta = {
+  id: ${id},
+  label: ${label},
+  viewType: ${viewType},
+  pluginName: ${pluginName}
+};
+
+function statusLabel(thread) {
+  return String(thread?.status ?? "open").replace(/_/g, " ");
+}
+
+function SmokeView() {
+  const [tasks, setTasks] = React.useState([]);
+  const [detail, setDetail] = React.useState(null);
+  const [search, setSearch] = React.useState("");
+
+  const loadTasks = React.useCallback(async (nextSearch = search) => {
+    const url = new URL("/api/orchestrator/tasks", window.location.origin);
+    url.searchParams.set("limit", "50");
+    if (nextSearch) url.searchParams.set("search", nextSearch);
+    const response = await fetch(url.pathname + url.search);
+    const result = await response.json();
+    setTasks(result.tasks ?? []);
+  }, [search]);
+
+  React.useEffect(() => {
+    void loadTasks("");
+  }, []);
+
+  const updateSearch = (value) => {
+    setSearch(value);
+    void loadTasks(value);
+  };
+
+  const openTask = async (task) => {
+    const response = await fetch("/api/orchestrator/tasks/" + encodeURIComponent(task.id));
+    setDetail(await response.json());
+  };
+
+  const archiveTask = async () => {
+    if (!detail?.id) return;
+    await fetch("/api/orchestrator/tasks/" + encodeURIComponent(detail.id) + "/archive", { method: "POST" });
+    await loadTasks(search);
+  };
+
+  const reopenTask = async () => {
+    if (!detail?.id) return;
+    await fetch("/api/orchestrator/tasks/" + encodeURIComponent(detail.id) + "/reopen", { method: "POST" });
+    const response = await fetch("/api/orchestrator/tasks/" + encodeURIComponent(detail.id));
+    setDetail(await response.json());
+    await loadTasks(search);
+  };
+
+  return React.createElement(
+    "section",
+    {
+      "aria-label": viewMeta.label,
+      "data-testid": "chat-widget-orchestrator",
+      style: { minHeight: "100vh", padding: 24 }
+    },
+    React.createElement("h1", null, viewMeta.label),
+    React.createElement("p", null, viewMeta.pluginName + " dynamic view smoke surface is ready."),
+    React.createElement("input", {
+      placeholder: "Search tasks",
+      value: search,
+      onChange: (event) => updateSearch(event.target.value)
+    }),
+    React.createElement(
+      "div",
+      null,
+      ...tasks.map((task) =>
+        React.createElement(
+          "button",
+          {
+            key: task.id,
+            type: "button",
+            onClick: () => void openTask(task),
+            style: { display: "block", marginTop: 8 }
+          },
+          task.title + " " + statusLabel(task)
+        )
+      )
+    ),
+    detail && React.createElement(
+      "article",
+      { "aria-label": "Task detail", style: { marginTop: 16 } },
+      React.createElement("h2", null, detail.title),
+      React.createElement("p", null, detail.summary ?? detail.originalRequest ?? ""),
+      ...(detail.acceptanceCriteria ?? []).map((item) => React.createElement("p", { key: item }, item)),
+      ...(detail.sessions ?? []).map((session) =>
+        React.createElement(
+          "div",
+          { key: session.id },
+          React.createElement("span", null, session.label),
+          React.createElement("span", null, (session.framework ?? "") + " (" + (session.providerSource ?? "") + ")")
+        )
+      ),
+      ...(detail.artifacts ?? []).map((artifact) => React.createElement("p", { key: artifact.id }, artifact.title)),
+      ...(detail.pendingDecisions ?? []).map((decision) => React.createElement("p", { key: decision.sessionId }, decision.promptText)),
+      ...(detail.events ?? []).map((event) => React.createElement("p", { key: event.id }, event.summary)),
+      ...(detail.transcripts ?? []).map((transcript) => React.createElement("p", { key: transcript.id }, transcript.content)),
+      detail.status === "archived"
+        ? React.createElement("button", { type: "button", onClick: () => void reopenTask() }, "Reopen")
+        : React.createElement("button", { type: "button", onClick: () => void archiveTask() }, "Delete")
+    )
+  );
+}
+
+export { SmokeView as ${exportName} };
+export default SmokeView;
+export async function interact(capability, params = {}) {
+  return { ok: true, viewId: viewMeta.id, viewType: viewMeta.viewType, capability, params };
+}
+`;
+}
+
+function smokeGenericViewBundleSource(view, exportName) {
+  const label = JSON.stringify(view.label);
+  const id = JSON.stringify(view.id);
+  const viewType = JSON.stringify(view.viewType);
+  const pluginName = JSON.stringify(view.pluginName);
   return `import React from "react";
 
 const viewMeta = {
@@ -1625,56 +1990,6 @@ const viewMeta = {
 };
 
 function SmokeView() {
-  const [outputs, setOutputs] = React.useState([]);
-  const addOutput = (command) => {
-    setOutputs((current) => [...current, command]);
-  };
-  if (${JSON.stringify(isTui)}) {
-    const state = JSON.stringify({
-      viewId: viewMeta.id,
-      viewType: "tui",
-      status: "ready",
-      fixture: "ui-smoke"
-    });
-    return React.createElement(
-      "div",
-      {
-        "data-view-state": state,
-        style: {
-          minHeight: "100vh",
-          background: "#020617",
-          color: "#cbd5e1",
-          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-          padding: 20
-        }
-      },
-      React.createElement("div", { style: { color: "#7dd3fc", marginBottom: 4 } }, "elizaos://" + viewMeta.id + " --type=tui"),
-      React.createElement("div", { style: { color: "#94a3b8", marginBottom: 16 } }, viewMeta.label + " smoke terminal"),
-      React.createElement(
-        "button",
-        {
-          type: "button",
-          "data-terminal-command": "status",
-          onClick: () => addOutput("status"),
-          style: {
-            border: "1px solid #38bdf8",
-            borderRadius: 4,
-            color: "#e0f2fe",
-            background: "transparent",
-            padding: "6px 10px"
-          }
-        },
-        "status"
-      ),
-      ...outputs.map((command, index) =>
-        React.createElement(
-          "div",
-          { key: command + index, "data-terminal-output": command, style: { marginTop: 8 } },
-          "ok: " + command
-        )
-      )
-    );
-  }
   return React.createElement(
     "section",
     { "aria-label": viewMeta.label, style: { minHeight: "100vh", padding: 24 } },
@@ -1691,6 +2006,20 @@ export async function interact(capability, params = {}) {
   return { ok: true, viewId: viewMeta.id, viewType: viewMeta.viewType, capability, params };
 }
 `;
+}
+
+function smokeViewBundleSource(view) {
+  const exportName = safeComponentExportName(view.componentExport);
+  if (view.viewType === "tui") {
+    return smokeTuiViewBundleSource(view, exportName);
+  }
+  if (view.id === "screenshare") {
+    return smokeScreenshareBundleSource(view, exportName);
+  }
+  if (view.id === "task-coordinator") {
+    return smokeTaskCoordinatorBundleSource(view, exportName);
+  }
+  return smokeGenericViewBundleSource(view, exportName);
 }
 
 function sendSmokeViewAsset(req, res, url, view, subResource) {

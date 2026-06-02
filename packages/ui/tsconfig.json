@@ -82,8 +82,20 @@
       "@elizaos/capacitor-calendar": [
         "../../plugins/plugin-native-calendar/src/index.ts"
       ],
+      "@elizaos/capacitor-contacts": [
+        "../../plugins/plugin-native-contacts/src/index.ts"
+      ],
+      "@elizaos/capacitor-messages": [
+        "../../plugins/plugin-native-messages/src/index.ts"
+      ],
       "@elizaos/capacitor-mobile-signals": [
         "../../plugins/plugin-native-mobile-signals/src/index.ts"
+      ],
+      "@elizaos/capacitor-phone": [
+        "../../plugins/plugin-native-phone/src/index.ts"
+      ],
+      "@elizaos/capacitor-system": [
+        "../../plugins/plugin-native-system/src/index.ts"
       ],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],
