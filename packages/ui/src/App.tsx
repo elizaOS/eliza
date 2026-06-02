@@ -20,6 +20,7 @@ import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "./bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "./bridge/electrobun-runtime";
 import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
@@ -1043,6 +1044,27 @@ function ShellFoundationMount() {
   );
 }
 
+/**
+ * Web/mobile embedded floating pill. The persistent collapsible chat/voice pill
+ * floats bottom-center on top of whichever view is active, so no view embeds its
+ * own chat surface. On desktop (Electrobun) the pill instead lives in its own
+ * always-on-top OS window (`pill-window.ts` → `chat-overlay` shell), so it is
+ * never embedded here; on OS kiosk it is mounted in-canvas by `KioskShell`. The
+ * wrapper is pointer-events-none so only the pill itself is interactive, and it
+ * clears the mobile bottom nav.
+ */
+function EmbeddedShellPill(): ReactNode {
+  if (isElectrobunRuntime()) return null;
+  return (
+    <div
+      data-testid="embedded-shell-pill"
+      className={`pointer-events-none fixed inset-0 flex items-end justify-center ${MOBILE_NAV_PADDING_CLASS}`}
+    >
+      <ShellFoundationMount />
+    </div>
+  );
+}
+
 function GlobalChatOverlay(): ReactNode {
   return (
     <div
@@ -1546,7 +1568,7 @@ export function App() {
           gameOverlayEnabled &&
           tab !== "apps" &&
           tab !== "views" && <GameViewOverlay />}
-        {isChat ? <GlobalChatOverlay /> : null}
+        {isChat ? <GlobalChatOverlay /> : <EmbeddedShellPill />}
         <ShellOverlays actionNotice={actionNotice} />
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}

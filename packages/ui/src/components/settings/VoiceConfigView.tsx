@@ -1,5 +1,6 @@
 import { ASR_PROVIDERS } from "@elizaos/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import {
   type AsrProvider,
   client,
@@ -182,6 +183,106 @@ export function DesktopTalkModePanel() {
     [refresh, t],
   );
 
+  const { ref: refreshRef, agentProps: refreshAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "voice-talkmode-refresh",
+      role: "button",
+      label: t("common.refresh"),
+      group: "voice-talkmode",
+      onActivate: () =>
+        void runAction(
+          "voice-talkmode-refresh",
+          async () => {},
+          t("voiceconfigview.TalkModeStateRefreshed"),
+        ),
+    });
+  const { ref: phraseRef, agentProps: phraseAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "voice-talkmode-phrase",
+      role: "text-input",
+      label: t("voiceconfigview.testPhrase"),
+      group: "voice-talkmode",
+      getValue: () => phrase,
+      onFill: setPhrase,
+    });
+  const { ref: startStopRef, agentProps: startStopAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "voice-talkmode-start-stop",
+      role: "button",
+      label: panelState.enabled
+        ? t("voiceconfigview.StopTalkMode")
+        : t("voiceconfigview.StartTalkMode"),
+      group: "voice-talkmode",
+      status: panelState.enabled ? "active" : "inactive",
+      onActivate: () =>
+        void runAction(
+          "voice-talkmode-start-stop",
+          async () => {
+            if (panelState.enabled) {
+              await invokeDesktopBridgeRequest<void>({
+                rpcMethod: "talkmodeStop",
+                ipcChannel: "talkmode:stop",
+              });
+              return;
+            }
+            const result = await invokeDesktopBridgeRequest<{
+              available: boolean;
+              reason?: string;
+            }>({
+              rpcMethod: "talkmodeStart",
+              ipcChannel: "talkmode:start",
+            });
+            if (result?.available === false) {
+              throw new Error(
+                result.reason || t("voiceconfigview.TalkModeUnavailable"),
+              );
+            }
+          },
+          panelState.enabled
+            ? t("voiceconfigview.TalkModeStopped")
+            : t("voiceconfigview.TalkModeStarted"),
+        ),
+    });
+  const { ref: _speakRef, agentProps: _speakAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "voice-talkmode-speak",
+      role: "button",
+      label: t("voiceconfigview.SpeakTestPhrase"),
+      group: "voice-talkmode",
+      status: phrase.trim() ? "active" : "inactive",
+      onActivate: () =>
+        void runAction(
+          "voice-talkmode-speak",
+          async () => {
+            await invokeDesktopBridgeRequest<void>({
+              rpcMethod: "talkmodeSpeak",
+              ipcChannel: "talkmode:speak",
+              params: { text: phrase },
+            });
+          },
+          t("voiceconfigview.SpeechRequested"),
+          false,
+        ),
+    });
+  const { ref: _stopSpeakingRef, agentProps: _stopSpeakingAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "voice-talkmode-stop-speaking",
+      role: "button",
+      label: t("voiceconfigview.StopSpeaking"),
+      group: "voice-talkmode",
+      onActivate: () =>
+        void runAction(
+          "voice-talkmode-stop-speaking",
+          async () => {
+            await invokeDesktopBridgeRequest<void>({
+              rpcMethod: "talkmodeStopSpeaking",
+              ipcChannel: "talkmode:stopSpeaking",
+            });
+          },
+          t("voiceconfigview.StoppedCurrentSpeechOutput"),
+        ),
+    });
+
   if (!desktopRuntime) {
     return (
       <Card className="border-border/60 bg-card/92 ">
@@ -205,6 +306,7 @@ export function DesktopTalkModePanel() {
             </CardDescription>
           </div>
           <Button
+            ref={refreshRef}
             variant="outline"
             size="sm"
             className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
@@ -216,6 +318,7 @@ export function DesktopTalkModePanel() {
               )
             }
             disabled={loading || busyAction === "voice-talkmode-refresh"}
+            {...refreshAgentProps}
           >
             {t("common.refresh")}
           </Button>
@@ -265,15 +368,18 @@ export function DesktopTalkModePanel() {
         </div>
 
         <Input
+          ref={phraseRef}
           type="text"
           className="min-h-10 rounded-sm bg-bg text-xs"
           value={phrase}
           onChange={(event) => setPhrase(event.target.value)}
           placeholder={t("voiceconfigview.testPhrase")}
+          {...phraseAgentProps}
         />
 
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <Button
+            ref={startStopRef}
             variant="outline"
             size="sm"
             className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
@@ -308,6 +414,7 @@ export function DesktopTalkModePanel() {
               )
             }
             disabled={busyAction === "voice-talkmode-start-stop" || loading}
+            {...startStopAgentProps}
           >
             {panelState.enabled
               ? t("voiceconfigview.StopTalkMode")

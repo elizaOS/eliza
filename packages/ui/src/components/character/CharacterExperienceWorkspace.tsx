@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { useTranslation } from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -428,6 +429,110 @@ function ProvenancePanel({
   );
 }
 
+function ExperienceGraphNode({
+  experience,
+  position,
+  selected,
+  connected,
+  onSelectExperience,
+}: {
+  experience: CharacterExperienceRecord;
+  position: GraphPosition;
+  selected: boolean;
+  connected: boolean;
+  onSelectExperience: (experienceId: string) => void;
+}) {
+  const review = needsReview(experience);
+  const color = graphNodeColor(experience);
+  const size = 1.9 + clampScore(experience.importance) * 2.7;
+  const confidence = clampScore(experience.confidence);
+  const hasEntities = (experience.associatedEntityIds ?? []).length > 0;
+  const nodeLabel =
+    experience.learning || experience.result || experience.context;
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `experience-node-${experience.id}`,
+    role: "list-item",
+    label: `Experience node: ${nodeLabel}`,
+    group: "experience-graph",
+    status: selected ? "active" : undefined,
+    description: "Select this experience from the knowledge graph",
+    onActivate: () => onSelectExperience(experience.id),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-label={`Select experience: ${nodeLabel}`}
+      data-testid={`experience-graph-node-${experience.id}`}
+      className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full outline-none transition duration-200 hover:scale-125 focus-visible:ring-2 focus-visible:ring-accent"
+      style={{
+        left: `${position.x}%`,
+        top: `${position.y}%`,
+        width: `${size}rem`,
+        height: `${size}rem`,
+      }}
+      onClick={() => onSelectExperience(experience.id)}
+      {...agentProps}
+    >
+      <span
+        aria-hidden="true"
+        className="absolute rounded-full blur-xl"
+        style={{
+          inset: "-42%",
+          background: color.glow,
+          opacity: connected ? 0.88 : 0.48,
+        }}
+      />
+      {hasEntities ? (
+        <span
+          aria-hidden="true"
+          className="absolute rounded-full border"
+          style={{
+            inset: "-28%",
+            borderColor: color.ring,
+            opacity: 0.45 + confidence * 0.25,
+          }}
+        />
+      ) : null}
+      <span
+        aria-hidden="true"
+        className="absolute rounded-full border"
+        style={{
+          inset: selected ? "-20%" : review ? "-12%" : "-5%",
+          borderColor: selected
+            ? "rgb(255 255 255)"
+            : review
+              ? color.ring
+              : "rgba(255,255,255,0.26)",
+          opacity: selected ? 0.95 : review ? 0.72 : 0.38,
+        }}
+      />
+      <span
+        aria-hidden="true"
+        className="absolute inset-0 rounded-full border "
+        style={{
+          background: `radial-gradient(circle at 32% 28%, rgba(255,255,255,0.92), ${color.fill} 32%, rgba(15,23,42,0.88) 100%)`,
+          borderColor: color.ring,
+          boxShadow: selected
+            ? `0 0 0 10px ${color.glow}, 0 0 42px ${color.glow}`
+            : `0 0 ${connected ? 28 : 16}px ${color.glow}`,
+          opacity: 0.48 + confidence * 0.5,
+        }}
+      />
+      <span
+        aria-hidden="true"
+        className="absolute rounded-full bg-white/70"
+        style={{
+          top: "24%",
+          left: "27%",
+          width: "18%",
+          height: "18%",
+        }}
+      />
+    </button>
+  );
+}
+
 function ExperienceGraphPanel({
   experiences,
   selectedExperienceId,
@@ -492,89 +597,116 @@ function ExperienceGraphPanel({
         })}
       </svg>
 
-      {graphExperiences.map((experience) => {
-        const position = positions.get(experience.id) ?? { x: 50, y: 50 };
-        const selected = experience.id === selectedExperienceId;
-        const review = needsReview(experience);
-        const color = graphNodeColor(experience);
-        const size = 1.9 + clampScore(experience.importance) * 2.7;
-        const confidence = clampScore(experience.confidence);
-        const hasEntities = (experience.associatedEntityIds ?? []).length > 0;
-        const connected = connectedIds.has(experience.id);
-        return (
-          <button
-            key={experience.id}
-            type="button"
-            aria-label={`Select experience: ${experience.learning || experience.result || experience.context}`}
-            data-testid={`experience-graph-node-${experience.id}`}
-            className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full outline-none transition duration-200 hover:scale-125 focus-visible:ring-2 focus-visible:ring-accent"
-            style={{
-              left: `${position.x}%`,
-              top: `${position.y}%`,
-              width: `${size}rem`,
-              height: `${size}rem`,
-            }}
-            onClick={() => onSelectExperience(experience.id)}
-          >
-            <span
-              aria-hidden="true"
-              className="absolute rounded-full blur-xl"
-              style={{
-                inset: "-42%",
-                background: color.glow,
-                opacity: connected ? 0.88 : 0.48,
-              }}
-            />
-            {hasEntities ? (
-              <span
-                aria-hidden="true"
-                className="absolute rounded-full border"
-                style={{
-                  inset: "-28%",
-                  borderColor: color.ring,
-                  opacity: 0.45 + confidence * 0.25,
-                }}
-              />
-            ) : null}
-            <span
-              aria-hidden="true"
-              className="absolute rounded-full border"
-              style={{
-                inset: selected ? "-20%" : review ? "-12%" : "-5%",
-                borderColor: selected
-                  ? "rgb(255 255 255)"
-                  : review
-                    ? color.ring
-                    : "rgba(255,255,255,0.26)",
-                opacity: selected ? 0.95 : review ? 0.72 : 0.38,
-              }}
-            />
-            <span
-              aria-hidden="true"
-              className="absolute inset-0 rounded-full border "
-              style={{
-                background: `radial-gradient(circle at 32% 28%, rgba(255,255,255,0.92), ${color.fill} 32%, rgba(15,23,42,0.88) 100%)`,
-                borderColor: color.ring,
-                boxShadow: selected
-                  ? `0 0 0 10px ${color.glow}, 0 0 42px ${color.glow}`
-                  : `0 0 ${connected ? 28 : 16}px ${color.glow}`,
-                opacity: 0.48 + confidence * 0.5,
-              }}
-            />
-            <span
-              aria-hidden="true"
-              className="absolute rounded-full bg-white/70"
-              style={{
-                top: "24%",
-                left: "27%",
-                width: "18%",
-                height: "18%",
-              }}
-            />
-          </button>
-        );
-      })}
+      {graphExperiences.map((experience) => (
+        <ExperienceGraphNode
+          key={experience.id}
+          experience={experience}
+          position={positions.get(experience.id) ?? { x: 50, y: 50 }}
+          selected={experience.id === selectedExperienceId}
+          connected={connectedIds.has(experience.id)}
+          onSelectExperience={onSelectExperience}
+        />
+      ))}
     </div>
+  );
+}
+
+function ExperienceQueueRow({
+  experience,
+  isSelected,
+  onSelect,
+}: {
+  experience: CharacterExperienceRecord;
+  isSelected: boolean;
+  onSelect: (experienceId: string) => void;
+}) {
+  const title = experience.learning || experience.result || experience.context;
+  const reviewReasons = [
+    clampScore(experience.importance) >= 0.75 ? "high importance" : null,
+    clampScore(experience.confidence) < 0.65 ? "low confidence" : null,
+    experience.previousBelief || experience.correctedBelief
+      ? "belief changed"
+      : null,
+  ].filter(Boolean);
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `experience-row-${experience.id}`,
+    role: "list-item",
+    label: `Experience: ${title}`,
+    group: "experience-queue",
+    status: isSelected ? "active" : undefined,
+    description: "Open this experience in the review panel",
+    onActivate: () => onSelect(experience.id),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      data-testid={`experience-row-${experience.id}`}
+      className={`flex min-w-0 flex-col items-start gap-2 border-b border-border/20 px-4 py-4 text-left transition-colors hover:bg-bg-muted/20 ${isSelected ? "bg-bg-muted/25" : ""}`}
+      onClick={() => onSelect(experience.id)}
+      {...agentProps}
+    >
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <span className="rounded-full border border-border/40 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted">
+          {experience.type}
+        </span>
+        <span
+          className={`rounded-full border px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.08em] ${outcomeAccent(experience.outcome)}`}
+        >
+          {experience.outcome}
+        </span>
+        {needsReview(experience) ? (
+          <span className="rounded-full border border-status-warning/30 bg-status-warning-bg px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-status-warning">
+            Review
+          </span>
+        ) : null}
+      </div>
+      <h4 className="line-clamp-2 text-sm font-semibold text-txt">{title}</h4>
+      <div className="grid w-full grid-cols-2 gap-2 text-xs text-muted">
+        <span>Importance {formatPercent(experience.importance)}</span>
+        <span>Confidence {formatPercent(experience.confidence)}</span>
+      </div>
+      <p className="line-clamp-2 text-sm text-muted-strong">
+        {experience.context}
+      </p>
+      <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted">
+        <span>{formatTimestamp(experience.createdAt)}</span>
+        {experience.domain ? <span>{experience.domain}</span> : null}
+        {reviewReasons.length > 0 ? (
+          <span>{reviewReasons.join(", ")}</span>
+        ) : null}
+      </div>
+    </button>
+  );
+}
+
+function RelatedExperienceButton({
+  experience,
+  onSelect,
+}: {
+  experience: CharacterExperienceRecord;
+  onSelect: (experienceId: string) => void;
+}) {
+  const title = experience.learning || experience.result || experience.context;
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `experience-related-${experience.id}`,
+    role: "list-item",
+    label: `Related experience: ${title}`,
+    group: "experience-related",
+    description: "Open this related experience",
+    onActivate: () => onSelect(experience.id),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className="block w-full rounded-sm border border-border/30 px-3 py-2 text-left hover:bg-bg-muted/20"
+      onClick={() => onSelect(experience.id)}
+      {...agentProps}
+    >
+      <span className="font-mono text-xs text-muted">{experience.id}</span>
+      <span className="ml-2">{title}</span>
+    </button>
   );
 }
 
@@ -755,6 +887,147 @@ export function CharacterExperienceWorkspace({
     [experiences, visibleSelectedExperience],
   );
 
+  const { ref: searchRef, agentProps: searchAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "experience-search",
+      role: "text-input",
+      label: t("character.searchLearningEvidenceTags"),
+      group: "experience-filters",
+      description: "Search learnings, evidence, and tags",
+      getValue: () => searchQuery,
+      onFill: setSearchQuery,
+    });
+  const { ref: outcomeRef, agentProps: outcomeAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "experience-filter-outcome",
+      role: "select",
+      label: t("character.outcomeFilter"),
+      group: "experience-filters",
+      description: "Filter experiences by outcome",
+      options: ["all", ...filters.outcomes],
+      getValue: () => outcomeFilter,
+      onFill: setOutcomeFilter,
+    });
+  const { ref: domainRef, agentProps: domainAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "experience-filter-domain",
+      role: "select",
+      label: t("character.domainFilter"),
+      group: "experience-filters",
+      description: "Filter experiences by domain",
+      options: ["all", ...filters.domains],
+      getValue: () => domainFilter,
+      onFill: setDomainFilter,
+    });
+  const { ref: tagRef, agentProps: tagAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "experience-filter-tag",
+      role: "select",
+      label: t("character.tagFilter"),
+      group: "experience-filters",
+      description: "Filter experiences by tag",
+      options: ["all", ...filters.tags],
+      getValue: () => tagFilter,
+      onFill: setTagFilter,
+    });
+  const { ref: reviewRef, agentProps: reviewAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "experience-filter-review",
+      role: "select",
+      label: t("character.reviewFilter"),
+      group: "experience-filters",
+      description: "Filter experiences by review state",
+      options: ["all", "needs-review", "corrected", "superseded"],
+      getValue: () => reviewFilter,
+      onFill: (value) => setReviewFilter(value as ReviewFilter),
+    });
+  const { ref: sortRef, agentProps: sortAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "experience-sort",
+      role: "select",
+      label: t("character.sortExperiences"),
+      group: "experience-filters",
+      description: "Change the experience sort order",
+      options: ["priority", "newest", "importance", "confidence"],
+      getValue: () => sortMode,
+      onFill: (value) => setSortMode(value as SortMode),
+    });
+  const { ref: deleteRef, agentProps: deleteAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "experience-delete",
+      role: "button",
+      label: "Delete experience",
+      group: "experience-review",
+      description: "Delete the selected experience",
+      onActivate: () => {
+        if (visibleSelectedExperience) {
+          onDeleteExperience?.(visibleSelectedExperience);
+        }
+      },
+    });
+  const { ref: saveRef, agentProps: saveAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "experience-save",
+      role: "button",
+      label: "Save review",
+      group: "experience-review",
+      description: "Save the review edits for the selected experience",
+      onActivate: () => {
+        if (visibleSelectedExperience) {
+          onSaveExperience?.(visibleSelectedExperience, draft);
+        }
+      },
+    });
+  const { ref: learningRef, agentProps: learningAgentProps } =
+    useAgentElement<HTMLTextAreaElement>({
+      id: "experience-edit-learning",
+      role: "textarea",
+      label: "Learning",
+      group: "experience-review",
+      description: "Edit the learned takeaway for this experience",
+      getValue: () => draft.learning,
+      onFill: (value) =>
+        setDraft((current) => ({ ...current, learning: value })),
+    });
+  const { ref: importanceRef, agentProps: importanceAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "experience-edit-importance",
+      role: "number-input",
+      label: "Importance",
+      group: "experience-review",
+      description: "Edit the importance score (0 to 1)",
+      getValue: () => draft.importance,
+      onFill: (value) =>
+        setDraft((current) => ({
+          ...current,
+          importance: Number(value || 0),
+        })),
+    });
+  const { ref: confidenceRef, agentProps: confidenceAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "experience-edit-confidence",
+      role: "number-input",
+      label: "Confidence",
+      group: "experience-review",
+      description: "Edit the confidence score (0 to 1)",
+      getValue: () => draft.confidence,
+      onFill: (value) =>
+        setDraft((current) => ({
+          ...current,
+          confidence: Number(value || 0),
+        })),
+    });
+  const { ref: tagsRef, agentProps: tagsAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "experience-edit-tags",
+      role: "text-input",
+      label: "Tags",
+      group: "experience-review",
+      description: "Edit the comma-separated tags for this experience",
+      getValue: () => draft.tags,
+      onFill: (value) => setDraft((current) => ({ ...current, tags: value })),
+    });
+
   if (experiences.length === 0) {
     return (
       <section className="rounded-sm border border-dashed border-border/40 bg-bg-muted/20 px-5 py-8 text-sm text-muted">
@@ -813,21 +1086,25 @@ export function CharacterExperienceWorkspace({
           <label htmlFor="experience-search" className="min-w-0">
             <span className="sr-only">Search experiences</span>
             <Input
+              ref={searchRef}
               id="experience-search"
               type="search"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder={t("character.searchLearningEvidenceTags")}
               className="h-9 rounded-sm border-border/40 bg-bg-muted/15"
+              {...searchAgentProps}
             />
           </label>
           <label className="min-w-0">
             <span className="sr-only">Outcome filter</span>
             <select
+              ref={outcomeRef}
               aria-label={t("character.outcomeFilter")}
               value={outcomeFilter}
               onChange={(event) => setOutcomeFilter(event.target.value)}
               className="h-9 w-full rounded-sm border border-border/40 bg-bg-muted/15 px-3 text-sm text-txt"
+              {...outcomeAgentProps}
             >
               <option value="all">All outcomes</option>
               {filters.outcomes.map((outcome) => (
@@ -840,10 +1117,12 @@ export function CharacterExperienceWorkspace({
           <label className="min-w-0">
             <span className="sr-only">Domain filter</span>
             <select
+              ref={domainRef}
               aria-label={t("character.domainFilter")}
               value={domainFilter}
               onChange={(event) => setDomainFilter(event.target.value)}
               className="h-9 w-full rounded-sm border border-border/40 bg-bg-muted/15 px-3 text-sm text-txt"
+              {...domainAgentProps}
             >
               <option value="all">All domains</option>
               {filters.domains.map((domain) => (
@@ -856,10 +1135,12 @@ export function CharacterExperienceWorkspace({
           <label className="min-w-0">
             <span className="sr-only">Tag filter</span>
             <select
+              ref={tagRef}
               aria-label={t("character.tagFilter")}
               value={tagFilter}
               onChange={(event) => setTagFilter(event.target.value)}
               className="h-9 w-full rounded-sm border border-border/40 bg-bg-muted/15 px-3 text-sm text-txt"
+              {...tagAgentProps}
             >
               <option value="all">All tags</option>
               {filters.tags.map((tag) => (
@@ -872,12 +1153,14 @@ export function CharacterExperienceWorkspace({
           <label className="min-w-0">
             <span className="sr-only">Review filter</span>
             <select
+              ref={reviewRef}
               aria-label={t("character.reviewFilter")}
               value={reviewFilter}
               onChange={(event) =>
                 setReviewFilter(event.target.value as ReviewFilter)
               }
               className="h-9 w-full rounded-sm border border-border/40 bg-bg-muted/15 px-3 text-sm text-txt"
+              {...reviewAgentProps}
             >
               <option value="all">All review states</option>
               <option value="needs-review">Needs review</option>
@@ -888,10 +1171,12 @@ export function CharacterExperienceWorkspace({
           <label className="min-w-0">
             <span className="sr-only">Sort experiences</span>
             <select
+              ref={sortRef}
               aria-label={t("character.sortExperiences")}
               value={sortMode}
               onChange={(event) => setSortMode(event.target.value as SortMode)}
               className="h-9 w-full rounded-sm border border-border/40 bg-bg-muted/15 px-3 text-sm text-txt"
+              {...sortAgentProps}
             >
               <option value="priority">Priority</option>
               <option value="newest">Newest</option>
@@ -925,71 +1210,14 @@ export function CharacterExperienceWorkspace({
                 No experiences match the current filters.
               </div>
             ) : (
-              filteredExperiences.map((experience) => {
-                const isSelected =
-                  experience.id === visibleSelectedExperience?.id;
-                const reviewReasons = [
-                  clampScore(experience.importance) >= 0.75
-                    ? "high importance"
-                    : null,
-                  clampScore(experience.confidence) < 0.65
-                    ? "low confidence"
-                    : null,
-                  experience.previousBelief || experience.correctedBelief
-                    ? "belief changed"
-                    : null,
-                ].filter(Boolean);
-                return (
-                  <button
-                    key={experience.id}
-                    type="button"
-                    data-testid={`experience-row-${experience.id}`}
-                    className={`flex min-w-0 flex-col items-start gap-2 border-b border-border/20 px-4 py-4 text-left transition-colors hover:bg-bg-muted/20 ${isSelected ? "bg-bg-muted/25" : ""}`}
-                    onClick={() => onSelectExperience(experience.id)}
-                  >
-                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <span className="rounded-full border border-border/40 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted">
-                        {experience.type}
-                      </span>
-                      <span
-                        className={`rounded-full border px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.08em] ${outcomeAccent(experience.outcome)}`}
-                      >
-                        {experience.outcome}
-                      </span>
-                      {needsReview(experience) ? (
-                        <span className="rounded-full border border-status-warning/30 bg-status-warning-bg px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-status-warning">
-                          Review
-                        </span>
-                      ) : null}
-                    </div>
-                    <h4 className="line-clamp-2 text-sm font-semibold text-txt">
-                      {experience.learning ||
-                        experience.result ||
-                        experience.context}
-                    </h4>
-                    <div className="grid w-full grid-cols-2 gap-2 text-xs text-muted">
-                      <span>
-                        Importance {formatPercent(experience.importance)}
-                      </span>
-                      <span>
-                        Confidence {formatPercent(experience.confidence)}
-                      </span>
-                    </div>
-                    <p className="line-clamp-2 text-sm text-muted-strong">
-                      {experience.context}
-                    </p>
-                    <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted">
-                      <span>{formatTimestamp(experience.createdAt)}</span>
-                      {experience.domain ? (
-                        <span>{experience.domain}</span>
-                      ) : null}
-                      {reviewReasons.length > 0 ? (
-                        <span>{reviewReasons.join(", ")}</span>
-                      ) : null}
-                    </div>
-                  </button>
-                );
-              })
+              filteredExperiences.map((experience) => (
+                <ExperienceQueueRow
+                  key={experience.id}
+                  experience={experience}
+                  isSelected={experience.id === visibleSelectedExperience?.id}
+                  onSelect={onSelectExperience}
+                />
+              ))
             )}
           </div>
         </div>
@@ -1033,6 +1261,7 @@ export function CharacterExperienceWorkspace({
               <div className="flex items-center gap-2">
                 {onDeleteExperience ? (
                   <Button
+                    ref={deleteRef}
                     type="button"
                     variant="outline"
                     size="sm"
@@ -1043,6 +1272,7 @@ export function CharacterExperienceWorkspace({
                     onClick={() =>
                       onDeleteExperience(visibleSelectedExperience)
                     }
+                    {...deleteAgentProps}
                   >
                     {deletingExperienceId === visibleSelectedExperience.id
                       ? "Deleting..."
@@ -1051,6 +1281,7 @@ export function CharacterExperienceWorkspace({
                 ) : null}
                 {onSaveExperience ? (
                   <Button
+                    ref={saveRef}
                     type="button"
                     size="sm"
                     className="rounded-sm"
@@ -1060,6 +1291,7 @@ export function CharacterExperienceWorkspace({
                     onClick={() =>
                       onSaveExperience(visibleSelectedExperience, draft)
                     }
+                    {...saveAgentProps}
                   >
                     {savingExperienceId === visibleSelectedExperience.id
                       ? "Saving..."
@@ -1198,21 +1430,11 @@ export function CharacterExperienceWorkspace({
                     </p>
                   ) : null}
                   {selectedRelatedExperiences.map((experience) => (
-                    <button
+                    <RelatedExperienceButton
                       key={experience.id}
-                      type="button"
-                      className="block w-full rounded-sm border border-border/30 px-3 py-2 text-left hover:bg-bg-muted/20"
-                      onClick={() => onSelectExperience(experience.id)}
-                    >
-                      <span className="font-mono text-xs text-muted">
-                        {experience.id}
-                      </span>
-                      <span className="ml-2">
-                        {experience.learning ||
-                          experience.result ||
-                          experience.context}
-                      </span>
-                    </button>
+                      experience={experience}
+                      onSelect={onSelectExperience}
+                    />
                   ))}
                 </div>
               </div>
@@ -1241,6 +1463,7 @@ export function CharacterExperienceWorkspace({
                   Learning
                 </span>
                 <Textarea
+                  ref={learningRef}
                   id={`experience-learning-${visibleSelectedExperience.id}`}
                   value={draft.learning}
                   rows={6}
@@ -1251,6 +1474,7 @@ export function CharacterExperienceWorkspace({
                     }))
                   }
                   className="min-h-[8rem] resize-y rounded-sm border-border/40 bg-bg-muted/15 font-mono text-sm leading-relaxed"
+                  {...learningAgentProps}
                 />
               </label>
 
@@ -1263,6 +1487,7 @@ export function CharacterExperienceWorkspace({
                     Importance
                   </span>
                   <Input
+                    ref={importanceRef}
                     id={`experience-importance-${visibleSelectedExperience.id}`}
                     type="number"
                     min="0"
@@ -1276,6 +1501,7 @@ export function CharacterExperienceWorkspace({
                       }))
                     }
                     className="rounded-sm border-border/40 bg-bg-muted/15"
+                    {...importanceAgentProps}
                   />
                 </label>
                 <label
@@ -1286,6 +1512,7 @@ export function CharacterExperienceWorkspace({
                     Confidence
                   </span>
                   <Input
+                    ref={confidenceRef}
                     id={`experience-confidence-${visibleSelectedExperience.id}`}
                     type="number"
                     min="0"
@@ -1299,6 +1526,7 @@ export function CharacterExperienceWorkspace({
                       }))
                     }
                     className="rounded-sm border-border/40 bg-bg-muted/15"
+                    {...confidenceAgentProps}
                   />
                 </label>
                 <label
@@ -1309,6 +1537,7 @@ export function CharacterExperienceWorkspace({
                     Tags
                   </span>
                   <Input
+                    ref={tagsRef}
                     id={`experience-tags-${visibleSelectedExperience.id}`}
                     type="text"
                     value={draft.tags}
@@ -1319,6 +1548,7 @@ export function CharacterExperienceWorkspace({
                       }))
                     }
                     className="rounded-sm border-border/40 bg-bg-muted/15"
+                    {...tagsAgentProps}
                   />
                 </label>
               </div>

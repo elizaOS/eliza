@@ -16,6 +16,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useAgentElement } from "../../agent-surface";
 import type { DocumentScope } from "../../api/client-types-chat";
 import { useApp } from "../../state/useApp";
 import { Button } from "../ui/button";
@@ -131,6 +132,52 @@ export function isSupportedDocumentFile(file: Pick<File, "name">): boolean {
   return false;
 }
 
+/* -- Scope selector button (registered for the agent surface) ------------- */
+
+function ScopeButton({
+  option,
+  active,
+  uploading,
+  onSelect,
+}: {
+  option: (typeof DOCUMENT_UPLOAD_SCOPE_OPTIONS)[number];
+  active: boolean;
+  uploading: boolean;
+  onSelect: (value: DocumentScope) => void;
+}) {
+  const { t } = useApp();
+  const { value, labelKey, defaultLabel, titleKey, defaultTitle, Icon } =
+    option;
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `documents-scope-${value}`,
+    role: "tab",
+    label: t(labelKey, { defaultValue: defaultLabel }),
+    group: "documents-scope",
+    status: active ? "active" : "inactive",
+    description: t(titleKey, { defaultValue: defaultTitle }),
+    onActivate: () => onSelect(value),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-pressed={active}
+      title={t(titleKey, { defaultValue: defaultTitle })}
+      onClick={() => onSelect(value)}
+      disabled={uploading}
+      className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-2 text-2xs font-semibold transition-colors ${
+        active
+          ? "border-accent/45 bg-accent/12 text-accent-fg"
+          : "border-border/30 bg-bg-muted/20 text-muted hover:border-border/55 hover:text-txt"
+      }`}
+      {...agentProps}
+    >
+      <Icon className="h-3 w-3" aria-hidden />
+      {t(labelKey, { defaultValue: defaultLabel })}
+    </button>
+  );
+}
+
 /* -- Upload Zone ---------------------------------------------------------- */
 
 export function UploadZone({
@@ -221,6 +268,91 @@ export function UploadZone({
     }
   }, [onTextUpload, textInput, titleInput, uploadOptions, uploading]);
 
+  const chooseFilesButton = useAgentElement<HTMLButtonElement>({
+    id: "documents-choose-files",
+    role: "button",
+    label: t("documentsview.ChooseFiles", { defaultValue: "Choose files" }),
+    group: "documents-upload",
+    description: "Open the file picker to upload documents",
+    onActivate: () => fileInputRef.current?.click(),
+  });
+  const addUrlButton = useAgentElement<HTMLButtonElement>({
+    id: "documents-add-url",
+    role: "toggle",
+    label: t("documentsview.AddFromURL", { defaultValue: "Add from URL" }),
+    group: "documents-upload",
+    status: showUrlInput ? "active" : "inactive",
+    description: "Toggle the add-document-from-URL input",
+    onActivate: () => setShowUrlInput((current) => !current),
+  });
+  const newTextButton = useAgentElement<HTMLButtonElement>({
+    id: "documents-new-text",
+    role: "toggle",
+    label: t("documentsview.NewTextDocument", {
+      defaultValue: "New text document",
+    }),
+    group: "documents-upload",
+    status: showTextInput ? "active" : "inactive",
+    description: "Toggle the new-text-document input",
+    onActivate: () => setShowTextInput((current) => !current),
+  });
+  const urlInputField = useAgentElement<HTMLInputElement>({
+    id: "documents-url-input",
+    role: "text-input",
+    label: t("documentsview.AddFromURL", { defaultValue: "Add from URL" }),
+    group: "documents-upload",
+    description: "URL of the document to import",
+    getValue: () => urlInput,
+    onFill: (value) => setUrlInput(value),
+  });
+  const urlSubmitButton = useAgentElement<HTMLButtonElement>({
+    id: "documents-url-import",
+    role: "button",
+    label: t("settings.import"),
+    group: "documents-upload",
+    description: "Import the document from the entered URL",
+    onActivate: () => handleUrlSubmit(),
+  });
+  const textTitleInput = useAgentElement<HTMLInputElement>({
+    id: "documents-text-title",
+    role: "text-input",
+    label: t("documentsview.TitleOptional", {
+      defaultValue: "Title (optional)",
+    }),
+    group: "documents-upload",
+    description: "Optional title for the new text document",
+    getValue: () => titleInput,
+    onFill: (value) => setTitleInput(value),
+  });
+  const textBodyInput = useAgentElement<HTMLTextAreaElement>({
+    id: "documents-text-body",
+    role: "textarea",
+    label: t("documentsview.PasteText", {
+      defaultValue: "Paste knowledge text...",
+    }),
+    group: "documents-upload",
+    description: "Body text of the new knowledge document",
+    getValue: () => textInput,
+    onFill: (value) => setTextInput(value),
+  });
+  const textSaveButton = useAgentElement<HTMLButtonElement>({
+    id: "documents-text-save",
+    role: "button",
+    label: t("common.save", { defaultValue: "Save" }),
+    group: "documents-upload",
+    description: "Save the new text document",
+    onActivate: () => handleTextSubmit(),
+  });
+  const imageDescriptionsCheckbox = useAgentElement<HTMLButtonElement>({
+    id: "documents-image-descriptions",
+    role: "toggle",
+    label: t("documentsview.IncludeAIImageDes"),
+    group: "documents-upload",
+    status: includeImageDescriptions ? "active" : "inactive",
+    description: "Whether to include AI image descriptions for uploads",
+    onActivate: () => setIncludeImageDescriptions((current) => !current),
+  });
+
   return (
     <fieldset
       className="w-full"
@@ -251,6 +383,7 @@ export function UploadZone({
         <div className="flex items-center gap-2">
           <div className="flex shrink-0 items-center gap-1.5">
             <Button
+              ref={chooseFilesButton.ref}
               variant="outline"
               size="icon"
               className="h-9 w-9 rounded-sm"
@@ -262,10 +395,12 @@ export function UploadZone({
               title={t("documentsview.ChooseFiles", {
                 defaultValue: "Choose files",
               })}
+              {...chooseFilesButton.agentProps}
             >
               <FileUp className="h-4 w-4" />
             </Button>
             <Button
+              ref={addUrlButton.ref}
               variant="outline"
               size="icon"
               className={`h-9 w-9 rounded-sm ${
@@ -279,10 +414,12 @@ export function UploadZone({
               title={t("documentsview.AddFromURL", {
                 defaultValue: "Add from URL",
               })}
+              {...addUrlButton.agentProps}
             >
               <Link2 className="h-4 w-4" />
             </Button>
             <Button
+              ref={newTextButton.ref}
               variant="outline"
               size="icon"
               className={`h-9 w-9 rounded-sm ${
@@ -296,6 +433,7 @@ export function UploadZone({
               title={t("documentsview.NewTextDocument", {
                 defaultValue: "New text document",
               })}
+              {...newTextButton.agentProps}
             >
               <NotebookPen className="h-4 w-4" />
             </Button>
@@ -326,42 +464,22 @@ export function UploadZone({
               defaultValue: "Document scope",
             })}
           </legend>
-          {DOCUMENT_UPLOAD_SCOPE_OPTIONS.map(
-            ({
-              value,
-              labelKey,
-              defaultLabel,
-              titleKey,
-              defaultTitle,
-              Icon,
-            }) => {
-              const active = selectedScope === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={active}
-                  title={t(titleKey, { defaultValue: defaultTitle })}
-                  onClick={() => setSelectedScope(value)}
-                  disabled={uploading}
-                  className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-2 text-2xs font-semibold transition-colors ${
-                    active
-                      ? "border-accent/45 bg-accent/12 text-accent-fg"
-                      : "border-border/30 bg-bg-muted/20 text-muted hover:border-border/55 hover:text-txt"
-                  }`}
-                >
-                  <Icon className="h-3 w-3" aria-hidden />
-                  {t(labelKey, { defaultValue: defaultLabel })}
-                </button>
-              );
-            },
-          )}
+          {DOCUMENT_UPLOAD_SCOPE_OPTIONS.map((option) => (
+            <ScopeButton
+              key={option.value}
+              option={option}
+              active={selectedScope === option.value}
+              uploading={uploading}
+              onSelect={setSelectedScope}
+            />
+          ))}
         </fieldset>
 
         {showUrlInput && (
           <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-300">
             <div className="flex flex-col gap-2 sm:flex-row">
               <Input
+                ref={urlInputField.ref}
                 type="url"
                 placeholder={t("documentsview.httpsExampleCom")}
                 value={urlInput}
@@ -371,13 +489,16 @@ export function UploadZone({
                 }
                 disabled={uploading}
                 className="h-10 flex-1 border-border/55 bg-bg/72 text-xs shadow-none"
+                {...urlInputField.agentProps}
               />
               <Button
+                ref={urlSubmitButton.ref}
                 variant="default"
                 size="sm"
                 className="h-10 px-4 text-xs-tight font-semibold"
                 onClick={handleUrlSubmit}
                 disabled={!urlInput.trim() || uploading}
+                {...urlSubmitButton.agentProps}
               >
                 {t("settings.import")}
               </Button>
@@ -389,6 +510,7 @@ export function UploadZone({
           <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-300">
             <div className="flex flex-col gap-2">
               <Input
+                ref={textTitleInput.ref}
                 type="text"
                 placeholder={t("documentsview.TitleOptional", {
                   defaultValue: "Title (optional)",
@@ -397,8 +519,10 @@ export function UploadZone({
                 onChange={(event) => setTitleInput(event.target.value)}
                 disabled={uploading}
                 className="h-10 border-border/55 bg-bg/72 text-xs shadow-none"
+                {...textTitleInput.agentProps}
               />
               <Textarea
+                ref={textBodyInput.ref}
                 placeholder={t("documentsview.PasteText", {
                   defaultValue: "Paste knowledge text...",
                 })}
@@ -406,13 +530,16 @@ export function UploadZone({
                 onChange={(event) => setTextInput(event.target.value)}
                 disabled={uploading}
                 className="min-h-28 resize-y border-border/55 bg-bg/72 text-xs shadow-none"
+                {...textBodyInput.agentProps}
               />
               <Button
+                ref={textSaveButton.ref}
                 variant="default"
                 size="sm"
                 className="h-10 self-end px-4 text-xs-tight font-semibold"
                 onClick={handleTextSubmit}
                 disabled={!textInput.trim() || uploading}
+                {...textSaveButton.agentProps}
               >
                 {t("common.save", { defaultValue: "Save" })}
               </Button>
@@ -422,12 +549,14 @@ export function UploadZone({
 
         <div className="mt-3 inline-flex min-h-8 w-full items-center gap-2 text-2xs leading-relaxed text-muted">
           <Checkbox
+            ref={imageDescriptionsCheckbox.ref}
             id="documents-upload-image-descriptions"
             checked={includeImageDescriptions}
             onCheckedChange={(checked: boolean | "indeterminate") =>
               setIncludeImageDescriptions(!!checked)
             }
             disabled={uploading}
+            {...imageDescriptionsCheckbox.agentProps}
           />
           <label
             htmlFor="documents-upload-image-descriptions"

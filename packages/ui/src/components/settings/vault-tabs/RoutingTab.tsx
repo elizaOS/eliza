@@ -16,6 +16,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { useAgentElement } from "../../../agent-surface";
 import { useTranslation } from "../../../state/TranslationContext";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -64,6 +65,98 @@ export function RoutingTab(props: RoutingTabProps) {
   const [scopeAppName, setScopeAppName] = useState("");
   const [profileId, setProfileId] = useState("");
   const [rulesFilter, setRulesFilter] = useState("");
+
+  const { ref: defaultProfileRef, agentProps: defaultProfileAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "routing-default-profile",
+      role: "select",
+      label: "Default routing profile",
+      group: "routing",
+      description: "Profile applied when no rule matches",
+      getValue: () => config.defaultProfile ?? "default",
+      onFill: (v) => void onDefaultProfileChange(v),
+    });
+  const { ref: addRuleToggleRef, agentProps: addRuleToggleAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "routing-add-rule-toggle",
+      role: "button",
+      label: "Add routing rule",
+      group: "routing",
+      description: "Show the form to add a new routing rule",
+    });
+  const { ref: filterRef, agentProps: filterAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "routing-rules-filter",
+      role: "text-input",
+      label: "Filter routing rules",
+      group: "routing",
+      getValue: () => rulesFilter,
+      onFill: (v) => setRulesFilter(v),
+    });
+  const { ref: keyPatternRef, agentProps: keyPatternAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "routing-key-pattern",
+      role: "text-input",
+      label: "Routing key pattern",
+      group: "routing-add-rule",
+      description: "Exact key or wildcard like OPENROUTER_*",
+      getValue: () => keyPattern,
+      onFill: (v) => setKeyPattern(v),
+    });
+  const { ref: scopeKindRef, agentProps: scopeKindAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "routing-scope-kind",
+      role: "select",
+      label: "Routing scope kind",
+      group: "routing-add-rule",
+      options: ["agent", "app"],
+      getValue: () => scopeKind,
+      onFill: (v) => setScopeKind(v as RoutingScopeKind),
+    });
+  const { ref: scopeAgentRef, agentProps: scopeAgentAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "routing-scope-agent",
+      role: "select",
+      label: "Routing scope agent",
+      group: "routing-add-rule",
+      options: agents.map((a) => a.id),
+      getValue: () => scopeAgentId,
+      onFill: (v) => setScopeAgentId(v),
+    });
+  const { ref: scopeAppRef, agentProps: scopeAppAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "routing-scope-app",
+      role: "select",
+      label: "Routing scope app",
+      group: "routing-add-rule",
+      options: apps.map((a) => a.name),
+      getValue: () => scopeAppName,
+      onFill: (v) => setScopeAppName(v),
+    });
+  const { ref: ruleProfileRef, agentProps: ruleProfileAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "routing-rule-profile",
+      role: "select",
+      label: "Routing rule profile",
+      group: "routing-add-rule",
+      getValue: () => profileId,
+      onFill: (v) => setProfileId(v),
+    });
+  const { ref: ruleCancelRef, agentProps: ruleCancelAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "routing-rule-cancel",
+      role: "button",
+      label: "Cancel adding routing rule",
+      group: "routing-add-rule",
+      onActivate: () => setShowAdd(false),
+    });
+  const { ref: ruleSaveRef, agentProps: ruleSaveAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "routing-rule-save",
+      role: "button",
+      label: "Save routing rule",
+      group: "routing-add-rule",
+    });
 
   // Apply incoming focus from the Secrets tab "Routing rules for this
   // profile →" jump: pre-filter the list on the focused key.
@@ -228,6 +321,8 @@ export function RoutingTab(props: RoutingTabProps) {
             </p>
           </div>
           <select
+            ref={defaultProfileRef}
+            {...defaultProfileAgentProps}
             value={config.defaultProfile ?? "default"}
             onChange={(e) => void onDefaultProfileChange(e.target.value)}
             disabled={saving}
@@ -267,6 +362,8 @@ export function RoutingTab(props: RoutingTabProps) {
             </p>
           </div>
           <Button
+            ref={addRuleToggleRef}
+            {...addRuleToggleAgentProps}
             variant="outline"
             size="sm"
             className="h-8 shrink-0 gap-1 rounded-sm px-2"
@@ -293,6 +390,8 @@ export function RoutingTab(props: RoutingTabProps) {
 
         {config.rules.length > 0 && (
           <Input
+            ref={filterRef}
+            {...filterAgentProps}
             value={rulesFilter}
             onChange={(e) => setRulesFilter(e.target.value)}
             placeholder={t("routing.filterPlaceholder", {
@@ -317,6 +416,8 @@ export function RoutingTab(props: RoutingTabProps) {
                 })}
               </Label>
               <Input
+                ref={keyPatternRef}
+                {...keyPatternAgentProps}
                 value={keyPattern}
                 onChange={(e) => setKeyPattern(e.target.value)}
                 placeholder="OPENROUTER_API_KEY or OPENROUTER_*"
@@ -337,6 +438,8 @@ export function RoutingTab(props: RoutingTabProps) {
                   {t("routing.field.scope", { defaultValue: "Scope" })}
                 </Label>
                 <select
+                  ref={scopeKindRef}
+                  {...scopeKindAgentProps}
                   value={scopeKind}
                   onChange={(e) =>
                     setScopeKind(e.target.value as RoutingScopeKind)
@@ -359,6 +462,8 @@ export function RoutingTab(props: RoutingTabProps) {
                 </Label>
                 {scopeKind === "agent" ? (
                   <select
+                    ref={scopeAgentRef}
+                    {...scopeAgentAgentProps}
                     value={scopeAgentId}
                     onChange={(e) => setScopeAgentId(e.target.value)}
                     className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
@@ -377,6 +482,8 @@ export function RoutingTab(props: RoutingTabProps) {
                   </select>
                 ) : (
                   <select
+                    ref={scopeAppRef}
+                    {...scopeAppAgentProps}
                     value={scopeAppName}
                     onChange={(e) => setScopeAppName(e.target.value)}
                     className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
@@ -398,6 +505,8 @@ export function RoutingTab(props: RoutingTabProps) {
                   {t("routing.field.profile", { defaultValue: "Profile" })}
                 </Label>
                 <select
+                  ref={ruleProfileRef}
+                  {...ruleProfileAgentProps}
                   value={profileId}
                   onChange={(e) => setProfileId(e.target.value)}
                   className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
@@ -418,6 +527,8 @@ export function RoutingTab(props: RoutingTabProps) {
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <Button
+                ref={ruleCancelRef}
+                {...ruleCancelAgentProps}
                 type="button"
                 variant="ghost"
                 size="sm"
@@ -428,6 +539,8 @@ export function RoutingTab(props: RoutingTabProps) {
                 {t("routing.cancel", { defaultValue: "Cancel" })}
               </Button>
               <Button
+                ref={ruleSaveRef}
+                {...ruleSaveAgentProps}
                 type="submit"
                 variant="default"
                 size="sm"
@@ -501,66 +614,23 @@ export function RoutingTab(props: RoutingTabProps) {
                 const ruleKey = `${rule.keyPattern}:${rule.scope.kind}:${targetId}:${rule.profileId}:${idx}`;
                 const keyExists = allKeys.includes(rule.keyPattern);
                 return (
-                  <tr
+                  <RoutingRuleRow
                     key={ruleKey}
-                    data-testid={`routing-rule-row-${ruleKey}`}
-                    className="border-t border-border/30"
-                  >
-                    <td className="px-2 py-1.5 align-top">
-                      {keyExists ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            navigate({
-                              tab: "secrets",
-                              focusKey: rule.keyPattern,
-                              focusProfileId: rule.profileId,
-                            })
-                          }
-                          data-testid={`routing-key-chip-${ruleKey}`}
-                          className="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-2xs font-medium text-accent hover:bg-accent/20"
-                          aria-label={t("routing.openInSecrets", {
-                            keyPattern: rule.keyPattern,
-                            defaultValue: "Open {{keyPattern}} in Secrets tab",
-                          })}
-                        >
-                          {rule.keyPattern}
-                          <ArrowRight className="h-3 w-3" aria-hidden />
-                        </button>
-                      ) : (
-                        <span className="font-mono text-2xs text-muted">
-                          {rule.keyPattern}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-2 py-1.5 align-top">
-                      <span className="rounded-full border border-border/40 bg-bg/40 px-1.5 py-0.5 text-2xs text-muted">
-                        {rule.scope.kind}
-                      </span>
-                      <span className="ml-1.5 text-2xs text-txt">
-                        {targetLabel}
-                      </span>
-                    </td>
-                    <td className="px-2 py-1.5 align-top">
-                      <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
-                        {rule.profileId}
-                      </span>
-                    </td>
-                    <td className="px-2 py-1.5 align-top text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 rounded-sm p-0 text-muted hover:text-danger"
-                        onClick={() => void onDeleteRule(rule)}
-                        aria-label={t("routing.deleteRule", {
-                          keyPattern: rule.keyPattern,
-                          defaultValue: "Delete rule for {{keyPattern}}",
-                        })}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                      </Button>
-                    </td>
-                  </tr>
+                    ruleKey={ruleKey}
+                    keyPattern={rule.keyPattern}
+                    scopeKind={rule.scope.kind}
+                    targetLabel={targetLabel}
+                    profileId={rule.profileId}
+                    keyExists={keyExists}
+                    onOpenInSecrets={() =>
+                      navigate({
+                        tab: "secrets",
+                        focusKey: rule.keyPattern,
+                        focusProfileId: rule.profileId,
+                      })
+                    }
+                    onDelete={() => void onDeleteRule(rule)}
+                  />
                 );
               })}
             </tbody>
@@ -575,5 +645,99 @@ export function RoutingTab(props: RoutingTabProps) {
         )}
       </section>
     </div>
+  );
+}
+
+function RoutingRuleRow({
+  ruleKey,
+  keyPattern,
+  scopeKind,
+  targetLabel,
+  profileId,
+  keyExists,
+  onOpenInSecrets,
+  onDelete,
+}: {
+  ruleKey: string;
+  keyPattern: string;
+  scopeKind: string;
+  targetLabel: string;
+  profileId: string;
+  keyExists: boolean;
+  onOpenInSecrets: () => void;
+  onDelete: () => void;
+}) {
+  const { t } = useTranslation();
+  const { ref: chipRef, agentProps: chipAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `routing-key-chip-${ruleKey}`,
+      role: "button",
+      label: `Open ${keyPattern} in Secrets tab`,
+      group: "routing-rules",
+      description: "Jump to the Secrets tab pre-filtered to this key",
+      onActivate: onOpenInSecrets,
+    });
+  const { ref: deleteRef, agentProps: deleteAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `routing-rule-delete-${ruleKey}`,
+      role: "button",
+      label: `Delete routing rule for ${keyPattern}`,
+      group: "routing-rules",
+      onActivate: onDelete,
+    });
+  return (
+    <tr
+      data-testid={`routing-rule-row-${ruleKey}`}
+      className="border-t border-border/30"
+    >
+      <td className="px-2 py-1.5 align-top">
+        {keyExists ? (
+          <button
+            ref={chipRef}
+            {...chipAgentProps}
+            type="button"
+            onClick={onOpenInSecrets}
+            data-testid={`routing-key-chip-${ruleKey}`}
+            className="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-2xs font-medium text-accent hover:bg-accent/20"
+            aria-label={t("routing.openInSecrets", {
+              keyPattern,
+              defaultValue: "Open {{keyPattern}} in Secrets tab",
+            })}
+          >
+            {keyPattern}
+            <ArrowRight className="h-3 w-3" aria-hidden />
+          </button>
+        ) : (
+          <span className="font-mono text-2xs text-muted">{keyPattern}</span>
+        )}
+      </td>
+      <td className="px-2 py-1.5 align-top">
+        <span className="rounded-full border border-border/40 bg-bg/40 px-1.5 py-0.5 text-2xs text-muted">
+          {scopeKind}
+        </span>
+        <span className="ml-1.5 text-2xs text-txt">{targetLabel}</span>
+      </td>
+      <td className="px-2 py-1.5 align-top">
+        <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
+          {profileId}
+        </span>
+      </td>
+      <td className="px-2 py-1.5 align-top text-right">
+        <Button
+          ref={deleteRef}
+          {...deleteAgentProps}
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 rounded-sm p-0 text-muted hover:text-danger"
+          onClick={onDelete}
+          aria-label={t("routing.deleteRule", {
+            keyPattern,
+            defaultValue: "Delete rule for {{keyPattern}}",
+          })}
+        >
+          <Trash2 className="h-3.5 w-3.5" aria-hidden />
+        </Button>
+      </td>
+    </tr>
   );
 }

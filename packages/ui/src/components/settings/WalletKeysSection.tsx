@@ -18,6 +18,7 @@
 
 import { Eye, EyeOff, Loader2, Plus, Trash2 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { useTranslation } from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -75,6 +76,49 @@ export function WalletKeysSection() {
   const [addKey, setAddKey] = useState("");
   const [addValue, setAddValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const { ref: addToggleRef, agentProps: addToggleAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "wallet-keys-add-toggle",
+      role: "button",
+      label: "Add wallet key",
+      group: "wallet-keys",
+      description: "Show the form to add a wallet private key",
+    });
+  const { ref: addKeyRef, agentProps: addKeyAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "wallet-keys-key-name",
+      role: "text-input",
+      label: "Wallet key name",
+      group: "wallet-keys-add",
+      description: "Env-var name like EVM_PRIVATE_KEY",
+      getValue: () => addKey,
+      onFill: (v) => setAddKey(v),
+    });
+  const { ref: addValueRef, agentProps: addValueAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "wallet-keys-private-key",
+      role: "text-input",
+      label: "Wallet private key value",
+      group: "wallet-keys-add",
+      getValue: () => addValue,
+      onFill: (v) => setAddValue(v),
+    });
+  const { ref: addCancelRef, agentProps: addCancelAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "wallet-keys-cancel",
+      role: "button",
+      label: "Cancel adding wallet key",
+      group: "wallet-keys-add",
+      onActivate: () => setShowAdd(false),
+    });
+  const { ref: addSaveRef, agentProps: addSaveAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "wallet-keys-save",
+      role: "button",
+      label: "Save wallet key",
+      group: "wallet-keys-add",
+    });
 
   const load = useCallback(async () => {
     setError(null);
@@ -216,6 +260,8 @@ export function WalletKeysSection() {
           </p>
         </div>
         <Button
+          ref={addToggleRef}
+          {...addToggleAgentProps}
           variant="outline"
           size="sm"
           className="h-8 shrink-0 gap-1 rounded-sm px-2"
@@ -259,6 +305,8 @@ export function WalletKeysSection() {
               {t("walletkeys.keyName", { defaultValue: "Key name" })}
             </Label>
             <Input
+              ref={addKeyRef}
+              {...addKeyAgentProps}
               value={addKey}
               onChange={(e) => setAddKey(e.target.value)}
               placeholder="EVM_PRIVATE_KEY"
@@ -272,6 +320,8 @@ export function WalletKeysSection() {
               {t("walletkeys.privateKey", { defaultValue: "Private key" })}
             </Label>
             <Input
+              ref={addValueRef}
+              {...addValueAgentProps}
               type="password"
               value={addValue}
               onChange={(e) => setAddValue(e.target.value)}
@@ -282,6 +332,8 @@ export function WalletKeysSection() {
           </div>
           <div className="flex justify-end gap-2 pt-1">
             <Button
+              ref={addCancelRef}
+              {...addCancelAgentProps}
               type="button"
               variant="ghost"
               size="sm"
@@ -292,6 +344,8 @@ export function WalletKeysSection() {
               {t("walletkeys.cancel", { defaultValue: "Cancel" })}
             </Button>
             <Button
+              ref={addSaveRef}
+              {...addSaveAgentProps}
               type="submit"
               variant="default"
               size="sm"
@@ -336,72 +390,123 @@ export function WalletKeysSection() {
             const loading = revealLoading[entry.key];
             const address = revealed ? tryExtractAgentAddress(revealed) : null;
             return (
-              <li
+              <WalletKeyRow
                 key={entry.key}
-                className="flex items-center gap-2 rounded-sm px-2 py-1.5 hover:bg-bg-muted/30"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium text-txt">
-                    {entryDisplayLabel(entry)}
-                  </p>
-                  <p className="truncate font-mono text-2xs text-muted">
-                    {revealed
-                      ? address
-                        ? t("walletkeys.address", {
-                            address,
-                            defaultValue: "address: {{address}}",
-                          })
-                        : maskValue(revealed)
-                      : entry.key}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-txt"
-                  aria-label={
-                    revealed
-                      ? t("walletkeys.hide", {
-                          key: entry.key,
-                          defaultValue: "Hide {{key}}",
+                entryKey={entry.key}
+                displayLabel={entryDisplayLabel(entry)}
+                secondaryLine={
+                  revealed
+                    ? address
+                      ? t("walletkeys.address", {
+                          address,
+                          defaultValue: "address: {{address}}",
                         })
-                      : t("walletkeys.reveal", {
-                          key: entry.key,
-                          defaultValue: "Reveal {{key}}",
-                        })
-                  }
-                  onClick={() =>
-                    revealed ? onHide(entry.key) : void onReveal(entry.key)
-                  }
-                  disabled={loading}
-                  data-testid={`wallet-keys-reveal-${entry.key}`}
-                >
-                  {loading ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                  ) : revealed ? (
-                    <EyeOff className="h-3.5 w-3.5" aria-hidden />
-                  ) : (
-                    <Eye className="h-3.5 w-3.5" aria-hidden />
-                  )}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
-                  aria-label={t("walletkeys.delete", {
-                    key: entry.key,
-                    defaultValue: "Delete {{key}}",
-                  })}
-                  onClick={() => void onDelete(entry)}
-                  data-testid={`wallet-keys-delete-${entry.key}`}
-                >
-                  <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                </Button>
-              </li>
+                      : maskValue(revealed)
+                    : entry.key
+                }
+                revealed={Boolean(revealed)}
+                loading={Boolean(loading)}
+                onToggleReveal={() =>
+                  revealed ? onHide(entry.key) : void onReveal(entry.key)
+                }
+                onDelete={() => void onDelete(entry)}
+              />
             );
           })}
         </ul>
       )}
     </section>
+  );
+}
+
+function WalletKeyRow({
+  entryKey,
+  displayLabel,
+  secondaryLine,
+  revealed,
+  loading,
+  onToggleReveal,
+  onDelete,
+}: {
+  entryKey: string;
+  displayLabel: string;
+  secondaryLine: string;
+  revealed: boolean;
+  loading: boolean;
+  onToggleReveal: () => void;
+  onDelete: () => void;
+}) {
+  const { t } = useTranslation();
+  const { ref: revealRef, agentProps: revealAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `wallet-keys-reveal-${entryKey}`,
+      role: "button",
+      label: `${revealed ? "Hide" : "Reveal"} ${displayLabel}`,
+      group: "wallet-keys",
+      description: `Reveal or hide the value for ${entryKey}`,
+      status: revealed ? "active" : "inactive",
+      onActivate: onToggleReveal,
+    });
+  const { ref: deleteRef, agentProps: deleteAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `wallet-keys-delete-${entryKey}`,
+      role: "button",
+      label: `Delete ${displayLabel}`,
+      group: "wallet-keys",
+      onActivate: onDelete,
+    });
+  return (
+    <li className="flex items-center gap-2 rounded-sm px-2 py-1.5 hover:bg-bg-muted/30">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-medium text-txt">{displayLabel}</p>
+        <p className="truncate font-mono text-2xs text-muted">
+          {secondaryLine}
+        </p>
+      </div>
+      <Button
+        ref={revealRef}
+        {...revealAgentProps}
+        variant="ghost"
+        size="sm"
+        className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-txt"
+        aria-label={
+          revealed
+            ? t("walletkeys.hide", {
+                key: entryKey,
+                defaultValue: "Hide {{key}}",
+              })
+            : t("walletkeys.reveal", {
+                key: entryKey,
+                defaultValue: "Reveal {{key}}",
+              })
+        }
+        onClick={onToggleReveal}
+        disabled={loading}
+        data-testid={`wallet-keys-reveal-${entryKey}`}
+      >
+        {loading ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+        ) : revealed ? (
+          <EyeOff className="h-3.5 w-3.5" aria-hidden />
+        ) : (
+          <Eye className="h-3.5 w-3.5" aria-hidden />
+        )}
+      </Button>
+      <Button
+        ref={deleteRef}
+        {...deleteAgentProps}
+        variant="ghost"
+        size="sm"
+        className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
+        aria-label={t("walletkeys.delete", {
+          key: entryKey,
+          defaultValue: "Delete {{key}}",
+        })}
+        onClick={onDelete}
+        data-testid={`wallet-keys-delete-${entryKey}`}
+      >
+        <Trash2 className="h-3.5 w-3.5" aria-hidden />
+      </Button>
+    </li>
   );
 }

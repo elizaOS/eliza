@@ -8,6 +8,7 @@
 
 import { Bot, ExternalLink, Loader2, Plus, Trash2 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { useAgentElement } from "../../../agent-surface";
 import { useTranslation } from "../../../state/TranslationContext";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -69,6 +70,66 @@ export function LoginsTab() {
   // user-driven autofill consent path uses, and the only authorization
   // the BROWSER action (autofill-login subaction) will accept.
   const [autoallowMap, setAutoallowMap] = useState<Record<string, boolean>>({});
+
+  const { ref: addLoginRef, agentProps: addLoginAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "logins-add-toggle",
+      role: "button",
+      label: "Add login",
+      group: "logins",
+      description: "Show the form to add a saved login",
+    });
+  const { ref: addDomainRef, agentProps: addDomainAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "logins-add-domain",
+      role: "text-input",
+      label: "Login domain",
+      group: "logins-add",
+      getValue: () => addDomain,
+      onFill: (v) => setAddDomain(v),
+    });
+  const { ref: addUsernameRef, agentProps: addUsernameAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "logins-add-username",
+      role: "text-input",
+      label: "Login username or email",
+      group: "logins-add",
+      getValue: () => addUsername,
+      onFill: (v) => setAddUsername(v),
+    });
+  const { ref: addPasswordRef, agentProps: addPasswordAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "logins-add-password",
+      role: "text-input",
+      label: "Login password",
+      group: "logins-add",
+      getValue: () => addPassword,
+      onFill: (v) => setAddPassword(v),
+    });
+  const { ref: addCancelRef, agentProps: addCancelAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "logins-add-cancel",
+      role: "button",
+      label: "Cancel adding login",
+      group: "logins-add",
+      onActivate: () => setShowAdd(false),
+    });
+  const { ref: addSaveRef, agentProps: addSaveAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "logins-add-save",
+      role: "button",
+      label: "Save login",
+      group: "logins-add",
+    });
+  const { ref: filterRef, agentProps: filterAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "logins-filter",
+      role: "text-input",
+      label: "Filter saved logins",
+      group: "logins",
+      getValue: () => filter,
+      onFill: (v) => setFilter(v),
+    });
 
   const loadAutoallowFor = useCallback(
     async (domains: ReadonlyArray<string>) => {
@@ -238,6 +299,8 @@ export function LoginsTab() {
           </p>
         </div>
         <Button
+          ref={addLoginRef}
+          {...addLoginAgentProps}
           variant="outline"
           size="sm"
           className="h-8 shrink-0 gap-1 rounded-sm px-2"
@@ -296,6 +359,8 @@ export function LoginsTab() {
                 {t("logins.addForm.domain", { defaultValue: "Domain" })}
               </Label>
               <Input
+                ref={addDomainRef}
+                {...addDomainAgentProps}
                 value={addDomain}
                 onChange={(e) => setAddDomain(e.target.value)}
                 placeholder="github.com"
@@ -311,6 +376,8 @@ export function LoginsTab() {
                 })}
               </Label>
               <Input
+                ref={addUsernameRef}
+                {...addUsernameAgentProps}
                 value={addUsername}
                 onChange={(e) => setAddUsername(e.target.value)}
                 placeholder="alice@example.com"
@@ -325,6 +392,8 @@ export function LoginsTab() {
               {t("logins.addForm.password", { defaultValue: "Password" })}
             </Label>
             <Input
+              ref={addPasswordRef}
+              {...addPasswordAgentProps}
               type="password"
               value={addPassword}
               onChange={(e) => setAddPassword(e.target.value)}
@@ -335,6 +404,8 @@ export function LoginsTab() {
           </div>
           <div className="flex justify-end gap-2 pt-1">
             <Button
+              ref={addCancelRef}
+              {...addCancelAgentProps}
               type="button"
               variant="ghost"
               size="sm"
@@ -345,6 +416,8 @@ export function LoginsTab() {
               {t("logins.cancel", { defaultValue: "Cancel" })}
             </Button>
             <Button
+              ref={addSaveRef}
+              {...addSaveAgentProps}
               type="submit"
               variant="default"
               size="sm"
@@ -368,6 +441,8 @@ export function LoginsTab() {
 
       {logins !== null && logins.length > 0 && (
         <Input
+          ref={filterRef}
+          {...filterAgentProps}
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder={t("logins.filterPlaceholder", {
@@ -440,18 +515,11 @@ export function LoginsTab() {
                 />
               ) : null}
               {login.source === "in-house" ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
-                  aria-label={t("logins.deleteLabel", {
-                    target: login.domain ?? login.username,
-                    defaultValue: "Delete saved login for {{target}}",
-                  })}
-                  onClick={() => void onDelete(login)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                </Button>
+                <DeleteLoginButton
+                  identifier={login.identifier}
+                  target={login.domain ?? login.username}
+                  onDelete={() => void onDelete(login)}
+                />
               ) : (
                 <ExternalRowAction login={login} />
               )}
@@ -473,6 +541,15 @@ function AgentAutoallowToggle({
   onChange: (next: boolean) => void;
 }) {
   const { t } = useTranslation();
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `logins-autoallow-${domain}`,
+    role: "toggle",
+    label: `Agent autofill for ${domain}`,
+    group: "logins",
+    description: "Allow the agent to autofill this domain without prompting",
+    status: allowed ? "active" : "inactive",
+    onActivate: () => onChange(!allowed),
+  });
   const label = allowed
     ? t("logins.autoallow.enabled", {
         domain,
@@ -486,6 +563,8 @@ function AgentAutoallowToggle({
       });
   return (
     <Button
+      ref={ref}
+      {...agentProps}
       variant="ghost"
       size="sm"
       className={`h-7 w-7 shrink-0 rounded-sm p-0 ${
@@ -502,6 +581,41 @@ function AgentAutoallowToggle({
   );
 }
 
+function DeleteLoginButton({
+  identifier,
+  target,
+  onDelete,
+}: {
+  identifier: string;
+  target: string;
+  onDelete: () => void;
+}) {
+  const { t } = useTranslation();
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `logins-delete-${identifier}`,
+    role: "button",
+    label: `Delete saved login for ${target}`,
+    group: "logins",
+    onActivate: onDelete,
+  });
+  return (
+    <Button
+      ref={ref}
+      {...agentProps}
+      variant="ghost"
+      size="sm"
+      className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
+      aria-label={t("logins.deleteLabel", {
+        target,
+        defaultValue: "Delete saved login for {{target}}",
+      })}
+      onClick={onDelete}
+    >
+      <Trash2 className="h-3.5 w-3.5" aria-hidden />
+    </Button>
+  );
+}
+
 function ExternalRowAction({ login }: { login: SavedLogin }) {
   const { t } = useTranslation();
   const href =
@@ -512,8 +626,17 @@ function ExternalRowAction({ login }: { login: SavedLogin }) {
     source: SOURCE_LABEL[login.source],
     defaultValue: "View in {{source}}",
   });
+  const { ref, agentProps } = useAgentElement<HTMLAnchorElement>({
+    id: `logins-view-external-${login.source}-${login.identifier}`,
+    role: "link",
+    label: viewLabel,
+    group: "logins",
+    description: `Open this login in ${SOURCE_LABEL[login.source]}`,
+  });
   return (
     <a
+      ref={ref}
+      {...agentProps}
       href={href}
       target="_blank"
       rel="noopener noreferrer"

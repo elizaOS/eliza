@@ -29,6 +29,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useAgentElement } from "../../../agent-surface";
 import { client } from "../../../api/client";
 import type { DocumentRecord } from "../../../api/client-types-chat";
 import type {
@@ -241,6 +242,41 @@ function OwnerNameEditor({
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  const editTriggerButton = useAgentElement<HTMLButtonElement>({
+    id: "relationships-owner-edit",
+    role: "button",
+    label: t("relationships.owner.editAria", {
+      defaultValue: "Edit owner name",
+    }),
+    group: "relationships-owner",
+    description: "Start editing the owner's display name",
+    onActivate: () => setEditing(true),
+  });
+  const ownerNameInput = useAgentElement<HTMLInputElement>({
+    id: "relationships-owner-name",
+    role: "text-input",
+    label: t("relationships.owner.nameAria", { defaultValue: "Owner name" }),
+    group: "relationships-owner",
+    description: "The owner's display name",
+    getValue: () => draft,
+    onFill: (value) => setDraft(value),
+  });
+  const ownerSaveButton = useAgentElement<HTMLButtonElement>({
+    id: "relationships-owner-save",
+    role: "button",
+    label: t("relationships.owner.save", { defaultValue: "Save" }),
+    group: "relationships-owner",
+    description: "Save the edited owner name",
+  });
+  const ownerCancelButton = useAgentElement<HTMLButtonElement>({
+    id: "relationships-owner-cancel",
+    role: "button",
+    label: t("relationships.owner.cancel", { defaultValue: "Cancel" }),
+    group: "relationships-owner",
+    description: "Cancel editing the owner name",
+    onActivate: () => setEditing(false),
+  });
+
   useEffect(() => {
     if (!editing) {
       setDraft(initialName);
@@ -279,12 +315,14 @@ function OwnerNameEditor({
   if (!editing) {
     return (
       <button
+        ref={editTriggerButton.ref}
         type="button"
         onClick={() => setEditing(true)}
         className="group inline-flex items-center gap-2 rounded-sm text-left transition hover:bg-card/40"
         aria-label={t("relationships.owner.editAria", {
           defaultValue: "Edit owner name",
         })}
+        {...editTriggerButton.agentProps}
       >
         <span className="break-words text-[1.75rem] font-semibold leading-tight text-txt">
           {initialName}
@@ -297,7 +335,10 @@ function OwnerNameEditor({
   return (
     <form onSubmit={submit} className="flex items-center gap-2">
       <input
-        ref={inputRef}
+        ref={(node) => {
+          inputRef.current = node;
+          ownerNameInput.ref.current = node;
+        }}
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={(event) => {
@@ -311,18 +352,27 @@ function OwnerNameEditor({
         aria-label={t("relationships.owner.nameAria", {
           defaultValue: "Owner name",
         })}
+        {...ownerNameInput.agentProps}
       />
-      <Button type="submit" size="sm" disabled={saving}>
+      <Button
+        ref={ownerSaveButton.ref}
+        type="submit"
+        size="sm"
+        disabled={saving}
+        {...ownerSaveButton.agentProps}
+      >
         {saving
           ? t("relationships.owner.saving", { defaultValue: "Saving..." })
           : t("relationships.owner.save", { defaultValue: "Save" })}
       </Button>
       <Button
+        ref={ownerCancelButton.ref}
         type="button"
         size="sm"
         variant="outline"
         disabled={saving}
         onClick={() => setEditing(false)}
+        {...ownerCancelButton.agentProps}
       >
         {t("relationships.owner.cancel", { defaultValue: "Cancel" })}
       </Button>
@@ -471,6 +521,15 @@ export function RelationshipsPersonSummaryPanel({
 
   const labels = [...person.categories, ...person.tags];
 
+  const viewMemoriesButton = useAgentElement<HTMLButtonElement>({
+    id: "relationships-view-memories",
+    role: "button",
+    label: t("relationships.viewMemories", { defaultValue: "View memories" }),
+    group: "relationships-summary",
+    description: "View this person's memories",
+    onActivate: () => onViewMemories?.(person.memberEntityIds),
+  });
+
   return (
     <PagePanel variant="padded" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -540,6 +599,7 @@ export function RelationshipsPersonSummaryPanel({
           </MetaPill>
           {onViewMemories ? (
             <Button
+              ref={viewMemoriesButton.ref}
               type="button"
               size="sm"
               variant="outline"
@@ -548,6 +608,7 @@ export function RelationshipsPersonSummaryPanel({
               aria-label={t("relationships.viewMemories", {
                 defaultValue: "View memories",
               })}
+              {...viewMemoriesButton.agentProps}
             >
               <Brain className="h-3.5 w-3.5" />
             </Button>
@@ -1061,6 +1122,36 @@ export function RelationshipsUserPreferencesPanel({
   );
 }
 
+function DocumentOpenButton({
+  doc,
+  onOpen,
+}: {
+  doc: DocumentRecord;
+  onOpen: () => void;
+}) {
+  const { t } = useTranslation();
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `relationships-document-open-${doc.id}`,
+    role: "button",
+    label: `${t("relationships.document.open", { defaultValue: "Open" })}: ${doc.filename}`,
+    group: "relationships-documents",
+    description: `Open the document ${doc.filename} in the documents page`,
+    onActivate: onOpen,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onOpen}
+      className="mt-2 inline-flex items-center gap-1 rounded-full border border-border/24 bg-card/24 px-2 py-0.5 text-2xs font-semibold text-muted transition hover:text-txt"
+      {...agentProps}
+    >
+      <Link2 className="h-3 w-3" />
+      {t("relationships.document.open", { defaultValue: "Open" })}
+    </button>
+  );
+}
+
 export function RelationshipsDocumentsPanel({
   person,
 }: {
@@ -1192,14 +1283,7 @@ export function RelationshipsDocumentsPanel({
             {cleanPreviewText(doc.content.text)}
           </div>
         ) : null}
-        <button
-          type="button"
-          onClick={openDocumentsPage}
-          className="mt-2 inline-flex items-center gap-1 rounded-full border border-border/24 bg-card/24 px-2 py-0.5 text-2xs font-semibold text-muted transition hover:text-txt"
-        >
-          <Link2 className="h-3 w-3" />
-          {t("relationships.document.open", { defaultValue: "Open" })}
-        </button>
+        <DocumentOpenButton doc={doc} onOpen={openDocumentsPage} />
       </div>
     );
   };

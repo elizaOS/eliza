@@ -5,6 +5,7 @@
  */
 
 import { useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import type { SkillInfo, SkillMarketplaceResult } from "../../api";
 import { useApp } from "../../state";
 import {
@@ -15,6 +16,206 @@ import {
 } from "../ui/admin-dialog";
 import { Button } from "../ui/button";
 import { Dialog, DialogDescription, DialogTitle } from "../ui/dialog";
+
+/* ── Agent-surface helpers ──────────────────────────────────────────── */
+
+type MarketplaceActionVariant = "default" | "outline" | "ghost" | "destructive";
+
+function MarketplaceActionButton({
+  id,
+  label,
+  description,
+  variant,
+  className,
+  disabled,
+  testId,
+  children,
+  onActivate,
+}: {
+  id: string;
+  label: string;
+  description: string;
+  variant: MarketplaceActionVariant;
+  className: string;
+  disabled?: boolean;
+  testId?: string;
+  children: React.ReactNode;
+  onActivate: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id,
+    role: "button",
+    label,
+    group: "skill-marketplace",
+    description,
+    onActivate,
+  });
+  return (
+    <Button
+      ref={ref}
+      variant={variant}
+      size="sm"
+      className={className}
+      onClick={onActivate}
+      disabled={disabled}
+      data-testid={testId}
+      {...agentProps}
+    >
+      {children}
+    </Button>
+  );
+}
+
+function InstallSourceTab({
+  id,
+  label,
+  active,
+  onSelect,
+}: {
+  id: "search" | "url";
+  label: string;
+  active: boolean;
+  onSelect: (id: "search" | "url") => void;
+}) {
+  const { agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `skill-install-tab-${id}`,
+    role: "tab",
+    label,
+    group: "skill-install",
+    status: active ? "active" : "inactive",
+    description: `Switch to the ${label} install source`,
+    onActivate: () => onSelect(id),
+  });
+  return (
+    <AdminDialog.SegmentedTab
+      active={active}
+      role="tab"
+      id={`skills-install-tab-${id}`}
+      aria-selected={active}
+      aria-controls={`skills-install-panel-${id}`}
+      onClick={() => onSelect(id)}
+      {...agentProps}
+    >
+      {label}
+    </AdminDialog.SegmentedTab>
+  );
+}
+
+function SkillSearchField({
+  value,
+  placeholder,
+  ariaLabel,
+  onChange,
+  onSubmit,
+}: {
+  value: string;
+  placeholder: string;
+  ariaLabel: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: "skill-install-search-input",
+    role: "text-input",
+    label: "Search skills marketplace",
+    group: "skill-install",
+    description: "Search the skills marketplace by keyword",
+    getValue: () => value,
+    onFill: (next) => onChange(next),
+  });
+  return (
+    <AdminInput
+      ref={ref}
+      type="text"
+      style={{ flex: 1, minWidth: 200 }}
+      placeholder={placeholder}
+      aria-label={ariaLabel}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") onSubmit();
+      }}
+      {...agentProps}
+    />
+  );
+}
+
+function SkillUrlField({
+  value,
+  ariaLabel,
+  onChange,
+  onSubmit,
+}: {
+  value: string;
+  ariaLabel: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: "skill-install-url-input",
+    role: "text-input",
+    label: "GitHub repository URL",
+    group: "skill-install",
+    description: "Paste a GitHub repository URL to install a skill",
+    getValue: () => value,
+    onFill: (next) => onChange(next),
+  });
+  return (
+    <AdminInput
+      ref={ref}
+      type="text"
+      style={{ flex: 1 }}
+      placeholder="https://github.com/org/repo"
+      aria-label={ariaLabel}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") onSubmit();
+      }}
+      {...agentProps}
+    />
+  );
+}
+
+function SkillInstallSubmitButton({
+  id,
+  label,
+  description,
+  disabled,
+  children,
+  onActivate,
+}: {
+  id: string;
+  label: string;
+  description: string;
+  disabled?: boolean;
+  children: React.ReactNode;
+  onActivate: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id,
+    role: "button",
+    label,
+    group: "skill-install",
+    description,
+    onActivate,
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="default"
+      size="sm"
+      type="button"
+      className="plugins-game-chip"
+      style={{ minHeight: 36, padding: "0 16px", fontWeight: 700 }}
+      onClick={onActivate}
+      disabled={disabled}
+      {...agentProps}
+    >
+      {children}
+    </Button>
+  );
+}
 
 /* ── Marketplace Result Card ────────────────────────────────────────── */
 
@@ -121,115 +322,133 @@ export function MarketplaceCard({
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 max-w-[18rem]">
         {!installed ? (
           <>
-            <Button
+            <MarketplaceActionButton
+              id={`skill-${item.id}-install`}
+              label={`Install ${item.name}`}
+              description={`Install the ${item.name} skill`}
               variant="default"
-              size="sm"
               className="h-8 px-3 text-xs-tight font-bold tracking-wide "
-              onClick={() => onInstall(item)}
               disabled={isInstalling}
-              data-testid={`skill-action-install-${item.id}`}
+              testId={`skill-action-install-${item.id}`}
+              onActivate={() => onInstall(item)}
             >
               {isInstalling
                 ? t("common.installing", { defaultValue: "Installing..." })
                 : t("common.install")}
-            </Button>
-            <Button
+            </MarketplaceActionButton>
+            <MarketplaceActionButton
+              id={`skill-${item.id}-details`}
+              label={`${item.name} details`}
+              description={`Show details for ${item.name}`}
               variant="ghost"
-              size="sm"
               className="h-8 px-3 text-xs-tight font-bold tracking-wide"
-              onClick={() => onDetails(item.id)}
-              data-testid={`skill-action-details-${item.id}`}
+              testId={`skill-action-details-${item.id}`}
+              onActivate={() => onDetails(item.id)}
             >
               {t("skillsview.details", { defaultValue: "Details" })}
-            </Button>
+            </MarketplaceActionButton>
           </>
         ) : enabled ? (
           <>
-            <Button
+            <MarketplaceActionButton
+              id={`skill-${item.id}-disable`}
+              label={`Disable ${item.name}`}
+              description={`Disable the ${item.name} skill`}
               variant="outline"
-              size="sm"
               className="h-8 px-3 text-xs-tight font-bold tracking-wide"
-              onClick={() => onDisable(item.id, item.name)}
               disabled={isToggling}
-              data-testid={`skill-action-disable-${item.id}`}
+              testId={`skill-action-disable-${item.id}`}
+              onActivate={() => onDisable(item.id, item.name)}
             >
               {isToggling
                 ? t("skillsview.updating", { defaultValue: "Updating..." })
                 : t("skillsview.Disable", { defaultValue: "Disable" })}
-            </Button>
-            <Button
+            </MarketplaceActionButton>
+            <MarketplaceActionButton
+              id={`skill-${item.id}-copy`}
+              label={`Copy ${item.name} SKILL.md`}
+              description={`Copy the SKILL.md source for ${item.name}`}
               variant="ghost"
-              size="sm"
               className="h-8 px-3 text-xs-tight font-bold tracking-wide"
-              onClick={() => onCopy(item.id, item.name)}
               disabled={isCopying}
-              data-testid={`skill-action-copy-${item.id}`}
+              testId={`skill-action-copy-${item.id}`}
+              onActivate={() => onCopy(item.id, item.name)}
             >
               {isCopying
                 ? t("skillsview.copying", { defaultValue: "Copying..." })
                 : t("skillsview.copySkillMd", {
                     defaultValue: "Copy SKILL.md",
                   })}
-            </Button>
-            <Button
+            </MarketplaceActionButton>
+            <MarketplaceActionButton
+              id={`skill-${item.id}-details`}
+              label={`${item.name} details`}
+              description={`Show details for ${item.name}`}
               variant="ghost"
-              size="sm"
               className="h-8 px-3 text-xs-tight font-bold tracking-wide"
-              onClick={() => onDetails(item.id)}
-              data-testid={`skill-action-details-${item.id}`}
+              testId={`skill-action-details-${item.id}`}
+              onActivate={() => onDetails(item.id)}
             >
               {t("skillsview.details", { defaultValue: "Details" })}
-            </Button>
+            </MarketplaceActionButton>
           </>
         ) : (
           <>
-            <Button
+            <MarketplaceActionButton
+              id={`skill-${item.id}-enable`}
+              label={`Enable ${item.name}`}
+              description={`Enable the ${item.name} skill`}
               variant="default"
-              size="sm"
               className="h-8 px-3 text-xs-tight font-bold tracking-wide "
-              onClick={() => onEnable(item.id, item.name)}
               disabled={isToggling}
-              data-testid={`skill-action-enable-${item.id}`}
+              testId={`skill-action-enable-${item.id}`}
+              onActivate={() => onEnable(item.id, item.name)}
             >
               {isToggling
                 ? t("skillsview.updating", { defaultValue: "Updating..." })
                 : t("skillsview.Enable", { defaultValue: "Enable" })}
-            </Button>
-            <Button
+            </MarketplaceActionButton>
+            <MarketplaceActionButton
+              id={`skill-${item.id}-copy`}
+              label={`Copy ${item.name} SKILL.md`}
+              description={`Copy the SKILL.md source for ${item.name}`}
               variant="ghost"
-              size="sm"
               className="h-8 px-3 text-xs-tight font-bold tracking-wide"
-              onClick={() => onCopy(item.id, item.name)}
               disabled={isCopying}
-              data-testid={`skill-action-copy-${item.id}`}
+              testId={`skill-action-copy-${item.id}`}
+              onActivate={() => onCopy(item.id, item.name)}
             >
               {isCopying
                 ? t("skillsview.copying", { defaultValue: "Copying..." })
                 : t("skillsview.copySkillMd", {
                     defaultValue: "Copy SKILL.md",
                   })}
-            </Button>
-            <Button
+            </MarketplaceActionButton>
+            <MarketplaceActionButton
+              id={`skill-${item.id}-details`}
+              label={`${item.name} details`}
+              description={`Show details for ${item.name}`}
               variant="ghost"
-              size="sm"
               className="h-8 px-3 text-xs-tight font-bold tracking-wide"
-              onClick={() => onDetails(item.id)}
-              data-testid={`skill-action-details-${item.id}`}
+              testId={`skill-action-details-${item.id}`}
+              onActivate={() => onDetails(item.id)}
             >
               {t("skillsview.details", { defaultValue: "Details" })}
-            </Button>
-            <Button
+            </MarketplaceActionButton>
+            <MarketplaceActionButton
+              id={`skill-${item.id}-uninstall`}
+              label={`Uninstall ${item.name}`}
+              description={`Uninstall the ${item.name} skill`}
               variant="destructive"
-              size="sm"
               className="h-8 px-3 text-xs-tight font-bold tracking-wide "
-              onClick={() => onUninstall(item.id, item.name)}
               disabled={isUninstalling}
-              data-testid={`skill-action-uninstall-${item.id}`}
+              testId={`skill-action-uninstall-${item.id}`}
+              onActivate={() => onUninstall(item.id, item.name)}
             >
               {isUninstalling
                 ? t("skillsview.removing", { defaultValue: "Removing..." })
                 : t("common.uninstall", { defaultValue: "Uninstall" })}
-            </Button>
+            </MarketplaceActionButton>
           </>
         )}
       </div>
@@ -325,18 +544,14 @@ export function InstallModal({
             defaultValue: "Install skill source",
           })}
         >
-          {installTabs.map((t) => (
-            <AdminDialog.SegmentedTab
-              key={t.id}
-              active={tab === t.id}
-              role="tab"
-              id={`skills-install-tab-${t.id}`}
-              aria-selected={tab === t.id}
-              aria-controls={`skills-install-panel-${t.id}`}
-              onClick={() => setTab(t.id)}
-            >
-              {t.label}
-            </AdminDialog.SegmentedTab>
+          {installTabs.map((installTab) => (
+            <InstallSourceTab
+              key={installTab.id}
+              id={installTab.id}
+              label={installTab.label}
+              active={tab === installTab.id}
+              onSelect={setTab}
+            />
           ))}
         </AdminDialog.SegmentedTabList>
         <div className="flex-1 overflow-y-auto px-5 py-4">
@@ -347,36 +562,28 @@ export function InstallModal({
               aria-labelledby="skills-install-tab-search"
             >
               <div className="flex gap-2 items-center mb-4">
-                <AdminInput
-                  type="text"
-                  style={{ flex: 1, minWidth: 200 }}
+                <SkillSearchField
+                  value={skillsMarketplaceQuery}
                   placeholder={t("skillsview.searchByKeyword")}
-                  aria-label={t("skillsview.searchByKeyword", {
+                  ariaLabel={t("skillsview.searchByKeyword", {
                     defaultValue: "Search skills marketplace",
                   })}
-                  value={skillsMarketplaceQuery}
-                  onChange={(e) =>
-                    setState("skillsMarketplaceQuery", e.target.value)
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void searchSkillsMarketplace();
-                  }}
+                  onChange={(next) => setState("skillsMarketplaceQuery", next)}
+                  onSubmit={() => void searchSkillsMarketplace()}
                 />
-                <Button
-                  variant="default"
-                  size="sm"
-                  type="button"
-                  className="plugins-game-chip"
-                  style={{ minHeight: 36, padding: "0 16px", fontWeight: 700 }}
-                  onClick={() => searchSkillsMarketplace()}
+                <SkillInstallSubmitButton
+                  id="skill-install-search-submit"
+                  label="Search skills"
+                  description="Search the skills marketplace"
                   disabled={skillsMarketplaceLoading}
+                  onActivate={() => void searchSkillsMarketplace()}
                 >
                   {skillsMarketplaceLoading
                     ? t("common.searching", {
                         defaultValue: "Searching...",
                       })
                     : t("common.search", { defaultValue: "Search" })}
-                </Button>
+                </SkillInstallSubmitButton>
               </div>
 
               {skillsMarketplaceError && (
@@ -443,39 +650,32 @@ export function InstallModal({
                 })}
               </div>
               <div className="flex gap-2 items-center">
-                <AdminInput
-                  type="text"
-                  style={{ flex: 1 }}
-                  placeholder="https://github.com/org/repo"
-                  aria-label={t("skillsview.githubRepositoryUrl", {
+                <SkillUrlField
+                  value={skillsMarketplaceManualGithubUrl}
+                  ariaLabel={t("skillsview.githubRepositoryUrl", {
                     defaultValue: "GitHub Repository URL",
                   })}
-                  value={skillsMarketplaceManualGithubUrl}
-                  onChange={(e) =>
-                    setState("skillsMarketplaceManualGithubUrl", e.target.value)
+                  onChange={(next) =>
+                    setState("skillsMarketplaceManualGithubUrl", next)
                   }
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void installSkillFromGithubUrl();
-                  }}
+                  onSubmit={() => void installSkillFromGithubUrl()}
                 />
-                <Button
-                  variant="default"
-                  size="sm"
-                  type="button"
-                  className="plugins-game-chip"
-                  style={{ minHeight: 36, padding: "0 16px", fontWeight: 700 }}
-                  onClick={() => installSkillFromGithubUrl()}
+                <SkillInstallSubmitButton
+                  id="skill-install-url-submit"
+                  label="Install from GitHub URL"
+                  description="Install a skill from the entered GitHub repository URL"
                   disabled={
                     skillsMarketplaceAction === "install:manual" ||
                     !skillsMarketplaceManualGithubUrl.trim()
                   }
+                  onActivate={() => void installSkillFromGithubUrl()}
                 >
                   {skillsMarketplaceAction === "install:manual"
                     ? t("common.installing", {
                         defaultValue: "Installing...",
                       })
                     : t("common.install")}
-                </Button>
+                </SkillInstallSubmitButton>
               </div>
 
               {skillsMarketplaceError && (

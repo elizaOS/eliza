@@ -11,6 +11,7 @@
 
 import { Pencil, Pin, Plus, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { fetchWithCsrf } from "../../api/csrf-client";
 import {
   type DynamicViewManifest,
@@ -30,6 +31,7 @@ import {
   recordRecentViewId,
   TOP_VIEW_LIMIT,
 } from "../../view-recents";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { ViewIcon } from "../views/ViewIcon";
 
 const VIEW_LOADING_SKELETON_KEYS = [
@@ -40,6 +42,162 @@ const VIEW_LOADING_SKELETON_KEYS = [
   "view-skeleton-5",
   "view-skeleton-6",
 ];
+
+function ViewCardPinButton({
+  view,
+  onPin,
+}: {
+  view: ViewRegistryEntry;
+  onPin: (view: ViewRegistryEntry) => void;
+}) {
+  const { t } = useTranslation();
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `view-card-pin-${view.id}`,
+    role: "button",
+    label: t("viewmanager.card.pinAria", {
+      label: view.label,
+      defaultValue: "Pin {{label}} as desktop tab",
+    }),
+    group: "view-cards",
+    description: `Pin the ${view.label} view as a desktop tab`,
+    onActivate: () => onPin(view),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      title={t("viewmanager.card.pinTitle", {
+        defaultValue: "Pin as desktop tab",
+      })}
+      onClick={(e) => {
+        e.stopPropagation();
+        onPin(view);
+      }}
+      className="flex h-6 w-6 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted hover:border-accent hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      aria-label={t("viewmanager.card.pinAria", {
+        label: view.label,
+        defaultValue: "Pin {{label}} as desktop tab",
+      })}
+      {...agentProps}
+    >
+      <Pin className="h-3 w-3" />
+    </button>
+  );
+}
+
+function ViewCardEditButton({
+  view,
+  onEdit,
+}: {
+  view: ViewRegistryEntry;
+  onEdit: (view: ViewRegistryEntry) => void;
+}) {
+  const { t } = useTranslation();
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `view-card-edit-${view.id}`,
+    role: "button",
+    label: t("viewmanager.card.editAria", {
+      label: view.label,
+      defaultValue: "Edit {{label}}",
+    }),
+    group: "view-cards",
+    description: `Edit the ${view.label} dynamic view`,
+    onActivate: () => onEdit(view),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      title={t("viewmanager.card.editTitle", {
+        defaultValue: "Edit dynamic view",
+      })}
+      onClick={(e) => {
+        e.stopPropagation();
+        onEdit(view);
+      }}
+      className="flex h-6 w-6 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted hover:border-accent hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      aria-label={t("viewmanager.card.editAria", {
+        label: view.label,
+        defaultValue: "Edit {{label}}",
+      })}
+      {...agentProps}
+    >
+      <Pencil className="h-3 w-3" />
+    </button>
+  );
+}
+
+function ViewCardDeleteButton({
+  view,
+  onDelete,
+}: {
+  view: ViewRegistryEntry;
+  onDelete: (view: ViewRegistryEntry) => void;
+}) {
+  const { t } = useTranslation();
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `view-card-delete-${view.id}`,
+    role: "button",
+    label: t("viewmanager.card.deleteAria", {
+      label: view.label,
+      defaultValue: "Delete {{label}}",
+    }),
+    group: "view-cards",
+    description: `Delete the ${view.label} dynamic view`,
+    onActivate: () => onDelete(view),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      title={t("viewmanager.card.deleteTitle", {
+        defaultValue: "Delete dynamic view",
+      })}
+      onClick={(e) => {
+        e.stopPropagation();
+        onDelete(view);
+      }}
+      className="flex h-6 w-6 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted hover:border-destructive hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      aria-label={t("viewmanager.card.deleteAria", {
+        label: view.label,
+        defaultValue: "Delete {{label}}",
+      })}
+      {...agentProps}
+    >
+      <Trash2 className="h-3 w-3" />
+    </button>
+  );
+}
+
+function ViewCardOpenButton({
+  view,
+  onClick,
+  children,
+}: {
+  view: ViewRegistryEntry;
+  onClick: (view: ViewRegistryEntry) => void;
+  children: React.ReactNode;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `view-card-open-${view.id}`,
+    role: "button",
+    label: view.label,
+    group: "view-cards",
+    description: view.description ?? `Open the ${view.label} view`,
+    onActivate: () => onClick(view),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={() => onClick(view)}
+      className="flex flex-col gap-2 text-left focus:outline-none"
+      {...agentProps}
+    >
+      {children}
+    </button>
+  );
+}
 
 function ViewCard({
   view,
@@ -56,7 +214,6 @@ function ViewCard({
   onDelete?: (view: ViewRegistryEntry) => void;
   compact?: boolean;
 }) {
-  const { t } = useTranslation();
   const isDesktop = isElectrobunRuntime();
   const showPinButton = isDesktop && view.desktopTabEnabled !== false && onPin;
   const showManagementButtons = Boolean(onEdit || onDelete);
@@ -68,71 +225,13 @@ function ViewCard({
     >
       {(showPinButton || showManagementButtons) && (
         <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-          {showPinButton && (
-            <button
-              type="button"
-              title={t("viewmanager.card.pinTitle", {
-                defaultValue: "Pin as desktop tab",
-              })}
-              onClick={(e) => {
-                e.stopPropagation();
-                onPin(view);
-              }}
-              className="flex h-6 w-6 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted hover:border-accent hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label={t("viewmanager.card.pinAria", {
-                label: view.label,
-                defaultValue: "Pin {{label}} as desktop tab",
-              })}
-            >
-              <Pin className="h-3 w-3" />
-            </button>
-          )}
-          {onEdit && (
-            <button
-              type="button"
-              title={t("viewmanager.card.editTitle", {
-                defaultValue: "Edit dynamic view",
-              })}
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit(view);
-              }}
-              className="flex h-6 w-6 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted hover:border-accent hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label={t("viewmanager.card.editAria", {
-                label: view.label,
-                defaultValue: "Edit {{label}}",
-              })}
-            >
-              <Pencil className="h-3 w-3" />
-            </button>
-          )}
-          {onDelete && (
-            <button
-              type="button"
-              title={t("viewmanager.card.deleteTitle", {
-                defaultValue: "Delete dynamic view",
-              })}
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(view);
-              }}
-              className="flex h-6 w-6 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted hover:border-destructive hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label={t("viewmanager.card.deleteAria", {
-                label: view.label,
-                defaultValue: "Delete {{label}}",
-              })}
-            >
-              <Trash2 className="h-3 w-3" />
-            </button>
-          )}
+          {showPinButton && <ViewCardPinButton view={view} onPin={onPin} />}
+          {onEdit && <ViewCardEditButton view={view} onEdit={onEdit} />}
+          {onDelete && <ViewCardDeleteButton view={view} onDelete={onDelete} />}
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() => onClick(view)}
-        className="flex flex-col gap-2 text-left focus:outline-none"
-      >
+      <ViewCardOpenButton view={view} onClick={onClick}>
         {view.heroImageUrl && !compact && (
           <div className="aspect-video w-full overflow-hidden rounded-sm bg-muted">
             <img
@@ -180,7 +279,7 @@ function ViewCard({
             ))}
           </div>
         )}
-      </button>
+      </ViewCardOpenButton>
     </div>
   );
 }
@@ -333,6 +432,67 @@ export function ViewManagerPage() {
   >(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const searchInput = useAgentElement<HTMLInputElement>({
+    id: "views-search-input",
+    role: "text-input",
+    label: t("viewmanager.searchPlaceholder", {
+      defaultValue: "Search views…",
+    }),
+    group: "views-toolbar",
+    description: "Search the registered views by name, description, or tag",
+    getValue: () => query,
+    onFill: (value) => setQuery(value),
+  });
+  const formIdInput = useAgentElement<HTMLInputElement>({
+    id: "views-form-id",
+    role: "text-input",
+    label: t("viewmanager.form.idAria", { defaultValue: "Dynamic view ID" }),
+    group: "views-management",
+    description: "ID of the dynamic view to register",
+    getValue: () => formViewId,
+    onFill: (value) => setFormViewId(value),
+  });
+  const formTitleInput = useAgentElement<HTMLInputElement>({
+    id: "views-form-title",
+    role: "text-input",
+    label: t("viewmanager.form.titleAria", {
+      defaultValue: "Dynamic view title",
+    }),
+    group: "views-management",
+    description: "Title of the dynamic view to register",
+    getValue: () => formTitle,
+    onFill: (value) => setFormTitle(value),
+  });
+  const formEntrypointInput = useAgentElement<HTMLInputElement>({
+    id: "views-form-entrypoint",
+    role: "text-input",
+    label: t("viewmanager.form.entrypointAria", {
+      defaultValue: "Dynamic view entrypoint",
+    }),
+    group: "views-management",
+    description: "Entrypoint URL or path of the dynamic view bundle",
+    getValue: () => formEntrypoint,
+    onFill: (value) => setFormEntrypoint(value),
+  });
+  const formDescriptionInput = useAgentElement<HTMLInputElement>({
+    id: "views-form-description",
+    role: "text-input",
+    label: t("viewmanager.form.descriptionAria", {
+      defaultValue: "Dynamic view description",
+    }),
+    group: "views-management",
+    description: "Description of the dynamic view to register",
+    getValue: () => formDescription,
+    onFill: (value) => setFormDescription(value),
+  });
+  const formSaveButton = useAgentElement<HTMLButtonElement>({
+    id: "views-form-save",
+    role: "button",
+    label: t("viewmanager.form.save", { defaultValue: "Save" }),
+    group: "views-management",
+    description: "Register or update the dynamic view from the form fields",
+  });
 
   // When the query changes, debounce a call to the semantic search endpoint.
   useEffect(() => {
@@ -547,153 +707,167 @@ export function ViewManagerPage() {
   }
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col">
-      {/* Header */}
-      <div className="shrink-0 border-b border-border/50 px-4 py-3">
-        <h1 className="text-sm font-semibold text-txt">
-          {t("viewmanager.title", { defaultValue: "Views" })}
-        </h1>
-      </div>
+    <ShellViewAgentSurface viewId="views">
+      <div className="flex flex-1 min-h-0 flex-col">
+        {/* Header */}
+        <div className="shrink-0 border-b border-border/50 px-4 py-3">
+          <h1 className="text-sm font-semibold text-txt">
+            {t("viewmanager.title", { defaultValue: "Views" })}
+          </h1>
+        </div>
 
-      {/* Search */}
-      <div className="shrink-0 px-4 pt-3 pb-2">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted pointer-events-none" />
-          <input
-            type="search"
-            placeholder={t("viewmanager.searchPlaceholder", {
-              defaultValue: "Search views…",
+        {/* Search */}
+        <div className="shrink-0 px-4 pt-3 pb-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted pointer-events-none" />
+            <input
+              ref={searchInput.ref}
+              type="search"
+              placeholder={t("viewmanager.searchPlaceholder", {
+                defaultValue: "Search views…",
+              })}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="w-full rounded-sm border border-border bg-muted/20 py-2 pl-9 pr-3 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+              {...searchInput.agentProps}
+            />
+          </div>
+        </div>
+
+        {canManageDynamicViews && (
+          <form
+            className="shrink-0 border-y border-border/40 px-4 py-3"
+            aria-label={t("viewmanager.management.aria", {
+              defaultValue: "Dynamic view management",
             })}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="w-full rounded-sm border border-border bg-muted/20 py-2 pl-9 pr-3 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
-          />
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleRegisterView();
+            }}
+          >
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted/70">
+                {t("viewmanager.management.heading", {
+                  defaultValue: "Dynamic view management",
+                })}
+              </h2>
+              {formStatus && (
+                <p className="text-xs text-muted" role="status">
+                  {formStatus}
+                </p>
+              )}
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1.4fr_1.4fr_auto]">
+              <input
+                ref={formIdInput.ref}
+                aria-label={t("viewmanager.form.idAria", {
+                  defaultValue: "Dynamic view ID",
+                })}
+                value={formViewId}
+                onChange={(event) => setFormViewId(event.target.value)}
+                className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder={t("viewmanager.form.idPlaceholder", {
+                  defaultValue: "View ID",
+                })}
+                {...formIdInput.agentProps}
+              />
+              <input
+                ref={formTitleInput.ref}
+                aria-label={t("viewmanager.form.titleAria", {
+                  defaultValue: "Dynamic view title",
+                })}
+                value={formTitle}
+                onChange={(event) => setFormTitle(event.target.value)}
+                className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder={t("viewmanager.form.titlePlaceholder", {
+                  defaultValue: "Title",
+                })}
+                {...formTitleInput.agentProps}
+              />
+              <input
+                ref={formEntrypointInput.ref}
+                aria-label={t("viewmanager.form.entrypointAria", {
+                  defaultValue: "Dynamic view entrypoint",
+                })}
+                value={formEntrypoint}
+                onChange={(event) => setFormEntrypoint(event.target.value)}
+                className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="/dynamic-views/view.js"
+                {...formEntrypointInput.agentProps}
+              />
+              <input
+                ref={formDescriptionInput.ref}
+                aria-label={t("viewmanager.form.descriptionAria", {
+                  defaultValue: "Dynamic view description",
+                })}
+                value={formDescription}
+                onChange={(event) => setFormDescription(event.target.value)}
+                className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder={t("viewmanager.form.descriptionPlaceholder", {
+                  defaultValue: "Description",
+                })}
+                {...formDescriptionInput.agentProps}
+              />
+              <button
+                ref={formSaveButton.ref}
+                type="submit"
+                disabled={formBusy}
+                className="inline-flex items-center justify-center gap-2 rounded-sm border border-border bg-accent px-3 py-2 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60"
+                {...formSaveButton.agentProps}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {t("viewmanager.form.save", { defaultValue: "Save" })}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* Content */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
+          {error && (
+            <div className="mb-3 rounded-sm border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+              {t("viewmanager.loadError", {
+                message: error.message,
+                defaultValue: "Failed to load views: {{message}}",
+              })}
+            </div>
+          )}
+
+          {(loading && views.length === 0) || isSearching ? (
+            <ViewsLoadingSkeleton />
+          ) : totalVisible === 0 ? (
+            <ViewsEmptyState hasQuery={query.trim().length > 0} />
+          ) : (
+            <>
+              <TopViewsSection
+                views={topViews}
+                onViewClick={handleViewClick}
+                onViewPin={handleViewPin}
+              />
+              <ViewSection
+                title={t("viewmanager.section.core", { defaultValue: "Core" })}
+                views={builtinViews}
+                onViewClick={handleViewClick}
+                onViewPin={handleViewPin}
+              />
+              <ViewSection
+                title={t("viewmanager.section.plugins", {
+                  defaultValue: "Plugins",
+                })}
+                views={pluginViews}
+                onViewClick={handleViewClick}
+                onViewPin={handleViewPin}
+                onViewEdit={
+                  canManageDynamicViews ? fillManagementForm : undefined
+                }
+                onViewDelete={
+                  canManageDynamicViews ? handleDeleteView : undefined
+                }
+              />
+            </>
+          )}
         </div>
       </div>
-
-      {canManageDynamicViews && (
-        <form
-          className="shrink-0 border-y border-border/40 px-4 py-3"
-          aria-label={t("viewmanager.management.aria", {
-            defaultValue: "Dynamic view management",
-          })}
-          onSubmit={(event) => {
-            event.preventDefault();
-            void handleRegisterView();
-          }}
-        >
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted/70">
-              {t("viewmanager.management.heading", {
-                defaultValue: "Dynamic view management",
-              })}
-            </h2>
-            {formStatus && (
-              <p className="text-xs text-muted" role="status">
-                {formStatus}
-              </p>
-            )}
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1.4fr_1.4fr_auto]">
-            <input
-              aria-label={t("viewmanager.form.idAria", {
-                defaultValue: "Dynamic view ID",
-              })}
-              value={formViewId}
-              onChange={(event) => setFormViewId(event.target.value)}
-              className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder={t("viewmanager.form.idPlaceholder", {
-                defaultValue: "View ID",
-              })}
-            />
-            <input
-              aria-label={t("viewmanager.form.titleAria", {
-                defaultValue: "Dynamic view title",
-              })}
-              value={formTitle}
-              onChange={(event) => setFormTitle(event.target.value)}
-              className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder={t("viewmanager.form.titlePlaceholder", {
-                defaultValue: "Title",
-              })}
-            />
-            <input
-              aria-label={t("viewmanager.form.entrypointAria", {
-                defaultValue: "Dynamic view entrypoint",
-              })}
-              value={formEntrypoint}
-              onChange={(event) => setFormEntrypoint(event.target.value)}
-              className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="/dynamic-views/view.js"
-            />
-            <input
-              aria-label={t("viewmanager.form.descriptionAria", {
-                defaultValue: "Dynamic view description",
-              })}
-              value={formDescription}
-              onChange={(event) => setFormDescription(event.target.value)}
-              className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder={t("viewmanager.form.descriptionPlaceholder", {
-                defaultValue: "Description",
-              })}
-            />
-            <button
-              type="submit"
-              disabled={formBusy}
-              className="inline-flex items-center justify-center gap-2 rounded-sm border border-border bg-accent px-3 py-2 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              {t("viewmanager.form.save", { defaultValue: "Save" })}
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* Content */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
-        {error && (
-          <div className="mb-3 rounded-sm border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-            {t("viewmanager.loadError", {
-              message: error.message,
-              defaultValue: "Failed to load views: {{message}}",
-            })}
-          </div>
-        )}
-
-        {(loading && views.length === 0) || isSearching ? (
-          <ViewsLoadingSkeleton />
-        ) : totalVisible === 0 ? (
-          <ViewsEmptyState hasQuery={query.trim().length > 0} />
-        ) : (
-          <>
-            <TopViewsSection
-              views={topViews}
-              onViewClick={handleViewClick}
-              onViewPin={handleViewPin}
-            />
-            <ViewSection
-              title={t("viewmanager.section.core", { defaultValue: "Core" })}
-              views={builtinViews}
-              onViewClick={handleViewClick}
-              onViewPin={handleViewPin}
-            />
-            <ViewSection
-              title={t("viewmanager.section.plugins", {
-                defaultValue: "Plugins",
-              })}
-              views={pluginViews}
-              onViewClick={handleViewClick}
-              onViewPin={handleViewPin}
-              onViewEdit={
-                canManageDynamicViews ? fillManagementForm : undefined
-              }
-              onViewDelete={
-                canManageDynamicViews ? handleDeleteView : undefined
-              }
-            />
-          </>
-        )}
-      </div>
-    </div>
+    </ShellViewAgentSurface>
   );
 }

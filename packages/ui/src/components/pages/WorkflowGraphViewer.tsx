@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useAgentElement } from "../../agent-surface";
 import type {
   WorkflowConnectionMap,
   WorkflowDefinition,
@@ -604,6 +605,31 @@ export function WorkflowGraphViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const drawerLabelId = useId();
 
+  const emptyStateActionButton = useAgentElement<HTMLButtonElement>({
+    id: "workflow-empty-state-action",
+    role: "button",
+    label: resolvedEmptyStateActionLabel,
+    group: "workflow-graph",
+    description: "Start describing a workflow when the graph is empty",
+    onActivate: () => onEmptyStateAction?.(),
+  });
+  const fullScreenButton = useAgentElement<HTMLButtonElement>({
+    id: "workflow-fullscreen-open",
+    role: "button",
+    label: t("workflowGraph.fullScreen", { defaultValue: "Full screen" }),
+    group: "workflow-graph",
+    description: "Open the workflow graph in full screen",
+    onActivate: () => setFullScreen(true),
+  });
+  const fullScreenCloseButton = useAgentElement<HTMLButtonElement>({
+    id: "workflow-fullscreen-close",
+    role: "button",
+    label: t("workflowGraph.close", { defaultValue: "Close" }),
+    group: "workflow-graph",
+    description: "Close the full-screen workflow graph",
+    onActivate: () => setFullScreen(false),
+  });
+
   const { nodes, edges } = useMemo(
     () => workflowToReactFlow(workflow),
     [workflow],
@@ -702,9 +728,11 @@ export function WorkflowGraphViewer({
             </p>
             {onEmptyStateAction && (
               <button
+                ref={emptyStateActionButton.ref}
                 type="button"
                 className="mt-1 rounded-sm border border-border/40 bg-bg/40 px-3 py-1.5 text-xs text-txt hover:bg-bg/70 transition-colors"
                 onClick={onEmptyStateAction}
+                {...emptyStateActionButton.agentProps}
               >
                 {resolvedEmptyStateActionLabel}
               </button>
@@ -766,6 +794,7 @@ export function WorkflowGraphViewer({
         {/* Full-screen toggle button — shift left when drawer is open */}
         {hasNodes && !isGenerating && (
           <button
+            ref={fullScreenButton.ref}
             type="button"
             aria-label={t("workflowGraph.fullScreen", {
               defaultValue: "Full screen",
@@ -776,6 +805,7 @@ export function WorkflowGraphViewer({
               selectedNode ? "right-[calc(18rem_+_0.75rem)]" : "right-3",
             ].join(" ")}
             onClick={() => setFullScreen(true)}
+            {...fullScreenButton.agentProps}
           >
             <Maximize2 className="h-3.5 w-3.5" />
           </button>
@@ -804,10 +834,12 @@ export function WorkflowGraphViewer({
                 t("workflowGraph.title", { defaultValue: "Workflow Graph" })}
             </DialogTitle>
             <button
+              ref={fullScreenCloseButton.ref}
               type="button"
               aria-label={t("workflowGraph.close", { defaultValue: "Close" })}
               className="flex h-7 w-7 items-center justify-center rounded-sm text-muted hover:text-txt transition-colors"
               onClick={() => setFullScreen(false)}
+              {...fullScreenCloseButton.agentProps}
             >
               <X className="h-4 w-4" />
             </button>

@@ -121,6 +121,7 @@ const CONVERTED_SHELL_PAGES = [
   "pages/HeartbeatsView",
   "pages/DocumentsView",
   "pages/ConfigPageView",
+  "pages/ViewManagerPage",
 ] as const;
 
 function isAgentControllable(pageFile: string): boolean {

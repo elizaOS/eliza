@@ -18,6 +18,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import {
   type DesktopInstalledRemotePluginSnapshot,
   type DesktopRemotePluginPermissionTag,
@@ -166,6 +167,37 @@ function RemotePluginRow({
     }
   }, [remotePlugin.id, logsOpen]);
 
+  const isRunning = state === "running" || state === "starting";
+  const { ref: toggleRef, agentProps: toggleAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `remote-plugin-toggle-${remotePlugin.id}`,
+      role: "button",
+      label: isRunning
+        ? `${t("remotepluginhost.stop", { defaultValue: "Stop" })} ${remotePlugin.name}`
+        : `${t("remotepluginhost.start", { defaultValue: "Start" })} ${remotePlugin.name}`,
+      group: "remote-plugins-list",
+      status: isRunning ? "active" : "inactive",
+      onActivate: () =>
+        void (isRunning ? onStop(remotePlugin.id) : onStart(remotePlugin.id)),
+    });
+  const { ref: logsRef, agentProps: logsAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `remote-plugin-logs-${remotePlugin.id}`,
+      role: "button",
+      label: `${t("remotepluginhost.logs", { defaultValue: "Logs" })} ${remotePlugin.name}`,
+      group: "remote-plugins-list",
+      status: logsOpen ? "active" : "inactive",
+      onActivate: () => void handleLogsToggle(),
+    });
+  const { ref: uninstallRef, agentProps: uninstallAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `remote-plugin-uninstall-${remotePlugin.id}`,
+      role: "button",
+      label: `${t("remotepluginhost.uninstall", { defaultValue: "Uninstall" })} ${remotePlugin.name}`,
+      group: "remote-plugins-list",
+      onActivate: () => void onUninstall(remotePlugin.id, remotePlugin.name),
+    });
+
   return (
     <div className="rounded-sm border border-bg-3 bg-bg-2 p-3">
       <div className="flex items-start justify-between gap-3">
@@ -193,38 +225,46 @@ function RemotePluginRow({
           ) : null}
         </div>
         <div className="flex shrink-0 gap-1">
-          {state === "running" || state === "starting" ? (
+          {isRunning ? (
             <Button
+              ref={toggleRef}
               size="sm"
               variant="outline"
               disabled={isBusy}
               onClick={() => onStop(remotePlugin.id)}
+              {...toggleAgentProps}
             >
               <Square className="mr-1 h-3 w-3" />{" "}
               {t("remotepluginhost.stop", { defaultValue: "Stop" })}
             </Button>
           ) : (
             <Button
+              ref={toggleRef}
               size="sm"
               variant="outline"
               onClick={() => onStart(remotePlugin.id)}
+              {...toggleAgentProps}
             >
               <Play className="mr-1 h-3 w-3" />{" "}
               {t("remotepluginhost.start", { defaultValue: "Start" })}
             </Button>
           )}
           <Button
+            ref={logsRef}
             size="sm"
             variant="outline"
             onClick={handleLogsToggle}
             disabled={logsLoading}
+            {...logsAgentProps}
           >
             {t("remotepluginhost.logs", { defaultValue: "Logs" })}
           </Button>
           <Button
+            ref={uninstallRef}
             size="sm"
             variant="outline"
             onClick={() => onUninstall(remotePlugin.id, remotePlugin.name)}
+            {...uninstallAgentProps}
           >
             <Trash2 className="h-3 w-3" />
           </Button>
@@ -411,6 +451,57 @@ export function RemotePluginHostSection() {
 
   const remotePlugins = remotePluginsFromSnapshot(snapshot);
 
+  const { ref: revealStoreRef, agentProps: revealStoreAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "remote-plugin-reveal-store",
+      role: "button",
+      label: t("remotepluginhost.revealInFileManager", {
+        defaultValue: "Reveal in file manager",
+      }),
+      group: "remote-plugins",
+      onActivate: () => {
+        if (storeRoot) void desktopOpenPath(storeRoot);
+      },
+    });
+  const { ref: sourceDirRef, agentProps: sourceDirAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "remote-plugin-source-dir",
+      role: "text-input",
+      label: t("remotepluginhost.installFromDirectory", {
+        defaultValue: "Install from directory",
+      }),
+      group: "remote-plugins",
+      getValue: () => sourceDir,
+      onFill: setSourceDir,
+    });
+  const { ref: pickFolderRef, agentProps: pickFolderAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "remote-plugin-pick-folder",
+      role: "button",
+      label: t("remotepluginhost.pickFolder", {
+        defaultValue: "Pick a folder…",
+      }),
+      group: "remote-plugins",
+      onActivate: () => void handlePickFolder(),
+    });
+  const { ref: installRef, agentProps: installAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "remote-plugin-install",
+      role: "button",
+      label: t("remotepluginhost.install", { defaultValue: "Install" }),
+      group: "remote-plugins",
+      status: busy || sourceDir.trim().length === 0 ? "inactive" : "active",
+      onActivate: () => void handleInstall(),
+    });
+  const { ref: refreshRef, agentProps: refreshAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "remote-plugin-refresh",
+      role: "button",
+      label: t("remotepluginhost.refresh", { defaultValue: "Refresh" }),
+      group: "remote-plugins",
+      onActivate: () => void refresh(),
+    });
+
   return (
     <div className="space-y-4">
       <section className="space-y-1">
@@ -458,12 +549,14 @@ export function RemotePluginHostSection() {
               <code>{storeRoot}</code>
             </span>
             <button
+              ref={revealStoreRef}
               type="button"
               className="rounded-sm p-0.5 hover:bg-bg-3"
               title={t("remotepluginhost.revealInFileManager", {
                 defaultValue: "Reveal in file manager",
               })}
               onClick={() => void desktopOpenPath(storeRoot)}
+              {...revealStoreAgentProps}
             >
               <ExternalLink className="h-3 w-3" />
             </button>
@@ -479,12 +572,15 @@ export function RemotePluginHostSection() {
         </h3>
         <div className="flex gap-2">
           <Input
+            ref={sourceDirRef}
             value={sourceDir}
             onChange={(e) => setSourceDir(e.target.value)}
             placeholder="/absolute/path/to/remote-plugin/source"
             disabled={busy}
+            {...sourceDirAgentProps}
           />
           <Button
+            ref={pickFolderRef}
             type="button"
             variant="outline"
             onClick={() => void handlePickFolder()}
@@ -492,13 +588,16 @@ export function RemotePluginHostSection() {
             title={t("remotepluginhost.pickFolder", {
               defaultValue: "Pick a folder…",
             })}
+            {...pickFolderAgentProps}
           >
             <FolderOpen className="h-4 w-4" />
           </Button>
           <Button
+            ref={installRef}
             type="button"
             onClick={() => void handleInstall()}
             disabled={busy || sourceDir.trim().length === 0}
+            {...installAgentProps}
           >
             {t("remotepluginhost.install", { defaultValue: "Install" })}
           </Button>
@@ -515,10 +614,12 @@ export function RemotePluginHostSection() {
             })}
           </h3>
           <Button
+            ref={refreshRef}
             size="sm"
             variant="ghost"
             onClick={() => void refresh()}
             disabled={busy}
+            {...refreshAgentProps}
           >
             <RefreshCw className="mr-1 h-3 w-3" />{" "}
             {t("remotepluginhost.refresh", { defaultValue: "Refresh" })}
