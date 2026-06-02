@@ -264,6 +264,10 @@
       ],
       "outputs": ["dist/**"]
     },
+    "@elizaos/plugin-coding-tools#build": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
+      "outputs": ["dist/**"]
+    },
     "@elizaos/plugin-edge-tts#build": {
       "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
       "outputs": ["dist/**"]
