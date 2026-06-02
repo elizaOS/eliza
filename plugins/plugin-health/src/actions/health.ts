@@ -9,12 +9,12 @@ import type {
   State,
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
+import type { LifeOpsHealthSummaryResponse } from "../contracts/health.js";
 import type {
   HealthBackend,
   HealthDailySummary,
   HealthDataPoint,
 } from "../health-bridge/health-bridge.js";
-import type { LifeOpsHealthSummaryResponse } from "../contracts/health.js";
 
 type Subaction = "today" | "trend" | "by_metric" | "status";
 type HealthMetric = HealthDataPoint["metric"];
@@ -49,9 +49,9 @@ export interface HealthActionService {
     backend: HealthBackend;
     lastCheckedAt?: string;
   }>;
-  getHealthSummary(
-    request?: { days?: number },
-  ): Promise<LifeOpsHealthSummaryResponse>;
+  getHealthSummary(request?: {
+    days?: number;
+  }): Promise<LifeOpsHealthSummaryResponse>;
   getHealthTrend(days: number): Promise<HealthDailySummary[]>;
   getHealthDataPoints(opts: {
     metric: HealthDataPoint["metric"];
@@ -95,7 +95,9 @@ export interface CreateHealthActionRunnerOptions {
   ) => Promise<{ parsed?: Record<string, unknown> | null } | null>;
 }
 
-function getParams(options: HandlerOptions | undefined): HealthActionParameters {
+function getParams(
+  options: HandlerOptions | undefined,
+): HealthActionParameters {
   const params = (options as HandlerOptions | undefined)?.parameters as
     | HealthActionParameters
     | undefined;

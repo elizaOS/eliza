@@ -26,8 +26,7 @@ function expectCanonicalHealthSignal(value: LifeOpsHealthSignal): void {
     value.sleep.stage === null || typeof value.sleep.stage === "string",
   ).toBe(true);
   expect(
-    value.biometrics.sampleAt === null ||
-      Date.parse(value.biometrics.sampleAt),
+    value.biometrics.sampleAt === null || Date.parse(value.biometrics.sampleAt),
   ).not.toBeNaN();
   for (const metric of [
     value.biometrics.heartRateBpm,
@@ -110,10 +109,7 @@ describe("normalizeHealthSignal", () => {
     [{ source: "bogus" }, "health.source"],
     [{ sleep: [] }, "health.sleep"],
     [{ sleep: { asleepAt: "not a date" } }, "health.sleep.asleepAt"],
-    [
-      { biometrics: { heartRateBpm: "nan" } },
-      "health.biometrics.heartRateBpm",
-    ],
+    [{ biometrics: { heartRateBpm: "nan" } }, "health.biometrics.heartRateBpm"],
     [{ warnings: ["ok", ""] }, "health.warnings[1]"],
   ])("rejects malformed payload at %s", (payload, field) => {
     expect(() => normalizeHealthSignal(payload, "health")).toThrow(

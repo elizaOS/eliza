@@ -11,16 +11,16 @@ describe("parseLinearPromptResponse", () => {
   it("extracts JSON from fenced or prose-wrapped model responses", () => {
     expect(
       parseLinearPromptResponse(
-        'Sure:\n```json\n{"title":"Fix login","priority":"high","labels":["bug"]}\n```',
-      ),
+        'Sure:\n```json\n{"title":"Fix login","priority":"high","labels":["bug"]}\n```'
+      )
     ).toEqual({
       title: "Fix login",
       priority: "high",
       labels: ["bug"],
     });
-    expect(
-      parseLinearPromptResponse('Result: {"title":"Fix API"} thanks'),
-    ).toEqual({ title: "Fix API" });
+    expect(parseLinearPromptResponse('Result: {"title":"Fix API"} thanks')).toEqual({
+      title: "Fix API",
+    });
   });
 
   it("normalizes empty scalar/list sentinels and priority names", () => {
@@ -45,7 +45,7 @@ describe("parseLinearPromptResponse", () => {
         expect(typeof parsed).toBe("object");
         expect(Array.isArray(parsed)).toBe(false);
       }),
-      { numRuns: 500 },
+      { numRuns: 500 }
     );
   });
 });

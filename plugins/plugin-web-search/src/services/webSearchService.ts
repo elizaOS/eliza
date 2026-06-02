@@ -11,15 +11,6 @@ import type {
 
 export type TavilyClient = ReturnType<typeof tavily>;
 
-type TavilySearchResult = {
-    title?: string;
-    url?: string;
-    content?: string;
-    rawContent?: string;
-    score?: number;
-    publishedDate?: string;
-};
-
 function isRecord(value: unknown): value is Record<string, unknown> {
     return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -42,7 +33,9 @@ function normalizeResponse(query: string, response: unknown): SearchResponse {
             content,
             rawContent: typeof result.rawContent === "string" ? result.rawContent : undefined,
             score:
-                typeof result.score === "number" && Number.isFinite(result.score) ? result.score : 0,
+                typeof result.score === "number" && Number.isFinite(result.score)
+                    ? result.score
+                    : 0,
             publishedDate: parsePublishedDate(
                 typeof result.publishedDate === "string" ? result.publishedDate : undefined
             ),

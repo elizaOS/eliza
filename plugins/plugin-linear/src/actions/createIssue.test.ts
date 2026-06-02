@@ -16,9 +16,7 @@ function message(text?: string): Memory {
 function runtime(service: Record<string, unknown>, modelResponse?: string): IAgentRuntime {
   return {
     getService: vi.fn((name: string) => (name === "linear" ? service : undefined)),
-    getSetting: vi.fn((key: string) =>
-      key === "LINEAR_DEFAULT_TEAM_KEY" ? "ENG" : undefined,
-    ),
+    getSetting: vi.fn((key: string) => (key === "LINEAR_DEFAULT_TEAM_KEY" ? "ENG" : undefined)),
     useModel: vi.fn(async (modelType) => {
       expect(modelType).toBe(ModelType.TEXT_LARGE);
       return modelResponse ?? "{}";
@@ -34,7 +32,7 @@ describe("createIssueAction", () => {
       message(undefined),
       "default",
       "default",
-      callback,
+      callback
     );
 
     expect(result).toEqual({
@@ -75,7 +73,7 @@ describe("createIssueAction", () => {
           },
         },
       },
-      callback,
+      callback
     );
 
     expect(rt.useModel).not.toHaveBeenCalled();
@@ -86,7 +84,7 @@ describe("createIssueAction", () => {
         teamId: "team-id",
         priority: 2,
       },
-      "default",
+      "default"
     );
     expect(result).toMatchObject({
       success: true,
@@ -120,7 +118,7 @@ describe("createIssueAction", () => {
       message("Investigate a flaky deploy failure"),
       "default",
       undefined,
-      vi.fn(),
+      vi.fn()
     );
 
     expect(service.createIssue).toHaveBeenCalledWith(
@@ -129,7 +127,7 @@ describe("createIssueAction", () => {
         description: "Investigate a flaky deploy failure",
         teamId: "team-id",
       },
-      "default",
+      "default"
     );
     expect(result.success).toBe(true);
   });
@@ -146,7 +144,7 @@ describe("createIssueAction", () => {
       message("Create no-team issue"),
       undefined,
       undefined,
-      noTeamCallback,
+      noTeamCallback
     );
     expect(noTeam).toMatchObject({
       success: false,
@@ -166,7 +164,7 @@ describe("createIssueAction", () => {
       message("Create rate-limit issue"),
       undefined,
       undefined,
-      vi.fn(),
+      vi.fn()
     );
     expect(failed).toMatchObject({
       success: false,

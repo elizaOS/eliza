@@ -630,9 +630,7 @@ export const musicAction: Action = {
     }
 
     const dispatch = dispatchKindFor(subaction, merged);
-    const callbackFor = (
-      actionName: string,
-    ): HandlerCallback | undefined =>
+    const callbackFor = (actionName: string): HandlerCallback | undefined =>
       callback
         ? (response, routedActionName) =>
             callback(response, routedActionName ?? actionName)

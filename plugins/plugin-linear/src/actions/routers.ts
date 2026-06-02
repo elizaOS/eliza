@@ -314,8 +314,7 @@ async function dispatchRoute<T extends LinearRouterResultData>(
   }
 
   const routedCallback: HandlerCallback | undefined = callback
-    ? (response, actionName) =>
-        callback(response, actionName ?? route.action.name)
+    ? (response, actionName) => callback(response, actionName ?? route.action.name)
     : undefined;
   const result =
     (await route.action.handler(
@@ -323,7 +322,7 @@ async function dispatchRoute<T extends LinearRouterResultData>(
       message,
       state,
       options as HandlerOptions,
-      routedCallback,
+      routedCallback
     )) ??
     ({
       success: true,

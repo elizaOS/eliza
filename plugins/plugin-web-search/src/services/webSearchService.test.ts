@@ -26,7 +26,7 @@ describe("WebSearchService", () => {
 
     it("requires TAVILY_API_KEY at startup", async () => {
         await expect(WebSearchService.start(runtime({}))).rejects.toThrow(
-            "TAVILY_API_KEY is not set",
+            "TAVILY_API_KEY is not set"
         );
         await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
         expect(tavilyMock).toHaveBeenCalledWith({ apiKey: "tvly-test" });
@@ -66,7 +66,7 @@ describe("WebSearchService", () => {
                 searchDepth: "advanced",
                 includeImages: true,
                 days: 10,
-            }),
+            })
         ).resolves.toEqual({
             answer: "answer",
             query: "provider query",
@@ -120,7 +120,7 @@ describe("WebSearchService", () => {
                 topic: "news",
                 days: 7,
                 maxResults: 2,
-            }),
+            })
         );
         expect(searchMock).toHaveBeenNthCalledWith(
             2,
@@ -128,7 +128,7 @@ describe("WebSearchService", () => {
             expect.objectContaining({
                 includeImages: true,
                 maxResults: 4,
-            }),
+            })
         );
     });
 
@@ -163,12 +163,12 @@ describe("WebSearchService", () => {
                             description: expect.any(String),
                             content: expect.any(String),
                             score: expect.any(Number),
-                        }),
+                        })
                     );
                     expect(Number.isNaN(result.score)).toBe(false);
                 }
             }),
-            { numRuns: 200 },
+            { numRuns: 200 }
         );
     });
 
@@ -178,9 +178,9 @@ describe("WebSearchService", () => {
             vi.fn(
                 async () =>
                     new Response(
-                        '<html><head><title>Example</title><meta name="description" content="Desc"></head></html>',
-                    ),
-            ),
+                        '<html><head><title>Example</title><meta name="description" content="Desc"></head></html>'
+                    )
+            )
         );
         const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
 
@@ -197,12 +197,12 @@ describe("WebSearchService", () => {
     it("fails page info requests on non-ok HTTP responses", async () => {
         vi.stubGlobal(
             "fetch",
-            vi.fn(async () => new Response("missing", { status: 404, statusText: "Not Found" })),
+            vi.fn(async () => new Response("missing", { status: 404, statusText: "Not Found" }))
         );
         const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
 
         await expect(service.getPageInfo("https://example.test/missing")).rejects.toThrow(
-            "Failed to fetch page info: 404 Not Found",
+            "Failed to fetch page info: 404 Not Found"
         );
     });
 
@@ -213,10 +213,10 @@ describe("WebSearchService", () => {
 
         await expect(service.getPageInfo("not a url")).rejects.toThrow("Invalid page info URL");
         await expect(service.getPageInfo("data:text/html,<title>x</title>")).rejects.toThrow(
-            "Page info URL must use http or https",
+            "Page info URL must use http or https"
         );
         await expect(service.getPageInfo("file:///etc/passwd")).rejects.toThrow(
-            "Page info URL must use http or https",
+            "Page info URL must use http or https"
         );
         expect(fetchMock).not.toHaveBeenCalled();
     });

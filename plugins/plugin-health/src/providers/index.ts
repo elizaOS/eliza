@@ -1,8 +1,8 @@
 export {
   buildHealthProviderResult,
   buildUnavailableHealthProviderResult,
-  createHealthProvider,
   type CreateHealthProviderOptions,
+  createHealthProvider,
   type HealthProviderAccessCheck,
   type HealthProviderSummaryLoader,
 } from "./health.js";

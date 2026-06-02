@@ -142,18 +142,16 @@ export interface CreateScreenTimeActionRunnerOptions {
     fallback: string;
     context?: Record<string, unknown>;
   }) => Promise<string>;
-  resolveActionArgs: <TSubaction extends string, TParams>(
-    input: {
-      runtime: IAgentRuntime;
-      message: Memory;
-      state?: State;
-      options?: HandlerOptions;
-      actionName: string;
-      subactions: SubactionsMap<TSubaction>;
-      defaultSubaction?: TSubaction;
-      intentHint?: string;
-    },
-  ) => Promise<ResolveActionArgsResult<TSubaction, TParams>>;
+  resolveActionArgs: <TSubaction extends string, TParams>(input: {
+    runtime: IAgentRuntime;
+    message: Memory;
+    state?: State;
+    options?: HandlerOptions;
+    actionName: string;
+    subactions: SubactionsMap<TSubaction>;
+    defaultSubaction?: TSubaction;
+    intentHint?: string;
+  }) => Promise<ResolveActionArgsResult<TSubaction, TParams>>;
   isDarwin: () => boolean;
   getActivityReport: (
     runtime: IAgentRuntime,

@@ -56,7 +56,9 @@ export function buildHealthProviderResult(
       daily.heartRateAvg !== null
         ? `${Math.round(daily.heartRateAvg)} bpm`
         : null,
-      daily.weightKg !== null ? `${formatHealthNumber(daily.weightKg)} kg` : null,
+      daily.weightKg !== null
+        ? `${formatHealthNumber(daily.weightKg)} kg`
+        : null,
     ].filter((part): part is string => part !== null);
     if (parts.length > 1) {
       lines.push(parts.join(" | "));

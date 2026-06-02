@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { LifeOpsHealthSummaryResponse } from "../contracts/health.js";
-import {
-  buildHealthProviderResult,
-  createHealthProvider,
-} from "./health.js";
+import { buildHealthProviderResult, createHealthProvider } from "./health.js";
 
 function summary(
   overrides: Partial<LifeOpsHealthSummaryResponse> = {},

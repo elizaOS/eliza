@@ -26,7 +26,10 @@ function message(text = "music please"): Memory {
   } as Memory;
 }
 
-function resolved(text: string, data: Record<string, unknown> = {}): ActionResult {
+function resolved(
+  text: string,
+  data: Record<string, unknown> = {},
+): ActionResult {
   return { success: true, text, data };
 }
 
@@ -36,9 +39,9 @@ describe("MUSIC umbrella action dispatch", () => {
     ["unpause", "resume"],
     ["clear_queue", "stop"],
   ])("dispatches playback alias %s as op=%s", async (alias, expectedOp) => {
-    const handler = vi.spyOn(playbackOp, "handler").mockResolvedValue(
-      resolved(`playback ${expectedOp}`),
-    );
+    const handler = vi
+      .spyOn(playbackOp, "handler")
+      .mockResolvedValue(resolved(`playback ${expectedOp}`));
     const callback = vi.fn();
 
     const result = await musicAction.handler?.(
@@ -49,7 +52,10 @@ describe("MUSIC umbrella action dispatch", () => {
       callback,
     );
 
-    expect(result).toMatchObject({ success: true, text: `playback ${expectedOp}` });
+    expect(result).toMatchObject({
+      success: true,
+      text: `playback ${expectedOp}`,
+    });
     expect(handler).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
@@ -62,9 +68,9 @@ describe("MUSIC umbrella action dispatch", () => {
   });
 
   it("routes legacy library aliases to canonical music library operations", async () => {
-    const handler = vi.spyOn(musicLibraryAction, "handler").mockResolvedValue(
-      resolved("searched"),
-    );
+    const handler = vi
+      .spyOn(musicLibraryAction, "handler")
+      .mockResolvedValue(resolved("searched"));
 
     await musicAction.handler?.(
       runtime(),
@@ -89,12 +95,14 @@ describe("MUSIC umbrella action dispatch", () => {
   });
 
   it("attributes delegated callbacks to the routed action name", async () => {
-    const handler = vi.spyOn(playAudio, "handler").mockImplementation(
-      async (_runtime, _message, _state, _options, callback) => {
-        await callback?.({ text: "playing", source: "test" });
-        return resolved("playing");
-      },
-    );
+    const handler = vi
+      .spyOn(playAudio, "handler")
+      .mockImplementation(
+        async (_runtime, _message, _state, _options, callback) => {
+          await callback?.({ text: "playing", source: "test" });
+          return resolved("playing");
+        },
+      );
     const callback = vi.fn();
 
     await musicAction.handler?.(
@@ -114,12 +122,12 @@ describe("MUSIC umbrella action dispatch", () => {
   });
 
   it("routes explicit routing and zone aliases to their dedicated handlers", async () => {
-    const routing = vi.spyOn(manageRouting, "handler").mockResolvedValue(
-      resolved("routing"),
-    );
-    const zones = vi.spyOn(manageZones, "handler").mockResolvedValue(
-      resolved("zones"),
-    );
+    const routing = vi
+      .spyOn(manageRouting, "handler")
+      .mockResolvedValue(resolved("routing"));
+    const zones = vi
+      .spyOn(manageZones, "handler")
+      .mockResolvedValue(resolved("zones"));
 
     await musicAction.handler?.(
       runtime(),
@@ -147,7 +155,10 @@ describe("MUSIC umbrella action dispatch", () => {
       expect.anything(),
       expect.anything(),
       undefined,
-      expect.objectContaining({ action: "manage_zones", targetIds: ["zone-a"] }),
+      expect.objectContaining({
+        action: "manage_zones",
+        targetIds: ["zone-a"],
+      }),
       expect.any(Function),
     );
 
