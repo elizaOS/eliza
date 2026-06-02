@@ -1229,24 +1229,37 @@ async function openOnboardingOverlayWindow(): Promise<BrowserWindow> {
     logger.info(
       "[Main] Onboarding overlay closed — creating main dashboard window",
     );
-    void (async () => {
-      try {
-        const { rpc: mainRpc, sendToWebview: mainSendToWebview } =
-          createDesktopRpc("main");
-        attachMainWindow(
-          await createMainWindow(mainRpc),
-          mainRpc,
-          mainSendToWebview,
-        );
-      } catch (err) {
-        logger.error(
-          `[Main] Failed to create dashboard after overlay close: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    })();
+    void transitionToDashboardWindow();
   });
 
   return win;
+}
+
+/**
+ * Create the main dashboard window if one isn't already attached. Idempotent
+ * via `currentWindow` (set by attachMainWindow), so both onboarding-complete
+ * paths can call it without double-creating a window:
+ *  - the native-notification happy path (no overlay is ever opened), and
+ *  - the overlay-fallback path's `win.on("close")` handler.
+ * Errors are logged, never thrown, so callers can `void` it safely.
+ */
+async function transitionToDashboardWindow(): Promise<void> {
+  if (currentWindow) {
+    return;
+  }
+  try {
+    const { rpc: mainRpc, sendToWebview: mainSendToWebview } =
+      createDesktopRpc("main");
+    attachMainWindow(
+      await createMainWindow(mainRpc),
+      mainRpc,
+      mainSendToWebview,
+    );
+  } catch (err) {
+    logger.error(
+      `[Main] Failed to create dashboard window: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
 
 /** Restore or recreate the main window (called on dock icon click). */
@@ -2467,14 +2480,17 @@ async function main(): Promise<void> {
           return;
         }
 
-        // First-run complete — close the overlay and let its close handler
-        // create the dashboard (single handoff point). The win.on("close")
-        // handler wired in openOnboardingOverlayWindow() transitions to the
-        // main dashboard window, so we just need to trigger it.
+        // First-run complete — transition to the main dashboard window. In the
+        // native-notification happy path no overlay is ever opened, so we must
+        // create the dashboard directly here; closeOnboardingOverlayWindow()
+        // tears down any overlay shown by a fallback branch (no-op otherwise),
+        // and transitionToDashboardWindow() is idempotent with the overlay's
+        // own close handler, so neither path double-creates a window.
         logger.info(
-          "[Main] First-run complete — closing overlay to transition to dashboard",
+          "[Main] First-run complete — transitioning to dashboard",
         );
         closeOnboardingOverlayWindow();
+        await transitionToDashboardWindow();
       } catch (err) {
         logger.error(
           `[Main] Native onboarding failed: ${err instanceof Error ? err.message : String(err)}`,
