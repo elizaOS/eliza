@@ -146,17 +146,14 @@ function cancelScenarioOnlyLazyServiceStarts(runtime: AgentRuntime): void {
   const runtimeInternals = runtime as unknown as {
     startingServices?: Map<string, Promise<unknown>>;
     servicePromises?: Map<string, Promise<unknown>>;
-    servicePromiseHandlers?: Map<
-      string,
-      { reject: (error: Error) => void }
-    >;
+    servicePromiseHandlers?: Map<string, { reject: (error: Error) => void }>;
   };
   const serviceType = "AGENT_SKILLS_SERVICE";
   if (!runtimeInternals.startingServices?.has(serviceType)) {
     return;
   }
   const error = new Error(
-    "[scenario-runner] cancelled unfinished agent-skills lazy service start during cleanup",
+    "[scenario-runner] cancelled pending agent-skills lazy service start during cleanup",
   );
   runtimeInternals.servicePromiseHandlers?.get(serviceType)?.reject(error);
   runtimeInternals.servicePromiseHandlers?.delete(serviceType);
@@ -291,13 +288,11 @@ export async function createScenarioRuntime(
     process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
   const prevElizaDisableLifeOpsScheduler =
     process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
-  const prevSkillsSyncCatalogOnStart =
-    process.env.SKILLS_SYNC_CATALOG_ON_START;
+  const prevSkillsSyncCatalogOnStart = process.env.SKILLS_SYNC_CATALOG_ON_START;
   const prevSkillsDir = process.env.SKILLS_DIR;
-  const scenarioSkillsRoot =
-    prevSkillsDir?.trim()
-      ? null
-      : fs.mkdtempSync(path.join(os.tmpdir(), "scenario-runner-skills-"));
+  const scenarioSkillsRoot = prevSkillsDir?.trim()
+    ? null
+    : fs.mkdtempSync(path.join(os.tmpdir(), "scenario-runner-skills-"));
   let scenarioHostsRoot: string | null = null;
   process.env.PGLITE_DATA_DIR = pgliteDir;
   process.env.ELIZA_DISABLE_ACTIVITY_TRACKER = "1";
@@ -348,9 +343,7 @@ export async function createScenarioRuntime(
     settings: {
       SKILLS_SYNC_CATALOG_ON_START:
         process.env.SKILLS_SYNC_CATALOG_ON_START ?? "false",
-      ...(process.env.SKILLS_DIR
-        ? { SKILLS_DIR: process.env.SKILLS_DIR }
-        : {}),
+      ...(process.env.SKILLS_DIR ? { SKILLS_DIR: process.env.SKILLS_DIR } : {}),
     },
   });
 
@@ -562,8 +555,7 @@ export async function createScenarioRuntime(
       delete process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
     }
     if (prevSkillsSyncCatalogOnStart !== undefined) {
-      process.env.SKILLS_SYNC_CATALOG_ON_START =
-        prevSkillsSyncCatalogOnStart;
+      process.env.SKILLS_SYNC_CATALOG_ON_START = prevSkillsSyncCatalogOnStart;
     } else {
       delete process.env.SKILLS_SYNC_CATALOG_ON_START;
     }

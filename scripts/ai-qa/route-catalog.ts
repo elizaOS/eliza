@@ -33,6 +33,7 @@ export const VIEWPORT_SIZES: Record<
 };
 
 const READY_CHECKS_BY_PATH: Record<string, readonly ReadyCheck[]> = {
+  "/onboarding": [{ selector: '[data-testid="first-run-runtime-cloud"]' }],
   "/chat": [
     { selector: '[data-testid="conversations-sidebar"]' },
     { selector: '[data-testid="chat-composer-textarea"]' },
