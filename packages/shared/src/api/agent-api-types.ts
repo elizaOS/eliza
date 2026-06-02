@@ -35,7 +35,15 @@ export interface StreamEventEnvelope {
   eventId: string;
   ts: number;
   runId?: string;
+  /** Per-event ordinal within an agent run (NOT the buffer sequence). */
   seq?: number;
+  /**
+   * Monotonic per-agent buffer sequence, mirroring the integer portion of
+   * `eventId`. Used as the cursor for WS reconnect replay so a client can ask
+   * the server to replay only events with `bufferSeq > lastApplied`. Optional
+   * for backward compatibility with envelopes that predate the cursor.
+   */
+  bufferSeq?: number;
   stream?: string;
   sessionKey?: string;
   agentId?: string;

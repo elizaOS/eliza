@@ -258,6 +258,11 @@ import { persistConfigEnv } from "./config-env.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
 import { pushWithBatchEvict } from "./memory-bounds.ts";
 import {
+  DEFAULT_REPLAY_LIMIT,
+  parseEventCursor,
+  selectReplayEvents,
+} from "./ws-event-replay.ts";
+import {
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
   hasPersistedFirstRunState,
@@ -3508,11 +3513,13 @@ export async function startApiServer(opts?: {
   };
 
   const pushEvent = (
-    event: Omit<StreamEventEnvelope, "eventId" | "version">,
+    event: Omit<StreamEventEnvelope, "eventId" | "version" | "bufferSeq">,
   ) => {
+    const seq = state.nextEventId;
     const envelope: StreamEventEnvelope = {
       ...event,
-      eventId: `evt-${state.nextEventId}`,
+      eventId: `evt-${seq}`,
+      bufferSeq: seq,
       version: 1,
     };
     state.nextEventId += 1;
@@ -4039,6 +4046,17 @@ export async function startApiServer(opts?: {
 
     let isAuthenticated = isWebSocketAuthorized(request, wsUrl);
 
+    // Optional reconnect cursor: a client that tracks the highest buffered
+    // event sequence it has applied can pass it back as `?lastEventId=` so the
+    // server replays only the envelopes it is missing instead of re-flooding
+    // the full tail on every (re)connect (loadperf research 05, Finding 4).
+    // Absent/invalid => null => the historical slice(-DEFAULT_REPLAY_LIMIT)
+    // behavior, so existing clients are unaffected.
+    const replayCursor = parseEventCursor(
+      wsUrl.searchParams.get("lastEventId") ??
+        wsUrl.searchParams.get("since"),
+    );
+
     const activateAuthenticatedConnection = () => {
       wsClients.add(ws);
       addLog("info", "WebSocket client connected", "websocket", [
@@ -4059,7 +4077,11 @@ export async function startApiServer(opts?: {
             pendingRestartReasons: state.pendingRestartReasons,
           }),
         );
-        const replay = state.eventBuffer.slice(-120);
+        const replay = selectReplayEvents(
+          state.eventBuffer,
+          replayCursor,
+          DEFAULT_REPLAY_LIMIT,
+        );
         for (const event of replay) {
           ws.send(JSON.stringify(event));
         }
