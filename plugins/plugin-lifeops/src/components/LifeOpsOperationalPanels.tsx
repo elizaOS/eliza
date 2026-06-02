@@ -19,6 +19,7 @@ import {
   Sun,
   Unplug,
 } from "lucide-react";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { ReactNode } from "react";
 import { useCallback, useState } from "react";
 import { useLifeOpsCapabilitiesStatus } from "../hooks/useLifeOpsCapabilitiesStatus.js";
@@ -559,6 +560,38 @@ export function LifeOpsSchedulePanel() {
   );
 }
 
+function XDisconnectOwnerButton({
+  label,
+  disabled,
+  onDisconnect,
+}: {
+  label: string;
+  disabled: boolean;
+  onDisconnect: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "settings-x-disconnect-owner",
+    role: "button",
+    label,
+    group: "lifeops-x",
+    description: "Disconnect the owner X account",
+  });
+  return (
+    <Button
+      ref={ref}
+      size="sm"
+      variant="ghost"
+      className="h-8 rounded-xl px-3 text-xs font-semibold"
+      onClick={onDisconnect}
+      disabled={disabled}
+      {...agentProps}
+    >
+      <Unplug className="mr-1.5 h-3.5 w-3.5" />
+      {label}
+    </Button>
+  );
+}
+
 export function LifeOpsXPanel() {
   const { setActionNotice, setTab, t } = useApp();
   const ownerX = useLifeOpsXConnector("owner");
@@ -597,6 +630,37 @@ export function LifeOpsXPanel() {
     void agentX.connect("local");
   }, [agentConnected, agentX.connect, openXConnectorSettings]);
 
+  const refreshLabel = t("common.refresh", { defaultValue: "Refresh" });
+  const refreshX = useAgentElement<HTMLButtonElement>({
+    id: "settings-x-refresh",
+    role: "button",
+    label: refreshLabel,
+    group: "lifeops-x",
+    description: "Refresh owner and agent X connection status",
+  });
+  const ownerLabel = connected
+    ? t("lifeopspanels.reconnectOwnerX", { defaultValue: "Reconnect Owner X" })
+    : t("lifeopspanels.connectOwnerX", { defaultValue: "Connect Owner X" });
+  const connectOwner = useAgentElement<HTMLButtonElement>({
+    id: "settings-x-connect-owner",
+    role: "button",
+    label: ownerLabel,
+    group: "lifeops-x",
+    status: connected ? "active" : "inactive",
+    description: "Connect or reconnect the owner X account",
+  });
+  const agentLabel = agentConnected
+    ? t("lifeopspanels.reconnectAgentX", { defaultValue: "Reconnect Agent X" })
+    : t("lifeopspanels.connectAgentX", { defaultValue: "Connect Agent X" });
+  const connectAgent = useAgentElement<HTMLButtonElement>({
+    id: "settings-x-connect-agent",
+    role: "button",
+    label: agentLabel,
+    group: "lifeops-x",
+    status: agentConnected ? "active" : "inactive",
+    description: "Connect or reconnect the agent X account",
+  });
+
   return (
     <PanelShell
       title={t("lifeopspanels.xAccount", { defaultValue: "X" })}
@@ -614,6 +678,7 @@ export function LifeOpsXPanel() {
             }
           />
           <Button
+            ref={refreshX.ref}
             size="sm"
             variant="outline"
             className="h-8 w-8 rounded-xl p-0"
@@ -622,8 +687,9 @@ export function LifeOpsXPanel() {
               void agentX.refresh();
             }}
             disabled={ownerX.loading || agentX.loading}
-            title={t("common.refresh", { defaultValue: "Refresh" })}
-            aria-label={t("common.refresh", { defaultValue: "Refresh" })}
+            title={refreshLabel}
+            aria-label={refreshLabel}
+            {...refreshX.agentProps}
           >
             {ownerX.loading || agentX.loading ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -683,19 +749,13 @@ export function LifeOpsXPanel() {
 
       <div className="flex flex-wrap gap-2">
         <Button
+          ref={connectOwner.ref}
           size="sm"
           className="h-8 rounded-xl px-3 text-xs font-semibold"
           onClick={handleOwnerConnect}
           disabled={actionPending}
-          title={
-            connected
-              ? t("lifeopspanels.reconnectOwnerX", {
-                  defaultValue: "Reconnect Owner X",
-                })
-              : t("lifeopspanels.connectOwnerX", {
-                  defaultValue: "Connect Owner X",
-                })
-          }
+          title={ownerLabel}
+          {...connectOwner.agentProps}
         >
           {actionPending ? (
             <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
@@ -705,20 +765,14 @@ export function LifeOpsXPanel() {
           {t("lifeopspanels.owner", { defaultValue: "Owner" })}
         </Button>
         <Button
+          ref={connectAgent.ref}
           size="sm"
           variant="outline"
           className="h-8 rounded-xl px-3 text-xs font-semibold"
           onClick={handleAgentConnect}
           disabled={actionPending}
-          title={
-            agentConnected
-              ? t("lifeopspanels.reconnectAgentX", {
-                  defaultValue: "Reconnect Agent X",
-                })
-              : t("lifeopspanels.connectAgentX", {
-                  defaultValue: "Connect Agent X",
-                })
-          }
+          title={agentLabel}
+          {...connectAgent.agentProps}
         >
           {actionPending ? (
             <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
@@ -728,18 +782,13 @@ export function LifeOpsXPanel() {
           {t("chat.agentType", { defaultValue: "Agent" })}
         </Button>
         {connected ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
-            onClick={() => void ownerX.disconnect()}
-            disabled={actionPending}
-          >
-            <Unplug className="mr-1.5 h-3.5 w-3.5" />
-            {t("lifeopspanels.disconnectOwnerX", {
+          <XDisconnectOwnerButton
+            label={t("lifeopspanels.disconnectOwnerX", {
               defaultValue: "Disconnect Owner",
             })}
-          </Button>
+            disabled={actionPending}
+            onDisconnect={() => void ownerX.disconnect()}
+          />
         ) : null}
       </div>
 

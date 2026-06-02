@@ -238,9 +238,6 @@ export function FacewearView() {
               <Glasses className="h-4 w-4 text-accent" />
               <h1 className="text-sm font-semibold">Facewear</h1>
             </div>
-            <p className="mt-1 text-xs text-muted">
-              Manage all connected XR devices and smartglasses.
-            </p>
           </div>
           <span
             className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium ${

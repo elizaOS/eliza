@@ -8,6 +8,7 @@ import type {
   SnoozeLifeOpsOccurrenceRequest,
 } from "@elizaos/shared";
 import { client, useApp } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   AlarmClock,
   Apple,
@@ -411,6 +412,21 @@ function SnoozeSplitButton({
 
   const disabled =
     !occurrenceId || optimisticState !== "idle" || busyAction !== null;
+  const snooze = useAgentElement<HTMLButtonElement>({
+    id: `reminders-snooze-${occurrenceId || "none"}`,
+    role: "button",
+    label: `Snooze ${DEFAULT_SNOOZE.label}`,
+    group: "lifeops-reminders",
+    description: "Snooze this reminder",
+  });
+  const snoozeOptions = useAgentElement<HTMLButtonElement>({
+    id: `reminders-snooze-options-${occurrenceId || "none"}`,
+    role: "button",
+    label: "Snooze options",
+    group: "lifeops-reminders",
+    status: open ? "active" : "inactive",
+    description: "Open the snooze options menu for this reminder",
+  });
 
   return (
     <div
@@ -418,6 +434,7 @@ function SnoozeSplitButton({
       className="relative inline-flex items-stretch overflow-hidden rounded-lg border border-border/15 bg-bg-muted/30 text-[11px] font-semibold text-muted"
     >
       <button
+        ref={snooze.ref}
         type="button"
         disabled={disabled}
         onClick={() => onSnooze(DEFAULT_SNOOZE)}
@@ -428,6 +445,7 @@ function SnoozeSplitButton({
             : "Snooze unavailable for this reminder"
         }
         aria-label={`Snooze ${DEFAULT_SNOOZE.label}`}
+        {...snooze.agentProps}
       >
         {busyAction === "snooze" ? (
           <Loader2 className="h-3 w-3 animate-spin" />
@@ -437,12 +455,14 @@ function SnoozeSplitButton({
         {DEFAULT_SNOOZE.label}
       </button>
       <button
+        ref={snoozeOptions.ref}
         type="button"
         disabled={disabled}
         onClick={() => setOpen((prev) => !prev)}
         className="inline-flex items-center border-l border-border/15 px-1.5 py-1 transition-colors hover:bg-bg-muted/60 hover:text-txt disabled:cursor-not-allowed disabled:opacity-40"
         aria-label="Snooze options"
         aria-expanded={open}
+        {...snoozeOptions.agentProps}
       >
         <ChevronDown className="h-3 w-3" aria-hidden />
       </button>
@@ -493,8 +513,16 @@ function CompleteButton({
 >) {
   const disabled =
     !occurrenceId || optimisticState !== "idle" || busyAction !== null;
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `reminders-complete-${occurrenceId || "none"}`,
+    role: "button",
+    label: "Mark reminder complete",
+    group: "lifeops-reminders",
+    description: "Mark this reminder as complete",
+  });
   return (
     <button
+      ref={ref}
       type="button"
       disabled={disabled}
       onClick={onComplete}
@@ -505,6 +533,7 @@ function CompleteButton({
           : "Complete unavailable for this reminder"
       }
       aria-label="Mark complete"
+      {...agentProps}
     >
       {busyAction === "complete" ? (
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -566,6 +595,21 @@ function ReminderRow({
   const style = URGENCY_STYLES[urgency];
   const occurrenceId = reminder.occurrenceId;
   const fading = optimisticState !== "idle";
+  const row = useAgentElement<HTMLButtonElement>({
+    id: `reminders-row-${reminder.ownerId}`,
+    role: "list-item",
+    label: reminder.title,
+    group: "lifeops-reminders",
+    status: isSelected ? "active" : "inactive",
+    description: `Open the reminder ${reminder.title}`,
+  });
+  const chat = useAgentElement<HTMLButtonElement>({
+    id: `reminders-chat-${reminder.ownerId}`,
+    role: "button",
+    label: `Chat about ${reminder.title}`,
+    group: "lifeops-reminders",
+    description: `Open chat about the reminder ${reminder.title}`,
+  });
   return (
     <div
       className={[
@@ -575,10 +619,12 @@ function ReminderRow({
       ].join(" ")}
     >
       <button
+        ref={row.ref}
         type="button"
         aria-pressed={isSelected}
         className="flex min-w-0 flex-1 items-stretch gap-3 text-left"
         onClick={onSelect}
+        {...row.agentProps}
       >
         <span
           aria-hidden
@@ -645,10 +691,12 @@ function ReminderRow({
           onComplete={onComplete}
         />
         <button
+          ref={chat.ref}
           type="button"
           onClick={onChat}
           className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold text-muted transition-colors hover:bg-bg-muted/40 hover:text-txt"
           aria-label={`Chat about ${reminder.title}`}
+          {...chat.agentProps}
         >
           <MessageSquare className="h-3.5 w-3.5" aria-hidden />
           Chat
@@ -814,10 +862,80 @@ interface AddAlarmFormProps {
   onCancel: () => void;
 }
 
+function AlarmWeekdayToggle({
+  day,
+  active,
+  onToggle,
+}: {
+  day: { key: number; short: string; long: string };
+  active: boolean;
+  onToggle: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `alarms-weekday-${day.key}`,
+    role: "toggle",
+    label: `Repeat on ${day.long}`,
+    group: "lifeops-add-alarm",
+    status: active ? "active" : "inactive",
+    description: `Toggle whether the alarm repeats on ${day.long}`,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onToggle}
+      aria-pressed={active}
+      title={day.long}
+      className={[
+        "h-8 w-8 rounded-full border text-[11px] font-semibold transition-colors",
+        active
+          ? "border-accent bg-accent/20 text-accent"
+          : "border-border/20 bg-bg-muted/20 text-muted hover:bg-bg-muted/40",
+      ].join(" ")}
+      {...agentProps}
+    >
+      {day.short}
+    </button>
+  );
+}
+
 function AddAlarmForm({ saving, onSave, onCancel }: AddAlarmFormProps) {
   const [time, setTime] = useState("07:00");
   const [label, setLabel] = useState("");
   const [weekdays, setWeekdays] = useState<Set<number>>(new Set());
+  const timeField = useAgentElement<HTMLInputElement>({
+    id: "alarms-add-time",
+    role: "text-input",
+    label: "Alarm time",
+    group: "lifeops-add-alarm",
+    description: "Time of day the alarm fires (HH:MM)",
+    getValue: () => time,
+    onFill: setTime,
+  });
+  const labelField = useAgentElement<HTMLInputElement>({
+    id: "alarms-add-label",
+    role: "text-input",
+    label: "Alarm label",
+    group: "lifeops-add-alarm",
+    description: "Optional label for the alarm",
+    getValue: () => label,
+    onFill: setLabel,
+  });
+  const cancelBtn = useAgentElement<HTMLButtonElement>({
+    id: "alarms-add-cancel",
+    role: "button",
+    label: "Cancel new alarm",
+    group: "lifeops-add-alarm",
+    description: "Cancel creating a new alarm",
+    onActivate: onCancel,
+  });
+  const saveBtn = useAgentElement<HTMLButtonElement>({
+    id: "alarms-add-save",
+    role: "button",
+    label: "Save alarm",
+    group: "lifeops-add-alarm",
+    description: "Save the new alarm",
+  });
 
   const toggleWeekday = (key: number) => {
     setWeekdays((prev) => {
@@ -850,48 +968,40 @@ function AddAlarmForm({ saving, onSave, onCancel }: AddAlarmFormProps) {
         <label className="flex flex-col gap-1 text-[11px] font-medium text-muted">
           Time
           <input
+            ref={timeField.ref}
             type="time"
             value={time}
             onChange={(e) => setTime(e.target.value)}
             className="rounded-lg border border-border/20 bg-bg-muted/30 px-3 py-1.5 text-base font-semibold text-txt tabular-nums focus:border-accent focus:outline-none"
             required
+            {...timeField.agentProps}
           />
         </label>
         <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-[11px] font-medium text-muted">
           Label (optional)
           <input
+            ref={labelField.ref}
             type="text"
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="Morning workout"
             className="rounded-lg border border-border/20 bg-bg-muted/30 px-3 py-1.5 text-sm text-txt focus:border-accent focus:outline-none"
             maxLength={120}
+            {...labelField.agentProps}
           />
         </label>
       </div>
       <div className="space-y-1">
         <span className="text-[11px] font-medium text-muted">Repeat</span>
         <div className="flex flex-wrap gap-1">
-          {WEEKDAY_LABELS.map((day) => {
-            const active = weekdays.has(day.key);
-            return (
-              <button
-                key={day.key}
-                type="button"
-                onClick={() => toggleWeekday(day.key)}
-                aria-pressed={active}
-                title={day.long}
-                className={[
-                  "h-8 w-8 rounded-full border text-[11px] font-semibold transition-colors",
-                  active
-                    ? "border-accent bg-accent/20 text-accent"
-                    : "border-border/20 bg-bg-muted/20 text-muted hover:bg-bg-muted/40",
-                ].join(" ")}
-              >
-                {day.short}
-              </button>
-            );
-          })}
+          {WEEKDAY_LABELS.map((day) => (
+            <AlarmWeekdayToggle
+              key={day.key}
+              day={day}
+              active={weekdays.has(day.key)}
+              onToggle={() => toggleWeekday(day.key)}
+            />
+          ))}
         </div>
         <div className="pt-0.5 text-[10px] text-muted/70">
           {weekdays.size === 0
@@ -903,16 +1013,20 @@ function AddAlarmForm({ saving, onSave, onCancel }: AddAlarmFormProps) {
       </div>
       <div className="flex items-center justify-end gap-2 pt-1">
         <button
+          ref={cancelBtn.ref}
           type="button"
           onClick={onCancel}
           className="rounded-lg px-3 py-1.5 text-[11px] font-semibold text-muted hover:bg-bg-muted/40 hover:text-txt"
+          {...cancelBtn.agentProps}
         >
           Cancel
         </button>
         <button
+          ref={saveBtn.ref}
           type="submit"
           disabled={saving}
           className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[11px] font-semibold text-bg shadow-sm transition-colors hover:bg-accent/90 disabled:opacity-50"
+          {...saveBtn.agentProps}
         >
           {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
           Save alarm
@@ -945,6 +1059,13 @@ function AlarmRow({
   const time = entry.nextFireIso ? formatTimeOfDay(entry.nextFireIso) : null;
   const day = entry.nextFireIso ? formatNextFireDay(entry.nextFireIso) : "";
   const fading = optimisticState !== "idle";
+  const deleteBtn = useAgentElement<HTMLButtonElement>({
+    id: `alarms-delete-${entry.definition.id}`,
+    role: "button",
+    label: `Delete alarm ${entry.definition.title}`,
+    group: "lifeops-alarms",
+    description: `Delete the alarm ${entry.definition.title}`,
+  });
   return (
     <div
       className={[
@@ -1013,12 +1134,14 @@ function AlarmRow({
           onComplete={onComplete}
         />
         <button
+          ref={deleteBtn.ref}
           type="button"
           onClick={onDelete}
           disabled={busyAction !== null || optimisticState === "deleted"}
           className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border/15 bg-bg-muted/30 text-rose-300 transition-colors hover:bg-rose-500/15 hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-40"
           aria-label="Delete alarm"
           title="Delete alarm"
+          {...deleteBtn.agentProps}
         >
           {busyAction === "delete" ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1302,6 +1425,30 @@ export function LifeOpsRemindersSection() {
     [load],
   );
 
+  const refreshBtn = useAgentElement<HTMLButtonElement>({
+    id: "reminders-refresh",
+    role: "button",
+    label: t("common.refresh", { defaultValue: "Refresh" }),
+    group: "lifeops-reminders",
+    description: "Refresh reminders and alarms",
+  });
+  const remindersTab = useAgentElement<HTMLButtonElement>({
+    id: "reminders-tab-reminders",
+    role: "tab",
+    label: "Reminders tab",
+    group: "lifeops-reminders-tabs",
+    status: tab === "reminders" ? "active" : "inactive",
+    description: "Show the reminders list",
+  });
+  const alarmsTab = useAgentElement<HTMLButtonElement>({
+    id: "reminders-tab-alarms",
+    role: "tab",
+    label: "Alarms tab",
+    group: "lifeops-reminders-tabs",
+    status: tab === "alarms" ? "active" : "inactive",
+    description: "Show the alarms list",
+  });
+
   return (
     <div className="space-y-4" data-testid="lifeops-reminders">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1315,11 +1462,13 @@ export function LifeOpsRemindersSection() {
         </div>
         <div className="flex items-center gap-2">
           <button
+            ref={refreshBtn.ref}
             type="button"
             className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-muted transition-colors hover:bg-bg-muted/40 hover:text-txt disabled:opacity-40"
             onClick={() => void load()}
             disabled={loading}
             aria-label={t("common.refresh", { defaultValue: "Refresh" })}
+            {...refreshBtn.agentProps}
           >
             <RefreshCw
               className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
@@ -1333,6 +1482,7 @@ export function LifeOpsRemindersSection() {
         className="inline-flex items-center gap-1 rounded-lg border border-border/15 bg-bg-muted/20 p-0.5 text-[11px] font-semibold"
       >
         <button
+          ref={remindersTab.ref}
           type="button"
           role="tab"
           aria-selected={tab === "reminders"}
@@ -1343,6 +1493,7 @@ export function LifeOpsRemindersSection() {
               ? "bg-card text-txt shadow-sm"
               : "text-muted hover:text-txt",
           ].join(" ")}
+          {...remindersTab.agentProps}
         >
           <Bell className="h-3 w-3" aria-hidden />
           Reminders
@@ -1351,6 +1502,7 @@ export function LifeOpsRemindersSection() {
           </span>
         </button>
         <button
+          ref={alarmsTab.ref}
           type="button"
           role="tab"
           aria-selected={tab === "alarms"}
@@ -1361,6 +1513,7 @@ export function LifeOpsRemindersSection() {
               ? "bg-card text-txt shadow-sm"
               : "text-muted hover:text-txt",
           ].join(" ")}
+          {...alarmsTab.agentProps}
         >
           <AlarmClock className="h-3 w-3" aria-hidden />
           Alarms
@@ -1578,6 +1731,14 @@ function AlarmsTabBody({
   onSaveAlarm,
   onCancelAdd,
 }: AlarmsTabBodyProps) {
+  const addToggle = useAgentElement<HTMLButtonElement>({
+    id: "alarms-toggle-add",
+    role: "button",
+    label: showAddAlarm ? "Close add alarm" : "Add alarm",
+    group: "lifeops-alarms",
+    status: showAddAlarm ? "active" : "inactive",
+    description: "Open or close the add-alarm form",
+  });
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -1586,9 +1747,11 @@ function AlarmsTabBody({
           macOS after native sync succeeds.
         </div>
         <button
+          ref={addToggle.ref}
           type="button"
           onClick={onToggleAdd}
           className="inline-flex items-center gap-1 rounded-lg border border-border/15 bg-bg-muted/30 px-2 py-1 text-[11px] font-semibold text-muted transition-colors hover:bg-bg-muted/60 hover:text-txt"
+          {...addToggle.agentProps}
         >
           <Plus className="h-3 w-3" aria-hidden />
           {showAddAlarm ? "Close" : "Add alarm"}

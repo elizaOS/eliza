@@ -17,6 +17,7 @@
  *      PayPal account; we show a CSV-export fallback prompt.
  */
 import { client, useApp } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Loader2, Wallet } from "lucide-react";
 import { type JSX, useCallback, useEffect, useRef, useState } from "react";
 import type { LifeOpsPaymentSource } from "../lifeops/payment-types.js";
@@ -189,9 +190,18 @@ export function LifeOpsLinkPaypalButton({
   else if (status === "exchanging") buttonLabel = "Linking…";
   else if (status === "done") buttonLabel = "Linked";
 
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "money-link-paypal",
+    role: "button",
+    label,
+    group: "lifeops-money",
+    description: "Link a PayPal account",
+  });
+
   return (
     <div className="flex flex-col gap-1">
       <button
+        ref={ref}
         type="button"
         onClick={onClick}
         disabled={disabled}
@@ -201,6 +211,7 @@ export function LifeOpsLinkPaypalButton({
             : undefined
         }
         className="inline-flex items-center gap-1.5 rounded-md border border-border/30 bg-bg-muted/30 px-2.5 py-1 text-xs font-medium hover:bg-bg-muted/60 disabled:cursor-not-allowed disabled:opacity-50"
+        {...agentProps}
       >
         {status === "preparing" || status === "exchanging" ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />

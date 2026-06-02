@@ -1,7 +1,29 @@
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Moon, Sunrise } from "lucide-react";
 import type { JSX } from "react";
 import { useMemo } from "react";
 import { useLifeOpsScheduleInspection } from "../hooks/useLifeOpsScheduleInspection.js";
+
+function SleepInspectionRetryButton({ onRetry }: { onRetry: () => void }) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "sleep-inspection-retry",
+    role: "button",
+    label: "Retry sleep inspection",
+    group: "lifeops-sleep",
+    description: "Reload the sleep inspection data",
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onRetry}
+      className="ml-2 rounded-md border border-rose-400/40 px-2 py-0.5 text-[11px]"
+      {...agentProps}
+    >
+      Retry
+    </button>
+  );
+}
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
@@ -70,13 +92,7 @@ export function SleepInspectionPanel(): JSX.Element {
     return (
       <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
         {error}
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          className="ml-2 rounded-md border border-rose-400/40 px-2 py-0.5 text-[11px]"
-        >
-          Retry
-        </button>
+        <SleepInspectionRetryButton onRetry={() => void refresh()} />
       </div>
     );
   }

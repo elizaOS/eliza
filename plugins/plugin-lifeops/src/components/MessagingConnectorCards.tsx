@@ -10,6 +10,7 @@ import {
   openExternalUrl,
   useApp,
 } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   CheckCircle2,
   CircleAlert,
@@ -24,7 +25,13 @@ import {
   RefreshCw,
   Unplug,
 } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import {
+  type ComponentProps,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 import { useDiscordConnector } from "../hooks/useDiscordConnector.js";
 import { useIMessageConnector } from "../hooks/useIMessageConnector.js";
 import { useSignalConnector } from "../hooks/useSignalConnector.js";
@@ -448,8 +455,17 @@ function ConnectorManagementButton({
     );
   }, [platform, provider, setActionNotice, setTab]);
 
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `connector-${provider}-manage`,
+    role: "button",
+    label: `${label}: ${platform}`,
+    group: "lifeops-connectors",
+    description: `Open ${platform} in the Connectors settings`,
+  });
+
   return (
     <Button
+      ref={ref}
       size="sm"
       variant="outline"
       className="h-8 rounded-xl px-3 text-xs font-semibold"
@@ -457,10 +473,76 @@ function ConnectorManagementButton({
       onClick={handleOpen}
       title={`${label}: ${platform}`}
       aria-label={`${label}: ${platform}`}
+      {...agentProps}
     >
       <ExternalLink className="mr-1.5 h-3.5 w-3.5" aria-hidden />
       {label}
     </Button>
+  );
+}
+
+function ConnectorActionButton({
+  agentId,
+  label,
+  description,
+  children,
+  ...buttonProps
+}: {
+  agentId: string;
+  label: string;
+  description: string;
+  children: ReactNode;
+} & ComponentProps<typeof Button>) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group: "lifeops-connectors",
+    description,
+  });
+  return (
+    <Button ref={ref} {...buttonProps} {...agentProps}>
+      {children}
+    </Button>
+  );
+}
+
+function ConnectorTextInput({
+  agentId,
+  label,
+  description,
+  value,
+  onChange,
+  onSubmit,
+  ...inputProps
+}: {
+  agentId: string;
+  label: string;
+  description: string;
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+} & Omit<ComponentProps<"input">, "value" | "onChange">) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: agentId,
+    role: "text-input",
+    label,
+    group: "lifeops-connectors",
+    description,
+    getValue: () => value,
+    onFill: onChange,
+  });
+  return (
+    <input
+      ref={ref}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") onSubmit();
+      }}
+      {...inputProps}
+      {...agentProps}
+    />
   );
 }
 
@@ -549,7 +631,10 @@ export function SignalConnectorCard() {
               platform="Signal"
               disabled={busy}
             />
-            <Button
+            <ConnectorActionButton
+              agentId="connector-signal-refresh-managed"
+              label="Refresh Signal"
+              description="Refresh Signal connector status"
               size="sm"
               variant="outline"
               className="h-8 w-8 rounded-xl p-0"
@@ -563,11 +648,14 @@ export function SignalConnectorCard() {
               ) : (
                 <RefreshCw className="h-3.5 w-3.5" aria-hidden />
               )}
-            </Button>
+            </ConnectorActionButton>
           </div>
         </div>
       ) : !isConnected && !isPairing ? (
-        <Button
+        <ConnectorActionButton
+          agentId="connector-signal-link"
+          label="Link Signal"
+          description="Start Signal pairing"
           size="sm"
           className="h-8 w-8 rounded-xl p-0"
           disabled={busy}
@@ -580,7 +668,7 @@ export function SignalConnectorCard() {
           ) : (
             <QrCode className="h-3.5 w-3.5" aria-hidden />
           )}
-        </Button>
+        </ConnectorActionButton>
       ) : null}
 
       {isPairing ? (
@@ -599,7 +687,10 @@ export function SignalConnectorCard() {
               Generating QR code...
             </div>
           )}
-          <Button
+          <ConnectorActionButton
+            agentId="connector-signal-cancel-pairing"
+            label="Cancel Signal pairing"
+            description="Cancel the Signal pairing flow"
             size="sm"
             variant="outline"
             className="h-8 w-8 rounded-xl p-0"
@@ -608,7 +699,7 @@ export function SignalConnectorCard() {
             aria-label="Cancel"
           >
             <Unplug className="h-3.5 w-3.5" aria-hidden />
-          </Button>
+          </ConnectorActionButton>
         </div>
       ) : null}
 
@@ -643,7 +734,10 @@ export function SignalConnectorCard() {
               label="Manage"
               disabled={busy}
             />
-            <Button
+            <ConnectorActionButton
+              agentId="connector-signal-refresh"
+              label="Refresh Signal"
+              description="Refresh Signal connector status"
               size="sm"
               variant="outline"
               className="h-8 w-8 rounded-xl p-0"
@@ -657,7 +751,7 @@ export function SignalConnectorCard() {
               ) : (
                 <RefreshCw className="h-3.5 w-3.5" aria-hidden />
               )}
-            </Button>
+            </ConnectorActionButton>
           </div>
         </div>
       ) : null}
@@ -859,7 +953,10 @@ export function DiscordConnectorCard() {
       statusVariant={statusVariant}
     >
       {showConnectButton ? (
-        <Button
+        <ConnectorActionButton
+          agentId="connector-discord-connect"
+          label={mainActionLabel}
+          description="Connect or act on the Discord connector"
           size="sm"
           className="h-8 w-8 rounded-xl p-0"
           disabled={busy}
@@ -872,7 +969,7 @@ export function DiscordConnectorCard() {
           ) : (
             <Plug2 className="h-3.5 w-3.5" aria-hidden />
           )}
-        </Button>
+        </ConnectorActionButton>
       ) : null}
 
       {isElectrobunRuntime() &&
@@ -881,7 +978,10 @@ export function DiscordConnectorCard() {
         desktopAccess.nextAction === "open_discord" ||
         desktopAccess.nextAction === "open_dm_inbox" ||
         (!dmInboxVisible && desktopAccess.available)) ? (
-        <Button
+        <ConnectorActionButton
+          agentId="connector-discord-open-desktop"
+          label="Open Discord in Eliza Desktop Browser"
+          description="Open Discord in the Eliza desktop browser"
           size="sm"
           variant="outline"
           className="h-8 w-8 rounded-xl p-0"
@@ -891,7 +991,7 @@ export function DiscordConnectorCard() {
           aria-label="Open in Eliza Desktop Browser"
         >
           <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-        </Button>
+        </ConnectorActionButton>
       ) : null}
 
       {isConnected ? (
@@ -909,7 +1009,10 @@ export function DiscordConnectorCard() {
                 : "DM inbox visible"}
             </div>
           ) : null}
-          <Button
+          <ConnectorActionButton
+            agentId="connector-discord-disconnect"
+            label="Disconnect Discord"
+            description="Disconnect the Discord connector"
             size="sm"
             variant="outline"
             className="h-8 w-8 rounded-xl p-0"
@@ -919,7 +1022,7 @@ export function DiscordConnectorCard() {
             aria-label="Disconnect"
           >
             <Unplug className="h-3.5 w-3.5" aria-hidden />
-          </Button>
+          </ConnectorActionButton>
         </div>
       ) : null}
 
@@ -967,7 +1070,10 @@ export function DiscordConnectorCard() {
                           : ""}
                   </div>
                   {actionLabel ? (
-                    <Button
+                    <ConnectorActionButton
+                      agentId={`connector-discord-source-${access.source}-${access.browser ?? "desktop"}-${access.profileId ?? "default"}`}
+                      label={`${actionLabel}: ${browserAccessTitle(access)}`}
+                      description={`${actionLabel} for ${browserAccessTitle(access)}`}
                       size="sm"
                       variant={
                         access.source === "desktop_browser"
@@ -982,7 +1088,7 @@ export function DiscordConnectorCard() {
                     >
                       {browserAccessActionIcon(access.nextAction)}
                       {actionLabel}
-                    </Button>
+                    </ConnectorActionButton>
                   ) : null}
                 </div>
               );
@@ -1120,7 +1226,10 @@ export function TelegramConnectorCard() {
       statusVariant={statusVariant}
     >
       {showStartStep ? (
-        <Button
+        <ConnectorActionButton
+          agentId="connector-telegram-connect"
+          label={authState === "error" ? "Retry Telegram" : "Connect Telegram"}
+          description="Start the Telegram login flow"
           size="sm"
           className="h-8 w-8 rounded-xl p-0"
           disabled={busy}
@@ -1129,7 +1238,7 @@ export function TelegramConnectorCard() {
           aria-label={authState === "error" ? "Retry" : "Connect"}
         >
           <Plug2 className="h-3.5 w-3.5" aria-hidden />
-        </Button>
+        </ConnectorActionButton>
       ) : null}
 
       {!isConnected && setupManagedByPlugin ? (
@@ -1144,7 +1253,10 @@ export function TelegramConnectorCard() {
               platform="Telegram"
               disabled={busy}
             />
-            <Button
+            <ConnectorActionButton
+              agentId="connector-telegram-refresh-managed"
+              label="Refresh Telegram"
+              description="Refresh Telegram connector status"
               size="sm"
               variant="outline"
               className="h-8 w-8 rounded-xl p-0"
@@ -1158,61 +1270,68 @@ export function TelegramConnectorCard() {
               ) : (
                 <RefreshCw className="h-3.5 w-3.5" aria-hidden />
               )}
-            </Button>
+            </ConnectorActionButton>
           </div>
         </div>
       ) : null}
 
       {showPhoneStep ? (
         <div className="flex items-center gap-2">
-          <input
+          <ConnectorTextInput
+            agentId="connector-telegram-phone"
+            label="Telegram phone number"
+            description="Phone number for Telegram login"
             type="tel"
             placeholder="+1 234 567 8900"
             value={phoneInput}
-            onChange={(e) => setPhoneInput(e.target.value)}
+            onChange={setPhoneInput}
+            onSubmit={handleSendCode}
             className="h-8 flex-1 rounded-lg bg-bg/40 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                handleSendCode();
-              }
-            }}
           />
-          <Button
+          <ConnectorActionButton
+            agentId="connector-telegram-send-code"
+            label="Send Telegram code"
+            description="Send the Telegram verification code"
             size="sm"
             className="h-8 rounded-xl px-3 text-xs font-semibold"
             disabled={busy || phoneInput.trim().length === 0}
             onClick={handleSendCode}
           >
             Send Code
-          </Button>
+          </ConnectorActionButton>
         </div>
       ) : null}
 
       {showCodeStep ? (
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <input
+            <ConnectorTextInput
+              agentId="connector-telegram-code"
+              label="Telegram verification code"
+              description="Verification code Telegram sent"
               type="text"
               placeholder="Verification code"
               value={codeInput}
-              onChange={(e) => setCodeInput(e.target.value)}
+              onChange={setCodeInput}
+              onSubmit={handleVerifyCode}
               className="h-8 flex-1 rounded-xl border border-border/28 bg-card/24 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
               autoComplete="one-time-code"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleVerifyCode();
-                }
-              }}
             />
-            <Button
+            <ConnectorActionButton
+              agentId="connector-telegram-verify"
+              label="Verify Telegram code"
+              description="Verify the Telegram code"
               size="sm"
               className="h-8 rounded-xl px-3 text-xs font-semibold"
               disabled={busy || codeInput.trim().length === 0}
               onClick={handleVerifyCode}
             >
               Verify
-            </Button>
-            <Button
+            </ConnectorActionButton>
+            <ConnectorActionButton
+              agentId="connector-telegram-restart"
+              label="Restart Telegram login"
+              description="Restart the Telegram login flow"
               size="sm"
               variant="outline"
               className="h-8 rounded-xl px-3 text-xs font-semibold"
@@ -1220,7 +1339,7 @@ export function TelegramConnectorCard() {
               onClick={handleRestartAuth}
             >
               Restart
-            </Button>
+            </ConnectorActionButton>
           </div>
           <div className="text-xs text-muted">
             Enter the login code Telegram sent to your app or SMS, then retry if
@@ -1231,26 +1350,28 @@ export function TelegramConnectorCard() {
 
       {showPasswordStep ? (
         <div className="flex items-center gap-2">
-          <input
+          <ConnectorTextInput
+            agentId="connector-telegram-password"
+            label="Telegram 2FA password"
+            description="Telegram two-factor password"
             type="password"
             placeholder="2FA password"
             value={passwordInput}
-            onChange={(e) => setPasswordInput(e.target.value)}
+            onChange={setPasswordInput}
+            onSubmit={handleSubmitPassword}
             className="h-8 flex-1 rounded-lg bg-bg/40 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                handleSubmitPassword();
-              }
-            }}
           />
-          <Button
+          <ConnectorActionButton
+            agentId="connector-telegram-submit-password"
+            label="Submit Telegram password"
+            description="Submit the Telegram 2FA password"
             size="sm"
             className="h-8 rounded-xl px-3 text-xs font-semibold"
             disabled={busy || passwordInput.length === 0}
             onClick={handleSubmitPassword}
           >
             Submit
-          </Button>
+          </ConnectorActionButton>
         </div>
       ) : null}
 
@@ -1289,7 +1410,10 @@ export function TelegramConnectorCard() {
               label="Manage"
               disabled={busy}
             />
-            <Button
+            <ConnectorActionButton
+              agentId="connector-telegram-refresh"
+              label="Refresh Telegram"
+              description="Refresh Telegram connector status"
               size="sm"
               variant="outline"
               className="h-8 w-8 rounded-xl p-0"
@@ -1303,7 +1427,7 @@ export function TelegramConnectorCard() {
               ) : (
                 <RefreshCw className="h-3.5 w-3.5" aria-hidden />
               )}
-            </Button>
+            </ConnectorActionButton>
           </div>
         </div>
       ) : null}
@@ -1412,7 +1536,10 @@ export function WhatsAppConnectorCard() {
         ) : null}
         <div className="flex items-center gap-2">
           {!isConnected ? (
-            <Button
+            <ConnectorActionButton
+              agentId="connector-whatsapp-pair"
+              label={pairingOpen ? "Hide WhatsApp QR" : "Pair WhatsApp"}
+              description="Show or hide the WhatsApp pairing QR code"
               size="sm"
               className="h-8 rounded-xl px-3 text-xs font-semibold"
               disabled={busy}
@@ -1422,9 +1549,12 @@ export function WhatsAppConnectorCard() {
             >
               <QrCode className="mr-1.5 h-3.5 w-3.5" aria-hidden />
               {pairingOpen ? "Hide QR" : "Pair WhatsApp"}
-            </Button>
+            </ConnectorActionButton>
           ) : null}
-          <Button
+          <ConnectorActionButton
+            agentId="connector-whatsapp-refresh"
+            label="Refresh WhatsApp"
+            description="Refresh WhatsApp connector status"
             size="sm"
             variant="outline"
             className="h-8 w-8 rounded-xl p-0"
@@ -1434,7 +1564,7 @@ export function WhatsAppConnectorCard() {
             aria-label="Refresh"
           >
             <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-          </Button>
+          </ConnectorActionButton>
         </div>
         {pairingOpen ? (
           <WhatsAppQrOverlay
@@ -1579,7 +1709,10 @@ export function IMessageConnectorCard() {
         </div>
         {showFullDiskAccessControls ? (
           <div className="flex flex-wrap items-center gap-2">
-            <Button
+            <ConnectorActionButton
+              agentId="connector-imessage-full-disk-access"
+              label="Open Full Disk Access"
+              description="Open the Full Disk Access settings for iMessage reading"
               size="sm"
               variant="outline"
               className="h-8 rounded-xl px-3 text-xs font-semibold"
@@ -1588,7 +1721,7 @@ export function IMessageConnectorCard() {
             >
               <HardDrive className="mr-1.5 h-3.5 w-3.5" aria-hidden />
               Open Full Disk Access
-            </Button>
+            </ConnectorActionButton>
           </div>
         ) : null}
         {showFullDiskAccessControls ? (
@@ -1619,7 +1752,10 @@ export function IMessageConnectorCard() {
           </details>
         ) : null}
         <div className="flex items-center gap-2">
-          <Button
+          <ConnectorActionButton
+            agentId="connector-imessage-refresh"
+            label="Refresh iMessage"
+            description="Refresh iMessage connector status"
             size="sm"
             variant="outline"
             className="h-8 w-8 rounded-xl p-0"
@@ -1633,7 +1769,7 @@ export function IMessageConnectorCard() {
             ) : (
               <RefreshCw className="h-3.5 w-3.5" aria-hidden />
             )}
-          </Button>
+          </ConnectorActionButton>
         </div>
         {status?.error ? (
           <div className="text-xs text-danger">{status.error}</div>

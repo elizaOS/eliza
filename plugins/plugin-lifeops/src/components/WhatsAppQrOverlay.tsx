@@ -1,6 +1,38 @@
 import { Button, useApp } from "@elizaos/ui";
-import { useEffect, useRef } from "react";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+import {
+  type ComponentProps,
+  type ReactNode,
+  useEffect,
+  useRef,
+} from "react";
 import { useWhatsAppPairing } from "../hooks/useWhatsAppPairing.js";
+
+function WhatsAppPairingButton({
+  agentId,
+  label,
+  description,
+  children,
+  ...buttonProps
+}: {
+  agentId: string;
+  label: string;
+  description: string;
+  children: ReactNode;
+} & ComponentProps<typeof Button>) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group: "lifeops-whatsapp-pairing",
+    description,
+  });
+  return (
+    <Button ref={ref} {...buttonProps} {...agentProps}>
+      {children}
+    </Button>
+  );
+}
 
 interface WhatsAppQrOverlayProps {
   accountId?: string;
@@ -51,14 +83,17 @@ export function WhatsAppQrOverlay({
               : "WhatsApp is paired. Auth state is saved for automatic reconnection.")}
         </div>
         {!onConnected ? (
-          <Button
+          <WhatsAppPairingButton
+            agentId="settings-whatsapp-disconnect"
+            label={t("common.disconnect")}
+            description="Disconnect the paired WhatsApp account"
             variant="destructive"
             size="sm"
             className="mt-2 text-2xs"
             onClick={() => void disconnect()}
           >
             {t("common.disconnect")}
-          </Button>
+          </WhatsAppPairingButton>
         ) : null}
       </div>
     );
@@ -72,7 +107,10 @@ export function WhatsAppQrOverlay({
             ? "QR code expired. Please try again."
             : (error ?? "An error occurred.")}
         </div>
-        <Button
+        <WhatsAppPairingButton
+          agentId="settings-whatsapp-retry"
+          label={t("whatsappqroverlay.TryAgain")}
+          description="Retry WhatsApp pairing"
           variant="outline"
           size="sm"
           className="text-xs-tight"
@@ -83,7 +121,7 @@ export function WhatsAppQrOverlay({
           }}
         >
           {t("whatsappqroverlay.TryAgain")}
-        </Button>
+        </WhatsAppPairingButton>
       </div>
     );
   }
@@ -97,7 +135,10 @@ export function WhatsAppQrOverlay({
         <div className="text-2xs mb-2 text-muted opacity-70">
           {t("whatsappqroverlay.UsesAnUnofficialW")}
         </div>
-        <Button
+        <WhatsAppPairingButton
+          agentId="settings-whatsapp-connect"
+          label={t("whatsappqroverlay.ConnectWhatsApp")}
+          description="Start WhatsApp pairing and show the QR code"
           variant="outline"
           size="sm"
           className="text-xs-tight"
@@ -108,7 +149,7 @@ export function WhatsAppQrOverlay({
           }}
         >
           {t("whatsappqroverlay.ConnectWhatsApp")}
-        </Button>
+        </WhatsAppPairingButton>
       </div>
     );
   }
@@ -176,14 +217,17 @@ export function WhatsAppQrOverlay({
               {t("whatsappqroverlay.QRRefreshesAutomat")}
             </span>
           </div>
-          <Button
+          <WhatsAppPairingButton
+            agentId="settings-whatsapp-cancel"
+            label={t("common.cancel")}
+            description="Cancel WhatsApp pairing"
             variant="ghost"
             size="sm"
             className="text-2xs mt-3 text-muted"
             onClick={() => void stopPairing()}
           >
             {t("common.cancel")}
-          </Button>
+          </WhatsAppPairingButton>
         </div>
       </div>
     </div>

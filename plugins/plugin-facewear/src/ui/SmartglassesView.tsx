@@ -11,6 +11,7 @@ import {
   Wifi,
   XCircle,
 } from "lucide-react";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { type ReactNode, useMemo, useRef, useState } from "react";
 import {
   type DisplayPage,
@@ -694,6 +695,54 @@ export function SmartglassesView() {
     ],
   );
 
+  const { ref: connectRef, agentProps: connectAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "setup-connect-headset",
+      role: "button",
+      label: "Connect Headset",
+      group: "setup",
+      status: headsetConnected ? "active" : "inactive",
+      description: "Pair both left and right smartglasses lenses as one headset",
+    });
+  const { ref: runCheckRef, agentProps: runCheckAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "test-run-check",
+      role: "button",
+      label: "Run Check",
+      group: "test",
+      description: "Request serial/battery and send display/settings packets",
+    });
+  const { ref: testTextRef, agentProps: testTextAgentProps } =
+    useAgentElement<HTMLTextAreaElement>({
+      id: "test-display-text",
+      role: "textarea",
+      label: "Display test text",
+      group: "test",
+      description: "Text sent to the smartglasses display during tests",
+      getValue: () => testText,
+      onFill: (value) => setTestText(value),
+    });
+  const { ref: wifiSsidRef, agentProps: wifiSsidAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "wifi-ssid",
+      role: "text-input",
+      label: "Wi-Fi SSID",
+      group: "wifi",
+      description: "SSID of the Wi-Fi network to configure on the glasses",
+      getValue: () => wifiSsid,
+      onFill: (value) => setWifiSsid(value),
+    });
+  const { ref: wifiPasswordRef, agentProps: wifiPasswordAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "wifi-password",
+      role: "text-input",
+      label: "Wi-Fi password",
+      group: "wifi",
+      description: "Password for the Wi-Fi network to configure on the glasses",
+      getValue: () => wifiPassword,
+      onFill: (value) => setWifiPassword(value),
+    });
+
   function appendEvent(type: string, detail: string): void {
     setEvents((current) =>
       [...current, { at: now(), type, detail }].slice(-80),
@@ -1184,10 +1233,13 @@ export function SmartglassesView() {
                 <h2 className="text-sm font-semibold">Setup</h2>
               </div>
               <button
+                ref={connectRef}
                 type="button"
                 onClick={() => void connectHeadset()}
                 disabled={(!bridge && !webBluetoothAvailable) || busy !== null}
+                aria-label="Connect Headset"
                 className="inline-flex h-9 items-center gap-2 rounded-md bg-accent px-3 text-sm font-medium text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                {...connectAgentProps}
               >
                 <Bluetooth className="h-4 w-4" />
                 Connect Headset
@@ -1215,37 +1267,55 @@ export function SmartglassesView() {
                 <h2 className="text-sm font-semibold">Test</h2>
               </div>
               <button
+                ref={runCheckRef}
                 type="button"
                 onClick={() => void runHardwareCheck()}
                 disabled={!headsetConnected || busy !== null}
+                aria-label="Run Check"
                 className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
+                {...runCheckAgentProps}
               >
                 <RefreshCw className="h-4 w-4" />
                 Run Check
               </button>
             </div>
             <textarea
+              ref={testTextRef}
               value={testText}
               onChange={(event) => setTestText(event.target.value)}
               rows={4}
+              aria-label="Display test text"
               className="mt-4 w-full resize-none rounded-md border border-border bg-bg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              {...testTextAgentProps}
             />
             <div className="mt-3 flex flex-wrap gap-2">
               <ActionButton
                 onClick={sendDisplay}
                 disabled={!headsetConnected || busy !== null}
+                agentId="test-send-display"
+                agentLabel="Send Display"
+                agentGroup="test"
+                agentDescription="Send the display test text to the smartglasses"
               >
                 Send Display
               </ActionButton>
               <ActionButton
                 onClick={clearDisplay}
                 disabled={!headsetConnected || busy !== null}
+                agentId="test-clear-display"
+                agentLabel="Clear Display"
+                agentGroup="test"
+                agentDescription="Clear the smartglasses display"
               >
                 Clear
               </ActionButton>
               <ActionButton
                 onClick={() => toggleMic(!micEnabled)}
                 disabled={!headsetConnected || busy !== null}
+                agentId="test-toggle-mic"
+                agentLabel={micEnabled ? "Turn Mic Off" : "Turn Mic On"}
+                agentGroup="test"
+                agentDescription="Toggle the smartglasses microphone on or off"
               >
                 <Mic className="h-4 w-4" />
                 {micEnabled ? "Mic Off" : "Mic On"}
@@ -1253,6 +1323,10 @@ export function SmartglassesView() {
               <ActionButton
                 onClick={runGuidedValidation}
                 disabled={!headsetConnected || busy !== null}
+                agentId="test-guided-validation"
+                agentLabel="Guided Validation"
+                agentGroup="test"
+                agentDescription="Run the guided side-tap and microphone validation flow"
               >
                 Guided Validation
               </ActionButton>
@@ -1274,41 +1348,63 @@ export function SmartglassesView() {
             <p className="mt-1 text-xs text-muted">Native bridge only.</p>
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               <input
+                ref={wifiSsidRef}
                 value={wifiSsid}
                 onChange={(event) => setWifiSsid(event.target.value)}
                 placeholder="SSID"
+                aria-label="Wi-Fi SSID"
                 className="h-9 rounded-md border border-border bg-bg px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                {...wifiSsidAgentProps}
               />
               <input
+                ref={wifiPasswordRef}
                 value={wifiPassword}
                 onChange={(event) => setWifiPassword(event.target.value)}
                 placeholder="Password"
                 type="password"
+                aria-label="Wi-Fi password"
                 className="h-9 rounded-md border border-border bg-bg px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                {...wifiPasswordAgentProps}
               />
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <ActionButton
                 onClick={scanWifi}
                 disabled={!bridge || busy !== null}
+                agentId="wifi-scan"
+                agentLabel="Scan Wi-Fi"
+                agentGroup="wifi"
+                agentDescription="Scan for nearby Wi-Fi networks through the native bridge"
               >
                 Scan
               </ActionButton>
               <ActionButton
                 onClick={refreshWifiStatus}
                 disabled={!bridge || busy !== null}
+                agentId="wifi-status"
+                agentLabel="Refresh Wi-Fi Status"
+                agentGroup="wifi"
+                agentDescription="Refresh the current Wi-Fi connection status"
               >
                 Status
               </ActionButton>
               <ActionButton
                 onClick={configureWifi}
                 disabled={!bridge || busy !== null}
+                agentId="wifi-configure"
+                agentLabel="Configure Wi-Fi"
+                agentGroup="wifi"
+                agentDescription="Send the entered SSID and password to the glasses"
               >
                 Configure Wi-Fi
               </ActionButton>
               <ActionButton
                 onClick={requestWifiSetup}
                 disabled={!bridge || busy !== null}
+                agentId="wifi-native-setup"
+                agentLabel="Native Wi-Fi Setup"
+                agentGroup="wifi"
+                agentDescription="Launch the native bridge Wi-Fi setup flow"
               >
                 Native Setup
               </ActionButton>
@@ -1334,18 +1430,12 @@ export function SmartglassesView() {
             <h2 className="text-sm font-semibold">Platform Setup</h2>
             <div className="mt-3 grid grid-cols-3 gap-1 rounded-md bg-muted/20 p-1">
               {(Object.keys(PLATFORM_COPY) as PlatformKey[]).map((key) => (
-                <button
+                <PlatformTabButton
                   key={key}
-                  type="button"
-                  onClick={() => setActivePlatform(key)}
-                  className={`h-8 rounded px-2 text-xs font-medium ${
-                    activePlatform === key
-                      ? "bg-bg text-txt shadow-sm"
-                      : "text-muted hover:text-txt"
-                  }`}
-                >
-                  {PLATFORM_COPY[key].label}
-                </button>
+                  platformKey={key}
+                  isActive={activePlatform === key}
+                  onSelect={setActivePlatform}
+                />
               ))}
             </div>
             <p className="mt-3 text-xs text-txt">
@@ -1400,11 +1490,23 @@ export function SmartglassesView() {
               <ReportRow label="Events" value={String(events.length)} />
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              <ActionButton onClick={copyReport}>
+              <ActionButton
+                onClick={copyReport}
+                agentId="report-copy"
+                agentLabel="Copy Report"
+                agentGroup="report"
+                agentDescription="Copy the smartglasses diagnostics report to the clipboard"
+              >
                 <Clipboard className="h-4 w-4" />
                 Copy
               </ActionButton>
-              <ActionButton onClick={downloadReport}>
+              <ActionButton
+                onClick={downloadReport}
+                agentId="report-download"
+                agentLabel="Download Report"
+                agentGroup="report"
+                agentDescription="Download the smartglasses diagnostics report as JSON"
+              >
                 <Download className="h-4 w-4" />
                 Download
               </ActionButton>
@@ -1462,19 +1564,76 @@ function ActionButton({
   children,
   disabled,
   onClick,
+  agentId,
+  agentLabel,
+  agentGroup,
+  agentDescription,
 }: {
   children: ReactNode;
   disabled?: boolean;
   onClick: () => void | Promise<void>;
+  agentId: string;
+  agentLabel: string;
+  agentGroup: string;
+  agentDescription: string;
 }) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label: agentLabel,
+    group: agentGroup,
+    description: agentDescription,
+    onActivate: () => void onClick(),
+  });
   return (
     <button
+      ref={ref}
       type="button"
       onClick={() => void onClick()}
       disabled={disabled}
+      aria-label={agentLabel}
       className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted/20 disabled:cursor-not-allowed disabled:opacity-50"
+      {...agentProps}
     >
       {children}
+    </button>
+  );
+}
+
+function PlatformTabButton({
+  platformKey,
+  isActive,
+  onSelect,
+}: {
+  platformKey: PlatformKey;
+  isActive: boolean;
+  onSelect: (key: PlatformKey) => void;
+}) {
+  const label = PLATFORM_COPY[platformKey].label;
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `platform-tab-${platformKey}`,
+    role: "tab",
+    label: `${label} platform`,
+    group: "platform-setup",
+    status: isActive ? "active" : "inactive",
+    description: `Show ${label} smartglasses pairing instructions`,
+    onActivate: () => onSelect(platformKey),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={() => onSelect(platformKey)}
+      aria-current={isActive ? "page" : undefined}
+      aria-label={`${label} platform`}
+      className={`h-8 rounded px-2 text-xs font-medium ${
+        isActive
+          ? "bg-bg text-txt shadow-sm"
+          : "text-muted hover:text-txt"
+      }`}
+      {...agentProps}
+    >
+      {label}
     </button>
   );
 }

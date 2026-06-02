@@ -27,6 +27,7 @@ import {
   Users,
   Zap,
 } from "lucide-react";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { ReactNode } from "react";
 import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
 
@@ -102,6 +103,96 @@ export const ASSISTANT_INTENTS: AssistantIntent[] = [
     tone: "bg-emerald-400",
     prompt:
       "Extract recent decisions from chats, approvals, meetings, and docs. Save decision records and ask me only about ambiguous items.",
+  },
+  {
+    id: "approval-batch",
+    label: "Approval batch",
+    shortLabel: "Approve",
+    icon: <ClipboardCheck className="h-4 w-4" aria-hidden />,
+    tone: "bg-amber-300",
+    prompt:
+      "Batch pending approvals into safe actions. Separate reversible drafts from irreversible actions, show risk, and ask for the smallest approval set.",
+  },
+  {
+    id: "privacy-redaction",
+    label: "Privacy redaction",
+    shortLabel: "Privacy",
+    icon: <Shield className="h-4 w-4" aria-hidden />,
+    tone: "bg-slate-300",
+    prompt:
+      "Prepare a privacy-safe summary. Redact credentials, financial account data, addresses, and sensitive personal context before sharing.",
+  },
+  {
+    id: "interruption-firebreak",
+    label: "Interruption firebreak",
+    shortLabel: "Focus",
+    icon: <Timer className="h-4 w-4" aria-hidden />,
+    tone: "bg-red-400",
+    prompt:
+      "Protect my focus block. Triage incoming items, decide what can wait, draft holds, and escalate only items that truly need interruption.",
+  },
+  {
+    id: "status-compression",
+    label: "Status compression",
+    shortLabel: "Status",
+    icon: <Activity className="h-4 w-4" aria-hidden />,
+    tone: "bg-cyan-300",
+    prompt:
+      "Compress status across active projects into a terse update: green, yellow, red, owner, next move, blocker, and decision needed.",
+  },
+  {
+    id: "vip-escalation",
+    label: "VIP escalation",
+    shortLabel: "VIP",
+    icon: <Heart className="h-4 w-4" aria-hidden />,
+    tone: "bg-pink-400",
+    prompt:
+      "Handle a VIP escalation. Choose the right channel and urgency, explain why, avoid over-escalation, and draft the response or interruption note.",
+  },
+  {
+    id: "weekly-operating-review",
+    label: "Weekly operating review",
+    shortLabel: "Review",
+    icon: <ListChecks className="h-4 w-4" aria-hidden />,
+    tone: "bg-indigo-400",
+    prompt:
+      "Run my weekly operating review: commitments made, commitments owed to me, schedule pressure, money admin deadlines, travel risk, and decisions.",
+  },
+  {
+    id: "delegation-map",
+    label: "Delegation map",
+    shortLabel: "Owners",
+    icon: <Users className="h-4 w-4" aria-hidden />,
+    tone: "bg-lime-300",
+    prompt:
+      "Map delegated work by owner, deadline, dependency, next check-in, and risk. Find unclear ownership and propose follow-ups.",
+  },
+  {
+    id: "remote-agent-stuck",
+    label: "Remote agent stuck",
+    shortLabel: "Unstick",
+    icon: <Monitor className="h-4 w-4" aria-hidden />,
+    tone: "bg-blue-300",
+    prompt:
+      "Unstick a remote agent or assistant task. Review the last known state, missing input, failed handoff, and the next safe recovery action.",
+  },
+  {
+    id: "family-logistics",
+    label: "Family logistics",
+    shortLabel: "Family",
+    icon: <Home className="h-4 w-4" aria-hidden />,
+    tone: "bg-yellow-300",
+    prompt:
+      "Coordinate family logistics: schedules, pickups, appointments, errands, shared promises, and reminders. Ask only for decisions I must make.",
+  },
+  {
+    id: "outage-recovery",
+    label: "Outage recovery",
+    shortLabel: "Recover",
+    icon: <RefreshCw className="h-4 w-4" aria-hidden />,
+    tone: "bg-orange-300",
+    prompt:
+      "Recover from a service or workflow outage. Identify impacted commitments, missed messages, failed automations, and the repair order.",
   },
   {
     id: "travel",
@@ -212,6 +303,74 @@ export const LIFEOPS_ASSISTANT_INTENTS: AssistantIntent[] = [
 export const LIFEOPS_VOICE_COMMAND_PROMPT =
   "Voice command for LifeOps: ";
 
+function AssistantIntentGridButton({
+  intent,
+  onLaunch,
+}: {
+  intent: AssistantIntent;
+  onLaunch: (intent: AssistantIntent) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `assistant-intent-${intent.id}`,
+    role: "button",
+    label: intent.label,
+    group: "lifeops-assistant",
+    description: `Run the ${intent.label} assistant command`,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-label={intent.label}
+      title={intent.label}
+      data-testid="lifeops-assistant-intent"
+      data-intent-id={intent.id}
+      className="group flex h-16 min-w-0 flex-col items-center justify-center gap-1.5 rounded-lg border border-border/35 bg-bg/70 px-1.5 text-center transition-colors hover:bg-bg-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
+      onClick={() => onLaunch(intent)}
+      {...agentProps}
+    >
+      <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-bg-muted/60 text-txt">
+        <span
+          aria-hidden
+          className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full ${intent.tone}`}
+        />
+        {intent.icon}
+      </span>
+      <span className="max-w-full truncate text-[0.6875rem] font-semibold leading-none text-txt">
+        {intent.shortLabel}
+      </span>
+    </button>
+  );
+}
+
+function AssistantQuickIntentButton({
+  intent,
+  onLaunch,
+}: {
+  intent: AssistantIntent;
+  onLaunch: (intent: AssistantIntent) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `assistant-quick-${intent.id}`,
+    role: "button",
+    label: `Quick ${intent.label}`,
+    group: "lifeops-assistant",
+    description: `Quick-run the ${intent.label} assistant command`,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-label={`Quick ${intent.label}`}
+      className="flex h-10 items-center justify-center rounded-lg bg-bg-muted/35 text-txt transition-colors hover:bg-bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
+      onClick={() => onLaunch(intent)}
+      {...agentProps}
+    >
+      {intent.icon}
+    </button>
+  );
+}
+
 export function LifeOpsAssistantIntentGrid({
   intents = LIFEOPS_ASSISTANT_INTENTS,
   onLaunch,
@@ -221,30 +380,15 @@ export function LifeOpsAssistantIntentGrid({
 }) {
   return (
     <div
-      className="grid grid-cols-3 gap-2 sm:grid-cols-5 xl:grid-cols-6"
+      className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10"
       data-testid="lifeops-assistant-intents"
     >
       {intents.map((intent) => (
-        <button
+        <AssistantIntentGridButton
           key={intent.id}
-          type="button"
-          aria-label={intent.label}
-          data-testid="lifeops-assistant-intent"
-          data-intent-id={intent.id}
-          className="group flex aspect-[1.15] min-h-[5.25rem] min-w-0 flex-col items-center justify-center gap-2 rounded-lg border border-border/35 bg-bg/70 px-2 text-center transition-colors hover:bg-bg-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
-          onClick={() => onLaunch(intent)}
-        >
-          <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-bg-muted/60 text-txt">
-            <span
-              aria-hidden
-              className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full ${intent.tone}`}
-            />
-            {intent.icon}
-          </span>
-          <span className="max-w-full truncate text-xs-tight font-semibold text-txt">
-            {intent.shortLabel}
-          </span>
-        </button>
+          intent={intent}
+          onLaunch={onLaunch}
+        />
       ))}
     </div>
   );
@@ -254,6 +398,20 @@ export function LifeOpsAssistantSection() {
   const { openLifeOpsChat } = useLifeOpsChatLauncher();
   const commandBriefPrompt =
     ASSISTANT_INTENTS[0]?.prompt ?? "Give me a LifeOps command brief.";
+  const commandBrief = useAgentElement<HTMLButtonElement>({
+    id: "assistant-command-brief",
+    role: "button",
+    label: "Ask LifeOps command brief",
+    group: "lifeops-assistant",
+    description: "Open the LifeOps command brief in chat",
+  });
+  const voiceCommand = useAgentElement<HTMLButtonElement>({
+    id: "assistant-voice-command",
+    role: "button",
+    label: "Voice command",
+    group: "lifeops-assistant",
+    description: "Start a LifeOps voice command",
+  });
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
@@ -273,6 +431,7 @@ export function LifeOpsAssistantSection() {
         </div>
         <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
           <button
+            ref={commandBrief.ref}
             type="button"
             aria-label="Open LifeOps command brief"
             data-testid="lifeops-assistant-command-brief"
@@ -280,6 +439,7 @@ export function LifeOpsAssistantSection() {
             onClick={() =>
               openLifeOpsChat(commandBriefPrompt, {}, { select: true })
             }
+            {...commandBrief.agentProps}
           >
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-accent/18 text-txt">
               <MessageSquareText className="h-5 w-5" aria-hidden />
@@ -298,6 +458,7 @@ export function LifeOpsAssistantSection() {
             </span>
           </button>
           <button
+            ref={voiceCommand.ref}
             type="button"
             aria-label="Open LifeOps voice command"
             data-testid="lifeops-assistant-voice-command"
@@ -305,6 +466,7 @@ export function LifeOpsAssistantSection() {
             onClick={() =>
               openLifeOpsChat(LIFEOPS_VOICE_COMMAND_PROMPT, {}, { select: false })
             }
+            {...voiceCommand.agentProps}
           >
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-bg/70 text-txt">
               <Mic2 className="h-5 w-5" aria-hidden />
@@ -318,15 +480,13 @@ export function LifeOpsAssistantSection() {
 
       <div className="grid grid-cols-5 gap-2 rounded-lg border border-border/25 bg-bg/55 p-2">
         {ASSISTANT_INTENTS.slice(0, 5).map((intent) => (
-          <button
+          <AssistantQuickIntentButton
             key={`quick-${intent.id}`}
-            type="button"
-            aria-label={`Quick ${intent.label}`}
-            className="flex h-10 items-center justify-center rounded-lg bg-bg-muted/35 text-txt transition-colors hover:bg-bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
-            onClick={() => openLifeOpsChat(intent.prompt, {}, { select: true })}
-          >
-            {intent.icon}
-          </button>
+            intent={intent}
+            onLaunch={(launched) =>
+              openLifeOpsChat(launched.prompt, {}, { select: true })
+            }
+          />
         ))}
       </div>
 
