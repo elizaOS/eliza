@@ -58,6 +58,37 @@ describe("useShellController", () => {
 
     expect(result.current.phase).toBe("booting");
     expect(result.current.isOpen).toBe(true);
-    expect(result.current.canSend).toBe(false);
+    // Composer accepts input while booting — pre-ready sends queue (see below).
+    expect(result.current.canSend).toBe(true);
+  });
+
+  it("queues a send while booting and flushes it once ready", () => {
+    appMock.value.startupCoordinator.phase = "starting-runtime";
+
+    const { result, rerender } = renderHook(() => useShellController());
+
+    act(() => result.current.send("hello while booting"));
+    // Queued, not sent yet.
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+
+    // Agent becomes ready — the queued message flushes.
+    appMock.value.startupCoordinator.phase = "ready";
+    rerender();
+
+    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+    expect(appMock.value.sendChatText).toHaveBeenCalledWith(
+      "hello while booting",
+    );
+  });
+
+  it("sends immediately when already ready", () => {
+    appMock.value.startupCoordinator.phase = "ready";
+
+    const { result } = renderHook(() => useShellController());
+
+    act(() => result.current.send("hi"));
+
+    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+    expect(appMock.value.sendChatText).toHaveBeenCalledWith("hi");
   });
 });

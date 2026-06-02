@@ -31,12 +31,16 @@ import { readNavigationEventUrl } from "./cloud-auth-window";
 import { readOpenUrlEventUrl } from "./desktop-deep-link-events";
 import { shouldCreateDesktopPill } from "./desktop-pill-config";
 import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
-import { shouldCreateDesktopTray } from "./desktop-tray-config";
+import {
+  shouldCreateDesktopTray,
+  shouldStartTrayFirst,
+} from "./desktop-tray-config";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
 import { seedFirstPartyRemotePluginsForStartup } from "./first-party-remotes";
 import { getFloatingChatManager } from "./floating-chat-window";
 import { appendKioskShellModeParam, isKioskShellMode } from "./kiosk-mode";
+import { publishAgentApiBase } from "./lifecycle/agent-ready-publish";
 import * as apiBaseOwner from "./lifecycle/api-base-owner";
 import {
   markDesktopSessionStale,
@@ -1057,6 +1061,10 @@ function attachMainWindow(
     transparent: process.platform === "darwin",
   });
   trackFocusedWindow(win);
+  // Reveal the Dock icon in tray-first mode whenever a main window is attached,
+  // regardless of how it was opened (boot, tray "Show Window", Dock reopen, or
+  // a direct restoreWindow() from a deep link that bypasses showWindow()).
+  getDesktopManager().markMainWindowShown();
 
   win.webview.on("dom-ready", () => {
     injectApiBase(win);
@@ -1183,6 +1191,8 @@ async function restoreWindow(): Promise<void> {
     } catch {
       // unminimize/focus may not be available
     }
+    // Re-reveal the Dock icon for an already-open window (tray-first only).
+    getDesktopManager().markMainWindowShown();
     return;
   }
   if (backgroundWindowPromise) {
@@ -1578,6 +1588,26 @@ function injectApiBaseIntoOpenRendererWindows(): void {
 }
 
 /**
+ * Snapshot of every currently-open renderer window the agent API base should
+ * be pushed to. Mirrors the window set in injectApiBaseIntoOpenRendererWindows.
+ * Returns an empty array when no window exists yet (headless boot).
+ */
+function collectOpenRendererWindows(): BrowserWindow[] {
+  const windows: BrowserWindow[] = [];
+  if (currentWindow) {
+    windows.push(currentWindow);
+  }
+  const pillWindow = getPillWindow();
+  if (pillWindow && pillWindow !== currentWindow) {
+    windows.push(pillWindow);
+  }
+  surfaceWindowManager?.forEachWindow((w) => {
+    windows.push(w as BrowserWindow);
+  });
+  return windows;
+}
+
+/**
  * Push real OS permission states into the agent REST API so the renderer's
  * PermissionsSection shows correct statuses and capability toggles unlock.
  */
@@ -1602,7 +1632,7 @@ async function syncPermissionsToRestApi(
   }
 }
 
-async function _startAgent(win: BrowserWindow): Promise<void> {
+async function _startAgent(): Promise<void> {
   const runtimeResolution = resolveDesktopRuntimeMode(
     process.env as Record<string, string | undefined>,
   );
@@ -1611,7 +1641,7 @@ async function _startAgent(win: BrowserWindow): Promise<void> {
     logger.info(
       `[Main] Skipping embedded agent startup (${runtimeResolution.mode} mode)`,
     );
-    injectApiBase(win);
+    injectApiBaseIntoOpenRendererWindows();
     return;
   }
 
@@ -1644,11 +1674,9 @@ async function _startAgent(win: BrowserWindow): Promise<void> {
       // the renderer behaves like a remote browser (password-required).
       await primeDesktopSessionAuth(apiBase, rendererBase);
       const apiToken = resolveApiToken(process.env) ?? "";
-      apiBaseOwner.notifyChange(win, rendererBase, apiToken);
-      const pillWindow = getPillWindow();
-      if (pillWindow && pillWindow !== win) {
-        apiBaseOwner.pushToWindow(pillWindow);
-      }
+      // Set the source-of-truth API base FIRST (correct even with zero open
+      // windows), then push to every open window.
+      publishAgentApiBase(rendererBase, apiToken, collectOpenRendererWindows());
       setAgentReady(true);
       // Sync real OS permission states to the REST API so the renderer
       // can display them and capability toggles can unlock.
@@ -2295,19 +2323,33 @@ async function main(): Promise<void> {
   // Create window first — on Windows (CEF) the UI message loop must be
   // running before any synchronous FFI calls like setApplicationMenu().
   // Calling setupApplicationMenu() before createMainWindow() deadlocks.
-  recordStartupPhase("creating_window", {
-    pid: process.pid,
-  });
-  const { rpc: mainRpc, sendToWebview: mainSendToWebview } =
-    createDesktopRpc("main");
-  const mainWin = attachMainWindow(
-    await createMainWindow(mainRpc),
-    mainRpc,
-    mainSendToWebview,
-  );
-  recordStartupPhase("window_ready", {
-    pid: process.pid,
-  });
+  const trayFirst = shouldStartTrayFirst();
+  let mainWin: BrowserWindow | null = null;
+  if (trayFirst) {
+    // Tray-first (macOS, opt-in): no window at launch. The tray icon is the
+    // only surface; the main window is created lazily via restoreWindow() /
+    // DesktopManager.showWindow() on tray "Show Window", Dock reopen, or a
+    // deep link. setTrayFirstMode hides the Dock icon until a window is shown.
+    logger.info("[Main] Tray-first startup — deferring main window creation");
+    getDesktopManager().setTrayFirstMode(true);
+    recordStartupPhase("window_ready", {
+      pid: process.pid,
+    });
+  } else {
+    recordStartupPhase("creating_window", {
+      pid: process.pid,
+    });
+    const { rpc: mainRpc, sendToWebview: mainSendToWebview } =
+      createDesktopRpc("main");
+    mainWin = attachMainWindow(
+      await createMainWindow(mainRpc),
+      mainRpc,
+      mainSendToWebview,
+    );
+    recordStartupPhase("window_ready", {
+      pid: process.pid,
+    });
+  }
   seedFirstPartyRemotePluginsForStartup();
 
   // Configure the floating chat manager now that the renderer URL is resolved.
@@ -2411,7 +2453,8 @@ async function main(): Promise<void> {
   });
 
   // If launched with --hidden (e.g. auto-launch with openAsHidden), minimize immediately.
-  if (process.argv.includes("--hidden")) {
+  // In tray-first mode there is no window yet (mainWin is null) — nothing to minimize.
+  if (mainWin && process.argv.includes("--hidden")) {
     try {
       mainWin.minimize();
     } catch (err) {
@@ -2491,23 +2534,21 @@ async function main(): Promise<void> {
   // already set the initial window.__ELIZA_API_BASE__ from the seed value
   // in main(), but _startAgent will push the actual port once the agent
   // reports it.
-  if (currentWindow) {
-    const rt = resolveDesktopRuntimeMode(
-      process.env as Record<string, string | undefined>,
-    );
-    if (rt.mode === "external") {
-      injectApiBaseIntoOpenRendererWindows();
-    } else if (rt.mode === "local") {
-      logger.info("[Main] Starting embedded agent (local mode).");
-      _startAgent(currentWindow).catch((err) => {
-        logger.error(
-          `[Main] Agent auto-start failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-        const error = err instanceof Error ? err.message : String(err);
-        sendToActiveRenderer("agentStartupFailed", { error });
-        console.error(`title: "${BRAND.appName} startup failed"`);
-      });
-    }
+  const rt = resolveDesktopRuntimeMode(
+    process.env as Record<string, string | undefined>,
+  );
+  if (rt.mode === "external") {
+    injectApiBaseIntoOpenRendererWindows();
+  } else if (rt.mode === "local") {
+    logger.info("[Main] Starting embedded agent (local mode).");
+    _startAgent().catch((err) => {
+      logger.error(
+        `[Main] Agent auto-start failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      const error = err instanceof Error ? err.message : String(err);
+      sendToActiveRenderer("agentStartupFailed", { error });
+      console.error(`title: "${BRAND.appName} startup failed"`);
+    });
   }
 
   void setupUpdater();
