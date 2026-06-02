@@ -86,6 +86,35 @@ class ChipOsObjectiveEvidenceMatrixTests(unittest.TestCase):
         )
         self.assertIn("entry_spec_cpu2017", codes)
 
+    def test_requirement_rows_surface_primary_report_and_next_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            report_dir = Path(tmp)
+            req = matrix.REQUIREMENTS[0]
+            write_json(
+                report_dir / req.required_report,
+                {
+                    "status": "blocked",
+                    "findings": [
+                        {
+                            "code": "need_runtime_capture",
+                            "next_command": "scripts/capture-runtime.sh",
+                            "next_commands": [
+                                "scripts/capture-runtime.sh",
+                                "python3 scripts/check-runtime.py",
+                            ],
+                        }
+                    ],
+                    "next_command_plan": [
+                        {"commands": ["python3 scripts/check-aggregate.py"]}
+                    ],
+                },
+            )
+            row = matrix.evaluate_requirement(req, report_dir)
+        self.assertEqual(row["primary_report"], row["source_report"])
+        self.assertEqual(row["next_command"], "scripts/capture-runtime.sh")
+        self.assertIn("python3 scripts/check-runtime.py", row["next_commands"])
+        self.assertIn("python3 scripts/check-aggregate.py", row["next_commands"])
+
     def test_json_only_prints_report_without_status_line(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             report_dir = Path(tmp) / "reports"
