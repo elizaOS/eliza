@@ -1,27 +1,39 @@
 // odysseus model catalog + picker + provider management (static/js/models.js +
 // modelPicker.js + modelSort.js + providers.js). A model-browser panel: a
-// provider rail (left) that lets you pick which provider to scan, a sort menu
-// (Default / A→Z / Last used / Most used), a per-provider collapsible model
-// list with a Favorites section pinned on top, drag-handle affordance, a
-// per-model favorite dot (provider-logo when matched), a "+ Chat" / "+ Image"
-// action, an in-list search box (shown at ≥10 models), and a "Show N more"
-// overflow. Favorites / usage / sort / collapse state persist locally exactly
-// like odysseus (localStorage FAVORITES_KEY / USAGE_KEY / SORT_KEY /
-// COLLAPSE_KEY).
+// provider rail (left) that lets you pick which endpoint to scan, a sort menu
+// (Default / A→Z / Last used / Most used), and a catalogue body that mirrors
+// the reworked modelPicker.js browse model:
+//   • a search box (shown once a catalogue is large) that filters the whole
+//     scanned catalogue FLAT — id / display / provider name — across groups;
+//   • in browse mode, a Recent section (auto-tracked, last 5 picks) and a
+//     Favorites section pinned on top (manual);
+//   • below them, small catalogues list everything under one "All models"
+//     header, while large catalogues (> BROWSE_ALL_LIMIT) group the remaining
+//     models under collapsible PROVIDER headers (provider = the model-id slug,
+//     e.g. `anthropic/…`, mapped to a display name), each with a chevron +
+//     count and a domino expand on open;
+//   • every row carries a per-model favorite dot (provider-logo when matched)
+//     that toggles favorite with a transient pulse, plus the "+ Chat" /
+//     "+ Image" action and a drag-handle affordance.
+// Favorites / recent / usage / sort / collapse state persist locally exactly
+// like odysseus (FAVORITES_KEY / RECENT_KEY / USAGE_KEY / SORT_KEY /
+// COLLAPSE_KEY via readPref/writePref).
 //
 // elizaMapping: the model lists are wired to the REAL model catalogue via
 // client.fetchModels(provider) — the same /api/models endpoint CompareView's
 // dropdowns use, returning ProviderModelRecord[]. odysseus's catalogue is a
 // server scan that returns endpoint-grouped items with online/offline state;
 // eliza's fetchModels returns a flat ProviderModelRecord[] per provider, so the
-// provider IS the endpoint group here. Favorites + usage tracking are
+// rail picks the endpoint and the in-body PROVIDER groups come from the model
+// id's slug (modelPicker.js _providerSlug / _providerDisplayName), faithful to
+// upstream's provider-grouped browse. Favorites + recent + usage tracking are
 // per-browser localStorage, never agent state. odysseus's true model-switch
 // (createDirectChat) starts a new session against a specific endpoint URL; eliza
 // has no per-model session-spawn client method (the agent runs one configured
-// model), so the "+ Chat" action records local usage + emits a DOM event a host
-// can wire later, and never fabricates a started session. Providers eliza has no
-// key configured for return the faithful empty state ("No models available")
-// rather than seeded/representative rows.
+// model), so the "+ Chat" action records local usage + recent + emits a DOM
+// event a host can wire later, and never fabricates a started session. Providers
+// eliza has no key configured for return the faithful empty state ("No models
+// available") rather than seeded/representative rows.
 
 import type { ProviderModelRecord } from "@elizaos/ui";
 import { client } from "@elizaos/ui";
@@ -30,8 +42,10 @@ import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useEscapeClose } from "./hooks/useEscapeClose";
 import { readPref, writePref } from "./util/storage";
 
-// ── Local-pref keys (odysseus models.js constants, namespaced via readPref) ──
+// ── Local-pref keys (odysseus models.js / modelPicker.js constants, namespaced
+// via readPref) ──
 const FAVORITES_KEY = "model-favorites";
+const RECENT_KEY = "model-recent";
 const USAGE_KEY = "model-usage";
 const SORT_KEY = "model-sort";
 const COLLAPSE_KEY = "models-collapsed";
@@ -59,18 +73,136 @@ const SORT_OPTIONS: { value: SortMode; label: string }[] = [
   { value: "most-used", label: "Most used" },
 ];
 
-// Up to MAX_VISIBLE models render eagerly; the rest sit behind "Show N more"
-// (odysseus models.js MAX_VISIBLE = 5).
+// Up to MAX_VISIBLE models render eagerly per provider group; the rest sit
+// behind "Show N more" (odysseus models.js MAX_VISIBLE = 5).
 const MAX_VISIBLE = 5;
-// Search box only appears once a provider exposes this many models
+// Search box only appears once a scan exposes this many models
 // (odysseus models.js totalModelCount >= 10 gate).
 const SEARCH_THRESHOLD = 10;
+// Recent tracks the last RECENT_MAX picks, most-recent-first
+// (modelPicker.js RECENT_MAX = 5).
+const RECENT_MAX = 5;
+// Catalogues at or below this size list everything under one "All models"
+// header; larger ones fall back to collapsible provider groups
+// (modelPicker.js BROWSE_ALL_LIMIT = 12).
+const BROWSE_ALL_LIMIT = 12;
 
 interface UsageEntry {
   count: number;
   last: number;
 }
 type UsageMap = Record<string, UsageEntry>;
+
+// ── Provider display names + slug grouping (modelPicker.js _PROVIDER_NAMES /
+// _PROVIDER_ALIAS / _providerSlug / _providerDisplayName). The provider is the
+// model-id slug before the first "/", aliased + prettified. Models with no
+// slash fall under "other". ──
+const PROVIDER_NAMES: Record<string, string> = {
+  "01-ai": "Yi",
+  abacusai: "Abacus AI",
+  adept: "Adept",
+  ai21: "AI21 Labs",
+  ai21labs: "AI21 Labs",
+  "aion-labs": "Aion Labs",
+  aisingapore: "AI Singapore",
+  allenai: "Allen AI",
+  amazon: "Amazon",
+  "anthracite-org": "Anthracite",
+  anthropic: "Anthropic",
+  "arcee-ai": "Arcee AI",
+  baai: "BAAI",
+  baidu: "Baidu",
+  bigcode: "BigCode",
+  "black-forest-labs": "Black Forest Labs",
+  bytedance: "ByteDance",
+  "bytedance-seed": "ByteDance",
+  cognitivecomputations: "Cognitive Computations",
+  cohere: "Cohere",
+  databricks: "Databricks",
+  deepcogito: "DeepCogito",
+  deepseek: "DeepSeek",
+  "deepseek-ai": "DeepSeek",
+  essentialai: "Essential AI",
+  google: "Google",
+  gryphe: "Gryphe",
+  ibm: "IBM",
+  "ibm-granite": "IBM Granite",
+  inception: "Inception",
+  inclusionai: "Inclusion AI",
+  inflection: "Inflection",
+  kwaipilot: "KwaiPilot",
+  liquid: "Liquid AI",
+  mancer: "Mancer",
+  meta: "Llama",
+  "meta-llama": "Llama",
+  microsoft: "Microsoft",
+  minimax: "MiniMax",
+  minimaxai: "MiniMax",
+  mistralai: "Mistral",
+  moonshotai: "Moonshot",
+  morph: "Morph",
+  "nex-agi": "Nex AGI",
+  nousresearch: "Nous Research",
+  "nv-mistralai": "NVIDIA x Mistral",
+  nvidia: "NVIDIA",
+  openai: "OpenAI",
+  openrouter: "OpenRouter",
+  perceptron: "Perceptron",
+  perplexity: "Perplexity",
+  poolside: "Poolside",
+  "prime-intellect": "Prime Intellect",
+  qwen: "Qwen",
+  rekaai: "Reka",
+  relace: "Relace",
+  sao10k: "Sao10k",
+  sarvamai: "Sarvam AI",
+  snowflake: "Snowflake",
+  stepfun: "StepFun",
+  "stepfun-ai": "StepFun",
+  stockmark: "Stockmark",
+  switchpoint: "SwitchPoint",
+  tencent: "Tencent",
+  thedrummer: "TheDrummer",
+  undi95: "Undi95",
+  upstage: "Upstage",
+  writer: "Writer",
+  "x-ai": "xAI",
+  xiaomi: "Xiaomi",
+  "z-ai": "Zhipu",
+  zyphra: "Zyphra",
+  "~anthropic": "Anthropic",
+  "~google": "Google",
+  "~moonshotai": "Moonshot",
+  "~openai": "OpenAI",
+};
+
+const PROVIDER_ALIAS: Record<string, string> = {
+  "meta-llama": "meta",
+  deepseek: "deepseek-ai",
+  minimaxai: "minimax",
+  "stepfun-ai": "stepfun",
+  ai21labs: "ai21",
+  "ibm-granite": "ibm",
+  "bytedance-seed": "bytedance",
+  "~anthropic": "anthropic",
+  "~google": "google",
+  "~moonshotai": "moonshotai",
+  "~openai": "openai",
+};
+
+/** modelPicker.js `_providerDisplayName`: prettify a slug to a label. */
+function providerDisplayName(slug: string): string {
+  const known = PROVIDER_NAMES[slug];
+  if (known) return known;
+  return slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, " ");
+}
+
+/** modelPicker.js `_providerSlug`: the id prefix before "/", aliased. */
+function providerSlug(modelId: string): string {
+  const slash = modelId.indexOf("/");
+  const raw = slash > 0 ? modelId.substring(0, slash) : "other";
+  return PROVIDER_ALIAS[raw] ?? raw;
+}
 
 // ── Provider-logo regex table (odysseus static/js/providers.js _PROVIDERS),
 // returning an SVG path-set keyed by a regex over the model id. Kept inline so
@@ -234,12 +366,17 @@ export function ModelsView({
   );
   const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [recent, setRecent] = useState<string[]>([]);
   const [usage, setUsage] = useState<UsageMap>({});
   const [sortMode, setSortMode] = useState<SortMode>("");
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
-  const [favCollapsed, setFavCollapsed] = useState(false);
-  const [providerCollapsed, setProviderCollapsed] = useState(false);
-  const [showAll, setShowAll] = useState(false);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [shownAll, setShownAll] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
+  const [justExpanded, setJustExpanded] = useState<string | null>(null);
+  const [pulsing, setPulsing] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState("");
   const [query, setQuery] = useState("");
 
   const loadProvider = useCallback(
@@ -270,10 +407,10 @@ export function ModelsView({
   useEffect(() => {
     if (!open) return;
     setFavorites(readPref<string[]>(FAVORITES_KEY, []));
+    setRecent(readPref<string[]>(RECENT_KEY, []));
     setUsage(readPref<UsageMap>(USAGE_KEY, {}));
     setSortMode(readPref<SortMode>(SORT_KEY, ""));
-    const collapsed = readPref<Record<string, boolean>>(COLLAPSE_KEY, {});
-    setFavCollapsed(collapsed["cat:favorites"] === true);
+    setCollapsed(readPref<Record<string, boolean>>(COLLAPSE_KEY, {}));
     loadProvider("openai");
   }, [open, loadProvider]);
 
@@ -284,24 +421,45 @@ export function ModelsView({
     writePref(FAVORITES_KEY, next);
   };
 
+  // modelPicker.js `_toggleFavorite` + the favorite-dot polish: toggle the
+  // favorite, flash the dot (transient pulse), and surface a transient toast
+  // ("Favorited" / "Unfavorited"), mirroring uiModule.showToast upstream.
   const toggleFavorite = (mid: string) => {
     const idx = favorites.indexOf(mid);
-    if (idx >= 0) {
-      persistFavorites(favorites.filter((x) => x !== mid));
-    } else {
-      persistFavorites([...favorites, mid]);
-    }
+    const nowFav = idx < 0;
+    persistFavorites(
+      nowFav ? [...favorites, mid] : favorites.filter((x) => x !== mid),
+    );
+    setPulsing(mid);
+    window.setTimeout(() => {
+      setPulsing((cur) => (cur === mid ? null : cur));
+    }, 340);
+    setFeedback(nowFav ? "Favorited" : "Unfavorited");
+    window.setTimeout(() => {
+      setFeedback((cur) =>
+        cur === (nowFav ? "Favorited" : "Unfavorited") ? "" : cur,
+      );
+    }, 1400);
   };
 
-  // odysseus models.js `_trackUsage` — bump count, stamp last-used. The actual
-  // model-switch (createDirectChat) has no eliza client equivalent, so this
-  // only records local usage + broadcasts a DOM event for a host to wire later.
+  // odysseus models.js `_trackUsage` + modelPicker.js `_pushRecent` — bump
+  // count, stamp last-used, and unshift onto Recent (deduped, capped). The
+  // actual model-switch (createDirectChat) has no eliza client equivalent, so
+  // this only records local state + broadcasts a DOM event a host can wire.
   const trackUsage = (mid: string) => {
-    const next: UsageMap = { ...usage };
-    const entry = next[mid] ?? { count: 0, last: 0 };
-    next[mid] = { count: entry.count + 1, last: Date.now() };
-    setUsage(next);
-    writePref(USAGE_KEY, next);
+    const nextUsage: UsageMap = { ...usage };
+    const entry = nextUsage[mid] ?? { count: 0, last: 0 };
+    nextUsage[mid] = { count: entry.count + 1, last: Date.now() };
+    setUsage(nextUsage);
+    writePref(USAGE_KEY, nextUsage);
+
+    const nextRecent = [mid, ...recent.filter((x) => x !== mid)].slice(
+      0,
+      RECENT_MAX,
+    );
+    setRecent(nextRecent);
+    writePref(RECENT_KEY, nextRecent);
+
     if (typeof document !== "undefined") {
       document.dispatchEvent(
         new CustomEvent("odysseus:model-picked", {
@@ -317,22 +475,14 @@ export function ModelsView({
     setSortMenuOpen(false);
   };
 
-  const persistCollapse = (key: string, value: boolean) => {
-    const collapsed = readPref<Record<string, boolean>>(COLLAPSE_KEY, {});
-    collapsed[key] = value;
-    writePref(COLLAPSE_KEY, collapsed);
-  };
+  const isCollapsed = (key: string): boolean => collapsed[key] === true;
 
-  const toggleFavCollapse = () => {
-    const next = !favCollapsed;
-    setFavCollapsed(next);
-    persistCollapse("cat:favorites", next);
-  };
-
-  const toggleProviderCollapse = () => {
-    const next = !providerCollapsed;
-    setProviderCollapsed(next);
-    persistCollapse(`ep:${provider}`, next);
+  const toggleCollapse = (key: string) => {
+    const next = { ...collapsed, [key]: !isCollapsed(key) };
+    setCollapsed(next);
+    writePref(COLLAPSE_KEY, next);
+    // Domino-expand the group when it opens (modelPicker.js _justExpanded).
+    setJustExpanded(next[key] ? null : key);
   };
 
   // odysseus models.js sort dispatch — apply the active sort mode to a list.
@@ -353,33 +503,65 @@ export function ModelsView({
   const isErrored = errored.has(provider);
   const hasModels = allModels.length > 0;
 
-  // Favorites pinned on top — favorited models from the active provider,
-  // ordered by sort mode (or favorited order by default). odysseus refreshModels
-  // Favorites section.
-  const favModels = (() => {
-    const matched = allModels.filter((m) => favorites.includes(m.id));
-    if (sortMode === "") {
-      return matched
-        .slice()
-        .sort((a, b) => favorites.indexOf(a.id) - favorites.indexOf(b.id));
-    }
-    return applySort(matched);
-  })();
+  const byId = new Map<string, ProviderModelRecord>();
+  for (const m of allModels) {
+    if (!byId.has(m.id)) byId.set(m.id, m);
+  }
 
-  // Provider list, sorted + search-filtered. Search mirrors odysseus's flat
-  // search (id OR display match, case-insensitive).
+  // Sorted catalogue + flat search. Search mirrors modelPicker.js search mode:
+  // match id / display / provider name, case-insensitive, across all groups.
   const sorted = applySort(allModels);
   const q = query.toLowerCase().trim();
-  const filtered = q
-    ? sorted.filter(
-        (m) =>
-          m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q),
+  const searchMatches = q
+    ? sorted.filter((m) =>
+        [m.id, m.name, providerDisplayName(providerSlug(m.id))]
+          .join(" ")
+          .toLowerCase()
+          .includes(q),
       )
-    : sorted;
+    : [];
 
+  // Browse mode (modelPicker.js _populate): Recent (auto) + Favorites (manual)
+  // pinned on top, then either a flat "All models" list (small catalogues) or
+  // collapsible provider groups (large catalogues). Pinned ids are deduped out
+  // of the lower lists.
+  const recentModels = recent
+    .map((id) => byId.get(id))
+    .filter((m): m is ProviderModelRecord => m !== undefined)
+    .slice(0, RECENT_MAX);
+  const favModels = favorites
+    .map((id) => byId.get(id))
+    .filter((m): m is ProviderModelRecord => m !== undefined);
+
+  const pinnedIds = new Set<string>([
+    ...recentModels.map((m) => m.id),
+    ...favModels.map((m) => m.id),
+  ]);
+  const rest = sorted.filter((m) => !pinnedIds.has(m.id));
+
+  // Large catalogue → provider-slug groups, ordered by display name.
+  const providerGroups: { slug: string; models: ProviderModelRecord[] }[] =
+    (() => {
+      const groups = new Map<string, ProviderModelRecord[]>();
+      for (const m of rest) {
+        const slug = providerSlug(m.id);
+        const bucket = groups.get(slug);
+        if (bucket) bucket.push(m);
+        else groups.set(slug, [m]);
+      }
+      return [...groups.keys()]
+        .sort((a, b) =>
+          providerDisplayName(a).localeCompare(providerDisplayName(b)),
+        )
+        .map((slug) => {
+          const models = groups.get(slug);
+          return { slug, models: models ?? [] };
+        });
+    })();
+
+  const isLargeCatalogue = allModels.length > BROWSE_ALL_LIMIT;
   const showSearch = allModels.length >= SEARCH_THRESHOLD;
-  const visible = showAll || q ? filtered : filtered.slice(0, MAX_VISIBLE);
-  const overflowCount = q ? 0 : Math.max(0, filtered.length - MAX_VISIBLE);
+  const hasPinned = recentModels.length > 0 || favModels.length > 0;
 
   const sortLabel =
     SORT_OPTIONS.find((o) => o.value === sortMode)?.label ?? "Default";
@@ -399,9 +581,9 @@ export function ModelsView({
         </span>
         <button
           type="button"
-          className={`od-model-fav-btn${logo ? " od-provider-logo" : ""}${isFav ? " active" : ""}`}
-          title="Toggle favorite"
-          aria-label="Toggle favorite"
+          className={`od-model-fav-btn${logo ? " od-provider-logo" : ""}${isFav ? " active" : ""}${pulsing === m.id ? " od-fav-pulse" : ""}`}
+          title={isFav ? "Remove from favorites" : "Add to favorites"}
+          aria-label={isFav ? "Remove from favorites" : "Add to favorites"}
           aria-pressed={isFav}
           onClick={() => toggleFavorite(m.id)}
         >
@@ -429,6 +611,76 @@ export function ModelsView({
     );
   };
 
+  // Pinned Recent / Favorites sections (modelPicker.js _addSection) — a flat
+  // labelled list, no collapse.
+  const renderPinned = (
+    label: string,
+    list: ProviderModelRecord[],
+  ): ReactNode =>
+    list.length > 0 ? (
+      <>
+        <div className="od-models-section-label">{label}</div>
+        <div className="od-models-group-content">{list.map(renderRow)}</div>
+      </>
+    ) : null;
+
+  // A collapsible provider group (modelPicker.js mp-provider-header +
+  // mp-provider-group). Capped at MAX_VISIBLE behind a "Show N more".
+  const renderProviderGroup = (
+    slug: string,
+    models: ProviderModelRecord[],
+  ): ReactNode => {
+    const key = `ep:${provider}:${slug}`;
+    const groupCollapsed = isCollapsed(key);
+    const seeAll = shownAll.has(key);
+    const visible = seeAll ? models : models.slice(0, MAX_VISIBLE);
+    const overflow = models.length - visible.length;
+    return (
+      <div key={slug}>
+        <button
+          type="button"
+          className="od-models-provider-header"
+          onClick={() => toggleCollapse(key)}
+        >
+          <span
+            className={`od-models-provider-chevron${groupCollapsed ? " collapsed" : ""}`}
+            aria-hidden="true"
+          >
+            <ChevronDown size={11} />
+          </span>
+          <span className="od-models-provider-group-name">
+            {providerDisplayName(slug)}
+          </span>
+          <span className="od-models-provider-group-count">
+            {models.length}
+          </span>
+        </button>
+        {groupCollapsed ? null : (
+          <div
+            className={`od-models-group-content indented${justExpanded === key ? " od-just-expanded" : ""}`}
+          >
+            {visible.map(renderRow)}
+            {overflow > 0 ? (
+              <button
+                type="button"
+                className="od-models-show-all-btn"
+                onClick={() =>
+                  setShownAll((prev) => {
+                    const next = new Set(prev);
+                    next.add(key);
+                    return next;
+                  })
+                }
+              >
+                Show {overflow} more model{overflow === 1 ? "" : "s"}
+              </button>
+            ) : null}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div
       className="od-search-overlay"
@@ -445,6 +697,11 @@ export function ModelsView({
       <div className="od-search-panel od-models-panel">
         <div className="od-mem-head">
           <span className="od-mem-title">Models</span>
+          {feedback ? (
+            <span className="od-models-feedback" role="status">
+              {feedback}
+            </span>
+          ) : null}
           <span className="od-mem-stats">
             {hasModels
               ? `${allModels.length} model${allModels.length === 1 ? "" : "s"} · ${provider}`
@@ -466,9 +723,9 @@ export function ModelsView({
                   className={`od-models-provider-row${p === provider ? " active" : ""}`}
                   onClick={() => {
                     setProvider(p);
-                    setShowAll(false);
                     setQuery("");
-                    setProviderCollapsed(false);
+                    setShownAll(new Set<string>());
+                    setJustExpanded(null);
                     loadProvider(p);
                   }}
                 >
@@ -569,67 +826,43 @@ export function ModelsView({
                     Configure a {provider} API key in Settings to scan models.
                   </span>
                 </div>
-              ) : (
-                <>
-                  {/* ── Favorites section (pinned top) ── */}
-                  {favModels.length > 0 ? (
-                    <>
-                      <button
-                        type="button"
-                        className="od-models-category-header"
-                        onClick={toggleFavCollapse}
-                      >
-                        <span className="od-folder-toggle">
-                          {favCollapsed ? "▶" : "▼"}
-                        </span>
-                        <span>Favorites</span>
-                        <span className="od-folder-count">
-                          ({favModels.length})
-                        </span>
-                      </button>
-                      {favCollapsed ? null : (
-                        <div className="od-models-group-content">
-                          {favModels.map(renderRow)}
-                        </div>
-                      )}
-                    </>
-                  ) : null}
-
-                  {/* ── Provider endpoint group ── */}
-                  <button
-                    type="button"
-                    className="od-models-endpoint-label"
-                    onClick={toggleProviderCollapse}
-                  >
-                    <span className="od-folder-toggle">
-                      {providerCollapsed ? "▶" : "▼"}
+              ) : q ? (
+                /* ── Search mode: flat, filtered results across the catalogue ── */
+                searchMatches.length === 0 ? (
+                  <div className="od-models-empty-state">
+                    <span className="od-models-muted">
+                      No models match "{query.trim()}"
                     </span>
-                    <span>{provider}</span>
-                    <span className="od-folder-count">({filtered.length})</span>
-                  </button>
-                  {providerCollapsed ? null : (
-                    <div className="od-models-group-content indented">
-                      {visible.length === 0 ? (
-                        <div className="od-models-empty-state">
-                          <span className="od-models-muted">
-                            No models match "{query.trim()}"
-                          </span>
+                  </div>
+                ) : (
+                  <div className="od-models-group-content">
+                    {searchMatches.map(renderRow)}
+                  </div>
+                )
+              ) : (
+                /* ── Browse mode: Recent + Favorites, then All / provider groups ── */
+                <>
+                  {renderPinned("Recent", recentModels)}
+                  {renderPinned("Favorites", favModels)}
+
+                  {rest.length > 0 ? (
+                    isLargeCatalogue ? (
+                      providerGroups.map((g) =>
+                        renderProviderGroup(g.slug, g.models),
+                      )
+                    ) : (
+                      <>
+                        {hasPinned ? (
+                          <div className="od-models-section-label">
+                            All models
+                          </div>
+                        ) : null}
+                        <div className="od-models-group-content">
+                          {rest.map(renderRow)}
                         </div>
-                      ) : (
-                        visible.map(renderRow)
-                      )}
-                      {overflowCount > 0 && !showAll ? (
-                        <button
-                          type="button"
-                          className="od-models-show-all-btn"
-                          onClick={() => setShowAll(true)}
-                        >
-                          Show {overflowCount} more model
-                          {overflowCount === 1 ? "" : "s"}
-                        </button>
-                      ) : null}
-                    </div>
-                  )}
+                      </>
+                    )
+                  ) : null}
                 </>
               )}
             </div>

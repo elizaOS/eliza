@@ -5561,4 +5561,361 @@ export const ODYSSEUS_CSS = `
   gap: 12px;
 }
 .odysseus-root .od-admin-wipe-row:first-of-type { margin-top: 4px; }
+
+
+/* ===== sync: ModelsView ===== */
+/* ── ModelsView upstream reconcile: provider-grouped browse + search/recent/
+   favorites + favorite-dot feedback (modelPicker.js mp-* rules). Scoped under
+   .odysseus-root; theme vars only. Base od- classes (od-models-group-content,
+   od-models-show-all-btn, od-model-fav-btn, od-folder-*) already live in
+   odysseus-theme.ts — these are NEW rules for the new markup only. ── */
+
+/* Transient "Favorited" / "Unfavorited" toast in the panel head
+   (modelPicker.js uiModule.showToast). */
+.odysseus-root .od-models-feedback {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent, var(--red));
+  margin-left: auto;
+  margin-right: 8px;
+  white-space: nowrap;
+  animation: od-models-feedback-in 0.16s ease-out;
+}
+@keyframes od-models-feedback-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Section labels for the pinned Recent / Favorites / All models lists
+   (modelPicker.js .mp-section-label). */
+.odysseus-root .od-models-section-label {
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.4;
+  padding: 6px 8px 2px;
+  color: var(--fg);
+}
+
+/* Collapsible PROVIDER group headers in large catalogues
+   (modelPicker.js .mp-provider-header). */
+.odysseus-root .od-models-provider-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.78em;
+  font-weight: 500;
+  color: var(--fg);
+  border-radius: 4px;
+  user-select: none;
+  transition: background 0.08s;
+}
+.odysseus-root .od-models-provider-header:hover {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+.odysseus-root .od-models-provider-chevron {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0.4;
+  transition: transform 0.2s, opacity 0.15s;
+}
+.odysseus-root .od-models-provider-header:hover .od-models-provider-chevron {
+  opacity: 0.7;
+}
+.odysseus-root .od-models-provider-chevron.collapsed {
+  transform: rotate(-90deg);
+}
+.odysseus-root .od-models-provider-group-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.odysseus-root .od-models-provider-group-count {
+  font-size: 0.85em;
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+/* Transient pulse on the favorite dot when toggled
+   (modelPicker.js .mp-fav-dot.pulse / @keyframes mpFavPulse). */
+.odysseus-root .od-model-fav-btn.od-fav-pulse {
+  animation: od-fav-pulse 0.34s ease-out;
+}
+@keyframes od-fav-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent, var(--red)) 0%, transparent);
+  }
+  45% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent, var(--red)) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent, var(--red)) 0%, transparent);
+  }
+}
+
+/* Domino expand when a provider group opens
+   (modelPicker.js .mp-provider-group.mp-just-expanded / @keyframes mp-domino-in). */
+.odysseus-root .od-models-group-content.od-just-expanded .od-models-row {
+  animation: od-models-domino-in 0.31s cubic-bezier(0.22, 1.61, 0.36, 1) backwards;
+}
+.odysseus-root .od-models-group-content.od-just-expanded .od-models-row:nth-child(1) { animation-delay: 0.035s; }
+.odysseus-root .od-models-group-content.od-just-expanded .od-models-row:nth-child(2) { animation-delay: 0.07s; }
+.odysseus-root .od-models-group-content.od-just-expanded .od-models-row:nth-child(3) { animation-delay: 0.105s; }
+.odysseus-root .od-models-group-content.od-just-expanded .od-models-row:nth-child(4) { animation-delay: 0.14s; }
+.odysseus-root .od-models-group-content.od-just-expanded .od-models-row:nth-child(5) { animation-delay: 0.175s; }
+@keyframes od-models-domino-in {
+  0% { opacity: 0; transform: translateY(6px) scale(0.94); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+/* ===== sync: CookbookView ===== */
+/* ── Cookbook v2: tab row (cookbook.js .cookbook-tab set) ── */
+.odysseus-root .od-cb-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+.odysseus-root .od-cb-tab {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--muted);
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.1s, border-color 0.1s;
+  white-space: nowrap;
+}
+.odysseus-root .od-cb-tab:hover { color: var(--fg); }
+.odysseus-root .od-cb-tab-active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ── Serve / What-Fits shared control row (engine filter, GPU chip, saved-config) ── */
+.odysseus-root .od-cb-serve,
+.odysseus-root .od-cb-fit {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+.odysseus-root .od-cb-serve-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+.odysseus-root .od-cb-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.odysseus-root .od-cb-field-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--muted);
+}
+.odysseus-root .od-cb-select {
+  height: 24px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 11px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+.odysseus-root .od-cb-select:hover { border-color: var(--fg); }
+
+/* GPU chip (cookbook-hwfit.js _hwfitRenderHw .hwfit-hw-chip) — honest "off"
+   state with no detected GPU; the full reason lives in the title tooltip. */
+.odysseus-root .od-cb-gpu-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 17px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg);
+  opacity: 0.7;
+  cursor: help;
+}
+.odysseus-root .od-cb-gpu-chip-off {
+  background: transparent;
+  opacity: 0.4;
+}
+
+/* Saved-config split badge (cookbookServe.js .cookbook-saved-split): a filled
+   accent "Save" joined to an outlined count-arrow trigger. Disabled here since
+   eliza has no serve backend to save a launch config against. */
+.odysseus-root .od-cb-saved-split {
+  display: inline-flex;
+  gap: 0;
+}
+.odysseus-root .od-cb-saved-save,
+.odysseus-root .od-cb-saved-arrow {
+  height: 24px;
+  font: inherit;
+  font-size: 11px;
+  border: 1px solid var(--accent);
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.odysseus-root .od-cb-saved-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  background: var(--red);
+  color: #fff;
+  border-color: var(--red);
+  font-weight: 600;
+  border-radius: 6px 0 0 6px;
+}
+.odysseus-root .od-cb-saved-arrow {
+  padding: 0 6px;
+  background: var(--panel);
+  color: var(--fg);
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+}
+.odysseus-root .od-cb-saved-save:disabled,
+.odysseus-root .od-cb-saved-arrow:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.odysseus-root .od-cb-serve-empty { margin: 4px 0; }
+
+/* ── Serve diagnostics / recommendations panel (cookbook-diagnosis.js
+   .cookbook-diagnosis _showDiagnosis): idle/empty state — no serve error to
+   diagnose because eliza can't launch a serve task. ── */
+.odysseus-root .od-cb-diagnosis {
+  margin-top: 2px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--red) 30%, transparent);
+  border-radius: 6px;
+}
+.odysseus-root .od-cb-diag-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.odysseus-root .od-cb-diag-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--red);
+}
+.odysseus-root .od-cb-diag-message {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--red);
+  margin-bottom: 4px;
+}
+.odysseus-root .od-cb-diag-suggestion {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+/* ── What-Fits fit table (cookbook-hwfit.js .hwfit-row / .hwfit-header /
+   _hwfitColumns). Sortable header incl. the Fit column; body is the honest
+   no-hardware empty state. ── */
+.odysseus-root .od-cb-fit-table {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.odysseus-root .od-cb-fit-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+.odysseus-root .od-cb-fit-header {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+.odysseus-root .od-cb-fit-col {
+  appearance: none;
+  -webkit-appearance: none;
+  flex-shrink: 0;
+  text-align: left;
+  white-space: nowrap;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--muted);
+}
+.odysseus-root .od-cb-fit-sortable { cursor: pointer; user-select: none; }
+.odysseus-root .od-cb-fit-sortable:hover { color: var(--fg); }
+.odysseus-root .od-cb-fit-sort-active { color: var(--red); }
+.odysseus-root .od-cb-fit-col:disabled { cursor: default; }
+.odysseus-root .od-cb-fit-fit { width: 52px; font-weight: 700; }
+.odysseus-root .od-cb-fit-name { flex: 1; min-width: 0; }
+.odysseus-root .od-cb-fit-params { width: 42px; }
+.odysseus-root .od-cb-fit-quant { width: 52px; }
+.odysseus-root .od-cb-fit-vram { width: 42px; }
+.odysseus-root .od-cb-fit-ctx { width: 32px; }
+.odysseus-root .od-cb-fit-speed { width: 44px; }
+.odysseus-root .od-cb-fit-score { width: 40px; font-weight: 700; }
+.odysseus-root .od-cb-fit-mode { width: 48px; }
+/* ===== sync: Composer ===== */
+/* Slash command autocomplete popup, ported 1:1 from odysseus
+   static/style.css (.slash-autocomplete-popup + .slash-ac-* rules added by
+   "Add slash command autocomplete popup"). Renamed to the od-slash-ac-*
+   namespace so it composes alongside — not collides with — the existing
+   .od-slash-menu rules in odysseus-theme.ts. Anchored above the composer (the
+   composer already position:relative), and colour-mapped onto the eliza theme
+   vars: upstream --panel/--bg→--panel/--bg, --fg→--fg, --fg-muted→--muted,
+   --accent fallback --red kept verbatim. */
+.odysseus-root .od-slash-ac { position:absolute; bottom:calc(100% + 6px); left:0; z-index:9000;
+  width:100%; max-width:520px; min-width:280px; max-height:min(50vh, 360px); overflow-y:auto;
+  background:var(--panel, var(--bg)); border:1px solid var(--border); border-radius:8px;
+  box-shadow:0 8px 24px rgba(0,0,0,.35); font-size:13px; color:var(--fg); padding:4px 0; }
+.odysseus-root .od-slash-ac-cat { font-size:10px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--muted); padding:6px 10px 2px; opacity:.7; }
+.odysseus-root .od-slash-ac-row { display:flex; align-items:baseline; gap:8px; width:100%;
+  padding:5px 10px; border:none; background:none; text-align:left; cursor:pointer; line-height:1.3;
+  white-space:nowrap; overflow:hidden; font-size:13px; color:var(--fg); font-family:inherit; }
+.odysseus-root .od-slash-ac-row:hover { background-color:color-mix(in srgb, var(--accent, var(--red)) 10%, transparent); }
+.odysseus-root .od-slash-ac-row.active { background-color:color-mix(in srgb, var(--accent, var(--red)) 14%, transparent); }
+.odysseus-root .od-slash-ac-token { font-family:'Fira Code', ui-monospace, monospace;
+  color:var(--accent, var(--red)); font-weight:600; flex-shrink:0; }
+.odysseus-root .od-slash-ac-help { color:var(--fg); opacity:.85; flex:1; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; }
+.odysseus-root .od-slash-ac-usage { color:var(--muted); font-family:'Fira Code', ui-monospace, monospace;
+  font-size:11px; opacity:.55; flex-shrink:0; }
 `;

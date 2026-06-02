@@ -1,21 +1,30 @@
 // odysseus Cookbook (static/js/cookbook.js + cookbookServe.js +
-// cookbookRunning.js + cookbookDownload.js + codeRunner.js + langIcons.js, plus
-// the .cookbook-* / .doclib-card.skill-card rules in static/style.css). A grid
-// of runnable recipe/skill cards: each card is a collapsed header row (language
-// icon · name · description · status/lang badges · chevron) that expands into a
-// detail/preview of the recipe source, with a run/download/copy control footer.
-// odysseus's codeRunner.js drives an in-card run-output panel below the preview.
+// cookbookRunning.js + cookbookDownload.js + cookbook-hwfit.js +
+// cookbook-diagnosis.js + codeRunner.js + langIcons.js, plus the .cookbook-* /
+// .hwfit-* / .doclib-card.skill-card rules in static/style.css). The v2 cookbook
+// is a tabbed serve workbench: a Recipes grid of runnable recipe/skill cards, a
+// Serve tab (cached-model serve panels with profiles + an engine filter + a
+// saved-config split badge + a GPU chip + a serve diagnostics/recommendations
+// panel), and a What-Fits hardware-fit table (sortable columns incl. a Fit
+// column with quant classification).
 //
 // elizaMapping: odysseus's cookbook is a HuggingFace model-serve workbench with
 // no eliza equivalent, but its recipe/skill GRID maps 1:1 onto eliza's real
-// installed-skill set. The grid is wired to client.getSkills() (GET /api/skills
-// → SkillInfo[]), the per-card detail/preview is the real SKILL.md source via
-// client.getSkillSource(id) (GET /api/skills/:id/source), and Download writes
-// that exact fetched source to a file — no fabrication. The in-browser RUN path
-// (codeRunner.js Pyodide / sandboxed-iframe / POST /api/shell/exec) has NO eliza
-// client method — eliza exposes no frontend code-execution endpoint — so the
-// run-output panel renders odysseus's faithful ready/unavailable state instead
-// of fabricating program output. When no skills are installed the grid shows
+// installed-skill set. The Recipes grid is wired to client.getSkills() (GET
+// /api/skills → SkillInfo[]), the per-card detail/preview is the real SKILL.md
+// source via client.getSkillSource(id) (GET /api/skills/:id/source), and
+// Download writes that exact fetched source to a file — no fabrication. The
+// in-browser RUN path (codeRunner.js Pyodide / sandboxed-iframe / POST
+// /api/shell/exec) has NO eliza client method — eliza exposes no frontend
+// code-execution endpoint — so the run-output panel renders odysseus's faithful
+// ready/unavailable state instead of fabricating program output. Serve and
+// What-Fits are LOCAL-RUNTIME concepts (hardware probe, cached HF models, vLLM/
+// llama.cpp launch, GPU VRAM monitor) that eliza has no backend for: we render
+// odysseus's serve/hwfit chrome HONESTLY in its empty state — the Fit table
+// header (sortable, incl. the Fit column), the serve profiles + engine filter,
+// the saved-config split badge + GPU chip with their real tooltips, and the
+// serve diagnostics/recommendations panel — but never invent hardware data,
+// cached models, or program output. When no skills are installed the grid shows
 // odysseus's honest empty state ("No recipes yet."); no sample recipes are seeded.
 
 import type { SkillInfo } from "@elizaos/ui";
@@ -23,9 +32,11 @@ import { client } from "@elizaos/ui";
 import {
   ChevronUp,
   Copy,
+  Cpu,
   Download,
   Play,
   RefreshCw,
+  Save,
   Search,
 } from "lucide-react";
 import {
@@ -239,6 +250,51 @@ interface RecipeSource {
 
 const EMPTY_SOURCE: RecipeSource = { status: "idle", content: "" };
 
+// cookbook.js v2 tab row. Recipes is the real eliza-backed surface; Serve and
+// What-Fits are odysseus's local-runtime serve workbench tabs that eliza has no
+// backend for — rendered honestly (see each panel's empty state).
+type CookbookTab = "recipes" | "serve" | "fit";
+
+const COOKBOOK_TABS: ReadonlyArray<{ id: CookbookTab; label: string }> = [
+  { id: "recipes", label: "Recipes" },
+  { id: "serve", label: "Serve" },
+  { id: "fit", label: "What Fits?" },
+];
+
+// cookbookServe.js _backendChoices — the serve-engine list used both for the
+// Serve panel's backend select and the What-Fits "Engine" filter. Verbatim
+// labels/values from cookbookServe.js / cookbook-hwfit._applyEngineFilter.
+const SERVE_ENGINES: ReadonlyArray<{ value: string; label: string }> = [
+  { value: "", label: "All engines" },
+  { value: "vllm", label: "vLLM" },
+  { value: "sglang", label: "SGLang" },
+  { value: "llamacpp", label: "llama.cpp" },
+  { value: "ollama", label: "Ollama" },
+  { value: "diffusers", label: "Diffusers" },
+];
+
+// cookbook-hwfit.js _hwfitColumns — the What-Fits table header. `sortKey` mirrors
+// the column's data-sort (null = not sortable). The Fit column is sortable and
+// ranks the categorical fit_level (perfect→good→marginal→too_tight), matching
+// the "Fix Cookbook fit column sorting" / "sort by Fit" upstream commits.
+interface FitColumn {
+  sortKey: string | null;
+  label: string;
+  cls: string;
+}
+
+const FIT_COLUMNS: ReadonlyArray<FitColumn> = [
+  { sortKey: "fit", label: "Fit", cls: "od-cb-fit-fit" },
+  { sortKey: null, label: "Model", cls: "od-cb-fit-name" },
+  { sortKey: "params", label: "Param", cls: "od-cb-fit-params" },
+  { sortKey: null, label: "Quant", cls: "od-cb-fit-quant" },
+  { sortKey: "vram", label: "VRAM", cls: "od-cb-fit-vram" },
+  { sortKey: "context", label: "Ctx", cls: "od-cb-fit-ctx" },
+  { sortKey: "speed", label: "Speed", cls: "od-cb-fit-speed" },
+  { sortKey: "score", label: "Score", cls: "od-cb-fit-score" },
+  { sortKey: null, label: "Mode", cls: "od-cb-fit-mode" },
+];
+
 export function CookbookView({
   open,
   onClose,
@@ -247,6 +303,7 @@ export function CookbookView({
   onClose: () => void;
 }): ReactNode {
   useEscapeClose(open, onClose);
+  const [tab, setTab] = useState<CookbookTab>("recipes");
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -254,6 +311,12 @@ export function CookbookView({
   const [query, setQuery] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sources, setSources] = useState<Record<string, RecipeSource>>({});
+  // Serve/What-Fits view chrome state. These drive odysseus's serve workbench
+  // controls (engine filter, Fit-column sort) faithfully even though there's no
+  // eliza backend to populate the lists — the UI stays interactive and honest.
+  const [engine, setEngine] = useState("");
+  const [fitSort, setFitSort] = useState("score");
+  const [fitReverse, setFitReverse] = useState(false);
 
   const loadRecipes = useCallback(() => {
     setRefreshing(true);
@@ -320,6 +383,20 @@ export function CookbookView({
     );
   }, [recipes, query]);
 
+  // cookbook-hwfit.js header click: clicking the active Fit/sort column flips
+  // direction, clicking a new column resets to highest-first. Kept faithful so
+  // the header's ▼/▲ arrow + the "sort by Fit" behaviour reads correctly even
+  // with no rows to reorder.
+  const onSortColumn = (key: string | null) => {
+    if (!key) return;
+    if (fitSort === key) {
+      setFitReverse((v) => !v);
+    } else {
+      setFitSort(key);
+      setFitReverse(false);
+    }
+  };
+
   if (!open) return null;
 
   // Download the recipe's real SKILL.md source as a file (cookbookDownload.js
@@ -350,6 +427,7 @@ export function CookbookView({
 
   const total = recipes.length;
   const shown = filtered.length;
+  const showSearch = tab === "recipes" || tab === "fit";
 
   return (
     <div
@@ -365,162 +443,343 @@ export function CookbookView({
         className="od-search-backdrop"
       />
       <div className="od-search-panel od-cb-panel">
-        {/* ── Header (cookbook.js modal header + search row) ── */}
+        {/* ── Header (cookbook.js modal header) ── */}
         <div className="od-mem-head od-cb-head">
           <span className="od-mem-title">Cookbook</span>
-          <span className="od-mem-stats">
-            {query.trim() && shown !== total
-              ? `${shown} of ${total}`
-              : `${total} recipe${total === 1 ? "" : "s"}`}
-          </span>
-          <button
-            type="button"
-            className="od-cb-refresh"
-            title="Refresh recipes"
-            aria-label="Refresh recipes"
-            onClick={loadRecipes}
-            disabled={refreshing}
-          >
-            <RefreshCw size={13} className={refreshing ? "od-cb-spin" : ""} />
-          </button>
-        </div>
-
-        <div className="od-cb-search">
-          <Search size={14} className="od-cb-search-icon" />
-          <input
-            className="od-cb-search-input"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") onClose();
-            }}
-            placeholder="Search recipes…"
-            aria-label="Search recipes"
-          />
-        </div>
-
-        {/* ── Recipe grid (doclib-grid of skill-card recipe cards) ── */}
-        <div className="od-cb-grid">
-          {!loaded ? (
-            <div className="od-cb-loading">Loading recipes…</div>
-          ) : loadError ? (
-            <div className="od-search-empty">
-              Couldn't load recipes. Try refresh.
-            </div>
-          ) : total === 0 ? (
-            <div className="od-search-empty">No recipes yet.</div>
-          ) : shown === 0 ? (
-            <div className="od-search-empty">No recipes match "{query}".</div>
+          {tab === "recipes" ? (
+            <span className="od-mem-stats">
+              {query.trim() && shown !== total
+                ? `${shown} of ${total}`
+                : `${total} recipe${total === 1 ? "" : "s"}`}
+            </span>
           ) : (
-            filtered.map((r) => {
-              const isOpen = expandedId === r.id;
-              const src = sources[r.id] ?? EMPTY_SOURCE;
-              const runner = runnerFor(r.lang);
-              return (
-                <div
-                  className={`od-cb-card${isOpen ? " od-cb-card-expanded" : ""}`}
-                  key={r.id}
-                >
-                  <button
-                    type="button"
-                    className="od-cb-card-header"
-                    onClick={() => toggleExpand(r.id)}
-                    aria-expanded={isOpen}
-                  >
-                    <span className="od-cb-card-icon" aria-hidden="true">
-                      <LangIcon lang={r.lang} size={16} />
-                    </span>
-                    <span className="od-cb-card-textcol">
-                      <span className="od-cb-card-name">{r.name}</span>
-                      {r.description ? (
-                        <span className="od-cb-card-desc">{r.description}</span>
-                      ) : null}
-                    </span>
-                    <span className="od-cb-card-right">
-                      {r.scanStatus && r.scanStatus !== "clean" ? (
-                        <span
-                          className={`od-cb-badge od-cb-badge-${r.scanStatus}`}
-                          title={`Scan: ${r.scanStatus}`}
-                        >
-                          {r.scanStatus}
-                        </span>
-                      ) : null}
-                      <span
-                        className={`od-cb-badge${r.enabled ? " od-cb-badge-on" : " od-cb-badge-off"}`}
-                      >
-                        {r.enabled ? "enabled" : "disabled"}
-                      </span>
-                      {isOpen ? (
-                        <span className="od-cb-chevron" aria-hidden="true">
-                          <ChevronUp size={14} />
-                        </span>
-                      ) : null}
-                    </span>
-                  </button>
-
-                  {isOpen ? (
-                    <div className="od-cb-card-preview">
-                      {src.status === "loading" ? (
-                        <div className="od-cb-loading">Loading recipe…</div>
-                      ) : src.status === "error" ? (
-                        <div className="od-search-empty">
-                          Couldn't load this recipe's source.
-                        </div>
-                      ) : (
-                        <pre className="od-cb-md-pre">{src.content}</pre>
-                      )}
-
-                      {/* ── Run-output panel (codeRunner.js getOrCreatePanel).
-                          eliza has no client code-execution endpoint, so this
-                          stays in the faithful unavailable state — never fake
-                          program output. ── */}
-                      <div className="od-cb-run-output" aria-live="polite">
-                        {runner === "none"
-                          ? "This recipe isn't runnable in the browser."
-                          : "Running recipes isn't available yet — no execution backend is wired."}
-                      </div>
-
-                      <div className="od-cb-card-actions">
-                        <button
-                          type="button"
-                          className="od-cb-action-btn od-cb-run-btn"
-                          title="Run this recipe"
-                          aria-label="Run this recipe"
-                          disabled
-                        >
-                          <Play size={11} />
-                          Run
-                        </button>
-                        <div className="od-cb-action-group">
-                          <button
-                            type="button"
-                            className="od-cb-action-btn"
-                            title="Copy recipe source"
-                            onClick={() => copySource(r)}
-                            disabled={src.status !== "ready"}
-                          >
-                            <Copy size={11} />
-                            Copy
-                          </button>
-                          <button
-                            type="button"
-                            className="od-cb-action-btn"
-                            title="Download recipe source"
-                            onClick={() => downloadRecipe(r)}
-                            disabled={src.status !== "ready"}
-                          >
-                            <Download size={11} />
-                            Download
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })
+            <span className="od-mem-stats" />
           )}
+          {tab === "recipes" ? (
+            <button
+              type="button"
+              className="od-cb-refresh"
+              title="Refresh recipes"
+              aria-label="Refresh recipes"
+              onClick={loadRecipes}
+              disabled={refreshing}
+            >
+              <RefreshCw size={13} className={refreshing ? "od-cb-spin" : ""} />
+            </button>
+          ) : null}
         </div>
+
+        {/* ── Tab row (cookbook.js .cookbook-tab set) ── */}
+        <div className="od-cb-tabs" role="tablist" aria-label="Cookbook tabs">
+          {COOKBOOK_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              className={`od-cb-tab${tab === t.id ? " od-cb-tab-active" : ""}`}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {showSearch ? (
+          <div className="od-cb-search">
+            <Search size={14} className="od-cb-search-icon" />
+            <input
+              className="od-cb-search-input"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") onClose();
+              }}
+              placeholder={tab === "fit" ? "Search models…" : "Search recipes…"}
+              aria-label={tab === "fit" ? "Search models" : "Search recipes"}
+            />
+          </div>
+        ) : null}
+
+        {/* ── Recipes tab: doclib-grid of skill-card recipe cards ── */}
+        {tab === "recipes" ? (
+          <div className="od-cb-grid">
+            {!loaded ? (
+              <div className="od-cb-loading">Loading recipes…</div>
+            ) : loadError ? (
+              <div className="od-search-empty">
+                Couldn't load recipes. Try refresh.
+              </div>
+            ) : total === 0 ? (
+              <div className="od-search-empty">No recipes yet.</div>
+            ) : shown === 0 ? (
+              <div className="od-search-empty">No recipes match "{query}".</div>
+            ) : (
+              filtered.map((r) => {
+                const isOpen = expandedId === r.id;
+                const src = sources[r.id] ?? EMPTY_SOURCE;
+                const runner = runnerFor(r.lang);
+                return (
+                  <div
+                    className={`od-cb-card${isOpen ? " od-cb-card-expanded" : ""}`}
+                    key={r.id}
+                  >
+                    <button
+                      type="button"
+                      className="od-cb-card-header"
+                      onClick={() => toggleExpand(r.id)}
+                      aria-expanded={isOpen}
+                    >
+                      <span className="od-cb-card-icon" aria-hidden="true">
+                        <LangIcon lang={r.lang} size={16} />
+                      </span>
+                      <span className="od-cb-card-textcol">
+                        <span className="od-cb-card-name">{r.name}</span>
+                        {r.description ? (
+                          <span className="od-cb-card-desc">
+                            {r.description}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="od-cb-card-right">
+                        {r.scanStatus && r.scanStatus !== "clean" ? (
+                          <span
+                            className={`od-cb-badge od-cb-badge-${r.scanStatus}`}
+                            title={`Scan: ${r.scanStatus}`}
+                          >
+                            {r.scanStatus}
+                          </span>
+                        ) : null}
+                        <span
+                          className={`od-cb-badge${r.enabled ? " od-cb-badge-on" : " od-cb-badge-off"}`}
+                        >
+                          {r.enabled ? "enabled" : "disabled"}
+                        </span>
+                        {isOpen ? (
+                          <span className="od-cb-chevron" aria-hidden="true">
+                            <ChevronUp size={14} />
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+
+                    {isOpen ? (
+                      <div className="od-cb-card-preview">
+                        {src.status === "loading" ? (
+                          <div className="od-cb-loading">Loading recipe…</div>
+                        ) : src.status === "error" ? (
+                          <div className="od-search-empty">
+                            Couldn't load this recipe's source.
+                          </div>
+                        ) : (
+                          <pre className="od-cb-md-pre">{src.content}</pre>
+                        )}
+
+                        {/* ── Run-output panel (codeRunner.js getOrCreatePanel).
+                            eliza has no client code-execution endpoint, so this
+                            stays in the faithful unavailable state — never fake
+                            program output. ── */}
+                        <div className="od-cb-run-output" aria-live="polite">
+                          {runner === "none"
+                            ? "This recipe isn't runnable in the browser."
+                            : "Running recipes isn't available yet — no execution backend is wired."}
+                        </div>
+
+                        <div className="od-cb-card-actions">
+                          <button
+                            type="button"
+                            className="od-cb-action-btn od-cb-run-btn"
+                            title="Run this recipe"
+                            aria-label="Run this recipe"
+                            disabled
+                          >
+                            <Play size={11} />
+                            Run
+                          </button>
+                          <div className="od-cb-action-group">
+                            <button
+                              type="button"
+                              className="od-cb-action-btn"
+                              title="Copy recipe source"
+                              onClick={() => copySource(r)}
+                              disabled={src.status !== "ready"}
+                            >
+                              <Copy size={11} />
+                              Copy
+                            </button>
+                            <button
+                              type="button"
+                              className="od-cb-action-btn"
+                              title="Download recipe source"
+                              onClick={() => downloadRecipe(r)}
+                              disabled={src.status !== "ready"}
+                            >
+                              <Download size={11} />
+                              Download
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        ) : null}
+
+        {/* ── Serve tab: cookbookServe.js serve panel chrome (engine filter,
+            saved-config split badge, GPU chip, serve diagnostics/recommendations)
+            rendered honestly — eliza has no local serve runtime / cached models. ── */}
+        {tab === "serve" ? (
+          <div className="od-cb-serve">
+            <div className="od-cb-serve-controls">
+              {/* Engine filter (cookbookServe._backendChoices). Wired + interactive,
+                  but there are no cached models to filter — eliza serves none. */}
+              <label className="od-cb-field">
+                <span className="od-cb-field-label">Engine</span>
+                <select
+                  className="od-cb-select"
+                  value={engine}
+                  onChange={(e) => setEngine(e.target.value)}
+                  aria-label="Filter by serve engine"
+                >
+                  {SERVE_ENGINES.map((opt) => (
+                    <option key={opt.value || "all"} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {/* GPU chip (cookbook-hwfit._hwfitRenderHw). Tooltip wording from
+                  "clearer tooltips on saved-config badge and GPU chip". No probe →
+                  honest "No GPU" with the real reason in the title. */}
+              <span
+                className="od-cb-gpu-chip od-cb-gpu-chip-off"
+                title="No GPU detected — eliza has no hardware probe, so the Cookbook can't report a serving GPU here."
+              >
+                <Cpu size={12} aria-hidden="true" />
+                No GPU
+              </span>
+
+              {/* Saved-config split badge (cookbookServe.js cookbook-saved-split).
+                  Tooltips spell out what the count badge means, per
+                  "clearer tooltips on saved-config badge and GPU chip". No serve
+                  backend → no configs to save, so the split stays disabled. */}
+              <span className="od-cb-saved-split">
+                <button
+                  type="button"
+                  className="od-cb-saved-save"
+                  title="Save the current serve config — unavailable: eliza has no serve backend to launch against."
+                  disabled
+                >
+                  <Save size={11} aria-hidden="true" />
+                  Save
+                </button>
+                <button
+                  type="button"
+                  className="od-cb-saved-arrow"
+                  title="No saved launch configs yet — there's no serve backend, so configs can't be saved or loaded."
+                  disabled
+                >
+                  ▾
+                </button>
+              </span>
+            </div>
+
+            <div className="od-search-empty od-cb-serve-empty">
+              Serving local models isn't available — eliza has no model-serve
+              runtime, hardware probe, or cached-model store, so there's nothing
+              to serve here.
+            </div>
+
+            {/* Serve diagnostics / recommendations panel (cookbook-diagnosis.js
+                _showDiagnosis). No serve task can fail because none can launch, so
+                the panel renders its honest idle/empty state instead of inventing
+                an error to diagnose. ── */}
+            <div className="od-cb-diagnosis" aria-live="polite">
+              <div className="od-cb-diag-header">
+                <span className="od-cb-diag-title">
+                  Serve diagnostics &amp; recommendations
+                </span>
+              </div>
+              <div className="od-cb-diag-body">
+                <div className="od-cb-diag-message">
+                  No serve errors to diagnose.
+                </div>
+                <div className="od-cb-diag-suggestion">
+                  Launch errors (OOM, missing engine, gated model, port in use)
+                  would surface here with one-click fixes — but eliza has no
+                  serve backend to produce them.
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* ── What Fits? tab: cookbook-hwfit.js hardware-fit table. The sortable
+            header (incl. the Fit column with quant classification) renders
+            faithfully; eliza has no hardware probe, so the body is the honest
+            empty state rather than fabricated fit rows. ── */}
+        {tab === "fit" ? (
+          <div className="od-cb-fit">
+            <div className="od-cb-serve-controls">
+              <span
+                className="od-cb-gpu-chip od-cb-gpu-chip-off"
+                title="No GPU detected — eliza has no hardware probe, so the Cookbook can't rank models against a GPU here."
+              >
+                <Cpu size={12} aria-hidden="true" />
+                No GPU
+              </span>
+              <label className="od-cb-field">
+                <span className="od-cb-field-label">Engine</span>
+                <select
+                  className="od-cb-select"
+                  value={engine}
+                  onChange={(e) => setEngine(e.target.value)}
+                  aria-label="Filter by serve engine"
+                >
+                  {SERVE_ENGINES.map((opt) => (
+                    <option key={opt.value || "all"} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="od-cb-fit-table">
+              <div className="od-cb-fit-row od-cb-fit-header">
+                {FIT_COLUMNS.map((col) => {
+                  const sortable = col.sortKey ? " od-cb-fit-sortable" : "";
+                  const active =
+                    col.sortKey && col.sortKey === fitSort
+                      ? " od-cb-fit-sort-active"
+                      : "";
+                  const arrow =
+                    col.sortKey === fitSort ? (fitReverse ? " ▲" : " ▼") : "";
+                  return (
+                    <button
+                      key={col.label}
+                      type="button"
+                      className={`od-cb-fit-col ${col.cls}${sortable}${active}`}
+                      onClick={() => onSortColumn(col.sortKey)}
+                      disabled={!col.sortKey}
+                    >
+                      {col.label}
+                      {arrow}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="od-cb-loading">
+                No hardware to scan — eliza has no hardware probe, so the
+                Cookbook can't rank models that fit a GPU here.
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
