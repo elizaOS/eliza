@@ -502,7 +502,7 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
     if float(real_graph_load.get("total_required_mib", 0.0)) <= float(
         e1_baseline["local_sram_mib"]
     ):
-        return False, "real-graph resident model unexpectedly fits in E1 local SRAM"
+        return False, "real-graph resident model unexpectedly fits in E1 local SRAM", {}
     schedule_vs_e1_peak = float(schedule_execution_data["effective_tops"]) / float(
         e1_baseline["dense_int8_peak_tops"]
     )

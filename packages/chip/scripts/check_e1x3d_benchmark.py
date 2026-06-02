@@ -128,6 +128,13 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
     ):
         return False, "scaled E1X3D handoff missing repair/thermal/yield sidecars", {}
 
+    assert isinstance(defect_map, dict)
+    assert isinstance(repair_manifest, dict)
+    assert isinstance(repair_rom, dict)
+    assert isinstance(model_shard_sample, dict)
+    assert isinstance(thermal, dict)
+    assert isinstance(stack_yield, dict)
+
     defect_map_path = _required_repo_file(defect_map.get("path"))
     repair_manifest_path = _required_repo_file(repair_manifest.get("path"))
     repair_rom_path = _required_repo_file(repair_rom.get("path"))
@@ -148,6 +155,14 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
         )
     ):
         return False, "scaled E1X3D handoff sidecar path is missing or invalid", {}
+
+    assert defect_map_path is not None
+    assert repair_manifest_path is not None
+    assert repair_rom_path is not None
+    assert repair_rom_hex_path is not None
+    assert model_shard_sample_path is not None
+    assert thermal_path is not None
+    assert stack_yield_path is not None
 
     defect_map_data = json.loads(defect_map_path.read_text(encoding="utf-8"))
     repair_manifest_data = json.loads(repair_manifest_path.read_text(encoding="utf-8"))
@@ -194,7 +209,7 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
 
     high = scenarios[1]
     dead_tier = scenarios[2]
-    summary = {
+    summary: dict[str, int | float | str] = {
         "base_logical_cores": int(base_metrics["architecture"]["logical_cores"]),
         "base_logical_tiers": int(base_metrics["architecture"]["logical_tiers"]),
         "scaled_logical_cores": int(scaled_metrics["architecture"]["logical_cores"]),

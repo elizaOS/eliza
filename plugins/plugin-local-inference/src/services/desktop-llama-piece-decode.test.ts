@@ -191,9 +191,7 @@ describe("DesktopLlamaAdapter token-to-piece decoding (#11)", () => {
 	});
 
 	it("flushes an incomplete UTF-8 piece when EOG ends the stream", () => {
-		const pieces = new Map<number, Uint8Array>([
-			[101, new Uint8Array([0xe4])],
-		]);
+		const pieces = new Map<number, Uint8Array>([[101, new Uint8Array([0xe4])]]);
 		const h = makePieceHarness(pieces);
 		h.llama.llama_sampler_sample.mockReturnValueOnce(101);
 		h.llama.llama_vocab_is_eog.mockReturnValueOnce(false).mockReturnValue(true);
@@ -211,9 +209,7 @@ describe("DesktopLlamaAdapter token-to-piece decoding (#11)", () => {
 	});
 
 	it("flushes an incomplete UTF-8 piece when a stream is cancelled", () => {
-		const pieces = new Map<number, Uint8Array>([
-			[101, new Uint8Array([0xe4])],
-		]);
+		const pieces = new Map<number, Uint8Array>([[101, new Uint8Array([0xe4])]]);
 		const h = makePieceHarness(pieces);
 		h.llama.llama_sampler_sample.mockReturnValueOnce(101);
 		h.llama.llama_vocab_is_eog.mockReturnValue(false);

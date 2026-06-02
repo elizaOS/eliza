@@ -933,9 +933,10 @@ def handoff_packet_failures(packet: dict[str, Any]) -> list[str]:
         failures.append(f"{packet_id}:template_intake_not_executed:{expected_path}")
         failures.extend(f"{packet_id}:required_field_unpopulated:{field}" for field in unpopulated)
         return failures
-    for field in required_fields:
-        if str(field) not in data or data.get(str(field)) in (None, "", []):
-            failures.append(f"{packet_id}:missing_field:{field}")
+    if isinstance(required_fields, list):
+        for field in required_fields:
+            if str(field) not in data or data.get(str(field)) in (None, "", []):
+                failures.append(f"{packet_id}:missing_field:{field}")
     return failures
 
 

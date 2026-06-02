@@ -16761,9 +16761,11 @@ def check_routed_board_clearance_release_intake() -> None:
         "release_allowed": False,
     }
     flags = intake["release_flags"]
-    for key, expected in expected_flags.items():
-        if flags.get(key) != expected:
-            raise SystemExit(f"routed-board clearance intake release flag stale: {key}")
+    flag_key: str
+    flag_expected: bool
+    for flag_key, flag_expected in expected_flags.items():
+        if flags.get(flag_key) != flag_expected:
+            raise SystemExit(f"routed-board clearance intake release flag stale: {flag_key}")
     for claim in [
         "routed_clearance_passed",
         "enclosure_ready",
@@ -17246,10 +17248,10 @@ def check_kicad_cad_stub_audit() -> None:
         marker_path = ROOT / hit["path"]
         marker = str(hit.get("marker") or "")
         disposition = str(hit.get("disposition") or "")
-        key = (str(hit.get("path") or ""), marker)
-        if key in seen_placeholder_hits:
-            raise SystemExit(f"KiCad/CAD stub audit duplicate placeholder marker record: {key}")
-        seen_placeholder_hits.add(key)
+        placeholder_key: tuple[str, str] = (str(hit.get("path") or ""), marker)
+        if placeholder_key in seen_placeholder_hits:
+            raise SystemExit(f"KiCad/CAD stub audit duplicate placeholder marker record: {placeholder_key}")
+        seen_placeholder_hits.add(placeholder_key)
         require_path(marker_path)
         if not marker:
             raise SystemExit(f"KiCad/CAD stub audit placeholder hit lacks marker: {hit}")

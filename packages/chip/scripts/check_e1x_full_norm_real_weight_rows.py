@@ -19,7 +19,7 @@ FNV64_OFFSET = 0xCBF29CE484222325
 FNV64_PRIME = 0x100000001B3
 MASK64 = (1 << 64) - 1
 
-FALSE_CLAIM_FLAGS = {
+FALSE_CLAIM_FLAGS: dict[str, object] = {
     "release_claim_allowed": False,
     "silicon_claim_allowed": False,
     "production_accelerator_claim_allowed": False,

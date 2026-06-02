@@ -227,7 +227,7 @@ def main() -> int:
     status, detail = pass_fail(hash_ok, "input artifact SHA fields match canonical payloads")
     checks.append({"id": "e1x_tensor_numerics_artifact_hashes", "status": status, "detail": detail})
 
-    link_ok = (
+    link_ok: bool = bool(
         proof.get("source_placement_sha256") == placement.get("artifact_sha256")
         and schedule.get("source_placement_sha256") == placement.get("artifact_sha256")
         and proof.get("source_kernel_plan_sha256")

@@ -252,7 +252,11 @@ def collect_dependency_counts(
             1 for report in reports.values() if report.get("status") == "PASS"
         ),
         "declared_evidence_path_count": declared_evidence_path_count,
-        "missing_evidence_path_count": sum(int(item["missing_count"]) for item in missing_evidence),
+        "missing_evidence_path_count": sum(
+            count for item in missing_evidence
+            for count in (item["missing_count"],)
+            if isinstance(count, int)
+        ),
     }
 
 

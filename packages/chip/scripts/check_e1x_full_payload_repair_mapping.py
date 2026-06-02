@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from math import ceil
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_full_payload_repair_mapping.json"
@@ -177,7 +178,7 @@ def main() -> int:
     checks: list[dict[str, str]] = []
     input_paths = [PLACEMENT, FULL_PAYLOAD, WINDOW_REPAIR, WINDOW_ROUTE]
     for paths in CASES.values():
-        input_paths.extend([paths["defect"], paths["repair"]])
+        input_paths.extend([cast(Path, paths["defect"]), cast(Path, paths["repair"])])
     missing = [str(path.relative_to(ROOT)) for path in input_paths if not path.is_file()]
     status, detail = pass_fail(
         not missing,
@@ -244,12 +245,12 @@ def main() -> int:
         case_ok = (
             not errors
             and summary["repair_manifest_sha256"] == paths["expected_repair_sha256"]
-            and int(summary["payload_remapped_record_count"])
-            == int(paths["expected_payload_remapped_records"])
-            and int(summary["payload_direct_record_count"])
-            == len(records) - int(summary["payload_remapped_record_count"])
-            and int(summary["payload_unique_physical_core_count"]) == len(records)
-            and int(summary["payload_mapping_checksum"]) > 0
+            and cast(int, summary["payload_remapped_record_count"])
+            == cast(int, paths["expected_payload_remapped_records"])
+            and cast(int, summary["payload_direct_record_count"])
+            == len(records) - cast(int, summary["payload_remapped_record_count"])
+            and cast(int, summary["payload_unique_physical_core_count"]) == len(records)
+            and cast(int, summary["payload_mapping_checksum"]) > 0
         )
         status, detail = pass_fail(
             case_ok,
@@ -281,11 +282,11 @@ def main() -> int:
     high = case_summaries.get("high_failure", {})
     combined_checksum = FNV64_OFFSET
     for value in (
-        int(full_payload.get("summary", {}).get("payload_manifest_checksum", 0)),
-        int(normal.get("payload_mapping_checksum", 0)),
-        int(high.get("payload_mapping_checksum", 0)),
-        int(window_route.get("summary", {}).get("normal_window_route_checksum", 0)),
-        int(window_route.get("summary", {}).get("high_failure_window_route_checksum", 0)),
+        cast(int, full_payload.get("summary", {}).get("payload_manifest_checksum", 0)),
+        cast(int, normal.get("payload_mapping_checksum", 0)),
+        cast(int, high.get("payload_mapping_checksum", 0)),
+        cast(int, window_route.get("summary", {}).get("normal_window_route_checksum", 0)),
+        cast(int, window_route.get("summary", {}).get("high_failure_window_route_checksum", 0)),
     ):
         combined_checksum = mix64(combined_checksum, value)
     summary = {
@@ -294,24 +295,24 @@ def main() -> int:
         "payload_shard_record_count": len(records),
         "payload_loader_word_count": sum(int(record["loader_words"]) for record in records),
         "payload_stream_bytes": sum(int(record["shard_bytes"]) for record in records),
-        "payload_manifest_checksum": int(
-            full_payload.get("summary", {}).get("payload_manifest_checksum", 0)
+        "payload_manifest_checksum": cast(
+            int, full_payload.get("summary", {}).get("payload_manifest_checksum", 0)
         ),
-        "normal_payload_remapped_records": int(normal.get("payload_remapped_record_count", 0)),
-        "high_failure_payload_remapped_records": int(high.get("payload_remapped_record_count", 0)),
-        "normal_payload_direct_records": int(normal.get("payload_direct_record_count", 0)),
-        "high_failure_payload_direct_records": int(high.get("payload_direct_record_count", 0)),
-        "normal_payload_mapping_checksum": int(normal.get("payload_mapping_checksum", 0)),
-        "high_failure_payload_mapping_checksum": int(high.get("payload_mapping_checksum", 0)),
+        "normal_payload_remapped_records": cast(int, normal.get("payload_remapped_record_count", 0)),
+        "high_failure_payload_remapped_records": cast(int, high.get("payload_remapped_record_count", 0)),
+        "normal_payload_direct_records": cast(int, normal.get("payload_direct_record_count", 0)),
+        "high_failure_payload_direct_records": cast(int, high.get("payload_direct_record_count", 0)),
+        "normal_payload_mapping_checksum": cast(int, normal.get("payload_mapping_checksum", 0)),
+        "high_failure_payload_mapping_checksum": cast(int, high.get("payload_mapping_checksum", 0)),
         "high_vs_normal_payload_remap_ratio": (
-            int(high.get("payload_remapped_record_count", 0))
-            / max(1, int(normal.get("payload_remapped_record_count", 0)))
+            cast(int, high.get("payload_remapped_record_count", 0))
+            / max(1, cast(int, normal.get("payload_remapped_record_count", 0)))
         ),
-        "normal_route_checksum": int(
-            window_route.get("summary", {}).get("normal_window_route_checksum", 0)
+        "normal_route_checksum": cast(
+            int, window_route.get("summary", {}).get("normal_window_route_checksum", 0)
         ),
-        "high_failure_route_checksum": int(
-            window_route.get("summary", {}).get("high_failure_window_route_checksum", 0)
+        "high_failure_route_checksum": cast(
+            int, window_route.get("summary", {}).get("high_failure_window_route_checksum", 0)
         ),
         "combined_payload_repair_checksum": combined_checksum,
         "case_summary_sha256": canonical_sha256(case_summaries),

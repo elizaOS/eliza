@@ -15,19 +15,25 @@ VOCAB_SAMPLED_K_REAL_WEIGHT = ROOT / "build/reports/e1x_vocab_sampled_k_real_wei
 FULL_PAYLOAD_REPAIR = ROOT / "build/reports/e1x_full_payload_repair_mapping.json"
 WINDOW_REPAIR = ROOT / "build/reports/e1x_window_repair_linkage.json"
 
-CASES = {
-    "normal": {
-        "defect": ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_defect_map.json",
-        "repair": ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_manifest.json",
-        "expected_repair_sha256": "157f8f7eab101ae4f9e6cc6d69c150b9403189ca3e31523e56b6c331104d0528",
-    },
-    "high_failure": {
-        "defect": ROOT
-        / "benchmarks/results/e1x-real-graph-model-load.high_failure_defect_map.json",
-        "repair": ROOT
+class CasePaths:
+    def __init__(self, defect: Path, repair: Path, expected_repair_sha256: str) -> None:
+        self.defect = defect
+        self.repair = repair
+        self.expected_repair_sha256 = expected_repair_sha256
+
+
+CASES: dict[str, CasePaths] = {
+    "normal": CasePaths(
+        defect=ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_defect_map.json",
+        repair=ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_manifest.json",
+        expected_repair_sha256="157f8f7eab101ae4f9e6cc6d69c150b9403189ca3e31523e56b6c331104d0528",
+    ),
+    "high_failure": CasePaths(
+        defect=ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_defect_map.json",
+        repair=ROOT
         / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json",
-        "expected_repair_sha256": "c8ad0a7c1a907447b0624aecbb73ef36f763be20b43d253a35c56899a153d781",
-    },
+        expected_repair_sha256="c8ad0a7c1a907447b0624aecbb73ef36f763be20b43d253a35c56899a153d781",
+    ),
 }
 
 VOCAB_SAMPLED_K = 128
@@ -118,18 +124,32 @@ def target_layers(placement: dict) -> list[dict]:
     return layers
 
 
-def load_case(paths: dict) -> dict[str, object]:
-    defect = load_json(paths["defect"])
-    repair = load_json(paths["repair"])
-    return {
-        "defect": defect,
-        "repair": repair,
-        "blocked": {coord_key(coord) for coord in defect.get("blocked_cores", [])},
-        "remap": {
+class CaseData:
+    def __init__(
+        self,
+        defect: dict,
+        repair: dict,
+        blocked: set[tuple[int, int]],
+        remap: dict[tuple[int, int], tuple[int, int]],
+    ) -> None:
+        self.defect = defect
+        self.repair = repair
+        self.blocked = blocked
+        self.remap = remap
+
+
+def load_case(paths: CasePaths) -> CaseData:
+    defect = load_json(paths.defect)
+    repair = load_json(paths.repair)
+    return CaseData(
+        defect=defect,
+        repair=repair,
+        blocked={coord_key(coord) for coord in defect.get("blocked_cores", [])},
+        remap={
             coord_key(entry["logical"]): coord_key(entry["physical"])
             for entry in repair.get("remapped_cores", [])
         },
-    }
+    )
 
 
 def main() -> int:
@@ -142,7 +162,7 @@ def main() -> int:
         WINDOW_REPAIR,
     ]
     for case_paths in CASES.values():
-        input_paths.extend([case_paths["defect"], case_paths["repair"]])
+        input_paths.extend([case_paths.defect, case_paths.repair])
     missing = [str(path.relative_to(ROOT)) for path in input_paths if not path.is_file()]
     status, detail = pass_fail(
         not missing,
@@ -193,10 +213,10 @@ def main() -> int:
 
     layers = target_layers(placement)
     logical_cols = int(placement.get("logical_cols", 0))
-    case_data = {
+    case_data: dict[str, CaseData] = {
         case: load_case(paths)
         for case, paths in CASES.items()
-        if paths["defect"].is_file() and paths["repair"].is_file()
+        if paths.defect.is_file() and paths.repair.is_file()
     }
 
     output_checksum = FNV64_OFFSET
@@ -206,9 +226,9 @@ def main() -> int:
     case_summaries: dict[str, dict[str, object]] = {
         case: {
             "case": case,
-            "repair_manifest_sha256": str(data["repair"].get("artifact_sha256", "")),
-            "blocked_core_count": int(data["defect"].get("blocked_core_count", 0)),
-            "total_remapped_core_count": int(data["repair"].get("remapped_core_count", 0)),
+            "repair_manifest_sha256": str(data.repair.get("artifact_sha256", "")),
+            "blocked_core_count": int(data.defect.get("blocked_core_count", 0)),
+            "total_remapped_core_count": int(data.repair.get("remapped_core_count", 0)),
             "touched_remapped_core_count": 0,
             "route_checksum": FNV64_OFFSET,
             "sampled_remapped_rows": [],
@@ -247,8 +267,8 @@ def main() -> int:
                 )
 
             for case, data in case_data.items():
-                remap = data["remap"]
-                blocked = data["blocked"]
+                remap = data.remap
+                blocked = data.blocked
                 physical = remap.get(logical, logical)
                 if logical in blocked and logical not in remap:
                     errors.append(f"{case}:missing-remap:{logical_core}")

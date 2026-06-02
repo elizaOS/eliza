@@ -981,7 +981,8 @@ export class ActiveModelCoordinator {
 			const failure = err instanceof Error ? err.message : String(err);
 			if (previous) {
 				previousDisplaced =
-					(loader?.currentModelPath() ?? localInferenceEngine.currentModelPath()) !==
+					(loader?.currentModelPath() ??
+						localInferenceEngine.currentModelPath()) !==
 					previous.installed.path;
 			}
 			// Attempt to restore the previously-active model. The unload-then-load

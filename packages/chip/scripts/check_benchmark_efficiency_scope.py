@@ -413,9 +413,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
     if not isinstance(commands, dict):
         errors.append("next_capture_commands must be a mapping")
     else:
-        for key, expected in REQUIRED_CAPTURE_COMMANDS.items():
+        for key, expected_cmd in REQUIRED_CAPTURE_COMMANDS.items():
             require(
-                commands.get(key) == expected,
+                commands.get(key) == expected_cmd,
                 f"next_capture_commands missing or changed {key}",
                 errors,
             )

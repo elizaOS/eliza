@@ -25,8 +25,36 @@ BLOCKED escalation.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TypedDict
 
 from compiler.runtime.e1x3d_wafer_model import E1X3DConfig, artifact_sha256, thermal_model
+
+
+class BondingEntry(TypedDict):
+    bonding: str
+    pitch_um: float
+    capacity_per_mm2: float
+    realizable_signal_density_per_mm2: float
+    geometric_capacity_per_mm2: float
+
+
+class TierSplitResult(TypedDict):
+    split: str
+    footprint_2d_mm2: float
+    footprint_3d_mm2: float
+    xy_footprint_shrink: float
+    logic_tier_area_mm2: float
+    sram_tier_area_mm2: float
+    memory_tiers_per_core: int
+    inter_tier_vias: int
+    required_via_density_per_mm2: float
+    feasible_bondings: list[BondingEntry]
+    recommended_bonding: str | None
+    configured_bonding_pitch_um: float
+    configured_bonding_geometric_capacity_per_mm2: float
+    configured_bonding_realizable_density_per_mm2: float
+    configured_bonding_sufficient: bool
+    wirelength_delta_vs_planar: float
 
 # Catalog of inter-tier bonding technologies:
 #   (name, pitch_um, geometric_hard_cap_vias_per_mm2, realizable_signal_density_per_mm2)
@@ -87,14 +115,14 @@ def realizable_signal_density_per_mm2(geometric_cap: float, realizable_cap: floa
     return min(geometric_cap, realizable_cap)
 
 
-def _feasible_bondings(required_density: float) -> list[dict[str, float | str]]:
+def _feasible_bondings(required_density: float) -> list[BondingEntry]:
     """Bondings whose REALIZABLE signal density covers the required via density.
 
     Each entry reports both the geometric pad-packing capacity and the realizable
     signal-density ceiling so the geometric headline stays visible while the
     feasibility verdict uses the realizable number.
     """
-    feasible: list[dict[str, float | str]] = []
+    feasible: list[BondingEntry] = []
     for name, pitch, geom_cap, real_cap in BONDING_CATALOG:
         geometric = via_capacity_per_mm2(pitch, geom_cap)
         realizable = realizable_signal_density_per_mm2(geometric, real_cap)
@@ -111,7 +139,7 @@ def _feasible_bondings(required_density: float) -> list[dict[str, float | str]]:
     return feasible
 
 
-def evaluate_split(config: E1X3DConfig, floorplan: PEFloorplan, split: str) -> dict[str, object]:
+def evaluate_split(config: E1X3DConfig, floorplan: PEFloorplan, split: str) -> TierSplitResult:
     memory_tiers = max(1, config.memory_tiers_per_core)
     footprint_2d = floorplan.logic_area_mm2 + floorplan.sram_area_mm2
     if split == "block_sram_on_logic":
@@ -129,7 +157,7 @@ def evaluate_split(config: E1X3DConfig, floorplan: PEFloorplan, split: str) -> d
     shrink = 1.0 - footprint_3d / footprint_2d
     required_density = inter_tier_vias / footprint_3d
     feasible = _feasible_bondings(required_density)
-    recommended = feasible[0]["bonding"] if feasible else None
+    recommended: str | None = str(feasible[0]["bonding"]) if feasible else None
     configured_entry = next(
         (
             (geom_cap, real_cap)

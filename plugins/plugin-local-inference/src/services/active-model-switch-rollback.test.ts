@@ -109,9 +109,14 @@ describe("ActiveModelCoordinator switchTo rollback (#13)", () => {
 		const coordinator = new ActiveModelCoordinator();
 		const modelA = makeInstalledModel("model-a");
 
-		await coordinator.switchTo(runtime, modelA, { contextSize: 4096 }, {
-			hardware: PROBE,
-		});
+		await coordinator.switchTo(
+			runtime,
+			modelA,
+			{ contextSize: 4096 },
+			{
+				hardware: PROBE,
+			},
+		);
 		expect(loader.currentModelPath()).toBe(modelA.path);
 
 		let loadCount = 0;

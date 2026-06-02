@@ -158,8 +158,7 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
 		try {
 			this.active.adapter.close();
 		} catch (err) {
-			this.poisonedError =
-				err instanceof Error ? err : new Error(String(err));
+			this.poisonedError = err instanceof Error ? err : new Error(String(err));
 			throw err;
 		} finally {
 			this.active = null;

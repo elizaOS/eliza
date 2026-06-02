@@ -5,6 +5,7 @@ import json
 from datetime import UTC, datetime
 from heapq import heappop, heappush
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_window_route_validation.json"

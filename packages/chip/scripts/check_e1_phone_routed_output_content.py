@@ -1282,6 +1282,9 @@ def main() -> int:
             )
         ):
             raise ValueError("candidate_end_to_end_context nested summaries must be mappings")
+        assert isinstance(candidate_visual, dict)
+        assert isinstance(candidate_source_binding, dict)
+        assert isinstance(candidate_models, dict)
         contract_mismatches: list[str] = []
         expected_candidate_context = {
             "status": "blocked_local_candidate_outputs_not_release",

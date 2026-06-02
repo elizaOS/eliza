@@ -5,6 +5,13 @@ import json
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
+from typing import TypedDict
+
+
+class _CaseEntry(TypedDict):
+    defect: Path
+    repair: Path
+    expected_repair_sha256: str
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_window_repair_linkage.json"
@@ -13,7 +20,7 @@ PLACEMENT = ROOT / "benchmarks/results/e1x-real-graph-model-load.placement.json"
 WINDOW_SHARD = ROOT / "build/reports/e1x_window_shard_linkage.json"
 YIELD_REPAIR = ROOT / "build/reports/e1x_yield_repair_margin.json"
 
-CASES = {
+CASES: dict[str, _CaseEntry] = {
     "normal": {
         "defect": ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_defect_map.json",
         "repair": ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_manifest.json",
