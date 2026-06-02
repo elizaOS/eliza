@@ -322,6 +322,11 @@ function verifiedUrlsFromMetadata(message: Memory): string[] {
   return stringArrayOf(metadataRecord(message)?.subAgentVerifiedUrls);
 }
 
+function deliverableFromMetadata(message: Memory): string | undefined {
+  const value = textOf(metadataRecord(message)?.subAgentDeliverable);
+  return value.length > 0 ? value : undefined;
+}
+
 function isSuccessfulSubAgentCompletion(message: Memory): boolean {
   const content = contentRecord(message);
   const metadata = metadataRecord(message);
@@ -451,6 +456,7 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     ) {
       return true;
     }
+    if (deliverableFromMetadata(message) !== undefined) return true;
     if (hasVerifiedCompletionReply(currentReply, completionText, verifiedUrls))
       return true;
     if (hasCleanFinalProseAfterToolOutput(completionText)) return true;
@@ -467,6 +473,23 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     const currentReply = textOf(messageHandler.plan.reply);
     const completionText = textOf(contentRecord(message)?.text);
     const verifiedUrls = verifiedUrlsFromMetadata(message);
+    // The deliverable IS the sub-agent's printed/tool output (short, single
+    // block; the router stripped it from the narration). Relay it verbatim
+    // rather than letting the parent model re-summarize or truncate it.
+    const deliverable = deliverableFromMetadata(message);
+    if (deliverable !== undefined) {
+      return {
+        ...respondIfNeeded(messageHandler),
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply: deliverable,
+        debug: [
+          "verified sub-agent completion carries a captured deliverable; relaying it verbatim",
+        ],
+      };
+    }
     if (
       completionHasFailureMarkerWithoutPositiveEvidence(
         completionText,

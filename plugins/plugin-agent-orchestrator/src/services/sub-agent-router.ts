@@ -713,6 +713,16 @@ export class SubAgentRouter extends Service {
       deadUrls = verified.dead;
       verifiedUrls = verified.verifiedUrls;
     }
+    // When the deliverable IS the printed/tool output and there is no change
+    // set and no verified URL, composeNarration→stripToolTranscript has just
+    // deleted it from `text`. Recover the captured block from the RAW response
+    // (before stripping) so the parent relays it verbatim instead of replying
+    // with an empty completion. Gated to a single short block so multi-KB
+    // transcripts stay on the model-rendered (summarized) path.
+    let deliverable: string | undefined;
+    if (event === "task_complete" && !changeSet && verifiedUrls.length === 0) {
+      deliverable = extractShortToolDeliverable(data);
+    }
     // Verify-retry: the sub-agent reported done but referenced URLs that
     // are unreachable — the build is incomplete (missing or empty files).
     // Re-dispatch a fresh sub-agent with the verification failures fed
@@ -843,6 +853,7 @@ export class SubAgentRouter extends Service {
             ...(verifiedUrls.length > 0
               ? { subAgentVerifiedUrls: verifiedUrls }
               : {}),
+            ...(deliverable ? { subAgentDeliverable: deliverable } : {}),
             ...(origin.userId ? { originUserId: origin.userId } : {}),
             ...(origin.parentMessageId
               ? { originMessageId: origin.parentMessageId }
@@ -1599,6 +1610,36 @@ function stripToolTranscript(text: string): string {
     .replace(/\[tool output:[^\]]*\][\s\S]*?\[\/tool output\]/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+// Maximum size of a captured tool-output block we will relay verbatim. Above
+// this, the deliverable is a multi-KB transcript and stays on the
+// model-rendered (summarized) path rather than being dumped to the user.
+const MAX_VERBATIM_DELIVERABLE_BYTES = 2048;
+
+// Recover the deliverable when it is the sub-agent's printed/tool output and
+// composeNarration→stripToolTranscript has deleted it. Extracts the inner body
+// of the FIRST `[tool output: …] … [/tool output]` block from the RAW response
+// (the same envelope captureTerminalToolOutput emits). Returns it only when it
+// is a single short block (≤2KB); multi-block or multi-KB transcripts return
+// undefined so they stay on the summarized path.
+function extractShortToolDeliverable(data: unknown): string | undefined {
+  const response =
+    pickPayloadString(data, "response") ?? pickPayloadString(data, "finalText");
+  if (!response) return undefined;
+  const blocks = response.match(
+    /\[tool output:[^\]]*\]([\s\S]*?)\[\/tool output\]/g,
+  );
+  if (!blocks || blocks.length !== 1) return undefined;
+  const inner = blocks[0]
+    .replace(/^\[tool output:[^\]]*\]/, "")
+    .replace(/\[\/tool output\]$/, "")
+    .trim();
+  if (!inner) return undefined;
+  if (Buffer.byteLength(inner, "utf8") > MAX_VERBATIM_DELIVERABLE_BYTES) {
+    return undefined;
+  }
+  return inner;
 }
 
 function composeNarration(

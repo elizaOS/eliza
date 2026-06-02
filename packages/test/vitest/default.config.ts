@@ -65,6 +65,10 @@ const cloudSdkSourceRoot = path.join(
   elizaWorkspaceRoot,
   "packages/cloud-sdk/src",
 );
+const loggerSourceEntry = path.join(
+  elizaWorkspaceRoot,
+  "packages/logger/src/index.ts",
+);
 const packageManifest: RootPackageManifest = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),
 );
@@ -275,6 +279,13 @@ const vitestResolveAlias: ModuleAlias[] = [
   {
     find: /^@elizaos\/cloud-sdk$/,
     replacement: path.join(cloudSdkSourceRoot, "index.ts"),
+  },
+  {
+    // @elizaos/logger was extracted from core and resolves to its built dist by
+    // the `default` export condition. Tests run before that dist is built (and
+    // core imports logger via @elizaos/logger), so pin it to source like core.
+    find: /^@elizaos\/logger$/,
+    replacement: loggerSourceEntry,
   },
   {
     // App-core tests mock this plugin, but Vitest still has to resolve the specifier.
