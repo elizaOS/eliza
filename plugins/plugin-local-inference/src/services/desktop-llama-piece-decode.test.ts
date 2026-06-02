@@ -189,4 +189,53 @@ describe("DesktopLlamaAdapter token-to-piece decoding (#11)", () => {
 		expect(calls[1][3]).toBe(300); // retry: grown to required size
 		h.binding.llmStreamClose(stream);
 	});
+
+	it("flushes an incomplete UTF-8 piece when EOG ends the stream", () => {
+		const pieces = new Map<number, Uint8Array>([
+			[101, new Uint8Array([0xe4])],
+		]);
+		const h = makePieceHarness(pieces);
+		h.llama.llama_sampler_sample.mockReturnValueOnce(101);
+		h.llama.llama_vocab_is_eog.mockReturnValueOnce(false).mockReturnValue(true);
+
+		const stream = openStream(h.binding);
+		const step = h.binding.llmStreamNext({
+			stream,
+			maxTokensPerStep: 8,
+			maxTextBytes: 1024,
+		});
+
+		expect(step.done).toBe(true);
+		expect(step.text).toBe("�");
+		h.binding.llmStreamClose(stream);
+	});
+
+	it("flushes an incomplete UTF-8 piece when a stream is cancelled", () => {
+		const pieces = new Map<number, Uint8Array>([
+			[101, new Uint8Array([0xe4])],
+		]);
+		const h = makePieceHarness(pieces);
+		h.llama.llama_sampler_sample.mockReturnValueOnce(101);
+		h.llama.llama_vocab_is_eog.mockReturnValue(false);
+
+		const stream = openStream(h.binding);
+		const first = h.binding.llmStreamNext({
+			stream,
+			maxTokensPerStep: 1,
+			maxTextBytes: 1024,
+		});
+		expect(first.done).toBe(false);
+		expect(first.text).toBe("");
+
+		h.binding.llmStreamCancel(stream);
+		const cancelled = h.binding.llmStreamNext({
+			stream,
+			maxTokensPerStep: 8,
+			maxTextBytes: 1024,
+		});
+
+		expect(cancelled.done).toBe(true);
+		expect(cancelled.text).toBe("�");
+		h.binding.llmStreamClose(stream);
+	});
 });

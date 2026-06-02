@@ -264,10 +264,8 @@ function looksLikeRemoteTarget(value: string): boolean {
       return false;
     }
   }
-  return (
-    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+(?:\/.*)?$/i.test(
-      value,
-    )
+  return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+(?:\/.*)?$/i.test(
+    value,
   );
 }
 

@@ -119,10 +119,10 @@ function wrapResponseWithHeaders(response: Response, headers: Headers): Response
  *
  * - 2xx success (`response.ok`): bill the handler's reported `actualCost`, or
  *   the full reserved `cost` when the handler didn't report one.
- * - 5xx: the caller received no service (upstream-down after retries, circuit
- *   open, etc.), so refund the reservation — bill only an explicit partial
- *   `actualCost` if the handler set one, otherwise 0. This mirrors the
- *   thrown-error path, which reconciles to 0.
+ * - 5xx: bill the handler's reported `actualCost`, or the full reserved
+ *   `cost` when omitted. Provider-attempted failures can still cost upstream
+ *   credits. No-upstream fast-fail paths (for example circuit-open) must set
+ *   `actualCost: 0` explicitly to refund the reservation.
  * - everything else (3xx redirects, 4xx client errors): billed at the reserved
  *   `cost` unless the handler reported a different `actualCost`, preserving
  *   prior behavior.
@@ -135,7 +135,7 @@ export function resolveBillableCost(
     return result.actualCost ?? reservedCost;
   }
   if (result.response.status >= 500) {
-    return result.actualCost ?? 0;
+    return result.actualCost ?? reservedCost;
   }
   return result.actualCost ?? reservedCost;
 }
@@ -270,10 +270,10 @@ export function createHandler(
         throw error;
       }
 
-      // Only bill for actual work performed. A synthesized server-side error
-      // (5xx — upstream-down after retries, circuit open, etc.) means the
-      // caller got no service, so it refunds the reservation just like the
-      // thrown-error path above. See resolveBillableCost.
+      // Only bill for actual work performed. Returned 5xx responses default to
+      // the reserved cost because upstream attempts can be provider-billed even
+      // when they fail; no-upstream fast-fails report actualCost: 0 explicitly.
+      // See resolveBillableCost.
       const actualCost = resolveBillableCost(result, cost);
       await reservation.reconcile(actualCost);
 

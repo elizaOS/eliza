@@ -1109,16 +1109,35 @@ export class DesktopLlamaAdapter {
 
 	/** Detach + free any drafter on the primary ctx (pool slot 0). */
 	detachDrafter(): void {
+		const errors: unknown[] = [];
 		// Detach from every ctx in the pool that has one, then free the
 		// shared drafter model.
 		for (let i = 0; i < this.ctxPool.length; i++) {
-			if (this.drafterAttached[i]) this.detachDrafterFromCtx(i);
+			if (!this.drafterAttached[i]) continue;
+			try {
+				this.detachDrafterFromCtx(i);
+			} catch (err) {
+				errors.push(err);
+			} finally {
+				this.drafterAttached[i] = false;
+			}
 		}
 		if (this.drafterModelPtr !== null) {
-			this.llama.llama_model_free(this.drafterModelPtr);
+			const ptr = this.drafterModelPtr;
 			this.drafterModelPtr = null;
+			try {
+				this.llama.llama_model_free(ptr);
+			} catch (err) {
+				errors.push(err);
+			}
 		}
 		this.drafterModelPath = null;
+		if (errors.length > 0) {
+			throw new AggregateError(
+				errors,
+				"[desktop-llama] failed to fully detach drafter",
+			);
+		}
 	}
 
 	loadedDrafterPath(): string | null {
@@ -1199,12 +1218,25 @@ export class DesktopLlamaAdapter {
 	}
 
 	unloadModel(): void {
+		const errors: unknown[] = [];
 		for (const sess of this.sessions.values()) {
 			if (sess.mtpEngine !== 0) {
-				this.shim.eliza_llama_mtp_engine_free(sess.mtpEngine);
+				const engine = sess.mtpEngine;
+				sess.mtpEngine = 0;
+				try {
+					this.shim.eliza_llama_mtp_engine_free(engine);
+				} catch (err) {
+					errors.push(err);
+				}
 			}
 			if (sess.sampler !== 0) {
-				this.llama.llama_sampler_free(sess.sampler);
+				const sampler = sess.sampler;
+				sess.sampler = 0;
+				try {
+					this.llama.llama_sampler_free(sampler);
+				} catch (err) {
+					errors.push(err);
+				}
 			}
 		}
 		this.sessions.clear();
@@ -1212,30 +1244,56 @@ export class DesktopLlamaAdapter {
 		// bound to the text model and must outlive neither the model nor
 		// the active llama ctx.
 		if (this.mtmdCtxPtr !== null && this.vision) {
-			this.vision.eliza_mtmd_free(this.mtmdCtxPtr);
+			const mtmdCtx = this.mtmdCtxPtr;
 			this.mtmdCtxPtr = null;
 			this.mtmdMmprojPath = null;
+			try {
+				this.vision.eliza_mtmd_free(mtmdCtx);
+			} catch (err) {
+				errors.push(err);
+			}
 		}
 		// Detach + free the drafter BEFORE freeing any main ctx — the
 		// drafter is borrowed via the primary ctx's shim slot. `llama_free`
 		// on the main ctx is otherwise unsafe while a drafter ctx
 		// references it.
-		this.detachDrafter();
+		try {
+			this.detachDrafter();
+		} catch (err) {
+			errors.push(err);
+		}
 		// Free every ctx in the pool. The pool is in allocation order;
 		// freeing back-to-front keeps the implicit slot ordering stable.
 		for (let i = this.ctxPool.length - 1; i >= 0; i--) {
 			const ctx = this.ctxPool[i];
-			if (ctx !== undefined) this.llama.llama_free(ctx);
+			if (ctx !== undefined) {
+				try {
+					this.llama.llama_free(ctx);
+				} catch (err) {
+					errors.push(err);
+				}
+			}
 		}
 		this.ctxPool = [];
 		this.hasDecodedFlags = [];
 		this.drafterAttached = [];
 		if (this.modelPtr !== null) {
-			this.llama.llama_model_free(this.modelPtr);
+			const model = this.modelPtr;
 			this.modelPtr = null;
+			try {
+				this.llama.llama_model_free(model);
+			} catch (err) {
+				errors.push(err);
+			}
 		}
 		this.vocabPtr = null;
 		this.loadOpts = null;
+		if (errors.length > 0) {
+			throw new AggregateError(
+				errors,
+				"[desktop-llama] failed to fully unload native resources",
+			);
+		}
 	}
 
 	close(): void {
@@ -1817,6 +1875,10 @@ export class DesktopLlamaAdapter {
 		});
 	}
 
+	private flushTokenText(sess: DesktopSession): string {
+		return sess.pieceDecoder.decode();
+	}
+
 	private nextStep(
 		stream: LlmStreamHandle,
 		maxTokensPerStep = 32,
@@ -1876,7 +1938,10 @@ export class DesktopLlamaAdapter {
 
 			if (text.length >= maxTextBytes) break;
 		}
-		if (done) sess.finished = true;
+		if (done) {
+			text += this.flushTokenText(sess);
+			sess.finished = true;
+		}
 
 		let drafted = 0;
 		let accepted = 0;
@@ -1961,7 +2026,10 @@ export class DesktopLlamaAdapter {
 				}
 			}
 		}
-		if (done) sess.finished = true;
+		if (done) {
+			text += this.flushTokenText(sess);
+			sess.finished = true;
+		}
 
 		const after = this.readEngineStats(sess.mtpEngine);
 		return {

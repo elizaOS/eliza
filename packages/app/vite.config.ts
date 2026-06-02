@@ -1869,6 +1869,17 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-training/src/ui/index.ts",
         ),
       },
+      // plugin-health is a backend-only plugin (no `elizaos.app`), so it gets no
+      // auto-generated browser alias. Its `ui/` directory ships browser-safe
+      // assistant-command metadata that the LifeOps renderer imports, so the
+      // `/ui` subpath needs an explicit alias to its source entry.
+      {
+        find: /^@elizaos\/plugin-health\/ui$/,
+        replacement: path.resolve(
+          elizaRoot,
+          "plugins/plugin-health/src/ui/index.ts",
+        ),
+      },
       // Browser-safe aliases for local app plugin package roots.
       ...createAppPluginBrowserAliases(),
       // Dynamic aliases for local app plugin package subpaths.

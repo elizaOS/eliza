@@ -1,7 +1,7 @@
 import {
   HEALTH_ASSISTANT_COMMANDS,
   type HealthAssistantIconKey,
-} from "@elizaos/plugin-health/ui/index";
+} from "@elizaos/plugin-health/ui";
 import {
   Activity,
   BriefcaseBusiness,

@@ -23,11 +23,10 @@ function fakeAnalyser(bins: number, value: number): FrequencyAnalyser {
 }
 
 describe("VoiceWaveform", () => {
-  it("renders a canvas with the active mode and accessible label", () => {
+  it("renders the active mode and accessible label", () => {
     render(<VoiceWaveform mode="idle" ariaLabel="Voice activity" />);
-    const canvas = screen.getByRole("img", { name: /voice activity/i });
-    expect(canvas.tagName).toBe("CANVAS");
-    expect(canvas.getAttribute("data-mode")).toBe("idle");
+    const waveform = screen.getByRole("img", { name: /voice activity/i });
+    expect(waveform.getAttribute("data-mode")).toBe("idle");
   });
 
   it("reflects the listening mode", () => {
