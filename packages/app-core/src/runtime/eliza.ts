@@ -665,6 +665,37 @@ async function repairRuntimeAfterBoot(
 }
 
 /**
+ * The post-ready boot steps, named so a focused unit test can inject stubs and
+ * assert ordering / deferral / liveness / error-isolation without loading the
+ * full runtime. Production passes {@link DEFAULT_POST_READY_BOOT_STEPS}.
+ */
+export interface PostReadyBootSteps {
+  ensureTextToSpeechHandler: (runtime: AgentRuntime) => Promise<void>;
+  registerAppRoutePlugins: (runtime: AgentRuntime) => Promise<void>;
+  registerTrainingRuntimeHooks: (runtime: AgentRuntime) => Promise<void>;
+  registerCoreSensitiveRequestAdapters: (runtime: AgentRuntime) => void;
+  shouldStartTelegramStandaloneBot: () => boolean;
+  ensureTelegramBotPolling: (runtime: AgentRuntime) => Promise<void>;
+  stopTelegramBotPolling: (reason: string) => void;
+  ensureTriggerEventBridge: (runtime: AgentRuntime) => Promise<void>;
+  ensureConnectorTargetCatalog: (runtime: AgentRuntime) => Promise<void>;
+  startDeferredVoiceWarmup: (runtime: AgentRuntime) => void;
+}
+
+const DEFAULT_POST_READY_BOOT_STEPS: PostReadyBootSteps = {
+  ensureTextToSpeechHandler,
+  registerAppRoutePlugins,
+  registerTrainingRuntimeHooks,
+  registerCoreSensitiveRequestAdapters,
+  shouldStartTelegramStandaloneBot,
+  ensureTelegramBotPolling,
+  stopTelegramBotPolling,
+  ensureTriggerEventBridge,
+  ensureConnectorTargetCatalog,
+  startDeferredVoiceWarmup,
+};
+
+/**
  * Post-ready boot steps split out of {@link repairRuntimeAfterBoot}. Each step
  * keeps its original error behavior verbatim — there is no wrapping try/catch:
  * registerAppRoutePlugins isolates per-loader failures internally,
@@ -672,8 +703,14 @@ async function repairRuntimeAfterBoot(
  * logger.warn internally, and ensureTextToSpeechHandler /
  * registerTrainingRuntimeHooks throw (preserved in the default inline-await
  * dispatch above).
+ *
+ * `steps` defaults to the real bound functions, so production behavior is
+ * unchanged; the seam exists only so the phase split is unit-testable.
  */
-async function runPostReadyBootTail(runtime: AgentRuntime): Promise<void> {
+export async function runPostReadyBootTail(
+  runtime: AgentRuntime,
+  steps: PostReadyBootSteps = DEFAULT_POST_READY_BOOT_STEPS,
+): Promise<void> {
   // Liveness guard: a hot-restart can swap runtimes mid-tail. If a newer boot
   // has already claimed the tail slot, this runtime is superseded — bail before
   // the first mutation so we never register routes/services onto a torn-down
@@ -684,23 +721,23 @@ async function runPostReadyBootTail(runtime: AgentRuntime): Promise<void> {
     return;
   }
 
-  await ensureTextToSpeechHandler(runtime);
+  await steps.ensureTextToSpeechHandler(runtime);
 
   // ── Register app-specific route plugins ─────────────────────────────
   // The registry and explicit registration API own the package bindings; the
   // runtime only consumes app route plugin loaders.
-  await registerAppRoutePlugins(runtime);
+  await steps.registerAppRoutePlugins(runtime);
 
-  await registerTrainingRuntimeHooks(runtime);
+  await steps.registerTrainingRuntimeHooks(runtime);
 
   // Register first-party sensitive-request delivery adapters with the
   // dispatch registry (no-op when the registry service isn't present).
-  registerCoreSensitiveRequestAdapters(runtime);
+  steps.registerCoreSensitiveRequestAdapters(runtime);
 
-  if (shouldStartTelegramStandaloneBot()) {
-    await ensureTelegramBotPolling(runtime);
+  if (steps.shouldStartTelegramStandaloneBot()) {
+    await steps.ensureTelegramBotPolling(runtime);
   } else {
-    stopTelegramBotPolling("passive-lifeops-connectors");
+    steps.stopTelegramBotPolling("passive-lifeops-connectors");
   }
 
   // Subscribe the trigger event bridge to the runtime event bus so
@@ -708,16 +745,27 @@ async function runPostReadyBootTail(runtime: AgentRuntime): Promise<void> {
   // etc. emissions. plugin-workflow registers WORKFLOW_DISPATCH in its `init`
   // so by the time the bridge starts, workflow-kind event triggers already
   // have a dispatcher to call.
-  await ensureTriggerEventBridge(runtime);
+  await steps.ensureTriggerEventBridge(runtime);
 
-  await ensureConnectorTargetCatalog(runtime);
+  await steps.ensureConnectorTargetCatalog(runtime);
 
   // Warm local voice models (Whisper STT + Kokoro TTS) in the background now
   // that the runtime is ready. repairRuntimeAfterBoot is the single chokepoint
   // every boot path funnels through (bootElizaRuntime AND startEliza's
   // server-only + restart paths), so the warmup fires regardless of entry
   // point. Fire-and-forget; gated + non-fatal inside startDeferredVoiceWarmup.
-  void startDeferredVoiceWarmup(runtime);
+  void steps.startDeferredVoiceWarmup(runtime);
+}
+
+/**
+ * Test seam: set the runtime that owns the post-ready tail slot. Mirrors what
+ * {@link repairRuntimeAfterBoot} does just before dispatching the tail, so a
+ * unit test can drive the liveness guard without a full boot.
+ */
+export function __setLatestBootTailRuntimeForTest(
+  runtime: AgentRuntime | null,
+): void {
+  latestBootTailRuntime = runtime;
 }
 
 // Module-level handle for the trigger event bridge. Reset across
