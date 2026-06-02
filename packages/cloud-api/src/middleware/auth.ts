@@ -180,10 +180,15 @@ export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
 
   // Programmatic auth: per-route handlers validate the key. Skip cookie auth.
   const apiKey = c.req.header("X-API-Key") || c.req.header("x-api-key");
+  // S2S service-key (e.g. waifu.fun -> cloud provisioning). The per-route
+  // handler calls requireServiceKey()/validateServiceKey(), so let it through
+  // here rather than failing the cookie/session check below.
+  const serviceKey =
+    c.req.header("X-Service-Key") || c.req.header("x-service-key");
   const auth = c.req.header("authorization");
   const bearer = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
   const elizaBearer = bearer?.startsWith("eliza_") ?? false;
-  if (apiKey || elizaBearer) {
+  if (apiKey || elizaBearer || serviceKey) {
     await next();
     return;
   }

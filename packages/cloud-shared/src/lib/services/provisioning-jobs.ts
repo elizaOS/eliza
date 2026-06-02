@@ -111,6 +111,18 @@ export interface AgentLogsJobData {
   tail: number;
 }
 
+export interface AgentMessageJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+  text: string;
+  senderId?: string;
+  sessionId?: string;
+  roomId?: string;
+  /** Per-turn nonce so each chat message enqueues a fresh job (no dedupe). */
+  nonce: string;
+}
+
 export interface AgentSnapshotJobData {
   agentId: string;
   organizationId: string;
@@ -179,6 +191,15 @@ export interface AgentLogsJobResult {
   tail: number;
   logs?: string;
   message?: string;
+  error?: string;
+}
+
+export interface AgentMessageJobResult {
+  cloudAgentId: string;
+  /** Reply text from the agent (empty when the agent produced no reply). */
+  text?: string;
+  /** Surfaced when the bridge could not produce a reply. */
+  reason?: string;
   error?: string;
 }
 
@@ -260,6 +281,14 @@ function agentLogsJobDataToRecord(data: AgentLogsJobData): Record<string, unknow
 }
 
 function agentLogsJobResultToRecord(result: AgentLogsJobResult): Record<string, unknown> {
+  return { ...result };
+}
+
+function agentMessageJobDataToRecord(data: AgentMessageJobData): Record<string, unknown> {
+  return { ...data };
+}
+
+function agentMessageJobResultToRecord(result: AgentMessageJobResult): Record<string, unknown> {
   return { ...result };
 }
 
@@ -425,6 +454,25 @@ function isAgentLogsJobData(value: unknown): value is AgentLogsJobData {
 function readAgentLogsJobData(job: Job): AgentLogsJobData {
   if (!isAgentLogsJobData(job.data)) {
     throw new Error(`Invalid agent logs job data for job ${job.id}`);
+  }
+  return job.data;
+}
+
+function isAgentMessageJobData(value: unknown): value is AgentMessageJobData {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { agentId?: unknown }).agentId === "string" &&
+    typeof (value as { organizationId?: unknown }).organizationId === "string" &&
+    typeof (value as { userId?: unknown }).userId === "string" &&
+    typeof (value as { text?: unknown }).text === "string" &&
+    typeof (value as { nonce?: unknown }).nonce === "string"
+  );
+}
+
+function readAgentMessageJobData(job: Job): AgentMessageJobData {
+  if (!isAgentMessageJobData(job.data)) {
+    throw new Error(`Invalid agent message job data for job ${job.id}`);
   }
   return job.data;
 }
@@ -1010,6 +1058,49 @@ export class ProvisioningJobService {
   }
 
   /**
+   * Enqueue a single patron chat turn for daemon-side delivery to the agent
+   * bridge. Each turn carries a unique `nonce` used as the idempotency
+   * predicate, so every message ALWAYS creates a fresh job (chat turns are
+   * never deduped). The caller (the synchronous /api/v1/agents/:id/message
+   * route) then polls the job row for the AgentMessageJobResult.
+   */
+  async enqueueAgentMessage(params: {
+    agentId: string;
+    organizationId: string;
+    userId: string;
+    text: string;
+    senderId?: string;
+    sessionId?: string;
+    roomId?: string;
+    webhookUrl?: string;
+  }): Promise<{ created: boolean; job: Job }> {
+    const nonce = crypto.randomUUID();
+    return this.enqueueLifecycleJob<AgentMessageJobData>({
+      jobType: JOB_TYPES.AGENT_MESSAGE,
+      jobData: {
+        agentId: params.agentId,
+        organizationId: params.organizationId,
+        userId: params.userId,
+        text: params.text,
+        ...(params.senderId ? { senderId: params.senderId } : {}),
+        ...(params.sessionId ? { sessionId: params.sessionId } : {}),
+        ...(params.roomId ? { roomId: params.roomId } : {}),
+        nonce,
+      },
+      toRecord: agentMessageJobDataToRecord,
+      agentId: params.agentId,
+      organizationId: params.organizationId,
+      userId: params.userId,
+      webhookUrl: params.webhookUrl,
+      maxAttempts: 1,
+      estimatedDurationMs: 60_000,
+      logName: "agent_message",
+      // Unique-per-turn predicate guarantees no reuse of an existing job.
+      idempotencyPredicates: [sql`${jobs.data}->>'nonce' = ${nonce}`],
+    });
+  }
+
+  /**
    * Enqueue an Agent snapshot job.
    *
    * Daemon-side execution: pulls runtime state from the bridge URL and
@@ -1353,6 +1444,9 @@ export class ProvisioningJobService {
         break;
       case JOB_TYPES.AGENT_LOGS:
         await this.executeAgentLogs(job);
+        break;
+      case JOB_TYPES.AGENT_MESSAGE:
+        await this.executeAgentMessage(job);
         break;
       case JOB_TYPES.AGENT_SNAPSHOT:
         await this.executeAgentSnapshot(job);
@@ -1732,6 +1826,72 @@ export class ProvisioningJobService {
       agentId: data.agentId,
       status: result.status,
       bytes: result.logs?.length ?? 0,
+    });
+  }
+
+  /**
+   * Deliver a patron chat turn to the agent's bridge. Runs on the daemon,
+   * which (unlike the CF edge worker) can reach the container's raw bridge
+   * port, so it just calls elizaSandboxService.bridge('message.send'), which
+   * already implements the robust multi-strategy send + no-reply fallback.
+   * Stores the reply text on the job result for the route to poll.
+   */
+  private async executeAgentMessage(job: Job): Promise<void> {
+    const data = readAgentMessageJobData(job);
+
+    if (data.organizationId !== job.organization_id) {
+      throw new Error(
+        `Organization ID mismatch: job.data.organizationId (${data.organizationId}) !== job.organization_id (${job.organization_id})`,
+      );
+    }
+
+    logger.info("[provisioning-jobs] Executing agent_message", {
+      jobId: job.id,
+      agentId: data.agentId,
+      chars: data.text.length,
+    });
+
+    const response = await elizaSandboxService.bridge(data.agentId, data.organizationId, {
+      jsonrpc: "2.0",
+      method: "message.send",
+      params: {
+        text: data.text,
+        ...(data.senderId ? { userId: data.senderId } : {}),
+        ...(data.sessionId ? { sessionId: data.sessionId } : {}),
+        ...(data.roomId ? { roomId: data.roomId } : {}),
+      },
+    });
+
+    if (response.error) {
+      await jobsRepository.update(job.id, {
+        result: agentMessageJobResultToRecord({
+          cloudAgentId: data.agentId,
+          error: response.error.message,
+        }),
+      });
+      throw new Error(response.error.message || "agent_message bridge failure");
+    }
+
+    const result = (response.result ?? {}) as Record<string, unknown>;
+    const jobResult: AgentMessageJobResult = {
+      cloudAgentId: data.agentId,
+      text: typeof result.text === "string" ? result.text : undefined,
+      reason: typeof result.reason === "string" ? result.reason : undefined,
+    };
+
+    await jobsRepository.updateStatus(job.id, "completed", {
+      result: agentMessageJobResultToRecord(jobResult),
+      completed_at: new Date(),
+    });
+
+    if (job.webhook_url) {
+      await this.fireWebhook(job, jobResult);
+    }
+
+    logger.info("[provisioning-jobs] agent_message completed", {
+      jobId: job.id,
+      agentId: data.agentId,
+      replyChars: jobResult.text?.length ?? 0,
     });
   }
 
