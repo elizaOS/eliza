@@ -36,6 +36,7 @@ export function Composer({
   modelLabel,
   onNewChat,
   onSearch,
+  onOpenPanel,
 }: {
   input: string;
   onInput: (value: string) => void;
@@ -46,6 +47,9 @@ export function Composer({
   modelLabel: string;
   onNewChat: () => void;
   onSearch: () => void;
+  onOpenPanel: (
+    panel: "theme" | "memory" | "skills" | "notes" | "settings",
+  ) => void;
 }): ReactNode {
   const taRef = useRef<HTMLTextAreaElement>(null);
   const [mode, setMode] = useState<"agent" | "chat">("agent");
@@ -67,6 +71,19 @@ export function Composer({
     { name: "new", label: "Start a new chat", run: onNewChat },
     { name: "search", label: "Search conversations", run: onSearch },
     { name: "clear", label: "Clear the message box", run: () => onInput("") },
+    {
+      name: "theme",
+      label: "Open the theme picker",
+      run: () => onOpenPanel("theme"),
+    },
+    { name: "memory", label: "Open memory", run: () => onOpenPanel("memory") },
+    { name: "skills", label: "Open skills", run: () => onOpenPanel("skills") },
+    { name: "notes", label: "Open notes", run: () => onOpenPanel("notes") },
+    {
+      name: "settings",
+      label: "Open settings",
+      run: () => onOpenPanel("settings"),
+    },
   ];
 
   const token =

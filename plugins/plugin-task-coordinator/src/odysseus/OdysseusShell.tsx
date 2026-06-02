@@ -115,6 +115,17 @@ export function OdysseusShell(): ReactNode {
 
   const onNewChat = useCallback(() => setSelectedId(null), []);
 
+  const openPanel = useCallback(
+    (panel: "theme" | "memory" | "skills" | "notes" | "settings") => {
+      if (panel === "theme") setThemeMenuOpen(true);
+      else if (panel === "memory") setMemoryOpen(true);
+      else if (panel === "skills") setSkillsOpen(true);
+      else if (panel === "notes") setNotesOpen(true);
+      else setSettingsOpen(true);
+    },
+    [],
+  );
+
   const onRenameThread = useCallback(
     (id: string, title: string) => {
       void client
@@ -292,6 +303,7 @@ export function OdysseusShell(): ReactNode {
         modelLabel="gpt-oss-120b"
         onNewChat={onNewChat}
         onSearch={() => setSearchOpen(true)}
+        onOpenPanel={openPanel}
       />
     </div>
   );
