@@ -2606,7 +2606,7 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
         for row in existing.get("connections", [])
         if isinstance(row, dict) and row.get("id")
     }
-    supplemental_contracts = [
+    supplemental_contracts: list[dict[str, Any]] = [
         {
             "id": "display_bias_power_flex",
             "cad_part": "display_bias_power_flex_marker",
@@ -2863,7 +2863,7 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
             "cad_step": part.get("step", ""),
             "cad_step_bytes": int(part.get("bytes", 0) or 0),
             "cad_part_bbox_mm": part_bbox,
-            "visual_route_span_mm": round(max([float(value) for value in (part_span or [])] or [0.0]), 3),
+            "visual_route_span_mm": round(max([float(value) for value in (part_span if part_span is not None else [])] or [0.0]), 3),
             "represented_nets": represented_nets,
             "represented_net_count": len(represented_nets),
             "represented_route_ids": [str(route.get("id")) for route in represented_route_records],

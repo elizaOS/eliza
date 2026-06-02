@@ -51,7 +51,6 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/rot_integration.json"
