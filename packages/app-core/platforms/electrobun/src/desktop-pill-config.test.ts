@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { shouldCreateDesktopPill } from "./desktop-pill-config";
 
 describe("desktop pill config", () => {
-  it("does not create a secondary pill window by default", () => {
-    expect(shouldCreateDesktopPill({})).toBe(false);
+  it("creates a pill window by default (voice surface)", () => {
+    expect(shouldCreateDesktopPill({})).toBe(true);
   });
 
   it("supports an explicit enable flag", () => {
