@@ -6,6 +6,8 @@
 
 import { type ReactNode, useEffect, useState } from "react";
 import { formatRelativeTime } from "../view-format";
+import { useWindowControls } from "./hooks/useWindowControls";
+import { ResizeHandles } from "./ResizeHandles";
 import { PREF_KEYS, readPref, writePref } from "./util/storage";
 
 interface Note {
@@ -25,6 +27,7 @@ export function NotesPanel({
 }): ReactNode {
   const [notes, setNotes] = useState<Note[]>([]);
   const [draft, setDraft] = useState("");
+  const win = useWindowControls("win-notes", { w: 560, h: 640 });
 
   useEffect(() => {
     if (open) setNotes(readPref<Note[]>(PREF_KEYS.notes, []));
@@ -49,7 +52,7 @@ export function NotesPanel({
 
   return (
     <div
-      className="od-search-overlay"
+      className={`od-search-overlay${win.windowed ? " od-windowed" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Notes"
@@ -60,8 +63,12 @@ export function NotesPanel({
         onClick={onClose}
         className="od-search-backdrop"
       />
-      <div className="od-search-panel od-mem-panel">
-        <div className="od-mem-head">
+      <div className="od-search-panel od-mem-panel" style={win.panelStyle}>
+        <ResizeHandles controls={win} />
+        <div
+          className="od-mem-head od-window-header"
+          onPointerDown={win.onDragStart}
+        >
           <span className="od-mem-title">Notes</span>
           <span className="od-mem-stats">{notes.length}</span>
         </div>

@@ -34,6 +34,8 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useEscapeClose } from "./hooks/useEscapeClose";
+import { useWindowControls } from "./hooks/useWindowControls";
+import { ResizeHandles } from "./ResizeHandles";
 import { readPref } from "./util/storage";
 
 // Local-prefs key for the saved-signature list (signature.js persists these
@@ -166,6 +168,7 @@ export function EmailView({
   messages?: EmailMessage[];
 }): ReactNode {
   useEscapeClose(open, onClose);
+  const win = useWindowControls("win-email", { w: 720, h: 800 });
 
   const [accountId, setAccountId] = useState<string | null>(null);
   const [folder, setFolder] = useState<string>("INBOX");
@@ -271,7 +274,7 @@ export function EmailView({
 
   return (
     <div
-      className="od-search-overlay"
+      className={`od-search-overlay${win.windowed ? " od-windowed" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Email"
@@ -282,9 +285,13 @@ export function EmailView({
         onClick={onClose}
         className="od-search-backdrop"
       />
-      <div className="od-search-panel od-email-panel">
+      <div className="od-search-panel od-email-panel" style={win.panelStyle}>
+        <ResizeHandles controls={win} />
         {/* ── Header (emailLibrary.js modal-header) ── */}
-        <div className="od-email-head">
+        <div
+          className="od-email-head od-window-header"
+          onPointerDown={win.onDragStart}
+        >
           <span className="od-email-head-title">
             <svg
               width="16"

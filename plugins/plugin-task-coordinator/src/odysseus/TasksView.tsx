@@ -49,6 +49,8 @@ import {
 } from "react";
 import { formatIsoRelative, formatRelativeTime } from "../view-format";
 import { useEscapeClose } from "./hooks/useEscapeClose";
+import { useWindowControls } from "./hooks/useWindowControls";
+import { ResizeHandles } from "./ResizeHandles";
 
 // odysseus tracks four display states (active / paused / completed / error).
 // Collapse the orchestrator's richer status union + `paused` flag onto them so
@@ -148,6 +150,7 @@ export function TasksView({
   locale?: string;
 }): ReactNode {
   useEscapeClose(open, onClose);
+  const win = useWindowControls("win-tasks", { w: 600, h: 760 });
   const [tab, setTab] = useState<TabId>("tasks");
   const [threads, setThreads] = useState<CodingAgentTaskThread[]>([]);
   const [status, setStatus] = useState<CodingAgentOrchestratorStatus | null>(
@@ -328,7 +331,7 @@ export function TasksView({
 
   return (
     <div
-      className="od-search-overlay"
+      className={`od-search-overlay${win.windowed ? " od-windowed" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Tasks"
@@ -339,9 +342,13 @@ export function TasksView({
         onClick={onClose}
         className="od-search-backdrop"
       />
-      <div className="od-search-panel od-tasks-panel">
+      <div className="od-search-panel od-tasks-panel" style={win.panelStyle}>
+        <ResizeHandles controls={win} />
         {/* ── Modal header (tasks.js openTasks .modal-header) ── */}
-        <div className="od-tasks-header">
+        <div
+          className="od-tasks-header od-window-header"
+          onPointerDown={win.onDragStart}
+        >
           <span className="od-tasks-header-title">
             <ListChecks size={14} aria-hidden="true" />
             Tasks

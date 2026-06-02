@@ -47,6 +47,8 @@ import {
   useState,
 } from "react";
 import { useEscapeClose } from "./hooks/useEscapeClose";
+import { useWindowControls } from "./hooks/useWindowControls";
+import { ResizeHandles } from "./ResizeHandles";
 
 // ── langIcons.js port ──────────────────────────────────────────────────────
 // Verbatim inner-SVG markup from static/js/langIcons.js ICONS, rendered through
@@ -303,6 +305,7 @@ export function CookbookView({
   onClose: () => void;
 }): ReactNode {
   useEscapeClose(open, onClose);
+  const win = useWindowControls("win-cookbook", { w: 640, h: 760 });
   const [tab, setTab] = useState<CookbookTab>("recipes");
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -431,7 +434,7 @@ export function CookbookView({
 
   return (
     <div
-      className="od-search-overlay"
+      className={`od-search-overlay${win.windowed ? " od-windowed" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Cookbook"
@@ -442,9 +445,13 @@ export function CookbookView({
         onClick={onClose}
         className="od-search-backdrop"
       />
-      <div className="od-search-panel od-cb-panel">
+      <div className="od-search-panel od-cb-panel" style={win.panelStyle}>
+        <ResizeHandles controls={win} />
         {/* ── Header (cookbook.js modal header) ── */}
-        <div className="od-mem-head od-cb-head">
+        <div
+          className="od-mem-head od-cb-head od-window-header"
+          onPointerDown={win.onDragStart}
+        >
           <span className="od-mem-title">Cookbook</span>
           {tab === "recipes" ? (
             <span className="od-mem-stats">

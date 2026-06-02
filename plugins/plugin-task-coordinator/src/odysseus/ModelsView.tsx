@@ -40,6 +40,8 @@ import { client } from "@elizaos/ui";
 import { ChevronDown, GripVertical, Search } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useEscapeClose } from "./hooks/useEscapeClose";
+import { useWindowControls } from "./hooks/useWindowControls";
+import { ResizeHandles } from "./ResizeHandles";
 import { readPref, writePref } from "./util/storage";
 
 // ── Local-pref keys (odysseus models.js / modelPicker.js constants, namespaced
@@ -356,6 +358,7 @@ export function ModelsView({
   onClose: () => void;
 }): ReactNode {
   useEscapeClose(open, onClose);
+  const win = useWindowControls("win-models", { w: 820, h: 720 });
 
   const [provider, setProvider] = useState<Provider>("openai");
   const [modelsByProvider, setModelsByProvider] = useState<
@@ -683,7 +686,7 @@ export function ModelsView({
 
   return (
     <div
-      className="od-search-overlay"
+      className={`od-search-overlay${win.windowed ? " od-windowed" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Models"
@@ -694,8 +697,12 @@ export function ModelsView({
         onClick={onClose}
         className="od-search-backdrop"
       />
-      <div className="od-search-panel od-models-panel">
-        <div className="od-mem-head">
+      <div className="od-search-panel od-models-panel" style={win.panelStyle}>
+        <ResizeHandles controls={win} />
+        <div
+          className="od-mem-head od-window-header"
+          onPointerDown={win.onDragStart}
+        >
           <span className="od-mem-title">Models</span>
           {feedback ? (
             <span className="od-models-feedback" role="status">

@@ -38,6 +38,8 @@ import {
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { formatRelativeTime } from "../view-format";
 import { useEscapeClose } from "./hooks/useEscapeClose";
+import { useWindowControls } from "./hooks/useWindowControls";
+import { ResizeHandles } from "./ResizeHandles";
 
 // Providers whose model lists feed the "All sources" filter dropdown — the same
 // real /api/models fetch keys CompareView uses.
@@ -107,6 +109,7 @@ export function GalleryView({
   locale?: string;
 }): ReactNode {
   useEscapeClose(open, onClose);
+  const win = useWindowControls("win-gallery", { w: 960, h: 820 });
   const [tab, setTab] = useState<GalleryTab>("images");
   const [query, setQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
@@ -183,7 +186,7 @@ export function GalleryView({
 
   return (
     <div
-      className="od-search-overlay"
+      className={`od-search-overlay${win.windowed ? " od-windowed" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Gallery"
@@ -194,9 +197,13 @@ export function GalleryView({
         onClick={onClose}
         className="od-search-backdrop"
       />
-      <div className="od-search-panel od-gallery-panel">
+      <div className="od-search-panel od-gallery-panel" style={win.panelStyle}>
+        <ResizeHandles controls={win} />
         {/* ── Modal header (gallery.js modal-header) ── */}
-        <div className="od-gallery-header">
+        <div
+          className="od-gallery-header od-window-header"
+          onPointerDown={win.onDragStart}
+        >
           <h4 className="od-gallery-title">
             <ImageIcon size={14} aria-hidden="true" />
             <span>Gallery</span>

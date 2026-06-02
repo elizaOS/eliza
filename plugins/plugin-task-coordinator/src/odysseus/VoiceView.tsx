@@ -39,6 +39,8 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useEscapeClose } from "./hooks/useEscapeClose";
+import { useWindowControls } from "./hooks/useWindowControls";
+import { ResizeHandles } from "./ResizeHandles";
 import { readPref, writePref } from "./util/storage";
 
 // localStorage key for the picked TTS voice preset — odysseus persisted the
@@ -97,6 +99,7 @@ export function VoiceView({
   onClose: () => void;
 }): ReactNode {
   useEscapeClose(open, onClose);
+  const win = useWindowControls("win-voice", { w: 460, h: 640 });
 
   // ── TTS state ──
   const [status, setStatus] = useState<VoiceStatus>(INITIAL_STATUS);
@@ -307,7 +310,7 @@ export function VoiceView({
 
   return (
     <div
-      className="od-search-overlay"
+      className={`od-search-overlay${win.windowed ? " od-windowed" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Voice and speech"
@@ -318,8 +321,12 @@ export function VoiceView({
         onClick={onClose}
         className="od-search-backdrop"
       />
-      <div className="od-search-panel od-voice-panel">
-        <div className="od-mem-head">
+      <div className="od-search-panel od-voice-panel" style={win.panelStyle}>
+        <ResizeHandles controls={win} />
+        <div
+          className="od-mem-head od-window-header"
+          onPointerDown={win.onDragStart}
+        >
           <span className="od-mem-title">Voice & Speech</span>
           <span className="od-mem-stats">
             {status.loading

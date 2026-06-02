@@ -40,6 +40,8 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { useEscapeClose } from "./hooks/useEscapeClose";
+import { useWindowControls } from "./hooks/useWindowControls";
+import { ResizeHandles } from "./ResizeHandles";
 
 // Providers whose model lists feed the AI / inpaint model dropdowns — the same
 // real /api/models fetch keys CompareView + GalleryView use.
@@ -183,6 +185,7 @@ export function GalleryEditorView({
   onClose: () => void;
 }): ReactNode {
   useEscapeClose(open, onClose);
+  const win = useWindowControls("win-editor", { w: 1280, h: 900 });
   const [tool, setTool] = useState<ToolId>("move");
   const [models, setModels] = useState<string[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -226,7 +229,7 @@ export function GalleryEditorView({
 
   return (
     <div
-      className="od-search-overlay"
+      className={`od-search-overlay${win.windowed ? " od-windowed" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Gallery editor"
@@ -237,10 +240,14 @@ export function GalleryEditorView({
         onClick={onClose}
         className="od-search-backdrop"
       />
-      <div className="od-search-panel od-ge-panel">
+      <div className="od-search-panel od-ge-panel" style={win.panelStyle}>
+        <ResizeHandles controls={win} />
         <div className="gallery-editor">
           {/* ── Top bar (editor/build/topbar.js buildTopbar) ── */}
-          <div className="ge-topbar">
+          <div
+            className="ge-topbar od-window-header"
+            onPointerDown={win.onDragStart}
+          >
             <div className="ge-topbar-left">
               <span
                 className="ge-alpha-badge"

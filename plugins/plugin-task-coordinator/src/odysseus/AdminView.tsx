@@ -40,6 +40,8 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useEscapeClose } from "./hooks/useEscapeClose";
+import { useWindowControls } from "./hooks/useWindowControls";
+import { ResizeHandles } from "./ResizeHandles";
 
 // Providers whose model lists feed the per-user "Allowed models" checkbox list —
 // the same real /api/models fetch keys CompareView + GalleryView use.
@@ -147,6 +149,7 @@ export function AdminView({
   onClose: () => void;
 }): ReactNode {
   useEscapeClose(open, onClose);
+  const win = useWindowControls("win-admin", { w: 900, h: 760 });
   const [tab, setTab] = useState<AdminTab>("users");
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [models, setModels] = useState<ProviderModelRecord[]>([]);
@@ -190,7 +193,7 @@ export function AdminView({
 
   return (
     <div
-      className="od-search-overlay"
+      className={`od-search-overlay${win.windowed ? " od-windowed" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Admin"
@@ -201,9 +204,13 @@ export function AdminView({
         onClick={onClose}
         className="od-search-backdrop"
       />
-      <div className="od-search-panel od-admin-panel">
+      <div className="od-search-panel od-admin-panel" style={win.panelStyle}>
+        <ResizeHandles controls={win} />
         {/* ── Modal header (settings-modal header) ── */}
-        <div className="od-admin-header">
+        <div
+          className="od-admin-header od-window-header"
+          onPointerDown={win.onDragStart}
+        >
           <span className="od-admin-header-title">
             <ShieldAlert size={14} aria-hidden="true" />
             Admin

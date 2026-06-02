@@ -33,6 +33,8 @@ import {
 } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { useEscapeClose } from "./hooks/useEscapeClose";
+import { useWindowControls } from "./hooks/useWindowControls";
+import { ResizeHandles } from "./ResizeHandles";
 
 // ── data model (mirrors jobs.js job shape, typed) ──────────────────
 
@@ -807,6 +809,7 @@ export function ResearchView({
   onClose: () => void;
 }): ReactNode {
   useEscapeClose(open, onClose);
+  const win = useWindowControls("win-research", { w: 640, h: 780 });
   const [jobs, setJobs] = useState<ReadonlyArray<ResearchJob>>([]);
   const [draft, setDraft] = useState("");
   const [activeCat, setActiveCat] = useState<ResearchCategory>("");
@@ -845,7 +848,7 @@ export function ResearchView({
 
   return (
     <div
-      className="od-search-overlay"
+      className={`od-search-overlay${win.windowed ? " od-windowed" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Deep Research"
@@ -856,8 +859,12 @@ export function ResearchView({
         onClick={onClose}
         className="od-search-backdrop"
       />
-      <div className="od-search-panel research-pane">
-        <div className="research-pane-header">
+      <div className="od-search-panel research-pane" style={win.panelStyle}>
+        <ResizeHandles controls={win} />
+        <div
+          className="research-pane-header od-window-header"
+          onPointerDown={win.onDragStart}
+        >
           <h4>
             <Search size={14} strokeWidth={2} />
             <span>Deep Research</span>

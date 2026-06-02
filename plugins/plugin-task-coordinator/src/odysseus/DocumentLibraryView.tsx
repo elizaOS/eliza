@@ -43,6 +43,8 @@ import {
 } from "react";
 import { formatRelativeTime } from "../view-format";
 import { useEscapeClose } from "./hooks/useEscapeClose";
+import { useWindowControls } from "./hooks/useWindowControls";
+import { ResizeHandles } from "./ResizeHandles";
 
 const PAGE_SIZE = 40;
 
@@ -90,6 +92,7 @@ export function DocumentLibraryView({
   locale?: string;
 }): ReactNode {
   useEscapeClose(open, onClose);
+  const win = useWindowControls("win-documents", { w: 640, h: 760 });
   const [docs, setDocs] = useState<DocumentRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState<DocumentStats | null>(null);
@@ -242,7 +245,7 @@ export function DocumentLibraryView({
 
   return (
     <div
-      className="od-search-overlay"
+      className={`od-search-overlay${win.windowed ? " od-windowed" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Document library"
@@ -253,8 +256,12 @@ export function DocumentLibraryView({
         onClick={onClose}
         className="od-search-backdrop"
       />
-      <div className="od-search-panel od-doclib-panel">
-        <div className="od-doclib-header">
+      <div className="od-search-panel od-doclib-panel" style={win.panelStyle}>
+        <ResizeHandles controls={win} />
+        <div
+          className="od-doclib-header od-window-header"
+          onPointerDown={win.onDragStart}
+        >
           <span className="od-doclib-title">Documents</span>
           <span className="od-doclib-count">
             {stats

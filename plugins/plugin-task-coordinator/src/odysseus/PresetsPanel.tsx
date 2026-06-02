@@ -18,6 +18,8 @@
 import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useEscapeClose } from "./hooks/useEscapeClose";
+import { useWindowControls } from "./hooks/useWindowControls";
+import { ResizeHandles } from "./ResizeHandles";
 import { readPref, writePref } from "./util/storage";
 
 // localStorage keys, view-local (not in the shared PREF_KEYS table) exactly
@@ -145,6 +147,7 @@ export function PresetsPanel({
   onClose: () => void;
 }): ReactNode {
   useEscapeClose(open, onClose);
+  const win = useWindowControls("win-presets", { w: 600, h: 720 });
   const [userPresets, setUserPresets] = useState<Preset[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   // editorId: null = closed, "" = creating new, else editing an existing user
@@ -263,7 +266,7 @@ export function PresetsPanel({
 
   return (
     <div
-      className="od-search-overlay"
+      className={`od-search-overlay${win.windowed ? " od-windowed" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Conversation presets"
@@ -274,8 +277,12 @@ export function PresetsPanel({
         onClick={onClose}
         className="od-search-backdrop"
       />
-      <div className="od-search-panel od-presets-panel">
-        <div className="od-mem-head">
+      <div className="od-search-panel od-presets-panel" style={win.panelStyle}>
+        <ResizeHandles controls={win} />
+        <div
+          className="od-mem-head od-window-header"
+          onPointerDown={win.onDragStart}
+        >
           <span className="od-mem-title">Conversation presets</span>
           <span className="od-mem-stats">{stats}</span>
         </div>

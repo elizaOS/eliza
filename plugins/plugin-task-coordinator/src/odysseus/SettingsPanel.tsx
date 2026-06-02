@@ -29,6 +29,8 @@ import type { CharacterData, McpServerStatus, PluginInfo } from "@elizaos/ui";
 import { client } from "@elizaos/ui";
 import { type ReactNode, useEffect, useState } from "react";
 import { useEscapeClose } from "./hooks/useEscapeClose";
+import { useWindowControls } from "./hooks/useWindowControls";
+import { ResizeHandles } from "./ResizeHandles";
 import { PREF_KEYS, readPref, writePref } from "./util/storage";
 
 // localStorage key for the locally-persisted web-search preference. The web
@@ -184,6 +186,7 @@ export function SettingsPanel({
   onClose: () => void;
 }): ReactNode {
   useEscapeClose(open, onClose);
+  const win = useWindowControls("win-settings", { w: 820, h: 700 });
   const [tab, setTab] = useState<SettingsTab>("general");
 
   // General — MCP servers (real status).
@@ -296,7 +299,7 @@ export function SettingsPanel({
 
   return (
     <div
-      className="od-search-overlay od-settings-overlay"
+      className={`od-search-overlay od-settings-overlay${win.windowed ? " od-windowed" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Settings"
@@ -307,9 +310,13 @@ export function SettingsPanel({
         onClick={onClose}
         className="od-search-backdrop"
       />
-      <div className="od-search-panel od-settings-panel">
+      <div className="od-search-panel od-settings-panel" style={win.panelStyle}>
+        <ResizeHandles controls={win} />
         {/* ── Header (settings-modal header) ── */}
-        <div className="od-settings-header">
+        <div
+          className="od-settings-header od-window-header"
+          onPointerDown={win.onDragStart}
+        >
           <span className="od-settings-header-title">Settings</span>
           <span className="od-settings-header-spacer" />
           <button

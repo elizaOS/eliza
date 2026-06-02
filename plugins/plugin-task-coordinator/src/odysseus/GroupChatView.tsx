@@ -45,6 +45,8 @@ import {
 import { MarkdownText } from "../orchestrator-markdown";
 import { formatClockTime, formatRelativeTime } from "../view-format";
 import { useEscapeClose } from "./hooks/useEscapeClose";
+import { useWindowControls } from "./hooks/useWindowControls";
+import { ResizeHandles } from "./ResizeHandles";
 import { readPref, writePref } from "./util/storage";
 
 // odysseus persists its group config under GROUP_STATE_KEY
@@ -167,6 +169,7 @@ export function GroupChatView({
   initialTaskId?: string;
 }): ReactNode {
   useEscapeClose(open, onClose);
+  const win = useWindowControls("win-group", { w: 860, h: 760 });
   const [threads, setThreads] = useState<CodingAgentTaskThread[]>([]);
   const [threadsFetched, setThreadsFetched] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(
@@ -285,7 +288,7 @@ export function GroupChatView({
 
   return (
     <div
-      className="od-search-overlay"
+      className={`od-search-overlay${win.windowed ? " od-windowed" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Group chat"
@@ -296,9 +299,13 @@ export function GroupChatView({
         onClick={onClose}
         className="od-search-backdrop"
       />
-      <div className="od-search-panel od-group-panel">
+      <div className="od-search-panel od-group-panel" style={win.panelStyle}>
+        <ResizeHandles controls={win} />
         {/* ── Header (group.js showModelPicker modal-header) ── */}
-        <div className="od-group-header">
+        <div
+          className="od-group-header od-window-header"
+          onPointerDown={win.onDragStart}
+        >
           <span className="od-group-header-title">
             <Users size={14} aria-hidden="true" />
             <span>Group Chat</span>

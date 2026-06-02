@@ -8,6 +8,8 @@ import type { MemoryStatsResponse } from "@elizaos/ui";
 import { client } from "@elizaos/ui";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { formatRelativeTime } from "../view-format";
+import { useWindowControls } from "./hooks/useWindowControls";
+import { ResizeHandles } from "./ResizeHandles";
 
 interface MemoryRow {
   id: string;
@@ -29,6 +31,7 @@ export function MemoryPanel({
   const [rows, setRows] = useState<MemoryRow[]>([]);
   const [stats, setStats] = useState<MemoryStatsResponse | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const win = useWindowControls("win-memory", { w: 560, h: 640 });
 
   useEffect(() => {
     if (!open) return;
@@ -87,7 +90,7 @@ export function MemoryPanel({
 
   return (
     <div
-      className="od-search-overlay"
+      className={`od-search-overlay${win.windowed ? " od-windowed" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Memory"
@@ -98,8 +101,12 @@ export function MemoryPanel({
         onClick={onClose}
         className="od-search-backdrop"
       />
-      <div className="od-search-panel od-mem-panel">
-        <div className="od-mem-head">
+      <div className="od-search-panel od-mem-panel" style={win.panelStyle}>
+        <ResizeHandles controls={win} />
+        <div
+          className="od-mem-head od-window-header"
+          onPointerDown={win.onDragStart}
+        >
           <span className="od-mem-title">Memory</span>
           {stats ? (
             <span className="od-mem-stats">

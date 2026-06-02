@@ -18,6 +18,8 @@
 
 import { ChevronLeft, ChevronRight, Settings as Cog, Plus } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { useWindowControls } from "./hooks/useWindowControls";
+import { ResizeHandles } from "./ResizeHandles";
 import { readPref } from "./util/storage";
 
 // Local-prefs key for the persisted calendar list. Not in the shared PREF_KEYS
@@ -105,6 +107,7 @@ export function CalendarView({
   const [hiddenCals, setHiddenCals] = useState<ReadonlySet<string>>(
     () => new Set<string>(),
   );
+  const win = useWindowControls("win-calendar", { w: 720, h: 620 });
 
   const calendars = useMemo(
     () => readPref<LocalCalendar[]>(CAL_PREF_KEY, DEFAULT_CALENDARS),
@@ -180,7 +183,7 @@ export function CalendarView({
 
   return (
     <div
-      className="od-search-overlay"
+      className={`od-search-overlay${win.windowed ? " od-windowed" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Calendar"
@@ -191,9 +194,13 @@ export function CalendarView({
         onClick={onClose}
         className="od-search-backdrop"
       />
-      <div className="od-search-panel od-cal-panel">
+      <div className="od-search-panel od-cal-panel" style={win.panelStyle}>
+        <ResizeHandles controls={win} />
         <div className="od-cal-body">
-          <div className="od-cal-toolbar">
+          <div
+            className="od-cal-toolbar od-window-header"
+            onPointerDown={win.onDragStart}
+          >
             <div className="od-cal-toolbar-nav">
               <button
                 type="button"

@@ -12,6 +12,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { useWindowControls } from "./hooks/useWindowControls";
+import { ResizeHandles } from "./ResizeHandles";
 
 export function SkillsPanel({
   open,
@@ -23,6 +25,7 @@ export function SkillsPanel({
   const [query, setQuery] = useState("");
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const win = useWindowControls("win-skills", { w: 560, h: 640 });
 
   const load = useCallback(() => {
     void client
@@ -57,7 +60,7 @@ export function SkillsPanel({
 
   return (
     <div
-      className="od-search-overlay"
+      className={`od-search-overlay${win.windowed ? " od-windowed" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Skills"
@@ -68,8 +71,12 @@ export function SkillsPanel({
         onClick={onClose}
         className="od-search-backdrop"
       />
-      <div className="od-search-panel od-mem-panel">
-        <div className="od-mem-head">
+      <div className="od-search-panel od-mem-panel" style={win.panelStyle}>
+        <ResizeHandles controls={win} />
+        <div
+          className="od-mem-head od-window-header"
+          onPointerDown={win.onDragStart}
+        >
           <span className="od-mem-title">Skills</span>
           <span className="od-mem-stats">
             {enabledCount} / {skills.length} enabled
