@@ -184,19 +184,29 @@ interface StewardExchangeErr {
 async function callStewardExchange(
   baseUrl: string,
   body: { code: string; redirect_uri: string; tenant_id: string | null },
+  pinnedTenantId?: string,
 ): Promise<
   | { kind: "ok"; data: StewardExchangeOk }
   | { kind: "error"; status: number; data: StewardExchangeErr }
   | { kind: "transport"; message: string }
 > {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+  // Pin the tenant per-env: this route bypasses the /steward/* proxy in
+  // bootstrap-app.ts. Steward's `/auth/oauth/exchange` reads tenant from
+  // the body (auth.ts:2557-2563), but if a caller sends `tenant_id=null`
+  // Steward falls back to STEWARD_DEFAULT_TENANT_ID. The header is a
+  // belt-and-suspenders pin in case future Steward versions consult it.
+  if (typeof pinnedTenantId === "string" && pinnedTenantId.trim().length > 0) {
+    headers["X-Steward-Tenant"] = pinnedTenantId.trim();
+  }
   let response: Response;
   try {
     response = await fetch(`${baseUrl}/auth/oauth/exchange`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
+      headers,
       body: JSON.stringify(body),
     });
   } catch (err) {
@@ -265,7 +275,13 @@ app.post("/", async (c) => {
       : typeof body.tenant_id === "string"
         ? body.tenant_id.trim()
         : "";
-  const tenantId = rawTenant.length > 0 ? rawTenant : null;
+  // Fall back to the Worker's pinned tenant when the SPA omits it (e.g. because
+  // its `NEXT_PUBLIC_STEWARD_TENANT_ID` failed to inline). Without this, Steward
+  // would resolve `body.tenant_id=null` to STEWARD_DEFAULT_TENANT_ID and a staging
+  // OAuth exchange would mint a session against the prod tenant.
+  const envTenant = c.env.STEWARD_TENANT_ID?.trim() ?? "";
+  const tenantId =
+    rawTenant.length > 0 ? rawTenant : envTenant.length > 0 ? envTenant : null;
 
   if (!code) {
     logExchange("missing-code");
@@ -298,11 +314,15 @@ app.post("/", async (c) => {
     );
   }
 
-  const exchange = await callStewardExchange(stewardBaseUrl, {
-    code,
-    redirect_uri: redirectUri,
-    tenant_id: tenantId,
-  });
+  const exchange = await callStewardExchange(
+    stewardBaseUrl,
+    {
+      code,
+      redirect_uri: redirectUri,
+      tenant_id: tenantId,
+    },
+    c.env.STEWARD_TENANT_ID,
+  );
 
   if (exchange.kind === "transport") {
     logExchange("upstream-transport-error");
