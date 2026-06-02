@@ -70,8 +70,7 @@ export interface DispatchResult {
   response?: string;
   status?: "running";
   agentId?: string;
-  reloaded?: false;
-  reason?: "not yet implemented";
+  reloaded?: true;
 }
 
 /**
@@ -195,11 +194,11 @@ async function handleNotificationEvent(
  *
  * Dispatches by payload.action:
  *   - "health": returns agent runtime status info
- *   - "config-reload": placeholder for future character re-read (logs + acks)
+ *   - "config-reload": emits a runtime event for loaded plugins/services
  *   - default: logs and acknowledges
  */
 async function handleSystemEvent(
-  _runtime: IAgentRuntime,
+  runtime: IAgentRuntime,
   agentId: string,
   payload: JsonObject,
 ): Promise<DispatchResult> {
@@ -210,9 +209,20 @@ async function handleSystemEvent(
   switch (action) {
     case "health":
       return { status: "running", agentId };
-    case "config-reload":
-      logger.info("Config reload requested (placeholder)", { agentId });
-      return { reloaded: false, reason: "not yet implemented" };
+    case "config-reload": {
+      logger.info("Dispatching config reload event", { agentId });
+      const eventPayload: EventPayload & {
+        agentId: string;
+        payload: JsonObject;
+      } = {
+        runtime,
+        source: "agent-server",
+        agentId,
+        payload,
+      };
+      await runtime.emitEvent("config-reload", eventPayload);
+      return { reloaded: true };
+    }
     default:
       return {};
   }

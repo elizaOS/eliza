@@ -69,6 +69,49 @@ interface GetOAuthFlowStateParams {
   now?: number | Date;
 }
 
+function applyPatchOp(target: Record<string, unknown>, op: PatchOp): void {
+  if (!op.path) return;
+  const parts = op.path.split(".");
+  const last = parts.pop();
+  if (last === undefined) return;
+
+  let parent: Record<string, unknown> = target;
+  for (const segment of parts) {
+    const next = parent[segment];
+    if (next === null || typeof next !== "object") {
+      const created: Record<string, unknown> = {};
+      parent[segment] = created;
+      parent = created;
+    } else {
+      parent = next as Record<string, unknown>;
+    }
+  }
+
+  switch (op.op) {
+    case "set":
+      parent[last] = op.value;
+      break;
+    case "remove":
+      delete parent[last];
+      break;
+    case "push": {
+      const existing = parent[last];
+      if (Array.isArray(existing)) {
+        existing.push(op.value);
+      } else {
+        parent[last] = [op.value];
+      }
+      break;
+    }
+    case "increment": {
+      const existing = parent[last];
+      const delta = typeof op.value === "number" ? op.value : 1;
+      parent[last] = typeof existing === "number" ? existing + delta : delta;
+      break;
+    }
+  }
+}
+
 interface UpdateOAuthFlowStateParams {
   state?: string;
   stateHash?: string;
@@ -4772,11 +4815,28 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }
 
   async patchComponents(
-    _updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
+    updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
     _options?: { entityContext?: UUID }
   ): Promise<void> {
-    // No-op stub: patch operations require JSON patch support.
-    // Individual adapters (Postgres) can override with jsonb_set-based implementation.
+    for (const update of updates) {
+      const rows = await this.withDatabase(async () =>
+        this.db.select().from(componentTable).where(eq(componentTable.id, update.componentId))
+      );
+      const row = rows[0];
+      if (!row) continue;
+
+      const data = { ...((row.data ?? {}) as Record<string, unknown>) };
+      for (const op of update.ops) {
+        applyPatchOp(data, op);
+      }
+
+      await this.withDatabase(async () => {
+        await this.db
+          .update(componentTable)
+          .set({ data })
+          .where(eq(componentTable.id, update.componentId));
+      });
+    }
   }
 
   // ── Entity batch methods ──────────────────────────────────────────────
