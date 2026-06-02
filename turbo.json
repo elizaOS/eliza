@@ -367,6 +367,14 @@
       "dependsOn": ["@elizaos/plugin-sql#build"],
       "outputs": []
     },
+    "@elizaos/plugin-sub-agent-claude-code#typecheck": {
+      "dependsOn": [
+        "@elizaos/plugin-remote-manifest#build",
+        "@elizaos/plugin-worker-runtime#build",
+        "^build"
+      ],
+      "outputs": []
+    },
     "@elizaos/example-farcaster#build": {
       "dependsOn": [
         "@elizaos/core#build",
