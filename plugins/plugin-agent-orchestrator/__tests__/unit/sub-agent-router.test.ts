@@ -241,6 +241,39 @@ describe("SubAgentRouter", () => {
     await router.stop();
   });
 
+  it("stamps subAgentDeliverable from a clean captured scalar (no URL / no change-set)", async () => {
+    const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+    const router = await SubAgentRouter.start(runtime);
+    acp.emit(SESSION_ID, "task_complete", {
+      response:
+        "[sub-agent: print date]\n[tool output: date]\n2026-06-02\n[/tool output]",
+      durationMs: 500,
+    });
+    await new Promise((r) => setImmediate(r));
+    const metadata = handleMessage.mock.calls[0]?.[1]?.content
+      ?.metadata as Record<string, unknown>;
+    expect(metadata?.subAgentDeliverable).toBe("2026-06-02");
+    await router.stop();
+  });
+
+  it("does NOT stamp raw JSON / multi-line tool output (live-info curl), leaving it to be summarized", async () => {
+    const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+    const router = await SubAgentRouter.start(runtime);
+    // A "fetch the bitcoin price" spawn curls an API → the captured output is raw
+    // JSON (often plus a second tool block), which the model should phrase, not
+    // dump verbatim. Only a single clean scalar line is carried.
+    acp.emit(SESSION_ID, "task_complete", {
+      response:
+        '[tool output: curl]\n{"bitcoin":{"usd":69388}}\n[/tool output]\n[tool output: py]\n/usr/bin/bash: line 1: python: not found\n[/tool output]',
+      durationMs: 500,
+    });
+    await new Promise((r) => setImmediate(r));
+    const metadata = handleMessage.mock.calls[0]?.[1]?.content
+      ?.metadata as Record<string, unknown>;
+    expect(metadata?.subAgentDeliverable).toBeUndefined();
+    await router.stop();
+  });
+
   it("carries workdir route metadata into routed terminal messages", async () => {
     session = makeSession({
       metadata: {

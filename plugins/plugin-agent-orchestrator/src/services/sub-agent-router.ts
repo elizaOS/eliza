@@ -1638,9 +1638,15 @@ function capturedStdoutDeliverable(
     .filter((s): s is string => Boolean(s))
     .join("\n")
     .trim();
-  // Shape gate: a single short deliverable block. Multi-KB transcripts and long
-  // code-task narrations stay on the model-rendered path unchanged.
-  if (!joined || joined.length > 2048) return undefined;
+  // Only a SINGLE clean scalar line is surfaced verbatim — the "print/echo the
+  // answer" case this carrier exists for (a date, a number, a reversed string).
+  // Anything else stays on the model-rendered path so it gets summarized, not
+  // dumped: a multi-line capture (a tool transcript — e.g. a curl followed by a
+  // script run), a raw JSON/array payload (a curl'd API response the user wants
+  // phrased, not pasted), or a long block. Erring toward NOT firing keeps raw
+  // tool output from leaking to the user.
+  if (!joined || joined.includes("\n") || joined.length > 200) return undefined;
+  if (joined.startsWith("{") || joined.startsWith("[")) return undefined;
   return joined;
 }
 
