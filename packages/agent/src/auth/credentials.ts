@@ -596,33 +596,40 @@ async function importClaudeCodeOAuthToken(): Promise<string | null> {
   }
 }
 
-/**
- * Apply subscription credentials to the environment.
- * Called at startup to make credentials available to elizaOS plugins.
- *
- * **Claude subscription tokens are NOT applied to the runtime environment.**
- * Anthropic's TOS only permits Claude subscription tokens to be used through
- * the Claude Code CLI itself.  Eliza honours this by keeping the token
- * available for the task-agent orchestrator (which spawns `claude` CLI
- * subprocesses) but never injecting it into `process.env.ANTHROPIC_API_KEY`
- * or installing the stealth fetch interceptor.
- *
- * Codex / ChatGPT subscription tokens are also CLI credentials. They are used
- * by the Codex CLI-backed provider, not injected into `OPENAI_API_KEY`.
- */
-export async function applySubscriptionCredentials(config?: {
+interface SubscriptionCredentialConfig {
   agents?: {
     defaults?: { subscriptionProvider?: string; model?: { primary?: string } };
   };
-}): Promise<void> {
-  const subscriptionCredentialsDisabled =
+}
+
+function isSubscriptionCredentialApplicationDisabled(): boolean {
+  const disabled =
     process.env.ELIZA_DISABLE_SUBSCRIPTION_CREDENTIALS?.trim().toLowerCase();
-  if (
-    subscriptionCredentialsDisabled === "1" ||
-    subscriptionCredentialsDisabled === "true" ||
-    subscriptionCredentialsDisabled === "yes" ||
-    subscriptionCredentialsDisabled === "on"
-  ) {
+  return (
+    disabled === "1" ||
+    disabled === "true" ||
+    disabled === "yes" ||
+    disabled === "on"
+  );
+}
+
+/**
+ * Local-only, synchronous part of subscription credential application.
+ *
+ * Reads stored accounts from disk and derives `model.primary` for runtime
+ * subscription providers (currently only `openai-codex`). Performs no network
+ * I/O, so it is safe to await on the blocking boot path. The network-touching
+ * Claude Code OAuth import is handled separately by
+ * {@link applySubscriptionCredentialsDeferred}.
+ *
+ * None of the Anthropic / Codex / Gemini / coding-plan branches mutate `config`
+ * or `process.env` — they are purely informational logging. The only config
+ * mutation is the `openai-codex` `model.primary` derivation below.
+ */
+export function applySubscriptionCredentialsLocal(
+  config?: SubscriptionCredentialConfig,
+): void {
+  if (isSubscriptionCredentialApplicationDisabled()) {
     logger.info(
       "[auth] Subscription credential application disabled by ELIZA_DISABLE_SUBSCRIPTION_CREDENTIALS",
     );
@@ -647,14 +654,6 @@ export async function applySubscriptionCredentials(config?: {
       `[auth] Anthropic subscription accounts configured: ${labels} — available for coding agents (Claude Code CLI). ` +
         "Not applied to runtime env. Add an API key or connect Eliza Cloud for the main agent.",
     );
-  } else {
-    const claudeImported = await importClaudeCodeOAuthToken();
-    if (claudeImported) {
-      logger.info(
-        "[auth] Anthropic subscription detected via Claude Code CLI — available for coding agents. " +
-          "Not applied to runtime env. Add an API key or connect Eliza Cloud for the main agent.",
-      );
-    }
   }
 
   // ── OpenAI Codex subscription ────────────────────────────────────────
@@ -725,5 +724,54 @@ export async function applySubscriptionCredentials(config?: {
         }
       }
     }
+  }
+}
+
+/**
+ * Apply subscription credentials to the environment.
+ * Called at startup to make credentials available to elizaOS plugins.
+ *
+ * Combines the local-only model.primary derivation
+ * ({@link applySubscriptionCredentialsLocal}) with the network-touching Claude
+ * Code OAuth probe ({@link applySubscriptionCredentialsDeferred}). The cold-boot
+ * path calls the two halves separately so the network probe can run off the
+ * blocking path; other callers (API routes, hot reload) use this combined form.
+ *
+ * **Claude subscription tokens are NOT applied to the runtime environment.**
+ * Anthropic's TOS only permits Claude subscription tokens to be used through
+ * the Claude Code CLI itself. Eliza honours this by keeping the token
+ * available for the task-agent orchestrator (which spawns `claude` CLI
+ * subprocesses) but never injecting it into `process.env.ANTHROPIC_API_KEY`.
+ *
+ * Codex / ChatGPT subscription tokens are also CLI credentials. They are used
+ * by the Codex CLI-backed provider, not injected into `OPENAI_API_KEY`.
+ */
+export async function applySubscriptionCredentials(
+  config?: SubscriptionCredentialConfig,
+): Promise<void> {
+  applySubscriptionCredentialsLocal(config);
+  await applySubscriptionCredentialsDeferred();
+}
+
+/**
+ * Deferred, network-touching part of subscription credential application.
+ *
+ * When no stored Anthropic subscription account exists, this probes for a
+ * Claude Code CLI OAuth token (which may require a network refresh) so it can
+ * log that a subscription is available for coding agents. It mutates neither
+ * `config` nor `process.env` — the token stays reserved for spawned Claude
+ * Code CLI sessions — so it can run off the blocking boot path.
+ */
+export async function applySubscriptionCredentialsDeferred(): Promise<void> {
+  if (isSubscriptionCredentialApplicationDisabled()) return;
+
+  if (listProviderAccounts("anthropic-subscription").length > 0) return;
+
+  const claudeImported = await importClaudeCodeOAuthToken();
+  if (claudeImported) {
+    logger.info(
+      "[auth] Anthropic subscription detected via Claude Code CLI — available for coding agents. " +
+        "Not applied to runtime env. Add an API key or connect Eliza Cloud for the main agent.",
+    );
   }
 }

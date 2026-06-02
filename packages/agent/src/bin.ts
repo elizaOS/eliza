@@ -5,6 +5,39 @@
 // dynamic import in cli/index.ts, which is enough for resolution but not
 // inclusion. Without this guard the symbol silently disappears from the bundle.
 import * as _earlyFs from "node:fs";
+import { enableCompileCache } from "node:module";
+
+// Enable Node 24's persistent V8 compile cache before any heavy import so the
+// 2nd+ cold boot skips recompiling the ~70k LOC of transpiled plugin source.
+// Anchored to a stable per-user dir under the state root so the cache survives
+// across runs; falls back to Node's default temp location when the state dir
+// isn't resolvable this early. Wrapped defensively: a missing API (older Node)
+// or any failure must never break boot.
+(() => {
+  try {
+    if (typeof enableCompileCache !== "function") {
+      return;
+    }
+    const stateDir = process.env.ELIZA_STATE_DIR?.trim();
+    const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
+    const home = process.env.HOME?.trim();
+    const resolvedStateDir =
+      stateDir ||
+      (xdgStateHome
+        ? `${xdgStateHome}/eliza`
+        : home
+          ? `${home}/.local/state/eliza`
+          : undefined);
+    if (resolvedStateDir) {
+      enableCompileCache(`${resolvedStateDir}/.compile-cache`);
+    } else {
+      enableCompileCache();
+    }
+  } catch {
+    // V8 compile cache is a pure boot-time optimization; ignore any failure.
+  }
+})();
+
 import { runAutonomousCli } from "./cli/index.ts";
 
 // Early diagnostic logger for Android: captures errors before the fs shim runs.
