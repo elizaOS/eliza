@@ -32,6 +32,7 @@ import { GalleryEditorView } from "./GalleryEditorView";
 import { GalleryView } from "./GalleryView";
 import { GroupChatView } from "./GroupChatView";
 import { useChatSubmit } from "./hooks/useChatSubmit";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useTaskRoom } from "./hooks/useTaskRoom";
 import { IconRail } from "./IconRail";
 import { MemoryPanel } from "./MemoryPanel";
@@ -205,6 +206,31 @@ export function OdysseusShell(): ReactNode {
       return !prev;
     });
   }, []);
+
+  // Keyboard shortcuts (odysseus keyboard-shortcuts.js): toggle sidebar, new
+  // chat, focus composer, and open the tool surfaces. Only actions wired here
+  // are bound; AltGr-safe + suppressed while typing (except focusInput).
+  useKeyboardShortcuts({
+    toggleSidebar,
+    newSession: onNewChat,
+    focusInput: () => {
+      const ta = document.querySelector<HTMLTextAreaElement>(
+        '.odysseus-root textarea[aria-label="Message input"]',
+      );
+      ta?.focus();
+    },
+    openSettings: () => setSettingsOpen(true),
+    openCalendar: () => setCalendarOpen(true),
+    openCompare: () => setCompareOpen(true),
+    openCookbook: () => setCookbookOpen(true),
+    openResearch: () => setResearchOpen(true),
+    openGallery: () => setGalleryOpen(true),
+    openMemory: () => setMemoryOpen(true),
+    openNotes: () => setNotesOpen(true),
+    openTasks: () => setTasksOpen(true),
+    openModels: () => setModelsOpen(true),
+    openTheme: () => setThemeMenuOpen(true),
+  });
 
   // Drag-to-resize the sidebar (odysseus .sidebar-resize-handle). Pointer move
   // updates width live (clamped 180–440px); the final width persists on release.

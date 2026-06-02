@@ -8982,4 +8982,162 @@ export const ODYSSEUS_CSS = `
 /* icon rail: New-chat action reads as available (primary affordance), not dimmed like the contextual launchers — mirrors odysseus rail-new-session prominence */
 .odysseus-root .od-rail-btn.od-rail-new-chat { opacity:.75; }
 .odysseus-root .od-rail-btn.od-rail-new-chat:hover { opacity:1; }
+
+
+/* ===== Extend useWindowControls.ts to add edge tiling/snap on title-bar drag and an ephemeral minimized state, porting odysseus tileManager.js + modalSnap.js + modalManager.js minimize — fully backward compatible. ===== */
+/* Translucent edge-tiling snap preview (tileManager.js #tile-ghost). Rendered
+   by the dragging view from win.snapGhost (position:fixed + left/top/width/height
+   inline). Scoped under .odysseus-root, theme vars only, springy fade-in. */
+.odysseus-root .od-snap-ghost {
+  position: fixed;
+  z-index: 9998;
+  pointer-events: none;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 2px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent) inset;
+  animation: od-snap-ghost-in 0.12s ease-out;
+}
+@keyframes od-snap-ghost-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+/* ===== Port odysseus spinner.js to a React component at plugins/plugin-task-coordinator/src/odysseus/Spinner.tsx — a presentational Spinner({ variant?, label? }) (variant: 'dots' | 'wave' | default whirlpool ring) plus a LoadingRow({ label }) for list/empty states. Theme-var colored, strict TS, biome-clean, no .css import (CSS returned as cssAdditions). ===== */
+/* ── odysseus spinner.js — Spinner / LoadingRow (NEW classes only) ──
+   The whirlpool ring (.od-whirlpool) and the loading row (.od-loading-row),
+   plus @keyframes od-whirlpool-spin, ALREADY EXIST in ODYSSEUS_CSS
+   (odysseus-theme.ts ~lines 8684-8709). Spinner.tsx reuses them verbatim, so
+   DO NOT re-add them. Only the text-spinner + a11y helper classes below are new. */
+
+/* shared spinner wrapper: ring/glyph variants share inline-flex layout */
+.odysseus-root .od-spinner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre;
+  line-height: 1;
+  color: color-mix(in srgb, var(--fg) 70%, transparent);
+}
+.odysseus-root .od-spinner-label {
+  font-family: inherit;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--fg) 65%, transparent);
+}
+
+/* dots / wave text spinner: the cycling ASCII or block-bar glyph.
+   Frame text is swapped in JS at the upstream 150ms cadence; this only styles
+   it. The accent/red theme var matches odysseus' rgba(156,222,242,…) wave hue
+   when the active palette is the default. */
+.odysseus-root .od-spinner-frame {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+  color: color-mix(in srgb, var(--accent) 85%, var(--fg));
+  /* a soft breathing pulse so the glyph cycle reads as "alive" even mid-frame */
+  animation: od-spinner-pulse 1.5s ease-in-out infinite;
+}
+@keyframes od-spinner-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .odysseus-root .od-spinner-frame { animation: none; opacity: 0.9; }
+}
+
+/* visually-hidden live-region text for the icon-only (no-label) case */
+.odysseus-root .od-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* ===== Port odysseus's bottom minimized-dock (modalManager.js _renderDock / _LABELS + style.css #minimized-dock rules) into a pure presentational React component MinimizedDock({ items, onRestore, onClose }) following elizaOS conventions. ===== */
+/* Bottom-left dock — one chip per minimized window. Faithful port of
+   odysseus #minimized-dock / .minimized-dock-chip / .minimized-dock-x and the
+   dock-chip-in keyframe (static/style.css). Anchored bottom-left per the
+   shell's chosen position; chip geometry is otherwise pixel-identical. The
+   odysseus single-<button> chip is split into a flex wrapper + two real
+   buttons (restore body + ×) so it stays valid HTML and keyboard-accessible.
+   Append to ODYSSEUS_CSS in odysseus-theme.ts. */
+.odysseus-root .od-min-dock {
+  position: fixed;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-width: calc(100vw - 24px);
+  padding: 4px;
+  z-index: 999;
+  pointer-events: none;
+}
+.odysseus-root .od-min-chip {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  background: var(--panel, var(--bg));
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg);
+  font-family: inherit;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  transition: background 0.15s, border-color 0.15s;
+  animation: od-dock-chip-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.odysseus-root .od-min-chip:hover {
+  background: color-mix(in srgb, var(--accent, var(--red)) 12%, var(--panel, var(--bg)));
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 40%, var(--border));
+}
+.odysseus-root .od-min-restore {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px 6px 10px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.odysseus-root .od-min-icon {
+  display: inline-flex;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+.odysseus-root .od-min-label {
+  white-space: nowrap;
+}
+.odysseus-root .od-min-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.4;
+  transition: opacity 0.15s, background 0.15s;
+}
+.odysseus-root .od-min-x:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
+}
+@keyframes od-dock-chip-in {
+  from { opacity: 0; transform: translateY(20px) scale(0.85); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
 `;
