@@ -882,24 +882,15 @@ async function warmupEmbeddingModelImpl(
  * the local-inference path so cloud-only setups never make a paid TTS/STT call.
  */
 async function startDeferredVoiceWarmup(runtime: AgentRuntime): Promise<void> {
-  let localInferenceActive = false;
-  try {
-    localInferenceActive = (
-      await _localInference()
-    ).shouldWarmupLocalEmbeddingModel();
-  } catch {
-    localInferenceActive = false;
-  }
   if (
     !shouldWarmupVoice({
       mobile: isMobilePlatform(),
       skipEnv: isTruthyEnvValue(process.env.ELIZA_SKIP_LOCAL_VOICE_WARMUP),
-      localInferenceActive,
     })
   ) {
     return;
   }
-  logger.info("[eliza] Starting deferred local voice warmup");
+  logger.info("[eliza] Starting deferred voice warmup");
   await warmVoiceModels(
     runtime as unknown as Parameters<typeof warmVoiceModels>[0],
     {

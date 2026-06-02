@@ -44,6 +44,7 @@ import {
 import { desktopFfiBackendRuntime } from "./desktop-ffi-backend-runtime";
 import { FfiStreamingBackend } from "./ffi-streaming-backend";
 import { MemoryMonitor } from "./memory-monitor";
+import { readEffectiveAssignments } from "./assignments";
 import { listInstalledModels } from "./registry";
 import {
 	DEFAULT_SESSION_KEY,
@@ -1101,15 +1102,24 @@ export class LocalInferenceEngine {
 			this.startBackgroundManagement();
 			return;
 		} catch (err) {
-			// Only a soft catalog preference may fall back to node-llama-cpp.
-			// Kernel-required loads are the mandatory-optimization path: falling
-			// back would silently run an unoptimized bundle, which violates the
-			// Eliza-1 startup contract.
+			// Fall back to node-llama-cpp when the FFI backend is unavailable.
+			// There are two cases:
+			//   1. FFI runtime is entirely absent (no bun:ffi in dev mode) — always
+			//      fall back regardless of kernel requirements, since there's no FFI
+			//      to run the kernels on anyway.
+			//   2. FFI is available but the decision was a soft preference/default —
+			//      fall back so dev builds work without custom kernels.
+			// Only block fallback when FFI IS available but the catalog mandates
+			// specific kernels (kernel-required) — that's the production Eliza-1
+			// contract that should not be silently degraded.
 			const decision = this.dispatcher.decide(plan);
-			if (
-				decision.backend === "llama-cpp" &&
-				decision.reason === "preferred-backend"
-			) {
+			const ffiAvailable = desktopFfiBackendRuntime.supported();
+			const canFallback =
+				!ffiAvailable ||
+				(decision.backend === "llama-cpp" &&
+					(decision.reason === "preferred-backend" ||
+						decision.reason === "default"));
+			if (canFallback) {
 				console.warn(
 					"[local-inference] optimized llama.cpp backend unavailable; falling back to node-llama-cpp:",
 					err instanceof Error ? err.message : String(err),
@@ -1500,6 +1510,34 @@ export class LocalInferenceEngine {
 	private async ensureActiveBundleVoiceReadyOnce(): Promise<EngineVoiceBridge> {
 		let bridge = this.voiceBridge;
 		if (!bridge) {
+			// If no text model is loaded yet, try to load the assigned one so
+			// the Eliza-1 bundle activates before voice needs it. This covers
+			// the boot-time warmup race where TTS fires before any text request.
+			if (!this.activeEliza1Bundle && !this.dispatcher.hasLoadedModel()) {
+				try {
+					const assignments = await readEffectiveAssignments();
+					const textModelId =
+						assignments.TEXT_LARGE ?? assignments.TEXT_SMALL;
+					if (textModelId) {
+						const installed = await listInstalledModels();
+						const target = installed.find(
+							(m) => m.id === textModelId,
+						);
+						if (target) {
+							logger.info(
+								`[voice] Pre-loading text model ${textModelId} to activate Eliza-1 bundle for voice`,
+							);
+							await this.load(target.path);
+						}
+					}
+				} catch (err) {
+					logger.warn(
+						`[voice] Failed to pre-load text model for bundle activation: ${
+							err instanceof Error ? err.message : String(err)
+						}`,
+					);
+				}
+			}
 			const bundle = this.activeEliza1Bundle;
 			if (bundle) {
 				const bundleKokoroRoot = path.join(bundle.root, "tts", "kokoro");
