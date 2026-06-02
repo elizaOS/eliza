@@ -48,7 +48,8 @@ describe.skipIf(!STACK_UP)("odysseus shell (live e2e)", () => {
   const pageErrors: string[] = [];
 
   async function ensureShell(): Promise<void> {
-    for (let i = 0; i < 40; i++) {
+    // ~90s budget — covers a cold dev-server compile of the view bundle.
+    for (let i = 0; i < 90; i++) {
       if (await page.locator('[data-testid="odysseus-shell"]').count()) return;
       const connect = page.getByRole("button", { name: /^connect$/i }).first();
       if (await connect.isVisible().catch(() => false)) {
@@ -113,7 +114,14 @@ describe.skipIf(!STACK_UP)("odysseus shell (live e2e)", () => {
       if (m.type() === "error" && !IGNORED_CONSOLE.test(m.text()))
         pageErrors.push(m.text().slice(0, 200));
     });
-    await page.goto(`${BASE}/odysseus`, { waitUntil: "domcontentloaded" });
+    // `commit` (fires on navigation start) instead of `domcontentloaded`: the
+    // dev server lazily compiles the (large) view bundle on the first cold
+    // request, which can exceed the default 30s DOMContentLoaded wait. The shell
+    // selector poll in ensureShell() is the real readiness gate.
+    await page.goto(`${BASE}/odysseus`, {
+      waitUntil: "commit",
+      timeout: 120_000,
+    });
     await ensureShell();
     await page.waitForTimeout(800);
   }, 120_000);
@@ -158,7 +166,13 @@ describe.skipIf(!STACK_UP)("odysseus shell (live e2e)", () => {
   it("memory panel lists real memories (reused plugin-sql backend)", async () => {
     await closeTheme();
     await page.locator('.od-rail-btn[aria-label="Memory"]').click();
-    await page.waitForTimeout(900);
+    // The panel loads stats + the memory feed on open; wait for the first row
+    // (browse tab is the default) rather than a fixed delay.
+    await page
+      .locator(".od-mem-item")
+      .first()
+      .waitFor({ timeout: 8000 })
+      .catch(() => {});
     expect(await page.locator(".od-mem-item").count()).toBeGreaterThan(0);
     await closeOverlay();
   });
@@ -166,8 +180,13 @@ describe.skipIf(!STACK_UP)("odysseus shell (live e2e)", () => {
   it("skills panel lists skills (reused plugin-agent-skills backend)", async () => {
     await closeOverlay();
     await page.locator('.od-rail-btn[aria-label="Skills"]').click();
-    await page.waitForTimeout(900);
-    expect(await page.locator(".od-skill-item").count()).toBeGreaterThan(0);
+    // Skills render as expandable cards (.od-skills-card) post-redesign.
+    await page
+      .locator(".od-skills-card")
+      .first()
+      .waitFor({ timeout: 8000 })
+      .catch(() => {});
+    expect(await page.locator(".od-skills-card").count()).toBeGreaterThan(0);
     await closeOverlay();
   });
 
@@ -210,7 +229,7 @@ describe.skipIf(!STACK_UP)("odysseus shell (live e2e)", () => {
     await page.evaluate(() =>
       window.localStorage.removeItem("odysseus:pinned-threads"),
     );
-    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.reload({ waitUntil: "commit", timeout: 120_000 });
     await ensureShell();
     await page.waitForTimeout(600);
 
@@ -294,7 +313,7 @@ describe.skipIf(!STACK_UP)("odysseus shell (live e2e)", () => {
     ).toBe("180");
 
     // Persisted width survives a reload.
-    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.reload({ waitUntil: "commit", timeout: 120_000 });
     await ensureShell();
     await page.waitForTimeout(400);
     expect(Math.abs((await widthOf()) - 180)).toBeLessThan(3);
