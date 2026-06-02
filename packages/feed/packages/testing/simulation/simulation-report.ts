@@ -15,67 +15,16 @@
  * ```
  */
 
-// TODO: liquidity-simulation module not yet implemented
-// import type {
-//   LiquidityScenarioConfig,
-//   SimulationResult,
-//   TickMetrics,
-// } from './liquidity-simulation';
-
-// Temporary stub types until liquidity-simulation is implemented
-export interface LiquidityScenarioConfig {
-  name: string;
-  description: string;
-}
-
-export interface SimulationResult {
-  id: string;
-  metrics: Record<string, number>;
-  config: LiquidityScenarioConfig;
-  tickMetrics: TickMetrics[];
-  durationTicks: number;
-  simulatedTimeSeconds: number;
-  initialHealthScore: number;
-  finalHealthScore: number;
-  lowestHealthScore: number;
-  avgHealthScore: number;
-  finalPerpState: {
-    longOI: number;
-    shortOI: number;
-    imbalance: number;
-    imbalancePercent: number;
-    fundingRate: number;
-    spotPrice: number;
-    totalFundingPaid: number;
-    avgFundingRateAPR: number;
-  };
-  finalPredictionState: {
-    activeMarkets: number;
-    totalLiquidity: number;
-    avgSpread: number;
-    volume: number;
-    totalVolume: number;
-    npcNetPnL: number;
-    userNetPnL: number;
-  };
-  eventsTriggered: string[];
-  findings: string[];
-  recommendations: string[];
-}
-
-export interface TickMetrics {
-  tick: number;
-  timestamp: number;
-  perpLongOI: number;
-  perpShortOI: number;
-  perpImbalance: number;
-  perpFundingRate: number;
-  perpSpotPrice: number;
-  predictionTotalLiquidity: number;
-  predictionAvgSpread: number;
-  predictionVolume: number;
-  overallHealthScore: number;
-}
+import type {
+  LiquidityScenarioConfig,
+  SimulationResult,
+  TickMetrics,
+} from "./liquidity-simulation";
+export type {
+  LiquidityScenarioConfig,
+  SimulationResult,
+  TickMetrics,
+} from "./liquidity-simulation";
 
 /**
  * Report summary section
