@@ -62,6 +62,17 @@ jobs:
       - name: Install dependencies
         run: bun install --no-save --ignore-scripts
 
+      - name: List Hetzner catalog (what's actually placeable)
+        run: |
+          echo "=== non-deprecated server types (id  name  arch  cores/mem) ==="
+          curl -s -H "Authorization: Bearer $HCLOUD_TOKEN_CI" \
+            https://api.hetzner.cloud/v1/server_types \
+            | jq -r '.server_types[] | select(.deprecation==null) | "\(.id)\t\(.name)\t\(.architecture)\t\(.cores)c/\(.memory)g"' | sort -n
+          echo "=== per-datacenter available server-type IDs ==="
+          curl -s -H "Authorization: Bearer $HCLOUD_TOKEN_CI" \
+            https://api.hetzner.cloud/v1/datacenters \
+            | jq -r '.datacenters[] | "\(.name)\tavail=[\(.server_types.available | join(","))]"'
+
       - name: Provision Hetzner server
         run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-provision.ts
 
