@@ -215,9 +215,8 @@ async function invokeBySurface(
     }
     case "action": {
       // Action handler(runtime, message, state, options, callback, responses)
-      // `callback` is replaced by a CallbackProxy that round-trips back
-      // to the host as a worker-rpc surface=action.callback. Implemented
-      // in P1 step 4.
+      // `callback` is replaced by a proxy that round-trips to the host
+      // through host-rpc `actionCallback` when the host supplied a callback id.
       const params = args as {
         message: JsonValue;
         state: JsonValue;
@@ -226,7 +225,7 @@ async function invokeBySurface(
         /** Identifier for the host-side callback channel. */
         callbackId?: string;
       };
-      const callback = makeNoopCallback();
+      const callback = makeCallbackProxy(context.runtime, params.callbackId);
       const result = await (entry.handler as ActionHandler)(
         context.runtime,
         params.message,
@@ -287,7 +286,10 @@ type ActionHandler = (
   message: JsonValue,
   state: JsonValue,
   options: JsonValue,
-  callback: (data: JsonValue) => Promise<void> | void,
+  callback: (
+    data: JsonValue,
+    actionName?: string,
+  ) => Promise<JsonValue> | JsonValue,
   responses: JsonValue,
 ) => Promise<JsonValue | undefined> | JsonValue | undefined;
 type EvaluatorHandler = (
@@ -365,12 +367,13 @@ function checkPermission(
   }
 }
 
-function makeNoopCallback(): (data: JsonValue) => Promise<void> {
-  return async () => {
-    // P1: action callbacks are stubbed. The action-with-callback wiring
-    // is implemented in the action-surface-parity step (P1 step 4). For
-    // now, action handlers that don't reach for the callback work; ones
-    // that do are no-ops (their text is delivered via the orchestrator's
-    // own progress channel, which today owns the user-visible reply).
-  };
+function makeCallbackProxy(
+  runtime: RuntimeProxyApi,
+  callbackId?: string,
+): (data: JsonValue, actionName?: string) => Promise<JsonValue> {
+  if (!callbackId) {
+    return async () => null;
+  }
+  return async (data, actionName) =>
+    runtime.actionCallback(callbackId, data, actionName);
 }

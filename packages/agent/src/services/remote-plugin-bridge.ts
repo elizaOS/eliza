@@ -10,16 +10,16 @@
  *
  * Inbound `host-rpc` messages from the worker are dispatched to the
  * real runtime (`getService`, `useModel`, `getMemory`, `emitEvent`,
- * `composeState`, etc.) and the result is shipped back as
+ * `composeState`, action callbacks, etc.) and the result is shipped back as
  * `host-rpc-result`.
  *
- * P1 wires: actions, providers, events, models, evaluators.
- * Deferred: services, routes, views (P2), action callbacks (P1 step 4
- * follow-up), streaming model tokens (P2).
+ * P1 wires: actions, providers, events, models, evaluators, action callbacks.
+ * Deferred: services, routes, views (P2), streaming model tokens (P2).
  */
 
 import type {
   Action,
+  Content,
   IAgentRuntime,
   Memory,
   Plugin,
@@ -66,6 +66,8 @@ interface PendingRequest {
   timer: ReturnType<typeof setTimeout> | undefined;
 }
 
+type ActionCallback = NonNullable<Parameters<Action["handler"]>[4]>;
+
 /** rpc-id → live handler function on the worker side. */
 type RpcId = string;
 
@@ -73,7 +75,9 @@ type RpcId = string;
 interface AttachedState {
   pluginName: string | null;
   pending: Map<number, PendingRequest>;
+  actionCallbacks: Map<string, ActionCallback>;
   nextRequestId: () => number;
+  nextCallbackId: () => string;
   unsubscribe: (() => void) | undefined;
 }
 
@@ -90,11 +94,19 @@ export class RemotePluginBridge {
     this.state = {
       pluginName: null,
       pending: new Map(),
+      actionCallbacks: new Map(),
       nextRequestId: (() => {
         let n = 0;
         return () => {
           n = (n + 1) >>> 0;
           return n;
+        };
+      })(),
+      nextCallbackId: (() => {
+        let n = 0;
+        return () => {
+          n = (n + 1) >>> 0;
+          return `action-callback-${n}`;
         };
       })(),
       unsubscribe: undefined,
@@ -302,21 +314,28 @@ export class RemotePluginBridge {
       _callback,
       responses,
     ) => {
-      // P1: callback is stubbed on the worker side; pass undefined
-      // through. Action handlers that need callback() to surface text
-      // already typically rely on the orchestrator's progress channel
-      // anyway. Real callback marshalling lands in P1 step 4.
-      const result = await this.workerRpc<JsonValue>(
-        "action",
-        descriptor.handler.id,
-        {
-          message: this.normalize(message),
-          state: this.normalize(state),
-          options: this.normalize(options ?? null),
-          responses: this.normalize(responses ?? null),
-        },
-      );
-      return result as unknown as ReturnType<Action["handler"]>;
+      const callbackId = _callback ? this.state.nextCallbackId() : undefined;
+      if (callbackId && _callback) {
+        this.state.actionCallbacks.set(callbackId, _callback);
+      }
+      try {
+        const result = await this.workerRpc<JsonValue>(
+          "action",
+          descriptor.handler.id,
+          {
+            message: this.normalize(message),
+            state: this.normalize(state),
+            options: this.normalize(options ?? null),
+            responses: this.normalize(responses ?? null),
+            callbackId: callbackId ?? null,
+          },
+        );
+        return result as unknown as ReturnType<Action["handler"]>;
+      } finally {
+        if (callbackId) {
+          this.state.actionCallbacks.delete(callbackId);
+        }
+      }
     };
 
     const validate: Validator = validateRef
@@ -640,9 +659,21 @@ export class RemotePluginBridge {
         const result = await this.runtime.composeState(memory);
         return (result ?? null) as unknown as JsonValue;
       }
+      case "actionCallback": {
+        const callbackId = String(args.callbackId ?? "");
+        const callback = this.state.actionCallbacks.get(callbackId);
+        if (!callback) {
+          throw new Error(`Unknown remote action callback id: ${callbackId}`);
+        }
+        const response = args.response as unknown as Content;
+        const actionName =
+          typeof args.actionName === "string" ? args.actionName : undefined;
+        const result = await callback(response, actionName);
+        return this.normalize(result ?? null);
+      }
       default:
         throw new Error(
-          `Unsupported host-rpc method: ${message.method}. P1 supports getService, useModel, getMemory, createMemory, updateMemory, emitEvent, getSetting, setSetting, composeState.`,
+          `Unsupported host-rpc method: ${message.method}. P1 supports getService, useModel, getMemory, createMemory, updateMemory, emitEvent, getSetting, setSetting, composeState, actionCallback.`,
         );
     }
   }
