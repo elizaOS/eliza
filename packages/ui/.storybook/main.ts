@@ -12,6 +12,7 @@ const uiSrc = resolve(packageRoot, "src");
 const sharedSrc = resolve(monorepoRoot, "packages/shared/src");
 const coreSrc = resolve(monorepoRoot, "packages/core/src");
 const hostExternalStub = resolve(packageRoot, "test/stubs/host-external.ts");
+const nodeFsStub = resolve(packageRoot, "test/stubs/node-fs.ts");
 
 // Pin react/react-dom to the single physical copy lucide-react resolves, so
 // stories never hit "Invalid hook call" from a duplicate React (same strategy
@@ -92,6 +93,10 @@ const config: StorybookConfig = {
         replacement: hostExternalStub,
       },
       { find: /^@elizaos\/plugin-browser$/, replacement: hostExternalStub },
+      // Node builtins pulled by local-inference services (reachable from the
+      // state graph) — stubbed so useApp()-dependent stories import cleanly.
+      { find: /^node:fs\/promises$/, replacement: nodeFsStub },
+      { find: /^node:fs$/, replacement: nodeFsStub },
       // Single React copy (avoid "Invalid hook call").
       { find: /^react$/, replacement: resolve(reactPath, "index.js") },
       {
