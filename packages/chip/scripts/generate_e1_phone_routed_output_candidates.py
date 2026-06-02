@@ -1481,6 +1481,9 @@ def validate_local_envelope_step(path: Path, model: dict[str, Any]) -> dict[str,
 
             shape = cq.importers.importStep(str(path))
             solid = shape.val()
+            assert hasattr(solid, "BoundingBox"), (
+                f"Expected a Shape with BoundingBox, got {type(solid).__name__}"
+            )
             box = solid.BoundingBox()
             return {
                 "import_status": "pass",
