@@ -102,6 +102,9 @@ REQUIRED_POWER_THERMAL_ARTIFACTS = {
     "frequency_trace",
     "calibration_record",
 }
+MEASURED_SUSTAINED_POWER_THERMAL_MANIFEST = (
+    "benchmarks/power/manifests/e1-npu-sustained-capture.measured.json"
+)
 
 
 def utc_now() -> str:
@@ -185,12 +188,21 @@ NPU_NEXT_COMMAND_PLAN = [
         "claim_boundary": "operator_commands_only_not_sustained_efficiency_evidence",
         "commands": [
             "test -n \"$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND\"",
-            "$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND",
+            (
+                'sh -c "$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND '
+                f'--output {MEASURED_SUSTAINED_POWER_THERMAL_MANIFEST}"'
+            ),
+            (
+                "python3 benchmarks/power/scripts/check_sustained_run_evidence.py "
+                f"{MEASURED_SUSTAINED_POWER_THERMAL_MANIFEST}"
+            ),
+            "python3 scripts/check_power_thermal_scope.py",
             "python3 scripts/check_phone_runtime_readiness_contract.py",
         ],
         "requires": [
             "calibrated power meter and thermal instrumentation",
             "sustained NPU workload with aligned frequency, power, thermal, and throttle traces",
+            "measured sustained power/thermal manifest validates before NPU efficiency claims",
         ],
     },
 ]
@@ -633,6 +645,8 @@ def validate_report(data: dict[str, Any]) -> list[str]:
             "check_e1_npu_nnapi_proof.py --probe-adb",
             "capture_e1_npu_android_proof_bundle.sh",
             "check_e1_npu_android_proof_manifest.py",
+            "check_sustained_run_evidence.py",
+            "check_power_thermal_scope.py",
         ):
             require(token in command_text, f"next_command_plan missing {token}", errors)
     proof = data.get("proof_artifacts")
