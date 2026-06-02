@@ -68,6 +68,44 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
   });
 
+  it("surfaces a captured printed-value deliverable verbatim instead of the model's truncation", async () => {
+    // The router stripped the [tool output:] block from the completion text and
+    // carried the value as metadata.subAgentDeliverable; the parent reply was
+    // truncated to "202". The evaluator must surface the full carried value.
+    const context = makeContext({
+      text: "[sub-agent: print date (opencode) — task_complete]\nRunning the date command.",
+      metadata: { subAgentDeliverable: "2026-06-02" },
+      messageHandler: { plan: { contexts: ["general"], reply: "202" } },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      requiresTool: false,
+      setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
+      reply: "2026-06-02",
+      debug: [
+        "verified sub-agent completion carries a captured printed-value deliverable; surfacing it directly",
+      ],
+    });
+  });
+
+  it("keeps the current reply when it already leads with the carried deliverable", async () => {
+    // When the model's reply already contains the exact value, keep it (it adds
+    // useful one-line context) rather than discarding it for the bare value.
+    const context = makeContext({
+      text: "[sub-agent: print date (opencode) — task_complete]\nRan it.",
+      metadata: { subAgentDeliverable: "2026-06-02" },
+      messageHandler: {
+        plan: { contexts: ["general"], reply: "The date is:\n2026-06-02" },
+      },
+    });
+
+    const result = subAgentCompletionResponseEvaluator.evaluate(context);
+    expect(result.reply).toBe("The date is:\n2026-06-02");
+  });
+
   it("posts verified URL replies even when Stage 1 inferred generic TASKS", async () => {
     const context = makeContext({
       text: "[sub-agent: demo (opencode) — task_complete]\nSearch for data/apps directory.\n[tool output: data/apps]\n/workspace/apps/demo/index.html",

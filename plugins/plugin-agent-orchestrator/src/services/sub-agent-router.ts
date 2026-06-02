@@ -764,8 +764,23 @@ export class SubAgentRouter extends Service {
         return;
       }
     }
-    if (event === "task_complete" && verifiedUrls.length > 0) {
-      text = verifiedUrlCompletionFallback(text, verifiedUrls);
+    // Structural carrier for a printed-value deliverable (mirrors the verified-
+    // URL carrier in the metadata below). On the no-change-set, no-URL completion
+    // — exactly the path where composeNarration drops the captured stdout — recover
+    // it from the RAW response (before narration strips it) so the completion
+    // evaluator can relay it verbatim instead of having the parent model
+    // re-summarize and truncate it. The change-set path and the URL path keep
+    // their deliverable through composeNarration / verifiedUrlCompletionFallback.
+    let capturedDeliverable: string | undefined;
+    if (event === "task_complete") {
+      if (verifiedUrls.length > 0) {
+        text = verifiedUrlCompletionFallback(text, verifiedUrls);
+      } else if (!changeSet) {
+        capturedDeliverable = capturedStdoutDeliverable(
+          pickPayloadString(data, "response") ??
+            pickPayloadString(data, "finalText"),
+        );
+      }
     }
     const routingKind = routingKindForEvent(event, data, capExceeded);
     const targets = swarmTargetsForRouting(origin, routingKind);
@@ -842,6 +857,9 @@ export class SubAgentRouter extends Service {
             ...(capExceeded ? { subAgentCapExceeded: true } : {}),
             ...(verifiedUrls.length > 0
               ? { subAgentVerifiedUrls: verifiedUrls }
+              : {}),
+            ...(capturedDeliverable
+              ? { subAgentDeliverable: capturedDeliverable }
               : {}),
             ...(origin.userId ? { originUserId: origin.userId } : {}),
             ...(origin.parentMessageId
@@ -1599,6 +1617,31 @@ function stripToolTranscript(text: string): string {
     .replace(/\[tool output:[^\]]*\][\s\S]*?\[\/tool output\]/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+// Recover the captured tool-output stdout verbatim — the inner text between
+// [tool output: …] / [/tool output] markers — the inverse of stripToolTranscript.
+// On the no-change-set completion path stripToolTranscript DELETES the block
+// whole (a lone tool-output there is usually process status), but for a
+// print-a-value task (no files changed -> no diff) that block IS the deliverable
+// the user asked for. Carry it out as a structural field so the completion
+// evaluator can relay it verbatim instead of having the parent model re-render
+// (and truncate, e.g. "2026-06-02" -> "202") whatever prose survives the strip.
+function capturedStdoutDeliverable(
+  response: string | undefined,
+): string | undefined {
+  if (!response) return undefined;
+  const joined = [
+    ...response.matchAll(/\[tool output:[^\]]*\]([\s\S]*?)\[\/tool output\]/g),
+  ]
+    .map((m) => m[1]?.trim())
+    .filter((s): s is string => Boolean(s))
+    .join("\n")
+    .trim();
+  // Shape gate: a single short deliverable block. Multi-KB transcripts and long
+  // code-task narrations stay on the model-rendered path unchanged.
+  if (!joined || joined.length > 2048) return undefined;
+  return joined;
 }
 
 function composeNarration(

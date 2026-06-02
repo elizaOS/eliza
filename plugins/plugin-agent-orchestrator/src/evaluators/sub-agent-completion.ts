@@ -322,6 +322,20 @@ function verifiedUrlsFromMetadata(message: Memory): string[] {
   return stringArrayOf(metadataRecord(message)?.subAgentVerifiedUrls);
 }
 
+// The printed-value deliverable the router captured verbatim from the raw
+// sub-agent stdout (set as metadata.subAgentDeliverable on the no-URL,
+// no-change-set completion path — see SubAgentRouter). Present only when there
+// is a concrete value to surface; on that path composeNarration strips the
+// captured tool-output from the completion text, so without this the value is
+// gone and the parent model re-renders (and truncates, e.g. 2026-06-02 -> 202)
+// whatever prose is left. Surfacing it here keeps the deliverable deterministic.
+function deliverableFromMetadata(message: Memory): string | undefined {
+  const value = metadataRecord(message)?.subAgentDeliverable;
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
 function isSuccessfulSubAgentCompletion(message: Memory): boolean {
   const content = contentRecord(message);
   const metadata = metadataRecord(message);
@@ -451,6 +465,8 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     ) {
       return true;
     }
+    // A captured printed-value deliverable must be surfaced verbatim — run.
+    if (deliverableFromMetadata(message)) return true;
     if (hasVerifiedCompletionReply(currentReply, completionText, verifiedUrls))
       return true;
     if (hasCleanFinalProseAfterToolOutput(completionText)) return true;
@@ -482,6 +498,31 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
         addParentActionHints: ["TASKS"],
         debug: [
           "sub-agent completion contains failure markers without clear positive evidence; routing back through TASKS for grounded follow-up",
+        ],
+      };
+    }
+    // The router captured a printed-value deliverable verbatim (no URL, no
+    // change set). It IS the answer, and composeNarration stripped it from the
+    // completion text — so surface it directly instead of letting the parent
+    // model re-render (and truncate) it, or routing it back through TASKS as
+    // "captured tool output". Keep the current reply only if it already leads
+    // with the exact value (then it carries the value plus useful context).
+    const deliverable = deliverableFromMetadata(message);
+    if (deliverable) {
+      const cleanCurrent = cleanCompletionReply(currentReply);
+      const reply =
+        cleanCurrent?.includes(deliverable) === true
+          ? cleanCurrent
+          : deliverable;
+      return {
+        ...respondIfNeeded(messageHandler),
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply,
+        debug: [
+          "verified sub-agent completion carries a captured printed-value deliverable; surfacing it directly",
         ],
       };
     }
