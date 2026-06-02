@@ -143,4 +143,75 @@ describe("Discord channel debouncer — recent unaddressed context buffer", () =
 			vi.useRealTimers();
 		}
 	});
+
+	it("still buffers an unaddressed message during the response cooldown (strict mode)", () => {
+		vi.useFakeTimers();
+		try {
+			const { flushed, debouncer } = setup({
+				shouldRespondOnlyToMentions: true,
+				bufferTtlMs: 10_000,
+				responseCooldownMs: 30_000,
+			});
+
+			// Bot just answered an addressed message → cooldown armed, buffer cleared.
+			debouncer.markResponded("channel-1");
+
+			// A follow-up question (unaddressed) arrives inside the cooldown window.
+			// In strict mode it never triggers a reply, so it must NOT be dropped —
+			// it should still be ingested and buffered for a following pointer.
+			debouncer.enqueue(mockMessage("1", "a follow-up question"));
+			vi.advanceTimersByTime(3000);
+
+			debouncer.enqueue(mockMessage("2", "<@123> ^^"));
+			expect(flushed[flushed.length - 1]).toEqual(["1", "2"]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("does not fold the buffer into a substantive addressed question (only into pointers)", () => {
+		vi.useFakeTimers();
+		try {
+			const { flushed, debouncer } = setup({
+				shouldRespondOnlyToMentions: true,
+				bufferTtlMs: 10_000,
+			});
+
+			// Unrelated chatter buffers and flushes on its own.
+			debouncer.enqueue(mockMessage("1", "man the weather is nice today"));
+			vi.advanceTimersByTime(3000);
+			expect(flushed).toEqual([["1"]]);
+
+			// A self-contained question arrives a beat later. It is NOT a pointer
+			// (it has its own words), so the chatter must NOT be folded in — folding
+			// unrelated context can derail the question's routing.
+			vi.advanceTimersByTime(2000);
+			debouncer.enqueue(
+				mockMessage("2", "<@123> what is the capital of france?"),
+			);
+			expect(flushed[flushed.length - 1]).toEqual(["2"]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("does not duplicate a message present in both the buffer and the pending batch", () => {
+		vi.useFakeTimers();
+		try {
+			const { flushed, debouncer } = setup({
+				shouldRespondOnlyToMentions: true,
+				bufferTtlMs: 10_000,
+			});
+
+			// Unaddressed message goes into BOTH the rolling buffer and the pending
+			// debounce batch. A targeted message arriving before the batch flushes
+			// drains both — the message must appear once, not twice.
+			debouncer.enqueue(mockMessage("1", "chatter still pending"));
+			debouncer.enqueue(mockMessage("2", "<@123> ^^"));
+
+			expect(flushed[flushed.length - 1]).toEqual(["1", "2"]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 });
