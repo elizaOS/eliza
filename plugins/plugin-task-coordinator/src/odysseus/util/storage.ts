@@ -30,4 +30,5 @@ export const PREF_KEYS = {
   density: "density",
   activeThread: "active-thread",
   themeMode: "theme-mode",
+  font: "font",
 } as const;

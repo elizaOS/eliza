@@ -162,6 +162,16 @@ export const ODYSSEUS_THEMES: Record<string, ThemePalette> = {
 
 export const DEFAULT_THEME = "dark";
 
+export type ThemeFont = "mono" | "sans" | "serif";
+export type ThemeDensity = "compact" | "comfortable" | "spacious";
+
+/** odysseus font choices (static/js/theme.js FONT_MAP), 1:1. */
+export const FONT_MAP: Record<ThemeFont, string> = {
+  mono: "'Fira Code', ui-monospace, monospace",
+  sans: "system-ui, -apple-system, 'Segoe UI', sans-serif",
+  serif: "Georgia, 'Times New Roman', serif",
+};
+
 // HSL helpers + syntax-highlight derivation, ported verbatim from the odysseus
 // index.html theme bootstrap — so every preset gets faithful --hl-* colours.
 function h2hsl(hex: string): [number, number, number] {
@@ -469,6 +479,12 @@ export const ODYSSEUS_CSS = `
 .odysseus-root .od-theme-chip { width:20px; height:20px; border-radius:6px; flex-shrink:0;
   border:1px solid rgba(255,255,255,.15); }
 .odysseus-root .od-theme-name { text-transform:capitalize; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.odysseus-root .od-theme-section { font-size:10px; text-transform:uppercase; letter-spacing:.04em; opacity:.5; margin:10px 2px 4px; }
+.odysseus-root .od-theme-row { display:flex; gap:6px; }
+.odysseus-root .od-theme-pill { flex:1; padding:5px 8px; border:1px solid var(--border); border-radius:8px;
+  background:none; color:var(--fg); font-size:11px; cursor:pointer; text-transform:capitalize; transition:border-color .12s; }
+.odysseus-root .od-theme-pill:hover { border-color:var(--red); }
+.odysseus-root .od-theme-pill.active { border-color:var(--red); color:var(--red); }
 
 /* ── welcome ── */
 .odysseus-root .od-welcome { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;

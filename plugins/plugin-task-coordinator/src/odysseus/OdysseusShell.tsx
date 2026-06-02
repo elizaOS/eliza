@@ -22,7 +22,14 @@ import { ChatContainer } from "./ChatContainer";
 import { useChatSubmit } from "./hooks/useChatSubmit";
 import { useTaskRoom } from "./hooks/useTaskRoom";
 import { IconRail } from "./IconRail";
-import { ODYSSEUS_CSS, type ThemeName, themeVars } from "./odysseus-theme";
+import {
+  FONT_MAP,
+  ODYSSEUS_CSS,
+  type ThemeDensity,
+  type ThemeFont,
+  type ThemeName,
+  themeVars,
+} from "./odysseus-theme";
 import { SearchPalette } from "./SearchPalette";
 import { SessionSidebar } from "./SessionSidebar";
 import { ThemeMenu } from "./ThemeMenu";
@@ -41,6 +48,12 @@ export function OdysseusShell(): ReactNode {
     readPref<ThemeName>(PREF_KEYS.themeMode, "dark"),
   );
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+  const [font, setFont] = useState<ThemeFont>(() =>
+    readPref<ThemeFont>(PREF_KEYS.font, "mono"),
+  );
+  const [density, setDensity] = useState<ThemeDensity>(() =>
+    readPref<ThemeDensity>(PREF_KEYS.density, "comfortable"),
+  );
 
   const refreshThreads = useCallback(async () => {
     const next = await client
@@ -116,6 +129,16 @@ export function OdysseusShell(): ReactNode {
     setThemeName(name);
   }, []);
 
+  const pickFont = useCallback((next: ThemeFont) => {
+    writePref(PREF_KEYS.font, next);
+    setFont(next);
+  }, []);
+
+  const pickDensity = useCallback((next: ThemeDensity) => {
+    writePref(PREF_KEYS.density, next);
+    setDensity(next);
+  }, []);
+
   // Ctrl/Cmd+K toggles the search palette (odysseus keyboard shortcut).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -132,8 +155,8 @@ export function OdysseusShell(): ReactNode {
 
   return (
     <div
-      className="odysseus-root"
-      style={themeVars(themeName)}
+      className={`odysseus-root od-density-${density}`}
+      style={{ ...themeVars(themeName), fontFamily: FONT_MAP[font] }}
       data-od-theme={themeName}
       data-testid="odysseus-shell"
     >
@@ -148,6 +171,10 @@ export function OdysseusShell(): ReactNode {
         current={themeName}
         onPick={pickTheme}
         onClose={() => setThemeMenuOpen(false)}
+        font={font}
+        density={density}
+        onSetFont={pickFont}
+        onSetDensity={pickDensity}
       />
       <SearchPalette
         open={searchOpen}

@@ -4,18 +4,34 @@
 // editor + font/density are a later refinement.
 
 import type { ReactNode } from "react";
-import { ODYSSEUS_THEMES, type ThemeName } from "./odysseus-theme";
+import {
+  ODYSSEUS_THEMES,
+  type ThemeDensity,
+  type ThemeFont,
+  type ThemeName,
+} from "./odysseus-theme";
+
+const FONTS: ThemeFont[] = ["mono", "sans", "serif"];
+const DENSITIES: ThemeDensity[] = ["compact", "comfortable", "spacious"];
 
 export function ThemeMenu({
   open,
   current,
   onPick,
   onClose,
+  font,
+  density,
+  onSetFont,
+  onSetDensity,
 }: {
   open: boolean;
   current: ThemeName;
   onPick: (name: ThemeName) => void;
   onClose: () => void;
+  font: ThemeFont;
+  density: ThemeDensity;
+  onSetFont: (font: ThemeFont) => void;
+  onSetDensity: (density: ThemeDensity) => void;
 }): ReactNode {
   if (!open) return null;
   return (
@@ -53,6 +69,32 @@ export function ThemeMenu({
                 }}
               />
               <span className="od-theme-name">{name}</span>
+            </button>
+          ))}
+        </div>
+        <div className="od-theme-section">Font</div>
+        <div className="od-theme-row">
+          {FONTS.map((f) => (
+            <button
+              type="button"
+              key={f}
+              className={`od-theme-pill${font === f ? " active" : ""}`}
+              onClick={() => onSetFont(f)}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+        <div className="od-theme-section">Density</div>
+        <div className="od-theme-row">
+          {DENSITIES.map((d) => (
+            <button
+              type="button"
+              key={d}
+              className={`od-theme-pill${density === d ? " active" : ""}`}
+              onClick={() => onSetDensity(d)}
+            >
+              {d}
             </button>
           ))}
         </div>
