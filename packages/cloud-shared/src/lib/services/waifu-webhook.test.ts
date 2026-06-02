@@ -49,7 +49,13 @@ function captureFetch(status = 202): { fetchImpl: typeof fetch; calls: Captured[
 describe("resolveWaifuWebhookTarget", () => {
   const saved = { ...process.env };
   afterEach(() => {
-    process.env = { ...saved };
+    // Restore env by mutation, never by reassigning `process.env` — replacing
+    // the global env object breaks env reads (and DNS resolver config) for
+    // every later test in the same bun process.
+    for (const key of Object.keys(process.env)) {
+      if (!(key in saved)) delete process.env[key];
+    }
+    Object.assign(process.env, saved);
   });
 
   test("returns null when not configured", () => {

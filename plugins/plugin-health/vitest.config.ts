@@ -11,6 +11,9 @@ export default defineConfig({
   },
   test: {
     alias: providerSdkAliases,
+    // screen-time range helpers compute from the machine-local start of day;
+    // pin the zone so these assertions are deterministic across dev + CI.
+    env: { TZ: "America/Los_Angeles" },
     include: ["src/**/*.test.ts", "test/**/*.test.ts"],
     exclude: [
       "dist/**",

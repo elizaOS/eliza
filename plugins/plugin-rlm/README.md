@@ -12,7 +12,7 @@ Standard LLMs degrade on long inputs ("context rot"). This plugin integrates the
 
 This allows processing of inputs far beyond a model's native context window using smaller, cheaper models.
 
-When the Python backend is not installed the plugin falls back to stub mode — it loads cleanly and returns placeholder responses rather than crashing.
+When the Python backend is not installed the plugin still loads, but model calls fail explicitly instead of returning placeholder responses.
 
 ## Capabilities added
 
@@ -32,7 +32,7 @@ Any `runtime.useModel(...)` call for these types is routed through the RLM backe
 # Install the TypeScript plugin
 bun add @elizaos/plugin-rlm
 
-# Install the Python backend (required for real inference; stub mode works without it)
+# Install the Python backend (required for inference)
 pip install git+https://github.com/alexzhang13/rlm.git
 ```
 
@@ -65,15 +65,9 @@ export OPENAI_API_KEY=sk-...
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-## Stub mode
+## Backend availability
 
-When the Python backend is unavailable (not installed, wrong `ELIZA_RLM_PYTHON_PATH`, startup failure), the plugin operates in stub mode. All inference calls return:
-
-```
-[RLM STUB] RLM backend not available
-```
-
-with `result.metadata.stub === true`. No error is thrown.
+When the Python backend is unavailable (not installed, wrong `ELIZA_RLM_PYTHON_PATH`, startup failure), `RLMClient.infer()` throws. Use `RLMClient.getStatus()` to check availability before routing production model calls through RLM.
 
 ## Metrics
 
@@ -83,7 +77,7 @@ import { RLMClient } from "@elizaos/plugin-rlm";
 const client = new RLMClient();
 const metrics = client.getMetrics();
 // metrics.totalRequests, .successfulRequests, .failedRequests,
-// .stubResponses, .totalRetries, .averageLatencyMs, .p95LatencyMs
+// .totalRetries, .averageLatencyMs, .p95LatencyMs
 
 client.onMetrics((m) => {
   // called after every request
@@ -96,7 +90,7 @@ client.onMetrics((m) => {
 `RLMClient` with step-level cost tracking and optional logging to an external
 `TrajectoryLogger` (compatible with `plugin-trajectory-logger`). It is an
 internal source module — the package's public entrypoint exports only
-`rlmPlugin`, `RLMClient`, `configFromEnv`, `stubResult`, `resetClient`,
+`rlmPlugin`, `RLMClient`, `configFromEnv`, `resetClient`,
 `DEFAULT_CONFIG`, `ENV_VARS`, and the RLM types.
 
 ## Architecture
@@ -123,4 +117,3 @@ plugins/plugin-rlm/
 
 - Paper: [Recursive Language Models](https://arxiv.org/abs/2512.24601) — Zhang, Kraska, Khattab (MIT CSAIL)
 - Official Python library: [github.com/alexzhang13/rlm](https://github.com/alexzhang13/rlm)
-

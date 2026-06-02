@@ -1,4 +1,4 @@
-import { ChannelType, type UUID } from "@elizaos/core";
+import { ChannelType, type Content, type Memory, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
@@ -147,6 +147,86 @@ describe("Messaging Integration Tests", () => {
       expect(agents).toHaveLength(2);
       expect(agents).toContain(agent1);
       expect(agents).toContain(agent2);
+    });
+
+    it("should retrieve memories by message server id", async () => {
+      const otherServer = await adapter.createMessageServer({
+        name: "Other Message Server",
+        sourceType: "test",
+      });
+      const entityId = uuidv4() as UUID;
+      const roomId = uuidv4() as UUID;
+      const otherRoomId = uuidv4() as UUID;
+
+      await adapter.createEntities([
+        {
+          id: entityId,
+          agentId: testAgentId,
+          names: ["Message Memory Entity"],
+          metadata: { type: "test" },
+        },
+      ]);
+      await adapter.createRooms([
+        {
+          id: roomId,
+          agentId: testAgentId,
+          source: "test",
+          type: ChannelType.GROUP,
+          name: "Server Memory Room",
+          messageServerId,
+        },
+        {
+          id: otherRoomId,
+          agentId: testAgentId,
+          source: "test",
+          type: ChannelType.GROUP,
+          name: "Other Server Memory Room",
+          messageServerId: otherServer.id,
+        },
+      ]);
+
+      const memories: Memory[] = [
+        {
+          id: uuidv4() as UUID,
+          agentId: testAgentId,
+          entityId,
+          roomId,
+          content: { text: "server memory 1" } as Content,
+          metadata: { type: "messages" },
+          createdAt: Date.now() - 100,
+        },
+        {
+          id: uuidv4() as UUID,
+          agentId: testAgentId,
+          entityId,
+          roomId,
+          content: { text: "server memory 2" } as Content,
+          metadata: { type: "messages" },
+          createdAt: Date.now(),
+        },
+        {
+          id: uuidv4() as UUID,
+          agentId: testAgentId,
+          entityId,
+          roomId: otherRoomId,
+          content: { text: "other server memory" } as Content,
+          metadata: { type: "messages" },
+          createdAt: Date.now(),
+        },
+      ];
+
+      for (const memory of memories) {
+        await adapter.createMemory(memory, "messages");
+      }
+
+      const serverMemories = await adapter.getMemoriesByServerId({
+        serverId: messageServerId,
+      });
+
+      expect(serverMemories.map((memory) => (memory.content as Content).text)).toEqual([
+        "server memory 2",
+        "server memory 1",
+      ]);
     });
   });
 });

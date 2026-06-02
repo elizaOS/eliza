@@ -216,13 +216,22 @@ The TypeScript implementation is always required. Python and Rust implementation
 
 The public plugin registry is served at [`plugins.elizacloud.ai`](https://plugins.elizacloud.ai). The runtime discovers community plugins by fetching `https://plugins.elizacloud.ai/generated-registry.json` (falling back to `index.json`), and recognizes any npm package whose `keywords` include `elizaos` as a plugin.
 
-After publishing to npm and making your GitHub repository public, submit your plugin from the plugin project directory:
+After publishing to npm and making your GitHub repository public, generate the registry metadata the CLI would submit:
 
 ```bash
-elizaos plugins submit .
+elizaos plugins submit . --dry-run
 ```
 
-This opens a pull request that adds a single schema-valid metadata file under `entries/third-party/`. Before submitting, make sure your package:
+The community registry source of truth lives in the monorepo at [`packages/registry`](https://github.com/elizaOS/eliza/tree/main/packages/registry) (it replaced the archived `elizaos-plugins/registry` repo — see [elizaOS/eliza#8173](https://github.com/elizaOS/eliza/issues/8173)). To get listed, add the printed `entries/third-party/<package>.json` file under `packages/registry/entries/third-party/`, then validate, regenerate, and open a pull request:
+
+```bash
+bun run --cwd packages/registry validate
+bun run --cwd packages/registry generate
+```
+
+The full walkthrough — with a worked example ([`packages/examples/plugin-echo`](https://github.com/elizaOS/eliza/tree/main/packages/examples/plugin-echo)) — is in the [registry package README](https://github.com/elizaOS/eliza/tree/main/packages/registry#adding-a-third-party-plugin).
+
+Before requesting a listing, make sure your package:
 
 1. Is published to npm (the `@elizaos/*` scope is reserved — use your own scope)
 2. Includes the `elizaos` keyword in `package.json` (this is what the runtime uses to auto-recognize it as a plugin)
@@ -230,7 +239,7 @@ This opens a pull request that adds a single schema-valid metadata file under `e
 4. Has a public GitHub repository
 5. Includes a README with setup instructions and required environment variables
 
-Community plugins are reviewed for security, functionality, and documentation quality before listing. See [Registry Documentation](/tracks/plugin/publish) for details.
+Community plugins are reviewed for security, functionality, and documentation quality before listing. npm keyword discovery works without a registry entry; the registry adds metadata and curation. See the [Plugin Registry Guide](/guides/registry) for details.
 
 ## Related
 

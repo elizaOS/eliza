@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const recording = !!process.env.E2E_RECORD;
 
 export default defineConfig({
   testDir: path.resolve(__dirname, "tests"),
@@ -14,9 +15,16 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   reporter: [["list"]],
+  outputDir: recording
+    ? path.resolve(
+        __dirname,
+        "../../../../e2e-recordings/feed-dag-visualizer/test-results",
+      )
+    : path.resolve(__dirname, "test-results"),
   use: {
-    trace: "on-first-retry",
-    screenshot: "only-on-failure",
+    trace: recording ? "on" : "on-first-retry",
+    screenshot: recording ? "on" : "only-on-failure",
+    video: recording ? "on" : "retain-on-failure",
     actionTimeout: 10_000,
     launchOptions: {
       args: ["--disable-dev-shm-usage", "--disable-gpu"],

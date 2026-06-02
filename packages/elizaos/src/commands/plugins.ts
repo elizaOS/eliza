@@ -7,7 +7,7 @@ import type { Command } from "commander";
 import pc from "picocolors";
 
 interface SubmitOptions {
-  registry: string;
+  registry?: string;
   base: string;
   dryRun?: boolean;
   pr?: boolean;
@@ -43,6 +43,8 @@ interface ThirdPartyMetadata {
 const PACKAGE_NAME_RE = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 const GITHUB_REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const VALID_KINDS = new Set(["plugin", "connector", "app"]);
+const MISSING_REGISTRY_MESSAGE =
+  "The community registry lives in the elizaOS monorepo at packages/registry. To list this package, run with --dry-run to print its entry, add that file under packages/registry/entries/third-party/, and open a pull request (see packages/registry/README.md). Pass --registry owner/repo only to target a different writable registry repository.";
 
 export function registerPluginsCommand(program: Command): void {
   const plugins = program
@@ -55,8 +57,7 @@ export function registerPluginsCommand(program: Command): void {
     .argument("[path]", "Plugin project directory", ".")
     .option(
       "--registry <owner/repo>",
-      "Registry GitHub repository",
-      "elizaos-plugins/registry",
+      "Writable registry GitHub repository. Defaults to the in-repo packages/registry flow; pass this only to target a different repository.",
     )
     .option("--base <branch>", "Registry base branch", "main")
     .option(
@@ -73,7 +74,7 @@ export async function submitPluginToRegistry(
   projectPath = ".",
   options: SubmitOptions,
 ): Promise<void> {
-  if (!GITHUB_REPO_RE.test(options.registry)) {
+  if (options.registry && !GITHUB_REPO_RE.test(options.registry)) {
     throw new Error(`Invalid registry repository: ${options.registry}`);
   }
   const projectDir = path.resolve(projectPath);
@@ -86,6 +87,10 @@ export async function submitPluginToRegistry(
       JSON.stringify({ path: relativeRegistryPath, metadata }, null, 2),
     );
     return;
+  }
+
+  if (!options.registry) {
+    throw new Error(MISSING_REGISTRY_MESSAGE);
   }
 
   if (!options.skipValidation) {

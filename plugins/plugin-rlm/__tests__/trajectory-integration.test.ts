@@ -8,20 +8,37 @@ import { RLMClient } from "../client";
 import type { CostEstimate } from "../cost";
 import type { CostSummary, TrajectoryWithCosts } from "../trajectory-integration";
 import { inferWithLogging, RLMTrajectoryIntegration } from "../trajectory-integration";
+import type { RLMInferOptions, RLMMessage, RLMResult } from "../types";
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-/** Create a client in stub mode (Python not available). */
-function createStubClient(): RLMClient {
-  return new RLMClient({ pythonPath: "/nonexistent/python" });
+class SuccessfulRLMClient extends RLMClient {
+  constructor() {
+    super({ pythonPath: "/unused/python" });
+  }
+
+  override async infer(
+    _messages: string | RLMMessage[],
+    _opts?: RLMInferOptions,
+  ): Promise<RLMResult> {
+    return {
+      text: "recursive answer",
+      metadata: { stub: false, iterations: 1, depth: 1 },
+    };
+  }
+}
+
+/** Create a client with deterministic successful inference. */
+function createTestClient(): RLMClient {
+  return new SuccessfulRLMClient();
 }
 
 /** Create a basic trajectory integration instance. */
 function createIntegration(agentId = "test-agent"): RLMTrajectoryIntegration {
   return new RLMTrajectoryIntegration({
-    client: createStubClient(),
+    client: createTestClient(),
     agentId,
   });
 }
@@ -58,7 +75,7 @@ describe("RLMTrajectoryIntegration", () => {
 
     it("should use default agent ID", () => {
       const integration = new RLMTrajectoryIntegration({
-        client: createStubClient(),
+        client: createTestClient(),
       });
       // No direct accessor, but it should not throw
       expect(integration).toBeDefined();
@@ -66,7 +83,7 @@ describe("RLMTrajectoryIntegration", () => {
 
     it("should accept custom agent and scenario IDs", () => {
       const integration = new RLMTrajectoryIntegration({
-        client: createStubClient(),
+        client: createTestClient(),
         agentId: "custom-agent",
         scenarioId: "test-scenario",
       });
@@ -275,7 +292,7 @@ describe("RLMTrajectoryIntegration", () => {
 
     it("should include scenario ID if set", () => {
       const integration = new RLMTrajectoryIntegration({
-        client: createStubClient(),
+        client: createTestClient(),
         scenarioId: "my-scenario",
       });
       integration.startInferenceStep("traj-scenario");
@@ -304,7 +321,7 @@ describe("RLMTrajectoryIntegration", () => {
 
       expect(result).toBeDefined();
       expect(result.text).toBeDefined();
-      expect(result.metadata.stub).toBe(true);
+      expect(result.metadata.stub).toBe(false);
 
       // Should have created a trajectory
       const trajectoryIds = integration.getTrajectoryIds();
@@ -339,7 +356,7 @@ describe("RLMTrajectoryIntegration", () => {
       });
 
       expect(result).toBeDefined();
-      expect(result.metadata.stub).toBe(true);
+      expect(result.metadata.stub).toBe(false);
     });
   });
 
@@ -377,16 +394,16 @@ describe("RLMTrajectoryIntegration", () => {
 
 describe("inferWithLogging", () => {
   it("should perform one-off inference with logging", async () => {
-    const client = createStubClient();
+    const client = createTestClient();
     const result = await inferWithLogging(client, "test prompt");
 
     expect(result).toBeDefined();
     expect(result.text).toBeDefined();
-    expect(result.metadata.stub).toBe(true);
+    expect(result.metadata.stub).toBe(false);
   });
 
   it("should accept custom agent ID", async () => {
-    const client = createStubClient();
+    const client = createTestClient();
     const result = await inferWithLogging(client, "test prompt", {
       agentId: "custom-agent",
     });

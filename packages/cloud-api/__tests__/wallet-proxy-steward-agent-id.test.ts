@@ -1,4 +1,8 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+// Spread the real module into the partial mock below — `mock.module` is
+// process-global, so dropping the other real exports breaks every later
+// importer of this shared auth module (e.g. cron routes' `requireCronSecret`).
+import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 
 const dbRows: Array<{ stewardAgentId: string | null }> = [];
 const dbLimit = mock<
@@ -88,6 +92,7 @@ mock.module("@/db/helpers", () => ({
 }));
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
+  ...workersHonoAuthActual,
   requireUserOrApiKeyWithOrg,
 }));
 

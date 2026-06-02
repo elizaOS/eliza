@@ -131,6 +131,7 @@
     "migrate": "node packages/scripts/run-turbo.mjs run migrate --filter=./plugins/plugin-sql --force",
     "migrate:generate": "node packages/scripts/run-turbo.mjs run migrate:generate --filter=./plugins/plugin-sql",
     "test": "node packages/scripts/run-all-tests.mjs --only=test --no-cloud",
+    "test:e2e:audit-ui": "node scripts/e2e-recordings/audit-ui-coverage.mjs",
     "test:e2e:record": "node scripts/e2e-recordings/run-all.mjs",
     "test:e2e:record:sheets": "node scripts/e2e-recordings/generate-contact-sheets.mjs && node scripts/e2e-recordings/generate-viewer.mjs",
     "test:all": "node packages/scripts/run-all-tests.mjs --all",

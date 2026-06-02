@@ -6,12 +6,12 @@
  *   2. Secrets (modal)
  */
 
-import { Check } from "lucide-react";
 import {
   buildWalletRpcUpdateRequest,
   resolveInitialWalletRpcSelections,
   type WalletRpcSelections,
 } from "@elizaos/shared";
+import { Check } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useApp } from "../../state";

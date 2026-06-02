@@ -18,7 +18,7 @@ src/
     upgrade.ts         `upgrade` — re-render template into temp dir, diff via managed-file hashes, apply
     info.ts            `info` — list templates (text or --json)
     version.ts         `version` — print CLI version from package.json
-    plugins.ts         `registerPluginsCommand` + `submitPluginToRegistry` — open registry PR via git/gh
+    plugins.ts         `registerPluginsCommand` + `submitPluginToRegistry` — generate registry metadata and open an explicit registry PR via git/gh
     deploy.ts          `deploy` / `runDeploy` — Eliza Cloud deploy keel (experimental: --dry-run prints plan only)
     capability-router.ts  `capabilityRouterConnect` — POST agent API /api/capability-router/connect
     DEPLOY_DESIGN.md   Design doc for the not-yet-implemented real deploy pipeline
@@ -80,6 +80,6 @@ Generated projects record state in `.elizaos/template.json` (`ProjectTemplateMet
 - `manifest.ts` and `getTemplatesDir` read `templates-manifest.json` and `templates/` relative to `getPackageRoot()` (one dir up from `dist/`), so the CLI only works after `build` and against the shipped `dist` + `templates` (both in the `files` allowlist). `loadManifest` throws if the manifest is missing — run `build` first.
 - `cli.ts` ends with top-level `await program.parseAsync()`; the bin shebang is `#!/usr/bin/env node` (re-applied by `ensureCliShebang` in `build.ts`).
 - Commands that interact with the user use `@clack/prompts` and call `process.exit(...)` directly on cancel/error; `deploy`/`capabilityRouterConnect` split a pure `run*` function (returns exit code) from the thin `process.exit` wrapper for testability.
-- `plugins submit` requires `git` + `gh` (authenticated) on PATH, forks/clones the registry, writes `entries/third-party/<pkg>.json`, and opens a PR. `@elizaos/*` names are rejected (reserved for first-party).
+- `plugins submit --dry-run` prints the generated `entries/third-party/<pkg>.json` metadata. Opening a PR requires an explicit `--registry owner/repo`; no public default registry repository is configured. `@elizaos/*` names are rejected (reserved for first-party).
 - `deploy` is experimental: only `--dry-run` works (prints the planned sequence); a real run prints a not-implemented notice and exits 1.
 - This package is intentionally runtime-free — do NOT add `@elizaos/core` or other runtime deps. Keep it to the three production dependencies.

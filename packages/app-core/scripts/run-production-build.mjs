@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { resolveElizaAssetBaseUrls } from "./lib/asset-cdn.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveNodeExecPathFromCandidates } from "./run-node-runtime.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = resolveRepoRootFromImportMeta(import.meta.url, {
@@ -23,23 +24,24 @@ const appDir = resolveMainAppDir(rootDir, "app");
 
 /** Real Node binary — when the script is started via `bun run`, process.execPath is Bun. */
 function resolveNodeExec() {
-  if (!process.versions.bun) {
-    return process.execPath;
-  }
-  const probe = spawnSync(
-    "node",
-    ["-e", "process.stdout.write(process.execPath)"],
-    {
-      encoding: "utf8",
-    },
-  );
-  const out = probe.stdout?.trim();
-  if (probe.status === 0 && out) {
-    return out;
-  }
-  throw new Error(
-    "Node.js is required to run this build (tsx + Vite CLI). Install Node 22+ or run: node scripts/run-production-build.mjs",
-  );
+  const pathCandidates = (process.env.PATH ?? "")
+    .split(path.delimiter)
+    .filter(Boolean)
+    .map((dir) =>
+      path.join(dir, process.platform === "win32" ? "node.exe" : "node"),
+    );
+  return resolveNodeExecPathFromCandidates({
+    candidates: [
+      process.env.npm_node_execpath,
+      process.execPath,
+      ...pathCandidates,
+      "/opt/homebrew/bin/node",
+      "/usr/local/bin/node",
+      "/usr/bin/node",
+    ],
+    explicitNodePath: process.env.ELIZA_NODE_PATH,
+    platform: process.platform,
+  });
 }
 
 const node = resolveNodeExec();

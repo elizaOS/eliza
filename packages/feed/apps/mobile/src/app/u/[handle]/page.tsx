@@ -1,7 +1,7 @@
 import { MobileUserProfileByHandlePage } from "./client";
 
 export function generateStaticParams() {
-  return [{ handle: "_placeholder" }];
+  return [];
 }
 
 export default function Page() {

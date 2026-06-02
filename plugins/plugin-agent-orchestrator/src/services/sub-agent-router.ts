@@ -1731,7 +1731,7 @@ export function extractShortToolDeliverable(data: unknown): string | undefined {
   const blocks = response.match(
     /\[tool output:[^\]]*\]([\s\S]*?)\[\/tool output\]/g,
   );
-  if (!blocks || blocks.length !== 1) return undefined;
+  if (blocks?.length !== 1) return undefined;
   const inner = blocks[0]
     .replace(/^\[tool output:[^\]]*\]/, "")
     .replace(/\[\/tool output\]$/, "")

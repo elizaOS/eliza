@@ -42,7 +42,6 @@ async function defaultAction(): Promise<void> {
   }
   if (choice === "plugins") {
     await submitPluginToRegistry(".", {
-      registry: "elizaos-plugins/registry",
       base: "main",
     });
     return;

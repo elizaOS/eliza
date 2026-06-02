@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * run-all.mjs
  *
@@ -15,52 +16,43 @@
  *   --skip-viewer             Skip generating the viewer index
  */
 
-import fs from 'node:fs';
-import path from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { RECORDINGS_DIR, REPO_ROOT, UI_E2E_SUITES } from "./suites.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REPO_ROOT = path.resolve(__dirname, '..', '..');
-const RECORDINGS_DIR = path.join(REPO_ROOT, 'e2e-recordings');
 const SCRIPTS_DIR = __dirname;
-
-// ─── Package registry ───────────────────────────────────────────────────────
-// name         : display name and recording subdirectory
-// configDir    : path relative to repo root where `bun run <script>` is invoked
-// script       : bun script name
-const PACKAGES = [
-  { name: 'homepage',       configDir: 'packages/homepage',       script: 'test:e2e' },
-  { name: 'os-homepage',    configDir: 'packages/os-homepage',    script: 'test:e2e' },
-  { name: 'cloud-frontend', configDir: 'packages/cloud-frontend', script: 'test:e2e' },
-  // Use stub stack so recordings work without real API keys
-  { name: 'app',            configDir: 'packages/app',            script: 'test:e2e',
-    recordEnv: { ELIZA_UI_SMOKE_FORCE_STUB: '1' } },
-  { name: 'app-xr',         configDir: 'plugins/plugin-facewear/app-xr', script: 'test:e2e' },
-];
+const PACKAGES = UI_E2E_SUITES;
 
 // ─── CLI argument parsing ────────────────────────────────────────────────────
 const args = process.argv.slice(2);
 const flagMap = new Map();
 for (const arg of args) {
-  const [key, val] = arg.replace(/^--/, '').split('=');
+  const [key, val] = arg.replace(/^--/, "").split("=");
   flagMap.set(key, val ?? true);
 }
 
-const onlyPackages = flagMap.has('packages')
-  ? String(flagMap.get('packages')).split(',').map((s) => s.trim())
+const onlyPackages = flagMap.has("packages")
+  ? String(flagMap.get("packages"))
+      .split(",")
+      .map((s) => s.trim())
   : null;
 
-const skipTests  = flagMap.get('skip-tests')  === true || flagMap.get('skip-tests')  === 'true';
-const skipSheets = flagMap.get('skip-sheets') === true || flagMap.get('skip-sheets') === 'true';
-const skipViewer = flagMap.get('skip-viewer') === true || flagMap.get('skip-viewer') === 'true';
+const skipTests =
+  flagMap.get("skip-tests") === true || flagMap.get("skip-tests") === "true";
+const skipSheets =
+  flagMap.get("skip-sheets") === true || flagMap.get("skip-sheets") === "true";
+const skipViewer =
+  flagMap.get("skip-viewer") === true || flagMap.get("skip-viewer") === "true";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function banner(text) {
-  const line = '─'.repeat(60);
+  const line = "─".repeat(60);
   console.log(`\n${line}`);
   console.log(`  ${text}`);
   console.log(`${line}`);
@@ -72,9 +64,9 @@ function runScript(scriptFile) {
     [scriptFile],
     {
       cwd: REPO_ROOT,
-      stdio: 'inherit',
+      stdio: "inherit",
       env: { ...process.env },
-    }
+    },
   );
   return result.status ?? 1;
 }
@@ -88,7 +80,9 @@ function runPackageTests(pkg) {
 
   // Skip if the package directory doesn't exist
   if (!fs.existsSync(configDirAbs)) {
-    console.warn(`  [skip] ${pkg.name}: directory not found (${pkg.configDir})`);
+    console.warn(
+      `  [skip] ${pkg.name}: directory not found (${pkg.configDir})`,
+    );
     return { name: pkg.name, passed: false, skipped: true, exitCode: -1 };
   }
 
@@ -96,7 +90,7 @@ function runPackageTests(pkg) {
   let pkgJson;
   try {
     pkgJson = JSON.parse(
-      fs.readFileSync(path.join(configDirAbs, 'package.json'), 'utf8')
+      fs.readFileSync(path.join(configDirAbs, "package.json"), "utf8"),
     );
   } catch {
     console.warn(`  [skip] ${pkg.name}: could not read package.json`);
@@ -104,33 +98,31 @@ function runPackageTests(pkg) {
   }
 
   if (!pkgJson.scripts?.[pkg.script]) {
-    console.warn(`  [skip] ${pkg.name}: script "${pkg.script}" not defined in package.json`);
+    console.warn(
+      `  [skip] ${pkg.name}: script "${pkg.script}" not defined in package.json`,
+    );
     return { name: pkg.name, passed: false, skipped: true, exitCode: -1 };
   }
 
   // Ensure the recording output directory exists so Playwright has somewhere to write
-  const recordingOut = path.join(RECORDINGS_DIR, pkg.name, 'test-results');
+  const recordingOut = path.join(RECORDINGS_DIR, pkg.name, "test-results");
   fs.mkdirSync(recordingOut, { recursive: true });
 
   console.log(`  Running: bun run --cwd ${pkg.configDir} ${pkg.script}`);
   console.log(`  Output:  e2e-recordings/${pkg.name}/test-results/`);
 
-  const result = spawnSync(
-    'bun',
-    ['run', '--cwd', pkg.configDir, pkg.script],
-    {
-      cwd: REPO_ROOT,
-      stdio: 'inherit',
-      env: {
-        ...process.env,
-        // Signal to Playwright config that we want full recording.
-        // The config itself computes outputDir from import.meta.dirname + E2E_RECORD.
-        E2E_RECORD: '1',
-        // Per-package extra env (e.g. ELIZA_UI_SMOKE_FORCE_STUB for the app package).
-        ...(pkg.recordEnv ?? {}),
-      },
-    }
-  );
+  const result = spawnSync("bun", ["run", "--cwd", pkg.configDir, pkg.script], {
+    cwd: REPO_ROOT,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      // Signal to Playwright config that we want full recording.
+      // The config itself computes outputDir from import.meta.dirname + E2E_RECORD.
+      E2E_RECORD: "1",
+      // Per-package extra env (e.g. ELIZA_UI_SMOKE_FORCE_STUB for the app package).
+      ...(pkg.recordEnv ?? {}),
+    },
+  });
 
   const exitCode = result.status ?? 1;
   const passed = exitCode === 0;
@@ -155,8 +147,10 @@ async function main() {
     : PACKAGES;
 
   if (onlyPackages && packagesToRun.length === 0) {
-    console.error(`No packages matched: ${onlyPackages.join(', ')}`);
-    console.error(`Available packages: ${PACKAGES.map((p) => p.name).join(', ')}`);
+    console.error(`No packages matched: ${onlyPackages.join(", ")}`);
+    console.error(
+      `Available packages: ${PACKAGES.map((p) => p.name).join(", ")}`,
+    );
     process.exit(1);
   }
 
@@ -166,12 +160,17 @@ async function main() {
   const results = [];
 
   if (skipTests) {
-    console.log('Skipping test runs (--skip-tests).');
+    console.log("Skipping test runs (--skip-tests).");
     for (const pkg of packagesToRun) {
-      results.push({ name: pkg.name, passed: true, skipped: true, exitCode: 0 });
+      results.push({
+        name: pkg.name,
+        passed: true,
+        skipped: true,
+        exitCode: 0,
+      });
     }
   } else {
-    banner('Running E2E test suites');
+    banner("Running E2E test suites");
     for (const pkg of packagesToRun) {
       console.log(`\n▶ ${pkg.name}`);
       const r = runPackageTests(pkg);
@@ -181,42 +180,44 @@ async function main() {
 
   // ─── Step 2: Generate contact sheets ──────────────────────
   if (!skipSheets) {
-    banner('Generating contact sheets');
-    const sheetsScript = path.join(SCRIPTS_DIR, 'generate-contact-sheets.mjs');
+    banner("Generating contact sheets");
+    const sheetsScript = path.join(SCRIPTS_DIR, "generate-contact-sheets.mjs");
     if (fs.existsSync(sheetsScript)) {
       const code = runScript(sheetsScript);
       if (code !== 0) {
-        console.warn(`[warn] generate-contact-sheets.mjs exited with code ${code}`);
+        console.warn(
+          `[warn] generate-contact-sheets.mjs exited with code ${code}`,
+        );
       }
     } else {
-      console.warn('[warn] generate-contact-sheets.mjs not found — skipping');
+      console.warn("[warn] generate-contact-sheets.mjs not found — skipping");
     }
   } else {
-    console.log('Skipping contact sheet generation (--skip-sheets).');
+    console.log("Skipping contact sheet generation (--skip-sheets).");
   }
 
   // ─── Step 3: Generate viewer ───────────────────────────────
   if (!skipViewer) {
-    banner('Generating viewer index');
-    const viewerScript = path.join(SCRIPTS_DIR, 'generate-viewer.mjs');
+    banner("Generating viewer index");
+    const viewerScript = path.join(SCRIPTS_DIR, "generate-viewer.mjs");
     if (fs.existsSync(viewerScript)) {
       const code = runScript(viewerScript);
       if (code !== 0) {
         console.warn(`[warn] generate-viewer.mjs exited with code ${code}`);
       }
     } else {
-      console.warn('[warn] generate-viewer.mjs not found — skipping');
+      console.warn("[warn] generate-viewer.mjs not found — skipping");
     }
   } else {
-    console.log('Skipping viewer generation (--skip-viewer).');
+    console.log("Skipping viewer generation (--skip-viewer).");
   }
 
   // ─── Summary ───────────────────────────────────────────────
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  banner('Summary');
+  banner("Summary");
 
-  const passed  = results.filter((r) => r.passed && !r.skipped);
-  const failed  = results.filter((r) => !r.passed && !r.skipped);
+  const passed = results.filter((r) => r.passed && !r.skipped);
+  const failed = results.filter((r) => !r.passed && !r.skipped);
   const skipped = results.filter((r) => r.skipped);
 
   if (passed.length > 0) {
@@ -232,7 +233,7 @@ async function main() {
     for (const r of skipped) console.log(`  - ${r.name}`);
   }
 
-  const indexPath = path.join(RECORDINGS_DIR, 'index.html');
+  const indexPath = path.join(RECORDINGS_DIR, "index.html");
   if (fs.existsSync(indexPath)) {
     console.log(`\nViewer: ${indexPath}`);
     console.log(`        file://${indexPath}`);
@@ -247,6 +248,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('Fatal error:', err);
+  console.error("Fatal error:", err);
   process.exit(1);
 });

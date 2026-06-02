@@ -49,10 +49,10 @@ Add `'my-plugin'` to your character's `plugins` array.
 
 ## Submit to the registry
 
-When you're ready to publish, `npm publish` ships the package. To also submit it to the elizaOS plugin registry:
+When you're ready to publish, `npm publish` ships the package. The public discovery path is npm metadata with the `elizaos` keyword. To inspect the registry metadata the CLI would generate:
 
 ```bash
-elizaos plugins submit
+elizaos plugins submit --dry-run
 ```
 
 ## See also

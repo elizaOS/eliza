@@ -13,8 +13,8 @@ import { createRLMServer, RLMServer } from "../server";
 // Helpers
 // ============================================================================
 
-/** Create a client in stub mode (Python not available). */
-function createStubClient(): RLMClient {
+/** Create a client with an unavailable Python backend. */
+function createUnavailableClient(): RLMClient {
   return new RLMClient({ pythonPath: "/nonexistent/python" });
 }
 
@@ -98,7 +98,7 @@ describe("RLMServer", () => {
 
   describe("Construction", () => {
     it("should create a server with createRLMServer", () => {
-      const client = createStubClient();
+      const client = createUnavailableClient();
       server = createRLMServer(client);
       expect(server).toBeInstanceOf(RLMServer);
       expect(server.running).toBe(false);
@@ -106,13 +106,13 @@ describe("RLMServer", () => {
     });
 
     it("should create a server with new RLMServer", () => {
-      const client = createStubClient();
+      const client = createUnavailableClient();
       server = new RLMServer(client);
       expect(server.running).toBe(false);
     });
 
     it("should accept options", () => {
-      const client = createStubClient();
+      const client = createUnavailableClient();
       server = createRLMServer(client, {
         host: "127.0.0.1",
         onError: () => {},
@@ -123,7 +123,7 @@ describe("RLMServer", () => {
 
   describe("Start / Stop", () => {
     it("should start on a random port", async () => {
-      const client = createStubClient();
+      const client = createUnavailableClient();
       server = createRLMServer(client);
       await server.start(0);
 
@@ -132,7 +132,7 @@ describe("RLMServer", () => {
     });
 
     it("should stop cleanly", async () => {
-      const client = createStubClient();
+      const client = createUnavailableClient();
       server = createRLMServer(client);
       await server.start(0);
       expect(server.running).toBe(true);
@@ -143,7 +143,7 @@ describe("RLMServer", () => {
     });
 
     it("should be idempotent on start", async () => {
-      const client = createStubClient();
+      const client = createUnavailableClient();
       server = createRLMServer(client);
       await server.start(0);
       const port = server.port;
@@ -154,7 +154,7 @@ describe("RLMServer", () => {
     });
 
     it("should be idempotent on stop", async () => {
-      const client = createStubClient();
+      const client = createUnavailableClient();
       server = createRLMServer(client);
       // Stop without starting
       await server.stop();
@@ -168,7 +168,7 @@ describe("RLMServer", () => {
 
   describe("Status Request", () => {
     it("should return status response", async () => {
-      const client = createStubClient();
+      const client = createUnavailableClient();
       server = createRLMServer(client);
       await server.start(0);
 
@@ -192,8 +192,8 @@ describe("RLMServer", () => {
   });
 
   describe("Infer Request", () => {
-    it("should return infer response (stub mode)", async () => {
-      const client = createStubClient();
+    it("should return an error when inference backend is unavailable", async () => {
+      const client = createUnavailableClient();
       server = createRLMServer(client);
       await server.start(0);
 
@@ -207,12 +207,8 @@ describe("RLMServer", () => {
         const response = await conn.receive();
 
         expect(response.id).toBe(2);
-        expect(response.error).toBeUndefined();
-        expect(response.result).toBeDefined();
-
-        const result = response.result as Record<string, unknown>;
-        expect(result).toHaveProperty("text");
-        expect(result).toHaveProperty("metadata");
+        expect(response.error).toBeDefined();
+        expect(response.result).toBeUndefined();
       } finally {
         conn.close();
       }
@@ -221,7 +217,7 @@ describe("RLMServer", () => {
 
   describe("Shutdown Request", () => {
     it("should acknowledge shutdown", async () => {
-      const client = createStubClient();
+      const client = createUnavailableClient();
       server = createRLMServer(client);
       await server.start(0);
 
@@ -244,7 +240,7 @@ describe("RLMServer", () => {
 
   describe("Error Handling", () => {
     it("should return error for unknown request type", async () => {
-      const client = createStubClient();
+      const client = createUnavailableClient();
       server = createRLMServer(client);
       await server.start(0);
 
@@ -262,7 +258,7 @@ describe("RLMServer", () => {
     });
 
     it("should handle invalid JSON gracefully", async () => {
-      const client = createStubClient();
+      const client = createUnavailableClient();
       server = createRLMServer(client);
       await server.start(0);
 
@@ -293,7 +289,7 @@ describe("RLMServer", () => {
 
   describe("Connection Tracking", () => {
     it("should track connection count", async () => {
-      const client = createStubClient();
+      const client = createUnavailableClient();
       server = createRLMServer(client);
       await server.start(0);
 
@@ -324,7 +320,7 @@ describe("RLMServer", () => {
 
   describe("Multiple Requests", () => {
     it("should handle multiple sequential requests", async () => {
-      const client = createStubClient();
+      const client = createUnavailableClient();
       server = createRLMServer(client);
       await server.start(0);
 
@@ -340,7 +336,7 @@ describe("RLMServer", () => {
         conn.send({ id: 11, type: "infer", params: { prompt: "test" } });
         const r2 = await conn.receive();
         expect(r2.id).toBe(11);
-        expect(r2.error).toBeUndefined();
+        expect(r2.error).toBeDefined();
       } finally {
         conn.close();
       }
