@@ -18,7 +18,7 @@
  *    - **Watch + default** — Vite **dev** server + `ELIZA_RENDERER_URL` for Electrobun (HMR).
  *      Stale dep chunks: `--vite-force` or `ELIZA_VITE_FORCE=1` / `ELIZA_VITE_FORCE=1` (passes `vite --force`).
  *    - **Watch + Rollup** — `--rollup-watch` or `ELIZA_DESKTOP_VITE_BUILD_WATCH=1` with
- *      `ELIZA_DESKTOP_VITE_WATCH=1`: legacy `vite build --watch` (slow on large graphs).
+ *      `ELIZA_DESKTOP_VITE_WATCH=1` (or `MILADY_DESKTOP_VITE_WATCH=1`): legacy `vite build --watch` (slow on large graphs).
  *    - **Electrobun** — `bun run dev` in `packages/app-core/platforms/electrobun`.
  *
  * ## Port allocation (`launch()`) — WHY
@@ -330,7 +330,7 @@ const rendererBuildSkipRequested =
   process.env.ELIZA_DESKTOP_RENDERER_BUILD === "skip";
 const viteWatch =
   process.env.ELIZA_DESKTOP_VITE_WATCH === "1" ||
-  process.env.ELIZA_DESKTOP_VITE_WATCH === "1";
+  process.env.MILADY_DESKTOP_VITE_WATCH === "1";
 const viteDepForceCli = process.argv.includes("--vite-force");
 const viteDepForce =
   viteDepForceCli ||
@@ -454,7 +454,7 @@ if (rendererBuildAction === "build") {
       "  Tip: `bun dev:desktop:watch` uses Vite HMR and skips this build.",
     ),
   );
-  execFileSync(BUN_EXECUTABLE, ["run", "vite", "build"], {
+  execFileSync(BUN_EXECUTABLE, ["--bun", "run", "vite", "build"], {
     cwd: appDir,
     env: { ...process.env },
     stdio: "inherit",
@@ -970,7 +970,9 @@ async function launch() {
     pushChild(
       "vite",
       "bun",
-      viteDepForce ? ["run", "vite", "--", "--force"] : ["run", "vite"],
+      viteDepForce
+        ? ["--bun", "run", "vite", "--", "--force"]
+        : ["--bun", "run", "vite"],
       appDir,
       {
         NODE_ENV: "development",
@@ -986,9 +988,15 @@ async function launch() {
   }
 
   if (viteRollupWatch) {
-    pushChild("vite", "bun", ["run", "vite", "build", "--watch"], appDir, {
-      ELIZA_DESKTOP_VITE_FAST_DIST: "1",
-    });
+    pushChild(
+      "vite",
+      "bun",
+      ["--bun", "run", "vite", "build", "--watch"],
+      appDir,
+      {
+        ELIZA_DESKTOP_VITE_FAST_DIST: "1",
+      },
+    );
   }
 
   const electrobunChild = pushChild(
