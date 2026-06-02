@@ -79,6 +79,22 @@ FALLBACK_COMMANDS: dict[str, tuple[str, ...]] = {
     "android_release_readiness": ("python3 scripts/check_android_release_readiness_contract.py",),
 }
 
+SUBSTANTIVE_COMMAND_TOKENS = (
+    "capture_e1_npu_nnapi_evidence.sh",
+    "capture_e1_npu_android_proof_bundle.sh",
+    "ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND",
+    "capture_launcher_runtime_evidence.py",
+    "capture_system_bridge_runtime_evidence.py",
+    "capture_simulated_peripheral_evidence.py",
+    "capture_chipyard_linux_evidence.sh",
+    "capture_cpu_ap_evidence.py",
+    "run_benchmarks.py run",
+    "boot_android_simulator.sh --run-cuttlefish",
+    "boot-chip-android",
+)
+SETUP_ONLY_COMMANDS = {"adb devices"}
+SETUP_ONLY_PREFIXES = ("export ", "test -n ")
+
 
 def utc_now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -365,7 +381,7 @@ def finding(
         "code": code,
         "severity": severity,
         "message": message,
-        "evidence": evidence[:400],
+        "evidence": provenance_safe_command(evidence)[:400],
         "source": spec.path,
         "required_for": spec.required_for,
         "next_step": (
@@ -493,6 +509,13 @@ def shell_token(value: str) -> str:
     return shlex.quote(value)
 
 
+def provenance_safe_command(value: str) -> str:
+    safe = value.replace("/home/shaw/aosp", "$AOSP_WORKSPACE")
+    safe = re.sub(r"/home/[^/\s\"']+/aosp", "$AOSP_WORKSPACE", safe)
+    safe = re.sub(r"/Users/[^/\s\"']+/aosp", "$AOSP_WORKSPACE", safe)
+    return safe
+
+
 def looks_like_argv_command(values: list[str]) -> bool:
     if len(values) < 2:
         return False
@@ -514,11 +537,11 @@ def looks_like_argv_command(values: list[str]) -> bool:
 def command_strings(value: object) -> list[str]:
     commands: list[str] = []
     if isinstance(value, str) and value.strip():
-        return [value.strip()]
+        return [provenance_safe_command(value.strip())]
     if isinstance(value, list):
         string_items = [item.strip() for item in value if isinstance(item, str) and item.strip()]
         if len(string_items) == len(value) and looks_like_argv_command(string_items):
-            return [" ".join(shell_token(item) for item in string_items)]
+            return [provenance_safe_command(" ".join(shell_token(item) for item in string_items))]
         for item in value:
             commands.extend(command_strings(item))
     elif isinstance(value, dict):
@@ -563,7 +586,7 @@ def artifact_command_plan(spec: ArtifactSpec) -> dict[str, Any] | None:
         remainder = {key: value for key, value in data.items() if str(key) not in COMMAND_KEY_SET}
         commands.extend(recursive_command_strings(remainder))
     commands.extend(FALLBACK_COMMANDS.get(spec.ident, ()))
-    deduped = list(dict.fromkeys(commands))
+    deduped = list(dict.fromkeys(provenance_safe_command(command) for command in commands))
     if not deduped:
         return None
     return {
@@ -591,9 +614,31 @@ def attach_command_plan_to_findings(
     command_values = [command for command in commands if isinstance(command, str) and command]
     if not command_values:
         return
+    next_command = preferred_next_command(command_values)
     for row in rows:
-        row["next_command"] = command_values[0]
+        row["next_command"] = next_command
         row["next_commands"] = command_values
+
+
+def is_setup_only_command(command: str) -> bool:
+    stripped = command.strip()
+    return stripped in SETUP_ONLY_COMMANDS or stripped.startswith(SETUP_ONLY_PREFIXES)
+
+
+def is_substantive_capture_command(command: str) -> bool:
+    return any(token in command for token in SUBSTANTIVE_COMMAND_TOKENS) or re.search(
+        r"\b(capture|collect)-[A-Za-z0-9_.:/=-]+", command
+    ) is not None
+
+
+def preferred_next_command(commands: list[str]) -> str:
+    for command in commands:
+        if is_substantive_capture_command(command):
+            return command
+    for command in commands:
+        if not is_setup_only_command(command):
+            return command
+    return commands[0]
 
 
 def build_report() -> dict[str, Any]:

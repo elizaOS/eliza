@@ -22,13 +22,14 @@ def _task(
     requires_target: bool = False,
     init_state: str | None = "stand",
     reward: dict | None = None,
+    success: dict | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         id=task_id,
         tier="base",
         requires_target=requires_target,
         reward=reward or {"target_velocity_x_m_s": 1.0},
-        success={"no_fall": True},
+        success=success or {"no_fall": True},
         init_state=init_state,
         verbs=_Verbs(variants or [task_id.replace("_", " ")]),
     )
@@ -147,6 +148,32 @@ def test_training_inputs_report_accepts_contact_reward_keys(monkeypatch) -> None
     )
 
     report = validator.build_report(launch_tasks=("walk_forward",))
+
+    assert report["ok"] is True
+    assert report["tasks"][0]["reasons"] == []
+
+
+def test_training_inputs_report_accepts_staged_foot_contact_success_keys(
+    monkeypatch,
+) -> None:
+    _patch_lightweight_inputs(
+        monkeypatch,
+        tasks=[
+            _task(
+                "lift_left_foot",
+                reward={"stance_contact_weight": 1.0, "foot_clearance_weight": 1.0},
+                success={
+                    "torso_z_min_ratio": 0.75,
+                    "left_foot_contact_required": False,
+                    "right_foot_contact_required": True,
+                    "min_swing_foot_clearance_m": 0.01,
+                    "no_fall": True,
+                },
+            )
+        ],
+    )
+
+    report = validator.build_report(launch_tasks=("lift_left_foot",))
 
     assert report["ok"] is True
     assert report["tasks"][0]["reasons"] == []

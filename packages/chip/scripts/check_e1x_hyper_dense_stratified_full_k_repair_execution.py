@@ -1,0 +1,28 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import importlib.util
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+BASE = ROOT / "scripts/check_e1x_dense_stratified_full_k_repair_execution.py"
+
+spec = importlib.util.spec_from_file_location("e1x_dense_stratified_gate", BASE)
+if spec is None or spec.loader is None:
+    raise RuntimeError(f"could not load {BASE}")
+gate = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(gate)
+
+gate.REPORT = ROOT / "build/reports/e1x_hyper_dense_stratified_full_k_repair_execution.json"
+gate.GATE = "e1x-hyper-dense-stratified-full-k-repair-execution"
+gate.CHECK_PREFIX = "e1x_hyper_dense_stratified_full_k_repair_execution"
+gate.LABEL = "hyper-dense stratified full-K repair execution"
+gate.SCRIPT_EVIDENCE_PATH = "scripts/check_e1x_hyper_dense_stratified_full_k_repair_execution.py"
+gate.ROWS_PER_LAYER = 128
+gate.EXPECTED_ROWS = 36_224
+gate.EXPECTED_MACS = 176_957_568
+gate.MIN_TOUCHED_LOGICAL_CORES = 13_009
+
+
+if __name__ == "__main__":
+    raise SystemExit(gate.main())

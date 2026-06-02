@@ -707,7 +707,7 @@ async function readAgentFinalAssistantMessage(
         const obj = JSON.parse(trimmed) as Record<string, unknown>;
         if (obj.type !== "assistant") continue;
         const message = obj.message as Record<string, unknown> | undefined;
-        if (!message || message.role !== "assistant") continue;
+        if (message?.role !== "assistant") continue;
         const content = message.content;
         if (typeof content === "string") {
           lastText = content;

@@ -715,6 +715,21 @@ def _success_predicate_diagnostics(
                 unmet=actual < required,
             )
         )
+    for side in ("left", "right"):
+        key = f"{side}_foot_contact_required"
+        if key not in success:
+            continue
+        required = bool(success[key])
+        values = traces.get(f"{side}_foot_contact", [])
+        actual = None if not values else bool(values[-1])
+        diagnostics.append(
+            _predicate_row(
+                name=key,
+                expected=required,
+                actual=actual,
+                unmet=actual is None or actual is not required,
+            )
+        )
     if "min_swing_foot_clearance_m" in success:
         required = float(success["min_swing_foot_clearance_m"])
         actual = _safe_max(traces.get("swing_foot_clearance", []))

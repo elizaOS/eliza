@@ -128,7 +128,20 @@ REQUIRED_CAPTURE_COMMANDS = {
         "--artifact-root ."
     ),
     "npu_nnapi_proof": (
-        "E1_NPU_WRITE_PROOF_JSON=1 scripts/android/capture_e1_npu_nnapi_evidence.sh"
+        "E1_NPU_WRITE_PROOF_JSON=1 "
+        "E1_NPU_MACS_PER_INFERENCE=<measured-macs> "
+        "E1_NPU_CYCLES=<measured-cycles> "
+        "E1_NPU_HZ=<measured-hz> "
+        "E1_NPU_DMA_BYTES_READ=<measured-bytes-read> "
+        "E1_NPU_DMA_BYTES_WRITTEN=<measured-bytes-written> "
+        "E1_NPU_NNAPI_DELEGATED_NODE_COUNT=<measured-delegated-nodes> "
+        "E1_NPU_NNAPI_TOTAL_NODE_COUNT=<measured-total-nodes> "
+        "E1_NPU_CPU_FALLBACK_PERCENT=0 "
+        "E1_NPU_UNSUPPORTED_OP_COUNT=0 "
+        "E1_NPU_DATAFLOW_NAME=<measured-dataflow> "
+        "E1_NPU_GENERATED_BY=<operator-or-job-id> "
+        "E1_NPU_TARGET=<target-id> "
+        "scripts/android/capture_e1_npu_nnapi_evidence.sh"
     ),
     "launcher_agent_runtime": "scripts/android/capture_eliza_launcher_runtime_evidence.sh",
 }

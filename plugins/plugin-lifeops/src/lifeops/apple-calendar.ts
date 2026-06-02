@@ -6,6 +6,10 @@ import {
   type NativeLibraryCandidate,
   resolveNativeLibraryCandidate,
 } from "@elizaos/app-core/platform/native-library-policy";
+import {
+  APPLE_CALENDAR_MACOS_BRIDGE_DYLIB_BASENAME,
+  appleCalendarMacosBridgeCandidates,
+} from "@elizaos/capacitor-calendar";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { FeatureResult, IPermissionsRegistry } from "@elizaos/shared";
@@ -113,34 +117,18 @@ let macCalendarBridge: MacCalendarBridge | null | undefined;
 let macCalendarBridgeOverride: MacCalendarBridge | null | undefined;
 let nativeBridgeOverride: NativeCalendarBridge | null | undefined;
 
-const NATIVE_DYLIB_BASENAME = "libMacWindowEffects.dylib";
 const MODULE_DIR =
   typeof import.meta.dir === "string"
     ? import.meta.dir
     : dirname(fileURLToPath(import.meta.url));
 
 function nativeDylibCandidates(): NativeLibraryCandidate[] {
-  return [
-    {
-      label: "ELIZA_NATIVE_PERMISSIONS_DYLIB",
-      path:
-        typeof process !== "undefined"
-          ? (process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "")
-          : "",
-    },
-    {
-      label: "packaged Apple permissions bridge",
-      path: `../../../../../../../${NATIVE_DYLIB_BASENAME}`,
-    },
-    {
-      label: "packaged Apple permissions bridge",
-      path: `../../../../../../${NATIVE_DYLIB_BASENAME}`,
-    },
-    {
-      label: "local Apple permissions bridge",
-      path: `../../../../packages/app-core/platforms/electrobun/src/${NATIVE_DYLIB_BASENAME}`,
-    },
-  ].filter((candidate) => candidate.path.trim().length > 0);
+  return appleCalendarMacosBridgeCandidates({
+    envDylibPath:
+      typeof process !== "undefined"
+        ? (process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "")
+        : "",
+  });
 }
 
 function hasNodeDarwinProcess(): boolean {
@@ -175,7 +163,7 @@ async function loadMacCalendarBridge(): Promise<MacCalendarBridge | null> {
 
   for (const candidate of nativeDylibCandidates()) {
     const dylibPath = resolveNativeLibraryCandidate(candidate, {
-      expectedBasename: NATIVE_DYLIB_BASENAME,
+      expectedBasename: APPLE_CALENDAR_MACOS_BRIDGE_DYLIB_BASENAME,
       moduleDir: MODULE_DIR,
       warn: (message) => logger.warn(`[AppleCalendar] ${message}`),
     });

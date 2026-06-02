@@ -83,6 +83,8 @@ def test_structured_findings_cover_blocked_real_evidence() -> None:
     for token in (
         "benchmarks/run_benchmarks.py run",
         "capture_e1_npu_nnapi_evidence.sh",
+        "E1_NPU_CPU_FALLBACK_PERCENT=0",
+        "E1_NPU_UNSUPPORTED_OP_COUNT=0",
         "capture_cpu_ap_evidence.py intake ap-benchmarks",
         "check_benchmark_efficiency_scope.py",
     ):
@@ -157,6 +159,15 @@ def test_capture_command_removal_fails() -> None:
         raise AssertionError(f"target benchmark command must use runner --metadata: {target_command}")
     if "--target-metadata" in target_command:
         raise AssertionError(f"target benchmark command uses obsolete flag: {target_command}")
+    npu_command = commands.get("npu_nnapi_proof", "")
+    for token in (
+        "E1_NPU_MACS_PER_INFERENCE=<measured-macs>",
+        "E1_NPU_NNAPI_DELEGATED_NODE_COUNT=<measured-delegated-nodes>",
+        "E1_NPU_CPU_FALLBACK_PERCENT=0",
+        "E1_NPU_UNSUPPORTED_OP_COUNT=0",
+    ):
+        if token not in npu_command:
+            raise AssertionError(f"NNAPI proof command missing {token!r}: {npu_command}")
     mutated = copy.deepcopy(report)
     del mutated["next_capture_commands"]["npu_nnapi_proof"]
     expect_error(mutated, "npu_nnapi_proof")

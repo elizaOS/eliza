@@ -123,7 +123,7 @@ describe("V1 — fast-endpoint pause hangover", () => {
 		);
 		const pause = events.find((e) => e.type === "speech-pause");
 		expect(pause).toBeDefined();
-		if (!pause || pause.type !== "speech-pause") throw new Error("missing");
+		if (pause?.type !== "speech-pause") throw new Error("missing");
 		// Pause fired only after >= 220 ms (7 silence windows = ~224 ms).
 		expect(pause.pauseDurationMs).toBeGreaterThanOrEqual(220);
 	});
@@ -157,7 +157,7 @@ describe("V4 — adaptive hangover on sharp RMS drop", () => {
 		const events = await runScript(det, rmsScript);
 		const pause = events.find((e) => e.type === "speech-pause");
 		expect(pause).toBeDefined();
-		if (!pause || pause.type !== "speech-pause") throw new Error("missing");
+		if (pause?.type !== "speech-pause") throw new Error("missing");
 		// Without V4 the pause would not fire until 400 ms (~12.5 windows).
 		// With V4 shortening to 100 ms (25% of 400), pause fires after ~3-4
 		// silence windows.
@@ -189,7 +189,7 @@ describe("V4 — adaptive hangover on sharp RMS drop", () => {
 		const events = await runScript(det, rmsScript);
 		const pause = events.find((e) => e.type === "speech-pause");
 		expect(pause).toBeDefined();
-		if (!pause || pause.type !== "speech-pause") throw new Error("missing");
+		if (pause?.type !== "speech-pause") throw new Error("missing");
 		expect(pause.pauseDurationMs).toBeGreaterThanOrEqual(400);
 	});
 
@@ -215,7 +215,7 @@ describe("V4 — adaptive hangover on sharp RMS drop", () => {
 		const events = await runScript(det, rmsScript);
 		const pause = events.find((e) => e.type === "speech-pause");
 		expect(pause).toBeDefined();
-		if (!pause || pause.type !== "speech-pause") throw new Error("missing");
+		if (pause?.type !== "speech-pause") throw new Error("missing");
 		// Floor is 64 ms (~2 windows). Pause shouldn't fire before that.
 		expect(pause.pauseDurationMs).toBeGreaterThanOrEqual(64);
 	});

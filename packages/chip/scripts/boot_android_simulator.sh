@@ -176,6 +176,30 @@ print(json.dumps([
 PY
 }
 
+next_command_plan_json() {
+	python3 - "$1" <<'PY'
+import json
+import sys
+
+commands = json.loads(sys.argv[1])
+print(json.dumps([
+    {
+        "id": "android_sim_full_virtual_device_evidence",
+        "area": "aosp",
+        "source": "packages/chip/build/reports/android_sim_boot.json",
+        "claim_boundary": "operator_commands_only_not_android_boot_or_release_evidence",
+        "commands": commands,
+        "requires": [
+            "Linux host with hardware virtualization support",
+            "AOSP_DIR set to a valid AOSP checkout",
+            "Cuttlefish, CTS/VTS intake, QEMU, and Renode evidence rerun",
+            "rerun of Android simulator and software BSP checks after capture",
+        ],
+    }
+], indent=2))
+PY
+}
+
 findings_json() {
 	status=$1
 	reason=$2
@@ -186,6 +210,20 @@ import json
 import sys
 
 status, reason, next_step, host_requirements_text = sys.argv[1:5]
+handoff_commands = [
+    "python3 scripts/check_aosp_linux_preflight.py --write-report",
+    "AOSP_DIR=$AOSP_DIR scripts/run_aosp_linux_handoff.sh --build-only",
+    "sw/aosp-device/import-aosp-device.sh --check \"$AOSP_DIR\"",
+    "make aosp-bsp-check",
+    "AOSP_DIR=$AOSP_DIR scripts/boot_android_simulator.sh --run-cuttlefish --run-cts --run-vts --run-qemu --run-renode",
+    "python3 scripts/check_android_sim_boot.py",
+    "python3 scripts/check_software_bsp.py aosp --require-evidence",
+]
+next_command = next(
+    command
+    for command in handoff_commands
+    if "boot_android_simulator.sh --run-cuttlefish" in command
+)
 
 def code_from_text(text: str, fallback: str) -> str:
     cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
@@ -205,6 +243,8 @@ for item in host_requirements.get("missing", []):
         "message": text,
         "evidence": "host_requirements.missing",
         "next_step": next_step,
+        "next_command": next_command,
+        "next_commands": handoff_commands,
     })
 if status != "pass" and reason:
     findings.append({
@@ -213,6 +253,8 @@ if status != "pass" and reason:
         "message": reason,
         "evidence": "android_sim_boot.status",
         "next_step": next_step,
+        "next_command": next_command,
+        "next_commands": handoff_commands,
     })
 print(json.dumps(findings, indent=2))
 PY
@@ -346,6 +388,7 @@ write_report() {
 	host_requirements=$(host_requirements_json)
 	linux_requirements=$(linux_requirements_json)
 	handoff_commands=$(handoff_commands_json)
+	next_command_plan=$(next_command_plan_json "$handoff_commands")
 	findings=$(findings_json "$status" "$report_reason" "$report_next" "$host_requirements")
 	required_evidence=$(evidence_json full)
 	attempted_evidence=$(evidence_json build)
@@ -378,6 +421,7 @@ write_report() {
   "findings": $findings,
   "linux_requirements": $linux_requirements,
   "handoff_commands": $handoff_commands,
+  "next_command_plan": $next_command_plan,
   "phone_claim_allowed": false,
   "release_claim_allowed": false,
   "e1_chip_hardware_claim_allowed": false,

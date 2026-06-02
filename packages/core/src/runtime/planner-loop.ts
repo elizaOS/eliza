@@ -2464,7 +2464,7 @@ function tryGateEvaluator(args: {
 }): EvaluatorOutput | null {
 	const latestStep = args.trajectory.steps[args.trajectory.steps.length - 1];
 	const latestResult = latestStep?.result;
-	if (!latestResult || latestResult.success !== true) return null;
+	if (latestResult?.success !== true) return null;
 	if (args.trajectory.plannedQueue.length > 0) return null;
 	if (args.failures.length > 0) return null;
 	const message = args.lastPlannerExplicitMessageToUser?.trim();

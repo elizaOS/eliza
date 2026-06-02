@@ -214,7 +214,14 @@ def finding_payload(finding: Finding, command_plan: list[dict[str, object]]) -> 
         if isinstance(values, list):
             commands.extend(command for command in values if isinstance(command, str) and command)
     if commands:
-        row["next_command"] = commands[0]
+        row["next_command"] = next(
+            (
+                command
+                for command in commands
+                if "capture_launcher_runtime_evidence.py" in command
+            ),
+            commands[0],
+        )
         row["next_commands"] = list(dict.fromkeys(commands))
     return row
 

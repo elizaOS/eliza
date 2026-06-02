@@ -10,6 +10,7 @@ LifeOps must not become the implementation home for adjacent domains:
 
 - **Health / sleep / circadian / screen-time planning** belongs in `@elizaos/plugin-health`. LifeOps may expose thin owner-access wrappers and assistant intents that call plugin-health factories.
 - **Connector, adapter, bridge, and transport clients** belong in their relevant plugins (`plugin-google`, `plugin-whatsapp`, `plugin-x`, `plugin-browser`, `plugin-phone`, `plugin-calendly`, etc.). LifeOps may keep registries, owner policies, and normalized personal-assistant projections.
+- **Native Apple Calendar / Reminders bridge policy** belongs in native packages (`@elizaos/capacitor-calendar`, `@elizaos/macosreminders`). LifeOps may call those helpers and map results into assistant DTOs.
 - **Personal assistant code, views, scenarios, default packs, owner policy, approvals, and executive workflows** belong here.
 
 The plugin is opt-in; add `@elizaos/plugin-lifeops` to the agent's plugin list. It depends on `@elizaos/plugin-google` for current calendar/inbox projections (auto-registered at init if absent).
@@ -161,6 +162,11 @@ src/
   default-packs/                Default ScheduledTask packs
                                 (daily-rhythm, morning-brief, quiet-user-watcher,
                                  habit-starters, inbox-triage-starter, followup-starter, ...)
+  ../test/scenarios/            Executable LifeOps scenario-runner specs.
+                                Executive-assistant scenarios should cover
+                                chief-of-staff workflows beyond reminders:
+                                schedule, follow-up, briefing, approvals,
+                                messaging handoff, documents, money, and priority triage.
 
   platform/                     Platform detection helpers (isDarwin, etc.)
   routes/                       HTTP route handlers (lifeops, website-blocker, cloud-features, travel-relay)

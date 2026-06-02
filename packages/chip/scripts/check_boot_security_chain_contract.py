@@ -100,6 +100,7 @@ class Finding:
     next_step: str
     blocker_dependency: str = "repo_artifact_generation"
     next_command: str = ""
+    next_commands: tuple[str, ...] = ()
 
 
 def rel(path: Path) -> str:
@@ -138,41 +139,57 @@ def add_if(
 
 
 def finding_dependency_and_command(code: str) -> tuple[str, str]:
+    dependency, commands = finding_dependency_and_commands(code)
+    return dependency, " && ".join(commands)
+
+
+def finding_dependency_and_commands(code: str) -> tuple[str, tuple[str, ...]]:
     if code.startswith("bootrom_positive_handoff"):
         return (
             "repo_artifact_generation",
-            "scripts/capture_bootrom_positive_handoff.sh preflight && "
-            "scripts/capture_bootrom_positive_handoff.sh run && "
-            "python3 scripts/check_boot_security_chain_contract.py",
+            (
+                "scripts/capture_bootrom_positive_handoff.sh preflight",
+                "scripts/capture_bootrom_positive_handoff.sh run",
+                "python3 scripts/check_bootrom_positive_handoff.py",
+                "python3 scripts/check_boot_security_chain_contract.py",
+            ),
         )
     if code.startswith("bootrom_sim_transcript"):
         return (
             "repo_artifact_generation",
-            "python3 scripts/check_bootrom_sim_transcript.py && "
-            "python3 scripts/check_boot_security_chain_contract.py",
+            (
+                "python3 scripts/check_bootrom_sim_transcript.py",
+                "python3 scripts/check_boot_security_chain_contract.py",
+            ),
         )
     if code.startswith("bootrom_") or code.startswith("reset_rom_") or code.startswith("rtl_"):
         return (
             "repo_artifact_generation",
-            "python3 fw/boot-rom/check_boot_rom.py && "
-            "python3 scripts/check_bootrom_sim_transcript.py && "
-            "python3 scripts/check_boot_security_chain_contract.py",
+            (
+                "python3 fw/boot-rom/check_boot_rom.py",
+                "python3 scripts/check_bootrom_sim_transcript.py",
+                "python3 scripts/check_boot_security_chain_contract.py",
+            ),
         )
     if code.startswith("platform_contract"):
         return (
             "repo_artifact_generation",
-            "python3 scripts/check_platform_contract.py && "
-            "python3 scripts/check_boot_security_chain_contract.py",
+            (
+                "python3 scripts/check_platform_contract.py",
+                "python3 scripts/check_boot_security_chain_contract.py",
+            ),
         )
     if code.startswith("pmc_secure_boot") or code.startswith("security_boot_docs"):
         return (
             "actionable_external_dependency",
-            "collect key ceremony, provisioning, verifier implementation, and negative-test evidence; "
-            "then rerun python3 scripts/check_boot_security_chain_contract.py",
+            (
+                "collect key ceremony, provisioning, verifier implementation, and negative-test evidence",
+                "python3 scripts/check_boot_security_chain_contract.py",
+            ),
         )
     return (
         "repo_artifact_generation",
-        "python3 scripts/check_boot_security_chain_contract.py",
+        ("python3 scripts/check_boot_security_chain_contract.py",),
     )
 
 
@@ -626,10 +643,12 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
 def payload(findings: list[Finding], evidence: Mapping[str, object]) -> dict[str, Any]:
     normalized_findings: list[Finding] = []
     for finding in findings:
-        if finding.next_command:
+        if finding.next_command and finding.next_commands:
             normalized_findings.append(finding)
             continue
-        dependency, command = finding_dependency_and_command(finding.code)
+        dependency, commands = finding_dependency_and_commands(finding.code)
+        command = finding.next_command or commands[0]
+        command_batch = finding.next_commands or commands
         normalized_findings.append(
             Finding(
                 finding.code,
@@ -639,6 +658,7 @@ def payload(findings: list[Finding], evidence: Mapping[str, object]) -> dict[str
                 finding.next_step,
                 dependency,
                 command,
+                command_batch,
             )
         )
     findings = normalized_findings
@@ -676,6 +696,7 @@ def payload(findings: list[Finding], evidence: Mapping[str, object]) -> dict[str
                 "code": finding.code,
                 "blocker_dependency": finding.blocker_dependency,
                 "command": finding.next_command,
+                "commands": list(finding.next_commands),
                 "next_step": finding.next_step,
                 "claim_boundary": "operator_or_repo_commands_only_not_boot_security_evidence",
             }

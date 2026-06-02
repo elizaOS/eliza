@@ -9,7 +9,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "typecheck": "tsgo --noEmit",
-    "lint": "biome check src",
+    "lint": "bunx @biomejs/biome check src",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "connect": "bunx localtunnel --port 2138 --print-requests & node scripts/qr-connect.mjs",

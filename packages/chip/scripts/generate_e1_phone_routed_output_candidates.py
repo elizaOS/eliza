@@ -27,6 +27,8 @@ DATE = "2026-05-22"
 SOURCE_BOARD = (
     ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb"
 )
+ROUTED_BOARD = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
+ROUTED_SCHEMATIC = ROOT / "board/kicad/e1-phone/schematic/e1-phone.kicad_sch"
 SOURCE_STEP = ROOT / "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step"
 OUT_MANIFEST = (
     ROOT / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml"
@@ -45,6 +47,7 @@ COMPONENT_3D_BINDING_REPORT = (
 COMPONENT_3D_BINDING_MATRIX = (
     ROOT / "board/kicad/e1-phone/production/reports/component-3d-binding-matrix.csv"
 )
+KICAD_CLI = ROOT / "tools/bin/kicad-cli"
 
 
 def chip_rel(path: Path) -> str:
@@ -85,6 +88,67 @@ def load_json_list_if_present(path: Path) -> list[dict[str, Any]]:
     if not isinstance(data, list):
         return []
     return [item for item in data if isinstance(item, dict)]
+
+
+def normalize_kicad_text(text: str) -> str:
+    return re.sub(r"\b\d{2}:\d{2}:\d{2}: ", "HH:MM:SS: ", text)
+
+
+def normalize_kicad_json(payload: Any) -> Any:
+    if isinstance(payload, dict):
+        return {
+            key: "normalized_local_candidate_timestamp"
+            if key == "date" and isinstance(value, str)
+            else normalize_kicad_json(value)
+            for key, value in payload.items()
+        }
+    if isinstance(payload, list):
+        return [normalize_kicad_json(item) for item in payload]
+    return payload
+
+
+def run_kicad(args: list[str]) -> dict[str, Any]:
+    if not KICAD_CLI.is_file():
+        return {
+            "status": "blocked_kicad_cli_missing",
+            "command": " ".join(args),
+            "returncode": None,
+            "stdout": "",
+            "stderr": f"{chip_rel(KICAD_CLI)} is missing",
+        }
+    completed = subprocess.run(
+        [str(KICAD_CLI), *args],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    return {
+        "status": "pass" if completed.returncode == 0 else "blocked_kicad_cli_report_failed",
+        "command": " ".join([chip_rel(KICAD_CLI), *args]),
+        "returncode": completed.returncode,
+        "stdout": normalize_kicad_text(completed.stdout),
+        "stderr": normalize_kicad_text(completed.stderr),
+    }
+
+
+def run_kicad_json_report(args: list[str], output: Path) -> dict[str, Any]:
+    run = run_kicad(args)
+    payload: Any = {}
+    parse_status = "not_parsed"
+    if output.is_file():
+        try:
+            payload = normalize_kicad_json(json.loads(output.read_text(encoding="utf-8")))
+            parse_status = "pass"
+        except json.JSONDecodeError as exc:
+            payload = {"json_error": str(exc)}
+            parse_status = "blocked_json_parse_failed"
+    run["output"] = chip_rel(output)
+    run["output_present"] = output.is_file()
+    run["output_bytes"] = output.stat().st_size if output.is_file() else 0
+    run["output_sha256"] = sha256(output) if output.is_file() else ""
+    run["json_parse_status"] = parse_status
+    return {"run": run, "payload": payload}
 
 
 def board_text_counts(path: Path) -> dict[str, Any]:
@@ -982,38 +1046,98 @@ def write_json_report(path: Path, artifact_id: str, source_requirement_id: str) 
         "claim_boundary": "blocked local candidate; not release evidence",
     }
     if path == ROOT / "board/kicad/e1-phone/production/reports/drc.json":
+        raw_path = ROOT / "build/e1-phone-routed-output-candidates/raw-routed-drc.json"
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
+        raw = run_kicad_json_report(
+            [
+                "pcb",
+                "drc",
+                "--format",
+                "json",
+                "-o",
+                chip_rel(raw_path),
+                chip_rel(ROUTED_BOARD),
+            ],
+            raw_path,
+        )
+        raw_payload = raw["payload"] if isinstance(raw["payload"], dict) else {}
+        violations = raw_payload.get("violations") if isinstance(raw_payload, dict) else []
+        unconnected = raw_payload.get("unconnected_items") if isinstance(raw_payload, dict) else []
         payload.update(
             {
                 "raw_kicad_report_kind": "drc",
-                "raw_kicad_report_status": "blocked_not_run",
+                "raw_kicad_report_status": (
+                    "blocked_kicad_cli_drc_violations"
+                    if raw["run"].get("status") == "pass"
+                    else raw["run"].get("status")
+                ),
                 "raw_kicad_cli_command": (
                     "kicad-cli pcb drc --format json --output "
                     "board/kicad/e1-phone/production/reports/drc.json "
                     "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
                 ),
-                "kicad_cli_version": "",
-                "source_board_sha256": sha256(SOURCE_BOARD),
-                "tool_exit_code": "not_run",
-                "raw_kicad_cli_report": {},
+                "kicad_cli_version": raw_payload.get("kicad_version", ""),
+                "source_board_sha256": sha256(ROUTED_BOARD) if ROUTED_BOARD.is_file() else "",
+                "tool_exit_code": raw["run"].get("returncode"),
+                "raw_kicad_cli_report": raw_payload,
+                "raw_kicad_cli_run": raw["run"],
+                "raw_kicad_violation_count": len(violations) if isinstance(violations, list) else 0,
+                "raw_kicad_unconnected_item_count": (
+                    len(unconnected) if isinstance(unconnected, list) else 0
+                ),
+                "raw_kicad_total_issue_count": (
+                    (len(violations) if isinstance(violations, list) else 0)
+                    + (len(unconnected) if isinstance(unconnected, list) else 0)
+                ),
                 "raw_kicad_cli_payload_required_for_release": True,
             }
         )
     if path == ROOT / "board/kicad/e1-phone/production/reports/erc.json":
+        raw_path = ROOT / "build/e1-phone-routed-output-candidates/raw-routed-erc.json"
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
+        raw = run_kicad_json_report(
+            [
+                "sch",
+                "erc",
+                "--format",
+                "json",
+                "-o",
+                chip_rel(raw_path),
+                chip_rel(ROUTED_SCHEMATIC),
+            ],
+            raw_path,
+        )
+        raw_payload = raw["payload"] if isinstance(raw["payload"], dict) else {}
+        sheets = raw_payload.get("sheets") if isinstance(raw_payload, dict) else []
+        erc_count = sum(
+            len(sheet.get("violations") or [])
+            for sheet in sheets
+            if isinstance(sheet, dict) and isinstance(sheet.get("violations"), list)
+        )
         payload.update(
             {
                 "raw_kicad_report_kind": "erc",
-                "raw_kicad_report_status": "blocked_not_run",
+                "raw_kicad_report_status": (
+                    "blocked_kicad_cli_erc_violations"
+                    if raw["run"].get("status") == "pass"
+                    else raw["run"].get("status")
+                ),
                 "raw_kicad_cli_command": (
                     "kicad-cli sch erc --format json --output "
                     "board/kicad/e1-phone/production/reports/erc.json "
                     "board/kicad/e1-phone/schematic/e1-phone.kicad_sch"
                 ),
-                "kicad_cli_version": "",
+                "kicad_cli_version": raw_payload.get("kicad_version", ""),
                 "source_schematic_sha256": sha256(
-                    ROOT / "board/kicad/e1-phone/schematic/e1-phone.kicad_sch"
-                ),
-                "tool_exit_code": "not_run",
-                "raw_kicad_cli_report": {},
+                    ROUTED_SCHEMATIC
+                )
+                if ROUTED_SCHEMATIC.is_file()
+                else "",
+                "tool_exit_code": raw["run"].get("returncode"),
+                "raw_kicad_cli_report": raw_payload,
+                "raw_kicad_cli_run": raw["run"],
+                "raw_kicad_violation_count": erc_count,
+                "raw_kicad_total_issue_count": erc_count,
                 "raw_kicad_cli_payload_required_for_release": True,
             }
         )

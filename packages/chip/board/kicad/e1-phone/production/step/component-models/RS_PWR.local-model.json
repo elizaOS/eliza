@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/RS_PWR.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "069e62c5485297d49aa752f594ece3fb6efb371975c2344c598d054da864e001",
+  "local_discrete_step_sha256": "93a142f4c98c7b40ccbe2a046d5183e91fb2b3900d5de8aff1123e0abfd706a6",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

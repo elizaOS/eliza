@@ -8267,7 +8267,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_USB_C.local-envelope.step
-  local_discrete_step_sha256: 13ec7fbb2629778b43aee18578330a61f58534a063f01434c2b95714cb9016f0
+  local_discrete_step_sha256: 06bc4dfc9b51f0b6627ee42199e089ef720f4a340b7f511ee0234543ed22c3fa
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -8366,7 +8366,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/SW_POWER_VOL.local-envelope.step
-  local_discrete_step_sha256: 339de51d53e1e639b3d53cde58a54ecb929925eaf02a6e18ca37c3a6ebbd9afa
+  local_discrete_step_sha256: 017b8a86b1607866419ba40419d9c9f50b39fdd3c49e3c1e2bc015eba2f533ed
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -8681,7 +8681,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_DISPLAY_TOUCH.local-envelope.step
-  local_discrete_step_sha256: 94283f61073a0035493542148281aaa57d974fb93b3cde1d70f2b2b0c50a1a15
+  local_discrete_step_sha256: 43899272a144c7c8c4375a9fb5aa57a8e015583070c8b1c29f01cb4bd1d1351d
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -8900,7 +8900,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_REAR_CAMERA.local-envelope.step
-  local_discrete_step_sha256: a6997a1bba8bd8ddf15db804e6017955258e113b8c1c07c3a4ea82cdad556ea6
+  local_discrete_step_sha256: b42c944c5cdd5b49f311f885bfaa6e63c11873a15b40fb416b76b7c1cc3e3881
   local_discrete_step_bytes: 15490
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -9155,7 +9155,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_FRONT_CAMERA.local-envelope.step
-  local_discrete_step_sha256: 42be3f2ec22666e1903e27dc3a9f9be9f2115ede3dd8cd6db5394220d3a13379
+  local_discrete_step_sha256: 8f7c1c1d7df4f84910dc07b75ca359a910be8c7b07d6011fd574325648e172e7
   local_discrete_step_bytes: 15490
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -10454,7 +10454,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_CELL.local-envelope.step
-  local_discrete_step_sha256: 12f53723adb6948f5fe894c7b2e52746647c03444e3096b1102e0ae713b2be98
+  local_discrete_step_sha256: 7a2919bbff55c9aa8ca7a868f4810b788e1385750cdebcd1ab7dbda7f2b6d58a
   local_discrete_step_bytes: 15546
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -11723,7 +11723,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_WIFI_BT.local-envelope.step
-  local_discrete_step_sha256: 26f73d5b2daaaf858aa0fa4a9bb00bd44db0cf3ebdc43d9a04e65f319de73614
+  local_discrete_step_sha256: 719c5bad6b1094366cf6384d9f13f41de5006192d041fc8fb104539fac714d42
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -12284,7 +12284,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_CHARGER.local-envelope.step
-  local_discrete_step_sha256: fa44c97bde80bda362ecccea64e7e6a6bd612926192898c6c375003c0ce3a092
+  local_discrete_step_sha256: eaa89c2798115a35b2218688cb32d3df4e98feb3a9755770651b3f56962f931b
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -12713,7 +12713,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_USB_PD.local-envelope.step
-  local_discrete_step_sha256: 8d665c0f14d1b5d5ad447def8df9d659e18f6e93ffc03bc47c5942855f57f2cd
+  local_discrete_step_sha256: 7d2dc57e3f21d2a31e631f70c87e0bb4b98d3692533bb0c01609e536419d83cc
   local_discrete_step_bytes: 15538
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -12812,7 +12812,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_BATTERY.local-envelope.step
-  local_discrete_step_sha256: 2285b539e568f525f34aa8abdb3bac62095aac61ee62b2e8eaa6cb765b047d26
+  local_discrete_step_sha256: d418c0b1077ebf7531ecc89c5d0db4d0c38b0822db925c8747619b9b115f5e06
   local_discrete_step_bytes: 15486
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -14447,7 +14447,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_SOC_LPDDR_UFS.local-envelope.step
-  local_discrete_step_sha256: e101c495a6f47274281b2fe356762c20509ad6b2d3a1b26194ed6cff9c89e46e
+  local_discrete_step_sha256: 818d7883a87a7d8b13e615dabb188189214379ee2b0464c9d3fd1b451691ca85
   local_discrete_step_bytes: 15516
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -14817,7 +14817,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_AUDIO_SPK_MIC.local-envelope.step
-  local_discrete_step_sha256: f476df50a8f6d59a4b1f3e5dde3f8e22c8aaf5389bd0d7c6cc0aa1f40a450205
+  local_discrete_step_sha256: f7f72ae638b4157eee7686096a1f62000e4cb881f9e57c2b5199541458af9d11
   local_discrete_step_bytes: 15538
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -15372,7 +15372,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_TOP_BOTTOM_FLEX_TOP.local-envelope.step
-  local_discrete_step_sha256: c42b799a7eed7588784b435ead78690d9cd23fda281c8ef488be355488dd18df
+  local_discrete_step_sha256: 7b860f63b541e2bee8ee6f4e8e3ee44362dedf20039dc7710f6dd28b6f3e64dc
   local_discrete_step_bytes: 15546
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -15927,7 +15927,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_TOP_BOTTOM_FLEX_BOTTOM.local-envelope.step
-  local_discrete_step_sha256: 70bdd3987551957b517424d06ad9de2653b85f9891bea9d86b42b1f77d851311
+  local_discrete_step_sha256: f00f4841435be2f11ab49f346a4881c6e23e47bcadc432f8af05292830e4b237
   local_discrete_step_bytes: 15546
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16038,7 +16038,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_USB2_ESD.local-envelope.step
-  local_discrete_step_sha256: b88dbf1141e7241cb4678c06f9f95cdc0dc921e7faa4194d6c03311ebbf6356f
+  local_discrete_step_sha256: 1c70bc488bd1901b2d65e437d2b9ac6aa6f5ab6ffbab1e2936121f9527ef3b8c
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16149,7 +16149,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_CC_ESD.local-envelope.step
-  local_discrete_step_sha256: 8024f0ddf74ef56df534bbf99b31f10138b60e33f40174963dc09ad6f7ee5615
+  local_discrete_step_sha256: 9b6092f0f75fea277e283a1f12d857c3643f8686ac98926ce735bf6f5632137e
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16236,7 +16236,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_VBUS_TVS.local-envelope.step
-  local_discrete_step_sha256: bfe2d7974ce60c5ae12da626a0b4e89c70c2423eb3d9b983389299ad6c3d85d2
+  local_discrete_step_sha256: 10a7e09ee6aec9caf3fae91028d65e83e646d0ef54d4b84af9bbd2a49c9c90b2
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16317,7 +16317,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_VBUS.local-envelope.step
-  local_discrete_step_sha256: e284ef969c5fe5036f6cbed9dae61ee4e5b5553385487c6da6385d6006777b74
+  local_discrete_step_sha256: 6a6df6d06857252b06311bba37695d9bafce63692193b5ec8e5146cf2df7d996
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16398,7 +16398,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_CC1.local-envelope.step
-  local_discrete_step_sha256: 6d45223aff7e26b184150b4dc9b4e2e7a9f12a6de8cca9eafbc9fa3ac04bfb4d
+  local_discrete_step_sha256: 6d733478549faf69691cf9848f0d0db8f8d2ab15096b75083cbf1c8f78c58840
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16479,7 +16479,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_CC2.local-envelope.step
-  local_discrete_step_sha256: 2945ec395773845e92c447d3d8a3da9ff31b80db66041f6a618e243e19460038
+  local_discrete_step_sha256: efcb95c28a785b787d82e5edc252436efc7596d619e2c2bb6d119d7dd8a075f6
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16560,7 +16560,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_DP.local-envelope.step
-  local_discrete_step_sha256: 0f27172212604648162a98f4cdf778387d21cee97aaa8ffb47cc03b5676c655b
+  local_discrete_step_sha256: 476eea38c94db4655f7014526fd16bab168ed2bfcb70c0fc6e218245c6afd415
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16641,7 +16641,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_DN.local-envelope.step
-  local_discrete_step_sha256: 5b8e3e1c00759abf4615996204795fc6fc8c3709e16991d731a64d6f61129ef1
+  local_discrete_step_sha256: 230e606299f018f54a872cfd3cff7c7a95ae01154017d2cc2349876eb6f37d9f
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16752,7 +16752,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_KEYS_ESD.local-envelope.step
-  local_discrete_step_sha256: 527128aa55d42d862a6100f8b46995bf35ea3f517d8bab53aaa87c5b72da974c
+  local_discrete_step_sha256: b7791e54d4ba7ba01e1485185cf06a6a14f1d1be031758d19b667a5c56ef61bb
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16875,7 +16875,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RC_1.local-envelope.step
-  local_discrete_step_sha256: 6fd02bb8d0f9d772ecfbbb0f7734403bf50237963c0586f835f757393e92e73f
+  local_discrete_step_sha256: 041e363965b7384934069f8e5e254e54d5235293c2d97144463d1017fdf60168
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16998,7 +16998,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RC_2.local-envelope.step
-  local_discrete_step_sha256: a70985e814473c03e7f2c06dd4e79236d40da29ff355a5d29f2c3d3546619ab2
+  local_discrete_step_sha256: 9273f51a6d47e29bd5612c968a34d8a1afae77e89bdc7931c0096adfd7660a38
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -17121,7 +17121,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RC_3.local-envelope.step
-  local_discrete_step_sha256: 60090979c3e45d6358851f25e743cbe08446e76f9840f51ca779498f7190bc6f
+  local_discrete_step_sha256: b0a1faab339162a9cc39d57fd2f10d7449e23a25a18c6b6b62b4709a88ea2e72
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -17232,7 +17232,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_DSI_ESD.local-envelope.step
-  local_discrete_step_sha256: ddfee4149733a1888f599c115c900e26149cadf23bcf6afab674a5d881c3f760
+  local_discrete_step_sha256: 865bd81b9dfa93d78a7dfb6e340d28713151741f119f75b010592a4af1df206e
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -17343,7 +17343,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_TOUCH_ESD.local-envelope.step
-  local_discrete_step_sha256: 106f8ae226bb448c5e5b3684a827c78c7820e5fd5c4cf73d50cf66b4756b604e
+  local_discrete_step_sha256: d51d14f1bfac3a68f79308bea1f6583c748c147e80db407417c5ce4932b9c418
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -17569,7 +17569,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_DISP_BIAS.local-envelope.step
-  local_discrete_step_sha256: 463b22c4d4674edbfdd69c2f6f55e9ed99b25898e51aa87756510d99179324d4
+  local_discrete_step_sha256: 75589d3c7732dd461ae2938dad23ede705013b86c81b5d3cdcafa5669eb9c690
   local_discrete_step_bytes: 15486
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -17680,7 +17680,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_CAM0_ESD.local-envelope.step
-  local_discrete_step_sha256: f958ccfe5c7a64e7f72c3254df8086b7f6e4d4f4d51ed88d0133256025cd4f64
+  local_discrete_step_sha256: 6b52173eed3c18af4c56644f2c3e22e53c15085acbe5dee6bd69fae42a93a55b
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -17791,7 +17791,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_CAM1_ESD.local-envelope.step
-  local_discrete_step_sha256: 5d5f72621e6b0c530c1d11aabff3c71d2777d1bda2adc76af7806798bc5f2a17
+  local_discrete_step_sha256: cec2b4a71ef5fb3acfe9d1a16f22ed9091c0315f7fb25566fc96c5806fc10b9a
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -17914,7 +17914,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_CAM_PWR.local-envelope.step
-  local_discrete_step_sha256: afdb79e0ba56fe9ce92f26ac0aaa910b7c6f9ddd8d396e1b5ea6f367e89ffedc
+  local_discrete_step_sha256: 35ed9b9a21dbb396a287464a04c77df33dc7a230211ac514ac623b19a047f44e
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18001,7 +18001,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_CAM_I2C.local-envelope.step
-  local_discrete_step_sha256: c614160ab78e9bb2bd1169501e711b87cf42d6f90b57d6dace860ba68eb9a633
+  local_discrete_step_sha256: 45159a1754f99acc1d95fb118e95140b24d6f08f86e450d2c66b1a047ede9099
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18088,7 +18088,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AUDIO.local-envelope.step
-  local_discrete_step_sha256: b1cd751c3a5517b94c8b9626b68b5154474a79b525bd3c42c253a75002b9d5b2
+  local_discrete_step_sha256: fc8e2a281d983b3623b66eb7d8e6cb3185f3e8e6665d02ddbcbfb3a5a2f5aa0f
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18175,7 +18175,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AMP.local-envelope.step
-  local_discrete_step_sha256: 86a2baa49739c021191fdb38c47d68c4e51433a28e64a99d3891f1f63c5be9fe
+  local_discrete_step_sha256: 67d07229dedfdf9151b95043beb2a7653937520150c83654d9e8bb22c9c7d6b1
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18262,7 +18262,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_AUDIO_DIG.local-envelope.step
-  local_discrete_step_sha256: 521f6c5f5db066fecc8e4bc2f186a88544f636c8b7c85a0b4a03fef1b89b04fa
+  local_discrete_step_sha256: 43b4752bde1190fa48c9873b963fd5bd8c57f6255740955a7da760d9ce113a08
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18349,7 +18349,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_AUDIO_CTL.local-envelope.step
-  local_discrete_step_sha256: 39d0477647f1bec35eaee1f13bee557655819736ac00914b23039a8880ddae33
+  local_discrete_step_sha256: 0e8f182d766fa737df292aff8833fbbb4ee0a78384296a763431569cb946bc40
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18460,7 +18460,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_MIC.local-envelope.step
-  local_discrete_step_sha256: 068c80e3d874c9d27ff372f2843725d8d95e4ff0fd0dbc10b1bad2bc900a2f35
+  local_discrete_step_sha256: 296877f4f50c1e29b0b09225a6832ddcb8d55928c266d44b528ec1ec8fea1f6a
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18547,7 +18547,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_SPK.local-envelope.step
-  local_discrete_step_sha256: b38e1d4bf28d2c924398cf14f770374cd8ffc794715f7f401efa334358b329d5
+  local_discrete_step_sha256: e8c950258c8d0b338573ad1004beeabefdcdfc258fd4ebea8dd0273ca9541b50
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18676,7 +18676,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_HAPTIC.local-envelope.step
-  local_discrete_step_sha256: 903099c3d7a8c618dccaedaac14cbbd02c75eecdec36f517f98efb2392779a48
+  local_discrete_step_sha256: 57c5f3acc57fbfe4faa1c867fb00d36a6b4f994b8b37907af7293d0e81991edb
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18763,7 +18763,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_USBPD.local-envelope.step
-  local_discrete_step_sha256: ca2cc7ab95e43a0ca930c2acb5825e86899deb9b09729a4a8f089eec79807dc7
+  local_discrete_step_sha256: bcf2a6fcd5e501721f47a65346325d77bcd0d4358abc1df9d4cbcba6f518ba31
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18850,7 +18850,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FL_CHG_IN.local-envelope.step
-  local_discrete_step_sha256: 68defe5c1186a655f02498aa62de71e677b468177786455b43dde05508395dcf
+  local_discrete_step_sha256: ace4a7dbbf8dc21f6c33b0b3d2a4e8ddbb730f0e7590a0a6c2d588d32c4f6564
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18937,7 +18937,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_BAT_SENSE.local-envelope.step
-  local_discrete_step_sha256: a5423addcc0d88a2326aa3330291df58c8e99cf9821e3a88a1929918569dfd83
+  local_discrete_step_sha256: e6787f57e4899a7f90f6922b3436f77eebff7209e0e5fb43799317546b52d8f8
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19084,7 +19084,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_FG.local-envelope.step
-  local_discrete_step_sha256: 18590ddb7fc0dec38bd66ff2c07b7aada860ecac9e799779a31d515b0f0dd7af
+  local_discrete_step_sha256: 6917442c11d63c774fecac19252d9bdf71144f9111928da3690c0427f0e66a65
   local_discrete_step_bytes: 15546
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19171,7 +19171,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_PMIC_CTL.local-envelope.step
-  local_discrete_step_sha256: 95f1b676b937bbbbdc1f6955e3fbbd9e4c10b9f0ed5e2d7ab26ae53e26d1b007
+  local_discrete_step_sha256: a42725977ad8be2bfbbbd1a256f4bbcb42cae148c348835cdb406c024d517fbb
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19258,7 +19258,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_PMIC_IN.local-envelope.step
-  local_discrete_step_sha256: ae28da2e055b2bff29997f35ad26ef10d85c66a685ace03f001fce75e2a1e704
+  local_discrete_step_sha256: 920feb2a049800b2b1d514a2c978f2d3a0560b1d1e124593f0ceaaa6ed6b477c
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19345,7 +19345,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AP_RAILS.local-envelope.step
-  local_discrete_step_sha256: ae72caf47a65247da09167bfcf1033fed0e12ce3c04f06b5364382d4d484c65b
+  local_discrete_step_sha256: 09c3005e6857ab06b70dab58fbc03ab8e12e1901470145f7308fa708692f5a0c
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19432,7 +19432,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_RF_RAILS.local-envelope.step
-  local_discrete_step_sha256: ce0d3f4eb7268c1b6b3c3cfd60079c9669378bab396bf8c4ecccef4049983ffc
+  local_discrete_step_sha256: a15ab9c5b7f1284a6130ae6f4e3a9b6af3282c6bd02a82284f54f222a3dd8b39
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19519,7 +19519,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_CAM_RAILS.local-envelope.step
-  local_discrete_step_sha256: 1997f705ebffc1e9092b39e83aa50ae67e9dc1681bf30ebb45e845ee3d91500f
+  local_discrete_step_sha256: f1f67c476f3f4530d947fe135e41604164bc704d28dd6ff0da3697be65f3f64a
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19606,7 +19606,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_DISP_RAILS.local-envelope.step
-  local_discrete_step_sha256: 54b6711ce2f64571c5dc934db86d9ebabf5050a5bfb43cf940848441fc2d8a97
+  local_discrete_step_sha256: 0dba376ed7dbeb8cee16883c53cc0d4e3343299a674bce8a8d06689caf5cc941
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19693,7 +19693,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AON.local-envelope.step
-  local_discrete_step_sha256: a73a5993231c78445a9173413e8534a80335b7b32d9878bedfb53f3efcc808d4
+  local_discrete_step_sha256: 60aedc1fc064efc27941f46b0e597f728b4f57ddf4ad654ce15484fe8440ae73
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19780,7 +19780,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RS_PWR.local-envelope.step
-  local_discrete_step_sha256: 069e62c5485297d49aa752f594ece3fb6efb371975c2344c598d054da864e001
+  local_discrete_step_sha256: 93a142f4c98c7b40ccbe2a046d5183e91fb2b3900d5de8aff1123e0abfd706a6
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19867,7 +19867,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_SOC_CORE.local-envelope.step
-  local_discrete_step_sha256: b468b1202e3c93f428d2e8b8b7afc87a41d2e2f65af133cfbd4c4b594083209c
+  local_discrete_step_sha256: 4f6e9a48608d451029ff51a36020f675348e2bc71ac78d5c49df7718f506e198
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19954,7 +19954,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_DIFF.local-envelope.step
-  local_discrete_step_sha256: 54a5c84f5558d8fcb1fe7910f1c146d87d12e9932f00b4cfc4aa93cd08286d0c
+  local_discrete_step_sha256: 5dac70b72c663f0dad45210d9ff3bb38707451eda5e2b02694630b795d3e49ac
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20041,7 +20041,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_CA.local-envelope.step
-  local_discrete_step_sha256: 552a133355049e43acd83108e381af6ceb6c73edfb7280212676aa205958e892
+  local_discrete_step_sha256: 849900d69a5ea9b992871bc331b22a920e9ba27248975f40e041ee418d64b32b
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20128,7 +20128,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_DQ.local-envelope.step
-  local_discrete_step_sha256: fee3b3258804c0395e0c9e1772c0022d2bb268b4b872b0ffc56a75502f3391e5
+  local_discrete_step_sha256: 8fbf7489867d47132586925da420d879525b30048fc0d70a870d736ba8a9228e
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20239,7 +20239,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_UFS.local-envelope.step
-  local_discrete_step_sha256: 6710011225ffe07b9cfdf6c203a7347b565983d1d337fb7a110b6693debdac2d
+  local_discrete_step_sha256: 28b226996cc8fa3c712a04e03ba55b5ff6ae477c8edd185ba347b8991e83cd27
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20326,7 +20326,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_DEBUG.local-envelope.step
-  local_discrete_step_sha256: 45892c63258f64ff3d07e6aa5e6a165e44b6092131d4c85ace3186009d751289
+  local_discrete_step_sha256: 0af3fdb275273b683b925e93afe820512a2dacc0884d53149a0a73e39f237e5a
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20461,7 +20461,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_USIM.local-envelope.step
-  local_discrete_step_sha256: 4016b8d8b4f10886f5a6280938d19467a144f753eb23b281b59aef55f0a4b295
+  local_discrete_step_sha256: b13477bf22da6b72df3c1efda4d00367987aca9c174f9c71c226352adac9d6bf
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20591,7 +20591,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_ESIM.local-envelope.step
-  local_discrete_step_sha256: 335f49adf14cb3b7446ba408f891921b2bb6556439bf2781629936174448e862
+  local_discrete_step_sha256: 89b0af676f80648b333f7a32f632e25057f47efbe9a5a400a8f5c7b291552033
   local_discrete_step_bytes: 15512
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20678,7 +20678,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_GNSS_RF.local-envelope.step
-  local_discrete_step_sha256: 165df569a5b9c608cad35382aaf31d5b69d7c56c4c2156259ae3351977c76b91
+  local_discrete_step_sha256: 5bf0c6ef6e8614cf56b748633bd502df80de429ae6b15623912bf19347c1d7be
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20952,7 +20952,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_NFC.local-envelope.step
-  local_discrete_step_sha256: 52a121a1c736c906ffde7f99b901cd27cf02f99538cc28c76e4dea32d725d283
+  local_discrete_step_sha256: c2fe10adbf493901b8be8898c36e1dc61ace8d0c686cdb69e57bf29700777edf
   local_discrete_step_bytes: 15538
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -21057,7 +21057,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_NFC.local-envelope.step
-  local_discrete_step_sha256: d6872fcb53eac818c6092044811c20b487b4f32d440057f55b577dd6a6fa5c29
+  local_discrete_step_sha256: 8e7b5f0e6684fd60dfccbdaa7b4a6668e4bba37d3ff81e3dd2345743d9306492
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -21283,7 +21283,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_SENS.local-envelope.step
-  local_discrete_step_sha256: 6219d6065cd94126d3d4dd6a26f949d7c44dc55e5e9036e070a00b5bb30d4cb4
+  local_discrete_step_sha256: 20a95358fae9b469b2e1b857bdc828e93b902ee290fc02704ebcb6d027af6c2b
   local_discrete_step_bytes: 15486
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -21388,7 +21388,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_CELL_MAIN.local-envelope.step
-  local_discrete_step_sha256: 40a2e9fa929dac028188b5eb18542350bc155b102a636aee7f5184cbb1b42dad
+  local_discrete_step_sha256: 74166e5051e07fed4ea34e1cf17d5cb47cba351bd94f3e97540502369f511216
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -21469,7 +21469,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_CELL_MAIN.local-envelope.step
-  local_discrete_step_sha256: 6f13c3ac5012e7d79fe5a1e613c4f3d76e3ff69f9f7f47b4e3cada679e9e2cc2
+  local_discrete_step_sha256: 3d9515b1b6f8b7e6c966d94f7cef7e4f87fa67a35c716dc73a09d97224645543
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -21574,7 +21574,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_CELL_DIV.local-envelope.step
-  local_discrete_step_sha256: ac4f648d083b3c6bedfdb4244df59a8fcc45859f694f88f95041cb2f2ffa1acd
+  local_discrete_step_sha256: f7b54b8fe1a6499837b076100e577702c5d6c36ffb929efbeac1c8722103b59d
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -21655,7 +21655,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_CELL_DIV.local-envelope.step
-  local_discrete_step_sha256: 9ce4c950461cee71982a0e4bec5e972d208def4f6bf42aedb47e972e69d361fd
+  local_discrete_step_sha256: 9abf9af93c9623350cc4e3a92f58b1ab84c6c66910b0fa8a73440c8f6074c200
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -21760,7 +21760,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_GNSS.local-envelope.step
-  local_discrete_step_sha256: e3a64831c94320c5dcac16e177e3493bc2841f3326885cf33debfc7207a0323a
+  local_discrete_step_sha256: eb771da7b82e4f43b14bd107abbfebcbeb3eae27fbd66d78057db214432e723b
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -21841,7 +21841,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_GNSS.local-envelope.step
-  local_discrete_step_sha256: 3d432e53fdd4f3a6db91c6d11640004b4b9ce6985d0b24ac071d01f6bdd6df9f
+  local_discrete_step_sha256: 7c7296bf8f80cd45372f7cab9e1116fcc6a9ccf88847451a0633b76c502d6a45
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -21946,7 +21946,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_WIFI0.local-envelope.step
-  local_discrete_step_sha256: 57ae44ff0ebe425e660a751b6efc0537df43c62cc231f10047d5c5abd52e6aca
+  local_discrete_step_sha256: e78e5c2faee0b336053453b2f15ba86bec9add8f51957243979f9f554aaacaad
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -22027,7 +22027,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_WIFI0.local-envelope.step
-  local_discrete_step_sha256: 00fe26fa3dcd9680afacb815c1f523cbc0b394c5d4fd5380ec1fef9c4b787248
+  local_discrete_step_sha256: b2c28c929eba26a1380931305e60323998612d075c0d7d04e52428d11ccf9796
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -22132,7 +22132,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_WIFI1.local-envelope.step
-  local_discrete_step_sha256: e6fe5c3418633be0c5fe81f0b130c6439a52bb22ca7bafda49c0b767519849f1
+  local_discrete_step_sha256: 46a58353e81874d63e4c1772d7e54c04948398c99503d3cb116af41ebbca0e8c
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -22213,7 +22213,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_WIFI1.local-envelope.step
-  local_discrete_step_sha256: bf8dd8e2c8a2e68f95141b4b26d1853ee196c4ef7d8366d37b14799dc18a8d95
+  local_discrete_step_sha256: 16578f28bbd022f4b07e51539cf1594283c80856c5e1ec9a241dd91c5397fc90
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -22294,7 +22294,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_VBUS.local-envelope.step
-  local_discrete_step_sha256: 326e651e1927d5eee452c9ae477816859879e697df11864a32d089d896e9f4fa
+  local_discrete_step_sha256: 4ddf43321c86d063f72e5d3ed997c3bf017466f108b5dda377f369f279d5766d
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -22375,7 +22375,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_VBAT.local-envelope.step
-  local_discrete_step_sha256: 8c72c242ffd9296ecc26718fe4a2f52ca6afbe63dfb6328f804818e9e806f5a7
+  local_discrete_step_sha256: 78f70909c12c8940379248bb666e90ebe2efefa87f85e1d2bb2be629cac4d697
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -22456,7 +22456,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_SYS.local-envelope.step
-  local_discrete_step_sha256: 90d98ee2b42665538f90832257e607fa2091c52b9dc7353149e5cc52e774ca50
+  local_discrete_step_sha256: 7150a0c9337ecab391da22eae0da34824577f97a00aa67ac9b1a3fc28c03741f
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -22537,7 +22537,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_AON_1V8.local-envelope.step
-  local_discrete_step_sha256: c0ea30a81d5d12c4b3cb191d6984e417168a0931ae3c56ebe2c2f2c8de21ecb8
+  local_discrete_step_sha256: cc8cbc10fc1e8f29321149bf6abe3fa941dce8f7929a8552e8d94587f5d67a19
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -22618,7 +22618,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_IO_1V8.local-envelope.step
-  local_discrete_step_sha256: e4c458c75ab7bba1208d373f8243308ce216b900d8f51a3e2720acb4b6702119
+  local_discrete_step_sha256: 36ee5492d3695ef8730e1a23b301b34a3f35cb537869b8ffa95a4160d5d2078a
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -22699,7 +22699,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_RF_VBAT.local-envelope.step
-  local_discrete_step_sha256: 013056466f965c29a856a35d98d5249ccfc921ab88d65d6cef7dcc146e162894
+  local_discrete_step_sha256: 4523bf3e85cc6fdf4ffa48b2b3f9dd5c2466916eb9f37d4ca3e6d32e9df322db
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -22780,7 +22780,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_CAM_AVDD_2V8.local-envelope.step
-  local_discrete_step_sha256: 6e99fbf1d25decdd0c57745f34b20bb104f340a7a67910a291108b672cc0f279
+  local_discrete_step_sha256: 5b6fc31101a336d677f3767958d289959b6038464fde1d715ef2ffecfb30bca7
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -22861,7 +22861,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_DISP_AVDD_5V5.local-envelope.step
-  local_discrete_step_sha256: 04cf7e91397ae57bc8c7c5b995dcac427fc085523c4f4555a7cfb8ac054d80ee
+  local_discrete_step_sha256: ef55d75202f2d12667a06e781df71d9a3bd4175f932549daaaa4b4536e044d5f
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -22942,7 +22942,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FID_TL.local-envelope.step
-  local_discrete_step_sha256: ece2f1c639aeb0384cebe17ab6e9af9b4beebc3869310192dd1154c8aaf7805d
+  local_discrete_step_sha256: 59d4f333e9ac349ace6597d12ffa45814d26ce63abd8a4712022d9b440cfe08b
   local_discrete_step_bytes: 15628
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -23023,7 +23023,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FID_TR.local-envelope.step
-  local_discrete_step_sha256: 935ddb0cca196d4cded5a47ed726142dba994f30714bd495f05e06a2ed0bc39c
+  local_discrete_step_sha256: f04c2057450f44d9163d1f445b71870f1eb4b55f3789d7da0ed4cc6f8c8c1b8f
   local_discrete_step_bytes: 15628
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -23104,7 +23104,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FID_BR.local-envelope.step
-  local_discrete_step_sha256: 4351e714384e74dc742267da5d146ac173b7412ddc48f1f751c728ff64e51069
+  local_discrete_step_sha256: d82982e0100202ae68532a2b631223230ddd18e9bb0ba7f6e8afd638cd475675
   local_discrete_step_bytes: 15628
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -23202,7 +23202,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_TL.local-envelope.step
-  local_discrete_step_sha256: 20f77e5b58bd58bdad4f293a066dbb0ad2db182b3590b90d27e22634267f3aa9
+  local_discrete_step_sha256: 9cd010d507abd7363e00ab420fb6a5a9b0f5c1229b487678d11e269a437aab23
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -23296,7 +23296,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_TR.local-envelope.step
-  local_discrete_step_sha256: 3e965aaabf79c5b2a4c70976d7ad0982b52e0a01d44e21aa44ddf2fad1dd6da5
+  local_discrete_step_sha256: 32384dfb5866f1065b07f2927e5f9d152ff3c80a82ea6b696df391fe6402f66f
   local_discrete_step_bytes: 15638
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -23390,7 +23390,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_BL.local-envelope.step
-  local_discrete_step_sha256: bc197762e1ec8ede1698463b3f136a4fac14cdb2c50398e0acc56ef999eafa63
+  local_discrete_step_sha256: e93d173c31460c93205f4c641039e5b08875723736d21fd3a0bfb51f77db8c54
   local_discrete_step_bytes: 15638
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -23484,7 +23484,7 @@ models:
   local_step_bound: true
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_BR.local-envelope.step
-  local_discrete_step_sha256: 06e17f243fc257990103dddd2f1eb0f1a109139d0ad6cfcaf68cf2e259b92d33
+  local_discrete_step_sha256: d77c5ce2d52fa4d5134fde604118e9d7d300531293b7ad3590438ced4fc8873b
   local_discrete_step_bytes: 15638
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass

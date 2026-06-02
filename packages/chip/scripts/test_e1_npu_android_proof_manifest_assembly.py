@@ -78,6 +78,28 @@ def test_assembly_blocks_with_missing_artifacts() -> None:
         ):
             if token not in command_text:
                 raise AssertionError(command_text)
+        command_plan = assembly_report.get("next_command_plan", [])
+        if assembly_report.get("summary", {}).get("next_command_batch_count") != len(
+            command_plan
+        ):
+            raise AssertionError(json.dumps(assembly_report, indent=2))
+        if len(command_plan) != len(findings):
+            raise AssertionError(json.dumps(assembly_report, indent=2))
+        plan_by_output = {
+            tuple(batch.get("expected_output_files", [])): batch for batch in command_plan
+        }
+        for finding in findings:
+            key = (finding["evidence"],)
+            batch = plan_by_output.get(key)
+            if batch is None:
+                raise AssertionError(json.dumps(command_plan, indent=2))
+            if batch.get("commands") != finding.get("next_commands"):
+                raise AssertionError(json.dumps(batch, indent=2))
+            if (
+                batch.get("claim_boundary")
+                != "operator_commands_only_not_android_npu_or_release_evidence"
+            ):
+                raise AssertionError(json.dumps(batch, indent=2))
         check = run(
             [
                 sys.executable,

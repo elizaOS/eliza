@@ -3831,6 +3831,7 @@
         "@elizaos/capacitor-calendar": "workspace:*",
         "@elizaos/capacitor-mobile-signals": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/macosreminders": "workspace:*",
         "@elizaos/native-activity-tracker": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-calendly": "workspace:*",
@@ -4350,6 +4351,14 @@
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-reminders": {
+      "name": "@elizaos/macosreminders",
+      "version": "2.0.3-beta.0",
+      "devDependencies": {
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
     },
     "plugins/plugin-native-screencapture": {
@@ -6218,6 +6227,8 @@
     "@elizaos/logger": ["@elizaos/logger@workspace:packages/logger"],
 
     "@elizaos/macosalarm": ["@elizaos/macosalarm@workspace:plugins/plugin-native-macosalarm"],
+
+    "@elizaos/macosreminders": ["@elizaos/macosreminders@workspace:plugins/plugin-native-reminders"],
 
     "@elizaos/native-activity-tracker": ["@elizaos/native-activity-tracker@workspace:plugins/plugin-native-activity-tracker"],
 

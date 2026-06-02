@@ -88,7 +88,11 @@ def test_structured_findings_cover_required_real_evidence() -> None:
         raise AssertionError(f"NPU findings must include missing real evidence: {findings}")
     if not all(item.get("next_command") for item in findings):
         raise AssertionError(f"NPU findings must include row-level commands: {findings}")
-    joined = "\n".join(findings[0].get("next_commands", []))
+    joined = "\n".join(
+        command
+        for batch in report.get("next_command_plan", [])
+        for command in batch.get("commands", [])
+    )
     for token in (
         "capture_e1_npu_nnapi_evidence.sh",
         "check_e1_npu_nnapi_proof.py --probe-adb",
@@ -97,6 +101,37 @@ def test_structured_findings_cover_required_real_evidence() -> None:
         if token not in joined:
             raise AssertionError(f"NPU finding commands missing {token!r}: {joined}")
     print("PASS structured NPU findings cover required real evidence")
+
+
+def test_structured_findings_use_specific_capture_commands() -> None:
+    report = check_npu_scope.build_report()
+    findings = report.get("findings", [])
+    by_message = {str(item.get("message")): item for item in findings}
+
+    nnapi = by_message["NNAPI accelerator query transcript lists e1-npu"]
+    if "capture_e1_npu_nnapi_evidence.sh" not in "\n".join(nnapi.get("next_commands", [])):
+        raise AssertionError(nnapi)
+    if "capture_e1_npu_nnapi_evidence.sh" not in nnapi.get("next_command", ""):
+        raise AssertionError(f"NNAPI proof finding used generic command: {nnapi}")
+
+    android = by_message[
+        "Android proof manifest contains passing VTS, CTS, VINTF, SELinux, NNAPI query, and fail-closed absent-device artifacts"
+    ]
+    android_commands = "\n".join(android.get("next_commands", []))
+    if "capture_e1_npu_android_proof_bundle.sh" not in android_commands:
+        raise AssertionError(android)
+    if android.get("next_command") == "adb devices":
+        raise AssertionError(f"Android proof finding used generic adb command: {android}")
+
+    power = by_message[
+        "power/thermal manifest contains calibrated sustained workload traces and computed perf-per-watt"
+    ]
+    power_commands = "\n".join(power.get("next_commands", []))
+    if "ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND" not in power_commands:
+        raise AssertionError(power)
+    if power.get("next_command") == "adb devices":
+        raise AssertionError(f"Power finding used generic adb command: {power}")
+    print("PASS structured NPU findings use specific capture commands")
 
 
 def test_next_command_plan_covers_target_side_npu_capture() -> None:
@@ -146,6 +181,7 @@ def main() -> None:
     test_current_level_promotion_fails()
     test_blocker_removal_fails()
     test_structured_findings_cover_required_real_evidence()
+    test_structured_findings_use_specific_capture_commands()
     test_next_command_plan_covers_target_side_npu_capture()
     test_failed_structural_check_fails()
     test_scaffold_removal_fails()

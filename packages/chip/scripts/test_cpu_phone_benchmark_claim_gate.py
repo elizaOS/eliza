@@ -160,6 +160,18 @@ def target_metadata_sha256() -> str:
     return hashlib.sha256(target_metadata_text().encode("utf-8")).hexdigest()
 
 
+def target_metadata_contract_source() -> Path:
+    return ROOT / gate.load_benchmark_runner().TARGET_METADATA_CONTRACT_PATH
+
+
+def target_metadata_contract_path() -> Path:
+    return gate.ROOT / gate.load_benchmark_runner().TARGET_METADATA_CONTRACT_PATH
+
+
+def target_metadata_contract_sha256() -> str:
+    return hashlib.sha256(target_metadata_contract_path().read_bytes()).hexdigest()
+
+
 def write_calibration_evidence(root: Path) -> None:
     clock = root / "docs/evidence/calibration/clock-source.txt"
     power = root / "docs/evidence/calibration/power-meter.txt"
@@ -331,6 +343,11 @@ def valid_benchmark_report() -> dict[str, Any]:
             "runner": "prototype",
             "transcript_path": "benchmarks/results/cpu-phone/target-session.log",
             "transcript_sha256": REPORT_TRANSCRIPT_SHA,
+        },
+        "artifacts": {
+            "target_metadata_contract": gate.load_benchmark_runner().TARGET_METADATA_CONTRACT_PATH,
+            "target_metadata_contract_sha256": target_metadata_contract_sha256(),
+            "target_metadata_contract_bytes": target_metadata_contract_path().stat().st_size,
         },
         "software": {
             "os": "linux",
@@ -508,6 +525,9 @@ def configure_root(root: Path) -> None:
 
 def populate_valid_root(root: Path) -> Path:
     configure_root(root)
+    contract_path = target_metadata_contract_path()
+    contract_path.parent.mkdir(parents=True, exist_ok=True)
+    contract_path.write_bytes(target_metadata_contract_source().read_bytes())
     write_calibration_evidence(root)
     for name, path in gate.SIDE_RESULT_SPECS.items():
         write_json(path, side_result(name))
@@ -1322,6 +1342,16 @@ def test_missing_report_includes_real_run_command() -> None:
             raise AssertionError(finding)
         if "target-built bw_mem" not in finding.get("requirements", ""):
             raise AssertionError(finding)
+        command_plan = report.get("next_command_plan", [])
+        if report.get("summary", {}).get("next_command_batch_count") != len(command_plan):
+            raise AssertionError(report)
+        if not any(
+            "--report-id cpu-phone" in " ".join(batch.get("commands", []))
+            and batch.get("claim_boundary")
+            == "operator_commands_only_not_cpu_phone_benchmark_or_release_evidence"
+            for batch in command_plan
+        ):
+            raise AssertionError(command_plan)
     print("PASS missing phone report names real-run command")
 
 

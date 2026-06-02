@@ -252,6 +252,107 @@ def test_walking_curriculum_declares_staged_biped_reward_terms() -> None:
         assert task.success["min_swing_foot_clearance_m"] > 0.0
 
 
+def test_walking_curriculum_declares_pre_walk_single_support_tasks() -> None:
+    curriculum = load_curriculum()
+
+    staged = {
+        "weight_shift_left": (True, False, False),
+        "weight_shift_right": (False, True, False),
+        "lift_left_foot": (False, True, True),
+        "lift_right_foot": (True, False, True),
+    }
+    for task_id, (left_contact, right_contact, requires_clearance) in staged.items():
+        task = curriculum.by_id(task_id)
+        assert task.success["left_foot_contact_required"] is left_contact
+        assert task.success["right_foot_contact_required"] is right_contact
+        assert task.success["torso_z_min_ratio"] >= 0.75
+        assert task.success["max_abs_delta_x_m"] <= 0.08
+        assert task.success["max_abs_delta_yaw_rad"] <= 0.25
+        assert task.reward["stance_contact_weight"] > 0.0
+        assert task.reward["foot_clearance_weight"] > 0.0
+        if requires_clearance:
+            assert task.success["min_swing_foot_clearance_m"] > 0.0
+
+    step = curriculum.by_id("step_in_place")
+    assert step.success["min_alternating_foot_contacts"] >= 2
+    assert step.success["min_swing_foot_clearance_m"] > 0.0
+    assert step.success["max_abs_delta_x_m"] <= 0.08
+    assert step.success["max_abs_delta_y_m"] <= 0.08
+
+
+def test_lift_left_foot_goal_requires_right_plant_left_swing_clearance() -> None:
+    checker = _checker("lift_left_foot")
+    checker.update(
+        TelemetrySample(
+            t_s=0.0,
+            torso_x_m=0.0,
+            torso_y_m=0.0,
+            torso_z_m=0.27,
+            yaw_rad=0.0,
+            extra=_stand_extra(left=True, right=True),
+        )
+    )
+    wrong_contact = checker.update(
+        TelemetrySample(
+            t_s=0.5,
+            torso_x_m=0.0,
+            torso_y_m=0.0,
+            torso_z_m=0.27,
+            yaw_rad=0.0,
+            extra=_stand_extra(left=True, right=True),
+        )
+    )
+    assert wrong_contact.success is False
+
+    low_clearance = checker.update(
+        TelemetrySample(
+            t_s=0.6,
+            torso_x_m=0.0,
+            torso_y_m=0.0,
+            torso_z_m=0.27,
+            yaw_rad=0.0,
+            extra={
+                **_stand_extra(left=False, right=True),
+                "left_foot_z_m": 0.005,
+            },
+        )
+    )
+    assert low_clearance.success is False
+
+    holding = checker.update(
+        TelemetrySample(
+            t_s=0.7,
+            torso_x_m=0.0,
+            torso_y_m=0.0,
+            torso_z_m=0.27,
+            yaw_rad=0.0,
+            extra={
+                **_stand_extra(left=False, right=True),
+                "left_foot_z_m": 0.02,
+            },
+        )
+    )
+    assert holding.success is False
+
+    ok = checker.update(
+        TelemetrySample(
+            t_s=1.2,
+            torso_x_m=0.0,
+            torso_y_m=0.0,
+            torso_z_m=0.27,
+            yaw_rad=0.0,
+            extra={
+                **_stand_extra(left=False, right=True),
+                "left_foot_z_m": 0.02,
+            },
+        )
+    )
+    assert ok.success is True
+    assert "left_foot_contact=False" in ok.reason
+    assert "right_foot_contact=True" in ok.reason
+    assert "swing_clearance" in ok.reason
+
+
 def test_sidestep_requires_lateral_motion_without_forward_or_yaw_drift() -> None:
     checker = _checker("sidestep_left")
     checker.update(

@@ -743,6 +743,10 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             payload["next_runtime_capture_action"]["claim_boundary"],
             "operator_capture_action_only_not_runtime_release_evidence",
         )
+        self.assertIn(
+            "capture_launcher_runtime_evidence.py",
+            payload["findings"][0]["next_command"],
+        )
         self.assertNotIn(
             "python3 scripts/check_phone_runtime_readiness_contract.py",
             inventory["next_commands"],
@@ -771,6 +775,24 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             payload["next_runtime_capture_action"]["next_command_batches"],
             payload["runtime_capture_area_groups"][0]["next_command_batches"],
         )
+        self.assertEqual(payload["summary"]["next_command_batch_count"], 1)
+        self.assertEqual(len(payload["next_command_plan"]), 1)
+        command_batch = payload["next_command_plan"][0]
+        group = payload["runtime_capture_area_groups"][0]
+        self.assertEqual(command_batch["id"], "capture_media_phone_runtime_evidence")
+        self.assertEqual(command_batch["area"], "runtime")
+        self.assertEqual(command_batch["capture_area"], "media")
+        self.assertEqual(
+            command_batch["source"],
+            "packages/chip/build/reports/phone_runtime_readiness_contract.json",
+        )
+        self.assertEqual(
+            command_batch["claim_boundary"],
+            "operator_commands_only_not_phone_runtime_or_release_evidence",
+        )
+        self.assertEqual(command_batch["commands"], group["next_commands"])
+        self.assertEqual(command_batch["expected_output_files"], group["next_artifacts"])
+        self.assertEqual(command_batch["next_command_batches"], group["next_command_batches"])
 
     def test_prioritized_runtime_capture_plan_lists_live_evidence_without_release_credit(
         self,

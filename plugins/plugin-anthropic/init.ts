@@ -44,7 +44,7 @@ export function initializeAnthropic(_config: PluginConfig, runtime: IAgentRuntim
           stdout: "pipe",
           stderr: "pipe",
         });
-        if (!result || result.exitCode !== 0) throw new Error("claude not found");
+        if (result?.exitCode !== 0) throw new Error("claude not found");
         logger.log("[Anthropic] CLI mode — using `claude -p` for all model calls");
       } catch {
         logger.warn(

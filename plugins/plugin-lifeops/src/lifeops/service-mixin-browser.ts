@@ -1,7 +1,9 @@
 import crypto from "node:crypto";
 import {
-  authenticateBrowserBridgeCompanionCredential,
   BROWSER_BRIDGE_KINDS,
+  MAX_BROWSER_FOCUS_WINDOW_MS,
+  authenticateBrowserBridgeCompanionCredential,
+  browserBridgeDomainFromUrl,
   type BrowserBridgeCompanionAutoPairResponse,
   type BrowserBridgeCompanionConfig,
   type BrowserBridgeCompanionPairingResponse,
@@ -16,6 +18,10 @@ import {
   type CreateBrowserBridgeCompanionPairingRequest,
   type SyncBrowserBridgeStateRequest,
   type UpdateBrowserBridgeSettingsRequest,
+  createBrowserBridgePageContext,
+  createBrowserBridgeTabSummary,
+  isoTimestampExpired,
+  resolveBrowserBridgeCompanionPairingTokenExpiresAt,
 } from "@elizaos/plugin-browser";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
@@ -151,50 +157,6 @@ function mergeMetadata(
   return { ...current, ...cloned };
 }
 
-const MAX_BROWSER_FOCUS_WINDOW_MS = 2 * 60 * 1000;
-const DEFAULT_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-
-function browserCompanionPairingTokenTtlMs(): number {
-  const raw =
-    process.env.BROWSER_BRIDGE_COMPANION_TOKEN_TTL_MS ??
-    process.env.ELIZA_BROWSER_BRIDGE_COMPANION_TOKEN_TTL_MS;
-  if (typeof raw === "string" && raw.trim().length > 0) {
-    const parsed = Number(raw);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return Math.trunc(parsed);
-    }
-  }
-  return DEFAULT_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS;
-}
-
-function browserCompanionPairingTokenExpiresAt(nowMs = Date.now()): string {
-  return new Date(nowMs + browserCompanionPairingTokenTtlMs()).toISOString();
-}
-
-function isoTimestampExpired(
-  value: string | null | undefined,
-  nowMs: number,
-): boolean {
-  if (!value) {
-    return false;
-  }
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) && parsed <= nowMs;
-}
-
-function browserDomainFromUrl(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return null;
-    }
-    const hostname = parsed.hostname.trim().toLowerCase().replace(/\.+$/, "");
-    return hostname.length > 0 ? hostname : null;
-  } catch {
-    return null;
-  }
-}
-
 function normalizeBrowserSettingsUpdate(
   request: UpdateBrowserBridgeSettingsRequest,
   current: BrowserBridgeSettings,
@@ -249,11 +211,7 @@ import {
   summarizeBrowserTaskLifecycle,
 } from "./browser-session-lifecycle.js";
 // Imports from repository
-import {
-  createBrowserBridgePageContext,
-  createBrowserBridgeTabSummary,
-  createLifeOpsBrowserSession,
-} from "./repository.js";
+import { createLifeOpsBrowserSession } from "./repository.js";
 import { DEFAULT_BROWSER_PERMISSION_STATE } from "./service-constants.js";
 
 // ---------------------------------------------------------------------------
@@ -368,7 +326,8 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
           };
         });
       const expiresAt =
-        auth.expiresAt ?? browserCompanionPairingTokenExpiresAt(nowMs);
+        auth.expiresAt ??
+        resolveBrowserBridgeCompanionPairingTokenExpiresAt(nowMs);
       await this.repository.promoteBrowserCompanionPendingPairingToken(
         this.agentId(),
         credential.companion.id,
@@ -587,7 +546,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
             windowStart: new Date(cappedStartMs).toISOString(),
             windowEnd: nowIso,
           });
-          const domain = browserDomainFromUrl(previouslyFocusedTab.url);
+          const domain = browserBridgeDomainFromUrl(previouslyFocusedTab.url);
           if (domain) {
             await this.recordScreenTimeEvent({
               source: "website",
@@ -952,7 +911,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       const nowMs = Date.now();
       const nowIso = new Date(nowMs).toISOString();
       const pairingTokenExpiresAt =
-        browserCompanionPairingTokenExpiresAt(nowMs);
+        resolveBrowserBridgeCompanionPairingTokenExpiresAt(nowMs);
       const credential = await this.repository.getBrowserCompanionCredential(
         this.agentId(),
         companion.id,

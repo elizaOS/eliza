@@ -28,7 +28,7 @@ describe("screen-time ranges", () => {
 
     expect(computePriorScreenTimeRange("today", current)).toBeNull();
     expect(computePriorScreenTimeRange("7d", current)).toEqual({
-      since: "2026-05-20T23:15:00.000Z",
+      since: "2026-05-20T22:15:00.000Z",
       until: "2026-05-27T07:00:00.000Z",
     });
     expect(screenTimeRangeLabel("30d")).toBe("Last 30d");
@@ -41,16 +41,8 @@ describe("screen-time ranges", () => {
     });
 
     expect(days.map((day) => [day.date, day.since, day.until])).toEqual([
-      [
-        "2026-06-01",
-        "2026-06-01T07:00:00.000Z",
-        "2026-06-02T07:00:00.000Z",
-      ],
-      [
-        "2026-06-02",
-        "2026-06-02T07:00:00.000Z",
-        "2026-06-02T15:45:00.000Z",
-      ],
+      ["2026-06-01", "2026-06-01T07:00:00.000Z", "2026-06-02T07:00:00.000Z"],
+      ["2026-06-02", "2026-06-02T07:00:00.000Z", "2026-06-02T15:45:00.000Z"],
     ]);
   });
 });

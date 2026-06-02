@@ -168,6 +168,28 @@ TIMESTAMP_KEYS = {
 }
 
 GENERIC_RECHECK_COMMAND = "python3 packages/chip/scripts/check_chip_os_evidence_provenance.py"
+NPU_NNAPI_CAPTURE_COMMAND = (
+    "E1_NPU_WRITE_PROOF_JSON=1 "
+    "E1_NPU_MACS_PER_INFERENCE=<measured-macs> "
+    "E1_NPU_CYCLES=<measured-cycles> "
+    "E1_NPU_HZ=<measured-hz> "
+    "E1_NPU_DMA_BYTES_READ=<measured-bytes-read> "
+    "E1_NPU_DMA_BYTES_WRITTEN=<measured-bytes-written> "
+    "E1_NPU_NNAPI_DELEGATED_NODE_COUNT=<measured-delegated-nodes> "
+    "E1_NPU_NNAPI_TOTAL_NODE_COUNT=<measured-total-nodes> "
+    "E1_NPU_CPU_FALLBACK_PERCENT=0 "
+    "E1_NPU_UNSUPPORTED_OP_COUNT=0 "
+    "E1_NPU_DATAFLOW_NAME=<measured-dataflow> "
+    "E1_NPU_GENERATED_BY=<operator-or-job-id> "
+    "E1_NPU_TARGET=<target-id> "
+    "packages/chip/scripts/android/capture_e1_npu_nnapi_evidence.sh"
+)
+BENCHMARK_CAPTURE_COMMANDS = (
+    "python3 packages/chip/benchmarks/run_benchmarks.py validate-report "
+    "packages/chip/benchmarks/results/target-phone/report.json --artifact-root packages/chip",
+    "python3 packages/chip/scripts/check_benchmark_efficiency_scope.py",
+    "python3 packages/chip/scripts/check_cpu_phone_benchmark_claim_gate.py",
+)
 
 
 def provenance_commands(category: str, path: Path) -> list[str]:
@@ -193,10 +215,9 @@ def provenance_commands(category: str, path: Path) -> list[str]:
             "--run-cuttlefish --run-cts --run-vts --run-qemu --run-renode"
         )
     elif "e1-npu" in path_parts or "npu" in path_text.lower():
-        commands.append(
-            "E1_NPU_WRITE_PROOF_JSON=1 "
-            "packages/chip/scripts/android/capture_e1_npu_nnapi_evidence.sh"
-        )
+        commands.append(NPU_NNAPI_CAPTURE_COMMAND)
+    elif "benchmark" in path_text.lower():
+        commands.extend(BENCHMARK_CAPTURE_COMMANDS)
     elif path.name == "mvp_simulator.json":
         commands.append("python3 packages/chip/scripts/run_mvp_simulator.py")
     elif path.name == "os_rv64_chip_boot_contract.json" or "elizaos" in path_parts:
@@ -656,10 +677,13 @@ def build_report(roots: list[str]) -> dict[str, Any]:
     by_category = Counter(str(item["category"]) for item in findings)
     by_path = Counter(str(item["path"]) for item in findings)
     by_root = scan_root_summary(findings, roots)
-    command_batches = {
+    command_batches = sorted(
+        {
         tuple(str(command) for command in item.get("next_commands", []) if isinstance(command, str))
         for item in findings
-    }
+        if item.get("next_commands")
+        }
+    )
     return {
         "schema": SCHEMA,
         "status": "blocked" if findings else "pass",
@@ -676,6 +700,14 @@ def build_report(roots: list[str]) -> dict[str, Any]:
         "scan_roots": roots,
         "scan_root_summary": by_root,
         "top_paths": [{"path": path, "findings": count} for path, count in by_path.most_common(25)],
+        "next_command_plan": [
+            {
+                "id": f"remediate_provenance_batch_{index + 1}",
+                "commands": list(commands),
+                "claim_boundary": "operator_remediation_commands_only_not_boot_or_runtime_evidence",
+            }
+            for index, commands in enumerate(command_batches)
+        ],
         "findings": findings,
     }
 

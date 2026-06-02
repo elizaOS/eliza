@@ -626,7 +626,7 @@
         "endpoint_center_distance_mm": 64.869,
         "routed_trace_length_total_mm": 260.817,
         "min_bend_radius_mm": 1.0,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
         "controlled_impedance_required": true,
         "controlled_impedance_targets": [
           "mipi_dphy_diff_impedance_ohm=100ohm"
@@ -1084,7 +1084,7 @@
         "endpoint_center_distance_mm": 61.498,
         "routed_trace_length_total_mm": 216.992,
         "min_bend_radius_mm": 1.0,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
         "controlled_impedance_required": true,
         "controlled_impedance_targets": [
           "mipi_dphy_diff_impedance_ohm=100ohm"
@@ -1434,7 +1434,7 @@
         "endpoint_center_distance_mm": 70.48,
         "routed_trace_length_total_mm": 141.7,
         "min_bend_radius_mm": 1.0,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
         "controlled_impedance_required": true,
         "controlled_impedance_targets": [
           "mipi_dphy_diff_impedance_ohm=100ohm"
@@ -1627,7 +1627,7 @@
         "endpoint_center_distance_mm": 44.352,
         "routed_trace_length_total_mm": 138.528,
         "min_bend_radius_mm": 0.8,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
         "controlled_impedance_required": false,
         "controlled_impedance_targets": [],
         "impedance_requirement": "not_controlled_impedance",
@@ -1844,7 +1844,7 @@
         "endpoint_center_distance_mm": 7.04,
         "routed_trace_length_total_mm": 250.581,
         "min_bend_radius_mm": 1.5,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_battery_flex_min_bend_radius_requirement_1.5mm_pending_pack_supplier_lead_drawing",
         "controlled_impedance_required": false,
         "controlled_impedance_targets": [],
         "impedance_requirement": "current_capacity_and_ntc_id_sense_required",
@@ -2109,7 +2109,7 @@
         "endpoint_center_distance_mm": 72.702,
         "routed_trace_length_total_mm": 65.552,
         "min_bend_radius_mm": 1.0,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
         "controlled_impedance_required": true,
         "controlled_impedance_targets": [
           "usb2_diff_impedance_ohm=90ohm"
@@ -2376,7 +2376,7 @@
         "endpoint_center_distance_mm": 19.281,
         "routed_trace_length_total_mm": 65.552,
         "min_bend_radius_mm": 0.0,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review",
         "controlled_impedance_required": true,
         "controlled_impedance_targets": [
           "usb2_diff_impedance_ohm=90ohm"
@@ -2708,7 +2708,7 @@
         "endpoint_center_distance_mm": 11.0,
         "routed_trace_length_total_mm": 572.622,
         "min_bend_radius_mm": 0.0,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review",
         "controlled_impedance_required": false,
         "controlled_impedance_targets": [],
         "impedance_requirement": "VBUS/SYS current capacity plus I2C/IRQ routing and sequencing review",
@@ -2925,7 +2925,7 @@
         "endpoint_center_distance_mm": 4.833,
         "routed_trace_length_total_mm": 250.581,
         "min_bend_radius_mm": 0.0,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review",
         "controlled_impedance_required": false,
         "controlled_impedance_targets": [],
         "impedance_requirement": "VBAT/SYS current capacity plus NTC/ID kelvin-sense review",
@@ -3090,7 +3090,7 @@
         "endpoint_center_distance_mm": 19.548,
         "routed_trace_length_total_mm": 235.979,
         "min_bend_radius_mm": 1.0,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
         "controlled_impedance_required": false,
         "controlled_impedance_targets": [],
         "impedance_requirement": "display_bias_voltage_and_current_capacity_required",
@@ -3278,7 +3278,7 @@
         "endpoint_center_distance_mm": 61.498,
         "routed_trace_length_total_mm": 414.213,
         "min_bend_radius_mm": 1.0,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
         "controlled_impedance_required": false,
         "controlled_impedance_targets": [],
         "impedance_requirement": "camera_rail_current_capacity_and_sequencing_required",
@@ -3466,7 +3466,7 @@
         "endpoint_center_distance_mm": 70.48,
         "routed_trace_length_total_mm": 414.029,
         "min_bend_radius_mm": 1.0,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
         "controlled_impedance_required": false,
         "controlled_impedance_targets": [],
         "impedance_requirement": "camera_rail_current_capacity_and_sequencing_required",
@@ -4011,7 +4011,7 @@
         "endpoint_center_distance_mm": 29.981,
         "routed_trace_length_total_mm": 306.456,
         "min_bend_radius_mm": 0.0,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review",
         "controlled_impedance_required": true,
         "controlled_impedance_targets": [
           "pcie_diff_impedance_ohm=85ohm",
@@ -4331,7 +4331,7 @@
         "endpoint_center_distance_mm": 13.13,
         "routed_trace_length_total_mm": 168.906,
         "min_bend_radius_mm": 0.0,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review",
         "controlled_impedance_required": true,
         "controlled_impedance_targets": [
           "pcie_diff_impedance_ohm=85ohm"
@@ -4494,7 +4494,7 @@
         "endpoint_center_distance_mm": 66.429,
         "routed_trace_length_total_mm": 24.56,
         "min_bend_radius_mm": 1.0,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_insulated_wire_pair_min_bend_radius_requirement_1mm_pending_wire_gauge_insulation_and_strain_relief_drawing",
         "controlled_impedance_required": false,
         "controlled_impedance_targets": [],
         "impedance_requirement": "not_controlled_impedance",
@@ -4655,7 +4655,7 @@
         "endpoint_center_distance_mm": 70.927,
         "routed_trace_length_total_mm": 212.34,
         "min_bend_radius_mm": 0.8,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
         "controlled_impedance_required": false,
         "controlled_impedance_targets": [],
         "impedance_requirement": "not_controlled_impedance",
@@ -4816,7 +4816,7 @@
         "endpoint_center_distance_mm": 70.927,
         "routed_trace_length_total_mm": 212.34,
         "min_bend_radius_mm": 0.8,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
         "controlled_impedance_required": false,
         "controlled_impedance_targets": [],
         "impedance_requirement": "not_controlled_impedance",
@@ -4977,7 +4977,7 @@
         "endpoint_center_distance_mm": 68.87,
         "routed_trace_length_total_mm": 24.56,
         "min_bend_radius_mm": 1.0,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_insulated_wire_pair_min_bend_radius_requirement_1mm_pending_wire_gauge_insulation_and_strain_relief_drawing",
         "controlled_impedance_required": false,
         "controlled_impedance_targets": [],
         "impedance_requirement": "not_controlled_impedance",
@@ -5135,7 +5135,7 @@
         "endpoint_center_distance_mm": 56.546,
         "routed_trace_length_total_mm": 19.874,
         "min_bend_radius_mm": 0.8,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
         "controlled_impedance_required": false,
         "controlled_impedance_targets": [],
         "impedance_requirement": "not_controlled_impedance",
@@ -5296,7 +5296,7 @@
         "endpoint_center_distance_mm": 35.75,
         "routed_trace_length_total_mm": 58.442,
         "min_bend_radius_mm": 0.8,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
         "controlled_impedance_required": false,
         "controlled_impedance_targets": [],
         "impedance_requirement": "not_controlled_impedance",
@@ -5611,7 +5611,7 @@
         "endpoint_center_distance_mm": 36.564,
         "routed_trace_length_total_mm": 429.167,
         "min_bend_radius_mm": 0.8,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_fpc_min_bend_radius_requirement_0.8mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
         "controlled_impedance_required": false,
         "controlled_impedance_targets": [],
         "impedance_requirement": "not_controlled_impedance",
@@ -5816,7 +5816,7 @@
         "endpoint_center_distance_mm": 28.284,
         "routed_trace_length_total_mm": 39.621,
         "min_bend_radius_mm": 1.0,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_flexible_antenna_loop_min_bend_radius_requirement_1mm_pending_antenna_supplier_ferrite_and_adhesive_drawing",
         "controlled_impedance_required": true,
         "controlled_impedance_targets": [],
         "impedance_requirement": "NFC loop matching and antenna vendor review required",
@@ -6158,7 +6158,7 @@
         "endpoint_center_distance_mm": 45.036,
         "routed_trace_length_total_mm": 149.445,
         "min_bend_radius_mm": null,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_board_to_board_connector_mating_height_and_wipe_basis_no_bend_radius_pending_connector_supplier_stack_drawing",
         "controlled_impedance_required": true,
         "controlled_impedance_targets": [
           "usb2_diff_impedance_ohm=90ohm"
@@ -6336,7 +6336,7 @@
         "endpoint_center_distance_mm": 55.457,
         "routed_trace_length_total_mm": 104.168,
         "min_bend_radius_mm": 0.0,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_ground_spring_contact_deflection_basis_no_flex_bend_radius_pending_supplier_force_wipe_plating_drawing",
         "controlled_impedance_required": false,
         "controlled_impedance_targets": [],
         "impedance_requirement": "low_inductance_chassis_ground_contact_required",
@@ -6540,7 +6540,7 @@
         "endpoint_center_distance_mm": 54.639,
         "routed_trace_length_total_mm": 111.982,
         "min_bend_radius_mm": 0.0,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_ground_spring_contact_deflection_basis_no_flex_bend_radius_pending_supplier_force_wipe_plating_drawing",
         "controlled_impedance_required": false,
         "controlled_impedance_targets": [
           "usb2_diff_impedance_ohm=90ohm"
@@ -6688,7 +6688,7 @@
         "endpoint_center_distance_mm": 30.621,
         "routed_trace_length_total_mm": 10.612,
         "min_bend_radius_mm": 1.5,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence",
         "controlled_impedance_required": true,
         "controlled_impedance_targets": [
           "rf_single_impedance_ohm=50ohm"
@@ -6836,7 +6836,7 @@
         "endpoint_center_distance_mm": 117.429,
         "routed_trace_length_total_mm": 9.583,
         "min_bend_radius_mm": 1.5,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence",
         "controlled_impedance_required": true,
         "controlled_impedance_targets": [
           "rf_single_impedance_ohm=50ohm"
@@ -7007,7 +7007,7 @@
         "endpoint_center_distance_mm": 117.429,
         "routed_trace_length_total_mm": 223.896,
         "min_bend_radius_mm": 1.5,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_rf_tuner_interconnect_min_bend_radius_requirement_1.5mm_pending_tuner_state_table_matching_and_vna_evidence",
         "controlled_impedance_required": true,
         "controlled_impedance_targets": [
           "rf_single_impedance_ohm=50ohm"
@@ -7155,7 +7155,7 @@
         "endpoint_center_distance_mm": 22.739,
         "routed_trace_length_total_mm": 7.202,
         "min_bend_radius_mm": 1.5,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence",
         "controlled_impedance_required": true,
         "controlled_impedance_targets": [
           "rf_single_impedance_ohm=50ohm"
@@ -7305,7 +7305,7 @@
         "endpoint_center_distance_mm": 1.418,
         "routed_trace_length_total_mm": 12.139,
         "min_bend_radius_mm": 1.5,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence",
         "controlled_impedance_required": true,
         "controlled_impedance_targets": [
           "rf_single_impedance_ohm=50ohm"
@@ -7455,7 +7455,7 @@
         "endpoint_center_distance_mm": 1.418,
         "routed_trace_length_total_mm": 12.139,
         "min_bend_radius_mm": 1.5,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence",
         "controlled_impedance_required": true,
         "controlled_impedance_targets": [
           "rf_single_impedance_ohm=50ohm"
@@ -7773,7 +7773,7 @@
         "endpoint_center_distance_mm": 90.0,
         "routed_trace_length_total_mm": 719.498,
         "min_bend_radius_mm": 1.0,
-        "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+        "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
         "controlled_impedance_required": true,
         "controlled_impedance_targets": [
           "usb2_diff_impedance_ohm=90ohm"

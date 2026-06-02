@@ -15,6 +15,9 @@
       "@elizaos/plugin-task-coordinator": [
         "../../plugins/plugin-task-coordinator/src/index.ts"
       ],
+      "@elizaos/plugin-browser": [
+        "../../plugins/plugin-browser/src/index.ts"
+      ],
       "@elizaos/plugin-steward-app": [
         "../../plugins/plugin-steward-app/src/index.ts"
       ],

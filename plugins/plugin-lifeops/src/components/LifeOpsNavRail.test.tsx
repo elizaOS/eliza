@@ -73,4 +73,22 @@ describe("LifeOpsNavRail", () => {
       expect(screen.getByRole("button", { name: label })).toBeTruthy();
     }
   });
+
+  it("keeps compact mode icon-led while preserving accessible destinations", () => {
+    const { container } = render(
+      <LifeOpsNavRail
+        activeSection="assistant"
+        onNavigate={() => undefined}
+        collapsible={false}
+        labelMode="active"
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Assistant" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Overview" })).toBeTruthy();
+    expect(container.textContent).toContain("Assistant");
+    expect(container.textContent).not.toContain("Overview");
+    expect(container.textContent).not.toContain("Calendar");
+    expect(container.textContent).not.toContain("Settings");
+  });
 });

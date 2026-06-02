@@ -1,3 +1,0 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./HyperliquidAppView-Bgt6ekyU.js","./index-Bfd-e4HW.js","./index-PLppOxdK.css","./chart-column-KB60UiF0.js","./shield-x-BhtHtR3U.js"])))=>i.map(i=>d[i]);
-import{b as e,_ as r}from"./index-Bfd-e4HW.js";const p="@elizaos/plugin-hyperliquid-app",t={name:p,displayName:"Hyperliquid",description:"Native Hyperliquid market, position, and order status",category:"trading",icon:null,loader:()=>r(()=>import("./HyperliquidAppView-Bgt6ekyU.js"),__vite__mapDeps([0,1,2,3,4]),import.meta.url).then(i=>({default:i.HyperliquidAppView}))};e(t);
-//# sourceMappingURL=register-DjpZUBlc.js.map

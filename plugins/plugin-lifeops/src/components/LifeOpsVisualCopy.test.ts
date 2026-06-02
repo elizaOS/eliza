@@ -46,4 +46,22 @@ describe("LifeOps visual copy", () => {
     expect(source).not.toContain(" → ");
     expect(source).not.toContain(" · ");
   });
+
+  it("keeps overview assistant-first and free of dashboard loading copy", () => {
+    const source = readComponent("LifeOpsOverviewSection.tsx");
+
+    expect(source).toContain("LifeOpsOverviewAssistantDock");
+    expect(source).toContain("lifeops-overview-assistant-dock");
+    expect(source).not.toContain("Loading dashboard");
+  });
+
+  it("keeps desktop navigation compact and active-label only", () => {
+    const shell = readComponent("LifeOpsWorkspaceShell.tsx");
+    const nav = readComponent("LifeOpsNavRail.tsx");
+
+    expect(shell).toContain('labelMode="active"');
+    expect(shell).toContain('storageKey="lifeops:nav-rail-width:compact"');
+    expect(shell).not.toContain("defaultWidth={296}");
+    expect(nav).toContain('labelMode?: "all" | "active"');
+  });
 });

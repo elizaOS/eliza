@@ -2475,6 +2475,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "validate-report", help="Validate a generated report JSON file"
     )
     validate_parser.add_argument("report", type=Path)
+    validate_parser.add_argument(
+        "--artifact-root",
+        type=Path,
+        default=None,
+        help="Repository or artifact root used to verify archived raw-output and metadata hashes.",
+    )
     return parser.parse_args(normalized)
 
 
@@ -2610,7 +2616,14 @@ def main(argv: list[str]) -> int:
     root = repo_root()
     if args.command == "validate-report":
         report_path = args.report if args.report.is_absolute() else root / args.report
-        errors = validate_report_file(report_path, root)
+        artifact_root = (
+            args.artifact_root
+            if args.artifact_root is not None and args.artifact_root.is_absolute()
+            else root / args.artifact_root
+            if args.artifact_root is not None
+            else root
+        )
+        errors = validate_report_file(report_path, artifact_root)
         if errors:
             for error in errors:
                 print(f"schema error: {error}", file=sys.stderr)

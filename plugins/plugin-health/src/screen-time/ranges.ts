@@ -22,9 +22,7 @@ function addDays(date: Date, days: number): Date {
   return next;
 }
 
-export function screenTimeRangeLabel(
-  range: LifeOpsScreenTimeRangeKey,
-): string {
+export function screenTimeRangeLabel(range: LifeOpsScreenTimeRangeKey): string {
   switch (range) {
     case "today":
       return "Today";

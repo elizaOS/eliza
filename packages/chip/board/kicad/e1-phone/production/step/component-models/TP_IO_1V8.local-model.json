@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/TP_IO_1V8.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "e4c458c75ab7bba1208d373f8243308ce216b900d8f51a3e2720acb4b6702119",
+  "local_discrete_step_sha256": "36ee5492d3695ef8730e1a23b301b34a3f35cb537869b8ffa95a4160d5d2078a",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

@@ -21,7 +21,9 @@ import {
   Loader2,
   Mail,
   MessageCircle,
+  MessageSquareText,
   MessageSquare,
+  Mic2,
   Monitor,
   Moon,
   Phone,
@@ -29,6 +31,7 @@ import {
   Send,
   Share2,
   Shield,
+  Sparkles,
   Smartphone,
   Sun,
   Target,
@@ -59,6 +62,11 @@ import {
   LIFEOPS_MAIL_CHANNELS,
   LIFEOPS_MESSAGE_CHANNELS,
 } from "./LifeOpsInboxSection.js";
+import {
+  ASSISTANT_INTENTS,
+  LIFEOPS_VOICE_COMMAND_PROMPT,
+} from "./LifeOpsAssistantSection.js";
+import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
 import { useLifeOpsSelection } from "./LifeOpsSelectionContext.js";
 import { MissingSourceCard } from "./MissingSourceCard.js";
 
@@ -470,6 +478,129 @@ function OverviewNavButton({
   );
 }
 
+type OverviewAssistantCommand = {
+  id: string;
+  label: string;
+  icon: ReactNode;
+  prompt?: string;
+  select?: boolean;
+};
+
+function assistantPrompt(intentId: string): string {
+  return (
+    ASSISTANT_INTENTS.find((intent) => intent.id === intentId)?.prompt ??
+    ASSISTANT_INTENTS[0]?.prompt ??
+    "Give me a LifeOps command brief."
+  );
+}
+
+const OVERVIEW_ASSISTANT_COMMANDS: OverviewAssistantCommand[] = [
+  {
+    id: "ask",
+    label: "Ask LifeOps",
+    icon: <MessageSquareText className="h-4 w-4" aria-hidden />,
+    prompt: assistantPrompt("command-brief"),
+    select: true,
+  },
+  {
+    id: "voice",
+    label: "Voice command",
+    icon: <Mic2 className="h-4 w-4" aria-hidden />,
+    prompt: LIFEOPS_VOICE_COMMAND_PROMPT,
+    select: false,
+  },
+  {
+    id: "triage",
+    label: "Triage",
+    icon: <Flame className="h-4 w-4" aria-hidden />,
+    prompt: assistantPrompt("inbox-decisions"),
+    select: true,
+  },
+  {
+    id: "brief",
+    label: "Brief",
+    icon: <Sparkles className="h-4 w-4" aria-hidden />,
+    prompt: assistantPrompt("command-brief"),
+    select: true,
+  },
+];
+
+function OverviewAssistantDockButton({
+  command,
+  onLaunch,
+}: {
+  command: OverviewAssistantCommand;
+  onLaunch: (command: OverviewAssistantCommand) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `overview-assistant-${command.id}`,
+    role: "button",
+    label: command.label,
+    group: "lifeops-overview-assistant",
+    description: `Open ${command.label} in LifeOps chat`,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-label={command.label}
+      title={command.label}
+      data-testid="lifeops-overview-assistant-command"
+      data-command-id={command.id}
+      className="inline-flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg border border-border/16 bg-bg/35 px-2 text-xs font-semibold text-muted transition-colors hover:border-accent/30 hover:bg-bg-muted/45 hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
+      onClick={() => onLaunch(command)}
+      {...agentProps}
+    >
+      {command.icon}
+      {command.id === "ask" ? <span>Ask</span> : null}
+    </button>
+  );
+}
+
+export function LifeOpsOverviewAssistantDock({
+  onNavigate,
+  openLifeOpsChat,
+}: {
+  onNavigate: (section: LifeOpsSection) => void;
+  openLifeOpsChat: (
+    text: string,
+    selection?: Record<string, never>,
+    options?: { select?: boolean },
+  ) => void;
+}) {
+  return (
+    <div
+      className="flex min-w-0 flex-wrap items-center gap-1.5 rounded-lg border border-border/16 bg-card/10 p-1.5"
+      data-testid="lifeops-overview-assistant-dock"
+    >
+      {OVERVIEW_ASSISTANT_COMMANDS.map((command) => (
+        <OverviewAssistantDockButton
+          key={command.id}
+          command={command}
+          onLaunch={(launched) =>
+            openLifeOpsChat(
+              launched.prompt ?? assistantPrompt("command-brief"),
+              {},
+              { select: launched.select ?? true },
+            )
+          }
+        />
+      ))}
+      <OverviewNavButton
+        agentId="overview-open-assistant"
+        label="Open Assistant"
+        description="Open the full LifeOps assistant surface"
+        aria-label="Open Assistant"
+        title="Assistant"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/16 bg-bg/35 text-muted transition-colors hover:border-accent/30 hover:bg-bg-muted/45 hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
+        onClick={() => onNavigate("assistant")}
+      >
+        <ArrowRight className="h-4 w-4" aria-hidden />
+      </OverviewNavButton>
+    </div>
+  );
+}
+
 function MetricCell({
   label,
   value,
@@ -772,6 +903,7 @@ export function LifeOpsOverviewSection({
 }: LifeOpsOverviewSectionProps) {
   const { t } = useApp();
   const { select } = useLifeOpsSelection();
+  const { openLifeOpsChat } = useLifeOpsChatLauncher();
   const today = useMemo(() => new Date(), []);
   const greeting = useGreeting();
   const capabilities = useLifeOpsCapabilitiesStatus();
@@ -1196,6 +1328,13 @@ export function LifeOpsOverviewSection({
             tone={screenTimeLabel ? "text-amber-300" : "text-muted"}
           />
         </div>
+
+        <div className="mt-3">
+          <LifeOpsOverviewAssistantDock
+            onNavigate={onNavigate}
+            openLifeOpsChat={openLifeOpsChat}
+          />
+        </div>
       </header>
 
       {error ? (
@@ -1244,7 +1383,7 @@ export function LifeOpsOverviewSection({
       {loading && !overview ? (
         <div className="flex items-center gap-2 py-4 text-xs text-muted">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          Loading dashboard...
+          <span className="sr-only">Loading overview</span>
         </div>
       ) : null}
 

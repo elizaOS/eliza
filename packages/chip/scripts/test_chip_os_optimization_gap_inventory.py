@@ -446,6 +446,108 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
         self.assertIn("validate-chip-launcher-agent", commands)
         self.assertIn("collect-post-flash-logcat", commands)
         self.assertIn("validate-post-flash-logcat", commands)
+        finding = report["findings"][0]
+        self.assertEqual(finding["next_command"], "capture-launcher-runtime --logcat out/logcat.txt")
+
+    def test_finding_prefers_npu_capture_command_over_adb_probe(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            artifact = repo / "packages/chip/build/reports/npu_scope.json"
+            artifact.parent.mkdir(parents=True)
+            artifact.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "claim_boundary": "NPU scope only; not NNAPI runtime evidence",
+                        "next_command_plan": [
+                            {
+                                "id": "npu-runtime",
+                                "commands": [
+                                    "adb devices",
+                                    (
+                                        "E1_NPU_WRITE_PROOF_JSON=1 "
+                                        "scripts/android/capture_e1_npu_nnapi_evidence.sh"
+                                    ),
+                                    "python3 scripts/check_e1_npu_nnapi_proof.py --probe-adb",
+                                ],
+                            }
+                        ],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            spec = opt.ArtifactSpec(
+                "npu_scope",
+                "npu",
+                "packages/chip/build/reports/npu_scope.json",
+                "NPU runtime scope",
+                "NNAPI delegated runtime evidence",
+            )
+            with mock.patch.object(opt, "REPO", repo), mock.patch.object(opt, "ARTIFACTS", (spec,)):
+                report = opt.build_report()
+
+        finding = report["findings"][0]
+        self.assertEqual(
+            finding["next_command"],
+            "E1_NPU_WRITE_PROOF_JSON=1 scripts/android/capture_e1_npu_nnapi_evidence.sh",
+        )
+        self.assertEqual(finding["next_commands"][0], "adb devices")
+
+    def test_command_plan_sanitizes_host_local_aosp_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            artifact = repo / "packages/chip/build/reports/android_release_readiness_contract.json"
+            artifact.parent.mkdir(parents=True)
+            artifact.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "claim_boundary": "release readiness command plan only",
+                        "evidence": {
+                            "prioritized_live_evidence_capture_plan": [
+                                {
+                                    "capture_commands": [
+                                        "export AOSP_ROOT=/home/shaw/aosp",
+                                        (
+                                            "AOSP_DIR=/home/shaw/aosp "
+                                            "packages/chip/scripts/boot_android_simulator.sh "
+                                            "--run-cuttlefish"
+                                        ),
+                                    ],
+                                    "validation_commands": [
+                                        "python3 packages/chip/scripts/check_android_release_readiness_contract.py"
+                                    ],
+                                }
+                            ],
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            spec = opt.ArtifactSpec(
+                "android_release_readiness",
+                "runtime",
+                "packages/chip/build/reports/android_release_readiness_contract.json",
+                "Android release readiness contract",
+                "release and post-flash runtime logs",
+            )
+            with mock.patch.object(opt, "REPO", repo), mock.patch.object(opt, "ARTIFACTS", (spec,)):
+                report = opt.build_report()
+
+        encoded = json.dumps(report, sort_keys=True)
+        self.assertNotIn("/home/shaw/aosp", encoded)
+        commands = report["next_command_plan"][0]["commands"]
+        self.assertIn("export AOSP_ROOT=$AOSP_WORKSPACE", commands)
+        self.assertIn(
+            "AOSP_DIR=$AOSP_WORKSPACE packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish",
+            commands,
+        )
+        self.assertEqual(
+            report["findings"][0]["next_command"],
+            "AOSP_DIR=$AOSP_WORKSPACE packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish",
+        )
 
     def test_command_plan_joins_argv_array_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

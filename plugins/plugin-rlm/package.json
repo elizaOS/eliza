@@ -27,7 +27,7 @@
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "lint:fix": "biome check --write .",
+    "lint:fix": "bunx @biomejs/biome check --write .",
     "typecheck": "tsgo --noEmit",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",

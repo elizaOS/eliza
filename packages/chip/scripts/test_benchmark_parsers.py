@@ -702,6 +702,36 @@ def test_process_metadata_blocks_without_pdk_signoff() -> None:
         raise AssertionError(json.dumps(blockers, indent=2))
 
 
+def test_validate_report_cli_accepts_artifact_root() -> None:
+    temp_parent = ROOT / "benchmarks/results/test-temp"
+    temp_parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=temp_parent) as td:
+        report_path = Path(td) / "generated-ap-report.json"
+        import_result = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "benchmarks/import_cpu_ap_benchmark_evidence.py"),
+                "--out",
+                str(report_path),
+            ],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        if import_result.returncode != 0:
+            raise AssertionError(import_result.stdout)
+
+        validate_result = run_runner(
+            ["validate-report", str(report_path), "--artifact-root", "."]
+        )
+        if validate_result.returncode != 0:
+            raise AssertionError(validate_result.stdout)
+        if "valid" not in validate_result.stdout:
+            raise AssertionError(validate_result.stdout)
+
+
 def test_e1_npu_nnapi_proof_check_preserves_missing_proof_blocker() -> None:
     temp_parent = ROOT / "benchmarks/results/test-temp"
     temp_parent.mkdir(parents=True, exist_ok=True)
@@ -752,6 +782,11 @@ def test_e1_npu_nnapi_proof_check_preserves_missing_proof_blocker() -> None:
         raise AssertionError(json.dumps(status, indent=2))
     if not findings or not all(finding.get("next_command") for finding in findings):
         raise AssertionError(json.dumps(status, indent=2))
+    if not all(
+        "capture_e1_npu_nnapi_evidence.sh" in finding.get("next_command", "")
+        for finding in findings
+    ):
+        raise AssertionError(json.dumps(status, indent=2))
     command_text = "\n".join(
         command
         for finding in findings
@@ -764,6 +799,18 @@ def test_e1_npu_nnapi_proof_check_preserves_missing_proof_blocker() -> None:
     ):
         if token not in command_text:
             raise AssertionError(command_text)
+    next_command_plan = status.get("next_command_plan", [])
+    if len(next_command_plan) != 1:
+        raise AssertionError(json.dumps(status, indent=2))
+    batch = next_command_plan[0]
+    assert_equal(batch.get("id"), "e1_npu_nnapi_target_proof_capture", "NNAPI batch id")
+    assert_equal(
+        batch.get("claim_boundary"),
+        "operator_commands_only_not_nnapi_acceleration_or_release_evidence",
+        "NNAPI batch claim boundary",
+    )
+    if batch.get("commands") != findings[0].get("next_commands"):
+        raise AssertionError(json.dumps(status, indent=2))
 
 
 def test_e1_npu_nnapi_proof_rejects_tops_and_capture_command_drift() -> None:
@@ -872,6 +919,7 @@ def main() -> int:
         test_blocked_requirements_require_shape,
         test_blocked_metadata_template_covers_config_assets,
         test_process_metadata_blocks_without_pdk_signoff,
+        test_validate_report_cli_accepts_artifact_root,
         test_e1_npu_nnapi_proof_check_preserves_missing_proof_blocker,
         test_e1_npu_nnapi_proof_rejects_tops_and_capture_command_drift,
     ):

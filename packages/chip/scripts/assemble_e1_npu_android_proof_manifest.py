@@ -121,6 +121,37 @@ def finding_for_blocked_artifact(name: str, state: dict[str, Any]) -> dict[str, 
     }
 
 
+def next_command_plan(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    plan: list[dict[str, Any]] = []
+    for finding in findings:
+        commands = [
+            command
+            for command in finding.get("next_commands", [])
+            if isinstance(command, str) and command
+        ]
+        if not commands:
+            continue
+        artifact_name = str(finding.get("code", "android_npu_artifact")).removeprefix(
+            "missing_or_invalid_android_npu_artifact_"
+        )
+        plan.append(
+            {
+                "id": f"capture_e1_npu_android_{artifact_name}_proof_artifact",
+                "area": "npu",
+                "source": "packages/chip/build/reports/e1_npu_android_proof_manifest_assembly.json",
+                "claim_boundary": "operator_commands_only_not_android_npu_or_release_evidence",
+                "commands": commands,
+                "expected_output_files": [finding.get("evidence")] if finding.get("evidence") else [],
+                "requires": [
+                    "booted Android target or compatibility harness for the named e1-NPU proof artifact",
+                    "template-listed markers present in the captured artifact",
+                    "rerun of the Android e1-NPU proof manifest assembler and checker",
+                ],
+            }
+        )
+    return plan
+
+
 def build_manifest(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
     template = load_template(args.template)
     required_markers = template["required_markers"]
@@ -161,6 +192,7 @@ def build_manifest(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
     findings = [
         finding_for_blocked_artifact(name, state) for name, state in blocked_artifacts.items()
     ]
+    command_plan = next_command_plan(findings)
     generated_utc = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     manifest = {
         "schema": "eliza.e1_npu_android_proof_manifest.v1",
@@ -197,8 +229,10 @@ def build_manifest(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
             "blocked_statuses": sum(
                 1 for value in required_statuses.values() if value == "blocked"
             ),
+            "next_command_batch_count": len(command_plan),
         },
         "findings": findings,
+        "next_command_plan": command_plan,
         "artifact_states": states,
     }
     return manifest, report

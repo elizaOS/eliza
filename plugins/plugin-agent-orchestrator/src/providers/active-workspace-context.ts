@@ -111,7 +111,7 @@ export const activeWorkspaceContextProvider: Provider = {
     const tasks = uniqueTasks([]);
     const reusableSessions = sessions.filter((session) => {
       const currentTask = tasks.find((task) => task.sessionId === session.id);
-      return !currentTask || currentTask.status !== "active";
+      return currentTask?.status !== "active";
     });
 
     const lines: string[] = [

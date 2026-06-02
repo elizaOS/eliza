@@ -159,6 +159,23 @@ def compact_connection_record(record: dict[str, Any]) -> dict[str, Any]:
         "mechanical_envelope": mechanical_envelope,
         "mechanical_envelope_defined": bool(mechanical_envelope),
         "mechanical_envelope_release_credit": mechanical_envelope.get("release_credit") is True,
+        "manufacturing_geometry_defined": bool(
+            mechanical_envelope.get("cad_span_mm")
+            and mechanical_envelope.get("nominal_visual_width_mm") is not None
+            and mechanical_envelope.get("nominal_visual_thickness_mm") is not None
+            and mechanical_envelope.get("visual_marker_length_mm") is not None
+            and mechanical_envelope.get("endpoint_center_distance_mm") is not None
+        ),
+        "bend_or_connector_basis_defined": bool(
+            mechanical_envelope.get("bend_radius_basis")
+            and (
+                mechanical_envelope.get("min_bend_radius_mm") is not None
+                or record.get("physical_medium") == "board_to_board_edge_connector"
+            )
+        ),
+        "impedance_or_current_basis_defined": bool(
+            mechanical_envelope.get("impedance_requirement")
+        ),
         "release_credit": record.get("release_credit") is True,
     }
 
@@ -1157,6 +1174,23 @@ def compact_step_connection_record(record: dict[str, Any]) -> dict[str, Any]:
         "mechanical_envelope": mechanical_envelope,
         "mechanical_envelope_defined": bool(mechanical_envelope),
         "mechanical_envelope_release_credit": mechanical_envelope.get("release_credit") is True,
+        "manufacturing_geometry_defined": bool(
+            mechanical_envelope.get("cad_span_mm")
+            and mechanical_envelope.get("nominal_visual_width_mm") is not None
+            and mechanical_envelope.get("nominal_visual_thickness_mm") is not None
+            and mechanical_envelope.get("visual_marker_length_mm") is not None
+            and mechanical_envelope.get("endpoint_center_distance_mm") is not None
+        ),
+        "bend_or_connector_basis_defined": bool(
+            mechanical_envelope.get("bend_radius_basis")
+            and (
+                mechanical_envelope.get("min_bend_radius_mm") is not None
+                or record.get("physical_medium") == "board_to_board_edge_connector"
+            )
+        ),
+        "impedance_or_current_basis_defined": bool(
+            mechanical_envelope.get("impedance_requirement")
+        ),
         "release_credit": record.get("release_credit") is True,
     }
 

@@ -18,6 +18,7 @@ interface LifeOpsNavRailProps {
   activeSection: LifeOpsSection;
   onNavigate: (section: LifeOpsSection) => void;
   collapsible?: boolean;
+  labelMode?: "all" | "active";
 }
 
 interface NavGroup {
@@ -108,11 +109,14 @@ function LifeOpsNavRailItem({
   item,
   isActive,
   onNavigate,
+  labelMode,
 }: {
   item: NavItem;
   isActive: boolean;
   onNavigate: (section: LifeOpsSection) => void;
+  labelMode: "all" | "active";
 }) {
+  const showLabel = labelMode === "all" || isActive;
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: `nav-${item.id}`,
     role: "tab",
@@ -132,7 +136,8 @@ function LifeOpsNavRailItem({
         data-sidebar-item
         {...agentProps}
         className={[
-          "group flex w-full min-w-0 items-center gap-2.5 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left transition-colors",
+          "group relative flex w-full min-w-0 items-center rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left transition-colors",
+          showLabel ? "gap-2.5" : "justify-center gap-0",
           isActive ? "bg-accent/15 text-txt" : "text-txt hover:bg-bg-muted/50",
         ].join(" ")}
       >
@@ -146,12 +151,17 @@ function LifeOpsNavRailItem({
         >
           {item.icon}
         </span>
-        <span className="min-w-0 flex-1 truncate text-xs-tight font-medium">
-          {item.label}
-        </span>
+        {showLabel ? (
+          <span className="min-w-0 flex-1 truncate text-xs-tight font-medium">
+            {item.label}
+          </span>
+        ) : null}
         <span
           aria-hidden
-          className={`h-1.5 w-1.5 rounded-full ${item.dotColor} opacity-60`}
+          className={[
+            `h-1.5 w-1.5 rounded-full ${item.dotColor} opacity-60`,
+            showLabel ? "" : "absolute right-2 top-2",
+          ].join(" ")}
         />
       </button>
     </TooltipHint>
@@ -162,6 +172,7 @@ export function LifeOpsNavRail({
   activeSection,
   onNavigate,
   collapsible = true,
+  labelMode = "all",
 }: LifeOpsNavRailProps) {
   const collapsedRailItems = NAV_ITEMS.map((item) => {
     const isActive = item.id === activeSection;
@@ -211,6 +222,7 @@ export function LifeOpsNavRail({
                         item={item}
                         isActive={item.id === activeSection}
                         onNavigate={onNavigate}
+                        labelMode={labelMode}
                       />
                     ))}
                   </div>

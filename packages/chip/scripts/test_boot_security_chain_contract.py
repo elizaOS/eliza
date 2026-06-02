@@ -192,6 +192,31 @@ class BootSecurityChainContractTests(unittest.TestCase):
         )
         self.assertGreater(report["summary"]["next_command_count"], 0)
         self.assertTrue(report["next_command_plan"])
+        positive = {
+            finding["code"]: finding
+            for finding in report["findings"]
+            if finding["code"].startswith("bootrom_positive_handoff")
+        }
+        self.assertTrue(positive)
+        for finding in positive.values():
+            self.assertIn(
+                "scripts/capture_bootrom_positive_handoff.sh preflight",
+                finding["next_commands"],
+            )
+            self.assertIn(
+                "scripts/capture_bootrom_positive_handoff.sh run",
+                finding["next_commands"],
+            )
+            self.assertIn(
+                "python3 scripts/check_bootrom_positive_handoff.py",
+                finding["next_commands"],
+            )
+            self.assertIn(finding["next_command"], finding["next_commands"])
+        plan_by_code = {row["code"]: row for row in report["next_command_plan"]}
+        self.assertIn(
+            "scripts/capture_bootrom_positive_handoff.sh preflight",
+            plan_by_code["bootrom_positive_handoff_report_missing"]["commands"],
+        )
 
     def test_complete_static_contract_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

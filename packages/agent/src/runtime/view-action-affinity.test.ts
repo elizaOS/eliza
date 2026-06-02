@@ -127,14 +127,19 @@ describe("VIEW_ACTION_MAP names resolve to declared actions in source", () => {
       found = execFileSync(
         "grep",
         ["-rlF", `name: "${name}"`, "plugins", "packages/agent/src"],
-        { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+        {
+          cwd: repoRoot,
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+        },
       ).trim();
     } catch {
       // grep exits 1 (no match) → found stays empty → assertion fails below.
     }
-    expect(found, `no \`name: "${name}"\` found under plugins/ or packages/agent/src`).not.toBe(
-      "",
-    );
+    expect(
+      found,
+      `no \`name: "${name}"\` found under plugins/ or packages/agent/src`,
+    ).not.toBe("");
   });
 });
 

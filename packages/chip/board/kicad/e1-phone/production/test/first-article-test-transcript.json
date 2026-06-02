@@ -2,6 +2,10 @@
   "artifact_id": "first_article_test_transcript_candidate",
   "board_serial": "unserialized_until_routed_first_article_board_exists",
   "cad_connection_coverage": {
+    "all_connections_have_bend_or_connector_basis": true,
+    "all_connections_have_endpoint_distance": true,
+    "all_connections_have_impedance_or_current_basis": true,
+    "all_connections_have_manufacturing_geometry": true,
     "all_represented_routes_have_layer_source_and_class": true,
     "assembly_manifest": "mechanical/e1-phone/out/assembly-manifest.json",
     "assembly_manifest_connection_solid_step_part_count": 96,
@@ -44,6 +48,8 @@
       "wifi_bt_rf1_feed_development_envelope",
       "split_interconnect_side_flex"
     ],
+    "connection_bend_or_connector_basis_defined_count": 32,
+    "connection_geometry_defined_count": 32,
     "connection_ids": [
       "display_touch_fpc",
       "rear_camera_csi_fpc",
@@ -78,10 +84,12 @@
       "wifi_bt_rf1_feed",
       "split_interconnect_side_flex"
     ],
+    "connection_impedance_or_current_basis_defined_count": 32,
     "connection_records": [
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "display_fpc_tail",
         "cad_part_present": true,
@@ -97,7 +105,33 @@
         "from_terminal_step": "mechanical/e1-phone/out/display_touch_fpc_from_terminal.step",
         "from_terminal_step_bytes": 15647,
         "id": "display_touch_fpc",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "MIPI D-PHY differential routing; supplier FPC stackup required",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            10.0,
+            6.0,
+            0.12
+          ],
+          "connection_type": "display_touch_fpc",
+          "controlled_impedance_required": true,
+          "controlled_impedance_targets": [
+            "mipi_dphy_diff_impedance_ohm=100ohm"
+          ],
+          "endpoint_center_distance_mm": 64.869,
+          "impedance_requirement": "MIPI D-PHY differential routing; supplier FPC stackup required",
+          "min_bend_radius_mm": 1.0,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 6.0,
+          "physical_medium": "flexible_printed_circuit",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 260.817,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 10.0
+        },
         "min_bend_radius_mm": 1.0,
         "net_count": 14,
         "nets": [
@@ -161,6 +195,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "rear_camera_fpc_tail",
         "cad_part_present": true,
@@ -176,7 +211,33 @@
         "from_terminal_step": "mechanical/e1-phone/out/rear_camera_csi_fpc_from_terminal.step",
         "from_terminal_step_bytes": 15699,
         "id": "rear_camera_csi_fpc",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "MIPI CSI D-PHY differential routing; supplier FPC stackup required",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            12.0,
+            0.8,
+            0.12
+          ],
+          "connection_type": "camera_fpc",
+          "controlled_impedance_required": true,
+          "controlled_impedance_targets": [
+            "mipi_dphy_diff_impedance_ohm=100ohm"
+          ],
+          "endpoint_center_distance_mm": 61.498,
+          "impedance_requirement": "MIPI CSI D-PHY differential routing; supplier FPC stackup required",
+          "min_bend_radius_mm": 1.0,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 0.8,
+          "physical_medium": "flexible_printed_circuit",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 216.992,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 12.0
+        },
         "min_bend_radius_mm": 1.0,
         "net_count": 13,
         "nets": [
@@ -238,6 +299,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "front_camera_fpc_tail",
         "cad_part_present": true,
@@ -253,7 +315,33 @@
         "from_terminal_step": "mechanical/e1-phone/out/front_camera_csi_fpc_from_terminal.step",
         "from_terminal_step_bytes": 15699,
         "id": "front_camera_csi_fpc",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "MIPI CSI D-PHY differential routing; supplier FPC stackup required",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            9.0,
+            0.8,
+            0.12
+          ],
+          "connection_type": "camera_fpc",
+          "controlled_impedance_required": true,
+          "controlled_impedance_targets": [
+            "mipi_dphy_diff_impedance_ohm=100ohm"
+          ],
+          "endpoint_center_distance_mm": 70.48,
+          "impedance_requirement": "MIPI CSI D-PHY differential routing; supplier FPC stackup required",
+          "min_bend_radius_mm": 1.0,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 0.8,
+          "physical_medium": "flexible_printed_circuit",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 141.7,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 9.0
+        },
         "min_bend_radius_mm": 1.0,
         "net_count": 9,
         "nets": [
@@ -307,6 +395,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "side_key_flex_tail",
         "cad_part_present": true,
@@ -322,7 +411,31 @@
         "from_terminal_step": "mechanical/e1-phone/out/side_key_flex_from_terminal.step",
         "from_terminal_step_bytes": 15673,
         "id": "side_key_flex",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "not_controlled_impedance",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            1.0,
+            28.0,
+            0.12
+          ],
+          "connection_type": "side_key_flex",
+          "controlled_impedance_required": false,
+          "controlled_impedance_targets": [],
+          "endpoint_center_distance_mm": 44.352,
+          "impedance_requirement": "not_controlled_impedance",
+          "min_bend_radius_mm": 0.8,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 1.0,
+          "physical_medium": "flexible_printed_circuit",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 138.528,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 28.0
+        },
         "min_bend_radius_mm": 0.8,
         "net_count": 3,
         "nets": [
@@ -364,6 +477,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "battery_connector_lead_flex",
         "cad_part_present": true,
@@ -379,7 +493,31 @@
         "from_terminal_step": "mechanical/e1-phone/out/battery_lead_flex_from_terminal.step",
         "from_terminal_step_bytes": 15647,
         "id": "battery_lead_flex",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "current_capacity_and_ntc_id_sense_required",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            8.0,
+            1.2,
+            0.12
+          ],
+          "connection_type": "battery_lead_flex",
+          "controlled_impedance_required": false,
+          "controlled_impedance_targets": [],
+          "endpoint_center_distance_mm": 7.04,
+          "impedance_requirement": "current_capacity_and_ntc_id_sense_required",
+          "min_bend_radius_mm": 1.5,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 1.2,
+          "physical_medium": "battery_power_flex",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 250.581,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 8.0
+        },
         "min_bend_radius_mm": 1.5,
         "net_count": 4,
         "nets": [
@@ -423,6 +561,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "usb_c_power_data_escape_tail",
         "cad_part_present": true,
@@ -438,7 +577,33 @@
         "from_terminal_step": "mechanical/e1-phone/out/usb_c_escape_tail_from_terminal.step",
         "from_terminal_step_bytes": 15673,
         "id": "usb_c_escape_tail",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "USB2 differential impedance plus VBUS current capacity",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            18.0,
+            1.0,
+            0.12
+          ],
+          "connection_type": "usb_c_escape_flex",
+          "controlled_impedance_required": true,
+          "controlled_impedance_targets": [
+            "usb2_diff_impedance_ohm=90ohm"
+          ],
+          "endpoint_center_distance_mm": 72.702,
+          "impedance_requirement": "USB2 differential impedance plus VBUS current capacity",
+          "min_bend_radius_mm": 1.0,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 1.0,
+          "physical_medium": "flexible_printed_circuit",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 65.552,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 18.0
+        },
         "min_bend_radius_mm": 1.0,
         "net_count": 5,
         "nets": [
@@ -484,6 +649,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "usb_pd_controller_escape_trace_marker",
         "cad_part_present": true,
@@ -499,7 +665,33 @@
         "from_terminal_step": "mechanical/e1-phone/out/usb_c_to_pd_controller_escape_from_terminal.step",
         "from_terminal_step_bytes": 15664,
         "id": "usb_c_to_pd_controller_escape",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "USB2 differential impedance plus VBUS/CC current and ESD review",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            9.0,
+            1.0,
+            0.12
+          ],
+          "connection_type": "board_power_usb_trace",
+          "controlled_impedance_required": true,
+          "controlled_impedance_targets": [
+            "usb2_diff_impedance_ohm=90ohm"
+          ],
+          "endpoint_center_distance_mm": 19.281,
+          "impedance_requirement": "USB2 differential impedance plus VBUS/CC current and ESD review",
+          "min_bend_radius_mm": 0.0,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 1.0,
+          "physical_medium": "pcb_copper_trace_group",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 65.552,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 9.0
+        },
         "min_bend_radius_mm": 0.0,
         "net_count": 5,
         "nets": [
@@ -545,6 +737,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "pd_charger_control_trace_marker",
         "cad_part_present": true,
@@ -560,7 +753,31 @@
         "from_terminal_step": "mechanical/e1-phone/out/pd_controller_to_charger_control_from_terminal.step",
         "from_terminal_step_bytes": 15673,
         "id": "pd_controller_to_charger_control",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "VBUS/SYS current capacity plus I2C/IRQ routing and sequencing review",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            10.0,
+            1.0,
+            0.12
+          ],
+          "connection_type": "board_power_control_trace",
+          "controlled_impedance_required": false,
+          "controlled_impedance_targets": [],
+          "endpoint_center_distance_mm": 11.0,
+          "impedance_requirement": "VBUS/SYS current capacity plus I2C/IRQ routing and sequencing review",
+          "min_bend_radius_mm": 0.0,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 1.0,
+          "physical_medium": "pcb_copper_trace_group",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 572.622,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 10.0
+        },
         "min_bend_radius_mm": 0.0,
         "net_count": 9,
         "nets": [
@@ -614,6 +831,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "charger_battery_power_sense_trace_marker",
         "cad_part_present": true,
@@ -629,7 +847,31 @@
         "from_terminal_step": "mechanical/e1-phone/out/charger_to_battery_power_sense_from_terminal.step",
         "from_terminal_step_bytes": 15699,
         "id": "charger_to_battery_power_sense",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "VBAT/SYS current capacity plus NTC/ID kelvin-sense review",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            4.0,
+            4.8,
+            0.12
+          ],
+          "connection_type": "board_battery_power_sense_trace",
+          "controlled_impedance_required": false,
+          "controlled_impedance_targets": [],
+          "endpoint_center_distance_mm": 4.833,
+          "impedance_requirement": "VBAT/SYS current capacity plus NTC/ID kelvin-sense review",
+          "min_bend_radius_mm": 0.0,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 4.0,
+          "physical_medium": "pcb_copper_trace_group",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 250.581,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 4.8
+        },
         "min_bend_radius_mm": 0.0,
         "net_count": 4,
         "nets": [
@@ -673,6 +915,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "display_bias_power_flex_marker",
         "cad_part_present": true,
@@ -688,7 +931,31 @@
         "from_terminal_step": "mechanical/e1-phone/out/display_bias_power_flex_from_terminal.step",
         "from_terminal_step_bytes": 15673,
         "id": "display_bias_power_flex",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "display_bias_voltage_and_current_capacity_required",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            6.0,
+            1.0,
+            0.12
+          ],
+          "connection_type": "display_bias_power_flex",
+          "controlled_impedance_required": false,
+          "controlled_impedance_targets": [],
+          "endpoint_center_distance_mm": 19.548,
+          "impedance_requirement": "display_bias_voltage_and_current_capacity_required",
+          "min_bend_radius_mm": 1.0,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 1.0,
+          "physical_medium": "flexible_printed_circuit",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 235.979,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 6.0
+        },
         "min_bend_radius_mm": 1.0,
         "net_count": 2,
         "nets": [
@@ -728,6 +995,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "rear_camera_power_flex_marker",
         "cad_part_present": true,
@@ -743,7 +1011,31 @@
         "from_terminal_step": "mechanical/e1-phone/out/rear_camera_power_flex_from_terminal.step",
         "from_terminal_step_bytes": 15673,
         "id": "rear_camera_power_flex",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "camera_rail_current_capacity_and_sequencing_required",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            8.0,
+            0.7,
+            0.12
+          ],
+          "connection_type": "camera_power_flex",
+          "controlled_impedance_required": false,
+          "controlled_impedance_targets": [],
+          "endpoint_center_distance_mm": 61.498,
+          "impedance_requirement": "camera_rail_current_capacity_and_sequencing_required",
+          "min_bend_radius_mm": 1.0,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 0.7,
+          "physical_medium": "flexible_printed_circuit",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 414.213,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 8.0
+        },
         "min_bend_radius_mm": 1.0,
         "net_count": 3,
         "nets": [
@@ -785,6 +1077,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "front_camera_power_flex_marker",
         "cad_part_present": true,
@@ -800,7 +1093,31 @@
         "from_terminal_step": "mechanical/e1-phone/out/front_camera_power_flex_from_terminal.step",
         "from_terminal_step_bytes": 15673,
         "id": "front_camera_power_flex",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "camera_rail_current_capacity_and_sequencing_required",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            7.0,
+            0.7,
+            0.12
+          ],
+          "connection_type": "camera_power_flex",
+          "controlled_impedance_required": false,
+          "controlled_impedance_targets": [],
+          "endpoint_center_distance_mm": 70.48,
+          "impedance_requirement": "camera_rail_current_capacity_and_sequencing_required",
+          "min_bend_radius_mm": 1.0,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 0.7,
+          "physical_medium": "flexible_printed_circuit",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 414.029,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 7.0
+        },
         "min_bend_radius_mm": 1.0,
         "net_count": 3,
         "nets": [
@@ -842,6 +1159,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "wifi_bt_host_control_trace_marker",
         "cad_part_present": true,
@@ -857,7 +1175,34 @@
         "from_terminal_step": "mechanical/e1-phone/out/wifi_bt_host_control_from_terminal.step",
         "from_terminal_step_bytes": 15673,
         "id": "wifi_bt_host_control",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "PCIe differential impedance plus SDIO/UART/control routing review",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            13.0,
+            1.0,
+            0.12
+          ],
+          "connection_type": "wifi_bt_host_control_trace",
+          "controlled_impedance_required": true,
+          "controlled_impedance_targets": [
+            "pcie_diff_impedance_ohm=85ohm",
+            "rf_single_impedance_ohm=50ohm"
+          ],
+          "endpoint_center_distance_mm": 29.981,
+          "impedance_requirement": "PCIe differential impedance plus SDIO/UART/control routing review",
+          "min_bend_radius_mm": 0.0,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 1.0,
+          "physical_medium": "pcb_copper_trace_group",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 306.456,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 13.0
+        },
         "min_bend_radius_mm": 0.0,
         "net_count": 17,
         "nets": [
@@ -927,6 +1272,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "cellular_host_control_trace_marker",
         "cad_part_present": true,
@@ -942,7 +1288,33 @@
         "from_terminal_step": "mechanical/e1-phone/out/cellular_host_control_from_terminal.step",
         "from_terminal_step_bytes": 15699,
         "id": "cellular_host_control",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "USB2/PCIe differential impedance plus reset/disable routing review",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            12.0,
+            1.0,
+            0.12
+          ],
+          "connection_type": "cellular_host_control_trace",
+          "controlled_impedance_required": true,
+          "controlled_impedance_targets": [
+            "pcie_diff_impedance_ohm=85ohm"
+          ],
+          "endpoint_center_distance_mm": 13.13,
+          "impedance_requirement": "USB2/PCIe differential impedance plus reset/disable routing review",
+          "min_bend_radius_mm": 0.0,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 1.0,
+          "physical_medium": "pcb_copper_trace_group",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 168.906,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 12.0
+        },
         "min_bend_radius_mm": 0.0,
         "net_count": 8,
         "nets": [
@@ -994,6 +1366,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "bottom_speaker_lead_pair",
         "cad_part_present": true,
@@ -1009,7 +1382,31 @@
         "from_terminal_step": "mechanical/e1-phone/out/bottom_speaker_lead_pair_from_terminal.step",
         "from_terminal_step_bytes": 15673,
         "id": "bottom_speaker_lead_pair",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "not_controlled_impedance",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            10.0,
+            1.0,
+            0.12
+          ],
+          "connection_type": "speaker_lead_pair",
+          "controlled_impedance_required": false,
+          "controlled_impedance_targets": [],
+          "endpoint_center_distance_mm": 66.429,
+          "impedance_requirement": "not_controlled_impedance",
+          "min_bend_radius_mm": 1.0,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 1.0,
+          "physical_medium": "insulated_wire_pair",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 24.56,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 10.0
+        },
         "min_bend_radius_mm": 1.0,
         "net_count": 2,
         "nets": [
@@ -1049,6 +1446,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "bottom_microphone_flex_leads",
         "cad_part_present": true,
@@ -1064,7 +1462,31 @@
         "from_terminal_step": "mechanical/e1-phone/out/bottom_microphone_flex_from_terminal.step",
         "from_terminal_step_bytes": 15647,
         "id": "bottom_microphone_flex",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "not_controlled_impedance",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            8.0,
+            1.0,
+            0.12
+          ],
+          "connection_type": "microphone_flex",
+          "controlled_impedance_required": false,
+          "controlled_impedance_targets": [],
+          "endpoint_center_distance_mm": 70.927,
+          "impedance_requirement": "not_controlled_impedance",
+          "min_bend_radius_mm": 0.8,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 1.0,
+          "physical_medium": "flexible_printed_circuit",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 212.34,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 8.0
+        },
         "min_bend_radius_mm": 0.8,
         "net_count": 2,
         "nets": [
@@ -1104,6 +1526,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "top_microphone_flex_tail",
         "cad_part_present": true,
@@ -1119,7 +1542,31 @@
         "from_terminal_step": "mechanical/e1-phone/out/top_microphone_flex_from_terminal.step",
         "from_terminal_step_bytes": 15621,
         "id": "top_microphone_flex",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "not_controlled_impedance",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            0.8,
+            18.0,
+            0.12
+          ],
+          "connection_type": "microphone_flex",
+          "controlled_impedance_required": false,
+          "controlled_impedance_targets": [],
+          "endpoint_center_distance_mm": 70.927,
+          "impedance_requirement": "not_controlled_impedance",
+          "min_bend_radius_mm": 0.8,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 0.8,
+          "physical_medium": "flexible_printed_circuit",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 212.34,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 18.0
+        },
         "min_bend_radius_mm": 0.8,
         "net_count": 2,
         "nets": [
@@ -1159,6 +1606,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "earpiece_receiver_lead_flex",
         "cad_part_present": true,
@@ -1174,7 +1622,31 @@
         "from_terminal_step": "mechanical/e1-phone/out/earpiece_receiver_lead_flex_from_terminal.step",
         "from_terminal_step_bytes": 15647,
         "id": "earpiece_receiver_lead_flex",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "not_controlled_impedance",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            14.0,
+            0.8,
+            0.12
+          ],
+          "connection_type": "earpiece_receiver_lead_flex",
+          "controlled_impedance_required": false,
+          "controlled_impedance_targets": [],
+          "endpoint_center_distance_mm": 68.87,
+          "impedance_requirement": "not_controlled_impedance",
+          "min_bend_radius_mm": 1.0,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 0.8,
+          "physical_medium": "insulated_wire_pair",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 24.56,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 14.0
+        },
         "min_bend_radius_mm": 1.0,
         "net_count": 2,
         "nets": [
@@ -1214,6 +1686,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "haptic_flex_tail",
         "cad_part_present": true,
@@ -1229,7 +1702,31 @@
         "from_terminal_step": "mechanical/e1-phone/out/haptic_flex_from_terminal.step",
         "from_terminal_step_bytes": 15647,
         "id": "haptic_flex",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "not_controlled_impedance",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            12.0,
+            1.0,
+            0.12
+          ],
+          "connection_type": "haptic_flex",
+          "controlled_impedance_required": false,
+          "controlled_impedance_targets": [],
+          "endpoint_center_distance_mm": 56.546,
+          "impedance_requirement": "not_controlled_impedance",
+          "min_bend_radius_mm": 0.8,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 1.0,
+          "physical_medium": "flexible_printed_circuit",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 19.874,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 12.0
+        },
         "min_bend_radius_mm": 0.8,
         "net_count": 1,
         "nets": [
@@ -1267,6 +1764,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "sensor_hub_i2c_flex_marker",
         "cad_part_present": true,
@@ -1282,7 +1780,31 @@
         "from_terminal_step": "mechanical/e1-phone/out/sensor_hub_i2c_flex_from_terminal.step",
         "from_terminal_step_bytes": 15699,
         "id": "sensor_hub_i2c_flex",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "not_controlled_impedance",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            5.0,
+            0.8,
+            0.12
+          ],
+          "connection_type": "sensor_hub_i2c_flex",
+          "controlled_impedance_required": false,
+          "controlled_impedance_targets": [],
+          "endpoint_center_distance_mm": 35.75,
+          "impedance_requirement": "not_controlled_impedance",
+          "min_bend_radius_mm": 0.8,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 0.8,
+          "physical_medium": "flexible_printed_circuit",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 58.442,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 5.0
+        },
         "min_bend_radius_mm": 0.8,
         "net_count": 2,
         "nets": [
@@ -1322,6 +1844,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "sim_esim_signal_flex_marker",
         "cad_part_present": true,
@@ -1337,7 +1860,31 @@
         "from_terminal_step": "mechanical/e1-phone/out/sim_esim_signal_flex_from_terminal.step",
         "from_terminal_step_bytes": 15699,
         "id": "sim_esim_signal_flex",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "not_controlled_impedance",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            1.0,
+            9.0,
+            0.12
+          ],
+          "connection_type": "sim_esim_signal_marker",
+          "controlled_impedance_required": false,
+          "controlled_impedance_targets": [],
+          "endpoint_center_distance_mm": 36.564,
+          "impedance_requirement": "not_controlled_impedance",
+          "min_bend_radius_mm": 0.8,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 1.0,
+          "physical_medium": "flexible_printed_circuit",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 429.167,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 9.0
+        },
         "min_bend_radius_mm": 0.8,
         "net_count": 9,
         "nets": [
@@ -1391,6 +1938,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "nfc_loop_antenna_flex_marker",
         "cad_part_present": true,
@@ -1406,7 +1954,31 @@
         "from_terminal_step": "mechanical/e1-phone/out/nfc_loop_antenna_flex_from_terminal.step",
         "from_terminal_step_bytes": 15699,
         "id": "nfc_loop_antenna_flex",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "NFC loop matching and antenna vendor review required",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            6.0,
+            1.0,
+            0.12
+          ],
+          "connection_type": "nfc_loop_antenna_flex_marker",
+          "controlled_impedance_required": true,
+          "controlled_impedance_targets": [],
+          "endpoint_center_distance_mm": 28.284,
+          "impedance_requirement": "NFC loop matching and antenna vendor review required",
+          "min_bend_radius_mm": 1.0,
+          "nominal_visual_thickness_mm": 0.12,
+          "nominal_visual_width_mm": 1.0,
+          "physical_medium": "flexible_antenna_loop",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 39.621,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 6.0
+        },
         "min_bend_radius_mm": 1.0,
         "net_count": 4,
         "nets": [
@@ -1450,6 +2022,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "compute_som_sodimm_connector",
         "cad_part_present": true,
@@ -1465,7 +2038,33 @@
         "from_terminal_step": "mechanical/e1-phone/out/compute_som_sodimm_carrier_from_terminal.step",
         "from_terminal_step_bytes": 15673,
         "id": "compute_som_sodimm_carrier",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "host high-speed and memory escape constraints required",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            65.0,
+            2.6,
+            0.3
+          ],
+          "connection_type": "compute_som_edge_connector",
+          "controlled_impedance_required": true,
+          "controlled_impedance_targets": [
+            "usb2_diff_impedance_ohm=90ohm"
+          ],
+          "endpoint_center_distance_mm": 45.036,
+          "impedance_requirement": "host high-speed and memory escape constraints required",
+          "min_bend_radius_mm": null,
+          "nominal_visual_thickness_mm": 0.3,
+          "nominal_visual_width_mm": 2.6,
+          "physical_medium": "board_to_board_edge_connector",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 149.445,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 65.0
+        },
         "min_bend_radius_mm": null,
         "net_count": 9,
         "nets": [
@@ -1519,6 +2118,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "soc_shield_ground_spring_marker",
         "cad_part_present": true,
@@ -1534,7 +2134,31 @@
         "from_terminal_step": "mechanical/e1-phone/out/soc_shield_ground_spring_from_terminal.step",
         "from_terminal_step_bytes": 15673,
         "id": "soc_shield_ground_spring",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "low_inductance_chassis_ground_contact_required",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            3.6,
+            0.7,
+            0.22
+          ],
+          "connection_type": "shield_ground_spring",
+          "controlled_impedance_required": false,
+          "controlled_impedance_targets": [],
+          "endpoint_center_distance_mm": 55.457,
+          "impedance_requirement": "low_inductance_chassis_ground_contact_required",
+          "min_bend_radius_mm": 0.0,
+          "nominal_visual_thickness_mm": 0.22,
+          "nominal_visual_width_mm": 0.7,
+          "physical_medium": "ground_spring_contact",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 104.168,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 3.6
+        },
         "min_bend_radius_mm": 0.0,
         "net_count": 1,
         "nets": [
@@ -1572,6 +2196,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "radio_shield_ground_spring_marker",
         "cad_part_present": true,
@@ -1587,7 +2212,33 @@
         "from_terminal_step": "mechanical/e1-phone/out/radio_shield_ground_spring_from_terminal.step",
         "from_terminal_step_bytes": 15673,
         "id": "radio_shield_ground_spring",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "low_inductance_chassis_ground_contact_required",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            3.6,
+            0.7,
+            0.22
+          ],
+          "connection_type": "shield_ground_spring",
+          "controlled_impedance_required": false,
+          "controlled_impedance_targets": [
+            "usb2_diff_impedance_ohm=90ohm"
+          ],
+          "endpoint_center_distance_mm": 54.639,
+          "impedance_requirement": "low_inductance_chassis_ground_contact_required",
+          "min_bend_radius_mm": 0.0,
+          "nominal_visual_thickness_mm": 0.22,
+          "nominal_visual_width_mm": 0.7,
+          "physical_medium": "ground_spring_contact",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 111.982,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 3.6
+        },
         "min_bend_radius_mm": 0.0,
         "net_count": 2,
         "nets": [
@@ -1627,6 +2278,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "cellular_rf_feed_development_envelope",
         "cad_part_present": true,
@@ -1642,7 +2294,33 @@
         "from_terminal_step": "mechanical/e1-phone/out/cellular_main_rf_feed_from_terminal.step",
         "from_terminal_step_bytes": 15699,
         "id": "cellular_main_rf_feed",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "50 ohm RF feed with matching network and antenna review",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            0.45,
+            15.0,
+            0.35
+          ],
+          "connection_type": "rf_50r_feed_envelope",
+          "controlled_impedance_required": true,
+          "controlled_impedance_targets": [
+            "rf_single_impedance_ohm=50ohm"
+          ],
+          "endpoint_center_distance_mm": 30.621,
+          "impedance_requirement": "50 ohm RF feed with matching network and antenna review",
+          "min_bend_radius_mm": 1.5,
+          "nominal_visual_thickness_mm": 0.35,
+          "nominal_visual_width_mm": 0.45,
+          "physical_medium": "rf_50ohm_feed",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 10.612,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 15.0
+        },
         "min_bend_radius_mm": 1.5,
         "net_count": 1,
         "nets": [
@@ -1680,6 +2358,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "cellular_div_rf_feed_development_envelope",
         "cad_part_present": true,
@@ -1695,7 +2374,33 @@
         "from_terminal_step": "mechanical/e1-phone/out/cellular_diversity_rf_feed_from_terminal.step",
         "from_terminal_step_bytes": 15699,
         "id": "cellular_diversity_rf_feed",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "50 ohm RF feed with matching network and antenna review",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            0.45,
+            12.0,
+            0.28
+          ],
+          "connection_type": "rf_50r_feed_envelope",
+          "controlled_impedance_required": true,
+          "controlled_impedance_targets": [
+            "rf_single_impedance_ohm=50ohm"
+          ],
+          "endpoint_center_distance_mm": 117.429,
+          "impedance_requirement": "50 ohm RF feed with matching network and antenna review",
+          "min_bend_radius_mm": 1.5,
+          "nominal_visual_thickness_mm": 0.28,
+          "nominal_visual_width_mm": 0.45,
+          "physical_medium": "rf_50ohm_feed",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 9.583,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 12.0
+        },
         "min_bend_radius_mm": 1.5,
         "net_count": 1,
         "nets": [
@@ -1733,6 +2438,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "antenna_aperture_tuner",
         "cad_part_present": true,
@@ -1748,7 +2454,33 @@
         "from_terminal_step": "mechanical/e1-phone/out/cellular_antenna_aperture_tuner_from_terminal.step",
         "from_terminal_step_bytes": 15699,
         "id": "cellular_antenna_aperture_tuner",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "50 ohm RF tuner connection and antenna vendor review",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            2.0,
+            2.0,
+            0.5
+          ],
+          "connection_type": "rf_antenna_aperture_tuner",
+          "controlled_impedance_required": true,
+          "controlled_impedance_targets": [
+            "rf_single_impedance_ohm=50ohm"
+          ],
+          "endpoint_center_distance_mm": 117.429,
+          "impedance_requirement": "50 ohm RF tuner connection and antenna vendor review",
+          "min_bend_radius_mm": 1.5,
+          "nominal_visual_thickness_mm": 0.5,
+          "nominal_visual_width_mm": 2.0,
+          "physical_medium": "rf_tuner_interconnect",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 223.896,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 2.0
+        },
         "min_bend_radius_mm": 1.5,
         "net_count": 2,
         "nets": [
@@ -1788,6 +2520,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "cellular_gnss_rf_feed_development_envelope",
         "cad_part_present": true,
@@ -1803,7 +2536,33 @@
         "from_terminal_step": "mechanical/e1-phone/out/cellular_gnss_rf_feed_from_terminal.step",
         "from_terminal_step_bytes": 15699,
         "id": "cellular_gnss_rf_feed",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "50 ohm RF feed with matching network and antenna review",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            0.45,
+            10.0,
+            0.28
+          ],
+          "connection_type": "rf_50r_feed_envelope",
+          "controlled_impedance_required": true,
+          "controlled_impedance_targets": [
+            "rf_single_impedance_ohm=50ohm"
+          ],
+          "endpoint_center_distance_mm": 22.739,
+          "impedance_requirement": "50 ohm RF feed with matching network and antenna review",
+          "min_bend_radius_mm": 1.5,
+          "nominal_visual_thickness_mm": 0.28,
+          "nominal_visual_width_mm": 0.45,
+          "physical_medium": "rf_50ohm_feed",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 7.202,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 10.0
+        },
         "min_bend_radius_mm": 1.5,
         "net_count": 1,
         "nets": [
@@ -1841,6 +2600,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "wifi_bt_rf_feed_development_envelope",
         "cad_part_present": true,
@@ -1856,7 +2616,33 @@
         "from_terminal_step": "mechanical/e1-phone/out/wifi_bt_rf0_feed_from_terminal.step",
         "from_terminal_step_bytes": 15647,
         "id": "wifi_bt_rf0_feed",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "50 ohm RF feed with matching network and antenna review",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            10.0,
+            0.45,
+            0.35
+          ],
+          "connection_type": "rf_50r_feed_envelope",
+          "controlled_impedance_required": true,
+          "controlled_impedance_targets": [
+            "rf_single_impedance_ohm=50ohm"
+          ],
+          "endpoint_center_distance_mm": 1.418,
+          "impedance_requirement": "50 ohm RF feed with matching network and antenna review",
+          "min_bend_radius_mm": 1.5,
+          "nominal_visual_thickness_mm": 0.35,
+          "nominal_visual_width_mm": 0.45,
+          "physical_medium": "rf_50ohm_feed",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 12.139,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 10.0
+        },
         "min_bend_radius_mm": 1.5,
         "net_count": 1,
         "nets": [
@@ -1894,6 +2680,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "wifi_bt_rf1_feed_development_envelope",
         "cad_part_present": true,
@@ -1909,7 +2696,33 @@
         "from_terminal_step": "mechanical/e1-phone/out/wifi_bt_rf1_feed_from_terminal.step",
         "from_terminal_step_bytes": 15673,
         "id": "wifi_bt_rf1_feed",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "50 ohm RF feed with matching network and antenna review",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            10.0,
+            0.45,
+            0.28
+          ],
+          "connection_type": "rf_50r_feed_envelope",
+          "controlled_impedance_required": true,
+          "controlled_impedance_targets": [
+            "rf_single_impedance_ohm=50ohm"
+          ],
+          "endpoint_center_distance_mm": 1.418,
+          "impedance_requirement": "50 ohm RF feed with matching network and antenna review",
+          "min_bend_radius_mm": 1.5,
+          "nominal_visual_thickness_mm": 0.28,
+          "nominal_visual_width_mm": 0.45,
+          "physical_medium": "rf_50ohm_feed",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 12.139,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 10.0
+        },
         "min_bend_radius_mm": 1.5,
         "net_count": 1,
         "nets": [
@@ -1947,6 +2760,7 @@
       {
         "all_nets_in_routed_development_board": true,
         "all_represented_routes_have_layer_source_and_class": true,
+        "bend_or_connector_basis_defined": false,
         "bend_radius_requirement_defined": true,
         "cad_part": "split_interconnect_side_flex",
         "cad_part_present": true,
@@ -1962,7 +2776,33 @@
         "from_terminal_step": "mechanical/e1-phone/out/split_interconnect_side_flex_from_terminal.step",
         "from_terminal_step_bytes": 15647,
         "id": "split_interconnect_side_flex",
+        "impedance_or_current_basis_defined": false,
         "impedance_requirement": "USB2/MIPI/audio/control flex stackup required",
+        "manufacturing_geometry_defined": false,
+        "mechanical_envelope": {
+          "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
+          "bend_radius_basis": "local_requirement_placeholder_pending_supplier_fpc_or_harness_drawing",
+          "cad_span_mm": [
+            2.4,
+            88.0,
+            0.18
+          ],
+          "connection_type": "top_bottom_board_flex",
+          "controlled_impedance_required": true,
+          "controlled_impedance_targets": [
+            "usb2_diff_impedance_ohm=90ohm"
+          ],
+          "endpoint_center_distance_mm": 90.0,
+          "impedance_requirement": "USB2/MIPI/audio/control flex stackup required",
+          "min_bend_radius_mm": 1.0,
+          "nominal_visual_thickness_mm": 0.18,
+          "nominal_visual_width_mm": 2.4,
+          "physical_medium": "flexible_printed_circuit",
+          "release_credit": false,
+          "routed_trace_length_total_mm": 719.498,
+          "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
+          "visual_marker_length_mm": 88.0
+        },
         "min_bend_radius_mm": 1.0,
         "net_count": 8,
         "nets": [
@@ -2043,6 +2883,9 @@
       "wifi_bt_host_interface": 1
     },
     "endpoint_pair_distance_total_mm": 1521.175,
+    "manufacturing_detail_defined_count": 32,
+    "mechanical_envelope_defined_count": 32,
+    "mechanical_envelope_release_credit": false,
     "passing_connection_count": 32,
     "passing_connection_solid_step_part_set_count": 32,
     "passing_connection_terminal_pair_count": 32,
@@ -2057,6 +2900,72 @@
       "rf_50ohm_feed": 5,
       "rf_tuner_interconnect": 1
     },
+    "release_boundary_summary": {
+      "all_connections_bound_to_routed_development_records": true,
+      "all_connections_have_solid_step_parts": true,
+      "all_connections_have_terminal_markers": true,
+      "all_connections_release_credit_false": true,
+      "all_connections_supplier_release_required": true,
+      "all_critical_interface_groups_present": true,
+      "critical_interface_connection_ids": {
+        "audio_haptic_sensor": [
+          "bottom_microphone_flex",
+          "bottom_speaker_lead_pair",
+          "earpiece_receiver_lead_flex",
+          "haptic_flex",
+          "sensor_hub_i2c_flex",
+          "top_microphone_flex"
+        ],
+        "board_to_board": [
+          "compute_som_sodimm_carrier",
+          "split_interconnect_side_flex"
+        ],
+        "cellular_wifi_rf": [
+          "cellular_antenna_aperture_tuner",
+          "cellular_diversity_rf_feed",
+          "cellular_gnss_rf_feed",
+          "cellular_main_rf_feed",
+          "wifi_bt_rf0_feed",
+          "wifi_bt_rf1_feed"
+        ],
+        "display_touch": [
+          "display_bias_power_flex",
+          "display_touch_fpc"
+        ],
+        "front_camera": [
+          "front_camera_csi_fpc",
+          "front_camera_power_flex"
+        ],
+        "nfc": [
+          "nfc_loop_antenna_flex"
+        ],
+        "rear_camera": [
+          "rear_camera_csi_fpc",
+          "rear_camera_power_flex"
+        ],
+        "shield_ground": [
+          "radio_shield_ground_spring",
+          "soc_shield_ground_spring"
+        ],
+        "usb_power_battery": [
+          "battery_lead_flex",
+          "charger_to_battery_power_sense",
+          "pd_controller_to_charger_control",
+          "usb_c_escape_tail",
+          "usb_c_to_pd_controller_escape"
+        ]
+      },
+      "evidence_class": "local_cad_connection_marker_coverage_not_release",
+      "release_credit": false,
+      "supplier_required_deliverables": [
+        "approved FPC/flex drawings with stackup, bend radius, adhesive, stiffener, and connector detail",
+        "approved RF feed, matching-network, antenna, and tuner layout with impedance evidence",
+        "approved board-to-board connector, ground-spring, wire-lead, and harness drawings",
+        "clean production DRC/ERC plus signed waivers for every remaining violation",
+        "supplier-approved component STEP/B-rep models and mechanical drawings",
+        "measured routed-board clearance and first-article signoff"
+      ]
+    },
     "release_credit": false,
     "represented_net_count_total": 150,
     "represented_route_classification_gap_count": 0,
@@ -2068,6 +2977,18 @@
     "required_connection_solid_step_part_count": 96,
     "required_connection_terminal_marker_count": 64,
     "status": "cad_connection_markers_complete_not_release",
+    "supplier_drawing_requirement_medium_count": 9,
+    "supplier_drawing_requirements_by_medium": {
+      "battery_power_flex": "approved battery flex/lead drawing with conductor gauge, NTC/ID routing, current capacity, adhesive, bend radius, and connector retention",
+      "board_to_board_edge_connector": "approved board-to-board connector/flex drawing with pin map, mating height, wipe, retention, keepout, and tolerance stack",
+      "flexible_antenna_loop": "approved NFC antenna flex drawing with loop geometry, ferrite/adhesive stack, matching target, and bend radius",
+      "flexible_printed_circuit": "approved FPC drawing with stackup, copper weights, stiffeners, adhesive, connector pinout, bend radius, and impedance/current constraints",
+      "ground_spring_contact": "approved ground-spring drawing with contact force, wipe, plating, tolerance stack, and chassis bonding path",
+      "insulated_wire_pair": "approved harness/lead drawing with wire gauge, insulation, strain relief, routing clip, service loop, and bend radius",
+      "pcb_copper_trace_group": "approved routed PCB copper with clean or waived DRC/ERC, stackup, impedance/current validation, and SI/PI review",
+      "rf_50ohm_feed": "approved RF feed drawing/layout with 50 ohm stackup, matching network, antenna clearance, VNA evidence, and coexistence review",
+      "rf_tuner_interconnect": "approved antenna tuner interconnect with RF stackup, matching state table, control routing, aperture clearance, and VNA evidence"
+    },
     "supplier_release_required_connection_count": 32,
     "visual_route_span_total_mm": 456.0
   },
@@ -2085,7 +3006,7 @@
   "input_artifact_hashes": {
     "board/kicad/e1-phone/component-height-step-integration.yaml": "9343f603961eb11f780221f3dd40cc8f8bc5ad46083085b541797ddfcc5e3dbc",
     "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb": "f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f",
-    "board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml": "509ade0d8f5c5f3491a67a61e6f5f28a7b719dbc4b49bb03dabf9d0adc2b8398"
+    "board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml": "434679db9c6a7b8ab506d62808a03ca7a1425a57853b2ca5b110eecd9de30af7"
   },
   "kicad_project_revision": "development_real_footprint_snapshot",
   "limits_file": "board/kicad/e1-phone/production/test/factory-test-limits.yaml",

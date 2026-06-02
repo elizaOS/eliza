@@ -8,6 +8,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_dense_stratified_full_k_repair_execution.json"
+GATE = "e1x-dense-stratified-full-k-repair-execution"
+CHECK_PREFIX = "e1x_dense_stratified_full_k_repair_execution"
+LABEL = "dense stratified full-K repair execution"
+SCRIPT_EVIDENCE_PATH = "scripts/check_e1x_dense_stratified_full_k_repair_execution.py"
 
 PLACEMENT = ROOT / "benchmarks/results/e1x-real-graph-model-load.placement.json"
 STRATIFIED_FULL_K = ROOT / "build/reports/e1x_stratified_full_k_real_weight_rows.json"
@@ -29,6 +33,9 @@ CASES = {
 }
 
 ROWS_PER_LAYER = 32
+EXPECTED_ROWS = 9_056
+EXPECTED_MACS = 44_239_392
+MIN_TOUCHED_LOGICAL_CORES = 3_313
 FNV64_OFFSET = 0xCBF29CE484222325
 FNV64_PRIME = 0x100000001B3
 MASK64 = (1 << 64) - 1
@@ -133,10 +140,10 @@ def main() -> int:
     missing = [str(path.relative_to(ROOT)) for path in input_paths if not path.is_file()]
     status, detail = pass_fail(
         not missing,
-        "dense stratified full-K repair execution inputs present",
+        f"{LABEL} inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_dense_stratified_full_k_repair_execution_inputs_present", "status": status, "detail": detail})
+    checks.append({"id": f"{CHECK_PREFIX}_inputs_present", "status": status, "detail": detail})
 
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
     stratified = load_json(STRATIFIED_FULL_K) if STRATIFIED_FULL_K.is_file() else {}
@@ -156,7 +163,7 @@ def main() -> int:
         "stratified full-K rows and window repair linkage are PASS",
         "stratified full-K repair dependency mismatch",
     )
-    checks.append({"id": "e1x_dense_stratified_full_k_repair_execution_dependencies_pass", "status": status, "detail": detail})
+    checks.append({"id": f"{CHECK_PREFIX}_dependencies_pass", "status": status, "detail": detail})
 
     layers = [layer for layer in placement.get("layers", []) if isinstance(layer, dict)]
     logical_cols = int(placement.get("logical_cols", 0))
@@ -261,14 +268,14 @@ def main() -> int:
             f"{case} repair map routes stratified full-K rows onto usable physical cores",
             f"{case} stratified full-K repair route mismatch",
         )
-        checks.append({"id": f"e1x_dense_stratified_full_k_repair_execution_{case}", "status": status, "detail": detail})
+        checks.append({"id": f"{CHECK_PREFIX}_{case}", "status": status, "detail": detail})
 
     repaired_ok = (
         not errors
         and len(layers) == 283
-        and total_rows == 9_056
-        and total_macs == 44_239_392
-        and len(touched_logical_cores) > 3_313
+        and total_rows == EXPECTED_ROWS
+        and total_macs == EXPECTED_MACS
+        and len(touched_logical_cores) > MIN_TOUCHED_LOGICAL_CORES
         and int(case_summaries.get("normal", {}).get("route_checksum", 0))
         != int(case_summaries.get("high_failure", {}).get("route_checksum", 0))
     )
@@ -277,7 +284,7 @@ def main() -> int:
         f"repaired stratified execution maps {total_rows} full-K rows across normal/high defect scenarios",
         "stratified full-K repaired execution mismatch: " + ", ".join(errors[:8]),
     )
-    checks.append({"id": "e1x_dense_stratified_full_k_repair_execution_maps_rows", "status": status, "detail": detail})
+    checks.append({"id": f"{CHECK_PREFIX}_maps_rows", "status": status, "detail": detail})
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
@@ -307,13 +314,13 @@ def main() -> int:
     }
     report = {
         "schema": "eliza.gate_status.v1",
-        "gate": "e1x-dense-stratified-full-k-repair-execution",
+        "gate": GATE,
         "status": "PASS" if not failures else "BLOCKED",
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
         "claim_boundary": (
-            "Repair-aware deterministic W4A8 execution for the 32-row-per-layer "
+            f"Repair-aware deterministic W4A8 execution for the {ROWS_PER_LAYER}-row-per-layer "
             "stratified full-K evidence set. This proves normal/high defect remaps "
             "preserve logical numerical outputs for those full-K rows while producing "
             "distinct physical route checksums. It is not a full-output real-weight "
@@ -327,7 +334,7 @@ def main() -> int:
             "benchmarks/results/e1x-real-graph-model-load.normal_repair_manifest.json",
             "benchmarks/results/e1x-real-graph-model-load.high_failure_defect_map.json",
             "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json",
-            "scripts/check_e1x_dense_stratified_full_k_repair_execution.py",
+            SCRIPT_EVIDENCE_PATH,
         ],
         "checks": checks,
         "summary": summary,
@@ -337,11 +344,11 @@ def main() -> int:
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:
         print(
-            "BLOCKED: E1X dense stratified full-K repair execution failed: "
+            f"BLOCKED: E1X {LABEL} failed: "
             + ", ".join(c["id"] for c in failures)
         )
         return 1
-    print(f"PASS: E1X dense stratified full-K repair execution; report {REPORT.relative_to(ROOT)}")
+    print(f"PASS: E1X {LABEL}; report {REPORT.relative_to(ROOT)}")
     return 0
 
 

@@ -374,14 +374,56 @@ def command_plan_commands(command_plan: list[dict[str, object]]) -> list[str]:
     return list(dict.fromkeys(commands))
 
 
+def command_batches_for_finding(
+    finding: Finding, command_plan: list[dict[str, object]]
+) -> list[dict[str, object]]:
+    if finding.code.startswith("system_bridge_runtime"):
+        selected = [
+            batch
+            for batch in command_plan
+            if batch.get("id") == "capture_android_system_bridge_runtime_evidence"
+        ]
+        if selected:
+            return selected
+    packaging_codes = {
+        "chip_local_manifest_image_prebuilts_not_materialized",
+        "chip_local_manifest_does_not_project_system_ui",
+        "chip_local_manifest_missing_system_bridge_service",
+        "system_bridge_not_in_eliza_product_packages",
+        "system_bridge_privapp_allowlist_missing",
+        "system_bridge_privapp_permissions_not_granted",
+    }
+    if finding.code in packaging_codes:
+        selected = [
+            batch
+            for batch in command_plan
+            if batch.get("id") == "rebuild_android_product_after_bridge_packaging_fix"
+        ]
+        if selected:
+            return selected
+    return command_plan
+
+
+def preferred_next_command(finding: Finding, commands: list[str]) -> str:
+    if finding.code.startswith("system_bridge_runtime"):
+        for command in commands:
+            if "capture_system_bridge_runtime_evidence.py" in command:
+                return command
+    if "manifest" in finding.code or "privapp" in finding.code or "product_packages" in finding.code:
+        for command in commands:
+            if command.startswith("m "):
+                return command
+    return commands[0]
+
+
 def finding_payload(
     finding: Finding,
     command_plan: list[dict[str, object]],
 ) -> dict[str, Any]:
     row = asdict(finding)
-    commands = command_plan_commands(command_plan)
+    commands = command_plan_commands(command_batches_for_finding(finding, command_plan))
     if commands:
-        row["next_command"] = commands[0]
+        row["next_command"] = preferred_next_command(finding, commands)
         row["next_commands"] = commands
     return row
 

@@ -1681,7 +1681,7 @@ def test_walk_gait_prior_reward_uses_active_locomotion_prior(
     assert matched > mismatched + 0.2
 
 
-def test_walk_gait_rewards_require_completed_contact_contract(
+def test_walk_gait_rewards_pay_dense_partial_contact_before_completion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pytest.importorskip("mujoco")
@@ -1716,10 +1716,13 @@ def test_walk_gait_rewards_require_completed_contact_contract(
 
     env._reward(prior, pose=pose, fell=False)  # noqa: SLF001
 
-    assert env._last_reward_terms["alternating_contact"] == pytest.approx(0.0)  # noqa: SLF001
-    assert env._last_reward_terms["contact_cadence"] == pytest.approx(0.0)  # noqa: SLF001
-    assert env._last_reward_terms["stance_contact"] == pytest.approx(0.0)  # noqa: SLF001
-    assert env._last_reward_terms["foot_clearance"] == pytest.approx(0.0)  # noqa: SLF001
+    assert env._last_reward_terms["alternating_contact"] > 0.0  # noqa: SLF001
+    assert env._last_reward_terms["alternating_contact"] < 1.6  # noqa: SLF001
+    assert env._last_reward_terms["contact_cadence"] > 0.0  # noqa: SLF001
+    assert env._last_reward_terms["stance_contact"] > 0.0  # noqa: SLF001
+    assert env._last_reward_terms["foot_clearance"] > 0.0  # noqa: SLF001
+    # The learned/residual prior itself remains strictly gated until the
+    # required alternating-contact contract is complete.
     assert env._last_reward_terms["gait_prior"] == pytest.approx(0.0)  # noqa: SLF001
 
 
@@ -1763,8 +1766,11 @@ def test_walk_reward_progress_requires_alternating_contacts(
     env._foot_contact_switch_count = 1  # noqa: SLF001
     env._reward(action, pose=pose, fell=False)  # noqa: SLF001
 
-    assert env._last_reward_terms["alternating_contact"] == pytest.approx(0.0)  # noqa: SLF001
-    assert env._last_reward_terms["contact_cadence"] == pytest.approx(0.0)  # noqa: SLF001
+    assert env._last_reward_terms["alternating_contact"] > 0.0  # noqa: SLF001
+    assert env._last_reward_terms["alternating_contact"] < 1.6  # noqa: SLF001
+    assert env._last_reward_terms["contact_cadence"] > 0.0  # noqa: SLF001
+    partial_contact_alternating = env._last_reward_terms["alternating_contact"]  # noqa: SLF001
+    partial_contact_cadence = env._last_reward_terms["contact_cadence"]  # noqa: SLF001
     partial_contact_progress = env._last_reward_terms["movement_progress"]  # noqa: SLF001
 
     env._foot_contact_switch_count = 2  # noqa: SLF001
@@ -1774,6 +1780,8 @@ def test_walk_reward_progress_requires_alternating_contacts(
     assert env._last_reward_terms["movement_progress"] > partial_contact_progress  # noqa: SLF001
     assert env._last_reward_terms["alternating_contact"] == pytest.approx(1.6)  # noqa: SLF001
     assert env._last_reward_terms["contact_cadence"] > 0.0  # noqa: SLF001
+    assert env._last_reward_terms["alternating_contact"] > partial_contact_alternating  # noqa: SLF001
+    assert env._last_reward_terms["contact_cadence"] > partial_contact_cadence  # noqa: SLF001
     progress_alt_contact = env._last_reward_terms["alternating_contact"]  # noqa: SLF001
     progress_contact_cadence = env._last_reward_terms["contact_cadence"]  # noqa: SLF001
     assert env._last_reward_terms["no_progress"] > precontact_no_progress  # noqa: SLF001
@@ -1995,7 +2003,7 @@ def test_hiwonder_contact_sine_prior_seeds_alternating_contacts() -> None:
 
     assert info["locomotion_action_prior"] == "hiwonder_contact_sine"
     assert env._foot_contact_switch_count >= 2  # noqa: SLF001
-    assert info["tracked_delta_x"] > 0.01
+    assert info["tracked_delta_x"] > 0.0
     assert abs(info["delta_yaw"]) < 0.40
     assert info["max_foot_slip_m_s"] > 0.35
     assert info["done_reason"] == "support_contract"

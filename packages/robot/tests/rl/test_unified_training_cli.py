@@ -139,14 +139,22 @@ def test_unified_train_alberta_splits_total_steps_across_tasks(
         out_dir,
         *,
         pca_dim,
-            episode_steps,
-            action_scale,
-            action_scale_initial,
-            action_scale_increment,
-            eval_episodes,
-            seed,
+        episode_steps,
+        action_scale,
+        action_scale_initial,
+        action_scale_increment,
+        eval_episodes,
+        seed,
         requested_total_steps=None,
         domain_rand=True,
+        locomotion_action_prior="none",
+        locomotion_prior_residual_scale=1.0,
+        locomotion_prior_residual_scale_initial=None,
+        locomotion_prior_residual_scale_increment=0.05,
+        locomotion_prior_residual_mode="joint",
+        locomotion_prior_feedback_pitch=None,
+        locomotion_prior_feedback_roll=None,
+        locomotion_prior_feedback_yaw=None,
     ):
         captured.update(
             {
@@ -163,6 +171,18 @@ def test_unified_train_alberta_splits_total_steps_across_tasks(
                 "seed": seed,
                 "requested_total_steps": requested_total_steps,
                 "domain_rand": domain_rand,
+                "locomotion_action_prior": locomotion_action_prior,
+                "locomotion_prior_residual_scale": locomotion_prior_residual_scale,
+                "locomotion_prior_residual_scale_initial": (
+                    locomotion_prior_residual_scale_initial
+                ),
+                "locomotion_prior_residual_scale_increment": (
+                    locomotion_prior_residual_scale_increment
+                ),
+                "locomotion_prior_residual_mode": locomotion_prior_residual_mode,
+                "locomotion_prior_feedback_pitch": locomotion_prior_feedback_pitch,
+                "locomotion_prior_feedback_roll": locomotion_prior_feedback_roll,
+                "locomotion_prior_feedback_yaw": locomotion_prior_feedback_yaw,
             }
         )
         return {"regime": "alberta_streaming"}
@@ -181,6 +201,14 @@ def test_unified_train_alberta_splits_total_steps_across_tasks(
         action_scale_increment=0.05,
         eval_episodes=2,
         domain_rand=False,
+        locomotion_action_prior="hiwonder_low_slip_contact_sine",
+        locomotion_prior_residual_scale=0.75,
+        locomotion_prior_residual_scale_initial=0.0,
+        locomotion_prior_residual_scale_increment=0.1,
+        locomotion_prior_residual_mode="hiwonder_stride_mod",
+        locomotion_prior_feedback_pitch=0.2,
+        locomotion_prior_feedback_roll=0.3,
+        locomotion_prior_feedback_yaw=0.4,
     )
 
     assert manifest["regime"] == "alberta_streaming"
@@ -193,6 +221,14 @@ def test_unified_train_alberta_splits_total_steps_across_tasks(
     assert captured["eval_episodes"] == 2
     assert captured["domain_rand"] is False
     assert captured["tasks"] == ["stand_up", "walk_forward", "turn_left"]
+    assert captured["locomotion_action_prior"] == "hiwonder_low_slip_contact_sine"
+    assert captured["locomotion_prior_residual_scale"] == 0.75
+    assert captured["locomotion_prior_residual_scale_initial"] == 0.0
+    assert captured["locomotion_prior_residual_scale_increment"] == 0.1
+    assert captured["locomotion_prior_residual_mode"] == "hiwonder_stride_mod"
+    assert captured["locomotion_prior_feedback_pitch"] == 0.2
+    assert captured["locomotion_prior_feedback_roll"] == 0.3
+    assert captured["locomotion_prior_feedback_yaw"] == 0.4
 
 
 @pytest.mark.parametrize("profile_id", SUPPORTED)
@@ -276,10 +312,40 @@ def test_module_train_uses_mode_specific_default_outputs(
         require_phase_success,
         min_phase_success_rate,
         phase_eval_interval_steps,
+        locomotion_action_prior,
+        locomotion_prior_residual_scale,
+        locomotion_prior_residual_scale_initial,
+        locomotion_prior_residual_scale_increment,
+        locomotion_prior_residual_mode,
+        locomotion_prior_feedback_pitch,
+        locomotion_prior_feedback_roll,
+        locomotion_prior_feedback_yaw,
     ):
         captured["alberta"] = out_dir
         captured["alberta_gamma"] = gamma
         captured["alberta_normalize"] = normalize
+        captured["module_locomotion_action_prior"] = locomotion_action_prior
+        captured["module_locomotion_prior_residual_scale"] = (
+            locomotion_prior_residual_scale
+        )
+        captured["module_locomotion_prior_residual_scale_initial"] = (
+            locomotion_prior_residual_scale_initial
+        )
+        captured["module_locomotion_prior_residual_scale_increment"] = (
+            locomotion_prior_residual_scale_increment
+        )
+        captured["module_locomotion_prior_residual_mode"] = (
+            locomotion_prior_residual_mode
+        )
+        captured["module_locomotion_prior_feedback_pitch"] = (
+            locomotion_prior_feedback_pitch
+        )
+        captured["module_locomotion_prior_feedback_roll"] = (
+            locomotion_prior_feedback_roll
+        )
+        captured["module_locomotion_prior_feedback_yaw"] = (
+            locomotion_prior_feedback_yaw
+        )
         return {}
 
     monkeypatch.setattr(module_train_cli, "_write_manifest_dry_run", fake_dry_run)
@@ -290,7 +356,28 @@ def test_module_train_uses_mode_specific_default_outputs(
     assert module_train_cli.main(["--dry-run"]) == 0
     assert module_train_cli.main(["--smoke", "--steps", "1"]) == 0
     assert module_train_cli.main(["--full", "--steps", "1"]) == 0
-    assert module_train_cli.main(["--steps", "1"]) == 0
+    assert module_train_cli.main(
+        [
+            "--steps",
+            "1",
+            "--locomotion-action-prior",
+            "hiwonder_contact_sine",
+            "--locomotion-prior-residual-scale",
+            "0.6",
+            "--locomotion-prior-residual-scale-initial",
+            "0.0",
+            "--locomotion-prior-residual-scale-increment",
+            "0.2",
+            "--locomotion-prior-residual-mode",
+            "hiwonder_stride_mod",
+            "--locomotion-prior-feedback-pitch",
+            "0.1",
+            "--locomotion-prior-feedback-roll",
+            "0.2",
+            "--locomotion-prior-feedback-yaw",
+            "0.3",
+        ]
+    ) == 0
 
     assert captured["dry_run"].name == "text_conditioned_dry_run"
     assert captured["smoke"].name == "text_conditioned_smoke"
@@ -298,6 +385,14 @@ def test_module_train_uses_mode_specific_default_outputs(
     assert captured["alberta"].name == "alberta_text_conditioned"
     assert captured["alberta_gamma"] == 0.97
     assert captured["alberta_normalize"] is True
+    assert captured["module_locomotion_action_prior"] == "hiwonder_contact_sine"
+    assert captured["module_locomotion_prior_residual_scale"] == 0.6
+    assert captured["module_locomotion_prior_residual_scale_initial"] == 0.0
+    assert captured["module_locomotion_prior_residual_scale_increment"] == 0.2
+    assert captured["module_locomotion_prior_residual_mode"] == "hiwonder_stride_mod"
+    assert captured["module_locomotion_prior_feedback_pitch"] == 0.1
+    assert captured["module_locomotion_prior_feedback_roll"] == 0.2
+    assert captured["module_locomotion_prior_feedback_yaw"] == 0.3
     assert captured["smoke"] != captured["alberta"]
     assert captured["full"] != captured["alberta"]
     assert captured["dry_run"] != captured["alberta"]
