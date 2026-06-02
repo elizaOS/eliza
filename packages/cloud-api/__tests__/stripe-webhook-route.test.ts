@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+// Spread the real module into the partial mock below — `mock.module` is
+// process-global, so dropping `setAuditDispatcher` (and the other real exports)
+// breaks every later importer of this singleton in the same test run.
+import * as auditDispatcherActual from "@/api-app/services/audit-dispatcher-singleton";
 
 const constructEventAsync = mock();
 const emitAudit = mock(async () => undefined);
@@ -21,6 +25,7 @@ const { enqueue } = redisQueueMock;
 const tryCreate = mock(async () => ({ created: true }));
 
 mock.module("@/api-app/services/audit-dispatcher-singleton", () => ({
+  ...auditDispatcherActual,
   getAuditDispatcher: () => ({
     emit: emitAudit,
   }),

@@ -15,6 +15,11 @@
  */
 
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+// `bun:test`'s `mock.module` is process-global: a partial mock of a shared
+// module drops its other real exports for every later importer in the run
+// (e.g. a cron route importing `requireCronSecret`). Spread the real module so
+// only the exports this file actually shadows are replaced.
+import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 
 const validateAndConsumeSIWE =
   mock<
@@ -57,6 +62,7 @@ const getCurrentUser = mock<(c: unknown) => Promise<unknown>>();
 const buildRedisClient = mock<(env: unknown) => unknown>();
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
+  ...workersHonoAuthActual,
   getCurrentUser,
   requireUser,
   requireUserOrApiKey,

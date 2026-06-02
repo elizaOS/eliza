@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+// Spread the real module into the partial mock below — `mock.module` is
+// process-global, so dropping `isInvoiceExpanded` (and the other real exports)
+// breaks every later importer of this module in the same test run.
+import * as stripeEventActual from "@/api-queue/stripe-event";
 
 const queueMockGlobal = globalThis as typeof globalThis & {
   __cloudApiRedisQueueMock?: {
@@ -19,6 +23,7 @@ const { drain, queueLength } = redisQueueMock;
 const processStripeEvent = mock(async () => undefined);
 
 mock.module("@/api-queue/stripe-event", () => ({
+  ...stripeEventActual,
   processStripeEvent,
 }));
 
