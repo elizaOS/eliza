@@ -3837,18 +3837,22 @@ function inferAckIntentCandidateActions(
 		]);
 		if (shellAction) return [shellAction];
 	}
-	if (looksLikeWebSearchRequest(actionText)) {
-		const lookupAction = findWebLookupActionName(actions);
-		if (lookupAction) return [lookupAction];
-	}
+	// Coding-work precedes web-search: "build an app that shows the bitcoin price"
+	// trips looksLikeWebSearchRequest (market term) yet is a coding task — route it
+	// to coding delegation, not a web lookup. Mirrors the coding-first guard in
+	// shouldPreferDirectCurrentCandidateActions.
 	if (looksLikeCodingWorkRequest(actionText)) {
 		const codingAction = findCodingDelegationActionName(actions);
 		if (codingAction) return [codingAction];
 	}
+	if (looksLikeWebSearchRequest(actionText)) {
+		const lookupAction = findWebLookupActionName(actions);
+		if (lookupAction) return [lookupAction];
+	}
 	return [];
 }
 
-function inferDirectCurrentRequestCandidateActions(
+export function inferDirectCurrentRequestCandidateActions(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
 ): string[] {
@@ -3864,13 +3868,16 @@ function inferDirectCurrentRequestCandidateActions(
 		]);
 		if (shellAction) return [shellAction];
 	}
-	if (looksLikeWebSearchRequest(messageText)) {
-		const lookupAction = findWebLookupActionName(actions);
-		if (lookupAction) return [lookupAction];
-	}
+	// Coding-work precedes web-search: a coding request mentioning a live/market
+	// term ("build a crypto price tracker") must route to coding delegation, not a
+	// web lookup. Mirrors shouldPreferDirectCurrentCandidateActions' coding guard.
 	if (looksLikeCodingWorkRequest(messageText)) {
 		const codingAction = findCodingDelegationActionName(actions);
 		if (codingAction) return [codingAction];
+	}
+	if (looksLikeWebSearchRequest(messageText)) {
+		const lookupAction = findWebLookupActionName(actions);
+		if (lookupAction) return [lookupAction];
 	}
 	return [];
 }
