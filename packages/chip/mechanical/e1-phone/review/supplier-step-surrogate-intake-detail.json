@@ -11,7 +11,7 @@
   "lane_records": [
     {
       "actual_bytes": 15716,
-      "actual_sha256": "dba7c78bd84590e54a92911bfb271dc05cd7e840f3123443bf4b6059911d9fc9",
+      "actual_sha256": "e64c9623726f25aee07bd0d2dc7c1170d59c59c4aefb8a7dac297c81bf2936ed",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15716,
@@ -49,7 +49,7 @@
       "lane": "audio_speaker_microphone_flexes",
       "manifest_model_reference_count": 8,
       "release_credit": false,
-      "sha256": "dba7c78bd84590e54a92911bfb271dc05cd7e840f3123443bf4b6059911d9fc9",
+      "sha256": "e64c9623726f25aee07bd0d2dc7c1170d59c59c4aefb8a7dac297c81bf2936ed",
       "size_matches_file": true,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
@@ -58,7 +58,7 @@
     },
     {
       "actual_bytes": 15574,
-      "actual_sha256": "15d44b1c4ce530657d00274130cdaf4c805c8f3fcfb85d440cf112c80786cc25",
+      "actual_sha256": "b4afaa4d46b40622ce7dbf5aefb2d9da7de4f3819a4f22756a8546edcfbd7762",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15574,
@@ -81,7 +81,7 @@
       "lane": "battery_pack",
       "manifest_model_reference_count": 2,
       "release_credit": false,
-      "sha256": "15d44b1c4ce530657d00274130cdaf4c805c8f3fcfb85d440cf112c80786cc25",
+      "sha256": "b4afaa4d46b40622ce7dbf5aefb2d9da7de4f3819a4f22756a8546edcfbd7762",
       "size_matches_file": true,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
@@ -90,7 +90,7 @@
     },
     {
       "actual_bytes": 15608,
-      "actual_sha256": "42f765243e7dacfc952be7cde12390fce701f4b2e7a94031771d9353b6a7382e",
+      "actual_sha256": "3551213af90e7c4e47ac02f12d1a88b8e1bb6d0dadd75ca1088436997b8addb4",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15608,
@@ -127,7 +127,7 @@
       "lane": "cellular",
       "manifest_model_reference_count": 8,
       "release_credit": false,
-      "sha256": "42f765243e7dacfc952be7cde12390fce701f4b2e7a94031771d9353b6a7382e",
+      "sha256": "3551213af90e7c4e47ac02f12d1a88b8e1bb6d0dadd75ca1088436997b8addb4",
       "size_matches_file": true,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
@@ -136,7 +136,7 @@
     },
     {
       "actual_bytes": 15600,
-      "actual_sha256": "8850e1a9427b972d035a8e74fdf10771aca8248ec90e583504da70ed2f46339c",
+      "actual_sha256": "c9e602815c5e0629635008286a2ec780f84f3f88d72bcce7b03c282147856b0b",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15600,
@@ -156,7 +156,7 @@
       "lane": "charger_power_path",
       "manifest_model_reference_count": 1,
       "release_credit": false,
-      "sha256": "8850e1a9427b972d035a8e74fdf10771aca8248ec90e583504da70ed2f46339c",
+      "sha256": "c9e602815c5e0629635008286a2ec780f84f3f88d72bcce7b03c282147856b0b",
       "size_matches_file": true,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
@@ -165,7 +165,7 @@
     },
     {
       "actual_bytes": 15660,
-      "actual_sha256": "15cc0134eee2aca022a451023d3634c37e983cf77e5d9f2e144ede18330aca57",
+      "actual_sha256": "f618e68ac2792030acecf61234e445e142bdb4395c0e126cfa2293337062f14b",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15660,
@@ -190,7 +190,7 @@
       "lane": "display_touch",
       "manifest_model_reference_count": 3,
       "release_credit": false,
-      "sha256": "15cc0134eee2aca022a451023d3634c37e983cf77e5d9f2e144ede18330aca57",
+      "sha256": "f618e68ac2792030acecf61234e445e142bdb4395c0e126cfa2293337062f14b",
       "size_matches_file": true,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
@@ -199,7 +199,7 @@
     },
     {
       "actual_bytes": 15574,
-      "actual_sha256": "b97873ea29675c3f0b369b9f762c94294d2be977246752b5bb62e6a0390e5601",
+      "actual_sha256": "1b99aeec171a456bacfeada6056b3f0fc7487459eb31b819b3b6dcf1ffeefe88",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15574,
@@ -222,7 +222,7 @@
       "lane": "front_camera",
       "manifest_model_reference_count": 2,
       "release_credit": false,
-      "sha256": "b97873ea29675c3f0b369b9f762c94294d2be977246752b5bb62e6a0390e5601",
+      "sha256": "1b99aeec171a456bacfeada6056b3f0fc7487459eb31b819b3b6dcf1ffeefe88",
       "size_matches_file": true,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
@@ -231,7 +231,7 @@
     },
     {
       "actual_bytes": 15694,
-      "actual_sha256": "227bd3c6602e8999c08c91bfea1906afe317441b39289f6c05e8c8e550b4e6fc",
+      "actual_sha256": "e5c6e141010d0935353b25fdb15bcd4ed824398a2cb72c8d9f7e0bca13b73e73",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15694,
@@ -268,7 +268,7 @@
       "lane": "pmic",
       "manifest_model_reference_count": 9,
       "release_credit": false,
-      "sha256": "227bd3c6602e8999c08c91bfea1906afe317441b39289f6c05e8c8e550b4e6fc",
+      "sha256": "e5c6e141010d0935353b25fdb15bcd4ed824398a2cb72c8d9f7e0bca13b73e73",
       "size_matches_file": true,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
@@ -277,7 +277,7 @@
     },
     {
       "actual_bytes": 15574,
-      "actual_sha256": "22d3bd971dcad70618724492b271b629fd03504d13fbd8c2fd6367d5db8ebcbc",
+      "actual_sha256": "33886c9dcc4d3a07198ce583ec84b0aa57be4302f56c29ae5394474caac73d4e",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15574,
@@ -300,7 +300,7 @@
       "lane": "rear_camera",
       "manifest_model_reference_count": 2,
       "release_credit": false,
-      "sha256": "22d3bd971dcad70618724492b271b629fd03504d13fbd8c2fd6367d5db8ebcbc",
+      "sha256": "33886c9dcc4d3a07198ce583ec84b0aa57be4302f56c29ae5394474caac73d4e",
       "size_matches_file": true,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
@@ -309,7 +309,7 @@
     },
     {
       "actual_bytes": 15716,
-      "actual_sha256": "c2fb32b99edae471bca4ff7cc525c452171e7a137a6e9893084b8ac342da261e",
+      "actual_sha256": "942576d9ed77cd65161965e3effca571ab814130b46e174706ff8561c273fce0",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15716,
@@ -335,7 +335,7 @@
       "lane": "side_buttons",
       "manifest_model_reference_count": 3,
       "release_credit": false,
-      "sha256": "c2fb32b99edae471bca4ff7cc525c452171e7a137a6e9893084b8ac342da261e",
+      "sha256": "942576d9ed77cd65161965e3effca571ab814130b46e174706ff8561c273fce0",
       "size_matches_file": true,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
@@ -344,7 +344,7 @@
     },
     {
       "actual_bytes": 15546,
-      "actual_sha256": "b798555a768fb3533ad35d3b4544cd5632cf84a7e56dbd77a4aebd72853307b0",
+      "actual_sha256": "f128569ade9d93d27261f5f8414e0be299291446d8f65265428c8bf4d6ef2553",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15546,
@@ -366,7 +366,7 @@
       "lane": "top_bottom_interconnect",
       "manifest_model_reference_count": 2,
       "release_credit": false,
-      "sha256": "b798555a768fb3533ad35d3b4544cd5632cf84a7e56dbd77a4aebd72853307b0",
+      "sha256": "f128569ade9d93d27261f5f8414e0be299291446d8f65265428c8bf4d6ef2553",
       "size_matches_file": true,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
@@ -375,7 +375,7 @@
     },
     {
       "actual_bytes": 15576,
-      "actual_sha256": "454b15ec10b84602780a0773c723bfa79117208ec4df76a5d10f3db55000abe0",
+      "actual_sha256": "02dc08a53ad8b4bd2203ed3a72d3c7028c2cda63b1ab141674060d969ac2b4a7",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15576,
@@ -395,7 +395,7 @@
       "lane": "usb_c_receptacle_evt0",
       "manifest_model_reference_count": 1,
       "release_credit": false,
-      "sha256": "454b15ec10b84602780a0773c723bfa79117208ec4df76a5d10f3db55000abe0",
+      "sha256": "02dc08a53ad8b4bd2203ed3a72d3c7028c2cda63b1ab141674060d969ac2b4a7",
       "size_matches_file": true,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
@@ -404,7 +404,7 @@
     },
     {
       "actual_bytes": 15538,
-      "actual_sha256": "08e7e65c37d67f51940e0aa30ad7f22d98a57d19adf9577b85326bb703fe1306",
+      "actual_sha256": "b1336aa70b4f17fa730de8fe3f0842edd80dd611fd85470ab9b45a99593d4830",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15538,
@@ -424,7 +424,7 @@
       "lane": "usb_pd_controller",
       "manifest_model_reference_count": 1,
       "release_credit": false,
-      "sha256": "08e7e65c37d67f51940e0aa30ad7f22d98a57d19adf9577b85326bb703fe1306",
+      "sha256": "b1336aa70b4f17fa730de8fe3f0842edd80dd611fd85470ab9b45a99593d4830",
       "size_matches_file": true,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
@@ -433,7 +433,7 @@
     },
     {
       "actual_bytes": 15640,
-      "actual_sha256": "2af74adccbfce5142c8dcd57b51745561f78a6a4b52934ead003451c8d8582c1",
+      "actual_sha256": "d19ea771a713196457a2441862a5d187b6f5eea629167c4c5b9eeeba7321744d",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15640,
@@ -463,7 +463,7 @@
       "lane": "wifi_bluetooth",
       "manifest_model_reference_count": 5,
       "release_credit": false,
-      "sha256": "2af74adccbfce5142c8dcd57b51745561f78a6a4b52934ead003451c8d8582c1",
+      "sha256": "d19ea771a713196457a2441862a5d187b6f5eea629167c4c5b9eeeba7321744d",
       "size_matches_file": true,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [

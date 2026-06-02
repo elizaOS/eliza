@@ -6,8 +6,8 @@
     "erc": "mechanical/e1-phone/review/local-kicad-cli/e1-phone-erc.json"
   },
   "source_hashes": {
-    "drc_sha256": "2bd9486441ce2ea0d497350d8a8e0b5c468659705c5616da5e1e4cfdea5a75c9",
-    "erc_sha256": "61bbfc7376b6b4f68dc3e0c056c901c935a236cbffc084ff714a9e17680e1c82"
+    "drc_sha256": "93dc1d605b924db690ebf4be40a16079e6f08bf12fb06f58c01c018918e3aa0e",
+    "erc_sha256": "a5e371458da5a377b1fa694e2b83729c59ef291feafb3849ebae85863a26e77d"
   },
   "status": "blocked_local_kicad_drc_erc_violations_present",
   "drc": {
@@ -45,7 +45,7 @@
         "source_bucket": "violations",
         "sheet_path": "",
         "item_descriptions": [
-          "Track [CAM0_CSI_D3_P] on F.Cu, length 8.8023 mm",
+          "Track [DSI_D1_N] on F.Cu, length 8.0623 mm",
           "Zone 'E1Phone_LOCAL_GND_TOP_ISLAND_POUR' [GND] on F.Cu, B.Cu and In1.Cu, priority 30"
         ]
       },
@@ -95,12 +95,12 @@
       {
         "type": "shorting_items",
         "severity": "error",
-        "description": "Items shorting two nets (nets CAM0_CSI_D3_P and )",
+        "description": "Items shorting two nets (nets ESIM_CLK and PWR_KEY_N)",
         "source_bucket": "violations",
         "sheet_path": "",
         "item_descriptions": [
-          "Track [CAM0_CSI_D3_P] on F.Cu, length 8.8023 mm",
-          "Pad B93 [<no net>] of U_SOC_LPDDR_UFS on F.Cu"
+          "Track [ESIM_CLK] on F.Cu, length 42.5022 mm",
+          "Track [PWR_KEY_N] on F.Cu, length 26.0768 mm"
         ]
       },
       {
@@ -110,8 +110,8 @@
         "source_bucket": "violations",
         "sheet_path": "",
         "item_descriptions": [
-          "Track [DSI_D3_N] on F.Cu, length 8.5440 mm",
-          "Track [DISP_TE] on F.Cu, length 12.5100 mm"
+          "Track [DISP_AVDD_5V5] on F.Cu, length 19.3093 mm",
+          "Track [DSI_D1_N] on F.Cu, length 8.0623 mm"
         ]
       },
       {

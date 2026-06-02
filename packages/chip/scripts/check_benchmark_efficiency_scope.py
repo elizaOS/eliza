@@ -156,6 +156,9 @@ GENERATED_AP_CLAIM_BOUNDARY = (
 TARGET_PHONE_BENCHMARK_CLAIM_BOUNDARY = (
     "operator_commands_only_not_target_phone_benchmark_evidence_until_report_validates"
 )
+TARGET_PHONE_METADATA_PREFLIGHT_CLAIM_BOUNDARY = (
+    "operator_commands_only_not_target_phone_metadata_evidence_until_blockers_are_replaced"
+)
 NPU_NNAPI_PROOF_CLAIM_BOUNDARY = (
     "operator_commands_only_not_nnapi_acceleration_evidence_until_measured_proof_validates"
 )
@@ -228,13 +231,61 @@ def command_plan_commands(
     return list(dict.fromkeys(commands))
 
 
+def target_metadata_preflight_command() -> str:
+    return (
+        "python3 benchmarks/run_benchmarks.py run "
+        "--config benchmarks/configs/benchmark_plan.json "
+        "--out-dir benchmarks/results/target-phone-preflight "
+        "--claim-level L5_PROTOTYPE_SILICON "
+        "--metadata benchmarks/metadata/strict-blocked-template.json "
+        "--strict-missing"
+    )
+
+
+def primary_commands_for_finding(
+    finding: dict[str, Any],
+    capture_commands: dict[str, str],
+    command_plan: list[dict[str, Any]],
+) -> list[str]:
+    message = str(finding.get("message", "")).lower()
+    if "npu nnapi proof" in message:
+        return [
+            capture_commands["npu_nnapi_proof"],
+            "python3 scripts/check_e1_npu_nnapi_proof.py",
+            "python3 scripts/check_npu_scope.py",
+        ]
+    if "raw benchmark stdout" in message or "schema-valid benchmark report" in message:
+        return [
+            capture_commands["target_benchmark_report"],
+            capture_commands["target_benchmark_validation"],
+        ]
+    if any(
+        token in message
+        for token in (
+            "target identity",
+            "clock-source",
+            "power-meter",
+            "thermal traces",
+            "memory configuration",
+        )
+    ):
+        return [
+            target_metadata_preflight_command(),
+            capture_commands["target_benchmark_report"],
+            capture_commands["target_benchmark_validation"],
+        ]
+    return [capture_commands["target_benchmark_validation"]]
+
+
 def finding_payload(
     finding: dict[str, Any],
     capture_commands: dict[str, str],
     command_plan: list[dict[str, Any]],
 ) -> dict[str, Any]:
     row = dict(finding)
-    commands = command_plan_commands(capture_commands, command_plan)
+    commands = primary_commands_for_finding(finding, capture_commands, command_plan)
+    commands.extend(command_plan_commands(capture_commands, command_plan))
+    commands = list(dict.fromkeys(commands))
     if commands:
         row["next_command"] = commands[0]
         row["next_commands"] = commands
@@ -481,15 +532,18 @@ def target_phone_benchmark_command_plan() -> dict[str, Any]:
         "source": rel(BENCHMARK_PLAN),
         "claim_boundary": TARGET_PHONE_BENCHMARK_CLAIM_BOUNDARY,
         "commands": [
+            target_metadata_preflight_command(),
             REQUIRED_CAPTURE_COMMANDS["target_benchmark_report"],
             REQUIRED_CAPTURE_COMMANDS["target_benchmark_validation"],
             "python3 scripts/check_benchmark_efficiency_scope.py",
         ],
         "requires": [
+            "fail-closed metadata preflight report from the strict blocked template before replacing blocked-* values",
             "prototype or phone target metadata with board, OS/BSP, clock, power, thermal, memory, process, and calibration sections",
             "raw benchmark transcripts and parser-derived metrics from the selected target",
             "runner report validates with dry_run=false and L5/L6 claim level",
         ],
+        "preflight_claim_boundary": TARGET_PHONE_METADATA_PREFLIGHT_CLAIM_BOUNDARY,
     }
 
 
@@ -774,7 +828,18 @@ def validate_report(data: dict[str, Any]) -> list[str]:
                 "target-phone benchmark command plan claim boundary drifted",
                 errors,
             )
+            require(
+                target_plan.get("preflight_claim_boundary")
+                == TARGET_PHONE_METADATA_PREFLIGHT_CLAIM_BOUNDARY,
+                "target-phone metadata preflight claim boundary drifted",
+                errors,
+            )
             target_text = "\n".join(str(item) for item in list_values(target_plan.get("commands")))
+            require(
+                target_metadata_preflight_command() in target_text,
+                "target-phone benchmark command plan missing metadata preflight",
+                errors,
+            )
             for key in ("target_benchmark_report", "target_benchmark_validation"):
                 require(
                     REQUIRED_CAPTURE_COMMANDS[key] in target_text,
