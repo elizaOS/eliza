@@ -30,10 +30,6 @@ const LEVELS = [
     file: "plugins/plugin-contacts/src/components/ContactsAppView.tsx",
   },
   {
-    name: "plugin view device settings",
-    file: "plugins/plugin-device-settings/src/components/DeviceSettingsAppView.tsx",
-  },
-  {
     name: "plugin view hyperliquid",
     file: "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.tsx",
   },
@@ -74,10 +70,6 @@ const LEVELS = [
     file: "plugins/plugin-wallet-ui/src/InventoryView.tsx",
   },
   {
-    name: "plugin view wifi",
-    file: "plugins/plugin-wifi/src/components/WifiAppView.tsx",
-  },
-  {
     name: "plugin view 2004scape",
     file: "plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.tsx",
   },
@@ -112,6 +104,10 @@ const LEVELS = [
   {
     name: "plugin view task coordinator",
     file: "plugins/plugin-task-coordinator/src/CodingAgentTasksPanel.tsx",
+  },
+  {
+    name: "plugin view odysseus",
+    file: "plugins/plugin-task-coordinator/src/odysseus/OdysseusShell.tsx",
   },
   {
     name: "plugin view orchestrator",

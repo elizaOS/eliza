@@ -5,10 +5,10 @@ import { describe, expect, it } from "vitest";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "../../..");
-const VISUAL_MATRIX_SPEC = path.join(
+const VISUAL_MATRIX_SOURCE = path.join(
   HERE,
   "ui-smoke",
-  "plugin-views-visual.spec.ts",
+  "plugin-view-cases.ts",
 );
 const HMR_SPEC = path.join(HERE, "hmr", "hmr-dependency-levels.spec.ts");
 const CI_WORKFLOW = path.join(REPO_ROOT, ".github/workflows/ci.yaml");
@@ -21,7 +21,7 @@ type GuiViewCase = {
 };
 
 function readGuiVisualCases(): GuiViewCase[] {
-  const source = readFileSync(VISUAL_MATRIX_SPEC, "utf8");
+  const source = readFileSync(VISUAL_MATRIX_SOURCE, "utf8");
   const match = source.match(
     /const VIEW_CASES: ViewCase\[] = \(?\s*\[([\s\S]*?)\]\s*(?:satisfies[\s\S]*?)?\)?\s*\.map/,
   );
@@ -82,8 +82,8 @@ describe("plugin view HMR coverage", () => {
       .filter((level) => !existsSync(path.join(REPO_ROOT, level.file)))
       .map((level) => `${level.id} ${level.file}`);
 
-    expect(guiCases.length).toBe(26);
-    expect(hmrLevels.length).toBe(26);
+    expect(guiCases.length).toBe(27);
+    expect(hmrLevels.length).toBe(27);
     expect(missing, "Add HMR source probes for new GUI views.").toEqual([]);
     expect(
       stale,

@@ -145,10 +145,17 @@ export function OdysseusShell(): ReactNode {
 
   const { detail, conversation, isActive } = useTaskRoom(selectedId);
 
-  const activeSessionId = useMemo(() => {
-    const session = (detail?.sessions ?? []).find((s) => s.stoppedAt == null);
-    return session?.sessionId ?? null;
-  }, [detail?.sessions]);
+  const activeSession = useMemo(
+    () => (detail?.sessions ?? []).find((s) => s.stoppedAt == null) ?? null,
+    [detail?.sessions],
+  );
+  const activeSessionId = activeSession?.sessionId ?? null;
+  const modelLabel = useMemo(() => {
+    const provider = activeSession?.providerSource?.trim();
+    const model = activeSession?.model?.trim();
+    if (provider && model) return `${provider} · ${model}`;
+    return model || activeSession?.label?.trim() || "Model";
+  }, [activeSession]);
 
   const onCreated = useCallback(
     (id: string) => {
@@ -536,7 +543,7 @@ export function OdysseusShell(): ReactNode {
         onStop={stop}
         sending={sending}
         isActive={isActive}
-        modelLabel="gpt-oss-120b"
+        modelLabel={modelLabel}
         onNewChat={onNewChat}
         onSearch={() => setSearchOpen(true)}
         onOpenPanel={openPanel}

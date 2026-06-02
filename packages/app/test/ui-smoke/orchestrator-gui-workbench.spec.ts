@@ -796,4 +796,74 @@ test.describe("orchestrator GUI workbench", () => {
       "Please verify the smoke task.",
     );
   });
+
+  test("odysseus composer creates a planning thread", async ({ page }) => {
+    await seedAppStorage(page);
+    await installDefaultAppRoutes(page);
+    const requests = await installOrchestratorWorkbenchRoutes(page);
+
+    await openAppPath(page, "/odysseus");
+
+    await expect(page.getByTestId("odysseus-shell")).toBeVisible();
+    const composer = page.getByLabel("Message input");
+    await expect(composer).toBeVisible();
+
+    await composer.fill("/mod");
+    await expect(
+      page.getByRole("listbox", { name: "Slash commands" }),
+    ).toBeVisible();
+    await expect(page.getByText("/models")).toBeVisible();
+
+    await composer.fill("odysseus composer creates a planning thread");
+    await page.getByLabel("Send").click();
+
+    await expect
+      .poll(() => requests.createBodies)
+      .toEqual([
+        {
+          title: "odysseus composer creates a planning thread",
+          goal: "odysseus composer creates a planning thread",
+          originalRequest: "odysseus composer creates a planning thread",
+        },
+      ]);
+    await expect(page.getByTestId("odysseus-shell")).toContainText(
+      "odysseus composer creates a planning thread",
+    );
+
+    await page.getByLabel("New chat").click();
+    await expect(composer).toBeEmpty();
+  });
+
+  test("odysseus sidebar delete requires confirmation", async ({ page }) => {
+    await seedAppStorage(page);
+    await installDefaultAppRoutes(page);
+    const requests = await installOrchestratorWorkbenchRoutes(page, {
+      detail: taskDetail({
+        title: "Delete guarded task",
+        goal: "Verify destructive actions require confirmation",
+      }),
+    });
+
+    await openAppPath(page, "/odysseus");
+
+    await expect(page.getByTestId("odysseus-shell")).toBeVisible();
+    await expect(page.getByText("Delete guarded task")).toBeVisible();
+
+    await page.getByLabel("Conversation actions").first().click();
+    page.once("dialog", async (dialog) => {
+      expect(dialog.message()).toContain("Delete");
+      await dialog.dismiss();
+    });
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await page.waitForTimeout(250);
+    expect(requests.actionLog).not.toContain("delete");
+
+    await page.getByLabel("Conversation actions").first().click();
+    page.once("dialog", async (dialog) => {
+      expect(dialog.message()).toContain("Delete guarded task");
+      await dialog.accept();
+    });
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect.poll(() => requests.actionLog).toContain("delete");
+  });
 });

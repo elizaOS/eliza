@@ -239,6 +239,18 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: ["orchestrator-create-submit", "orchestrator-send"],
     },
   ],
+  odysseus: [
+    {
+      spec: "packages/app/test/ui-smoke/orchestrator-gui-workbench.spec.ts",
+      proves:
+        "Exercises the Odysseus shell, slash-command list, composer submit path, and task creation request body.",
+      signals: [
+        "odysseus composer creates",
+        "odysseus-shell",
+        "Slash commands",
+      ],
+    },
+  ],
   screenshare: [
     {
       spec: "packages/app/test/ui-smoke/screenshare-gui-interactions.spec.ts",
@@ -351,7 +363,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(52);
+    expect(visualCases.length).toBe(53);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

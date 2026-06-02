@@ -574,6 +574,27 @@ export function SessionSidebar({
   }, [threadIds, assignments, persistAssignments]);
 
   const pinned = useMemo(() => new Set(pinnedIds), [pinnedIds]);
+  const threadById = useMemo(
+    () => new Map(threads.map((thread) => [thread.id, thread])),
+    [threads],
+  );
+
+  const confirmDeleteThread = useCallback(
+    (id: string) => {
+      if (pinned.has(id)) return false;
+      const title = threadById.get(id)?.title.trim() || "this conversation";
+      if (
+        !window.confirm(
+          `Delete "${title}"? This removes the orchestrator thread and cannot be undone.`,
+        )
+      ) {
+        return false;
+      }
+      onDelete(id);
+      return true;
+    },
+    [onDelete, pinned, threadById],
+  );
 
   // Base order: when in manual sort, honour the persisted drag order (unknown
   // ids — freshly-created threads — append in server order); otherwise the
@@ -781,11 +802,12 @@ export function SessionSidebar({
         if (pinned.has(id)) return; // odysseus "Unfavorite before deleting"
         const idx = flatOrder.indexOf(id);
         const fallbackId = flatOrder[idx + 1] ?? flatOrder[idx - 1] ?? null;
-        onDelete(id);
-        if (fallbackId) rowRefs.current.get(fallbackId)?.focus();
+        if (confirmDeleteThread(id) && fallbackId) {
+          rowRefs.current.get(fallbackId)?.focus();
+        }
       }
     },
-    [flatOrder, onSelect, onDelete, pinned],
+    [flatOrder, onSelect, confirmDeleteThread, pinned],
   );
 
   // ── Drag reorder (odysseus dragSort.js). Pointer-based vertical reorder of
@@ -867,7 +889,7 @@ export function SessionSidebar({
         const next = st.order.filter((x) => x !== st.id);
         const at = before ? next.indexOf(before) : next.length;
         next.splice(at < 0 ? next.length : at, 0, st.id);
-        if (next.join(" ") === st.order.join(" ")) return;
+        if (next.join("\\u0000") === st.order.join("\\u0000")) return;
         // Persist the full manual order: dragged unfiled list + any other
         // threads (folder-assigned / not currently visible) appended in their
         // existing relative order, so the saved order stays total.
@@ -1031,7 +1053,7 @@ export function SessionSidebar({
       onCancelRename={() => setEditingId(null)}
       onDelete={() => {
         setMenuOpenId(null);
-        onDelete(thread.id);
+        confirmDeleteThread(thread.id);
       }}
       onMoveToFolder={(folder) => moveToFolder(thread.id, folder)}
       onNewFolderWith={() => {

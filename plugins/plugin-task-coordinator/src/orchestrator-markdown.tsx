@@ -15,6 +15,33 @@ function alignStyle(align: Tokens.TableCell["align"]) {
   return align ? { textAlign: align } : undefined;
 }
 
+const SAFE_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
+const SAFE_IMAGE_PROTOCOLS = new Set(["http:", "https:"]);
+
+function hasUnsafeControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 31 || code === 127) return true;
+  }
+  return false;
+}
+
+export function sanitizeMarkdownUrl(
+  href: string,
+  kind: "link" | "image",
+): string | null {
+  const value = href.trim();
+  if (!value || hasUnsafeControlCharacter(value)) return null;
+
+  const protocolMatch = /^[a-z][a-z0-9+.-]*:/i.exec(value);
+  if (!protocolMatch) return kind === "link" ? value : null;
+
+  const protocol = protocolMatch[0].toLowerCase();
+  const safeProtocols =
+    kind === "image" ? SAFE_IMAGE_PROTOCOLS : SAFE_LINK_PROTOCOLS;
+  return safeProtocols.has(protocol) ? value : null;
+}
+
 function renderChildren(tokens: Token[] | undefined, key: string): ReactNode {
   if (!tokens || tokens.length === 0) return null;
   return tokens.map((token, index) => renderToken(token, `${key}.${index}`));
@@ -158,11 +185,15 @@ function renderToken(token: Token, key: string): ReactNode {
           {token.text}
         </code>
       );
-    case "link":
+    case "link": {
+      const href = sanitizeMarkdownUrl(token.href, "link");
+      if (!href) {
+        return <span key={key}>{renderChildren(token.tokens, key)}</span>;
+      }
       return (
         <a
           key={key}
-          href={token.href}
+          href={href}
           title={token.title ?? undefined}
           target="_blank"
           rel="noreferrer"
@@ -171,16 +202,20 @@ function renderToken(token: Token, key: string): ReactNode {
           {renderChildren(token.tokens, key)}
         </a>
       );
-    case "image":
+    }
+    case "image": {
+      const src = sanitizeMarkdownUrl(token.href, "image");
+      if (!src) return token.text;
       return (
         <img
           key={key}
-          src={token.href}
+          src={src}
           alt={token.text}
           title={token.title ?? undefined}
           className="my-1 max-w-full rounded-sm border border-border/50"
         />
       );
+    }
     case "br":
       return <br key={key} />;
     case "escape":

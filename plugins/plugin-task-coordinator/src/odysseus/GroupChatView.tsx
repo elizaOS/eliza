@@ -366,7 +366,10 @@ export function GroupChatView({
   const sessionsById = useMemo(() => {
     const map = new Map<string, CodingAgentTaskSessionRecord>();
     if (detail) {
-      for (const session of detail.sessions) map.set(session.id, session);
+      for (const session of detail.sessions) {
+        map.set(session.sessionId, session);
+        map.set(session.id, session);
+      }
     }
     return map;
   }, [detail]);

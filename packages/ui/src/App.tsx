@@ -935,7 +935,7 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
     : null;
   return (
     <div key={`tab-shell-${props.tab}`} className={APP_SHELL_CLASS}>
-      {props.tab !== "orchestrator" ? (
+      {!isFullBleedRoutedTab(props.tab) ? (
         <Header pageRightExtras={headerActions} />
       ) : null}
       {props.desktopTabBar}
@@ -948,12 +948,22 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
   );
 }
 
+function isFullBleedRoutedTab(tab: string): boolean {
+  return tab === "orchestrator" || tab === "odysseus";
+}
+
 function routedShellMainClass(tab: string): string {
   const pagePadding =
-    tab === "browser" || tab === "apps" || tab === "views"
+    tab === "browser" ||
+    tab === "apps" ||
+    tab === "views" ||
+    isFullBleedRoutedTab(tab)
       ? ""
       : "px-3 xl:px-5 py-4 xl:py-6";
-  const mobilePadding = tab === "browser" ? "" : MOBILE_NAV_PADDING_CLASS;
+  const mobilePadding =
+    tab === "browser" || isFullBleedRoutedTab(tab)
+      ? ""
+      : MOBILE_NAV_PADDING_CLASS;
   return `flex flex-1 min-h-0 min-w-0 overflow-hidden ${pagePadding} ${mobilePadding}`;
 }
 

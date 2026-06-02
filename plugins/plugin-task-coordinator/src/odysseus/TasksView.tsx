@@ -330,6 +330,13 @@ export function TasksView({
   const bulkDelete = () => {
     const ids = [...selected];
     if (ids.length === 0) return;
+    if (
+      !window.confirm(
+        `Delete ${ids.length} selected task${ids.length === 1 ? "" : "s"}? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
     runMutation(
       async () => {
         const results = await Promise.allSettled(
@@ -342,6 +349,20 @@ export function TasksView({
       `Couldn't delete ${ids.length === 1 ? "the task" : "some tasks"}.`,
     );
     exitSelect();
+  };
+
+  const deleteThread = (thread: CodingAgentTaskThread) => {
+    if (
+      !window.confirm(
+        `Delete "${thread.title}"? This removes the orchestrator task and cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    runMutation(
+      () => client.deleteOrchestratorTask(thread.id),
+      "Couldn't delete the task.",
+    );
   };
 
   const openHistory = (thread: CodingAgentTaskThread) => {
@@ -644,12 +665,7 @@ export function TasksView({
                           "Couldn't resume the task.",
                         )
                       }
-                      onDelete={() =>
-                        runMutation(
-                          () => client.deleteOrchestratorTask(thread.id),
-                          "Couldn't delete the task.",
-                        )
-                      }
+                      onDelete={() => deleteThread(thread)}
                       onHistory={() => openHistory(thread)}
                     />
                   ))
