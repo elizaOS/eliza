@@ -20,6 +20,7 @@
 
 import {
   type ReactNode,
+  type RefObject,
   useCallback,
   useEffect,
   useRef,
@@ -160,8 +161,19 @@ function censorElement(root: HTMLElement): void {
 }
 
 /** Hook: run the censor over a body ref after each render of `content`, and
- * wire click-to-reveal on the censored spans. No-op unless the pref is on. */
-function useCensoredBody(content: string) {
+ * wire click-to-reveal on the censored spans. No-op unless the pref is on.
+ *
+ * Returns `{ ref, markdownKey }`. When censoring is enabled the censor mutates
+ * MarkdownText's rendered DOM (swapping text nodes for `.od-censored` spans);
+ * `markdownKey` (= content) must be applied to the MarkdownText element so React
+ * REMOUNTS that subtree on every content change instead of reconciling in place
+ * over the out-of-tree mutations — which would throw a NotFoundError once the
+ * trailing block streams under a stable key. When disabled, `markdownKey` is
+ * undefined so streaming stays a cheap in-place reconcile. */
+function useCensoredBody(content: string): {
+  ref: RefObject<HTMLDivElement | null>;
+  markdownKey: string | undefined;
+} {
   const ref = useRef<HTMLDivElement>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-censor whenever the rendered body content changes
@@ -182,7 +194,7 @@ function useCensoredBody(content: string) {
     return () => el.removeEventListener("click", onClick);
   }, [content]);
 
-  return ref;
+  return { ref, markdownKey: censorEnabled() ? content : undefined };
 }
 
 /** Hover-revealed Copy action for one turn — odysseus footer-copy-btn. Copy is
@@ -285,11 +297,11 @@ export function UserBubble({
   block: UserBlock;
   locale?: string;
 }): ReactNode {
-  const bodyRef = useCensoredBody(block.content);
+  const { ref: bodyRef, markdownKey } = useCensoredBody(block.content);
   return (
     <div className="od-msg od-msg-user">
       <div className="od-body" ref={bodyRef}>
-        <MarkdownText text={block.content} />
+        <MarkdownText key={markdownKey} text={block.content} />
       </div>
       <div className="od-msg-time">{formatClockTime(block.at, locale)}</div>
       <CopyFooter content={block.content} />
@@ -304,7 +316,7 @@ export function AgentBubble({
   block: AgentBlock;
   locale?: string;
 }): ReactNode {
-  const bodyRef = useCensoredBody(block.content);
+  const { ref: bodyRef, markdownKey } = useCensoredBody(block.content);
   return (
     <div className="od-msg od-msg-ai">
       <div className="od-role">{block.senderName}</div>
@@ -312,7 +324,7 @@ export function AgentBubble({
         className={`od-body${block.tone === "error" ? " od-body-error" : ""}`}
         ref={bodyRef}
       >
-        <MarkdownText text={block.content} />
+        <MarkdownText key={markdownKey} text={block.content} />
       </div>
       <div className="od-msg-time">{formatClockTime(block.at, locale)}</div>
     </div>

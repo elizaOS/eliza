@@ -172,7 +172,12 @@ export function SkillsContent({
       return;
     }
     setExpandedId(s.id);
-    if (sources[s.id]?.content !== undefined || sources[s.id]?.loading) return;
+    // Refetch when never loaded OR a prior load failed; only skip when a load
+    // is in flight or already succeeded (a failed source caches content:"" with
+    // failed:true, so don't treat that empty string as "already loaded").
+    const cached = sources[s.id];
+    if (cached?.loading || (cached?.content !== undefined && !cached.failed))
+      return;
     setSources((prev) => ({
       ...prev,
       [s.id]: { content: "", loading: true, failed: false },
@@ -201,7 +206,14 @@ export function SkillsContent({
     };
     if (expandedId !== s.id) setExpandedId(s.id);
     const existing = sources[s.id];
-    if (existing?.content !== undefined && !existing.loading) {
+    // Only open the editor from cache for a genuinely-loaded source. A failed
+    // load caches content:"" (failed:true); opening that and saving would
+    // overwrite the real SKILL.md with an empty string — so refetch instead.
+    if (
+      existing?.content !== undefined &&
+      !existing.loading &&
+      !existing.failed
+    ) {
       begin(existing.content);
       return;
     }
@@ -499,6 +511,7 @@ export function SkillsContent({
                         type="button"
                         className="od-skills-dropdown-item"
                         onClick={() => startEdit(s)}
+                        disabled={src?.loading || src?.failed}
                       >
                         <SquarePen size={14} />
                         <span>Edit</span>

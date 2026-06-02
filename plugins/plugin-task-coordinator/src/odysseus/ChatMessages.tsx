@@ -107,11 +107,23 @@ export function ChatMessages({
     stickToBottom.current = distance < 80;
   }, []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: conversation is the trigger
+  // While a reply streams, deltas coalesce into the same trailing block (stable
+  // key, unchanged length), so length+key alone never re-fire the stick-to-
+  // bottom effect and a pinned reader stops following. Track the trailing
+  // block's text length too so the effect re-runs as its content grows.
+  const lastBlock = conversation[conversation.length - 1];
+  const lastContentLen =
+    lastBlock && "content" in lastBlock
+      ? lastBlock.content.length
+      : lastBlock && "text" in lastBlock
+        ? lastBlock.text.length
+        : 0;
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the derived signals below are the intended triggers
   useEffect(() => {
     const el = scrollRef.current;
     if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
-  }, [conversation.length, conversation[conversation.length - 1]?.key]);
+  }, [conversation.length, lastBlock?.key, lastContentLen]);
 
   return (
     <div className="od-chat-history" ref={scrollRef} onScroll={onScroll}>

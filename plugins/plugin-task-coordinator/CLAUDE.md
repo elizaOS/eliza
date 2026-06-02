@@ -38,14 +38,20 @@ Calls `registerTaskCoordinatorSlots` from `@elizaos/ui` with:
 
 ### App shell pages (`src/register.ts`)
 
-Registers `/orchestrator` (order 70) and `/orchestrator/tui` (order 71) in the `developer` group via `registerAppShellPage` from `@elizaos/ui/app-shell-registry`.
+Registers three pages in the `developer` group via `registerAppShellPage` from `@elizaos/ui/app-shell-registry`:
+
+- `/odysseus` (order 69, `fullBleed: true`) — the `OdysseusShell` chat UI (see `src/odysseus/`).
+- `/orchestrator` (order 70, `fullBleed: true`) — the `OrchestratorWorkbench`.
+- `/orchestrator/tui` (order 71) — the TUI variant.
+
+`fullBleed: true` opts the page into edge-to-edge mounting (no host header / tab-bar / padding) — these views own their full window. The flag is defined on `AppShellPageRegistration` in `@elizaos/ui`.
 
 ## Layout
 
 ```
 src/
   index.ts                         Plugin definition — views + capabilities declared here
-  register.ts                      App-shell page registration (orchestrator routes)
+  register.ts                      App-shell page registration (/odysseus, /orchestrator, /orchestrator/tui)
   register-slots.ts                Slot registry fills for ui null-placeholders
   CodingAgentTasksPanel.tsx        Task thread list + PTY session panel; re-exports OrchestratorWorkbench
   OrchestratorWorkbench.tsx        Multi-agent orchestration workbench (main UI)
@@ -63,9 +69,24 @@ src/
   PtyTerminalPane.tsx              Full terminal pane variant
   orchestrator-stream.tsx          Conversation-view builder for orchestrator event/message records
   orchestrator-diff.tsx            Diff view component for file-change tool cards
+  orchestrator-markdown.tsx        Markdown renderer (marked) for chat prose; shared MarkdownText
+  orchestrator-plan.tsx            Plan/checklist block renderer
+  orchestrator-reasoning.tsx       Collapsible reasoning block renderer
   view-format.ts                   Pure display formatters (time, tokens, USD, ANSI-strip)
   session-hydration.ts             Re-exports mapServerTasksToSessions + TERMINAL_STATUSES from @elizaos/ui
   pty-status-dots.ts               Re-exports PULSE_STATUSES + STATUS_DOT from @elizaos/ui
+  odysseus/                        Odysseus-style orchestrator chat UI (full-bleed /odysseus page)
+    OdysseusShell.tsx              Root shell: sidebar/rail, composer, tool-window host
+    SessionSidebar.tsx IconRail.tsx  Labeled nav sidebar + its collapsed 48px icon rail
+    Composer.tsx ChatContainer.tsx ChatMessages.tsx MessageBubble.tsx ChatTopBar.tsx  Chat column
+    MemoryPanel.tsx SkillsPanel.tsx NotesPanel.tsx SettingsPanel.tsx PresetsPanel.tsx ThemeMenu.tsx  Panels
+    TasksView/ModelsView/EmailView/CalendarView/GroupChatView/AdminView/GalleryView/
+      GalleryEditorView/CompareView/ResearchView/VoiceView/CookbookView/DocumentLibraryView.tsx  Tool views
+    WindowManager.tsx MinimizedDock.tsx ResizeHandles.tsx  Cross-view window registry + minimize dock + resize
+    SearchPalette.tsx EmojiPicker.tsx Spinner.tsx BgEffect.tsx  Misc UI
+    odysseus-theme.ts              ODYSSEUS_CSS — the theme stylesheet (CSS-in-template-literal)
+    hooks/                         useWindowControls, useKeyboardShortcuts, useTaskRoom, useChatSubmit, useEscapeClose
+    util/storage.ts                Namespaced localStorage helpers
   api/
     coding-agents-auth-sanitize.ts       Sanitizes triggerAuth() responses (whitelist + URL scheme check)
     coding-agents-preflight-normalize.ts Normalizes preflight auth field to typed NormalizedPreflightAuth
