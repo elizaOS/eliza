@@ -72,7 +72,7 @@ describe("perpetualMarketAction shape", () => {
     expect(perpetualMarketAction.similes).toContain("HYPERLIQUID_READ");
   });
 
-  it("declares action discriminator with read and place_order, plus subaction alias", () => {
+  it("declares read-only action and subaction discriminators", () => {
     const params = perpetualMarketAction.parameters ?? [];
     const actionParam = params.find((p) => p.name === "action");
     const subactionParam = params.find((p) => p.name === "subaction");
@@ -83,9 +83,30 @@ describe("perpetualMarketAction shape", () => {
     const subactionEnum = (
       subactionParam?.schema as { enum?: string[] } | undefined
     )?.enum;
-    expect(actionEnum).toEqual(expect.arrayContaining(["read", "place_order"]));
-    expect(subactionEnum).toEqual(
-      expect.arrayContaining(["read", "place_order", "place-order"]),
+    expect(actionEnum).toEqual(["read"]);
+    expect(subactionEnum).toEqual(["read"]);
+  });
+
+  it("does not expose disabled order placement as an agent action", () => {
+    expect(perpetualMarketAction.description).not.toContain("place_order");
+    expect(perpetualMarketAction.descriptionCompressed).not.toContain(
+      "place_order",
+    );
+    expect(perpetualMarketAction.similes ?? []).not.toEqual(
+      expect.arrayContaining([
+        "HYPERLIQUID_PLACE_ORDER",
+        "HYPERLIQUID_TRADE",
+        "HYPERLIQUID_BUY",
+        "HYPERLIQUID_SELL",
+        "HYPERLIQUID_LONG",
+        "HYPERLIQUID_SHORT",
+      ]),
+    );
+    const paramNames = (perpetualMarketAction.parameters ?? []).map(
+      (param) => param.name,
+    );
+    expect(paramNames).not.toEqual(
+      expect.arrayContaining(["side", "asset", "size"]),
     );
   });
 
@@ -243,77 +264,6 @@ describe("perpetualMarketAction handler", () => {
     expect(data.kind).toBe("status");
     expect(data.op).toBe("read");
     expect(data.target).toBe("hyperliquid");
-  });
-
-  it("place_order is scaffolded but disabled", async () => {
-    installFetchMock({
-      "/api/hyperliquid/status": {
-        publicReadReady: true,
-        signerReady: false,
-        executionReady: false,
-        executionBlockedReason: "scaffold disabled in app",
-        accountAddress: null,
-        apiBaseUrl: "https://api.hyperliquid.xyz",
-        credentialMode: "none",
-        readiness: {
-          publicReads: true,
-          accountReads: false,
-          signer: false,
-          execution: false,
-        },
-        account: { address: null, source: "none", guidance: null },
-        vault: {
-          configured: false,
-          ready: false,
-          address: null,
-          guidance: "",
-        },
-        apiWallet: { configured: false, guidance: "" },
-      },
-    });
-    const service = await startService();
-    const { result } = await invoke(
-      { action: "place_order", coin: "BTC", side: "buy", size: 0.1 },
-      service,
-    );
-    expect(result.success).toBe(false);
-    expect(typeof result.error).toBe("string");
-    expect((result.text ?? "").toLowerCase()).toContain("disabled");
-    const data = result.data as { trading?: { enabled?: boolean } };
-    expect(data.trading?.enabled).toBe(false);
-  });
-
-  it("accepts the legacy place-order alias via subaction", async () => {
-    installFetchMock({
-      "/api/hyperliquid/status": {
-        publicReadReady: true,
-        signerReady: false,
-        executionReady: false,
-        executionBlockedReason: "scaffold disabled",
-        accountAddress: null,
-        apiBaseUrl: "https://api.hyperliquid.xyz",
-        credentialMode: "none",
-        readiness: {
-          publicReads: true,
-          accountReads: false,
-          signer: false,
-          execution: false,
-        },
-        account: { address: null, source: "none", guidance: null },
-        vault: {
-          configured: false,
-          ready: false,
-          address: null,
-          guidance: "",
-        },
-        apiWallet: { configured: false, guidance: "" },
-      },
-    });
-    const service = await startService();
-    const { result } = await invoke({ subaction: "place-order" }, service);
-    expect(result.success).toBe(false);
-    const data = result.data as { trading?: { enabled?: boolean } };
-    expect(data.trading?.enabled).toBe(false);
   });
 
   it("read kind=markets fetches markets from the local API route", async () => {

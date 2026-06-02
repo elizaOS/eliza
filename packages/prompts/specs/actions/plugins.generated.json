@@ -3216,7 +3216,7 @@
     },
     {
       "name": "PERPETUAL_MARKET",
-      "description": "Use registered perpetual market providers. target selects the provider; Hyperliquid is registered today. action=read reads public state with kind: status, markets, market, positions, or funding. action=place_order reports trading readiness; signed order placement is disabled in this app scaffold.",
+      "description": "Use registered perpetual market providers. target selects the provider; Hyperliquid is registered today. action=read reads public state with kind: status, markets, market, positions, or funding.",
       "parameters": [
         {
           "name": "target",
@@ -3230,20 +3230,20 @@
         },
         {
           "name": "action",
-          "description": "Perpetual market operation: read or place_order.",
+          "description": "Perpetual market operation: read.",
           "required": false,
           "schema": {
             "type": "string",
-            "enum": ["read", "place_order"]
+            "enum": ["read"]
           }
         },
         {
           "name": "subaction",
-          "description": "Alias for action (read | place_order | place-order).",
+          "description": "Alias for action (read).",
           "required": false,
           "schema": {
             "type": "string",
-            "enum": ["read", "place_order", "place-order"]
+            "enum": ["read"]
           }
         },
         {
@@ -3262,34 +3262,9 @@
           "schema": {
             "type": "string"
           }
-        },
-        {
-          "name": "side",
-          "description": "place_order only: intended side, buy or sell.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": ["buy", "sell"]
-          }
-        },
-        {
-          "name": "asset",
-          "description": "place_order only: Hyperliquid asset symbol.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "size",
-          "description": "place_order only: intended order size.",
-          "required": false,
-          "schema": {
-            "type": "number"
-          }
         }
       ],
-      "descriptionCompressed": "Perpetual market router: target hyperliquid; action read or place_order.",
+      "descriptionCompressed": "Perpetual market router: target hyperliquid; action read.",
       "exampleCalls": [
         {
           "user": "Use PERPETUAL_MARKET with the provided parameters.",
@@ -3300,10 +3275,7 @@
               "action": "read",
               "subaction": "read",
               "kind": "status",
-              "coin": "example",
-              "side": "buy",
-              "asset": "example",
-              "size": 1
+              "coin": "example"
             }
           }
         }

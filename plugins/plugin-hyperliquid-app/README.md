@@ -1,6 +1,6 @@
 # @elizaos/plugin-hyperliquid-app
 
-Adds native [Hyperliquid](https://hyperliquid.xyz) perpetual-market integration to elizaOS agents. Eliza agents can query market listings, credential readiness, account positions, and open orders through both conversational actions and HTTP routes. Order placement is not implemented — the plugin is read-only.
+Adds native [Hyperliquid](https://hyperliquid.xyz) perpetual-market integration to elizaOS agents. Eliza agents can query market listings, credential readiness, account positions, and open orders through both conversational actions and HTTP routes. Order placement is not exposed as an agent action until signed execution is implemented.
 
 ## Capabilities
 
@@ -20,7 +20,7 @@ Conversational action that routes to the Hyperliquid provider. Recognized when t
 
 | Parameter | Values | Description |
 |---|---|---|
-| `action` | `read`, `place_order` | Operation type. `place_order` returns a disabled-execution notice. |
+| `action` | `read` | Operation type. |
 | `kind` | `status`, `markets`, `market`, `positions`, `funding` | Sub-kind for `action=read`. |
 | `coin` | e.g. `BTC`, `ETH` | Asset symbol for `kind=market`. |
 | `target` | `hyperliquid` (default) | Provider selector; only Hyperliquid is registered today. |
@@ -84,6 +84,6 @@ The plugin also self-registers as an elizaOS overlay app and route-plugin loader
 
 ## Notes
 
-- Order placement (POST routes) is intentionally disabled in this version. The `place_order` action op reports the blocked-execution reason rather than submitting any transaction.
+- Order placement (POST routes) is intentionally disabled in this version and returns 501. No order-placement agent action is exposed until signed Hyperliquid execution is implemented.
 - Funding-rate reads (`kind=funding`) are not wired to a live endpoint; the action returns a static explanation.
 - Market data is fetched from `https://api.hyperliquid.xyz/info` (the public Hyperliquid Info API). No API key is required.

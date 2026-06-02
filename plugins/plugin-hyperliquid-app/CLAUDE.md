@@ -4,14 +4,14 @@ Native Hyperliquid perpetual-market integration for elizaOS agents: status, mark
 
 ## Purpose / role
 
-Adds Hyperliquid perpetual-market capabilities to an Eliza agent. Registers an action (`PERPETUAL_MARKET`), a service (`PerpetualMarketService`), ten HTTP routes under `/api/hyperliquid/`, and three UI views (standard, XR, TUI). Loaded opt-in via `registerAppRoutePluginLoader`; see `src/register-routes.ts`. Execution (order placement) is intentionally disabled — only read operations are implemented.
+Adds Hyperliquid perpetual-market capabilities to an Eliza agent. Registers a read-only action (`PERPETUAL_MARKET`), a service (`PerpetualMarketService`), ten HTTP routes under `/api/hyperliquid/`, and three UI views (standard, XR, TUI). Loaded opt-in via `registerAppRoutePluginLoader`; see `src/register-routes.ts`. Execution routes are intentionally disabled and no order-placement agent action is exposed.
 
 ## Plugin surface
 
 ### Actions
 | Name | File | Description |
 |---|---|---|
-| `PERPETUAL_MARKET` | `src/actions/perpetual-market.ts` | Routes to a registered perpetual market provider. `action=read` with `kind` (status/markets/market/positions/funding). `action=place_order` returns a disabled-execution notice. Similes cover many legacy `HYPERLIQUID_*` names for retrieval compat. |
+| `PERPETUAL_MARKET` | `src/actions/perpetual-market.ts` | Routes to a registered perpetual market provider. `action=read` with `kind` (status/markets/market/positions/funding). Similes cover read-only legacy `HYPERLIQUID_*` names for retrieval compat. |
 
 ### Services
 | Name / type | File | Description |
@@ -96,7 +96,7 @@ The action (`PERPETUAL_MARKET`) calls the agent's local API via `resolveDesktopA
 
 **Add a new action:** Create `src/actions/<name>.ts`, export an `Action` object, import it in `src/plugin.ts`, and append to the `actions` array.
 
-**Add a perpetual market provider (e.g. dYdX):** Implement the `PerpetualMarketProvider` interface defined in `src/actions/perpetual-market.ts` and call `service.registerProvider(provider)` inside a plugin `init` hook or custom service. The provider receives `op` (`read` | `place_order`) and `options`, and returns `ActionResult`.
+**Add a perpetual market provider (e.g. dYdX):** Implement the `PerpetualMarketProvider` interface defined in `src/actions/perpetual-market.ts` and call `service.registerProvider(provider)` inside a plugin `init` hook or custom service. The provider receives `op` (`read`) and `options`, and returns `ActionResult`.
 
 **Add a new route:** Extend `src/routes.ts::handleHyperliquidRoute` with a new pathname branch, and declare the route in `src/plugin.ts::hyperliquidRoutes`.
 
@@ -104,7 +104,7 @@ The action (`PERPETUAL_MARKET`) calls the agent's local API via `resolveDesktopA
 
 ## Conventions / gotchas
 
-- **Execution is permanently disabled** in this scaffold. All POST routes return 501. The `place_order` action op always returns an error explaining why. This is intentional.
+- **Execution is disabled** in this scaffold. All POST routes return 501 and no order-placement agent action is exposed. Keep the action surface read-only until signed Hyperliquid execution is real.
 - **Route handler bridging:** The elizaOS `Route` type uses `RouteRequest`/`RouteResponse`; the route logic expects Node `http.IncomingMessage`/`http.ServerResponse`. `plugin.ts` casts via `toHttpIncomingMessage`/`toHttpServerResponse` — keep these guards if adding routes.
 - **`funding` kind is not wired.** The action returns a static explanation message; no real API call is made for `kind=funding`.
 - **Context gating:** `PERPETUAL_MARKET` only fires when `state` contains a `finance`, `crypto`, `trading`, or `payments` selected context, OR when the message contains recognized keywords in ~8 languages. Do not remove the keyword list without updating tests.

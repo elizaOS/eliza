@@ -6650,7 +6650,7 @@ export const allActionsSpec = {
 		{
 			name: "PERPETUAL_MARKET",
 			description:
-				"Use registered perpetual market providers. target selects the provider; Hyperliquid is registered today. action=read reads public state with kind: status, markets, market, positions, or funding. action=place_order reports trading readiness; signed order placement is disabled in this app scaffold.",
+				"Use registered perpetual market providers. target selects the provider; Hyperliquid is registered today. action=read reads public state with kind: status, markets, market, positions, or funding.",
 			parameters: [
 				{
 					name: "target",
@@ -6665,25 +6665,23 @@ export const allActionsSpec = {
 				},
 				{
 					name: "action",
-					description: "Perpetual market operation: read or place_order.",
+					description: "Perpetual market operation: read.",
 					required: false,
 					schema: {
 						type: "string",
-						enum: ["read", "place_order"],
+						enum: ["read"],
 					},
-					descriptionCompressed:
-						"Perpetual market operation: read or place_order.",
+					descriptionCompressed: "Perpetual market operation: read.",
 				},
 				{
 					name: "subaction",
-					description: "Alias for action (read | place_order | place-order).",
+					description: "Alias for action (read).",
 					required: false,
 					schema: {
 						type: "string",
-						enum: ["read", "place_order", "place-order"],
+						enum: ["read"],
 					},
-					descriptionCompressed:
-						"Alias for action (read | place_order | place-order).",
+					descriptionCompressed: "Alias for action (read).",
 				},
 				{
 					name: "kind",
@@ -6707,38 +6705,9 @@ export const allActionsSpec = {
 					descriptionCompressed:
 						"market only: Hyperliquid coin/asset symbol (e. g. BTC).",
 				},
-				{
-					name: "side",
-					description: "place_order only: intended side, buy or sell.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: ["buy", "sell"],
-					},
-					descriptionCompressed:
-						"place_order only: intended side, buy or sell.",
-				},
-				{
-					name: "asset",
-					description: "place_order only: Hyperliquid asset symbol.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "place_order only: Hyperliquid asset symbol.",
-				},
-				{
-					name: "size",
-					description: "place_order only: intended order size.",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed: "place_order only: intended order size.",
-				},
 			],
 			descriptionCompressed:
-				"Perpetual market router: target hyperliquid; action read or place_order.",
+				"Perpetual market router: target hyperliquid; action read.",
 			exampleCalls: [
 				{
 					user: "Use PERPETUAL_MARKET with the provided parameters.",
@@ -6750,9 +6719,6 @@ export const allActionsSpec = {
 							subaction: "read",
 							kind: "status",
 							coin: "example",
-							side: "buy",
-							asset: "example",
-							size: 1,
 						},
 					},
 				},
