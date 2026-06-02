@@ -269,6 +269,18 @@ const taskCoordinatorPlugin: Plugin = {
       desktopTabEnabled: true,
     },
     {
+      id: "odysseus",
+      label: "Odysseus",
+      description: "Odysseus assistant — conversation-centric chat workbench",
+      icon: "MessageSquare",
+      path: "/odysseus",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "OdysseusShell",
+      tags: ["developer", "odysseus", "chat"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+    {
       id: "orchestrator",
       label: "Orchestrator XR",
       description: "Multi-agent task orchestration workbench",

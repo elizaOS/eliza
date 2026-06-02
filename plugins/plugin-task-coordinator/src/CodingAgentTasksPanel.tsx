@@ -1,4 +1,15 @@
-import { Badge, Button, type CodingAgentSession, type CodingAgentTaskThread, type CodingAgentTaskThreadDetail, client, EmptyWidgetState, TerminalPluginView, useApp, WidgetSection } from "@elizaos/ui";
+import {
+  Badge,
+  Button,
+  type CodingAgentSession,
+  type CodingAgentTaskThread,
+  type CodingAgentTaskThreadDetail,
+  client,
+  EmptyWidgetState,
+  TerminalPluginView,
+  useApp,
+  WidgetSection,
+} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Activity, SquareArrowOutUpRight } from "lucide-react";
 import {
@@ -16,6 +27,10 @@ import {
 // Re-exported so the view bundle exposes the workbench as a named export the
 // `/orchestrator` view resolves via its `componentExport`.
 export { OrchestratorWorkbench } from "./OrchestratorWorkbench";
+
+// The odysseus chat shell (1:1 port) lives at `/odysseus` while it's iterated;
+// re-exported here so the view bundle exposes it for its `componentExport`.
+export { OdysseusShell } from "./odysseus/OdysseusShell";
 
 const ANSI_ESCAPE_PATTERN = new RegExp(
   [
@@ -1069,10 +1084,7 @@ export function OrchestratorTuiView() {
         "orchestrator-stop-agent",
         "orchestrator-send-message",
       ]}
-      endpoints={[
-        "/api/orchestrator/status",
-        "/api/orchestrator/tasks",
-      ]}
+      endpoints={["/api/orchestrator/status", "/api/orchestrator/tasks"]}
     />
   );
 }

@@ -1,0 +1,183 @@
+// OdysseusShell — root of the odysseus port (Phase 1: shell + chat/streaming).
+// Pixel-faithful odysseus chrome (icon rail + 240px sidebar + chat container)
+// wired to the existing ACP task-room contracts. Registered at /odysseus so the
+// live /orchestrator workbench keeps working while this is iterated; it becomes
+// /orchestrator once approved.
+//
+// Theming: themeVars(name) is applied inline on the root (the active odysseus
+// preset's palette + remapped eliza semantic tokens, so reused components
+// inherit the look); ODYSSEUS_CSS structural rules are injected via a <style>
+// tag. No .css import, keeping the plugin's Node-side view manifest import safe.
+
+import type { CodingAgentTaskThread } from "@elizaos/ui";
+import { client } from "@elizaos/ui";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { ChatContainer } from "./ChatContainer";
+import { useChatSubmit } from "./hooks/useChatSubmit";
+import { useTaskRoom } from "./hooks/useTaskRoom";
+import { IconRail } from "./IconRail";
+import { ODYSSEUS_CSS, type ThemeName, themeVars } from "./odysseus-theme";
+import { SearchPalette } from "./SearchPalette";
+import { SessionSidebar } from "./SessionSidebar";
+import { ThemeMenu } from "./ThemeMenu";
+import { PREF_KEYS, readPref, writePref } from "./util/storage";
+
+const THREAD_POLL_MS = 5_000;
+
+export function OdysseusShell(): ReactNode {
+  const [threads, setThreads] = useState<CodingAgentTaskThread[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
+    readPref<boolean>(PREF_KEYS.sidebarCollapsed, false),
+  );
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [themeName, setThemeName] = useState<ThemeName>(() =>
+    readPref<ThemeName>(PREF_KEYS.themeMode, "dark"),
+  );
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+
+  const refreshThreads = useCallback(async () => {
+    const next = await client
+      .listCodingAgentTaskThreads({ limit: 100 })
+      .catch(() => null);
+    if (next) setThreads(next);
+  }, []);
+
+  useEffect(() => {
+    void refreshThreads();
+    const timer = window.setInterval(
+      () => void refreshThreads(),
+      THREAD_POLL_MS,
+    );
+    return () => window.clearInterval(timer);
+  }, [refreshThreads]);
+
+  const { detail, conversation, isActive } = useTaskRoom(selectedId);
+
+  const activeSessionId = useMemo(() => {
+    const session = (detail?.sessions ?? []).find((s) => s.stoppedAt == null);
+    return session?.sessionId ?? null;
+  }, [detail?.sessions]);
+
+  const onCreated = useCallback(
+    (id: string) => {
+      setSelectedId(id);
+      void refreshThreads();
+    },
+    [refreshThreads],
+  );
+
+  const { input, setInput, sending, submit, stop } = useChatSubmit({
+    selectedId,
+    activeSessionId,
+    onCreated,
+  });
+
+  const onNewChat = useCallback(() => setSelectedId(null), []);
+
+  const onRenameThread = useCallback(
+    (id: string, title: string) => {
+      void client
+        .updateOrchestratorTask(id, { title })
+        .then(() => refreshThreads())
+        .catch(() => {});
+    },
+    [refreshThreads],
+  );
+
+  const onDeleteThread = useCallback(
+    (id: string) => {
+      void client
+        .deleteOrchestratorTask(id)
+        .then(() => {
+          setSelectedId((cur) => (cur === id ? null : cur));
+          return refreshThreads();
+        })
+        .catch(() => {});
+    },
+    [refreshThreads],
+  );
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      writePref(PREF_KEYS.sidebarCollapsed, !prev);
+      return !prev;
+    });
+  }, []);
+
+  const pickTheme = useCallback((name: ThemeName) => {
+    writePref(PREF_KEYS.themeMode, name);
+    setThemeName(name);
+  }, []);
+
+  // Ctrl/Cmd+K toggles the search palette (odysseus keyboard shortcut).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const title = detail?.title?.trim() || "Orchestrator Chat";
+
+  return (
+    <div
+      className="odysseus-root"
+      style={themeVars(themeName)}
+      data-od-theme={themeName}
+      data-testid="odysseus-shell"
+    >
+      {/** biome-ignore lint/security/noDangerouslySetInnerHtml: static, build-time CSS constant (no user input) */}
+      <style dangerouslySetInnerHTML={{ __html: ODYSSEUS_CSS }} />
+      <IconRail
+        onToggleSidebar={toggleSidebar}
+        onOpenTheme={() => setThemeMenuOpen(true)}
+      />
+      <ThemeMenu
+        open={themeMenuOpen}
+        current={themeName}
+        onPick={pickTheme}
+        onClose={() => setThemeMenuOpen(false)}
+      />
+      <SearchPalette
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onSelect={setSelectedId}
+      />
+      {sidebarCollapsed ? null : (
+        <SessionSidebar
+          threads={threads}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          onNewChat={onNewChat}
+          onSearch={() => setSearchOpen(true)}
+          onRename={onRenameThread}
+          onDelete={onDeleteThread}
+        />
+      )}
+      <ChatContainer
+        title={title}
+        conversation={conversation}
+        input={input}
+        onInput={setInput}
+        onSubmit={submit}
+        onStop={stop}
+        sending={sending}
+        isActive={isActive}
+        modelLabel="gpt-oss-120b"
+        onNewChat={onNewChat}
+        onSearch={() => setSearchOpen(true)}
+      />
+    </div>
+  );
+}
