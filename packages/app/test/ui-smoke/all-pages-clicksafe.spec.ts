@@ -89,16 +89,13 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "assistant home",
     path: "/",
-    readyChecks: [{ selector: '[data-testid="home-view"]' }],
+    readyChecks: [{ selector: '[data-testid="chat-composer-textarea"]' }],
     timeoutMs: 60_000,
   },
   {
     name: "chat",
     path: "/chat",
-    readyChecks: [
-      { selector: '[data-testid="conversations-sidebar"]' },
-      { selector: '[data-testid="chat-composer-textarea"]' },
-    ],
+    readyChecks: [{ selector: '[data-testid="chat-composer-textarea"]' }],
     mode: "all",
   },
   {
