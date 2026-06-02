@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
@@ -39,6 +40,10 @@ const _require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
 const nativePluginsRoot = path.join(elizaRoot, "plugins");
+const bunLinkedPackageCacheRoot = path.join(
+  os.homedir(),
+  ".bun/install/cache/links",
+);
 
 // Authoritative PascalCase-icon-name → kebab-file map, parsed from lucide's own
 // ESM barrel so there is zero name-guessing. Used to rewrite the app's
@@ -1475,6 +1480,86 @@ function workspaceJsxInJsPlugin(): Plugin {
   };
 }
 
+const DEV_CJS_INTEROP_SHIM_ALIASES: Array<[RegExp, string]> = [
+  [/^cookie$/, "src/shims/cookie.ts"],
+  [
+    /^set-cookie-parser(?:\/lib\/set-cookie(?:\.js)?)?$/,
+    "src/shims/set-cookie-parser.ts",
+  ],
+  [
+    /^use-sync-external-store\/(?:shim\/)?with-selector(?:\.js)?$/,
+    "src/shims/use-sync-external-store-with-selector.ts",
+  ],
+  [/^style-to-js(?:\/cjs\/index(?:\.js)?)?$/, "src/shims/style-to-js.ts"],
+  [/^debug(?:\/src\/browser(?:\.js)?)?$/, "src/shims/debug.ts"],
+  [/^extend(?:\/index(?:\.js)?)?$/, "src/shims/extend.ts"],
+  [/^es-toolkit\/compat\/get(?:\.js)?$/, "src/shims/es-toolkit-compat-get.ts"],
+  [
+    /^es-toolkit\/compat\/uniqBy(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-uniqBy.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/sortBy(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-sortBy.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/throttle(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-throttle.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/last(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-last.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/maxBy(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-maxBy.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/minBy(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-minBy.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/range(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-range.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/omit(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-omit.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/sumBy(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-sumBy.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/isPlainObject(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-isPlainObject.ts",
+  ],
+  [
+    /^decimal\.js-light(?:\/decimal(?:\.(?:js|mjs))?)?$/,
+    "src/shims/decimal-js-light.ts",
+  ],
+  [/^eventemitter3$/, "src/shims/eventemitter3.ts"],
+  [/^react-is$/, "src/shims/react-is.ts"],
+  [/^nprogress(?:\/nprogress(?:\.js)?)?$/, "src/shims/nprogress.ts"],
+];
+
+function devCjsInteropShimAliasesPlugin(): Plugin {
+  return {
+    name: "dev-cjs-interop-shim-aliases",
+    apply: "serve",
+    enforce: "pre",
+    resolveId(source) {
+      const sourceWithoutQuery = source.split("?")[0] ?? source;
+      for (const [find, replacement] of DEV_CJS_INTEROP_SHIM_ALIASES) {
+        if (find.test(sourceWithoutQuery)) {
+          return path.resolve(here, replacement);
+        }
+      }
+      return null;
+    },
+  };
+}
+
 export default defineConfig({
   root: here,
   customLogger: viteLogger,
@@ -1659,6 +1744,7 @@ export const INVALID_TRACER_PROVIDER = {};
     iosLocalAgentKernelEsbuildPlugin(),
     watchWorkspacePackagesPlugin(),
     workspaceJsxInJsPlugin(),
+    devCjsInteropShimAliasesPlugin(),
     tailwindcss(),
     react(),
     desktopCorsPlugin(),
@@ -2450,7 +2536,13 @@ export const INVALID_TRACER_PROVIDER = {};
     },
     fs: {
       // Allow serving files from the app directory and eliza src
-      allow: [here, elizaRoot],
+      allow: [
+        here,
+        elizaRoot,
+        ...(fs.existsSync(bunLinkedPackageCacheRoot)
+          ? [bunLinkedPackageCacheRoot]
+          : []),
+      ],
     },
     watch: {
       // Polling is only needed in Docker/WSL where native fs events are unreliable
