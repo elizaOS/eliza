@@ -367,6 +367,10 @@
       "dependsOn": ["@elizaos/plugin-sql#build"],
       "outputs": []
     },
+    "@elizaos/example-edad#typecheck": {
+      "dependsOn": ["@elizaos/cloud-sdk#build", "^build"],
+      "outputs": []
+    },
     "@elizaos/plugin-sub-agent-claude-code#typecheck": {
       "dependsOn": [
         "@elizaos/plugin-remote-manifest#build",
