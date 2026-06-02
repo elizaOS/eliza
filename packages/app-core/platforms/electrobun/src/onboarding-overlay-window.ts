@@ -1,20 +1,24 @@
 /**
  * First-run onboarding overlay window for Electrobun.
  *
- * Spawns a single full-screen, borderless, transparent, always-on-top,
- * click-through BrowserWindow that loads the renderer with
+ * Spawns a single small, borderless, transparent, always-on-top BrowserWindow
+ * docked to the top-right of the work area that loads the renderer with
  * `?shellMode=onboarding-overlay` — which renders ONLY the floating onboarding
- * card over a transparent background. Electrobun's `passthrough` is
- * region-based: mouse events fall through the transparent (empty) pixels to
- * the desktop behind, while the painted card stays interactive.
+ * card over a transparent background.
+ *
+ * The window is sized to the card (not full-screen) so the rest of the desktop
+ * stays clickable: a full-screen transparent + passthrough window did not click
+ * through reliably on macOS (Electrobun's region-based passthrough relies on
+ * WKWebView per-pixel alpha, which is not dependable for dynamic React
+ * content), so the empty area captured every click. With a card-sized window
+ * the OS routes clicks outside it straight to whatever is behind.
  *
  * This replaces the opaque dashboard window at first launch (opt-in via
  * ELIZA_DESKTOP_ONBOARDING_OVERLAY=1; see shouldStartOnboardingOverlay). Once
  * onboarding completes the overlay is closed and the normal dashboard window
  * opens.
  *
- * Modeled on pill-window.ts (the existing borderless/transparent overlay), with
- * the frame expanded to the full work area and `passthrough` enabled.
+ * Modeled on pill-window.ts (the existing small borderless/transparent overlay).
  */
 
 import { type BrowserWindow, Screen } from "electrobun/bun";
@@ -45,12 +49,27 @@ export function createOnboardingOverlayWindow(args: {
     return overlayWindow;
   }
 
+  // Size the window to the onboarding card's footprint and dock it top-right of
+  // the work area, rather than covering the full screen. A full-screen
+  // transparent + passthrough window does NOT reliably click through on macOS:
+  // Electrobun's region-based passthrough depends on the WKWebView reporting
+  // per-pixel alpha, which it does not do dependably for dynamically-rendered
+  // (React) content, so the empty area captured every click and blocked the
+  // desktop behind. A small window sidesteps that: the OS routes clicks outside
+  // the window straight to whatever is behind it, and only the card's small
+  // rect sits on top. (passthrough stays on so the card's transparent margins
+  // still fall through where the platform honours it.) The renderer keeps the
+  // card pinned top-right within this frame (`items-start justify-end`).
+  const CARD_WIDTH = 384;
+  const CARD_HEIGHT = 220;
   const workArea = Screen.getPrimaryDisplay().workArea;
+  const width = Math.min(CARD_WIDTH, workArea.width);
+  const height = Math.min(CARD_HEIGHT, workArea.height);
   const frame = {
-    x: workArea.x,
+    x: workArea.x + Math.max(0, workArea.width - width),
     y: workArea.y,
-    width: workArea.width,
-    height: workArea.height,
+    width,
+    height,
   };
   const url = buildOnboardingOverlayRendererUrl(args.rendererUrl);
 
