@@ -904,7 +904,10 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
         className="mx-3 mb-3 mt-3 xl:mx-5"
         onOpenTask={props.handleDeferredTaskOpen}
       />
-      <ChatView key="chat-view" />
+      {/* The ContinuousChatOverlay provides the input on the chat tab, so the
+          in-view composer is hidden to avoid a duplicate (both share the same
+          conversation via useShellController). */}
+      <ChatView key="chat-view" hideComposer />
     </div>
   );
 
@@ -1661,13 +1664,13 @@ export function App() {
         {/*
           Always-present continuous chat overlay (ContinuousChatOverlay) — one
           ambient glass conversation (the app's single active conversation via
-          useShellController) that floats over EVERY view and survives tab/view
-          changes because it renders here in the persistent sibling region. It is
-          pointer-events-none except its own composer/messages, so the view
-          behind stays live. Suppressed on the chat tab, where the full 3-panel
-          ChatView already provides the conversation (so no duplicate composer).
+          useShellController) that floats over EVERY view, including the chat tab
+          (there the in-view ChatView composer is hidden, so the overlay is the
+          single shared input). It survives tab/view changes because it renders
+          here in the persistent sibling region, and is pointer-events-none
+          except its own composer/messages, so the view behind stays live.
         */}
-        {isChat ? null : <ContinuousChatOverlayMount />}
+        <ContinuousChatOverlayMount />
         <ShellOverlays actionNotice={actionNotice} />
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}
