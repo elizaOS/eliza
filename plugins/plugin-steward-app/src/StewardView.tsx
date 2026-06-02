@@ -3,7 +3,14 @@
  * Renders inside the Wallets tab as a sub-section or alongside inventory.
  */
 
-import { PageLayout, PagePanel, Sidebar, SidebarContent, SidebarPanel, useApp } from "@elizaos/ui";
+import {
+  PageLayout,
+  PagePanel,
+  Sidebar,
+  SidebarContent,
+  SidebarPanel,
+  useApp,
+} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { FileText } from "lucide-react";
 import type { ReactNode } from "react";
@@ -99,7 +106,7 @@ export function StewardView() {
     setPendingCount(count);
   }, []);
 
-  // If steward isn't configured, show a placeholder
+  // If steward isn't configured, show the empty-state panel.
   if (stewardStatus && !stewardStatus.connected) {
     return (
       <div className="flex flex-1 items-center justify-center p-6">

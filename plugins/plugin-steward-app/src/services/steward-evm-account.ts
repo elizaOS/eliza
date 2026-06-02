@@ -32,6 +32,9 @@ import { toAccount } from "viem/accounts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+const ZERO_ADDRESS_SENTINEL =
+  "0x0000000000000000000000000000000000000000" as Address;
+
 export interface StewardEvmAccountConfig {
   /** Steward API base URL (e.g. http://172.18.0.1:3200) */
   apiUrl: string;
@@ -418,12 +421,11 @@ export function resolveStewardEvmConfig(): StewardEvmAccountConfig | null {
     return null;
   }
 
-  // Address will be fetched later from API
   return {
     apiUrl,
     agentToken,
     agentId,
-    address: "0x0000000000000000000000000000000000000000" as Address, // placeholder
+    address: ZERO_ADDRESS_SENTINEL,
   };
 }
 

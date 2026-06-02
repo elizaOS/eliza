@@ -61,12 +61,10 @@ export interface TrustScore {
 }
 
 export class PriceEnrichmentService {
-	private runtime: IAgentRuntime;
 	private birdeyeClient: BirdeyeClient;
 	private dexscreenerClient: DexscreenerClient;
 
 	constructor(runtime: IAgentRuntime) {
-		this.runtime = runtime;
 		this.birdeyeClient = BirdeyeClient.createFromRuntime(runtime);
 		this.dexscreenerClient = DexscreenerClient.createFromRuntime(runtime);
 	}
@@ -380,7 +378,8 @@ export class PriceEnrichmentService {
 				});
 			}
 
-			const stats = userStats.get(call.userId)!;
+			const stats = userStats.get(call.userId);
+			if (!stats) continue;
 			stats.calls.push(call);
 			stats.totalProfitLoss += call.priceData.idealProfitLoss;
 			stats.totalProfitLossPercent += call.priceData.idealProfitLossPercent;
