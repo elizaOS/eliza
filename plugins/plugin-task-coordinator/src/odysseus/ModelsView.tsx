@@ -46,7 +46,13 @@
 import type { ProviderModelRecord } from "@elizaos/ui";
 import { client } from "@elizaos/ui";
 import { ChevronDown, GripVertical, Search } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useEscapeClose } from "./hooks/useEscapeClose";
 import { useWindowControls } from "./hooks/useWindowControls";
 import { ResizeHandles } from "./ResizeHandles";
@@ -445,6 +451,31 @@ export function ModelsView({
     loadProvider("openai");
   }, [open, loadProvider]);
 
+  const allModels = modelsByProvider[provider] ?? [];
+
+  const byId = useMemo(() => {
+    const map = new Map<string, ProviderModelRecord>();
+    for (const m of allModels) {
+      if (!map.has(m.id)) map.set(m.id, m);
+    }
+    return map;
+  }, [allModels]);
+
+  // Sorted catalogue (odysseus models.js sort dispatch). Memoized so the full
+  // catalogue is only re-sorted when its inputs change — not on every favorite
+  // pulse / toast / menu toggle re-render (large providers list hundreds).
+  const sorted = useMemo(() => {
+    const copy = allModels.slice();
+    if (sortMode === "alpha") {
+      copy.sort(compareModels);
+    } else if (sortMode === "last-used") {
+      copy.sort((a, b) => lastUsed(usage, b.id) - lastUsed(usage, a.id));
+    } else if (sortMode === "most-used") {
+      copy.sort((a, b) => countFor(usage, b.id) - countFor(usage, a.id));
+    }
+    return copy;
+  }, [allModels, sortMode, usage]);
+
   if (!open) return null;
 
   const persistFavorites = (next: string[]) => {
@@ -516,32 +547,12 @@ export function ModelsView({
     setJustExpanded(next[key] ? null : key);
   };
 
-  // odysseus models.js sort dispatch — apply the active sort mode to a list.
-  const applySort = (list: ProviderModelRecord[]): ProviderModelRecord[] => {
-    const copy = list.slice();
-    if (sortMode === "alpha") {
-      copy.sort(compareModels);
-    } else if (sortMode === "last-used") {
-      copy.sort((a, b) => lastUsed(usage, b.id) - lastUsed(usage, a.id));
-    } else if (sortMode === "most-used") {
-      copy.sort((a, b) => countFor(usage, b.id) - countFor(usage, a.id));
-    }
-    return copy;
-  };
-
-  const allModels = modelsByProvider[provider] ?? [];
   const isLoading = loadingProvider === provider && !modelsByProvider[provider];
   const isErrored = errored.has(provider);
   const hasModels = allModels.length > 0;
 
-  const byId = new Map<string, ProviderModelRecord>();
-  for (const m of allModels) {
-    if (!byId.has(m.id)) byId.set(m.id, m);
-  }
-
-  // Sorted catalogue + flat search. Search mirrors modelPicker.js search mode:
-  // match id / display / provider name, case-insensitive, across all groups.
-  const sorted = applySort(allModels);
+  // Flat search. Mirrors modelPicker.js search mode: match id / display /
+  // provider name, case-insensitive, across all groups.
   const q = query.toLowerCase().trim();
   const searchMatches = q
     ? sorted.filter((m) =>
@@ -725,6 +736,13 @@ export function ModelsView({
         onClick={onClose}
         className="od-search-backdrop"
       />
+      {win.snapGhost ? (
+        <div
+          className="od-snap-ghost"
+          style={win.snapGhost}
+          aria-hidden="true"
+        />
+      ) : null}
       <div className="od-search-panel od-models-panel" style={win.panelStyle}>
         <ResizeHandles controls={win} />
         <div

@@ -50,6 +50,11 @@ import { readPref, writePref } from "./util/storage";
 const CAL_PREF_KEY = "calendars";
 const EVENTS_PREF_KEY = "calendar-events";
 
+// How long the Refresh button keeps its spin animation after a (synchronous,
+// local) re-read from storage — a brief visual ack mirroring odysseus's CalDAV
+// "Sync now" feedback. Purely cosmetic.
+const SYNC_SPIN_MS = 450;
+
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const MONTHS = [
   "January",
@@ -197,12 +202,6 @@ function newUid(): string {
 // ── .ics (RFC 5545) serialise / parse — pure client-side, mirrors odysseus's
 //    per-calendar Export and the .ics Import file picker. ──────────────────
 
-function icsFold(line: string): string {
-  // RFC 5545 lines SHOULD be folded at 75 octets; events here are short, so a
-  // straight emit is fine for round-tripping our own export.
-  return line;
-}
-
 function toIcsDate(dateStr: string, time: string, allDay: boolean): string {
   const compact = dateStr.replace(/-/g, "");
   if (allDay || !time) return `;VALUE=DATE:${compact}`;
@@ -219,15 +218,13 @@ function buildIcs(cal: LocalCalendar, events: CalEvent[]): string {
   ];
   for (const ev of events) {
     lines.push("BEGIN:VEVENT");
-    lines.push(icsFold(`UID:${ev.uid}`));
-    lines.push(icsFold(`SUMMARY:${ev.summary.replace(/\n/g, "\\n")}`));
+    lines.push(`UID:${ev.uid}`);
+    lines.push(`SUMMARY:${ev.summary.replace(/\n/g, "\\n")}`);
     lines.push(`DTSTART${toIcsDate(ev.date, ev.startTime, ev.allDay)}`);
     lines.push(`DTEND${toIcsDate(ev.endDate, ev.endTime, ev.allDay)}`);
-    if (ev.location) lines.push(icsFold(`LOCATION:${ev.location}`));
+    if (ev.location) lines.push(`LOCATION:${ev.location}`);
     if (ev.description)
-      lines.push(
-        icsFold(`DESCRIPTION:${ev.description.replace(/\n/g, "\\n")}`),
-      );
+      lines.push(`DESCRIPTION:${ev.description.replace(/\n/g, "\\n")}`);
     if (ev.rrule) lines.push(`RRULE:${ev.rrule}`);
     lines.push("END:VEVENT");
   }
@@ -865,6 +862,11 @@ export function CalendarView({
     y: number;
   } | null>(null);
   const [syncing, setSyncing] = useState(false);
+  // The pending sync-spin timer, cleared on unmount so the cosmetic
+  // setSyncing(false) never fires after the view is gone.
+  const syncTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(
+    null,
+  );
 
   const win = useWindowControls("win-calendar", { w: 720, h: 620 });
 
@@ -895,6 +897,16 @@ export function CalendarView({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose, settingsOpen, formState]);
+
+  // Clear the pending sync-spin timer on unmount.
+  useEffect(
+    () => () => {
+      if (syncTimerRef.current !== null) {
+        window.clearTimeout(syncTimerRef.current);
+      }
+    },
+    [],
+  );
 
   const today = ymd(new Date());
   const year = current.getFullYear();
@@ -948,7 +960,13 @@ export function CalendarView({
     setSyncing(true);
     setCalendars(readPref<LocalCalendar[]>(CAL_PREF_KEY, DEFAULT_CALENDARS));
     setEvents(readPref<CalEvent[]>(EVENTS_PREF_KEY, []));
-    window.setTimeout(() => setSyncing(false), 450);
+    if (syncTimerRef.current !== null) {
+      window.clearTimeout(syncTimerRef.current);
+    }
+    syncTimerRef.current = window.setTimeout(() => {
+      setSyncing(false);
+      syncTimerRef.current = null;
+    }, SYNC_SPIN_MS);
   };
 
   const saveEvent = (ev: CalEvent) => {
@@ -1485,6 +1503,13 @@ export function CalendarView({
         onClick={onClose}
         className="od-search-backdrop"
       />
+      {win.snapGhost ? (
+        <div
+          className="od-snap-ghost"
+          style={win.snapGhost}
+          aria-hidden="true"
+        />
+      ) : null}
       <div className="od-search-panel od-cal-panel" style={win.panelStyle}>
         <ResizeHandles controls={win} />
         <div className="od-cal-body">

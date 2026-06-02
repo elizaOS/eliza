@@ -28,6 +28,10 @@ import { AgentBubble, UserBubble } from "./MessageBubble";
 
 type AgentBlock = Extract<ConversationBlock, { kind: "agent" }>;
 
+// How long the Copy button shows its success glyph before reverting (odysseus
+// chatRenderer.js footer-copy-btn reverts after 1500ms).
+const COPY_FEEDBACK_MS = 1500;
+
 /** Hover-revealed action footer for one assistant turn (odysseus
  * createMsgFooter). Copy is the only action with a real wired surface in the
  * orchestrator, so it is the only control shown — no dead edit/fork/delete
@@ -36,6 +40,16 @@ type AgentBlock = Extract<ConversationBlock, { kind: "agent" }>;
  * footer-copy-btn and the CodeBlock copy affordance. */
 function AgentFooter({ content }: { content: string }): ReactNode {
   const [copied, setCopied] = useState(false);
+  // Revert timer for the success glyph; cleared on unmount and before re-arming
+  // so a copy on a message that scrolls/unmounts within the window never sets
+  // state on an unmounted component.
+  const revertRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (revertRef.current !== null) clearTimeout(revertRef.current);
+    },
+    [],
+  );
 
   const onCopy = useCallback(() => {
     // Guard for non-secure-context / older webviews where clipboard is absent.
@@ -44,7 +58,11 @@ function AgentFooter({ content }: { content: string }): ReactNode {
     navigator.clipboard.writeText(content).then(
       () => {
         setCopied(true);
-        setTimeout(() => setCopied(false), 1200);
+        if (revertRef.current !== null) clearTimeout(revertRef.current);
+        revertRef.current = setTimeout(
+          () => setCopied(false),
+          COPY_FEEDBACK_MS,
+        );
       },
       () => undefined,
     );

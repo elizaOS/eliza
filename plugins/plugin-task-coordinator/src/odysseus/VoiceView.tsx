@@ -37,7 +37,13 @@ import {
   Volume2,
   VolumeX,
 } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useEscapeClose } from "./hooks/useEscapeClose";
 import { useWindowControls } from "./hooks/useWindowControls";
 import { ResizeHandles } from "./ResizeHandles";
@@ -158,9 +164,11 @@ export function VoiceView({
     };
   }, [open]);
 
-  // Tear down the live capture + its loops whenever the panel closes.
-  useEffect(() => {
-    if (open) return;
+  // Tear down the live capture + its loops whenever the panel closes OR the
+  // component unmounts mid-recording (the panel is normally kept mounted and
+  // toggled via `open`, but a true unmount while recording must still release
+  // the mic capture, the 1 s timer, and the waveform rAF — otherwise they leak).
+  const teardownCapture = useCallback(() => {
     const handle = captureRef.current;
     if (handle) {
       handle.dispose();
@@ -174,7 +182,13 @@ export function VoiceView({
       window.cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
-  }, [open]);
+  }, []);
+
+  useEffect(() => {
+    if (!open) teardownCapture();
+  }, [open, teardownCapture]);
+
+  useEffect(() => teardownCapture, [teardownCapture]);
 
   if (!open) return null;
 
@@ -343,6 +357,13 @@ export function VoiceView({
         onClick={onClose}
         className="od-search-backdrop"
       />
+      {win.snapGhost ? (
+        <div
+          className="od-snap-ghost"
+          style={win.snapGhost}
+          aria-hidden="true"
+        />
+      ) : null}
       <div className="od-search-panel od-voice-panel" style={win.panelStyle}>
         <ResizeHandles controls={win} />
         <div

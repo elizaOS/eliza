@@ -207,6 +207,13 @@ export function MemoryPanel({
         onClick={onClose}
         className="od-search-backdrop"
       />
+      {win.snapGhost ? (
+        <div
+          className="od-snap-ghost"
+          style={win.snapGhost}
+          aria-hidden="true"
+        />
+      ) : null}
       <div className="od-search-panel od-mem-panel" style={win.panelStyle}>
         <ResizeHandles controls={win} />
         <div

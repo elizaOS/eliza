@@ -298,6 +298,13 @@ export function GalleryEditorView({
         onClick={onClose}
         className="od-search-backdrop"
       />
+      {win.snapGhost ? (
+        <div
+          className="od-snap-ghost"
+          style={win.snapGhost}
+          aria-hidden="true"
+        />
+      ) : null}
       <div className="od-search-panel od-ge-panel" style={win.panelStyle}>
         <ResizeHandles controls={win} />
         <div className="gallery-editor">
@@ -351,7 +358,9 @@ export function GalleryEditorView({
               <button
                 type="button"
                 className="ge-btn ge-btn-sm"
-                title="Zoom out"
+                title={NO_BACKEND}
+                aria-label="Zoom out"
+                disabled
               >
                 −
               </button>
@@ -378,7 +387,9 @@ export function GalleryEditorView({
               <button
                 type="button"
                 className="ge-btn ge-btn-sm"
-                title="Zoom in"
+                title={NO_BACKEND}
+                aria-label="Zoom in"
+                disabled
               >
                 +
               </button>
@@ -386,7 +397,9 @@ export function GalleryEditorView({
               <button
                 type="button"
                 className="ge-btn ge-btn-sm ge-stacked-btn"
-                title="Fit to view"
+                title={NO_BACKEND}
+                aria-label="Fit to view"
+                disabled
               >
                 <span className="ge-stacked-glyph">
                   <svg
@@ -412,7 +425,9 @@ export function GalleryEditorView({
               <button
                 type="button"
                 className="ge-btn ge-btn-sm ge-stacked-btn"
-                title="Actual size"
+                title={NO_BACKEND}
+                aria-label="Actual size"
+                disabled
               >
                 <span className="ge-stacked-glyph">1:1</span>
                 <span className="ge-stacked-label">SCALE</span>
@@ -550,7 +565,9 @@ export function GalleryEditorView({
               <button
                 type="button"
                 className="ge-btn ge-btn-sm"
-                title="Import image as layer"
+                title={NO_BACKEND}
+                aria-label="Import image as layer"
+                disabled
               >
                 + Import
               </button>
@@ -1160,7 +1177,9 @@ export function GalleryEditorView({
                       <button
                         type="button"
                         className="ge-btn ge-btn-sm ge-mask-vis-btn visible"
-                        title="Hide mask"
+                        title={NO_BACKEND}
+                        aria-label="Toggle mask"
+                        disabled
                       >
                         <svg
                           width="12"
@@ -1182,14 +1201,16 @@ export function GalleryEditorView({
                       <button
                         type="button"
                         className="ge-btn ge-btn-sm ge-btn-iconlabel"
-                        title="Invert mask"
+                        title={NO_BACKEND}
+                        disabled
                       >
                         Invert
                       </button>
                       <button
                         type="button"
                         className="ge-btn ge-btn-sm ge-btn-iconlabel"
-                        title="Clear mask"
+                        title={NO_BACKEND}
+                        disabled
                       >
                         Clear
                       </button>

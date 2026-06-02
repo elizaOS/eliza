@@ -883,16 +883,9 @@ export function ThemeMenu({
     <div role="dialog" aria-modal="true" aria-label="Theme">
       <button
         type="button"
+        className="od-theme-backdrop"
         aria-label="Close theme menu"
         onClick={onClose}
-        style={{
-          position: "absolute",
-          inset: 0,
-          zIndex: 55,
-          background: "transparent",
-          border: "none",
-          cursor: "default",
-        }}
       />
       <div className="od-theme-menu">
         <div className="od-theme-grid">

@@ -490,6 +490,13 @@ export function GroupChatView({
         onClick={onClose}
         className="od-search-backdrop"
       />
+      {win.snapGhost ? (
+        <div
+          className="od-snap-ghost"
+          style={win.snapGhost}
+          aria-hidden="true"
+        />
+      ) : null}
       <div className="od-search-panel od-group-panel" style={win.panelStyle}>
         <ResizeHandles controls={win} />
         {/* ── Header (group.js showModelPicker modal-header) ── */}
@@ -732,13 +739,12 @@ export function GroupChatView({
                     )}
                     {run.messages.map((message) => (
                       <div
-                        className="od-body"
-                        key={message.id}
-                        style={
+                        className={`od-body${
                           message.direction === "stderr"
-                            ? { color: "var(--red)" }
-                            : undefined
-                        }
+                            ? " od-group-body-stderr"
+                            : ""
+                        }`}
+                        key={message.id}
                       >
                         <MarkdownText text={message.content} />
                       </div>

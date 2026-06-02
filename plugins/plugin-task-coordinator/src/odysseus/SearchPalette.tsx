@@ -102,6 +102,7 @@ export function SearchPalette({
 }): ReactNode {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CodingAgentTaskThread[]>([]);
+  const [error, setError] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -110,6 +111,7 @@ export function SearchPalette({
     if (open) {
       setQuery("");
       setSelectedIndex(-1);
+      setError(false);
       inputRef.current?.focus();
     }
   }, [open]);
@@ -128,9 +130,18 @@ export function SearchPalette({
           if (!cancelled) {
             setResults(threads);
             setSelectedIndex(-1);
+            setError(false);
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          // Surface a state rather than silently showing "no results" — a
+          // failed lookup is not the same as an empty one (the user can't
+          // otherwise tell whether the backend is unreachable).
+          if (!cancelled) {
+            setResults([]);
+            setError(true);
+          }
+        });
     }, 120);
     return () => {
       cancelled = true;
@@ -204,8 +215,17 @@ export function SearchPalette({
         />
         <div className="od-search-list" ref={listRef}>
           {results.length === 0 ? (
-            <div className="od-search-empty">
-              {trimmedQuery ? "No results found" : "No conversations found."}
+            <div
+              className={
+                error ? "od-search-empty od-search-error" : "od-search-empty"
+              }
+              role={error ? "alert" : undefined}
+            >
+              {error
+                ? "Search failed. Check your connection and try again."
+                : trimmedQuery
+                  ? "No results found"
+                  : "No conversations found."}
             </div>
           ) : (
             results.map((thread, index) => {

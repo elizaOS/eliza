@@ -9087,4 +9087,38 @@ export const ODYSSEUS_CSS = `
   .odysseus-root.od-mobile .od-sidebar,
   .odysseus-root.od-mobile .od-sidebar-backdrop { transition:none; }
 }
+
+
+/* sweep:shell-chat */
+/* MessageBubble: error-tone agent body. Replaces an inline style={{color:'var(--red)'}}
+   so the error color lives in CSS like every other bubble rule. */
+.odysseus-root .od-msg-ai .od-body.od-body-error { color: var(--red); }
+/* sweep:sidebar-theme */
+/* ── ThemeMenu close backdrop (replaces the removed inline style on the
+   dialog's dismiss button). Sits under the anchored .od-theme-menu popover and
+   catches outside clicks. Scoped under .odysseus-root. ── */
+.odysseus-root .od-theme-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 55;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: default;
+}
+
+/* ── SearchPalette failed-lookup state. Reuses the .od-search-empty centred
+   layout but tints the message with the theme accent so a backend/network
+   failure is visually distinct from a genuinely empty result. ── */
+.odysseus-root .od-search-empty.od-search-error {
+  color: var(--red);
+}
+/* sweep:tools-b */
+/* GroupChatView: stderr message bubbles render in the error color. Moved off an
+   inline style={{ color: "var(--red)" }} into a class so styling lives in CSS.
+   (The per-participant role-dot colors stay inline — they are hashed hsl()
+   values computed per participant and cannot be static classes.) */
+.odysseus-root .od-group-body-stderr {
+  color: var(--red);
+}
 `;

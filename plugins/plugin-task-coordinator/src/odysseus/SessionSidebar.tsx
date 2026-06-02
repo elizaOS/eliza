@@ -801,6 +801,14 @@ export function SessionSidebar({
     order: string[];
     rows: { id: string; mid: number }[];
   } | null>(null);
+  // Detach for the in-flight drag's window listeners, so a drag interrupted by
+  // unmount (e.g. the dragged thread disappears on a poll) doesn't leak them.
+  const dragDetach = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    return () => {
+      dragDetach.current?.();
+    };
+  }, []);
 
   const beginDrag = useCallback(
     (id: string) => (e: PointerEvent) => {
@@ -834,11 +842,15 @@ export function SessionSidebar({
         }
         setDropBeforeId(before === st.id ? null : before);
       };
-      const up = (ev: globalThis.PointerEvent) => {
-        const st = dragState.current;
+      const detach = () => {
         document.removeEventListener("pointermove", move);
         document.removeEventListener("pointerup", up);
         document.removeEventListener("pointercancel", up);
+        dragDetach.current = null;
+      };
+      const up = (ev: globalThis.PointerEvent) => {
+        const st = dragState.current;
+        detach();
         dragState.current = null;
         setDragId(null);
         setDropBeforeId(null);
@@ -867,6 +879,7 @@ export function SessionSidebar({
       document.addEventListener("pointermove", move);
       document.addEventListener("pointerup", up);
       document.addEventListener("pointercancel", up);
+      dragDetach.current = detach;
     },
     [
       selectMode,

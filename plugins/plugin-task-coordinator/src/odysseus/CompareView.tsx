@@ -140,6 +140,15 @@ const TIMEOUT_MAX = 300;
 const TIMEOUT_DEFAULT = 300;
 const MAX_SLOTS = 8;
 
+// `winnerIdx` holds the winning pane index; this sentinel records a Tie vote
+// (a non-pane outcome). Negative values never style a pane (compare/vote.js).
+const TIE_WINNER = -1;
+// Sequential-mode pane cascade (compare/index.js _sequentialOffset): each pane
+// is nudged right by `seqStep` px, with the per-pane step shrinking as panes
+// grow so the total cascade stays within SEQ_CASCADE_MAX px.
+const SEQ_STEP_MAX_PX = 20;
+const SEQ_CASCADE_MAX_PX = 80;
+
 function newSlot(provider = "openai"): Slot {
   return {
     slotId: `slot-${crypto.randomUUID()}`,
@@ -392,15 +401,12 @@ export function CompareView({
     writePref(COMPARE_VOTES_KEY, capped);
   };
 
+  // Record a vote for pane `idx`, or a tie when `idx === TIE_WINNER`.
   const handleVote = (idx: number) => {
-    if (idx === -2) {
-      setRevealed(true);
-      return;
-    }
     const names = slots.map(
       (s, i) => s.modelName || `Model ${slotChar(i, parallel)}`,
     );
-    const winner = idx === -1 ? "tie" : names[idx];
+    const winner = idx === TIE_WINNER ? "tie" : names[idx];
     persistVote([
       ...votes,
       {
@@ -415,6 +421,9 @@ export function CompareView({
     setRevealed(true);
     setWinnerIdx(idx);
   };
+
+  // Blind Reveal — unmask the model names without recording an outcome.
+  const handleReveal = () => setRevealed(true);
 
   const pickEval = (p: EvalPrompt) => {
     setDraft(p.prompt);
@@ -539,7 +548,10 @@ export function CompareView({
   const cols = Math.min(slots.length, 4);
   const seqStep = parallel
     ? 0
-    : Math.min(20, Math.floor(80 / Math.max(slots.length, 1)));
+    : Math.min(
+        SEQ_STEP_MAX_PX,
+        Math.floor(SEQ_CASCADE_MAX_PX / Math.max(slots.length, 1)),
+      );
 
   const paneLabel = (i: number): string =>
     blindMode && !revealed
@@ -561,6 +573,13 @@ export function CompareView({
         onClick={onClose}
         className="od-search-backdrop"
       />
+      {win.snapGhost ? (
+        <div
+          className="od-snap-ghost"
+          style={win.snapGhost}
+          aria-hidden="true"
+        />
+      ) : null}
       <div className="od-search-panel od-compare-panel" style={win.panelStyle}>
         <ResizeHandles controls={win} />
         {/* ── Header bar (compare/index.js _buildCompareUI step 8) ── */}
@@ -827,7 +846,7 @@ export function CompareView({
             type="button"
             className="od-compare-vote-btn od-compare-vote-tie"
             disabled={!draft.trim() || revealed}
-            onClick={() => handleVote(-1)}
+            onClick={() => handleVote(TIE_WINNER)}
           >
             Tie
           </button>
@@ -836,7 +855,7 @@ export function CompareView({
               type="button"
               className="od-compare-vote-btn"
               disabled={!draft.trim()}
-              onClick={() => handleVote(-2)}
+              onClick={handleReveal}
             >
               <Eye size={14} /> Reveal
             </button>
@@ -995,6 +1014,13 @@ function CompareSelector({
   return (
     <div className="od-search-panel od-cmp-selector" style={win.panelStyle}>
       <ResizeHandles controls={win} />
+      {win.snapGhost ? (
+        <div
+          className="od-snap-ghost"
+          style={win.snapGhost}
+          aria-hidden="true"
+        />
+      ) : null}
       <div
         className="od-cmp-sel-header od-window-header"
         onPointerDown={win.onDragStart}

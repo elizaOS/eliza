@@ -380,12 +380,18 @@ export function OdysseusShell(): ReactNode {
   }, []);
 
   const title = detail?.title?.trim() || "Orchestrator Chat";
-  const themeStyle =
-    themeName === "custom"
-      ? buildThemeVars(customColors)
-      : customThemes[themeName]
-        ? buildThemeVars(customThemes[themeName])
-        : themeVars(themeName);
+  // The full palette object is dozens of CSS vars derived via HSL color math;
+  // recomputing it on every keystroke (input state lives in this component) is
+  // wasteful, so memoize on the inputs that actually change the palette.
+  const themeStyle = useMemo(
+    () =>
+      themeName === "custom"
+        ? buildThemeVars(customColors)
+        : customThemes[themeName]
+          ? buildThemeVars(customThemes[themeName])
+          : themeVars(themeName),
+    [themeName, customColors, customThemes],
+  );
 
   // Below MOBILE_BREAKPOINT the sidebar is an overlay drawer: it is open when
   // not collapsed (odysseus .sidebar:not(.hidden) on mobile). The root carries

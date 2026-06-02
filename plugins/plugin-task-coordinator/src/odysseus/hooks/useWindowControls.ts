@@ -18,17 +18,17 @@
 // nears a screen edge we compute a snap target and expose `snapGhost` (a fixed
 // CSS rect) so a translucent preview can render. On pointer-up over a zone the
 // panel rect snaps to that target; the pre-snap rect is stashed so the next
-// drag-away restores it. Zones (faithful to the odysseus source, which keeps
-// only top=maximize + right-half + bottom-half — left-half/corner snaps were
-// disabled there): top strip → maximize, right edge → right-half, bottom edge
-// → bottom-half. The left edge is the rail/sidebar, so a left-half snap is
-// included only when the pointer is past the nav (parity with the safe-rect
-// the odysseus source carves out, which never docks over the sidebar).
+// drag-away restores it. Zones are faithful to tileManager.js `_zoneForPointer`,
+// which keeps ONLY top strip → maximize, right edge → right-half, bottom edge →
+// bottom-half. The left-half and corner snaps are deliberately disabled in the
+// source (the nav rail/sidebar lives on the left, so docking over it is awkward),
+// so they are omitted here too.
 
 import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   useCallback,
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -36,7 +36,7 @@ import { readPref, writePref } from "../util/storage";
 
 export type ResizeDir = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
-type SnapZone = "maximize" | "left-half" | "right-half" | "bottom-half";
+type SnapZone = "maximize" | "right-half" | "bottom-half";
 
 interface Rect {
   x: number;
@@ -64,11 +64,11 @@ const EDGE_THRESHOLD_PX = 24;
 const TOP_FULL_STRIP_PX = 8;
 // Desktop only — the odysseus source excludes tiling at <=768px (swipe UX).
 const DESKTOP_MIN_W = 768;
-// Left navigation width (icon rail 48px + sidebar 240px). The odysseus
-// safe-rect carves the nav out of the left edge so windows never dock over it;
-// we approximate with the rail width as the always-present floor.
+// Left navigation width (icon rail). The odysseus safe-rect carves the nav out
+// of the left edge so windows never dock over it; we approximate with the rail
+// width as the always-present floor (parity with tileManager.js, which never
+// snaps to the left edge — only maximize / right-half / bottom-half).
 const RAIL_W = 48;
-const SIDEBAR_W = 240;
 const SAFE_PAD = 4;
 
 interface SnapTarget {
@@ -76,11 +76,11 @@ interface SnapTarget {
   rect: Rect;
 }
 
-// The safe area windows tile into: the viewport minus the left nav rail/sidebar
-// and a small inset (parity with tileManager.js `_viewportSafeRect`). We can't
-// read live DOM widths from a pure hook, so we treat the rail as the always-on
-// left floor; the left-half zone additionally requires the pointer to be past
-// the (rail + sidebar) band so it never lands over the nav.
+// The safe area windows tile into: the viewport minus the left nav rail and a
+// small inset (parity with tileManager.js `_viewportSafeRect`). We can't read
+// live DOM widths from a pure hook, so we treat the rail as the always-on left
+// floor; snaps only ever fill from this left edge rightward (maximize /
+// right-half / bottom-half), so they never land over the nav.
 function safeRect(): {
   left: number;
   top: number;
@@ -97,8 +97,8 @@ function safeRect(): {
 
 // Compute the snap target under the pointer, or null when none. Faithful to
 // tileManager.js `_zoneForPointer`: top strip → maximize, right edge →
-// right-half, bottom edge → bottom-half, plus a guarded left-half (only when
-// the pointer has cleared the full nav band, since the rail/sidebar live there).
+// right-half, bottom edge → bottom-half. The left edge / corners are
+// deliberately not snap zones (the source disabled them — the nav lives there).
 function zoneForPointer(x: number, y: number): SnapTarget | null {
   const safe = safeRect();
   const w = safe.right - safe.left;
@@ -110,12 +110,6 @@ function zoneForPointer(x: number, y: number): SnapTarget | null {
     return {
       zone: "right-half",
       rect: { x: safe.left + w / 2, y: safe.top, w: w / 2, h },
-    };
-  }
-  if (x <= RAIL_W + SIDEBAR_W + EDGE_THRESHOLD_PX) {
-    return {
-      zone: "left-half",
-      rect: { x: safe.left, y: safe.top, w: w / 2, h },
     };
   }
   if (y >= safe.bottom - EDGE_THRESHOLD_PX) {
@@ -153,6 +147,19 @@ export function useWindowControls(
   // drag-away (tileManager.js `_tilePreSnap`). Null when not currently snapped.
   const preSnapRef = useRef<Rect | null>(null);
 
+  // Teardown for the in-flight drag/resize gesture. A gesture registers its
+  // window listeners while active and stashes the remover here so an unmount
+  // mid-drag detaches them — otherwise the listeners leak and keep calling the
+  // state setters after the host view is gone.
+  const activeGestureRef = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      activeGestureRef.current?.();
+      activeGestureRef.current = null;
+    },
+    [],
+  );
+
   // Lazily seed a centered rect from the viewport on first interaction.
   const ensureRect = useCallback((): Rect => {
     if (rectRef.current) return rectRef.current;
@@ -179,7 +186,8 @@ export function useWindowControls(
     (e: ReactPointerEvent) => {
       // Don't start a drag from an interactive control inside the header.
       if (
-        (e.target as HTMLElement).closest("button, input, select, textarea, a")
+        e.target instanceof Element &&
+        e.target.closest("button, input, select, textarea, a")
       )
         return;
       e.preventDefault();
@@ -210,9 +218,13 @@ export function useWindowControls(
           setSnapGhost(target ? ghostStyle(target.rect) : null);
         }
       };
-      const onUp = () => {
+      const detach = () => {
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
+        activeGestureRef.current = null;
+      };
+      const onUp = () => {
+        detach();
         setSnapGhost(null);
         if (activeTarget) {
           // Stash the pre-snap rect so the next drag-away restores it, then
@@ -224,6 +236,7 @@ export function useWindowControls(
         }
         persist();
       };
+      activeGestureRef.current = detach;
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
     },
@@ -257,11 +270,16 @@ export function useWindowControls(
         rectRef.current = next;
         setRect(next);
       };
-      const onUp = () => {
+      const detach = () => {
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
+        activeGestureRef.current = null;
+      };
+      const onUp = () => {
+        detach();
         persist();
       };
+      activeGestureRef.current = detach;
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
     },

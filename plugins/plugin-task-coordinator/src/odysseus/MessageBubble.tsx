@@ -64,6 +64,10 @@ const CENSOR_PATTERNS: { re: RegExp; label: string }[] = [
 
 const CENSOR_PREF_KEY = "odysseus-sensitive-blur";
 
+// How long the Copy button shows its success glyph before reverting (odysseus
+// chatRenderer.js footer-copy-btn reverts after 1500ms).
+const COPY_FEEDBACK_MS = 1500;
+
 /** Mirrors censor.js `_prefEnabled` — opt-in, off unless explicitly turned on. */
 function censorEnabled(): boolean {
   if (typeof localStorage === "undefined") return false;
@@ -188,6 +192,16 @@ function useCensoredBody(content: string) {
  * Mirrors ChatMessages' AgentFooter so user and assistant footers behave alike. */
 function CopyFooter({ content }: { content: string }): ReactNode {
   const [copied, setCopied] = useState(false);
+  // Revert timer for the success glyph; cleared on unmount and before re-arming
+  // so copying a message that unmounts within the window never sets state on an
+  // unmounted component.
+  const revertRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (revertRef.current !== null) clearTimeout(revertRef.current);
+    },
+    [],
+  );
 
   const onCopy = useCallback(() => {
     // Guard for non-secure-context / older webviews where clipboard is absent.
@@ -196,7 +210,11 @@ function CopyFooter({ content }: { content: string }): ReactNode {
     navigator.clipboard.writeText(content).then(
       () => {
         setCopied(true);
-        setTimeout(() => setCopied(false), 1200);
+        if (revertRef.current !== null) clearTimeout(revertRef.current);
+        revertRef.current = setTimeout(
+          () => setCopied(false),
+          COPY_FEEDBACK_MS,
+        );
       },
       () => undefined,
     );
@@ -291,9 +309,8 @@ export function AgentBubble({
     <div className="od-msg od-msg-ai">
       <div className="od-role">{block.senderName}</div>
       <div
-        className="od-body"
+        className={`od-body${block.tone === "error" ? " od-body-error" : ""}`}
         ref={bodyRef}
-        style={block.tone === "error" ? { color: "var(--red)" } : undefined}
       >
         <MarkdownText text={block.content} />
       </div>

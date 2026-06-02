@@ -41,7 +41,13 @@
 
 import type { CharacterData, McpServerStatus, PluginInfo } from "@elizaos/ui";
 import { client } from "@elizaos/ui";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useEscapeClose } from "./hooks/useEscapeClose";
 import { useWindowControls } from "./hooks/useWindowControls";
 import { ResizeHandles } from "./ResizeHandles";
@@ -442,6 +448,11 @@ export function SettingsPanel({
   const [keybinds, setKeybinds] =
     useState<Record<string, string>>(SHORTCUT_DEFAULTS);
   const [rebinding, setRebinding] = useState<string | null>(null);
+  // Latest keybinds for the capture-phase rebind listener — lets the handler
+  // merge against current state without resubscribing on every keystroke (the
+  // effect is armed only by `rebinding`, not by `keybinds`).
+  const keybindsRef = useRef(keybinds);
+  keybindsRef.current = keybinds;
 
   useEffect(() => {
     if (!open) return;
@@ -487,9 +498,20 @@ export function SettingsPanel({
     setRebinding(null);
   }, [open]);
 
+  // Persist + broadcast outside any setState updater (updaters must stay pure;
+  // React StrictMode runs them twice, which would double-write the pref and fire
+  // the OdysseusKeybindEvent twice).
+  const persistKeybinds = useCallback((next: Record<string, string>) => {
+    setKeybinds(next);
+    writePref(KEYBINDS_KEY, next);
+    window.dispatchEvent(new CustomEvent(KEYBIND_EVENT, { detail: next }));
+  }, []);
+
   // Capture-phase rebind listener — active only while a shortcut row is armed.
   // Escape cancels; any other combo commits immediately (odysseus startRebind,
-  // simplified to a single capture since each row is its own button here).
+  // simplified to a single capture since each row is its own button here). The
+  // handler merges against keybindsRef so the listener subscribes once per arm
+  // (deps are rebinding + the stable persistKeybinds), not once per keystroke.
   useEffect(() => {
     if (!rebinding) return;
     const action = rebinding;
@@ -502,17 +524,12 @@ export function SettingsPanel({
       }
       const combo = comboFromEvent(e);
       if (!combo) return;
-      setKeybinds((prev) => {
-        const next = { ...prev, [action]: combo };
-        writePref(KEYBINDS_KEY, next);
-        window.dispatchEvent(new CustomEvent(KEYBIND_EVENT, { detail: next }));
-        return next;
-      });
+      persistKeybinds({ ...keybindsRef.current, [action]: combo });
       setRebinding(null);
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [rebinding]);
+  }, [rebinding, persistKeybinds]);
 
   const persistVis = useCallback((next: Record<string, boolean>) => {
     setVis(next);
@@ -520,35 +537,35 @@ export function SettingsPanel({
     window.dispatchEvent(new CustomEvent(UI_VIS_EVENT, { detail: next }));
   }, []);
 
-  const toggleVis = useCallback((key: string) => {
-    setVis((prev) => {
-      const next = { ...prev, [key]: !isVisOn(prev, key) };
-      writePref(UI_VIS_KEY, next);
-      window.dispatchEvent(new CustomEvent(UI_VIS_EVENT, { detail: next }));
-      return next;
-    });
-  }, []);
+  // Compute the next map from current state and route through persistVis — the
+  // write + broadcast must NOT live inside a setState updater (updaters must be
+  // pure; React StrictMode invokes them twice, which would double-write the pref
+  // and fire the OdysseusUiVisEvent twice).
+  const toggleVis = useCallback(
+    (key: string) => {
+      persistVis({ ...vis, [key]: !isVisOn(vis, key) });
+    },
+    [vis, persistVis],
+  );
 
   const resetVis = useCallback(() => {
     persistVis({});
   }, [persistVis]);
 
-  const resetKeybind = useCallback((action: string) => {
-    setKeybinds((prev) => {
-      const next = { ...prev, [action]: SHORTCUT_DEFAULTS[action] ?? "" };
-      writePref(KEYBINDS_KEY, next);
-      window.dispatchEvent(new CustomEvent(KEYBIND_EVENT, { detail: next }));
-      return next;
-    });
-  }, []);
+  const resetKeybind = useCallback(
+    (action: string) => {
+      persistKeybinds({
+        ...keybinds,
+        [action]: SHORTCUT_DEFAULTS[action] ?? "",
+      });
+    },
+    [keybinds, persistKeybinds],
+  );
 
   const resetAllKeybinds = useCallback(() => {
-    const next = { ...SHORTCUT_DEFAULTS };
-    setKeybinds(next);
     setRebinding(null);
-    writePref(KEYBINDS_KEY, next);
-    window.dispatchEvent(new CustomEvent(KEYBIND_EVENT, { detail: next }));
-  }, []);
+    persistKeybinds({ ...SHORTCUT_DEFAULTS });
+  }, [persistKeybinds]);
 
   if (!open) return null;
 
@@ -608,6 +625,13 @@ export function SettingsPanel({
         onClick={onClose}
         className="od-search-backdrop"
       />
+      {win.snapGhost ? (
+        <div
+          className="od-snap-ghost"
+          style={win.snapGhost}
+          aria-hidden="true"
+        />
+      ) : null}
       <div className="od-search-panel od-settings-panel" style={win.panelStyle}>
         <ResizeHandles controls={win} />
         {/* ── Header (settings-modal header) ── */}

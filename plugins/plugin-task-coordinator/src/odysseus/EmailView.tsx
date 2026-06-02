@@ -387,6 +387,7 @@ export function EmailView({
   onClose,
   accounts = [],
   messages = [],
+  onRefresh,
   onArchive,
   onDelete,
   onRemind,
@@ -403,6 +404,7 @@ export function EmailView({
   // Server-backed actions — each renders only when its handler is supplied, so
   // the surface is faithful when a mail backend wires it and honest (no dead
   // control) when none exists. eliza has none today, so all default undefined.
+  onRefresh?: () => void;
   onArchive?: (uids: string[]) => void;
   onDelete?: (uids: string[]) => void;
   onRemind?: (uid: string, at: Date) => void;
@@ -712,6 +714,13 @@ export function EmailView({
         onClick={onClose}
         className="od-search-backdrop"
       />
+      {win.snapGhost ? (
+        <div
+          className="od-snap-ghost"
+          style={win.snapGhost}
+          aria-hidden="true"
+        />
+      ) : null}
       <div className="od-search-panel od-email-panel" style={win.panelStyle}>
         <ResizeHandles controls={win} />
         {/* ── Header (emailLibrary.js modal-header) ── */}
@@ -832,14 +841,17 @@ export function EmailView({
             >
               {selectMode ? "Cancel" : "Select"}
             </button>
-            <button
-              type="button"
-              className="od-email-tbtn"
-              title="Refresh"
-              aria-label="Refresh"
-            >
-              <RefreshCw size={12} />
-            </button>
+            {onRefresh ? (
+              <button
+                type="button"
+                className="od-email-tbtn"
+                title="Refresh"
+                aria-label="Refresh"
+                onClick={onRefresh}
+              >
+                <RefreshCw size={12} />
+              </button>
+            ) : null}
             {isRemindersFilter && onClearReminders ? (
               <button
                 type="button"

@@ -353,6 +353,13 @@ export function NotesPanel({
         onClick={onClose}
         className="od-search-backdrop"
       />
+      {win.snapGhost ? (
+        <div
+          className="od-snap-ghost"
+          style={win.snapGhost}
+          aria-hidden="true"
+        />
+      ) : null}
       <div
         className={`od-search-panel od-mem-panel od-notes-panel${showingArchived ? " od-notes-archived" : ""}`}
         style={win.panelStyle}

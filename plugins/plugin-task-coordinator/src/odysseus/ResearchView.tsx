@@ -115,7 +115,7 @@ function formatElapsed(ms: number): string {
 }
 
 function formatClock(ms: number): string {
-  const s = Math.floor(ms / 1000);
+  const s = Math.floor(Math.max(0, ms) / 1000);
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
@@ -891,6 +891,13 @@ export function ResearchView({
         onClick={onClose}
         className="od-search-backdrop"
       />
+      {win.snapGhost ? (
+        <div
+          className="od-snap-ghost"
+          style={win.snapGhost}
+          aria-hidden="true"
+        />
+      ) : null}
       <div className="od-search-panel research-pane" style={win.panelStyle}>
         <ResizeHandles controls={win} />
         <div

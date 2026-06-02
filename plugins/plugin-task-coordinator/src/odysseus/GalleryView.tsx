@@ -53,6 +53,13 @@ export function GalleryView({
         onClick={onClose}
         className="od-search-backdrop"
       />
+      {win.snapGhost ? (
+        <div
+          className="od-snap-ghost"
+          style={win.snapGhost}
+          aria-hidden="true"
+        />
+      ) : null}
       <div className="od-search-panel od-gallery-panel" style={win.panelStyle}>
         <ResizeHandles controls={win} />
         {/* ── Modal header (gallery.js modal-header) ── */}

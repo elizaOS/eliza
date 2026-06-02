@@ -21,6 +21,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -138,85 +139,90 @@ export function Composer({
   // onOpenModels). Odysseus's tool-opener commands for surfaces the clone does
   // not host (cookbook/email/gallery/research/compare/todo/event/setup) are
   // omitted rather than shipped as dead rows.
-  const commands: SlashCommand[] = [
-    {
-      token: "/new",
-      aliases: ["/chats new", "/create"],
-      category: "Chats",
-      help: "Start a new chat",
-      usage: "/new",
-      run: onNewChat,
-    },
-    {
-      token: "/clear",
-      aliases: ["/chats clear"],
-      category: "Chats",
-      help: "Clear the message box",
-      usage: "/clear",
-      run: () => onInput(""),
-    },
-    {
-      token: "/search",
-      aliases: ["/find"],
-      category: "Chats",
-      help: "Search conversations",
-      usage: "/search query",
-      run: onSearch,
-    },
-    {
-      token: "/memory",
-      aliases: ["/brain", "/memories"],
-      category: "Tools",
-      help: "Open memory",
-      usage: "/memory",
-      run: () => onOpenPanel("memory"),
-    },
-    {
-      token: "/skills",
-      aliases: [],
-      category: "Tools",
-      help: "Open skills",
-      usage: "/skills",
-      run: () => onOpenPanel("skills"),
-    },
-    {
-      token: "/notes",
-      aliases: ["/note"],
-      category: "Tools",
-      help: "Open notes",
-      usage: "/notes",
-      run: () => onOpenPanel("notes"),
-    },
-    // /models is only offered when the models surface is wired (onOpenModels).
-    ...(onOpenModels
-      ? [
-          {
-            token: "/models",
-            aliases: ["/model"],
-            category: "Tools",
-            help: "Browse and manage models",
-            usage: "/models",
-            run: onOpenModels,
-          },
-        ]
-      : []),
-    {
-      token: "/theme",
-      aliases: [],
-      category: "Settings",
-      help: "Open the theme picker",
-      usage: "/theme name",
-      run: () => onOpenPanel("theme"),
-    },
-    {
-      token: "/settings",
-      aliases: ["/config", "/preferences"],
-      category: "Settings",
-      help: "Open settings",
-      usage: "/settings",
-      run: () => onOpenPanel("settings"),
-    },
-  ];
+  // The registry is constant per render-set of callback props; rebuilding it on
+  // every keystroke is wasted work, so memoize on the wired handlers.
+  const commands = useMemo<SlashCommand[]>(
+    () => [
+      {
+        token: "/new",
+        aliases: ["/chats new", "/create"],
+        category: "Chats",
+        help: "Start a new chat",
+        usage: "/new",
+        run: onNewChat,
+      },
+      {
+        token: "/clear",
+        aliases: ["/chats clear"],
+        category: "Chats",
+        help: "Clear the message box",
+        usage: "/clear",
+        run: () => onInput(""),
+      },
+      {
+        token: "/search",
+        aliases: ["/find"],
+        category: "Chats",
+        help: "Search conversations",
+        usage: "/search query",
+        run: onSearch,
+      },
+      {
+        token: "/memory",
+        aliases: ["/brain", "/memories"],
+        category: "Tools",
+        help: "Open memory",
+        usage: "/memory",
+        run: () => onOpenPanel("memory"),
+      },
+      {
+        token: "/skills",
+        aliases: [],
+        category: "Tools",
+        help: "Open skills",
+        usage: "/skills",
+        run: () => onOpenPanel("skills"),
+      },
+      {
+        token: "/notes",
+        aliases: ["/note"],
+        category: "Tools",
+        help: "Open notes",
+        usage: "/notes",
+        run: () => onOpenPanel("notes"),
+      },
+      // /models is only offered when the models surface is wired (onOpenModels).
+      ...(onOpenModels
+        ? [
+            {
+              token: "/models",
+              aliases: ["/model"],
+              category: "Tools",
+              help: "Browse and manage models",
+              usage: "/models",
+              run: onOpenModels,
+            },
+          ]
+        : []),
+      {
+        token: "/theme",
+        aliases: [],
+        category: "Settings",
+        help: "Open the theme picker",
+        usage: "/theme name",
+        run: () => onOpenPanel("theme"),
+      },
+      {
+        token: "/settings",
+        aliases: ["/config", "/preferences"],
+        category: "Settings",
+        help: "Open settings",
+        usage: "/settings",
+        run: () => onOpenPanel("settings"),
+      },
+    ],
+    [onNewChat, onInput, onSearch, onOpenPanel, onOpenModels],
+  );
 
   // Trigger only when the message starts with "/" (no leading space) and has no
   // newline — we don't autocomplete mid-prose. A trailing space after the

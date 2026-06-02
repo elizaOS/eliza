@@ -267,6 +267,11 @@ const BASE_COOKBOOK_TABS: ReadonlyArray<{ id: CookbookTab; label: string }> = [
   { id: "fit", label: "What Fits?" },
 ];
 
+// Live-refresh cadence for the Running tab — a calm, non-chatty poll matching
+// cookbookRunning.js's background monitor (fast enough to feel live, slow
+// enough to stay quiet while idle).
+const RUNNING_POLL_MS = 4000;
+
 // cookbookServe.js _backendChoices — the serve-engine list used both for the
 // Serve panel's backend select and the What-Fits "Engine" filter. Verbatim
 // labels/values from cookbookServe.js / cookbook-hwfit._applyEngineFilter.
@@ -408,10 +413,10 @@ export function CookbookView({
 
   // Poll launched runs while the modal is open so the Running tab reflects live
   // status changes (cookbookRunning.js runs a background monitor for the same
-  // reason). Cleared on close. 4s matches a calm, non-chatty refresh cadence.
+  // reason). Cleared on close.
   useEffect(() => {
     if (!open) return;
-    const id = window.setInterval(loadRuns, 4000);
+    const id = window.setInterval(loadRuns, RUNNING_POLL_MS);
     return () => window.clearInterval(id);
   }, [open, loadRuns]);
 
@@ -548,6 +553,13 @@ export function CookbookView({
         onClick={onClose}
         className="od-search-backdrop"
       />
+      {win.snapGhost ? (
+        <div
+          className="od-snap-ghost"
+          style={win.snapGhost}
+          aria-hidden="true"
+        />
+      ) : null}
       <div className="od-search-panel od-cb-panel" style={win.panelStyle}>
         <ResizeHandles controls={win} />
         {/* ── Header (cookbook.js modal header) ── */}
