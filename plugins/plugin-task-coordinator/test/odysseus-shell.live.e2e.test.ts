@@ -184,6 +184,9 @@ describe.skipIf(!STACK_UP)("odysseus shell (live e2e)", () => {
     "Email",
     "Gallery",
     "Cookbook",
+    "Image Editor",
+    "Group Chat",
+    "Admin",
   ];
   for (const label of TOOL_VIEWS) {
     it(`opens + closes the ${label} view`, async () => {
