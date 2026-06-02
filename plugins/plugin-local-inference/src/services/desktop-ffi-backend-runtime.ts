@@ -54,11 +54,19 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
 	private poisonedError: Error | null = null;
 
 	supported(): boolean {
-		// We don't actually try to dlopen here — that would be too eager
-		// (every load() call would do it again). Just check disk presence;
-		// the dlopen + symbol resolution is `acquire()`'s job and returns
-		// null on failure.
-		return desktopLlamaDylibsPresent();
+		// Check both disk presence AND runtime bun:ffi availability. The dylibs
+		// may exist on disk from a prior build, but bun:ffi is only usable under
+		// Electrobun (or Bun with native module support). In dev mode (bun run dev),
+		// bun:ffi throws "protocol 'bun:' not supported" at import time.
+		if (!desktopLlamaDylibsPresent()) return false;
+		try {
+			// Probe bun:ffi resolvability without actually importing it. If the
+			// ESM loader rejects the scheme, the catch returns false.
+			require.resolve("bun:ffi");
+			return true;
+		} catch {
+			return false;
+		}
 	}
 
 	async acquire(plan: BackendPlan): Promise<FfiBackendSession> {
