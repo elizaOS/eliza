@@ -149,6 +149,27 @@ function ensureTypeChildDir(targetTypesDir, childDir) {
   }
 }
 
+function removeExistingTypeEntry(targetPath) {
+  // A package manager may have linked a real @types/<pkg> here as a symlink.
+  // fs.cpSync(force) does NOT overwrite a symlink dest (it throws EEXIST), and
+  // rmSync(recursive) does not reliably clear a symlink-to-directory — so
+  // unlink symlinks/files explicitly and only rm real directories.
+  let stat;
+  try {
+    stat = lstatSync(targetPath);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+  if (stat.isDirectory()) {
+    rmSync(targetPath, { recursive: true, force: true });
+  } else {
+    unlinkSync(targetPath);
+  }
+}
+
 function materializeTypePackage(targetTypesDir, packageName) {
   const sourceDir = findCachedTypePackageDir(packageName);
   if (!sourceDir) {
@@ -156,7 +177,7 @@ function materializeTypePackage(targetTypesDir, packageName) {
   }
 
   const targetDir = path.join(targetTypesDir, packageName);
-  rmSync(targetDir, { recursive: true, force: true });
+  removeExistingTypeEntry(targetDir);
   ensureTypeRoot(targetTypesDir);
   cpSync(sourceDir, targetDir, {
     recursive: true,
@@ -194,10 +215,6 @@ export function ensureBunTypesAlias(targetTypesDir) {
   if (!existsSync(parentNodeModules)) {
     return;
   }
-  // A package manager may have already linked a real @types/bun here as a
-  // symlink (bun does this). mkdirSync(recursive) throws EEXIST against a
-  // symlink/file, so clear any prior entry before materializing our shim.
-  rmSync(bunTypesDir, { recursive: true, force: true });
   ensureTypeChildDir(targetTypesDir, bunTypesDir);
   writeFileSync(
     path.join(bunTypesDir, "index.d.ts"),
