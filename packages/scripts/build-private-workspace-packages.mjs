@@ -44,6 +44,14 @@ const PACKAGES = [
     dir: "packages/plugin-remote-manifest",
     freshnessSentinel: "dist/index.js",
   },
+  {
+    // `@elizaos/agent/src/services/remote-plugin-bridge.ts` imports
+    // `@elizaos/plugin-worker-runtime/error`. The subpath export resolves
+    // to `./dist/error.js`, so the package must be built before any
+    // consumer (vite build, tsc, the runtime itself) can load it.
+    dir: "packages/plugin-worker-runtime",
+    freshnessSentinel: "dist/error.js",
+  },
 ];
 
 function log(msg) {
