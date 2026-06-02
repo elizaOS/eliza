@@ -3032,9 +3032,10 @@ export class AgentRuntime implements IAgentRuntime {
 		const worldId = message.worldId ?? roomId;
 
 		const runOne = async (action: Action) => {
-			const actionCallback: HandlerCallback | undefined = options?.callback
+			const callback = options?.callback;
+			const actionCallback: HandlerCallback | undefined = callback
 				? (response, actionName) =>
-						options.callback!(response, actionName ?? action.name)
+						callback(response, actionName ?? action.name)
 				: undefined;
 			await this.emitEvent(EventType.ACTION_STARTED, {
 				runtime: this,
@@ -7530,6 +7531,7 @@ ${section_end}`;
 		metadata?: Record<string, unknown>;
 		orderBy?: "createdAt";
 		orderDirection?: "asc" | "desc";
+		includeEmbedding?: boolean;
 	}): Promise<Memory[]> {
 		return this.adapter.getMemories({
 			...params,

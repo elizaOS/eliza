@@ -133,6 +133,7 @@ async function searchMemoryNotes(
     roomId,
     tableName: "messages",
     limit: MEMORY_SEARCH_SCAN_LIMIT,
+    includeEmbedding: false, // only reads content.text
   });
 
   const hits: MemorySearchHit[] = [];
@@ -299,6 +300,7 @@ async function fetchMemoriesFromTables(
         roomId: params.roomId,
         tableName,
         limit: perTableLimit,
+        includeEmbedding: false, // browse feed discards embeddings (memoryToBrowseItem)
       });
       return memories.map((m) => Object.assign(m, { _table: tableName }));
     }),
@@ -675,6 +677,7 @@ export async function handleMemoryRoutes(
         agentId: runtime.agentId as UUID,
         tableName,
         limit: 10000,
+        includeEmbedding: false, // stats only counts memories.length
       });
       counts[tableName] = memories.length;
       total += memories.length;
