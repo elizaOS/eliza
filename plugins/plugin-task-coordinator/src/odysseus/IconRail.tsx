@@ -5,6 +5,10 @@
 
 import {
   Brain,
+  CalendarDays,
+  Columns2,
+  FileText,
+  FlaskConical,
   MessageSquare,
   Palette,
   PanelLeft,
@@ -21,6 +25,10 @@ export function IconRail({
   onOpenSkills,
   onOpenNotes,
   onOpenSettings,
+  onOpenCompare,
+  onOpenResearch,
+  onOpenDocs,
+  onOpenCalendar,
 }: {
   onToggleSidebar: () => void;
   onOpenTheme: () => void;
@@ -28,6 +36,10 @@ export function IconRail({
   onOpenSkills: () => void;
   onOpenNotes: () => void;
   onOpenSettings: () => void;
+  onOpenCompare: () => void;
+  onOpenResearch: () => void;
+  onOpenDocs: () => void;
+  onOpenCalendar: () => void;
 }): ReactNode {
   return (
     <div className="od-icon-rail">
@@ -69,6 +81,42 @@ export function IconRail({
         aria-label="Notes"
       >
         <StickyNote size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenDocs}
+        title="Documents"
+        aria-label="Documents"
+      >
+        <FileText size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenCompare}
+        title="Compare"
+        aria-label="Compare"
+      >
+        <Columns2 size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenResearch}
+        title="Deep Research"
+        aria-label="Deep Research"
+      >
+        <FlaskConical size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenCalendar}
+        title="Calendar"
+        aria-label="Calendar"
+      >
+        <CalendarDays size={18} />
       </button>
       <div className="od-rail-spacer" />
       <button

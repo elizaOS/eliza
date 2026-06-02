@@ -21,7 +21,10 @@ import {
   useState,
 } from "react";
 import { BgEffect } from "./BgEffect";
+import { CalendarView } from "./CalendarView";
 import { ChatContainer } from "./ChatContainer";
+import { CompareView } from "./CompareView";
+import { DocumentLibraryView } from "./DocumentLibraryView";
 import { useChatSubmit } from "./hooks/useChatSubmit";
 import { useTaskRoom } from "./hooks/useTaskRoom";
 import { IconRail } from "./IconRail";
@@ -38,6 +41,7 @@ import {
   type ThemePalette,
   themeVars,
 } from "./odysseus-theme";
+import { ResearchView } from "./ResearchView";
 import { SearchPalette } from "./SearchPalette";
 import { SessionSidebar } from "./SessionSidebar";
 import { SettingsPanel } from "./SettingsPanel";
@@ -67,6 +71,10 @@ export function OdysseusShell(): ReactNode {
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [researchOpen, setResearchOpen] = useState(false);
+  const [docsOpen, setDocsOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [font, setFont] = useState<ThemeFont>(() =>
     readPref<ThemeFont>(PREF_KEYS.font, "mono"),
   );
@@ -292,6 +300,10 @@ export function OdysseusShell(): ReactNode {
         onOpenSkills={() => setSkillsOpen(true)}
         onOpenNotes={() => setNotesOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenCompare={() => setCompareOpen(true)}
+        onOpenResearch={() => setResearchOpen(true)}
+        onOpenDocs={() => setDocsOpen(true)}
+        onOpenCalendar={() => setCalendarOpen(true)}
       />
       <ThemeMenu
         open={themeMenuOpen}
@@ -313,6 +325,16 @@ export function OdysseusShell(): ReactNode {
       <MemoryPanel open={memoryOpen} onClose={() => setMemoryOpen(false)} />
       <SkillsPanel open={skillsOpen} onClose={() => setSkillsOpen(false)} />
       <NotesPanel open={notesOpen} onClose={() => setNotesOpen(false)} />
+      <DocumentLibraryView open={docsOpen} onClose={() => setDocsOpen(false)} />
+      <CompareView open={compareOpen} onClose={() => setCompareOpen(false)} />
+      <ResearchView
+        open={researchOpen}
+        onClose={() => setResearchOpen(false)}
+      />
+      <CalendarView
+        open={calendarOpen}
+        onClose={() => setCalendarOpen(false)}
+      />
       <SettingsPanel
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
