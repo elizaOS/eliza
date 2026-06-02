@@ -406,15 +406,23 @@ export class TwitterInteractionClient {
    */
   private async processTimelineForEngagement() {
     try {
-      // This would use the timeline client if available, but for now
-      // we'll do a general search for recent popular tweets
-      const searchResult = await this.client.fetchSearchTweets(
-        "min_retweets:10 min_faves:20 -is:reply -is:retweet lang:en",
-        20,
-        SearchMode.Latest,
-      );
+      let timelineTweets: ClientTweet[];
+      try {
+        timelineTweets = await this.client.fetchHomeTimeline(20);
+      } catch (timelineError) {
+        logger.warn(
+          "Home timeline unavailable for engagement; falling back to popular search:",
+          errorMessage(timelineError),
+        );
+        const searchResult = await this.client.fetchSearchTweets(
+          "min_retweets:10 min_faves:20 -is:reply -is:retweet lang:en",
+          20,
+          SearchMode.Latest,
+        );
+        timelineTweets = searchResult.tweets;
+      }
 
-      const relevantTweets = searchResult.tweets.filter((tweet) => {
+      const relevantTweets = timelineTweets.filter((tweet) => {
         // Filter for tweets from the last 12 hours
         const tweetAge = Date.now() - getEpochMs(tweet.timestamp);
         return tweetAge < 12 * 60 * 60 * 1000;

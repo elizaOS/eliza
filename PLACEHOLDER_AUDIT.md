@@ -356,10 +356,14 @@ platform no-ops are separated from actionable runtime gaps.
   path.
 - Added `src/utils/memory.test.ts` coverage for reordered near-duplicates and
   threshold behavior.
+- Replaced wildcard engagement's search-only timeline placeholder in
+  `src/interactions.ts` with `fetchHomeTimeline(20)`, retaining the popular
+  search query as a logged fallback when the home timeline is unavailable.
 - Verified with:
   - `bun run --cwd plugins/plugin-x test src/utils/memory.test.ts`
+  - `bun run --cwd plugins/plugin-x build`
   - `bun run --cwd plugins/plugin-x typecheck` (package script currently skips release typecheck)
-  - `bunx biome check plugins/plugin-x/src/utils/memory.ts plugins/plugin-x/src/utils/memory.test.ts`
+  - `bunx biome check plugins/plugin-x/src/utils/memory.ts plugins/plugin-x/src/utils/memory.test.ts plugins/plugin-x/src/interactions.ts`
   - marker scan and `git diff --check` on the touched X files
 
 ### plugins/plugin-wallet
