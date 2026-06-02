@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   buildConversation,
+  type ConversationBlock,
   MarkdownText,
   sanitizeMarkdownUrl,
 } from "../../src/orchestrator-stream";
@@ -209,7 +210,7 @@ describe("buildConversation", () => {
     expect(blocks).toEqual([
       expect.objectContaining({
         kind: "tool",
-        key: "tool-call-1",
+        key: "tool-session-codex:call-1",
         tool: expect.objectContaining({
           eventIds: ["tool-start", "tool-end"],
           sessionId: "session-codex",
@@ -222,6 +223,71 @@ describe("buildConversation", () => {
         eventType: "blocked",
         sessionId: "session-codex",
       }),
+    ]);
+  });
+
+  it("keeps duplicate tool call ids separate across sessions", () => {
+    const blocks = buildConversation(
+      [] satisfies MessageRecord[],
+      [
+        baseEvent({
+          id: "session-a-tool",
+          sessionId: "session-a",
+          eventType: "tool_running",
+          timestamp: 10,
+          summary: "session a",
+          data: {
+            toolCall: {
+              id: "call-1",
+              title: "bash",
+              kind: "execute",
+              status: "completed",
+              rawInput: { command: "bun test:a" },
+            },
+          },
+        }),
+        baseEvent({
+          id: "session-b-tool",
+          sessionId: "session-b",
+          eventType: "tool_running",
+          timestamp: 11,
+          summary: "session b",
+          data: {
+            toolCall: {
+              id: "call-1",
+              title: "bash",
+              kind: "execute",
+              status: "completed",
+              rawInput: { command: "bun test:b" },
+            },
+          },
+        }),
+      ],
+      (message) => message.senderKind,
+      new Set(),
+    );
+
+    const toolBlocks = blocks.filter(
+      (block): block is Extract<ConversationBlock, { kind: "tool" }> =>
+        block.kind === "tool",
+    );
+
+    expect(toolBlocks).toHaveLength(2);
+    expect(toolBlocks.map((block) => block.key)).toEqual([
+      "tool-session-a:call-1",
+      "tool-session-b:call-1",
+    ]);
+    expect(toolBlocks.map((block) => block.tool.id)).toEqual([
+      "call-1",
+      "call-1",
+    ]);
+    expect(toolBlocks.map((block) => block.tool.eventIds)).toEqual([
+      ["session-a-tool"],
+      ["session-b-tool"],
+    ]);
+    expect(toolBlocks.map((block) => block.tool.command)).toEqual([
+      "bun test:a",
+      "bun test:b",
     ]);
   });
 });

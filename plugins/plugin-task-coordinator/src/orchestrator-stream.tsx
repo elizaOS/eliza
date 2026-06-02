@@ -37,12 +37,15 @@ import { formatClockTime, stripAnsi } from "./view-format";
 //     token-ish), so consecutive same-sender chunks are concatenated into one
 //     turn instead of rendered as dozens of fragment bubbles.
 //   • A single tool invocation emits several `tool_running` events (in_progress
-//     → completed), so they are merged by `toolCall.id` into one card carrying
-//     the final status.
+//     → completed), so they are merged by session-scoped `toolCall.id` into one
+//     card carrying the final status.
 
 type ToolStatus = "running" | "done" | "failed";
 
 export interface ToolView {
+  /** Session-scoped render key; raw tool ids are not globally unique. */
+  groupKey: string;
+  /** The tool call's raw id from the adapter, preserved for inspection. */
   id: string;
   /** Task event ids merged into this rendered tool call. */
   eventIds: string[];
@@ -215,6 +218,7 @@ function rawToolCall(
  * non-empty output. */
 function toToolView(
   id: string,
+  groupKey: string,
   events: CodingAgentTaskEventRecord[],
 ): ToolView {
   let title = "tool";
@@ -235,6 +239,7 @@ function toToolView(
     if (nextOutput) output = nextOutput;
   }
   return {
+    groupKey,
     id,
     eventIds: events.map((event) => event.id),
     sessionId: events[0]?.sessionId ?? null,
@@ -285,6 +290,13 @@ function messageLane(message: CodingAgentTaskMessageRecord): string {
   return `${message.senderKind}:${message.sessionId ?? message.id}:${stream}`;
 }
 
+function toolGroupKey(
+  event: CodingAgentTaskEventRecord,
+  toolCallId: string,
+): string {
+  return `${event.sessionId ?? event.threadId ?? "sessionless"}:${toolCallId}`;
+}
+
 /** Turn the polled message + event records into the ordered conversation the
  * room renders. */
 export function buildConversation(
@@ -293,7 +305,10 @@ export function buildConversation(
   resolveSenderName: (message: CodingAgentTaskMessageRecord) => string,
   finishedSessionIds: ReadonlySet<string>,
 ): ConversationBlock[] {
-  const toolEvents = new Map<string, CodingAgentTaskEventRecord[]>();
+  const toolEvents = new Map<
+    string,
+    { id: string; events: CodingAgentTaskEventRecord[] }
+  >();
   const toolFirstSeen = new Map<string, number>();
   const atoms: Atom[] = [];
   let order = 0;
@@ -319,11 +334,12 @@ export function buildConversation(
     if (call) {
       const id =
         pickString(call, "id", "toolCallId", "callId") ?? `tool-${event.id}`;
-      const list = toolEvents.get(id);
-      if (list) list.push(event);
+      const groupKey = toolGroupKey(event, id);
+      const group = toolEvents.get(groupKey);
+      if (group) group.events.push(event);
       else {
-        toolEvents.set(id, [event]);
-        toolFirstSeen.set(id, event.timestamp);
+        toolEvents.set(groupKey, { id, events: [event] });
+        toolFirstSeen.set(groupKey, event.timestamp);
       }
       continue;
     }
@@ -339,8 +355,9 @@ export function buildConversation(
     });
   }
 
-  for (const [id, list] of toolEvents) {
-    const tool = toToolView(id, list);
+  for (const [groupKey, group] of toolEvents) {
+    const list = group.events;
+    const tool = toToolView(group.id, groupKey, list);
     // opencode never persists a tool's terminal status — its events top out at
     // `in_progress`. Once the owning session has finished, a still-"running"
     // tool has in fact completed, so reflect that instead of a perpetual spinner.
@@ -353,7 +370,7 @@ export function buildConversation(
       tool.status = "done";
     }
     atoms.push({
-      at: toolFirstSeen.get(id) ?? list[0].timestamp,
+      at: toolFirstSeen.get(groupKey) ?? list[0].timestamp,
       order: order++,
       type: "tool",
       tool,
@@ -408,7 +425,7 @@ export function buildConversation(
     if (atom.type === "tool") {
       blocks.push({
         kind: "tool",
-        key: `tool-${atom.tool.id}`,
+        key: `tool-${atom.tool.groupKey}`,
         at: atom.at,
         tool: atom.tool,
       });
