@@ -245,7 +245,7 @@ export function ContinuousChatOverlay({
     inputRef.current?.focus();
   }, []);
 
-  const sendDisabled = !draft.trim() || !canSend;
+  const hasDraft = draft.trim().length > 0;
 
   return (
     <div
@@ -383,19 +383,25 @@ export function ContinuousChatOverlay({
           <span id="cc-booting-hint" className="sr-only">
             connecting — you can’t send yet
           </span>
-          <SoftButton
-            glyph={MIC_GLYPH}
-            label={recording ? "stop listening" : "talk"}
-            active={recording}
-            disabled={booting}
-            onClick={toggleRecording}
-          />
-          <SoftButton
-            glyph={SEND_GLYPH}
-            label={canSend ? "send" : "send (waiting for reply)"}
-            disabled={sendDisabled}
-            onClick={submit}
-          />
+          {/* One trailing control, ChatGPT-style: mic when there's nothing to
+              send (or while recording, to stop), swapping to send once the user
+              starts typing. */}
+          {hasDraft && !recording ? (
+            <SoftButton
+              glyph={SEND_GLYPH}
+              label={canSend ? "send" : "send (waiting for reply)"}
+              disabled={!canSend}
+              onClick={submit}
+            />
+          ) : (
+            <SoftButton
+              glyph={MIC_GLYPH}
+              label={recording ? "stop listening" : "talk"}
+              active={recording}
+              disabled={booting}
+              onClick={toggleRecording}
+            />
+          )}
         </div>
       </div>
     </div>
