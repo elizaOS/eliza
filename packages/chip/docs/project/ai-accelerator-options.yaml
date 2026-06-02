@@ -1,5 +1,11 @@
 schema: eliza.ai_accelerator_options.v1
 status: decision_open_fail_closed
+claim_allowed: false
+release_claim_allowed: false
+android_boot_claim_allowed: false
+wifi_claim_allowed: false
+ai_throughput_claim_allowed: false
+tapeout_claim_allowed: false
 selection_rule: >
   No AI throughput, TOPS, NNAPI, or mobile-AI claim may pass until one option is
   selected and its validation gates are satisfied with runtime evidence.

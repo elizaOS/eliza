@@ -98,6 +98,13 @@ LINT_WAIVERS = [
     "-Wno-CASEINCOMPLETE",
     "-Wno-UNOPTFLAT",
 ]
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "production_cpu_claim_allowed": False,
+    "real_cpu_execution_claim_allowed": False,
+}
 
 SMOKE = {
     "id": "cocotb_soc_real_integration_smoke",
@@ -272,6 +279,7 @@ def main() -> int:
         "linux_boot_claim_allowed": False,
         "production_cpu_claim_allowed": False,
         "real_cpu_execution_claim_allowed": False,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "Behind +define+E1_SOC_REAL_IRQ / +define+E1_SOC_REAL_DRAM, "
             "e1_soc_top composes the production RISC-V CLINT (@0x0200_0000, "

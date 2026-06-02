@@ -109,6 +109,61 @@ describe("z.ai text parameter resolution", () => {
     });
   });
 
+  it("does not overwrite a thinking field already present in the request body", async () => {
+    const fetchMock = vi.fn(async () => new Response("ok")) as typeof fetch;
+    const runtime = {
+      character: {},
+      fetch: fetchMock,
+      getSetting(key: string) {
+        if (key === "ZAI_API_KEY") return "test-key";
+        if (key === "ZAI_THINKING_TYPE") return "enabled";
+        return undefined;
+      },
+    };
+
+    const { handleTextSmall } = await import("../models/text");
+
+    await expect(handleTextSmall(runtime as never, { prompt: "hello" })).resolves.toBe("ok");
+
+    const fetcher = createOpenAICompatibleMock.mock.calls[0]?.[0]?.fetch as typeof fetch;
+    await fetcher("https://api.z.ai/api/paas/v4/chat/completions", {
+      method: "POST",
+      body: JSON.stringify({ model: "glm-4.5-air", thinking: { type: "disabled" } }),
+    });
+
+    const forwardedInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(forwardedInit.body))).toEqual({
+      model: "glm-4.5-air",
+      thinking: { type: "disabled" },
+    });
+  });
+
+  it("passes non-JSON request bodies through unchanged when thinking mode is enabled", async () => {
+    const fetchMock = vi.fn(async () => new Response("ok")) as typeof fetch;
+    const runtime = {
+      character: {},
+      fetch: fetchMock,
+      getSetting(key: string) {
+        if (key === "ZAI_API_KEY") return "test-key";
+        if (key === "ZAI_THINKING_TYPE") return "enabled";
+        return undefined;
+      },
+    };
+
+    const { handleTextSmall } = await import("../models/text");
+
+    await expect(handleTextSmall(runtime as never, { prompt: "hello" })).resolves.toBe("ok");
+
+    const fetcher = createOpenAICompatibleMock.mock.calls[0]?.[0]?.fetch as typeof fetch;
+    await fetcher("https://api.z.ai/api/paas/v4/chat/completions", {
+      method: "POST",
+      body: "not-json",
+    });
+
+    const forwardedInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(forwardedInit.body).toBe("not-json");
+  });
+
   it("sends at most one stop sequence because z.ai supports one stop word", async () => {
     const runtime = {
       character: {},

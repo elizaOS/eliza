@@ -162,6 +162,8 @@ def test_completion_gate_blocked_report_names_cpu_ap_evidence_not_qemu_virt() ->
     ):
         if report.get(key) is not False:
             raise AssertionError(f"{key} must be false while CPU/AP completion is blocked")
+        if report.get("false_claim_flags", {}).get(key) is not False:
+            raise AssertionError(f"{key} must be present in completion false_claim_flags")
     if report["blocker_dependency_counts"]["live_device_validation"] != 1:
         raise AssertionError("missing CPU/AP transcript must be live validation")
     if "QEMU virt Linux boot evidence does not satisfy" not in report["next_step"]:
@@ -330,8 +332,12 @@ def test_capture_command_wiring_derives_available_generated_ap_lanes() -> None:
 
     report_path = ROOT / "build/reports/cpu_ap_benchmark_runner_wiring.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    if report["status"] != "blocked":
-        raise AssertionError("AP benchmark runner report must stay blocked")
+    assert_contains(report["generated_utc"], "+00:00")
+    if report["status"] not in {"blocked", "pass"}:
+        raise AssertionError("AP benchmark runner report must be pass or blocked")
+    accepted_ap_benchmarks = report.get("accepted_benchmark_evidence", {}).get("accepted")
+    if report["status"] == "pass" and not accepted_ap_benchmarks:
+        raise AssertionError("AP benchmark runner report passed without accepted evidence")
     linux_boot_evidence_ready = report.get("candidate_generated_ap_inputs", {}).get(
         "linux_boot_evidence_exists"
     )
@@ -353,11 +359,15 @@ def test_capture_command_wiring_derives_available_generated_ap_lanes() -> None:
         else:
             assert_contains(ap_problems, "ELIZA_AP_BENCHMARKS_CMD is unset")
     blocker_text = "\n".join(report["blockers"])
-    if not linux_boot_evidence_ready:
+    if accepted_ap_benchmarks:
+        if blocker_text:
+            raise AssertionError("accepted AP benchmark evidence should clear runner blockers")
+    elif not linux_boot_evidence_ready:
         assert_contains(blocker_text, "generated-AP Linux/userland boot transcript is not accepted")
     else:
         assert_contains(blocker_text, "generated-AP Linux boot transcript has captured it yet")
-    assert_contains("\n".join(report["blockers"]), "claim_level=L3")
+    if not accepted_ap_benchmarks:
+        assert_contains("\n".join(report["blockers"]), "claim_level=L3")
     assert_contains("\n".join(report["required_raw_markers"]), "pdk signoff claim=none")
     prerequisites = json.dumps(report["source_build_prerequisites"], sort_keys=True)
     assert_contains(prerequisites, "CoreMark")
@@ -781,6 +791,7 @@ def test_ap_benchmark_wiring_requires_accepted_linux_userspace_transcript() -> N
         "AP_BENCHMARK_LINUX_CONFIG": wire_cpu_ap_capture_commands.AP_BENCHMARK_LINUX_CONFIG,
         "AP_BENCHMARK_DISK_PAYLOAD": wire_cpu_ap_capture_commands.AP_BENCHMARK_DISK_PAYLOAD,
         "AP_BENCHMARK_LINUX_BOOT_EVIDENCE": wire_cpu_ap_capture_commands.AP_BENCHMARK_LINUX_BOOT_EVIDENCE,
+        "AP_BENCHMARK_ACCEPTED_EVIDENCE": wire_cpu_ap_capture_commands.AP_BENCHMARK_ACCEPTED_EVIDENCE,
         "GENERATED_SIMULATOR": wire_cpu_ap_capture_commands.GENERATED_SIMULATOR,
         "SMOKE_RUNNER": wire_cpu_ap_capture_commands.SMOKE_RUNNER,
         "AP_BENCHMARK_TOOLS": wire_cpu_ap_capture_commands.AP_BENCHMARK_TOOLS,
@@ -799,6 +810,7 @@ def test_ap_benchmark_wiring_requires_accepted_linux_userspace_transcript() -> N
             linux_config = tmp_path / "linux_config"
             disk_payload = tmp_path / "eliza-e1-ap-benchmarks-bin"
             linux_boot = tmp_path / "eliza_e1_linux_boot.log"
+            accepted_bench = tmp_path / "eliza_e1_ap_benchmarks.log"
             simulator = tmp_path / "simulator-chipyard.harness-ElizaRocketConfig"
             runner = tmp_path / "run_chipyard_eliza_linux_smoke.sh"
 
@@ -829,6 +841,7 @@ def test_ap_benchmark_wiring_requires_accepted_linux_userspace_transcript() -> N
             wire_cpu_ap_capture_commands.AP_BENCHMARK_LINUX_CONFIG = linux_config
             wire_cpu_ap_capture_commands.AP_BENCHMARK_DISK_PAYLOAD = disk_payload
             wire_cpu_ap_capture_commands.AP_BENCHMARK_LINUX_BOOT_EVIDENCE = linux_boot
+            wire_cpu_ap_capture_commands.AP_BENCHMARK_ACCEPTED_EVIDENCE = accepted_bench
             wire_cpu_ap_capture_commands.GENERATED_SIMULATOR = simulator
             wire_cpu_ap_capture_commands.SMOKE_RUNNER = runner
             wire_cpu_ap_capture_commands.AP_BENCHMARK_TOOLS = ()
@@ -1534,6 +1547,7 @@ def test_payload_path_uses_cpu_ap_manifest_transcripts_only() -> None:
     if result.returncode not in (0, 2):
         raise AssertionError(result.stdout + result.stderr)
     report = json.loads((ROOT / report_rel).read_text(encoding="utf-8"))
+    assert_contains(report["generated_utc"], "+00:00")
     for flag in (
         "phone_claim_allowed",
         "release_claim_allowed",

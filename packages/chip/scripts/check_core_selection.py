@@ -53,6 +53,11 @@ REQUIRED_FIELDS = (
 TARGET_TOPOLOGY = "1_ultra_3_premium_4_pro"
 SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 CLAIM_BOUNDARY = "core_selection_inventory_only_not_rv64_linux_or_aosp_boot_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_class_claim_allowed": False,
+    "rv64_linux_boot_claim_allowed": False,
+    "aosp_boot_claim_allowed": False,
+}
 
 
 def utc_now() -> str:
@@ -164,6 +169,7 @@ def write_evidence(grouped: dict[str, list[tuple[str, dict, bool]]], errors: lis
             for role, items in grouped.items()
         },
         "errors": errors,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "verdict": "blocked_big_core"
         if any(
             role == "big" and not any(has for _, _, has in items) for role, items in grouped.items()
@@ -212,7 +218,9 @@ def build_report(
             "manifest_errors": len(errors),
             "big_core_has_real_pin": big_has_pin,
             "require_big_core_pin": require_big_core_pin,
+            "false_claim_flags": FALSE_CLAIM_FLAGS,
         },
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "evidence": {
             "manifest_dir": str(MANIFEST_DIR.relative_to(ROOT)),
             "evidence_path": str(EVIDENCE_PATH.relative_to(ROOT)),

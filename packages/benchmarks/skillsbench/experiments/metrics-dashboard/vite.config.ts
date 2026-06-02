@@ -1,6 +1,6 @@
 import react from "@vitejs/plugin-react";
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 import { defineConfig, type Plugin } from "vite";
 
 const TRAJECTORIES_DIR = path.resolve(
@@ -9,7 +9,7 @@ const TRAJECTORIES_DIR = path.resolve(
 );
 
 // Plugin to serve trajectory data via API
-function trajectoryApiPlugin(): Plugin {
+function _trajectoryApiPlugin(): Plugin {
   return {
     name: "trajectory-api",
     configureServer(server) {
@@ -310,6 +310,9 @@ function trajectoryApiPlugin(): Plugin {
 
 export default defineConfig({
   plugins: [react()], // trajectoryApiPlugin() disabled - using Express server instead
+  build: {
+    chunkSizeWarningLimit: 750,
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

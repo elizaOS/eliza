@@ -13,7 +13,12 @@ export default scenario({
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },
   rooms: [
-    { id: "main", source: "dashboard", channelType: "DM", title: "Travel readiness" },
+    {
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Travel readiness",
+    },
   ],
   turns: [
     {
@@ -22,7 +27,13 @@ export default scenario({
       room: "main",
       text: "Run travel readiness for next week's NYC trip: flights, hotel, calendar buffers, ground transport, ID/docs, receipts, and expense capture.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["BOOK_TRAVEL", "CALENDAR", "OWNER_DOCUMENTS", "PAYMENTS", "LIFE"],
+        acceptedActions: [
+          "BOOK_TRAVEL",
+          "CALENDAR",
+          "OWNER_DOCUMENTS",
+          "PAYMENTS",
+          "LIFE",
+        ],
         description: "travel readiness review",
         includesAny: ["NYC", "flight", "hotel", "buffer", "receipt", "expense"],
       }),
@@ -35,12 +46,27 @@ export default scenario({
     },
   ],
   finalChecks: [
-    { type: "selectedAction", actionName: ["BOOK_TRAVEL", "CALENDAR", "OWNER_DOCUMENTS", "PAYMENTS", "LIFE"] },
+    {
+      type: "selectedAction",
+      actionName: [
+        "BOOK_TRAVEL",
+        "CALENDAR",
+        "OWNER_DOCUMENTS",
+        "PAYMENTS",
+        "LIFE",
+      ],
+    },
     {
       type: "custom",
       name: "travel-readiness-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["BOOK_TRAVEL", "CALENDAR", "OWNER_DOCUMENTS", "PAYMENTS", "LIFE"],
+        acceptedActions: [
+          "BOOK_TRAVEL",
+          "CALENDAR",
+          "OWNER_DOCUMENTS",
+          "PAYMENTS",
+          "LIFE",
+        ],
         description: "travel readiness review",
         includesAny: ["NYC", "flight", "hotel", "buffer", "receipt", "expense"],
       }),

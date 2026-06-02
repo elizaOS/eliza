@@ -56,6 +56,25 @@ const isReactVendor = (id: string): boolean =>
 const isElizaRuntimeModule = (id: string): boolean =>
   id.includes("/packages/core/") || id.includes("/packages/plugin-");
 
+function isKnownToleratedBuildWarning(message: unknown): boolean {
+  const text =
+    typeof message === "string"
+      ? message
+      : [
+          (message as { code?: unknown })?.code,
+          (message as { message?: unknown })?.message,
+          (message as { id?: unknown })?.id,
+        ]
+          .filter((value): value is string => typeof value === "string")
+          .join("\n");
+
+  return (
+    text.includes("INEFFECTIVE_DYNAMIC_IMPORT") &&
+    (text.includes("/bs58@") || text.includes("/tweetnacl@")) &&
+    text.includes("plugins/plugin-wallet/dist/index.mjs")
+  );
+}
+
 export default defineConfig({
   plugins: [react()],
   define: {
@@ -78,6 +97,18 @@ export default defineConfig({
   build: {
     chunkSizeWarningLimit: 5500,
     rolldownOptions: {
+      onLog(level, log, defaultHandler) {
+        if (level === "warn" && isKnownToleratedBuildWarning(log)) {
+          return;
+        }
+        defaultHandler(level, log);
+      },
+      onwarn(warning, warn) {
+        if (isKnownToleratedBuildWarning(warning)) {
+          return;
+        }
+        warn(warning);
+      },
       external: [
         "technicalindicators",
         "@uniswap/v3-sdk",

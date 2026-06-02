@@ -19,6 +19,10 @@
   "evidence_class_rule": "All numbers tagged `champsim_dpc3_traces_only` \u2014 do NOT promote to phone-class without silicon or full-system-simulator evidence.",
   "generated_utc": "2026-05-24T02:03:00Z",
   "phone_claim_allowed": false,
+  "false_claim_flags": {
+    "phone_claim_allowed": false,
+    "release_claim_allowed": false
+  },
   "ported_modules": [
     {
       "algorithm_summary": "Per-IP delta history (16 deltas/IP, 4096-entry IP table). Vote for most-recurring delta; issue when vote count >= confidence threshold (8/16). Degree scales with confidence; burst mode (7 extra strides) when saturated. Same-page only.",

@@ -1,4 +1,5 @@
 import {
+  createOwnerScreenTimeAction,
   createScreenTimeActionRunner,
   SCREEN_TIME_PARAMETERS,
   SCREEN_TIME_SIMILES,
@@ -20,7 +21,11 @@ import {
 import { isDarwin } from "../platform/host.js";
 import { resolveActionArgs } from "./lib/resolve-action-args.js";
 
-export { SCREEN_TIME_PARAMETERS, SCREEN_TIME_SIMILES };
+export {
+  createOwnerScreenTimeAction,
+  SCREEN_TIME_PARAMETERS,
+  SCREEN_TIME_SIMILES,
+};
 
 export const runScreenTimeHandler = createScreenTimeActionRunner({
   hasAccess: hasLifeOpsAccess,

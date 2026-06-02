@@ -31,12 +31,13 @@
     "dist"
   ],
   "scripts": {
-    "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
+    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-location -- bun run build:unlocked",
     "build:docs": "bun run clean && bun run docgen && tsc && bun --bun rollup -c rollup.config.mjs",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
     "test": "vitest run",
-    "docgen": "docgen --api LocationPlugin --output-readme README.md --output-json dist/docs.json"
+    "docgen": "docgen --api LocationPlugin --output-readme README.md --output-json dist/docs.json",
+    "build:unlocked": "bun run clean && tsc && bunx rollup -c rollup.config.mjs"
   },
   "author": "elizaOS",
   "license": "MIT",

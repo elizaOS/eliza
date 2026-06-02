@@ -5,8 +5,8 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
-  type State,
   requireConfirmation,
+  type State,
 } from "@elizaos/core";
 import {
   injectCredentialToClipboard,
@@ -14,7 +14,7 @@ import {
   type PasswordManagerBridgeConfig,
   type PasswordManagerItem,
   searchPasswordItems,
-} from "../lifeops/password-manager-bridge.js";
+} from "@elizaos/plugin-browser/password-manager-bridge";
 
 /**
  * Password manager handler.

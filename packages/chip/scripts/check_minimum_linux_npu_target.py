@@ -1003,7 +1003,8 @@ def remaining_blocker_records(blockers: list[dict[str, Any]]) -> list[dict[str, 
         if gate.get("blocker"):
             record["blocker"] = gate["blocker"]
         if name == "minimum_linux_kernel_target":
-            report = gate.get("report") if isinstance(gate.get("report"), dict) else {}
+            _raw_report = gate.get("report")
+            report: dict[str, Any] = _raw_report if isinstance(_raw_report, dict) else {}
             record["upstream_blockers"] = report.get("blockers", [])
             record["report"] = "build/reports/minimum-linux-kernel-target.json"
         elif name == "cpu_ap_transcript_bundle":

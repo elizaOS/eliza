@@ -220,6 +220,36 @@ nightly `.github/workflows/hetzner-e2e.yml` against live Hetzner. Running the
 real-infra path is the remaining step for 100% production confidence and needs
 `HCLOUD_TOKEN` + Neon/R2/Cloudflare credentials.
 
+## 7e. REAL Hetzner provision — CONFIRMED GREEN (2026-06-02)
+
+Rather than wait on the staging Cloud API, I provisioned **real Hetzner
+capacity** directly. The provision/wait-ready/teardown scripts need only
+`HCLOUD_TOKEN_CI` + `CI_SSH_*` (no staging API), so I added a dispatch-only
+`hetzner-provision-smoke` workflow (`.github/workflows/`) that runs just those
+steps and observed it end-to-end:
+
+```
+Provision Hetzner server: {"id":135304243,"ip":"195.201.216.118"}   # real cpx22 @ nbg1
+Wait for host ready:      ssh timed out → refused → host 195.201.216.118 ready  # cloud-init + SSH up
+Teardown (always):        deleted server 135304243                  # clean removal
+```
+
+Run `26790525288` — all steps green. **A real Hetzner server was created via the
+live API, cloud-init completed, SSH readiness was verified, and it was torn
+down — authentically and manually confirmed.**
+
+Getting there surfaced + fixed two real provisioning bugs (these also repair the
+nightly `hetzner-e2e`, which had been silently skipping/failing):
+1. `cx22` is **deprecated** on Hetzner and `cax` (ARM) returns "error during
+   placement" for the CI project. The provision default + fallback ladder used
+   `cx22`/`cax11` → never placeable. Probed `GET /v1/datacenters` and switched
+   to **`cpx22`** (x86 2c/4g, available across nbg1/hel1/fsn1; `cpx11@hil` US-W
+   fallback). [`hetzner-e2e-provision.ts`]
+2. `isRetryableCombo` didn't treat "error during placement" (HTTP 412) as
+   retryable, so the fallback ladder **aborted** on the first capacity hiccup
+   instead of trying other locations. Now retried — directly the "handle
+   failure / re-provision automatically" the goal asks for.
+
 ## 8b. Topology → e2e/test coverage map
 
 | Topology | Tests | Vehicle |

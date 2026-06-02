@@ -6,6 +6,7 @@
 
 import { Brain } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import type { SkillInfo } from "../../api";
 import { client } from "../../api";
 import { useApp } from "../../state";
@@ -49,6 +50,40 @@ export function EditSkillModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const editorControl = useAgentElement<HTMLTextAreaElement>({
+    id: "skill-edit-source",
+    role: "textarea",
+    label: `${skillName} SKILL.md source`,
+    group: "skill-edit",
+    description: "Edit the Markdown source for this skill",
+    getValue: () => content,
+    onFill: (next) => setContent(next),
+  });
+  const retryControl = useAgentElement<HTMLButtonElement>({
+    id: "skill-edit-retry",
+    role: "button",
+    label: "Retry loading skill source",
+    group: "skill-edit",
+    description: "Reload the skill source after a load error",
+    onActivate: () => void loadSource(),
+  });
+  const closeControl = useAgentElement<HTMLButtonElement>({
+    id: "skill-edit-close",
+    role: "button",
+    label: "Close skill editor",
+    group: "skill-edit",
+    description: "Close the skill editor, discarding unsaved changes",
+    onActivate: () => onClose(),
+  });
+  const saveControl = useAgentElement<HTMLButtonElement>({
+    id: "skill-edit-save",
+    role: "button",
+    label: `Save ${skillName}`,
+    group: "skill-edit",
+    description: "Save changes to the skill source",
+    onActivate: () => void handleSave(),
+  });
 
   const loadSource = useCallback(async () => {
     setLoading(true);
@@ -151,10 +186,12 @@ export function EditSkillModal({
             <div className="flex flex-col items-center justify-center h-full gap-3">
               <div className="text-sm font-medium text-danger">{error}</div>
               <Button
+                ref={retryControl.ref}
                 variant="outline"
                 size="sm"
                 className="text-xs"
                 onClick={() => loadSource()}
+                {...retryControl.agentProps}
               >
                 {t("common.retry")}
               </Button>
@@ -165,6 +202,7 @@ export function EditSkillModal({
               onChange={(e) => setContent(e.target.value)}
               onKeyDown={handleKeyDown}
               spellCheck={false}
+              {...editorControl.agentProps}
             />
           )}
         </div>
@@ -179,16 +217,19 @@ export function EditSkillModal({
           </div>
           <div className="flex items-center gap-2">
             <Button
+              ref={closeControl.ref}
               variant="outline"
               size="sm"
               className="text-xs"
               onClick={onClose}
+              {...closeControl.agentProps}
             >
               {hasChanges
                 ? t("skillsview.discard", { defaultValue: "Discard" })
                 : t("common.close")}
             </Button>
             <Button
+              ref={saveControl.ref}
               variant="default"
               size="sm"
               className={`text-xs font-medium ${
@@ -198,6 +239,7 @@ export function EditSkillModal({
               }`}
               onClick={() => handleSave()}
               disabled={saving || !hasChanges}
+              {...saveControl.agentProps}
             >
               {saving
                 ? t("common.saving")

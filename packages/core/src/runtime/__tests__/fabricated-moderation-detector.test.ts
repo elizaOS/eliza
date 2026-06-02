@@ -41,6 +41,7 @@ describe("looksLikeFabricatedModeration", () => {
 			"The auth system blocked the request because the token expired.",
 			"The content filter option is disabled in this environment.",
 			"The moderation system design doc explains the review queue.",
+			"Our moderation system processes about 1k posts per minute.",
 			"The firewall blocked the connection on port 8080.",
 			"It was flagged as harmful by Reddit's moderation queue.",
 			"The dataset contained hateful content in several rows.",

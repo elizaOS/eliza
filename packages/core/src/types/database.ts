@@ -917,6 +917,14 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		 * Order direction. Default: 'desc' (newest first, current hardcoded behavior).
 		 */
 		orderDirection?: "asc" | "desc";
+		/**
+		 * When `false`, the adapter may skip fetching the embedding vector for
+		 * each memory (list/browse callers that discard embeddings). Defaults to
+		 * `true` — embeddings included — to preserve existing behavior. Adapters
+		 * that don't support the optimization simply ignore it and return
+		 * embeddings as before.
+		 */
+		includeEmbedding?: boolean;
 	}): Promise<Memory[]>;
 
 	getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]>;

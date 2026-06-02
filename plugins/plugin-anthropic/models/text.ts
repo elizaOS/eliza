@@ -730,7 +730,7 @@ function mergeProviderModelName(
 }
 
 function resolveTextParams(
-  params: GenerateTextParams,
+  params: GenerateTextParamsWithProviderOptions,
   modelName: ModelName,
   cotBudget: number
 ): ResolvedTextParams {
@@ -824,7 +824,7 @@ async function generateTextWithModel(
     fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
   });
   const cotBudget = getCoTBudget(runtime, modelSize);
-  const resolved = resolveTextParams(params, modelName, cotBudget);
+  const resolved = resolveTextParams(paramsWithAttachments, modelName, cotBudget);
 
   if (getAuthMode(runtime) === "cli") {
     if (shouldReturnNativeResult) {

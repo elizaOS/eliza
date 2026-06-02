@@ -13,12 +13,25 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RESULT = ROOT / "verify/cocotb/results.xml"
 REPORT_DIR = ROOT / "build/reports/cocotb"
 MANIFEST = REPORT_DIR / "manifest.json"
+CLAIM_BOUNDARY = (
+    "pipeline_cocotb_manifest_only_directed_contract_smoke_not_functional_coverage_"
+    "not_phone_class_not_os_boot_not_silicon_or_release_evidence"
+)
 PIPELINE_TARGETS = {
     "e1_chip_top_test_e1_chip",
     "e1_linux_soc_contract_test_cpu_mem_intc_contract",
     "e1_npu_test_e1_npu",
     "e1_soc_integrated_tb_test_cross_domain_interfaces",
     "e1_tiny_cpu_contract_tb_test_tiny_cpu_execution",
+}
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "full_coverage_claim_allowed": False,
 }
 
 
@@ -103,6 +116,7 @@ def load_manifest() -> dict:
     if MANIFEST.is_file():
         data = json.loads(MANIFEST.read_text())
         if isinstance(data, dict):
+            data.setdefault("claim_boundary", CLAIM_BOUNDARY)
             targets = data.get("targets")
             if isinstance(targets, dict):
                 data["targets"] = {
@@ -111,6 +125,7 @@ def load_manifest() -> dict:
             return data
     return {
         "schema": "e1-chip-cocotb-evidence-v1",
+        "claim_boundary": CLAIM_BOUNDARY,
         "generated_at_utc": None,
         "targets": {},
     }
@@ -165,6 +180,7 @@ def main() -> int:
         archived.write_bytes(path.read_bytes())
 
         manifest = rebuild_manifest_from_archives(load_manifest())
+        manifest["claim_boundary"] = CLAIM_BOUNDARY
         manifest["generated_at_utc"] = datetime.now(UTC).isoformat()
         manifest.setdefault("targets", {})[target] = {
             "top": args.top,
@@ -179,6 +195,7 @@ def main() -> int:
                 "release_claim": "blocked_without_functional_coverage",
                 "summary": contract_boundary(args.module, args.top),
             },
+            "false_claim_flags": FALSE_CLAIM_FLAGS,
         }
         MANIFEST.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
 

@@ -84,7 +84,20 @@ const BLOCKED_INTERPRETER_FLAGS = new Set([
   "--diagnostic-dir",
 ]);
 
-const BLOCKED_PACKAGE_RUNNER_FLAGS = new Set(["-c", "--call", "-e", "--eval"]);
+const BLOCKED_PACKAGE_RUNNER_FLAGS = new Set([
+  "-c",
+  "--call",
+  "-e",
+  "--eval",
+  "--registry",
+  "--userconfig",
+  "--globalconfig",
+  "--index-url",
+  "--extra-index-url",
+  "--default-index",
+  "--find-links",
+  "--config-file",
+]);
 const BLOCKED_CONTAINER_FLAGS = new Set([
   "--privileged",
   "-v",
@@ -95,6 +108,7 @@ const BLOCKED_CONTAINER_FLAGS = new Set([
   "--security-opt",
   "--pid",
   "--network",
+  "--net",
   "--device",
   "--device-cgroup-rule",
   "--ipc",
@@ -108,6 +122,11 @@ const BLOCKED_DENO_SUBCOMMANDS = new Set(["eval"]);
 // load unstable APIs, or disable its security prompts.
 const BLOCKED_DENO_FLAGS = new Set([
   "-A",
+  "-R",
+  "-W",
+  "-N",
+  "-E",
+  "-S",
   "--allow-all",
   "--allow-run",
   "--allow-ffi",
@@ -117,6 +136,7 @@ const BLOCKED_DENO_FLAGS = new Set([
   "--allow-env",
   "--allow-sys",
   "--allow-import",
+  "--allow-scripts",
   "--no-prompt",
 ]);
 const BLOCKED_DENO_FLAG_PREFIXES = ["--unstable"] as const;

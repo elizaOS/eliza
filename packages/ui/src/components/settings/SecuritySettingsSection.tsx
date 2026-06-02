@@ -16,6 +16,7 @@ import {
   useId,
   useState,
 } from "react";
+import { useAgentElement } from "../../agent-surface";
 import {
   type AuthAccessInfo,
   type AuthIdentity,
@@ -259,6 +260,15 @@ function AccessModeSection({
 }) {
   const bootConfig = useBootConfig();
   const { t } = useTranslation();
+  const { ref: accessRefreshRef, agentProps: accessRefreshAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "security-access-refresh",
+      role: "button",
+      label: "Refresh access status",
+      group: "security-access",
+      description: "Re-check how this browser is connected",
+      onActivate: () => void onRefresh(),
+    });
 
   let title = t("security.access.checking.title", {
     defaultValue: "Checking access",
@@ -509,6 +519,8 @@ function AccessModeSection({
         )}
       </div>
       <button
+        ref={accessRefreshRef}
+        {...accessRefreshAgentProps}
         type="button"
         onClick={() => void onRefresh()}
         className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
@@ -529,6 +541,21 @@ function SessionsSection() {
   const { t } = useTranslation();
   const [state, setState] = useState<SessionsState>({ phase: "loading" });
   const [revokingIds, setRevokingIds] = useState<Set<string>>(new Set());
+  const { ref: sessionsRefreshRef, agentProps: sessionsRefreshAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "security-sessions-refresh",
+      role: "button",
+      label: "Refresh active sessions",
+      group: "security-sessions",
+    });
+  const { ref: revokeOthersRef, agentProps: revokeOthersAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "security-sessions-sign-out-everywhere",
+      role: "button",
+      label: "Sign out everywhere else",
+      group: "security-sessions",
+      description: "Revoke every session except the current one",
+    });
 
   const load = useCallback(async () => {
     setState({ phase: "loading" });
@@ -620,6 +647,8 @@ function SessionsSection() {
 
           <div className="flex items-center justify-between pt-1">
             <button
+              ref={sessionsRefreshRef}
+              {...sessionsRefreshAgentProps}
               type="button"
               onClick={load}
               className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
@@ -630,6 +659,8 @@ function SessionsSection() {
 
             {state.sessions.filter((s) => !s.current).length > 1 && (
               <Button
+                ref={revokeOthersRef}
+                {...revokeOthersAgentProps}
                 variant="outline"
                 size="sm"
                 onClick={handleRevokeOthers}
@@ -657,6 +688,14 @@ function SessionRow({
   onRevoke: (id: string) => void;
 }) {
   const { t } = useTranslation();
+  const { ref: revokeRef, agentProps: revokeAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `security-session-revoke-${session.id}`,
+      role: "button",
+      label: `Revoke ${session.kind} session`,
+      group: "security-sessions",
+      onActivate: () => onRevoke(session.id),
+    });
   return (
     <div className="flex items-start gap-3 py-3">
       <DeviceIcon userAgent={session.userAgent} />
@@ -696,6 +735,8 @@ function SessionRow({
 
       {!session.current && (
         <Button
+          ref={revokeRef}
+          {...revokeAgentProps}
           variant="ghost"
           size="sm"
           disabled={revoking}
@@ -740,6 +781,50 @@ function RemotePasswordSection({
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [state, setState] = useState<PasswordState>({ phase: "idle" });
+
+  const { ref: displayNameRef, agentProps: displayNameAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "security-password-display-name",
+      role: "text-input",
+      label: "Owner display name",
+      group: "security-password",
+      getValue: () => displayName,
+      onFill: (v) => setDisplayName(v),
+    });
+  const { ref: currentPasswordRef, agentProps: currentPasswordAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "security-password-current",
+      role: "text-input",
+      label: "Current password",
+      group: "security-password",
+      getValue: () => currentPassword,
+      onFill: (v) => setCurrentPassword(v),
+    });
+  const { ref: newPasswordRef, agentProps: newPasswordAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "security-password-new",
+      role: "text-input",
+      label: "New remote password",
+      group: "security-password",
+      getValue: () => newPassword,
+      onFill: (v) => setNewPassword(v),
+    });
+  const { ref: confirmPasswordRef, agentProps: confirmPasswordAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "security-password-confirm",
+      role: "text-input",
+      label: "Confirm new remote password",
+      group: "security-password",
+      getValue: () => confirmPassword,
+      onFill: (v) => setConfirmPassword(v),
+    });
+  const { ref: passwordSubmitRef, agentProps: passwordSubmitAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "security-password-submit",
+      role: "button",
+      label: "Set or change remote password",
+      group: "security-password",
+    });
 
   const loaded = accessState.phase === "loaded" ? accessState : null;
   const setupMode =
@@ -892,6 +977,8 @@ function RemotePasswordSection({
               })}
             </Label>
             <Input
+              ref={displayNameRef}
+              {...displayNameAgentProps}
               id={displayNameId}
               type="text"
               autoComplete="username"
@@ -916,6 +1003,8 @@ function RemotePasswordSection({
               })}
             </Label>
             <Input
+              ref={currentPasswordRef}
+              {...currentPasswordAgentProps}
               id={currentPasswordId}
               type="password"
               autoComplete="current-password"
@@ -939,6 +1028,8 @@ function RemotePasswordSection({
             })}
           </Label>
           <Input
+            ref={newPasswordRef}
+            {...newPasswordAgentProps}
             id={newPasswordId}
             type="password"
             autoComplete="new-password"
@@ -964,6 +1055,8 @@ function RemotePasswordSection({
             })}
           </Label>
           <Input
+            ref={confirmPasswordRef}
+            {...confirmPasswordAgentProps}
             id={confirmPasswordId}
             type="password"
             autoComplete="new-password"
@@ -998,7 +1091,13 @@ function RemotePasswordSection({
         )}
 
         <div className="flex justify-end pt-1">
-          <Button type="submit" disabled={!canSubmit} size="sm">
+          <Button
+            ref={passwordSubmitRef}
+            {...passwordSubmitAgentProps}
+            type="submit"
+            disabled={!canSubmit}
+            size="sm"
+          >
             {isSubmitting
               ? t("security.password.saving", { defaultValue: "Saving..." })
               : buttonLabel}

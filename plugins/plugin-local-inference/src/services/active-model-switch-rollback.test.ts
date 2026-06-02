@@ -103,6 +103,44 @@ describe("ActiveModelCoordinator switchTo rollback (#13)", () => {
 		expect(loader.currentModelPath()).toBe(modelA.path);
 	});
 
+	it("restores the same model when a reload with new overrides fails", async () => {
+		const loader = new FakeLoader();
+		const runtime = makeRuntime(loader);
+		const coordinator = new ActiveModelCoordinator();
+		const modelA = makeInstalledModel("model-a");
+
+		await coordinator.switchTo(
+			runtime,
+			modelA,
+			{ contextSize: 4096 },
+			{
+				hardware: PROBE,
+			},
+		);
+		expect(loader.currentModelPath()).toBe(modelA.path);
+
+		let loadCount = 0;
+		const originalLoad = loader.loadModel.bind(loader);
+		vi.spyOn(loader, "loadModel").mockImplementation(async (args) => {
+			loadCount += 1;
+			if (loadCount === 1) {
+				throw new Error("simulated same-model reload failure");
+			}
+			await originalLoad(args);
+		});
+
+		const state = await coordinator.switchTo(
+			runtime,
+			modelA,
+			{ contextSize: 8192 },
+			{ hardware: PROBE },
+		);
+
+		expect(state).toMatchObject({ modelId: "model-a", status: "ready" });
+		expect(loader.currentModelPath()).toBe(modelA.path);
+		expect(loader.loadModel).toHaveBeenCalledTimes(2);
+	});
+
 	it("reports no model loaded (modelId null, error) when no prior model existed", async () => {
 		const loader = new FakeLoader();
 		const runtime = makeRuntime(loader);

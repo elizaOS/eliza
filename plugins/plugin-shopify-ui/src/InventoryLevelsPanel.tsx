@@ -1,7 +1,50 @@
 import { Button, Skeleton } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Minus, Package, Plus } from "lucide-react";
 import { useState } from "react";
 import type { ShopifyInventoryItem } from "./useShopifyDashboard";
+
+function InventoryAdjustButton({
+  itemKey,
+  itemLabel,
+  delta,
+  disabled,
+  onActivate,
+}: {
+  itemKey: string;
+  itemLabel: string;
+  delta: 1 | -1;
+  disabled: boolean;
+  onActivate: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `inventory-adjust-${delta > 0 ? "increase" : "decrease"}-${itemKey}`,
+    role: "button",
+    label: `${delta > 0 ? "Increase" : "Decrease"} inventory for ${itemLabel}`,
+    group: "inventory",
+    description: `Adjust available quantity by ${delta} for ${itemLabel}`,
+    onActivate,
+  });
+  return (
+    <Button
+      ref={ref}
+      type="button"
+      variant="outline"
+      size="icon"
+      className="h-7 w-7"
+      disabled={disabled}
+      onClick={onActivate}
+      aria-label={`${delta > 0 ? "Increase" : "Decrease"} inventory by 1`}
+      {...agentProps}
+    >
+      {delta > 0 ? (
+        <Plus className="h-3 w-3" />
+      ) : (
+        <Minus className="h-3 w-3" />
+      )}
+    </Button>
+  );
+}
 
 interface InventoryRowProps {
   item: ShopifyInventoryItem;
@@ -16,6 +59,11 @@ function InventoryRow({ item, onAdjust }: InventoryRowProps) {
   const [adjusting, setAdjusting] = useState(false);
   const [adjustError, setAdjustError] = useState<string | null>(null);
   const [localAvailable, setLocalAvailable] = useState(item.available);
+
+  const itemKey = `${item.id}:${item.locationName}`;
+  const itemLabel = item.variantTitle
+    ? `${item.productTitle} — ${item.variantTitle}`
+    : item.productTitle;
 
   async function handleAdjust(delta: number) {
     setAdjusting(true);
@@ -67,28 +115,20 @@ function InventoryRow({ item, onAdjust }: InventoryRowProps) {
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="h-7 w-7"
+        <InventoryAdjustButton
+          itemKey={itemKey}
+          itemLabel={itemLabel}
+          delta={-1}
           disabled={adjusting}
-          onClick={() => void handleAdjust(-1)}
-          aria-label="Decrease inventory by 1"
-        >
-          <Minus className="h-3 w-3" />
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="h-7 w-7"
+          onActivate={() => void handleAdjust(-1)}
+        />
+        <InventoryAdjustButton
+          itemKey={itemKey}
+          itemLabel={itemLabel}
+          delta={1}
           disabled={adjusting}
-          onClick={() => void handleAdjust(1)}
-          aria-label="Increase inventory by 1"
-        >
-          <Plus className="h-3 w-3" />
-        </Button>
+          onActivate={() => void handleAdjust(1)}
+        />
       </div>
     </div>
   );
@@ -108,6 +148,17 @@ export function InventoryLevelsPanel({
   error,
 }: InventoryLevelsPanelProps) {
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
+
+  const locationSelect = useAgentElement<HTMLSelectElement>({
+    id: "inventory-location-filter",
+    role: "select",
+    label: "Inventory location filter",
+    group: "inventory",
+    description: "Filter inventory levels by store location",
+    options: ["all", ...locations],
+    getValue: () => selectedLocation,
+    onFill: (value) => setSelectedLocation(value),
+  });
 
   const displayedItems =
     selectedLocation === "all"
@@ -141,10 +192,12 @@ export function InventoryLevelsPanel({
             Location
           </label>
           <select
+            ref={locationSelect.ref}
             id="inventory-location"
             value={selectedLocation}
             onChange={(e) => setSelectedLocation(e.target.value)}
             className="flex h-10 w-full max-w-xs rounded-md border border-input bg-bg px-3 py-2 text-sm ring-offset-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            {...locationSelect.agentProps}
           >
             <option value="all">All locations</option>
             {locations.map((loc) => (

@@ -37,16 +37,34 @@ riscv64 Bun — i.e. it is **gated on the Bun-riscv64 build**:
 to consume that artifact for `linux-riscv64` instead of fetching a (nonexistent)
 upstream Bun riscv64 release.
 
-## Build findings — verified end-to-end through `buildNative` (2026-05-31)
+## Build findings — COMPILED + LINKED end-to-end (2026-06-01)
 
-The riscv64 cross-build was actually driven (fork branch `shaw/riscv64-gui-headless`
-+ the green Rust-core riscv64 Bun at `../../../scripts/bun-riscv64/dist/bun-linux-riscv64-musl.zip`).
-**Proven working:** the riscv64 GTK/WebKitGTK cross-toolchain (a standalone
-`#include <gtk/gtk.h>` + `<webkit2/webkit2.h>` + `gtk_init` test compiles to a
-`UCB RISC-V` ELF via `/opt/cross/bin/riscv64-linux-musl-clang++`), and electrobun's
-`build.ts` harness runs end-to-end through deps → vendor → zig-0.13 download →
-`BunInstall` → into `buildNative`, where pkg-config (pointed at the sysroot) feeds
-the riscv64 GTK includes correctly.
+The riscv64 cross-build was driven all the way to a populated `dist-linux-riscv64`
+(fork branch `shaw/riscv64-gui-headless` @ `dadfd0ee` + the riscv64 Bun at
+`../../../scripts/bun-riscv64/dist/bun-linux-riscv64-musl.zip`, in the
+`eliza/bun-riscv64-builder` image with the Alpine riscv64 GTK/WebKitGTK sysroot).
+
+**RESULT: the linux `nativeWrapper.cpp` COMPILES and LINKS for riscv64.** The WGPU
+guard works — no `dawn/webgpu.h` include error, no WGPU type errors. Build output:
+```
+Compiling with flags: pkg-config flags present
+Building GTK-only version (libNativeWrapper.so)
+CEF libraries not found - only GTK version built
+Native wrapper built successfully
+```
+Artifacts (UCB RISC-V ELF): `nativeWrapper.o` (relocatable),
+`dist-linux-riscv64/libNativeWrapper.so` (2.86 MB shared object), `launcher`,
+`extractor`, bundled `bun`, and the `electrobun` CLI shim + `electrobun.js`.
+`nm -D libNativeWrapper.so` shows **all 22 WGPU C-ABI `#else` stub symbols** as
+defined (`T`) and **zero undefined `wgpu`/`dawn` symbols** (Dawn fully removed by
+the guard); the `asar_*` symbols are `U`, resolved at link from the cross-built
+`libasar.so`. The full `build.ts --release` then runs to
+`Successfully created and populated dist-linux-riscv64`.
+
+**Proven working:** the riscv64 GTK/WebKitGTK cross-toolchain, electrobun's
+`build.ts` harness end-to-end (deps → vendor → zig-0.13 → `BunInstall` →
+`buildNative` → templates → preload → launcher/cli/main → `copyToDist`), with
+pkg-config pointed at the sysroot feeding the riscv64 GTK includes.
 
 ### Alpine riscv64 GTK/WebKitGTK sysroot recipe (≈884 MB)
 ```
@@ -57,9 +75,19 @@ apk add --root <sysroot> --arch riscv64 --no-scripts --allow-untrusted --initdb 
 ```
 Then add a STUB `<sysroot>/usr/lib/pkgconfig/shared-mime-info.pc` (Name/Description/
 Version only): Alpine ships no `shared-mime-info.pc` but `gdk-pixbuf-2.0.pc`
-`Requires` it, so without the stub `pkg-config --cflags gtk+-3.0` fails and the
-GTK includes are never passed. `g++`/`libstdc++-dev` are required for the C++
+`Requires.private` it, so without the stub `pkg-config --cflags gtk+-3.0` fails and
+the GTK includes are never passed. `g++`/`libstdc++-dev` are required for the C++
 stdlib headers (`glib-typeof.h` includes `<type_traits>`).
+
+Alpine has **no `ayatana-appindicator3-0.1`** package, so its `.pc` is absent.
+That is expected and handled: `build.ts` falls back to `pkg-config webkit2gtk-4.1
+gtk+-3.0` (no appindicator) and compiles the wrapper with `-DNO_APPINDICATOR`.
+
+If the builder image lacks `apk`, populate the sysroot with the static
+`apk-tools-static` binary (`apk.static add --root <sysroot> --arch riscv64
+--initdb …`); fetch it from `…/v3.21/main/<host-arch>/apk-tools-static-*.apk`.
+The image also needs `rsync` for `copyToDist`'s `createPlatformDistFolder`
+(`apt-get install -y rsync`).
 
 ### Build invocation (in the bun-riscv64 builder image; sysroot at /sysroot)
 ```
@@ -70,17 +98,34 @@ PKG_CONFIG_SYSROOT_DIR=/sysroot PKG_CONFIG_LIBDIR=/sysroot/usr/lib/pkgconfig \
 bun build.ts --release
 ```
 
-### Fork build.ts gaps found (need fixing on the fork branch)
-1. **Vendored tooling has no riscv64 release** — `vendorBsdiff`/`vendorZstd`/
-   `vendorAsar` 404 on `zig-*-linux-riscv64.tar.gz`. They are installer/update
-   tooling, not runtime; make them non-fatal on riscv64 (skip with a warning) or
-   cross-build them.
-2. **`BunInstall()` runs the TARGET bun on the host** — it calls
-   `${PATH.bun.RUNTIME} install`, but with `ELECTROBUN_BUN_PATH` set, RUNTIME is
-   the riscv64 bun, which can't execute on the x86_64 build host
-   (`qemu-riscv64: ... ld-musl-riscv64.so.1 not found`). Build-time `bun install`
-   must use the HOST bun; only the BUNDLED bun should be riscv64.
-3. **`nativeWrapper.cpp` WGPU/Dawn guard — RESOLVED (commit `720e9e88` on
+### Fork build.ts gaps — ALL RESOLVED (commit `dadfd0ee` on `shaw/riscv64-gui-headless`)
+1. **Vendored tooling has no riscv64 release — RESOLVED.** `vendorBsdiff`/
+   `vendorZstd` now skip on riscv64 (installer/update delta tooling, not runtime;
+   `copyToDist` skips copying them too). `vendorAsar` cannot skip — the native
+   wrapper LINKS `libasar.so` for the 4-function ASAR read ABI (`asar_open` /
+   `asar_close` / `asar_read_file` / `asar_free_buffer`) — so on riscv64 it
+   cross-builds a minimal but correct ASAR-format reader from embedded C++ with
+   `ELECTROBUN_CXX` (`buildRiscv64Asar`); the build-time CLI is skipped.
+2. **`BunInstall()` / `buildCli()` run the TARGET bun on the host — RESOLVED.**
+   Both now use the HOST bun (`process.execPath`) when cross-building, instead of
+   the riscv64 `PATH.bun.RUNTIME` (which can't exec on x86_64:
+   `qemu-riscv64: … ld-musl-riscv64.so.1 not found`). bun has no riscv64
+   `--compile` target, so on riscv64 the CLI is emitted as a JS bundle
+   (`electrobun.js`) executed by the bundled riscv64 bun via a small shell shim
+   named `electrobun`.
+3. **CEF headers missing — RESOLVED (surfaced once Dawn was guarded).** The linux
+   `nativeWrapper.cpp` references CEF types unconditionally (`CefRefPtr`,
+   `cef_command_line.h` via `shared/chromium_flags.h`, scheme/V8 handlers, …) and
+   is compiled against the CEF headers (the existing "CEF headers only (runtime
+   detection)" path). `vendorCEF` previously fully skipped riscv64, so the headers
+   were absent → `chromium_flags.h:19: 'include/cef_command_line.h' file not
+   found`. CEF ships no riscv64 binary, but its headers are arch-independent, so
+   `vendorCEFHeadersOnly` now vendors the linux64-minimal tarball's `include/` +
+   `libcef_dll/` only (no libs → `cefLibsExist=false` → buildNative builds the
+   GTK-only WebKitGTK `libNativeWrapper.so`). CEF's `include/base/cef_build.h`
+   `#error`s on unknown arches, so it is patched in place with a riscv64
+   `ARCH_CPU_*` branch (64-bit little-endian).
+4. **`nativeWrapper.cpp` WGPU/Dawn guard — RESOLVED (commit `720e9e88` on
    `shaw/riscv64-gui-headless`).** The linux `nativeWrapper.cpp` unconditionally
    `#include "dawn/webgpu.h"` and used ~360 WGPU refs, but `vendorWGPU` has no
    Dawn build for riscv64 (→ WebKitGTK/llvmpipe), so the riscv64 cross-build
@@ -102,8 +147,8 @@ bun build.ts --release
    `existsSync(wgpuIncludeDir)` (true on x64/arm64, false on riscv64), so x64/arm64
    keep the full WGPU path and only riscv64 gets stubs. mac/win nativeWrapper are
    untouched (separate WGPU handling). Preprocessor balance verified (10 `#if`/10
-   `#endif`); end-to-end riscv64 link verification is the remaining step (needs an
-   idle host for the cross-compile).
+   `#endif`). **End-to-end riscv64 compile+link CONFIRMED** (see build findings
+   above): all 22 `#else` stub symbols present, zero undefined `wgpu`/`dawn`.
 
 ### Wiring
 The fork branch is local-only in the `upstreams/electrobun` submodule; the only
@@ -114,11 +159,15 @@ build-from-local-branch only.
 
 ## Status / scope note
 
-- **Code complete on `shaw/riscv64-gui-headless`** (platform.ts/build.ts/
-  nativeWrapper arch hooks + the WGPU guard, commit `720e9e88`); cross-build
-  driven through `buildNative`. All known source blockers are resolved; the only
-  remaining step is to re-drive the riscv64 cross-compile/link end-to-end on an
-  idle host to confirm the guarded wrapper links clean.
+- **Build verified on `shaw/riscv64-gui-headless`** (platform.ts/build.ts/
+  nativeWrapper arch hooks + WGPU guard `720e9e88` + build.ts gap fixes
+  `dadfd0ee`). The riscv64 cross-build was driven all the way to a populated
+  `dist-linux-riscv64`: `nativeWrapper.cpp` **compiles and links** for riscv64
+  (the WGPU guard works — no Dawn include/type errors), and `build.ts --release`
+  runs end-to-end. All known source blockers are resolved. Remaining (packaging,
+  not source): no riscv64 `bun --compile` target (CLI ships as a JS bundle, not a
+  self-contained binary); the launcher/extractor are real riscv64 ELF executables
+  but were not runtime-tested on actual riscv64 hardware.
 - **Lower priority for the OS image:** the riscv64 elizaOS image does **not** use
   electrobun. `packages/os/linux/elizaos/.../start-kiosk` stages no Electrobun
   binary on riscv64 and falls back to **cage + Epiphany (WebKitGTK) + the Node

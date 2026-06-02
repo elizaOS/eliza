@@ -24,6 +24,13 @@ HANDOFF_SCHEMA = "eliza.ai_eda.openlane_replay_handoff.v1"
 CLAIM_BOUNDARY = "openlane_replay_execution_evidence_only_no_release_claim"
 
 
+def false_claim_flags(status: str) -> dict[str, bool]:
+    flags = {"release_use_allowed": False}
+    if status != "EXECUTED_REPLAY_EVIDENCE_READY":
+        flags["optimization_claim_allowed"] = False
+    return flags
+
+
 def rel(path: Path) -> str:
     try:
         return str(path.relative_to(ROOT))
@@ -279,6 +286,7 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,
         "optimization_claim_allowed": status == "EXECUTED_REPLAY_EVIDENCE_READY",
+        "false_claim_flags": false_claim_flags(status),
         "status": status,
         "artifacts": artifacts,
         "metric_summary": metrics if isinstance(metrics, dict) else {},

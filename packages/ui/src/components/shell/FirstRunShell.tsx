@@ -327,9 +327,9 @@ function useTypedPrompt(text: string): { rendered: string; complete: boolean } {
     setComplete(false);
 
     // Drive the reveal off elapsed wall-clock time rather than counting one
-    // character per timer tick. Under main-thread contention (the onboarding
-    // orb/cloud animations plus this hook re-rendering the whole shell on every
-    // character) the chained timers fire hundreds of ms apart instead of ~20ms,
+    // character per timer tick. Under main-thread contention (animation work
+    // plus this hook re-rendering the whole shell on every character) the
+    // chained timers fire hundreds of ms apart instead of ~20ms,
     // which previously stretched a ~0.6s animation to ~18s and left the heading
     // mid-word for seconds. Catching up to the time-derived index keeps the
     // total reveal bounded by REVEAL_DURATION_MS no matter how starved the

@@ -128,15 +128,42 @@ def test_next_command_plan_covers_blocked_aosp_evidence() -> None:
         raise AssertionError(aosp_batch)
     joined = "\n".join(aosp_batch.get("commands", []))
     for token in (
-        "sw/aosp-device/import-aosp-device.sh --check /path/to/aosp",
-        "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp vendorimage",
-        "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp cuttlefish-smoke",
+        "sw/aosp-device/import-aosp-device.sh --check $AOSP_DIR",
+        "sw/aosp-device/capture-aosp-evidence.sh $AOSP_DIR vendorimage",
+        "sw/aosp-device/capture-aosp-evidence.sh $AOSP_DIR cuttlefish-smoke",
         "AOSP_QEMU_SMOKE_COMMAND='/exact/qemu-system-riscv64 smoke command'",
         "AOSP_RENODE_SMOKE_COMMAND='/exact/renode smoke command'",
         "python3 scripts/check_software_bsp.py aosp --require-evidence",
     ):
         if token not in joined:
             raise AssertionError(f"missing {token!r} in {joined}")
+    aosp_findings = [
+        finding
+        for finding in report.get("findings", [])
+        if finding.get("target") == "aosp"
+    ]
+    if not aosp_findings:
+        raise AssertionError("missing AOSP structured findings")
+    if not all(finding.get("next_command") for finding in aosp_findings):
+        raise AssertionError(f"AOSP findings must include row-level commands: {aosp_findings}")
+    first_commands = "\n".join(aosp_findings[0].get("next_commands", []))
+    if "sw/aosp-device/capture-aosp-evidence.sh $AOSP_DIR vendorimage" not in first_commands:
+        raise AssertionError(first_commands)
+    cuttlefish_finding = next(
+        (
+            finding
+            for finding in aosp_findings
+            if finding.get("evidence") == "docs/evidence/android/cuttlefish_riscv64_smoke.log"
+        ),
+        None,
+    )
+    if cuttlefish_finding is None:
+        raise AssertionError(aosp_findings)
+    if (
+        cuttlefish_finding.get("next_command")
+        != "sw/aosp-device/capture-aosp-evidence.sh $AOSP_DIR cuttlefish-smoke"
+    ):
+        raise AssertionError(cuttlefish_finding)
     print("PASS next-command plan covers blocked AOSP evidence")
 
 

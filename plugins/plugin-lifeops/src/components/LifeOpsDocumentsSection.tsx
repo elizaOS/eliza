@@ -7,6 +7,7 @@ import {
   Textarea,
   useApp,
 } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Bot,
   CalendarClock,
@@ -20,6 +21,222 @@ import {
   User,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+
+function DocumentEditButton({
+  doc,
+  onEdit,
+}: {
+  doc: DocumentRecord;
+  onEdit: (doc: DocumentRecord) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `documents-edit-${doc.id}`,
+    role: "button",
+    label: `Edit ${doc.filename}`,
+    group: "lifeops-documents",
+    description: `Edit the document ${doc.filename}`,
+  });
+  return (
+    <Button
+      ref={ref}
+      type="button"
+      size="sm"
+      variant="outline"
+      onClick={() => onEdit(doc)}
+      {...agentProps}
+    >
+      <Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+      Edit
+    </Button>
+  );
+}
+
+function DocumentDeleteButton({
+  doc,
+  deleting,
+  onDelete,
+}: {
+  doc: DocumentRecord;
+  deleting: boolean;
+  onDelete: (id: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `documents-delete-${doc.id}`,
+    role: "button",
+    label: `Delete ${doc.filename}`,
+    group: "lifeops-documents",
+    description: `Delete the document ${doc.filename}`,
+  });
+  return (
+    <Button
+      ref={ref}
+      type="button"
+      size="sm"
+      variant="outline"
+      onClick={() => onDelete(doc.id)}
+      disabled={deleting}
+      {...agentProps}
+    >
+      <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+      {deleting ? "Deleting..." : "Delete"}
+    </Button>
+  );
+}
+
+function DocumentComposer({
+  draftTitle,
+  draftContent,
+  saving,
+  onChangeTitle,
+  onChangeContent,
+  onCreate,
+}: {
+  draftTitle: string;
+  draftContent: string;
+  saving: boolean;
+  onChangeTitle: (value: string) => void;
+  onChangeContent: (value: string) => void;
+  onCreate: () => void;
+}) {
+  const title = useAgentElement<HTMLInputElement>({
+    id: "documents-draft-title",
+    role: "text-input",
+    label: "New document title",
+    group: "lifeops-documents",
+    description: "Optional title for the new owner-private note",
+    getValue: () => draftTitle,
+    onFill: onChangeTitle,
+  });
+  const content = useAgentElement<HTMLTextAreaElement>({
+    id: "documents-draft-content",
+    role: "textarea",
+    label: "New document content",
+    group: "lifeops-documents",
+    description: "Body of the new owner-private note",
+    getValue: () => draftContent,
+    onFill: onChangeContent,
+  });
+  const save = useAgentElement<HTMLButtonElement>({
+    id: "documents-save-new",
+    role: "button",
+    label: "Save document",
+    group: "lifeops-documents",
+    description: "Save the new owner-private note",
+    onActivate: onCreate,
+  });
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-border/35 bg-card/50 p-3">
+      <Input
+        ref={title.ref}
+        type="text"
+        placeholder="Title (optional)"
+        value={draftTitle}
+        onChange={(event) => onChangeTitle(event.target.value)}
+        disabled={saving}
+        className="h-9 text-sm"
+        {...title.agentProps}
+      />
+      <Textarea
+        ref={content.ref}
+        placeholder="What should the agent remember privately?"
+        value={draftContent}
+        onChange={(event) => onChangeContent(event.target.value)}
+        disabled={saving}
+        className="min-h-28 resize-y text-sm"
+        {...content.agentProps}
+      />
+      <div className="flex justify-end gap-2">
+        <Button
+          ref={save.ref}
+          type="button"
+          size="sm"
+          onClick={onCreate}
+          disabled={saving || draftContent.trim().length === 0}
+          {...save.agentProps}
+        >
+          <Save className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+          {saving ? "Saving..." : "Save"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function DocumentEditDraft({
+  editingDraft,
+  editingSaving,
+  onChangeDraft,
+  onCancel,
+  onSave,
+}: {
+  editingDraft: string;
+  editingSaving: boolean;
+  onChangeDraft: (value: string) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  const draft = useAgentElement<HTMLTextAreaElement>({
+    id: "documents-edit-content",
+    role: "textarea",
+    label: "Edit document content",
+    group: "lifeops-documents",
+    description: "Edited body of the selected document",
+    getValue: () => editingDraft,
+    onFill: onChangeDraft,
+  });
+  const cancel = useAgentElement<HTMLButtonElement>({
+    id: "documents-edit-cancel",
+    role: "button",
+    label: "Cancel document edit",
+    group: "lifeops-documents",
+    description: "Discard edits to the selected document",
+    onActivate: onCancel,
+  });
+  const save = useAgentElement<HTMLButtonElement>({
+    id: "documents-edit-save",
+    role: "button",
+    label: "Save document edit",
+    group: "lifeops-documents",
+    description: "Save edits to the selected document",
+    onActivate: onSave,
+  });
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      <Textarea
+        ref={draft.ref}
+        value={editingDraft}
+        onChange={(event) => onChangeDraft(event.target.value)}
+        disabled={editingSaving}
+        className="min-h-28 resize-y text-sm"
+        {...draft.agentProps}
+      />
+      <div className="flex justify-end gap-2">
+        <Button
+          ref={cancel.ref}
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onCancel}
+          disabled={editingSaving}
+          {...cancel.agentProps}
+        >
+          Cancel
+        </Button>
+        <Button
+          ref={save.ref}
+          type="button"
+          size="sm"
+          onClick={onSave}
+          disabled={editingSaving || editingDraft.trim().length === 0}
+          {...save.agentProps}
+        >
+          <Save className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+          {editingSaving ? "Saving..." : "Save"}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 const OWNER_PRIVATE: DocumentScope = "owner-private";
 
@@ -201,6 +418,15 @@ export function LifeOpsDocumentsSection() {
     [documents],
   );
 
+  const newNoteToggle = useAgentElement<HTMLButtonElement>({
+    id: "documents-toggle-compose",
+    role: "button",
+    label: composing ? "Cancel new document" : "New document note",
+    group: "lifeops-documents",
+    status: composing ? "active" : "inactive",
+    description: "Start or cancel composing a new owner-private note",
+  });
+
   return (
     <PagePanel
       as="section"
@@ -218,6 +444,7 @@ export function LifeOpsDocumentsSection() {
         </div>
         {composing ? (
           <Button
+            ref={newNoteToggle.ref}
             type="button"
             variant="outline"
             size="sm"
@@ -227,15 +454,18 @@ export function LifeOpsDocumentsSection() {
               setDraftContent("");
             }}
             disabled={saving}
+            {...newNoteToggle.agentProps}
           >
             Cancel
           </Button>
         ) : (
           <Button
+            ref={newNoteToggle.ref}
             type="button"
             size="sm"
             onClick={() => setComposing(true)}
             disabled={loading}
+            {...newNoteToggle.agentProps}
           >
             <Plus className="mr-1.5 h-3.5 w-3.5" aria-hidden />
             New note
@@ -244,34 +474,14 @@ export function LifeOpsDocumentsSection() {
       </div>
 
       {composing ? (
-        <div className="flex flex-col gap-2 rounded-xl border border-border/35 bg-card/50 p-3">
-          <Input
-            type="text"
-            placeholder="Title (optional)"
-            value={draftTitle}
-            onChange={(event) => setDraftTitle(event.target.value)}
-            disabled={saving}
-            className="h-9 text-sm"
-          />
-          <Textarea
-            placeholder="What should the agent remember privately?"
-            value={draftContent}
-            onChange={(event) => setDraftContent(event.target.value)}
-            disabled={saving}
-            className="min-h-28 resize-y text-sm"
-          />
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => void handleCreate()}
-              disabled={saving || draftContent.trim().length === 0}
-            >
-              <Save className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-              {saving ? "Saving..." : "Save"}
-            </Button>
-          </div>
-        </div>
+        <DocumentComposer
+          draftTitle={draftTitle}
+          draftContent={draftContent}
+          saving={saving}
+          onChangeTitle={setDraftTitle}
+          onChangeContent={setDraftContent}
+          onCreate={() => void handleCreate()}
+        />
       ) : null}
 
       {loading ? (
@@ -319,63 +529,30 @@ export function LifeOpsDocumentsSection() {
                 </div>
 
                 {isEditing ? (
-                  <div className="mt-2 flex flex-col gap-2">
-                    <Textarea
-                      value={editingDraft}
-                      onChange={(event) => setEditingDraft(event.target.value)}
-                      disabled={editingSaving}
-                      className="min-h-28 resize-y text-sm"
-                    />
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setEditingId(null);
-                          setEditingDraft("");
-                        }}
-                        disabled={editingSaving}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => void handleSaveEdit()}
-                        disabled={
-                          editingSaving || editingDraft.trim().length === 0
-                        }
-                      >
-                        <Save className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-                        {editingSaving ? "Saving..." : "Save"}
-                      </Button>
-                    </div>
-                  </div>
+                  <DocumentEditDraft
+                    editingDraft={editingDraft}
+                    editingSaving={editingSaving}
+                    onChangeDraft={setEditingDraft}
+                    onCancel={() => {
+                      setEditingId(null);
+                      setEditingDraft("");
+                    }}
+                    onSave={() => void handleSaveEdit()}
+                  />
                 ) : (
                   <div className="mt-1 flex items-center gap-1.5">
                     {doc.canEditText ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void handleStartEdit(doc)}
-                      >
-                        <Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-                        Edit
-                      </Button>
+                      <DocumentEditButton
+                        doc={doc}
+                        onEdit={(target) => void handleStartEdit(target)}
+                      />
                     ) : null}
                     {doc.canDelete ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void handleDelete(doc.id)}
-                        disabled={deletingId === doc.id}
-                      >
-                        <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-                        {deletingId === doc.id ? "Deleting..." : "Delete"}
-                      </Button>
+                      <DocumentDeleteButton
+                        doc={doc}
+                        deleting={deletingId === doc.id}
+                        onDelete={(id) => void handleDelete(id)}
+                      />
                     ) : null}
                   </div>
                 )}

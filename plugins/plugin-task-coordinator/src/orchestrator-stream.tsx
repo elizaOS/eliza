@@ -420,14 +420,12 @@ export function buildConversation(
   let order = 0;
 
   for (const message of messages) {
-    // Skip raw stdin/keystroke echoes from sub-agents, but ALWAYS render the
-    // user's own typed messages — those are recorded with senderKind "user"
-    // AND direction "stdin", and skipping them hid the user's input entirely.
     if (
-      message.senderKind !== "user" &&
-      (message.direction === "stdin" || message.direction === "keys")
-    )
+      (message.direction === "stdin" || message.direction === "keys") &&
+      message.senderKind !== "user"
+    ) {
       continue;
+    }
     if (stripAnsi(message.content).trim() === "") continue;
     atoms.push({
       at: message.timestamp,

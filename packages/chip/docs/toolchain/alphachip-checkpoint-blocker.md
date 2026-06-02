@@ -5,7 +5,7 @@ lawful third-party mirror (Farama-Foundation, Apache-2.0) and runs locally; the
 **20-block TPU pretrained checkpoint** remains BLOCKED (no lawful mirror found).
 A fully-open native proxy-cost path (TILOS `plc_client_os`, BSD-3) is also wired
 and needs no binary at all.
-**Last audited:** 2026-05-21.
+**Last audited:** 2026-06-02.
 **Owners of the broken artifact:** Google Research (`google-research/circuit_training`).
 **Pin record:** `external/circuit_training/pin-manifest.json`
 (`checkpoint_status = "gcs-403-with-local-mitigation-blocked-by-closed-source-binary"`).

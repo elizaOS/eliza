@@ -10,6 +10,10 @@ import {
   browserBridgeSchema,
 } from "@elizaos/plugin-browser";
 import type {
+  LifeOpsScheduleMergedState,
+  LifeOpsScheduleObservation,
+} from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
+import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,
   LifeOpsXFeedType,
@@ -92,10 +96,6 @@ import {
   normalizeLifeOpsEgressDataClasses,
 } from "./privacy-egress.js";
 import { refreshLifeOpsRelativeTime } from "./relative-time.js";
-import type {
-  LifeOpsScheduleMergedState,
-  LifeOpsScheduleObservation,
-} from "./schedule-sync-contracts.js";
 import { lifeOpsSchema } from "./schema.js";
 import {
   DEFAULT_WORKFLOW_PERMISSION_POLICY,
@@ -8899,53 +8899,5 @@ export function createLifeOpsBrowserSession(
     id: crypto.randomUUID(),
     createdAt: timestamp,
     updatedAt: timestamp,
-  };
-}
-
-export function createBrowserBridgeCompanionStatus(
-  params: Omit<
-    BrowserBridgeCompanionStatus,
-    | "id"
-    | "createdAt"
-    | "updatedAt"
-    | "pairedAt"
-    | "pairingTokenExpiresAt"
-    | "pairingTokenRevokedAt"
-  > & {
-    pairedAt?: string | null;
-    pairingTokenExpiresAt?: string | null;
-    pairingTokenRevokedAt?: string | null;
-  },
-): BrowserBridgeCompanionStatus {
-  const timestamp = isoNow();
-  return {
-    ...params,
-    id: crypto.randomUUID(),
-    pairedAt: params.pairedAt ?? timestamp,
-    pairingTokenExpiresAt: params.pairingTokenExpiresAt ?? null,
-    pairingTokenRevokedAt: params.pairingTokenRevokedAt ?? null,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
-
-export function createBrowserBridgeTabSummary(
-  params: Omit<BrowserBridgeTabSummary, "id" | "createdAt" | "updatedAt">,
-): BrowserBridgeTabSummary {
-  const timestamp = isoNow();
-  return {
-    ...params,
-    id: crypto.randomUUID(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
-
-export function createBrowserBridgePageContext(
-  params: Omit<BrowserBridgePageContext, "id">,
-): BrowserBridgePageContext {
-  return {
-    ...params,
-    id: crypto.randomUUID(),
   };
 }

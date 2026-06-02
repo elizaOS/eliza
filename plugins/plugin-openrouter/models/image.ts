@@ -88,11 +88,16 @@ export async function handleImageGeneration(
 ): Promise<{ imageUrl: string; caption?: string }> {
   const openrouter = createOpenRouterProvider(runtime);
   const modelName = getImageGenerationModel(runtime);
+  const prompt = params.prompt?.trim();
+
+  if (!prompt) {
+    throw new Error("[OpenRouter] IMAGE generation requires a non-empty prompt.");
+  }
 
   try {
     const generateParams = {
       model: openrouter.chat(modelName) as LanguageModel,
-      prompt: `Generate an image: ${params.prompt}`,
+      prompt: `Generate an image: ${prompt}`,
     };
 
     const response = await generateText(generateParams);
@@ -103,7 +108,7 @@ export async function handleImageGeneration(
 
     return {
       imageUrl: response.text,
-      caption: params.prompt,
+      caption: prompt,
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

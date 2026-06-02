@@ -70,7 +70,7 @@ quarterly_decision_tree:
   schedule_slack_weeks_to_rtl_freeze: 65
 - big_core_path: open_kunminghu_scale_up
   blocked_until: kunminghu_8wide_microbench_data
-  chosen: TBD
+  chosen: pending_kunminghu_microbench_data
   decisions_available:
   - confirm_kunminghu_scale_up
   - drop_big_core_peak_to_mid_spec
@@ -91,7 +91,7 @@ quarterly_decision_tree:
 - big_core_path: open_kunminghu_scale_up
   blocked_until: the Kunminghu scale-up fork has a real pinned commit AND a Verilator
     full-system Linux boot transcript
-  chosen: TBD
+  chosen: pending_buildable_scale_up_fork
   decisions_available:
   - lock_kunminghu_scale_up_fork
   fail_closed_action: 'Without a buildable scale-up fork by 2027Q1, the big-core slot
@@ -110,7 +110,7 @@ quarterly_decision_tree:
 - big_core_path: open_kunminghu_scale_up
   blocked_until: "design freeze meets the IPC \u2265 9 SPEC2017-int target and the\
     \ L2 + L1D latency targets."
-  chosen: TBD
+  chosen: pending_pre_freeze_ipc_latency_review
   decisions_available:
   - approve_freeze
   - delay_freeze_one_quarter
@@ -123,7 +123,7 @@ quarterly_decision_tree:
   blocked_until: every cluster role is RTL-frozen; the SPEC2017 / Geekbench 6 modelled
     numbers are within +/- 15 % of the floorplan estimate; the FireSim Linux boot
     transcript has been captured.
-  chosen: TBD
+  chosen: pending_rtl_freeze_evidence
   decisions_available:
   - rtl_freeze
   fork_risk: rtl_freeze
@@ -138,7 +138,7 @@ schedule_fit:
 
     decision pushes the phone product to 2030. The gate fails closed if
 
-    any quarter''s "chosen" remains TBD past its review_date_target.
+    any quarter''s "chosen" remains a pending_* decision past its review_date_target.
 
     '
   weeks_to_phone_silicon_at_2029: 78

@@ -51,6 +51,27 @@ describe("desktop packaged embedding warmup policy", () => {
 
     expect(env.ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP).toBeUndefined();
   });
+
+  it("preserves explicit startup embedding skip when opt-in is also set", () => {
+    const env: Record<string, string> = {
+      ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP: "1",
+      ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP: "true",
+    };
+
+    applyPackagedStartupEmbeddingWarmupPolicy(env, true);
+
+    expect(env.ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP).toBe("true");
+  });
+
+  it("preserves explicit startup embedding warmup allow override", () => {
+    const env: Record<string, string> = {
+      ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP: "0",
+    };
+
+    applyPackagedStartupEmbeddingWarmupPolicy(env, true);
+
+    expect(env.ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP).toBe("0");
+  });
 });
 
 describe("desktop child launch env", () => {

@@ -91,6 +91,13 @@ export default defineConfig({
         replacement: path.join(repoRoot, "packages/core/src/testing/index.ts"),
       },
       {
+        find: /^@elizaos\/scenario-runner\/schema$/,
+        replacement: path.join(
+          repoRoot,
+          "packages/scenario-runner/schema/index.js",
+        ),
+      },
+      {
         find: /^@elizaos\/core\/node$/,
         replacement: path.join(repoRoot, "packages/core/src/index.node.ts"),
       },
@@ -108,6 +115,13 @@ export default defineConfig({
       {
         find: /^@elizaos\/shared\/types$/,
         replacement: path.join(repoRoot, "packages/shared/src/types/index.ts"),
+      },
+      {
+        find: /^@elizaos\/ui\/agent-surface$/,
+        replacement: path.join(
+          repoRoot,
+          "packages/ui/src/agent-surface/index.ts",
+        ),
       },
       {
         find: /^@elizaos\/ui\/components\/ui\/(.*)$/,

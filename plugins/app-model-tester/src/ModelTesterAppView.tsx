@@ -1,6 +1,6 @@
-import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
 import { TerminalPluginView } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Spinner } from "@elizaos/ui/components/ui/spinner";
 import {
@@ -199,22 +199,26 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
     label: "Prompt",
     group: "inputs",
     description: "Prompt text sent to text, voice, and image generation probes",
-    value: prompt,
+    getValue: () => prompt,
     onFill: setPrompt,
   });
   const imageInputControl = useAgentElement<HTMLInputElement>({
     id: "input-image-asset",
-    role: "custom",
+    role: "button",
     label: "Choose image",
     group: "assets",
-    description: "Select an image file for image-description probes",
+    description:
+      "Open the file picker to select an image for image-description probes",
+    status: imageDataUrl ? "loaded" : undefined,
   });
   const audioInputControl = useAgentElement<HTMLInputElement>({
     id: "input-audio-asset",
-    role: "custom",
+    role: "button",
     label: "Choose audio",
     group: "assets",
-    description: "Select an audio file for transcription and voice-activity probes",
+    description:
+      "Open the file picker to select an audio file for transcription and voice-activity probes",
+    status: audioPayload ? "loaded" : undefined,
   });
 
   const refreshStatus = useCallback(async () => {
@@ -306,9 +310,6 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
             <h1 className="truncate text-base font-semibold text-txt">
               Model Tester
             </h1>
-            <p className="truncate text-xs-tight text-muted">
-              End-to-end Eliza-1 probes
-            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -393,9 +394,9 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
                 />
               </label>
               {assetError ? (
-                <p className="mt-3 text-xs leading-relaxed text-danger">
+                <div className="mt-3 text-xs leading-relaxed text-danger">
                   {assetError}
-                </p>
+                </div>
               ) : null}
               {imageDataUrl ? (
                 <img
@@ -425,10 +426,12 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
                       <h2 className="text-sm font-semibold text-txt">
                         {copy.title}
                       </h2>
-                      <p className="mt-1 text-xs text-muted">{copy.subtitle}</p>
-                      <p className="mt-2 font-mono text-2xs text-muted">
+                      <div className="mt-1 text-xs text-muted">
+                        {copy.subtitle}
+                      </div>
+                      <div className="mt-2 font-mono text-2xs text-muted">
                         {status?.modelType ?? id}
-                      </p>
+                      </div>
                     </div>
                     <StatusPill ready={status?.available ?? id === "vad"} />
                   </div>
@@ -511,8 +514,7 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
   const text = await response.text();
   if (!response.ok) {
     throw new Error(
-      text ||
-        `[model-tester] ${response.status} ${response.statusText}`.trim(),
+      text || `[model-tester] ${response.status} ${response.statusText}`.trim(),
     );
   }
   return (text ? JSON.parse(text) : {}) as T;

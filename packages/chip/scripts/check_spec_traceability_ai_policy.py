@@ -42,6 +42,7 @@ REQUIRED_FALSE_FLAGS = (
     "traceability_signoff_claim_allowed",
     "requirement_coverage_signoff_claim_allowed",
 )
+FALSE_CLAIM_FLAGS = {key: False for key in REQUIRED_FALSE_FLAGS}
 
 
 def _rel(path: Path) -> str:
@@ -70,6 +71,8 @@ def check_policy(errors: list[str]) -> dict[str, Any] | None:
         for flag in REQUIRED_FALSE_FLAGS:
             if policy.get(flag) is not False:
                 errors.append(f"ai_use_policy.{flag} must be false")
+        if policy.get("false_claim_flags") != FALSE_CLAIM_FLAGS:
+            errors.append("ai_use_policy.false_claim_flags must match denied traceability claims")
     return payload
 
 

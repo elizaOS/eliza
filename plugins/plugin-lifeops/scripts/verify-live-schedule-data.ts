@@ -2,7 +2,7 @@ import type {
   GetLifeOpsScheduleMergedStateResponse,
   LifeOpsScheduleMergedState,
   LifeOpsScheduleObservation,
-} from "../src/lifeops/schedule-sync-contracts.js";
+} from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
 
 const DEFAULT_API_BASE = "http://127.0.0.1:31337";
 const DEFAULT_ROW_LIMIT = 1000;

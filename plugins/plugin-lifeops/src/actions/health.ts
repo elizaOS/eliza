@@ -1,4 +1,5 @@
 import {
+  createOwnerHealthAction,
   createHealthActionRunner,
   HEALTH_PARAMETERS,
   HEALTH_SIMILES,
@@ -12,7 +13,7 @@ import {
 } from "../lifeops/voice/grounded-reply.js";
 import { recentConversationTexts } from "./lib/recent-context.js";
 
-export { HEALTH_PARAMETERS, HEALTH_SIMILES };
+export { createOwnerHealthAction, HEALTH_PARAMETERS, HEALTH_SIMILES };
 
 export const runHealthHandler = createHealthActionRunner({
   hasAccess: hasLifeOpsAccess,

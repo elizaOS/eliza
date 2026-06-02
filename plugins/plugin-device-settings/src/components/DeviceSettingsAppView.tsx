@@ -250,11 +250,6 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 defaultValue: "Device Settings",
               })}
             </h1>
-            <p className="truncate text-xs text-muted">
-              {t("deviceSettings.subtitle", {
-                defaultValue: "Brightness, volume, roles, and shortcuts",
-              })}
-            </p>
           </div>
         </div>
         <Button
@@ -294,11 +289,11 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
               </span>
               <div>
                 <h2 className="text-sm font-semibold text-txt">Brightness</h2>
-                <p className="text-xs text-muted">
+                <div className="text-xs text-muted">
                   {deviceSettings?.brightnessMode === "automatic"
                     ? "Adaptive brightness is currently enabled."
                     : "Set the device screen brightness."}
-                </p>
+                </div>
               </div>
             </div>
 
@@ -362,9 +357,9 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 <h2 className="text-sm font-semibold text-txt">
                   Android settings
                 </h2>
-                <p className="text-xs text-muted">
+                <div className="text-xs text-muted">
                   Jump to the device panels that still require system UI.
-                </p>
+                </div>
               </div>
             </div>
             <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
@@ -414,9 +409,9 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
               </span>
               <div>
                 <h2 className="text-sm font-semibold text-txt">Volume</h2>
-                <p className="text-xs text-muted">
+                <div className="text-xs text-muted">
                   Control Android audio streams exposed by the system bridge.
-                </p>
+                </div>
               </div>
             </div>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -493,9 +488,9 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 <h2 className="text-sm font-semibold text-txt">
                   Default roles
                 </h2>
-                <p className="text-xs text-muted">
+                <div className="text-xs text-muted">
                   Manage Android system roles this device app can own.
-                </p>
+                </div>
               </div>
             </div>
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">

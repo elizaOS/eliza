@@ -238,7 +238,10 @@ export * from "./pages/TaskEditor";
 export * from "./pages/TasksPageView";
 export * from "./pages/TrajectoriesView";
 export * from "./pages/TrajectoryDetailView";
-export * from "./pages/VectorBrowserView";
+// VectorBrowserView omitted — it is a heavy three.js (WebGL) surface lazy-loaded
+// inside DatabasePageView so neither it nor three ship in the always-loaded
+// @elizaos/ui barrel. Import it directly from ./pages/VectorBrowserView if a
+// caller genuinely needs it.
 export * from "./pages/WorkflowEditor";
 export * from "./pages/workflow-graph-events";
 export * from "./settings/ApiKeyConfig";

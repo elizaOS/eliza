@@ -6,7 +6,7 @@
   "main": "./dist/index.js",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "biome check src/",
+    "lint": "bunx @biomejs/biome check src/",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "storybook": "storybook dev -p 6007",
     "build-storybook": "storybook build",

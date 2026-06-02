@@ -20,6 +20,14 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/alphachip_successor_reproduction"
 SCHEMA = "eliza.ai_eda.alphachip_successor_reproduction.v1"
 CLAIM_BOUNDARY = "alphachip_successor_reproduction_evidence_only_no_release_claim"
+
+
+def false_claim_flags(status: str) -> dict[str, bool]:
+    flags = {"release_use_allowed": False}
+    if status != "SUCCESSOR_REPRODUCTION_READY":
+        flags["optimization_claim_allowed"] = False
+        flags["reproduction_claim_allowed"] = False
+    return flags
 TRAINING_SCHEMA = "eliza.ai_eda.macro_placement_torch_regressor_training_run.v1"
 INFERENCE_SCHEMA = "eliza.ai_eda.macro_placement_torch_inference_run.v1"
 REPLAY_QUEUE_SCHEMA = "eliza.ai_eda.macro_placement_replay_queue.v1"
@@ -241,6 +249,7 @@ def main() -> int:
         "release_use_allowed": False,
         "optimization_claim_allowed": status == "SUCCESSOR_REPRODUCTION_READY",
         "reproduction_claim_allowed": status == "SUCCESSOR_REPRODUCTION_READY",
+        "false_claim_flags": false_claim_flags(status),
         "status": status,
         "minimum_cuda_epochs": MIN_CUDA_EPOCHS,
         "evidence_run_ids": {

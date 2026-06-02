@@ -19,7 +19,10 @@ import capture_simulated_peripheral_evidence as capture  # noqa: E402
 
 
 def run_capture(
-    components: list[str], out_dir: Path, env_overrides: dict[str, str] | None = None
+    components: list[str],
+    out_dir: Path,
+    env_overrides: dict[str, str] | None = None,
+    extra_args: list[str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["ELIZA_ANDROID_PERIPHERAL_OUT_DIR"] = str(out_dir)
@@ -38,8 +41,10 @@ def run_capture(
     ):
         env.pop(spec_env, None)
     env.update(env_overrides)
+    if extra_args is None:
+        extra_args = []
     return subprocess.run(
-        [sys.executable, str(SCRIPT), *components],
+        [sys.executable, str(SCRIPT), *extra_args, *components],
         cwd=ROOT,
         env=env,
         text=True,
@@ -119,6 +124,33 @@ def test_probe_exit_two_writes_blocked_log() -> None:
         ):
             if marker not in text:
                 raise AssertionError(f"blocked probe log missing marker {marker!r}:\n{text}")
+
+
+def test_explicit_offline_serial_is_preserved_in_blocked_log() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        out_dir = Path(td)
+        command = (
+            "printf '%s\\n' \"ADB_SERIAL_IN_PROBE=${ADB_SERIAL:-<unset>}\" "
+            "'PROBE_ERROR=requested adb serial unavailable'; exit 2"
+        )
+        result = run_capture(
+            ["wifi"],
+            out_dir,
+            {"ELIZA_WIFI_SIM_COMMAND": command},
+            ["--adb-serial", "cf-offline"],
+        )
+        if result.returncode != 2:
+            raise AssertionError(f"expected blocked return code, got {result.returncode}")
+        text = (out_dir / "wifi_sim.log").read_text(encoding="utf-8")
+        for marker in (
+            "$ adb -s cf-offline get-state",
+            "REQUESTED_ADB_SERIAL=cf-offline",
+            "SELECTED_ADB_SERIAL=<none>",
+            "ADB_SERIAL_IN_PROBE=cf-offline",
+            "eliza-evidence: status=BLOCKED",
+        ):
+            if marker not in text:
+                raise AssertionError(f"explicit serial blocked log missing {marker!r}:\n{text}")
 
 
 def test_env_override_wins_over_default_probe() -> None:
@@ -202,13 +234,73 @@ def test_prepare_adb_connects_when_no_ready_device() -> None:
         raise AssertionError(f"adb prep transcript did not record connect attempt: {transcript}")
 
 
+def test_prepare_adb_validates_explicit_ready_serial() -> None:
+    calls: list[list[str]] = []
+
+    def fake_run_command(args: list[str], timeout_seconds: int) -> tuple[int, str]:
+        del timeout_seconds
+        calls.append(args)
+        if args == ["adb", "-s", "cf-1", "get-state"]:
+            return 0, "device\n"
+        return 1, "unexpected\n"
+
+    args = type(
+        "Args",
+        (),
+        {"adb_serial": "cf-1", "adb_connect": [], "timeout_seconds": 1},
+    )()
+    with mock.patch.object(capture, "run_command", side_effect=fake_run_command):
+        serial = capture.prepare_adb(args)
+    if serial != "cf-1":
+        raise AssertionError(f"expected requested serial, got {serial!r}")
+    if calls != [["adb", "-s", "cf-1", "get-state"]]:
+        raise AssertionError(f"unexpected adb validation calls: {calls}")
+    transcript = os.environ.get("ELIZA_ANDROID_PERIPHERAL_ADB_PREP", "")
+    for marker in (
+        "$ adb -s cf-1 get-state",
+        "REQUESTED_ADB_SERIAL=cf-1",
+        "SELECTED_ADB_SERIAL=cf-1",
+    ):
+        if marker not in transcript:
+            raise AssertionError(f"adb prep transcript missing {marker!r}: {transcript}")
+
+
+def test_prepare_adb_rejects_explicit_offline_serial() -> None:
+    def fake_run_command(args: list[str], timeout_seconds: int) -> tuple[int, str]:
+        del timeout_seconds
+        if args == ["adb", "-s", "cf-offline", "get-state"]:
+            return 1, "offline\n"
+        return 1, "unexpected\n"
+
+    args = type(
+        "Args",
+        (),
+        {"adb_serial": "cf-offline", "adb_connect": [], "timeout_seconds": 1},
+    )()
+    with mock.patch.object(capture, "run_command", side_effect=fake_run_command):
+        serial = capture.prepare_adb(args)
+    if serial is not None:
+        raise AssertionError(f"offline serial must not be selected, got {serial!r}")
+    transcript = os.environ.get("ELIZA_ANDROID_PERIPHERAL_ADB_PREP", "")
+    for marker in (
+        "$ adb -s cf-offline get-state",
+        "REQUESTED_ADB_SERIAL=cf-offline",
+        "SELECTED_ADB_SERIAL=<none>",
+    ):
+        if marker not in transcript:
+            raise AssertionError(f"adb prep transcript missing {marker!r}: {transcript}")
+
+
 if __name__ == "__main__":
     test_empty_env_var_writes_blocked_log()
     test_unset_env_var_resolves_to_default_probe()
     test_component_pass_requires_command_markers()
     test_probe_exit_two_writes_blocked_log()
+    test_explicit_offline_serial_is_preserved_in_blocked_log()
     test_env_override_wins_over_default_probe()
     test_all_default_probes_exist_and_are_syntactically_valid()
     test_speaker_tone_fixture_is_valid_wav()
     test_prepare_adb_connects_when_no_ready_device()
+    test_prepare_adb_validates_explicit_ready_serial()
+    test_prepare_adb_rejects_explicit_offline_serial()
     print("OK")

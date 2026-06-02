@@ -76,6 +76,15 @@ FORBIDDEN_REPORT_POLICY_TRUE = {
     "release_use_allowed",
     "design_decision_claim_allowed",
 }
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_optimization_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -198,6 +207,8 @@ def validate_report(
         errors.append("report source_ids must match watchlist order exactly")
     if report.get("missing_inventory_ids") not in ([], None):
         errors.append("report missing_inventory_ids must be empty")
+    if report.get("false_claim_flags") != FALSE_CLAIM_FLAGS:
+        errors.append("report false_claim_flags must match denied watchlist claims")
     policy = report.get("policy")
     if not isinstance(policy, dict):
         errors.append("report policy must be a mapping")

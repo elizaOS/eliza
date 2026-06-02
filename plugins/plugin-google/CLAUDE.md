@@ -1,10 +1,10 @@
 # @elizaos/plugin-google
 
-Google Workspace integration for Gmail, Calendar, Drive, and Meet with account-scoped OAuth.
+Google Workspace integration for Gmail, Calendar, Drive, and Meet with account-scoped OAuth and Google-owned assistant message projections.
 
 ## Purpose / role
 
-Adds `GoogleWorkspaceService` to an Eliza agent runtime, exposing Gmail, Google Calendar, Google Drive, and Google Meet operations through a single account-scoped OAuth grant. The plugin is opt-in — load it as `googlePlugin` from this package. It also registers with `ConnectorAccountManager` so the generic connector HTTP routes can manage Google accounts and run OAuth flows automatically.
+Adds `GoogleWorkspaceService` to an Eliza agent runtime, exposing Gmail, Google Calendar, Google Drive, and Google Meet operations through a single account-scoped OAuth grant. It also exports `GoogleGmailAdapter`, the Gmail-owned message-triage adapter used by assistant plugins such as LifeOps. The plugin is opt-in — load it as `googlePlugin` from this package. It also registers with `ConnectorAccountManager` so the generic connector HTTP routes can manage Google accounts and run OAuth flows automatically.
 
 Google Chat is out of scope; use `@elizaos/plugin-google-chat` for that.
 
@@ -13,6 +13,7 @@ Google Chat is out of scope; use `@elizaos/plugin-google-chat` for that.
 The plugin object (`googlePlugin`, service name `"google"`) registers:
 
 - **Services:** `GoogleWorkspaceService` — the sole runtime service; wraps four sub-clients (Gmail, Calendar, Drive, Meet) and is retrieved via `runtime.getService("google")`.
+- **Message adapters:** `GoogleGmailAdapter` — Gmail projection into the core message-triage shape for assistant plugins.
 - **Actions:** none (empty array).
 - **Providers:** none (registered separately via `ConnectorAccountManager` at init time).
 - **Events:** none.
@@ -61,6 +62,7 @@ src/
   connector-credential-refs.ts   Credential ref persistence helpers (persistConnectorCredentialRefs)
   service.ts                   GoogleWorkspaceService — assembles the four sub-clients
   gmail.ts                     GoogleGmailClient — all Gmail operations
+  lifeops-message-adapter.ts   GoogleGmailAdapter for assistant/LifeOps message triage registration
   calendar.ts                  GoogleCalendarClient — Calendar list/CRUD
   drive.ts                     GoogleDriveClient — Drive/Docs/Sheets operations
   meet.ts                      GoogleMeetClient — Meet space/conference/artifact operations

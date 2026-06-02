@@ -5,8 +5,8 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "lint": "biome check .",
-    "lint:fix": "biome check --write .",
+    "lint": "bunx @biomejs/biome check .",
+    "lint:fix": "bunx @biomejs/biome check --write .",
     "dev": "PORT=3002 bun run --watch src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target node",
     "start": "PORT=3002 bun run src/index.ts",

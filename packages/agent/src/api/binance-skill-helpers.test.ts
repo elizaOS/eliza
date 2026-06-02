@@ -98,8 +98,7 @@ describe("maybeHandleDirectBinanceSkillRequest", () => {
           "MILADY",
         );
         return JSON.stringify({
-          response:
-            'Here is the raw payload: {"symbol":"MILADY","score":99}',
+          response: 'Here is the raw payload: {"symbol":"MILADY","score":99}',
         });
       }),
     } as unknown as AgentRuntime;

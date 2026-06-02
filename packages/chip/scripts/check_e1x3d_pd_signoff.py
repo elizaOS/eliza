@@ -265,7 +265,7 @@ def main() -> int:
             }
         ]
         status = "BLOCKED"
-        summary = {
+        summary: dict[str, object] = {
             "design_name": PRIMARY_DESIGN,
             "accepted_design_names": sorted(DESIGN_NAMES),
             "selected_run": None,

@@ -8,6 +8,14 @@
   "production_dma_tensor_execution_claim_allowed": false,
   "release_claim_allowed": false,
   "sustained_performance_claim_allowed": false,
+  "false_claim_flags": {
+    "android_nnapi_claim_allowed": false,
+    "phone_class_ai_accelerator_claim_allowed": false,
+    "production_compiler_claim_allowed": false,
+    "production_dma_tensor_execution_claim_allowed": false,
+    "release_claim_allowed": false,
+    "sustained_performance_claim_allowed": false
+  },
   "current_capability": {
     "classification": "L0_RTL_UNIT",
     "rtl": "rtl/npu/e1_npu.sv",

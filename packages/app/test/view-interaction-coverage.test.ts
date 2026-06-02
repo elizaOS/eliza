@@ -5,11 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "../../..");
-const VISUAL_MATRIX_SPEC = path.join(
-  HERE,
-  "ui-smoke",
-  "plugin-views-visual.spec.ts",
-);
+const VIEW_CASES_SOURCE = path.join(HERE, "ui-smoke", "plugin-view-cases.ts");
 const KEYLESS_WORKFLOW = path.join(
   REPO_ROOT,
   ".github/workflows/scenario-pr.yml",
@@ -39,8 +35,12 @@ const DEFAULT_TUI_OWNER: InteractionOwner = {
 const VISUAL_BASELINE_OWNER: InteractionOwner = {
   spec: "packages/app/test/ui-smoke/plugin-views-visual.spec.ts",
   proves:
-    "Captures screenshot, audits visual signals, checks redundant heading paragraphs, and clicks TUI terminal commands.",
-  signals: ["redundantHeadingParagraphs", "visualSignals", "terminalCommands"],
+    "Captures screenshots, audits rendered visible text/controls, and clicks every TUI terminal command.",
+  signals: [
+    "captureScreenshotWithQualityRetry",
+    "visibleText",
+    "data-terminal-command",
+  ],
 };
 
 const GUI_INTERACTION_OWNERS: Readonly<
@@ -302,15 +302,17 @@ function viewKey(view: Pick<VisualViewCase, "id" | "viewType">) {
 }
 
 function readVisualMatrixCases(): VisualViewCase[] {
-  const source = readFileSync(VISUAL_MATRIX_SPEC, "utf8");
+  const source = readFileSync(VIEW_CASES_SOURCE, "utf8");
   const match = source.match(
-    /const VIEW_CASES: ViewCase\[] = \[([\s\S]*?)\]\.map/,
+    /const VIEW_CASES: ViewCase\[] = \(?\s*\[([\s\S]*?)\]\s*(?:satisfies[\s\S]*?)?\)?\s*\.map/,
   );
   expect(match?.[1], "VIEW_CASES declaration was not found").toBeTruthy();
   const viewCasesSource = match?.[1] ?? "";
 
   return Array.from(
-    viewCasesSource.matchAll(/\["([^"]+)",\s*"(gui|tui)",\s*"([^"]+)"\]/g),
+    viewCasesSource.matchAll(
+      /\["([^"]+)",\s*"(gui|tui)",\s*"([^"]+)"(?:,\s*\{[^}\]]*\})?\]/g,
+    ),
   ).flatMap((caseMatch) => {
     const id = caseMatch[1];
     const viewType = caseMatch[2];

@@ -144,7 +144,11 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "open-live-dashboard",
     "send-team-message",
   ],
-  "plugins/plugin-app-control/src/views/viewManagerData.ts": [
+  // app-control wires its TUI view and the terminal capabilities together in
+  // its plugin manifest (index.ts declares componentExport ViewManagerTuiView
+  // plus the terminal-list-views / terminal-open-view capability ids); the
+  // capability logic itself lives in views/viewManagerData.ts.
+  "plugins/plugin-app-control/src/index.ts": [
     "terminal-list-views",
     "terminal-open-view",
   ],

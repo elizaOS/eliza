@@ -21,6 +21,7 @@ FORBIDDEN_TRUE_POLICY = {
     "signoff_claim_allowed",
     "optimization_claim_allowed",
 }
+FALSE_CLAIM_FLAGS = {field: False for field in sorted(FORBIDDEN_TRUE_POLICY)}
 
 
 def rel(path: Path) -> str:
@@ -79,6 +80,8 @@ def validate(report: dict[str, Any]) -> list[str]:
         for key in FORBIDDEN_TRUE_POLICY:
             if policy.get(key) is not False:
                 errors.append(f"policy.{key} must be false")
+        if policy.get("false_claim_flags") != FALSE_CLAIM_FLAGS:
+            errors.append("policy.false_claim_flags must match denied CUDA readiness claims")
     capabilities = report.get("capabilities")
     if not isinstance(capabilities, dict):
         errors.append("capabilities must be a mapping")

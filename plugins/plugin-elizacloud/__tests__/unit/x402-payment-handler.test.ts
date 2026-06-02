@@ -23,8 +23,15 @@ describe("parseX402Response", () => {
 
     const requirements = await parseX402Response(response);
     expect(requirements).not.toBeNull();
+    if (!requirements) {
+      throw new Error("expected payment requirements");
+    }
     expect(requirements).toHaveLength(1);
-    const req = requirements![0]!;
+    const req = requirements[0];
+    expect(req).toBeDefined();
+    if (!req) {
+      throw new Error("expected first payment requirement");
+    }
     expect(req.amount).toBe("1500000");
     expect(req.asset).toBe("USDC");
     expect(req.network).toBe("base");
@@ -55,8 +62,8 @@ describe("parseX402Response", () => {
 
     const requirements = await parseX402Response(response);
     expect(requirements).toHaveLength(1);
-    expect(requirements![0]!.scheme).toBe("exact");
-    expect(requirements![0]!.payTo).toBe("0xdef");
+    expect(requirements?.[0]?.scheme).toBe("exact");
+    expect(requirements?.[0]?.payTo).toBe("0xdef");
   });
 
   it("returns null when no requirements are present", async () => {

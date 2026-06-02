@@ -5,7 +5,7 @@
  * "ready" phase (WebSocket bindings, nav listener).
  */
 
-import { logger } from "@elizaos/core";
+import { logger } from "@elizaos/logger";
 import type { AgentStatus, WalletAddresses } from "../api";
 import {
   type CodingAgentSession,

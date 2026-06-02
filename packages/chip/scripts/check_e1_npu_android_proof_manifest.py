@@ -14,6 +14,7 @@ import hashlib
 import json
 import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = ROOT / "docs/benchmarks/capabilities/e1_npu_android_proof_manifest.template.json"
 DEFAULT_STATUS_JSON = ROOT / "build/reports/e1_npu_android_proof_manifest_check.json"
 TEMPLATE_CLAIM_BOUNDARY = "template_only_not_android_boot_cts_vts_or_nnapi_evidence"
+REPORT_CLAIM_BOUNDARY = "manifest_check_status_only_not_android_boot_cts_vts_or_nnapi_evidence"
 SCHEMA = "eliza.e1_npu_android_proof_manifest.v1"
 REQUIRED_STATUSES = {
     "aidl_or_hidl_hal_declared",
@@ -45,6 +47,14 @@ REQUIRED_ARTIFACTS = {
 PASSED = "passed"
 BLOCKED = "blocked"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+PROOF_BUNDLE_COMMANDS = [
+    "scripts/android/capture_e1_npu_android_proof_bundle.sh",
+    "python3 scripts/assemble_e1_npu_android_proof_manifest.py",
+    (
+        "python3 scripts/check_e1_npu_android_proof_manifest.py "
+        "--manifest docs/evidence/android/e1-npu/android-proof-manifest.json --require-pass"
+    ),
+]
 
 
 def display(path: Path) -> str:
@@ -73,6 +83,10 @@ def load_json(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise SystemExit(f"{path}: manifest must be a JSON object")
     return data
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def is_sha256(value: Any) -> bool:
@@ -220,15 +234,49 @@ def validate_manifest(data: dict[str, Any], require_pass: bool) -> tuple[int, di
 
     result_status = "error" if errors else ("blocked" if blockers else "passed")
     return_code = 1 if errors else (2 if require_pass and blockers else 0)
+    command_plan = next_command_plan(result_status)
     report = {
         "schema": "eliza.e1_npu_android_proof_manifest_check.v1",
+        "generated_utc": utc_now(),
+        "claim_boundary": REPORT_CLAIM_BOUNDARY,
         "status": result_status,
         "manifest_status": status,
         "template": is_template,
         "errors": errors,
         "blockers": blockers,
+        "summary": {
+            "errors": len(errors),
+            "blockers": len(blockers),
+            "next_command_batch_count": len(command_plan),
+        },
+        "next_command_plan": command_plan,
     }
     return return_code, report
+
+
+def next_command_plan(result_status: str) -> list[dict[str, Any]]:
+    if result_status == "passed":
+        return []
+    return [
+        {
+            "id": "capture_e1_npu_android_proof_bundle",
+            "area": "npu",
+            "source": "packages/chip/build/reports/e1_npu_android_proof_manifest_check.json",
+            "claim_boundary": "operator_commands_only_not_android_npu_or_release_evidence",
+            "commands": PROOF_BUNDLE_COMMANDS,
+            "expected_output_files": [
+                "docs/evidence/android/e1-npu/android-proof-manifest.json",
+                "build/reports/e1_npu_android_proof_manifest_assembly.json",
+                "build/reports/e1_npu_android_proof_manifest_check.json",
+            ],
+            "requires": [
+                "AOSP tree with CTS/VTS Tradefed tools available",
+                "booted Android target exposing the e1-NPU NNAPI accelerator",
+                "required NNAPI counter environment for capture_e1_npu_nnapi_evidence.sh",
+                "rerun of the strict Android e1-NPU proof manifest checker",
+            ],
+        }
+    ]
 
 
 def main(argv: list[str]) -> int:

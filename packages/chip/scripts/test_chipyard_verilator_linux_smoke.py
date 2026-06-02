@@ -913,6 +913,91 @@ def test_active_attempt_metadata_reports_live_kernel_virtual_trace() -> None:
             raise AssertionError(metadata)
 
 
+def test_active_linux_smoke_process_filter_ignores_ap_benchmarks_payload() -> None:
+    ps_stdout = "\n".join(
+        [
+            "  PID  PPID     ELAPSED CMD",
+            (
+                " 1234     1       00:10 sh scripts/run_chipyard_eliza_linux_smoke.sh "
+                "CHIPYARD_LINUX_SMOKE_TRANSCRIPT_MODE=ap-benchmarks "
+                "BINARY=/repo/eliza-e1-ap-benchmarks-bin-nodisk"
+            ),
+            (
+                " 1235  1234       00:09 /repo/simulator-chipyard.harness-ElizaRocketConfig "
+                "+loadmem=/repo/eliza-e1-ap-benchmarks-bin-nodisk"
+            ),
+        ]
+    )
+    active = smoke.active_chipyard_smoke_processes(ps_stdout)
+    if active:
+        raise AssertionError(active)
+
+
+def test_active_linux_smoke_process_filter_keeps_linux_smoke_payload() -> None:
+    ps_stdout = "\n".join(
+        [
+            "  PID  PPID     ELAPSED CMD",
+            (
+                " 1234     1       00:10 sh scripts/run_chipyard_eliza_linux_smoke.sh "
+                "BINARY=/repo/eliza-e1-linux-smoke-bin-nodisk"
+            ),
+            (
+                " 1235  1234       00:09 /repo/simulator-chipyard.harness-ElizaRocketConfig "
+                "+loadmem=/repo/eliza-e1-linux-smoke-bin-nodisk"
+            ),
+        ]
+    )
+    active = smoke.active_chipyard_smoke_processes(ps_stdout)
+    if len(active) != 2:
+        raise AssertionError(active)
+
+
+def test_accepted_generated_linux_completion_evidence_requires_npu_pass_markers() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        evidence = Path(tmp) / "eliza_e1_linux_boot.log"
+        evidence.write_text(
+            "\n".join(
+                [
+                    "eliza-evidence: target=generated_chipyard_ap artifact=eliza-e1-linux-smoke",
+                    "OpenSBI v1.2",
+                    "SBI specification v1.0 detected",
+                    "Domain0 Next Address      : 0x0000000080200000",
+                    "Boot HART ID              : 0",
+                    "Linux version 6.6.0",
+                    "Kernel command line: console=ttySIF0",
+                    "Run /init as init process",
+                    "riscv_hwprobe: syscall rc=0",
+                    "eliza-evidence: target=linux artifact=e1_npu_ml_smoke",
+                    "eliza-evidence: command=/usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu",
+                    "e1-npu-ml-smoke: PASS workload=gemm_s8_int8_2x2x3",
+                    "device=/dev/e1-npu",
+                    "require_npu=true",
+                    "CPU fallback percent=0",
+                    "e1 MMIO smoke result: PASS",
+                    "eliza-evidence: status=PASS",
+                    "reboot: Power down",
+                    "- generated-src/TestDriver.v:158: Verilog $finish",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = smoke.accepted_generated_linux_completion_evidence(evidence)
+        if result.get("accepted") is not True:
+            raise AssertionError(result)
+
+        evidence.write_text(
+            evidence.read_text(encoding="utf-8").replace("CPU fallback percent=0", ""),
+            encoding="utf-8",
+        )
+        result = smoke.accepted_generated_linux_completion_evidence(evidence)
+        if result.get("accepted") is not False:
+            raise AssertionError(result)
+        if "CPU fallback percent=0" not in result.get("missing_markers", []):
+            raise AssertionError(result)
+
+
 def test_simdram_audit_requires_observable_loadmem_marker() -> None:
     audit = smoke.sim_memory_model_audit()
     simdram = audit.get("simdram")
@@ -1325,6 +1410,9 @@ def main() -> int:
         test_uart_tx_reconstruction_classifies_opensbi_banner_only,
         test_active_attempt_metadata_prefers_current_rebuild_temp_log,
         test_active_attempt_metadata_reports_live_kernel_virtual_trace,
+        test_active_linux_smoke_process_filter_ignores_ap_benchmarks_payload,
+        test_active_linux_smoke_process_filter_keeps_linux_smoke_payload,
+        test_accepted_generated_linux_completion_evidence_requires_npu_pass_markers,
         test_simdram_audit_requires_observable_loadmem_marker,
         test_simulator_artifact_blocks_when_simdram_source_is_newer,
         test_loadmem_diagnosis_explains_trace_entry_without_marker,

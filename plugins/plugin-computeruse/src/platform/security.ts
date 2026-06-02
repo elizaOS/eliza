@@ -184,6 +184,21 @@ function credentialRelativePaths(normalized: string): string[] {
     candidates.add(normalized.slice(macHomeMatch[0].length));
   }
 
+  // C:/Users/<user>/... (Windows) home root. The optional leading path segment
+  // lets POSIX test runners exercise Windows-style paths after path.resolve().
+  const windowsHomeMatch = normalized.match(
+    /(?:^|\/)[A-Z]:\/Users\/[^/]+(?=\/)/i,
+  );
+  if (windowsHomeMatch) {
+    const root = windowsHomeMatch[0].startsWith("/")
+      ? windowsHomeMatch[0].slice(1)
+      : windowsHomeMatch[0];
+    const rootIndex = normalized.indexOf(root);
+    if (rootIndex >= 0) {
+      candidates.add(normalized.slice(rootIndex + root.length));
+    }
+  }
+
   return [...candidates];
 }
 

@@ -29,7 +29,7 @@ function getEnvValue(key: string): string | undefined {
 
 function getRawSetting(runtime: IAgentRuntime, key: string): string | undefined {
   const runtimeValue = runtime.getSetting(key);
-  if (typeof runtimeValue === "string" && runtimeValue.length > 0) {
+  if (typeof runtimeValue === "string" && runtimeValue.trim().length > 0) {
     return runtimeValue;
   }
 

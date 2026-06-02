@@ -15,6 +15,24 @@ POWER_MANIFEST = ROOT / "docs/manufacturing/evidence/power/e1-npu-power-capture-
 THERMAL_PLAN = ROOT / "docs/manufacturing/evidence/thermal/e1-npu-thermal-capture-plan.md"
 SUSTAINED_CHECKER = ROOT / "benchmarks/power/scripts/check_sustained_run_evidence.py"
 OUT = ROOT / "build/reports/power_thermal_scope.json"
+MEASURED_SUSTAINED_MANIFEST = (
+    "benchmarks/power/manifests/e1-npu-sustained-capture.measured.json"
+)
+POWER_THERMAL_CAPTURE_COMMANDS = (
+    'test -n "$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND"',
+    (
+        'sh -c "$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND '
+        f'--output {MEASURED_SUSTAINED_MANIFEST}"'
+    ),
+    (
+        "python3 benchmarks/power/scripts/check_sustained_run_evidence.py "
+        f"{MEASURED_SUSTAINED_MANIFEST}"
+    ),
+    "python3 scripts/check_power_thermal_scope.py",
+)
+POWER_THERMAL_COMMAND_PLAN_CLAIM_BOUNDARY = (
+    "operator_commands_only_not_sustained_power_thermal_evidence_until_measured_manifest_validates"
+)
 FALSE_CLAIM_FLAGS = {
     "phone_claim_allowed": False,
     "release_claim_allowed": False,
@@ -98,6 +116,45 @@ def structured_findings(
             }
         )
     return findings
+
+
+def power_thermal_command_plan() -> list[dict[str, Any]]:
+    return [
+        {
+            "id": "capture_e1_npu_sustained_power_thermal_manifest",
+            "source": rel(POWER_MANIFEST),
+            "claim_boundary": POWER_THERMAL_COMMAND_PLAN_CLAIM_BOUNDARY,
+            "commands": list(POWER_THERMAL_CAPTURE_COMMANDS),
+            "requires": [
+                "calibrated VDDCORE/VDDIO power traces and calibrated thermal sensors",
+                "same-window frequency, throttle-state, CPU-fallback, and workload transcript capture",
+                "measured manifest on prototype_silicon or complete_phone substrate that passes sustained-run validation",
+            ],
+            "outputs": [MEASURED_SUSTAINED_MANIFEST],
+        }
+    ]
+
+
+def finding_payload(finding: dict[str, str], command_plan: list[dict[str, Any]]) -> dict[str, Any]:
+    row: dict[str, Any] = dict(finding)
+    commands = [
+        command
+        for batch in command_plan
+        for command in list_of_strings(batch.get("commands"))
+        if command
+    ]
+    if commands:
+        row["next_command"] = next(
+            (
+                command
+                for command in commands
+                if "ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND" in command
+                and not command.startswith("test -n ")
+            ),
+            commands[0],
+        )
+        row["next_commands"] = commands
+    return row
 
 
 def mapping(value: Any) -> dict[str, Any]:
@@ -255,6 +312,7 @@ def build_report() -> dict[str, Any]:
         "release reviewer approval that local OpenLane or architecture-model arithmetic is not used as measured TOPS/W evidence",
     ]
     findings = structured_findings(blocked_until_real_evidence, checks)
+    command_plan = power_thermal_command_plan()
     return {
         "schema": "eliza.power_thermal_scope.v1",
         "status": "power_thermal_scope_release_blocked",
@@ -273,12 +331,18 @@ def build_report() -> dict[str, Any]:
             "measured_manifest_checker": rel(SUSTAINED_CHECKER),
         },
         "blocked_until_real_evidence": blocked_until_real_evidence,
-        "findings": findings,
+        "next_capture_commands": {
+            "sustained_power_thermal_manifest": POWER_THERMAL_CAPTURE_COMMANDS[1],
+            "sustained_power_thermal_validation": POWER_THERMAL_CAPTURE_COMMANDS[2],
+        },
+        "next_command_plan": command_plan,
+        "findings": [finding_payload(finding, command_plan) for finding in findings],
         "checks": checks,
         "summary": {
             "check_count": len(checks),
             "passing_check_count": len([check for check in checks if check["status"] == "pass"]),
             "release_claim_allowed": False,
+            "next_command_batch_count": len(command_plan),
         },
     }
 
@@ -329,6 +393,58 @@ def validate_report(data: dict[str, Any]) -> list[str]:
     findings = data.get("findings")
     if not isinstance(findings, list) or not findings:
         errors.append("findings must list structured power/thermal blockers")
+    else:
+        for finding in findings:
+            if not isinstance(finding, dict):
+                errors.append("findings entries must be mappings")
+                continue
+            require(
+                isinstance(finding.get("next_command"), str) and bool(finding["next_command"]),
+                "findings must include next_command",
+                errors,
+            )
+            require(
+                isinstance(finding.get("next_commands"), list) and bool(finding["next_commands"]),
+                "findings must include next_commands",
+                errors,
+            )
+    commands = data.get("next_capture_commands")
+    if not isinstance(commands, dict):
+        errors.append("next_capture_commands must be a mapping")
+    else:
+        require(
+            commands.get("sustained_power_thermal_manifest")
+            == POWER_THERMAL_CAPTURE_COMMANDS[1],
+            "next_capture_commands missing sustained power/thermal manifest capture",
+            errors,
+        )
+        require(
+            commands.get("sustained_power_thermal_validation")
+            == POWER_THERMAL_CAPTURE_COMMANDS[2],
+            "next_capture_commands missing sustained power/thermal validation",
+            errors,
+        )
+    command_plan = data.get("next_command_plan")
+    if not isinstance(command_plan, list) or not command_plan:
+        errors.append("next_command_plan must list calibrated power/thermal capture commands")
+    else:
+        first = command_plan[0]
+        if not isinstance(first, dict):
+            errors.append("next_command_plan entries must be mappings")
+        else:
+            require(
+                first.get("claim_boundary") == POWER_THERMAL_COMMAND_PLAN_CLAIM_BOUNDARY,
+                "power/thermal command plan claim boundary drifted",
+                errors,
+            )
+            command_text = "\n".join(list_of_strings(first.get("commands")))
+            for token in (
+                "ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND",
+                MEASURED_SUSTAINED_MANIFEST,
+                "check_sustained_run_evidence.py",
+                "check_power_thermal_scope.py",
+            ):
+                require(token in command_text, f"power/thermal command plan missing {token}", errors)
     scaffolds = data.get("current_scaffolds")
     if not isinstance(scaffolds, dict):
         errors.append("current_scaffolds must be a mapping")

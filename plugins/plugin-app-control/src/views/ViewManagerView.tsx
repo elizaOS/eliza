@@ -22,19 +22,45 @@ export { interact } from "./viewManagerData";
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-function ViewCard({ view }: { view: ViewEntry }) {
+function ViewCard({
+	view,
+	onOpen,
+}: {
+	view: ViewEntry;
+	onOpen: (view: ViewEntry) => void;
+}) {
 	const heroSrc =
 		view.heroImageUrl ?? `/api/views/${encodeURIComponent(view.id)}/hero`;
+	const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+		id: `open-card-${view.id}`,
+		role: "card",
+		label: `Open ${view.label}`,
+		group: "view-manager-grid",
+		status: view.available ? "active" : "inactive",
+		description: `Navigate to the ${view.label} view (${
+			view.available ? "bundle ready" : "not built"
+		})`,
+		onActivate: () => onOpen(view),
+	});
 
 	return (
-		<div
+		<button
+			ref={ref}
+			type="button"
+			onClick={() => onOpen(view)}
+			aria-label={`Open ${view.label}`}
+			{...agentProps}
 			style={{
+				textAlign: "left",
+				font: "inherit",
 				border: "1px solid rgba(255,255,255,0.08)",
 				borderRadius: 12,
 				overflow: "hidden",
 				background: "rgba(255,255,255,0.03)",
 				display: "flex",
 				flexDirection: "column",
+				cursor: "pointer",
+				padding: 0,
 				transition: "border-color 0.15s",
 			}}
 		>
@@ -88,7 +114,7 @@ function ViewCard({ view }: { view: ViewEntry }) {
 					{view.available ? "Bundle ready" : "Not built"}
 				</div>
 			</div>
-		</div>
+		</button>
 	);
 }
 
@@ -186,6 +212,10 @@ export function ViewManagerView() {
 		void fetchViews();
 	}, [fetchViews]);
 
+	const openView = useCallback((view: ViewEntry) => {
+		void requestViewNavigation(view);
+	}, []);
+
 	return (
 		<div
 			style={{
@@ -262,7 +292,7 @@ export function ViewManagerView() {
 						}}
 					>
 						{views.map((view) => (
-							<ViewCard key={view.id} view={view} />
+							<ViewCard key={view.id} view={view} onOpen={openView} />
 						))}
 					</div>
 				)}

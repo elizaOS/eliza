@@ -50,6 +50,20 @@ export function clearActiveViewContext(): void {
  *   TASKS      — plugin-agent-orchestrator tasks action (coding/orchestration)
  *   PLAY_EMOTE — plugin-companion/src/actions/emote.ts
  *   RUNTIME    — packages/agent/src/actions/runtime.ts (restart/config ops)
+ *
+ * Verified action names + view ids (2026-06-02) — view id from each plugin's
+ * ViewDeclaration, action `name:` from that plugin's (or a thematically paired
+ * plugin's) action source. Actions are plugin-conditional: when the owning
+ * plugin is not loaded the name is simply not registered and the weighting is a
+ * no-op (no error). Sources:
+ *   wallet      — view plugins/plugin-wallet-ui; actions plugins/plugin-wallet
+ *                 (chains/evm/actions swap+transfer, chains generated specs)
+ *   polymarket  — plugins/plugin-polymarket-app/src/actions.ts (POLYMARKET_STATUS)
+ *   hyperliquid — plugins/plugin-hyperliquid-app/src/actions/perpetual-market.ts
+ *   steward     — plugin-steward-app re-exports plugin-wallet's WALLET action
+ *   facewear    — plugins/plugin-facewear/src/index.ts (FACEWEAR_, SMARTGLASSES_, XR_ actions)
+ *   scape       — plugins/plugin-scape/src/actions (SCAPE)
+ *   2004scape   — plugins/plugin-2004scape/src/actions (RS_2004, RS_2004_INVENTORY)
  */
 export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
   companion: ["PLAY_EMOTE"],
@@ -59,6 +73,34 @@ export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
   training: ["RUNTIME"],
   "plugins-page": ["RUNTIME"],
   settings: ["RUNTIME"],
+  wallet: [
+    "WALLET",
+    "EVM_SWAP",
+    "EVM_TRANSFER",
+    "SOLANA_SWAP",
+    "SOLANA_TRANSFER",
+    "CROSS_CHAIN_TRANSFER",
+    "BIRDEYE_WALLET_PORTFOLIO",
+  ],
+  steward: ["WALLET"],
+  polymarket: ["POLYMARKET_STATUS"],
+  hyperliquid: ["PERPETUAL_MARKET"],
+  facewear: [
+    "FACEWEAR_CONNECT",
+    "FACEWEAR_DEBUG",
+    "SMARTGLASSES_CONTROL",
+    "SMARTGLASSES_STATUS",
+    "SMARTGLASSES_DISPLAY_TEXT",
+    "SMARTGLASSES_MICROPHONE",
+    "XR_OPEN_VIEW",
+    "XR_CLOSE_VIEW",
+    "XR_SWITCH_VIEW",
+    "XR_LIST_VIEWS",
+    "XR_RESIZE_VIEW",
+    "XR_QUERY_VISION",
+  ],
+  scape: ["SCAPE"],
+  "2004scape": ["RS_2004", "RS_2004_INVENTORY"],
 };
 
 /**
@@ -101,7 +143,8 @@ export function validateViewActionMap(
  * context-renderer to inject; pure so it is trivially testable.
  */
 export function renderActiveViewContextBlock(view: ActiveViewContext): string {
-  return [
+  const scoped = [...viewScopedActionNames(view.viewId)];
+  const lines = [
     "# Active View",
     `The user is looking at the "${view.viewLabel}" view (id: ${view.viewId}, ${view.viewType}${view.viewPath ? `, path ${view.viewPath}` : ""}).`,
     "You can inspect and drive everything in it through the view-interact capabilities:",
@@ -109,7 +152,13 @@ export function renderActiveViewContextBlock(view: ActiveViewContext): string {
     "- get-agent-state — read the whole view snapshot, including the focused element.",
     "- agent-click {id} / agent-fill {id,value} / agent-focus {id} / agent-scroll-to {id} — act on an element by its id.",
     "Prefer acting directly on the view over describing what the user should click.",
-  ].join("\n");
+  ];
+  if (scoped.length > 0) {
+    lines.push(
+      `Actions most relevant while on this view (prefer these when the request fits): ${scoped.join(", ")}.`,
+    );
+  }
+  return lines.join("\n");
 }
 
 /**

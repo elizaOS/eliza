@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-lifeops",
   "version": "2.0.3-beta.0",
   "type": "module",
-  "description": "LifeOps app plugin: routines, goals, Google Workspace, Apple Calendar, Apple Reminders, Twilio, browser companion control, hosts-file blocking (self-control), and related agent surfaces.",
+  "description": "LifeOps personal assistant plugin: chat-first executive workflows, owner approvals, scheduled tasks, calendar, inbox, documents, reminders, money admin, and focused owner-operation views.",
   "sideEffects": [
     "./src/widgets/index.ts",
     "./src/api/client-lifeops.ts",
@@ -54,7 +54,7 @@
     "test:app-state": "vitest run --config vitest.config.ts eliza/plugins/plugin-lifeops/test/lifeops-app-state.test.ts",
     "test:background-real": "vitest run --config vitest.background-real.config.ts test/scheduled-task-end-to-end.e2e.test.ts test/reminder-review-job.real.e2e.test.ts test/lifeops-scheduling.real.test.ts test/schedule-merged-state.real.test.ts",
     "test:integration": "cd ../../.. && vitest run --config eliza/packages/test/vitest/integration.config.ts eliza/plugins/plugin-lifeops/test/life-smoke.integration.test.ts",
-    "test:scenarios": "cd ../../.. && bun run scenarios:lifeops",
+    "test:scenarios": "cd ../.. && bun packages/scenario-runner/src/cli.ts list plugins/plugin-lifeops/test/scenarios",
     "bench:work-threads": "cd ../.. && bun plugins/plugin-lifeops/scripts/work-thread-benchmark.ts",
     "verify:live-schedule": "bun run ./scripts/verify-live-schedule-data.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",
@@ -70,6 +70,7 @@
     "@elizaos/capacitor-calendar": "workspace:*",
     "@elizaos/capacitor-mobile-signals": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/macosreminders": "workspace:*",
     "@elizaos/native-activity-tracker": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/plugin-calendly": "workspace:*",
@@ -116,8 +117,6 @@
       "permissions": [
         "reminders",
         "calendar",
-        "health",
-        "screentime",
         "notes"
       ]
     }

@@ -170,6 +170,23 @@ describe("Group A: auth + sessions", () => {
   });
 
   // --------------------------------------------------------------------
+  // /api/auth/steward-debug — removed. It must not be public/reachable.
+  // --------------------------------------------------------------------
+  describe("/api/auth/steward-debug", () => {
+    test("removed debug route is not publicly reachable", async () => {
+      if (!reachableOnly()) return;
+
+      const getRes = await api.get("/api/auth/steward-debug");
+      expect([401, 404]).toContain(getRes.status);
+
+      const postRes = await api.post("/api/auth/steward-debug", {
+        token: "not-a-real-steward-jwt",
+      });
+      expect([401, 404]).toContain(postRes.status);
+    });
+  });
+
+  // --------------------------------------------------------------------
   // /api/auth/steward-session — POST sets cookie; DELETE clears. Public.
   // --------------------------------------------------------------------
   describe("/api/auth/steward-session", () => {

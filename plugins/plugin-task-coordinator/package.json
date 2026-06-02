@@ -54,7 +54,7 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json",
     "test": "vitest run --config vitest.config.ts",
     "test:unit": "vitest run --config vitest.config.ts",
-    "test:e2e:manual": "vitest run --config vitest.e2e.config.ts"
+    "test:e2e:manual": "vitest run --config vitest.live.config.ts"
   },
   "files": [
     "dist"

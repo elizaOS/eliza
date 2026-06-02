@@ -3,15 +3,15 @@
 // Updates a release manifest JSON with sha256 checksums and file sizes after artifacts are built.
 // Usage: node update-manifest-checksums.mjs --manifest <path> --artifacts-dir <dir>
 
-import { createHash } from "crypto";
+import { createHash } from "node:crypto";
 import {
   createReadStream,
   existsSync,
   readFileSync,
   statSync,
   writeFileSync,
-} from "fs";
-import { join, resolve } from "path";
+} from "node:fs";
+import { join, resolve } from "node:path";
 
 function parseArgs(argv) {
   const args = {};
@@ -66,7 +66,6 @@ async function main() {
       const { size } = statSync(filePath);
       artifact.sha256 = sha256;
       artifact.sizeBytes = size;
-      if (artifact.status === "candidate") artifact.status = "available";
       artifact.validation ??= { evidence: [] };
       if (!artifact.validation.evidence.includes("sha256-generated")) {
         artifact.validation.evidence.push("sha256-generated");
@@ -79,7 +78,7 @@ async function main() {
     }
   }
 
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   console.log(
     `\nDone: ${updated} updated, ${skipped} already set, ${missing} missing/errored`,
   );

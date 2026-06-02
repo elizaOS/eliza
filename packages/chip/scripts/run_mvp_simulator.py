@@ -7,8 +7,11 @@ import os
 import subprocess
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from provenance_sanitize import sanitize_host_local_paths
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/mvp_simulator.json"
@@ -480,6 +483,16 @@ def nonpassing_items(results: list[dict[str, object]]) -> list[dict[str, object]
     return [*blocked_items(results), *failed_items(results)]
 
 
+def portable_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return sanitize_host_local_paths(value)
+    if isinstance(value, list):
+        return [portable_value(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): portable_value(item) for key, item in value.items()}
+    return value
+
+
 def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     results = []
@@ -546,6 +559,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.mvp_simulator.v1",
+        "generated_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "status": overall,
         "strongest_attempted": "os_boot",
         "best_executable_evidence": best["name"] if best else "none",
@@ -579,7 +593,7 @@ def main() -> int:
         "results": results,
     }
     tmp = REPORT.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    tmp.write_text(json.dumps(portable_value(report), indent=2, sort_keys=True) + "\n")
     tmp.replace(REPORT)
 
     print(f"MVP simulator {overall}; wrote {REPORT.relative_to(ROOT)}")

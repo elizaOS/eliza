@@ -29,13 +29,29 @@ describe("WiFiWeb fallback", () => {
     { maxAge: -1 },
     { maxAge: Number.POSITIVE_INFINITY },
     { limit: -1 },
+    { limit: 1.5 },
     { limit: Number.NaN },
   ])("rejects malformed scan options %#", async (options) => {
     const wifi = new WiFiWeb();
 
     await expect(wifi.listAvailableNetworks(options)).rejects.toThrow(
-      /must be a non-negative finite number/,
+      /must be a non-negative/,
     );
+  });
+
+  it.each([
+    null,
+    "limit=1",
+    1,
+    false,
+  ])("rejects non-object scan options %# without warning", async (options) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const wifi = new WiFiWeb();
+
+    await expect(wifi.listAvailableNetworks(options as never)).rejects.toThrow(
+      "options must be an object",
+    );
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it("rejects malformed connect options before Android-only fallback responses", async () => {
@@ -60,5 +76,27 @@ describe("WiFiWeb fallback", () => {
       success: false,
       message: "Wi-Fi controls are only available on Android.",
     });
+  });
+
+  it("keeps fallback state stable across repeated unavailable operations", async () => {
+    const wifi = new WiFiWeb();
+
+    await expect(
+      Promise.all([
+        wifi.listAvailableNetworks({ limit: 0 }),
+        wifi.connectToNetwork({ ssid: "__proto__", password: "" }),
+        wifi.disconnectFromNetwork(),
+      ]),
+    ).resolves.toEqual([
+      { networks: [] },
+      {
+        success: false,
+        message: "Wi-Fi controls are only available on Android.",
+      },
+      {
+        success: false,
+        message: "Wi-Fi controls are only available on Android.",
+      },
+    ]);
   });
 });

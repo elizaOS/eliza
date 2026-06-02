@@ -1,4 +1,46 @@
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { ArrowRight, PlugZap } from "lucide-react";
+
+function slugify(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "source"
+  );
+}
+
+function MissingSourceCta({
+  cardTitle,
+  ctaLabel,
+  onCta,
+}: {
+  cardTitle: string;
+  ctaLabel: string;
+  onCta: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `overview-connect-${slugify(cardTitle)}`,
+    role: "button",
+    label: `${ctaLabel}: ${cardTitle}`,
+    group: "lifeops-overview",
+    description: `Connect the ${cardTitle} data source`,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onCta}
+      aria-label={ctaLabel}
+      title={ctaLabel}
+      className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-border/16 bg-bg/40 px-3 text-xs font-medium text-txt transition-colors hover:border-accent/30 hover:text-accent"
+      {...agentProps}
+    >
+      <span>{ctaLabel}</span>
+      <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+    </button>
+  );
+}
 
 interface MissingSourceCardProps {
   title: string;
@@ -26,16 +68,7 @@ export function MissingSourceCard({
         {title}
       </div>
       {ctaLabel && onCta ? (
-        <button
-          type="button"
-          onClick={onCta}
-          aria-label={ctaLabel}
-          title={ctaLabel}
-          className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-border/16 bg-bg/40 px-3 text-xs font-medium text-txt transition-colors hover:border-accent/30 hover:text-accent"
-        >
-          <span>{ctaLabel}</span>
-          <ArrowRight className="h-3.5 w-3.5" aria-hidden />
-        </button>
+        <MissingSourceCta cardTitle={title} ctaLabel={ctaLabel} onCta={onCta} />
       ) : null}
     </section>
   );

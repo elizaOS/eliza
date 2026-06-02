@@ -10,6 +10,25 @@ type ViewBundleOptions = {
   additionalExternals?: string[];
 };
 
+function isKnownToleratedViewBundleWarning(message: unknown): boolean {
+  const text =
+    typeof message === "string"
+      ? message
+      : [
+          (message as { code?: unknown })?.code,
+          (message as { message?: unknown })?.message,
+          (message as { id?: unknown })?.id,
+        ]
+          .filter((value): value is string => typeof value === "string")
+          .join("\n");
+
+  return (
+    text.includes("IMPORT_IS_UNDEFINED") &&
+    text.includes("Import `tslFn`") &&
+    text.includes("three.webgpu")
+  );
+}
+
 export function createViewBundleConfig(options: ViewBundleOptions): UserConfig {
   const outDir = options.outDir ?? "dist/views";
   const externals = new Set([
@@ -30,6 +49,7 @@ export function createViewBundleConfig(options: ViewBundleOptions): UserConfig {
       emptyOutDir: false,
       outDir,
       sourcemap: true,
+      chunkSizeWarningLimit: 4000,
       lib: {
         entry: path.resolve(process.cwd(), options.entry),
         formats: ["es"],
@@ -39,6 +59,12 @@ export function createViewBundleConfig(options: ViewBundleOptions): UserConfig {
         external: (id) =>
           externals.has(id) ||
           [...externals].some((external) => id.startsWith(`${external}/`)),
+        onwarn(warning, warn) {
+          if (isKnownToleratedViewBundleWarning(warning)) {
+            return;
+          }
+          warn(warning);
+        },
         output: {
           exports: "named",
         },

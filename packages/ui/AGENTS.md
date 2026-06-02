@@ -58,7 +58,8 @@ src/
   services/                   Client-side services: local-inference (model catalog,
                               downloader, engine, assignments), app-updates
   homescreen/                 Homescreen canvas + scene apply/history + face-rig
-  backgrounds/                Background host + registry (BackgroundHost, CloudVideoBackground)
+  backgrounds/                Static solid background host (BackgroundHost). CloudVideoBackground
+                              is retained for marketing/landing pages only, not the agent shell.
   companion/                  Companion bar (desktop) — CompanionBar, push-to-talk
   views/                      View event bus + interact protocol (STANDARD_CAPABILITIES)
   hooks/                      ~35 hooks (useMediaQuery, useActivityEvents, useRenderGuard, ...);
@@ -66,7 +67,6 @@ src/
   widgets/                    Chat sidebar widget registry + WidgetHost + visibility
   themes/                     apply-theme, presets
   voice/                      Voice capture factory, character voice config, local ASR
-  avatar-runtime/             VRM avatar host + registry + presets
   events/                     Custom DOM event names + dispatch helpers (APP_EMOTE_EVENT, ...)
   i18n/                       UiLanguage, message catalogs, region helpers
   first-run/                  Deep-link routing, first-run config, pre-seed local runtime

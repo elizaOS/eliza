@@ -1,6 +1,6 @@
 import type http from "node:http";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { searchMcpMarketplace } from "../src/mcp-marketplace.js";
+import { getMcpServerDetails, searchMcpMarketplace } from "../src/mcp-marketplace.js";
 import { handleMcpRoutes, type McpRouteContext } from "../src/routes-mcp";
 
 vi.mock("../src/mcp-marketplace.js", () => ({
@@ -94,7 +94,9 @@ function makeCtx(
 
 describe("handleMcpRoutes", () => {
   beforeEach(() => {
+    vi.mocked(getMcpServerDetails).mockReset();
     vi.mocked(searchMcpMarketplace).mockReset();
+    vi.mocked(getMcpServerDetails).mockResolvedValue(null);
     vi.mocked(searchMcpMarketplace).mockResolvedValue({ results: [] });
   });
 
@@ -112,6 +114,43 @@ describe("handleMcpRoutes", () => {
 
     expect(searchMcpMarketplace).toHaveBeenCalledWith("files", expectedLimit);
     expect(ctx.response).toEqual({ status: 200, body: { ok: true, results: [] } });
+  });
+
+  it("rejects oversized marketplace search queries before hitting the registry", async () => {
+    const ctx = makeCtx("GET", "/api/mcp/marketplace/search", {
+      query: `?q=${"a".repeat(201)}`,
+    });
+
+    await expect(handleMcpRoutes(ctx)).resolves.toBe(true);
+
+    expect(ctx.response).toEqual({
+      status: 400,
+      body: { ok: false, error: "Marketplace search query must be 200 characters or fewer" },
+    });
+    expect(searchMcpMarketplace).not.toHaveBeenCalled();
+  });
+
+  it("trims marketplace detail names and rejects oversized names before lookup", async () => {
+    const trimmed = makeCtx("GET", "/api/mcp/marketplace/details/%20files%20");
+
+    await expect(handleMcpRoutes(trimmed)).resolves.toBe(true);
+
+    expect(getMcpServerDetails).toHaveBeenCalledWith("files");
+    expect(trimmed.response.status).toBe(404);
+
+    vi.mocked(getMcpServerDetails).mockClear();
+    const oversized = makeCtx(
+      "GET",
+      `/api/mcp/marketplace/details/${encodeURIComponent("a".repeat(201))}`
+    );
+
+    await expect(handleMcpRoutes(oversized)).resolves.toBe(true);
+
+    expect(oversized.response).toEqual({
+      status: 400,
+      body: { ok: false, error: "Server name must be 200 characters or fewer" },
+    });
+    expect(getMcpServerDetails).not.toHaveBeenCalled();
   });
 
   it("rejects malformed config bodies before saving server config", async () => {

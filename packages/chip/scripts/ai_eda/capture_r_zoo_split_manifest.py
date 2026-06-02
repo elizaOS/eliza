@@ -25,6 +25,11 @@ SPLIT_BY_FAMILY = {
     "sw": "val",
     "tr": "test",
 }
+FALSE_CLAIM_FLAGS = {
+    "release_use_allowed": False,
+    "e1_signoff_evidence": False,
+    "optimization_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -193,6 +198,7 @@ def main() -> int:
         "training_use_allowed": not blockers,
         "e1_signoff_evidence": False,
         "optimization_claim_allowed": False,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "evidence_run_ids": {"conversion": conversion_run_id},
         "source_conversion": artifact(conversion_path),
         "split_policy": {

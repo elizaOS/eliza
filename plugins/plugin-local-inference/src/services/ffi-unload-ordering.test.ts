@@ -137,8 +137,9 @@ describe("DesktopFfiBackendRuntime.release() ordering (#14)", () => {
 		);
 		expect(adapterMock.close).toHaveBeenCalledTimes(1);
 
-		// Proof the runtime is NOT wedged: a fresh acquire() must NOT hit the
-		// "live session; release() first" guard.
-		await expect(runtime.acquire(PLAN)).resolves.toBeDefined();
+		// The runtime is not hidden-wedged on the old live-session guard, but it
+		// is explicitly poisoned so a new native model is not allocated over a
+		// failed cleanup state.
+		await expect(runtime.acquire(PLAN)).rejects.toThrow(/restart required/i);
 	});
 });

@@ -477,6 +477,7 @@ export const solanaRpcHandler: ServiceHandler = async ({ body, searchParams }) =
         { error: "Service temporarily unavailable", code: 503 },
         { status: 503 },
       ),
+      actualCost: 0,
       usageMetadata: { circuit_open: true },
     };
   }

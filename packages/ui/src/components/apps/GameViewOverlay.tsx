@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useApp } from "../../state";
 import { Button } from "../ui/button";
 import {
@@ -30,6 +31,11 @@ export function GameViewOverlay() {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const authSentRef = useRef(false);
   const viewerSessionRef = useRef("");
+  // Safety net: when the kiosk tab/document is backgrounded, tear the iframe
+  // down so the game loop and its postMessage auth listener stop running. The
+  // primary unmount path is App.tsx's render condition; this guards the case
+  // where the overlay stays in the tree but is no longer the foreground.
+  const documentVisible = useDocumentVisibility();
   const activeGameRun = useMemo(
     () => appRuns.find((run) => run.runId === activeGameRunId) ?? null,
     [activeGameRunId, appRuns],
@@ -91,8 +97,18 @@ export function GameViewOverlay() {
     }
   }, [viewerSessionKey]);
 
+  // Hiding the document unmounts the iframe; on re-show it remounts with a
+  // fresh contentWindow that re-emits its ready event, so the auth handshake
+  // must run again even within the same viewer session.
+  useEffect(() => {
+    if (!documentVisible) {
+      authSentRef.current = false;
+    }
+  }, [documentVisible]);
+
   useEffect(() => {
     if (
+      !documentVisible ||
       !useEmbeddedViewer ||
       !activeGamePostMessageAuth ||
       !activeGamePostMessagePayload
@@ -137,6 +153,7 @@ export function GameViewOverlay() {
       window.removeEventListener("message", onMessage);
     };
   }, [
+    documentVisible,
     activeGamePostMessageAuth,
     activeGamePostMessagePayload,
     postMessageTargetOrigin,
@@ -144,6 +161,7 @@ export function GameViewOverlay() {
   ]);
 
   if (
+    !documentVisible ||
     !resolvedActiveGameViewerUrl ||
     activeGameRun?.viewerAttachment !== "attached"
   ) {

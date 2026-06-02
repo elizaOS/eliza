@@ -6,9 +6,6 @@ export function PrivyProvider({ children }: { children: React.ReactNode }) {
   const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 
   if (!appId) {
-    console.warn(
-      "NEXT_PUBLIC_PRIVY_APP_ID is not set. Authentication will not work.",
-    );
     return <>{children}</>;
   }
 

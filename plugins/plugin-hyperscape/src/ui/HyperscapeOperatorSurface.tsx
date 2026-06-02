@@ -54,6 +54,40 @@ function HyperscapeSuggestedPromptButton({
   );
 }
 
+function HyperscapeTuiPromptButton({
+  prompt,
+  index,
+  disabled,
+  onSelect,
+  style,
+}: {
+  prompt: string;
+  index: number;
+  disabled: boolean;
+  onSelect: (prompt: string) => void;
+  style: CSSProperties;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `tui-suggested-prompt-${index}`,
+    role: "button",
+    label: prompt,
+    group: "tui-operator-relay",
+    description: `Send the suggested Hyperscape command "${prompt}" from the terminal surface`,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      disabled={disabled}
+      onClick={() => onSelect(prompt)}
+      style={style}
+      {...agentProps}
+    >
+      {prompt}
+    </button>
+  );
+}
+
 interface HyperscapeActivityEntry {
   id: string;
   label: string;
@@ -508,6 +542,23 @@ export function HyperscapeTuiView() {
   const recentActivity = run ? extractRecentActivity(run) : [];
   const suggestedPrompts = session?.suggestedPrompts ?? [];
   const canSend = Boolean(session?.canSendCommands);
+  const tuiCommandInput = useAgentElement<HTMLInputElement>({
+    id: "tui-input-command",
+    role: "text-input",
+    label: "Hyperscape command",
+    group: "tui-operator-relay",
+    description:
+      "Type a Hyperscape operator command to relay from the terminal surface",
+    getValue: () => draft,
+    onFill: (value) => setDraft(value),
+  });
+  const tuiSendControl = useAgentElement<HTMLButtonElement>({
+    id: "tui-action-send-command",
+    role: "button",
+    label: "Send command",
+    group: "tui-operator-relay",
+    description: "Send the typed Hyperscape command from the terminal surface",
+  });
   const viewState = {
     viewType: "tui",
     viewId: "hyperscape",
@@ -570,18 +621,18 @@ export function HyperscapeTuiView() {
           : ["look around", "follow target", "pause"]
         )
           .slice(0, 6)
-          .map((prompt) => (
-            <button
+          .map((prompt, index) => (
+            <HyperscapeTuiPromptButton
               key={prompt}
-              type="button"
+              prompt={prompt}
+              index={index}
               disabled={!canSend || sending}
-              onClick={() => void sendDraft(prompt)}
+              onSelect={(value) => void sendDraft(value)}
               style={tuiButtonStyle}
-            >
-              {prompt}
-            </button>
+            />
           ))}
         <input
+          ref={tuiCommandInput.ref}
           aria-label="Hyperscape command"
           value={draft}
           onChange={(event) => setDraft(event.currentTarget.value)}
@@ -590,12 +641,15 @@ export function HyperscapeTuiView() {
           }}
           placeholder="Send an operator message..."
           style={tuiInputStyle}
+          {...tuiCommandInput.agentProps}
         />
         <button
+          ref={tuiSendControl.ref}
           type="button"
           disabled={!canSend || sending || !draft.trim()}
           onClick={() => void sendDraft(draft)}
           style={tuiButtonStyle}
+          {...tuiSendControl.agentProps}
         >
           send command
         </button>

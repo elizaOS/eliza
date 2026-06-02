@@ -5,6 +5,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -21,6 +22,7 @@ from compiler.runtime.e1x3d_wafer_model import (  # noqa: E402
     stack_yield_model,
     thermal_model,
 )
+from compiler.runtime.e1x_wafer_model import E1XConfig  # noqa: E402
 
 DEFAULT_OUT = ROOT / "benchmarks/results/e1x3d-scaled-16gb-model-load.json"
 
@@ -52,7 +54,7 @@ def main() -> int:
         if scenario["scenario"] == HIGH_DEFECT_SCENARIO_3D.name
     )
     model_shard_sample = model_shard_sample_artifact(
-        config, SCALED_8GB_MODEL, high_scenario["model_load"]
+        cast(E1XConfig, config), SCALED_8GB_MODEL, high_scenario["model_load"]
     )
     thermal = thermal_model(config)
     stack_yield = stack_yield_model(config, HIGH_DEFECT_SCENARIO_3D)

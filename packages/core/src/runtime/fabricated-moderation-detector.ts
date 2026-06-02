@@ -57,8 +57,11 @@ const FABRICATED_MODERATION_PATTERNS: readonly RegExp[] = [
 	),
 	// "my|our safety guidelines | usage policies | content policies"
 	/\b(?:my|our)\s+(?:safety\s+guidelines?|usage\s+polic\w+|content\s+polic\w+)\b/i,
-	// "my|our moderation system", or "the moderation system blocked/prevented/..."
-	/\b(?:(?:my|our)\s+(?:content\s+)?moderation\s+(?:system|filter|layer|policy)|the\s+(?:content\s+)?moderation\s+(?:system|filter|layer|policy)\s+(?:blocked|flagged|prevented|filtered|rejected))\b/i,
+	// "my|our|the (content) moderation system|filter|layer|policy" followed by an
+	// enforcement verb. Requiring the verb on the my/our branch too keeps the
+	// fabricated "my content moderation system caught that" while clearing the agent
+	// describing its OWN product ("our moderation system processes 1k posts/min").
+	/\b(?:my|our|the)\s+(?:content\s+)?moderation\s+(?:system|filter|layer|policy)\s+(?:blocked|flagged|prevented|filtered|rejected|caught|stopped|removed)\b/i,
 	// "your request|message|... contained hateful|harmful|inappropriate|abusive|offensive language|content|material|speech"
 	/\byour\s+(?:request|message|previous message|input|prompt|content)\s+contained\s+(?:hateful|harmful|inappropriate|abusive|offensive)\s+(?:language|content|material|speech)\b/i,
 	// "the system (automatically) blocks/blocked such content | your request | ..."

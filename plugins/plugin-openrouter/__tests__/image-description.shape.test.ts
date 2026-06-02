@@ -88,3 +88,27 @@ describe("OpenRouter image description plumbing", () => {
     expect(generateText).not.toHaveBeenCalled();
   });
 });
+
+describe("OpenRouter image generation plumbing", () => {
+  it("rejects blank prompts before calling the provider", async () => {
+    const generateText = vi.fn();
+    const chat = vi.fn();
+    vi.doMock("ai", () => ({
+      generateText,
+      streamText: vi.fn(),
+    }));
+    vi.doMock("../providers", () => ({
+      createOpenRouterProvider: () => ({ chat }),
+    }));
+
+    const { openrouterPlugin } = await import("../index");
+    const handler = openrouterPlugin.models?.[ModelType.IMAGE];
+    if (!handler) throw new Error("IMAGE model handler is not registered");
+
+    await expect(handler(createRuntime(), { prompt: " \n\t " })).rejects.toThrow(
+      "IMAGE generation requires a non-empty prompt"
+    );
+    expect(chat).not.toHaveBeenCalled();
+    expect(generateText).not.toHaveBeenCalled();
+  });
+});

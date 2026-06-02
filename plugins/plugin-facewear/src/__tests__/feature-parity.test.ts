@@ -173,7 +173,12 @@ describe("XR feature parity audit", () => {
       ],
     } as never);
 
-    const result = await viewsRoute.routeHandler({
+    const routeHandler = viewsRoute.routeHandler;
+    if (!routeHandler) {
+      throw new Error("viewsRoute.routeHandler is required for this test");
+    }
+
+    const result = await routeHandler({
       runtime: {
         getService: () => ({
           getConnections: () => [

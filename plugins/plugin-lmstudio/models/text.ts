@@ -374,7 +374,14 @@ export function normalizeToolChoice(toolChoice: unknown): ToolChoice<ToolSet> | 
 function stringifyMessageContent(content: unknown): string {
   if (typeof content === "string") return content;
   if (content == null) return "";
-  return typeof content === "object" ? JSON.stringify(content) : String(content);
+  if (typeof content === "object") {
+    try {
+      return JSON.stringify(content);
+    } catch {
+      return "[unserializable content]";
+    }
+  }
+  return String(content);
 }
 
 function normalizeUserContent(content: unknown): UserContent {

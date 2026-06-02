@@ -15,6 +15,12 @@ DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/r_zoo_license_review"
 SCHEMA = "eliza.ai_eda.r_zoo_license_review.v1"
 CLAIM_BOUNDARY = "r_zoo_license_review_training_only_no_release_or_legal_advice_claim"
 ASSET_ID = "r-zoo-rectilinear-floorplan"
+FALSE_CLAIM_FLAGS = {
+    "release_use_allowed": False,
+    "commercial_use_allowed": False,
+    "model_weight_release_allowed": False,
+    "e1_signoff_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -116,6 +122,7 @@ def main() -> int:
             "commercial_use_allowed": False,
             "model_weight_release_allowed": False,
             "e1_signoff_claim_allowed": False,
+            "false_claim_flags": FALSE_CLAIM_FLAGS,
         },
         "required_controls": [
             "preserve attribution and source revision in downstream manifests",

@@ -27,6 +27,8 @@ DATE = "2026-05-22"
 SOURCE_BOARD = (
     ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb"
 )
+ROUTED_BOARD = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
+ROUTED_SCHEMATIC = ROOT / "board/kicad/e1-phone/schematic/e1-phone.kicad_sch"
 SOURCE_STEP = ROOT / "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step"
 OUT_MANIFEST = (
     ROOT / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml"
@@ -45,6 +47,7 @@ COMPONENT_3D_BINDING_REPORT = (
 COMPONENT_3D_BINDING_MATRIX = (
     ROOT / "board/kicad/e1-phone/production/reports/component-3d-binding-matrix.csv"
 )
+KICAD_CLI = ROOT / "tools/bin/kicad-cli"
 
 
 def chip_rel(path: Path) -> str:
@@ -85,6 +88,67 @@ def load_json_list_if_present(path: Path) -> list[dict[str, Any]]:
     if not isinstance(data, list):
         return []
     return [item for item in data if isinstance(item, dict)]
+
+
+def normalize_kicad_text(text: str) -> str:
+    return re.sub(r"\b\d{2}:\d{2}:\d{2}: ", "HH:MM:SS: ", text)
+
+
+def normalize_kicad_json(payload: Any) -> Any:
+    if isinstance(payload, dict):
+        return {
+            key: "normalized_local_candidate_timestamp"
+            if key == "date" and isinstance(value, str)
+            else normalize_kicad_json(value)
+            for key, value in payload.items()
+        }
+    if isinstance(payload, list):
+        return [normalize_kicad_json(item) for item in payload]
+    return payload
+
+
+def run_kicad(args: list[str]) -> dict[str, Any]:
+    if not KICAD_CLI.is_file():
+        return {
+            "status": "blocked_kicad_cli_missing",
+            "command": " ".join(args),
+            "returncode": None,
+            "stdout": "",
+            "stderr": f"{chip_rel(KICAD_CLI)} is missing",
+        }
+    completed = subprocess.run(
+        [str(KICAD_CLI), *args],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    return {
+        "status": "pass" if completed.returncode == 0 else "blocked_kicad_cli_report_failed",
+        "command": " ".join([chip_rel(KICAD_CLI), *args]),
+        "returncode": completed.returncode,
+        "stdout": normalize_kicad_text(completed.stdout),
+        "stderr": normalize_kicad_text(completed.stderr),
+    }
+
+
+def run_kicad_json_report(args: list[str], output: Path) -> dict[str, Any]:
+    run = run_kicad(args)
+    payload: Any = {}
+    parse_status = "not_parsed"
+    if output.is_file():
+        try:
+            payload = normalize_kicad_json(json.loads(output.read_text(encoding="utf-8")))
+            parse_status = "pass"
+        except json.JSONDecodeError as exc:
+            payload = {"json_error": str(exc)}
+            parse_status = "blocked_json_parse_failed"
+    run["output"] = chip_rel(output)
+    run["output_present"] = output.is_file()
+    run["output_bytes"] = output.stat().st_size if output.is_file() else 0
+    run["output_sha256"] = sha256(output) if output.is_file() else ""
+    run["json_parse_status"] = parse_status
+    return {"run": run, "payload": payload}
 
 
 def board_text_counts(path: Path) -> dict[str, Any]:
@@ -351,6 +415,16 @@ def cad_connection_summary() -> dict[str, Any]:
                 "bend_radius_requirement_defined": bool(
                     item.get("bend_radius_requirement_defined", False)
                 ),
+                "mechanical_envelope": item.get("mechanical_envelope", {}),
+                "manufacturing_geometry_defined": bool(
+                    item.get("manufacturing_geometry_defined", False)
+                ),
+                "bend_or_connector_basis_defined": bool(
+                    item.get("bend_or_connector_basis_defined", False)
+                ),
+                "impedance_or_current_basis_defined": bool(
+                    item.get("impedance_or_current_basis_defined", False)
+                ),
                 "pass": bool(item.get("pass", False)),
                 "release_credit": bool(item.get("release_credit", True)),
             }
@@ -416,6 +490,42 @@ def cad_connection_summary() -> dict[str, Any]:
         "endpoint_pair_distance_total_mm": float(
             coverage.get("endpoint_pair_distance_total_mm", 0) or 0
         ),
+        "mechanical_envelope_defined_count": int(
+            coverage.get("mechanical_envelope_defined_count", 0) or 0
+        ),
+        "mechanical_envelope_release_credit": bool(
+            coverage.get("mechanical_envelope_release_credit", True)
+        ),
+        "manufacturing_detail_defined_count": int(
+            coverage.get("manufacturing_detail_defined_count", 0) or 0
+        ),
+        "connection_geometry_defined_count": int(
+            coverage.get("connection_geometry_defined_count", 0) or 0
+        ),
+        "connection_bend_or_connector_basis_defined_count": int(
+            coverage.get("connection_bend_or_connector_basis_defined_count", 0) or 0
+        ),
+        "connection_impedance_or_current_basis_defined_count": int(
+            coverage.get("connection_impedance_or_current_basis_defined_count", 0) or 0
+        ),
+        "all_connections_have_manufacturing_geometry": bool(
+            coverage.get("all_connections_have_manufacturing_geometry", False)
+        ),
+        "all_connections_have_bend_or_connector_basis": bool(
+            coverage.get("all_connections_have_bend_or_connector_basis", False)
+        ),
+        "all_connections_have_impedance_or_current_basis": bool(
+            coverage.get("all_connections_have_impedance_or_current_basis", False)
+        ),
+        "all_connections_have_endpoint_distance": bool(
+            coverage.get("all_connections_have_endpoint_distance", False)
+        ),
+        "supplier_drawing_requirement_medium_count": int(
+            coverage.get("supplier_drawing_requirement_medium_count", 0) or 0
+        ),
+        "supplier_drawing_requirements_by_medium": coverage.get(
+            "supplier_drawing_requirements_by_medium", {}
+        ),
         "physical_medium_counts": coverage.get("physical_medium_counts", {}),
         "electrical_class_counts": coverage.get("electrical_class_counts", {}),
         "controlled_impedance_connection_count": int(
@@ -430,6 +540,7 @@ def cad_connection_summary() -> dict[str, Any]:
         "supplier_release_required_connection_count": int(
             coverage.get("supplier_release_required_connection_count", 0) or 0
         ),
+        "release_boundary_summary": coverage.get("release_boundary_summary", {}),
         "release_credit": bool(coverage.get("release_credit", True)),
         "connection_ids": [item.get("id", "") for item in connection_records],
         "cad_parts": [item.get("cad_part", "") for item in connection_records],
@@ -526,6 +637,45 @@ def kicad_cad_traceability_summary() -> dict[str, Any]:
         "cad_connection_bend_radius_requirement_defined_count": int(
             summary.get("cad_connection_bend_radius_requirement_defined_count", 0) or 0
         ),
+        "cad_connection_mechanical_envelope_defined_count": int(
+            summary.get("cad_connection_mechanical_envelope_defined_count", 0) or 0
+        ),
+        "cad_connection_all_records_have_mechanical_envelope": bool(
+            summary.get("cad_connection_all_records_have_mechanical_envelope", False)
+        ),
+        "cad_connection_mechanical_envelope_release_credit": bool(
+            summary.get("cad_connection_mechanical_envelope_release_credit", True)
+        ),
+        "cad_connection_manufacturing_detail_defined_count": int(
+            summary.get("cad_connection_manufacturing_detail_defined_count", 0) or 0
+        ),
+        "cad_connection_geometry_defined_count": int(
+            summary.get("cad_connection_geometry_defined_count", 0) or 0
+        ),
+        "cad_connection_bend_or_connector_basis_defined_count": int(
+            summary.get("cad_connection_bend_or_connector_basis_defined_count", 0) or 0
+        ),
+        "cad_connection_impedance_or_current_basis_defined_count": int(
+            summary.get("cad_connection_impedance_or_current_basis_defined_count", 0) or 0
+        ),
+        "cad_connection_all_records_have_manufacturing_geometry": bool(
+            summary.get("cad_connection_all_records_have_manufacturing_geometry", False)
+        ),
+        "cad_connection_all_records_have_bend_or_connector_basis": bool(
+            summary.get("cad_connection_all_records_have_bend_or_connector_basis", False)
+        ),
+        "cad_connection_all_records_have_impedance_or_current_basis": bool(
+            summary.get("cad_connection_all_records_have_impedance_or_current_basis", False)
+        ),
+        "cad_connection_all_records_have_endpoint_distance": bool(
+            summary.get("cad_connection_all_records_have_endpoint_distance", False)
+        ),
+        "cad_connection_supplier_drawing_requirement_medium_count": int(
+            summary.get("cad_connection_supplier_drawing_requirement_medium_count", 0) or 0
+        ),
+        "cad_connection_supplier_drawing_requirements_by_medium": summary.get(
+            "cad_connection_supplier_drawing_requirements_by_medium", {}
+        ),
         "cad_connection_supplier_release_required_count": int(
             summary.get("cad_connection_supplier_release_required_count", 0) or 0
         ),
@@ -621,7 +771,31 @@ def supplier_step_intake_for_lane(lane: str) -> dict[str, Any]:
 def public_step_overlay_for_model(model: dict[str, Any]) -> dict[str, Any]:
     reference = str(model.get("reference", ""))
     footprint = str(model.get("footprint", ""))
-    if reference not in {"J_TOP_BOTTOM_FLEX_TOP", "J_TOP_BOTTOM_FLEX_BOTTOM"}:
+    overlay_by_reference = {
+        "J_REAR_CAMERA": {
+            "record": "hirose_bm28b0_6_24dp_2_0_35v_53",
+            "expected_footprints": {"CAMERA_24P_0P50_DEV"},
+            "path": (
+                "hirose_bm28b0_6_24dp_2_0_35v_53/"
+                "BM28B0.6-24DP_2-0.35V_3d_stp.stp"
+            ),
+            "missing_status": "expected_hirose_bm28_24dp_step_missing",
+        },
+        "J_TOP_BOTTOM_FLEX_TOP": {
+            "record": "hirose_df40c_80dp_0_4v_51",
+            "expected_footprints": {"HIROSE_DF40_80P_0P4_DEV"},
+            "path": "hirose_df40c_80dp_0_4v_51/DF40C-80DP-0.4V_3d_stp.stp",
+            "missing_status": "expected_hirose_df40_80dp_step_missing",
+        },
+        "J_TOP_BOTTOM_FLEX_BOTTOM": {
+            "record": "hirose_df40c_80dp_0_4v_51",
+            "expected_footprints": {"HIROSE_DF40_80P_0P4_DEV"},
+            "path": "hirose_df40c_80dp_0_4v_51/DF40C-80DP-0.4V_3d_stp.stp",
+            "missing_status": "expected_hirose_df40_80dp_step_missing",
+        },
+    }
+    overlay = overlay_by_reference.get(reference)
+    if overlay is None:
         return {
             "public_cad_step_overlay_status": "not_applicable_or_not_downloaded",
             "public_cad_step_overlay_file": "",
@@ -632,26 +806,26 @@ def public_step_overlay_for_model(model: dict[str, Any]) -> dict[str, Any]:
         }
     step_path = (
         ROOT / "board/kicad/e1-phone/production/sourcing/public-cad-downloads/"
-        "hirose_bm28b0_6_50dp_2_0_35v_53/BM28B0.6-50DP_2-0.35V_3d_stp.stp"
+        / str(overlay["path"])
     )
     if not step_path.is_file():
         return {
-            "public_cad_step_overlay_status": "expected_hirose_bm28_50dp_step_missing",
+            "public_cad_step_overlay_status": overlay["missing_status"],
             "public_cad_step_overlay_file": chip_rel(step_path),
             "public_cad_step_overlay_sha256": "",
             "public_cad_step_overlay_bytes": 0,
-            "public_cad_source_record": "hirose_bm28b0_6_50dp_2_0_35v_53",
+            "public_cad_source_record": overlay["record"],
             "public_cad_step_overlay_release_credit": False,
         }
     status = "downloaded_hashed_public_manufacturer_step_overlay_not_release"
-    if footprint != "HIROSE_DF40_80P_0P4_DEV":
+    if footprint not in overlay["expected_footprints"]:
         status = "downloaded_hashed_public_manufacturer_step_overlay_footprint_mismatch"
     return {
         "public_cad_step_overlay_status": status,
         "public_cad_step_overlay_file": chip_rel(step_path),
         "public_cad_step_overlay_sha256": sha256(step_path),
         "public_cad_step_overlay_bytes": step_path.stat().st_size,
-        "public_cad_source_record": "hirose_bm28b0_6_50dp_2_0_35v_53",
+        "public_cad_source_record": overlay["record"],
         "public_cad_step_overlay_release_credit": False,
     }
 
@@ -872,38 +1046,98 @@ def write_json_report(path: Path, artifact_id: str, source_requirement_id: str) 
         "claim_boundary": "blocked local candidate; not release evidence",
     }
     if path == ROOT / "board/kicad/e1-phone/production/reports/drc.json":
+        raw_path = ROOT / "build/e1-phone-routed-output-candidates/raw-routed-drc.json"
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
+        raw = run_kicad_json_report(
+            [
+                "pcb",
+                "drc",
+                "--format",
+                "json",
+                "-o",
+                chip_rel(raw_path),
+                chip_rel(ROUTED_BOARD),
+            ],
+            raw_path,
+        )
+        raw_payload = raw["payload"] if isinstance(raw["payload"], dict) else {}
+        violations = raw_payload.get("violations") if isinstance(raw_payload, dict) else []
+        unconnected = raw_payload.get("unconnected_items") if isinstance(raw_payload, dict) else []
         payload.update(
             {
                 "raw_kicad_report_kind": "drc",
-                "raw_kicad_report_status": "blocked_not_run",
+                "raw_kicad_report_status": (
+                    "blocked_kicad_cli_drc_violations"
+                    if raw["run"].get("status") == "pass"
+                    else raw["run"].get("status")
+                ),
                 "raw_kicad_cli_command": (
                     "kicad-cli pcb drc --format json --output "
                     "board/kicad/e1-phone/production/reports/drc.json "
                     "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
                 ),
-                "kicad_cli_version": "",
-                "source_board_sha256": sha256(SOURCE_BOARD),
-                "tool_exit_code": "not_run",
-                "raw_kicad_cli_report": {},
+                "kicad_cli_version": raw_payload.get("kicad_version", ""),
+                "source_board_sha256": sha256(ROUTED_BOARD) if ROUTED_BOARD.is_file() else "",
+                "tool_exit_code": raw["run"].get("returncode"),
+                "raw_kicad_cli_report": raw_payload,
+                "raw_kicad_cli_run": raw["run"],
+                "raw_kicad_violation_count": len(violations) if isinstance(violations, list) else 0,
+                "raw_kicad_unconnected_item_count": (
+                    len(unconnected) if isinstance(unconnected, list) else 0
+                ),
+                "raw_kicad_total_issue_count": (
+                    (len(violations) if isinstance(violations, list) else 0)
+                    + (len(unconnected) if isinstance(unconnected, list) else 0)
+                ),
                 "raw_kicad_cli_payload_required_for_release": True,
             }
         )
     if path == ROOT / "board/kicad/e1-phone/production/reports/erc.json":
+        raw_path = ROOT / "build/e1-phone-routed-output-candidates/raw-routed-erc.json"
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
+        raw = run_kicad_json_report(
+            [
+                "sch",
+                "erc",
+                "--format",
+                "json",
+                "-o",
+                chip_rel(raw_path),
+                chip_rel(ROUTED_SCHEMATIC),
+            ],
+            raw_path,
+        )
+        raw_payload = raw["payload"] if isinstance(raw["payload"], dict) else {}
+        sheets = raw_payload.get("sheets") if isinstance(raw_payload, dict) else []
+        erc_count = sum(
+            len(sheet.get("violations") or [])
+            for sheet in sheets
+            if isinstance(sheet, dict) and isinstance(sheet.get("violations"), list)
+        )
         payload.update(
             {
                 "raw_kicad_report_kind": "erc",
-                "raw_kicad_report_status": "blocked_not_run",
+                "raw_kicad_report_status": (
+                    "blocked_kicad_cli_erc_violations"
+                    if raw["run"].get("status") == "pass"
+                    else raw["run"].get("status")
+                ),
                 "raw_kicad_cli_command": (
                     "kicad-cli sch erc --format json --output "
                     "board/kicad/e1-phone/production/reports/erc.json "
                     "board/kicad/e1-phone/schematic/e1-phone.kicad_sch"
                 ),
-                "kicad_cli_version": "",
+                "kicad_cli_version": raw_payload.get("kicad_version", ""),
                 "source_schematic_sha256": sha256(
-                    ROOT / "board/kicad/e1-phone/schematic/e1-phone.kicad_sch"
-                ),
-                "tool_exit_code": "not_run",
-                "raw_kicad_cli_report": {},
+                    ROUTED_SCHEMATIC
+                )
+                if ROUTED_SCHEMATIC.is_file()
+                else "",
+                "tool_exit_code": raw["run"].get("returncode"),
+                "raw_kicad_cli_report": raw_payload,
+                "raw_kicad_cli_run": raw["run"],
+                "raw_kicad_violation_count": erc_count,
+                "raw_kicad_total_issue_count": erc_count,
                 "raw_kicad_cli_payload_required_for_release": True,
             }
         )
@@ -1097,6 +1331,11 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
         terminal_contract = [
             str(pin) for pin in pad_record.get("local_terminal_contract", []) if pin is not None
         ]
+        pinout_file = str(pad_record.get("pinout_file", "") or "")
+        support_pattern_bound = bool(
+            pad_record.get("support_pattern_has_explicit_provenance", False)
+        )
+        pattern_bound = bool(pinout_file) or support_pattern_bound
         non_signal_pad_contract = [
             str(pin) for pin in pad_record.get("non_signal_pad_contract", []) if pin is not None
         ]
@@ -1107,6 +1346,7 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
             if isinstance(item, dict)
         ]
         pad_contract_records = []
+        electrical_pad_count = int(pad_record.get("electrical_pad_count", 0) or 0)
         for pad_name in pad_names:
             if pad_name in terminal_contract:
                 contract_kind = "electrical_terminal"
@@ -1152,7 +1392,7 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
                 "supplier_approved": False,
                 "envelope_mm": footprint.get("envelope_mm", {}),
                 "pad_count": footprint.get("pad_count", 0),
-                "electrical_pad_count": int(pad_record.get("electrical_pad_count", 0) or 0),
+                "electrical_pad_count": electrical_pad_count,
                 "mechanical_pad_count": int(pad_record.get("mechanical_pad_count", 0) or 0),
                 "mechanical_pads": [
                     str(pin) for pin in pad_record.get("mechanical_pads", []) if pin is not None
@@ -1190,7 +1430,8 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
                     record["covered"] for record in pad_contract_records
                 )
                 and len(pad_contract_records) == len(pads),
-                "pinout_file": pad_record.get("pinout_file", ""),
+                "pinout_file": pinout_file,
+                "pinout_bound": bool(pinout_file),
                 "pinout_status": pad_record.get("pinout_status", ""),
                 "coverage": pad_record.get("coverage", ""),
                 "land_pattern_basis": pad_record.get("land_pattern_basis", ""),
@@ -1200,11 +1441,22 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
                     "local_terminal_contract_source", ""
                 ),
                 "terminal_contract_count": len(terminal_contract),
+                "terminal_contract_bound": bool(terminal_contract) or electrical_pad_count == 0,
                 "terminal_contract_matches_pad_visuals": terminal_contract_matches_pad_visuals,
-                "support_pattern_has_explicit_provenance": bool(
-                    pad_record.get("support_pattern_has_explicit_provenance", False)
+                "support_pattern_bound": support_pattern_bound,
+                "support_pattern_has_explicit_provenance": support_pattern_bound,
+                "pattern_bound": pattern_bound,
+                "pattern_binding_status": (
+                    "pinout_bound_public_or_captured_contract"
+                    if pinout_file
+                    else (
+                        "support_pattern_bound_to_explicit_local_terminal_contract"
+                        if support_pattern_bound
+                        else "unbound_pattern_missing_pinout_or_support_provenance"
+                    )
                 ),
                 "pad_audit_record_source": chip_rel(PAD_AUDIT) if PAD_AUDIT.is_file() else "",
+                "local_step_bound": False,
                 "release_credit": False,
             }
         )
@@ -1304,6 +1556,18 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
                 ),
                 "pinout_bound_model_count": len(pinout_bound_models),
                 "support_pattern_model_count": len(support_pattern_models),
+                "pattern_bound_model_count": sum(
+                    1 for model in models if model.get("pattern_bound") is True
+                ),
+                "all_models_have_pattern_binding": all(
+                    model.get("pattern_bound") is True for model in models
+                ),
+                "terminal_contract_bound_model_count": sum(
+                    1 for model in models if model.get("terminal_contract_bound") is True
+                ),
+                "all_models_have_terminal_contract_binding": all(
+                    model.get("terminal_contract_bound") is True for model in models
+                ),
                 "models_with_terminal_contract_or_no_electrical_pads_count": len(
                     models_with_terminal_contract_or_no_pads
                 ),
@@ -1481,6 +1745,9 @@ def validate_local_envelope_step(path: Path, model: dict[str, Any]) -> dict[str,
 
             shape = cq.importers.importStep(str(path))
             solid = shape.val()
+            assert hasattr(solid, "BoundingBox"), (
+                f"Expected a Shape with BoundingBox, got {type(solid).__name__}"
+            )
             box = solid.BoundingBox()
             return {
                 "import_status": "pass",
@@ -1670,18 +1937,26 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
             "uncovered_pad_visuals": model.get("uncovered_pad_visuals", []),
             "all_pad_visuals_have_contract": model.get("all_pad_visuals_have_contract", False),
             "pinout_file": model.get("pinout_file", ""),
+            "pinout_bound": bool(model.get("pinout_file")),
             "coverage": model.get("coverage", ""),
             "visual_package_class": model.get("visual_package_class", ""),
             "local_terminal_contract": model.get("local_terminal_contract", []),
             "local_terminal_contract_source": model.get("local_terminal_contract_source", ""),
             "terminal_contract_count": model.get("terminal_contract_count", 0),
+            "terminal_contract_bound": bool(model.get("terminal_contract_bound", False)),
             "terminal_contract_matches_pad_visuals": model.get(
                 "terminal_contract_matches_pad_visuals", False
             ),
+            "support_pattern_bound": bool(model.get("support_pattern_bound", False)),
             "support_pattern_has_explicit_provenance": model.get(
                 "support_pattern_has_explicit_provenance", False
             ),
+            "pattern_bound": bool(model.get("pattern_bound", False)),
+            "pattern_binding_status": model.get("pattern_binding_status", ""),
             "land_pattern_basis": model.get("land_pattern_basis", ""),
+            "local_step_bound": local_discrete_step_imported_as_solid
+            and bool(local_step_rel)
+            and bool(local_step_validation.get("bbox_matches_envelope", False)),
             "release_credit": False,
             "release_allowed": False,
             "claim_boundary": (
@@ -1720,6 +1995,7 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                 "local_discrete_step_bbox_matches_envelope": record[
                     "local_discrete_step_bbox_matches_envelope"
                 ],
+                "local_step_bound": record["local_step_bound"],
                 "expected_supplier_step_file": record["expected_supplier_step_file"],
                 "expected_supplier_brep_or_step_status": record[
                     "expected_supplier_brep_or_step_status"
@@ -1741,10 +2017,14 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                     "public_cad_step_overlay_release_credit"
                 ],
                 "pinout_bound": bool(model.get("pinout_file")),
+                "support_pattern_bound": bool(model.get("support_pattern_bound", False)),
                 "support_pattern_has_explicit_provenance": bool(
                     model.get("support_pattern_has_explicit_provenance", False)
                 ),
+                "pattern_bound": bool(model.get("pattern_bound", False)),
+                "pattern_binding_status": model.get("pattern_binding_status", ""),
                 "terminal_contract_count": int(model.get("terminal_contract_count", 0) or 0),
+                "terminal_contract_bound": bool(model.get("terminal_contract_bound", False)),
                 "pad_contract_covered_count": int(model.get("pad_contract_covered_count", 0) or 0),
                 "all_pad_visuals_have_contract": bool(
                     model.get("all_pad_visuals_have_contract", False)
@@ -1790,31 +2070,36 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
     for model in models:
         if not isinstance(model, dict):
             continue
-        record = records_by_reference.get(str(model.get("reference", "")))
-        if not record:
+        matched_record: dict[str, Any] | None = records_by_reference.get(
+            str(model.get("reference", ""))
+        )
+        if not matched_record:
             continue
-        model["local_discrete_step_file"] = record["local_discrete_step_file"]
-        model["local_discrete_step_sha256"] = record["local_discrete_step_sha256"]
-        model["local_discrete_step_bytes"] = record["local_discrete_step_bytes"]
-        model["local_discrete_step_status"] = record["local_discrete_step_status"]
-        model["local_discrete_step_import_status"] = record["local_discrete_step_import_status"]
-        model["local_discrete_step_solid_type"] = record["local_discrete_step_solid_type"]
-        model["local_discrete_step_imported_as_solid"] = record[
+        model["local_discrete_step_file"] = matched_record["local_discrete_step_file"]
+        model["local_discrete_step_sha256"] = matched_record["local_discrete_step_sha256"]
+        model["local_discrete_step_bytes"] = matched_record["local_discrete_step_bytes"]
+        model["local_discrete_step_status"] = matched_record["local_discrete_step_status"]
+        model["local_discrete_step_import_status"] = matched_record[
+            "local_discrete_step_import_status"
+        ]
+        model["local_discrete_step_solid_type"] = matched_record["local_discrete_step_solid_type"]
+        model["local_discrete_step_imported_as_solid"] = matched_record[
             "local_discrete_step_imported_as_solid"
         ]
-        model["local_discrete_step_bbox_mm"] = record["local_discrete_step_bbox_mm"]
-        model["local_discrete_step_expected_bbox_mm"] = record[
+        model["local_step_bound"] = bool(matched_record.get("local_step_bound", False))
+        model["local_discrete_step_bbox_mm"] = matched_record["local_discrete_step_bbox_mm"]
+        model["local_discrete_step_expected_bbox_mm"] = matched_record[
             "local_discrete_step_expected_bbox_mm"
         ]
-        model["local_discrete_step_bbox_matches_envelope"] = record[
+        model["local_discrete_step_bbox_matches_envelope"] = matched_record[
             "local_discrete_step_bbox_matches_envelope"
         ]
-        model["public_cad_step_overlay_status"] = record["public_cad_step_overlay_status"]
-        model["public_cad_step_overlay_file"] = record["public_cad_step_overlay_file"]
-        model["public_cad_step_overlay_sha256"] = record["public_cad_step_overlay_sha256"]
-        model["public_cad_step_overlay_bytes"] = record["public_cad_step_overlay_bytes"]
-        model["public_cad_source_record"] = record["public_cad_source_record"]
-        model["public_cad_step_overlay_release_credit"] = record[
+        model["public_cad_step_overlay_status"] = matched_record["public_cad_step_overlay_status"]
+        model["public_cad_step_overlay_file"] = matched_record["public_cad_step_overlay_file"]
+        model["public_cad_step_overlay_sha256"] = matched_record["public_cad_step_overlay_sha256"]
+        model["public_cad_step_overlay_bytes"] = matched_record["public_cad_step_overlay_bytes"]
+        model["public_cad_source_record"] = matched_record["public_cad_source_record"]
+        model["public_cad_step_overlay_release_credit"] = matched_record[
             "public_cad_step_overlay_release_credit"
         ]
     component_manifest["local_discrete_step_binding"] = {
@@ -1841,6 +2126,9 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
             for item in model_records
             if item.get("local_discrete_step_bbox_matches_envelope") is True
         ),
+        "local_step_bound_model_record_count": sum(
+            1 for item in model_records if item.get("local_step_bound") is True
+        ),
         "local_discrete_step_bytes_total": sum(
             int(item.get("local_discrete_step_bytes", 0) or 0) for item in model_records
         ),
@@ -1859,6 +2147,8 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
             and (ROOT / str(item.get("local_discrete_step_file"))).is_file()
             for item in model_records
         ),
+        "all_model_records_have_local_step_binding": len(model_records) == len(models)
+        and all(item.get("local_step_bound") is True for item in model_records),
         "all_local_discrete_step_hashes_match_files": all(
             item.get("local_discrete_step_sha256")
             == sha256(ROOT / str(item.get("local_discrete_step_file")))
@@ -1909,10 +2199,28 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                 if isinstance(model, dict)
                 and model.get("support_pattern_has_explicit_provenance") is True
             ),
+            "pattern_bound_model_record_count": sum(
+                1
+                for model in models
+                if isinstance(model, dict) and model.get("pattern_bound") is True
+            ),
+            "all_model_records_have_pattern_binding": all(
+                model.get("pattern_bound") is True for model in models if isinstance(model, dict)
+            ),
             "terminal_contract_model_record_count": sum(
                 1
                 for model in models
                 if isinstance(model, dict) and int(model.get("terminal_contract_count", 0) or 0) > 0
+            ),
+            "terminal_contract_bound_model_record_count": sum(
+                1
+                for model in models
+                if isinstance(model, dict) and model.get("terminal_contract_bound") is True
+            ),
+            "all_model_records_have_terminal_contract_binding": all(
+                model.get("terminal_contract_bound") is True
+                for model in models
+                if isinstance(model, dict)
             ),
             "terminal_contract_total_count": sum(
                 int(model.get("terminal_contract_count", 0) or 0)
@@ -1998,6 +2306,12 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                 and int(item.get("local_discrete_step_bytes", 0) or 0)
                 == (ROOT / str(item.get("local_discrete_step_file"))).stat().st_size
                 for item in model_records
+            ),
+            "local_step_bound_model_record_count": sum(
+                1 for item in model_records if item.get("local_step_bound") is True
+            ),
+            "all_model_records_have_local_step_binding": all(
+                item.get("local_step_bound") is True for item in model_records
             ),
             "all_local_discrete_step_files_import_as_solids": all(
                 item.get("local_discrete_step_import_status") == "pass"
@@ -2588,8 +2902,8 @@ def generate() -> dict[str, Any]:
         for value in (artifact.get("path"), artifact.get("metadata"))
         if value
     }
-    for directory in directory_manifest_paths:
-        refresh_dir_manifest(directory, artifact_paths)
+    for dir_path in directory_manifest_paths:
+        refresh_dir_manifest(dir_path, artifact_paths)
 
     manifest = {
         "schema": "eliza.e1_phone_routed_output_candidate_manifest.v1",

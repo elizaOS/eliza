@@ -44,7 +44,7 @@ export async function handleImageGeneration(
 
   logger.debug(`[OpenAI] Using IMAGE model: ${modelName}`);
 
-  if (params.prompt.trim().length === 0) {
+  if (typeof params.prompt !== "string" || params.prompt.trim().length === 0) {
     throw new Error("IMAGE generation requires a non-empty prompt");
   }
 

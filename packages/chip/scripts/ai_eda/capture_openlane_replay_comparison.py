@@ -22,6 +22,13 @@ SCHEMA = "eliza.ai_eda.openlane_replay_comparison.v1"
 CLAIM_BOUNDARY = "openlane_replay_comparison_evidence_only_no_release_claim"
 
 
+def false_claim_flags(status: str) -> dict[str, bool]:
+    flags = {"release_use_allowed": False}
+    if status != "COMPARISON_READY":
+        flags["optimization_claim_allowed"] = False
+    return flags
+
+
 def rel(path: Path) -> str:
     try:
         return str(path.relative_to(ROOT))
@@ -233,6 +240,7 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,
         "optimization_claim_allowed": status == "COMPARISON_READY",
+        "false_claim_flags": false_claim_flags(status),
         "status": status,
         "baseline_candidate_id": baseline_id,
         "candidate_id": candidate_id,

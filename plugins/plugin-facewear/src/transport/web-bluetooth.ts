@@ -1,5 +1,6 @@
 import {
   EVEN_G1_UART,
+  encodeMicCommand,
   type G1Event,
   type GlassSide,
   parseG1Notification,
@@ -139,7 +140,6 @@ export class WebBluetoothG1Transport implements SmartglassesTransport {
   }
 
   async openMicrophone(enabled: boolean): Promise<void> {
-    const { encodeMicCommand } = await import("../protocol/smartglasses.ts");
     await this.write("right", encodeMicCommand(enabled));
   }
 

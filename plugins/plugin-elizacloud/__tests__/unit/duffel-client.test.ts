@@ -117,17 +117,14 @@ describe("searchFlights — config error", () => {
         origin: "JFK",
         destination: "LHR",
         departureDate: "2025-06-01",
-      }),
+      })
     ).rejects.toThrow(DuffelConfigError);
   });
 });
 
 describe("searchFlights — network error handling", () => {
   it("throws Error on fetch rejection", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockRejectedValue(new TypeError("Network failure")),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Network failure")));
     process.env.DUFFEL_API_KEY = "fake-key";
 
     await expect(
@@ -135,7 +132,7 @@ describe("searchFlights — network error handling", () => {
         origin: "JFK",
         destination: "LHR",
         departureDate: "2025-06-01",
-      }),
+      })
     ).rejects.toThrow("Network failure");
   });
 
@@ -146,7 +143,7 @@ describe("searchFlights — network error handling", () => {
         ok: false,
         status: 401,
         text: async () => "Unauthorized",
-      }),
+      })
     );
     process.env.DUFFEL_API_KEY = "bad-key";
 
@@ -155,7 +152,7 @@ describe("searchFlights — network error handling", () => {
         origin: "JFK",
         destination: "LHR",
         departureDate: "2025-06-01",
-      }),
+      })
     ).rejects.toThrow("401");
   });
 
@@ -210,7 +207,7 @@ describe("searchFlights — network error handling", () => {
             offers: [fakeOffer],
           },
         }),
-      }),
+      })
     );
     process.env.DUFFEL_API_KEY = "fake-key";
 
@@ -249,7 +246,7 @@ describe("searchFlights — network error handling", () => {
           status: 200,
           json: async () => ({ data: { id: "ofr_x", offers: [] } }),
         });
-      }),
+      })
     );
     process.env.DUFFEL_API_KEY = "fake-key";
 
@@ -335,9 +332,7 @@ describe("createOrder", () => {
                   ],
                 },
               ],
-              passengers: [
-                { id: "pas_123", given_name: "Tony", family_name: "Stark" },
-              ],
+              passengers: [{ id: "pas_123", given_name: "Tony", family_name: "Stark" }],
               payment_status: {
                 awaiting_payment: true,
                 payment_required_by: "2025-05-02T18:00:00Z",
@@ -347,7 +342,7 @@ describe("createOrder", () => {
             },
           }),
         });
-      }),
+      })
     );
     process.env.DUFFEL_API_KEY = "fake-key";
 
@@ -370,9 +365,9 @@ describe("createOrder", () => {
 
   it("throws if no offer is supplied", async () => {
     process.env.DUFFEL_API_KEY = "fake-key";
-    await expect(
-      createOrder({ ...baseRequest, selectedOffers: [] }),
-    ).rejects.toThrow(/exactly one selected offer/);
+    await expect(createOrder({ ...baseRequest, selectedOffers: [] })).rejects.toThrow(
+      /exactly one selected offer/
+    );
   });
 });
 
@@ -407,9 +402,7 @@ describe("getOrder", () => {
                 ],
               },
             ],
-            passengers: [
-              { id: "pas_123", given_name: "Tony", family_name: "Stark" },
-            ],
+            passengers: [{ id: "pas_123", given_name: "Tony", family_name: "Stark" }],
             payment_status: {
               awaiting_payment: false,
               payment_required_by: "2025-05-02T18:00:00Z",
@@ -423,7 +416,7 @@ describe("getOrder", () => {
             ],
           },
         }),
-      }),
+      })
     );
     process.env.DUFFEL_API_KEY = "fake-key";
 
@@ -457,7 +450,7 @@ describe("createPayment", () => {
             },
           }),
         });
-      }),
+      })
     );
     process.env.DUFFEL_API_KEY = "fake-key";
 
@@ -486,6 +479,13 @@ describe("createPayment", () => {
 
 const LIVE_API_KEY = ORIGINAL_ENV.DUFFEL_API_KEY;
 
+function requireLiveApiKey(): string {
+  if (!LIVE_API_KEY) {
+    throw new Error("DUFFEL_API_KEY is required for live Duffel tests");
+  }
+  return LIVE_API_KEY;
+}
+
 describe.skipIf(!LIVE_API_KEY)("searchFlights — live Duffel", () => {
   it("returns at least one offer for JFK → LHR", async () => {
     const request: SearchFlightsRequest = {
@@ -502,7 +502,7 @@ describe.skipIf(!LIVE_API_KEY)("searchFlights — live Duffel", () => {
 
     const result = await searchFlights(request, {
       mode: "direct",
-      apiKey: LIVE_API_KEY!,
+      apiKey: requireLiveApiKey(),
       cloudRelayBaseUrl: null,
     });
 
@@ -528,14 +528,14 @@ describe.skipIf(!LIVE_API_KEY)("searchFlights — live Duffel", () => {
 
     const { offers } = await searchFlights(request, {
       mode: "direct",
-      apiKey: LIVE_API_KEY!,
+      apiKey: requireLiveApiKey(),
       cloudRelayBaseUrl: null,
     });
     expect(offers.length).toBeGreaterThan(0);
 
     const retrieved = await getOffer(offers[0].id, {
       mode: "direct",
-      apiKey: LIVE_API_KEY!,
+      apiKey: requireLiveApiKey(),
       cloudRelayBaseUrl: null,
     });
     expect(retrieved.id).toBe(offers[0].id);

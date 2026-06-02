@@ -9,7 +9,10 @@
  * at runtime (codegen'd from keywords/*.keywords.json).
  */
 
-import { normalizeCharacterLanguage } from "../character-presets.js";
+// Import from the data-free language module (not character-presets.js) so the
+// i18n keyword matcher — which is on the eager renderer path via the shared
+// barrel — does not pull the ~49KB CHARACTER_DEFINITIONS preset data.
+import { normalizeCharacterLanguage } from "../character-language.js";
 import type { CharacterLanguage } from "../contracts/first-run-options.js";
 import { VALIDATION_KEYWORD_DOCS } from "./generated/validation-keyword-data.js";
 

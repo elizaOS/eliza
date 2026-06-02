@@ -208,6 +208,37 @@ describe("PdfService", () => {
 		expect(getDocumentProxyMock).not.toHaveBeenCalled();
 	});
 
+	it.each([
+		[{ startPage: 0 }, "startPage must be a positive finite integer"],
+		[{ startPage: 1.5 }, "startPage must be a positive finite integer"],
+		[{ startPage: Number.NaN }, "startPage must be a positive finite integer"],
+		[{ endPage: Number.POSITIVE_INFINITY }, "endPage must be a positive finite integer"],
+		[{ startPage: 3, endPage: 2 }, "endPage must be greater than or equal to startPage"],
+	])("returns structured errors for hostile extraction options %#", async (options, error) => {
+		getDocumentProxyMock.mockResolvedValue(makePdf([{ items: [{ str: "one" }] }]));
+
+		await expect(
+			service().convertPdfToTextWithOptions(validPdfBuffer(), options)
+		).resolves.toEqual({
+			success: false,
+			error,
+		});
+	});
+
+	it("omits invalid metadata dates instead of returning Invalid Date objects", async () => {
+		getDocumentProxyMock.mockResolvedValue(
+			makePdf([{ items: [{ str: "content" }] }], {
+				CreationDate: "not-a-date",
+				ModDate: "2024-02-03T04:05:06.000Z",
+			})
+		);
+
+		const info = await service().getDocumentInfo(validPdfBuffer());
+
+		expect(info.metadata.creationDate).toBeUndefined();
+		expect(info.metadata.modificationDate).toEqual(new Date("2024-02-03T04:05:06.000Z"));
+	});
+
 	it("accepts PDF headers after leading transport bytes within the scan window", async () => {
 		getDocumentProxyMock.mockResolvedValue(makePdf([{ items: [{ str: "offset header" }] }]));
 		const prefixedPdf = Buffer.concat([Buffer.from([0, 1, 2]), validPdfBuffer()]);

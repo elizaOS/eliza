@@ -105,7 +105,9 @@ def test_passing_step_drops_log_tail() -> None:
 
 def subprocess_result(*, stdout: str, returncode: int):
     class Completed:
-        pass
+        def __init__(self) -> None:
+            self.stdout: str = ""
+            self.returncode: int = 0
 
     completed = Completed()
     completed.stdout = stdout

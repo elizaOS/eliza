@@ -344,7 +344,7 @@ async function installOrchestratorWorkbenchRoutes(
         threadId: "smoke-task-1",
         sessionId: null,
         senderKind: "user",
-        direction: "stdin",
+        direction: "stdout",
         content: body.content,
         timestamp: Date.parse(NOW),
         metadata: {},
@@ -598,9 +598,9 @@ test.describe("orchestrator GUI workbench", () => {
       "2/2",
     );
     await expect(page.getByTestId("orchestrator-filter")).toContainText(
-      "active (1)",
+      /active \(1\)/,
     );
-    await expect(page.getByTitle("Usage")).toContainText("12.3K");
+    await expect(page.getByTitle("Usage").first()).toContainText("12.3K");
 
     await expect(page.getByTestId("orchestrator-timeline")).toContainText(
       "Build Kanban planner app",
@@ -617,6 +617,8 @@ test.describe("orchestrator GUI workbench", () => {
     await expect(page.getByTestId("orchestrator-running-bar")).toBeVisible();
 
     const inspector = page.getByTestId("orchestrator-inspector");
+    await expect(inspector).toContainText("12.3K");
+    await expect(inspector).toContainText("$0.42");
     await expect(inspector).toContainText(
       "Build and verify a tiny Kanban planner app",
     );

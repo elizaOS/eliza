@@ -20,7 +20,14 @@ import {
   Weight,
   X,
 } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import {
+  type ReactNode,
+  type Ref,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import type {
   LifeOpsCalendarSummary,
   LifeOpsConnectorMode,
@@ -309,9 +316,11 @@ type GoogleConnectorController = ReturnType<typeof useGoogleLifeOpsConnector>;
 
 function PendingAuthBanner({
   url,
+  side,
   onDismiss,
 }: {
   url: string;
+  side: LifeOpsConnectorSide;
   onDismiss: () => void;
 }) {
   const { t } = useApp();
@@ -330,47 +339,147 @@ function PendingAuthBanner({
     window.open(url, "_blank", "noopener,noreferrer");
   }, [url]);
 
+  const copyLabel = t("lifeopssettings.copyUrl", { defaultValue: "Copy URL" });
+  const openLabel = t("common.open", { defaultValue: "Open" });
+  const dismissLabel = t("common.dismiss", { defaultValue: "Dismiss" });
+  const copy = useAgentElement<HTMLButtonElement>({
+    id: `settings-google-${side}-auth-copy`,
+    role: "button",
+    label: `${copyLabel} (${side})`,
+    group: "lifeops-google",
+    description: "Copy the Google authorization URL",
+    onActivate: () => void handleCopy(),
+  });
+  const open = useAgentElement<HTMLButtonElement>({
+    id: `settings-google-${side}-auth-open`,
+    role: "button",
+    label: `${openLabel} (${side})`,
+    group: "lifeops-google",
+    description: "Open the Google authorization URL",
+    onActivate: handleOpen,
+  });
+  const dismiss = useAgentElement<HTMLButtonElement>({
+    id: `settings-google-${side}-auth-dismiss`,
+    role: "button",
+    label: `${dismissLabel} (${side})`,
+    group: "lifeops-google",
+    description: "Dismiss the Google authorization banner",
+    onActivate: onDismiss,
+  });
+
   return (
     <div className="rounded-2xl bg-card/22 px-3 py-3 text-xs text-muted">
       <div className="flex flex-wrap gap-2">
         <Button
+          ref={copy.ref}
           size="sm"
           variant="outline"
           className="h-7 rounded-lg px-2 text-[11px] font-semibold"
           onClick={() => void handleCopy()}
+          {...copy.agentProps}
         >
           <Copy className="mr-1.5 h-3.5 w-3.5" />
-          {t("lifeopssettings.copyUrl", {
-            defaultValue: "Copy URL",
-          })}
+          {copyLabel}
         </Button>
         <Button
+          ref={open.ref}
           size="sm"
           variant="outline"
           className="h-7 rounded-lg px-2 text-[11px] font-semibold"
           onClick={handleOpen}
+          {...open.agentProps}
         >
           <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-          {t("common.open", {
-            defaultValue: "Open",
-          })}
+          {openLabel}
         </Button>
         <Button
+          ref={dismiss.ref}
           size="sm"
           variant="ghost"
           className="h-7 rounded-lg px-2 text-[11px] font-semibold"
           onClick={onDismiss}
+          {...dismiss.agentProps}
         >
-          {t("common.dismiss", {
-            defaultValue: "Dismiss",
-          })}
+          {dismissLabel}
         </Button>
       </div>
     </div>
   );
 }
 
-function GithubRow({ github }: { github: GithubSetupState }) {
+function GithubConnectButton({
+  side,
+  github,
+  label,
+}: {
+  side: LifeOpsConnectorSide;
+  github: GithubSetupState;
+  label: string;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `settings-github-${side}-connect`,
+    role: "button",
+    label: `${label} GitHub (${side})`,
+    group: "lifeops-github",
+    description: `Connect the ${side} GitHub account`,
+  });
+  return (
+    <Button
+      ref={ref}
+      size="sm"
+      variant="outline"
+      className="h-8 w-8 rounded-xl p-0"
+      disabled={github.connectDisabled}
+      onClick={github.onConnect}
+      title={label}
+      aria-label={label}
+      {...agentProps}
+    >
+      <Plug2 className="h-3.5 w-3.5" aria-hidden />
+    </Button>
+  );
+}
+
+function GithubDisconnectButton({
+  side,
+  github,
+  label,
+}: {
+  side: LifeOpsConnectorSide;
+  github: GithubSetupState;
+  label: string;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `settings-github-${side}-disconnect`,
+    role: "button",
+    label: `${label} GitHub (${side})`,
+    group: "lifeops-github",
+    description: `Disconnect the ${side} GitHub account`,
+  });
+  return (
+    <Button
+      ref={ref}
+      size="sm"
+      variant="outline"
+      className="h-8 w-8 rounded-xl p-0"
+      disabled={github.disconnectDisabled}
+      onClick={github.onDisconnect}
+      title={label}
+      aria-label={label}
+      {...agentProps}
+    >
+      <Unplug className="h-3.5 w-3.5" aria-hidden />
+    </Button>
+  );
+}
+
+function GithubRow({
+  github,
+  side,
+}: {
+  github: GithubSetupState;
+  side: LifeOpsConnectorSide;
+}) {
   const { t } = useApp();
   const identity = github.identity.trim();
   const identityLower = identity.toLowerCase();
@@ -407,48 +516,217 @@ function GithubRow({ github }: { github: GithubSetupState }) {
         )}
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           {github.onConnect ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 w-8 rounded-xl p-0"
-              disabled={github.connectDisabled}
-              onClick={github.onConnect}
-              title={
+            <GithubConnectButton
+              side={side}
+              github={github}
+              label={
                 github.connectLabel ??
-                t("common.connect", {
-                  defaultValue: "Connect",
-                })
+                t("common.connect", { defaultValue: "Connect" })
               }
-              aria-label={
-                github.connectLabel ??
-                t("common.connect", {
-                  defaultValue: "Connect",
-                })
-              }
-            >
-              <Plug2 className="h-3.5 w-3.5" aria-hidden />
-            </Button>
+            />
           ) : null}
           {github.onDisconnect ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 w-8 rounded-xl p-0"
-              disabled={github.disconnectDisabled}
-              onClick={github.onDisconnect}
-              title={t("common.disconnect", {
-                defaultValue: "Disconnect",
-              })}
-              aria-label={t("common.disconnect", {
-                defaultValue: "Disconnect",
-              })}
-            >
-              <Unplug className="h-3.5 w-3.5" aria-hidden />
-            </Button>
+            <GithubDisconnectButton
+              side={side}
+              github={github}
+              label={t("common.disconnect", { defaultValue: "Disconnect" })}
+            />
           ) : null}
         </div>
       </div>
     </div>
+  );
+}
+
+function GoogleConnectButton({
+  side,
+  label,
+  disabled,
+  onConnect,
+}: {
+  side: LifeOpsConnectorSide;
+  label: string;
+  disabled: boolean;
+  onConnect: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `settings-google-${side}-connect`,
+    role: "button",
+    label: `${label} Google (${side})`,
+    group: "lifeops-google",
+    description: `Connect the ${side} Google account`,
+  });
+  return (
+    <Button
+      ref={ref}
+      size="sm"
+      className="h-8 w-8 rounded-xl p-0"
+      disabled={disabled}
+      onClick={onConnect}
+      title={label}
+      aria-label={label}
+      {...agentProps}
+    >
+      <Plug2 className="h-3.5 w-3.5" aria-hidden />
+    </Button>
+  );
+}
+
+function GoogleAddAccountButton({
+  side,
+  label,
+  disabled,
+  onAdd,
+}: {
+  side: LifeOpsConnectorSide;
+  label: string;
+  disabled: boolean;
+  onAdd: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `settings-google-${side}-add`,
+    role: "button",
+    label: `${label} Google account (${side})`,
+    group: "lifeops-google",
+    description: `Add another ${side} Google account`,
+  });
+  return (
+    <Button
+      ref={ref}
+      size="sm"
+      variant="outline"
+      className="h-8 w-8 rounded-xl p-0"
+      disabled={disabled}
+      onClick={onAdd}
+      title={label}
+      aria-label={label}
+      {...agentProps}
+    >
+      <Plus className="h-3.5 w-3.5" aria-hidden />
+    </Button>
+  );
+}
+
+function GoogleDisconnectButton({
+  side,
+  label,
+  disabled,
+  onDisconnect,
+}: {
+  side: LifeOpsConnectorSide;
+  label: string;
+  disabled: boolean;
+  onDisconnect: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `settings-google-${side}-disconnect`,
+    role: "button",
+    label: `${label} Google (${side})`,
+    group: "lifeops-google",
+    description: `Disconnect the ${side} Google account`,
+  });
+  return (
+    <Button
+      ref={ref}
+      size="sm"
+      variant="outline"
+      className="h-8 w-8 rounded-xl p-0"
+      disabled={disabled}
+      onClick={onDisconnect}
+      title={label}
+      aria-label={label}
+      {...agentProps}
+    >
+      <Unplug className="h-3.5 w-3.5" aria-hidden />
+    </Button>
+  );
+}
+
+function GoogleAccountDisconnectButton({
+  side,
+  grantId,
+  label,
+  disabled,
+  onDisconnect,
+}: {
+  side: LifeOpsConnectorSide;
+  grantId: string;
+  label: string;
+  disabled: boolean;
+  onDisconnect: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `settings-google-${side}-account-disconnect-${grantId}`,
+    role: "button",
+    label,
+    group: "lifeops-google",
+    description: "Disconnect this Google account",
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className="text-muted transition-colors hover:text-danger"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onDisconnect}
+      {...agentProps}
+    >
+      <X className="h-3.5 w-3.5" aria-hidden />
+    </button>
+  );
+}
+
+function GoogleCalendarToggle({
+  calendar,
+  side,
+  disabled,
+  onToggle,
+}: {
+  calendar: LifeOpsCalendarSummary;
+  side: LifeOpsConnectorSide;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: `settings-google-${side}-calendar-${calendar.grantId}-${calendar.calendarId}`,
+    role: "toggle",
+    label: `Include ${calendar.summary} in calendar feed`,
+    group: "lifeops-google",
+    status: calendar.includeInFeed ? "active" : "inactive",
+    description: "Toggle whether this calendar is included in the LifeOps feed",
+    getValue: () => calendar.includeInFeed,
+    onActivate: () => {
+      if (!disabled) onToggle();
+    },
+  });
+  return (
+    <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-card/18 px-3 py-2 text-xs">
+      <input
+        ref={ref}
+        type="checkbox"
+        className="mt-0.5 h-4 w-4 rounded border-border bg-bg"
+        checked={calendar.includeInFeed}
+        disabled={disabled}
+        onChange={onToggle}
+        {...agentProps}
+      />
+      <span
+        className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+        style={{
+          backgroundColor:
+            calendar.backgroundColor ?? "rgba(148, 163, 184, 0.8)",
+        }}
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium text-txt">
+          {calendar.summary}
+        </span>
+        <span className="block truncate text-muted">
+          {calendar.accountEmail ?? calendar.calendarId}
+        </span>
+      </span>
+    </label>
   );
 }
 
@@ -634,67 +912,33 @@ function GoogleConnectorSideCard({
             buttonClassName="min-h-8 flex-1 px-3 py-1.5 text-xs"
           />
           {!status?.connected ? (
-            <Button
-              size="sm"
-              className="h-8 w-8 rounded-xl p-0"
+            <GoogleConnectButton
+              side={side}
+              label={
+                status?.reason === "needs_reauth"
+                  ? t("common.reconnect", { defaultValue: "Reconnect" })
+                  : t("common.connect", { defaultValue: "Connect" })
+              }
               disabled={controlDisabled}
-              onClick={() => void connect()}
-              title={
-                status?.reason === "needs_reauth"
-                  ? t("common.reconnect", {
-                      defaultValue: "Reconnect",
-                    })
-                  : t("common.connect", {
-                      defaultValue: "Connect",
-                    })
-              }
-              aria-label={
-                status?.reason === "needs_reauth"
-                  ? t("common.reconnect", {
-                      defaultValue: "Reconnect",
-                    })
-                  : t("common.connect", {
-                      defaultValue: "Connect",
-                    })
-              }
-            >
-              <Plug2 className="h-3.5 w-3.5" aria-hidden />
-            </Button>
+              onConnect={() => void connect()}
+            />
           ) : null}
           {status?.connected &&
           connectedAccounts.length < MAX_GOOGLE_ACCOUNTS_PER_SIDE ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 w-8 rounded-xl p-0"
+            <GoogleAddAccountButton
+              side={side}
+              label={t("common.add", { defaultValue: "Add" })}
               disabled={controlDisabled}
-              onClick={() => void connectAdditional()}
-              title={t("common.add", {
-                defaultValue: "Add",
-              })}
-              aria-label={t("common.add", {
-                defaultValue: "Add",
-              })}
-            >
-              <Plus className="h-3.5 w-3.5" aria-hidden />
-            </Button>
+              onAdd={() => void connectAdditional()}
+            />
           ) : null}
           {status?.connected && connectedAccounts.length <= 1 ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 w-8 rounded-xl p-0"
+            <GoogleDisconnectButton
+              side={side}
+              label={t("common.disconnect", { defaultValue: "Disconnect" })}
               disabled={controlDisabled}
-              onClick={() => void disconnect()}
-              title={t("common.disconnect", {
-                defaultValue: "Disconnect",
-              })}
-              aria-label={t("common.disconnect", {
-                defaultValue: "Disconnect",
-              })}
-            >
-              <Unplug className="h-3.5 w-3.5" aria-hidden />
-            </Button>
+              onDisconnect={() => void disconnect()}
+            />
           ) : null}
         </div>
       </div>
@@ -729,21 +973,19 @@ function GoogleConnectorSideCard({
                       />
                     ) : null}
                     {account.grant?.id ? (
-                      <button
-                        type="button"
-                        className="text-muted transition-colors hover:text-danger"
-                        aria-label={t("lifeopssettings.disconnectAccount", {
+                      <GoogleAccountDisconnectButton
+                        side={side}
+                        grantId={account.grant.id}
+                        label={t("lifeopssettings.disconnectAccount", {
                           defaultValue: "Disconnect {{label}}",
                           label: accountIdentity.primary,
                         })}
                         disabled={controlDisabled}
-                        onClick={() => {
+                        onDisconnect={() => {
                           if (!account.grant?.id) return;
                           void disconnectAccount(account.grant.id);
                         }}
-                      >
-                        <X className="h-3.5 w-3.5" aria-hidden />
-                      </button>
+                      />
                     ) : null}
                   </div>
                 </div>
@@ -818,34 +1060,13 @@ function GoogleConnectorSideCard({
                   const disabled =
                     controlDisabled || calendarPendingId === calendarIdentity;
                   return (
-                    <label
+                    <GoogleCalendarToggle
                       key={calendarIdentity}
-                      className="flex cursor-pointer items-start gap-3 rounded-xl bg-card/18 px-3 py-2 text-xs"
-                    >
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 h-4 w-4 rounded border-border bg-bg"
-                        checked={calendar.includeInFeed}
-                        disabled={disabled}
-                        onChange={() => void toggleCalendar(calendar)}
-                      />
-                      <span
-                        className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{
-                          backgroundColor:
-                            calendar.backgroundColor ??
-                            "rgba(148, 163, 184, 0.8)",
-                        }}
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium text-txt">
-                          {calendar.summary}
-                        </span>
-                        <span className="block truncate text-muted">
-                          {calendar.accountEmail ?? calendar.calendarId}
-                        </span>
-                      </span>
-                    </label>
+                      calendar={calendar}
+                      side={side}
+                      disabled={disabled}
+                      onToggle={() => void toggleCalendar(calendar)}
+                    />
                   );
                 })}
               </div>
@@ -866,11 +1087,12 @@ function GoogleConnectorSideCard({
       {visibleAuthUrl ? (
         <PendingAuthBanner
           url={visibleAuthUrl}
+          side={side}
           onDismiss={() => setDismissedAuthUrl(visibleAuthUrl)}
         />
       ) : null}
       {error ? <div className="text-xs text-danger">{error}</div> : null}
-      <GithubRow github={github} />
+      <GithubRow github={github} side={side} />
     </section>
   );
 }
@@ -940,55 +1162,161 @@ function healthIdentityText(
 
 function HealthPendingAuthActions({
   url,
+  provider,
   onDismiss,
 }: {
   url: string;
+  provider: LifeOpsHealthConnectorProvider;
   onDismiss: () => void;
 }) {
   const { t } = useApp();
-  const copy = useCallback(async () => {
+  const copyUrl = useCallback(async () => {
     await navigator.clipboard.writeText(url);
   }, [url]);
-  const open = useCallback(() => {
+  const openUrl = useCallback(() => {
     const parsed = new URL(url);
     if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
       return;
     }
     window.open(url, "_blank", "noopener,noreferrer");
   }, [url]);
+  const copyLabel = t("lifeopssettings.copyUrl", { defaultValue: "Copy URL" });
+  const openLabel = t("common.open", { defaultValue: "Open" });
+  const dismissLabel = t("common.dismiss", { defaultValue: "Dismiss" });
+  const copy = useAgentElement<HTMLButtonElement>({
+    id: `settings-health-${provider}-auth-copy`,
+    role: "button",
+    label: `${copyLabel} (${HEALTH_PROVIDER_META[provider].label})`,
+    group: "lifeops-health",
+    description: `Copy the ${HEALTH_PROVIDER_META[provider].label} authorization URL`,
+    onActivate: () => void copyUrl(),
+  });
+  const open = useAgentElement<HTMLButtonElement>({
+    id: `settings-health-${provider}-auth-open`,
+    role: "button",
+    label: `${openLabel} (${HEALTH_PROVIDER_META[provider].label})`,
+    group: "lifeops-health",
+    description: `Open the ${HEALTH_PROVIDER_META[provider].label} authorization URL`,
+    onActivate: openUrl,
+  });
+  const dismiss = useAgentElement<HTMLButtonElement>({
+    id: `settings-health-${provider}-auth-dismiss`,
+    role: "button",
+    label: `${dismissLabel} (${HEALTH_PROVIDER_META[provider].label})`,
+    group: "lifeops-health",
+    description: `Dismiss the ${HEALTH_PROVIDER_META[provider].label} authorization banner`,
+    onActivate: onDismiss,
+  });
   return (
     <div className="mt-2 flex flex-wrap gap-2">
       <Button
+        ref={copy.ref}
         size="sm"
         variant="outline"
         className="h-7 w-7 rounded-lg p-0"
-        onClick={() => void copy()}
-        title={t("lifeopssettings.copyUrl", { defaultValue: "Copy URL" })}
-        aria-label={t("lifeopssettings.copyUrl", { defaultValue: "Copy URL" })}
+        onClick={() => void copyUrl()}
+        title={copyLabel}
+        aria-label={copyLabel}
+        {...copy.agentProps}
       >
         <Copy className="h-3.5 w-3.5" aria-hidden />
       </Button>
       <Button
+        ref={open.ref}
         size="sm"
         variant="outline"
         className="h-7 w-7 rounded-lg p-0"
-        onClick={open}
-        title={t("common.open", { defaultValue: "Open" })}
-        aria-label={t("common.open", { defaultValue: "Open" })}
+        onClick={openUrl}
+        title={openLabel}
+        aria-label={openLabel}
+        {...open.agentProps}
       >
         <ExternalLink className="h-3.5 w-3.5" aria-hidden />
       </Button>
       <Button
+        ref={dismiss.ref}
         size="sm"
         variant="ghost"
         className="h-7 w-7 rounded-lg p-0"
         onClick={onDismiss}
-        title={t("common.dismiss", { defaultValue: "Dismiss" })}
-        aria-label={t("common.dismiss", { defaultValue: "Dismiss" })}
+        title={dismissLabel}
+        aria-label={dismissLabel}
+        {...dismiss.agentProps}
       >
         <X className="h-3.5 w-3.5" aria-hidden />
       </Button>
     </div>
+  );
+}
+
+function HealthRefreshButton({
+  disabled,
+  label,
+  onRefresh,
+}: {
+  disabled: boolean;
+  label: string;
+  onRefresh: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "settings-health-refresh",
+    role: "button",
+    label,
+    group: "lifeops-health",
+    description: "Refresh all health connector statuses",
+  });
+  return (
+    <Button
+      ref={ref}
+      size="sm"
+      variant="outline"
+      className="h-8 w-8 rounded-xl p-0"
+      disabled={disabled}
+      onClick={onRefresh}
+      title={label}
+      aria-label={label}
+      {...agentProps}
+    >
+      <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+    </Button>
+  );
+}
+
+function HealthProviderActionButton({
+  provider,
+  kind,
+  label,
+  disabled,
+  onAction,
+}: {
+  provider: LifeOpsHealthConnectorProvider;
+  kind: "sync" | "connect" | "disconnect";
+  label: string;
+  disabled: boolean;
+  onAction: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `settings-health-${provider}-${kind}`,
+    role: "button",
+    label: `${label} ${HEALTH_PROVIDER_META[provider].label}`,
+    group: "lifeops-health",
+    description: `${label} the ${HEALTH_PROVIDER_META[provider].label} health connector`,
+  });
+  const Icon = kind === "disconnect" ? Unplug : kind === "sync" ? RefreshCw : Plug2;
+  return (
+    <Button
+      ref={ref}
+      size="sm"
+      variant={kind === "connect" ? "default" : "outline"}
+      className="h-8 w-8 rounded-xl p-0"
+      disabled={disabled}
+      onClick={onAction}
+      title={label}
+      aria-label={label}
+      {...agentProps}
+    >
+      <Icon className="h-3.5 w-3.5" aria-hidden />
+    </Button>
   );
 }
 
@@ -1019,17 +1347,11 @@ function HealthConnectorsCard() {
             })}
           </h3>
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 w-8 rounded-xl p-0"
+        <HealthRefreshButton
           disabled={health.loading || health.refreshing}
-          onClick={() => void health.refresh()}
-          title={t("common.refresh", { defaultValue: "Refresh" })}
-          aria-label={t("common.refresh", { defaultValue: "Refresh" })}
-        >
-          <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-        </Button>
+          label={t("common.refresh", { defaultValue: "Refresh" })}
+          onRefresh={() => void health.refresh()}
+        />
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2">
@@ -1077,67 +1399,43 @@ function HealthConnectorsCard() {
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
                   {status?.connected ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 w-8 rounded-xl p-0"
+                    <HealthProviderActionButton
+                      provider={provider}
+                      kind="sync"
+                      label={t("common.sync", { defaultValue: "Sync" })}
                       disabled={controlDisabled}
-                      onClick={() => void health.sync(provider)}
-                      title={t("common.sync", { defaultValue: "Sync" })}
-                      aria-label={t("common.sync", { defaultValue: "Sync" })}
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-                    </Button>
+                      onAction={() => void health.sync(provider)}
+                    />
                   ) : null}
                   {!status?.connected ? (
-                    <Button
-                      size="sm"
-                      className="h-8 w-8 rounded-xl p-0"
+                    <HealthProviderActionButton
+                      provider={provider}
+                      kind="connect"
+                      label={
+                        status?.reason === "needs_reauth"
+                          ? t("common.reconnect", { defaultValue: "Reconnect" })
+                          : t("common.connect", { defaultValue: "Connect" })
+                      }
                       disabled={controlDisabled}
-                      onClick={() => void health.connect(provider)}
-                      title={
-                        status?.reason === "needs_reauth"
-                          ? t("common.reconnect", {
-                              defaultValue: "Reconnect",
-                            })
-                          : t("common.connect", {
-                              defaultValue: "Connect",
-                            })
-                      }
-                      aria-label={
-                        status?.reason === "needs_reauth"
-                          ? t("common.reconnect", {
-                              defaultValue: "Reconnect",
-                            })
-                          : t("common.connect", {
-                              defaultValue: "Connect",
-                            })
-                      }
-                    >
-                      <Plug2 className="h-3.5 w-3.5" aria-hidden />
-                    </Button>
+                      onAction={() => void health.connect(provider)}
+                    />
                   ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 w-8 rounded-xl p-0"
+                    <HealthProviderActionButton
+                      provider={provider}
+                      kind="disconnect"
+                      label={t("common.disconnect", {
+                        defaultValue: "Disconnect",
+                      })}
                       disabled={controlDisabled}
-                      onClick={() => void health.disconnect(provider)}
-                      title={t("common.disconnect", {
-                        defaultValue: "Disconnect",
-                      })}
-                      aria-label={t("common.disconnect", {
-                        defaultValue: "Disconnect",
-                      })}
-                    >
-                      <Unplug className="h-3.5 w-3.5" aria-hidden />
-                    </Button>
+                      onAction={() => void health.disconnect(provider)}
+                    />
                   )}
                 </div>
               </div>
               {visibleAuthUrl ? (
                 <HealthPendingAuthActions
                   url={visibleAuthUrl}
+                  provider={provider}
                   onDismiss={() => dismissAuthUrl(provider, visibleAuthUrl)}
                 />
               ) : null}
@@ -1262,6 +1560,34 @@ function SmartFeaturesCard() {
     [enabled, persist],
   );
 
+  const enableToggle = useAgentElement<HTMLInputElement>({
+    id: "settings-smart-priority-toggle",
+    role: "toggle",
+    label: "Enable LLM priority scoring",
+    group: "lifeops-smart-features",
+    status: enabled ? "active" : "inactive",
+    description: "Toggle LLM-based inbox priority scoring",
+    getValue: () => enabled,
+    onActivate: () => {
+      if (!loading && !saving) handleToggle();
+    },
+  });
+  const modelOptionIds = useMemo(
+    () => ["", ...modelOptions.map((opt) => opt.id)],
+    [modelOptions],
+  );
+  const modelSelect = useAgentElement<HTMLSelectElement>({
+    id: "settings-smart-priority-model",
+    role: modelOptions.length > 0 ? "select" : "text-input",
+    label: "Priority scoring model",
+    group: "lifeops-smart-features",
+    description: "Model used to score inbox messages for priority",
+    options: modelOptions.length > 0 ? modelOptionIds : undefined,
+    getValue: () => model,
+    onFill: (value: string) => handleModelChange(value),
+  });
+  const modelInputRef = modelSelect.ref as unknown as Ref<HTMLInputElement>;
+
   return (
     <section className="space-y-3 rounded-2xl border border-border/20 bg-card/14 px-4 py-4">
       <div className="flex items-center gap-3">
@@ -1290,11 +1616,13 @@ function SmartFeaturesCard() {
           })}
         </span>
         <input
+          ref={enableToggle.ref}
           type="checkbox"
           className="h-4 w-4"
           checked={enabled}
           disabled={loading || saving}
           onChange={handleToggle}
+          {...enableToggle.agentProps}
         />
       </label>
 
@@ -1309,11 +1637,13 @@ function SmartFeaturesCard() {
         </label>
         {modelOptions.length > 0 ? (
           <select
+            ref={modelSelect.ref}
             id="lifeops-priority-scoring-model"
             className="w-full rounded-xl border border-border/30 bg-bg/40 px-2.5 py-1.5 text-xs text-txt"
             value={model}
             disabled={loading || saving || optionsLoading || !enabled}
             onChange={(e) => handleModelChange(e.target.value)}
+            {...modelSelect.agentProps}
           >
             <option value="">
               {t("lifeopssettings.priorityScoringDefaultModel", {
@@ -1328,6 +1658,7 @@ function SmartFeaturesCard() {
           </select>
         ) : (
           <input
+            ref={modelInputRef}
             id="lifeops-priority-scoring-model"
             type="text"
             className="w-full rounded-xl border border-border/30 bg-bg/40 px-2.5 py-1.5 text-xs text-txt"
@@ -1338,6 +1669,7 @@ function SmartFeaturesCard() {
             disabled={loading || saving || !enabled}
             onChange={(e) => setModel(e.target.value)}
             onBlur={() => handleModelChange(model)}
+            {...modelSelect.agentProps}
             title={t("lifeopssettings.priorityScoringModelHint", {
               defaultValue:
                 "Model id passed to runtime.useModel. Leave blank to use the runtime default small model.",
@@ -1446,6 +1778,46 @@ function EmailIntelligenceCard() {
     [enabled, autoExtract, persist],
   );
 
+  const enableToggle = useAgentElement<HTMLInputElement>({
+    id: "settings-email-classifier-toggle",
+    role: "toggle",
+    label: "Enable email classification",
+    group: "lifeops-email-intelligence",
+    status: enabled ? "active" : "inactive",
+    description: "Toggle email classification with the LLM classifier",
+    getValue: () => enabled,
+    onActivate: () => {
+      if (!loading && !saving) onToggleEnabled();
+    },
+  });
+  const autoExtractToggle = useAgentElement<HTMLInputElement>({
+    id: "settings-email-auto-extract-toggle",
+    role: "toggle",
+    label: "Auto-extract bills into Money",
+    group: "lifeops-email-intelligence",
+    status: autoExtract ? "active" : "inactive",
+    description: "Toggle automatic extraction of bills into the Money dashboard",
+    getValue: () => autoExtract,
+    onActivate: () => {
+      if (!loading && !saving && enabled) onToggleAutoExtract();
+    },
+  });
+  const modelOptionIds = useMemo(
+    () => ["", ...modelOptions.map((opt) => opt.id)],
+    [modelOptions],
+  );
+  const modelSelect = useAgentElement<HTMLSelectElement>({
+    id: "settings-email-classifier-model",
+    role: modelOptions.length > 0 ? "select" : "text-input",
+    label: "Email classifier model",
+    group: "lifeops-email-intelligence",
+    description: "Model used to classify ambiguous emails",
+    options: modelOptions.length > 0 ? modelOptionIds : undefined,
+    getValue: () => model,
+    onFill: (value: string) => onModelChange(value),
+  });
+  const modelInputRef = modelSelect.ref as unknown as Ref<HTMLInputElement>;
+
   return (
     <section className="space-y-3 rounded-2xl border border-border/20 bg-card/14 px-4 py-4">
       <div className="flex items-center gap-3">
@@ -1474,11 +1846,13 @@ function EmailIntelligenceCard() {
           })}
         </span>
         <input
+          ref={enableToggle.ref}
           type="checkbox"
           className="h-4 w-4"
           checked={enabled}
           disabled={loading || saving}
           onChange={onToggleEnabled}
+          {...enableToggle.agentProps}
         />
       </label>
 
@@ -1489,11 +1863,13 @@ function EmailIntelligenceCard() {
           })}
         </span>
         <input
+          ref={autoExtractToggle.ref}
           type="checkbox"
           className="h-4 w-4"
           checked={autoExtract}
           disabled={loading || saving || !enabled}
           onChange={onToggleAutoExtract}
+          {...autoExtractToggle.agentProps}
         />
       </label>
 
@@ -1508,11 +1884,13 @@ function EmailIntelligenceCard() {
         </label>
         {modelOptions.length > 0 ? (
           <select
+            ref={modelSelect.ref}
             id="lifeops-email-classifier-model"
             className="w-full rounded-xl border border-border/30 bg-bg/40 px-2.5 py-1.5 text-xs text-txt"
             value={model}
             disabled={loading || saving || optionsLoading || !enabled}
             onChange={(event) => onModelChange(event.target.value)}
+            {...modelSelect.agentProps}
           >
             <option value="">
               {t("lifeopssettings.emailClassifierDefaultModel", {
@@ -1527,6 +1905,7 @@ function EmailIntelligenceCard() {
           </select>
         ) : (
           <input
+            ref={modelInputRef}
             id="lifeops-email-classifier-model"
             type="text"
             className="w-full rounded-xl border border-border/30 bg-bg/40 px-2.5 py-1.5 text-xs text-txt"
@@ -1535,6 +1914,7 @@ function EmailIntelligenceCard() {
             disabled={loading || saving || !enabled}
             onChange={(event) => setModel(event.target.value)}
             onBlur={() => onModelChange(model)}
+            {...modelSelect.agentProps}
           />
         )}
         <p className="text-[11px] text-muted">
@@ -1547,6 +1927,34 @@ function EmailIntelligenceCard() {
 
       {error ? <div className="text-xs text-danger">{error}</div> : null}
     </section>
+  );
+}
+
+function CloudActionButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "settings-cloud-action",
+    role: "button",
+    label,
+    group: "lifeops-settings",
+    description: "Run the LifeOps cloud setup action",
+  });
+  return (
+    <Button
+      ref={ref}
+      size="sm"
+      variant="outline"
+      className="h-8 rounded-xl px-3 text-xs font-semibold"
+      onClick={onClick}
+      {...agentProps}
+    >
+      {label}
+    </Button>
   );
 }
 
@@ -1593,14 +2001,10 @@ export function LifeOpsSettingsSection({
     <section className="space-y-4">
       {cloudAction ? (
         <div className="flex justify-end">
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
+          <CloudActionButton
+            label={cloudAction.label}
             onClick={cloudAction.onClick}
-          >
-            {cloudAction.label}
-          </Button>
+          />
         </div>
       ) : null}
 

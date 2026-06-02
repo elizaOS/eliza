@@ -9,8 +9,8 @@
     "build": "NODE_ENV=production NODE_OPTIONS='--max-old-space-size=8192' bun x next build --webpack && bun ../../scripts/prune-next-server-sourcemaps.ts .next",
     "start": "bun x next start",
     "lint": "echo skip (feed) >&2",
-    "lint:fix": "biome check --write .",
-    "format": "biome format --write .",
+    "lint:fix": "bunx @biomejs/biome check --write .",
+    "format": "bunx @biomejs/biome format --write .",
     "typecheck": "echo skip (feed) >&2",
     "clean": "rm -rf .next .turbo node_modules/.cache"
   },

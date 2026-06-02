@@ -118,7 +118,7 @@ export const LIVEKIT_IM_END_TOKEN = "<|im_end|>";
 /**
  * Default on-disk location for the staged GGUF. The bundle downloader
  * materializes assets under `<stateDir>/local-inference/models/...`; this
- * matches the path used by the ONNX-backed `LiveKitTurnDetector`.
+ * matches the bundle downloader's staged-asset path layout.
  */
 export const DEFAULT_LIVEKIT_TURN_DETECTOR_GGML_DIR = path.join(
 	resolveStateDir(),
@@ -276,10 +276,9 @@ export interface LiveKitGgmlTurnDetectorOptions {
 // ---------------------------------------------------------------------------
 
 /**
- * Local GGUF-backed LiveKit turn-detector. Replaces the ONNX path in
- * `LiveKitTurnDetector` with a `capacitor-llama` evaluation of the same
- * Qwen2-style decoder, reading `P(<|im_end|>)` from the next-token
- * distribution after the truncated user-template prefix.
+ * Local GGUF-backed LiveKit turn-detector. Uses a `capacitor-llama`
+ * evaluation of the Qwen2-style decoder, reading `P(<|im_end|>)` from the
+ * next-token distribution after the truncated user-template prefix.
  *
  * One detector instance owns one `LlamaModel` + one `LlamaContext` +
  * one `LlamaSequence`. `score()` resets the sequence between calls —

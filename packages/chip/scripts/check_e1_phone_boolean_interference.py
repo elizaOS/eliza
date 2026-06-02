@@ -49,6 +49,14 @@ MIN_TARGET_GAP_MM = 0.15  # hard gap target for non-contact pairs
 DATE = "2026-05-20"
 REVIEWER = "automated_boolean_check"
 ENGINE_NAME = "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "phone_release_claim_allowed": False,
+    "fabrication_claim_allowed": False,
+    "supplier_release_claim_allowed": False,
+}
 
 # Parts whose interference with neighbors is by design. The e1-phone CAD
 # is a concept-envelope assembly: keepout shells, gaskets, adhesives, and
@@ -1486,6 +1494,7 @@ def main() -> int:
             "Min target gap 0.15 mm honored; intentional gasket/adhesive contact "
             "classified separately."
         )
+        ac["false_claim_flags"] = FALSE_CLAIM_FLAGS
         ac["boolean_engine"] = ENGINE_NAME
         ac["full_assembly_boolean_pass"] = overall_pass
         ac["full_assembly_unintentional_clash_count"] = len(interferences)

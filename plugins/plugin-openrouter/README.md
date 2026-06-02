@@ -25,7 +25,7 @@ The plugin requires the OpenRouter API key and can be configured via environment
   "OPENROUTER_IMAGE_MODEL": "x-ai/grok-2-vision-1212", // Optional: Overrides default image model
   "OPENROUTER_IMAGE_GENERATION_MODEL": "google/gemini-2.5-flash-image-preview", // Optional: Overrides default image generation model
   "OPENROUTER_EMBEDDING_MODEL": "openai/text-embedding-3-small", // Optional: Overrides default embedding model
-  "OPENROUTER_EMBEDDING_DIMENSIONS": "1536", // Optional: Sets embedding vector dimensions (256, 384, 512, 768, 1024, 1536, 2048, 3072)
+  "OPENROUTER_EMBEDDING_DIMENSIONS": "1536", // Optional: Sets embedding vector dimensions (384, 512, 768, 1024, 1536, 2048, 3072)
   "OPENROUTER_BROWSER_BASE_URL": "https://your-proxy.example.com/openrouter"
   // Fallbacks if specific OPENROUTER models are not set
   "SMALL_MODEL": "google/gemini-flash",
@@ -103,7 +103,7 @@ app.listen(3000);
 - `OPENROUTER_IMAGE_MODEL`: Specific model to use for `IMAGE_DESCRIPTION`. Overrides `IMAGE_MODEL` if set.
 - `OPENROUTER_IMAGE_GENERATION_MODEL`: Specific model to use for `IMAGE` generation. Overrides `IMAGE_GENERATION_MODEL` if set.
 - `OPENROUTER_EMBEDDING_MODEL`: Specific model to use for `TEXT_EMBEDDING`. Overrides `EMBEDDING_MODEL` if set.
-- `OPENROUTER_EMBEDDING_DIMENSIONS`: Number of dimensions for embedding vectors. Supported values: 256, 384, 512, 768, 1024, 1536, 2048, 3072. Defaults to 1536.
+- `OPENROUTER_EMBEDDING_DIMENSIONS`: Number of dimensions for embedding vectors. Supported values: 384, 512, 768, 1024, 1536, 2048, 3072. Defaults to 1536.
 - `OPENROUTER_AUTO_CLEANUP_IMAGES`: Boolean flag for auto-cleanup of generated images, read by `shouldAutoCleanupImages()` in `utils/config.ts` (default: "false").
 - `SMALL_MODEL`: Fallback model for small tasks (default: "google/gemini-2.0-flash-001"). Used if `OPENROUTER_SMALL_MODEL` is not set.
 - `LARGE_MODEL`: Fallback model for large tasks (default: "google/gemini-2.5-flash"). Used if `OPENROUTER_LARGE_MODEL` is not set.

@@ -26,6 +26,7 @@ import type {
   SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSettingsRequest,
 } from "@elizaos/plugin-browser";
+import type { GetLifeOpsScheduleMergedStateResponse } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
 import type {
   CaptureLifeOpsActivitySignalRequest,
   CaptureLifeOpsManualOverrideRequest,
@@ -142,7 +143,6 @@ import type {
   LifeOpsScheduleInspection,
   LifeOpsScheduleSummary,
 } from "../lifeops/schedule-insight.js";
-import type { GetLifeOpsScheduleMergedStateResponse } from "../lifeops/schedule-sync-contracts.js";
 
 type LifeOpsScheduleInspectionResponse = LifeOpsScheduleInspection;
 

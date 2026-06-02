@@ -11,7 +11,19 @@ import type {
   WalletTradingProfileWindow,
 } from "@elizaos/shared";
 import type { InventoryChainFilters } from "@elizaos/ui";
-import { type ActivityEvent, AppPageSidebar, Button, client, cn, PageLayout, SidebarContent, SidebarPanel, SidebarScrollRegion, useActivityEvents, useApp } from "@elizaos/ui";
+import {
+  type ActivityEvent,
+  AppPageSidebar,
+  Button,
+  client,
+  cn,
+  PageLayout,
+  SidebarContent,
+  SidebarPanel,
+  SidebarScrollRegion,
+  useActivityEvents,
+  useApp,
+} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Activity,
@@ -161,6 +173,13 @@ function tokenId(row: TokenRow): string {
   return `${row.chain.toLowerCase()}:${address}`;
 }
 
+/** Kebab-cased, agent-surface-safe id slug for a single token row. */
+function tokenAgentSlug(row: TokenRow): string {
+  return tokenId(row)
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
 function normalizeTokenAddress(address: string | null): string | null {
   return address ? address.toLowerCase() : null;
 }
@@ -185,6 +204,7 @@ function summarizeWalletBalances(
     chain: string;
     symbol: string;
     name: string;
+    contractAddress: string | null;
     balance: string;
     valueUsd: number;
     isNative: boolean;
@@ -195,6 +215,7 @@ function summarizeWalletBalances(
     chain: string;
     symbol: string;
     name: string;
+    contractAddress: string | null;
     balance: string;
     valueUsd: number;
     isNative: boolean;
@@ -207,6 +228,7 @@ function summarizeWalletBalances(
       chain: chain.chain,
       symbol: chain.nativeSymbol,
       name: `${chain.chain} native`,
+      contractAddress: null,
       balance: chain.nativeBalance,
       valueUsd: nativeValueUsd,
       isNative: true,
@@ -220,6 +242,7 @@ function summarizeWalletBalances(
         chain: chain.chain,
         symbol: token.symbol,
         name: token.name,
+        contractAddress: token.contractAddress,
         balance: token.balance,
         valueUsd: parseUsd(token.valueUsd),
         isNative: false,
@@ -232,6 +255,7 @@ function summarizeWalletBalances(
       chain: "Solana",
       symbol: "SOL",
       name: "Solana native",
+      contractAddress: null,
       balance: walletBalances.solana.solBalance,
       valueUsd: parseUsd(walletBalances.solana.solValueUsd),
       isNative: true,
@@ -241,6 +265,7 @@ function summarizeWalletBalances(
         chain: "Solana",
         symbol: token.symbol,
         name: token.name,
+        contractAddress: token.mint,
         balance: token.balance,
         valueUsd: parseUsd(token.valueUsd),
         isNative: false,
@@ -1198,11 +1223,11 @@ function MarketPulseHero({
         <h2 className="text-2xl font-semibold leading-tight text-txt md:text-[2rem]">
           No balances or trade history yet.
         </h2>
-        <p className="mt-2 max-w-xl text-sm text-muted">
+        <div className="mt-2 max-w-xl text-sm text-muted">
           {overview?.stale
             ? "Here's the latest cached market snapshot."
             : "Here's what the market looks like right now."}
-        </p>
+        </div>
       </div>
 
       {overview ? (
@@ -1407,10 +1432,16 @@ function WalletRailAddress({
   address,
   chains,
   emptyLabel,
+  agentId,
+  agentLabel,
 }: {
   address: string | null;
   chains: string[];
   emptyLabel: string;
+  /** Stable agent-surface id so the agent can copy this address by name. */
+  agentId: string;
+  /** Human/agent-facing label for the copy action. */
+  agentLabel: string;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -1422,8 +1453,18 @@ function WalletRailAddress({
     });
   }, [address]);
 
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label: agentLabel,
+    group: "wallet-account",
+    status: address ? undefined : "inactive",
+    description: `Copy the ${agentLabel} to the clipboard`,
+  });
+
   return (
     <button
+      ref={ref}
       type="button"
       className="flex w-full min-w-0 items-center justify-between gap-3 py-1 text-left transition-colors hover:text-txt"
       onClick={handleCopy}
@@ -1432,6 +1473,7 @@ function WalletRailAddress({
       aria-label={
         address ? `Copy ${emptyLabel} address` : `${emptyLabel} unavailable`
       }
+      {...agentProps}
     >
       <span className="flex min-w-0 items-center gap-3">
         <span className="flex shrink-0 -space-x-1.5">
@@ -1491,13 +1533,23 @@ function WalletRailRpcButton({
     "solana",
   );
 
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "account-rpc-settings",
+    role: "button",
+    label: "RPC settings",
+    group: "wallet-account",
+    description: `Open RPC provider settings (EVM ${evmProvider}, Solana ${solanaProvider})`,
+  });
+
   return (
     <button
+      ref={ref}
       type="button"
       className="inline-flex h-8 items-center gap-2 rounded-full border border-border/35 bg-bg/35 px-3 text-xs font-semibold text-txt transition-colors hover:bg-bg/55"
       onClick={onOpenSettings}
       title={`RPC providers: EVM ${evmProvider}, Solana ${solanaProvider}`}
       aria-label="Open RPC settings"
+      {...agentProps}
     >
       <span className={cn("h-2 w-2 rounded-full", toneClass)} />
       RPC
@@ -1520,6 +1572,15 @@ function WalletRailAccount({
   onRefresh: () => void;
   refreshing: boolean;
 }) {
+  const { ref: refreshRef, agentProps: refreshAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "account-refresh",
+      role: "button",
+      label: "Refresh wallet",
+      group: "wallet-account",
+      status: refreshing ? "active" : undefined,
+      description: "Reload wallet balances, NFTs, and trading data",
+    });
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
@@ -1532,6 +1593,7 @@ function WalletRailAccount({
             onOpenSettings={onOpenSettings}
           />
           <Button
+            ref={refreshRef}
             type="button"
             variant="ghost"
             size="icon"
@@ -1540,6 +1602,7 @@ function WalletRailAccount({
             disabled={refreshing}
             aria-label="Refresh wallet"
             title="Refresh wallet"
+            {...refreshAgentProps}
           >
             <RefreshCw
               className={cn("h-3.5 w-3.5", refreshing && "animate-spin")}
@@ -1551,11 +1614,15 @@ function WalletRailAccount({
         address={addresses.evmAddress}
         chains={SUPPORTED_WALLET_CHAINS.filter((chain) => chain !== "solana")}
         emptyLabel="No EVM address"
+        agentId="account-copy-evm-address"
+        agentLabel="EVM address"
       />
       <WalletRailAddress
         address={addresses.solanaAddress}
         chains={["solana"]}
         emptyLabel="No Solana address"
+        agentId="account-copy-solana-address"
+        agentLabel="Solana address"
       />
     </div>
   );
@@ -1636,6 +1703,38 @@ function WalletRailTabButton({
   );
 }
 
+function WalletRailCollapsedTab({
+  tab,
+  active,
+  onSelect,
+}: {
+  tab: { id: WalletRailTab; label: string; icon: LucideIcon };
+  active: boolean;
+  onSelect: (id: WalletRailTab) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `rail-tab-${tab.id}`,
+    role: "tab",
+    label: `${tab.label} (collapsed rail)`,
+    group: "wallet-tabs",
+    status: active ? "active" : "inactive",
+    description: `Show the ${tab.label} list from the collapsed rail`,
+  });
+  return (
+    <SidebarContent.RailItem
+      ref={ref}
+      aria-label={tab.label}
+      title={tab.label}
+      active={active}
+      aria-current={active ? "true" : undefined}
+      onClick={() => onSelect(tab.id)}
+      {...agentProps}
+    >
+      <tab.icon className="h-4 w-4" />
+    </SidebarContent.RailItem>
+  );
+}
+
 function WalletRailEmpty({
   icon: Icon,
   title,
@@ -1669,6 +1768,31 @@ function TokenRailRow({
   onHideToken: (row: TokenRow) => void;
   onTokenAction: (row: TokenRow, action: "swap" | "bridge") => void;
 }) {
+  const slug = tokenAgentSlug(row);
+  const { ref: swapRef, agentProps: swapAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `token-${slug}-swap`,
+      role: "button",
+      label: `Swap ${row.symbol}`,
+      group: "token-list",
+      description: `Swap the ${row.symbol} balance on ${row.chain}`,
+    });
+  const { ref: bridgeRef, agentProps: bridgeAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `token-${slug}-bridge`,
+      role: "button",
+      label: `Bridge ${row.symbol}`,
+      group: "token-list",
+      description: `Bridge the ${row.symbol} balance from ${row.chain}`,
+    });
+  const { ref: hideRef, agentProps: hideAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `token-${slug}-hide`,
+      role: "button",
+      label: `Hide ${row.symbol}`,
+      group: "token-list",
+      description: `Hide the ${row.symbol} token from the list`,
+    });
   return (
     <div className="group flex min-w-0 items-center gap-3 rounded-2xl px-2.5 py-2.5 transition-colors hover:bg-bg/55">
       <TokenIdentityIcon row={row} size={46} />
@@ -1689,29 +1813,35 @@ function TokenRailRow({
         </div>
         <div className="flex gap-1 opacity-70 transition-opacity group-hover:opacity-100">
           <button
+            ref={swapRef}
             type="button"
             className="flex h-7 w-7 items-center justify-center rounded-full bg-bg/65 text-muted transition-colors hover:text-txt"
             onClick={() => onTokenAction(row, "swap")}
             aria-label={`Swap ${row.symbol}`}
             title={`Swap ${row.symbol}`}
+            {...swapAgentProps}
           >
             <ArrowLeftRight className="h-3.5 w-3.5" />
           </button>
           <button
+            ref={bridgeRef}
             type="button"
             className="flex h-7 w-7 items-center justify-center rounded-full bg-bg/65 text-muted transition-colors hover:text-txt"
             onClick={() => onTokenAction(row, "bridge")}
             aria-label={`Bridge ${row.symbol}`}
             title={`Bridge ${row.symbol}`}
+            {...bridgeAgentProps}
           >
             <Layers3 className="h-3.5 w-3.5" />
           </button>
           <button
+            ref={hideRef}
             type="button"
             className="flex h-7 w-7 items-center justify-center rounded-full bg-bg/65 text-muted transition-colors hover:text-danger"
             onClick={() => onHideToken(row)}
             aria-label={`Hide ${row.symbol}`}
             title={`Hide ${row.symbol}`}
+            {...hideAgentProps}
           >
             <EyeOff className="h-3.5 w-3.5" />
           </button>
@@ -1895,6 +2025,14 @@ function TokenRail({
       /* ignore sandboxed storage */
     }
   }, []);
+  const { ref: enableWalletRef, agentProps: enableWalletAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "action-enable-wallet",
+      role: "button",
+      label: "Enable wallet",
+      group: "wallet-actions",
+      description: "Turn on the wallet to load balances and trading data",
+    });
   const headerContent = (
     <div className="space-y-4">
       {visibleRows.length > 0 ? (
@@ -1902,7 +2040,12 @@ function TokenRail({
       ) : null}
 
       {walletEnabled === false ? (
-        <Button className="w-full rounded-2xl" onClick={onEnableWallet}>
+        <Button
+          ref={enableWalletRef}
+          className="w-full rounded-2xl"
+          onClick={onEnableWallet}
+          {...enableWalletAgentProps}
+        >
           Enable wallet
         </Button>
       ) : null}
@@ -1960,15 +2103,12 @@ function TokenRail({
       expandButtonTestId="wallets-sidebar-expand-toggle"
       expandButtonAriaLabel="Expand wallet"
       collapsedRailItems={tabs.map((tab) => (
-        <SidebarContent.RailItem
+        <WalletRailCollapsedTab
           key={tab.id}
-          aria-label={tab.label}
-          title={tab.label}
+          tab={tab}
           active={activeTab === tab.id}
-          onClick={() => setActiveTab(tab.id)}
-        >
-          <tab.icon className="h-4 w-4" />
-        </SidebarContent.RailItem>
+          onSelect={setActiveTab}
+        />
       ))}
       mobileTitle="Wallet"
       mobileMeta={null}
@@ -2009,6 +2149,42 @@ function TokenRail({
         </SidebarPanel>
       </SidebarScrollRegion>
     </AppPageSidebar>
+  );
+}
+
+function DashboardWindowButton({
+  window,
+  active,
+  onSelect,
+}: {
+  window: DashboardWindow;
+  active: boolean;
+  onSelect: (window: DashboardWindow) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `pnl-window-${window}`,
+    role: "tab",
+    label: `P&L window ${window}`,
+    group: "pnl-window",
+    status: active ? "active" : "inactive",
+    description: `Show profit and loss over the ${window} window`,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className={cn(
+        "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+        active
+          ? "bg-accent text-[color:var(--accent-foreground)]"
+          : "text-muted hover:text-txt",
+      )}
+      onClick={() => onSelect(window)}
+      aria-current={active ? "true" : undefined}
+      {...agentProps}
+    >
+      {window}
+    </button>
   );
 }
 
@@ -2485,19 +2661,12 @@ export function InventoryView() {
                 action={
                   <div className="flex rounded-full bg-bg/40 p-1">
                     {DASHBOARD_WINDOWS.map((window) => (
-                      <button
+                      <DashboardWindowButton
                         key={window}
-                        type="button"
-                        className={cn(
-                          "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-                          dashboardWindow === window
-                            ? "bg-accent text-[color:var(--accent-foreground)]"
-                            : "text-muted hover:text-txt",
-                        )}
-                        onClick={() => setDashboardWindow(window)}
-                      >
-                        {window}
-                      </button>
+                        window={window}
+                        active={dashboardWindow === window}
+                        onSelect={setDashboardWindow}
+                      />
                     ))}
                   </div>
                 }
@@ -2587,6 +2756,16 @@ export function InventoryTuiView() {
     void refresh();
   }, [refresh]);
 
+  const { ref: tuiRefreshRef, agentProps: tuiRefreshAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "tui-refresh",
+      role: "button",
+      label: "Refresh inventory",
+      group: "wallet-tui",
+      status: loading ? "active" : undefined,
+      description: "Reload the terminal wallet inventory",
+    });
+
   const addresses = resolveWalletAddresses({
     walletAddresses: walletState?.walletAddresses ?? null,
     walletConfig: walletState?.walletConfig ?? null,
@@ -2669,6 +2848,7 @@ export function InventoryTuiView() {
           >
             <strong style={{ color: "#e2e8f0" }}>inventory</strong>
             <button
+              ref={tuiRefreshRef}
               type="button"
               onClick={() => void refresh()}
               disabled={loading}
@@ -2681,6 +2861,7 @@ export function InventoryTuiView() {
                 cursor: loading ? "not-allowed" : "pointer",
                 fontFamily: "inherit",
               }}
+              {...tuiRefreshAgentProps}
             >
               refresh
             </button>

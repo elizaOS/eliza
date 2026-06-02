@@ -1312,6 +1312,13 @@ async function executeActionTurn(
     `executeAction(${turn.name})`,
   );
   const actionResult = result as ActionResult | undefined;
+  if (
+    !responseText &&
+    actionResult?.verifiedUserFacing === true &&
+    typeof actionResult.userFacingText === "string"
+  ) {
+    responseText = actionResult.userFacingText;
+  }
   if (!responseText && typeof actionResult?.text === "string") {
     responseText = await rewriteScenarioActionText({
       runtime,

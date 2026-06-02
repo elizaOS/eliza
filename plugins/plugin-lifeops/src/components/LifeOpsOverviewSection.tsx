@@ -12,6 +12,7 @@ import type {
   LifeOpsXConnectorStatus,
 } from "@elizaos/shared";
 import { client, useApp } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   ArrowRight,
   AtSign,
@@ -20,7 +21,9 @@ import {
   Loader2,
   Mail,
   MessageCircle,
+  MessageSquareText,
   MessageSquare,
+  Mic2,
   Monitor,
   Moon,
   Phone,
@@ -28,12 +31,14 @@ import {
   Send,
   Share2,
   Shield,
+  Sparkles,
   Smartphone,
   Sun,
   Target,
   TriangleAlert,
 } from "lucide-react";
 import {
+  type ComponentProps,
   type ReactNode,
   useCallback,
   useEffect,
@@ -52,11 +57,15 @@ import { useLifeOpsCapabilitiesStatus } from "../hooks/useLifeOpsCapabilitiesSta
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
 import { useLifeOpsXConnector } from "../hooks/useLifeOpsXConnector.js";
 import { BrowserBridgeStatusChip } from "./BrowserBridgeStatusChip.js";
-import { DataSourcesStrip } from "./DataSourcesStrip.js";
 import {
   LIFEOPS_MAIL_CHANNELS,
   LIFEOPS_MESSAGE_CHANNELS,
 } from "./LifeOpsInboxSection.js";
+import {
+  ASSISTANT_INTENTS,
+  LIFEOPS_VOICE_COMMAND_PROMPT,
+} from "./LifeOpsAssistantSection.js";
+import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
 import { useLifeOpsSelection } from "./LifeOpsSelectionContext.js";
 import { MissingSourceCard } from "./MissingSourceCard.js";
 
@@ -300,32 +309,6 @@ function topActiveSession(
   );
 }
 
-function computeWeeklyDelta(args: {
-  todayTotalSeconds: number | null | undefined;
-  weeklyTotalSeconds: number | null | undefined;
-}): { label: string; arrow: "up" | "down" | "flat" } | null {
-  const { todayTotalSeconds, weeklyTotalSeconds } = args;
-  if (
-    typeof todayTotalSeconds !== "number" ||
-    typeof weeklyTotalSeconds !== "number" ||
-    !Number.isFinite(todayTotalSeconds) ||
-    !Number.isFinite(weeklyTotalSeconds) ||
-    weeklyTotalSeconds <= 0
-  ) {
-    return null;
-  }
-  const dailyAverage = weeklyTotalSeconds / 7;
-  if (dailyAverage <= 0) return null;
-  const delta = (todayTotalSeconds - dailyAverage) / dailyAverage;
-  const percent = Math.round(Math.abs(delta) * 100);
-  if (percent < 1) {
-    return { label: "On par with avg", arrow: "flat" };
-  }
-  const arrow: "up" | "down" = delta > 0 ? "up" : "down";
-  const symbol = arrow === "up" ? "↑" : "↓";
-  return { label: `${symbol} ${percent}% vs avg`, arrow };
-}
-
 function sleepStatusLabel(schedule: LifeOpsScheduleInsight | null | undefined) {
   if (!schedule) return "No sleep signal";
   switch (schedule.sleepStatus) {
@@ -402,6 +385,15 @@ function DashboardPanel({
   );
 }
 
+function overviewSlug(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "action"
+  );
+}
+
 function IconAction({
   label,
   icon,
@@ -411,16 +403,174 @@ function IconAction({
   icon: ReactNode;
   onClick: () => void;
 }) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `overview-action-${overviewSlug(label)}`,
+    role: "button",
+    label,
+    group: "lifeops-overview",
+    description: label,
+  });
   return (
     <button
+      ref={ref}
       type="button"
       aria-label={label}
       title={label}
       className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg/40 hover:text-txt"
       onClick={onClick}
+      {...agentProps}
     >
       {icon}
     </button>
+  );
+}
+
+function OverviewNavButton({
+  agentId,
+  label,
+  description,
+  children,
+  ...buttonProps
+}: {
+  agentId: string;
+  label: string;
+  description: string;
+  children: ReactNode;
+} & ComponentProps<"button">) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group: "lifeops-overview",
+    description,
+  });
+  return (
+    <button ref={ref} type="button" {...buttonProps} {...agentProps}>
+      {children}
+    </button>
+  );
+}
+
+type OverviewAssistantCommand = {
+  id: string;
+  label: string;
+  icon: ReactNode;
+  prompt?: string;
+  select?: boolean;
+};
+
+function assistantPrompt(intentId: string): string {
+  return (
+    ASSISTANT_INTENTS.find((intent) => intent.id === intentId)?.prompt ??
+    ASSISTANT_INTENTS[0]?.prompt ??
+    "Give me a LifeOps command brief."
+  );
+}
+
+const OVERVIEW_ASSISTANT_COMMANDS: OverviewAssistantCommand[] = [
+  {
+    id: "ask",
+    label: "Ask LifeOps",
+    icon: <MessageSquareText className="h-4 w-4" aria-hidden />,
+    prompt: assistantPrompt("command-brief"),
+    select: true,
+  },
+  {
+    id: "voice",
+    label: "Voice command",
+    icon: <Mic2 className="h-4 w-4" aria-hidden />,
+    prompt: LIFEOPS_VOICE_COMMAND_PROMPT,
+    select: false,
+  },
+  {
+    id: "triage",
+    label: "Triage",
+    icon: <Flame className="h-4 w-4" aria-hidden />,
+    prompt: assistantPrompt("inbox-decisions"),
+    select: true,
+  },
+  {
+    id: "brief",
+    label: "Brief",
+    icon: <Sparkles className="h-4 w-4" aria-hidden />,
+    prompt: assistantPrompt("command-brief"),
+    select: true,
+  },
+];
+
+function OverviewAssistantDockButton({
+  command,
+  onLaunch,
+}: {
+  command: OverviewAssistantCommand;
+  onLaunch: (command: OverviewAssistantCommand) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `overview-assistant-${command.id}`,
+    role: "button",
+    label: command.label,
+    group: "lifeops-overview-assistant",
+    description: `Open ${command.label} in LifeOps chat`,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-label={command.label}
+      title={command.label}
+      data-testid="lifeops-overview-assistant-command"
+      data-command-id={command.id}
+      className="inline-flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg border border-border/16 bg-bg/35 px-2 text-xs font-semibold text-muted transition-colors hover:border-accent/30 hover:bg-bg-muted/45 hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
+      onClick={() => onLaunch(command)}
+      {...agentProps}
+    >
+      {command.icon}
+      {command.id === "ask" ? <span>Ask</span> : null}
+    </button>
+  );
+}
+
+export function LifeOpsOverviewAssistantDock({
+  onNavigate,
+  openLifeOpsChat,
+}: {
+  onNavigate: (section: LifeOpsSection) => void;
+  openLifeOpsChat: (
+    text: string,
+    selection?: Record<string, never>,
+    options?: { select?: boolean },
+  ) => void;
+}) {
+  return (
+    <div
+      className="flex min-w-0 flex-wrap items-center gap-1.5 rounded-lg border border-border/16 bg-card/10 p-1.5"
+      data-testid="lifeops-overview-assistant-dock"
+    >
+      {OVERVIEW_ASSISTANT_COMMANDS.map((command) => (
+        <OverviewAssistantDockButton
+          key={command.id}
+          command={command}
+          onLaunch={(launched) =>
+            openLifeOpsChat(
+              launched.prompt ?? assistantPrompt("command-brief"),
+              {},
+              { select: launched.select ?? true },
+            )
+          }
+        />
+      ))}
+      <OverviewNavButton
+        agentId="overview-open-assistant"
+        label="Open Assistant"
+        description="Open the full LifeOps assistant surface"
+        aria-label="Open Assistant"
+        title="Assistant"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/16 bg-bg/35 text-muted transition-colors hover:border-accent/30 hover:bg-bg-muted/45 hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
+        onClick={() => onNavigate("assistant")}
+      >
+        <ArrowRight className="h-4 w-4" aria-hidden />
+      </OverviewNavButton>
+    </div>
   );
 }
 
@@ -526,6 +676,119 @@ function TinyStatus({ color, label }: { color: string; label: string }) {
   );
 }
 
+function AssistantSignalButton({
+  label,
+  value,
+  icon,
+  tone,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  icon: ReactNode;
+  tone: string;
+  onClick: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `overview-signal-${overviewSlug(label)}`,
+    role: "button",
+    label,
+    group: "lifeops-overview-signals",
+    description: `Ask LifeOps about ${label}`,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-label={`Ask about ${label}`}
+      title={label}
+      className="flex min-h-12 min-w-0 items-center gap-2 rounded-lg border border-border/12 bg-bg/25 px-2.5 text-left transition-colors hover:border-accent/30 hover:bg-bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
+      onClick={onClick}
+      {...agentProps}
+    >
+      <span
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${tone}`}
+        aria-hidden
+      >
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-xs font-semibold text-txt">
+          {value}
+        </span>
+        <span className="sr-only">{label}</span>
+      </span>
+    </button>
+  );
+}
+
+export function LifeOpsOverviewSignalsPanel({
+  sleep,
+  screen,
+  social,
+  onNavigate,
+}: {
+  sleep?: { value: string; sleepingNow?: boolean };
+  screen?: { value: string };
+  social?: { value: string };
+  onNavigate: (section: LifeOpsSection) => void;
+}) {
+  if (!sleep && !screen && !social) {
+    return null;
+  }
+
+  return (
+    <DashboardPanel
+      title="Signals"
+      icon={<Target className="h-4 w-4" aria-hidden />}
+      action={
+        <IconAction
+          label="Ask about signals"
+          icon={<Sparkles className="h-3.5 w-3.5" aria-hidden />}
+          onClick={() => onNavigate("assistant")}
+        />
+      }
+      className="xl:col-span-3"
+    >
+      <div className="grid gap-2" data-testid="lifeops-overview-signals">
+        {sleep ? (
+          <AssistantSignalButton
+            label="sleep"
+            value={sleep.value}
+            icon={
+              sleep.sleepingNow ? (
+                <Moon className="h-4 w-4" aria-hidden />
+              ) : (
+                <Sun className="h-4 w-4" aria-hidden />
+              )
+            }
+            tone="bg-indigo-500/14 text-indigo-200"
+            onClick={() => onNavigate("assistant")}
+          />
+        ) : null}
+        {screen ? (
+          <AssistantSignalButton
+            label="screen"
+            value={screen.value}
+            icon={<Monitor className="h-4 w-4" aria-hidden />}
+            tone="bg-amber-500/14 text-amber-200"
+            onClick={() => onNavigate("assistant")}
+          />
+        ) : null}
+        {social ? (
+          <AssistantSignalButton
+            label="social"
+            value={social.value}
+            icon={<Share2 className="h-4 w-4" aria-hidden />}
+            tone="bg-cyan-500/14 text-cyan-200"
+            onClick={() => onNavigate("assistant")}
+          />
+        ) : null}
+      </div>
+    </DashboardPanel>
+  );
+}
+
 function CalendarEventRow({
   event,
   onClick,
@@ -533,11 +796,20 @@ function CalendarEventRow({
   event: LifeOpsCalendarEvent;
   onClick: () => void;
 }) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `overview-event-${event.id}`,
+    role: "list-item",
+    label: event.title,
+    group: "lifeops-overview-agenda",
+    description: `Open the event ${event.title}`,
+  });
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onClick}
       className="flex w-full min-w-0 items-start gap-3 py-2 text-left transition-colors hover:text-accent"
+      {...agentProps}
     >
       <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-400" />
       <span className="min-w-0 flex-1">
@@ -561,11 +833,20 @@ function ReminderAgendaRow({
 }) {
   const urgency = classifyReminder(reminder.scheduledFor);
   const style = URGENCY_STYLES[urgency];
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `overview-reminder-${reminder.ownerId}`,
+    role: "list-item",
+    label: reminder.title,
+    group: "lifeops-overview-agenda",
+    description: `Open the reminder ${reminder.title}`,
+  });
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onClick}
       className="flex w-full min-w-0 items-start gap-3 py-2 text-left transition-colors hover:text-accent"
+      {...agentProps}
     >
       <span
         className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${style.dot}`}
@@ -595,11 +876,20 @@ function InboxMessageRow({
     subject === `${style.label} message`
       ? message.sender.displayName
       : `${message.sender.displayName} - ${subject}`;
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `overview-message-${message.id}`,
+    role: "list-item",
+    label: rowTitle,
+    group: "lifeops-overview-inbox",
+    description: `Open the message from ${message.sender.displayName}`,
+  });
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onClick}
       className="flex w-full min-w-0 items-start gap-3 py-2 text-left transition-colors hover:text-accent"
+      {...agentProps}
     >
       <span
         className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${style.bg} ${style.text}`}
@@ -649,56 +939,12 @@ function TimelineRow({
   );
 }
 
-function ScreenTimeList({
-  screenTime,
-  loading,
-  error,
-}: {
-  screenTime: LifeOpsScreenTimeSummary | null;
-  loading: boolean;
-  error: string | null;
-}) {
-  if (loading && !screenTime) {
-    return (
-      <div className="flex items-center gap-2 py-5 text-xs text-muted">
-        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-        Reading screen time...
-      </div>
-    );
-  }
-  if (error) {
-    return <div className="py-4 text-xs text-rose-300">{error}</div>;
-  }
-  const items = screenTime?.items ?? [];
-  if (items.length === 0) {
-    return <EmptyState>No screen-time sessions yet.</EmptyState>;
-  }
-  return (
-    <div className="space-y-2">
-      {items.slice(0, 5).map((item) => (
-        <div
-          key={`${item.source}:${item.identifier}`}
-          className="flex min-w-0 items-baseline justify-between gap-3 border-t border-border/10 pt-2 first:border-t-0 first:pt-0"
-        >
-          <div className="min-w-0">
-            <div className="truncate text-sm font-medium text-txt">
-              {item.displayName}
-            </div>
-          </div>
-          <div className="shrink-0 text-sm font-semibold tabular-nums text-txt">
-            {formatDurationSeconds(item.totalSeconds)}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function LifeOpsOverviewSection({
   onNavigate,
 }: LifeOpsOverviewSectionProps) {
   const { t } = useApp();
   const { select } = useLifeOpsSelection();
+  const { openLifeOpsChat } = useLifeOpsChatLauncher();
   const today = useMemo(() => new Date(), []);
   const greeting = useGreeting();
   const capabilities = useLifeOpsCapabilitiesStatus();
@@ -720,12 +966,6 @@ export function LifeOpsOverviewSection({
   const [social, setSocial] = useState<LifeOpsSocialHabitSummary | null>(null);
   const [socialLoading, setSocialLoading] = useState(false);
   const [socialError, setSocialError] = useState<string | null>(null);
-  const [weeklyScreenTotalSeconds, setWeeklyScreenTotalSeconds] = useState<
-    number | null
-  >(null);
-  const [weeklyScreenTimeError, setWeeklyScreenTimeError] = useState<
-    string | null
-  >(null);
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -789,35 +1029,11 @@ export function LifeOpsOverviewSection({
     }
   }, []);
 
-  const loadWeeklyScreenTime = useCallback(async () => {
-    setWeeklyScreenTimeError(null);
-    const now = new Date();
-    const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    try {
-      const breakdown = await client.getLifeOpsScreenTimeBreakdown({
-        since: since.toISOString(),
-        until: now.toISOString(),
-        topN: 1,
-      });
-      setWeeklyScreenTotalSeconds(
-        Number.isFinite(breakdown.totalSeconds) ? breakdown.totalSeconds : null,
-      );
-    } catch (cause) {
-      setWeeklyScreenTotalSeconds(null);
-      setWeeklyScreenTimeError(
-        cause instanceof Error && cause.message.trim().length > 0
-          ? cause.message.trim()
-          : "Weekly screen-time comparison failed to load.",
-      );
-    }
-  }, []);
-
   useEffect(() => {
     void loadOverview();
     void loadScreenTime();
     void loadSocial();
-    void loadWeeklyScreenTime();
-  }, [loadOverview, loadScreenTime, loadSocial, loadWeeklyScreenTime]);
+  }, [loadOverview, loadScreenTime, loadSocial]);
 
   const calendar = useCalendarWeek({ viewMode: "week" });
   const messagesInbox = useInbox({
@@ -867,9 +1083,6 @@ export function LifeOpsOverviewSection({
   const nextEvent = upcomingEvents[0] ?? null;
   const screenTimeLabel = formatDurationSeconds(screenTime?.totalSeconds);
   const socialLabel = formatDurationSeconds(social?.totalSeconds);
-  const topSocial = social?.services[0] ?? null;
-  const lastSleep = formatDurationMinutes(schedule?.lastSleepDurationMinutes);
-  const bedtime = formatClockTime(schedule?.relativeTime.bedtimeTargetAt);
   const sleepAccess =
     Boolean(schedule) ||
     hasCapabilityAccess(capabilities.status, "sleep.relative_time");
@@ -1004,20 +1217,10 @@ export function LifeOpsOverviewSection({
     Boolean(circadianLine) ||
     Boolean(activeSessionLine) ||
     briefingLines.length > 0;
-  const weeklyDelta = useMemo(
-    () =>
-      computeWeeklyDelta({
-        todayTotalSeconds: screenTime?.totalSeconds ?? null,
-        weeklyTotalSeconds: weeklyScreenTotalSeconds,
-      }),
-    [screenTime?.totalSeconds, weeklyScreenTotalSeconds],
-  );
-
   const refresh = useCallback(() => {
     void loadOverview();
     void loadScreenTime();
     void loadSocial();
-    void loadWeeklyScreenTime();
     void capabilities.refresh();
     void googleConnector.refresh({ silent: true });
     void xConnector.refresh();
@@ -1031,7 +1234,6 @@ export function LifeOpsOverviewSection({
     loadSocial,
     loadOverview,
     loadScreenTime,
-    loadWeeklyScreenTime,
     mailInbox.refresh,
     messagesInbox.refresh,
     xConnector,
@@ -1076,8 +1278,10 @@ export function LifeOpsOverviewSection({
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <BrowserBridgeStatusChip onNavigate={onNavigate} />
-            <button
-              type="button"
+            <OverviewNavButton
+              agentId="overview-refresh"
+              label="Refresh LifeOps dashboard"
+              description="Refresh the LifeOps overview dashboard"
               aria-label="Refresh LifeOps dashboard"
               title="Refresh"
               className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/20 bg-bg/30 text-muted transition-colors hover:border-accent/30 hover:text-txt disabled:opacity-40"
@@ -1096,7 +1300,7 @@ export function LifeOpsOverviewSection({
                 }`}
                 aria-hidden
               />
-            </button>
+            </OverviewNavButton>
           </div>
         </div>
 
@@ -1119,6 +1323,13 @@ export function LifeOpsOverviewSection({
             label="Screen"
             value={screenTimeLabel || "No data"}
             tone={screenTimeLabel ? "text-amber-300" : "text-muted"}
+          />
+        </div>
+
+        <div className="mt-3">
+          <LifeOpsOverviewAssistantDock
+            onNavigate={onNavigate}
+            openLifeOpsChat={openLifeOpsChat}
           />
         </div>
       </header>
@@ -1151,8 +1362,10 @@ export function LifeOpsOverviewSection({
               </div>
             </div>
           </div>
-          <button
-            type="button"
+          <OverviewNavButton
+            agentId="overview-open-setup"
+            label="Open LifeOps setup"
+            description="Open the LifeOps setup section"
             aria-label="Open LifeOps settings"
             title="Open setup"
             className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-border/16 bg-bg/50 px-3 text-xs font-medium text-txt transition-colors hover:border-accent/30 hover:text-accent"
@@ -1160,14 +1373,14 @@ export function LifeOpsOverviewSection({
           >
             Open setup
             <ArrowRight className="h-3.5 w-3.5" aria-hidden />
-          </button>
+          </OverviewNavButton>
         </div>
       ) : null}
 
       {loading && !overview ? (
         <div className="flex items-center gap-2 py-4 text-xs text-muted">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          Loading dashboard...
+          <span className="sr-only">Loading overview</span>
         </div>
       ) : null}
 
@@ -1182,14 +1395,16 @@ export function LifeOpsOverviewSection({
           <h2 className="mt-4 text-base font-semibold text-txt">
             Connect a source
           </h2>
-          <button
-            type="button"
+          <OverviewNavButton
+            agentId="overview-open-settings"
+            label="Open LifeOps settings"
+            description="Open the LifeOps setup section to connect a source"
             className="mt-4 inline-flex h-9 items-center gap-1 rounded-md border border-border/16 bg-bg/50 px-3 text-sm font-medium text-txt transition-colors hover:border-accent/30 hover:text-accent"
             onClick={() => onNavigate("setup")}
           >
             Open Settings
             <ArrowRight className="h-4 w-4" aria-hidden />
-          </button>
+          </OverviewNavButton>
         </div>
       ) : null}
 
@@ -1215,161 +1430,25 @@ export function LifeOpsOverviewSection({
             </DashboardPanel>
           ) : null}
 
-          {sleepAccess ? (
-            <DashboardPanel
-              title="Sleep"
-              icon={
-                schedule?.sleepStatus === "sleeping_now" ? (
-                  <Moon className="h-4 w-4" aria-hidden />
-                ) : (
-                  <Sun className="h-4 w-4" aria-hidden />
-                )
-              }
-              action={
-                <IconAction
-                  label="Ask about sleep"
-                  icon={<Moon className="h-3.5 w-3.5" aria-hidden />}
-                  onClick={() => onNavigate("assistant")}
-                />
-              }
-              className="xl:col-span-3"
-            >
-              <div className="space-y-3">
-                <div>
-                  <div className="text-2xl font-semibold leading-none text-txt">
-                    {sleepStatusLabel(schedule)}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3 border-t border-border/12 pt-3">
-                  <TinyStatus
-                    color="bg-blue-400"
-                    label={lastSleep ? `Last sleep ${lastSleep}` : "No sleep"}
-                  />
-                  <TinyStatus
-                    color="bg-indigo-400"
-                    label={bedtime ? `Bed ${bedtime}` : "No target"}
-                  />
-                </div>
-              </div>
-            </DashboardPanel>
-          ) : (
-            <MissingSourceCard
-              title="Sleep"
-              ctaLabel="Connect Health"
-              onCta={() => onNavigate("setup")}
-              className="xl:col-span-3"
-            />
-          )}
-
-          {screenTimeAccess ? (
-            <DashboardPanel
-              title="Screen Time"
-              icon={<Monitor className="h-4 w-4" aria-hidden />}
-              action={
-                <IconAction
-                  label="Ask about screen time"
-                  icon={<Monitor className="h-3.5 w-3.5" aria-hidden />}
-                  onClick={() => onNavigate("assistant")}
-                />
-              }
-              className="xl:col-span-3"
-            >
-              <div className="mb-3 flex items-end justify-between gap-3">
-                <div>
-                  <div className="text-2xl font-semibold leading-none text-txt">
-                    {screenTimeLabel || "No data"}
-                  </div>
-                  {weeklyDelta ? (
-                    <div
-                      className="mt-1 text-[11px] font-medium tabular-nums text-muted"
-                      data-testid="lifeops-overview-screen-weekly-delta"
-                    >
-                      {weeklyDelta.label}
-                    </div>
-                  ) : null}
-                  {weeklyScreenTimeError ? (
-                    <div
-                      className="mt-1 text-[11px] font-medium text-rose-300"
-                      data-testid="lifeops-overview-screen-weekly-error"
-                    >
-                      Weekly comparison unavailable: {weeklyScreenTimeError}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-              <ScreenTimeList
-                screenTime={screenTime}
-                loading={screenTimeLoading}
-                error={screenTimeError}
-              />
-            </DashboardPanel>
-          ) : (
-            <MissingSourceCard
-              title="Screen Time"
-              ctaLabel="Set up tracking"
-              onCta={() => onNavigate("setup")}
-              className="xl:col-span-3"
-            />
-          )}
-
-          {socialAccess ? (
-            <DashboardPanel
-              title="Social"
-              icon={<Share2 className="h-4 w-4" aria-hidden />}
-              action={
-                <IconAction
-                  label="Ask about social"
-                  icon={<Share2 className="h-3.5 w-3.5" aria-hidden />}
-                  onClick={() => onNavigate("assistant")}
-                />
-              }
-              className="xl:col-span-3"
-            >
-              <div className="mb-3 text-2xl font-semibold leading-none text-txt">
-                {socialLabel || "No data"}
-              </div>
-              {socialLoading && !social ? (
-                <div className="flex items-center gap-2 py-5 text-xs text-muted">
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                  Reading social...
-                </div>
-              ) : socialError ? (
-                <div className="py-4 text-xs text-rose-300">{socialError}</div>
-              ) : (
-                <div className="space-y-3">
-                  <TinyStatus
-                    color="bg-cyan-300"
-                    label={
-                      topSocial
-                        ? `${topSocial.label} ${formatDurationSeconds(
-                            topSocial.totalSeconds,
-                          )}`
-                        : "No social time"
-                    }
-                  />
-                  <TinyStatus
-                    color="bg-emerald-300"
-                    label={`${social?.messages.opened ?? 0} opened / ${
-                      social?.messages.outbound ?? 0
-                    } sent`}
-                  />
-                  {(social?.dataSources ?? []).length > 0 ? (
-                    <DataSourcesStrip
-                      sources={social?.dataSources ?? []}
-                      onSetup={() => onNavigate("setup")}
-                    />
-                  ) : null}
-                </div>
-              )}
-            </DashboardPanel>
-          ) : (
-            <MissingSourceCard
-              title="Social"
-              ctaLabel="Set up bridge"
-              onCta={() => onNavigate("setup")}
-              className="xl:col-span-3"
-            />
-          )}
+          <LifeOpsOverviewSignalsPanel
+            sleep={
+              sleepAccess
+                ? {
+                    value: sleepStatusLabel(schedule),
+                    sleepingNow: schedule?.sleepStatus === "sleeping_now",
+                  }
+                : undefined
+            }
+            screen={
+              screenTimeAccess
+                ? { value: screenTimeLabel || "No data" }
+                : undefined
+            }
+            social={
+              socialAccess ? { value: socialLabel || "No data" } : undefined
+            }
+            onNavigate={onNavigate}
+          />
 
           {calendarAccess ? (
             <DashboardPanel

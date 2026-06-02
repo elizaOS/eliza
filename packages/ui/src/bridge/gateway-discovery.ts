@@ -1,4 +1,4 @@
-import { logger } from "@elizaos/core";
+import { logger } from "@elizaos/logger";
 import { getPlugins, isFeatureAvailable } from "./plugin-bridge";
 
 export interface GatewayDiscoveryEndpoint {

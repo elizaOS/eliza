@@ -67,8 +67,8 @@ export class XRSessionService extends Service {
     );
     this.wss = new WebSocketServer({ port });
 
-    this.wss.on("connection", (ws) => this.onConnect(runtime, ws));
-    this.wss.on("error", (err) =>
+    this.wss.on("connection", (ws: WebSocket) => this.onConnect(runtime, ws));
+    this.wss.on("error", (err: Error) =>
       console.error("[plugin-xr] WebSocket server error:", err),
     );
 
@@ -180,12 +180,18 @@ export class XRSessionService extends Service {
   private onConnect(runtime: IAgentRuntime, ws: WebSocket): void {
     const connId = crypto.randomUUID();
 
-    ws.on("message", (data, isBinary) => {
+    ws.on("message", (data: unknown, isBinary: boolean) => {
       try {
         if (isBinary) {
           this.handleBinaryMessage(connId, data as Buffer);
         } else {
-          this.handleTextMessage(runtime, connId, ws, data.toString("utf8"));
+          const raw =
+            typeof data === "string"
+              ? data
+              : Buffer.isBuffer(data)
+                ? data.toString("utf8")
+                : String(data);
+          this.handleTextMessage(runtime, connId, ws, raw);
         }
       } catch (err) {
         console.error("[plugin-xr] message handler error:", err);
@@ -200,7 +206,7 @@ export class XRSessionService extends Service {
       console.info(`[plugin-xr] device disconnected: ${connId}`);
     });
 
-    ws.on("error", (err) =>
+    ws.on("error", (err: Error) =>
       console.error(`[plugin-xr] ws error on ${connId}:`, err),
     );
   }

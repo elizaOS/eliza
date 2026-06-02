@@ -189,12 +189,26 @@ def test_chipyard_preflight_summary_accepts_fallback_report() -> None:
             raise AssertionError(summary)
 
 
+def test_tapeout_audit_declares_false_claim_flags() -> None:
+    module = load_check_module()
+    data = module.build_report()
+    errors = module.validate_report(data)
+    if errors:
+        raise AssertionError(errors)
+    if data.get("false_claim_flags") != module.FALSE_CLAIM_FLAGS:
+        raise AssertionError(data.get("false_claim_flags"))
+    for key, value in module.FALSE_CLAIM_FLAGS.items():
+        if data.get(key) is not value:
+            raise AssertionError(f"{key} drifted: {data.get(key)!r}")
+
+
 def main() -> int:
     for test in (
         test_repo_local_flow_tools_count_as_available,
         test_host_smoke_benchmark_model_stays_blocked,
         test_benchmark_release_rows_enumerate_dry_run_blockers,
         test_chipyard_preflight_summary_accepts_fallback_report,
+        test_tapeout_audit_declares_false_claim_flags,
     ):
         test()
         print(f"PASS {test.__name__}")

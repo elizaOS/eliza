@@ -221,6 +221,8 @@ interface ShimSymbols {
 	 * `llama_get_embeddings_seq` to return a pooled vector.
 	 */
 	eliza_llama_context_params_set_pooling_type: (p: Pointer, v: number) => void;
+	eliza_llama_context_params_set_type_k: (p: Pointer, v: number) => void;
+	eliza_llama_context_params_set_type_v: (p: Pointer, v: number) => void;
 	eliza_llama_context_params_set_offload_kqv: (p: Pointer, v: boolean) => void;
 	eliza_llama_init_from_model: (model: Pointer, params: Pointer) => Pointer;
 
@@ -547,6 +549,14 @@ function bindShim(ffi: BunFFIModule, libPath: string): ShimSymbols {
 			args: [T.ptr, T.i32],
 			returns: T.void,
 		},
+		eliza_llama_context_params_set_type_k: {
+			args: [T.ptr, T.i32],
+			returns: T.void,
+		},
+		eliza_llama_context_params_set_type_v: {
+			args: [T.ptr, T.i32],
+			returns: T.void,
+		},
 		eliza_llama_context_params_set_offload_kqv: {
 			args: [T.ptr, T.bool],
 			returns: T.void,
@@ -708,12 +718,45 @@ function normalizeEmbedding(vec: Float32Array, embdNormalize: number): void {
  */
 const LLAMA_POOLING_TYPE_MEAN = 1;
 
+const GGML_KV_CACHE_TYPES = new Map<string, number>([
+	["f32", 0],
+	["f16", 1],
+	["q4_0", 2],
+	["q4_1", 3],
+	["q5_0", 6],
+	["q5_1", 7],
+	["q8_0", 8],
+	["q4_k", 12],
+	["q5_k", 13],
+	["q6_k", 14],
+	["q8_k", 15],
+	["iq4_nl", 20],
+	["bf16", 30],
+	["tbq3_0", 44],
+	["tbq4_0", 45],
+	["qjl1_256", 46],
+	["q4_polar", 47],
+	["tbq3_tcq", 48],
+]);
+
+function ggmlKvCacheType(name: string | undefined): number | undefined {
+	if (!name) return undefined;
+	const normalized = name.trim().toLowerCase();
+	const value = GGML_KV_CACHE_TYPES.get(normalized);
+	if (value === undefined) {
+		throw new Error(`[desktop-llama] unsupported KV cache type: ${name}`);
+	}
+	return value;
+}
+
 export interface DesktopLlamaLoadOptions {
 	modelPath: string;
 	contextSize?: number;
 	nBatch?: number;
 	nUBatch?: number;
 	gpuLayers?: number;
+	cacheTypeK?: string;
+	cacheTypeV?: string;
 	threads?: number;
 	useMmap?: boolean;
 	useMlock?: boolean;
@@ -1061,6 +1104,14 @@ export class DesktopLlamaAdapter {
 					this.shim.eliza_llama_context_params_set_n_threads(cp, threads);
 					this.shim.eliza_llama_context_params_set_n_threads_batch(cp, threads);
 					this.shim.eliza_llama_context_params_set_embeddings(cp, false);
+					const cacheTypeK = ggmlKvCacheType(this.loadOpts.cacheTypeK);
+					const cacheTypeV = ggmlKvCacheType(this.loadOpts.cacheTypeV);
+					if (cacheTypeK !== undefined) {
+						this.shim.eliza_llama_context_params_set_type_k(cp, cacheTypeK);
+					}
+					if (cacheTypeV !== undefined) {
+						this.shim.eliza_llama_context_params_set_type_v(cp, cacheTypeV);
+					}
 					this.shim.eliza_llama_context_params_set_offload_kqv(cp, true);
 					nextCtx = this.shim.eliza_llama_init_from_model(this.modelPtr, cp);
 				} finally {
@@ -1109,16 +1160,35 @@ export class DesktopLlamaAdapter {
 
 	/** Detach + free any drafter on the primary ctx (pool slot 0). */
 	detachDrafter(): void {
+		const errors: unknown[] = [];
 		// Detach from every ctx in the pool that has one, then free the
 		// shared drafter model.
 		for (let i = 0; i < this.ctxPool.length; i++) {
-			if (this.drafterAttached[i]) this.detachDrafterFromCtx(i);
+			if (!this.drafterAttached[i]) continue;
+			try {
+				this.detachDrafterFromCtx(i);
+			} catch (err) {
+				errors.push(err);
+			} finally {
+				this.drafterAttached[i] = false;
+			}
 		}
 		if (this.drafterModelPtr !== null) {
-			this.llama.llama_model_free(this.drafterModelPtr);
+			const ptr = this.drafterModelPtr;
 			this.drafterModelPtr = null;
+			try {
+				this.llama.llama_model_free(ptr);
+			} catch (err) {
+				errors.push(err);
+			}
 		}
 		this.drafterModelPath = null;
+		if (errors.length > 0) {
+			throw new AggregateError(
+				errors,
+				"[desktop-llama] failed to fully detach drafter",
+			);
+		}
 	}
 
 	loadedDrafterPath(): string | null {
@@ -1181,6 +1251,14 @@ export class DesktopLlamaAdapter {
 			this.shim.eliza_llama_context_params_set_n_threads(cp, threads);
 			this.shim.eliza_llama_context_params_set_n_threads_batch(cp, threads);
 			this.shim.eliza_llama_context_params_set_embeddings(cp, embedding);
+			const cacheTypeK = ggmlKvCacheType(opts.cacheTypeK);
+			const cacheTypeV = ggmlKvCacheType(opts.cacheTypeV);
+			if (cacheTypeK !== undefined) {
+				this.shim.eliza_llama_context_params_set_type_k(cp, cacheTypeK);
+			}
+			if (cacheTypeV !== undefined) {
+				this.shim.eliza_llama_context_params_set_type_v(cp, cacheTypeV);
+			}
 			if (embedding) {
 				this.shim.eliza_llama_context_params_set_pooling_type(
 					cp,
@@ -1199,12 +1277,25 @@ export class DesktopLlamaAdapter {
 	}
 
 	unloadModel(): void {
+		const errors: unknown[] = [];
 		for (const sess of this.sessions.values()) {
 			if (sess.mtpEngine !== 0) {
-				this.shim.eliza_llama_mtp_engine_free(sess.mtpEngine);
+				const engine = sess.mtpEngine;
+				sess.mtpEngine = 0;
+				try {
+					this.shim.eliza_llama_mtp_engine_free(engine);
+				} catch (err) {
+					errors.push(err);
+				}
 			}
 			if (sess.sampler !== 0) {
-				this.llama.llama_sampler_free(sess.sampler);
+				const sampler = sess.sampler;
+				sess.sampler = 0;
+				try {
+					this.llama.llama_sampler_free(sampler);
+				} catch (err) {
+					errors.push(err);
+				}
 			}
 		}
 		this.sessions.clear();
@@ -1212,30 +1303,56 @@ export class DesktopLlamaAdapter {
 		// bound to the text model and must outlive neither the model nor
 		// the active llama ctx.
 		if (this.mtmdCtxPtr !== null && this.vision) {
-			this.vision.eliza_mtmd_free(this.mtmdCtxPtr);
+			const mtmdCtx = this.mtmdCtxPtr;
 			this.mtmdCtxPtr = null;
 			this.mtmdMmprojPath = null;
+			try {
+				this.vision.eliza_mtmd_free(mtmdCtx);
+			} catch (err) {
+				errors.push(err);
+			}
 		}
 		// Detach + free the drafter BEFORE freeing any main ctx — the
 		// drafter is borrowed via the primary ctx's shim slot. `llama_free`
 		// on the main ctx is otherwise unsafe while a drafter ctx
 		// references it.
-		this.detachDrafter();
+		try {
+			this.detachDrafter();
+		} catch (err) {
+			errors.push(err);
+		}
 		// Free every ctx in the pool. The pool is in allocation order;
 		// freeing back-to-front keeps the implicit slot ordering stable.
 		for (let i = this.ctxPool.length - 1; i >= 0; i--) {
 			const ctx = this.ctxPool[i];
-			if (ctx !== undefined) this.llama.llama_free(ctx);
+			if (ctx !== undefined) {
+				try {
+					this.llama.llama_free(ctx);
+				} catch (err) {
+					errors.push(err);
+				}
+			}
 		}
 		this.ctxPool = [];
 		this.hasDecodedFlags = [];
 		this.drafterAttached = [];
 		if (this.modelPtr !== null) {
-			this.llama.llama_model_free(this.modelPtr);
+			const model = this.modelPtr;
 			this.modelPtr = null;
+			try {
+				this.llama.llama_model_free(model);
+			} catch (err) {
+				errors.push(err);
+			}
 		}
 		this.vocabPtr = null;
 		this.loadOpts = null;
+		if (errors.length > 0) {
+			throw new AggregateError(
+				errors,
+				"[desktop-llama] failed to fully unload native resources",
+			);
+		}
 	}
 
 	close(): void {
@@ -1817,6 +1934,10 @@ export class DesktopLlamaAdapter {
 		});
 	}
 
+	private flushTokenText(sess: DesktopSession): string {
+		return sess.pieceDecoder.decode();
+	}
+
 	private nextStep(
 		stream: LlmStreamHandle,
 		maxTokensPerStep = 32,
@@ -1876,7 +1997,10 @@ export class DesktopLlamaAdapter {
 
 			if (text.length >= maxTextBytes) break;
 		}
-		if (done) sess.finished = true;
+		if (done) {
+			text += this.flushTokenText(sess);
+			sess.finished = true;
+		}
 
 		let drafted = 0;
 		let accepted = 0;
@@ -1961,7 +2085,10 @@ export class DesktopLlamaAdapter {
 				}
 			}
 		}
-		if (done) sess.finished = true;
+		if (done) {
+			text += this.flushTokenText(sess);
+			sess.finished = true;
+		}
 
 		const after = this.readEngineStats(sess.mtpEngine);
 		return {

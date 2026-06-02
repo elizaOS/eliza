@@ -58,6 +58,70 @@ function extractTranscript(
   return response.text;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function nonEmptyString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeTtsInput(
+  input:
+    | string
+    | {
+        text: string;
+        model?: string;
+        voiceId?: string;
+        format?: string;
+        instructions?: string;
+      },
+): {
+  text: string;
+  model?: string;
+  voiceId?: string;
+  format?: string;
+  instructions?: string;
+} {
+  const options = typeof input === "string" ? { text: input } : input;
+  if (!isRecord(options) || !nonEmptyString(options.text)) {
+    throw new Error("ElevenLabs TTS text is required");
+  }
+  if (options.model !== undefined && !nonEmptyString(options.model)) {
+    throw new Error("ElevenLabs TTS model must be a non-empty string");
+  }
+  if (options.voiceId !== undefined && !nonEmptyString(options.voiceId)) {
+    throw new Error("ElevenLabs TTS voiceId must be a non-empty string");
+  }
+  if (options.format !== undefined && !nonEmptyString(options.format)) {
+    throw new Error("ElevenLabs TTS format must be a non-empty string");
+  }
+  return {
+    ...options,
+    text: options.text.trim(),
+    model: options.model === undefined ? undefined : options.model.trim(),
+    voiceId: options.voiceId === undefined ? undefined : options.voiceId.trim(),
+    format: options.format === undefined ? undefined : options.format.trim(),
+  };
+}
+
+function validateAudioUrl(value: unknown): string {
+  const url = nonEmptyString(value);
+  if (!url) {
+    throw new Error("ElevenLabs transcription audioUrl is required");
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("ElevenLabs transcription audioUrl must be a valid URL");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("ElevenLabs transcription audioUrl must use http or https");
+  }
+  return parsed.toString();
+}
+
 /**
  * Voice settings configuration for ElevenLabs API
  */
@@ -417,7 +481,7 @@ export const elevenLabsPlugin: Plugin = {
             instructions?: string;
           },
     ) => {
-      const options = typeof input === "string" ? { text: input } : input;
+      const options = normalizeTtsInput(input);
       const settings = getVoiceSettings(runtime);
       const resolvedModel = options.model || settings.model;
       // Prefer explicit ElevenLabs voiceId param; fall back to configured voiceId.
@@ -463,19 +527,19 @@ export const elevenLabsPlugin: Plugin = {
         let audioFile: Buffer | File | Blob;
 
         if (typeof input === "string") {
-          const response = await fetch(input);
+          const audioUrl = validateAudioUrl(input);
+          const response = await fetch(audioUrl);
           if (!response.ok) {
-            throw new Error(`Failed to fetch audio from URL: ${input}`);
+            throw new Error(`Failed to fetch audio from URL: ${audioUrl}`);
           }
           audioFile = await responseToAudioFile(response);
         } else if (isBufferInput(input)) {
           audioFile = input;
-        } else if (typeof input === "object" && "audioUrl" in input) {
-          const response = await fetch(input.audioUrl);
+        } else if (isRecord(input) && "audioUrl" in input) {
+          const audioUrl = validateAudioUrl(input.audioUrl);
+          const response = await fetch(audioUrl);
           if (!response.ok) {
-            throw new Error(
-              `Failed to fetch audio from URL: ${input.audioUrl}`,
-            );
+            throw new Error(`Failed to fetch audio from URL: ${audioUrl}`);
           }
           audioFile = await responseToAudioFile(response);
         } else {

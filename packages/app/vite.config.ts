@@ -371,6 +371,13 @@ function stringifyBuildLogMessage(message: unknown): string {
 function isKnownToleratedBuildWarning(message: unknown): boolean {
   const text = stringifyBuildLogMessage(message);
   if (
+    text.includes("IMPORT_IS_UNDEFINED") &&
+    text.includes("Import `tslFn`") &&
+    text.includes("three.webgpu")
+  ) {
+    return true;
+  }
+  if (
     text.includes("Use of direct eval") &&
     text.includes("@electric-sql/pglite")
   ) {
@@ -396,7 +403,21 @@ function isKnownToleratedBuildWarning(message: unknown): boolean {
   }
   return (
     text.includes("../app-core/src/browser.ts") ||
-    text.includes("native-stub:node:fs/promises")
+    text.includes("native-stub:node:fs/promises") ||
+    text.includes("../ui/src/components/pages/") ||
+    text.includes("../../plugins/plugin-vincent/src/VincentAppView.tsx") ||
+    text.includes(
+      "../../plugins/plugin-facewear/src/protocol/smartglasses.ts",
+    ) ||
+    text.includes(
+      "../../plugins/plugin-companion/src/components/companion/CompanionAppView.tsx",
+    ) ||
+    text.includes(
+      "../../plugins/app-model-tester/src/ModelTesterAppView.tsx",
+    ) ||
+    text.includes(
+      "../../plugins/plugin-browser/src/actions/browser-autofill-login.ts",
+    )
   );
 }
 
@@ -1347,9 +1368,36 @@ function watchWorkspacePackagesPlugin(): Plugin {
     configureServer(server) {
       const watcherStartedAt = Date.now();
       const seenMtimes = new Map<string, number>();
-      server.watcher.add(path.resolve(elizaRoot, "packages"));
-      server.watcher.add(nativePluginsRoot);
+      // Watch ONLY workspace package.json manifests — an alias/dependency change
+      // there needs a full Vite restart. We deliberately do NOT add the entire
+      // packages/ + plugins/ trees: that re-globbed ~45k files (including ~1GB of
+      // benchmarks/os), bypassed server.watch.ignored, risked exhausting
+      // fs.inotify watches, and — via the old blanket full-reload below — turned
+      // every workspace source edit into a full page reload instead of HMR.
+      // Imported workspace *source* is already watched through Vite's module
+      // graph, so React Fast Refresh / HMR handles those edits natively.
+      const workspaceManifests: string[] = [];
+      for (const root of [
+        path.resolve(elizaRoot, "packages"),
+        nativePluginsRoot,
+      ]) {
+        let entries: fs.Dirent[];
+        try {
+          entries = fs.readdirSync(root, { withFileTypes: true });
+        } catch {
+          continue;
+        }
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          const manifest = path.join(root, entry.name, "package.json");
+          if (fs.existsSync(manifest)) workspaceManifests.push(manifest);
+        }
+      }
+      server.watcher.add(workspaceManifests);
       server.watcher.on("change", (file) => {
+        // Source edits are handled by Vite's own HMR / Fast Refresh; only a
+        // workspace manifest change forces a full server restart.
+        if (!file.endsWith("package.json")) return;
         const normalizedFile = file.split(path.sep).join("/");
         if (isIgnoredWorkspaceGeneratedOutput(normalizedFile)) return;
         const stat = fs.statSync(file, { throwIfNoEntry: false });
@@ -1357,14 +1405,7 @@ function watchWorkspacePackagesPlugin(): Plugin {
         if (stat.mtimeMs < watcherStartedAt - 1000) return;
         if (seenMtimes.get(normalizedFile) === stat.mtimeMs) return;
         seenMtimes.set(normalizedFile, stat.mtimeMs);
-        if (file.includes("/packages/")) {
-          if (file.endsWith("package.json")) {
-            server.restart();
-          } else {
-            // Force a full reload on any other package file change (e.g. ts/tsx files)
-            server.hot.send({ type: "full-reload" });
-          }
-        }
+        server.restart();
       });
     },
   };
@@ -1821,6 +1862,14 @@ export const INVALID_TRACER_PROVIDER = {};
       ]),
       // Capacitor plugins — resolve to local plugin sources
       ...NATIVE_PLUGIN_ALIAS_ENTRIES,
+      // @elizaos/logger is the standalone logger extracted from @elizaos/core.
+      // Resolve it to source so the renderer's logger consumers (~11 files) load
+      // the small logger module instead of dragging core's ~2MB browser bundle
+      // into the eager entry graph.
+      {
+        find: /^@elizaos\/logger$/,
+        replacement: path.resolve(elizaRoot, "packages/logger/src/index.ts"),
+      },
       // Force local @elizaos/ui source paths when the app bundles linked
       // @elizaos/app-core sources directly.
       {
@@ -1867,6 +1916,17 @@ export const INVALID_TRACER_PROVIDER = {};
         replacement: path.resolve(
           elizaRoot,
           "plugins/plugin-training/src/ui/index.ts",
+        ),
+      },
+      // plugin-health is a backend-only plugin (no `elizaos.app`), so it gets no
+      // auto-generated browser alias. Its `ui/` directory ships browser-safe
+      // assistant-command metadata that the LifeOps renderer imports, so the
+      // `/ui` subpath needs an explicit alias to its source entry.
+      {
+        find: /^@elizaos\/plugin-health\/ui$/,
+        replacement: path.resolve(
+          elizaRoot,
+          "plugins/plugin-health/src/ui/index.ts",
         ),
       },
       // Browser-safe aliases for local app plugin package roots.

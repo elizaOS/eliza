@@ -60,7 +60,7 @@ export function browserBridgeCompanionAuthFailure(
   }
 }
 
-function isoTimestampExpired(
+export function isoTimestampExpired(
   value: string | null | undefined,
   nowMs: number,
 ): boolean {

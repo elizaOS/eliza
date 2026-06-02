@@ -141,6 +141,10 @@ REQUIRED_BLOCKED_IDS = {
     "pythia_rl_prefetcher",
     "silicon_evidence",
 }
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+}
 
 # Scoped local evidence rows that must carry an explicit `evidence_class` tag
 # and have their evidence artifact present. These are not phone/silicon/release
@@ -316,6 +320,11 @@ def validate_scoped_artifact(
     require(
         data.get("release_claim_allowed") is False,
         f"{artifact}: release_claim_allowed must be false",
+        errors,
+    )
+    require(
+        data.get("false_claim_flags") == FALSE_CLAIM_FLAGS,
+        f"{artifact}: false_claim_flags must match denied phone/release claims",
         errors,
     )
     validate_scoped_artifact_semantics(artifact=artifact, data=data, errors=errors)
@@ -1126,6 +1135,7 @@ def main() -> int:
         ),
         "phone_claim_allowed": False,
         "release_claim_allowed": False,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "rtl_module_count": len(REQUIRED_RTL),
         "coherence_report": "build/reports/cache_coherence.json",
         "l1d_secded_injection_result": str(L1D_ECC_RESULT.relative_to(ROOT)),

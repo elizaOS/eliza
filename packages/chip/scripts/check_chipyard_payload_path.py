@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -155,6 +156,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.chipyard_payload_path.v1",
+        "generated_utc": datetime.now(UTC).isoformat(),
         "status": status,
         "claim_boundary": "generated_chipyard_artifacts_only_not_rtl_boot_claim",
         **FALSE_CLAIM_FLAGS,

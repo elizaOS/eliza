@@ -12,6 +12,13 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/logic_synthesis_recipes"
 CLAIM_BOUNDARY = "logic_synthesis_recipe_corpus_only_no_training_inference_ppa_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 
 
 TARGET_MODULES = [
@@ -90,11 +97,13 @@ def main() -> int:
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,
+        **FALSE_CLAIM_FLAGS,
         "policy": {
             "source_modification_forbidden": True,
             "technology_mapped_qor_requires_liberty_sdc_and_equivalence": True,
             "accepted_recipe_requires_before_after_equivalence": True,
             "openabc_d_records_blocked_until_external_asset_review": True,
+            **FALSE_CLAIM_FLAGS,
         },
         "target_modules": TARGET_MODULES,
         "recipes": RECIPES,

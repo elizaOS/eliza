@@ -51,6 +51,7 @@ interface ActiveSession {
 
 export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
 	private active: ActiveSession | null = null;
+	private poisonedError: Error | null = null;
 
 	supported(): boolean {
 		// We don't actually try to dlopen here — that would be too eager
@@ -61,6 +62,11 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
 	}
 
 	async acquire(plan: BackendPlan): Promise<FfiBackendSession> {
+		if (this.poisonedError) {
+			throw new Error(
+				`[desktop-ffi-runtime] native cleanup previously failed; restart required before acquiring a new session: ${this.poisonedError.message}`,
+			);
+		}
 		if (this.active) {
 			throw new Error(
 				"[desktop-ffi-runtime] acquire() called with a live session; release() first",
@@ -73,6 +79,8 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
 				typeof plan.overrides?.gpuLayers === "number"
 					? plan.overrides.gpuLayers
 					: undefined,
+			cacheTypeK: plan.overrides?.cacheTypeK,
+			cacheTypeV: plan.overrides?.cacheTypeV,
 			useMmap: plan.overrides?.mmap,
 			useMlock: plan.overrides?.mlock,
 		});
@@ -147,8 +155,13 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
 		// Clear `active` in a finally so a throwing native free (adapter.close()
 		// makes raw bun:ffi calls that can throw) can't leave the runtime with a
 		// stale live session that permanently blocks acquire()'s live-session guard.
+		// If close reports a best-effort cleanup failure, poison this runtime so
+		// callers cannot allocate a new native model over leaked resources.
 		try {
 			this.active.adapter.close();
+		} catch (err) {
+			this.poisonedError = err instanceof Error ? err : new Error(String(err));
+			throw err;
 		} finally {
 			this.active = null;
 		}

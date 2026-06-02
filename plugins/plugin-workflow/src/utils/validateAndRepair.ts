@@ -157,7 +157,7 @@ function applyAuthenticationBackfill(
   }
 
   const authOpts = credDef.displayOptions?.show?.authentication;
-  if (!authOpts || authOpts.length !== 1) {
+  if (authOpts?.length !== 1) {
     return;
   }
 

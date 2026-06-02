@@ -12,6 +12,7 @@ import {
   client,
   useApp,
 } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Activity,
   Archive,
@@ -838,9 +839,34 @@ function WorkbenchHeader({
   const newTaskLabel = t("orchestrator.action.newTask", {
     defaultValue: "New task",
   });
+  const { ref: pauseAllRef, agentProps: pauseAllAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "header-pause-all",
+      role: "button",
+      label: pauseAllLabel,
+      group: "orchestrator-header",
+      description: "Pause every active orchestrator task",
+    });
+  const { ref: resumeAllRef, agentProps: resumeAllAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "header-resume-all",
+      role: "button",
+      label: resumeAllLabel,
+      group: "orchestrator-header",
+      description: "Resume every paused orchestrator task",
+    });
+  const { ref: newTaskRef, agentProps: newTaskAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "header-new-task",
+      role: "button",
+      label: newTaskLabel,
+      group: "orchestrator-header",
+      description: "Open the create-task dialog",
+    });
   const actions = (
     <div className="ml-auto flex shrink-0 items-center gap-1.5">
       <Button
+        ref={pauseAllRef}
         variant="ghost"
         size="sm"
         disabled={busy || !status?.activeTaskCount}
@@ -849,10 +875,12 @@ function WorkbenchHeader({
         aria-label={pauseAllLabel}
         title={pauseAllLabel}
         data-testid="orchestrator-pause-all"
+        {...pauseAllAgentProps}
       >
         <Pause className="h-3.5 w-3.5" />
       </Button>
       <Button
+        ref={resumeAllRef}
         variant="ghost"
         size="sm"
         disabled={busy || !status?.pausedTaskCount}
@@ -861,10 +889,12 @@ function WorkbenchHeader({
         aria-label={resumeAllLabel}
         title={resumeAllLabel}
         data-testid="orchestrator-resume-all"
+        {...resumeAllAgentProps}
       >
         <Play className="h-3.5 w-3.5" />
       </Button>
       <Button
+        ref={newTaskRef}
         size="sm"
         variant="ghost"
         disabled={busy}
@@ -873,6 +903,7 @@ function WorkbenchHeader({
         aria-label={newTaskLabel}
         title={newTaskLabel}
         data-testid="orchestrator-new-task"
+        {...newTaskAgentProps}
       >
         <Plus className="h-3.5 w-3.5" />
         {newTaskLabel}
@@ -921,8 +952,25 @@ function FilterSelect({
     if (filter === "all") return status.taskCount;
     return status.byStatus[filter] ?? 0;
   };
+  const { ref, agentProps } = useAgentElement<HTMLSelectElement>({
+    id: "rail-filter-status",
+    role: "select",
+    label: t("orchestrator.filter.label", {
+      defaultValue: "Filter by status",
+    }),
+    group: "orchestrator-rail",
+    description: "Filter the task list by status",
+    options: FILTER_OPTIONS,
+    getValue: () => active,
+    onFill: (value) => {
+      if ((FILTER_OPTIONS as string[]).includes(value)) {
+        onSelect(value as StatusFilter);
+      }
+    },
+  });
   return (
     <select
+      ref={ref}
       value={active}
       onChange={(event) => onSelect(event.target.value as StatusFilter)}
       className={FIELD_CLASS}
@@ -930,6 +978,7 @@ function FilterSelect({
         defaultValue: "Filter by status",
       })}
       data-testid="orchestrator-filter"
+      {...agentProps}
     >
       {FILTER_OPTIONS.map((filter) => {
         const label =
@@ -979,6 +1028,14 @@ function TaskRailItem({
         : thread.status === "blocked" || thread.status === "waiting_on_user"
           ? "before:bg-muted-strong"
           : "before:bg-transparent";
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `task-rail-${thread.id}`,
+    role: "list-item",
+    label: thread.title,
+    group: "orchestrator-rail",
+    status: selected ? "active" : "inactive",
+    description: `Open the "${thread.title}" task`,
+  });
   return (
     <div
       className={`relative rounded-sm transition-colors before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:content-[''] ${barTone} ${
@@ -987,9 +1044,12 @@ function TaskRailItem({
       data-testid="orchestrator-task-item"
     >
       <button
+        ref={ref}
         type="button"
         onClick={() => onSelect(thread.id)}
         className="flex w-full flex-col gap-0.5 px-2.5 py-2 pl-3 text-left"
+        aria-current={selected ? "true" : undefined}
+        {...agentProps}
       >
         <div className="flex items-center gap-1.5">
           <StatusGlyph status={thread.status} paused={thread.paused} t={t} />
@@ -1043,6 +1103,17 @@ function SubAgentCard({
   const detailLabel = t("orchestrator.action.inspectSession", {
     defaultValue: "Inspect session",
   });
+  const stopLabel = t("orchestrator.action.stopAgent", {
+    defaultValue: "Stop agent",
+  });
+  const { ref: stopRef, agentProps: stopAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `sub-agent-stop-${session.sessionId}`,
+      role: "button",
+      label: `${stopLabel}: ${session.label}`,
+      group: "orchestrator-sub-agents",
+      description: `Stop the "${session.label}" sub-agent`,
+    });
   return (
     <div className="rounded-md border border-border/40 bg-bg/40 p-2">
       <div className="flex items-center gap-1.5">
@@ -1061,14 +1132,14 @@ function SubAgentCard({
         </button>
         {stoppable ? (
           <button
+            ref={stopRef}
             type="button"
             disabled={busy}
             onClick={() => onStop(session.sessionId)}
-            className="flex items-center gap-0.5 rounded px-1 py-0.5 text-2xs text-muted transition-colors hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50"
+            className="flex items-center gap-0.5 rounded px-1 py-0.5 text-2xs text-muted transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-50"
             data-testid="orchestrator-stop-agent"
-            aria-label={t("orchestrator.action.stopAgent", {
-              defaultValue: "Stop agent",
-            })}
+            aria-label={stopLabel}
+            {...stopAgentProps}
           >
             <CircleStop className="h-3 w-3" />
           </button>
@@ -1288,6 +1359,93 @@ function CreateTaskDialog({
   const [priority, setPriority] = useState<TaskPriority>("normal");
   const [criteria, setCriteria] = useState("");
   const canSubmit = title.trim() !== "" && goal.trim() !== "" && !busy;
+  const submit = () =>
+    onSubmit({
+      title: title.trim(),
+      goal: goal.trim(),
+      priority,
+      acceptanceCriteria: criteria
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line !== ""),
+    });
+  const closeLabel = t("orchestrator.action.close", { defaultValue: "Close" });
+  const cancelLabel = t("orchestrator.action.cancel", {
+    defaultValue: "Cancel",
+  });
+  const createLabel = t("orchestrator.action.createTask", {
+    defaultValue: "Create task",
+  });
+  const { ref: closeRef, agentProps: closeAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "create-task-close",
+      role: "button",
+      label: closeLabel,
+      group: "orchestrator-create-task",
+      description: "Close the create-task dialog",
+    });
+  const { ref: titleRef, agentProps: titleAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "create-task-title",
+      role: "text-input",
+      label: t("orchestrator.create.taskTitle", { defaultValue: "Title" }),
+      group: "orchestrator-create-task",
+      description: "Task title",
+      getValue: () => title,
+      onFill: (value) => setTitle(value),
+    });
+  const { ref: goalRef, agentProps: goalAgentProps } =
+    useAgentElement<HTMLTextAreaElement>({
+      id: "create-task-goal",
+      role: "textarea",
+      label: t("orchestrator.create.goal", { defaultValue: "Goal" }),
+      group: "orchestrator-create-task",
+      description: "Task goal inherited by sub-agents",
+      getValue: () => goal,
+      onFill: (value) => setGoal(value),
+    });
+  const { ref: priorityRef, agentProps: priorityAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "create-task-priority",
+      role: "select",
+      label: t("orchestrator.create.priority", { defaultValue: "Priority" }),
+      group: "orchestrator-create-task",
+      description: "Task priority",
+      options: ["low", "normal", "high", "urgent"],
+      getValue: () => priority,
+      onFill: (value) => setPriority(paramPriority(value) ?? "normal"),
+    });
+  const { ref: criteriaRef, agentProps: criteriaAgentProps } =
+    useAgentElement<HTMLTextAreaElement>({
+      id: "create-task-acceptance",
+      role: "textarea",
+      label: t("orchestrator.create.acceptance", {
+        defaultValue: "Acceptance criteria (one per line)",
+      }),
+      group: "orchestrator-create-task",
+      description: "Acceptance criteria, one per line",
+      getValue: () => criteria,
+      onFill: (value) => setCriteria(value),
+    });
+  const { ref: cancelRef, agentProps: cancelAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "create-task-cancel",
+      role: "button",
+      label: cancelLabel,
+      group: "orchestrator-create-task",
+      description: "Cancel and close the create-task dialog",
+    });
+  const { ref: submitRef, agentProps: submitAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "create-task-submit",
+      role: "button",
+      label: createLabel,
+      group: "orchestrator-create-task",
+      description: "Create the task with the entered title and goal",
+      onActivate: () => {
+        if (canSubmit) submit();
+      },
+    });
 
   return (
     <div
@@ -1300,12 +1458,12 @@ function CreateTaskDialog({
             {t("orchestrator.create.title", { defaultValue: "New task" })}
           </h2>
           <button
+            ref={closeRef}
             type="button"
             onClick={onClose}
             className="rounded p-1 text-muted transition-colors hover:bg-bg-hover/60"
-            aria-label={t("orchestrator.action.close", {
-              defaultValue: "Close",
-            })}
+            aria-label={closeLabel}
+            {...closeAgentProps}
           >
             <X className="h-4 w-4" />
           </button>
@@ -1315,6 +1473,7 @@ function CreateTaskDialog({
             {t("orchestrator.create.taskTitle", { defaultValue: "Title" })}
           </FieldLabel>
           <input
+            ref={titleRef}
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             className={FIELD_CLASS}
@@ -1322,6 +1481,7 @@ function CreateTaskDialog({
               defaultValue: "Short, action-oriented name",
             })}
             data-testid="orchestrator-create-title"
+            {...titleAgentProps}
           />
         </label>
         <label>
@@ -1329,6 +1489,7 @@ function CreateTaskDialog({
             {t("orchestrator.create.goal", { defaultValue: "Goal" })}
           </FieldLabel>
           <textarea
+            ref={goalRef}
             value={goal}
             onChange={(event) => setGoal(event.target.value)}
             rows={4}
@@ -1338,6 +1499,7 @@ function CreateTaskDialog({
                 "What must be true when this is done? Sub-agents inherit this goal.",
             })}
             data-testid="orchestrator-create-goal"
+            {...goalAgentProps}
           />
         </label>
         <label>
@@ -1345,12 +1507,14 @@ function CreateTaskDialog({
             {t("orchestrator.create.priority", { defaultValue: "Priority" })}
           </FieldLabel>
           <select
+            ref={priorityRef}
             value={priority}
             onChange={(event) =>
               setPriority(event.target.value as TaskPriority)
             }
             className={FIELD_CLASS}
             data-testid="orchestrator-create-priority"
+            {...priorityAgentProps}
           >
             <option value="low">{labelPriority("low", t)}</option>
             <option value="normal">{labelPriority("normal", t)}</option>
@@ -1365,6 +1529,7 @@ function CreateTaskDialog({
             })}
           </FieldLabel>
           <textarea
+            ref={criteriaRef}
             value={criteria}
             onChange={(event) => setCriteria(event.target.value)}
             rows={3}
@@ -1373,37 +1538,30 @@ function CreateTaskDialog({
               defaultValue: "Tests pass\nNo type errors\nScreenshots verified",
             })}
             data-testid="orchestrator-create-acceptance"
+            {...criteriaAgentProps}
           />
         </label>
         <div className="flex justify-end gap-2 pt-1">
           <Button
+            ref={cancelRef}
             variant="secondary"
             size="sm"
             onClick={onClose}
             className="h-7 px-2.5 text-xs-tight"
+            {...cancelAgentProps}
           >
-            {t("orchestrator.action.cancel", { defaultValue: "Cancel" })}
+            {cancelLabel}
           </Button>
           <Button
+            ref={submitRef}
             size="sm"
             disabled={!canSubmit}
-            onClick={() =>
-              onSubmit({
-                title: title.trim(),
-                goal: goal.trim(),
-                priority,
-                acceptanceCriteria: criteria
-                  .split("\n")
-                  .map((line) => line.trim())
-                  .filter((line) => line !== ""),
-              })
-            }
+            onClick={submit}
             className="h-7 px-2.5 text-xs-tight"
             data-testid="orchestrator-create-submit"
+            {...submitAgentProps}
           >
-            {t("orchestrator.action.createTask", {
-              defaultValue: "Create task",
-            })}
+            {createLabel}
           </Button>
         </div>
       </div>
@@ -1447,81 +1605,182 @@ function AddAgentForm({
       defaultValue: "Sub-task for this agent (optional)",
     }),
   };
+  const spawnLabel = t("orchestrator.action.spawn", {
+    defaultValue: "Spawn agent",
+  });
+  const cancelLabel = t("orchestrator.action.cancel", {
+    defaultValue: "Cancel",
+  });
+  const spawn = () =>
+    onSubmit({
+      label: label.trim() || undefined,
+      framework: framework.trim() || undefined,
+      model: model.trim() || undefined,
+      workdir: workdir.trim() || undefined,
+      repo: repo.trim() || undefined,
+      task: task.trim() || undefined,
+    });
+  const { ref: labelRef, agentProps: labelAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "add-agent-label",
+      role: "text-input",
+      label: fieldLabels.label,
+      group: "orchestrator-add-agent",
+      description: "Optional label for the spawned sub-agent",
+      getValue: () => label,
+      onFill: (value) => setLabel(value),
+    });
+  const { ref: frameworkRef, agentProps: frameworkAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "add-agent-framework",
+      role: "text-input",
+      label: fieldLabels.framework,
+      group: "orchestrator-add-agent",
+      description: "Coding-agent framework for the sub-agent",
+      getValue: () => framework,
+      onFill: (value) => setFramework(value),
+    });
+  const { ref: modelRef, agentProps: modelAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "add-agent-model",
+      role: "text-input",
+      label: fieldLabels.model,
+      group: "orchestrator-add-agent",
+      description: "Model for the sub-agent",
+      getValue: () => model,
+      onFill: (value) => setModel(value),
+    });
+  const { ref: workdirRef, agentProps: workdirAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "add-agent-workdir",
+      role: "text-input",
+      label: fieldLabels.workdir,
+      group: "orchestrator-add-agent",
+      description: "Optional working directory for the sub-agent",
+      getValue: () => workdir,
+      onFill: (value) => setWorkdir(value),
+    });
+  const { ref: repoRef, agentProps: repoAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "add-agent-repo",
+      role: "text-input",
+      label: fieldLabels.repo,
+      group: "orchestrator-add-agent",
+      description: "Optional repo URL for the sub-agent",
+      getValue: () => repo,
+      onFill: (value) => setRepo(value),
+    });
+  const { ref: taskRef, agentProps: taskAgentProps } =
+    useAgentElement<HTMLTextAreaElement>({
+      id: "add-agent-task",
+      role: "textarea",
+      label: fieldLabels.task,
+      group: "orchestrator-add-agent",
+      description: "Optional sub-task description for the sub-agent",
+      getValue: () => task,
+      onFill: (value) => setTask(value),
+    });
+  const { ref: cancelRef, agentProps: cancelAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "add-agent-cancel",
+      role: "button",
+      label: cancelLabel,
+      group: "orchestrator-add-agent",
+      description: "Cancel adding a sub-agent",
+    });
+  const { ref: spawnRef, agentProps: spawnAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "add-agent-spawn",
+      role: "button",
+      label: spawnLabel,
+      group: "orchestrator-add-agent",
+      description: "Spawn a new sub-agent on this task",
+      onActivate: () => {
+        if (!busy) spawn();
+      },
+    });
 
   return (
     <div className="mt-1.5 space-y-1.5 rounded-md border border-border/50 bg-bg/40 p-2">
       <input
+        ref={labelRef}
         value={label}
         onChange={(event) => setLabel(event.target.value)}
         className={FIELD_CLASS}
         placeholder={fieldLabels.label}
         aria-label={fieldLabels.label}
         data-testid="orchestrator-add-agent-label"
+        {...labelAgentProps}
       />
       <div className="flex gap-1.5">
         <input
+          ref={frameworkRef}
           value={framework}
           onChange={(event) => setFramework(event.target.value)}
           className={FIELD_CLASS}
           placeholder={fieldLabels.framework}
           aria-label={fieldLabels.framework}
+          {...frameworkAgentProps}
         />
         <input
+          ref={modelRef}
           value={model}
           onChange={(event) => setModel(event.target.value)}
           className={FIELD_CLASS}
           placeholder={fieldLabels.model}
           aria-label={fieldLabels.model}
+          {...modelAgentProps}
         />
       </div>
       <input
+        ref={workdirRef}
         value={workdir}
         onChange={(event) => setWorkdir(event.target.value)}
         className={FIELD_CLASS}
         placeholder={fieldLabels.workdir}
         aria-label={fieldLabels.workdir}
+        {...workdirAgentProps}
       />
       <input
+        ref={repoRef}
         value={repo}
         onChange={(event) => setRepo(event.target.value)}
         className={FIELD_CLASS}
         placeholder={fieldLabels.repo}
         aria-label={fieldLabels.repo}
+        {...repoAgentProps}
       />
       <textarea
+        ref={taskRef}
         value={task}
         onChange={(event) => setTask(event.target.value)}
         rows={2}
         className={`${FIELD_CLASS} resize-none`}
         placeholder={fieldLabels.task}
         aria-label={fieldLabels.task}
+        {...taskAgentProps}
       />
       <div className="flex justify-end gap-2">
         <Button
+          ref={cancelRef}
           variant="secondary"
           size="sm"
           onClick={onClose}
           className="h-6 px-2 text-2xs"
+          {...cancelAgentProps}
         >
-          {t("orchestrator.action.cancel", { defaultValue: "Cancel" })}
+          {cancelLabel}
         </Button>
         <Button
+          ref={spawnRef}
           size="sm"
           disabled={busy}
-          onClick={() =>
-            onSubmit({
-              label: label.trim() || undefined,
-              framework: framework.trim() || undefined,
-              model: model.trim() || undefined,
-              workdir: workdir.trim() || undefined,
-              repo: repo.trim() || undefined,
-              task: task.trim() || undefined,
-            })
-          }
+          onClick={spawn}
           className="h-6 px-2 text-2xs"
           data-testid="orchestrator-add-agent-submit"
+          {...spawnAgentProps}
         >
-          {t("orchestrator.action.spawn", { defaultValue: "Spawn agent" })}
+          {spawnLabel}
         </Button>
       </div>
     </div>
@@ -1529,6 +1788,8 @@ function AddAgentForm({
 }
 
 function ControlButton({
+  agentId,
+  description,
   icon,
   label,
   onClick,
@@ -1536,6 +1797,8 @@ function ControlButton({
   tone = "neutral",
   testId,
 }: {
+  agentId: string;
+  description: string;
   icon: ReactNode;
   label: string;
   onClick: () => void;
@@ -1543,8 +1806,16 @@ function ControlButton({
   tone?: "neutral" | "danger";
   testId?: string;
 }) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group: "orchestrator-inspector",
+    description,
+  });
   return (
     <button
+      ref={ref}
       type="button"
       disabled={disabled}
       onClick={onClick}
@@ -1556,6 +1827,7 @@ function ControlButton({
           : "text-muted hover:bg-bg-hover/60 hover:text-txt"
       }`}
       data-testid={testId}
+      {...agentProps}
     >
       {icon}
     </button>
@@ -1624,6 +1896,34 @@ function TaskInspector({
         .filter((part): part is string => Boolean(part))
         .join(" · ")
     : "";
+  const closeDetailsLabel = t("orchestrator.action.closeDetails", {
+    defaultValue: "Close details",
+  });
+  const setPriorityLabel = t("orchestrator.action.setPriority", {
+    defaultValue: "Set priority",
+  });
+  const { ref: closeRef, agentProps: closeAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "inspector-close",
+      role: "button",
+      label: closeDetailsLabel,
+      group: "orchestrator-inspector",
+      description: "Close the task details panel",
+    });
+  const { ref: priorityRef, agentProps: priorityAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "inspector-priority",
+      role: "select",
+      label: setPriorityLabel,
+      group: "orchestrator-inspector",
+      description: "Set the priority of this task",
+      options: ["low", "normal", "high", "urgent"],
+      getValue: () => detail.priority,
+      onFill: (value) => {
+        const next = paramPriority(value);
+        if (next && next !== detail.priority) onSetPriority(next);
+      },
+    });
 
   return (
     <div
@@ -1637,13 +1937,13 @@ function TaskInspector({
             {t("orchestrator.inspector.title", { defaultValue: "Details" })}
           </h3>
           <button
+            ref={closeRef}
             type="button"
             onClick={onClose}
             className="-mr-1 rounded p-1 text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
-            aria-label={t("orchestrator.action.closeDetails", {
-              defaultValue: "Close details",
-            })}
+            aria-label={closeDetailsLabel}
             data-testid="orchestrator-close-inspector"
+            {...closeAgentProps}
           >
             <X className="h-4 w-4" />
           </button>
@@ -1653,6 +1953,8 @@ function TaskInspector({
         {detail.status === "validating" ? (
           <>
             <ControlButton
+              agentId="inspector-approve"
+              description="Approve the task validation"
               icon={<Check className="h-3 w-3" />}
               label={t("orchestrator.action.approve", {
                 defaultValue: "Approve",
@@ -1662,6 +1964,8 @@ function TaskInspector({
               testId="orchestrator-approve"
             />
             <ControlButton
+              agentId="inspector-reject"
+              description="Reject the task validation"
               icon={<X className="h-3 w-3" />}
               label={t("orchestrator.action.reject", {
                 defaultValue: "Reject",
@@ -1675,6 +1979,8 @@ function TaskInspector({
         ) : null}
         {archived ? (
           <ControlButton
+            agentId="inspector-reopen"
+            description="Reopen this archived task"
             icon={<RotateCcw className="h-3 w-3" />}
             label={t("orchestrator.action.reopen", { defaultValue: "Reopen" })}
             onClick={onReopen}
@@ -1683,6 +1989,8 @@ function TaskInspector({
           />
         ) : terminal ? null : detail.paused ? (
           <ControlButton
+            agentId="inspector-resume"
+            description="Resume this paused task"
             icon={<Play className="h-3 w-3" />}
             label={t("orchestrator.action.resume", { defaultValue: "Resume" })}
             onClick={onResume}
@@ -1691,6 +1999,8 @@ function TaskInspector({
           />
         ) : (
           <ControlButton
+            agentId="inspector-pause"
+            description="Pause this task"
             icon={<Pause className="h-3 w-3" />}
             label={t("orchestrator.action.pause", { defaultValue: "Pause" })}
             onClick={onPause}
@@ -1700,6 +2010,8 @@ function TaskInspector({
         )}
         {archived ? null : (
           <ControlButton
+            agentId="inspector-archive"
+            description="Archive this task"
             icon={<Archive className="h-3 w-3" />}
             label={t("orchestrator.action.archive", {
               defaultValue: "Archive",
@@ -1710,6 +2022,8 @@ function TaskInspector({
           />
         )}
         <ControlButton
+          agentId="inspector-fork"
+          description="Fork this task into a new task"
           icon={<GitFork className="h-3 w-3" />}
           label={t("orchestrator.action.fork", { defaultValue: "Fork" })}
           onClick={onFork}
@@ -1718,6 +2032,8 @@ function TaskInspector({
         />
         {archived ? null : (
           <ControlButton
+            agentId="inspector-add-agent"
+            description="Open the add-agent form for this task"
             icon={<UserPlus className="h-3 w-3" />}
             label={t("orchestrator.action.addAgent", {
               defaultValue: "Add agent",
@@ -1728,6 +2044,8 @@ function TaskInspector({
           />
         )}
         <ControlButton
+          agentId="inspector-copy-link"
+          description="Copy a deep link to this task"
           icon={<Copy className="h-3 w-3" />}
           label={t("orchestrator.action.copyLink", {
             defaultValue: "Copy link",
@@ -1738,9 +2056,8 @@ function TaskInspector({
         />
         {terminal ? null : (
           <select
-            aria-label={t("orchestrator.action.setPriority", {
-              defaultValue: "Set priority",
-            })}
+            ref={priorityRef}
+            aria-label={setPriorityLabel}
             value={detail.priority}
             disabled={busy}
             onChange={(event) => {
@@ -1749,6 +2066,7 @@ function TaskInspector({
             }}
             className="rounded-md border border-border/50 bg-transparent px-2 py-1 text-2xs text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt disabled:opacity-50"
             data-testid="orchestrator-priority-select"
+            {...priorityAgentProps}
           >
             <option value="low">{labelPriority("low", t)}</option>
             <option value="normal">{labelPriority("normal", t)}</option>
@@ -1757,6 +2075,8 @@ function TaskInspector({
           </select>
         )}
         <ControlButton
+          agentId="inspector-delete"
+          description="Delete this task"
           icon={<Trash2 className="h-3 w-3" />}
           label={t("orchestrator.action.delete", { defaultValue: "Delete" })}
           onClick={onDelete}
@@ -2649,31 +2969,52 @@ function TimelineHeader({
   const detailsLabel = t("orchestrator.action.details", {
     defaultValue: "Details",
   });
+  const backLabel = t("orchestrator.action.backToList", {
+    defaultValue: "Back to tasks",
+  });
+  const { ref: backRef, agentProps: backAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "timeline-back",
+      role: "button",
+      label: backLabel,
+      group: "orchestrator-timeline",
+      description: "Go back to the task list",
+    });
+  const { ref: detailsRef, agentProps: detailsAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "timeline-open-inspector",
+      role: "button",
+      label: detailsLabel,
+      group: "orchestrator-timeline",
+      description: "Open the task details panel",
+    });
 
   if (isMobile) {
     return (
       <div className="border-b border-border/50 px-3 py-2">
         <div className="flex items-center gap-2">
           <button
+            ref={backRef}
             type="button"
             onClick={onBack}
             className="-ml-1 shrink-0 rounded p-1 text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
-            aria-label={t("orchestrator.action.backToList", {
-              defaultValue: "Back to tasks",
-            })}
+            aria-label={backLabel}
             data-testid="orchestrator-back"
+            {...backAgentProps}
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
           {statusDot}
           {title}
           <button
+            ref={detailsRef}
             type="button"
             onClick={onOpenInspector}
             className="shrink-0 rounded-md border border-border/50 p-1 text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
             aria-label={detailsLabel}
             title={detailsLabel}
             data-testid="orchestrator-open-inspector"
+            {...detailsAgentProps}
           >
             <PanelRightOpen className="h-4 w-4" aria-hidden />
           </button>
@@ -3158,6 +3499,78 @@ export function OrchestratorWorkbench() {
     showArchived,
   });
 
+  const searchLabel = t("orchestrator.searchPlaceholder", {
+    defaultValue: "Search tasks",
+  });
+  const showArchivedLabel = t("orchestrator.showArchived", {
+    defaultValue: "Show archived",
+  });
+  const loadOlderLabel = t("orchestrator.loadOlder", {
+    defaultValue: "Load older",
+  });
+  const stopLabel = t("orchestrator.action.stop", { defaultValue: "Stop" });
+  const composerLabel = t("orchestrator.composerPlaceholder", {
+    defaultValue: "Message the orchestrator…",
+  });
+  const sendLabel = t("orchestrator.action.send", { defaultValue: "Send" });
+  const { ref: searchRef, agentProps: searchAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "rail-search",
+      role: "text-input",
+      label: searchLabel,
+      group: "orchestrator-rail",
+      description: "Filter the task list by title or request text",
+      getValue: () => search,
+      onFill: (value) => setSearch(value),
+    });
+  const { ref: showArchivedRef, agentProps: showArchivedAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "rail-show-archived",
+      role: "toggle",
+      label: showArchivedLabel,
+      group: "orchestrator-rail",
+      status: showArchived ? "active" : "inactive",
+      description: "Toggle showing archived tasks in the list",
+      onActivate: () => setShowArchived((value) => !value),
+    });
+  const { ref: loadOlderRef, agentProps: loadOlderAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "timeline-load-older",
+      role: "button",
+      label: loadOlderLabel,
+      group: "orchestrator-timeline",
+      description: "Load older messages in the task timeline",
+    });
+  const { ref: stopActiveRef, agentProps: stopActiveAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "timeline-stop-active",
+      role: "button",
+      label: stopLabel,
+      group: "orchestrator-timeline",
+      description: "Stop the running sub-agents on this task",
+    });
+  const { ref: composerRef, agentProps: composerAgentProps } =
+    useAgentElement<HTMLTextAreaElement>({
+      id: "timeline-composer",
+      role: "textarea",
+      label: composerLabel,
+      group: "orchestrator-timeline",
+      description: "Message to send to the orchestrator for this task",
+      getValue: () => composer,
+      onFill: (value) => setComposer(value),
+    });
+  const { ref: sendRef, agentProps: sendAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "timeline-send",
+      role: "button",
+      label: sendLabel,
+      group: "orchestrator-timeline",
+      description: "Send the composed message to the orchestrator",
+      onActivate: () => {
+        if (!mutating && composer.trim() !== "") handleSend();
+      },
+    });
+
   return (
     <div
       className="relative flex h-full min-h-0 w-full flex-col bg-bg text-txt"
@@ -3200,13 +3613,14 @@ export function OrchestratorWorkbench() {
         >
           <div className="space-y-2 border-b border-border/50 p-2.5">
             <input
+              ref={searchRef}
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder={t("orchestrator.searchPlaceholder", {
-                defaultValue: "Search tasks",
-              })}
+              placeholder={searchLabel}
+              aria-label={searchLabel}
               className={FIELD_CLASS}
               data-testid="orchestrator-search"
+              {...searchAgentProps}
             />
             <FilterSelect
               status={status}
@@ -3216,16 +3630,17 @@ export function OrchestratorWorkbench() {
             />
             <label className="flex items-center gap-1.5 text-2xs text-muted">
               <input
+                ref={showArchivedRef}
                 type="checkbox"
                 checked={showArchived}
                 onChange={(event) => setShowArchived(event.target.checked)}
                 className="h-3 w-3"
                 style={{ accentColor: "var(--accent)" }}
+                aria-label={showArchivedLabel}
                 data-testid="orchestrator-show-archived"
+                {...showArchivedAgentProps}
               />
-              {t("orchestrator.showArchived", {
-                defaultValue: "Show archived",
-              })}
+              {showArchivedLabel}
             </label>
           </div>
           <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
@@ -3311,15 +3726,16 @@ export function OrchestratorWorkbench() {
                 {messageCursor ? (
                   <div className="flex justify-center">
                     <button
+                      ref={loadOlderRef}
                       type="button"
                       onClick={() => void loadOlderMessages()}
                       className="flex items-center gap-1 rounded-full border border-border/50 px-2.5 py-0.5 text-2xs text-muted transition-colors hover:bg-bg-hover/50"
                       data-testid="orchestrator-load-older"
+                      aria-label={loadOlderLabel}
+                      {...loadOlderAgentProps}
                     >
                       <ArrowDownToLine className="h-3 w-3" />
-                      {t("orchestrator.loadOlder", {
-                        defaultValue: "Load older",
-                      })}
+                      {loadOlderLabel}
                     </button>
                   </div>
                 ) : null}
@@ -3387,14 +3803,17 @@ export function OrchestratorWorkbench() {
                     })}
                   </span>
                   <button
+                    ref={stopActiveRef}
                     type="button"
                     onClick={handleStopActive}
                     disabled={mutating}
-                    className="flex items-center gap-1 rounded-md border border-border/60 px-2 py-0.5 text-2xs text-txt transition-colors hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50"
+                    className="flex items-center gap-1 rounded-md border border-border/60 px-2 py-0.5 text-2xs text-txt transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-50"
                     data-testid="orchestrator-stop-active"
+                    aria-label={stopLabel}
+                    {...stopActiveAgentProps}
                   >
                     <CircleStop className="h-3 w-3" />
-                    {t("orchestrator.action.stop", { defaultValue: "Stop" })}
+                    {stopLabel}
                     <kbd className="ml-0.5 rounded bg-bg-hover/60 px-1 text-[0.9em] text-muted">
                       Esc
                     </kbd>
@@ -3404,6 +3823,7 @@ export function OrchestratorWorkbench() {
               <div className="border-t border-border/50 bg-bg px-4 py-3">
                 <div className="flex items-end gap-2">
                   <textarea
+                    ref={composerRef}
                     value={composer}
                     onChange={(event) => setComposer(event.target.value)}
                     onKeyDown={(event) => {
@@ -3413,24 +3833,22 @@ export function OrchestratorWorkbench() {
                       }
                     }}
                     rows={1}
-                    placeholder={t("orchestrator.composerPlaceholder", {
-                      defaultValue: "Message the orchestrator…",
-                    })}
+                    placeholder={composerLabel}
+                    aria-label={composerLabel}
                     className={`${FIELD_CLASS} max-h-32 resize-none`}
                     data-testid="orchestrator-composer"
+                    {...composerAgentProps}
                   />
                   <Button
+                    ref={sendRef}
                     size="sm"
                     disabled={mutating || composer.trim() === ""}
                     onClick={handleSend}
                     className="h-8 w-8 shrink-0 p-0"
-                    aria-label={t("orchestrator.action.send", {
-                      defaultValue: "Send",
-                    })}
-                    title={t("orchestrator.action.send", {
-                      defaultValue: "Send",
-                    })}
+                    aria-label={sendLabel}
+                    title={sendLabel}
                     data-testid="orchestrator-send"
+                    {...sendAgentProps}
                   >
                     <Send className="h-3.5 w-3.5" />
                   </Button>

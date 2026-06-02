@@ -12,6 +12,12 @@ describe("validateFilePath credential blocklist (cross-home)", () => {
     expect(
       validateFilePath("/home/otheruser/.aws/credentials", "read").allowed,
     ).toBe(false);
+    expect(
+      validateFilePath("C:\\Users\\Other\\.ssh\\id_rsa", "read").allowed,
+    ).toBe(false);
+    expect(
+      validateFilePath("C:\\Users\\Other\\.aws\\credentials", "read").allowed,
+    ).toBe(false);
   });
 
   it("blocks credential files under the current home for reads", () => {

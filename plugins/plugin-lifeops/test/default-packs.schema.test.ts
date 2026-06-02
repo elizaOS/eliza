@@ -192,10 +192,40 @@ describe("W1-D default-pack registry — defaultEnabled gating", () => {
 
   it("executive-assistant is offered but not auto-enabled", () => {
     expect(executiveAssistantPack.defaultEnabled).toBe(false);
-    expect(executiveAssistantPack.records.length).toBe(16);
+    expect(executiveAssistantPack.records.length).toBe(35);
     expect(
       getDefaultEnabledPacks({ connectorRegistry: null }).map((p) => p.key),
     ).not.toContain(EXECUTIVE_ASSISTANT_PACK_KEY);
+  });
+
+  it("executive-assistant includes the expanded personal assistant operating loop", () => {
+    const recordIds = new Set(
+      executiveAssistantPack.records.map((record) => record.idempotencyKey),
+    );
+
+    expect([...recordIds]).toEqual(
+      expect.arrayContaining([
+        EXECUTIVE_ASSISTANT_RECORD_IDS.approvalBatchReview,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.privacyRedactionSweep,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.interruptionFirebreak,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.statusCompression,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.vipEscalationSweep,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.delegationMapReview,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.remoteAgentRecovery,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.familyLogisticsPrep,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.outageRecoverySweep,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.boardPackPrep,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.chiefOfStaffHandoff,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.eventPlanning,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.financeDisputeSweep,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.giftMilestonePrep,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.hiringLoopCoordination,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.introRoutingSweep,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.legalDeadlineSweep,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.travelDisruptionRecovery,
+        EXECUTIVE_ASSISTANT_RECORD_IDS.vendorNegotiationPrep,
+      ]),
+    );
   });
 
   it("inbox-triage-starter is gated by gmail capability", () => {
@@ -266,7 +296,7 @@ describe("W1-D default-pack registry — schema per pack", () => {
 describe("executive-assistant scenario pack", () => {
   it("uses stable record IDs and ScheduledTask definitions for every scenario", () => {
     const ids = new Set(Object.values(EXECUTIVE_ASSISTANT_RECORD_IDS));
-    expect(ids.size).toBe(16);
+    expect(ids.size).toBe(35);
     expect(executiveAssistantPack.records.map((r) => r.idempotencyKey)).toEqual(
       expect.arrayContaining([...ids]),
     );

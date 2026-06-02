@@ -18,8 +18,11 @@ import sys
 import zipfile
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from provenance_sanitize import sanitize_host_local_paths
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent
@@ -288,6 +291,16 @@ def host_local_paths(value: Any, prefix: str = "$") -> list[str]:
     elif isinstance(value, str) and value.startswith(("/home/", "/tmp/", "/Users/")):
         paths.append(f"{prefix}={value!r}")
     return paths
+
+
+def provenance_safe_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): provenance_safe_value(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [provenance_safe_value(child) for child in value]
+    if isinstance(value, str):
+        return sanitize_host_local_paths(value)
+    return value
 
 
 def vendor_common_mk_for_apk(apk: Path) -> Path:
@@ -641,6 +654,7 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
     return {
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
+        "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": CLAIM_BOUNDARY,
         **FALSE_CLAIM_FLAGS,
         "summary": {"blockers": len(blockers), "findings": len(findings)},
@@ -651,7 +665,10 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
 
 def write_report(report: dict[str, Any], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(provenance_safe_value(report), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def print_summary(report: dict[str, Any]) -> None:

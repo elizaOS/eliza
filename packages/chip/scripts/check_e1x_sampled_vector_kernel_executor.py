@@ -5,9 +5,20 @@ import json
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
+from typing import TypedDict
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_sampled_vector_kernel_executor.json"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "phone_class_claim_allowed": False,
+    "full_output_claim_allowed": False,
+    "full_tensor_execution_claim_allowed": False,
+}
 
 PROOF = ROOT / "benchmarks/results/e1x-real-graph-w4a8-microkernel-proof.json"
 PER_LAYER_CODEGEN = ROOT / "build/reports/e1x_per_layer_vector_codegen.json"
@@ -43,7 +54,15 @@ def unpack_signed_w4_word(word: int) -> list[int]:
     return values
 
 
-def execute_vector_row(activations: list[int], packed_words_hex: list[str]) -> dict[str, object]:
+class VectorRowResult(TypedDict):
+    accumulator: int
+    requantized_s8: int
+    vector_word_ops: int
+    lane_mac_count: int
+    trace_prefix: list[dict[str, object]]
+
+
+def execute_vector_row(activations: list[int], packed_words_hex: list[str]) -> VectorRowResult:
     acc = 0
     vector_ops = 0
     lane_macs = 0
@@ -151,7 +170,7 @@ def main() -> int:
             continue
         activations = [int(value) for value in record.get("activation_s8", [])]
         layer_index = int(record.get("layer_index", -1))
-        layer_rows = []
+        layer_rows: list[dict[str, object]] = []
         for row in record.get("row_results", []):
             result = execute_vector_row(activations, list(row.get("packed_w4_words_hex", [])))
             output_row = int(row.get("output_row", -1))
@@ -232,6 +251,7 @@ def main() -> int:
         "as_of": datetime.now(UTC).isoformat(),
         "generated_utc": utc_now(),
         "subsystem": "e1x",
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "Sampled vector-kernel executor evidence for packed int4 vector-word "
             "operations from every real-graph proof layer, linked to the per-layer "

@@ -113,12 +113,20 @@ export function createAnthropicClientWithTopPSupport(runtime: IAgentRuntime) {
   const topPFetch = Object.assign(
     async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       if (init && typeof init.body === "string") {
-        const body: Record<string, unknown> = JSON.parse(init.body);
+        let body: Record<string, unknown> | undefined;
+        try {
+          const parsed = JSON.parse(init.body);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            body = parsed as Record<string, unknown>;
+          }
+        } catch {
+          body = undefined;
+        }
 
-        const hasTopP = Object.hasOwn(body, "top_p") && body.top_p != null;
-        const hasZeroTemp = Object.hasOwn(body, "temperature") && body.temperature === 0;
+        const hasTopP = body && Object.hasOwn(body, "top_p") && body.top_p != null;
+        const hasZeroTemp = body && Object.hasOwn(body, "temperature") && body.temperature === 0;
 
-        if (hasTopP && hasZeroTemp) {
+        if (body && hasTopP && hasZeroTemp) {
           delete body.temperature;
           init.body = JSON.stringify(body);
         }

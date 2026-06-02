@@ -30,6 +30,10 @@ const LEVELS = [
     file: "plugins/plugin-contacts/src/components/ContactsAppView.tsx",
   },
   {
+    name: "plugin view device settings",
+    file: "plugins/plugin-device-settings/src/components/DeviceSettingsAppView.tsx",
+  },
+  {
     name: "plugin view hyperliquid",
     file: "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.tsx",
   },
@@ -68,6 +72,10 @@ const LEVELS = [
   {
     name: "plugin view wallet",
     file: "plugins/plugin-wallet-ui/src/InventoryView.tsx",
+  },
+  {
+    name: "plugin view wifi",
+    file: "plugins/plugin-wifi/src/components/WifiAppView.tsx",
   },
   {
     name: "plugin view 2004scape",

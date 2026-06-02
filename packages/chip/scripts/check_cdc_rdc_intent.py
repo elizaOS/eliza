@@ -29,7 +29,8 @@ REQUIRED_RTL_TOKENS = {
         "u_reset_sync",
         "e1_reset_sync",
         "DBG_VALID",
-        "JTAG_TDO = 1'b0",
+        "jtag_tdo_oe",
+        "assign JTAG_TDO = jtag_tdo_oe ? jtag_tdo : 1'b0",
     ],
     "rtl/clock/e1_reset_sync.sv": [
         "module e1_reset_sync",
@@ -37,6 +38,13 @@ REQUIRED_RTL_TOKENS = {
         "rst_n_sync",
         "always_ff @(posedge clk or negedge rst_n_async)",
     ],
+}
+FALSE_CLAIM_FLAGS = {
+    "generated_constraints_allowed": False,
+    "generated_waivers_allowed": False,
+    "generated_rtl_allowed": False,
+    "cdc_signoff_claim_allowed": False,
+    "rdc_signoff_claim_allowed": False,
 }
 
 
@@ -87,6 +95,8 @@ def check_policy(manifest: dict[str, Any], errors: list[str]) -> None:
     ):
         if policy.get(key) is not False:
             fail(errors, f"ai_use_policy.{key} must be false")
+    if policy.get("false_claim_flags") != FALSE_CLAIM_FLAGS:
+        fail(errors, "ai_use_policy.false_claim_flags must match denied CDC/RDC claims")
 
 
 def check_domains(manifest: dict[str, Any], errors: list[str]) -> None:

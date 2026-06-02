@@ -239,9 +239,9 @@ export const Eliza1FilesSchema = z.object({
 	// Voice Wave 2 (2026-05-14): bundled semantic turn detector. Optional —
 	// when omitted, the runtime falls back to `HeuristicEotClassifier` (the
 	// deterministic punctuation/conjunction baseline). When present, the
-	// runtime loads the model via `LiveKitTurnDetector` (or
-	// `TurnsenseEotClassifier` for the Apache-2.0 fallback) and pre-warms it
-	// at voice-session start. Tier mapping is data-driven (see
+	// runtime loads the model via the GGUF-backed LiveKit turn detector
+	// (`eot-classifier-ggml.ts`) and pre-warms it at voice-session start.
+	// Tier mapping is data-driven (see
 	// `stage_turn_detector` in
 	// `packages/training/scripts/manifest/stage_eliza1_bundle_assets.py`):
 	// 0_8b/2b ship the EN-only SmolLM2-135M distill; 4b/9b/27b ship the

@@ -22,6 +22,10 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/formal_verification_prerequisites"
 SCHEMA = "eliza.ai_eda.formal_verification_prerequisites.v1"
 CLAIM_BOUNDARY = "formal_verification_prerequisites_only_no_proof_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "release_use_allowed": False,
+    "formal_proof_claim_allowed": False,
+}
 
 REQUIRED_ARTIFACTS = (
     "scripts/run_formal.sh",
@@ -154,6 +158,7 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,
         "formal_proof_claim_allowed": False,
+        "false_claim_flags": FALSE_CLAIM_FLAGS,
         "status": status,
         "capabilities": {
             "strict_sby_ready": strict_ready,

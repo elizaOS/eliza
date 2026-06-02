@@ -17,5 +17,6 @@ export * from "./sleep-episode-store.js";
 export * from "./sleep-episode-types.js";
 export * from "./sleep-recap.js";
 export * from "./sleep-regularity.js";
+export * from "./sleep-service.js";
 export * from "./sleep-wake-events.js";
 export * from "./source-reliability.js";

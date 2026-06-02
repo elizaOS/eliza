@@ -1299,10 +1299,18 @@ if (uiOnly) {
   // Node (not Bun) for node: built-ins, so this persists compiled module
   // bytecode across boots and --watch restarts, trimming plugin-import cost.
   // Node 22.8+ honors it; older node and Bun ignore the var (safe no-op).
-  // Co-located with tsx's transpile cache in tmpdir so both share a lifecycle.
+  // Pinned under the state dir (not os.tmpdir()) so an OS temp reap doesn't
+  // wipe the warm ~100MB cache and force a multi-second cold recompile on the
+  // next boot. Content-hash-keyed, so a stale entry self-invalidates.
   const apiCompileCacheDir =
     childEnv.NODE_COMPILE_CACHE?.trim() ||
-    path.join(os.tmpdir(), "eliza-node-compile-cache");
+    path.join(
+      process.env.ELIZA_STATE_DIR?.trim() ||
+        process.env.MILADY_STATE_DIR?.trim() ||
+        path.join(os.homedir(), ".local", "state", cliName),
+      "cache",
+      "node-compile",
+    );
   const apiSpawnEnv = extendNodePathEnv(
     {
       ...childEnv,

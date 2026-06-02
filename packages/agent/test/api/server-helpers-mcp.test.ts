@@ -35,6 +35,34 @@ describe("validateMcpServerConfig env hardening (GHSA-54rx-pcr9-hg9x)", () => {
     ).toMatch(/not allowed for npx/i);
   });
 
+  it("blocks package-runner registry and config-file argv channels", async () => {
+    expect(
+      await validateMcpServerConfig(
+        stdioConfig(
+          "uvx",
+          ["--index-url", "http://127.0.0.1:9999/simple", "evil-pkg"],
+          {},
+        ),
+      ),
+    ).toMatch(/--index-url.*not allowed for uvx/i);
+
+    expect(
+      await validateMcpServerConfig(
+        stdioConfig("uvx", ["--config-file", "/tmp/uv.toml", "evil-pkg"], {}),
+      ),
+    ).toMatch(/--config-file.*not allowed for uvx/i);
+
+    expect(
+      await validateMcpServerConfig(
+        stdioConfig(
+          "npx",
+          ["--registry=http://127.0.0.1:9999/npm", "evil-pkg"],
+          {},
+        ),
+      ),
+    ).toMatch(/--registry.*not allowed for npx/i);
+  });
+
   it("rejects blocked CLI flags on interpreters", async () => {
     expect(
       await validateMcpServerConfig(stdioConfig("node", ["--eval", "1"], {})),
@@ -142,6 +170,18 @@ describe("validateMcpServerConfig container flag hardening", () => {
         stdioConfig("docker", ["run", "--volumes-from", "other", "img"], {}),
       ),
     ).toMatch(/--volumes-from.*not allowed/i);
+
+    expect(
+      await validateMcpServerConfig(
+        stdioConfig("docker", ["run", "--net=host", "img"], {}),
+      ),
+    ).toMatch(/--net.*not allowed/i);
+
+    expect(
+      await validateMcpServerConfig(
+        stdioConfig("podman", ["run", "--net", "host", "img"], {}),
+      ),
+    ).toMatch(/--net.*not allowed/i);
   });
 
   it("still blocks the pre-existing privileged/volume flags", async () => {
@@ -185,6 +225,26 @@ describe("validateMcpServerConfig deno permission-escape hardening", () => {
         stdioConfig("deno", ["run", "--allow-run=sh", "./server.ts"], {}),
       ),
     ).toMatch(/--allow-run.*not allowed for deno/i);
+
+    expect(
+      await validateMcpServerConfig(
+        stdioConfig("deno", ["run", "--allow-scripts", "./server.ts"], {}),
+      ),
+    ).toMatch(/--allow-scripts.*not allowed for deno/i);
+  });
+
+  it("blocks deno permission short aliases", async () => {
+    expect(
+      await validateMcpServerConfig(
+        stdioConfig("deno", ["run", "-N", "./server.ts"], {}),
+      ),
+    ).toMatch(/-N.*not allowed for deno/i);
+
+    expect(
+      await validateMcpServerConfig(
+        stdioConfig("deno", ["run", "-R=/etc", "./server.ts"], {}),
+      ),
+    ).toMatch(/-R.*not allowed for deno/i);
   });
 
   it("blocks deno --unstable* flag family", async () => {

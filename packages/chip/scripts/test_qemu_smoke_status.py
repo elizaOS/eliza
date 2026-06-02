@@ -311,6 +311,7 @@ def test_os_boot_check_passes_with_payloads_and_init_marker() -> None:
     manifest = json.loads(QEMU_OS_ATTEMPT_MANIFEST.read_text())
     if manifest["status"] != "PASS":
         raise AssertionError(f"unexpected OS attempt status: {manifest}")
+    assert_contains(manifest["generated_utc"], "+00:00")
     if manifest["claim_boundary"] != "qemu_virt_reference_only_not_e1_chip_rtl":
         raise AssertionError(f"unexpected OS attempt claim boundary: {manifest}")
     if manifest["kernel"] != str(kernel):

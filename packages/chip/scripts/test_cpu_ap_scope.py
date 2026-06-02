@@ -45,6 +45,13 @@ def test_release_claim_flip_fails() -> None:
     print("PASS release-claim flip rejected")
 
 
+def test_false_claim_flags_drift_fails() -> None:
+    report = check_cpu_ap_scope.build_report()
+    report["summary"]["false_claim_flags"].pop("release_claim_allowed")
+    expect_error(report, "false_claim_flags")
+    print("PASS false-claim flag drift rejected")
+
+
 def test_completion_claim_flip_fails() -> None:
     report = check_cpu_ap_scope.build_report()
     report["summary"]["completion_claimed"] = False
@@ -98,6 +105,7 @@ def main() -> None:
     test_valid_report_passes()
     test_claim_boundary_drift_fails()
     test_release_claim_flip_fails()
+    test_false_claim_flags_drift_fails()
     test_completion_claim_flip_fails()
     test_missing_transcript_blocker_removal_fails()
     test_pass_report_has_no_structured_findings()

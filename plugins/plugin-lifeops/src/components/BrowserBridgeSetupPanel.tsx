@@ -16,6 +16,7 @@ import {
   Textarea,
   useApp,
 } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   CheckCircle2,
   Circle,
@@ -29,7 +30,41 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ComponentProps,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+function BrowserActionButton({
+  agentId,
+  label,
+  description,
+  children,
+  ...buttonProps
+}: {
+  agentId: string;
+  label: string;
+  description: string;
+  children: ReactNode;
+} & ComponentProps<typeof Button>) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group: "lifeops-browser-bridge",
+    description,
+  });
+  return (
+    <Button ref={ref} {...buttonProps} {...agentProps}>
+      {children}
+    </Button>
+  );
+}
 import {
   BROWSER_BRIDGE_SITE_ACCESS_MODES,
   type BrowserBridgeCompanionPairingResponse,
@@ -356,6 +391,83 @@ function siteAccessModeLabel(mode: BrowserBridgeSiteAccessMode): string {
   }
 }
 
+function BrowserBridgeInput({
+  agentId,
+  label,
+  description,
+  value,
+  onChange,
+  ...inputProps
+}: {
+  agentId: string;
+  label: string;
+  description: string;
+  value: string;
+  onChange: (value: string) => void;
+} & Omit<ComponentProps<typeof Input>, "value" | "onChange">) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: agentId,
+    role: "text-input",
+    label,
+    group: "lifeops-browser-bridge",
+    description,
+    getValue: () => value,
+    onFill: onChange,
+  });
+  return (
+    <Input
+      ref={ref}
+      value={value}
+      onChange={(event) => onChange(event.currentTarget.value)}
+      {...inputProps}
+      {...agentProps}
+    />
+  );
+}
+
+function BrowserBridgeTextarea({
+  agentId,
+  label,
+  description,
+  value,
+  onChange,
+  ...textareaProps
+}: {
+  agentId: string;
+  label: string;
+  description: string;
+  value: string;
+  onChange: (value: string) => void;
+} & Omit<ComponentProps<typeof Textarea>, "value" | "onChange">) {
+  const { ref, agentProps } = useAgentElement<HTMLTextAreaElement>({
+    id: agentId,
+    role: "textarea",
+    label,
+    group: "lifeops-browser-bridge",
+    description,
+    getValue: () => value,
+    onFill: onChange,
+  });
+  return (
+    <Textarea
+      ref={ref}
+      value={value}
+      onChange={(event) => onChange(event.currentTarget.value)}
+      {...textareaProps}
+      {...agentProps}
+    />
+  );
+}
+
+function browserSettingSlug(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "setting"
+  );
+}
+
 function BrowserSettingRow({
   checked,
   hint,
@@ -367,13 +479,23 @@ function BrowserSettingRow({
   label: string;
   onCheckedChange: (checked: boolean) => void;
 }) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `browser-setting-${browserSettingSlug(label)}`,
+    role: "toggle",
+    label,
+    group: "lifeops-browser-bridge",
+    status: checked ? "active" : "inactive",
+    description: hint ?? `Toggle ${label}`,
+    getValue: () => checked,
+    onActivate: () => onCheckedChange(!checked),
+  });
   return (
     <div className="flex items-center justify-between gap-3 py-2.5">
       <div className="min-w-0">
         <div className="text-sm text-txt">{label}</div>
         {hint ? <div className="mt-0.5 text-xs text-muted">{hint}</div> : null}
       </div>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+      <Switch ref={ref} checked={checked} onCheckedChange={onCheckedChange} {...agentProps} />
     </div>
   );
 }
@@ -665,15 +787,21 @@ function BrowserCompanionRow({
       </div>
       <div className="text-xs leading-relaxed text-muted">{rowHint}</div>
       <div className="flex flex-wrap gap-1.5">
-        <Button
+        <BrowserActionButton
+          agentId={`browser-${browser}-install`}
+          label={`${installLabel} (${browserLabel})`}
+          description={`Install the ${browserLabel} companion extension`}
           size="sm"
           disabled={busy}
           onClick={() => void onInstall(browser)}
         >
           <Sparkles className="mr-1.5 h-3 w-3" />
           {busy ? "…" : installLabel}
-        </Button>
-        <Button
+        </BrowserActionButton>
+        <BrowserActionButton
+          agentId={`browser-${browser}-build`}
+          label={`Build ${browserLabel} companion`}
+          description={`Build the ${browserLabel} companion extension`}
           size="sm"
           variant="outline"
           disabled={busy}
@@ -681,8 +809,11 @@ function BrowserCompanionRow({
         >
           <Package className="mr-1.5 h-3 w-3" />
           Build
-        </Button>
-        <Button
+        </BrowserActionButton>
+        <BrowserActionButton
+          agentId={`browser-${browser}-manual-pairing`}
+          label={`Manual pairing for ${browserLabel}`}
+          description={`Create a manual pairing token for ${browserLabel}`}
           size="sm"
           variant="outline"
           disabled={busy}
@@ -690,10 +821,13 @@ function BrowserCompanionRow({
         >
           <ShieldCheck className="mr-1.5 h-3 w-3" />
           Manual Pairing
-        </Button>
+        </BrowserActionButton>
         {browser === "chrome" && buildPath ? (
           <>
-            <Button
+            <BrowserActionButton
+              agentId="browser-chrome-open-build-folder"
+              label="Open Chrome build folder"
+              description="Reveal the Chrome companion build folder"
               size="sm"
               variant="outline"
               disabled={busy}
@@ -701,8 +835,11 @@ function BrowserCompanionRow({
             >
               <FolderOpen className="mr-1.5 h-3 w-3" />
               Open Folder
-            </Button>
-            <Button
+            </BrowserActionButton>
+            <BrowserActionButton
+              agentId="browser-chrome-open-extensions"
+              label="Open Chrome extensions"
+              description="Open the Chrome extensions manager"
               size="sm"
               variant="outline"
               disabled={busy}
@@ -710,11 +847,14 @@ function BrowserCompanionRow({
             >
               <ExternalLink className="mr-1.5 h-3 w-3" />
               Open Extensions
-            </Button>
+            </BrowserActionButton>
           </>
         ) : null}
         {pairing ? (
-          <Button
+          <BrowserActionButton
+            agentId={`browser-${browser}-copy-pairing`}
+            label={`Copy ${browserLabel} pairing token`}
+            description={`Copy the ${browserLabel} pairing token`}
             size="sm"
             variant="outline"
             disabled={busy}
@@ -722,10 +862,13 @@ function BrowserCompanionRow({
           >
             <Copy className="mr-1.5 h-3 w-3" />
             Copy
-          </Button>
+          </BrowserActionButton>
         ) : null}
         {packagePath ? (
-          <Button
+          <BrowserActionButton
+            agentId={`browser-${browser}-download-zip`}
+            label={`Download ${browserLabel} package`}
+            description={`Download the ${browserLabel} companion zip`}
             size="sm"
             variant="outline"
             disabled={busy}
@@ -733,7 +876,7 @@ function BrowserCompanionRow({
           >
             <Download className="mr-1.5 h-3 w-3" />
             Zip
-          </Button>
+          </BrowserActionButton>
         ) : null}
       </div>
 
@@ -1065,6 +1208,31 @@ export function BrowserBridgeSetupPanel() {
     setDraft((current) => (current ? { ...current, [key]: value } : current));
     setDraftDirty(true);
   };
+
+  const trackingControl = useAgentElement<HTMLDivElement>({
+    id: "browser-tracking-mode",
+    role: "select",
+    label: "Browser tracking mode",
+    group: "lifeops-browser-bridge",
+    description: "Choose how much browser tab context LifeOps tracks",
+    options: ["off", "current_tab", "active_tabs"],
+    status: draft?.trackingMode,
+    getValue: () => draft?.trackingMode,
+    onFill: (value) =>
+      updateDraft("trackingMode", value as BrowserBridgeTrackingMode),
+  });
+  const siteAccessControl = useAgentElement<HTMLDivElement>({
+    id: "browser-site-access-mode",
+    role: "select",
+    label: "Browser site access mode",
+    group: "lifeops-browser-bridge",
+    description: "Restrict which sites LifeOps can read in the browser",
+    options: [...BROWSER_BRIDGE_SITE_ACCESS_MODES],
+    status: draft?.siteAccessMode,
+    getValue: () => draft?.siteAccessMode,
+    onFill: (value) =>
+      updateDraft("siteAccessMode", value as BrowserBridgeSiteAccessMode),
+  });
 
   const saveSettings = async () => {
     if (!draft) {
@@ -1640,7 +1808,10 @@ export function BrowserBridgeSetupPanel() {
           <BridgeDot label={connectionSummary.badge} tone={connectionTone} />
         </div>
         <div className="flex items-center gap-2">
-          <Button
+          <BrowserActionButton
+            agentId="browser-refresh"
+            label="Refresh browser bridge"
+            description="Refresh the browser bridge status"
             size="sm"
             variant="outline"
             className="h-8 w-8 rounded-xl p-0"
@@ -1650,7 +1821,7 @@ export function BrowserBridgeSetupPanel() {
             aria-label="Refresh"
           >
             <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-          </Button>
+          </BrowserActionButton>
         </div>
       </div>
       {statusMessage ? (
@@ -1722,7 +1893,10 @@ export function BrowserBridgeSetupPanel() {
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button
+          <BrowserActionButton
+            agentId="browser-continue-setup"
+            label={primarySetupLabel}
+            description="Continue the browser bridge guided setup"
             size="sm"
             className="h-8 rounded-xl px-3 text-xs font-semibold"
             disabled={setupBusy || !draft}
@@ -1730,8 +1904,11 @@ export function BrowserBridgeSetupPanel() {
           >
             <Sparkles className="mr-1.5 h-3 w-3" />
             {setupBusy ? "Working..." : primarySetupLabel}
-          </Button>
-          <Button
+          </BrowserActionButton>
+          <BrowserActionButton
+            agentId="browser-open-setup-page"
+            label="Open this setup page"
+            description="Open the LifeOps browser setup page in your default browser"
             size="sm"
             variant="outline"
             className="h-8 rounded-xl px-3 text-xs font-semibold"
@@ -1739,9 +1916,12 @@ export function BrowserBridgeSetupPanel() {
           >
             <ExternalLink className="mr-1.5 h-3 w-3" />
             Open This Setup Page
-          </Button>
+          </BrowserActionButton>
           {currentBrowser === "chrome" ? (
-            <Button
+            <BrowserActionButton
+              agentId="browser-open-chrome-extensions"
+              label="Open Chrome extensions"
+              description="Open the Chrome extensions manager"
               size="sm"
               variant="outline"
               className="h-8 rounded-xl px-3 text-xs font-semibold"
@@ -1750,7 +1930,7 @@ export function BrowserBridgeSetupPanel() {
             >
               <ExternalLink className="mr-1.5 h-3 w-3" />
               Open Chrome Extensions
-            </Button>
+            </BrowserActionButton>
           ) : null}
         </div>
       </div>
@@ -1810,7 +1990,10 @@ export function BrowserBridgeSetupPanel() {
 
               {isElectrobunRuntime() ? (
                 <div className="mt-4">
-                  <Button
+                  <BrowserActionButton
+                    agentId="browser-open-desktop"
+                    label="Open Eliza Desktop Browser"
+                    description="Open the Eliza desktop browser"
                     size="sm"
                     variant="outline"
                     className="h-8 rounded-xl px-3 text-xs font-semibold"
@@ -1818,7 +2001,7 @@ export function BrowserBridgeSetupPanel() {
                   >
                     <Monitor className="mr-1.5 h-3 w-3" />
                     Open Eliza Desktop Browser
-                  </Button>
+                  </BrowserActionButton>
                 </div>
               ) : null}
             </div>
@@ -1920,14 +2103,17 @@ export function BrowserBridgeSetupPanel() {
                     <span className="text-xs font-semibold text-txt">
                       {browser === "chrome" ? "Chrome" : "Safari"} pairing
                     </span>
-                    <Button
+                    <BrowserActionButton
+                      agentId={`browser-${browser}-copy-pairing-payload`}
+                      label={`Copy ${browser === "chrome" ? "Chrome" : "Safari"} pairing payload`}
+                      description="Copy the manual pairing payload"
                       size="sm"
                       variant="outline"
                       onClick={() => void copyPairing(browser)}
                     >
                       <Copy className="mr-1.5 h-3 w-3" />
                       Copy
-                    </Button>
+                    </BrowserActionButton>
                   </div>
                   <Textarea
                     readOnly
@@ -1958,7 +2144,10 @@ export function BrowserBridgeSetupPanel() {
                     These settings control what LifeOps is allowed to see or
                     automate in Your Browser.
                   </div>
-                  <Button
+                  <BrowserActionButton
+                    agentId="browser-save-settings"
+                    label="Save browser rules"
+                    description="Save the advanced browser bridge rules"
                     size="sm"
                     variant="outline"
                     className="h-8 rounded-xl px-3 text-xs font-semibold"
@@ -1966,7 +2155,7 @@ export function BrowserBridgeSetupPanel() {
                     onClick={() => void saveSettings()}
                   >
                     {savingSettings ? "Saving..." : "Save"}
-                  </Button>
+                  </BrowserActionButton>
                 </div>
 
                 <div className="divide-y divide-border/18">
@@ -2027,6 +2216,7 @@ export function BrowserBridgeSetupPanel() {
                       }))}
                       className="w-full max-w-full border-border/28 bg-transparent p-0.5"
                       buttonClassName="min-h-8 flex-1 justify-center px-2.5 py-1.5 text-xs"
+                      {...trackingControl.agentProps}
                     />
                   </div>
                   <div className="space-y-1">
@@ -2046,6 +2236,7 @@ export function BrowserBridgeSetupPanel() {
                       }))}
                       className="w-full max-w-full border-border/28 bg-transparent p-0.5"
                       buttonClassName="min-h-8 flex-1 justify-center px-2.5 py-1.5 text-xs"
+                      {...siteAccessControl.agentProps}
                     />
                   </div>
                 </div>
@@ -2062,14 +2253,14 @@ export function BrowserBridgeSetupPanel() {
                       Controls how much recent browser context LifeOps keeps
                       around.
                     </div>
-                    <Input
+                    <BrowserBridgeInput
+                      agentId="browser-max-tabs"
+                      label="Max remembered tabs"
+                      description="How many recent browser tabs LifeOps remembers"
                       id="browser-bridge-max-tabs"
                       value={draft.maxRememberedTabs}
-                      onChange={(event) =>
-                        updateDraft(
-                          "maxRememberedTabs",
-                          event.currentTarget.value,
-                        )
+                      onChange={(value) =>
+                        updateDraft("maxRememberedTabs", value)
                       }
                       inputMode="numeric"
                     />
@@ -2086,19 +2277,22 @@ export function BrowserBridgeSetupPanel() {
                       your paired browser.
                     </div>
                     <div className="flex flex-wrap gap-1.5 sm:flex-nowrap">
-                      <Input
+                      <BrowserBridgeInput
+                        agentId="browser-pause-until"
+                        label="Pause browser visibility until"
+                        description="Temporarily pause browser visibility until this time"
                         id="browser-bridge-pause-until"
                         type="datetime-local"
                         value={draft.pauseUntilLocal}
-                        onChange={(event) =>
-                          updateDraft(
-                            "pauseUntilLocal",
-                            event.currentTarget.value,
-                          )
+                        onChange={(value) =>
+                          updateDraft("pauseUntilLocal", value)
                         }
                         className="min-w-0 flex-1"
                       />
-                      <Button
+                      <BrowserActionButton
+                        agentId="browser-pause-1h"
+                        label="Pause browser for 1 hour"
+                        description="Pause browser visibility for one hour"
                         size="sm"
                         variant="outline"
                         className="h-9 rounded-xl px-3 text-xs font-semibold"
@@ -2114,15 +2308,18 @@ export function BrowserBridgeSetupPanel() {
                         }
                       >
                         1h
-                      </Button>
-                      <Button
+                      </BrowserActionButton>
+                      <BrowserActionButton
+                        agentId="browser-pause-clear"
+                        label="Clear browser pause"
+                        description="Clear the browser pause timer"
                         size="sm"
                         variant="outline"
                         className="h-9 rounded-xl px-3 text-xs font-semibold"
                         onClick={() => updateDraft("pauseUntilLocal", "")}
                       >
                         Now
-                      </Button>
+                      </BrowserActionButton>
                     </div>
                   </div>
                 </div>
@@ -2139,16 +2336,16 @@ export function BrowserBridgeSetupPanel() {
                       When Site access is set to Granted sites, only these
                       origins are readable.
                     </div>
-                    <Textarea
+                    <BrowserBridgeTextarea
+                      agentId="browser-granted-origins"
+                      label="Granted origins"
+                      description="Origins LifeOps may read when site access is restricted"
                       id="browser-bridge-granted-origins"
                       rows={3}
                       placeholder="https://mail.google.com"
                       value={draft.grantedOriginsText}
-                      onChange={(event) =>
-                        updateDraft(
-                          "grantedOriginsText",
-                          event.currentTarget.value,
-                        )
+                      onChange={(value) =>
+                        updateDraft("grantedOriginsText", value)
                       }
                     />
                   </div>
@@ -2163,16 +2360,16 @@ export function BrowserBridgeSetupPanel() {
                       These origins are never readable, even if broader site
                       access is enabled.
                     </div>
-                    <Textarea
+                    <BrowserBridgeTextarea
+                      agentId="browser-blocked-origins"
+                      label="Blocked origins"
+                      description="Origins LifeOps must never read in the browser"
                       id="browser-bridge-blocked-origins"
                       rows={3}
                       placeholder="https://bank.example.com"
                       value={draft.blockedOriginsText}
-                      onChange={(event) =>
-                        updateDraft(
-                          "blockedOriginsText",
-                          event.currentTarget.value,
-                        )
+                      onChange={(value) =>
+                        updateDraft("blockedOriginsText", value)
                       }
                     />
                   </div>

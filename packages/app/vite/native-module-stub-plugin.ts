@@ -2,6 +2,27 @@ import path from "node:path";
 import type { Plugin } from "vite";
 
 /**
+ * Names of exported functions that carry their own `.native` sub-function
+ * (Node's `fs.realpath` / `fs.realpathSync`). graceful-fs / fs-extra read
+ * `fs.realpath.native` unconditionally at module-eval, so the browser stub
+ * must reproduce that shape.
+ */
+function exportNamesWithNative(
+  realModule: Record<string, unknown> | null,
+  exportNames: string[],
+): string[] {
+  if (!realModule) return [];
+  return exportNames.filter((name) => {
+    if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name)) return false;
+    const val = realModule[name];
+    return (
+      typeof val === "function" &&
+      typeof (val as { native?: unknown }).native === "function"
+    );
+  });
+}
+
+/**
  * Generate a virtual ESM module that stubs all exports of a Node built-in.
  * We `require()` the real module at Vite config time (Node process), read its
  * export names, and emit matching no-op stubs so esbuild's static import
@@ -69,16 +90,6 @@ export function generateNodeBuiltinStub(
       "export const emit = processRef.emit;",
     ].join("\n");
   }
-  const lines = [
-    // noop: returns itself (for chained calls like createRequire(url)(id)),
-    // and is a valid class base (so `class X extends noop` works).
-    "function noop() { return noop; }",
-    "const asyncNoop = () => Promise.resolve();",
-    "const handler = { get(t, p) { if (p === 'prototype' || p === 'name' || p === 'length' || typeof p === 'symbol') return Reflect.get(t, p); if (p === '__esModule') return true; if (p === 'default') return t; return noop; }, has() { return true; }, ownKeys(t) { return Reflect.ownKeys(t); }, getOwnPropertyDescriptor(t, p) { return Reflect.getOwnPropertyDescriptor(t, p) ?? { configurable: true, enumerable: true, writable: true, value: noop }; } };",
-    "const stub = new Proxy({}, handler);",
-    "export default stub;",
-  ];
-
   let realModule: Record<string, unknown> | null = null;
   let exportNames: string[] = [];
   try {
@@ -90,6 +101,31 @@ export function generateNodeBuiltinStub(
   } catch {
     // Module not available (e.g. dns/promises on some platforms)
   }
+
+  // Functions on the real module that carry a `.native` sub-function
+  // (fs.realpath / fs.realpathSync). graceful-fs does
+  // `clone(require('fs'))` — clone() copies via Object.getOwnPropertyNames,
+  // so the proxy target must expose these as OWN enumerable properties or the
+  // clone drops them, leaving `fs.realpath` undefined and throwing
+  // `Cannot read properties of undefined (reading 'native')` at module-eval.
+  const nativeBearing = exportNamesWithNative(realModule, exportNames);
+  const baseLines = nativeBearing.map(
+    (name) =>
+      `base[${JSON.stringify(name)}] = (function ${name}() {}); base[${JSON.stringify(name)}].native = function native() {};`,
+  );
+  const lines = [
+    // noop: returns itself (for chained calls like createRequire(url)(id)),
+    // and is a valid class base (so `class X extends noop` works).
+    "function noop() { return noop; }",
+    "const asyncNoop = () => Promise.resolve();",
+    // The proxy target. Own properties survive Object.getOwnPropertyNames-based
+    // cloning (graceful-fs); unknown property reads still fall back to noop.
+    "const base = {};",
+    ...baseLines,
+    "const handler = { get(t, p) { if (p === 'prototype' || p === 'name' || p === 'length' || typeof p === 'symbol') return Reflect.get(t, p); if (p === '__esModule') return true; if (p === 'default') return t; const own = Reflect.get(t, p); return own !== undefined ? own : noop; }, has() { return true; }, ownKeys(t) { return Reflect.ownKeys(t); }, getOwnPropertyDescriptor(t, p) { return Reflect.getOwnPropertyDescriptor(t, p) ?? { configurable: true, enumerable: true, writable: true, value: noop }; } };",
+    "const stub = new Proxy(base, handler);",
+    "export default stub;",
+  ];
 
   const reserved = new Set([
     "default",
@@ -143,6 +179,13 @@ export function generateNodeBuiltinStub(
         Object.getOwnPropertyNames(val.prototype).length > 1
       ) {
         lines.push(`export class ${name} { constructor() {} }`);
+      } else if (typeof (val as { native?: unknown }).native === "function") {
+        // Already materialized on `base` (with a `.native` sub-fn) above so the
+        // graceful-fs clone keeps it. Re-export the same object by name so the
+        // namespace and the default-export clone agree.
+        lines.push(
+          `const ${name} = base[${JSON.stringify(name)}]; export { ${name} };`,
+        );
       } else {
         lines.push(`export const ${name} = noop;`);
       }

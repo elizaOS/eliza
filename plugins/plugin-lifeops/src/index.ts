@@ -1,3 +1,8 @@
+export { detectPasswordManagerBackend } from "@elizaos/plugin-browser/password-manager-bridge";
+export {
+  handleTravelProviderRelayRoute,
+  type TravelProviderRelayRouteState,
+} from "@elizaos/plugin-elizacloud/routes/travel-provider-relay-routes";
 export { detectHealthBackend } from "@elizaos/plugin-health";
 // External consumers that still import `websiteBlockAction` get the canonical
 // BLOCK umbrella.
@@ -35,7 +40,6 @@ export {
 } from "./lifeops/approval-queue.js";
 export * from "./lifeops/index.js";
 export * from "./lifeops/messaging/index.js";
-export { detectPasswordManagerBackend } from "./lifeops/password-manager-bridge.js";
 export { detectRemoteDesktopBackend } from "./lifeops/remote-desktop.js";
 export { LifeOpsRepository } from "./lifeops/repository.js";
 export { LifeOpsService, LifeOpsServiceError } from "./lifeops/service.js";
@@ -67,10 +71,6 @@ export {
   handleCloudFeaturesRoute,
 } from "./routes/cloud-features-routes.js";
 export { lifeopsPlugin } from "./routes/plugin.js";
-export {
-  handleTravelProviderRelayRoute,
-  type TravelProviderRelayRouteState,
-} from "./routes/travel-provider-relay-routes.js";
 export * from "./types/app-blocker-settings-card.js";
 export type {
   AppBlockerSettingsCardProps,

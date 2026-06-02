@@ -962,19 +962,24 @@ def product_release_execution_plan(
                 state_counts = artifact_state_summary.get("state_counts")
                 if isinstance(state_counts, dict):
                     row["manufacturing_artifact_state_counts"] = state_counts
-                row["nested_report_generation_summaries"] = [
-                    summary
-                    for summary in row["nested_report_generation_summaries"]
-                    if summary.get("report_path") != "build/reports/manufacturing_artifacts.json"
-                ]
-                row["nested_report_generation_summaries"].insert(
-                    0,
-                    {
-                        "report_path": "build/reports/manufacturing_artifacts.json",
-                        "artifact_state_summary": artifact_state_summary,
-                        "summary_generation_fields": manufacturing_details.get("summary", {}),
-                    },
-                )
+                existing_summaries = row["nested_report_generation_summaries"]
+                if isinstance(existing_summaries, list):
+                    filtered: list[dict[str, object]] = [
+                        summary
+                        for summary in existing_summaries
+                        if isinstance(summary, dict)
+                        and summary.get("report_path")
+                        != "build/reports/manufacturing_artifacts.json"
+                    ]
+                    filtered.insert(
+                        0,
+                        {
+                            "report_path": "build/reports/manufacturing_artifacts.json",
+                            "artifact_state_summary": artifact_state_summary,
+                            "summary_generation_fields": manufacturing_details.get("summary", {}),
+                        },
+                    )
+                    row["nested_report_generation_summaries"] = filtered
         rows.append(row)
     return rows
 

@@ -71,6 +71,14 @@ REQUIRED_PHONE_CPU_L5_L6_ENTRIES = {
     "lmbench_bw_mem",
     "lmbench_lat_mem_rd",
 }
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "phone_class_claim_allowed",
+    "benchmark_claim_allowed",
+    "tapeout_claim_allowed",
+    "silicon_claim_allowed",
+)
 
 
 def run_required_check(command: list[str], errors: list[str]) -> None:
@@ -1015,6 +1023,8 @@ def check_scorecard(scorecard: dict[str, Any], optimizer: dict[str, Any]) -> lis
         "claim boundary must block phone-class claims",
         errors,
     )
+    for field in REQUIRED_FALSE_CLAIM_FLAGS:
+        require(scorecard.get(field) is False, f"scorecard {field} must be false", errors)
     check_modeled_values(scorecard, optimizer, errors)
     check_domains(scorecard, errors)
     check_benchmarks(scorecard, errors)

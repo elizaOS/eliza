@@ -6,7 +6,7 @@ This audit is generated from the CAD generator, fit checks, visual checks, and a
 
 ## Release Boundary
 
-- BLOCKED: KiCad phone board remains concept/floorplan-level, not routed and fabricated.
+- BLOCKED: Local routed KiCad PCB and routed STEP candidates exist for visual review only; supplier-approved production routing, fabrication outputs, and first-article evidence are not released.
 - BLOCKED: Supplier mechanical drawings and samples for display, cameras, USB-C, buttons, battery, and speakers are not locked.
 - BLOCKED: No mold-flow, thermal, acoustic, RF, drop, ingress, or tolerance-stack validation with physical samples.
 - BLOCKED: No GD&T-controlled release drawing package or toolmaker DFM signoff.
