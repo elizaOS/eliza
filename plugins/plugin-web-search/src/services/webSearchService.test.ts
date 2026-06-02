@@ -24,10 +24,16 @@ describe("WebSearchService", () => {
         tavilyMock.mockClear();
     });
 
-    it("requires TAVILY_API_KEY at startup", async () => {
-        await expect(WebSearchService.start(runtime({}))).rejects.toThrow(
-            "TAVILY_API_KEY is not set"
+    it("boots inert without TAVILY_API_KEY and throws on search", async () => {
+        // Graceful degradation: missing key must NOT crash agent boot. The
+        // service starts unconfigured (no Tavily client) and reports an honest,
+        // recoverable error only when search() is actually invoked.
+        const inert = await WebSearchService.start(runtime({}));
+        expect(tavilyMock).not.toHaveBeenCalled();
+        await expect(inert.search("anything")).rejects.toThrow(
+            "Web search is not configured"
         );
+
         await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
         expect(tavilyMock).toHaveBeenCalledWith({ apiKey: "tvly-test" });
     });
