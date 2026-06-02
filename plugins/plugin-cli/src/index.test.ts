@@ -30,7 +30,9 @@ describe("plugin-cli program surface", () => {
 
 		expect(program.name()).toBe("agent");
 		expect(program.version()).toBe("2.3.4");
-		expect(program.commands.map((command) => command.name())).toContain("hello");
+		expect(program.commands.map((command) => command.name())).toContain(
+			"hello",
+		);
 		expect(register).toHaveBeenCalledTimes(1);
 	});
 
@@ -66,7 +68,9 @@ describe("plugin-cli program surface", () => {
 			.spyOn(process.stdout, "write")
 			.mockImplementation(() => true);
 
-		await expect(runCli(["node", "elizaos", "--help"])).resolves.toBeUndefined();
+		await expect(
+			runCli(["node", "elizaos", "--help"]),
+		).resolves.toBeUndefined();
 		await expect(
 			runCli(["node", "elizaos", "--version"], { version: "9.9.9" }),
 		).resolves.toBeUndefined();

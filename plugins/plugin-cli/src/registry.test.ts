@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { logger } from "@elizaos/core";
 import { Command } from "commander";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	addSubcommand,
 	clearCliCommands,

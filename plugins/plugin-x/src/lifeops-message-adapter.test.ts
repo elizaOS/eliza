@@ -124,14 +124,22 @@ describe("XDmAdapter", () => {
     await adapter.listMessages(runtime, { limit: -50 });
     await adapter.listMessages(runtime, { limit: 10_000 });
 
-    expect(fetchDirectMessagesForAccount).toHaveBeenNthCalledWith(1, "default", {
-      participantId: undefined,
-      limit: 1,
-    });
-    expect(fetchDirectMessagesForAccount).toHaveBeenNthCalledWith(2, "default", {
-      participantId: undefined,
-      limit: 100,
-    });
+    expect(fetchDirectMessagesForAccount).toHaveBeenNthCalledWith(
+      1,
+      "default",
+      {
+        participantId: undefined,
+        limit: 1,
+      },
+    );
+    expect(fetchDirectMessagesForAccount).toHaveBeenNthCalledWith(
+      2,
+      "default",
+      {
+        participantId: undefined,
+        limit: 100,
+      },
+    );
   });
 
   it("rejects malformed draft ids before sending", async () => {
@@ -139,12 +147,12 @@ describe("XDmAdapter", () => {
     const adapter = new XDmAdapter();
     const runtime = runtimeWithXService({ sendDirectMessageForAccount });
 
-    await expect(adapter.sendDraft(runtime, "telegram:recipient:1:SGk")).rejects.toThrow(
-      "[XDmAdapter] malformed draftId",
-    );
-    await expect(adapter.sendDraft(runtime, "twitter:recipient:SGk")).rejects.toThrow(
-      "[XDmAdapter] malformed draftId",
-    );
+    await expect(
+      adapter.sendDraft(runtime, "telegram:recipient:1:SGk"),
+    ).rejects.toThrow("[XDmAdapter] malformed draftId");
+    await expect(
+      adapter.sendDraft(runtime, "twitter:recipient:SGk"),
+    ).rejects.toThrow("[XDmAdapter] malformed draftId");
     await expect(adapter.sendDraft(runtime, "twitter::1:SGk")).rejects.toThrow(
       "cannot resolve recipient",
     );

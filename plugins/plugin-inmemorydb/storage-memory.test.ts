@@ -12,9 +12,7 @@ describe("MemoryStorage", () => {
     const storage = new MemoryStorage();
 
     await expect(storage.isReady()).resolves.toBe(false);
-    await expect(storage.get("items", "one")).rejects.toThrow(
-      "MemoryStorage is not initialized",
-    );
+    await expect(storage.get("items", "one")).rejects.toThrow("MemoryStorage is not initialized");
 
     await storage.init();
     await expect(storage.isReady()).resolves.toBe(true);
@@ -23,9 +21,7 @@ describe("MemoryStorage", () => {
     await storage.close();
 
     await expect(storage.isReady()).resolves.toBe(false);
-    await expect(storage.get("items", "one")).rejects.toThrow(
-      "MemoryStorage is not initialized",
-    );
+    await expect(storage.get("items", "one")).rejects.toThrow("MemoryStorage is not initialized");
   });
 
   it("isolates collections and returns null for missing ids", async () => {

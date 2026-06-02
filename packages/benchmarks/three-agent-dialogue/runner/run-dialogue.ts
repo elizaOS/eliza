@@ -41,7 +41,6 @@ import {
   listDialogueScenarios,
   loadDialogueScenario,
   validateDialogueScenarios,
-  type Scenario,
 } from "./scenarios.ts";
 
 // ---------------------------------------------------------------------------

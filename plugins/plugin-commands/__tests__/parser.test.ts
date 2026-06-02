@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
 import fc from "fast-check";
+import { afterEach, describe, expect, it } from "vitest";
 import {
 	detectCommand,
 	extractCommand,
@@ -8,7 +8,11 @@ import {
 	normalizeCommandBody,
 	parseCommand,
 } from "../src/parser";
-import { findCommandByKey, registerCommand, resetCommands } from "../src/registry";
+import {
+	findCommandByKey,
+	registerCommand,
+	resetCommands,
+} from "../src/registry";
 import type { CommandDefinition } from "../src/types";
 
 const customCommand: CommandDefinition = {

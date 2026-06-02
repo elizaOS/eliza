@@ -552,6 +552,12 @@ process.on("uncaughtException", (error) => {
 if (process.env.ELIZA_DEV_HEAP_REPORT !== "0") {
   const mb = (n: number) => Math.round(n / 1048576);
   const heapReportTimer = setInterval(() => {
+    // --expose-gc (set by dev-ui) lets us report post-collection RETAINED heap,
+    // which separates a real leak from uncollected garbage. rss stays the
+    // headline runaway signal either way.
+    if (typeof global.gc === "function") {
+      global.gc();
+    }
     const m = process.memoryUsage();
     logger.info(
       `${getLogPrefix()} mem rss=${mb(m.rss)}MB heapUsed=${mb(m.heapUsed)}MB heapTotal=${mb(m.heapTotal)}MB external=${mb(m.external)}MB arrayBuffers=${mb(m.arrayBuffers)}MB`,

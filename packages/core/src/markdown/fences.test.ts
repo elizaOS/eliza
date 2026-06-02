@@ -1,10 +1,6 @@
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import {
-	findFenceSpanAt,
-	isSafeFenceBreak,
-	parseFenceSpans,
-} from "./fences";
+import { findFenceSpanAt, isSafeFenceBreak, parseFenceSpans } from "./fences";
 
 describe("markdown fence parsing", () => {
 	it("matches backtick and tilde fences independently", () => {
@@ -28,7 +24,7 @@ describe("markdown fence parsing", () => {
 	});
 
 	it("treats an unclosed fence as spanning to the end of the buffer", () => {
-		const markdown = "before\n```json\n{\"ok\": true}\n";
+		const markdown = 'before\n```json\n{"ok": true}\n';
 		const spans = parseFenceSpans(markdown);
 
 		expect(spans).toHaveLength(1);

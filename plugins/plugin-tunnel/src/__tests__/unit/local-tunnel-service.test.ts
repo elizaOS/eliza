@@ -97,12 +97,9 @@ describe('plugin-tunnel start action', () => {
   it('dispatches nested TUNNEL action parameters to start without leaking action into sub-options', async () => {
     const service = tunnelService();
 
-    const result = await tunnelAction.handler(
-      runtime(service),
-      message,
-      undefined,
-      { parameters: { action: 'start', parameters: { port: 9090 } } }
-    );
+    const result = await tunnelAction.handler(runtime(service), message, undefined, {
+      parameters: { action: 'start', parameters: { port: 9090 } },
+    });
 
     expect(service.startTunnel).toHaveBeenCalledWith(9090);
     expect(result.success).toBe(true);

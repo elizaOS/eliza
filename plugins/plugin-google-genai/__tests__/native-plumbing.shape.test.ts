@@ -8,8 +8,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/core", () => ({
-  buildCanonicalSystemPrompt: vi.fn(({ character }) =>
-    `canonical:${character?.name ?? "unknown"}`,
+  buildCanonicalSystemPrompt: vi.fn(
+    ({ character }) => `canonical:${character?.name ?? "unknown"}`,
   ),
   logger: {
     error: vi.fn(),
@@ -41,7 +41,10 @@ vi.mock("@elizaos/core", () => ({
               (message.content ?? message.text) === options?.omitDuplicateSystem
             ),
         )
-        .map((message) => `${message.role ?? "user"}:${message.content ?? message.text ?? ""}`)
+        .map(
+          (message) =>
+            `${message.role ?? "user"}:${message.content ?? message.text ?? ""}`,
+        )
         .join("\n");
     },
   ),
@@ -98,48 +101,51 @@ describe("Google GenAI text native plumbing", () => {
     const bytes = new Uint8Array([1, 2, 3]);
 
     await expect(
-      handleTextSmall(runtime() as never, {
-        prompt: "Use the tools",
-        system: "You are concise.",
-        temperature: 0.2,
-        maxTokens: 123,
-        stopSequences: ["STOP"],
-        tools: {
-          lookup_weather: {
-            description: "Get weather",
-            inputSchema: {
+      handleTextSmall(
+        runtime() as never,
+        {
+          prompt: "Use the tools",
+          system: "You are concise.",
+          temperature: 0.2,
+          maxTokens: 123,
+          stopSequences: ["STOP"],
+          tools: {
+            lookup_weather: {
+              description: "Get weather",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  city: { type: "string" },
+                },
+                required: ["city"],
+              },
+            },
+          },
+          toolChoice: { type: "tool", toolName: "lookup_weather" },
+          responseSchema: {
+            schema: {
               type: "object",
               properties: {
-                city: { type: "string" },
+                ok: { type: "boolean" },
               },
-              required: ["city"],
             },
           },
-        },
-        toolChoice: { type: "tool", toolName: "lookup_weather" },
-        responseSchema: {
-          schema: {
-            type: "object",
-            properties: {
-              ok: { type: "boolean" },
+          attachments: [
+            {
+              data: "data:image/png;base64,AAA=",
+              mediaType: "image/png",
             },
-          },
-        },
-        attachments: [
-          {
-            data: "data:image/png;base64,AAA=",
-            mediaType: "image/png",
-          },
-          {
-            data: "https://files.example/doc.pdf",
-            mediaType: "application/pdf",
-          },
-          {
-            data: bytes,
-            mediaType: "application/octet-stream",
-          },
-        ],
-      } as never),
+            {
+              data: "https://files.example/doc.pdf",
+              mediaType: "application/pdf",
+            },
+            {
+              data: bytes,
+              mediaType: "application/octet-stream",
+            },
+          ],
+        } as never,
+      ),
     ).resolves.toBe('{"ok":true}');
 
     expect(mocks.generateContent).toHaveBeenCalledWith({
@@ -218,13 +224,16 @@ describe("Google GenAI text native plumbing", () => {
   });
 
   it("omits duplicate system chat messages from the rendered prompt", async () => {
-    await handleTextSmall(runtime() as never, {
-      system: "Shared system",
-      messages: [
-        { role: "system", content: "Shared system" },
-        { role: "user", content: "Hello" },
-      ],
-    } as never);
+    await handleTextSmall(
+      runtime() as never,
+      {
+        system: "Shared system",
+        messages: [
+          { role: "system", content: "Shared system" },
+          { role: "user", content: "Hello" },
+        ],
+      } as never,
+    );
 
     expect(mocks.generateContent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -238,10 +247,13 @@ describe("Google GenAI text native plumbing", () => {
 
   it("rejects unnamed generic tool definitions before calling the SDK", async () => {
     await expect(
-      handleTextSmall(runtime() as never, {
-        prompt: "bad tool",
-        tools: [{ description: "missing name" }],
-      } as never),
+      handleTextSmall(
+        runtime() as never,
+        {
+          prompt: "bad tool",
+          tools: [{ description: "missing name" }],
+        } as never,
+      ),
     ).rejects.toThrow("[GoogleGenAI] Tool definition is missing a name.");
     expect(mocks.generateContent).not.toHaveBeenCalled();
   });

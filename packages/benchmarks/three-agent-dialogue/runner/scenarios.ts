@@ -67,8 +67,7 @@ export const EDGE_VARIANTS = [
   {
     suffix: "disagreement-spike",
     name: "disagreement spike",
-    prompt:
-      " Make the disagreement direct but respectful, then repair it.",
+    prompt: " Make the disagreement direct but respectful, then repair it.",
     description:
       "Tests boundary handling around conflict, repair, and synthesis.",
   },
@@ -77,8 +76,7 @@ export const EDGE_VARIANTS = [
     name: "quiet speaker inclusion",
     prompt:
       " Make sure the quieter speaker gets invited back into the conversation.",
-    description:
-      "Tests balanced participation and speaker inclusion.",
+    description: "Tests balanced participation and speaker inclusion.",
   },
   {
     suffix: "overlap-caution",
@@ -93,14 +91,12 @@ export const EDGE_VARIANTS = [
     name: "meta reflection",
     prompt:
       " Include a brief reflection on how the conversation itself is changing minds.",
-    description:
-      "Tests higher-order dialogue and self-referential coherence.",
+    description: "Tests higher-order dialogue and self-referential coherence.",
   },
   {
     suffix: "practical-resolution",
     name: "practical resolution",
-    prompt:
-      " End with a concrete next step rather than only a warm closing.",
+    prompt: " End with a concrete next step rather than only a warm closing.",
     description:
       "Tests whether the conversation can move from abstract debate to action.",
   },
@@ -132,7 +128,11 @@ export function listBaseScenarios(): string[] {
   return ["canonical"];
 }
 
-function expandScenario(baseId: string, scenario: Scenario, variant: (typeof EDGE_VARIANTS)[number]): Scenario {
+function expandScenario(
+  baseId: string,
+  scenario: Scenario,
+  variant: (typeof EDGE_VARIANTS)[number],
+): Scenario {
   return {
     ...scenario,
     id: `${baseId}--edge-${variant.suffix}`,
@@ -196,7 +196,9 @@ export function validateDialogueScenarios(): {
 } {
   const ids = listDialogueScenarios();
   const duplicateIds = ids.filter((id, index) => ids.indexOf(id) !== index);
-  const missingTurns = ids.filter((id) => loadDialogueScenario(id).turns.length === 0);
+  const missingTurns = ids.filter(
+    (id) => loadDialogueScenario(id).turns.length === 0,
+  );
   const counts = countDialogueScenarios();
   const expansionMatches = counts.added === counts.existing * 10;
   const valid =

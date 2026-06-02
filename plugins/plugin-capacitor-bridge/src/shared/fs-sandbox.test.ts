@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	guardMobileFsWritePath,
+	type MobileFsGlobals,
 	mobileFsPathLikeToString,
 	modeForMobileFsOpenFlags,
 	requireMobileFsResolver,
-	type MobileFsGlobals,
 	wrapMobileFsOpen,
 	wrapMobileFsPath,
 	wrapMobileFsTwoPaths,
@@ -31,12 +31,10 @@ describe("mobile fs sandbox wrappers", () => {
 	});
 
 	it("normalizes path-like strings, Buffers, and file URLs", () => {
-		expect(mobileFsPathLikeToString("notes.txt", "node:fs")).toBe(
-			"notes.txt",
+		expect(mobileFsPathLikeToString("notes.txt", "node:fs")).toBe("notes.txt");
+		expect(mobileFsPathLikeToString(Buffer.from("buffer.txt"), "node:fs")).toBe(
+			"buffer.txt",
 		);
-		expect(
-			mobileFsPathLikeToString(Buffer.from("buffer.txt"), "node:fs"),
-		).toBe("buffer.txt");
 		expect(
 			mobileFsPathLikeToString(new URL("file:///tmp/mobile.txt"), "node:fs"),
 		).toBe("/tmp/mobile.txt");
@@ -79,8 +77,11 @@ describe("mobile fs sandbox wrappers", () => {
 		expect(() => wrapped("libnative.so")).toThrow(
 			"mobile-fs-shim: writing native binary files is blocked (.so)",
 		);
-		expect(() => guardMobileFsWritePath("/sandbox/lib.dylib", "lib.dylib"))
-			.toThrow("mobile-fs-shim: writing native binary files is blocked (.dylib)");
+		expect(() =>
+			guardMobileFsWritePath("/sandbox/lib.dylib", "lib.dylib"),
+		).toThrow(
+			"mobile-fs-shim: writing native binary files is blocked (.dylib)",
+		);
 		expect(original).not.toHaveBeenCalled();
 	});
 
@@ -114,12 +115,7 @@ describe("mobile fs sandbox wrappers", () => {
 		});
 		globals().__ELIZA_MOBILE_FS_RESOLVE__ = resolver;
 		const original = vi.fn((src: string, dst: string) => ({ src, dst }));
-		const wrapped = wrapMobileFsTwoPaths(
-			"node:fs",
-			original,
-			"read",
-			"write",
-		);
+		const wrapped = wrapMobileFsTwoPaths("node:fs", original, "read", "write");
 
 		expect(wrapped("from.txt", Buffer.from("to.txt"))).toEqual({
 			src: "/sandbox/read/from.txt",

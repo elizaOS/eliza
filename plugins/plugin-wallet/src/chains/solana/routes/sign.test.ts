@@ -12,9 +12,7 @@ vi.mock("../../../wallet/select-backend", () => ({
 
 function runtime(token: string | null): IAgentRuntime {
   return {
-    getSetting: vi.fn((key: string) =>
-      key === "WALLET_BROWSER_SIGN_TOKEN" ? token : undefined,
-    ),
+    getSetting: vi.fn((key: string) => (key === "WALLET_BROWSER_SIGN_TOKEN" ? token : undefined)),
   } as unknown as IAgentRuntime;
 }
 
@@ -78,7 +76,7 @@ describe("Solana browser signing routes", () => {
       await route("wallet-solana-pubkey").handler(
         req({ authorization: "Bearer short-token" }),
         response,
-        runtime(token),
+        runtime(token)
       );
 
       expect(response.statusCode).toBe(503);
@@ -94,11 +92,7 @@ describe("Solana browser signing routes", () => {
       req({ xToken: "wrong-token" }),
     ]) {
       const response = res();
-      await route("wallet-solana-pubkey").handler(
-        request,
-        response,
-        runtime("1234567890abcdef"),
-      );
+      await route("wallet-solana-pubkey").handler(request, response, runtime("1234567890abcdef"));
 
       expect(response.statusCode).toBe(401);
       expect(response.body).toEqual({ error: "invalid sign token" });
@@ -110,17 +104,13 @@ describe("Solana browser signing routes", () => {
     await route("wallet-solana-sign-message").handler(
       req({ method: "OPTIONS", origin: "https://dapp.example" }),
       response,
-      runtime("1234567890abcdef"),
+      runtime("1234567890abcdef")
     );
 
     expect(response.statusCode).toBe(204);
     expect(response.body).toEqual({});
-    expect(response.headers["Access-Control-Allow-Origin"]).toBe(
-      "https://dapp.example",
-    );
-    expect(response.headers["Access-Control-Allow-Headers"]).toContain(
-      "X-Wallet-Sign-Token",
-    );
+    expect(response.headers["Access-Control-Allow-Origin"]).toBe("https://dapp.example");
+    expect(response.headers["Access-Control-Allow-Headers"]).toContain("X-Wallet-Sign-Token");
   });
 
   it("validates message body shape before resolving wallet backend", async () => {
@@ -131,7 +121,7 @@ describe("Solana browser signing routes", () => {
         body: { messageBase64: 42 },
       }),
       response,
-      runtime("1234567890abcdef"),
+      runtime("1234567890abcdef")
     );
 
     expect(response.statusCode).toBe(400);
@@ -147,7 +137,7 @@ describe("Solana browser signing routes", () => {
         body: { messageBase64: "not base64!?" },
       }),
       response,
-      runtime("1234567890abcdef"),
+      runtime("1234567890abcdef")
     );
 
     expect(response.statusCode).toBe(400);
@@ -163,7 +153,7 @@ describe("Solana browser signing routes", () => {
         body: { transactionBase64: Buffer.from("not a tx").toString("base64") },
       }),
       response,
-      runtime("1234567890abcdef"),
+      runtime("1234567890abcdef")
     );
 
     expect(response.statusCode).toBe(400);

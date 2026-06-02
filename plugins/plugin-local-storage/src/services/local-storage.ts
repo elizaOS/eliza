@@ -45,10 +45,7 @@ function joinKey(...segments: Array<string | undefined>): string {
 
 function normalizeStorageKey(...segments: Array<string | undefined>): string {
   for (const segment of segments) {
-    if (
-      typeof segment === "string" &&
-      (path.isAbsolute(segment) || /^[A-Za-z]:/.test(segment))
-    ) {
+    if (typeof segment === "string" && (path.isAbsolute(segment) || /^[A-Za-z]:/.test(segment))) {
       throw new Error(`Invalid local storage key: ${segment}`);
     }
   }

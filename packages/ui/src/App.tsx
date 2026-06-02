@@ -60,7 +60,7 @@ import { FirstRunScreen } from "./first-run/FirstRunScreen";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
-import { Z_OVERLAY, Z_SHELL_OVERLAY } from "./lib/floating-layers";
+import { Z_OVERLAY } from "./lib/floating-layers";
 import {
   APPS_ENABLED,
   getAppSlugFromPath,
@@ -1043,10 +1043,6 @@ function GlobalChatOverlay(): ReactNode {
   );
 }
 
-function shouldSuppressShellPill(tab: string): boolean {
-  return tab === "onboarding" || tab === "chat" || tab === "orchestrator";
-}
-
 export function App() {
   const {
     startupError,
@@ -1536,16 +1532,8 @@ export function App() {
           gameOverlayEnabled &&
           tab !== "apps" &&
           tab !== "views" && <GameViewOverlay />}
-        {isChat ? <GlobalChatOverlay /> : null}
+        <GlobalChatOverlay />
         <ShellOverlays actionNotice={actionNotice} />
-        {!shouldSuppressShellPill(tab) ? (
-          <div
-            className="pointer-events-none fixed inset-x-0 bottom-0 flex justify-center"
-            style={{ zIndex: Z_SHELL_OVERLAY }}
-          >
-            <ShellFoundationMount />
-          </div>
-        ) : null}
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}
           text={contextMenu.saveCommandText}

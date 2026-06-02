@@ -39,7 +39,9 @@ function firstStringField(...values: unknown[]): string {
   return "";
 }
 
-function getXRuntimeService(runtime: IAgentRuntime): XRuntimeServiceLike | null {
+function getXRuntimeService(
+  runtime: IAgentRuntime,
+): XRuntimeServiceLike | null {
   const service = runtime.getService("x") ?? runtime.getService("twitter");
   return service && typeof service === "object"
     ? (service as XRuntimeServiceLike)
@@ -96,7 +98,10 @@ function normalizeListLimit(limit: number | undefined): number {
   return Math.min(100, Math.max(1, Math.floor(limit)));
 }
 
-function parseDraftId(draftId: string): { participantId: string; text: string } {
+function parseDraftId(draftId: string): {
+  participantId: string;
+  text: string;
+} {
   const parts = draftId.split(":");
   if (parts.length !== 4 || parts[0] !== "twitter") {
     throw new Error(`[XDmAdapter] malformed draftId ${draftId}`);

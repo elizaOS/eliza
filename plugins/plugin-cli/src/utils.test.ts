@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
 import fc from "fast-check";
+import { describe, expect, it, vi } from "vitest";
 import {
 	formatBytes,
 	formatCliCommand,
@@ -79,9 +79,7 @@ describe("plugin-cli utilities", () => {
 		expect(resolveCliName(["node", "/usr/local/bin/elizaos.mjs"])).toBe(
 			"elizaos",
 		);
-		expect(resolveCliName(["node", "C:\\tools\\elizaos.cmd"])).toBe(
-			"elizaos",
-		);
+		expect(resolveCliName(["node", "C:\\tools\\elizaos.cmd"])).toBe("elizaos");
 	});
 
 	it("reports success and failure around async work", async () => {

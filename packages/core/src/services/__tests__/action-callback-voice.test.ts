@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { wrapSingleTurnVisibleCallback } from "../message";
 import type { HandlerCallback, IAgentRuntime, Memory } from "../../types";
 import { ModelType } from "../../types";
+import { wrapSingleTurnVisibleCallback } from "../message";
 
 describe("action callback voice rewriting", () => {
 	it("rewrites action callback text through TEXT_SMALL and delivers parsed natural language", async () => {
@@ -19,14 +19,16 @@ describe("action callback voice rewriting", () => {
 				warn: vi.fn(),
 				error: vi.fn(),
 			},
-			useModel: vi.fn(async (modelType: ModelType, params: { prompt: string }) => {
-				expect(modelType).toBe(ModelType.TEXT_SMALL);
-				expect(params.prompt).toContain("Original action payload");
-				expect(params.prompt).toContain("stdout: created task id=abc123");
-				return JSON.stringify({
-					response: "I created the task and kept its ID handy: abc123.",
-				});
-			}),
+			useModel: vi.fn(
+				async (modelType: ModelType, params: { prompt: string }) => {
+					expect(modelType).toBe(ModelType.TEXT_SMALL);
+					expect(params.prompt).toContain("Original action payload");
+					expect(params.prompt).toContain("stdout: created task id=abc123");
+					return JSON.stringify({
+						response: "I created the task and kept its ID handy: abc123.",
+					});
+				},
+			),
 		} as unknown as IAgentRuntime;
 		const message = {
 			id: "message",
