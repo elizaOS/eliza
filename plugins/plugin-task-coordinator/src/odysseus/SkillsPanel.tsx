@@ -56,13 +56,17 @@ export function SkillsPanel({
   };
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Skills">
+    <div
+      className="od-search-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Skills"
+    >
       <button
         type="button"
         aria-label="Close skills"
         onClick={onClose}
         className="od-search-backdrop"
-        style={{ zIndex: 55 }}
       />
       <div className="od-search-panel od-mem-panel">
         <div className="od-mem-head">

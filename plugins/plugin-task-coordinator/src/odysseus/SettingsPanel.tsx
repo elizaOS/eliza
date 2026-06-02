@@ -32,13 +32,17 @@ export function SettingsPanel({
   if (!open) return null;
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Settings">
+    <div
+      className="od-search-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Settings"
+    >
       <button
         type="button"
         aria-label="Close settings"
         onClick={onClose}
         className="od-search-backdrop"
-        style={{ zIndex: 55 }}
       />
       <div className="od-search-panel od-mem-panel">
         <div className="od-mem-head">

@@ -550,4 +550,16 @@ export const ODYSSEUS_CSS = `
 .odysseus-root .od-skill-toggle.on { border-color:var(--ok); color:var(--ok); background:color-mix(in srgb, var(--ok) 12%, transparent); }
 .odysseus-root .od-set-section { font-size:10px; text-transform:uppercase; letter-spacing:.04em; opacity:.5;
   padding:11px 16px 4px; position:sticky; top:0; background:var(--panel); z-index:1; }
+
+/* ── notes panel ── */
+.odysseus-root .od-note-add { padding:4px 16px 8px; }
+.odysseus-root .od-note-add .od-search-input { border:1px solid var(--border); border-radius:8px; }
+.odysseus-root .od-note-item { display:flex; align-items:flex-start; gap:10px; padding:9px 16px;
+  border-top:1px solid color-mix(in srgb, var(--fg) 6%, transparent); }
+.odysseus-root .od-note-body { flex:1; min-width:0; }
+.odysseus-root .od-note-text { font-size:13px; color:var(--fg); white-space:pre-wrap; word-break:break-word; }
+.odysseus-root .od-note-time { font-size:10px; color:color-mix(in srgb, var(--fg) 45%, transparent); margin-top:3px; }
+.odysseus-root .od-note-del { flex-shrink:0; background:none; border:none; cursor:pointer; font-size:12px;
+  padding:2px 6px; border-radius:4px; color:color-mix(in srgb, var(--fg) 40%, transparent); }
+.odysseus-root .od-note-del:hover { color:var(--red); background:color-mix(in srgb, var(--red) 10%, transparent); }
 `;

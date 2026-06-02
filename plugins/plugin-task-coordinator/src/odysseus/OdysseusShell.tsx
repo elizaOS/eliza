@@ -23,6 +23,7 @@ import { useChatSubmit } from "./hooks/useChatSubmit";
 import { useTaskRoom } from "./hooks/useTaskRoom";
 import { IconRail } from "./IconRail";
 import { MemoryPanel } from "./MemoryPanel";
+import { NotesPanel } from "./NotesPanel";
 import {
   buildThemeVars,
   FONT_MAP,
@@ -57,6 +58,7 @@ export function OdysseusShell(): ReactNode {
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [font, setFont] = useState<ThemeFont>(() =>
     readPref<ThemeFont>(PREF_KEYS.font, "mono"),
   );
@@ -196,6 +198,7 @@ export function OdysseusShell(): ReactNode {
         onOpenTheme={() => setThemeMenuOpen(true)}
         onOpenMemory={() => setMemoryOpen(true)}
         onOpenSkills={() => setSkillsOpen(true)}
+        onOpenNotes={() => setNotesOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
       />
       <ThemeMenu
@@ -212,6 +215,7 @@ export function OdysseusShell(): ReactNode {
       />
       <MemoryPanel open={memoryOpen} onClose={() => setMemoryOpen(false)} />
       <SkillsPanel open={skillsOpen} onClose={() => setSkillsOpen(false)} />
+      <NotesPanel open={notesOpen} onClose={() => setNotesOpen(false)} />
       <SettingsPanel
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
