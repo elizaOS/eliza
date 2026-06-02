@@ -80,9 +80,16 @@ export * from "./runtime";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/conversation-compaction-hook";
+export { looksLikeTrainingCutoffLeak } from "./runtime/cutoff-leak-detector";
 export * from "./runtime/execute-planned-tool-call";
+export { looksLikeFabricatedModeration } from "./runtime/fabricated-moderation-detector";
+export { looksLikeRefusal } from "./runtime/refusal-detector";
 export * from "./runtime/rlm";
 export * from "./runtime/schema-compat";
+export {
+	looksLikeNonRefusalStage1HonestyViolation,
+	looksLikeStage1HonestyViolation,
+} from "./runtime/stage1-honesty-detector";
 export * from "./runtime/sub-planner";
 export * from "./runtime/system-prompt";
 export * from "./runtime-route-context";

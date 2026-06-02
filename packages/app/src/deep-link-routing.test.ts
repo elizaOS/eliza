@@ -162,10 +162,7 @@ describe("assistant launch deep-link routing", () => {
       fc.property(
         fc.constantFrom(...knownPaths),
         fc.array(
-          fc.tuple(
-            fc.constantFrom(...keys),
-            fc.string({ maxLength: 80 }),
-          ),
+          fc.tuple(fc.constantFrom(...keys), fc.string({ maxLength: 80 })),
           { maxLength: 16 },
         ),
         (path, entries) => {
