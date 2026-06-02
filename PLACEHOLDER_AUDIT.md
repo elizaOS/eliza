@@ -139,7 +139,20 @@ platform no-ops are separated from actionable runtime gaps.
   registers dynamic actions/providers/evaluators/models/events/services, and
   merges dynamic routes into the runtime route surface when available.
 - Updated docs that previously described dynamic action callbacks as no-ops.
-- Verified with focused remote-plugin adapter coverage and typecheck.
+- Fixed the Windows `local-safe` shell-router gap in
+  `src/services/shell-execution-router.ts`. The agent shell chokepoint no
+  longer throws a hardcoded Windows not-implemented error; it delegates
+  platform support to the resolved `SandboxManager` backend and still refuses
+  host fallback when no manager is available.
+- Added coverage in `src/services/shell-execution-router.test.ts` that
+  simulates Windows and verifies `local-safe` commands route through
+  `SandboxManager.run`.
+- Verified with:
+  - focused remote-plugin adapter coverage and typecheck
+  - `bun run --cwd packages/agent test src/services/shell-execution-router.test.ts`
+  - `bun run --cwd packages/agent typecheck`
+  - `bunx biome check packages/agent/src/services/shell-execution-router.ts packages/agent/src/services/shell-execution-router.test.ts`
+  - marker scan on the touched shell-router files
 
 ### packages/ui
 
@@ -192,6 +205,44 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd plugins/plugin-computeruse typecheck`
   - `bunx biome check` on touched plugin-computeruse files
 
+### plugins/plugin-documents
+
+- Removed stale fallback-stub wording from `CLAUDE.md`, `AGENTS.md`, and
+  `README.md`. The image upload route already stores explicit
+  extraction/description-unavailable text and returns warnings when image
+  description fails; the docs now describe that real behavior.
+- Verified with marker scan and `git diff --check` on the touched docs.
+
+### plugins/plugin-elevenlabs
+
+- Removed the browser-mode synthetic API key from `src/index.ts`. TTS and STT
+  now share a client-config guard: use a real `ELEVENLABS_API_KEY`, or in
+  browser mode use `ELEVENLABS_BROWSER_URL` and let the proxy inject
+  credentials. Missing credentials/proxy fail before contacting the SDK.
+- Updated package-local `CLAUDE.md` and `AGENTS.md` to document the real
+  browser credential contract.
+- Added streaming-suite coverage that verifies browser proxy mode sends no
+  synthetic API key and that missing browser proxy/API key fails early.
+- Verified with:
+  - `bun run --cwd plugins/plugin-elevenlabs test __tests__/streaming.test.ts`
+  - `bun run --cwd plugins/plugin-elevenlabs typecheck`
+  - `bunx biome check plugins/plugin-elevenlabs/src/index.ts plugins/plugin-elevenlabs/__tests__/streaming.test.ts plugins/plugin-elevenlabs/CLAUDE.md plugins/plugin-elevenlabs/AGENTS.md`
+  - marker scan on the touched ElevenLabs files
+
+### plugins/plugin-music
+
+- Finished `BLOCKING` backpressure behavior in
+  `src/core/streamMultiplexer.ts`. Slow consumers now pause the source stream
+  until their `PassThrough` drains, and removing a slow consumer also resumes
+  the source when no blocked consumers remain.
+- Added `src/core/streamMultiplexer.test.ts` covering drain-based resume and
+  remove-consumer resume.
+- Verified with:
+  - `bun run --cwd plugins/plugin-music test src/core/streamMultiplexer.test.ts`
+  - `bun run --cwd plugins/plugin-music typecheck`
+  - `bunx biome check plugins/plugin-music/src/core/streamMultiplexer.ts plugins/plugin-music/src/core/streamMultiplexer.test.ts`
+  - marker scan on the touched stream multiplexer files
+
 ### plugins/plugin-native-talkmode
 
 - Implemented iOS `useLocalInferenceTts`.
@@ -207,6 +258,37 @@ platform no-ops are separated from actionable runtime gaps.
 - Replaced the placeholder cleanup-agents integration test with real coverage.
 - Added component patch integration coverage.
 - Verified with plugin typecheck, integration tests, and lint check.
+
+### plugins/plugin-training
+
+- Replaced the generic training-orchestrator baseline fallback in
+  `src/core/training-orchestrator.ts` with concrete task baselines for
+  `should_respond`, `context_routing`, `action_planner`, `response`, and
+  `media_description`. Native optimizer runs no longer start from placeholder
+  prompt text when runtime prompt exports are unavailable.
+- Exported `loadBaselineForTask` and added
+  `src/core/training-orchestrator.test.ts` to cover all supported training
+  tasks.
+- Verified with:
+  - `bun run --cwd plugins/plugin-training test src/core/training-orchestrator.test.ts`
+  - `bun run --cwd plugins/plugin-training build:types`
+  - `bunx biome check plugins/plugin-training/src/core/training-orchestrator.ts plugins/plugin-training/src/core/training-orchestrator.test.ts`
+  - marker scan and `git diff --check` on touched training files
+
+### plugins/plugin-wechat
+
+- Removed the synthetic placeholder default account from
+  `src/connector-account-provider.ts`. When WeChat is not configured,
+  `listAccounts()` now returns an empty list instead of exposing a disabled
+  account that can be mistaken for real connector state; configured env or
+  character accounts still surface normally.
+- Added `src/connector-account-provider.test.ts` covering empty config and
+  env-configured single-account behavior.
+- Verified with:
+  - `bun run --cwd plugins/plugin-wechat test src/connector-account-provider.test.ts`
+  - `bun run --cwd plugins/plugin-wechat check`
+  - `bunx biome check plugins/plugin-wechat/src/connector-account-provider.ts plugins/plugin-wechat/src/connector-account-provider.test.ts`
+  - marker scan on the touched WeChat provider files
 
 ### plugins/plugin-wallet
 
