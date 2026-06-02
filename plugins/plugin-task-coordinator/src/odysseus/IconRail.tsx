@@ -3,15 +3,23 @@
 // gallery, …) fill in as their phases land. Always visible — it's what the
 // sidebar collapses down to.
 
-import { MessageSquare, Palette, PanelLeft, Settings } from "lucide-react";
+import {
+  Brain,
+  MessageSquare,
+  Palette,
+  PanelLeft,
+  Settings,
+} from "lucide-react";
 import type { ReactNode } from "react";
 
 export function IconRail({
   onToggleSidebar,
   onOpenTheme,
+  onOpenMemory,
 }: {
   onToggleSidebar: () => void;
   onOpenTheme: () => void;
+  onOpenMemory: () => void;
 }): ReactNode {
   return (
     <div className="od-icon-rail">
@@ -26,6 +34,15 @@ export function IconRail({
       </button>
       <button type="button" className="od-rail-btn active" title="Chat">
         <MessageSquare size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenMemory}
+        title="Memory"
+        aria-label="Memory"
+      >
+        <Brain size={18} />
       </button>
       <div className="od-rail-spacer" />
       <button

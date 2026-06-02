@@ -22,6 +22,7 @@ import { ChatContainer } from "./ChatContainer";
 import { useChatSubmit } from "./hooks/useChatSubmit";
 import { useTaskRoom } from "./hooks/useTaskRoom";
 import { IconRail } from "./IconRail";
+import { MemoryPanel } from "./MemoryPanel";
 import {
   FONT_MAP,
   ODYSSEUS_CSS,
@@ -48,6 +49,7 @@ export function OdysseusShell(): ReactNode {
     readPref<ThemeName>(PREF_KEYS.themeMode, "dark"),
   );
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
   const [font, setFont] = useState<ThemeFont>(() =>
     readPref<ThemeFont>(PREF_KEYS.font, "mono"),
   );
@@ -165,6 +167,7 @@ export function OdysseusShell(): ReactNode {
       <IconRail
         onToggleSidebar={toggleSidebar}
         onOpenTheme={() => setThemeMenuOpen(true)}
+        onOpenMemory={() => setMemoryOpen(true)}
       />
       <ThemeMenu
         open={themeMenuOpen}
@@ -176,6 +179,7 @@ export function OdysseusShell(): ReactNode {
         onSetFont={pickFont}
         onSetDensity={pickDensity}
       />
+      <MemoryPanel open={memoryOpen} onClose={() => setMemoryOpen(false)} />
       <SearchPalette
         open={searchOpen}
         onClose={() => setSearchOpen(false)}

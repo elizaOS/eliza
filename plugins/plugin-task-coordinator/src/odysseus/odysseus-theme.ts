@@ -517,4 +517,17 @@ export const ODYSSEUS_CSS = `
 .odysseus-root .od-search-item:hover { background:color-mix(in srgb, var(--red) 10%, transparent); }
 .odysseus-root .od-search-empty { padding:16px; color:color-mix(in srgb, var(--fg) 45%, transparent);
   font-size:13px; text-align:center; }
+
+/* ── memory panel ── */
+.odysseus-root .od-mem-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px;
+  padding:13px 16px 6px; }
+.odysseus-root .od-mem-title { font-size:14px; font-weight:600; color:var(--fg); }
+.odysseus-root .od-mem-stats { font-size:11px; color:color-mix(in srgb, var(--fg) 55%, transparent); }
+.odysseus-root .od-mem-item { display:flex; align-items:baseline; gap:10px; padding:8px 16px;
+  border-top:1px solid color-mix(in srgb, var(--fg) 6%, transparent); }
+.odysseus-root .od-mem-type { font-size:9px; text-transform:uppercase; letter-spacing:.04em; color:var(--red);
+  flex-shrink:0; min-width:54px; }
+.odysseus-root .od-mem-text { flex:1; font-size:13px; color:var(--fg); overflow:hidden; text-overflow:ellipsis;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.odysseus-root .od-mem-time { font-size:10px; color:color-mix(in srgb, var(--fg) 45%, transparent); flex-shrink:0; }
 `;
