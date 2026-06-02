@@ -49,29 +49,33 @@ function makeComponent(session: FormSession): Component {
 function makeRuntime(components: Component[]): IAgentRuntime {
   return {
     agentId,
-    queryEntities: vi.fn(async (params: { componentDataFilter?: { status?: string } }) => {
-      const status = params.componentDataFilter?.status;
-      const matched = components.filter((component) => {
-        const data = component.data as { status?: string } | undefined;
-        return !status || data?.status === status;
-      });
-      const byEntity = new Map<UUID, Component[]>();
-      for (const component of matched) {
-        byEntity.set(component.entityId, [
-          ...(byEntity.get(component.entityId) ?? []),
-          ...components.filter((candidate) => candidate.entityId === component.entityId),
-        ]);
-      }
-      return [...byEntity].map(
-        ([id, entityComponents]) =>
-          ({
-            id,
-            agentId,
-            names: ["Test Entity"],
-            components: entityComponents,
-          }) as Entity
-      );
-    }),
+    queryEntities: vi.fn(
+      async (params: { componentDataFilter?: { status?: string } }) => {
+        const status = params.componentDataFilter?.status;
+        const matched = components.filter((component) => {
+          const data = component.data as { status?: string } | undefined;
+          return !status || data?.status === status;
+        });
+        const byEntity = new Map<UUID, Component[]>();
+        for (const component of matched) {
+          byEntity.set(component.entityId, [
+            ...(byEntity.get(component.entityId) ?? []),
+            ...components.filter(
+              (candidate) => candidate.entityId === component.entityId,
+            ),
+          ]);
+        }
+        return [...byEntity].map(
+          ([id, entityComponents]) =>
+            ({
+              id,
+              agentId,
+              names: ["Test Entity"],
+              components: entityComponents,
+            }) as Entity,
+        );
+      },
+    ),
   } as unknown as IAgentRuntime;
 }
 
@@ -103,7 +107,7 @@ describe("form storage session scans", () => {
 
     const sessions = await getStaleSessions(
       makeRuntime([makeComponent(stale), makeComponent(fresh), unrelated]),
-      60_000
+      60_000,
     );
 
     expect(sessions.map((session) => session.id)).toEqual(["stale"]);
@@ -127,8 +131,12 @@ describe("form storage session scans", () => {
     });
 
     const sessions = await getExpiringSessions(
-      makeRuntime([makeComponent(expiring), makeComponent(later), makeComponent(expired)]),
-      60_000
+      makeRuntime([
+        makeComponent(expiring),
+        makeComponent(later),
+        makeComponent(expired),
+      ]),
+      60_000,
     );
 
     expect(sessions.map((session) => session.id)).toEqual(["expiring"]);
