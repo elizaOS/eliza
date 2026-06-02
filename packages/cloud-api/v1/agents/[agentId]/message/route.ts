@@ -1,29 +1,29 @@
 /**
  * POST /api/v1/agents/[agentId]/message
  *
- * Service-key-authed patron chat proxy. waifu-core's `sendAgentMessage`
- * (ElizaCloudClient) posts here with `{ userId, text, sessionId? }` and reads
- * the reply text back. This is the patron <-> hosted-agent chat path for
- * waifu.fun: it resolves the agent's sandbox (bridge_url + ELIZA_API_TOKEN +
- * runtime agent id) under the waifu service org and forwards the turn to the
- * running container via `elizaSandboxService.bridge(... message.send ...)`,
- * which already implements the robust multi-strategy send (native JSON-RPC,
- * conversation message, OpenAI chat-completion, central-channel) with
- * no-reply fallback.
+ * Service-key-authed SYNCHRONOUS patron chat proxy. waifu-core's
+ * ElizaCloudClient.sendAgentMessage posts here with `{ userId, text,
+ * sessionId? }` and awaits the reply text.
  *
- * Auth: X-Service-Key (WAIFU_SERVICE_KEY) — same as the provision route. The
- * org/user are mapped from WAIFU_SERVICE_ORG_ID / WAIFU_SERVICE_USER_ID, so a
- * service caller can only chat agents owned by the service org.
+ * Why a job (not a direct bridge fetch from the worker): the CF edge worker
+ * can only fetch standard ports (80/443/8080/8443), but the agent bridge runs
+ * on a raw high port. So the worker can't reach the container directly. The
+ * daemon (eliza-1) CAN, so we enqueue an `agent_message` job, trigger the
+ * daemon immediately, then poll the job row for the reply within a timeout —
+ * giving the caller a synchronous response while routing through the only
+ * component that can actually reach the bridge. Same pattern as the logs
+ * route, but synchronous (we wait for the result instead of returning a 202).
  *
- * The response flattens the bridge `result` to the top level so the caller can
- * read `text` directly (matching ElizaCloudClient's `extractReplyText`, which
- * reads top-level `text`/`message`/`reply`).
+ * Auth: X-Service-Key (WAIFU_SERVICE_KEY) — same as provision. Org/user are
+ * mapped from WAIFU_SERVICE_ORG_ID / WAIFU_SERVICE_USER_ID, so a service
+ * caller can only chat agents owned by the service org.
  */
 import { z } from "zod";
 import { Hono } from "hono";
 import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import type { AgentMessageJobResult } from "@/lib/services/provisioning-jobs";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -34,6 +34,12 @@ const messageRequestSchema = z.object({
   sessionId: z.string().min(1).optional(),
   roomId: z.string().min(1).optional(),
 });
+
+// How long to wait for the daemon to deliver the turn + return the reply.
+const MAX_WAIT_MS = 75_000;
+const POLL_INTERVAL_MS = 1_500;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function __hono_POST(c: AppContext) {
   try {
@@ -55,37 +61,74 @@ async function __hono_POST(c: AppContext) {
 
     const { text, userId, sessionId, roomId } = parsed.data;
 
-    const rpc: BridgeRequest = {
-      jsonrpc: "2.0",
-      method: "message.send",
-      params: {
-        text,
-        ...(userId ? { userId } : {}),
-        ...(sessionId ? { sessionId } : {}),
-        ...(roomId ? { roomId } : {}),
-      },
-    };
-
-    const response = await elizaSandboxService.bridge(
+    // Agent must exist under the service org before we enqueue.
+    const agent = await elizaSandboxService.getAgent(
       agentId,
       identity.organizationId,
-      rpc,
     );
-
-    if (response.error) {
-      logger.warn("[agents/message] bridge returned error", {
-        agentId,
-        code: response.error.code,
-        message: response.error.message,
-      });
-      return c.json(
-        { success: false, error: response.error.message },
-        502,
-      );
+    if (!agent) {
+      return c.json({ success: false, error: "Agent not found" }, 404);
     }
 
-    // Flatten result to top level so callers reading `text` work directly.
-    return c.json({ success: true, ...(response.result ?? {}) });
+    const { job } = await provisioningJobService.enqueueAgentMessage({
+      agentId,
+      organizationId: identity.organizationId,
+      userId: identity.userId,
+      text,
+      ...(userId ? { senderId: userId } : {}),
+      ...(sessionId ? { sessionId } : {}),
+      ...(roomId ? { roomId } : {}),
+    });
+
+    void provisioningJobService.triggerImmediate(c.env).catch(() => {
+      // Logged inside the service.
+    });
+
+    // Poll the job row for the daemon-delivered reply.
+    const deadline = Date.now() + MAX_WAIT_MS;
+    while (Date.now() < deadline) {
+      await sleep(POLL_INTERVAL_MS);
+      const current = await provisioningJobService.getJobForOrg(
+        job.id,
+        identity.organizationId,
+      );
+      if (!current) continue;
+
+      if (current.status === "completed") {
+        const result = (current.result ?? {}) as AgentMessageJobResult;
+        // Flatten so callers reading top-level `text` work directly.
+        return c.json({
+          success: true,
+          text: result.text ?? "",
+          ...(result.reason ? { reason: result.reason } : {}),
+          jobId: job.id,
+        });
+      }
+
+      if (current.status === "failed") {
+        const result = (current.result ?? {}) as AgentMessageJobResult;
+        logger.warn("[agents/message] job failed", {
+          agentId,
+          jobId: job.id,
+          error: result.error,
+        });
+        return c.json(
+          { success: false, error: result.error ?? "agent message failed", jobId: job.id },
+          502,
+        );
+      }
+    }
+
+    // Timed out waiting for the daemon. The job may still complete; caller can
+    // retry. Return 504 so waifu-core surfaces a transient failure.
+    logger.warn("[agents/message] timed out waiting for reply", {
+      agentId,
+      jobId: job.id,
+    });
+    return c.json(
+      { success: false, error: "Timed out waiting for agent reply", jobId: job.id },
+      504,
+    );
   } catch (error) {
     return failureResponse(c, error);
   }
