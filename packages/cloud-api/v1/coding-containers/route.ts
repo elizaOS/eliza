@@ -26,6 +26,19 @@
  * with ZERO validation. We now require it to match
  * `CODING_CONTAINER_IMAGE_ALLOWLIST` (default ghcr.io/{dexploarer,elizaos,
  * waifufun}/*) and reject others with 403.
+ *
+ * KNOWN GAPS vs the old control-plane path (the daemon's standard
+ * `agent_sandboxes` provision path does not yet carry these; tracked as
+ * follow-ups — see PR body). They do NOT affect a self-contained agent image
+ * like Nancy, which needs only image + env:
+ *   1. `bootstrap_source` (source.files) is NOT hydrated — a VFS-promoted
+ *      workspace would start empty. The `agent_sandboxes` schema has no
+ *      bootstrap/volume columns, so honoring this needs daemon + schema work.
+ *   2. Custom `container.cpu` / `container.memory` are NOT plumbed to
+ *      `provision()` (it uses node defaults). Same schema limitation.
+ *   3. The returned `url` is the agent bridge/health URL, NOT the browser IDE
+ *      URL the old control-plane returned. UI-facing callers must resolve the
+ *      public coding-UI URL separately until the daemon surfaces it.
  */
 
 import { Hono } from "hono";
