@@ -302,7 +302,7 @@ export function themeVars(name: ThemeName): CssVarStyle {
 // Structural CSS — verbatim odysseus rules, re-prefixed `od-` and scoped under
 // .odysseus-root so they never collide with or leak into the rest of eliza.
 export const ODYSSEUS_CSS = `
-.odysseus-root { display:flex; height:100%; min-height:0; width:100%; overflow:hidden; position:relative;
+.odysseus-root { display:flex; height:100%; min-height:0; width:100%; overflow:hidden; position:relative; isolation:isolate;
   background:var(--bg); color:var(--fg);
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; }
 
@@ -521,6 +521,7 @@ export const ODYSSEUS_CSS = `
    perlin/petals/sparkles/synapse are a later effects port) */
 .odysseus-root.od-bg-dots { background-image: radial-gradient(color-mix(in srgb, var(--fg) 5%, transparent) 1px, transparent 1px);
   background-size:20px 20px; }
+.odysseus-root .od-bg-canvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:-1; }
 
 /* ── search palette (Ctrl+K) ── */
 .odysseus-root .od-search-overlay { position:absolute; inset:0; z-index:50; display:flex;

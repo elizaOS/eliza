@@ -18,6 +18,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { BgEffect } from "./BgEffect";
 import { ChatContainer } from "./ChatContainer";
 import { useChatSubmit } from "./hooks/useChatSubmit";
 import { useTaskRoom } from "./hooks/useTaskRoom";
@@ -230,6 +231,7 @@ export function OdysseusShell(): ReactNode {
     >
       {/** biome-ignore lint/security/noDangerouslySetInnerHtml: static, build-time CSS constant (no user input) */}
       <style dangerouslySetInnerHTML={{ __html: ODYSSEUS_CSS }} />
+      <BgEffect pattern={bgPattern} />
       <IconRail
         onToggleSidebar={toggleSidebar}
         onOpenTheme={() => setThemeMenuOpen(true)}
