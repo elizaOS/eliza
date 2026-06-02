@@ -24,7 +24,7 @@ This plugin registers **model handlers only** — no actions, providers, service
 All text handlers share `models/text.ts:handleTextWithModelType`. Routing logic:
 - `stream: true` + tools → `streamText` with tool set (Ollama v2 streaming `/api/chat`).
 - `stream: true`, no tools, no schema, no `toolChoice` → `streamText` returning `TextStreamResult` for SSE.
-- `stream: true` + `responseSchema` only → `generateText` (structured `format` not on `streamText` path; logs at debug).
+- `stream: true` + `responseSchema` only → `generateText` (structured `format` stays on the completion path; logs at debug).
 - All other cases → `generateText`.
 
 ## Layout

@@ -39,7 +39,7 @@ This plugin returns **`TextStreamResult`** from **`streamText`** when **`stream:
 - **Plain chat:** no **`responseSchema`**, **tools**, or **`toolChoice`** — every text delta is yielded to **`textStream`** (normal SSE).
 - **Native tools:** **tools** are present — Ollama streams the chat request with tools on the wire. For **`RESPONSE_HANDLER`** / **`ACTION_PLANNER`**, **`useModel`**’s streaming path concatenates only **`textStream`** chunks into the string passed to **`parseMessageHandlerOutput`**, so this adapter **drains** model text deltas internally and **yields a single trailing chunk** of the first tool’s **`arguments`** JSON (the v5 plan). **Why:** prepending arbitrary streamed text would break **`JSON.parse`** on that accumulated string. Other **`TEXT_*`** types forward all text chunks and attach **`toolCalls`** on the result (parity with OpenAI/OpenRouter).
 
-**Still `generateText`:** **`stream: true`** with **`responseSchema`** only (no tools), e.g. nested **`FACT_EXTRACTOR`** during SSE — **`stream` may still be true** on params; we **do not throw** and we **log at debug** because structured **`format: json`** is not wired through **`streamText`** here.
+**Still `generateText`:** **`stream: true`** with **`responseSchema`** only (no tools), e.g. nested **`FACT_EXTRACTOR`** during SSE — **`stream` may still be true** on params; we **do not throw** and we **log at debug** because this adapter intentionally keeps structured **`format: json`** on the completion path.
 
 **Still `generateText`:** **`stream: true`** with **`toolChoice`** but **no** resolved **`ToolSet`** on the wire — **log at debug**, then **`generateText`**. **Why:** the AI SDK’s **`streamText`** path used here expects **`tools`** in the same request; `toolChoice` alone is invalid for streaming and is not produced by core v5 (Stage 1 always passes tools with `toolChoice`).
 
@@ -49,7 +49,7 @@ This plugin returns **`TextStreamResult`** from **`streamText`** when **`stream:
 |----------|-----------------|----------------------------------|------|-----|
 | `true` | yes | (any; schema dropped if both) | **`streamText`** + tools | Same surface as other provider plugins; Ollama v2 supports tools on streaming `/api/chat`. |
 | `true` | no | no schema, no `toolChoice` | **`streamText`** plain | **`TextStreamResult`** so `useModel` can forward SSE chunks. |
-| `true` | no | schema only | **`generateText`** | Structured **`format`** is not implemented on **`streamText`** in this adapter; nested schema calls must not throw. |
+| `true` | no | schema only | **`generateText`** | Structured **`format`** stays on the completion path in this adapter; nested schema calls must not throw. |
 | `true` | no | `toolChoice` only | **`generateText`** | **`streamText`+tools** requires a tool set; log explains misconfiguration. |
 | `false` / absent | (any) | (any) | **`generateText`** (or structured serialize) | Normal completion path; Stage 1 without inherited streaming uses this. |
 

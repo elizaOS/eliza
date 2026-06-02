@@ -286,6 +286,19 @@ platform no-ops are separated from actionable runtime gaps.
   - `bunx biome check plugins/plugin-music/src/core/streamMultiplexer.ts plugins/plugin-music/src/core/streamMultiplexer.test.ts`
   - marker scan on the touched stream multiplexer files
 
+### plugins/plugin-ollama
+
+- Removed misleading "not implemented" wording from `README.md`, `CLAUDE.md`,
+  and `AGENTS.md` for schema-only streaming calls. The adapter already has a
+  deliberate, covered fallback: `stream: true` with only `responseSchema` stays
+  on `generateText` so structured `format` remains on the completion path and
+  nested schema calls do not throw.
+- Verified with:
+  - `bun run --cwd plugins/plugin-ollama test __tests__/native-plumbing.shape.test.ts`
+  - `bun run --cwd plugins/plugin-ollama typecheck`
+  - marker scan and `git diff --check` on the touched Ollama docs
+- Biome note: package markdown docs are ignored by the active Biome config.
+
 ### plugins/plugin-native-talkmode
 
 - Implemented iOS `useLocalInferenceTts`.
@@ -332,6 +345,22 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd plugins/plugin-wechat check`
   - `bunx biome check plugins/plugin-wechat/src/connector-account-provider.ts plugins/plugin-wechat/src/connector-account-provider.test.ts`
   - marker scan on the touched WeChat provider files
+
+### plugins/plugin-x
+
+- Replaced the duplicate-tweet "simple for now" similarity path in
+  `src/utils/memory.ts` with a deterministic normalized token-similarity check
+  that honors the existing `similarityThreshold` parameter. The guard still
+  catches exact and substring duplicates, and now also catches reordered
+  near-duplicates without adding embedding/model dependencies to the posting
+  path.
+- Added `src/utils/memory.test.ts` coverage for reordered near-duplicates and
+  threshold behavior.
+- Verified with:
+  - `bun run --cwd plugins/plugin-x test src/utils/memory.test.ts`
+  - `bun run --cwd plugins/plugin-x typecheck` (package script currently skips release typecheck)
+  - `bunx biome check plugins/plugin-x/src/utils/memory.ts plugins/plugin-x/src/utils/memory.test.ts`
+  - marker scan and `git diff --check` on the touched X files
 
 ### plugins/plugin-wallet
 
