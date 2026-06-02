@@ -177,7 +177,6 @@ describe("Plugin metadata", () => {
     expect(twitchPlugin.services).toContain(TwitchService);
     expect(twitchPlugin.services).toContain(TwitchWorkflowCredentialProvider);
   });
-
 });
 
 // ===========================================================================
