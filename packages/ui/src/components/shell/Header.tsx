@@ -10,12 +10,19 @@ import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useMediaQuery } from "../../hooks";
-import { isAppsToolTab, titleForTab } from "../../navigation";
+import {
+  type DynamicNavTab,
+  getTabGroups,
+  isAppsToolTab,
+  type TabGroup,
+  titleForTab,
+} from "../../navigation";
 import {
   isDetachedWindowShell,
   resolveWindowShellRoute,
 } from "../../platform/window-shell";
 import { useApp } from "../../state";
+import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import { getOverlayApp } from "../apps/overlay-app-registry";
 import { CloudStatusBadge } from "../cloud/CloudStatusBadge";
 import { OwnerBadge } from "../composites/OwnerBadge";
@@ -26,6 +33,8 @@ import { Button } from "../ui/button";
 import { HEADER_BUTTON_STYLE } from "./ShellHeaderControls";
 
 const MOBILE_HEADER_MEDIA_QUERY = "(max-width: 819px)";
+const DESKTOP_LABEL_COLLAPSE_MEDIA_QUERY = "(max-width: 1380px)";
+
 const NAV_LABEL_I18N_KEY: Record<string, string> = {
   Apps: "nav.apps",
   Automations: "nav.automations",
@@ -42,12 +51,30 @@ const NAV_LABEL_I18N_KEY: Record<string, string> = {
   Wallet: "nav.wallet",
 };
 
+const NAV_DESCRIPTION_I18N_KEY: Record<string, string> = {
+  Apps: "nav.description.apps",
+  Automations: "nav.description.automations",
+  Browser: "nav.description.browser",
+  Character: "nav.description.character",
+  Chat: "nav.description.chat",
+  Settings: "nav.description.settings",
+  Stream: "nav.description.stream",
+  Wallet: "nav.description.wallet",
+};
+
+const TOPBAR_NAV_BUTTON_CLASSNAME =
+  "group relative inline-flex h-[2.375rem] min-h-[2.375rem] shrink-0 items-center gap-2 rounded-sm border border-transparent px-2.5 text-xs font-medium text-muted transition-colors duration-150 hover:text-txt after:absolute after:inset-x-2.5 after:bottom-0 after:h-[3px] after:rounded-t-full after:bg-accent/70 after:opacity-0 after:transition-opacity after:duration-150 hover:after:opacity-55";
+const TOPBAR_NAV_BUTTON_ACTIVE_CLASSNAME = "text-accent after:opacity-100";
 const TOPBAR_ICON_BUTTON_CLASSNAME =
   "relative inline-flex h-[2.375rem] w-[2.375rem] min-h-[2.375rem] min-w-[2.375rem] shrink-0 items-center justify-center rounded-sm border border-transparent bg-transparent text-muted transition-colors duration-150 hover:text-txt";
 const TOPBAR_ICON_BUTTON_ACTIVE_CLASSNAME = navActiveClassHorizontal;
 const TOPBAR_RIGHT_ICON_BUTTON_CLASSNAME =
   "inline-flex h-[2.375rem] w-[2.375rem] min-h-[2.375rem] min-w-[2.375rem] shrink-0 items-center justify-center rounded-sm border border-transparent !bg-transparent text-muted shadow-none ring-0 transition-colors duration-150 hover:!bg-transparent hover:text-txt active:!bg-transparent data-[state=open]:!bg-transparent";
 const TOPBAR_RIGHT_ICON_BUTTON_ACTIVE_CLASSNAME = navActiveClassHorizontal;
+const MOBILE_BOTTOM_NAV_BUTTON_CLASSNAME =
+  "group relative mx-auto inline-flex h-14 w-full max-w-16 min-w-0 shrink-0 flex-col items-center justify-center gap-0.5 rounded-sm py-1 text-muted transition-colors duration-150 hover:text-txt after:absolute after:inset-x-2 after:top-0 after:h-[2px] after:rounded-b-full after:bg-accent/70 after:opacity-0 after:transition-opacity after:duration-150";
+const MOBILE_BOTTOM_NAV_BUTTON_ACTIVE_CLASSNAME =
+  "text-accent after:opacity-100";
 const MAC_TITLEBAR_PADDING_STYLE: CSSProperties = {
   paddingInlineStart:
     "max(env(safe-area-inset-left, 0px), var(--eliza-macos-frame-left-inset, 80px))",
@@ -88,12 +115,13 @@ export function Header({
   hideCloudCredits = false,
   tasksEventsPanelOpen = false,
   onToggleTasksPanel,
-  hideNav: _hideNav = false,
+  hideNav = false,
 }: HeaderProps) {
   const {
     activeGameRunId,
     activeOverlayApp,
     appRuns,
+    browserEnabled,
     elizaCloudAuthRejected,
     elizaCloudConnected,
     elizaCloudCredits,
@@ -102,6 +130,7 @@ export function Header({
     elizaCloudCreditsLow,
     loadDropStatus,
     ownerName,
+    plugins,
     setState,
     setTab,
     setUiLanguage,
@@ -110,11 +139,15 @@ export function Header({
     t,
     uiLanguage,
     uiTheme,
+    walletEnabled,
   } = useApp();
 
   const isMobileViewport = useMediaQuery(MOBILE_HEADER_MEDIA_QUERY);
   const [mobileRuntimeMode, setMobileRuntimeMode] = useState(
     readPersistedMobileRuntimeMode,
+  );
+  const collapseDesktopNavLabels = useMediaQuery(
+    DESKTOP_LABEL_COLLAPSE_MEDIA_QUERY,
   );
   const showMacDesktopTitleBar = shouldShowMacDesktopTitleBar();
   const titlebarPaddingStyle = showMacDesktopTitleBar
@@ -160,12 +193,19 @@ export function Header({
       return;
     }
 
-    document.documentElement.classList.remove("eliza-mobile-bottom-nav");
+    // The eliza-mobile-bottom-nav class drives CSS padding offsets for the
+    // bottom nav bar. Hide it on chat (hideNav=true) so the chat view fills
+    // the full viewport with no bottom nav padding.
+    if (isMobileViewport && !hideNav) {
+      document.documentElement.classList.add("eliza-mobile-bottom-nav");
+    } else {
+      document.documentElement.classList.remove("eliza-mobile-bottom-nav");
+    }
 
     return () => {
       document.documentElement.classList.remove("eliza-mobile-bottom-nav");
     };
-  }, []);
+  }, [isMobileViewport, hideNav]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -193,10 +233,58 @@ export function Header({
     };
   }, [showMacDesktopTitleBar]);
 
+  const streamingEnabled = useMemo(
+    () => plugins.some((plugin) => plugin.id === "streaming" && plugin.enabled),
+    [plugins],
+  );
+  const developerModeEnabled = useIsDeveloperMode();
+
+  // Plugin-contributed nav tabs from each loaded plugin's `app.navTabs`.
+  // Filter out developer-only tabs unless Developer Mode is enabled.
+  const dynamicNavTabs = useMemo<DynamicNavTab[]>(() => {
+    const out: DynamicNavTab[] = [];
+    for (const plugin of plugins) {
+      if (!plugin.enabled) continue;
+      const navTabs = plugin.app?.navTabs;
+      if (!navTabs?.length) continue;
+      const appDeveloperOnly = plugin.app?.developerOnly === true;
+      for (const navTab of navTabs) {
+        const isDeveloperOnly =
+          appDeveloperOnly || navTab.developerOnly === true;
+        if (isDeveloperOnly && !developerModeEnabled) continue;
+        out.push({
+          tabId: navTab.id,
+          label: navTab.label,
+          navGroup: navTab.group,
+        });
+      }
+    }
+    return out;
+  }, [plugins, developerModeEnabled]);
+
   const hideMobileLocalAutomations =
     isMobileViewport &&
     mobileRuntimeMode === "local" &&
     Capacitor.isNativePlatform();
+
+  const tabGroups = useMemo(
+    () =>
+      getTabGroups(
+        streamingEnabled,
+        walletEnabled,
+        browserEnabled,
+        dynamicNavTabs,
+        undefined,
+        !hideMobileLocalAutomations,
+      ),
+    [
+      browserEnabled,
+      hideMobileLocalAutomations,
+      streamingEnabled,
+      walletEnabled,
+      dynamicNavTabs,
+    ],
+  );
 
   useEffect(() => {
     if (
@@ -206,6 +294,15 @@ export function Header({
       setTab("apps");
     }
   }, [hideMobileLocalAutomations, setTab, tab]);
+
+  const settingsTabGroup = useMemo(
+    () => tabGroups.find((group) => group.label === "Settings") ?? null,
+    [tabGroups],
+  );
+  const primaryDesktopGroups = useMemo(
+    () => tabGroups.filter((group) => group.label !== "Settings"),
+    [tabGroups],
+  );
 
   const localizeNavLabel = useCallback(
     (label: string) =>
@@ -282,6 +379,19 @@ export function Header({
     setTab("apps");
   }, [breadcrumbSourceIsApp, setState, setTab]);
 
+  const localizeTabGroup = useCallback(
+    (group: TabGroup) => ({
+      description:
+        group.description && NAV_DESCRIPTION_I18N_KEY[group.label]
+          ? t(NAV_DESCRIPTION_I18N_KEY[group.label], {
+              defaultValue: group.description,
+            })
+          : group.description,
+      label: localizeNavLabel(group.label),
+    }),
+    [localizeNavLabel, t],
+  );
+
   const breadcrumbNode = useMemo(() => {
     if (!activeAppCrumbLabel) return null;
     const appsLabel = localizeNavLabel("Apps");
@@ -332,8 +442,10 @@ export function Header({
     setTab("settings");
   }, [setState, setTab]);
 
-  const settingsButtonLabel = t("nav.settings", { defaultValue: "Settings" });
-  const isSettingsActive = tab === "settings";
+  const settingsButtonLabel = settingsTabGroup
+    ? localizeTabGroup(settingsTabGroup).label
+    : t("nav.settings", { defaultValue: "Settings" });
+  const isSettingsActive = settingsTabGroup?.tabs.includes(tab) ?? false;
 
   const desktopTaskToggle = onToggleTasksPanel ? (
     <Button
@@ -363,7 +475,7 @@ export function Header({
       className={`${TOPBAR_RIGHT_ICON_BUTTON_CLASSNAME} ${
         isSettingsActive ? TOPBAR_RIGHT_ICON_BUTTON_ACTIVE_CLASSNAME : ""
       }`}
-      onClick={() => setTab("settings")}
+      onClick={() => setTab(settingsTabGroup?.tabs[0] ?? "settings")}
       onPointerDown={stopHeaderPointerPropagation}
       aria-label={settingsButtonLabel}
       title={settingsButtonLabel}
@@ -375,7 +487,59 @@ export function Header({
     </Button>
   );
 
-  const mobileBottomNav = null;
+  const mobileBottomNav =
+    isMobileViewport && !hideNav ? (
+      <nav
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-border/55 bg-bg/95 pt-1.5 shadow-[0_-1px_0_rgba(255,255,255,0.04)] "
+        style={{
+          paddingBottom: "max(0.375rem, env(safe-area-inset-bottom, 0px))",
+          paddingLeft: "max(0.5rem, var(--safe-area-left, 0px))",
+          paddingRight: "max(0.5rem, var(--safe-area-right, 0px))",
+        }}
+        aria-label={t("aria.navMenu")}
+        data-testid="header-mobile-bottom-nav"
+        data-no-camera-drag="true"
+      >
+        <div
+          className="grid min-w-0 items-center gap-1 overflow-hidden"
+          style={{
+            gridTemplateColumns: `repeat(${tabGroups.length}, minmax(0, 1fr))`,
+          }}
+        >
+          {tabGroups.map((group) => {
+            const primaryTab = group.tabs[0];
+            const isActive = group.tabs.includes(tab);
+            const localizedGroup = localizeTabGroup(group);
+
+            return (
+              <Button
+                variant="ghost"
+                key={group.label}
+                data-testid={`header-mobile-bottom-nav-button-${primaryTab}`}
+                className={`${MOBILE_BOTTOM_NAV_BUTTON_CLASSNAME} ${
+                  isActive ? MOBILE_BOTTOM_NAV_BUTTON_ACTIVE_CLASSNAME : ""
+                }`}
+                onClick={() => setTab(primaryTab)}
+                onPointerDown={stopHeaderPointerPropagation}
+                aria-label={localizedGroup.label}
+                aria-current={isActive ? "page" : undefined}
+                title={localizedGroup.label}
+                style={HEADER_BUTTON_STYLE}
+                data-no-camera-drag="true"
+              >
+                <group.icon className="pointer-events-none h-4.5 w-4.5 shrink-0" />
+                <span
+                  data-testid={`header-mobile-bottom-nav-label-${primaryTab}`}
+                  className="pointer-events-none truncate text-[10px] leading-none font-medium"
+                >
+                  {localizedGroup.label}
+                </span>
+              </Button>
+            );
+          })}
+        </div>
+      </nav>
+    ) : null;
 
   const rightDesktopControls = (
     <div
@@ -495,11 +659,49 @@ export function Header({
               </>
             ) : (
               <>
-                <div
-                  className="h-[2.375rem] min-w-0"
-                  data-testid="header-nav-suppressed"
+                <nav
+                  className="scrollbar-hide flex min-w-0 items-center gap-1 overflow-x-auto pr-2"
+                  aria-label={t("aria.navMenu")}
                   data-no-camera-drag="true"
-                />
+                >
+                  {primaryDesktopGroups.map((group) => {
+                    const primaryTab = group.tabs[0];
+                    const isActive = group.tabs.includes(tab);
+                    const localizedGroup = localizeTabGroup(group);
+
+                    return (
+                      <Button
+                        variant="ghost"
+                        key={group.label}
+                        data-testid={`header-nav-button-${primaryTab}`}
+                        className={`${TOPBAR_NAV_BUTTON_CLASSNAME} ${
+                          isActive ? TOPBAR_NAV_BUTTON_ACTIVE_CLASSNAME : ""
+                        }`}
+                        onClick={() => setTab(primaryTab)}
+                        onPointerDown={stopHeaderPointerPropagation}
+                        aria-label={localizedGroup.label}
+                        title={
+                          collapseDesktopNavLabels
+                            ? localizedGroup.label
+                            : (localizedGroup.description ??
+                              localizedGroup.label)
+                        }
+                        style={HEADER_BUTTON_STYLE}
+                        data-no-camera-drag="true"
+                      >
+                        <group.icon className="pointer-events-none h-4 w-4 shrink-0" />
+                        <span
+                          data-testid={`header-nav-label-${primaryTab}`}
+                          className={`pointer-events-none truncate ${
+                            collapseDesktopNavLabels ? "hidden" : "inline"
+                          }`}
+                        >
+                          {localizedGroup.label}
+                        </span>
+                      </Button>
+                    );
+                  })}
+                </nav>
                 {breadcrumbNode ? (
                   <div
                     className="flex h-[2.375rem] min-w-0 items-center justify-center"
