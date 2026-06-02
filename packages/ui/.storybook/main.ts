@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { StorybookConfig } from "@storybook/react-vite";
+import tailwindcss from "@tailwindcss/vite";
 
 // Resolve the package + monorepo roots relative to this config file.
 const here = dirname(fileURLToPath(import.meta.url));
@@ -43,22 +44,71 @@ const config: StorybookConfig = {
   framework: { name: "@storybook/react-vite", options: {} },
   docs: { autodocs: "tag" },
   viteFinal: async (cfg) => {
+    // The UI is Tailwind v4 (styles.css does `@import "tailwindcss"`); without
+    // this plugin the utility classes never generate and components render
+    // unstyled/invisible.
+    cfg.plugins ??= [];
+    cfg.plugins.push(tailwindcss());
     cfg.resolve ??= {};
     cfg.resolve.dedupe = [...(cfg.resolve.dedupe ?? []), "react", "react-dom"];
-    cfg.resolve.alias = {
-      ...(cfg.resolve.alias ?? {}),
-      "@elizaos/ui": resolve(uiSrc, "index.ts"),
-      "@elizaos/shared": resolve(sharedSrc, "index.ts"),
-      "@elizaos/core": resolve(coreSrc, "index.node.ts"),
+    // Array-form aliases (regex, first-match-wins) mirroring vitest.config.ts so
+    // every @elizaos/* subpath + native/host module resolves to source/stubs.
+    // Preserve any existing Storybook-injected aliases (object → array entries).
+    const existing = cfg.resolve.alias;
+    const existingEntries = Array.isArray(existing)
+      ? existing
+      : Object.entries(existing ?? {}).map(([find, replacement]) => ({
+          find,
+          replacement: replacement as string,
+        }));
+    cfg.resolve.alias = [
+      // @elizaos/ui — bare barrel, the renderer-only styles entry, then subpaths.
+      {
+        find: /^@elizaos\/ui\/styles$/,
+        replacement: resolve(uiSrc, "styles.ts"),
+      },
+      { find: /^@elizaos\/ui$/, replacement: resolve(uiSrc, "index.ts") },
+      { find: /^@elizaos\/ui\/(.+)$/, replacement: resolve(uiSrc, "$1") },
+      {
+        find: /^@elizaos\/shared$/,
+        replacement: resolve(sharedSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/shared\/(.+)$/,
+        replacement: resolve(sharedSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/core$/,
+        replacement: resolve(coreSrc, "index.node.ts"),
+      },
+      { find: /^@elizaos\/core\/(.+)$/, replacement: resolve(coreSrc, "$1") },
       // Host-only / native modules the browser catalog can't load → stubs.
-      "@elizaos/app-core": hostExternalStub,
-      "@elizaos/plugin-browser": hostExternalStub,
-      react: resolve(reactPath, "index.js"),
-      "react/jsx-runtime": resolve(reactPath, "jsx-runtime.js"),
-      "react/jsx-dev-runtime": resolve(reactPath, "jsx-dev-runtime.js"),
-      "react-dom": resolve(reactDomPath, "index.js"),
-      "react-dom/client": resolve(reactDomPath, "client.js"),
-    };
+      {
+        find: /^@elizaos\/app-core(?:\/browser|\/ui-compat)?$/,
+        replacement: hostExternalStub,
+      },
+      {
+        find: /^@elizaos\/capacitor-(contacts|messages|mobile-signals|phone|system)$/,
+        replacement: hostExternalStub,
+      },
+      { find: /^@elizaos\/plugin-browser$/, replacement: hostExternalStub },
+      // Single React copy (avoid "Invalid hook call").
+      { find: /^react$/, replacement: resolve(reactPath, "index.js") },
+      {
+        find: /^react\/jsx-runtime$/,
+        replacement: resolve(reactPath, "jsx-runtime.js"),
+      },
+      {
+        find: /^react\/jsx-dev-runtime$/,
+        replacement: resolve(reactPath, "jsx-dev-runtime.js"),
+      },
+      { find: /^react-dom$/, replacement: resolve(reactDomPath, "index.js") },
+      {
+        find: /^react-dom\/client$/,
+        replacement: resolve(reactDomPath, "client.js"),
+      },
+      ...existingEntries,
+    ];
     // Shared UI source reads Node's `process.env` unguarded at module load;
     // shim it so those modules import cleanly in the browser catalog.
     cfg.define = { ...(cfg.define ?? {}), "process.env": "({})" };
