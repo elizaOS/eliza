@@ -4915,9 +4915,19 @@ export async function startEliza(
     void loadHooksSystem().catch((err) => {
       logger.warn(`[eliza] Hooks system load failed: ${formatError(err)}`);
     });
-    // The caller (dev-server / desktop shell) starts the API server right
-    // after this returns; firing here yields the event loop to it first.
-    kickoffDeferredBoot();
+    // Defer the deferred-boot wave to a macrotask (setImmediate) rather than
+    // firing it inline. The wave's first `await Promise.all([...])` resolves
+    // instantly when the network probes already settled, so an inline kickoff
+    // wins the microtask race and runs the CPU-bound plugin-transpile burst
+    // BEFORE the caller's post-return continuation — in dev that continuation
+    // is dev-server flipping agentState "starting" → "running", which is what
+    // flips /api/health to ready. Letting the burst win starves that flip and
+    // pushes observed readiness ~7s late. setImmediate drains the caller's
+    // continuation (readiness flip + API-server wiring) first, then starts the
+    // wave. The deferred capabilities still light up as each plugin registers.
+    setImmediate(() => {
+      kickoffDeferredBoot();
+    });
     logger.info(
       "[eliza] Runtime initialised in headless mode (autonomy enabled)",
     );

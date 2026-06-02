@@ -8,7 +8,7 @@ const REPO_ROOT = path.resolve(HERE, "../../..");
 const VISUAL_MATRIX_SPEC = path.join(
   HERE,
   "ui-smoke",
-  "plugin-views-visual.spec.ts",
+  "plugin-view-cases.ts",
 );
 const HMR_SPEC = path.join(HERE, "hmr", "hmr-dependency-levels.spec.ts");
 const CI_WORKFLOW = path.join(REPO_ROOT, ".github/workflows/ci.yaml");

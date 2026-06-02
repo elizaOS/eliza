@@ -1626,7 +1626,7 @@ const MAX_VERBATIM_DELIVERABLE_BYTES = 2048;
 // (the same envelope captureTerminalToolOutput emits). Returns it only when it
 // is a single short block (≤2KB); multi-block or multi-KB transcripts return
 // undefined so they stay on the summarized path.
-function extractShortToolDeliverable(data: unknown): string | undefined {
+export function extractShortToolDeliverable(data: unknown): string | undefined {
   const response =
     pickPayloadString(data, "response") ?? pickPayloadString(data, "finalText");
   if (!response) return undefined;

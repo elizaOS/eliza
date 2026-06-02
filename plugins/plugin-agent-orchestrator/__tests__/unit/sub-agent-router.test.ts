@@ -6,6 +6,7 @@ import type { Content, HandlerCallback, Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setHostResolver } from "../../src/services/ssrf-guard.js";
 import {
+  extractShortToolDeliverable,
   extractSubResources,
   normalizeUrlsInText,
   redactLoopbackUrls,
@@ -1908,6 +1909,64 @@ describe("normalizeUrlsInText", () => {
     expect(normalizeUrlsInText("just some prose — no links")).toBe(
       "just some prose — no links",
     );
+  });
+});
+
+describe("extractShortToolDeliverable", () => {
+  it("recovers the inner body of a single short tool-output block", () => {
+    const data = {
+      response:
+        "Done.\n[tool output: bash]\n42 files matched the pattern.\n[/tool output]",
+    };
+    expect(extractShortToolDeliverable(data)).toBe(
+      "42 files matched the pattern.",
+    );
+  });
+
+  it("reads from finalText when response is absent", () => {
+    const data = {
+      finalText: "[tool output: cat]\nhello world\n[/tool output]",
+    };
+    expect(extractShortToolDeliverable(data)).toBe("hello world");
+  });
+
+  it("returns undefined for multiple tool-output blocks (stays on model path)", () => {
+    const data = {
+      response:
+        "[tool output: a]\none\n[/tool output]\n[tool output: b]\ntwo\n[/tool output]",
+    };
+    expect(extractShortToolDeliverable(data)).toBeUndefined();
+  });
+
+  it("returns undefined when the block exceeds the 2KB verbatim gate", () => {
+    const big = "x".repeat(2049);
+    const data = { response: `[tool output: dump]\n${big}\n[/tool output]` };
+    expect(extractShortToolDeliverable(data)).toBeUndefined();
+  });
+
+  it("relays a block at the 2KB boundary verbatim", () => {
+    const atCap = "y".repeat(2048);
+    const data = { response: `[tool output: dump]\n${atCap}\n[/tool output]` };
+    expect(extractShortToolDeliverable(data)).toBe(atCap);
+  });
+
+  it("returns undefined when there is no tool-output block", () => {
+    expect(
+      extractShortToolDeliverable({ response: "just prose, no tools" }),
+    ).toBeUndefined();
+  });
+
+  it("returns undefined when the block body is empty", () => {
+    expect(
+      extractShortToolDeliverable({
+        response: "[tool output: noop]\n\n[/tool output]",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("returns undefined when there is no captured response payload", () => {
+    expect(extractShortToolDeliverable({})).toBeUndefined();
+    expect(extractShortToolDeliverable(null)).toBeUndefined();
   });
 });
 
