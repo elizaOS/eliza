@@ -55,7 +55,7 @@ describe("submitPluginToRegistry", () => {
         skipValidation: true,
         yes: true,
       }),
-    ).rejects.toThrow(/not currently configured/);
+    ).rejects.toThrow(/packages\/registry/);
   });
 
   it("rejects malformed explicit registry repositories", async () => {

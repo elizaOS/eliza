@@ -10,7 +10,7 @@ Adds Polymarket prediction-market capabilities to an Eliza agent:
 - **Single market detail** — fetches a market by Gamma ID or slug, including all outcome prices and CLOB token IDs.
 - **Orderbook quotes** — reads full CLOB bid/ask depth for a token ID and derives best bid, best ask, midpoint, and spread.
 - **Wallet positions** — returns open positions for a given wallet address from the Polymarket Data API.
-- **Trading readiness** — reports which credentials are configured and why signed order placement is currently disabled.
+- **Trading readiness** — reports why signed order placement is currently disabled.
 - **UI views** — desktop, XR, and TUI views registered in the elizaOS view registry.
 
 ## Enabling the plugin
@@ -39,9 +39,8 @@ The plugin registers one agent action. Pass `action` (or `subaction`) and `kind`
 | `read` | `market` | `id` or `slug` | Single market detail |
 | `read` | `orderbook` | `tokenId` (CLOB token id) | Full orderbook with best bid/ask |
 | `read` | `positions` | `user` (wallet address) | Open positions for a wallet |
-| `place_order` | — | — | Reports readiness; does not place trades |
 
-Legacy action names (`POLYMARKET_READ`, `POLYMARKET_STATUS`, `POLYMARKET_GET_MARKETS`, `POLYMARKET_GET_ORDERBOOK`, `POLYMARKET_PLACE_ORDER`, etc.) are accepted as similes.
+Legacy read action names (`POLYMARKET_READ`, `POLYMARKET_STATUS`, `POLYMARKET_GET_MARKETS`, `POLYMARKET_GET_ORDERBOOK`, etc.) are accepted as similes. Order-placement aliases are intentionally not exposed until signed CLOB trading is implemented.
 
 ## API routes
 
@@ -60,7 +59,7 @@ The plugin registers these HTTP routes on the agent's API server:
 
 Public reads (markets, orderbook, positions) require no credentials.
 
-Signed CLOB trading is not yet implemented. When credentials are present the status endpoint reports them as ready; the `place_order` action still returns a readiness report only.
+Signed CLOB trading is not yet implemented. The status endpoint can report credential presence, but no order-placement agent action is exposed. `/api/polymarket/orders` remains a disabled-state endpoint for UI surfaces and returns 501.
 
 | Variable | Alias | Purpose |
 |----------|-------|---------|

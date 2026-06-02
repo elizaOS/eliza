@@ -66,7 +66,14 @@ describe("RemotePluginBridge action callbacks", () => {
       | Plugin
       | undefined;
     if (!plugin) throw new Error("expected registered plugin");
-    const callback = vi.fn(async () => [{ id: "memory-1" }]);
+    const callback = vi.fn(async () => [
+      {
+        id: "00000000-0000-4000-8000-000000000001",
+        entityId: "00000000-0000-4000-8000-000000000002",
+        roomId: "00000000-0000-4000-8000-000000000003",
+        content: { text: "from worker" },
+      },
+    ]);
     const actionPromise = plugin?.actions?.[0]?.handler(
       runtime,
       { id: "message-1", content: { text: "run" } } as never,
@@ -107,7 +114,11 @@ describe("RemotePluginBridge action callbacks", () => {
         type: "host-rpc-result",
         requestId: 100,
         ok: true,
-        payload: [{ id: "memory-1" }],
+        payload: [
+          expect.objectContaining({
+            id: "00000000-0000-4000-8000-000000000001",
+          }),
+        ],
       }),
     );
 

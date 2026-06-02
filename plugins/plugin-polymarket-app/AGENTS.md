@@ -4,7 +4,7 @@ Adds Polymarket prediction-market discovery, orderbook reading, position viewing
 
 ## Purpose / role
 
-Opt-in elizaOS plugin. Load it by adding `@elizaos/plugin-polymarket-app` to the agent's plugin list. It registers one action, one provider, one service, seven REST routes, and three UI views (desktop, XR, TUI). Public market reads are always available; signed CLOB order placement is scaffolded but disabled pending credential configuration.
+Opt-in elizaOS plugin. Load it by adding `@elizaos/plugin-polymarket-app` to the agent's plugin list. It registers one read-only action, one provider, one service, seven REST routes, and three UI views (desktop, XR, TUI). Public market reads are always available; signed CLOB order placement is not exposed as an agent action until real signing is implemented.
 
 ## Plugin surface
 
@@ -15,8 +15,7 @@ Opt-in elizaOS plugin. Load it by adding `@elizaos/plugin-polymarket-app` to the
   - `action=read, kind=market` — single market by `id` or `slug`.
   - `action=read, kind=orderbook` — full CLOB orderbook for a `tokenId`.
   - `action=read, kind=positions` — wallet positions from Data API.
-  - `action=place_order` — reports trading readiness; actual order signing is disabled.
-  - Legacy similes (still accepted): `POLYMARKET_READ`, `POLYMARKET_STATUS`, `POLYMARKET_GET_MARKETS`, `POLYMARKET_GET_ORDERBOOK`, `POLYMARKET_PLACE_ORDER`, `POLYMARKET_BUY`, `POLYMARKET_SELL`, and ~14 others (full list in `POLYMARKET_READ_COMPAT_SIMILES` / `POLYMARKET_PLACE_ORDER_COMPAT_SIMILES`, actions.ts).
+  - Legacy read similes (still accepted): `POLYMARKET_READ`, `POLYMARKET_STATUS`, `POLYMARKET_GET_MARKETS`, `POLYMARKET_GET_ORDERBOOK`, and related read-only aliases (full list in `POLYMARKET_READ_COMPAT_SIMILES`, actions.ts).
 
 ### Providers
 - **`POLYMARKET_STATUS`** (`polymarketStatusProvider`) — injects per-turn context text: public-read readiness, API base URLs, trading credential status. Active only in `finance` / `crypto` contexts.
@@ -31,7 +30,7 @@ Opt-in elizaOS plugin. Load it by adding `@elizaos/plugin-polymarket-app` to the
 | GET | `/api/polymarket/markets` | Paginated markets (`limit`, `offset`, `active`, `closed`, `order`, `ascending`, `tag_id`) |
 | GET | `/api/polymarket/market` | Single market (`id` or `slug`) |
 | GET | `/api/polymarket/orderbook` | CLOB orderbook (`token_id`) |
-| GET | `/api/polymarket/orders` | Returns 501 — trading disabled |
+| GET | `/api/polymarket/orders` | Returns 501 — UI/status disabled-state endpoint |
 | POST | `/api/polymarket/orders` | Returns 501 — trading disabled |
 | GET | `/api/polymarket/positions` | Wallet positions (`user`) |
 
@@ -77,7 +76,7 @@ bun run --cwd plugins/plugin-polymarket-app test        # vitest run
 
 | Var | Required | Notes |
 |-----|----------|-------|
-| `POLYMARKET_PRIVATE_KEY` | Trading only | Wallet private key for signed CLOB orders (not yet implemented) |
+| `POLYMARKET_PRIVATE_KEY` | Status only | Wallet private key for signed CLOB orders (not yet implemented) |
 | `CLOB_API_KEY` | Trading only | Alias: `POLYMARKET_CLOB_API_KEY` |
 | `CLOB_API_SECRET` | Trading only | Alias: `POLYMARKET_CLOB_SECRET` |
 | `CLOB_API_PASSPHRASE` | Trading only | Alias: `POLYMARKET_CLOB_PASSPHRASE` |
@@ -104,7 +103,7 @@ Public reads (markets, orderbook, positions) require no credentials. The `GET /a
 ## Conventions / gotchas
 
 - **Orderbook token id vs condition id.** Use the CLOB `token_id` for orderbook queries, not the Gamma `conditionId`. A market has one condition id but one or more CLOB token ids (one per outcome).
-- **Signed trading is not implemented.** `POST /api/polymarket/orders` returns 501. The `place_order` action reports readiness only; it does not place trades.
+- **Signed trading is not implemented.** `POST /api/polymarket/orders` returns 501 and no order-placement agent action is exposed. Keep the action surface read-only until signed CLOB calls are real.
 - **Views use a separate Vite build.** `build:js` (tsup) produces the runtime entry; `build:views` (Vite) produces `dist/views/bundle.js` consumed by the view registry. Both must run for a complete build.
 - **Route handler receives Node `http.IncomingMessage` / `ServerResponse`.** The plugin.ts adapter casts `RouteRequest` / `RouteResponse` to Node types; routes.ts depends on real Node HTTP objects.
 - **Context gating.** The action fires only when the agent context includes `finance`, `crypto`, `prediction-market`, or `payments`, or when the message contains recognized keywords (multilingual list in actions.ts). Outside those contexts the action is skipped.

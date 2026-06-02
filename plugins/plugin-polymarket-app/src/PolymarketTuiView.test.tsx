@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
-import React from "react";
+import React, { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const polymarketClient = vi.hoisted(() => ({
@@ -19,7 +19,7 @@ vi.mock("@elizaos/app-core", () => ({
     children,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", props, children),
+    React.createElement("button", { type: "button", ...props }, children),
   client: polymarketClient,
   PagePanel: {
     Notice: ({ children }: { children: React.ReactNode }) =>
@@ -32,6 +32,29 @@ vi.mock("@elizaos/app-core", () => ({
 vi.mock("./client", () => ({}));
 
 import { interact, PolymarketTuiView } from "./PolymarketAppView";
+
+const mountedRoots: Array<{ container: HTMLDivElement; root: Root }> = [];
+
+function render(element: React.ReactElement) {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  mountedRoots.push({ container, root });
+  act(() => {
+    root.render(element);
+  });
+  return { container };
+}
+
+async function waitForText(container: HTMLElement, text: string) {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    if (container.textContent?.includes(text)) return;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+  }
+  throw new Error(`Expected text not found: ${text}`);
+}
 
 const sampleStatus = {
   publicReads: {
@@ -144,7 +167,12 @@ function mockState() {
 }
 
 afterEach(() => {
-  cleanup();
+  for (const { container, root } of mountedRoots.splice(0)) {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  }
   vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
@@ -155,10 +183,10 @@ describe("PolymarketTuiView", () => {
 
     const { container } = render(React.createElement(PolymarketTuiView));
 
-    await screen.findAllByText("Will BTC be above 100k?");
-    expect(
-      screen.getByText("Trading and order management are disabled."),
-    ).toBeTruthy();
+    await waitForText(container, "Will BTC be above 100k?");
+    expect(container.textContent).toContain(
+      "Trading and order management are disabled.",
+    );
     expect(polymarketClient.polymarketMarkets).toHaveBeenCalledWith({
       limit: 25,
     });
