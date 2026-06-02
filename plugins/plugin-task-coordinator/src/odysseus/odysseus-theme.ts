@@ -1695,4 +1695,2164 @@ export const ODYSSEUS_CSS = `
   .odysseus-root .od-cal-day { min-height:44px; padding:2px; }
 }
 
+
+
+/* ===== EmailView ===== */
+/* ── EmailView (odysseus emailLibrary.js + emailInbox.js + signature.js + the
+   email-* rules in static/style.css). All scoped under .odysseus-root; colors
+   via theme vars only. Append verbatim to ODYSSEUS_CSS in odysseus-theme.ts. ── */
+
+.odysseus-root .od-email-panel {
+  width: min(720px, 92vw); max-width: 92vw; height: 85vh; max-height: 85vh;
+  display: flex; flex-direction: column; padding: 0; overflow: hidden; background: var(--bg);
+}
+.odysseus-root .od-email-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 12px 14px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.odysseus-root .od-email-head-title {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; color: var(--fg);
+}
+.odysseus-root .od-email-head-title svg { vertical-align: -2px; }
+.odysseus-root .od-email-unread-badge {
+  font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 10px;
+  background: color-mix(in srgb, var(--accent, var(--red)) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, var(--red)) 40%, transparent);
+  color: var(--accent, var(--red)); cursor: pointer;
+}
+.odysseus-root .od-email-stats { font-size: 11px; opacity: 0.55; font-weight: 400; color: var(--fg); }
+.odysseus-root .od-email-close {
+  background: none; border: none; color: var(--fg); opacity: 0.55; cursor: pointer;
+  padding: 4px; line-height: 0; border-radius: 6px; display: inline-flex; transition: opacity 0.15s, background 0.15s;
+}
+.odysseus-root .od-email-close:hover { opacity: 1; background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.odysseus-root .od-email-desc { margin: 8px 14px 4px; font-size: 11px; opacity: 0.6; color: var(--fg); }
+.odysseus-root .od-email-accounts-row { display: flex; align-items: center; gap: 6px; padding: 4px 14px 0; flex-shrink: 0; }
+.odysseus-root .od-email-accounts { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.odysseus-root .od-email-chip {
+  height: 26px; box-sizing: border-box; padding: 0 11px; display: inline-flex; align-items: center;
+  gap: 4px; border-radius: 13px; font-size: 11px; line-height: 1; border: 1px solid var(--border);
+  background: none; color: var(--fg); cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.odysseus-root .od-email-chip:hover { border-color: var(--red); }
+.odysseus-root .od-email-chip.active {
+  background: color-mix(in srgb, var(--red) 15%, transparent);
+  border-color: color-mix(in srgb, var(--red) 40%, transparent); color: var(--red);
+}
+.odysseus-root .od-email-compose-btn {
+  flex-shrink: 0; margin-left: auto; display: inline-flex; align-items: center; gap: 3px;
+  height: 26px; padding: 0 10px; border-radius: 6px; font-size: 11px; border: 1px solid var(--border);
+  background: var(--panel); color: var(--fg); cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.odysseus-root .od-email-compose-btn:hover { border-color: var(--accent, var(--red)); }
+.odysseus-root .od-email-toolbar { display: flex; flex-direction: column; gap: 6px; padding: 8px 14px; flex-shrink: 0; }
+.odysseus-root .od-email-toolbar-row { display: flex; gap: 6px; align-items: center; }
+.odysseus-root .od-email-search-row { display: flex; gap: 6px; align-items: center; }
+.odysseus-root .od-email-select {
+  flex: 1; min-width: 0; height: 28px; padding: 0 8px; border-radius: 6px; font-size: 11px;
+  text-overflow: ellipsis; background: var(--bg); color: var(--fg); border: 1px solid var(--border); cursor: pointer;
+}
+.odysseus-root .od-email-tbtn {
+  flex-shrink: 0; height: 28px; min-width: 28px; padding: 0 7px; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center; background: var(--panel);
+  color: var(--fg); border: 1px solid var(--border); cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.odysseus-root .od-email-tbtn:hover { border-color: var(--accent, var(--red)); }
+.odysseus-root .od-email-tbtn.active {
+  background: color-mix(in srgb, var(--accent, var(--red)) 15%, transparent);
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 40%, transparent); color: var(--accent, var(--red));
+}
+.odysseus-root .od-email-search-wrap { position: relative; flex: 1; min-width: 120px; }
+.odysseus-root .od-email-search-icon {
+  position: absolute; left: 8px; top: 50%; transform: translateY(-50%); opacity: 0.45; pointer-events: none; color: var(--fg);
+}
+.odysseus-root .od-email-search {
+  width: 100%; height: 28px; padding: 0 8px 0 26px; border-radius: 6px; font-size: 11px;
+  background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+}
+.odysseus-root .od-email-search::placeholder { color: color-mix(in srgb, var(--fg) 35%, transparent); }
+.odysseus-root .od-email-body { display: flex; flex: 1; min-height: 0; border-top: 1px solid var(--border); }
+.odysseus-root .od-email-list { width: 300px; flex-shrink: 0; overflow-y: auto; border-right: 1px solid var(--border); }
+.odysseus-root .od-email-item {
+  display: flex; align-items: flex-start; gap: 8px; width: 100%; text-align: left; padding: 8px 12px;
+  cursor: pointer; border: none; background: none; border-bottom: 1px solid var(--border);
+  position: relative; color: var(--fg); transition: background 0.1s;
+}
+.odysseus-root .od-email-item:hover { background: color-mix(in srgb, var(--fg) 3%, transparent); }
+.odysseus-root .od-email-item:hover .od-email-item-menu { opacity: 0.5; }
+.odysseus-root .od-email-item.od-email-selected { background: color-mix(in srgb, var(--accent, var(--red)) 8%, transparent); }
+.odysseus-root .od-email-item.od-email-answered { opacity: 0.7; }
+.odysseus-root .od-email-avatar {
+  width: 28px; height: 28px; border-radius: 50%; color: #fff; flex-shrink: 0; display: flex;
+  align-items: center; justify-content: center; font-size: 12px; font-weight: 600; margin-top: 1px;
+}
+.odysseus-root .od-email-item-content { flex: 1; min-width: 0; overflow: hidden; display: flex; flex-direction: column; }
+.odysseus-root .od-email-item-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.odysseus-root .od-email-sender { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.odysseus-root .od-email-date { font-size: 10px; opacity: 0.5; white-space: nowrap; flex-shrink: 0; }
+.odysseus-root .od-email-subject {
+  font-size: 11px; opacity: 0.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-top: 1px; display: flex; align-items: center; gap: 4px;
+}
+.odysseus-root .od-email-unread-dot { display: inline-flex; align-items: center; flex-shrink: 0; }
+.odysseus-root .od-email-attach-ico { opacity: 0.6; display: inline-flex; flex-shrink: 0; }
+.odysseus-root .od-email-tags { display: inline-flex; gap: 3px; margin-left: 2px; }
+.odysseus-root .od-email-tag {
+  font-size: 9px; line-height: 1; padding: 2px 5px; border-radius: 8px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.3px; background: color-mix(in srgb, var(--fg) 14%, transparent); color: var(--fg);
+}
+.odysseus-root .od-email-tag-urgent { background: color-mix(in srgb, var(--red) 25%, transparent); color: var(--red); font-weight: 600; }
+.odysseus-root .od-email-tag-newsletter,
+.odysseus-root .od-email-tag-marketing { background: color-mix(in srgb, var(--fg) 18%, transparent); }
+.odysseus-root .od-email-item-menu { flex-shrink: 0; opacity: 0; color: var(--fg); padding: 4px 0; transition: opacity 0.15s; }
+.odysseus-root .od-email-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; padding: 28px 16px; text-align: center;
+}
+.odysseus-root .od-email-empty-title { font-size: 13px; opacity: 0.6; color: var(--fg); }
+.odysseus-root .od-email-empty-sub { font-size: 11px; opacity: 0.45; color: var(--fg); }
+.odysseus-root .od-email-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.odysseus-root .od-email-pane-placeholder {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; opacity: 0.4; font-size: 12px; color: var(--fg);
+}
+.odysseus-root .od-email-reader { display: flex; flex-direction: column; flex: 1; min-height: 0; font-size: 12px; }
+.odysseus-root .od-email-reader-header {
+  display: flex; flex-direction: row; align-items: flex-start; gap: 12px; padding: 10px 14px;
+  border-bottom: 1px solid var(--border); background: var(--bg); flex-shrink: 0;
+}
+.odysseus-root .od-email-reader-meta {
+  flex: 1; min-width: 0; opacity: 0.85; line-height: 1.7; font-size: 11px; display: flex; flex-direction: column; gap: 4px;
+}
+.odysseus-root .od-email-reader-meta-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.odysseus-root .od-email-reader-meta-row strong { opacity: 0.5; font-weight: 600; flex-shrink: 0; min-width: 36px; }
+.odysseus-root .od-email-recipient-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.odysseus-root .od-email-recipient-chip {
+  display: inline-flex; align-items: center; padding: 1px 8px; font-size: 10px;
+  background: color-mix(in srgb, var(--fg) 6%, transparent); border: 1px solid var(--border);
+  border-radius: 10px; color: var(--fg); white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis;
+}
+.odysseus-root .od-email-reader-actions {
+  display: flex; gap: 4px; flex-wrap: wrap; align-items: center; flex-shrink: 0; justify-content: flex-end; margin-top: -2px;
+}
+.odysseus-root .od-email-reader-btn {
+  display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 8px; border-radius: 6px;
+  font-size: 11px; background: var(--panel); color: var(--fg); border: 1px solid var(--border);
+  cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.odysseus-root .od-email-reader-btn:hover { border-color: var(--accent, var(--red)); }
+.odysseus-root .od-email-reader-subject {
+  display: flex; align-items: center; gap: 6px; padding: 10px 14px 4px; font-size: 14px;
+  font-weight: 600; color: var(--fg); flex-shrink: 0;
+}
+.odysseus-root .od-email-reader-star { color: var(--accent, var(--red)); opacity: 0.85; flex-shrink: 0; }
+.odysseus-root .od-email-reader-body {
+  font-size: 12px; line-height: 1.55; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere;
+  flex: 1; overflow-y: auto; padding: 8px 14px 14px; min-height: 0; color: var(--fg);
+}
+.odysseus-root .od-email-compose { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.odysseus-root .od-email-compose-head {
+  display: flex; align-items: center; justify-content: space-between; padding: 10px 14px;
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.odysseus-root .od-email-compose-title { font-size: 13px; font-weight: 600; color: var(--fg); }
+.odysseus-root .od-email-field {
+  display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.odysseus-root .od-email-field-label { font-size: 11px; opacity: 0.5; min-width: 50px; color: var(--fg); }
+.odysseus-root .od-email-field-input {
+  flex: 1; min-width: 0; height: 24px; font-size: 12px; background: transparent; border: none; color: var(--fg); outline: none;
+}
+.odysseus-root .od-email-compose-body {
+  flex: 1; min-height: 0; resize: none; padding: 12px 14px; font-size: 12px; line-height: 1.55;
+  background: transparent; border: none; color: var(--fg); outline: none; font-family: inherit;
+}
+.odysseus-root .od-email-compose-footer {
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--border); flex-shrink: 0;
+}
+.odysseus-root .od-email-compose-spacer { flex: 1; }
+.odysseus-root .od-email-sig-btn {
+  display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border-radius: 6px;
+  font-size: 11px; background: var(--panel); color: var(--fg); border: 1px solid var(--border);
+  cursor: pointer; transition: border-color 0.15s;
+}
+.odysseus-root .od-email-sig-btn:hover { border-color: var(--accent, var(--red)); }
+.odysseus-root .od-email-send-btn {
+  height: 28px; padding: 0 16px; border-radius: 6px; font-size: 11px; font-weight: 600;
+  background: var(--accent, var(--red)); color: #fff; border: none; cursor: pointer; transition: opacity 0.15s;
+}
+.odysseus-root .od-email-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.odysseus-root .od-email-sig-overlay { position: absolute; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; }
+.odysseus-root .od-email-sig-panel {
+  position: relative; z-index: 1; width: 420px; max-width: 90%; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 12px; padding: 16px; box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+}
+.odysseus-root .od-email-sig-empty { padding: 16px; text-align: center; font-size: 12px; opacity: 0.55; color: var(--fg); }
+.odysseus-root .od-email-sig-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+.odysseus-root .od-email-sig-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg); cursor: pointer; transition: border-color 0.15s;
+}
+.odysseus-root .od-email-sig-tile:hover { border-color: var(--accent, var(--red)); }
+.odysseus-root .od-email-sig-tile img { max-width: 100%; height: 44px; object-fit: contain; }
+.odysseus-root .od-email-sig-name { font-size: 11px; opacity: 0.85; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+/* ===== GalleryView ===== */
+/* ════════════════════════════════════════════════════════════════════
+   Gallery — odysseus static/js/gallery.js (Photos tab) + style.css gallery
+   rules, ported 1:1. Grid + detail lightbox + generate bar. All colors via
+   theme vars, all selectors scoped under .odysseus-root.
+   ════════════════════════════════════════════════════════════════════ */
+
+.odysseus-root .od-gallery-panel {
+  width: min(960px, 94vw);
+  max-width: 94vw;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header (gallery.js .modal-header) ── */
+.odysseus-root .od-gallery-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.odysseus-root .od-gallery-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--fg);
+}
+.odysseus-root .od-gallery-stats {
+  font-size: 10px;
+  font-weight: normal;
+  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  margin-left: 4px;
+}
+.odysseus-root .od-gallery-close {
+  background: none;
+  border: none;
+  color: var(--fg);
+  opacity: 0.6;
+  cursor: pointer;
+  padding: 2px;
+  display: inline-flex;
+  border-radius: 4px;
+  transition: opacity 0.15s, background 0.15s;
+}
+.odysseus-root .od-gallery-close:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+}
+
+/* ── Tabs (style.css .gallery-tabs / .gallery-tab) ── */
+.odysseus-root .od-gallery-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0 16px;
+  background: var(--panel);
+  flex-shrink: 0;
+}
+.odysseus-root .od-gallery-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--fg);
+  opacity: 0.6;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: opacity 0.15s, border-color 0.15s;
+}
+.odysseus-root .od-gallery-tab:hover {
+  opacity: 0.85;
+}
+.odysseus-root .od-gallery-tab.active {
+  opacity: 1;
+  border-bottom-color: var(--red);
+}
+.odysseus-root .od-gallery-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  opacity: 0.85;
+}
+.odysseus-root .od-gallery-tab.active .od-gallery-tab-icon {
+  opacity: 1;
+}
+
+/* ── Body ── */
+.odysseus-root .od-gallery-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 14px 12px;
+}
+.odysseus-root .od-gallery-images-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.odysseus-root .od-gallery-secondary {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ── Toolbar (style.css .gallery-toolbar) ── */
+.odysseus-root .od-gallery-toolbar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.odysseus-root .od-gallery-search-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.odysseus-root .od-gallery-search-icon {
+  position: absolute;
+  left: 9px;
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  pointer-events: none;
+}
+.odysseus-root .od-gallery-search {
+  flex: 1;
+  width: 100%;
+  padding: 5px 8px 5px 28px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+  box-sizing: border-box;
+}
+.odysseus-root .od-gallery-search:focus {
+  border-color: var(--red);
+}
+.odysseus-root .od-gallery-search::placeholder {
+  color: color-mix(in srgb, var(--fg) 35%, transparent);
+}
+.odysseus-root .od-gallery-model-filter,
+.odysseus-root .od-gallery-sort {
+  padding: 5px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.odysseus-root .od-gallery-select-btn {
+  padding: 6px 11px;
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  opacity: 0.6;
+  transition: all 0.15s;
+}
+.odysseus-root .od-gallery-select-btn:hover {
+  opacity: 1;
+}
+.odysseus-root .od-gallery-select-btn.active {
+  background: color-mix(in srgb, var(--red) 28%, transparent);
+  color: var(--red);
+  border-color: var(--red);
+  font-weight: 600;
+  opacity: 1;
+}
+
+/* ── Grid (style.css .gallery-grid / .gallery-card) ── */
+.odysseus-root .od-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px;
+}
+.odysseus-root .od-gallery-card {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.odysseus-root .od-gallery-card:hover {
+  border-color: var(--red);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--red) 15%, transparent);
+  transform: translateY(-1px);
+}
+.odysseus-root .od-gallery-card-upload {
+  border-style: dashed;
+  background: color-mix(in srgb, var(--fg) 3%, var(--bg));
+  opacity: 0.75;
+  transition: opacity 0.12s, border-color 0.15s, transform 0.15s;
+}
+.odysseus-root .od-gallery-card-upload:hover {
+  opacity: 1;
+  border-color: var(--red);
+  transform: translateY(-1px);
+}
+.odysseus-root .od-gallery-card-upload-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--fg);
+}
+.odysseus-root .od-gallery-card-upload-label {
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.8;
+}
+.odysseus-root .od-gallery-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.odysseus-root .od-gallery-fav-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  background: rgba(0, 0, 0, 0.4);
+  border: none;
+  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  color: rgba(255, 255, 255, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+  padding: 0;
+}
+.odysseus-root .od-gallery-card:hover .od-gallery-fav-btn {
+  opacity: 1;
+}
+.odysseus-root .od-gallery-fav-btn.od-gallery-fav-active {
+  opacity: 1;
+  color: var(--red);
+}
+.odysseus-root .od-gallery-dl-btn {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 2;
+  background: rgba(0, 0, 0, 0.4);
+  border: none;
+  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  color: rgba(255, 255, 255, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+  padding: 0;
+}
+.odysseus-root .od-gallery-card:hover .od-gallery-dl-btn {
+  opacity: 1;
+}
+.odysseus-root .od-gallery-dl-btn:hover {
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+}
+.odysseus-root .od-gallery-select-dot {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--fg) 30%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fg) 50%, transparent);
+}
+.odysseus-root .od-gallery-card-info {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 6px 8px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
+  color: #fff;
+  text-align: left;
+}
+.odysseus-root .od-gallery-card-prompt {
+  font-size: 10px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.odysseus-root .od-gallery-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 9px;
+  opacity: 0.8;
+}
+.odysseus-root .od-gallery-card-model {
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Empty state (style.css .gallery-empty) — honest "No images yet". */
+.odysseus-root .od-gallery-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: color-mix(in srgb, var(--fg) 35%, transparent);
+  padding: 32px 16px;
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* ── Generate prompt bar (no eliza image backend → disabled CTA + note) ── */
+.odysseus-root .od-gallery-generate-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.odysseus-root .od-gallery-generate-icon {
+  color: var(--accent, var(--red));
+  opacity: 0.85;
+  flex-shrink: 0;
+}
+.odysseus-root .od-gallery-generate-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.odysseus-root .od-gallery-generate-input::placeholder {
+  color: color-mix(in srgb, var(--fg) 35%, transparent);
+}
+.odysseus-root .od-gallery-generate-btn {
+  padding: 6px 14px;
+  background: var(--accent, var(--red));
+  color: #fff;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.odysseus-root .od-gallery-generate-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.odysseus-root .od-gallery-generate-note {
+  margin-top: 5px;
+  font-size: 10.5px;
+  font-style: italic;
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  flex-shrink: 0;
+}
+
+/* ── Settings tab card (style.css .admin-card) ── */
+.odysseus-root .od-gallery-settings-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  background: color-mix(in srgb, var(--fg) 2%, var(--panel));
+}
+.odysseus-root .od-gallery-settings-title {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.odysseus-root .od-gallery-settings-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+}
+
+/* ── Detail lightbox (style.css .gallery-detail*) ── */
+.odysseus-root .od-gallery-detail {
+  position: absolute;
+  inset: 0;
+  background: var(--panel);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.odysseus-root .od-gallery-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  z-index: 5;
+}
+.odysseus-root .od-gallery-detail-spacer {
+  flex: 1;
+}
+.odysseus-root .od-gallery-detail-back {
+  background: none;
+  border: none;
+  color: var(--fg);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+.odysseus-root .od-gallery-detail-back:hover {
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+}
+.odysseus-root .od-gallery-detail-fav {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  opacity: 0.7;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+}
+.odysseus-root .od-gallery-detail-fav:hover {
+  opacity: 1;
+}
+.odysseus-root .od-gallery-detail-fav.active {
+  opacity: 1;
+  color: var(--red);
+  border-color: var(--red);
+}
+.odysseus-root .od-gallery-detail-menu-wrap {
+  position: relative;
+}
+.odysseus-root .od-gallery-detail-menu-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  border-radius: 4px;
+  transition: border-color 0.15s;
+}
+.odysseus-root .od-gallery-detail-menu-btn:hover {
+  border-color: var(--fg);
+}
+.odysseus-root .od-gallery-detail-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 150px;
+  padding: 3px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--fg) 18%, transparent);
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+}
+.odysseus-root .od-gallery-detail-menu-item {
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+  font: inherit;
+  color: var(--fg);
+  padding: 5px 8px;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.odysseus-root .od-gallery-detail-menu-item:hover {
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+}
+.odysseus-root .od-gallery-detail-menu-danger {
+  color: var(--red);
+}
+.odysseus-root .od-gallery-detail-body {
+  display: flex;
+  gap: 16px;
+  padding: 12px;
+  flex: 1;
+  min-height: 0;
+}
+.odysseus-root .od-gallery-detail-image {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+.odysseus-root .od-gallery-detail-img-frame {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  max-height: 70vh;
+}
+.odysseus-root .od-gallery-detail-img {
+  max-width: 100%;
+  max-height: 70vh;
+  border-radius: 6px;
+  object-fit: contain;
+  display: block;
+}
+.odysseus-root .od-gallery-detail-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.45);
+  color: rgba(255, 255, 255, 0.85);
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+  z-index: 3;
+  padding: 0;
+}
+.odysseus-root .od-gallery-detail-image:hover .od-gallery-detail-nav {
+  opacity: 0.85;
+}
+.odysseus-root .od-gallery-detail-nav:hover {
+  opacity: 1 !important;
+  background: rgba(0, 0, 0, 0.7);
+}
+.odysseus-root .od-gallery-detail-nav-prev {
+  left: 8px;
+}
+.odysseus-root .od-gallery-detail-nav-next {
+  right: 8px;
+}
+.odysseus-root .od-gallery-detail-nav-disabled {
+  opacity: 0 !important;
+  pointer-events: none;
+}
+.odysseus-root .od-gallery-detail-rotate {
+  position: absolute;
+  top: 8px;
+  background: rgba(0, 0, 0, 0.45);
+  color: rgba(255, 255, 255, 0.85);
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+  z-index: 3;
+  padding: 0;
+}
+.odysseus-root .od-gallery-detail-image:hover .od-gallery-detail-rotate {
+  opacity: 0.85;
+}
+.odysseus-root .od-gallery-detail-rotate:hover {
+  opacity: 1 !important;
+  background: rgba(0, 0, 0, 0.7);
+}
+.odysseus-root .od-gallery-detail-rotate-ccw {
+  left: 8px;
+}
+.odysseus-root .od-gallery-detail-rotate-cw {
+  right: 8px;
+}
+.odysseus-root .od-gallery-detail-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-width: 0;
+}
+.odysseus-root .od-gallery-detail-section {
+  margin-bottom: 12px;
+}
+.odysseus-root .od-gallery-detail-label,
+.odysseus-root .od-gallery-detail-section > label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.6;
+  margin-bottom: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--fg);
+}
+.odysseus-root .od-gallery-detail-section > div {
+  font-size: 12px;
+  word-break: break-word;
+  color: var(--fg);
+}
+.odysseus-root .od-gallery-detail-prompt {
+  white-space: pre-wrap;
+  line-height: 1.4;
+}
+.odysseus-root .od-gallery-tag-input,
+.odysseus-root .od-gallery-detail-name-input {
+  width: 100%;
+  padding: 5px 8px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 11px;
+  box-sizing: border-box;
+}
+.odysseus-root .od-gallery-detail-name-input {
+  font-size: 13px;
+  font-weight: 500;
+}
+.odysseus-root .od-gallery-tag-input:focus,
+.odysseus-root .od-gallery-detail-name-input:focus {
+  border-color: var(--red);
+  outline: none;
+}
+
+/* Narrow: stack detail body, full-width sidebar (style.css gallery @media). */
+@media (max-width: 768px) {
+  .odysseus-root .od-gallery-detail-body {
+    flex-direction: column;
+  }
+  .odysseus-root .od-gallery-detail-sidebar {
+    width: 100%;
+  }
+}
+/* ===== CookbookView ===== */
+/* ── Cookbook (CookbookView.tsx). odysseus cookbook.js modal + .doclib-card
+   .skill-card recipe grid + codeRunner.js run-output panel + cookbook-* button
+   rules, scoped under .odysseus-root. Base .od-search-overlay / .od-search-backdrop
+   / .od-search-panel / .od-mem-head / .od-mem-title / .od-mem-stats /
+   .od-search-empty already live in ODYSSEUS_CSS — only cookbook-specific
+   .od-cb-* classes are added here. All colors via theme vars. ── */
+
+/* Panel: a tall centered modal like the cookbook modal (#cookbook-modal). */
+.odysseus-root .od-cb-panel {
+  width: 640px;
+  max-width: 92%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px 16px;
+  gap: 10px;
+}
+
+/* Head row: title · stats · refresh (cookbook.js modal header). The shared
+   .od-mem-head supplies the baseline flex; refresh pins to the right. */
+.odysseus-root .od-cb-head { align-items: center; }
+.odysseus-root .od-cb-refresh {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  opacity: 0.7;
+  cursor: pointer;
+  transition: opacity 0.15s, border-color 0.15s, color 0.15s;
+}
+.odysseus-root .od-cb-refresh:hover {
+  opacity: 1;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.odysseus-root .od-cb-refresh:disabled { opacity: 0.4; cursor: default; }
+@keyframes od-cb-spin { to { transform: rotate(360deg); } }
+.odysseus-root .od-cb-spin { animation: od-cb-spin 0.8s linear infinite; }
+
+/* Search row (cookbook hwfit-search styling — icon + flat input). */
+.odysseus-root .od-cb-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+}
+.odysseus-root .od-cb-search-icon {
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  flex-shrink: 0;
+}
+.odysseus-root .od-cb-search-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--fg);
+  font-size: 13px;
+  font-family: inherit;
+}
+.odysseus-root .od-cb-search-input::placeholder {
+  color: color-mix(in srgb, var(--fg) 35%, transparent);
+}
+
+/* Recipe grid — .doclib-grid: a vertical list of cards, scrollable. */
+.odysseus-root .od-cb-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.odysseus-root .od-cb-grid::-webkit-scrollbar { width: 4px; }
+.odysseus-root .od-cb-grid::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--fg) 15%, transparent);
+  border-radius: 4px;
+}
+
+.odysseus-root .od-cb-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 16px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+
+/* Recipe card — .doclib-card.skill-card: bordered, hoverable, expands. */
+.odysseus-root .od-cb-card {
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: background 0.15s, border-color 0.15s;
+  position: relative;
+}
+.odysseus-root .od-cb-card:hover {
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  border-color: color-mix(in srgb, var(--fg) 16%, transparent);
+}
+.odysseus-root .od-cb-card-expanded {
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Collapsed header row — icon · name+desc column · right badges/chevron.
+   Matches .skill-card-header (min-height 46px tap target). */
+.odysseus-root .od-cb-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 46px;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--fg);
+  font-family: inherit;
+}
+.odysseus-root .od-cb-card-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+  opacity: 0.85;
+}
+.odysseus-root .od-cb-lang-svg { display: block; }
+.odysseus-root .od-cb-card-textcol {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.odysseus-root .od-cb-card-name {
+  font-weight: 600;
+  font-size: 12.5px;
+  line-height: 1.3;
+  word-break: break-word;
+}
+.odysseus-root .od-cb-card-desc {
+  font-size: 10px;
+  opacity: 0.55;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.odysseus-root .od-cb-card-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Status / state badges — .memory-cat-badge clone. */
+.odysseus-root .od-cb-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: lowercase;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+}
+.odysseus-root .od-cb-badge-on {
+  background: color-mix(in srgb, var(--ok, var(--accent)) 22%, transparent);
+  color: var(--ok, var(--accent));
+}
+.odysseus-root .od-cb-badge-off {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+.odysseus-root .od-cb-badge-warning {
+  background: color-mix(in srgb, var(--red) 20%, transparent);
+  color: var(--red);
+}
+.odysseus-root .od-cb-badge-critical,
+.odysseus-root .od-cb-badge-blocked {
+  background: color-mix(in srgb, var(--red) 28%, transparent);
+  color: var(--red);
+  border: 1px solid color-mix(in srgb, var(--red) 40%, transparent);
+}
+.odysseus-root .od-cb-chevron {
+  display: inline-flex;
+  align-items: center;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+/* Expanded preview — .doclib-card-preview: top-bordered detail body. */
+.odysseus-root .od-cb-card-preview {
+  border-top: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+  padding: 8px 12px 10px;
+}
+.odysseus-root .od-cb-md-pre {
+  margin: 0;
+  font-family: "Berkeley Mono", "SF Mono", "Fira Code", monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--txt, var(--fg));
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+/* Run-output panel (codeRunner.js .code-runner-output) — honest unavailable
+   state, never fabricated program output. */
+.odysseus-root .od-cb-run-output {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: "Fira Code", monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  font-style: italic;
+}
+
+/* Action footer — .doclib-card-expanded-actions: Run left, Copy/Download
+   right-grouped (.doclib-action-group margin-left:auto). */
+.odysseus-root .od-cb-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 8px;
+  margin-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+}
+.odysseus-root .od-cb-action-group {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.odysseus-root .od-cb-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  box-sizing: border-box;
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted, color-mix(in srgb, var(--fg) 60%, transparent));
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s, color 0.15s, opacity 0.15s;
+}
+.odysseus-root .od-cb-action-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.odysseus-root .od-cb-action-btn:disabled { opacity: 0.4; cursor: default; }
+/* Run button — accent fill (.cookbook-run-btn). Disabled until an execution
+   backend exists, matching the honest run-output state. */
+.odysseus-root .od-cb-run-btn:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--panel);
+  font-weight: 600;
+}
+/* ===== ModelsView ===== */
+/* ===== ModelsView ===== */
+/* Port of odysseus model catalog (static/js/models.js + modelPicker.js +
+   providers.js + style.css model rules). Panel is a 2-column body: a provider
+   rail (which provider to scan) + the catalogue list (sort menu, search box,
+   Favorites + provider endpoint groups, model rows). All colors via theme vars;
+   spacing/sizes copied 1:1 from style.css. Append inside ODYSSEUS_CSS in
+   odysseus-theme.ts (everything scoped under .odysseus-root). */
+
+/* Panel: reuse the shared .od-search-panel chrome but widen + give it height
+   for the catalogue (mirrors odysseus's models surface, larger than the 560px
+   search palette). */
+.odysseus-root .od-models-panel {
+  width: min(820px, 94vw);
+  height: min(80vh, 720px);
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.odysseus-root .od-models-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  border-top: 1px solid color-mix(in srgb, var(--fg) 6%, transparent);
+}
+
+/* ── Provider rail (providers.js — pick which provider to scan) ── */
+.odysseus-root .od-models-providers {
+  width: 168px;
+  flex-shrink: 0;
+  border-right: 1px solid color-mix(in srgb, var(--fg) 6%, transparent);
+  padding: 8px 8px 12px;
+  overflow-y: auto;
+}
+.odysseus-root .od-models-providers-head {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.5;
+  padding: 5px 8px 6px;
+}
+.odysseus-root .od-models-provider-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  font-size: 12px;
+  text-transform: capitalize;
+  cursor: pointer;
+  transition: background 0.08s, color 0.08s;
+}
+.odysseus-root .od-models-provider-row:hover {
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  color: var(--fg);
+}
+.odysseus-root .od-models-provider-row.active {
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+  color: var(--fg);
+}
+.odysseus-root .od-models-provider-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.odysseus-root .od-models-provider-count {
+  flex-shrink: 0;
+  font-size: 10px;
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Catalogue column ── */
+.odysseus-root .od-models-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 8px 12px 12px;
+}
+.odysseus-root .od-models-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 6px;
+}
+.odysseus-root .od-models-sort-wrap { position: relative; }
+.odysseus-root .od-models-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-family: inherit;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.odysseus-root .od-models-sort-btn:hover {
+  border-color: var(--red);
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+.odysseus-root .od-models-sort-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 5;
+  min-width: 140px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  padding: 4px;
+}
+.odysseus-root .od-models-sort-item {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+.odysseus-root .od-models-sort-item:hover {
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+}
+.odysseus-root .od-models-sort-item.current {
+  color: var(--red);
+  font-weight: 600;
+}
+
+/* In-list search (style.css .model-search-input, line 3661). */
+.odysseus-root .od-models-search-row {
+  position: relative;
+  margin-bottom: 6px;
+}
+.odysseus-root .od-models-search-icon {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: color-mix(in srgb, var(--fg) 35%, transparent);
+  pointer-events: none;
+}
+.odysseus-root .od-model-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px 6px 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.8rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.odysseus-root .od-model-search-input:focus { border-color: var(--red); }
+.odysseus-root .od-model-search-input::placeholder {
+  color: color-mix(in srgb, var(--fg) 30%, transparent);
+}
+
+.odysseus-root .od-models-scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* Category / endpoint group headers (style.css lines 1468-1493). */
+.odysseus-root .od-models-category-header,
+.odysseus-root .od-models-endpoint-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85em;
+  font-weight: 600;
+  text-align: left;
+  text-transform: capitalize;
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  border-radius: 4px;
+  user-select: none;
+  transition: background 0.08s, color 0.08s;
+}
+.odysseus-root .od-models-category-header { margin-top: 4px; }
+.odysseus-root .od-models-category-header:hover,
+.odysseus-root .od-models-endpoint-label:hover {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+.odysseus-root .od-folder-toggle {
+  font-size: 0.7em;
+  width: 10px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.odysseus-root .od-folder-count {
+  font-weight: 400;
+  opacity: 0.5;
+  font-size: 0.9em;
+}
+.odysseus-root .od-models-group-content.indented { padding-left: 4px; }
+
+/* Model row (style.css lines 3624-3633 + 1304 hover). */
+.odysseus-root .od-models-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  padding: 4px;
+  margin: 4px 0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.08s, border-color 0.08s;
+}
+.odysseus-root .od-models-row:hover {
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+  border-color: var(--red);
+}
+.odysseus-root .od-models-drag {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--fg) 30%, transparent);
+  cursor: grab;
+}
+.odysseus-root .od-models-grow {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--fg);
+}
+
+/* Favorite dot / provider-logo holder (style.css lines 3634-3660 + 7179). */
+.odysseus-root .od-model-fav-btn {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--fg) 22%, transparent);
+  flex-shrink: 0;
+  cursor: pointer;
+  background: none;
+  padding: 0;
+  margin-left: 4px;
+  position: relative;
+  transition: all 0.15s;
+}
+.odysseus-root .od-model-fav-btn:hover {
+  border-color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 27%, transparent);
+  transform: scale(1.3);
+}
+.odysseus-root .od-model-fav-btn.active {
+  background: var(--fg);
+  border-color: var(--fg);
+}
+.odysseus-root .od-model-fav-btn.active:hover { opacity: 0.6; }
+/* When a provider logo matches, the dot becomes a 14px logo holder. */
+.odysseus-root .od-model-fav-btn.od-provider-logo {
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  opacity: 0.4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg);
+}
+.odysseus-root .od-model-fav-btn.od-provider-logo.active { opacity: 1; }
+.odysseus-root .od-model-fav-btn.od-provider-logo:hover {
+  opacity: 1;
+  transform: scale(1.2);
+  background: none;
+}
+.odysseus-root .od-model-fav-btn.od-provider-logo svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+/* IMG badge (style.css models.js inline badge). */
+.odysseus-root .od-model-type-badge {
+  font-size: 0.65em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--accent);
+  color: var(--bg);
+  flex-shrink: 0;
+}
+
+/* "+ Chat" / "+ Image" action (style.css .model-chat-btn + .models-row button). */
+.odysseus-root .od-model-chat-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 9px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.08s, border-color 0.08s;
+}
+.odysseus-root .od-model-chat-btn:hover { border-color: var(--red); }
+
+/* "Show N more" overflow (style.css .models-show-all-btn inline). */
+.odysseus-root .od-models-show-all-btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 6px;
+  background: none;
+  border: none;
+  opacity: 0.5;
+  cursor: pointer;
+  font-size: 0.82em;
+  color: var(--fg);
+  transition: opacity 0.15s;
+}
+.odysseus-root .od-models-show-all-btn:hover { opacity: 0.8; }
+
+/* Empty / loading / error states (style.css .models-empty-state line 7176 +
+   .muted-sm / .accent-link). */
+.odysseus-root .od-models-empty-state {
+  text-align: center;
+  padding: 16px 8px;
+  line-height: 1.6;
+}
+.odysseus-root .od-models-muted {
+  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  font-size: 13px;
+}
+.odysseus-root .od-models-muted-sm {
+  opacity: 0.45;
+  font-size: 0.8em;
+  color: var(--fg);
+}
+.odysseus-root .od-models-retry-link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 0.85em;
+  padding: 4px 0 0;
+}
+.odysseus-root .od-models-retry-link:hover { text-decoration: underline; }
+/* ===== TasksView ===== */
+/* ── Tasks modal (odysseus static/js/tasks.js + style.css .task-* / .memory-* rules).
+   Real-wired orchestrator task list. All scoped under .odysseus-root, colours via theme vars. ── */
+
+/* Panel — override the shared .od-search-panel sizing to odysseus's centered
+   ~600px modal (.tasks-modal-content { max-width:600px; width:min(600px,92vw) }). */
+.odysseus-root .od-search-panel.od-tasks-panel {
+  width: min(600px, 92vw);
+  max-width: 600px;
+  max-height: 85vh;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+  font-size: 12px;
+}
+
+/* Modal header (.modal-header) */
+.odysseus-root .od-tasks-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 8px;
+}
+.odysseus-root .od-tasks-header-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.odysseus-root .od-tasks-header-spacer { flex: 1; }
+.odysseus-root .od-tasks-close {
+  background: none;
+  border: none;
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  cursor: pointer;
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+.odysseus-root .od-tasks-close:hover {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+/* Tab bar (.memory-tabs .tasks-tabs) — full-bleed underline re-inset 10px. */
+.odysseus-root .od-tasks-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin: -2px -10px 8px;
+  padding: 0 10px;
+  flex-shrink: 0;
+}
+.odysseus-root .od-tasks-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  color: var(--fg);
+  opacity: 0.5;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 8px 14px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: opacity 0.15s, border-color 0.15s, color 0.15s, background 0.15s;
+}
+.odysseus-root .od-tasks-tab:hover {
+  opacity: 0.8;
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+.odysseus-root .od-tasks-tab.active {
+  opacity: 1;
+  color: var(--red);
+  border-bottom-color: var(--red);
+}
+.odysseus-root .od-tasks-tab-count {
+  font-size: 0.8em;
+  opacity: 0.6;
+  font-weight: normal;
+  margin-left: 4px;
+}
+
+/* Body + card (.modal-body + .admin-card) */
+.odysseus-root .od-tasks-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.odysseus-root .od-tasks-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+}
+.odysseus-root .od-tasks-headrow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.odysseus-root .od-tasks-h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--fg);
+}
+.odysseus-root .od-tasks-head-count {
+  font-size: 0.6em;
+  opacity: 0.6;
+  font-weight: normal;
+}
+.odysseus-root .od-tasks-desc {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--fg) 50%, transparent);
+}
+
+/* Toolbar (.memory-toolbar + .memory-toolbar-btn + sort + search) */
+.odysseus-root .od-tasks-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0 8px;
+}
+.odysseus-root .od-tasks-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.odysseus-root .od-tasks-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: 1px solid var(--border);
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  font-size: 11px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.odysseus-root .od-tasks-toolbar-btn:hover:not(:disabled) {
+  border-color: var(--fg);
+  color: var(--fg);
+}
+.odysseus-root .od-tasks-toolbar-btn.active {
+  background: color-mix(in srgb, var(--red) 15%, transparent);
+  border-color: color-mix(in srgb, var(--red) 40%, transparent);
+  color: var(--red);
+}
+.odysseus-root .od-tasks-toolbar-btn.danger {
+  color: var(--red);
+  border-color: color-mix(in srgb, var(--red) 40%, transparent);
+}
+.odysseus-root .od-tasks-toolbar-btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+}
+.odysseus-root .od-tasks-toolbar-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.odysseus-root .od-tasks-headrow .od-tasks-toolbar-btn { margin-left: auto; }
+
+.odysseus-root .od-tasks-sort {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 11px;
+  height: 24px;
+  padding: 0 6px;
+  cursor: pointer;
+  width: 86px;
+}
+.odysseus-root .od-tasks-sort:focus { outline: none; border-color: var(--red); }
+
+.odysseus-root .od-tasks-search {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 11px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.odysseus-root .od-tasks-search:focus { outline: none; border-color: var(--red); }
+.odysseus-root .od-tasks-search::placeholder {
+  color: color-mix(in srgb, var(--fg) 40%, transparent);
+}
+
+/* Bulk-select bar (.memory-bulk-bar) */
+.odysseus-root .od-tasks-bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 18px 6px 2px;
+  margin-bottom: 8px;
+  border: 1px solid color-mix(in srgb, var(--red) 30%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--red) 5%, transparent);
+  font-size: 11px;
+}
+.odysseus-root .od-tasks-bulk-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.odysseus-root .od-tasks-bulk-count { color: color-mix(in srgb, var(--fg) 70%, transparent); }
+.odysseus-root .od-tasks-bulk-delete { margin-left: auto; }
+.odysseus-root .od-tasks-bulk-cancel { padding: 3px 6px; }
+
+/* Category filter chips (.memory-cat-chip) */
+.odysseus-root .od-tasks-chips {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.odysseus-root .od-tasks-chip {
+  background: none;
+  border: 1px solid var(--border);
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  font-size: 10px;
+  height: 22px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+  text-transform: lowercase;
+}
+.odysseus-root .od-tasks-chip:hover { border-color: var(--red); color: var(--red); }
+.odysseus-root .od-tasks-chip.active {
+  background: color-mix(in srgb, var(--red) 15%, transparent);
+  border-color: color-mix(in srgb, var(--red) 40%, transparent);
+  color: var(--red);
+}
+
+/* List (.memory-list) */
+.odysseus-root .od-tasks-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.odysseus-root .od-tasks-empty {
+  opacity: 0.4;
+  font-size: 12px;
+  text-align: center;
+  padding: 24px 12px;
+  line-height: 1.5;
+}
+
+/* Task card (.memory-item.task-card) */
+.odysseus-root .od-tasks-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  max-height: 200px;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.odysseus-root .od-tasks-item:hover {
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  border-color: color-mix(in srgb, var(--fg) 16%, transparent);
+}
+.odysseus-root .od-tasks-item.selected {
+  border-color: color-mix(in srgb, var(--red) 45%, transparent);
+  background: color-mix(in srgb, var(--red) 6%, transparent);
+}
+/* paused: dim + saturate-down + diagonal hatch (.memory-item.task-paused) */
+.odysseus-root .od-tasks-item.task-paused {
+  opacity: 0.45;
+  filter: saturate(0.55);
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--fg) 2%, transparent),
+    color-mix(in srgb, var(--fg) 2%, transparent) 8px,
+    color-mix(in srgb, var(--fg) 5%, transparent) 8px,
+    color-mix(in srgb, var(--fg) 5%, transparent) 16px
+  );
+}
+.odysseus-root .od-tasks-item.task-paused:hover { opacity: 0.85; filter: saturate(0.9); }
+
+.odysseus-root .od-tasks-item-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.odysseus-root .od-tasks-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.odysseus-root .od-tasks-item-icon {
+  display: inline-flex;
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+.odysseus-root .od-tasks-item-title {
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.odysseus-root .od-tasks-item-flex { flex: 1; }
+
+/* Status badges (.task-status-badge + variants) */
+.odysseus-root .od-tasks-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  cursor: pointer;
+  border: 1px solid transparent;
+  line-height: 16px;
+  font-family: inherit;
+  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease, filter 0.12s ease;
+  user-select: none;
+}
+.odysseus-root button.od-tasks-status-badge { appearance: none; }
+.odysseus-root .od-tasks-status-badge:hover { filter: brightness(1.08) saturate(1.15); }
+.odysseus-root .od-tasks-paused-badge {
+  color: var(--orange, #ffb86c);
+  background: color-mix(in srgb, var(--orange, #ffb86c) 22%, transparent);
+  border-color: color-mix(in srgb, var(--orange, #ffb86c) 35%, transparent);
+}
+.odysseus-root .od-tasks-paused-badge:hover {
+  background: color-mix(in srgb, var(--orange, #ffb86c) 30%, transparent);
+  border-color: color-mix(in srgb, var(--orange, #ffb86c) 55%, transparent);
+}
+.odysseus-root .od-tasks-active-badge {
+  color: var(--ok, #50fa7b);
+  background: color-mix(in srgb, var(--ok, #50fa7b) 20%, transparent);
+  border-color: color-mix(in srgb, var(--ok, #50fa7b) 35%, transparent);
+}
+.odysseus-root .od-tasks-active-badge:hover {
+  background: color-mix(in srgb, var(--ok, #50fa7b) 28%, transparent);
+  border-color: color-mix(in srgb, var(--ok, #50fa7b) 55%, transparent);
+}
+.odysseus-root .od-tasks-error-badge {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 16%, transparent);
+  border-color: color-mix(in srgb, var(--red) 34%, transparent);
+  cursor: default;
+}
+.odysseus-root .od-tasks-done-badge {
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  border-color: color-mix(in srgb, var(--fg) 18%, transparent);
+  cursor: default;
+}
+.odysseus-root .od-tasks-run-badge {
+  color: var(--accent, var(--red));
+  background: color-mix(in srgb, var(--accent, var(--red)) 16%, transparent);
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 34%, transparent);
+}
+.odysseus-root .od-tasks-run-badge:hover {
+  background: color-mix(in srgb, var(--accent, var(--red)) 24%, transparent);
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 52%, transparent);
+}
+
+/* Card actions (.memory-item-actions) — reveal on hover */
+.odysseus-root .od-tasks-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.odysseus-root .od-tasks-item:hover .od-tasks-item-actions,
+.odysseus-root .od-tasks-item.expanded .od-tasks-item-actions { opacity: 1; }
+.odysseus-root .od-tasks-menu-wrap { position: relative; }
+.odysseus-root .od-tasks-menu-btn {
+  background: none;
+  border: 1px solid transparent;
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  height: 22px;
+  padding: 0 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  transition: all 0.15s;
+}
+.odysseus-root .od-tasks-menu-btn:hover {
+  color: var(--fg);
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+.odysseus-root .od-tasks-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 5;
+  margin-top: 4px;
+  min-width: 130px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px color-mix(in srgb, #000 35%, transparent);
+}
+.odysseus-root .od-tasks-menu-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: none;
+  border: none;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 11px;
+  text-align: left;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.odysseus-root .od-tasks-menu-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.odysseus-root .od-tasks-menu-item.danger { color: var(--red); }
+.odysseus-root .od-tasks-menu-item.danger:hover { background: color-mix(in srgb, var(--red) 12%, transparent); }
+
+/* Select checkbox (.memory-select-cb) — 6px round dot */
+.odysseus-root .od-tasks-select-cb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 6px; height: 6px;
+  min-width: 6px; min-height: 6px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin: 0;
+  box-sizing: content-box;
+  transition: all 0.15s;
+}
+.odysseus-root .od-tasks-select-cb:hover { border-color: var(--red); }
+.odysseus-root .od-tasks-select-cb:checked { background: var(--red); border-color: var(--red); }
+
+/* Slim meta line + expandable detail */
+.odysseus-root .od-tasks-item-meta {
+  font-size: 10px;
+  opacity: 0.4;
+  margin-top: -1px;
+}
+.odysseus-root .od-tasks-item-detail {
+  margin-top: 7px;
+  padding: 8px 0 2px;
+  border-top: 1px solid var(--border);
+}
+.odysseus-root .od-tasks-item-detail-meta {
+  font-size: 10px;
+  opacity: 0.4;
+  margin-bottom: 6px;
+}
+.odysseus-root .od-tasks-item-result {
+  font-size: 11px;
+  margin-bottom: 6px;
+  padding: 4px 8px;
+  border-left: 2px solid var(--ok, #50fa7b);
+  background: color-mix(in srgb, var(--ok, #50fa7b) 8%, transparent);
+  border-radius: 2px;
+  line-height: 1.4;
+}
+.odysseus-root .od-tasks-item-result.error {
+  border-left-color: var(--red);
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+}
+.odysseus-root .od-tasks-item-result-mark { font-weight: 600; color: var(--ok, #50fa7b); }
+.odysseus-root .od-tasks-item-result.error .od-tasks-item-result-mark { color: var(--red); }
+.odysseus-root .od-tasks-item-result-text { opacity: 0.9; }
+.odysseus-root .od-tasks-item-desc {
+  font-size: 11px;
+  opacity: 0.6;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+/* "Add" tab placeholder */
+.odysseus-root .od-tasks-add-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 16px;
+  opacity: 0.4;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Run-history sub-view (.task-history-header / .task-runs-list / .task-run-item) */
+.odysseus-root .od-tasks-history-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.odysseus-root .od-tasks-history-title { font-size: 13px; opacity: 0.7; }
+.odysseus-root .od-tasks-btn {
+  font-family: inherit;
+  font-size: 11px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.15s;
+}
+.odysseus-root .od-tasks-btn:hover { opacity: 1; }
+.odysseus-root .od-tasks-runs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+.odysseus-root .od-tasks-run-item {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.odysseus-root .od-tasks-run-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+.odysseus-root .od-tasks-run-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.odysseus-root .od-tasks-run-time { margin-left: auto; font-size: 10px; opacity: 0.45; }
+.odysseus-root .od-tasks-run-result {
+  font-size: 11px;
+  opacity: 0.6;
+  margin-top: 4px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Live clock footer (.tasks-clock) */
+.odysseus-root .od-tasks-clock {
+  font-size: 10px;
+  opacity: 0.35;
+  text-align: center;
+  padding: 6px 0 2px;
+  flex-shrink: 0;
+}
 `;

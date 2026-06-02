@@ -24,11 +24,15 @@ import { BgEffect } from "./BgEffect";
 import { CalendarView } from "./CalendarView";
 import { ChatContainer } from "./ChatContainer";
 import { CompareView } from "./CompareView";
+import { CookbookView } from "./CookbookView";
 import { DocumentLibraryView } from "./DocumentLibraryView";
+import { EmailView } from "./EmailView";
+import { GalleryView } from "./GalleryView";
 import { useChatSubmit } from "./hooks/useChatSubmit";
 import { useTaskRoom } from "./hooks/useTaskRoom";
 import { IconRail } from "./IconRail";
 import { MemoryPanel } from "./MemoryPanel";
+import { ModelsView } from "./ModelsView";
 import { NotesPanel } from "./NotesPanel";
 import {
   buildThemeVars,
@@ -46,6 +50,7 @@ import { SearchPalette } from "./SearchPalette";
 import { SessionSidebar } from "./SessionSidebar";
 import { SettingsPanel } from "./SettingsPanel";
 import { SkillsPanel } from "./SkillsPanel";
+import { TasksView } from "./TasksView";
 import { ThemeMenu } from "./ThemeMenu";
 import { PREF_KEYS, readPref, writePref } from "./util/storage";
 
@@ -75,6 +80,11 @@ export function OdysseusShell(): ReactNode {
   const [researchOpen, setResearchOpen] = useState(false);
   const [docsOpen, setDocsOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [cookbookOpen, setCookbookOpen] = useState(false);
+  const [modelsOpen, setModelsOpen] = useState(false);
+  const [tasksOpen, setTasksOpen] = useState(false);
   const [font, setFont] = useState<ThemeFont>(() =>
     readPref<ThemeFont>(PREF_KEYS.font, "mono"),
   );
@@ -304,6 +314,11 @@ export function OdysseusShell(): ReactNode {
         onOpenResearch={() => setResearchOpen(true)}
         onOpenDocs={() => setDocsOpen(true)}
         onOpenCalendar={() => setCalendarOpen(true)}
+        onOpenEmail={() => setEmailOpen(true)}
+        onOpenGallery={() => setGalleryOpen(true)}
+        onOpenCookbook={() => setCookbookOpen(true)}
+        onOpenModels={() => setModelsOpen(true)}
+        onOpenTasks={() => setTasksOpen(true)}
       />
       <ThemeMenu
         open={themeMenuOpen}
@@ -335,6 +350,14 @@ export function OdysseusShell(): ReactNode {
         open={calendarOpen}
         onClose={() => setCalendarOpen(false)}
       />
+      <EmailView open={emailOpen} onClose={() => setEmailOpen(false)} />
+      <GalleryView open={galleryOpen} onClose={() => setGalleryOpen(false)} />
+      <CookbookView
+        open={cookbookOpen}
+        onClose={() => setCookbookOpen(false)}
+      />
+      <ModelsView open={modelsOpen} onClose={() => setModelsOpen(false)} />
+      <TasksView open={tasksOpen} onClose={() => setTasksOpen(false)} />
       <SettingsPanel
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}

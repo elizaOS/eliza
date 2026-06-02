@@ -4,11 +4,16 @@
 // sidebar collapses down to.
 
 import {
+  BookOpen,
+  Boxes,
   Brain,
   CalendarDays,
   Columns2,
   FileText,
   FlaskConical,
+  Images,
+  ListChecks,
+  Mail,
   MessageSquare,
   Palette,
   PanelLeft,
@@ -29,6 +34,11 @@ export function IconRail({
   onOpenResearch,
   onOpenDocs,
   onOpenCalendar,
+  onOpenEmail,
+  onOpenGallery,
+  onOpenCookbook,
+  onOpenModels,
+  onOpenTasks,
 }: {
   onToggleSidebar: () => void;
   onOpenTheme: () => void;
@@ -40,6 +50,11 @@ export function IconRail({
   onOpenResearch: () => void;
   onOpenDocs: () => void;
   onOpenCalendar: () => void;
+  onOpenEmail: () => void;
+  onOpenGallery: () => void;
+  onOpenCookbook: () => void;
+  onOpenModels: () => void;
+  onOpenTasks: () => void;
 }): ReactNode {
   return (
     <div className="od-icon-rail">
@@ -117,6 +132,51 @@ export function IconRail({
         aria-label="Calendar"
       >
         <CalendarDays size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenTasks}
+        title="Tasks"
+        aria-label="Tasks"
+      >
+        <ListChecks size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenModels}
+        title="Models"
+        aria-label="Models"
+      >
+        <Boxes size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenEmail}
+        title="Email"
+        aria-label="Email"
+      >
+        <Mail size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenGallery}
+        title="Gallery"
+        aria-label="Gallery"
+      >
+        <Images size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenCookbook}
+        title="Cookbook"
+        aria-label="Cookbook"
+      >
+        <BookOpen size={18} />
       </button>
       <div className="od-rail-spacer" />
       <button
