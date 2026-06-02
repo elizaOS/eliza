@@ -63,8 +63,8 @@ const READY_CHECKS_BY_PATH: Record<string, readonly ReadyCheck[]> = {
   "/settings": [{ selector: '[data-testid="settings-shell"]' }],
   "/settings/voice": [{ selector: '[data-testid="settings-shell"]' }],
   "/companion": [{ text: "Companion" }],
-  "/rolodex": [{ selector: "#root" }],
-  "/desktop": [{ selector: "#root" }],
+  "/rolodex": [{ text: "Views" }],
+  "/desktop": [{ text: "Desktop workspace tools are only available" }],
 };
 
 const catalog = buildRouteCatalog(new Date("2026-01-01T00:00:00.000Z"));

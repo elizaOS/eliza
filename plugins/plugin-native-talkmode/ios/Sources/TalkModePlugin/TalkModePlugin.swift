@@ -23,6 +23,7 @@ public class TalkModePlugin: CAPPlugin, CAPBridgedPlugin {
     ]
 
     private static let defaultModelId = "eleven_flash_v2_5"
+    private static let localInferenceTtsURL = "eliza-local-agent://ipc/api/tts/local-inference"
 
     // MARK: - State
 
@@ -172,15 +173,17 @@ public class TalkModePlugin: CAPPlugin, CAPBridgedPlugin {
 
         let useSystemTts = call.getBool("useSystemTts") ?? false
         let useLocalInferenceTts = call.getBool("useLocalInferenceTts") ?? false
-        if useLocalInferenceTts {
-            call.reject("Local-inference TTS is not implemented by the native iOS TalkMode plugin")
-            return
-        }
         let directive = call.getObject("directive")
 
         speakTask?.cancel()
         speakTask = Task { @MainActor in
-            await self.speakInternal(text: text, forceSystemTts: useSystemTts, directive: directive, call: call)
+            await self.speakInternal(
+                text: text,
+                forceSystemTts: useSystemTts,
+                useLocalInferenceTts: useLocalInferenceTts,
+                directive: directive,
+                call: call
+            )
         }
     }
 
@@ -425,6 +428,7 @@ public class TalkModePlugin: CAPPlugin, CAPBridgedPlugin {
     private func speakInternal(
         text: String,
         forceSystemTts: Bool,
+        useLocalInferenceTts: Bool,
         directive: [String: Any]?,
         call: CAPPluginCall
     ) async {
@@ -457,13 +461,15 @@ public class TalkModePlugin: CAPPlugin, CAPBridgedPlugin {
         let effectiveFormat = Self.validatedOutputFormat(rawFormat) ?? "pcm_24000"
         let effectiveApiKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let canUseElevenLabs = !forceSystemTts
+        let canUseLocalInference = useLocalInferenceTts && !forceSystemTts
+        let canUseElevenLabs = !canUseLocalInference
+            && !forceSystemTts
             && !(effectiveApiKey ?? "").isEmpty
             && !(effectiveVoiceId ?? "").isEmpty
 
         notifyListeners("speaking", data: [
             "text": text,
-            "isSystemTts": !canUseElevenLabs
+            "isSystemTts": !(canUseLocalInference || canUseElevenLabs)
         ])
 
         // Enable STT during playback for interrupt detection
@@ -479,7 +485,10 @@ public class TalkModePlugin: CAPPlugin, CAPBridgedPlugin {
         let language = Self.validatedLanguage(directive?["language"] as? String)
 
         do {
-            if canUseElevenLabs {
+            if canUseLocalInference {
+                try await streamLocalInferenceTts(text: text, directive: directive)
+                interrupted = pcmStopRequested
+            } else if canUseElevenLabs {
                 do {
                     try await streamElevenLabsTts(
                         text: text,
@@ -530,6 +539,239 @@ public class TalkModePlugin: CAPPlugin, CAPBridgedPlugin {
         ])
 
         finishSpeaking()
+    }
+
+    // MARK: - Local Inference TTS
+
+    private struct LocalInferenceAudioResponse {
+        let status: Int
+        let statusText: String
+        let headers: [String: String]
+        let audioBase64: String
+        let bodyText: String
+    }
+
+    private struct WavPcmFormat {
+        let sampleRate: Int
+        let channels: Int
+    }
+
+    private func streamLocalInferenceTts(text: String, directive: [String: Any]?) async throws {
+        let response = try await requestLocalInferenceTtsAudio(text: text, directive: directive)
+        guard (200..<300).contains(response.status) else {
+            let detail = response.bodyText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let suffix = detail.isEmpty ? response.statusText : detail
+            throw NSError(domain: "TalkMode", code: response.status, userInfo: [
+                NSLocalizedDescriptionKey: "Local inference TTS error: \(response.status) \(suffix)"
+            ])
+        }
+
+        guard let audioData = Data(base64Encoded: response.audioBase64), !audioData.isEmpty else {
+            throw NSError(domain: "TalkMode", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "Local inference TTS returned empty audio"
+            ])
+        }
+
+        let format = try Self.parseWavPcmFormat(audioData)
+        notifyListeners("playbackStart", data: [
+            "provider": "local-inference",
+            "sampleRate": format.sampleRate,
+            "channels": format.channels
+        ])
+        try await playBufferedAudio(audioData)
+    }
+
+    private func requestLocalInferenceTtsAudio(
+        text: String,
+        directive: [String: Any]?
+    ) async throws -> LocalInferenceAudioResponse {
+        guard let webView = bridge?.webView else {
+            throw NSError(domain: "TalkMode", code: 503, userInfo: [
+                NSLocalizedDescriptionKey: "iOS local-agent WebView bridge is unavailable"
+            ])
+        }
+        guard #available(iOS 14.0, *) else {
+            throw NSError(domain: "TalkMode", code: 503, userInfo: [
+                NSLocalizedDescriptionKey: "Local inference TTS requires iOS 14 or later"
+            ])
+        }
+
+        let payload = buildLocalInferenceTtsPayload(text: text, directive: directive)
+        let source = """
+        const response = await fetch(options.url, {
+          method: "POST",
+          headers: {
+            "Accept": "audio/wav",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(options.payload)
+        });
+        const headers = {};
+        response.headers.forEach((value, key) => { headers[key] = value; });
+        const buffer = await response.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        const chunkSize = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          const chunk = bytes.subarray(i, i + chunkSize);
+          binary += String.fromCharCode.apply(null, Array.from(chunk));
+        }
+        let bodyText = "";
+        if (!response.ok && typeof TextDecoder !== "undefined") {
+          bodyText = new TextDecoder().decode(bytes.slice(0, 2048));
+        }
+        return {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+          audioBase64: btoa(binary),
+          bodyText
+        };
+        """
+
+        return try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.main.async {
+                Task { @MainActor in
+                    do {
+                        let value = try await webView.callAsyncJavaScript(
+                            source,
+                            arguments: [
+                                "options": [
+                                    "url": Self.localInferenceTtsURL,
+                                    "payload": payload
+                                ]
+                            ],
+                            in: nil,
+                            contentWorld: .page
+                        )
+                        continuation.resume(returning: try self.parseLocalInferenceAudioResponse(value))
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
+        }
+    }
+
+    private func buildLocalInferenceTtsPayload(text: String, directive: [String: Any]?) -> JSObject {
+        var payload: JSObject = ["text": text]
+        for key in ["voiceId", "voice", "modelId", "model"] {
+            if let value = directive?[key] as? String {
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { payload[key] = trimmed }
+            }
+        }
+        if let speed = directive?["speed"] as? Double, speed.isFinite, speed > 0 {
+            payload["speed"] = speed
+        } else if let speed = directive?["speed"] as? NSNumber, speed.doubleValue.isFinite, speed.doubleValue > 0 {
+            payload["speed"] = speed.doubleValue
+        }
+        if let outputFormat = directive?["outputFormat"] as? String {
+            let trimmed = outputFormat.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { payload["format"] = trimmed }
+        }
+        return payload
+    }
+
+    private func parseLocalInferenceAudioResponse(_ value: Any?) throws -> LocalInferenceAudioResponse {
+        guard let payload = value as? JSObject else {
+            throw NSError(domain: "TalkMode", code: 502, userInfo: [
+                NSLocalizedDescriptionKey: "Local inference TTS returned an invalid bridge response"
+            ])
+        }
+        let status = (payload["status"] as? Int)
+            ?? (payload["status"] as? NSNumber)?.intValue
+            ?? 0
+        let headers = payload["headers"] as? [String: String] ?? [:]
+        return LocalInferenceAudioResponse(
+            status: status,
+            statusText: payload["statusText"] as? String ?? "",
+            headers: headers,
+            audioBase64: payload["audioBase64"] as? String ?? "",
+            bodyText: payload["bodyText"] as? String ?? ""
+        )
+    }
+
+    private static func parseWavPcmFormat(_ data: Data) throws -> WavPcmFormat {
+        guard data.count >= 12,
+              asciiString(data, offset: 0, length: 4) == "RIFF",
+              asciiString(data, offset: 8, length: 4) == "WAVE" else {
+            throw NSError(domain: "TalkMode", code: 3, userInfo: [
+                NSLocalizedDescriptionKey: "Local inference TTS returned non-WAV audio"
+            ])
+        }
+
+        var offset = 12
+        var parsedFormat: WavPcmFormat?
+        while offset + 8 <= data.count {
+            let id = asciiString(data, offset: offset, length: 4)
+            let size = Int(littleEndianUInt32(data, offset: offset + 4))
+            let payloadOffset = offset + 8
+            guard size >= 0, payloadOffset + size <= data.count else {
+                throw NSError(domain: "TalkMode", code: 4, userInfo: [
+                    NSLocalizedDescriptionKey: "Invalid WAV chunk size"
+                ])
+            }
+
+            if id == "fmt " {
+                guard size >= 16 else {
+                    throw NSError(domain: "TalkMode", code: 5, userInfo: [
+                        NSLocalizedDescriptionKey: "Invalid WAV fmt chunk"
+                    ])
+                }
+                let audioFormat = littleEndianUInt16(data, offset: payloadOffset)
+                let channels = Int(littleEndianUInt16(data, offset: payloadOffset + 2))
+                let sampleRate = Int(littleEndianUInt32(data, offset: payloadOffset + 4))
+                let bitsPerSample = littleEndianUInt16(data, offset: payloadOffset + 14)
+                guard audioFormat == 1 else {
+                    throw NSError(domain: "TalkMode", code: 6, userInfo: [
+                        NSLocalizedDescriptionKey: "Only PCM WAV is supported"
+                    ])
+                }
+                guard bitsPerSample == 16 else {
+                    throw NSError(domain: "TalkMode", code: 7, userInfo: [
+                        NSLocalizedDescriptionKey: "Only 16-bit PCM WAV is supported"
+                    ])
+                }
+                guard channels >= 1, channels <= 2, sampleRate > 0 else {
+                    throw NSError(domain: "TalkMode", code: 8, userInfo: [
+                        NSLocalizedDescriptionKey: "Invalid WAV sample rate or channel count"
+                    ])
+                }
+                parsedFormat = WavPcmFormat(sampleRate: sampleRate, channels: channels)
+            } else if id == "data" {
+                guard let parsedFormat else {
+                    throw NSError(domain: "TalkMode", code: 9, userInfo: [
+                        NSLocalizedDescriptionKey: "WAV data arrived before fmt chunk"
+                    ])
+                }
+                return parsedFormat
+            }
+
+            offset = payloadOffset + size + (size % 2)
+        }
+
+        throw NSError(domain: "TalkMode", code: 10, userInfo: [
+            NSLocalizedDescriptionKey: "WAV data chunk was not found"
+        ])
+    }
+
+    private static func asciiString(_ data: Data, offset: Int, length: Int) -> String {
+        guard offset >= 0, length >= 0, offset + length <= data.count else { return "" }
+        return String(data: data.subdata(in: offset..<(offset + length)), encoding: .ascii) ?? ""
+    }
+
+    private static func littleEndianUInt16(_ data: Data, offset: Int) -> UInt16 {
+        guard offset + 2 <= data.count else { return 0 }
+        return UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
+    }
+
+    private static func littleEndianUInt32(_ data: Data, offset: Int) -> UInt32 {
+        guard offset + 4 <= data.count else { return 0 }
+        return UInt32(data[offset])
+            | (UInt32(data[offset + 1]) << 8)
+            | (UInt32(data[offset + 2]) << 16)
+            | (UInt32(data[offset + 3]) << 24)
     }
 
     /// Clean up after speech and restart recognition if talk mode is still enabled.
@@ -756,6 +998,26 @@ public class TalkModePlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    private func playBufferedAudio(_ data: Data) async throws {
+        mp3PlaybackStartTime = Date()
+
+        let player = try AVAudioPlayer(data: data)
+        audioPlayer = player
+        player.prepareToPlay()
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let delegate = AudioPlayerDelegate {
+                continuation.resume()
+            }
+            objc_setAssociatedObject(player, "delegate", delegate, .OBJC_ASSOCIATION_RETAIN)
+            player.delegate = delegate
+            player.play()
+        }
+
+        audioPlayer = nil
+        mp3PlaybackStartTime = nil
+    }
+
     /// Download a full audio response (MP3 etc.) and play it with AVAudioPlayer.
     private func downloadAndPlayAudio(request: URLRequest) async throws {
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -767,24 +1029,7 @@ public class TalkModePlugin: CAPPlugin, CAPBridgedPlugin {
             ])
         }
 
-        mp3PlaybackStartTime = Date()
-
-        let player = try AVAudioPlayer(data: data)
-        audioPlayer = player
-        player.prepareToPlay()
-
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let delegate = AudioPlayerDelegate {
-                continuation.resume()
-            }
-            // Retain delegate for the lifetime of playback
-            objc_setAssociatedObject(player, "delegate", delegate, .OBJC_ASSOCIATION_RETAIN)
-            player.delegate = delegate
-            player.play()
-        }
-
-        audioPlayer = nil
-        mp3PlaybackStartTime = nil
+        try await playBufferedAudio(data)
     }
 
     // MARK: - System TTS

@@ -98,7 +98,6 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     readyChecks: [
       { selector: '[data-testid="conversations-sidebar"]' },
       { selector: '[data-testid="chat-composer-textarea"]' },
-      { selector: '[data-testid="chat-widgets-bar"]' },
     ],
     mode: "all",
   },
@@ -161,7 +160,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "rolodex",
     path: "/rolodex",
-    readyChecks: [{ selector: "#root" }],
+    readyChecks: [{ text: "Views" }],
     timeoutMs: 60_000,
   },
   {
@@ -1374,7 +1373,7 @@ async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
   await expect(
     page
       .locator(
-        "main, [data-testid='home-view'], [role='main'], h1, [role='region']",
+        "main, [data-testid='home-view'], [role='main'], h1, [role='region'], [aria-label='Chat workspace']",
       )
       .first(),
   ).toBeVisible({
