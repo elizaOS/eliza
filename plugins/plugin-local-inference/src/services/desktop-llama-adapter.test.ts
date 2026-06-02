@@ -55,6 +55,8 @@ function makeAdapterHarness(nBatch: number) {
 		eliza_llama_context_params_set_n_threads_batch: vi.fn(),
 		eliza_llama_context_params_set_embeddings: vi.fn(),
 		eliza_llama_context_params_set_offload_kqv: vi.fn(),
+		eliza_llama_context_params_set_type_k: vi.fn(),
+		eliza_llama_context_params_set_type_v: vi.fn(),
 		eliza_llama_init_from_model: vi.fn().mockReturnValue(50),
 		eliza_llama_sampler_chain_params_default: vi.fn().mockReturnValue(60),
 		eliza_llama_sampler_chain_params_free: vi.fn(),
@@ -174,5 +176,27 @@ describe("DesktopLlamaAdapter prefill", () => {
 			},
 		});
 		expect(h.llama.llama_memory_clear).toHaveBeenCalledWith(4, true);
+	});
+
+	it("applies KV cache type overrides to context params", () => {
+		const h = makeAdapterHarness(4);
+		h.adapter.unloadModel();
+		h.adapter.loadModel({
+			modelPath: "/fake/model.gguf",
+			nBatch: 4,
+			nUBatch: 4,
+			threads: 1,
+			cacheTypeK: "tbq4_0",
+			cacheTypeV: "tbq3_0",
+		});
+
+		expect(h.shim.eliza_llama_context_params_set_type_k).toHaveBeenCalledWith(
+			40,
+			45,
+		);
+		expect(h.shim.eliza_llama_context_params_set_type_v).toHaveBeenCalledWith(
+			40,
+			44,
+		);
 	});
 });
