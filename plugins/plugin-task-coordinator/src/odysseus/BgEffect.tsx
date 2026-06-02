@@ -6,7 +6,7 @@
 
 import { type ReactNode, useEffect, useRef } from "react";
 
-type CanvasPattern = "sparkles" | "petals" | "rain";
+type CanvasPattern = "sparkles" | "petals" | "rain" | "constellations";
 const ANIMATIONS: Record<
   CanvasPattern,
   (canvas: HTMLCanvasElement) => () => void
@@ -14,6 +14,7 @@ const ANIMATIONS: Record<
   sparkles: runSparkles,
   petals: runPetals,
   rain: runRain,
+  constellations: runConstellations,
 };
 
 function effectColor(canvas: HTMLCanvasElement): string {
@@ -261,10 +262,102 @@ function runRain(canvas: HTMLCanvasElement): () => void {
   };
 }
 
+// Verbatim port of odysseus theme.js _initConstellations — drifting stars
+// with proximity-connecting lines + twinkle.
+function runConstellations(canvas: HTMLCanvasElement): () => void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return () => {};
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let w = 0;
+  let h = 0;
+  const STAR_COUNT = 50;
+  const CONNECT_DIST = 120;
+  let stars: {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    r: number;
+    phase: number;
+  }[] = [];
+  const initStars = () => {
+    stars = [];
+    for (let i = 0; i < STAR_COUNT; i++)
+      stars.push({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        vx: (Math.random() - 0.5) * 0.15,
+        vy: (Math.random() - 0.5) * 0.15,
+        r: 0.8 + Math.random() * 0.8,
+        phase: Math.random() * Math.PI * 2,
+      });
+  };
+  const resize = () => {
+    w = canvas.clientWidth || window.innerWidth;
+    h = canvas.clientHeight || window.innerHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (stars.length === 0) initStars();
+  };
+  resize();
+  const onResize = () => {
+    resize();
+    initStars();
+  };
+  window.addEventListener("resize", onResize);
+  let t = 0;
+  let raf = 0;
+  const draw = () => {
+    raf = requestAnimationFrame(draw);
+    t += 0.01;
+    ctx.clearRect(0, 0, w, h);
+    const c = effectColor(canvas);
+    for (const s of stars) {
+      s.x += s.vx;
+      s.y += s.vy;
+      if (s.x < 0) s.x = w;
+      if (s.x > w) s.x = 0;
+      if (s.y < 0) s.y = h;
+      if (s.y > h) s.y = 0;
+    }
+    ctx.strokeStyle = c;
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i < stars.length; i++)
+      for (let j = i + 1; j < stars.length; j++) {
+        const dx = stars[i].x - stars[j].x;
+        const dy = stars[i].y - stars[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < CONNECT_DIST) {
+          ctx.globalAlpha = (1 - dist / CONNECT_DIST) * 0.15;
+          ctx.beginPath();
+          ctx.moveTo(stars[i].x, stars[i].y);
+          ctx.lineTo(stars[j].x, stars[j].y);
+          ctx.stroke();
+        }
+      }
+    ctx.fillStyle = c;
+    for (const s of stars) {
+      const twinkle = 0.5 + 0.5 * Math.sin(t * 2 + s.phase);
+      ctx.globalAlpha = 0.15 + twinkle * 0.25;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  };
+  draw();
+  return () => {
+    cancelAnimationFrame(raf);
+    window.removeEventListener("resize", onResize);
+  };
+}
+
 export const CANVAS_BG_PATTERNS: CanvasPattern[] = [
   "sparkles",
   "petals",
   "rain",
+  "constellations",
 ];
 
 export function BgEffect({ pattern }: { pattern: string }): ReactNode {
