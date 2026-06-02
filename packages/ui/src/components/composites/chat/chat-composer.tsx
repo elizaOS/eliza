@@ -502,6 +502,11 @@ export function ChatComposer({
         {inlineMicButton}
         {inlineSendButton}
       </>
+    ) : voice.isListening ? (
+      // Keep the mic (release) button mounted while a push-to-talk turn is held,
+      // even after live STT text fills the draft — otherwise the composer swaps
+      // to the send button mid-hold and pointer-release can no longer submit.
+      inlineMicButton
     ) : hasDraft ? (
       inlineSendButton
     ) : (
