@@ -29,7 +29,6 @@ import type {
   CreateLifeOpsGoalRequest,
   CreateLifeOpsWorkflowRequest,
   CreateLifeOpsXPostRequest,
-  DisconnectLifeOpsHealthConnectorRequest,
   DisconnectLifeOpsMessagingConnectorRequest,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailRecommendationsRequest,
@@ -58,18 +57,11 @@ import type {
   SetLifeOpsCalendarIncludedRequest,
   SetLifeOpsReminderPreferenceRequest,
   SnoozeLifeOpsOccurrenceRequest,
-  StartLifeOpsDiscordConnectorRequest,
-  StartLifeOpsHealthConnectorRequest,
-  StartLifeOpsSignalPairingRequest,
-  StartLifeOpsTelegramAuthRequest,
-  SubmitLifeOpsTelegramAuthRequest,
-  SyncLifeOpsHealthConnectorRequest,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGmailSpamReviewItemRequest,
   UpdateLifeOpsGoalRequest,
   UpdateLifeOpsWorkflowRequest,
   UpsertLifeOpsChannelPolicyRequest,
-  UpsertLifeOpsXConnectorRequest,
 } from "../contracts/index.js";
 import {
   LIFEOPS_ACTIVITY_SIGNAL_STATES,
@@ -79,20 +71,14 @@ import {
   LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
   LIFEOPS_INBOX_CACHE_MODES,
   LIFEOPS_INBOX_CHANNELS,
-  LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES,
   LIFEOPS_SCREEN_TIME_RANGES,
   type LifeOpsGmailSpamReviewStatus,
-  type LifeOpsOwnerBrowserAccessSource,
   type VerifyLifeOpsTelegramConnectorRequest,
 } from "../contracts/index.js";
 import {
   loadLifeOpsAppState,
   saveLifeOpsAppState,
 } from "../lifeops/app-state.js";
-import {
-  type BrowserSessionRegistration,
-  recordBrowserSessionRegistration,
-} from "../lifeops/browser-extension-store.js";
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
 import type { AddPaymentSourceRequest } from "../lifeops/payment-types.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
@@ -437,31 +423,6 @@ function parseDateOnlyQuery(
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
     throw new LifeOpsServiceError(400, `${field} must be a YYYY-MM-DD date`);
-  }
-  return normalized;
-}
-
-function parseDiscordConnectorSourceInput(
-  value: unknown,
-): LifeOpsOwnerBrowserAccessSource | undefined {
-  if (value === undefined || value === null || value === "") {
-    return undefined;
-  }
-  if (typeof value !== "string") {
-    throw new LifeOpsServiceError(
-      400,
-      `source must be one of: ${LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES.join(", ")}`,
-    );
-  }
-  const normalized = value.trim().toLowerCase();
-  if (!normalized) {
-    return undefined;
-  }
-  if (!isOneOf(normalized, LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES)) {
-    throw new LifeOpsServiceError(
-      400,
-      `source must be one of: ${LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES.join(", ")}`,
-    );
   }
   return normalized;
 }
@@ -1595,30 +1556,6 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  const healthStartMatch = pathname.match(
-    /^\/api\/lifeops\/connectors\/health\/([^/]+)\/start$/,
-  );
-  if (method === "POST" && healthStartMatch) {
-    if (rateLimitRequest(ctx, "oauth_init")) return true;
-    const provider = parseHealthConnectorProviderPath(ctx, healthStartMatch);
-    if (!provider) return true;
-    const body = await readJsonBody<Record<string, unknown>>(req, res);
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.startHealthConnector(
-          {
-            ...(body as Omit<StartLifeOpsHealthConnectorRequest, "provider">),
-            provider,
-          },
-          url,
-        ),
-        201,
-      );
-    });
-  }
-
   const healthCallbackMatch = pathname.match(
     /^\/api\/lifeops\/connectors\/health\/([^/]+)\/callback$/,
   );
@@ -1667,47 +1604,6 @@ export async function handleLifeOpsRoutes(
     return true;
   }
 
-  const healthDisconnectMatch = pathname.match(
-    /^\/api\/lifeops\/connectors\/health\/([^/]+)\/disconnect$/,
-  );
-  if (method === "POST" && healthDisconnectMatch) {
-    if (rateLimitRequest(ctx, "connector_write")) return true;
-    const provider = parseHealthConnectorProviderPath(
-      ctx,
-      healthDisconnectMatch,
-    );
-    if (!provider) return true;
-    const body = await readJsonBody<Record<string, unknown>>(req, res);
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.disconnectHealthConnector(
-          {
-            ...(body as Omit<
-              DisconnectLifeOpsHealthConnectorRequest,
-              "provider"
-            >),
-            provider,
-          },
-          url,
-        ),
-      );
-    });
-  }
-
-  if (method === "POST" && pathname === "/api/lifeops/health/sync") {
-    if (rateLimitRequest(ctx, "connector_write")) return true;
-    const body = await readJsonBody<SyncLifeOpsHealthConnectorRequest>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(res, await service.syncHealthConnectors(body));
-    });
-  }
-
   if (method === "GET" && pathname === "/api/lifeops/health/summary") {
     if (rateLimitRequest(ctx, "default")) return true;
     return runRoute(ctx, async (service) => {
@@ -1741,74 +1637,6 @@ export async function handleLifeOpsRoutes(
           parseConnectorSideQuery(url.searchParams.get("side")),
         ),
       );
-    });
-  }
-
-  if (method === "GET" && pathname === "/api/lifeops/connectors/x/success") {
-    const connected = url.searchParams.get("twitter_connected") === "true";
-    const error =
-      url.searchParams.get("twitter_error_detail") ??
-      url.searchParams.get("twitter_error");
-    if (
-      !parseConnectorRefreshDetailFromQuery(ctx, {
-        side: "owner",
-        mode: "local",
-      })
-    ) {
-      return true;
-    }
-    writeHtml(
-      res,
-      connected && !error ? 200 : 400,
-      connected && !error ? "X Connector Refreshed" : "X Connection Failed",
-      connected && !error
-        ? "X connector status was refreshed in Eliza. You can close this window."
-        : (error ?? "X connector setup did not complete successfully."),
-    );
-    return true;
-  }
-
-  if (method === "POST" && pathname === "/api/lifeops/connectors/x/start") {
-    if (rateLimitRequest(ctx, "oauth_init")) return true;
-    const body = await readJsonBody<Record<string, unknown>>(req, res);
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.startXConnector({
-          mode: parseConnectorModeInput(body.mode),
-          side: parseConnectorSideInput(body.side),
-          redirectUrl: parseOptionalBodyString(body, "redirectUrl"),
-        }),
-        201,
-      );
-    });
-  }
-
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/connectors/x/disconnect"
-  ) {
-    if (rateLimitRequest(ctx, "connector_write")) return true;
-    const body = await readJsonBody<Record<string, unknown>>(req, res);
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.disconnectXConnector({
-          mode: parseConnectorModeInput(body.mode),
-          side: parseConnectorSideInput(body.side),
-        }),
-      );
-    });
-  }
-
-  if (method === "POST" && pathname === "/api/lifeops/connectors/x") {
-    if (rateLimitRequest(ctx, "connector_write")) return true;
-    const body = await readJsonBody<UpsertLifeOpsXConnectorRequest>(req, res);
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(res, await service.upsertXConnector(body), 201);
     });
   }
 
@@ -1958,79 +1786,6 @@ export async function handleLifeOpsRoutes(
 
   if (
     method === "POST" &&
-    pathname === "/api/lifeops/connectors/telegram/start"
-  ) {
-    if (rateLimitRequest(ctx, "oauth_init")) return true;
-    const body = await readJsonBody<StartLifeOpsTelegramAuthRequest>(req, res);
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      const status = await service.getTelegramConnectorStatus(
-        parseConnectorSideFromRequest(url, body),
-      );
-      json(res, {
-        provider: "telegram",
-        side: status.side,
-        state: status.connected ? "connected" : "error",
-        error: status.connected
-          ? undefined
-          : "Telegram setup is managed by @elizaos/plugin-telegram. Configure the Telegram connector plugin, then check status again.",
-        status,
-      });
-    });
-  }
-
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/connectors/telegram/submit"
-  ) {
-    if (rateLimitRequest(ctx, "oauth_init")) return true;
-    const body = await readJsonBody<SubmitLifeOpsTelegramAuthRequest>(req, res);
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      const status = await service.getTelegramConnectorStatus(
-        parseConnectorSideFromRequest(url, body),
-      );
-      json(res, {
-        provider: "telegram",
-        side: status.side,
-        state: status.connected ? "connected" : "error",
-        error: status.connected
-          ? undefined
-          : "Telegram setup is managed by @elizaos/plugin-telegram. LifeOps code/password submission is disabled.",
-        status,
-      });
-    });
-  }
-
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/connectors/telegram/cancel"
-  ) {
-    if (rateLimitRequest(ctx, "connector_write")) return true;
-    return runRoute(ctx, async (service) => {
-      const side =
-        parseConnectorSideQuery(url.searchParams.get("side")) ?? "owner";
-      json(res, await service.getTelegramConnectorStatus(side));
-    });
-  }
-
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/connectors/telegram/disconnect"
-  ) {
-    if (rateLimitRequest(ctx, "connector_write")) return true;
-    return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.disconnectTelegram(
-          parseConnectorSideQuery(url.searchParams.get("side")),
-        ),
-      );
-    });
-  }
-
-  if (
-    method === "POST" &&
     pathname === "/api/lifeops/connectors/telegram/verify"
   ) {
     if (rateLimitRequest(ctx, "oauth_init")) return true;
@@ -2076,95 +1831,6 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  if (method === "POST" && pathname === "/api/lifeops/connectors/signal/pair") {
-    if (rateLimitRequest(ctx, "oauth_init")) return true;
-    const body = await readJsonBody<StartLifeOpsSignalPairingRequest>(req, res);
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      const side = parseConnectorSideFromRequest(url, body);
-      const status = await service.getSignalConnectorStatus(side);
-      json(
-        res,
-        {
-          provider: "signal",
-          side: status.side,
-          sessionId: `plugin-managed:${status.side}`,
-          status,
-          message: status.connected
-            ? "Signal is connected through @elizaos/plugin-signal."
-            : "Signal pairing is managed by @elizaos/plugin-signal. Configure the Signal connector plugin, then check status again.",
-        },
-        201,
-      );
-    });
-  }
-
-  if (
-    method === "GET" &&
-    pathname === "/api/lifeops/connectors/signal/pairing-status"
-  ) {
-    return runRoute(ctx, async (service) => {
-      const sessionId = url.searchParams.get("sessionId")?.trim();
-      if (!sessionId) {
-        throw new LifeOpsServiceError(400, "sessionId is required");
-      }
-      if (sessionId.startsWith("plugin-managed:")) {
-        const sideValue = sessionId.slice("plugin-managed:".length);
-        const side = parseConnectorSideQuery(sideValue) ?? "owner";
-        const status = await service.getSignalConnectorStatus(side);
-        json(res, {
-          sessionId,
-          state: status.connected ? "connected" : "failed",
-          qrDataUrl: null,
-          error: status.connected
-            ? null
-            : "Signal pairing is managed by @elizaos/plugin-signal.",
-          status,
-        });
-        return;
-      }
-      json(res, await service.getSignalPairingStatus(sessionId));
-    });
-  }
-
-  if (method === "POST" && pathname === "/api/lifeops/connectors/signal/stop") {
-    if (rateLimitRequest(ctx, "connector_write")) return true;
-    const body = await readJsonBody<DisconnectLifeOpsMessagingConnectorRequest>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    return runRoute(ctx, async () => {
-      const side = parseConnectorSideFromRequest(url, body);
-      json(res, {
-        sessionId: `plugin-managed:${side}`,
-        state: "idle",
-        qrDataUrl: null,
-        error: null,
-      });
-    });
-  }
-
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/connectors/signal/disconnect"
-  ) {
-    if (rateLimitRequest(ctx, "connector_write")) return true;
-    const body = await readJsonBody<DisconnectLifeOpsMessagingConnectorRequest>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.disconnectSignal(
-          parseConnectorSideFromRequest(url, body),
-        ),
-      );
-    });
-  }
-
   if (method === "POST" && pathname === "/api/lifeops/connectors/signal/send") {
     if (rateLimitRequest(ctx, "outbound_message")) return true;
     const body = await readJsonBody<Record<string, unknown>>(req, res);
@@ -2195,47 +1861,6 @@ export async function handleLifeOpsRoutes(
         res,
         await service.getDiscordConnectorStatus(
           parseConnectorSideQuery(url.searchParams.get("side")),
-        ),
-      );
-    });
-  }
-
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/connectors/discord/connect"
-  ) {
-    if (rateLimitRequest(ctx, "oauth_init")) return true;
-    const body = await readJsonBody<StartLifeOpsDiscordConnectorRequest>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.authorizeDiscordConnector(
-          parseConnectorSideFromRequest(url, body),
-          parseDiscordConnectorSourceInput(body.source),
-        ),
-      );
-    });
-  }
-
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/connectors/discord/disconnect"
-  ) {
-    if (rateLimitRequest(ctx, "connector_write")) return true;
-    const body = await readJsonBody<DisconnectLifeOpsMessagingConnectorRequest>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.disconnectDiscord(
-          parseConnectorSideFromRequest(url, body),
         ),
       );
     });
@@ -3346,46 +2971,6 @@ export async function handleLifeOpsRoutes(
         occurrence: await service.snoozeOccurrence(occurrenceId, body),
       });
     });
-  }
-
-  if (method === "POST" && pathname === "/api/lifeops/browser/register") {
-    if (!requireAuthorizedRouteContext(ctx)) return true;
-    if (rateLimitRequest(ctx, "connector_write")) return true;
-    const runtime = ctx.state.runtime;
-    if (!runtime) return true;
-    const body = await readJsonBody<{
-      deviceId?: unknown;
-      userAgent?: unknown;
-      extensionVersion?: unknown;
-      browserVendor?: unknown;
-    }>(req, res);
-    if (!body) return true;
-    const deviceId =
-      typeof body.deviceId === "string" ? body.deviceId.trim() : "";
-    if (!deviceId) {
-      ctx.error(res, "deviceId is required", 400);
-      return true;
-    }
-    const userAgent =
-      typeof body.userAgent === "string" ? body.userAgent.trim() : "";
-    const extensionVersion =
-      typeof body.extensionVersion === "string"
-        ? body.extensionVersion.trim()
-        : "0.0.0";
-    const browserVendor: BrowserSessionRegistration["browserVendor"] =
-      body.browserVendor === "chrome" || body.browserVendor === "safari"
-        ? body.browserVendor
-        : "unknown";
-    const registration: BrowserSessionRegistration = {
-      deviceId,
-      userAgent,
-      extensionVersion,
-      browserVendor,
-      registeredAt: new Date().toISOString(),
-    };
-    await recordBrowserSessionRegistration(runtime, registration);
-    json(res, { registration });
-    return true;
   }
 
   return false;

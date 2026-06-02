@@ -63,9 +63,9 @@ local_routed_candidate_state:
     release DRC/ERC reports, supplier-approved component geometry, SI/PI/RF
     signoff, or fabrication evidence.
   board_file: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
-  board_sha256: 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b
+  board_sha256: 5cf7b04f71284f90e840c9931339ec879a197d6c6b672b3c76dd4267f5d40e8b
   local_step_file: board/kicad/e1-phone/production/step/routed-board-with-components.step
-  local_step_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+  local_step_sha256: ea98f73d805f237ed397d5b6f190b86c31a9fc4ea270ea983a472220470043d6
   kicad_cli_preflight: mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json
   local_drc_report: mechanical/e1-phone/review/local-kicad-cli/routed-drc.json
   local_erc_report: mechanical/e1-phone/review/local-kicad-cli/e1-phone-erc.json
@@ -80,9 +80,9 @@ local_routed_candidate_state:
   has_local_step: true
   local_kicad_drc_status: blocked_kicad_cli_drc_violations
   local_kicad_erc_status: blocked_kicad_cli_erc_violations
-  local_drc_violation_count: 1863
-  local_drc_unconnected_item_count: 441
-  local_drc_total_count: 2304
+  local_drc_violation_count: 1755
+  local_drc_unconnected_item_count: 446
+  local_drc_total_count: 2201
   local_erc_total_count: 366
   drc_erc_evidence_lineage:
     claim_boundary: >
@@ -90,19 +90,19 @@ local_routed_candidate_state:
       evidence only. Production DRC/ERC report paths remain blocked candidate metadata
       until clean raw KiCad payloads, waivers, and reviewer signoff are archived.
     raw_local_drc_report: mechanical/e1-phone/review/local-kicad-cli/routed-drc.json
-    raw_local_drc_report_sha256: 448c37095e772774c76d3f3e6ca6bfcf35832dec4ba2aa88034ac836df789d4c
+    raw_local_drc_report_sha256: 8646c9c360add3c53cd4798f430b0a3096f0c6291cf459dc4767f8f5250a1d92
     raw_local_erc_report: mechanical/e1-phone/review/local-kicad-cli/e1-phone-erc.json
-    raw_local_erc_report_sha256: cf82c0d9edc34938bda0df62195da53257995e3db30aa97fef58d629b746fb3d
+    raw_local_erc_report_sha256: df324cd474bc568a2b326e7232de228725bce849a4c2ecff5b81d23d5fd919c3
     local_triage_report: mechanical/e1-phone/review/local-kicad-cli/drc-erc-triage.json
-    local_triage_report_sha256: dbd6f9b272743188cbabba5e5d0ac77ccec60d0a535cbdba9e62a7482c62a36a
+    local_triage_report_sha256: c34edbe1281c41b9008f4ce836dfc779d4d1efacac3b3a9bf1f5a603d8c0cf66
     preflight_report: mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json
     production_drc_report_path: board/kicad/e1-phone/production/reports/drc.json
     production_erc_report_path: board/kicad/e1-phone/production/reports/erc.json
     production_report_paths_are_candidate_metadata: true
     production_report_raw_kicad_payload_required_for_release: true
-    local_drc_violation_count: 1863
-    local_drc_unconnected_item_count: 441
-    local_drc_total_count: 2304
+    local_drc_violation_count: 1755
+    local_drc_unconnected_item_count: 446
+    local_drc_total_count: 2201
     local_erc_total_count: 366
     release_credit: false
   release_credit: false
@@ -320,7 +320,7 @@ required_kicad_routed_board_outputs:
   - id: pcb_drc_report
     path: board/kicad/e1-phone/production/reports/drc.json
     local_non_release_report: mechanical/e1-phone/review/local-kicad-cli/routed-drc.json
-    local_non_release_total_count: 2304
+    local_non_release_total_count: 2201
     required_status: clean_or_signed_waivers
     present: false
   - id: zone_fill_report
@@ -358,7 +358,7 @@ validation_evidence_required:
       - mechanical/e1-phone/review/local-kicad-cli/e1-phone-erc.json
       - mechanical/e1-phone/review/local-kicad-cli/drc-erc-triage.json
     acceptance_rule: clean_or_every_violation_has_signed_release_waiver
-    local_drc_total_count: 2304
+    local_drc_total_count: 2201
     local_erc_total_count: 366
     local_status: blocked_local_kicad_drc_erc_violations_present
     present: false
@@ -446,7 +446,7 @@ order_of_operations:
       - board/kicad/e1-phone/production/reports/zone-fill.json
       - board/kicad/e1-phone/production/reports/si-pi
       - board/kicad/e1-phone/production/reports/rf
-    current_status: blocked_local_kicad_reports_show_2304_drc_rows_366_erc_rows_no_si_pi_or_rf_evidence
+    current_status: blocked_local_kicad_reports_show_2201_drc_rows_366_erc_rows_no_si_pi_or_rf_evidence
   - order: 4
     id: add_test_access_fiducials_and_manufacturing_coupons
     actions:
@@ -534,7 +534,7 @@ cross_checks:
 
 release_blockers:
   - supplier footprints, pinouts, courtyards, heights, STEP/B-rep models, and reference layouts are missing
-  - local routed KiCad candidate has tracks and zones, but KiCad CLI reports 2304 DRC rows and 366 ERC rows with no release waivers
+  - local routed KiCad candidate has tracks and zones, but KiCad CLI reports 2201 DRC rows and 366 ERC rows with no release waivers
   - USB_DP_DN topology exceeds the current concept length target and needs controlled-impedance flex or topology change
   - DRC, ERC, zone fill, length/skew, SI/PI, RF, PDN, power thermal, and first-article evidence are missing
   - routed test-point coordinates, fiducials, panel/tooling decisions, and impedance coupon outputs are missing

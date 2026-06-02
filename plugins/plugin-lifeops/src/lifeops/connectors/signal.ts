@@ -26,9 +26,7 @@ export function createSignalConnectorContribution(
     modes: ["local"],
     describe: { label: "Signal" },
     async start() {},
-    async disconnect() {
-      await service.disconnectSignal("owner");
-    },
+    async disconnect() {},
     async verify(): Promise<boolean> {
       const status = await service.getSignalConnectorStatus("owner");
       return Boolean(status.connected);

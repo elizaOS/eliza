@@ -1,5 +1,5 @@
 {
-  "claim_boundary": "Targeted clearance cases plus full-assembly B-rep boolean check. Min target gap 0.15 mm honored; intentional gasket/adhesive contact classified separately.",
+  "claim_boundary": "Targeted AABB/parameter clearance checks for packaging review; not a full CAD boolean interference analysis.",
   "status": "pass",
   "cases": [
     {
@@ -137,17 +137,5 @@
       ]
     }
   ],
-  "checked_case_count": 18,
-  "false_claim_flags": {
-    "claim_allowed": false,
-    "release_claim_allowed": false,
-    "production_claim_allowed": false,
-    "phone_release_claim_allowed": false,
-    "fabrication_claim_allowed": false,
-    "supplier_release_claim_allowed": false
-  },
-  "boolean_engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-  "full_assembly_boolean_pass": true,
-  "full_assembly_unintentional_clash_count": 0,
-  "min_gap_mm_assembly_wide": 0.0
+  "checked_case_count": 18
 }

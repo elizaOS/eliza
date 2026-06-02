@@ -225,7 +225,9 @@ describe("verifyGoalCompletion (orchestration paths)", () => {
     const [{ modelType, params }] = calls;
     expect(modelType).toBe("TEXT_SMALL");
     expect(params).toMatchObject({ stopSequences: [] });
-    expect((params as { prompt: string }).prompt).toMatch(/Acceptance criteria/);
+    expect((params as { prompt: string }).prompt).toMatch(
+      /Acceptance criteria/,
+    );
   });
 
   it("returns a structured fail when the model throws", async () => {

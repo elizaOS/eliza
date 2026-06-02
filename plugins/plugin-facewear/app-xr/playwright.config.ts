@@ -11,7 +11,10 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: "list",
   outputDir: recording
-    ? path.resolve(import.meta.dirname, "../../e2e-recordings/app-xr/test-results")
+    ? path.resolve(
+        import.meta.dirname,
+        "../../../e2e-recordings/app-xr/test-results",
+      )
     : "./test-results",
   use: {
     baseURL: process.env.XR_BASE_URL ?? "http://localhost:31337",

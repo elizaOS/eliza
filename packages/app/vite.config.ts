@@ -1936,6 +1936,16 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-health/src/ui/index.ts",
         ),
       },
+      // `screen-time/mobile-signal-setup` ships browser-safe badge/label helpers
+      // the LifeOps renderer imports; alias it to source like `/ui` so the
+      // production browser build resolves it without a built plugin-health dist.
+      {
+        find: /^@elizaos\/plugin-health\/screen-time\/mobile-signal-setup$/,
+        replacement: path.resolve(
+          elizaRoot,
+          "plugins/plugin-health/src/screen-time/mobile-signal-setup.ts",
+        ),
+      },
       // Browser-safe aliases for local app plugin package roots.
       ...createAppPluginBrowserAliases(),
       // Dynamic aliases for local app plugin package subpaths.

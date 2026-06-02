@@ -337,6 +337,29 @@ def pwd_repo_output_path(package_relative_path: str) -> str:
     return f"$(pwd)/{repo_output_path(package_relative_path)}"
 
 
+ADB_TARGET_SELECTOR_COMMAND = (
+    'test -n "$CHIP_ANDROID_ADB_SERIAL" || test -n "$CHIP_ANDROID_ADB_HOSTPORT"'
+)
+ADB_HOSTPORT_EXPORT_COMMAND = "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>"
+ADB_SERIAL_EXPORT_COMMAND = "export CHIP_ANDROID_ADB_SERIAL=<adb-serial>"
+
+
+def peripheral_capture_commands(component: str) -> list[str]:
+    return [
+        ADB_TARGET_SELECTOR_COMMAND,
+        ADB_HOSTPORT_EXPORT_COMMAND,
+        (
+            "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py "
+            f'--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" {component}'
+        ),
+        ADB_SERIAL_EXPORT_COMMAND,
+        (
+            "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py "
+            f'--adb-serial "$CHIP_ANDROID_ADB_SERIAL" {component}'
+        ),
+    ]
+
+
 def evidence_capture_plan(path: Path) -> dict[str, Any]:
     """Return exact operator commands for collecting a required evidence file."""
     relative = rel(path)
@@ -348,7 +371,7 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
         "prerequisites": [
             "run capture_commands from the repository root",
             "booted eliza_ai_soc Android target reachable over adb",
-            "CHIP_ANDROID_ADB_HOSTPORT set to the chip emulator adb host:port",
+            "CHIP_ANDROID_ADB_HOSTPORT set for emulator targets or CHIP_ANDROID_ADB_SERIAL set for lab targets",
             "current staged system APK payload report generated",
         ],
         "validation_command": PHONE_RUNTIME_VALIDATION_COMMAND,
@@ -363,7 +386,7 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
             "device_or_emulator_prerequisites",
             [
                 "booted eliza_ai_soc Android target reachable over adb",
-                "exactly one ready adb device or CHIP_ANDROID_ADB_HOSTPORT target",
+                "exactly one selected target through CHIP_ANDROID_ADB_HOSTPORT or CHIP_ANDROID_ADB_SERIAL",
             ],
         ),
         "fail_closed_validation_rule": contract.get(
@@ -387,10 +410,22 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
                 "packages/chip/docs/evidence/android/eliza_launcher_runtime_transcript.log",
             ],
             "capture_commands": [
-                "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
+                ADB_TARGET_SELECTOR_COMMAND,
+                ADB_HOSTPORT_EXPORT_COMMAND,
                 (
                     "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py "
                     '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" '
+                    "--artifact-id android-chip-riscv64-zip "
+                    "--target-label chip-riscv64 "
+                    "--expected-cpu-abi riscv64 "
+                    "--output $(pwd)/packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json "
+                    "--logcat $(pwd)/packages/chip/docs/evidence/android/eliza_launcher_runtime_logcat.txt "
+                    "--transcript $(pwd)/packages/chip/docs/evidence/android/eliza_launcher_runtime_transcript.log"
+                ),
+                ADB_SERIAL_EXPORT_COMMAND,
+                (
+                    "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py "
+                    '--adb-serial "$CHIP_ANDROID_ADB_SERIAL" '
                     "--artifact-id android-chip-riscv64-zip "
                     "--target-label chip-riscv64 "
                     "--expected-cpu-abi riscv64 "
@@ -410,71 +445,61 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
         "docs/evidence/android/eliza_ai_soc_cvd_hal_processes.txt": {
             **base,
             "capture_commands": [
+                ADB_TARGET_SELECTOR_COMMAND,
                 adb_prefix,
                 (
                     "mkdir -p packages/chip/docs/evidence/android && "
                     'adb -s "$CHIP_ANDROID_ADB_HOSTPORT" shell ps -A '
                     "| tee packages/chip/docs/evidence/android/eliza_ai_soc_cvd_hal_processes.txt"
                 ),
+                ADB_SERIAL_EXPORT_COMMAND,
+                (
+                    "mkdir -p packages/chip/docs/evidence/android && "
+                    'adb -s "$CHIP_ANDROID_ADB_SERIAL" shell ps -A '
+                    "| tee packages/chip/docs/evidence/android/eliza_ai_soc_cvd_hal_processes.txt"
+                ),
             ],
         },
         "docs/evidence/android/peripherals/rear_camera_sim.log": {
             **base,
-            "capture_commands": [
-                "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
-                (
-                    "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py "
-                    '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" rear_camera'
-                ),
-            ],
+            "capture_commands": peripheral_capture_commands("rear_camera"),
         },
         "docs/evidence/android/peripherals/front_camera_sim.log": {
             **base,
-            "capture_commands": [
-                "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
-                (
-                    "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py "
-                    '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" front_camera'
-                ),
-            ],
+            "capture_commands": peripheral_capture_commands("front_camera"),
         },
         "docs/evidence/android/peripherals/wifi_sim.log": {
             **base,
-            "capture_commands": [
-                "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
-                (
-                    "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py "
-                    '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" wifi'
-                ),
-            ],
+            "capture_commands": peripheral_capture_commands("wifi"),
         },
         "docs/evidence/android/peripherals/bluetooth_sim.log": {
             **base,
-            "capture_commands": [
-                "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
-                (
-                    "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py "
-                    '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" bluetooth'
-                ),
-            ],
+            "capture_commands": peripheral_capture_commands("bluetooth"),
         },
         "docs/evidence/android/peripherals/cellular_5g_lte_sim.log": {
             **base,
-            "capture_commands": [
-                "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
-                (
-                    "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py "
-                    '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" cellular_5g_lte'
-                ),
-            ],
+            "capture_commands": peripheral_capture_commands("cellular_5g_lte"),
         },
         "docs/evidence/android/security/verified_boot_acceptance.log": {
             **base,
             "capture_commands": [
+                ADB_TARGET_SELECTOR_COMMAND,
                 adb_prefix,
                 (
                     "mkdir -p packages/chip/docs/evidence/android/security && "
                     'state=$(adb -s "$CHIP_ANDROID_ADB_HOSTPORT" shell getprop '
+                    "ro.boot.verifiedbootstate | tr -d '\\r') && "
+                    'if [ "$state" = green ]; then result=0; verdict=pass; '
+                    "else result=1; verdict=fail; fi; "
+                    "printf 'VERIFIED_BOOT=%s\\nSTATE=%s\\nRESULT=%s\\n' "
+                    '"$verdict" "$state" "$result" | tee '
+                    "packages/chip/docs/evidence/android/security/verified_boot_acceptance.log; "
+                    'test "$result" = 0'
+                ),
+                ADB_SERIAL_EXPORT_COMMAND,
+                (
+                    "mkdir -p packages/chip/docs/evidence/android/security && "
+                    'state=$(adb -s "$CHIP_ANDROID_ADB_SERIAL" shell getprop '
                     "ro.boot.verifiedbootstate | tr -d '\\r') && "
                     'if [ "$state" = green ]; then result=0; verdict=pass; '
                     "else result=1; verdict=fail; fi; "
@@ -552,10 +577,17 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
         "docs/evidence/android/eliza_ai_soc_e1_npu_hal_liveness.log": {
             **base,
             "capture_commands": [
-                ("export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>"),
+                ADB_TARGET_SELECTOR_COMMAND,
+                ADB_HOSTPORT_EXPORT_COMMAND,
                 (
                     "python3 packages/chip/scripts/android/capture_e1_npu_hal_liveness.py "
                     '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" '
+                    "--output $(pwd)/packages/chip/docs/evidence/android/eliza_ai_soc_e1_npu_hal_liveness.log"
+                ),
+                ADB_SERIAL_EXPORT_COMMAND,
+                (
+                    "python3 packages/chip/scripts/android/capture_e1_npu_hal_liveness.py "
+                    '--adb-serial "$CHIP_ANDROID_ADB_SERIAL" '
                     "--output $(pwd)/packages/chip/docs/evidence/android/eliza_ai_soc_e1_npu_hal_liveness.log"
                 ),
             ],
@@ -1086,7 +1118,7 @@ def report_next_command_plan(
                 "next_command_batches": group.get("next_command_batches", []),
                 "requires": [
                     "booted eliza_ai_soc Android target reachable over adb",
-                    "CHIP_ANDROID_ADB_HOSTPORT set to the chip emulator adb host:port",
+                    "CHIP_ANDROID_ADB_HOSTPORT set for emulator targets or CHIP_ANDROID_ADB_SERIAL set for lab targets",
                     "fresh runtime evidence files matching the fail-closed contracts",
                     "rerun of phone runtime readiness and aggregate tapeout checks",
                 ],

@@ -13,6 +13,7 @@ import csv
 import hashlib
 import json
 import math
+import os
 import re
 import shutil
 import subprocess
@@ -16442,6 +16443,7 @@ def write_board_step_readiness_artifacts(
                 text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
+                env={**os.environ, "KICAD_CONFIG_HOME": str(local_kicad_config_dir)},
                 timeout=timeout_s,
             )
             report["exit_code"] = completed.returncode
@@ -16496,6 +16498,26 @@ def write_board_step_readiness_artifacts(
     local_kicad_report_dir = REVIEW_DIR / "local-kicad-cli"
     local_drc_report_path = local_kicad_report_dir / "routed-drc.json"
     local_erc_report_path = local_kicad_report_dir / "e1-phone-erc.json"
+    local_kicad_config_dir = local_kicad_report_dir / "config"
+    local_kicad_config_version_dir = local_kicad_config_dir / "9.0"
+    local_kicad_config_version_dir.mkdir(parents=True, exist_ok=True)
+    local_kicad_fp_lib_table = local_kicad_config_version_dir / "fp-lib-table"
+    local_kicad_fp_lib_table.write_text(
+        "\n".join(
+            [
+                "(fp_lib_table",
+                (
+                    '  (lib (name "e1-phone-dev")(type "KiCad")(uri "'
+                    f"{ROOT / 'board/kicad/e1-phone/e1-phone-dev.pretty'}"
+                    '")(options "")(descr "E1 phone non-release development footprints '
+                    'with CAD envelope STEP bindings"))'
+                ),
+                ")",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
     local_drc_probe = (
         run_kicad_json_probe(
             "drc",
@@ -16526,6 +16548,13 @@ def write_board_step_readiness_artifacts(
         if sch_erc_available
         else {}
     )
+    for generated_config in local_kicad_config_version_dir.iterdir():
+        if generated_config == local_kicad_fp_lib_table:
+            continue
+        if generated_config.is_file():
+            generated_config.unlink()
+        elif generated_config.is_dir():
+            shutil.rmtree(generated_config)
     drc_violation_count = int(local_drc_probe.get("violation_count") or 0)
     drc_unconnected_item_count = int(local_drc_probe.get("unconnected_item_count") or 0)
     erc_violation_count = int(local_erc_probe.get("violation_count") or 0)
@@ -16603,6 +16632,9 @@ def write_board_step_readiness_artifacts(
             "drc": str(local_drc_report_path.relative_to(ROOT)),
             "erc": str(local_erc_report_path.relative_to(ROOT)),
         },
+        "kicad_config_home": str(local_kicad_config_dir.relative_to(ROOT)),
+        "kicad_fp_lib_table": str(local_kicad_fp_lib_table.relative_to(ROOT)),
+        "kicad_fp_lib_table_sha256": file_sha256(local_kicad_fp_lib_table),
         "source_hashes": {
             "drc_sha256": file_sha256(local_drc_report_path)
             if local_drc_report_path.is_file()
@@ -16696,6 +16728,9 @@ def write_board_step_readiness_artifacts(
         "available": kicad_cli_available,
         "resolved_path": kicad_cli_path
         or ("scripts/kicad_run.sh kicad-cli" if kicad_cli_runner.is_file() else ""),
+        "local_kicad_config_home": str(local_kicad_config_dir.relative_to(ROOT)),
+        "local_kicad_fp_lib_table": str(local_kicad_fp_lib_table.relative_to(ROOT)),
+        "local_kicad_fp_lib_table_sha256": file_sha256(local_kicad_fp_lib_table),
         "version": kicad_version,
         "sch_erc_available": sch_erc_available,
         "pcb_drc_available": pcb_drc_available,
@@ -17798,9 +17833,10 @@ def write_routed_board_clearance_artifacts(
                     if priority == 2
                     else "normal",
                     "measurement_instruction": (
-                        "Rerun against routed KiCad STEP with production component 3D models."
+                        "Measure against approved routed KiCad STEP with production "
+                        "component 3D models."
                     ),
-                    "requires_routed_step_rerun": True,
+                    "requires_routed_step_release_clearance": True,
                 }
             )
     rerun_cases.sort(key=lambda item: (item["rerun_priority"], item["case_id"]))
@@ -18048,7 +18084,7 @@ def write_routed_board_clearance_artifacts(
                 "evidence": "solid-cad-handoff.json",
             },
             {
-                "id": "clearance_rerun_cases_defined",
+                "id": "routed_step_release_clearance_cases_defined",
                 "pass": bool(rerun_cases),
                 "evidence": "assembly-clearance.json",
             },

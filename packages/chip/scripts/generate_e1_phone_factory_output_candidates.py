@@ -212,7 +212,7 @@ def write_dir_candidate(path_text: str, artifact_id: str) -> dict[str, str]:
     path.mkdir(parents=True, exist_ok=True)
     child = path / "candidate-placeholder.txt"
     child.write_text(
-        "blocked local production/factory output candidate; release children and approvals are missing\n",
+        "blocked local production/factory output candidate; supplier/factory approval, signoff, and release classification are missing\n",
         encoding="utf-8",
     )
     manifest = blocked_record(artifact_id, path_text)

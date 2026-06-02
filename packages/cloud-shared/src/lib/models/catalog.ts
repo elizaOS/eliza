@@ -21,6 +21,13 @@ export interface CatalogModel {
   pricing?: Record<string, unknown>;
   recommended?: boolean;
   free?: boolean;
+  /**
+   * Parameters the upstream provider/gateway advertises for this model. Used to
+   * detect reasoning models (those listing "reasoning"/"include_reasoning"),
+   * which spend output tokens on hidden chain-of-thought and need a response
+   * token floor. Populated verbatim from the OpenRouter catalog.
+   */
+  supported_parameters?: string[];
 }
 
 export interface SelectorModel {

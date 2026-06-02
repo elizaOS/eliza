@@ -263,7 +263,7 @@ def build_report(
             "status",
             routed_clearance["status"],
             "pass",
-            "mechanical review has no routed-board clearance rerun",
+            "mechanical review has no routed-board release-clearance result",
         ),
         source_blocker(
             rel(end_to_end_path),
@@ -518,6 +518,53 @@ def build_report(
             "pattern_all_electrical_pad_counts_match_manifest": objective_local_progress[
                 "pattern_all_electrical_pad_counts_match_manifest"
             ],
+            "instance_pin_step_status": objective_local_progress["instance_pin_step_status"],
+            "instance_pin_step_component_instance_count": objective_local_progress[
+                "instance_pin_step_component_instance_count"
+            ],
+            "instance_pin_step_routed_board_footprint_count": objective_local_progress[
+                "instance_pin_step_routed_board_footprint_count"
+            ],
+            "instance_pin_step_pinout_bound_instance_count": objective_local_progress[
+                "instance_pin_step_pinout_bound_instance_count"
+            ],
+            "instance_pin_step_support_pattern_instance_count": objective_local_progress[
+                "instance_pin_step_support_pattern_instance_count"
+            ],
+            "instance_pin_step_pending_supplier_pad_map_or_order_instance_count": (
+                objective_local_progress[
+                    "instance_pin_step_pending_supplier_pad_map_or_order_instance_count"
+                ]
+            ),
+            "instance_pin_step_public_candidate_package_conflict_instance_count": (
+                objective_local_progress[
+                    "instance_pin_step_public_candidate_package_conflict_instance_count"
+                ]
+            ),
+            "instance_pin_step_local_step_instance_count": objective_local_progress[
+                "instance_pin_step_local_step_instance_count"
+            ],
+            "instance_pin_step_local_step_hash_match_count": objective_local_progress[
+                "instance_pin_step_local_step_hash_match_count"
+            ],
+            "instance_pin_step_local_contract_pass_count": objective_local_progress[
+                "instance_pin_step_local_contract_pass_count"
+            ],
+            "instance_pin_step_local_review_pass_count": objective_local_progress[
+                "instance_pin_step_local_review_pass_count"
+            ],
+            "instance_pin_step_supplier_approved_instance_count": objective_local_progress[
+                "instance_pin_step_supplier_approved_instance_count"
+            ],
+            "instance_pin_step_release_credit_instance_count": objective_local_progress[
+                "instance_pin_step_release_credit_instance_count"
+            ],
+            "instance_pin_step_local_failure_count": objective_local_progress[
+                "instance_pin_step_local_failure_count"
+            ],
+            "instance_pin_step_release_credit": objective_local_progress[
+                "instance_pin_step_release_credit"
+            ],
             "cad_connection_passing_count": objective_local_progress[
                 "cad_connection_passing_count"
             ],
@@ -760,7 +807,7 @@ def build_report(
             "missing required routed or factory output count is nonzero",
             "required artifact content is template-only, presence-only, unvalidated, or unapproved",
             "board STEP intake uses local routed-board candidate evidence without supplier approval",
-            "routed-board clearance rerun is missing",
+            "routed-board release-clearance result is missing",
             "first-article transcript or traveler is missing",
             "supplier-returned geometry, drawings, and traceability are absent or unvalidated",
         ],

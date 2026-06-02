@@ -18,6 +18,7 @@ from scripts.validate_task_feasibility import (
     _rollout,
     _success_predicate_diagnostics,
     _termination_reason,
+    _walk_eval_diagnostics,
 )
 
 
@@ -172,6 +173,57 @@ def test_success_predicate_diagnostics_reports_foot_contact_switches() -> None:
             "expected": {">=": 2},
             "actual": 2,
             "unmet": False,
+        }
+    ]
+
+
+def test_walk_eval_diagnostics_reports_phase_contacts_slip_and_frontier() -> None:
+    diagnostics = _walk_eval_diagnostics(
+        success={
+            "delta_x_m_min": 0.30,
+            "min_alternating_foot_contacts": 2,
+            "max_foot_slip_m_s": 0.20,
+        },
+        final_info={
+            "gait_phase": np.pi / 2.0,
+            "imu_pitch": -0.12,
+            "left_foot_slip_m_s": 0.04,
+            "right_foot_slip_m_s": 0.18,
+        },
+        traces={
+            "tracked_delta_x": [0.05, 0.24, 0.20],
+            "tracked_delta_y": [0.0, 0.01, 0.02],
+            "delta_x": [0.30],
+            "delta_y": [0.0],
+            "left_foot_contact": [1.0, 0.0, 1.0],
+            "right_foot_contact": [0.0, 1.0, 0.0],
+            "imu_pitch": [0.03, -0.12, -0.08],
+            "left_foot_slip": [0.02, 0.04],
+            "right_foot_slip": [0.05, 0.18],
+            "foot_slip": [0.02, 0.05, 0.18],
+            "gait_phase": [0.0, 1.0, np.pi / 2.0],
+        },
+    )
+
+    assert diagnostics["gait_phase_rad"]["expected_support_foot"] == "left"
+    assert diagnostics["contacts"]["alternating_switch_count"] == 2
+    assert diagnostics["contacts"]["declared_alternation_met"] is True
+    assert diagnostics["contacts"]["observed_both_single_support_feet"] is True
+    assert diagnostics["support_foot"]["final"] == "left"
+    assert diagnostics["support_foot"]["last_single"] == "left"
+    assert diagnostics["pitch_rad"]["max_abs"] == pytest.approx(0.12)
+    assert diagnostics["slip_m_s"]["max_right"] == pytest.approx(0.18)
+    assert diagnostics["slip_m_s"]["limit"] == pytest.approx(0.20)
+    assert diagnostics["distance_frontier"] == [
+        {
+            "predicate": "delta_x_m_min",
+            "target_m": 0.30,
+            "source": "tracked_body",
+            "best_m": 0.24,
+            "final_m": 0.20,
+            "gap_m": pytest.approx(0.06),
+            "progress_fraction": pytest.approx(0.8),
+            "sample_index": 1,
         }
     ]
 
@@ -468,6 +520,22 @@ def test_rollout_reports_imu_tilt_extrema() -> None:
     assert row["diagnostics"]["imu_pitch_rad"]["max_abs"] == row["max_abs_imu_pitch_rad"]
     assert row["candidate_results"][0]["max_abs_imu_roll_rad"] is not None
     assert row["candidate_results"][0]["max_abs_imu_pitch_rad"] is not None
+
+
+def test_rollout_candidate_summary_includes_walk_eval_diagnostics() -> None:
+    pytest.importorskip("mujoco")
+
+    row = _rollout("hiwonder-ainex", "walk_forward", max_steps=3)
+
+    walk_eval = row["diagnostics"]["walk_eval"]
+    assert "gait_phase_rad" in walk_eval
+    assert "contacts" in walk_eval
+    assert "pitch_rad" in walk_eval
+    assert "slip_m_s" in walk_eval
+    assert "distance_frontier" in walk_eval
+    assert row["candidate_results"][0]["walk_eval"]["contacts"][
+        "required_alternating_switch_count"
+    ] is not None
 
 
 def test_sinusoidal_action_freezes_after_hold_switch() -> None:

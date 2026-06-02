@@ -24,6 +24,100 @@ interface OCRBackend {
   dispose(): Promise<void>;
 }
 
+export interface StructuredOCRData {
+  tables: Array<{ rows: string[][]; bbox: BoundingBox }>;
+  forms: Array<{ label: string; value: string; bbox: BoundingBox }>;
+  lists: Array<{ items: string[]; bbox: BoundingBox }>;
+}
+
+function unionBbox(boxes: BoundingBox[]): BoundingBox {
+  const minX = Math.min(...boxes.map((box) => box.x));
+  const minY = Math.min(...boxes.map((box) => box.y));
+  const maxX = Math.max(...boxes.map((box) => box.x + box.width));
+  const maxY = Math.max(...boxes.map((box) => box.y + box.height));
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+function parseTableRow(line: string): string[] | null {
+  const trimmed = line.trim();
+  const cells = trimmed.includes("|")
+    ? trimmed.split("|")
+    : trimmed.includes("\t")
+      ? trimmed.split("\t")
+      : trimmed.split(/\s{2,}/u);
+  const normalized = cells.map((cell) => cell.trim()).filter(Boolean);
+  return normalized.length >= 2 ? normalized : null;
+}
+
+export function extractStructuredDataFromOCR(
+  ocr: OCRResult,
+): StructuredOCRData {
+  const tables: StructuredOCRData["tables"] = [];
+  const forms: StructuredOCRData["forms"] = [];
+  const lists: StructuredOCRData["lists"] = [];
+
+  for (const block of ocr.blocks) {
+    const lines = block.text
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const tableRows = lines
+      .map(parseTableRow)
+      .filter((row): row is string[] => Boolean(row));
+    if (
+      tableRows.length >= 2 &&
+      new Set(tableRows.map((row) => row.length)).size === 1
+    ) {
+      tables.push({ rows: tableRows, bbox: block.bbox });
+    }
+
+    const listItems = lines
+      .map((line) => line.match(/^(?:[-*•]|\d+[.)])\s+(.+)$/u)?.[1]?.trim())
+      .filter((item): item is string => Boolean(item));
+    if (listItems.length >= 2) {
+      lists.push({ items: listItems, bbox: block.bbox });
+    }
+
+    for (const line of lines) {
+      const match = line.match(/^([^:]{1,80}):\s*(.+)$/u);
+      if (match?.[1] && match[2]) {
+        forms.push({
+          label: match[1].trim(),
+          value: match[2].trim(),
+          bbox: block.bbox,
+        });
+      }
+    }
+  }
+
+  const wordRows = ocr.blocks
+    .flatMap((block) => block.words ?? [])
+    .reduce<Map<number, Array<{ text: string; bbox: BoundingBox }>>>(
+      (rows, word) => {
+        const rowKey = Math.round(word.bbox.y / 12);
+        const row = rows.get(rowKey) ?? [];
+        row.push({ text: word.text, bbox: word.bbox });
+        rows.set(rowKey, row);
+        return rows;
+      },
+      new Map(),
+    );
+
+  const rowsFromWords = Array.from(wordRows.values())
+    .map((row) => row.sort((a, b) => a.bbox.x - b.bbox.x))
+    .filter((row) => row.length >= 2);
+  if (rowsFromWords.length >= 2) {
+    tables.push({
+      rows: rowsFromWords.map((row) => row.map((word) => word.text)),
+      bbox: unionBbox(
+        rowsFromWords.flatMap((row) => row.map((word) => word.bbox)),
+      ),
+    });
+  }
+
+  return { tables, forms, lists };
+}
+
 class DoctrBackend implements OCRBackend {
   readonly name: OCRBackendName = "doctr";
   private impl = new DoctrOCRService();
@@ -245,20 +339,9 @@ export class OCRService {
     return this.extractText(imageBuffer);
   }
 
-  /**
-   * Structured data extraction (tables / forms / lists) is not implemented in
-   * the doCTR path yet — the previous tesseract-based implementation owned
-   * this surface. Returns an empty result so callers don't break; structured
-   * extraction is a follow-up that will live in a separate post-process
-   * module (it's pure geometry, not model output).
-   */
-  async extractStructuredData(_imageBuffer: Buffer): Promise<{
-    tables?: Array<{ rows: string[][]; bbox: BoundingBox }>;
-    forms?: Array<{ label: string; value: string; bbox: BoundingBox }>;
-    lists?: Array<{ items: string[]; bbox: BoundingBox }>;
-  }> {
-    if (!this.initialized) await this.initialize();
-    return { tables: [], forms: [], lists: [] };
+  async extractStructuredData(imageBuffer: Buffer): Promise<StructuredOCRData> {
+    const ocr = await this.extractText(imageBuffer);
+    return extractStructuredDataFromOCR(ocr);
   }
 
   getActiveBackend(): OCRBackendName | null {

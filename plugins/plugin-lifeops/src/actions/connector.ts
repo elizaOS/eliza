@@ -578,27 +578,20 @@ async function dispatchX(
   const side = normalizeSide(params.side) ?? "owner";
   switch (subaction) {
     case "connect": {
-      const response = await service.startXConnector({
-        side,
-        mode: params.mode,
-        redirectUrl: params.redirectUrl,
-      });
+      const status = await service.getXConnectorStatus(params.mode, side);
       return {
-        success: true,
-        text: response.authUrl
-          ? `Open this URL to finish X connect: ${response.authUrl}`
-          : `X connector started for side=${side}, mode=${response.mode}.`,
-        data: { actionName: ACTION_NAME, connector: "x", subaction, response },
+        success: status.connected,
+        text: status.connected
+          ? `X is connected through @elizaos/plugin-x (side=${side}).`
+          : `X setup is managed by @elizaos/plugin-x (side=${side}). Configure the X connector plugin, then check status again.`,
+        data: { actionName: ACTION_NAME, connector: "x", subaction, status },
       };
     }
     case "disconnect": {
-      const status = await service.disconnectXConnector({
-        side,
-        mode: params.mode,
-      });
+      const status = await service.getXConnectorStatus(params.mode, side);
       return {
-        success: true,
-        text: `X connector disconnected (side=${side}).`,
+        success: false,
+        text: `X disconnect is managed by @elizaos/plugin-x (side=${side}). Use the X connector plugin setup controls, then check status again.`,
         data: { actionName: ACTION_NAME, connector: "x", subaction, status },
       };
     }
@@ -775,10 +768,10 @@ async function dispatchTelegram(
       };
     }
     case "disconnect": {
-      const status = await service.disconnectTelegram(side);
+      const status = await service.getTelegramConnectorStatus(side);
       return {
-        success: true,
-        text: `Telegram disconnected (side=${side}).`,
+        success: false,
+        text: `Telegram disconnect is managed by @elizaos/plugin-telegram (side=${side}). Use the Telegram connector plugin setup controls, then check status again.`,
         data: {
           actionName: ACTION_NAME,
           connector: "telegram",
@@ -861,10 +854,10 @@ async function dispatchSignal(
       };
     }
     case "disconnect": {
-      const status = await service.disconnectSignal(side);
+      const status = await service.getSignalConnectorStatus(side);
       return {
-        success: true,
-        text: `Signal disconnected (side=${side}).`,
+        success: false,
+        text: `Signal disconnect is managed by @elizaos/plugin-signal (side=${side}). Use the Signal connector plugin setup controls, then check status again.`,
         data: {
           actionName: ACTION_NAME,
           connector: "signal",
@@ -966,15 +959,13 @@ async function dispatchDiscord(
   const side = normalizeSide(params.side) ?? "owner";
   switch (subaction) {
     case "connect": {
-      const status = await service.authorizeDiscordConnector(side);
+      const status = await service.getDiscordConnectorStatus(side);
       return {
-        success: side === "agent" ? status.connected : true,
+        success: status.connected,
         text:
-          side === "agent"
-            ? status.connected
-              ? "Agent Discord is connected through @elizaos/plugin-discord."
-              : "Agent Discord is managed by @elizaos/plugin-discord. Configure and enable the Discord bot connector, then check status again."
-            : `Discord browser connector authorized (side=${side}).`,
+          status.connected
+            ? `Discord is connected through @elizaos/plugin-discord (side=${side}).`
+            : `Discord setup is managed by @elizaos/plugin-discord (side=${side}). Configure the Discord connector plugin, then check status again.`,
         data: {
           actionName: ACTION_NAME,
           connector: "discord",
@@ -984,10 +975,10 @@ async function dispatchDiscord(
       };
     }
     case "disconnect": {
-      const status = await service.disconnectDiscord(side);
+      const status = await service.getDiscordConnectorStatus(side);
       return {
-        success: true,
-        text: `Discord disconnected (side=${side}).`,
+        success: false,
+        text: `Discord disconnect is managed by @elizaos/plugin-discord (side=${side}). Use the Discord connector plugin setup controls, then check status again.`,
         data: {
           actionName: ACTION_NAME,
           connector: "discord",
@@ -1244,26 +1235,26 @@ async function dispatchWhatsAppVerify(
 async function dispatchBrowserBridge(
   { service }: ConnectorDispatchContext,
   subaction: ConnectorSubaction,
-  params: ConnectorActionParams,
+  _params: ConnectorActionParams,
 ): Promise<ActionResult> {
   switch (subaction) {
     case "connect": {
-      if (!params.browser) {
-        return missingParamResult("browser_bridge", subaction, ["browser"]);
-      }
-      const pairing = await service.createBrowserCompanionPairing({
-        browser: params.browser,
-        profileId: params.profileId ?? "default",
-        profileLabel: params.profileLabel,
-      });
+      const [settings, companions] = await Promise.all([
+        service.getBrowserSettings(),
+        service.listBrowserCompanions(),
+      ]);
       return {
-        success: true,
-        text: `Browser bridge pairing created. Use pairingToken to finish on the companion (browser=${params.browser}).`,
+        success: companions.length > 0,
+        text:
+          companions.length > 0
+            ? `Browser bridge is configured through @elizaos/plugin-browser (${companions.length} companion${companions.length === 1 ? "" : "s"}).`
+            : "Browser bridge setup is managed by @elizaos/plugin-browser. Configure the browser companion plugin, then check status again.",
         data: {
           actionName: ACTION_NAME,
           connector: "browser_bridge",
           subaction,
-          pairing,
+          settings,
+          companions,
         },
       };
     }

@@ -1,8 +1,4 @@
 import {
-  HEALTH_ASSISTANT_COMMANDS,
-  type HealthAssistantIconKey,
-} from "@elizaos/plugin-health/ui";
-import {
   Activity,
   BriefcaseBusiness,
   CalendarCheck,
@@ -18,7 +14,6 @@ import {
   MessageSquareText,
   Mic2,
   Monitor,
-  Moon,
   Plane,
   RefreshCw,
   Shield,
@@ -358,37 +353,7 @@ export const ASSISTANT_INTENTS: AssistantIntent[] = [
   },
 ];
 
-function healthIcon(iconKey: HealthAssistantIconKey): ReactNode {
-  switch (iconKey) {
-    case "activity":
-      return <Activity className="h-4 w-4" aria-hidden />;
-    case "heart":
-      return <Heart className="h-4 w-4" aria-hidden />;
-    case "moon":
-      return <Moon className="h-4 w-4" aria-hidden />;
-    case "timer":
-      return <Timer className="h-4 w-4" aria-hidden />;
-    case "monitor":
-      return <Monitor className="h-4 w-4" aria-hidden />;
-    case "shield":
-      return <Shield className="h-4 w-4" aria-hidden />;
-  }
-}
-
-export const HEALTH_ASSISTANT_INTENTS: AssistantIntent[] =
-  HEALTH_ASSISTANT_COMMANDS.map((command) => ({
-    id: `health:${command.id}`,
-    label: command.label,
-    shortLabel: command.shortLabel,
-    icon: healthIcon(command.iconKey),
-    tone: command.tone,
-    prompt: command.prompt,
-  }));
-
-export const LIFEOPS_ASSISTANT_INTENTS: AssistantIntent[] = [
-  ...ASSISTANT_INTENTS,
-  ...HEALTH_ASSISTANT_INTENTS,
-];
+export const LIFEOPS_ASSISTANT_INTENTS: AssistantIntent[] = ASSISTANT_INTENTS;
 
 export const LIFEOPS_VOICE_COMMAND_PROMPT = "Voice command for LifeOps: ";
 

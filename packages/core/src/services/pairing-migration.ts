@@ -117,6 +117,33 @@ async function getPairingService(
 }
 
 /**
+ * Clear existing pairing rows for a channel before importing legacy data.
+ */
+async function clearChannelPairingData(
+	runtime: IAgentRuntime,
+	channel: PairingChannel,
+): Promise<{ requestsDeleted: number; allowlistEntriesDeleted: number }> {
+	const query = { channel, agentId: runtime.agentId };
+	const [requestsResult] = await runtime.getPairingRequests([query]);
+	const [allowlistResult] = await runtime.getPairingAllowlists([query]);
+
+	const requestIds = requestsResult.requests.map((request) => request.id);
+	const allowlistEntryIds = allowlistResult.entries.map((entry) => entry.id);
+
+	if (requestIds.length > 0) {
+		await runtime.deletePairingRequests(requestIds);
+	}
+	if (allowlistEntryIds.length > 0) {
+		await runtime.deletePairingAllowlistEntries(allowlistEntryIds);
+	}
+
+	return {
+		requestsDeleted: requestIds.length,
+		allowlistEntriesDeleted: allowlistEntryIds.length,
+	};
+}
+
+/**
  * Migrate a single channel's pairing data from file-based store to database.
  *
  * @param runtime - The agent runtime
@@ -156,13 +183,24 @@ export async function migrateChannelPairingData(
 	const now = new Date();
 
 	// Clear existing data if requested
-	if (clearExisting && !dryRun) {
-		// This would require additional methods on PairingService
-		// For now, we'll skip this functionality
-		runtime.logger.warn(
-			{ src: "pairing-migration", channel },
-			"clearExisting option is not yet implemented",
-		);
+	if (clearExisting) {
+		if (dryRun) {
+			runtime.logger.info(
+				{ src: "pairing-migration", channel },
+				"Would clear existing pairing data before migration (dry run)",
+			);
+		} else {
+			const clearResult = await clearChannelPairingData(runtime, channel);
+			runtime.logger.info(
+				{
+					src: "pairing-migration",
+					channel,
+					requestsDeleted: clearResult.requestsDeleted,
+					allowlistEntriesDeleted: clearResult.allowlistEntriesDeleted,
+				},
+				"Cleared existing pairing data before migration",
+			);
+		}
 	}
 
 	// Migrate pairing requests

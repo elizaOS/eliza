@@ -1,5 +1,3 @@
-export { getBrowserBridgeCompanionPackageStatus } from "@elizaos/plugin-browser";
-
 import { registerLifeOpsAutomationNodeContributor } from "./automation-node-contributor.js";
 
 export { lifeopsPlugin } from "./routes/plugin.js";

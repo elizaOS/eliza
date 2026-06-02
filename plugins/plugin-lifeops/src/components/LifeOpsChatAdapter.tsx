@@ -4,6 +4,7 @@ import type {
   LifeOpsInboxMessage,
 } from "@elizaos/shared";
 import { useAppWorkspaceChatChrome, useChatComposer } from "@elizaos/ui";
+import { MessageCircle } from "lucide-react";
 import { type ReactNode, useCallback, useEffect } from "react";
 import {
   type LifeOpsSelection,
@@ -220,11 +221,11 @@ export function useLifeOpsChatAdapter(selection: LifeOpsSelection): {
 
   let placeholder: string | null = null;
   if (selection.reminderId) {
-    placeholder = "Ask about this reminder…";
+    placeholder = "Reminder selected";
   } else if (selection.eventId) {
-    placeholder = "Ask about this event…";
+    placeholder = "Event selected";
   } else if (selection.messageId) {
-    placeholder = "Ask about this message…";
+    placeholder = "Message selected";
   }
 
   return { placeholder };
@@ -241,7 +242,15 @@ export function LifeOpsChatAdapter({ children }: { children: ReactNode }) {
     >
       {placeholder ? (
         <div className="shrink-0 border-b border-border/12 bg-bg/60 px-4 py-1.5">
-          <span className="text-xs text-muted">{placeholder}</span>
+          <div
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border/12 bg-bg/70 text-muted"
+            role="status"
+            aria-label={placeholder}
+            title={placeholder}
+          >
+            <MessageCircle className="h-3.5 w-3.5" aria-hidden />
+            <span className="sr-only">{placeholder}</span>
+          </div>
         </div>
       ) : null}
       <div className="flex min-h-0 flex-1 flex-col">{children}</div>
@@ -255,6 +264,6 @@ export function buildReplyPrefill(opts: {
   snippet: string;
   deepLink?: string | null;
 }): string {
-  const link = opts.deepLink ? ` — ${opts.deepLink}` : "";
+  const link = opts.deepLink ? ` Source: ${opts.deepLink}` : "";
   return `Please draft a reply to this ${opts.channel} message from ${opts.sender}: ${opts.snippet}${link}`;
 }

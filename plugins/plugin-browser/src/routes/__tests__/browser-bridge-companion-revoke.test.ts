@@ -134,7 +134,7 @@ describe("Browser Bridge companion revoke route", () => {
       pathname: "/api/browser-bridge/settings",
       service: null,
     });
-    const { handleBrowserBridgeRoutes } = await import("./bridge.js");
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
 
     const handled = await handleBrowserBridgeRoutes(ctx);
 
@@ -151,7 +151,7 @@ describe("Browser Bridge companion revoke route", () => {
       pathname: "/api/browser-bridge/settings",
       runtime: null,
     });
-    const { handleBrowserBridgeRoutes } = await import("./bridge.js");
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
 
     const handled = await handleBrowserBridgeRoutes(ctx);
 
@@ -171,7 +171,7 @@ describe("Browser Bridge companion revoke route", () => {
       service: { syncBrowserCompanion },
     });
     ctx.readJsonBody = readJsonBody;
-    const { handleBrowserBridgeRoutes } = await import("./bridge.js");
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
 
     const handled = await handleBrowserBridgeRoutes(ctx);
 
@@ -193,7 +193,7 @@ describe("Browser Bridge companion revoke route", () => {
       service: { updateBrowserSettings },
       body: ["not", "an", "object"],
     });
-    const { handleBrowserBridgeRoutes } = await import("./bridge.js");
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
 
     const handled = await handleBrowserBridgeRoutes(ctx);
 
@@ -215,7 +215,7 @@ describe("Browser Bridge companion revoke route", () => {
       ctx.error(res, "invalid browser package target", 400);
       return null;
     });
-    const { handleBrowserBridgeRoutes } = await import("./bridge.js");
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
 
     const handled = await handleBrowserBridgeRoutes(ctx);
 
@@ -240,7 +240,7 @@ describe("Browser Bridge companion revoke route", () => {
         }),
       },
     });
-    const { handleBrowserBridgeRoutes } = await import("./bridge.js");
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
 
     const handled = await handleBrowserBridgeRoutes(ctx);
 
@@ -260,7 +260,7 @@ describe("Browser Bridge companion revoke route", () => {
       service: {},
       body: { target: "chrome" },
     });
-    const { handleBrowserBridgeRoutes } = await import("./bridge.js");
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
 
     const handled = await handleBrowserBridgeRoutes(ctx);
 

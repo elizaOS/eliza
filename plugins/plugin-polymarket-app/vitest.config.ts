@@ -26,6 +26,13 @@ export default defineConfig({
         find: /^react-dom\/client$/,
         replacement: require.resolve("react-dom/client"),
       },
+      {
+        find: /^@elizaos\/ui\/agent-surface$/,
+        replacement: path.resolve(
+          here,
+          "../../packages/ui/src/agent-surface/index.ts",
+        ),
+      },
     ],
   },
   test: {

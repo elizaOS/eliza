@@ -3004,7 +3004,7 @@
   "fixture_id": "fixture_unassigned_until_cm_test_station_selected",
   "impedance_coupon_reference": "missing_fabricator_coupon",
   "input_artifact_hashes": {
-    "board/kicad/e1-phone/component-height-step-integration.yaml": "9343f603961eb11f780221f3dd40cc8f8bc5ad46083085b541797ddfcc5e3dbc",
+    "board/kicad/e1-phone/component-height-step-integration.yaml": "bd0d3f56b08234eec3b599a76cc49bec552da037568a4b3f17acf75bf69ea1ba",
     "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb": "158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b",
     "board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml": "434679db9c6a7b8ab506d62808a03ca7a1425a57853b2ca5b110eecd9de30af7"
   },

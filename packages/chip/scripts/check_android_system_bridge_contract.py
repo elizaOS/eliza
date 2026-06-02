@@ -123,6 +123,7 @@ RECHECK_COMMAND = (
     "python3 packages/chip/scripts/check_android_system_bridge_contract.py --json-only"
 )
 ADB_CONNECT_CANDIDATES = ("127.0.0.1:6520", "127.0.0.1:5555")
+ADB_HOSTPORT_SENTINEL = "$CHIP_ANDROID_ADB_HOSTPORT"
 BRIDGE_PACKAGE = "ai.elizaos.system.bridge"
 EXPECTED_BRIDGE_MODULES = {
     "ElizaSystemBridge",
@@ -314,7 +315,11 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
                 "scope": "host_adb",
                 "claim_boundary": "operator_live_capture_commands_only_not_runtime_evidence",
                 "commands": [
-                    "adb devices",
+                    "test -n \"$CHIP_ANDROID_ADB_SERIAL\" || test -n \"$CHIP_ANDROID_ADB_HOSTPORT\"",
+                    (
+                        f"{RUNTIME_CAPTURE_BASE_COMMAND} "
+                        f'--adb-connect "{ADB_HOSTPORT_SENTINEL}"'
+                    ),
                     (
                         f"{RUNTIME_CAPTURE_BASE_COMMAND} "
                         + " ".join(f"--adb-connect {address}" for address in ADB_CONNECT_CANDIDATES)
@@ -326,8 +331,8 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
                     RECHECK_COMMAND,
                 ],
                 "requires": [
-                    "exactly one booted Android target or explicit adb serial",
-                    "set CHIP_ANDROID_ADB_SERIAL for lab targets that are already visible in adb devices",
+                    "set CHIP_ANDROID_ADB_SERIAL for lab targets or CHIP_ANDROID_ADB_HOSTPORT for emulator targets",
+                    "exactly one selected booted Android release target",
                     "sys.boot_completed=1",
                     "installed privileged system bridge app and launcher package",
                     "bridge service/log markers and live-state UI consumption",

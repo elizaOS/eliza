@@ -7,17 +7,16 @@ This report is derived from local KiCad JSON outputs and has no release credit.
 ## DRC Types
 
 - `clearance`: 499
-- `unconnected_items`: 441
-- `solder_mask_bridge`: 201
+- `unconnected_items`: 446
+- `solder_mask_bridge`: 200
 - `copper_edge_clearance`: 199
 - `items_not_allowed`: 199
-- `shorting_items`: 197
+- `shorting_items`: 192
 - `tracks_crossing`: 134
-- `lib_footprint_issues`: 89
-- `courtyards_overlap`: 85
+- `courtyards_overlap`: 81
 - `hole_clearance`: 67
-- `silk_overlap`: 58
-- `silk_over_copper`: 56
+- `silk_overlap`: 54
+- `silk_over_copper`: 51
 - `drill_out_of_range`: 24
 - `starved_thermal`: 22
 - `via_diameter`: 20

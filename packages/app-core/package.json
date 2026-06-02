@@ -76,6 +76,11 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./entry": {
+      "types": "./dist/entry.d.ts",
+      "import": "./dist/entry.js",
+      "default": "./dist/entry.js"
+    },
     "./agent-bridge": {
       "types": "./dist/agent-bridge.d.ts",
       "import": "./dist/agent-bridge.js",
@@ -221,6 +226,7 @@
     "@elizaos/plugin-edge-tts": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-groq": "workspace:*",
+    "@elizaos/plugin-health": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-registry": "workspace:*",

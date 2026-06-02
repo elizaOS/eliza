@@ -47,6 +47,8 @@ REQUIRED_REPORTS = {
     "full_k_repair_kind_coverage": ROOT
     / "build/reports/e1x_full_k_repair_kind_coverage.json",
     "full_k_repair_route_cost": ROOT / "build/reports/e1x_full_k_repair_route_cost.json",
+    "full_k_repair_route_cost_by_kind": ROOT
+    / "build/reports/e1x_full_k_repair_route_cost_by_kind.json",
     "full_norm_real_weight_rows": ROOT / "build/reports/e1x_full_norm_real_weight_rows.json",
     "vocab_sampled_k_real_weight_rows": ROOT
     / "build/reports/e1x_vocab_sampled_k_real_weight_rows.json",
@@ -388,6 +390,9 @@ def main() -> int:
     full_k_repair_ladder = reports.get("full_k_repair_coverage_ladder", {}).get("summary", {})
     full_k_repair_kind = reports.get("full_k_repair_kind_coverage", {}).get("summary", {})
     full_k_repair_route = reports.get("full_k_repair_route_cost", {}).get("summary", {})
+    full_k_repair_route_kind = reports.get("full_k_repair_route_cost_by_kind", {}).get(
+        "summary", {}
+    )
     full_norm_real_weight = reports.get("full_norm_real_weight_rows", {}).get("summary", {})
     vocab_sampled_k = reports.get("vocab_sampled_k_real_weight_rows", {}).get("summary", {})
     repaired_real_weight = reports.get("repaired_real_weight_execution", {}).get("summary", {})
@@ -1128,6 +1133,39 @@ def main() -> int:
             == "full_output_real_weight_checksum_missing"
             and int(full_k_repair_route.get("failing_check_count", 1)) == 0,
             "full-K repair route-cost audit quantifies normal/high remap displacement for selected full-K rows",
+        ),
+        (
+            "full_k_repair_route_cost_by_kind_hotspots",
+            int(full_k_repair_route_kind.get("normal_kind_count", 0)) == 5
+            and int(full_k_repair_route_kind.get("high_failure_kind_count", 0)) == 8
+            and int(full_k_repair_route_kind.get("normal_total_kind_remapped_rows", 0)) == 44
+            and int(full_k_repair_route_kind.get("high_failure_total_kind_remapped_rows", 0))
+            == 760
+            and int(full_k_repair_route_kind.get("normal_total_kind_remap_distance", 0))
+            == 6_824
+            and int(full_k_repair_route_kind.get("high_failure_total_kind_remap_distance", 0))
+            == 107_180
+            and int(full_k_repair_route_kind.get("high_failure_norm_remapped_rows", 0)) == 256
+            and int(full_k_repair_route_kind.get("high_failure_norm_remap_distance", 0))
+            == 29_696
+            and int(full_k_repair_route_kind.get("high_failure_attn_qkv_remapped_rows", 0))
+            == 109
+            and int(full_k_repair_route_kind.get("high_failure_attn_qkv_remap_distance", 0))
+            == 17_494
+            and int(full_k_repair_route_kind.get("high_failure_mlp_down_remap_distance", 0))
+            == 14_055
+            and float(full_k_repair_route_kind.get("high_vs_normal_kind_count_ratio", 0.0))
+            == 1.6
+            and float(full_k_repair_route_kind.get("high_vs_normal_remapped_row_ratio", 0.0))
+            > 17.0
+            and float(full_k_repair_route_kind.get("high_vs_normal_remap_distance_ratio", 0.0))
+            > 15.0
+            and full_k_repair_route_kind.get("kind_route_cost_summary_sha256")
+            == "ae668566b1f994acb9c322b9d3e2b257dc69e33873e500fbc47fa5f1f9ed2703"
+            and full_k_repair_route_kind.get("residual_blocker")
+            == "full_output_real_weight_checksum_missing"
+            and int(full_k_repair_route_kind.get("failing_check_count", 1)) == 0,
+            "full-K repair route-cost by-kind audit pins high-failure displacement hotspots by layer kind",
         ),
         (
             "full_norm_real_weight_rows_execute_whole_kind",
@@ -2211,6 +2249,51 @@ def main() -> int:
         ),
         "full_k_repair_route_residual_blocker": str(
             full_k_repair_route.get("residual_blocker", "")
+        ),
+        "full_k_repair_route_kind_normal_kinds": int(
+            full_k_repair_route_kind.get("normal_kind_count", 0)
+        ),
+        "full_k_repair_route_kind_high_failure_kinds": int(
+            full_k_repair_route_kind.get("high_failure_kind_count", 0)
+        ),
+        "full_k_repair_route_kind_normal_remaps": int(
+            full_k_repair_route_kind.get("normal_total_kind_remapped_rows", 0)
+        ),
+        "full_k_repair_route_kind_high_failure_remaps": int(
+            full_k_repair_route_kind.get("high_failure_total_kind_remapped_rows", 0)
+        ),
+        "full_k_repair_route_kind_normal_distance": int(
+            full_k_repair_route_kind.get("normal_total_kind_remap_distance", 0)
+        ),
+        "full_k_repair_route_kind_high_failure_distance": int(
+            full_k_repair_route_kind.get("high_failure_total_kind_remap_distance", 0)
+        ),
+        "full_k_repair_route_kind_high_failure_norm_remaps": int(
+            full_k_repair_route_kind.get("high_failure_norm_remapped_rows", 0)
+        ),
+        "full_k_repair_route_kind_high_failure_norm_distance": int(
+            full_k_repair_route_kind.get("high_failure_norm_remap_distance", 0)
+        ),
+        "full_k_repair_route_kind_high_failure_attn_qkv_remaps": int(
+            full_k_repair_route_kind.get("high_failure_attn_qkv_remapped_rows", 0)
+        ),
+        "full_k_repair_route_kind_high_failure_attn_qkv_distance": int(
+            full_k_repair_route_kind.get("high_failure_attn_qkv_remap_distance", 0)
+        ),
+        "full_k_repair_route_kind_high_failure_mlp_down_distance": int(
+            full_k_repair_route_kind.get("high_failure_mlp_down_remap_distance", 0)
+        ),
+        "full_k_repair_route_kind_row_ratio": float(
+            full_k_repair_route_kind.get("high_vs_normal_remapped_row_ratio", 0.0)
+        ),
+        "full_k_repair_route_kind_distance_ratio": float(
+            full_k_repair_route_kind.get("high_vs_normal_remap_distance_ratio", 0.0)
+        ),
+        "full_k_repair_route_kind_sha256": str(
+            full_k_repair_route_kind.get("kind_route_cost_summary_sha256", "")
+        ),
+        "full_k_repair_route_kind_residual_blocker": str(
+            full_k_repair_route_kind.get("residual_blocker", "")
         ),
         "full_norm_real_weight_layers": int(
             full_norm_real_weight.get("executed_norm_layer_count", 0)

@@ -5,8 +5,6 @@ import {
   type LifeOpsSignalCapability,
   type LifeOpsSignalConnectorStatus,
   type LifeOpsSignalInboundMessage,
-  type LifeOpsSignalPairingStatus,
-  type StartLifeOpsSignalPairingResponse,
 } from "@elizaos/shared";
 import {
   readSignalRecentWithRuntimeService,
@@ -22,9 +20,6 @@ const FULL_SIGNAL_CAPABILITIES: LifeOpsSignalCapability[] = [
 
 const SIGNAL_PLUGIN_SETUP_MESSAGE =
   "Signal is managed by @elizaos/plugin-signal. Configure and enable the Signal connector plugin; LifeOps no longer uses local Signal credentials.";
-
-const SIGNAL_PAIRING_MIGRATED_MESSAGE =
-  "Signal pairing has moved to @elizaos/plugin-signal. Use the Signal connector setup routes (/api/signal/pair, /api/signal/status, and /api/signal/disconnect); LifeOps no longer owns Signal device-link credentials.";
 
 type SignalServiceRecentMessage = {
   id: string;
@@ -214,45 +209,6 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
         pairing: null,
         grant: null,
         ...(degradations.length > 0 ? { degradations } : {}),
-      };
-    }
-
-    async startSignalPairing(
-      _side?: LifeOpsConnectorSide,
-    ): Promise<StartLifeOpsSignalPairingResponse> {
-      fail(410, SIGNAL_PAIRING_MIGRATED_MESSAGE);
-    }
-
-    async getSignalPairingStatus(
-      sessionId: string,
-    ): Promise<LifeOpsSignalPairingStatus> {
-      if (!sessionId) {
-        fail(400, "sessionId is required");
-      }
-      fail(410, SIGNAL_PAIRING_MIGRATED_MESSAGE);
-    }
-
-    stopSignalPairing(
-      _side?: LifeOpsConnectorSide,
-    ): LifeOpsSignalPairingStatus {
-      fail(410, SIGNAL_PAIRING_MIGRATED_MESSAGE);
-    }
-
-    async disconnectSignal(
-      side?: LifeOpsConnectorSide,
-    ): Promise<LifeOpsSignalConnectorStatus> {
-      const resolvedSide =
-        normalizeOptionalConnectorSide(side, "side") ?? "owner";
-      return {
-        provider: "signal",
-        side: resolvedSide,
-        connected: false,
-        reason: "disconnected",
-        identity: null,
-        grantedCapabilities: [],
-        inbound: false,
-        pairing: null,
-        grant: null,
       };
     }
 

@@ -110,7 +110,7 @@ route_release_bindings:
     - DRC report references the selected stackup and coupon IDs
     - routed board STEP exported after supplier component 3D models are bound
   blocks_fabrication_claims_until_fabricator_response: true
-  blocks_enclosure_claims_until_routed_step_clearance_rerun: true
+  blocks_enclosure_claims_until_approved_routed_step_release_clearance: true
 
 cross_checks:
   stackup_target_matches_routing_constraints: true
@@ -125,7 +125,7 @@ release_blockers:
   - coupon drawings and panel placement are missing
   - KiCad netclass trace widths and gaps are not updated from a fabricator quote
   - routed copper, DRC, and length/skew reports are missing
-  - routed board STEP and enclosure clearance rerun are missing
+  - routed board STEP and approved enclosure release clearance are missing
 
 forbidden_claims:
   - stackup_approved

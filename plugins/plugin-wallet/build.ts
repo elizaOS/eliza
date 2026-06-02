@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { copyFileSync, renameSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, renameSync, rmSync } from "node:fs";
 import { $ } from "bun";
 
 // Externalize everything in `dependencies` + `peerDependencies` so transitive
@@ -63,6 +63,12 @@ await $`tsc --emitDeclarationOnly --declaration --noEmit false --outDir dist --r
 // that reads package-level "types", and also emit the NodeNext-matching .d.mts
 // declaration so resolvers that pair .mjs with .d.mts do not fall back to any.
 copyFileSync("dist/index.d.ts", "dist/index.d.mts");
+
+for (const declarationPath of ["dist/index.d.ts", "dist/index.d.mts"]) {
+  if (!existsSync(declarationPath)) {
+    throw new Error(`Missing wallet declaration artifact: ${declarationPath}`);
+  }
+}
 
 console.log(
   `✅ Build complete in ${((Date.now() - start) / 1000).toFixed(2)}s`,

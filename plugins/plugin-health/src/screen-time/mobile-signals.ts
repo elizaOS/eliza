@@ -1,6 +1,8 @@
 import type { LifeOpsSocialHabitDataSource } from "../contracts/lifeops.js";
 import type { ScreenTimeAggregateRow } from "./builders.js";
 
+export * from "./mobile-signal-setup.js";
+
 const DAY_MS = 24 * 60 * 60_000;
 
 export interface ScreenTimeMobileSignal {

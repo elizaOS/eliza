@@ -1,0 +1,47 @@
+{
+  "registry": {
+    "elizaos-plugin-echo": {
+      "git": {
+        "repo": "elizaOS/eliza",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-echo",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Reference third-party elizaOS plugin: an ECHO action that repeats a message back.",
+      "homepage": "https://github.com/elizaOS/eliza/tree/main/packages/examples/plugin-echo",
+      "topics": [
+        "example",
+        "utility",
+        "reference"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "packages/examples/plugin-echo"
+    }
+  }
+}

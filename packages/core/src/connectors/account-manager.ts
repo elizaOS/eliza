@@ -546,9 +546,9 @@ export function isConnectorAccountStorage(
 }
 
 /**
- * In-memory fallback for tests and for hosts that have not yet installed the
- * durable connector-account storage service. TODO(storage): replace in
- * production hosts with a ConnectorAccountStorage backed by Worker B's adapter.
+ * In-memory fallback for tests and hosts without a durable connector-account
+ * storage service. Production runtimes resolve durable storage through an
+ * installed ConnectorAccountStorage service or the database adapter bridge.
  */
 export class InMemoryConnectorAccountStorage
 	implements ConnectorAccountStorage

@@ -143,8 +143,10 @@ NPU_NEXT_COMMAND_PLAN = [
         "scope": "android_or_linux_target",
         "claim_boundary": "operator_commands_only_not_npu_runtime_or_release_evidence",
         "commands": [
-            "adb devices",
+            "test -n \"$CHIP_ANDROID_ADB_SERIAL\" || test -n \"$CHIP_ANDROID_ADB_HOSTPORT\"",
+            "test -z \"$CHIP_ANDROID_ADB_HOSTPORT\" || adb connect \"$CHIP_ANDROID_ADB_HOSTPORT\"",
             (
+                "ANDROID_SERIAL=\"${CHIP_ANDROID_ADB_SERIAL:-$CHIP_ANDROID_ADB_HOSTPORT}\" "
                 "E1_NPU_WRITE_PROOF_JSON=1 "
                 "E1_NPU_MACS_PER_INFERENCE=<measured-macs> "
                 "E1_NPU_CYCLES=<measured-cycles> "
@@ -164,6 +166,7 @@ NPU_NEXT_COMMAND_PLAN = [
         ],
         "requires": [
             "Android or Linux target exposing a real e1-npu NNAPI accelerator or delegate",
+            "CHIP_ANDROID_ADB_SERIAL set for lab targets or CHIP_ANDROID_ADB_HOSTPORT set for emulator targets",
             "benchmark_model available on target",
             "model and transcript hashes recorded in benchmarks/capabilities/e1_npu_nnapi.proof.json",
         ],

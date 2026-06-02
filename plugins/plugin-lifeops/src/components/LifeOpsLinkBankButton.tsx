@@ -131,11 +131,11 @@ export function LifeOpsLinkBankButton({
           <Banknote className="h-3.5 w-3.5" aria-hidden />
         )}
         {exchangeStatus === "exchanging"
-          ? "Linking…"
+          ? "Linking"
           : exchangeStatus === "done"
             ? "Linked"
             : tokenLoading
-              ? "Preparing Plaid…"
+              ? "Preparing Plaid"
               : label}
       </button>
       {tokenError ? (

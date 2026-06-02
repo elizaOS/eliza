@@ -23,7 +23,15 @@ import {
   useApp,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { X } from "lucide-react";
+import {
+  Check,
+  Loader2,
+  MessageSquare,
+  Plus,
+  Save,
+  Trash2,
+  X,
+} from "lucide-react";
 import {
   type ComponentProps,
   type ReactNode,
@@ -298,7 +306,12 @@ function EventEditorCalendarSelect({
   });
   return (
     <Select value={value} onValueChange={onSelect}>
-      <SelectTrigger ref={ref} id="event-editor-calendar" aria-label={ariaLabel} {...agentProps}>
+      <SelectTrigger
+        ref={ref}
+        id="event-editor-calendar"
+        aria-label={ariaLabel}
+        {...agentProps}
+      >
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
@@ -307,8 +320,16 @@ function EventEditorCalendarSelect({
             key={`${calendar.side}:${calendar.grantId}:${calendar.calendarId}`}
             value={calendarOptionValue(calendar)}
           >
-            {calendar.summary}
-            {calendar.accountEmail ? ` · ${calendar.accountEmail}` : ""}
+            <span>{calendar.summary}</span>
+            {calendar.accountEmail ? (
+              <>
+                <span
+                  className="mx-1.5 inline-block h-1 w-1 rounded-full bg-current opacity-55"
+                  aria-hidden
+                />
+                <span>{calendar.accountEmail}</span>
+              </>
+            ) : null}
           </SelectItem>
         ))}
       </SelectContent>
@@ -648,8 +669,8 @@ export function EventEditorDrawer({
     ? t("eventEditor.create", { defaultValue: "Create" })
     : t("common.save", { defaultValue: "Save" });
   const primaryActionLoadingLabel = isCreate
-    ? t("eventEditor.creating", { defaultValue: "Creating…" })
-    : t("common.saving", { defaultValue: "Saving…" });
+    ? t("eventEditor.creating", { defaultValue: "Creating event" })
+    : t("common.saving", { defaultValue: "Saving event" });
 
   const selectedCalendarOption = findSelectedCalendarOption(
     calendarOptions,
@@ -814,7 +835,7 @@ export function EventEditorDrawer({
                 placeholder={
                   calendarsLoading
                     ? t("eventEditor.calendarLoading", {
-                        defaultValue: "Loading…",
+                        defaultValue: "Calendar sync",
                       })
                     : t("eventEditor.calendarPlaceholder", {
                         defaultValue: "Select calendar",
@@ -853,7 +874,7 @@ export function EventEditorDrawer({
                 value={form.notes}
                 onChange={(value) => updateForm("notes", value)}
                 placeholder={t("eventEditor.notesPlaceholder", {
-                  defaultValue: "Add notes…",
+                  defaultValue: "Notes",
                 })}
               />
             </div>
@@ -868,10 +889,13 @@ export function EventEditorDrawer({
                   description="Open chat about this event"
                   variant="ghost"
                   size="sm"
-                  className="h-8 rounded-xl px-3 text-xs font-semibold text-muted"
+                  className="h-8 w-8 rounded-xl p-0 text-muted"
                   onClick={() => onChat(event)}
                 >
-                  {t("common.chat", { defaultValue: "Chat" })}
+                  <MessageSquare className="h-3.5 w-3.5" aria-hidden />
+                  <span className="sr-only">
+                    {t("common.chat", { defaultValue: "Chat" })}
+                  </span>
                 </EventEditorActionButton>
               ) : null}
               {!isCreate ? (
@@ -881,11 +905,18 @@ export function EventEditorDrawer({
                   description="Delete this calendar event"
                   variant="surfaceDestructive"
                   size="sm"
-                  className="h-8 rounded-xl px-3 text-xs font-semibold"
+                  className="h-8 w-8 rounded-xl p-0"
                   disabled={deleting || saving}
                   onClick={() => setConfirmDeleteOpen(true)}
                 >
-                  {t("common.delete", { defaultValue: "Delete" })}
+                  {deleting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                  )}
+                  <span className="sr-only">
+                    {t("common.delete", { defaultValue: "Delete" })}
+                  </span>
                 </EventEditorActionButton>
               ) : null}
             </div>
@@ -896,11 +927,14 @@ export function EventEditorDrawer({
                 description="Close the event editor without saving"
                 variant="outline"
                 size="sm"
-                className="h-8 rounded-xl px-3 text-xs font-semibold"
+                className="h-8 w-8 rounded-xl p-0"
                 onClick={onClose}
                 disabled={saving}
               >
-                {t("common.cancel", { defaultValue: "Cancel" })}
+                <X className="h-3.5 w-3.5" aria-hidden />
+                <span className="sr-only">
+                  {t("common.cancel", { defaultValue: "Cancel" })}
+                </span>
               </EventEditorActionButton>
               <EventEditorActionButton
                 agentId={`event-${mode}-save-continue`}
@@ -908,26 +942,42 @@ export function EventEditorDrawer({
                 description="Save the event and keep the editor open"
                 variant="outline"
                 size="sm"
-                className="h-8 rounded-xl px-3 text-xs font-semibold"
+                className="h-8 w-8 rounded-xl p-0"
                 disabled={saving || !form.title.trim()}
                 onClick={() => void handleSave({ keepOpen: true })}
               >
-                {saving
-                  ? primaryActionLoadingLabel
-                  : t("eventEditor.saveAndContinue", {
-                      defaultValue: "Save & continue",
-                    })}
+                {saving ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <Save className="h-3.5 w-3.5" aria-hidden />
+                )}
+                <span className="sr-only">
+                  {saving
+                    ? primaryActionLoadingLabel
+                    : t("eventEditor.saveAndContinue", {
+                        defaultValue: "Save and continue",
+                      })}
+                </span>
               </EventEditorActionButton>
               <EventEditorActionButton
                 agentId={`event-${mode}-save`}
                 label={isCreate ? "Create event" : "Save event"}
                 description="Save the calendar event and close the editor"
                 size="sm"
-                className="h-8 rounded-xl px-3 text-xs font-semibold"
+                className="h-8 w-8 rounded-xl p-0"
                 disabled={saving || !form.title.trim()}
                 onClick={() => void handleSave()}
               >
-                {saving ? primaryActionLoadingLabel : primaryActionLabel}
+                {saving ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                ) : isCreate ? (
+                  <Plus className="h-3.5 w-3.5" aria-hidden />
+                ) : (
+                  <Check className="h-3.5 w-3.5" aria-hidden />
+                )}
+                <span className="sr-only">
+                  {saving ? primaryActionLoadingLabel : primaryActionLabel}
+                </span>
               </EventEditorActionButton>
             </div>
           </div>

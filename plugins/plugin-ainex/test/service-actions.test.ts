@@ -1,17 +1,13 @@
 // Integration test for AinexService + actions/providers, using a mock
 // bridge ws server that mimics the Python envelope contract.
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AddressInfo } from "node:net";
-import { WebSocketServer, type WebSocket as WsWebSocket } from "ws";
-import {
-  walkForwardAction,
-  stopAction,
-  waveAction,
-} from "../src/actions";
-import { robotStateProvider, batteryProvider } from "../src/providers";
-import { AinexService } from "../src/service";
 import type { IAgentRuntime } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { WebSocketServer, type WebSocket as WsWebSocket } from "ws";
+import { stopAction, walkForwardAction, waveAction } from "../src/actions";
+import { batteryProvider, robotStateProvider } from "../src/providers";
+import { AinexService } from "../src/service";
 
 interface FakeRuntime {
   service: AinexService | null;
@@ -20,7 +16,7 @@ interface FakeRuntime {
 
 function buildRuntime(): IAgentRuntime {
   const state: FakeRuntime = { service: null, settings: {} };
-  // Minimal IAgentRuntime stub — only the methods actions/providers reach for.
+  // Minimal IAgentRuntime fake with only the methods actions/providers reach for.
   const runtime: Partial<IAgentRuntime> = {
     agentId: "test-agent" as IAgentRuntime["agentId"],
     getSetting: (key: string) => state.settings[key] ?? null,
@@ -35,7 +31,8 @@ async function buildBridgeServer() {
   const port = (wss.address() as AddressInfo).port;
   const url = `ws://127.0.0.1:${port}`;
   const sockets: WsWebSocket[] = [];
-  const received: Array<{ command: string; payload: Record<string, unknown> }> = [];
+  const received: Array<{ command: string; payload: Record<string, unknown> }> =
+    [];
 
   wss.on("connection", (socket) => {
     sockets.push(socket);
@@ -95,7 +92,9 @@ describe("plugin-ainex integration", () => {
   beforeEach(async () => {
     server = await buildBridgeServer();
     runtime = buildRuntime();
-    (runtime as unknown as { __state: FakeRuntime }).__state.settings.ELIZA_AINEX_BRIDGE_URL = server.url;
+    (
+      runtime as unknown as { __state: FakeRuntime }
+    ).__state.settings.ELIZA_AINEX_BRIDGE_URL = server.url;
     const service = await AinexService.start(runtime);
     (runtime as unknown as { __state: FakeRuntime }).__state.service = service;
     // Give the session.hello + telemetry replay a moment to settle.
@@ -124,7 +123,7 @@ describe("plugin-ainex integration", () => {
       (r) => r.command === "walk.command" && r.payload.action === "start",
     );
     expect(walkSet).toBeDefined();
-    expect(walkSet!.payload.x).toBeGreaterThan(0);
+    expect(walkSet?.payload.x).toBeGreaterThan(0);
     expect(walkStart).toBeDefined();
   });
 
@@ -140,7 +139,7 @@ describe("plugin-ainex integration", () => {
     expect(result.success).toBe(true);
     const stop = server.received.find((r) => r.command === "walk.command");
     expect(stop).toBeDefined();
-    expect(stop!.payload.action).toBe("stop");
+    expect(stop?.payload.action).toBe("stop");
   });
 
   it("AINEX_WAVE sends action.play(name=wave)", async () => {
@@ -155,7 +154,7 @@ describe("plugin-ainex integration", () => {
     expect(result.success).toBe(true);
     const wave = server.received.find((r) => r.command === "action.play");
     expect(wave).toBeDefined();
-    expect(wave!.payload.name).toBe("wave");
+    expect(wave?.payload.name).toBe("wave");
   });
 
   it("robotState provider reflects basic telemetry events", async () => {
@@ -175,7 +174,11 @@ describe("plugin-ainex integration", () => {
     });
     await new Promise((r) => setTimeout(r, 30));
 
-    const result = await robotStateProvider.get(runtime, {} as never, {} as never);
+    const result = await robotStateProvider.get(
+      runtime,
+      {} as never,
+      {} as never,
+    );
     expect(result.values?.ainexConnected).toBe(true);
     expect(result.values?.isWalking).toBe(true);
     expect(result.text).toContain("walking: yes");

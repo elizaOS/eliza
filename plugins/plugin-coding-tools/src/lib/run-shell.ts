@@ -347,11 +347,6 @@ export async function runShell(
   }
 
   if (mode === "local-safe") {
-    if (process.platform === "win32") {
-      throw new Error(
-        "[coding-tools] Windows local-safe sandbox not yet implemented",
-      );
-    }
     const manager = getRuntimeSandboxManager(runtime);
     if (!manager) {
       throw new Error(

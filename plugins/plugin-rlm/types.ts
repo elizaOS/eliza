@@ -123,7 +123,6 @@ export interface RLMMetrics {
   totalRequests: number;
   successfulRequests: number;
   failedRequests: number;
-  stubResponses: number;
   totalRetries: number;
   averageLatencyMs: number;
   p95LatencyMs: number;

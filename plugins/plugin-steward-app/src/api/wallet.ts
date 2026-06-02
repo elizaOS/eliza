@@ -221,13 +221,13 @@ function base58Decode(str: string): Buffer {
   return zeros > 0 ? Buffer.concat([Buffer.alloc(zeros), bytes]) : bytes;
 }
 
-/** Sentinel values that appear as env placeholders – skip without error. */
-const PLACEHOLDER_RE =
+/** Redacted/sentinel env values to skip without treating them as keys. */
+const ENV_SENTINEL_RE =
   /^\[?\s*(REDACTED|PLACEHOLDER|T(?:O)D(?:O)|CHANGEME|EMPTY)\s*]?$/i;
 
 function decodeSolanaPrivateKey(key: string): Buffer {
-  if (PLACEHOLDER_RE.test(key)) {
-    throw new Error("placeholder value");
+  if (ENV_SENTINEL_RE.test(key)) {
+    throw new Error("sentinel env value");
   }
   // Only attempt JSON array parse when the content looks like a numeric array
   // e.g. [1,2,3,...] — not [REDACTED] or other bracket-wrapped strings

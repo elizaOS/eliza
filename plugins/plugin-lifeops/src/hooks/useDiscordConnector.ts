@@ -1,7 +1,6 @@
 import type {
   LifeOpsConnectorSide,
   LifeOpsDiscordConnectorStatus,
-  LifeOpsOwnerBrowserAccessSource,
 } from "@elizaos/shared";
 import { client } from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -19,7 +18,6 @@ export function useDiscordConnector(options: UseDiscordConnectorOptions = {}) {
     null,
   );
   const [loading, setLoading] = useState(true);
-  const [actionPending, setActionPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -101,49 +99,10 @@ export function useDiscordConnector(options: UseDiscordConnectorOptions = {}) {
     }
   }, [status?.reason, side, clearPoll]);
 
-  const connect = useCallback(
-    async (source?: LifeOpsOwnerBrowserAccessSource) => {
-      try {
-        setActionPending(true);
-        setError(null);
-        const nextStatus = await client.startDiscordConnector({ side, source });
-        setStatus(nextStatus);
-      } catch (cause) {
-        setError(
-          formatConnectorError(cause, "Discord connector failed to start."),
-        );
-      } finally {
-        setActionPending(false);
-      }
-    },
-    [side],
-  );
-
-  const disconnect = useCallback(async () => {
-    try {
-      setActionPending(true);
-      const nextStatus = await client.disconnectDiscordConnector({
-        side,
-        provider: "discord",
-      });
-      setStatus(nextStatus);
-      setError(null);
-    } catch (cause) {
-      setError(
-        formatConnectorError(cause, "Discord connector disconnect failed."),
-      );
-    } finally {
-      setActionPending(false);
-    }
-  }, [side]);
-
   return {
     status,
     loading,
-    actionPending,
     error,
-    connect,
-    disconnect,
     refresh,
   } as const;
 }

@@ -181,7 +181,7 @@ evt1_capture_exit_criteria:
   - USB_DP and USB_DN remain flanked by return contacts and pass stackup coupon TDR eye attach ADB and fastboot evidence
   - AUDIO_I2S_PDM and AUDIO_I2C_IRQ nets meet route length skew crosstalk and loopback requirements through the split
   - power contact current rise bottom-island decoupling haptic return and fixture rail access are measured
-  - routed board STEP includes top connector bottom connector flex stiffeners strain relief and enclosure clearance rerun
+  - routed board STEP includes top connector bottom connector flex stiffeners strain relief and approved enclosure release clearance
 
 cross_checks:
   manifest_cites_binding: true

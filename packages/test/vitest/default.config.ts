@@ -180,6 +180,7 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-imessage",
   "plugin-local-inference",
   "plugin-mcp",
+  "plugin-phone",
   "plugin-signal",
   "plugin-streaming",
   "plugin-whatsapp",

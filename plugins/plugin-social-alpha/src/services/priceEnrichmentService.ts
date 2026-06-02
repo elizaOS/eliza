@@ -61,12 +61,10 @@ export interface TrustScore {
 }
 
 export class PriceEnrichmentService {
-	private runtime: IAgentRuntime;
 	private birdeyeClient: BirdeyeClient;
 	private dexscreenerClient: DexscreenerClient;
 
 	constructor(runtime: IAgentRuntime) {
-		this.runtime = runtime;
 		this.birdeyeClient = BirdeyeClient.createFromRuntime(runtime);
 		this.dexscreenerClient = DexscreenerClient.createFromRuntime(runtime);
 	}
@@ -380,7 +378,8 @@ export class PriceEnrichmentService {
 				});
 			}
 
-			const stats = userStats.get(call.userId)!;
+			const stats = userStats.get(call.userId);
+			if (!stats) continue;
 			stats.calls.push(call);
 			stats.totalProfitLoss += call.priceData.idealProfitLoss;
 			stats.totalProfitLossPercent += call.priceData.idealProfitLossPercent;
@@ -518,15 +517,7 @@ export class PriceEnrichmentService {
 				return staticMapping;
 			}
 
-			// For Solana, use Birdeye search
-			if (chain === SupportedChain.SOLANA) {
-				const birdeyeResult = await this.searchTokenOnBirdeye(symbol);
-				if (birdeyeResult) {
-					return birdeyeResult;
-				}
-			}
-
-			// For other chains or as fallback, use Dexscreener
+			// Use DexScreener for symbol search across supported chains.
 			const dexscreenerResult = await this.searchTokenOnDexscreener(
 				symbol,
 				chain,
@@ -939,31 +930,6 @@ export class PriceEnrichmentService {
 		}
 
 		return null;
-	}
-
-	/**
-	 * Search for token using Birdeye API
-	 */
-	private async searchTokenOnBirdeye(symbol: string): Promise<{
-		address: string;
-		symbol: string;
-		name: string;
-		chain: SupportedChain;
-	} | null> {
-		try {
-			// Unfortunately, Birdeye doesn't have a direct symbol search API
-			// We would need to implement a different approach, such as:
-			// 1. Searching through popular token lists
-			// 2. Using a token database
-			// 3. Implementing a fuzzy search across known tokens
-
-			// For now, return null and rely on other methods
-			console.debug(`Birdeye symbol search not implemented for: ${symbol}`);
-			return null;
-		} catch (error) {
-			console.error(`Error searching Birdeye for symbol ${symbol}:`, error);
-			return null;
-		}
 	}
 
 	/**

@@ -3,8 +3,8 @@
  * Generate plugins.json — a static manifest of all available plugins
  * that ships with the eliza package.
  *
- * Fetches plugin metadata from the elizaos-plugins registry and writes
- * plugins.json to the eliza package root.
+ * Fetches plugin metadata from the public registry (plugins.elizacloud.ai)
+ * and writes plugins.json to the eliza package root.
  *
  * Run from the eliza package directory:
  *   node scripts/generate-plugin-index.js

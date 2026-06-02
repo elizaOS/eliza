@@ -279,15 +279,6 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/gmail/manage" },
   { type: "POST", path: "/api/lifeops/gmail/events/ingest" },
   { type: "GET", path: "/api/lifeops/connectors/x/status" },
-  { type: "POST", path: "/api/lifeops/connectors/x/start" },
-  {
-    type: "GET",
-    path: "/api/lifeops/connectors/x/success",
-    public: true,
-    name: "lifeops.x.success",
-  },
-  { type: "POST", path: "/api/lifeops/connectors/x/disconnect" },
-  { type: "POST", path: "/api/lifeops/connectors/x" },
   { type: "POST", path: "/api/lifeops/x/posts" },
   { type: "GET", path: "/api/lifeops/x/dms/digest" },
   { type: "POST", path: "/api/lifeops/x/dms/curate" },
@@ -299,23 +290,13 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/connectors/imessage/send" },
   // Telegram
   { type: "GET", path: "/api/lifeops/connectors/telegram/status" },
-  { type: "POST", path: "/api/lifeops/connectors/telegram/start" },
-  { type: "POST", path: "/api/lifeops/connectors/telegram/submit" },
-  { type: "POST", path: "/api/lifeops/connectors/telegram/cancel" },
-  { type: "POST", path: "/api/lifeops/connectors/telegram/disconnect" },
   { type: "POST", path: "/api/lifeops/connectors/telegram/verify" },
   // Signal
   { type: "GET", path: "/api/lifeops/connectors/signal/status" },
-  { type: "POST", path: "/api/lifeops/connectors/signal/pair" },
-  { type: "GET", path: "/api/lifeops/connectors/signal/pairing-status" },
-  { type: "POST", path: "/api/lifeops/connectors/signal/stop" },
-  { type: "POST", path: "/api/lifeops/connectors/signal/disconnect" },
   { type: "GET", path: "/api/lifeops/connectors/signal/messages" },
   { type: "POST", path: "/api/lifeops/connectors/signal/send" },
   // Discord
   { type: "GET", path: "/api/lifeops/connectors/discord/status" },
-  { type: "POST", path: "/api/lifeops/connectors/discord/connect" },
-  { type: "POST", path: "/api/lifeops/connectors/discord/disconnect" },
   { type: "POST", path: "/api/lifeops/connectors/discord/send" },
   { type: "POST", path: "/api/lifeops/connectors/discord/verify" },
   // WhatsApp
@@ -349,7 +330,6 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/social/summary" },
   { type: "GET", path: "/api/lifeops/overview" },
   { type: "GET", path: "/api/lifeops/connectors/health/status" },
-  { type: "POST", path: "/api/lifeops/health/sync" },
   { type: "GET", path: "/api/lifeops/health/summary" },
   { type: "GET", path: "/api/lifeops/money/dashboard" },
   { type: "GET", path: "/api/lifeops/money/sources" },
@@ -380,8 +360,6 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/goals" },
   { type: "POST", path: "/api/lifeops/goals" },
   { type: "POST", path: "/api/lifeops/features/toggle" },
-  // Browser extension self-registration.
-  { type: "POST", path: "/api/lifeops/browser/register" },
   // Knowledge-graph: entities + relationships.
   { type: "GET", path: "/api/lifeops/entities" },
   { type: "POST", path: "/api/lifeops/entities" },
@@ -398,10 +376,6 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
     path: "/api/lifeops/connectors/health/:provider/status",
   },
   {
-    type: "POST",
-    path: "/api/lifeops/connectors/health/:provider/start",
-  },
-  {
     type: "GET",
     path: "/api/lifeops/connectors/health/:provider/callback",
     public: true,
@@ -412,10 +386,6 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
     path: "/api/lifeops/connectors/health/:provider/success",
     public: true,
     name: "lifeops.health.success",
-  },
-  {
-    type: "POST",
-    path: "/api/lifeops/connectors/health/:provider/disconnect",
   },
   // /api/lifeops/money/sources/:sourceId
   { type: "DELETE", path: "/api/lifeops/money/sources/:sourceId" },

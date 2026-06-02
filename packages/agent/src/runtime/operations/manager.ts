@@ -267,8 +267,9 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
         },
       });
       // The cold strategy has already swapped the runtime by the time we
-      // observe a failed health check. Surface the failure; rollback to the
-      // previous runtime is not implemented yet.
+      // observe a failed health check. Surface the failure; restoring the
+      // previous runtime requires a two-phase restart contract with the API
+      // server restart closure.
       logger.warn(`[runtime-ops] Health check failed for op ${id}`);
       await this.failOperation(id, {
         message: "Required health checks failed",

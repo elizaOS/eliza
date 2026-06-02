@@ -4,7 +4,7 @@ export const HYPERLIQUID_EXECUTION_BLOCKED_REASON =
   "Signed Hyperliquid exchange mutations are disabled until the native app has a real managed or local execution path.";
 
 export const HYPERLIQUID_EXECUTION_NOT_IMPLEMENTED_REASON =
-  "A signer is available, but signed Hyperliquid exchange execution is not implemented in this native app yet.";
+  "A signer is available, but signed Hyperliquid exchange execution remains disabled in this native app.";
 
 export const HYPERLIQUID_ACCOUNT_BLOCKED_REASON =
   "Connect a managed Eliza Cloud vault or set HYPERLIQUID_ACCOUNT_ADDRESS / HL_ACCOUNT_ADDRESS to read account-specific positions and orders.";

@@ -169,7 +169,9 @@ describe("redis-rest.yaml", () => {
   test("wires redis-rest token and Redis connection explicitly", () => {
     const container = deployment?.spec.template.spec.containers[0];
     expect(container?.name).toBe("redis-rest");
-    expect(container?.image).toBe("hiett/serverless-redis-http:latest");
+    expect(container?.image).toBe(
+      "hiett/serverless-redis-http@sha256:5b0bb9239fce53abf87b2018a7a0deb9ec7bd900c5360738fe5fbeeb426f9150",
+    );
     expect(container?.env).toEqual(
       expect.arrayContaining([
         { name: "SRH_MODE", value: "env" },

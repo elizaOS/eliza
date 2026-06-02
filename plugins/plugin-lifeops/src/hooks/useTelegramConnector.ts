@@ -1,9 +1,6 @@
 import type {
   LifeOpsConnectorSide,
-  LifeOpsTelegramAuthState,
   LifeOpsTelegramConnectorStatus,
-  StartLifeOpsTelegramAuthResponse,
-  VerifyLifeOpsTelegramConnectorResponse,
 } from "@elizaos/shared";
 import { client } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
@@ -15,11 +12,6 @@ export interface UseTelegramConnectorOptions {
 
 const TELEGRAM_PLUGIN_MANAGED_FALLBACK =
   "Telegram setup is managed by @elizaos/plugin-telegram. Configure the Telegram connector plugin in Connectors.";
-
-type TelegramAuthResponseWithStatus = StartLifeOpsTelegramAuthResponse & {
-  message?: string;
-  status?: LifeOpsTelegramConnectorStatus;
-};
 
 function isTelegramPluginManagedMessage(
   message: string | null | undefined,
@@ -65,20 +57,11 @@ export function useTelegramConnector(
     null,
   );
   const [loading, setLoading] = useState(true);
-  const [actionPending, setActionPending] = useState(false);
-  const [verifyPending, setVerifyPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pluginManagedMessageOverride, setPluginManagedMessageOverride] =
-    useState<string | null>(null);
-  const [authState, setAuthState] = useState<LifeOpsTelegramAuthState>("idle");
-  const [verification, setVerification] =
-    useState<VerifyLifeOpsTelegramConnectorResponse | null>(null);
 
   const applyStatus = useCallback(
     (nextStatus: LifeOpsTelegramConnectorStatus) => {
       setStatus(nextStatus);
-      setAuthState(nextStatus.authState);
-      setPluginManagedMessageOverride(null);
       setError(
         isTelegramPluginManagedMessage(nextStatus.authError)
           ? null
@@ -130,189 +113,16 @@ export function useTelegramConnector(
     };
   }, [side, applyStatus]);
 
-  const applyAuthResult = useCallback(
-    (result: TelegramAuthResponseWithStatus) => {
-      if (result.status) {
-        applyStatus(result.status);
-      } else {
-        setAuthState(result.state);
-      }
-
-      const pluginMessage = telegramPluginManagedMessage(
-        result.status ?? null,
-        result.error ?? result.message ?? null,
-      );
-      if (pluginMessage) {
-        setPluginManagedMessageOverride(pluginMessage);
-        setError(null);
-        return;
-      }
-
-      if (result.error) {
-        setError(result.error);
-      }
-    },
-    [applyStatus],
-  );
-
-  const startAuth = useCallback(
-    async (phone: string) => {
-      try {
-        setActionPending(true);
-        setError(null);
-        const result = (await client.startTelegramAuth({
-          phone,
-          side,
-        })) as TelegramAuthResponseWithStatus;
-        applyAuthResult(result);
-        void refresh();
-      } catch (cause) {
-        const message = formatConnectorError(
-          cause,
-          "Telegram auth failed to start.",
-        );
-        if (isTelegramPluginManagedMessage(message)) {
-          setPluginManagedMessageOverride(message);
-          setError(null);
-        } else {
-          setError(message);
-        }
-      } finally {
-        setActionPending(false);
-      }
-    },
-    [side, refresh, applyAuthResult],
-  );
-
-  const submitCode = useCallback(
-    async (code: string) => {
-      try {
-        setActionPending(true);
-        setError(null);
-        const result = (await client.submitTelegramAuth({
-          code,
-          side,
-        })) as TelegramAuthResponseWithStatus;
-        applyAuthResult(result);
-        void refresh();
-      } catch (cause) {
-        const message = formatConnectorError(
-          cause,
-          "Telegram code submission failed.",
-        );
-        if (isTelegramPluginManagedMessage(message)) {
-          setPluginManagedMessageOverride(message);
-          setError(null);
-        } else {
-          setError(message);
-        }
-      } finally {
-        setActionPending(false);
-      }
-    },
-    [side, refresh, applyAuthResult],
-  );
-
-  const submitPassword = useCallback(
-    async (password: string) => {
-      try {
-        setActionPending(true);
-        setError(null);
-        const result = (await client.submitTelegramAuth({
-          password,
-          side,
-        })) as TelegramAuthResponseWithStatus;
-        applyAuthResult(result);
-        void refresh();
-      } catch (cause) {
-        const message = formatConnectorError(
-          cause,
-          "Telegram password submission failed.",
-        );
-        if (isTelegramPluginManagedMessage(message)) {
-          setPluginManagedMessageOverride(message);
-          setError(null);
-        } else {
-          setError(message);
-        }
-      } finally {
-        setActionPending(false);
-      }
-    },
-    [side, refresh, applyAuthResult],
-  );
-
-  const cancelAuth = useCallback(async () => {
-    try {
-      setActionPending(true);
-      await client.cancelTelegramAuth({ side, provider: "telegram" });
-      setError(null);
-      setPluginManagedMessageOverride(null);
-      setVerification(null);
-      void refresh();
-    } catch (cause) {
-      setError(
-        formatConnectorError(cause, "Telegram auth cancellation failed."),
-      );
-    } finally {
-      setActionPending(false);
-    }
-  }, [side, refresh]);
-
-  const disconnect = useCallback(async () => {
-    try {
-      setActionPending(true);
-      const nextStatus = await client.disconnectTelegramConnector({
-        side,
-        provider: "telegram",
-      });
-      applyStatus(nextStatus);
-      setVerification(null);
-    } catch (cause) {
-      setError(
-        formatConnectorError(cause, "Telegram connector disconnect failed."),
-      );
-    } finally {
-      setActionPending(false);
-    }
-  }, [side, applyStatus]);
-
-  const verify = useCallback(async () => {
-    try {
-      setVerifyPending(true);
-      setError(null);
-      const result = await client.verifyTelegramConnector({ side });
-      setVerification(result);
-    } catch (cause) {
-      setError(formatConnectorError(cause, "Telegram verification failed."));
-    } finally {
-      setVerifyPending(false);
-    }
-  }, [side]);
-
-  const pluginManagedMessage = telegramPluginManagedMessage(
-    status,
-    pluginManagedMessageOverride,
-  );
+  const pluginManagedMessage = telegramPluginManagedMessage(status, null);
 
   return {
     status,
     loading,
-    actionPending,
-    verifyPending,
     error,
-    authState,
-    verification,
     setupManagedByPlugin: true,
     pluginManaged: Boolean(pluginManagedMessage),
     pluginManagedMessage:
       pluginManagedMessage ?? TELEGRAM_PLUGIN_MANAGED_FALLBACK,
-    startAuth,
-    submitCode,
-    submitPassword,
-    cancelAuth,
-    disconnect,
-    verify,
     refresh,
   } as const;
 }

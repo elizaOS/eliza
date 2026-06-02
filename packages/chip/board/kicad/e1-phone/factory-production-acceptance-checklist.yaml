@@ -165,10 +165,10 @@ acceptance_items:
     status: blocked_missing_routed_outputs_fixture_limits_quotes_or_first_article_evidence
     required_evidence:
       - routed board STEP with supplier 3D models and final component heights
-      - enclosure clearance rerun for display, battery, cameras, USB-C, side keys, antennas, acoustics, and split
+      - approved enclosure release clearance for display, battery, cameras, USB-C, side keys, antennas, acoustics, and split
         interconnect
       - DFM/DFA report and fab/assembly quote tied to the routed board, stencil, fixture, and enclosure constraints
-    blocker: Routed STEP, enclosure clearance rerun, DFM/DFA, and production quote are missing.
+    blocker: Routed STEP, approved enclosure release clearance, DFM/DFA, and production quote are missing.
 selected_hardware_factory_acceptance:
   status: blocked_until_selected_hardware_fixture_limits_identity_and_first_article_signoff_exist
   source_coupling: board/kicad/e1-phone/production-factory-release-execution.yaml
@@ -279,7 +279,7 @@ release_blockers:
     missing
   - selected display, camera, USB-C/power/side-key, cellular, and Wi-Fi/Bluetooth factory acceptance evidence is missing
   - parseable 055WU01 and E549/RM67191 display alternates cannot enter factory acceptance until AVL, assembly, fixture limits, routed STEP, first-article, and promotion evidence exist
-  - routed board STEP, enclosure clearance rerun, and final mechanical production signoff are missing
+  - routed board STEP, approved enclosure release clearance, and final mechanical production signoff are missing
 forbidden_claims:
   - production_ready
   - fabrication_ready

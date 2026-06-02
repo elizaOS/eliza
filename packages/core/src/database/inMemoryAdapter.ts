@@ -509,6 +509,18 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		let entityIds: UUID[] = [];
 		if (matchedComponentsByEntity.size > 0) {
 			entityIds = Array.from(matchedComponentsByEntity.keys()).map(asUuid);
+		} else if (!hasComponentQuery && _params.limit !== undefined) {
+			for (const entity of this.entities.values()) {
+				if (!entity.id) continue;
+				if (_params.agentId && entity.agentId !== _params.agentId) continue;
+				if (
+					_params.entityIds?.length &&
+					!_params.entityIds.includes(entity.id)
+				) {
+					continue;
+				}
+				entityIds.push(entity.id);
+			}
 		} else if (_params.entityIds?.length) {
 			entityIds = [..._params.entityIds];
 		} else {

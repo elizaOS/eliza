@@ -12,6 +12,7 @@ type MarketTokenSnapshot = {
   priceUsd: number;
   priceChange24h: number;
   liquidity: number;
+  marketCapUsd?: number;
 };
 
 type MarketRow = {
@@ -23,6 +24,12 @@ type MarketRow = {
   change24hPct: string;
   liquidityUsd: string;
 };
+
+function formatUsd(value: number | undefined): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value.toFixed(2)
+    : "unknown";
+}
 
 export async function getCacheTimed<T>(
   runtime: IAgentRuntime,
@@ -142,8 +149,6 @@ export const marketProvider: Provider = {
 
       const rows: MarketRow[] = [];
 
-      // FIXME: Market cap column is currently not populated from Birdeye API response
-      // Need to calculate or fetch market cap data separately
       for (const ca of CAs) {
         // Check if result[ca] exists before accessing it
         if (!result[ca]) {
@@ -174,7 +179,7 @@ export const marketProvider: Provider = {
           address: ca,
           symbol,
           priceUsd: t.priceUsd.toFixed(4),
-          marketCapUsd: "unknown",
+          marketCapUsd: formatUsd(t.marketCapUsd),
           change24hPct: t.priceChange24h.toFixed(2),
           liquidityUsd: t.liquidity.toFixed(2),
         });

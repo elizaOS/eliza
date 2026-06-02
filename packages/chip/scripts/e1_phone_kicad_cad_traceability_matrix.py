@@ -108,12 +108,59 @@ def declared_pin_count(pinout: dict[str, Any]) -> int:
 
 def complete_pin_table_expected_count(pinout: dict[str, Any]) -> int:
     mechanical = pinout.get("mechanical")
-    if not isinstance(mechanical, dict):
-        return 0
-    for key in ("electrical_pad_count_with_exposed_pads", "pin_count", "bump_count"):
-        if key in mechanical:
-            return int(mechanical[key])
+    if isinstance(mechanical, dict):
+        for key in (
+            "electrical_pad_count_with_exposed_pads",
+            "terminal_count",
+            "terminals",
+            "positions",
+            "fpc_pin_count",
+            "pin_count",
+            "bump_count",
+        ):
+            if key in mechanical:
+                return int(mechanical[key])
+        if "contacts_per_row" in mechanical and "rows" in mechanical:
+            return int(mechanical["contacts_per_row"]) * int(mechanical["rows"])
+    numbering = pinout.get("pin_numbering")
+    if isinstance(numbering, dict):
+        if numbering.get("scheme") == "dual_row_A_B":
+            row_a_end = str(numbering["row_A_range"][1])
+            row_b_end = str(numbering["row_B_range"][1])
+            return int(row_a_end.removeprefix("A")) + int(row_b_end.removeprefix("B"))
+        if numbering.get("scheme") == "numeric_1_to_199":
+            return 199
+    declared = declared_pin_count(pinout)
+    if declared:
+        return declared
     return 0
+
+
+def complete_pin_table_count_basis(pinout: dict[str, Any]) -> str:
+    mechanical = pinout.get("mechanical")
+    if isinstance(mechanical, dict):
+        for key in (
+            "electrical_pad_count_with_exposed_pads",
+            "terminal_count",
+            "terminals",
+            "positions",
+            "fpc_pin_count",
+            "pin_count",
+            "bump_count",
+        ):
+            if key in mechanical:
+                return f"mechanical.{key}"
+        if "contacts_per_row" in mechanical and "rows" in mechanical:
+            return "mechanical.contacts_per_row_x_rows"
+    numbering = pinout.get("pin_numbering")
+    if isinstance(numbering, dict):
+        if numbering.get("scheme") == "dual_row_A_B":
+            return "pin_numbering.dual_row_A_B"
+        if numbering.get("scheme") == "numeric_1_to_199":
+            return "pin_numbering.numeric_1_to_199"
+    if declared_pin_count(pinout):
+        return "declared_pin_count"
+    return "not_declared"
 
 
 def recursive_pin_record_count(value: Any) -> int:
@@ -123,6 +170,39 @@ def recursive_pin_record_count(value: Any) -> int:
     if isinstance(value, list):
         return sum(recursive_pin_record_count(item) for item in value)
     return 0
+
+
+def signal_set_count(pinout: dict[str, Any]) -> int:
+    signal_set = pinout.get("pin_signal_set")
+    if not isinstance(signal_set, dict):
+        return 0
+    count = 0
+    for signals in signal_set.values():
+        if isinstance(signals, list):
+            count += len(signals)
+    return count
+
+
+def complete_pin_table_gap_reason(
+    *,
+    pinout: dict[str, Any],
+    manifest_completeness: Any,
+    expected_count: int,
+    captured_count: int,
+) -> str:
+    if expected_count and captured_count >= expected_count:
+        return "none"
+    completeness = str(manifest_completeness or "")
+    procurement_status = str(pinout.get("procurement_status") or "")
+    if "per_pin_fpc_order_requires_signed" in completeness or "signed" in procurement_status:
+        return "supplier_signed_fpc_or_module_drawing_required_for_per_pin_order"
+    if "mechanical_full_signal_assignment_carried_by_flex" in completeness:
+        return "connector_numbering_captured_signal_assignment_carried_by_interconnect_flex"
+    if "sodimm" in completeness:
+        return "e1_phone_relevant_subset_captured_full_public_som_table_remains_in_source_pdf"
+    if "selected" in completeness or "development contract" in completeness:
+        return "development_contract_captured_selected_supplier_pin_table_still_required"
+    return "pin_table_incomplete"
 
 
 def build_report() -> dict[str, Any]:
@@ -327,7 +407,12 @@ def build_report() -> dict[str, Any]:
         urls = public_source_urls(pinout)
         declared_count = declared_pin_count(pinout)
         complete_pin_table_count = complete_pin_table_expected_count(pinout)
+        count_basis = complete_pin_table_count_basis(pinout)
         concrete_record_count = recursive_pin_record_count(pinout)
+        signal_count = signal_set_count(pinout)
+        complete_table_captured = bool(
+            complete_pin_table_count and concrete_record_count >= complete_pin_table_count
+        )
         row = {
             "file": file_name,
             "function": record.get("function"),
@@ -342,9 +427,15 @@ def build_report() -> dict[str, Any]:
             "public_source_url_count": len(urls),
             "declared_pin_count": declared_count,
             "complete_pin_table_expected_count": complete_pin_table_count,
+            "complete_pin_table_count_basis": count_basis,
             "captured_pin_record_count": concrete_record_count,
-            "complete_pin_table_captured": bool(
-                complete_pin_table_count and concrete_record_count == complete_pin_table_count
+            "captured_signal_set_count": signal_count,
+            "complete_pin_table_captured": complete_table_captured,
+            "complete_pin_table_gap_reason": complete_pin_table_gap_reason(
+                pinout=pinout,
+                manifest_completeness=record.get("completeness"),
+                expected_count=complete_pin_table_count,
+                captured_count=concrete_record_count,
             ),
             "public_source_present": bool(urls),
             "release_credit": False,
@@ -414,6 +505,19 @@ def build_report() -> dict[str, Any]:
             ),
             "captured_pinout_complete_table_file_count": sum(
                 1 for row in captured_pinout_rows if row["complete_pin_table_captured"]
+            ),
+            "captured_pinout_incomplete_table_file_count": sum(
+                1 for row in captured_pinout_rows if not row["complete_pin_table_captured"]
+            ),
+            "captured_pinout_signal_set_count_total": sum(
+                int(row["captured_signal_set_count"] or 0) for row in captured_pinout_rows
+            ),
+            "captured_pinout_incomplete_table_gap_reasons": sorted(
+                {
+                    str(row["complete_pin_table_gap_reason"])
+                    for row in captured_pinout_rows
+                    if not row["complete_pin_table_captured"]
+                }
             ),
             "captured_pinout_public_source_count": sum(
                 1 for row in captured_pinout_rows if row["public_source_present"]

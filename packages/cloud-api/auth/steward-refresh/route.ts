@@ -154,19 +154,27 @@ interface StewardRefreshErr {
 async function callStewardRefresh(
   baseUrl: string,
   refreshToken: string,
+  pinnedTenantId?: string,
 ): Promise<
   | { kind: "ok"; data: StewardRefreshOk }
   | { kind: "error"; status: number; data: StewardRefreshErr }
   | { kind: "transport"; message: string }
 > {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+  // Pin the tenant per-env: this route bypasses the /steward/* proxy in
+  // bootstrap-app.ts and would otherwise hit Steward without scoping,
+  // letting a staging refresh land against the prod tenant.
+  if (typeof pinnedTenantId === "string" && pinnedTenantId.trim().length > 0) {
+    headers["X-Steward-Tenant"] = pinnedTenantId.trim();
+  }
   let response: Response;
   try {
     response = await fetch(`${baseUrl}/auth/refresh`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
+      headers,
       body: JSON.stringify({ refreshToken }),
     });
   } catch (err) {
@@ -241,7 +249,11 @@ app.post("/", async (c) => {
     );
   }
 
-  const refresh = await callStewardRefresh(stewardBaseUrl, refreshToken);
+  const refresh = await callStewardRefresh(
+    stewardBaseUrl,
+    refreshToken,
+    c.env.STEWARD_TENANT_ID,
+  );
 
   if (refresh.kind === "transport") {
     logRefresh("upstream-transport-error");

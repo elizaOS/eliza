@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import {
   createServer,
@@ -20,8 +19,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect } from "vitest";
-import { itIf } from "../../../packages/test/helpers/conditional-tests.ts";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { req } from "../../../packages/test/helpers/http.ts";
 import { createRealTestRuntime } from "../../../packages/test/helpers/real-runtime.ts";
 import {
@@ -35,17 +33,6 @@ import { handleLifeOpsRoutes } from "../src/routes/lifeops-routes.js";
 const SIGNAL_PHONE = "+15551230000";
 const SIGNAL_ACCOUNT = "+15551234567";
 const SIGNAL_UUID = "123e4567-e89b-12d3-a456-426614174000";
-const SIGNAL_CLI_CANDIDATES = [
-  process.env.SIGNAL_CLI_PATH?.trim(),
-  "/opt/homebrew/bin/signal-cli",
-  "/usr/local/bin/signal-cli",
-].filter((candidate): candidate is string => Boolean(candidate));
-const SIGNAL_CLI_AVAILABLE = SIGNAL_CLI_CANDIDATES.some((candidate) =>
-  fs.existsSync(candidate),
-);
-const LEGACY_SIGNAL_LOCAL_PAIRING_ENABLED =
-  process.env.LIFEOPS_ENABLE_LEGACY_SIGNAL_LOCAL === "1";
-
 type RealRuntimeHandle = Awaited<ReturnType<typeof createRealTestRuntime>>;
 
 type StartedHttpServer = {
@@ -505,69 +492,29 @@ describe("Real E2E: LifeOps Signal", () => {
     await rm(oauthDir, { recursive: true, force: true });
   });
 
-  itIf(SIGNAL_CLI_AVAILABLE && LEGACY_SIGNAL_LOCAL_PAIRING_ENABLED)(
-    "starts and stops a Signal pairing session through the LifeOps routes",
-    async () => {
-      runtimeHandle = await createLifeOpsRuntime();
-      routeServer = await startLifeOpsRouteServer(runtimeHandle.runtime);
+  it("does not expose legacy Signal setup routes from LifeOps", async () => {
+    runtimeHandle = await createLifeOpsRuntime();
+    routeServer = await startLifeOpsRouteServer(runtimeHandle.runtime);
 
-      const pairResponse = await req(
-        routeServer.port,
-        "POST",
-        "/api/lifeops/connectors/signal/pair",
-        {},
-      );
-      expect(pairResponse.status).toBe(201);
-      expect(pairResponse.data.provider).toBe("signal");
-      expect(typeof pairResponse.data.sessionId).toBe("string");
-      const sessionId = String(pairResponse.data.sessionId);
+    const statusResponse = await req(
+      routeServer.port,
+      "GET",
+      "/api/lifeops/connectors/signal/status",
+    );
+    expect(statusResponse.status).toBe(200);
+    expect(statusResponse.data.provider).toBe("signal");
 
-      const pairingStatus = await waitFor(
-        "Signal pairing status",
-        async () =>
-          req(
-            routeServer!.port,
-            "GET",
-            `/api/lifeops/connectors/signal/pairing-status?sessionId=${encodeURIComponent(sessionId)}`,
-          ),
-        (response) =>
-          response.status === 200 &&
-          response.data.state === "waiting_for_scan" &&
-          typeof response.data.qrDataUrl === "string",
-        45_000,
+    for (const [method, path] of [
+      ["POST", "/api/lifeops/connectors/signal/pair"],
+      ["GET", "/api/lifeops/connectors/signal/pairing-status?sessionId=test"],
+      ["POST", "/api/lifeops/connectors/signal/stop"],
+      ["POST", "/api/lifeops/connectors/signal/disconnect"],
+    ] as const) {
+      const response = await req(routeServer.port, method, path, {});
+      expect(response.status).toBe(404);
+      expect(String(response.data.error?.message ?? response.data.message)).toContain(
+        "Unhandled LifeOps route",
       );
-      expect(String(pairingStatus.data.qrDataUrl)).toContain(
-        "data:image/png;base64,",
-      );
-
-      const statusResponse = await req(
-        routeServer.port,
-        "GET",
-        "/api/lifeops/connectors/signal/status",
-      );
-      expect(statusResponse.status).toBe(200);
-      expect(statusResponse.data.reason).toBe("pairing");
-      expect(statusResponse.data.connected).toBe(false);
-
-      const stopResponse = await req(
-        routeServer.port,
-        "POST",
-        "/api/lifeops/connectors/signal/stop",
-        {},
-      );
-      expect(stopResponse.status).toBe(200);
-      expect(stopResponse.data.state).toBe("idle");
-
-      const disconnectResponse = await req(
-        routeServer.port,
-        "POST",
-        "/api/lifeops/connectors/signal/disconnect",
-        {},
-      );
-      expect(disconnectResponse.status).toBe(200);
-      expect(disconnectResponse.data.connected).toBe(false);
-      expect(disconnectResponse.data.reason).toBe("disconnected");
-    },
-    90_000,
-  );
+    }
+  });
 });

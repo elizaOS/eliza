@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { InlineComposer } from "@/components/feed/InlineComposer";
 import {
+  MarketClosingSoonCard,
   TopGainerCard,
   TopLoserCard,
 } from "@/components/notifications/FeedSignalCards";
@@ -172,8 +173,8 @@ export function FeedClient() {
     loadMore: loadMoreForYou,
   } = useForYouFeed({ enabled: tab === "forYou" });
 
-  // Feed signal cards (gainer / loser) — latest tab only
-  const { gainerCard, loserCard } = useFeedSignalCards();
+  // Feed signal cards — latest tab only
+  const { closingCard, gainerCard, loserCard } = useFeedSignalCards();
 
   // New market cards shown at the top of Latest and Hot tabs
   // New market cards only appear on the Latest tab, chronologically merged.
@@ -469,8 +470,9 @@ export function FeedClient() {
                 )}
 
               {/* Feed signal cards — latest tab only */}
-              {tab === "latest" && (gainerCard ?? loserCard) && (
+              {tab === "latest" && (closingCard ?? gainerCard ?? loserCard) && (
                 <div>
+                  {closingCard && <MarketClosingSoonCard {...closingCard} />}
                   {gainerCard && <TopGainerCard {...gainerCard} />}
                   {loserCard && <TopLoserCard {...loserCard} />}
                 </div>

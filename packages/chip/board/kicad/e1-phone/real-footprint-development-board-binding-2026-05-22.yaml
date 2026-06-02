@@ -13,9 +13,9 @@ claim_boundary: This board binds the routed-development snapshot to concrete dev
   not a fabrication release because several patterns remain geometry-only or need
   supplier drawing/DFM signoff before pin order can be frozen.
 source_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed-development.kicad_pcb
-source_board_sha256: 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b
+source_board_sha256: 5cf7b04f71284f90e840c9931339ec879a197d6c6b672b3c76dd4267f5d40e8b
 output_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
-output_board_sha256: 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b
+output_board_sha256: 5cf7b04f71284f90e840c9931339ec879a197d6c6b672b3c76dd4267f5d40e8b
 fp_lib_table: board/kicad/e1-phone/fp-lib-table
 bound_footprint_count: 89
 unbound_footprint_count: 0

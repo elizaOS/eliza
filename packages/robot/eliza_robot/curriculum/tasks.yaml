@@ -126,10 +126,10 @@ tasks:
       left_foot_contact_required: true
       right_foot_contact_required: false
       max_abs_delta_x_m: 0.05
-      max_abs_delta_y_m: 0.08
+      max_abs_delta_y_m: 0.35
       max_abs_delta_yaw_rad: 0.25
       no_fall: true
-      hold_s: 0.4
+      hold_s: 0.25
       max_foot_slip_m_s: 0.35
       max_self_collision_count: 0
     max_episode_s: 4.0
@@ -156,10 +156,10 @@ tasks:
       left_foot_contact_required: false
       right_foot_contact_required: true
       max_abs_delta_x_m: 0.05
-      max_abs_delta_y_m: 0.08
+      max_abs_delta_y_m: 0.35
       max_abs_delta_yaw_rad: 0.25
       no_fall: true
-      hold_s: 0.4
+      hold_s: 0.25
       max_foot_slip_m_s: 0.35
       max_self_collision_count: 0
     max_episode_s: 4.0
@@ -187,10 +187,10 @@ tasks:
       right_foot_contact_required: true
       min_swing_foot_clearance_m: 0.010
       max_abs_delta_x_m: 0.05
-      max_abs_delta_y_m: 0.08
+      max_abs_delta_y_m: 0.35
       max_abs_delta_yaw_rad: 0.25
       no_fall: true
-      hold_s: 0.4
+      hold_s: 0.25
       max_foot_slip_m_s: 0.35
       max_self_collision_count: 0
     max_episode_s: 4.0
@@ -218,10 +218,10 @@ tasks:
       right_foot_contact_required: false
       min_swing_foot_clearance_m: 0.010
       max_abs_delta_x_m: 0.05
-      max_abs_delta_y_m: 0.08
+      max_abs_delta_y_m: 0.35
       max_abs_delta_yaw_rad: 0.25
       no_fall: true
-      hold_s: 0.4
+      hold_s: 0.25
       max_foot_slip_m_s: 0.35
       max_self_collision_count: 0
     max_episode_s: 4.0
@@ -257,8 +257,119 @@ tasks:
       max_self_collision_count: 0
     max_episode_s: 5.0
 
+  - id: step_forward
+    tier: 1
+    verbs:
+      en: ["take a forward step", "take one forward step", "one controlled forward step",
+           "small step forward", "practice forward step"]
+    description: "Advance a short distance with alternating planted feet before attempting a full walk."
+    reward:
+      target_velocity_x_m_s: 0.05
+      velocity_track_weight: 5.0
+      movement_progress_weight: 4.0
+      upright_weight: 1.5
+      height_track_weight: 0.8
+      gait_phase_weight: 1.0
+      stance_contact_weight: 2.0
+      foot_clearance_weight: 2.0
+      alternating_contact_weight: 4.0
+      locomotion_no_progress_penalty: 4.0
+      no_support_weight: 4.0
+      double_support_weight: 1.0
+      foot_slip_weight: -2.0
+      max_foot_slip_margin_weight: 25.0
+      action_rate_weight: -0.01
+    success:
+      torso_z_min_ratio: 0.75
+      delta_x_m_min: 0.04
+      window_s: 4.0
+      max_lateral_drift_m: 0.12
+      max_abs_delta_yaw_rad: 0.35
+      no_fall: true
+      hold_s: 0.20
+      min_alternating_foot_contacts: 2
+      min_swing_foot_clearance_m: 0.015
+      max_foot_slip_m_s: 0.35
+      max_self_collision_count: 0
+    max_episode_s: 5.0
+
+  - id: walk_forward_bridge
+    tier: 1
+    prerequisites: ["step_forward"]
+    verbs:
+      en: ["advance two small steps", "controlled forward bridge",
+           "practice short walk", "short forward bridge", "two-step bridge"]
+    description: "Bridge the short step-forward prerequisite into a multi-contact forward walk segment before full walking."
+    reward:
+      target_velocity_x_m_s: 0.07
+      velocity_track_weight: 5.0
+      movement_progress_weight: 5.0
+      upright_weight: 1.5
+      height_track_weight: 0.8
+      gait_phase_weight: 1.0
+      stance_contact_weight: 2.0
+      foot_clearance_weight: 2.0
+      alternating_contact_weight: 4.0
+      locomotion_no_progress_penalty: 4.0
+      no_support_weight: 4.0
+      double_support_weight: 1.0
+      foot_slip_weight: -2.0
+      max_foot_slip_margin_weight: 25.0
+      action_rate_weight: -0.01
+    success:
+      torso_z_min_ratio: 0.75
+      delta_x_m_min: 0.10
+      window_s: 4.0
+      max_lateral_drift_m: 0.16
+      max_abs_delta_yaw_rad: 0.40
+      no_fall: true
+      hold_s: 0.10
+      min_alternating_foot_contacts: 2
+      min_swing_foot_clearance_m: 0.015
+      max_foot_slip_m_s: 0.35
+      max_self_collision_count: 0
+    max_episode_s: 5.0
+
+  - id: walk_forward_mid_bridge
+    tier: 1
+    prerequisites: ["walk_forward_bridge"]
+    verbs:
+      en: ["advance a short walking segment", "controlled mid forward bridge",
+           "practice longer short walk", "mid forward bridge", "four-step forward bridge"]
+    description: "Extend the proven short forward bridge toward full walking while keeping upright, alternating contacts, and low slip."
+    reward:
+      target_velocity_x_m_s: 0.08
+      velocity_track_weight: 5.0
+      movement_progress_weight: 5.0
+      upright_weight: 1.5
+      height_track_weight: 0.8
+      gait_phase_weight: 1.0
+      stance_contact_weight: 2.0
+      foot_clearance_weight: 2.0
+      alternating_contact_weight: 4.0
+      locomotion_no_progress_penalty: 4.0
+      no_support_weight: 4.0
+      double_support_weight: 1.0
+      foot_slip_weight: -2.0
+      max_foot_slip_margin_weight: 25.0
+      action_rate_weight: -0.01
+    success:
+      torso_z_min_ratio: 0.75
+      delta_x_m_min: 0.20
+      window_s: 4.0
+      max_lateral_drift_m: 0.20
+      max_abs_delta_yaw_rad: 0.40
+      no_fall: true
+      hold_s: 0.05
+      min_alternating_foot_contacts: 4
+      min_swing_foot_clearance_m: 0.015
+      max_foot_slip_m_s: 0.35
+      max_self_collision_count: 0
+    max_episode_s: 5.0
+
   - id: walk_forward
     tier: 1
+    prerequisites: ["walk_forward_mid_bridge"]
     verbs:
       en: ["walk forward", "go forward", "walk", "move forward", "step forward",
            "advance", "go", "march forward", "head forward"]
@@ -277,8 +388,12 @@ tasks:
       foot_clearance_weight: 1.0
       alternating_contact_weight: 4.0
       locomotion_no_progress_penalty: 5.0
-      late_hold_progress_start: 0.95
-      goal_hold_progress_start: 1.0
+      late_hold_progress_start: 0.85
+      late_hold_instability_weight: 45.0
+      late_hold_speed_weight: 10.0
+      goal_hold_progress_start: 0.96
+      goal_hold_brake_weight: 16.0
+      goal_hold_slip_weight: 50.0
       no_support_weight: 3.0
       double_support_weight: 2.0
       foot_slip_weight: -2.0

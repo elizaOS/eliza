@@ -33,7 +33,8 @@ src/tbq_block_ref.c                Scalar reference — bit-exact to the fork's
                                    dequantize_row_tbq*_0.
 test/turboquant_smoke.c            Block-encode/decode round-trip smoke test.
                                    Asserts sizeof(block_tbq3_0)==14, sizeof(block_tbq4_0)==18.
-scripts/turboquant_to_gguf.py      GGUF converter skeleton (TBQ3_0=44 / TBQ4_0=45).
+scripts/turboquant_to_gguf.py      Metadata-only GGUF writer for turboquant.json
+                                   runtime-cache sidecars.
 fork-integration/                  Reserved for in-fork drop-ins (not yet populated;
                                    the elizaOS fork already has TBQ baked in upstream
                                    of this directory, see the patches/README.md).
@@ -60,8 +61,9 @@ and falls back to QJL K + TBQ3_0 V at ≤8k context (see
 `packages/shared/src/local-inference/CONTEXT_SCALING.md` table 1 +
 `packages/shared/src/local-inference/catalog.ts::runtimeForTier`).
 
-The TBQ types themselves are **shipped in the fork**, not buildable
-from this library yet:
+The TBQ types themselves are **shipped in the fork**. This library
+provides the user-space block reference, RVV lane where supported, and
+metadata writer used by tooling:
 
 | Tier         | TBQ3_0 V-cache | TBQ4_0 W-cache | TBQ3_TCQ K (≥64k ctx) |
 |--------------|---------------:|---------------:|----------------------:|
@@ -79,9 +81,9 @@ artifact paths, build commands, kernel-contract test references).
 ## What this library is not
 
 - Not a llama.cpp integration. The fork already contains TBQ.
-- Not a SIMD library yet — only the scalar reference is in place.
-  AVX2 / NEON lanes will land beside `tbq_block_ref.c` following the
-  qjl-cpu / polarquant-cpu per-arch dispatch pattern.
+- Not a complete SIMD library for every CPU. The scalar reference is
+  always present and the RVV lane is wired for RISC-V builds; AVX2 /
+  NEON lanes are still future per-arch additions beside `tbq_block_ref.c`.
 - Not the K-cache compressor. That's `qjl-cpu`. TBQ4_0 keys are an
   alternative path the fork supports for callers that want a stricter
   4-bit K format than QJL's 1-bit JL sketch.

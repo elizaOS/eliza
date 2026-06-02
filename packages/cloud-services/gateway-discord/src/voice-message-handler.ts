@@ -3,14 +3,9 @@
  *
  * Handles processing of Discord voice message attachments:
  * - Downloads audio files from Discord
- * - Uploads to blob storage (currently disabled — see note below)
+ * - Uploads to the Cloud API storage proxy when configured
  * - Generates pre-signed URLs for agents
  * - Cleans up expired audio files
- *
- * TODO: Wire to R2-backed upload service. Until this gateway is pointed at
- * the Worker R2 upload endpoint (or given direct S3-compatible R2
- * credentials), `processVoiceMessage` returns the Discord CDN URL directly
- * and `cleanupExpiredAudio` is a no-op.
  */
 
 import { type Attachment, MessageFlags } from "discord.js";
@@ -40,6 +35,8 @@ const MAX_VOICE_FILE_SIZE = 25 * 1024 * 1024; // 25MB Discord limit
 
 /** Timeout for Discord CDN fetch operations */
 const DISCORD_CDN_TIMEOUT_MS = 30_000; // 30 seconds
+const STORAGE_FETCH_TIMEOUT_MS = 30_000;
+const VOICE_STORAGE_PREFIX = "voice";
 
 export interface VoiceAttachmentResult {
   audioUrl: string;
@@ -54,6 +51,127 @@ export interface VoiceAttachmentMetadata {
   size: number;
   content_type: string;
   filename: string;
+}
+
+interface StorageConfig {
+  apiBaseUrl: string;
+  token: string;
+}
+
+function getStorageConfig(): StorageConfig | null {
+  const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
+  const apiBaseUrl = (
+    process.env.ELIZA_CLOUD_URL ??
+    process.env.CLOUD_API_BASE_URL ??
+    process.env.ELIZAOS_CLOUD_BASE_URL ??
+    ""
+  ).trim();
+  if (!token || !apiBaseUrl) return null;
+  return { token, apiBaseUrl: apiBaseUrl.replace(/\/+$/, "") };
+}
+
+function storageHeaders(config: StorageConfig): Record<string, string> {
+  return {
+    Authorization: `Bearer ${config.token}`,
+    "X-API-Key": config.token,
+  };
+}
+
+function objectUrl(config: StorageConfig, key: string): string {
+  const encodedKey = key.split("/").map(encodeURIComponent).join("/");
+  return `${config.apiBaseUrl}/api/v1/apis/storage/objects/${encodedKey}`;
+}
+
+function sanitizeFilename(name: string): string {
+  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function buildVoiceObjectKey(
+  connectionId: string,
+  messageId: string,
+  attachment: Attachment,
+): string {
+  const rawName = attachment.name ?? `voice-${attachment.id}.ogg`;
+  const safeName = sanitizeFilename(rawName).replace(/^\.+$/, "voice.ogg");
+  return [
+    VOICE_STORAGE_PREFIX,
+    sanitizeFilename(connectionId),
+    sanitizeFilename(messageId),
+    `${sanitizeFilename(attachment.id)}-${safeName}`,
+  ].join("/");
+}
+
+async function parseJsonResponse(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+async function uploadVoiceObject(
+  config: StorageConfig,
+  key: string,
+  audioBuffer: Buffer,
+  contentType: string,
+): Promise<void> {
+  const response = await fetch(objectUrl(config, key), {
+    method: "PUT",
+    headers: {
+      ...storageHeaders(config),
+      "Content-Type": contentType,
+    },
+    body: new Uint8Array(audioBuffer),
+    signal: AbortSignal.timeout(STORAGE_FETCH_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    const body = await parseJsonResponse(response);
+    throw new Error(
+      `Voice upload failed: ${response.status} ${response.statusText} ${JSON.stringify(body)}`,
+    );
+  }
+}
+
+async function presignVoiceObject(
+  config: StorageConfig,
+  key: string,
+): Promise<{ url: string; expiresAt: Date }> {
+  const response = await fetch(
+    `${config.apiBaseUrl}/api/v1/apis/storage/presign`,
+    {
+      method: "POST",
+      headers: {
+        ...storageHeaders(config),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        key,
+        operation: "get",
+        expiresIn: VOICE_AUDIO_TTL_SECONDS,
+      }),
+      signal: AbortSignal.timeout(STORAGE_FETCH_TIMEOUT_MS),
+    },
+  );
+  const body = await parseJsonResponse(response);
+  if (!response.ok) {
+    throw new Error(
+      `Voice presign failed: ${response.status} ${response.statusText} ${JSON.stringify(body)}`,
+    );
+  }
+  if (
+    !body ||
+    typeof body !== "object" ||
+    typeof (body as { url?: unknown }).url !== "string" ||
+    typeof (body as { expiresAt?: unknown }).expiresAt !== "string"
+  ) {
+    throw new Error("Voice presign response missing url or expiresAt");
+  }
+  return {
+    url: (body as { url: string }).url,
+    expiresAt: new Date((body as { expiresAt: string }).expiresAt),
+  };
 }
 
 /**
@@ -96,9 +214,8 @@ export class VoiceMessageHandler {
 
   /**
    * Process a voice message attachment.
-   * Downloads the audio file and (when blob upload is wired) uploads it.
-   * Until then, the attachment is downloaded and size-validated, but no blob
-   * is persisted; the original Discord CDN URL is returned in the result.
+   * Downloads the audio file, uploads it to managed storage when configured,
+   * and returns a short-lived URL agents can consume.
    */
   async processVoiceMessage(
     attachment: Attachment,
@@ -157,16 +274,48 @@ export class VoiceMessageHandler {
       downloadDurationMs: downloadDuration,
     });
 
-    logger.warn("Voice blob upload unavailable; returning Discord CDN URL", {
-      connectionId,
-      messageId,
-      attachmentId: attachment.id,
-    });
+    const storageConfig = getStorageConfig();
+    const contentType = attachment.contentType ?? "audio/ogg; codecs=opus";
+    if (storageConfig) {
+      const objectKey = buildVoiceObjectKey(
+        connectionId,
+        messageId,
+        attachment,
+      );
+      await uploadVoiceObject(
+        storageConfig,
+        objectKey,
+        audioBuffer,
+        contentType,
+      );
+      const signed = await presignVoiceObject(storageConfig, objectKey);
+      logger.info("Uploaded voice attachment to managed storage", {
+        connectionId,
+        messageId,
+        attachmentId: attachment.id,
+        objectKey,
+      });
+      return {
+        audioUrl: signed.url,
+        expiresAt: signed.expiresAt,
+        size: audioBuffer.length,
+        contentType,
+      };
+    }
+
+    logger.warn(
+      "Voice storage proxy not configured; returning Discord CDN URL",
+      {
+        connectionId,
+        messageId,
+        attachmentId: attachment.id,
+      },
+    );
     return {
       audioUrl: attachment.url,
       expiresAt: new Date(Date.now() + VOICE_AUDIO_TTL_SECONDS * 1000),
       size: audioBuffer.length,
-      contentType: attachment.contentType ?? "audio/ogg; codecs=opus",
+      contentType,
     };
   }
 
@@ -252,11 +401,69 @@ export class VoiceMessageHandler {
 
   /**
    * Clean up expired audio files from blob storage.
-   * No-op until the R2-backed upload backend is wired up.
    */
   async cleanupExpiredAudio(): Promise<number> {
-    logger.debug("Voice blob cleanup unavailable; skipping");
-    return 0;
+    const storageConfig = getStorageConfig();
+    if (!storageConfig) {
+      logger.debug("Voice storage proxy not configured; skipping cleanup");
+      return 0;
+    }
+
+    const listUrl = new URL(
+      `${storageConfig.apiBaseUrl}/api/v1/apis/storage/list`,
+    );
+    listUrl.searchParams.set("prefix", VOICE_STORAGE_PREFIX);
+    listUrl.searchParams.set("recursive", "true");
+
+    const response = await fetch(listUrl, {
+      headers: storageHeaders(storageConfig),
+      signal: AbortSignal.timeout(STORAGE_FETCH_TIMEOUT_MS),
+    });
+    const body = await parseJsonResponse(response);
+    if (!response.ok) {
+      throw new Error(
+        `Voice cleanup list failed: ${response.status} ${response.statusText} ${JSON.stringify(body)}`,
+      );
+    }
+    if (
+      !body ||
+      typeof body !== "object" ||
+      !Array.isArray((body as { items?: unknown }).items)
+    ) {
+      throw new Error("Voice cleanup list response missing items");
+    }
+
+    const cutoff = Date.now() - VOICE_AUDIO_TTL_SECONDS * 1000;
+    let deleted = 0;
+    for (const item of (body as { items: unknown[] }).items) {
+      if (!item || typeof item !== "object") continue;
+      const { key, modifiedAt } = item as {
+        key?: unknown;
+        modifiedAt?: unknown;
+      };
+      if (typeof key !== "string" || typeof modifiedAt !== "string") continue;
+      const modifiedTime = new Date(modifiedAt).getTime();
+      if (!Number.isFinite(modifiedTime) || modifiedTime >= cutoff) continue;
+
+      const deleteResponse = await fetch(objectUrl(storageConfig, key), {
+        method: "DELETE",
+        headers: storageHeaders(storageConfig),
+        signal: AbortSignal.timeout(STORAGE_FETCH_TIMEOUT_MS),
+      });
+      if (!deleteResponse.ok) {
+        const deleteBody = await parseJsonResponse(deleteResponse);
+        logger.warn("Failed to delete expired voice object", {
+          key,
+          status: deleteResponse.status,
+          body: deleteBody,
+        });
+        continue;
+      }
+      deleted += 1;
+    }
+
+    logger.info("Cleaned up expired voice audio", { deleted });
+    return deleted;
   }
 
   /**

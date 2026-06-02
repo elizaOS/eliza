@@ -196,6 +196,7 @@ def _train_alberta(
     min_phase_success_rate: float = 1.0,
     phase_eval_interval_steps: int | None = None,
     locomotion_action_prior: str = "none",
+    staged_biped_action_prior: str = "none",
     locomotion_prior_residual_scale: float = 1.0,
     locomotion_prior_residual_scale_initial: float | None = None,
     locomotion_prior_residual_scale_increment: float = 0.05,
@@ -231,6 +232,7 @@ def _train_alberta(
         min_phase_success_rate=min_phase_success_rate,
         phase_eval_interval_steps=phase_eval_interval_steps,
         locomotion_action_prior=locomotion_action_prior,
+        staged_biped_action_prior=staged_biped_action_prior,
         locomotion_prior_residual_scale=locomotion_prior_residual_scale,
         locomotion_prior_residual_scale_initial=locomotion_prior_residual_scale_initial,
         locomotion_prior_residual_scale_increment=(
@@ -434,7 +436,13 @@ def main(argv: list[str] | None = None) -> int:
             "hiwonder_sine",
             "hiwonder_contact_sine",
             "hiwonder_low_slip_contact_sine",
+            "hiwonder_bounded_step_walk",
         ),
+        default="none",
+    )
+    parser.add_argument(
+        "--staged-biped-action-prior",
+        choices=("none", "hiwonder_staged_biped"),
         default="none",
     )
     parser.add_argument("--locomotion-prior-residual-scale", type=float, default=1.0)
@@ -534,6 +542,7 @@ def main(argv: list[str] | None = None) -> int:
         min_phase_success_rate=args.min_phase_success_rate,
         phase_eval_interval_steps=args.phase_eval_interval_steps,
         locomotion_action_prior=args.locomotion_action_prior,
+        staged_biped_action_prior=args.staged_biped_action_prior,
         locomotion_prior_residual_scale=args.locomotion_prior_residual_scale,
         locomotion_prior_residual_scale_initial=(
             args.locomotion_prior_residual_scale_initial

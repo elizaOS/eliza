@@ -118,6 +118,43 @@ describe("Component Integration Tests", () => {
       expect(retrieved?.data).toEqual({ value: "updated" });
     });
 
+    it("should patch component data fields", async () => {
+      const component: Component = {
+        id: stringToUuid("a0000000-0000-0000-0000-0000000000a4"),
+        entityId: testEntityId,
+        agentId: testAgentId,
+        roomId: testRoomId,
+        type: "patchable_component",
+        data: {
+          wallet: { balance: 10 },
+          tags: ["initial"],
+          obsolete: true,
+        },
+        worldId: testWorldId,
+        sourceEntityId: testSourceEntityId,
+        createdAt: Date.now(),
+      };
+      await adapter.createComponent(component);
+
+      await adapter.patchComponents([
+        {
+          componentId: component.id,
+          ops: [
+            { op: "set", path: "wallet.currency", value: "USD" },
+            { op: "increment", path: "wallet.balance", value: 5 },
+            { op: "push", path: "tags", value: "patched" },
+            { op: "remove", path: "obsolete" },
+          ],
+        },
+      ]);
+
+      const retrieved = await adapter.getComponent(testEntityId, "patchable_component");
+      expect(retrieved?.data).toEqual({
+        wallet: { balance: 15, currency: "USD" },
+        tags: ["initial", "patched"],
+      });
+    });
+
     it("should delete a component", async () => {
       const component: Component = {
         id: stringToUuid("a0000000-0000-0000-0000-000000000003"),

@@ -17,6 +17,8 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
+import { detectPasswordManagerBackend } from "@elizaos/plugin-browser/password-manager-bridge";
+import { detectHealthBackend } from "@elizaos/plugin-health";
 import { afterAll, beforeAll, describe, expect } from "vitest";
 import { itIf } from "../../../../test/helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../../../../test/helpers/live-provider";
@@ -253,9 +255,9 @@ describe("Action Invocation E2E", () => {
     twilioConfigured = Boolean(lifeOps.readTwilioCredentialsFromEnv());
     calendlyConfigured = Boolean(lifeOps.readCalendlyCredentialsFromEnv());
     healthBackendAvailable =
-      (await lifeOps.detectHealthBackend().catch(() => "none")) !== "none";
+      (await detectHealthBackend().catch(() => "none")) !== "none";
     passwordManagerAvailable =
-      (await lifeOps.detectPasswordManagerBackend().catch(() => "none")) !==
+      (await detectPasswordManagerBackend().catch(() => "none")) !==
       "none";
     remoteDesktopAvailable =
       (await lifeOps.detectRemoteDesktopBackend().catch(() => "none")) !==

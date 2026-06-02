@@ -19,7 +19,11 @@
 import { extractA11yTree, isA11yAvailable } from "../platform/a11y.js";
 import { captureScreenshot } from "../platform/screenshot.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
-import { fromOSWorldAction, fromPyAutoGUI } from "./action-converter.js";
+import {
+  fromOSWorldAction,
+  fromPyAutoGUI,
+  type OSWorldPointerState,
+} from "./action-converter.js";
 import type {
   OSWorldAction,
   OSWorldAgentConfig,
@@ -31,6 +35,7 @@ export class OSWorldAdapter {
   private service: ComputerUseService;
   private config: OSWorldAgentConfig;
   private stepCount = 0;
+  private pointerState: OSWorldPointerState = {};
   private trajectory: Array<{
     action: OSWorldAction | string;
     observation: OSWorldObservation;
@@ -101,7 +106,7 @@ export class OSWorldAdapter {
       return { executed: true, done: false, failed: false };
     }
 
-    const params = fromOSWorldAction(action);
+    const params = fromOSWorldAction(action, this.pointerState);
     if (!params) {
       return { executed: false, done: false, failed: false };
     }
@@ -197,6 +202,7 @@ export class OSWorldAdapter {
    */
   reset(): void {
     this.stepCount = 0;
+    this.pointerState = {};
     this.trajectory = [];
   }
 

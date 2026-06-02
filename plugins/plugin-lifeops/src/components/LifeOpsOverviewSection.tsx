@@ -2,7 +2,6 @@ import type {
   LifeOpsActiveReminderView,
   LifeOpsCalendarEvent,
   LifeOpsCapabilitiesStatus,
-  LifeOpsCircadianState,
   LifeOpsGoogleCapability,
   LifeOpsGoogleConnectorStatus,
   LifeOpsInboxChannel,
@@ -24,8 +23,6 @@ import {
   MessageSquareText,
   MessageSquare,
   Mic2,
-  Monitor,
-  Moon,
   Phone,
   RefreshCw,
   Send,
@@ -33,7 +30,6 @@ import {
   Shield,
   Sparkles,
   Smartphone,
-  Sun,
   Target,
   TriangleAlert,
 } from "lucide-react";
@@ -45,11 +41,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import type {
-  LifeOpsScreenTimeSummary,
-  LifeOpsScreenTimeSummaryItem,
-  LifeOpsSocialHabitSummary,
-} from "../api/client-lifeops.js";
+import type { LifeOpsSocialHabitSummary } from "../api/client-lifeops.js";
 import { useCalendarWeek } from "../hooks/useCalendarWeek.js";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";
 import { useInbox } from "../hooks/useInbox.js";
@@ -262,81 +254,15 @@ function classifyReminder(iso: string): ReminderUrgency {
   return "later";
 }
 
-const CIRCADIAN_LABELS: Record<LifeOpsCircadianState, string> = {
-  awake: "Awake",
-  winding_down: "Winding down",
-  sleeping: "Sleeping",
-  waking: "Waking up",
-  napping: "Napping",
-  unclear: "Schedule unclear",
-};
-
-function circadianHeadline(
-  schedule: LifeOpsScheduleInsight | null | undefined,
-): string | null {
-  if (!schedule) return null;
-  const base = CIRCADIAN_LABELS[schedule.circadianState];
-  if (!base) return null;
-  if (schedule.circadianState === "winding_down") {
-    const minutes = schedule.relativeTime.minutesUntilBedtimeTarget;
-    if (typeof minutes === "number" && minutes > 0) {
-      const formatted = formatDurationMinutes(minutes);
-      if (formatted) return `Winding down for bed in ${formatted}`;
-    }
-  }
-  if (schedule.circadianState === "awake") {
-    const minutes = schedule.relativeTime.minutesAwake;
-    if (typeof minutes === "number" && minutes > 0) {
-      const formatted = formatDurationMinutes(minutes);
-      if (formatted) return `Awake for ${formatted}`;
-    }
-  }
-  if (schedule.circadianState === "sleeping") {
-    return "Sleeping now";
-  }
-  return base;
-}
-
-function topActiveSession(
-  screenTime: LifeOpsScreenTimeSummary | null,
-): LifeOpsScreenTimeSummaryItem | null {
-  const items = screenTime?.items ?? [];
-  if (items.length === 0) return null;
-  return items.reduce<LifeOpsScreenTimeSummaryItem>(
-    (best, current) =>
-      current.totalSeconds > best.totalSeconds ? current : best,
-    items[0],
-  );
-}
-
-function sleepStatusLabel(schedule: LifeOpsScheduleInsight | null | undefined) {
-  if (!schedule) return "No sleep signal";
-  switch (schedule.sleepStatus) {
-    case "sleeping_now":
-      return "Sleeping now";
-    case "slept":
-      return "Slept";
-    case "likely_missed":
-      return "Sleep likely missed";
-    case "unknown":
-      return humanize(schedule.circadianState) || "Unknown";
-  }
-}
-
 function buildHeadline(args: {
-  schedule: LifeOpsScheduleInsight | null | undefined;
   nextEvent: LifeOpsCalendarEvent | null;
   hasOverdue: boolean;
   hasUnread: boolean;
   hasAnyOverviewAccess: boolean;
 }) {
-  const { schedule, nextEvent, hasOverdue, hasUnread, hasAnyOverviewAccess } =
-    args;
+  const { nextEvent, hasOverdue, hasUnread, hasAnyOverviewAccess } = args;
   if (!hasAnyOverviewAccess) {
     return "LifeOps is waiting on access.";
-  }
-  if (schedule?.sleepStatus === "sleeping_now") {
-    return "Sleep is the main event.";
   }
   if (hasOverdue) {
     return "A reminder needs a decision.";
@@ -598,7 +524,41 @@ function MetricCell({
 }
 
 function EmptyState({ children }: { children: ReactNode }) {
-  return <div className="py-6 text-center text-xs text-muted">{children}</div>;
+  return (
+    <div
+      className="flex items-center justify-center py-6 text-muted"
+      role="status"
+      aria-label={String(children)}
+      title={String(children)}
+    >
+      <Sparkles className="h-4 w-4 opacity-70" aria-hidden />
+      <span className="sr-only">{children}</span>
+    </div>
+  );
+}
+
+function OverviewStatusIcon({
+  loading = false,
+  label,
+}: {
+  loading?: boolean;
+  label: string;
+}) {
+  return (
+    <div
+      className="flex items-center justify-center py-5 text-muted"
+      role="status"
+      aria-label={label}
+      title={label}
+    >
+      {loading ? (
+        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+      ) : (
+        <Sparkles className="h-4 w-4 opacity-70" aria-hidden />
+      )}
+      <span className="sr-only">{label}</span>
+    </div>
+  );
 }
 
 function formatLabelList(labels: string[]): string {
@@ -723,17 +683,13 @@ function AssistantSignalButton({
 }
 
 export function LifeOpsOverviewSignalsPanel({
-  sleep,
-  screen,
   social,
   onNavigate,
 }: {
-  sleep?: { value: string; sleepingNow?: boolean };
-  screen?: { value: string };
   social?: { value: string };
   onNavigate: (section: LifeOpsSection) => void;
 }) {
-  if (!sleep && !screen && !social) {
+  if (!social) {
     return null;
   }
 
@@ -751,39 +707,13 @@ export function LifeOpsOverviewSignalsPanel({
       className="xl:col-span-3"
     >
       <div className="grid gap-2" data-testid="lifeops-overview-signals">
-        {sleep ? (
-          <AssistantSignalButton
-            label="sleep"
-            value={sleep.value}
-            icon={
-              sleep.sleepingNow ? (
-                <Moon className="h-4 w-4" aria-hidden />
-              ) : (
-                <Sun className="h-4 w-4" aria-hidden />
-              )
-            }
-            tone="bg-indigo-500/14 text-indigo-200"
-            onClick={() => onNavigate("assistant")}
-          />
-        ) : null}
-        {screen ? (
-          <AssistantSignalButton
-            label="screen"
-            value={screen.value}
-            icon={<Monitor className="h-4 w-4" aria-hidden />}
-            tone="bg-amber-500/14 text-amber-200"
-            onClick={() => onNavigate("assistant")}
-          />
-        ) : null}
-        {social ? (
-          <AssistantSignalButton
-            label="social"
-            value={social.value}
-            icon={<Share2 className="h-4 w-4" aria-hidden />}
-            tone="bg-cyan-500/14 text-cyan-200"
-            onClick={() => onNavigate("assistant")}
-          />
-        ) : null}
+        <AssistantSignalButton
+          label="social"
+          value={social.value}
+          icon={<Share2 className="h-4 w-4" aria-hidden />}
+          tone="bg-cyan-500/14 text-cyan-200"
+          onClick={() => onNavigate("assistant")}
+        />
       </div>
     </DashboardPanel>
   );
@@ -958,11 +888,6 @@ export function LifeOpsOverviewSection({
   const [overview, setOverview] = useState<LifeOpsOverview | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [screenTime, setScreenTime] = useState<LifeOpsScreenTimeSummary | null>(
-    null,
-  );
-  const [screenTimeLoading, setScreenTimeLoading] = useState(false);
-  const [screenTimeError, setScreenTimeError] = useState<string | null>(null);
   const [social, setSocial] = useState<LifeOpsSocialHabitSummary | null>(null);
   const [socialLoading, setSocialLoading] = useState(false);
   const [socialError, setSocialError] = useState<string | null>(null);
@@ -984,28 +909,6 @@ export function LifeOpsOverviewSection({
       setLoading(false);
     }
   }, [t]);
-
-  const loadScreenTime = useCallback(async () => {
-    setScreenTimeLoading(true);
-    setScreenTimeError(null);
-    try {
-      setScreenTime(
-        await client.getLifeOpsScreenTimeSummary({
-          since: startOfLocalDayIso(),
-          until: new Date().toISOString(),
-          topN: 5,
-        }),
-      );
-    } catch (cause) {
-      setScreenTimeError(
-        cause instanceof Error && cause.message.trim().length > 0
-          ? cause.message.trim()
-          : "Screen time failed to load.",
-      );
-    } finally {
-      setScreenTimeLoading(false);
-    }
-  }, []);
 
   const loadSocial = useCallback(async () => {
     setSocialLoading(true);
@@ -1031,9 +934,8 @@ export function LifeOpsOverviewSection({
 
   useEffect(() => {
     void loadOverview();
-    void loadScreenTime();
     void loadSocial();
-  }, [loadOverview, loadScreenTime, loadSocial]);
+  }, [loadOverview, loadSocial]);
 
   const calendar = useCalendarWeek({ viewMode: "week" });
   const messagesInbox = useInbox({
@@ -1064,7 +966,6 @@ export function LifeOpsOverviewSection({
   }, [calendar.events]);
 
   const summary = overview?.summary;
-  const schedule = overview?.schedule ?? null;
   const reminders = overview?.reminders ?? [];
   const activeReminders = reminders.slice(0, 6);
   const priorityMessages = useMemo(
@@ -1081,16 +982,10 @@ export function LifeOpsOverviewSection({
   const hasUnread = unreadMessages.length > 0;
   const hasOverdue = (summary?.overdueOccurrenceCount ?? 0) > 0;
   const nextEvent = upcomingEvents[0] ?? null;
-  const screenTimeLabel = formatDurationSeconds(screenTime?.totalSeconds);
   const socialLabel = formatDurationSeconds(social?.totalSeconds);
-  const sleepAccess =
-    Boolean(schedule) ||
-    hasCapabilityAccess(capabilities.status, "sleep.relative_time");
   const browserActivityReady =
     findCapability(capabilities.status, "activity.browser")?.state ===
     "working";
-  const screenTimeAccess =
-    (!screenTimeError && browserActivityReady) || Boolean(screenTime);
   const socialAccess =
     (!socialError && browserActivityReady) || Boolean(social);
   const calendarAccess =
@@ -1110,8 +1005,6 @@ export function LifeOpsOverviewSection({
     activeReminders.length > 0 ||
     hasOverdue;
   const hasAnySignalWidget =
-    sleepAccess ||
-    screenTimeAccess ||
     socialAccess ||
     calendarAccess ||
     messagesAccess ||
@@ -1122,8 +1015,6 @@ export function LifeOpsOverviewSection({
   const missingWidgets = useMemo(
     () =>
       [
-        !sleepAccess ? "Sleep" : null,
-        !screenTimeAccess ? "Screen Time" : null,
         !socialAccess ? "Social" : null,
         !messagesAccess ? "Messages" : null,
         !mailAccess ? "Mail" : null,
@@ -1133,8 +1024,6 @@ export function LifeOpsOverviewSection({
       calendarAccess,
       mailAccess,
       messagesAccess,
-      screenTimeAccess,
-      sleepAccess,
       socialAccess,
     ],
   );
@@ -1142,7 +1031,6 @@ export function LifeOpsOverviewSection({
   const showNoAccessState =
     !setupSignalsLoading &&
     !loading &&
-    !screenTimeLoading &&
     !socialLoading &&
     !calendar.loading &&
     !messagesInbox.loading &&
@@ -1192,34 +1080,21 @@ export function LifeOpsOverviewSection({
     if (hasUnread) {
       lines.push("Messages need triage");
     }
-    if (schedule?.nextMealLabel && schedule.nextMealWindowStartAt) {
+    if (
+      overview?.schedule?.nextMealLabel &&
+      overview.schedule.nextMealWindowStartAt
+    ) {
       lines.push(
-        `${humanize(schedule.nextMealLabel)} window starts ${formatClockTime(
-          schedule.nextMealWindowStartAt,
+        `${humanize(overview.schedule.nextMealLabel)} window starts ${formatClockTime(
+          overview.schedule.nextMealWindowStartAt,
         )}`,
       );
     }
     return lines.slice(0, 5);
-  }, [hasUnread, schedule]);
-
-  const circadianLine = useMemo(() => circadianHeadline(schedule), [schedule]);
-  const activeSession = useMemo(
-    () => topActiveSession(screenTime),
-    [screenTime],
-  );
-  const activeSessionLine = useMemo(() => {
-    if (!activeSession) return null;
-    const duration = formatDurationSeconds(activeSession.totalSeconds);
-    if (!duration) return null;
-    return `Current focus: ${activeSession.displayName} (${duration})`;
-  }, [activeSession]);
-  const hasNowPanelContent =
-    Boolean(circadianLine) ||
-    Boolean(activeSessionLine) ||
-    briefingLines.length > 0;
+  }, [hasUnread, overview?.schedule]);
+  const hasNowPanelContent = briefingLines.length > 0;
   const refresh = useCallback(() => {
     void loadOverview();
-    void loadScreenTime();
     void loadSocial();
     void capabilities.refresh();
     void googleConnector.refresh({ silent: true });
@@ -1233,7 +1108,6 @@ export function LifeOpsOverviewSection({
     googleConnector,
     loadSocial,
     loadOverview,
-    loadScreenTime,
     mailInbox.refresh,
     messagesInbox.refresh,
     xConnector,
@@ -1268,7 +1142,6 @@ export function LifeOpsOverviewSection({
             </div>
             <h1 className="mt-2 max-w-4xl text-2xl font-semibold leading-tight text-txt sm:text-3xl">
               {buildHeadline({
-                schedule,
                 nextEvent,
                 hasOverdue,
                 hasUnread,
@@ -1288,41 +1161,24 @@ export function LifeOpsOverviewSection({
               onClick={refresh}
               disabled={
                 loading ||
-                screenTimeLoading ||
                 calendar.loading ||
                 messagesInbox.loading ||
                 mailInbox.loading
               }
             >
               <RefreshCw
-                className={`h-3.5 w-3.5 ${
-                  loading || screenTimeLoading ? "animate-spin" : ""
-                }`}
+                className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
                 aria-hidden
               />
             </OverviewNavButton>
           </div>
         </div>
 
-        <div className="mt-4 grid overflow-hidden rounded-lg border border-border/16 bg-card/10 sm:grid-cols-3">
-          <MetricCell
-            label="Sleep"
-            value={sleepStatusLabel(schedule)}
-            tone={
-              schedule?.sleepStatus === "sleeping_now"
-                ? "text-blue-300"
-                : "text-txt"
-            }
-          />
+        <div className="mt-4 grid overflow-hidden rounded-lg border border-border/16 bg-card/10">
           <MetricCell
             label="Reminders"
             value={reminderMetricValue}
             tone={reminderMetricTone}
-          />
-          <MetricCell
-            label="Screen"
-            value={screenTimeLabel || "No data"}
-            tone={screenTimeLabel ? "text-amber-300" : "text-muted"}
           />
         </div>
 
@@ -1346,21 +1202,18 @@ export function LifeOpsOverviewSection({
 
       {showSetupWarning ? (
         <div
-          className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3"
           data-testid="lifeops-overview-setup-warning"
+          title={`Missing: ${formatLabelList(missingWidgets)}`}
         >
           <div className="flex min-w-0 items-center gap-3">
             <span className="mt-0.5 shrink-0 text-amber-300">
               <TriangleAlert className="h-4 w-4" aria-hidden />
             </span>
-            <div className="min-w-0">
-              <div className="truncate text-sm font-medium text-txt">
-                {hasAnyOverviewAccess ? "Partial overview" : "Connect a source"}
-              </div>
-              <div className="mt-1 text-xs leading-5 text-muted">
-                Missing: {formatLabelList(missingWidgets)}
-              </div>
-            </div>
+            <span className="sr-only">
+              {hasAnyOverviewAccess ? "Partial overview" : "Connect a source"}.
+              Missing: {formatLabelList(missingWidgets)}
+            </span>
           </div>
           <OverviewNavButton
             agentId="overview-open-setup"
@@ -1368,11 +1221,11 @@ export function LifeOpsOverviewSection({
             description="Open the LifeOps setup section"
             aria-label="Open LifeOps settings"
             title="Open setup"
-            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-border/16 bg-bg/50 px-3 text-xs font-medium text-txt transition-colors hover:border-accent/30 hover:text-accent"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border/16 bg-bg/50 text-txt transition-colors hover:border-accent/30 hover:text-accent"
             onClick={() => onNavigate("setup")}
           >
-            Open setup
             <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+            <span className="sr-only">Open setup</span>
           </OverviewNavButton>
         </div>
       ) : null}
@@ -1392,18 +1245,16 @@ export function LifeOpsOverviewSection({
           <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/12 text-amber-300">
             <TriangleAlert className="h-5 w-5" aria-hidden />
           </div>
-          <h2 className="mt-4 text-base font-semibold text-txt">
-            Connect a source
-          </h2>
+          <span className="sr-only">Connect a source</span>
           <OverviewNavButton
             agentId="overview-open-settings"
             label="Open LifeOps settings"
             description="Open the LifeOps setup section to connect a source"
-            className="mt-4 inline-flex h-9 items-center gap-1 rounded-md border border-border/16 bg-bg/50 px-3 text-sm font-medium text-txt transition-colors hover:border-accent/30 hover:text-accent"
+            className="mt-4 inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/16 bg-bg/50 text-txt transition-colors hover:border-accent/30 hover:text-accent"
             onClick={() => onNavigate("setup")}
           >
-            Open Settings
             <ArrowRight className="h-4 w-4" aria-hidden />
+            <span className="sr-only">Open Settings</span>
           </OverviewNavButton>
         </div>
       ) : null}
@@ -1417,12 +1268,6 @@ export function LifeOpsOverviewSection({
               className="xl:col-span-3"
             >
               <div className="space-y-3">
-                {circadianLine ? (
-                  <TinyStatus color="bg-indigo-300" label={circadianLine} />
-                ) : null}
-                {activeSessionLine ? (
-                  <TinyStatus color="bg-amber-300" label={activeSessionLine} />
-                ) : null}
                 {briefingLines.map((line) => (
                   <TinyStatus key={line} color="bg-accent" label={line} />
                 ))}
@@ -1431,19 +1276,6 @@ export function LifeOpsOverviewSection({
           ) : null}
 
           <LifeOpsOverviewSignalsPanel
-            sleep={
-              sleepAccess
-                ? {
-                    value: sleepStatusLabel(schedule),
-                    sleepingNow: schedule?.sleepStatus === "sleeping_now",
-                  }
-                : undefined
-            }
-            screen={
-              screenTimeAccess
-                ? { value: screenTimeLabel || "No data" }
-                : undefined
-            }
             social={
               socialAccess ? { value: socialLabel || "No data" } : undefined
             }
@@ -1464,12 +1296,9 @@ export function LifeOpsOverviewSection({
               className="xl:col-span-4"
             >
               {calendar.loading && timeline.length === 0 ? (
-                <div className="flex items-center gap-2 py-5 text-xs text-muted">
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                  Reading calendar...
-                </div>
+                <OverviewStatusIcon loading label="Reading calendar" />
               ) : timeline.length === 0 ? (
-                <EmptyState>Nothing scheduled.</EmptyState>
+                <EmptyState>Schedule clear</EmptyState>
               ) : (
                 <div className="divide-y divide-border/10">
                   {timeline.map((entry) => (
@@ -1507,7 +1336,7 @@ export function LifeOpsOverviewSection({
             >
               <div className="mb-3 flex flex-wrap gap-2">
                 {activeChannels.length === 0 ? (
-                  <span className="text-xs text-muted">No live messages.</span>
+                  <OverviewStatusIcon label="No live messages" />
                 ) : (
                   activeChannels.slice(0, 5).map((channel) => {
                     const style = CHANNEL_STYLES[channel];
@@ -1526,12 +1355,9 @@ export function LifeOpsOverviewSection({
                 )}
               </div>
               {messagesInbox.loading && priorityMessages.length === 0 ? (
-                <div className="flex items-center gap-2 py-5 text-xs text-muted">
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                  Reading messages...
-                </div>
+                <OverviewStatusIcon loading label="Reading messages" />
               ) : priorityMessages.length === 0 ? (
-                <EmptyState>No priority messages.</EmptyState>
+                <EmptyState>Messages clear</EmptyState>
               ) : (
                 <div className="divide-y divide-border/10">
                   {priorityMessages.slice(0, 5).map((message) => (
@@ -1570,12 +1396,9 @@ export function LifeOpsOverviewSection({
               className="xl:col-span-4"
             >
               {mailInbox.loading && priorityMail.length === 0 ? (
-                <div className="flex items-center gap-2 py-5 text-xs text-muted">
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                  Reading mail...
-                </div>
+                <OverviewStatusIcon loading label="Reading mail" />
               ) : priorityMail.length === 0 ? (
-                <EmptyState>No priority mail.</EmptyState>
+                <EmptyState>Mail clear</EmptyState>
               ) : (
                 <div className="divide-y divide-border/10">
                   {priorityMail.slice(0, 5).map((message) => (
@@ -1615,7 +1438,7 @@ export function LifeOpsOverviewSection({
             >
               <div className="divide-y divide-border/10">
                 {activeReminders.length === 0 ? (
-                  <EmptyState>No active reminders.</EmptyState>
+                  <EmptyState>Reminders clear</EmptyState>
                 ) : (
                   activeReminders
                     .slice(0, 4)

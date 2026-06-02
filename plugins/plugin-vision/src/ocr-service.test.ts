@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { OCRService } from "./ocr-service";
+import { extractStructuredDataFromOCR, OCRService } from "./ocr-service";
 import { DoctrOCRService, shouldPreferAppleVision } from "./ocr-service-doctr";
 
 describe("DoctrOCRService availability", () => {
@@ -17,6 +17,102 @@ describe("DoctrOCRService availability", () => {
       recPath: `/tmp/doctr-rec-missing-${Date.now()}.gguf`,
     });
     await expect(doctr.initialize()).rejects.toBeInstanceOf(Error);
+  });
+});
+
+describe("extractStructuredDataFromOCR", () => {
+  it("extracts forms, lists, and delimited tables from OCR blocks", () => {
+    const structured = extractStructuredDataFromOCR({
+      text: "",
+      fullText: "",
+      blocks: [
+        {
+          text: "Name: Ada\nEmail: ada@example.com",
+          bbox: { x: 0, y: 0, width: 100, height: 30 },
+          confidence: 0.99,
+        },
+        {
+          text: "- Alpha\n- Beta",
+          bbox: { x: 0, y: 40, width: 100, height: 30 },
+          confidence: 0.99,
+        },
+        {
+          text: "Symbol | Price\nSOL | 150",
+          bbox: { x: 0, y: 80, width: 100, height: 30 },
+          confidence: 0.99,
+        },
+      ],
+    });
+
+    expect(structured.forms).toEqual([
+      {
+        label: "Name",
+        value: "Ada",
+        bbox: { x: 0, y: 0, width: 100, height: 30 },
+      },
+      {
+        label: "Email",
+        value: "ada@example.com",
+        bbox: { x: 0, y: 0, width: 100, height: 30 },
+      },
+    ]);
+    expect(structured.lists).toEqual([
+      {
+        items: ["Alpha", "Beta"],
+        bbox: { x: 0, y: 40, width: 100, height: 30 },
+      },
+    ]);
+    expect(structured.tables).toContainEqual({
+      rows: [
+        ["Symbol", "Price"],
+        ["SOL", "150"],
+      ],
+      bbox: { x: 0, y: 80, width: 100, height: 30 },
+    });
+  });
+
+  it("extracts simple table rows from word coordinates", () => {
+    const structured = extractStructuredDataFromOCR({
+      text: "",
+      fullText: "",
+      blocks: [
+        {
+          text: "Name Age Ada 37",
+          bbox: { x: 0, y: 0, width: 100, height: 40 },
+          confidence: 0.99,
+          words: [
+            {
+              text: "Name",
+              bbox: { x: 0, y: 0, width: 20, height: 10 },
+              confidence: 0.99,
+            },
+            {
+              text: "Age",
+              bbox: { x: 50, y: 0, width: 20, height: 10 },
+              confidence: 0.99,
+            },
+            {
+              text: "Ada",
+              bbox: { x: 0, y: 20, width: 20, height: 10 },
+              confidence: 0.99,
+            },
+            {
+              text: "37",
+              bbox: { x: 50, y: 20, width: 20, height: 10 },
+              confidence: 0.99,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(structured.tables).toContainEqual({
+      rows: [
+        ["Name", "Age"],
+        ["Ada", "37"],
+      ],
+      bbox: { x: 0, y: 0, width: 70, height: 30 },
+    });
   });
 });
 

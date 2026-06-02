@@ -376,7 +376,13 @@ export function resolveElectrobunCopyMap({
   };
 
   if (buildVariant !== "store" && embedRuntime) {
-    copy[runtimeBundleDistDir] = runtimeDistDir;
+    for (const entry of fs.readdirSync(runtimeBundleSourcePath)) {
+      if (entry === "node_modules" || entry === "package.json") {
+        continue;
+      }
+      copy[path.join(runtimeBundleDistDir, entry)] =
+        `${runtimeDistDir}/${entry}`;
+    }
     if (fs.existsSync(runtimeBundleNodeModulesPath)) {
       copy[runtimeBundleNodeModulesDir] = `${runtimeDistDir}/node_modules`;
     }
@@ -384,7 +390,7 @@ export function resolveElectrobunCopyMap({
       copy[repoPluginsJsonPath] = `${runtimeDistDir}/plugins.json`;
     }
     if (fs.existsSync(path.join(electrobunDir, "remotes"))) {
-      copy["remotes"] = "remotes";
+      copy.remotes = "remotes";
     }
     copy[repoPackageJsonPath] = `${runtimeDistDir}/package.json`;
   }

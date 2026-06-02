@@ -285,7 +285,7 @@ def main() -> int:
             "routed courtyard utilization, escape-density, via-count, and DRC reports are missing",
             "screen/camera connector and primary camera XY/Z supplier drawings are missing",
             "power efficiency, thermal soak, RF, coexistence, SAR, and factory measurements are missing",
-            "routed board STEP and enclosure clearance rerun are missing",
+            "routed board STEP and routed STEP release-clearance result are missing",
         ],
         "forbidden_claims": [
             "board_size_optimized_final",

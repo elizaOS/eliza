@@ -75,4 +75,33 @@ describe("Twitter memory utilities", () => {
       false,
     );
   });
+
+  it("uses token similarity for reordered near-duplicate tweets", async () => {
+    const runtime = runtimeWithStorage({
+      getCache: vi.fn(async () => [
+        "Launch update: we shipped the new wallet dashboard today.",
+      ]),
+    });
+
+    await expect(
+      isDuplicateTweet(
+        runtime,
+        "bot",
+        "We shipped the new wallet dashboard today — launch update!",
+      ),
+    ).resolves.toBe(true);
+  });
+
+  it("honors the duplicate similarity threshold", async () => {
+    const runtime = runtimeWithStorage({
+      getCache: vi.fn(async () => ["Launch update: wallet dashboard shipped"]),
+    });
+
+    await expect(
+      isDuplicateTweet(runtime, "bot", "Dashboard shipped wallet", 0.8),
+    ).resolves.toBe(false);
+    await expect(
+      isDuplicateTweet(runtime, "bot", "Dashboard shipped wallet", 0.6),
+    ).resolves.toBe(true);
+  });
 });

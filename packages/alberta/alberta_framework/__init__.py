@@ -517,6 +517,7 @@ try:
         Step2UPGDPreset,
         Step2UPGDReadoutMode,
         make_alberta_pipeline,
+        observation_channel_cumulant_fn,
         run_pipeline_smoke,
     )
 
@@ -1139,6 +1140,7 @@ if _pipeline_available:
         "Step2UPGDPreset",
         "Step2UPGDReadoutMode",
         "make_alberta_pipeline",
+        "observation_channel_cumulant_fn",
         "run_pipeline_smoke",
     ]
 

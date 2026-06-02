@@ -1,10 +1,5 @@
 import { APP_RESUME_EVENT } from "@elizaos/shared";
-import {
-  client,
-  dispatchFocusConnector,
-  isApiError,
-  useApp,
-} from "@elizaos/ui";
+import { client, isApiError, useApp } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   LifeOpsConnectorGrant,
@@ -40,16 +35,6 @@ type GoogleConnectorAccountRecord =
 
 function googleGrantIdForAccount(accountId: string): string {
   return `${GOOGLE_CONNECTOR_ACCOUNT_GRANT_PREFIX}${accountId}`;
-}
-
-function googleAccountIdFromGrantId(grantId: string | null | undefined) {
-  const normalized = typeof grantId === "string" ? grantId.trim() : "";
-  if (!normalized) {
-    return null;
-  }
-  return normalized.startsWith(GOOGLE_CONNECTOR_ACCOUNT_GRANT_PREFIX)
-    ? normalized.slice(GOOGLE_CONNECTOR_ACCOUNT_GRANT_PREFIX.length)
-    : normalized;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -548,10 +533,7 @@ export function useGoogleLifeOpsConnector(
   );
   const [accounts, setAccounts] = useState<LifeOpsGoogleConnectorStatus[]>([]);
   const [loading, setLoading] = useState(true);
-  const [actionPending, setActionPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Keep the latest OAuth URL local to the hook so it resets when the UI unmounts.
-  const [pendingAuthUrl, setPendingAuthUrl] = useState<string | null>(null);
   const runtimeReady = isLifeOpsRuntimeReady({
     startupPhase,
     agentState: agentStatus?.state ?? null,
@@ -588,9 +570,6 @@ export function useGoogleLifeOpsConnector(
         setSelectedMode(nextSelectedMode);
         setStatus(nextStatus);
         setAccounts(nextAccounts);
-        if (nextStatus.connected) {
-          setPendingAuthUrl(null);
-        }
         setError(null);
       } catch (cause) {
         if (isTransientLifeOpsAvailabilityError(cause)) {
@@ -805,8 +784,6 @@ export function useGoogleLifeOpsConnector(
   const selectMode = useCallback(
     async (mode: LifeOpsConnectorMode) => {
       try {
-        setActionPending(true);
-        setPendingAuthUrl(null);
         const response = await client.listConnectorAccounts("google");
         const nextStatus = selectGoogleStatus(
           googleStatusesFromConnectorAccounts(response),
@@ -826,79 +803,10 @@ export function useGoogleLifeOpsConnector(
         setError(
           formatConnectorError(cause, "Google connector mode change failed."),
         );
-      } finally {
-        setActionPending(false);
       }
     },
     [side],
   );
-
-  const connect = useCallback(async () => {
-    try {
-      setActionPending(true);
-      setPendingAuthUrl(null);
-      dispatchFocusConnector("google");
-      setError(null);
-    } catch (cause) {
-      setPendingAuthUrl(null);
-      setError(
-        formatConnectorError(cause, "Google connector setup failed to start."),
-      );
-    } finally {
-      setActionPending(false);
-    }
-  }, []);
-
-  const disconnect = useCallback(async () => {
-    try {
-      setActionPending(true);
-      setPendingAuthUrl(null);
-      dispatchFocusConnector("google");
-      setError(null);
-    } catch (cause) {
-      setError(
-        formatConnectorError(cause, "Google connector management failed."),
-      );
-    } finally {
-      setActionPending(false);
-    }
-  }, []);
-
-  const disconnectAccount = useCallback(
-    async (grantId: string) => {
-      try {
-        setActionPending(true);
-        const accountId = googleAccountIdFromGrantId(grantId);
-        if (!accountId) {
-          throw new Error("Google account id is missing.");
-        }
-        await client.deleteConnectorAccount("google", undefined, accountId);
-        await refresh({ silent: true });
-        setError(null);
-      } catch (cause) {
-        setError(
-          formatConnectorError(cause, "Google account management failed."),
-        );
-      } finally {
-        setActionPending(false);
-      }
-    },
-    [refresh],
-  );
-
-  const connectAdditional = useCallback(async () => {
-    try {
-      setActionPending(true);
-      dispatchFocusConnector("google");
-      setError(null);
-    } catch (cause) {
-      setError(
-        formatConnectorError(cause, "Google connector management failed."),
-      );
-    } finally {
-      setActionPending(false);
-    }
-  }, []);
 
   const modeOptions = useMemo(() => resolveVisibleModes(status), [status]);
   const activeMode =
@@ -907,15 +815,9 @@ export function useGoogleLifeOpsConnector(
   return {
     accounts,
     activeMode,
-    actionPending,
-    connect,
-    connectAdditional,
-    disconnect,
-    disconnectAccount,
     error,
     loading,
     modeOptions,
-    pendingAuthUrl,
     refresh,
     selectMode,
     selectedMode,

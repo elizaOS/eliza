@@ -279,6 +279,42 @@ def test_walking_curriculum_declares_pre_walk_single_support_tasks() -> None:
     assert step.success["max_abs_delta_x_m"] <= 0.08
     assert step.success["max_abs_delta_y_m"] <= 0.08
 
+    forward = curriculum.by_id("step_forward")
+    bridge = curriculum.by_id("walk_forward_bridge")
+    mid_bridge = curriculum.by_id("walk_forward_mid_bridge")
+    walk = curriculum.by_id("walk_forward")
+    assert 0.0 < forward.success["delta_x_m_min"] < bridge.success["delta_x_m_min"]
+    assert bridge.success["delta_x_m_min"] < mid_bridge.success["delta_x_m_min"]
+    assert mid_bridge.success["delta_x_m_min"] < walk.success["delta_x_m_min"]
+    assert forward.success["min_alternating_foot_contacts"] >= 2
+    assert forward.success["min_swing_foot_clearance_m"] >= 0.015
+    assert forward.success["max_lateral_drift_m"] <= 0.12
+    assert forward.success["max_abs_delta_yaw_rad"] <= 0.35
+    assert forward.success["no_fall"] is True
+    assert forward.success["max_foot_slip_m_s"] <= 0.35
+    assert forward.success["max_self_collision_count"] == 0
+    assert bridge.prerequisites == ["step_forward"]
+    assert mid_bridge.prerequisites == ["walk_forward_bridge"]
+    assert walk.prerequisites == ["walk_forward_mid_bridge"]
+    assert bridge.success["hold_s"] >= 0.10
+    assert bridge.success["hold_s"] < walk.success["hold_s"]
+    assert bridge.success["min_alternating_foot_contacts"] >= 2
+    assert bridge.success["min_swing_foot_clearance_m"] >= 0.015
+    assert bridge.success["max_lateral_drift_m"] <= 0.16
+    assert bridge.success["max_abs_delta_yaw_rad"] <= 0.40
+    assert bridge.success["no_fall"] is True
+    assert bridge.success["max_foot_slip_m_s"] <= 0.35
+    assert bridge.success["max_self_collision_count"] == 0
+    assert mid_bridge.success["hold_s"] >= 0.05
+    assert mid_bridge.success["hold_s"] <= bridge.success["hold_s"]
+    assert mid_bridge.success["min_alternating_foot_contacts"] >= 4
+    assert mid_bridge.success["min_swing_foot_clearance_m"] >= 0.015
+    assert mid_bridge.success["max_lateral_drift_m"] <= 0.20
+    assert mid_bridge.success["max_abs_delta_yaw_rad"] <= 0.40
+    assert mid_bridge.success["no_fall"] is True
+    assert mid_bridge.success["max_foot_slip_m_s"] <= 0.35
+    assert mid_bridge.success["max_self_collision_count"] == 0
+
 
 def test_lift_left_foot_goal_requires_right_plant_left_swing_clearance() -> None:
     checker = _checker("lift_left_foot")

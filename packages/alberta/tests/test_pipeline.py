@@ -7,6 +7,7 @@ import chex
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import pytest
 
 import alberta_framework as af
 from alberta_framework.pipeline import (
@@ -17,6 +18,7 @@ from alberta_framework.pipeline import (
     Step2FeatureConfig,
     Step2UPGDConfig,
     make_alberta_pipeline,
+    observation_channel_cumulant_fn,
     run_pipeline_smoke,
 )
 from alberta_framework.steps import (
@@ -516,7 +518,7 @@ def test_pipeline_behavioral_learns() -> None:
 
 
 def test_pipeline_cumulant_fn_overrides_default() -> None:
-    """Caller-provided cumulant_fn is used instead of the legacy placeholder."""
+    """Caller-provided cumulant_fn is used instead of the default channel map."""
     sentinel = jnp.array([0.123, 0.456], dtype=jnp.float32)
 
     def cumulant_fn(_obs, _reward, _terminated):
@@ -538,6 +540,31 @@ def test_pipeline_cumulant_fn_overrides_default() -> None:
     chex.assert_trees_all_close(
         result.horde_td_targets[0], sentinel[0], atol=1e-5
     )
+
+
+def test_observation_channel_cumulant_fn_wraps_channels() -> None:
+    """Default cumulants are deterministic next-observation channel signals."""
+    cumulant_fn = observation_channel_cumulant_fn(n_demons=5, observation_dim=3)
+
+    cumulants = cumulant_fn(
+        jnp.asarray([1.0, 2.0, 3.0], dtype=jnp.float32),
+        jnp.asarray(99.0, dtype=jnp.float32),
+        jnp.asarray(1.0, dtype=jnp.float32),
+    )
+
+    chex.assert_trees_all_close(
+        cumulants,
+        jnp.asarray([1.0, 2.0, 3.0, 1.0, 2.0], dtype=jnp.float32),
+    )
+
+
+def test_observation_channel_cumulant_fn_rejects_invalid_shapes() -> None:
+    """Invalid default cumulant dimensions fail at construction time."""
+    with pytest.raises(ValueError, match="n_demons must be positive"):
+        observation_channel_cumulant_fn(n_demons=0, observation_dim=3)
+
+    with pytest.raises(ValueError, match="observation_dim must be positive"):
+        observation_channel_cumulant_fn(n_demons=1, observation_dim=0)
 
 
 # silence the import lint warnings used in the test runner

@@ -64,7 +64,7 @@ scorecard:
         required_before_size_or_layout_rebaseline:
           - signed 2D drawing, 40-pin pinout, mating connector, land pattern, and STEP/B-rep models
           - routed DSI/touch/backlight/bias branch with DRC, SI/PI, courtyard utilization, and bring-up evidence
-          - routed board STEP clearance rerun and physical fit report against selected enclosure
+          - approved routed board STEP clearance report and physical fit report against selected enclosure
           - promotion review proving better size/supply/performance tradeoff than CH550FH01A-CT
         optimization_rebaseline_allowed: false
       - source_id: display_alternate_made_in_china_e549_amoled
@@ -74,7 +74,7 @@ scorecard:
         required_before_size_or_layout_rebaseline:
           - signed AMOLED drawing, FPC pinout, mating connector, land pattern, and STEP/B-rep models
           - routed MIPI/touch/power branch with DRC, SI/PI, power/thermal, courtyard utilization, and RM67191/GT1151 bring-up evidence
-          - routed board STEP clearance rerun and physical fit report against selected enclosure
+          - approved routed board STEP clearance report and physical fit report against selected enclosure
           - promotion review proving better size/thickness/supply/power tradeoff than CH550FH01A-CT
         optimization_rebaseline_allowed: false
   board_size:

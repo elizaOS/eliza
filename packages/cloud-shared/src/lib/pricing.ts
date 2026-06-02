@@ -98,10 +98,90 @@ export function getProviderFromModel(model: string): string {
 
 /**
  * Checks if a model is a reasoning model that doesn't support temperature.
+ *
+ * NOTE: this is intentionally narrow. It governs ONLY temperature stripping in
+ * {@link getSafeModelParams}; broadening it would strip temperature from models
+ * that do accept it. For "does this model spend output tokens on hidden
+ * reasoning before emitting an answer" (the token-budget concern), use
+ * {@link modelUsesReasoningTokens} instead.
  */
 export function isReasoningModel(model: string): boolean {
   const name = normalizeModelName(model);
   return name.startsWith("claude-opus") || /^o[13](-|$)/.test(name);
+}
+
+/**
+ * Patterns for models that consume output tokens on hidden chain-of-thought /
+ * reasoning before emitting any visible answer. When max_tokens is too small to
+ * cover both the reasoning and a response, these models truncate mid-reasoning
+ * and return empty content while still billing the consumed tokens.
+ *
+ * Matched against the provider-stripped model name (see normalizeModelName), so
+ * e.g. "minimax/minimax-m3" is matched as "minimax-m3". Kept broad on purpose:
+ * a false positive only raises the effective token floor slightly; a false
+ * negative silently bills the caller for empty output.
+ */
+const REASONING_MODEL_PATTERNS: RegExp[] = [
+  // OpenAI o-series + gpt-5 reasoning tiers
+  /^o[1345](-|$|\.)/,
+  /^gpt-5.*\b(thinking|reasoning)\b/,
+  // Anthropic extended-thinking opus/sonnet
+  /^claude-(opus|sonnet)/,
+  // DeepSeek R-series + explicit reasoner
+  /^deepseek-(r\d|reasoner)/,
+  /\bdeepseek-r\d/,
+  // MiniMax M-series (M1/M2/M3...) are reasoning models
+  /^minimax-m\d/,
+  // Qwen / QwQ thinking tiers
+  /^qwq/,
+  /^qwen.*(think|reasoning|-max)/,
+  // Generic "think"/"reasoning" suffixes used across many vendors
+  // (olmo-3-32b-think, nemotron-...-reasoning, glm-...-thinking, kimi-...-think)
+  /(think|thinking|reasoning|reasoner)(:|$|-)/,
+  // Grok reasoning builds
+  /^grok.*(reasoning|think)/,
+  // Z.ai GLM reasoning
+  /^glm-.*(think|reasoning)/,
+];
+
+/**
+ * Authoritative signal: a model is a reasoning model if the upstream catalog
+ * advertises a reasoning parameter for it. Many reasoning models (kimi-k2.6,
+ * glm-5.1, deepseek-v4-pro, minimax-m3, ...) do NOT carry "think"/"reasoning"
+ * in their id, so name patterns alone miss them — but they all list
+ * "reasoning" / "include_reasoning" in supported_parameters.
+ */
+function supportedParametersIndicateReasoning(
+  supportedParameters: readonly string[] | undefined,
+): boolean {
+  if (!supportedParameters || supportedParameters.length === 0) return false;
+  return supportedParameters.some((p) => {
+    const k = p.toLowerCase();
+    return k === "reasoning" || k === "include_reasoning" || k === "reasoning_effort";
+  });
+}
+
+/**
+ * Whether a model spends output tokens on hidden reasoning before answering.
+ * Used to guarantee a minimum response-token budget so reasoning models do not
+ * truncate mid-thought and return empty (but billed) completions.
+ *
+ * Prefers the authoritative catalog signal (supported_parameters); falls back to
+ * id name patterns when catalog metadata is unavailable (e.g. the catalog fetch
+ * failed or the model is not listed). Either signal being positive is enough —
+ * a false positive only nudges the token floor up; a false negative silently
+ * bills the caller for empty output.
+ *
+ * @param model The model id (provider-prefixed is fine).
+ * @param supportedParameters Optional catalog-advertised parameters for the model.
+ */
+export function modelUsesReasoningTokens(
+  model: string,
+  supportedParameters?: readonly string[],
+): boolean {
+  if (supportedParametersIndicateReasoning(supportedParameters)) return true;
+  const name = normalizeModelName(model).toLowerCase();
+  return REASONING_MODEL_PATTERNS.some((re) => re.test(name));
 }
 
 /**

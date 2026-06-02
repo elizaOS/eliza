@@ -65,6 +65,62 @@ def _heading_for_command(command: tuple[float, float, float]) -> str:
     return "y+" if vy >= 0 else "y-"
 
 
+def _contact_for_obs(env, data):
+    """Return env-specific left/right contact flags for obs regeneration."""
+    import jax.numpy as jp
+
+    left_sensors = getattr(env, "_left_foot_floor_found_sensor", None)
+    right_sensors = getattr(env, "_right_foot_floor_found_sensor", None)
+    if left_sensors is None or right_sensors is None:
+        return None
+    left = jp.array([
+        data.sensordata[int(env.mj_model.sensor_adr[int(sensor_id)])] > 0
+        for sensor_id in left_sensors
+    ])
+    right = jp.array([
+        data.sensordata[int(env.mj_model.sensor_adr[int(sensor_id)])] > 0
+        for sensor_id in right_sensors
+    ])
+    return jp.hstack([jp.any(left), jp.any(right)])
+
+
+def _command_matches(state, command: tuple[float, float, float]) -> bool:
+    try:
+        current = np.asarray(state.info["command"], dtype=np.float32)
+    except Exception:
+        return False
+    desired = np.asarray(command, dtype=np.float32)
+    return current.shape == desired.shape and bool(np.allclose(current, desired))
+
+
+def force_command_observation(env, state, command, rng):
+    """Return ``state`` with a fixed joystick command reflected in ``obs``.
+
+    Playground joystick envs include the command in the observation. Writing
+    ``state.info["command"]`` after reset is not enough: the policy would still
+    see the reset-time random command until the env builds the next observation.
+    This helper uses the env's own private observation builder so proof rollouts
+    and trainer evals grade the requested command, not a stale sampled one.
+    """
+    import jax.numpy as jp
+
+    cmd = jp.asarray(command, dtype=jp.float32)
+    state.info["command"] = cmd
+
+    if "qvel_history" in state.info and "qpos_error_history" in state.info:
+        contact = _contact_for_obs(env, state.data)
+        if contact is None:
+            return state
+        obs = env._get_obs(state.data, state.info, rng, contact)  # noqa: SLF001
+        return state.replace(obs=obs)
+
+    try:
+        obs = env._get_obs(state.data, state.info, state.obs, rng)  # noqa: SLF001
+    except TypeError:
+        return state
+    return state.replace(obs=obs)
+
+
 def load_policy(env_name: str, params_path: str | Path):
     """Reconstruct the playground PPO inference fn + env for a checkpoint."""
     import jax
@@ -113,8 +169,6 @@ def rollout_and_grade(
     Returns ``(metrics, states, report)``. ``report`` is a JSON-able dict.
     """
     import jax
-    import jax.numpy as jp
-
     env, act = load_policy(env_name, params_path)
     jit_reset = jax.jit(env.reset)
     jit_step = jax.jit(env.step)
@@ -123,8 +177,7 @@ def rollout_and_grade(
 
     rng = jax.random.PRNGKey(seed)
     state = jit_reset(rng)
-    cmd = jp.asarray(command, dtype=jp.float32)
-    state.info["command"] = cmd
+    state = force_command_observation(env, state, command, rng)
 
     def base_xyz(st):
         q = np.asarray(st.data.qpos)
@@ -140,10 +193,11 @@ def rollout_and_grade(
     rewards = []
     fell = False
     for _ in range(eval_steps):
+        if not _command_matches(state, command):
+            state = force_command_observation(env, state, command, rng)
         act_rng, rng = jax.random.split(rng)
         action, _ = act(state.obs, act_rng)
         state = jit_step(state, action)
-        state.info["command"] = cmd  # hold command fixed for the demo
         states.append(state)
         base_pts.append(base_xyz(state))
         if has_contacts:
@@ -210,6 +264,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--render", action="store_true")
     p.add_argument("--out", type=Path, default=None)
+    p.add_argument(
+        "--require-pass",
+        action="store_true",
+        help="exit nonzero unless the honest walk gate passes",
+    )
     args = p.parse_args(argv)
 
     metrics, _, report = rollout_and_grade(
@@ -222,7 +281,7 @@ def main(argv: list[str] | None = None) -> int:
         out_dir=args.out,
     )
     print(json.dumps(report, indent=2))
-    return 0
+    return 0 if (metrics.walk_forward_pass or not args.require_pass) else 2
 
 
 if __name__ == "__main__":

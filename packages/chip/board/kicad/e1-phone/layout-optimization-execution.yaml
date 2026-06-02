@@ -1,6 +1,6 @@
 schema: eliza.e1_phone_layout_optimization_execution.v1
 status: blocked_concept_layout_optimized_requires_supplier_footprints_trial_route_measurements_and_routed_step
-date: '2026-05-27'
+date: '2026-06-02'
 claim_boundary: Execution package for preserving the optimized E1 phone size, placement,
   route-density, RF, power, thermal, factory-test, and enclosure constraints through
   EVT1 routing. This is not a routed PCB, not supplier footprint evidence, not SI/PI/RF/thermal
@@ -467,7 +467,7 @@ release_blockers:
   - screen/camera connector and primary camera XY/Z supplier drawings are missing
   - power efficiency, thermal soak, RF, coexistence, SAR, and factory measurements
     are missing
-  - routed board STEP and enclosure clearance rerun are missing
+  - routed board STEP and routed STEP release-clearance result are missing
 forbidden_claims:
   - board_size_optimized_final
   - layout_release_ready

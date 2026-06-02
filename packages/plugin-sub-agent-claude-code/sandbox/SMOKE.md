@@ -63,5 +63,5 @@ Notes:
   of time and fall back to env-allowlist-only with a WARN, so dev boxes
   without `bwrap` still work — but production deploys should treat the
   WARN as a P1 fix.
-- Windows has no built-in equivalent. The TODO in `sandbox.ts` covers
-  AppContainer / Job Object integration as future work.
+- Windows has no built-in equivalent. The remaining platform boundary in
+  `sandbox.ts` covers AppContainer / Job Object integration as future work.

@@ -34,7 +34,7 @@ upstream_status:
   routed_pcb_implementation: blocked_requires_supplier_footprints_schematic_erc_trial_route_drc_outputs_and_routed_step
   routed_release_plan: blocked_routed_release_requires_real_route_and_supplier_outputs
   pcb_implementation_audit: blocked_live_kicad_pcb_scaffold_audited_not_routed
-  routed_board_step_export: blocked_requires_routed_kicad_step_supplier_3d_models_and_clearance_rerun
+  routed_board_step_export: blocked_requires_routed_kicad_step_supplier_3d_models_approved_clearance_and_signoff
   enclosure_fit_execution: blocked_requires_routed_board_step_supplier_geometry_and_physical_fit_results
   manufacturing_closure: blocked_manufacturing_requires_routed_pcb_and_fab_outputs
   factory_production_acceptance: blocked_factory_production_acceptance_requires_routed_outputs_fixture_limits_quotes_and_first_article
@@ -157,7 +157,7 @@ alternate_display_layout_release_gate:
         - signed display drawing, 40-pin pinout, mating connector MPN, land pattern, and STEP/B-rep models
         - display/touch/backlight/bias bring-up data, sample inspection, and promotion review against CH550FH01A-CT
         - routed DSI/touch/backlight/bias nets, connector courtyard utilization, SI/PI report, and DRC evidence
-        - routed board STEP clearance rerun and physical fit report against the selected enclosure
+        - approved routed board STEP clearance report and physical fit report against the selected enclosure
       blocks_routed_layout_release: true
     - source_id: display_alternate_made_in_china_e549_amoled
       candidate: E549-HC01_RM67191_AMOLED_class
@@ -165,13 +165,13 @@ alternate_display_layout_release_gate:
         - signed AMOLED drawing, exact FPC pinout, mating connector MPN, land pattern, and STEP/B-rep models
         - RM67191 power sequence, GT1151 touch data, burn-in/luminance/sample evidence, and promotion review
         - routed MIPI/touch/power nets, connector courtyard utilization, SI/PI report, thermal review, and DRC evidence
-        - routed board STEP clearance rerun and physical fit report against the selected enclosure
+        - approved routed board STEP clearance report and physical fit report against the selected enclosure
       blocks_routed_layout_release: true
 
 enclosure_gate:
   requires_routed_board_step: true
   requires_supplier_3d_models: true
-  requires_routed_clearance_rerun: true
+  requires_approved_routed_physical_clearance: true
   requires_full_cad_boolean_interference_pass: true
   production_step_present: false
   routed_clearance_passed: false
@@ -204,7 +204,7 @@ release_blockers:
   - supplier component STEP/B-rep models are missing
   - selected supplier response packs for display, camera, USB-C/side-key, cellular, and Wi-Fi/Bluetooth are missing
   - parseable 055WU01 and E549/RM67191 display alternates cannot enter routed layout release until supplier packs, route evidence, STEP/B-rep, promotion review, and enclosure clearance exist
-  - routed-board clearance rerun is blocked
+  - approved routed-board physical clearance report is blocked
   - factory limits for rails, USB-C, radios, display, cameras, audio, buttons, and split interconnect missing
   - first-article traveler, current limits, stop-on-fail rules, and signoff missing
 

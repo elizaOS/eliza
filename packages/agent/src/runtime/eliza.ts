@@ -3004,6 +3004,14 @@ async function preregisterCorePluginsInDependencyWaves(args: {
     await Promise.all(
       wave.map(([name, resolved]) => registerOne(name, resolved)),
     );
+    // Yield to the event loop between waves so the bound HTTP server can serve
+    // /api/health and other I/O between CPU-bound wave registrations, instead
+    // of starving it until every wave finishes. Mirrors the deferred
+    // static-import yield above; pure scheduling, every plugin still registers
+    // in the same wave order.
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
   }
 }
 

@@ -41,6 +41,7 @@ from pathlib import Path
 import numpy as np
 
 from eliza_robot.rl.locomotion_metrics import count_contact_switches
+from eliza_robot.rl.walk_proof import force_command_observation
 
 # Minimum upright base height (metres). Below this the H1 has effectively
 # crouched/collapsed; a real gait dip stays above it. Shared by every action.
@@ -190,15 +191,12 @@ def rollout_action(
     and the collected env ``states`` (for optional rendering).
     """
     import jax
-    import jax.numpy as jp
-
     jit_reset = jax.jit(env.reset)
     jit_step = jax.jit(env.step)
-    cmd = jp.asarray(command, dtype=jp.float32)
 
     rng = jax.random.PRNGKey(seed)
     state = jit_reset(rng)
-    state.info["command"] = cmd
+    state = force_command_observation(env, state, command, rng)
 
     q0 = np.asarray(state.data.qpos)
     x0, y0 = float(q0[0]), float(q0[1])
@@ -215,7 +213,7 @@ def rollout_action(
         act_rng, rng = jax.random.split(rng)
         action, _ = act_fn(state.obs, act_rng)
         state = jit_step(state, action)
-        state.info["command"] = cmd  # hold the command fixed for the demo
+        state = force_command_observation(env, state, command, rng)
         states.append(state)
         steps += 1
 

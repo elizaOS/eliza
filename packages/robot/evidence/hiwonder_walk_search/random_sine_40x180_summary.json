@@ -1,0 +1,61 @@
+{
+  "schema": "hiwonder-walk-search-summary-v1",
+  "source": "evidence/hiwonder_walk_search/random_sine_40x180.json",
+  "any_success": false,
+  "n_candidates": 40,
+  "max_steps": 180,
+  "primary_gap": "forward_displacement",
+  "best_forward_any": {
+    "controller": "random_sine_013",
+    "final_delta_x_m": 0.19860770609065673,
+    "max_delta_x_m": 0.19860770609065673,
+    "max_abs_delta_y_m": 0.06656477943211846,
+    "max_abs_delta_yaw_rad": 0.3556508115007228,
+    "termination_reason": "fall",
+    "unmet_success_predicates": [
+      "delta_x_m_min",
+      "no_fall",
+      "min_swing_foot_clearance_m",
+      "hold_s"
+    ]
+  },
+  "best_forward_without_fall": {
+    "controller": "random_sine_017",
+    "final_delta_x_m": 0.04228074970607276,
+    "max_delta_x_m": 0.04228074970607276,
+    "max_abs_delta_y_m": 0.04935656888448906,
+    "max_abs_delta_yaw_rad": 0.2572061116669536,
+    "termination_reason": "time_limit",
+    "unmet_success_predicates": [
+      "delta_x_m_min",
+      "min_swing_foot_clearance_m",
+      "hold_s"
+    ]
+  },
+  "local_best_forward_any": {
+    "controller": "local_random_sine_013_057",
+    "final_delta_x_m": 0.2213205633775186,
+    "max_delta_x_m": 0.2213205633775186,
+    "max_abs_delta_y_m": 0.04784748531624516,
+    "max_abs_delta_yaw_rad": 0.6732816820873022,
+    "termination_reason": "fall",
+    "unmet_success_predicates": [
+      "delta_x_m_min",
+      "max_abs_delta_yaw_rad",
+      "no_fall",
+      "min_alternating_foot_contacts",
+      "max_foot_slip_m_s",
+      "hold_s"
+    ]
+  },
+  "local_best_physical_gate": {
+    "controller": "local_random_sine_013_064",
+    "final_delta_x_m": 0.18736095553853888,
+    "max_delta_x_m": 0.18736095553853888,
+    "max_swing_foot_clearance_m": 0.016824383288621902,
+    "max_foot_slip_m_s": 0.31569787859916687,
+    "max_abs_delta_yaw_rad": 0.1926571889593711,
+    "foot_contact_switches": 2,
+    "termination_reason": "fall"
+  }
+}

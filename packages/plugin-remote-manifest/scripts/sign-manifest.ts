@@ -21,8 +21,9 @@
  * Operators commit this sidecar to their release pipeline; the runtime
  * verifier consumes it via the artifact source's signature field.
  *
- * This is a stub — production release flows will integrate with Steward
- * for the actual signing operation. The shape of the sidecar is stable.
+ * Signing is delegated to the configured KMS backend. Steward-backed release
+ * flows use this same sidecar shape once the operator environment selects the
+ * steward KMS backend.
  */
 
 import { writeFile } from "node:fs/promises";

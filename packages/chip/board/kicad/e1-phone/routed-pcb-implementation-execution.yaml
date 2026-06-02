@@ -1,6 +1,6 @@
 schema: eliza.e1_phone_routed_pcb_implementation_execution.v1
 status: blocked_requires_supplier_footprints_schematic_erc_trial_route_drc_outputs_and_routed_step
-date: '2026-05-28'
+date: '2026-06-02'
 claim_boundary: File-level execution package for converting the current E1 phone KiCad
   concept scaffold into an EVT1 routed PCB release. This is not a routed PCB, not
   ERC/DRC evidence, not SI/PI/RF signoff, not a manufacturing export package, not
@@ -334,13 +334,13 @@ routed_evt1_execution_phases:
         blocker: quote tied to layer count, HDI, impedance, finish, tolerances, assembly,
           and test missing
     status: blocked_no_release_outputs_present
-  - phase: 5_enclosure_routed_step_rerun
+  - phase: 5_routed_step_release_clearance
     current_status: blocked_waiting_for_physical_routed_board_clearance_result
     required_inputs_or_actions:
       - mechanical/e1-phone/review/board-step-readiness.json passes with production
         STEP
-      - mechanical/e1-phone/review/routed-board-clearance.json rerun with measured
-        routed-board clearances
+      - mechanical/e1-phone/review/routed-board-clearance.json completed with measured
+        routed-board release clearances
       - no routed component intersects display, battery, USB-C aperture, side buttons,
         acoustic paths, antennas, or interconnect
     expected_release_outputs:
@@ -1335,7 +1335,8 @@ release_blockers:
   - production Gerber or IPC-2581, drill, position, BOM/AVL, assembly, STEP, DFM/DFA,
     and quote outputs are missing
   - candidate routed board STEP exists for local review only; production routed-board
-    STEP has not been supplier-approved or rerun through measured enclosure clearance
+    STEP has not been supplier-approved or cleared by measured routed-board release-clearance
+    evidence
 forbidden_claims:
   - routed_pcb_ready
   - evt1_route_ready

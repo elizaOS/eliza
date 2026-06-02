@@ -24,7 +24,9 @@ describe("Electrobun Store packaging", () => {
       runtimeDistDir: "eliza-dist",
     });
 
-    expect(Object.values(copy)).toContain("eliza-dist");
+    expect(
+      Object.values(copy).some((target) => target.startsWith("eliza-dist/")),
+    ).toBe(true);
     expect(Object.values(copy)).toContain("eliza-dist/package.json");
     expect(copy.remotes).toBe("remotes");
   });
@@ -52,7 +54,9 @@ describe("Electrobun Store packaging", () => {
       }),
     });
 
-    expect(Object.values(copy)).toContain("eliza-dist");
+    expect(
+      Object.values(copy).some((target) => target.startsWith("eliza-dist/")),
+    ).toBe(true);
     expect(Object.values(copy)).toContain("eliza-dist/package.json");
   });
 });

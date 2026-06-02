@@ -26,9 +26,7 @@ export function createDiscordConnectorContribution(
     modes: ["local"],
     describe: { label: "Discord" },
     async start() {},
-    async disconnect() {
-      await service.disconnectDiscord("owner");
-    },
+    async disconnect() {},
     async verify(): Promise<boolean> {
       const status = await service.getDiscordConnectorStatus("owner");
       return Boolean(status.connected);

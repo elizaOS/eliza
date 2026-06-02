@@ -367,7 +367,7 @@ release_blockers:
   - USB-PD controller firmware, CC attach, dead-battery boot, PPS, and Type-C class logs missing
   - charger CC/CV cycle, NTC/pack-ID readback, JEITA, current-limit, and surge validation missing
   - side-key flex or switch drawing, force/travel, ESD, wake, and recovery-combo evidence missing
-  - routed schematic, ERC, routed PCB, DRC, SI/PI, and enclosure clearance rerun missing
+  - routed schematic, ERC, routed PCB, DRC, SI/PI, and approved enclosure release clearance missing
 forbidden_claims:
   - EPR_active
   - Health_HAL_VINTF_compatible

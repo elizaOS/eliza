@@ -614,26 +614,47 @@ def evaluate_travel_sweep(
     }
 
 
-def scope_status(pairs: list[dict], travel: dict | None) -> tuple[str, float, float, int]:
+def scope_status(pairs: list[dict], travel: dict | None) -> dict[str, Any]:
     real_clash_vol = 0.0
     real_clash_count = 0
-    min_gap = float("inf")
+    min_nonintentional_gap = float("inf")
+    min_all_pair_gap = float("inf")
+    intentional_contact_count = 0
+    intentional_overlap_volume = 0.0
     for p in pairs:
         gap = p.get("min_gap_mm")
         inter = p.get("interference_volume_mm3", 0.0)
         intentional = p.get("intentional_contact", False)
-        if gap is not None and gap < min_gap and not intentional:
-            min_gap = gap
+        pair_gap = 0.0 if inter > 1e-6 else gap
+        if pair_gap is not None and pair_gap < min_all_pair_gap:
+            min_all_pair_gap = pair_gap
+        if intentional:
+            if inter > 1e-6:
+                intentional_contact_count += 1
+                intentional_overlap_volume += inter
+            continue
+        if gap is not None and gap < min_nonintentional_gap:
+            min_nonintentional_gap = gap
         if inter > 1e-6 and not intentional:
             real_clash_count += 1
             real_clash_vol += inter
     if travel and travel.get("worst_interference_volume_mm3", 0) > 1e-6:
         real_clash_count += 1
         real_clash_vol += travel["worst_interference_volume_mm3"]
-    if min_gap == float("inf"):
-        min_gap = 0.0
-    status = "pass" if real_clash_count == 0 and min_gap >= 0.0 else "fail"
-    return status, round(min_gap, 4), round(real_clash_vol, 4), real_clash_count
+    if min_nonintentional_gap == float("inf"):
+        min_nonintentional_gap = 0.0
+    if min_all_pair_gap == float("inf"):
+        min_all_pair_gap = 0.0
+    status = "pass" if real_clash_count == 0 and min_nonintentional_gap >= 0.0 else "fail"
+    return {
+        "status": status,
+        "min_nonintentional_gap_mm": round(min_nonintentional_gap, 4),
+        "min_all_pair_gap_mm": round(min_all_pair_gap, 4),
+        "unintentional_interference_volume_mm3": round(real_clash_vol, 4),
+        "unintentional_interference_count": real_clash_count,
+        "intentional_contact_count": intentional_contact_count,
+        "intentional_overlap_volume_mm3": round(intentional_overlap_volume, 4),
+    }
 
 
 # Envelope/void parts that intentionally extend past the exterior surface:
@@ -1118,7 +1139,7 @@ def main() -> int:
             )
             travel_res["worst_interference_volume_mm3"] = round(worst_inter, 4)
 
-        status, min_gap, clash_vol, clash_count = scope_status(pair_results, travel_res)
+        scope_metrics = scope_status(pair_results, travel_res)
         scope_results.append(
             {
                 "case": sid,
@@ -1127,11 +1148,21 @@ def main() -> int:
                 "parts_missing": [n for n in scope["parts"] if n not in parts],
                 "pair_results": pair_results,
                 "travel": travel_res,
-                "min_gap_mm": min_gap,
-                "interference_volume_mm3": clash_vol,
-                "interference_count": clash_count,
+                # Backward-compatible alias for gates that predate the
+                # intentional-contact split. This is non-intentional gap only.
+                "min_gap_mm": scope_metrics["min_nonintentional_gap_mm"],
+                "min_nonintentional_gap_mm": scope_metrics["min_nonintentional_gap_mm"],
+                "min_all_pair_gap_mm": scope_metrics["min_all_pair_gap_mm"],
+                "interference_volume_mm3": scope_metrics[
+                    "unintentional_interference_volume_mm3"
+                ],
+                "interference_count": scope_metrics["unintentional_interference_count"],
+                "intentional_contact_count": scope_metrics["intentional_contact_count"],
+                "intentional_overlap_volume_mm3": scope_metrics[
+                    "intentional_overlap_volume_mm3"
+                ],
                 "risk": scope["risk"],
-                "status": status,
+                "status": scope_metrics["status"],
             }
         )
 
@@ -1291,13 +1322,14 @@ def main() -> int:
         "",
         "## Scope Cases",
         "",
-        "| Case | Parts | Min gap (mm) | Interference vol (mm3) | Status |",
-        "|------|-------|--------------|------------------------|--------|",
+        "| Case | Parts | Min non-intentional gap (mm) | Min all-pair gap (mm) | Unintentional interference vol (mm3) | Intentional contacts | Status |",
+        "|------|-------|-------------------------------|-----------------------|--------------------------------------|----------------------|--------|",
     ]
     for s in scope_results:
         md_lines.append(
             f"| `{s['case']}` | {len(s['parts_present'])}/{len(s['parts'])} | "
-            f"{s['min_gap_mm']} | {s['interference_volume_mm3']} | "
+            f"{s['min_nonintentional_gap_mm']} | {s['min_all_pair_gap_mm']} | "
+            f"{s['interference_volume_mm3']} | {s['intentional_contact_count']} | "
             f"{s['status'].upper()} |"
         )
     md_lines += [
@@ -1448,7 +1480,10 @@ def main() -> int:
                     "scope_id",
                     "assembly_step",
                     "boolean_engine",
-                    "min_gap_mm",
+                    "min_nonintentional_gap_mm",
+                    "min_all_pair_gap_mm",
+                    "intentional_contact_count",
+                    "intentional_overlap_volume_mm3",
                     "interference_count",
                     "interference_volume_mm3",
                     "pass",
@@ -1462,7 +1497,10 @@ def main() -> int:
                         s["case"],
                         "fully_assembled",
                         ENGINE_NAME,
-                        s["min_gap_mm"],
+                        s["min_nonintentional_gap_mm"],
+                        s["min_all_pair_gap_mm"],
+                        s["intentional_contact_count"],
+                        s["intentional_overlap_volume_mm3"],
                         s["interference_count"],
                         s["interference_volume_mm3"],
                         "true" if s["status"] == "pass" else "false",
@@ -1491,14 +1529,24 @@ def main() -> int:
         ac["status"] = "pass" if overall_pass else "blocked_boolean_interference_incomplete"
         ac["claim_boundary"] = (
             "Targeted clearance cases plus full-assembly B-rep boolean check. "
-            "Min target gap 0.15 mm honored; intentional gasket/adhesive contact "
-            "classified separately."
+            "Min target gap 0.15 mm is reported for non-intentional pairs; "
+            "intentional gasket/adhesive contacts are classified separately."
         )
         ac["false_claim_flags"] = FALSE_CLAIM_FLAGS
         ac["boolean_engine"] = ENGINE_NAME
         ac["full_assembly_boolean_pass"] = overall_pass
         ac["full_assembly_unintentional_clash_count"] = len(interferences)
-        ac["min_gap_mm_assembly_wide"] = min((s["min_gap_mm"] for s in scope_results), default=0.0)
+        ac["min_nonintentional_gap_mm_assembly_wide"] = min(
+            (s["min_nonintentional_gap_mm"] for s in scope_results),
+            default=0.0,
+        )
+        ac["min_all_pair_gap_mm_assembly_wide"] = min(
+            (s["min_all_pair_gap_mm"] for s in scope_results),
+            default=0.0,
+        )
+        ac["intentional_contact_count_assembly_wide"] = sum(
+            int(s["intentional_contact_count"]) for s in scope_results
+        )
         if args.check_only:
             print(f"check-only: not rewriting {ac_json_path}", file=sys.stderr)
         else:
@@ -1530,9 +1578,9 @@ def main() -> int:
         f"overall_status: {'PASS' if overall_pass else 'BLOCKED'}\n"
         f"scopes pass: {sum(1 for s in scope_results if s['status'] == 'pass')}/{len(scope_results)}\n"
         f"unintentional clashes: {len(interferences)}\n"
-        f"min/max gap observed: "
-        f"{min((s['min_gap_mm'] for s in scope_results), default=0.0)} / "
-        f"{max((s['min_gap_mm'] for s in scope_results), default=0.0)} mm\n"
+        f"min/max non-intentional gap observed: "
+        f"{min((s['min_nonintentional_gap_mm'] for s in scope_results), default=0.0)} / "
+        f"{max((s['min_nonintentional_gap_mm'] for s in scope_results), default=0.0)} mm\n"
         f"wall: {time.time() - t0:.1f}s",
         file=sys.stderr,
     )

@@ -1,7 +1,7 @@
 import { MobilePerpsMarketRedirect } from "./client";
 
 export function generateStaticParams() {
-  return [{ ticker: "_placeholder" }];
+  return [];
 }
 
 export default function Page() {

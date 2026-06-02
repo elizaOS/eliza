@@ -1,5 +1,5 @@
 schema: eliza.e1_phone_component_height_step_integration.v1
-status: blocked_requires_supplier_step_models_routed_board_step_and_clearance_rerun
+status: blocked_requires_supplier_step_models_approved_routed_board_step_physical_clearance_and_signoff
 date: '2026-05-21'
 claim_boundary: Board-owned component-height and STEP integration gate. Concept STEP envelopes show packaging intent
   only; they do not prove supplier geometry, routed KiCad board clearance, production stack height, or enclosure
@@ -58,6 +58,9 @@ routed_board_step_context:
   development_step_route_segment_visual_count: 306
   development_step_via_visual_count: 24
   development_step_is_release_evidence: false
+  local_candidate_clearance_case_count: 12
+  local_candidate_ready_for_boolean_review: true
+  local_candidate_release_credit: false
   production_concept_has_tracks: false
   production_concept_has_filled_zones: true
   has_production_step: false
@@ -244,7 +247,7 @@ alternate_display_height_step_gate:
         - signed 2D drawing with FPC exit, pin-1 datum, cover-lens datum, stiffener, and mated connector height
         - exact 40-pin FPC pinout, mating connector MPN, recommended land pattern, and STEP/B-rep models
         - panel initialization, touch configuration, backlight/bias limits, sample inspection, and promotion review
-        - routed board STEP clearance rerun against selected enclosure before any branch release
+        - approved routed board STEP clearance report against selected enclosure before any branch release
       height_or_step_release_allowed: false
     - source_id: display_alternate_made_in_china_e549_amoled
       candidate: E549-HC01_RM67191_AMOLED_class
@@ -257,7 +260,7 @@ alternate_display_height_step_gate:
         - signed 2D drawing with AMOLED outline, FPC exit, active-area datum, touch-stack datum, and mated connector height
         - exact AMOLED FPC pinout, mating connector MPN, recommended land pattern, and STEP/B-rep models
         - RM67191 power sequence, GT1151 touch configuration, burn-in/luminance data, sample inspection, and promotion review
-        - routed board STEP clearance rerun against selected enclosure before any branch release
+        - approved routed board STEP clearance report against selected enclosure before any branch release
       height_or_step_release_allowed: false
 height_critical_models:
   - model: usb_c_receptacle
@@ -340,8 +343,8 @@ routed_clearance_rerun_matrix:
     concept_margin_mm: 0.0
     rerun_priority: 1
     risk_level: high
-    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
-    requires_routed_step_rerun: true
+    measurement_instruction: Measure against approved routed KiCad STEP with production component 3D models.
+    requires_routed_step_release_clearance: true
   - case_id: haptic_to_battery
     concept_clearance_pass: true
     concept_actual_mm: 0.5
@@ -349,8 +352,8 @@ routed_clearance_rerun_matrix:
     concept_margin_mm: 0.0
     rerun_priority: 1
     risk_level: high
-    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
-    requires_routed_step_rerun: true
+    measurement_instruction: Measure against approved routed KiCad STEP with production component 3D models.
+    requires_routed_step_release_clearance: true
   - case_id: split_interconnect_connectors_on_pcb_islands
     concept_clearance_pass: true
     concept_actual_mm: 0.0
@@ -358,8 +361,8 @@ routed_clearance_rerun_matrix:
     concept_margin_mm: 0.0
     rerun_priority: 1
     risk_level: high
-    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
-    requires_routed_step_rerun: true
+    measurement_instruction: Measure against approved routed KiCad STEP with production component 3D models.
+    requires_routed_step_release_clearance: true
   - case_id: usb_shell_to_external_aperture
     concept_clearance_pass: true
     concept_actual_mm: 0.175
@@ -367,8 +370,8 @@ routed_clearance_rerun_matrix:
     concept_margin_mm: 0.025
     rerun_priority: 1
     risk_level: high
-    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
-    requires_routed_step_rerun: true
+    measurement_instruction: Measure against approved routed KiCad STEP with production component 3D models.
+    requires_routed_step_release_clearance: true
   - case_id: battery_back_void_foam_to_pouch
     concept_clearance_pass: true
     concept_actual_mm: 0.42
@@ -376,8 +379,8 @@ routed_clearance_rerun_matrix:
     concept_margin_mm: 0.17
     rerun_priority: 2
     risk_level: medium
-    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
-    requires_routed_step_rerun: true
+    measurement_instruction: Measure against approved routed KiCad STEP with production component 3D models.
+    requires_routed_step_release_clearance: true
   - case_id: bottom_mic_to_usb
     concept_clearance_pass: true
     concept_actual_mm: 11.78
@@ -385,8 +388,8 @@ routed_clearance_rerun_matrix:
     concept_margin_mm: 10.78
     rerun_priority: 3
     risk_level: normal
-    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
-    requires_routed_step_rerun: true
+    measurement_instruction: Measure against approved routed KiCad STEP with production component 3D models.
+    requires_routed_step_release_clearance: true
   - case_id: front_camera_to_earpiece
     concept_clearance_pass: true
     concept_actual_mm: 9.75
@@ -394,8 +397,8 @@ routed_clearance_rerun_matrix:
     concept_margin_mm: 8.75
     rerun_priority: 3
     risk_level: normal
-    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
-    requires_routed_step_rerun: true
+    measurement_instruction: Measure against approved routed KiCad STEP with production component 3D models.
+    requires_routed_step_release_clearance: true
   - case_id: rear_camera_to_battery
     concept_clearance_pass: true
     concept_actual_mm: 16.3
@@ -403,8 +406,8 @@ routed_clearance_rerun_matrix:
     concept_margin_mm: 14.3
     rerun_priority: 3
     risk_level: normal
-    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
-    requires_routed_step_rerun: true
+    measurement_instruction: Measure against approved routed KiCad STEP with production component 3D models.
+    requires_routed_step_release_clearance: true
   - case_id: split_interconnect_flex_to_battery_edge
     concept_clearance_pass: true
     concept_actual_mm: 1.3
@@ -412,8 +415,8 @@ routed_clearance_rerun_matrix:
     concept_margin_mm: 0.8
     rerun_priority: 3
     risk_level: normal
-    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
-    requires_routed_step_rerun: true
+    measurement_instruction: Measure against approved routed KiCad STEP with production component 3D models.
+    requires_routed_step_release_clearance: true
   - case_id: split_interconnect_flex_within_side_rail
     concept_clearance_pass: true
     concept_actual_mm: 3.3
@@ -421,8 +424,8 @@ routed_clearance_rerun_matrix:
     concept_margin_mm: 1.8
     rerun_priority: 3
     risk_level: normal
-    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
-    requires_routed_step_rerun: true
+    measurement_instruction: Measure against approved routed KiCad STEP with production component 3D models.
+    requires_routed_step_release_clearance: true
   - case_id: usb_to_bottom_speaker
     concept_clearance_pass: true
     concept_actual_mm: 6.53
@@ -430,8 +433,8 @@ routed_clearance_rerun_matrix:
     concept_margin_mm: 5.53
     rerun_priority: 3
     risk_level: normal
-    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
-    requires_routed_step_rerun: true
+    measurement_instruction: Measure against approved routed KiCad STEP with production component 3D models.
+    requires_routed_step_release_clearance: true
   - case_id: haptic_to_pcb_islands
     concept_clearance_pass: true
     concept_actual_mm: 1.118
@@ -439,8 +442,8 @@ routed_clearance_rerun_matrix:
     concept_margin_mm: 0.618
     rerun_priority: 3
     risk_level: normal
-    measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
-    requires_routed_step_rerun: true
+    measurement_instruction: Measure against approved routed KiCad STEP with production component 3D models.
+    requires_routed_step_release_clearance: true
 route_dependency_context:
   route_feasibility_status: blocked_requires_supplier_footprints_escape_analysis_and_trial_route
   evt1_routing_status: blocked_requires_supplier_pinouts_routed_pcb_and_post_route_evidence
@@ -492,11 +495,11 @@ release_blockers:
   - supplier STEP/B-rep models for display, USB-C, cameras, buttons, radios, audio, haptics, and enclosure tooling
     are missing
   - local real-footprint routed STEP exists for visual review only; supplier-approved production STEP with component 3D models is missing
-  - routed-board clearance rerun has not passed
+  - approved routed-board physical clearance report has not passed
   - concept STEP envelopes are not supplier-approved geometry
   - full CAD boolean interference report using routed board and supplier models is missing
   - local concept-envelope full CAD boolean interference passes with zero unintentional
-    clashes, but routed-board/supplier-geometry boolean rerun is still missing
+    clashes, but approved routed-board/supplier-geometry physical clearance evidence is still missing
   - component height and courtyard data are not bound to production KiCad footprints
 forbidden_claims:
   - component_heights_closed

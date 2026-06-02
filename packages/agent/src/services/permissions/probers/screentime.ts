@@ -43,8 +43,8 @@ export const screentimeProber: Prober = {
         restrictedReason: "entitlement_required",
       });
     }
-    // TODO: query STScreenTimeConfigurationObserver via FFI when we
-    // ship the entitlement.
+    // Native bridge boundary: a signed build with the FamilyControls
+    // entitlement can query STScreenTimeConfigurationObserver here.
     return buildState(ID, "not-determined", { canRequest: true });
   },
 

@@ -47,7 +47,7 @@
       "step_intake_status": "development_step_generated_not_release",
       "step_output": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step",
       "step_exists": true,
-      "step_size_bytes": 33644081,
+      "step_size_bytes": 33644627,
       "step_footprint_envelope_count": 89,
       "release_credit": false
     }
@@ -120,7 +120,7 @@
       "evidence": "solid-cad-handoff.json"
     },
     {
-      "id": "clearance_rerun_cases_defined",
+      "id": "routed_step_release_clearance_cases_defined",
       "pass": true,
       "evidence": "assembly-clearance.json"
     },
@@ -139,8 +139,8 @@
       "concept_margin_mm": 0.0,
       "rerun_priority": 1,
       "risk_level": "high",
-      "measurement_instruction": "Rerun against routed KiCad STEP with production component 3D models.",
-      "requires_routed_step_rerun": true
+      "measurement_instruction": "Measure against approved routed KiCad STEP with production component 3D models.",
+      "requires_routed_step_release_clearance": true
     },
     {
       "case_id": "haptic_to_battery",
@@ -150,8 +150,8 @@
       "concept_margin_mm": 0.0,
       "rerun_priority": 1,
       "risk_level": "high",
-      "measurement_instruction": "Rerun against routed KiCad STEP with production component 3D models.",
-      "requires_routed_step_rerun": true
+      "measurement_instruction": "Measure against approved routed KiCad STEP with production component 3D models.",
+      "requires_routed_step_release_clearance": true
     },
     {
       "case_id": "split_interconnect_connectors_on_pcb_islands",
@@ -161,8 +161,8 @@
       "concept_margin_mm": 0.0,
       "rerun_priority": 1,
       "risk_level": "high",
-      "measurement_instruction": "Rerun against routed KiCad STEP with production component 3D models.",
-      "requires_routed_step_rerun": true
+      "measurement_instruction": "Measure against approved routed KiCad STEP with production component 3D models.",
+      "requires_routed_step_release_clearance": true
     },
     {
       "case_id": "usb_shell_to_external_aperture",
@@ -172,8 +172,8 @@
       "concept_margin_mm": 0.025,
       "rerun_priority": 1,
       "risk_level": "high",
-      "measurement_instruction": "Rerun against routed KiCad STEP with production component 3D models.",
-      "requires_routed_step_rerun": true
+      "measurement_instruction": "Measure against approved routed KiCad STEP with production component 3D models.",
+      "requires_routed_step_release_clearance": true
     },
     {
       "case_id": "battery_back_void_foam_to_pouch",
@@ -183,8 +183,8 @@
       "concept_margin_mm": 0.17,
       "rerun_priority": 2,
       "risk_level": "medium",
-      "measurement_instruction": "Rerun against routed KiCad STEP with production component 3D models.",
-      "requires_routed_step_rerun": true
+      "measurement_instruction": "Measure against approved routed KiCad STEP with production component 3D models.",
+      "requires_routed_step_release_clearance": true
     },
     {
       "case_id": "bottom_mic_to_usb",
@@ -194,8 +194,8 @@
       "concept_margin_mm": 10.78,
       "rerun_priority": 3,
       "risk_level": "normal",
-      "measurement_instruction": "Rerun against routed KiCad STEP with production component 3D models.",
-      "requires_routed_step_rerun": true
+      "measurement_instruction": "Measure against approved routed KiCad STEP with production component 3D models.",
+      "requires_routed_step_release_clearance": true
     },
     {
       "case_id": "front_camera_to_earpiece",
@@ -205,8 +205,8 @@
       "concept_margin_mm": 8.75,
       "rerun_priority": 3,
       "risk_level": "normal",
-      "measurement_instruction": "Rerun against routed KiCad STEP with production component 3D models.",
-      "requires_routed_step_rerun": true
+      "measurement_instruction": "Measure against approved routed KiCad STEP with production component 3D models.",
+      "requires_routed_step_release_clearance": true
     },
     {
       "case_id": "haptic_to_pcb_islands",
@@ -216,8 +216,8 @@
       "concept_margin_mm": 0.618,
       "rerun_priority": 3,
       "risk_level": "normal",
-      "measurement_instruction": "Rerun against routed KiCad STEP with production component 3D models.",
-      "requires_routed_step_rerun": true
+      "measurement_instruction": "Measure against approved routed KiCad STEP with production component 3D models.",
+      "requires_routed_step_release_clearance": true
     },
     {
       "case_id": "rear_camera_to_battery",
@@ -227,8 +227,8 @@
       "concept_margin_mm": 14.3,
       "rerun_priority": 3,
       "risk_level": "normal",
-      "measurement_instruction": "Rerun against routed KiCad STEP with production component 3D models.",
-      "requires_routed_step_rerun": true
+      "measurement_instruction": "Measure against approved routed KiCad STEP with production component 3D models.",
+      "requires_routed_step_release_clearance": true
     },
     {
       "case_id": "split_interconnect_flex_to_battery_edge",
@@ -238,8 +238,8 @@
       "concept_margin_mm": 0.8,
       "rerun_priority": 3,
       "risk_level": "normal",
-      "measurement_instruction": "Rerun against routed KiCad STEP with production component 3D models.",
-      "requires_routed_step_rerun": true
+      "measurement_instruction": "Measure against approved routed KiCad STEP with production component 3D models.",
+      "requires_routed_step_release_clearance": true
     },
     {
       "case_id": "split_interconnect_flex_within_side_rail",
@@ -249,8 +249,8 @@
       "concept_margin_mm": 1.8,
       "rerun_priority": 3,
       "risk_level": "normal",
-      "measurement_instruction": "Rerun against routed KiCad STEP with production component 3D models.",
-      "requires_routed_step_rerun": true
+      "measurement_instruction": "Measure against approved routed KiCad STEP with production component 3D models.",
+      "requires_routed_step_release_clearance": true
     },
     {
       "case_id": "usb_to_bottom_speaker",
@@ -260,8 +260,8 @@
       "concept_margin_mm": 5.53,
       "rerun_priority": 3,
       "risk_level": "normal",
-      "measurement_instruction": "Rerun against routed KiCad STEP with production component 3D models.",
-      "requires_routed_step_rerun": true
+      "measurement_instruction": "Measure against approved routed KiCad STEP with production component 3D models.",
+      "requires_routed_step_release_clearance": true
     }
   ],
   "result_cases": [

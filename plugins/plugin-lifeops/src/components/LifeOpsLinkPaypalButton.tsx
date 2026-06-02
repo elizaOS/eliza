@@ -185,9 +185,9 @@ export function LifeOpsLinkPaypalButton({
     !elizaCloudConnected || status === "preparing" || status === "exchanging";
 
   let buttonLabel = label;
-  if (status === "preparing") buttonLabel = "Preparing PayPal…";
-  else if (status === "awaiting_user") buttonLabel = "Waiting for PayPal…";
-  else if (status === "exchanging") buttonLabel = "Linking…";
+  if (status === "preparing") buttonLabel = "Preparing PayPal";
+  else if (status === "awaiting_user") buttonLabel = "Waiting for PayPal";
+  else if (status === "exchanging") buttonLabel = "Linking";
   else if (status === "done") buttonLabel = "Linked";
 
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
@@ -226,7 +226,7 @@ export function LifeOpsLinkPaypalButton({
       {status === "done" && capability && !capability.hasReporting ? (
         <span className="text-[11px] text-amber-300">
           PayPal connected, but this account is personal-tier. Use CSV export
-          from paypal.com → Activity → Statements to import transactions.
+          from paypal.com Activity Statements to import transactions.
         </span>
       ) : null}
     </div>

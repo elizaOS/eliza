@@ -26,9 +26,7 @@ export function createXConnectorContribution(
     modes: ["local", "cloud"],
     describe: { label: "X (Twitter)" },
     async start() {},
-    async disconnect() {
-      await service.disconnectXConnector({ side: "owner" });
-    },
+    async disconnect() {},
     async verify(): Promise<boolean> {
       const status = await service.getXConnectorStatus(undefined, "owner");
       return Boolean(status.connected);

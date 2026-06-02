@@ -32,7 +32,6 @@ import {
   chats,
   comments,
   db,
-  desc,
   dmAcceptances,
   eq,
   follows,
@@ -67,9 +66,14 @@ import {
   AGENT_TRANSFER_OUT_TRANSACTION_TYPE,
   isPureRepost,
 } from "@feed/shared";
+import { desc } from "drizzle-orm";
 import { agentPnLService } from "../services/AgentPnLService";
 import { logger } from "../shared/logger";
 import { generateSnowflakeId } from "../shared/snowflake";
+import {
+  executeDirectRequestPayment as executeIntelRequestPayment,
+  executeDirectShareInformation as executeIntelShareInformation,
+} from "./intel-payment-executors";
 import { topicDiversityService } from "./TopicDiversityService";
 import { resolvePerpTicker } from "./utils/resolvePerpTicker";
 
@@ -2788,11 +2792,9 @@ export async function executeDirectSendMoney(
 }
 
 // =============================================================================
-// Stubs for features being built by another agent
-// These will be replaced with full implementations
+// Intel and payment request executors
 // =============================================================================
 
-/** Stub: Share information with another agent (not yet implemented) */
 export async function executeDirectShareInformation(params: {
   agentUserId: string;
   recipientId: string;
@@ -2806,17 +2808,16 @@ export async function executeDirectShareInformation(params: {
   sharedWithRecipient: boolean;
   messageId: string | null;
 }> {
-  void params;
+  const result = await executeIntelShareInformation(params);
   return {
-    success: false,
-    error: "Not yet implemented",
-    matchCount: 0,
-    sharedWithRecipient: false,
-    messageId: null,
+    success: result.success,
+    error: result.error,
+    matchCount: result.matchCount,
+    sharedWithRecipient: result.sharedWithRecipient,
+    messageId: result.messageId ?? null,
   };
 }
 
-/** Stub: Request payment from another agent (not yet implemented) */
 export async function executeDirectRequestPayment(params: {
   agentUserId: string;
   recipientId: string;
@@ -2828,6 +2829,10 @@ export async function executeDirectRequestPayment(params: {
   error?: string;
   requestId: string | null;
 }> {
-  void params;
-  return { success: false, error: "Not yet implemented", requestId: null };
+  const result = await executeIntelRequestPayment(params);
+  return {
+    success: result.success,
+    error: result.error,
+    requestId: result.requestId ?? null,
+  };
 }

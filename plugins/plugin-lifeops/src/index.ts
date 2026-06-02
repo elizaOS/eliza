@@ -1,9 +1,7 @@
-export { detectPasswordManagerBackend } from "@elizaos/plugin-browser/password-manager-bridge";
 export {
   handleTravelProviderRelayRoute,
   type TravelProviderRelayRouteState,
 } from "@elizaos/plugin-elizacloud/routes/travel-provider-relay-routes";
-export { detectHealthBackend } from "@elizaos/plugin-health";
 // External consumers that still import `websiteBlockAction` get the canonical
 // BLOCK umbrella.
 export {

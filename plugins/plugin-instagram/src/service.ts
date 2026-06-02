@@ -4,6 +4,7 @@ import {
   createUniqueUuid,
   type Entity,
   type IAgentRuntime,
+  logger,
   type Memory,
   type MessageConnectorChatContext,
   type MessageConnectorQueryContext,
@@ -147,6 +148,12 @@ function normalizeInstagramMediaId(value: unknown): number | null {
   }
   const parsed = Number.parseInt(value.trim(), 10);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function throwMissingInstagramClient(operation: string): never {
+  throw new Error(
+    `Instagram ${operation} requires a configured Instagram API client. This package registers the connector surface but does not include a concrete Instagram client backend.`
+  );
 }
 
 /**
@@ -324,11 +331,11 @@ export class InstagramService extends Service {
     this.instagramConfig = resolveInstagramAccountConfig(this.runtime, this.defaultAccountId);
 
     if (!this.instagramConfig.username || !this.instagramConfig.password) {
-      console.warn("Instagram credentials not configured. Service will not be available.");
+      logger.warn("Instagram credentials not configured. Service will not be available.");
       return;
     }
 
-    console.log(`Instagram service initialized for @${this.instagramConfig.username}`);
+    logger.info(`Instagram service initialized for @${this.instagramConfig.username}`);
   }
 
   /**
@@ -343,26 +350,17 @@ export class InstagramService extends Service {
       throw new Error("Instagram service is already running");
     }
 
-    console.log("Starting Instagram service...");
-
-    // Login would happen here in a real implementation
-    // For now, we simulate the logged-in user
-    this.loggedInUser = {
-      pk: 0,
-      username: this.instagramConfig.username,
-      isPrivate: false,
-      isVerified: false,
-    };
-
+    logger.info("Starting Instagram service connector surface");
+    this.loggedInUser = null;
     this.isRunning = true;
-    console.log(`Instagram service started for @${this.instagramConfig.username}`);
+    logger.info(`Instagram service started for @${this.instagramConfig.username}`);
   }
 
   /**
    * Stop the Instagram service
    */
   override async stop(): Promise<void> {
-    console.log("Stopping Instagram service...");
+    logger.info("Stopping Instagram service");
     for (const [accountId, accountService] of this.accountServices) {
       if (accountService === this) {
         continue;
@@ -372,7 +370,7 @@ export class InstagramService extends Service {
     }
     this.isRunning = false;
     this.loggedInUser = null;
-    console.log("Instagram service stopped");
+    logger.info("Instagram service stopped");
   }
 
   /**
@@ -423,13 +421,7 @@ export class InstagramService extends Service {
       throw new Error(`Message too long: ${text.length} characters (max: ${MAX_DM_LENGTH})`);
     }
 
-    // In a real implementation, this would use the Instagram API
-    console.log(`Sending DM to thread ${threadId}: ${text.substring(0, 50)}...`);
-
-    // Simulate message ID
-    const messageId = `msg_${Date.now()}`;
-
-    return messageId;
+    return throwMissingInstagramClient(`direct message send to thread ${threadId}`);
   }
 
   /**
@@ -444,17 +436,12 @@ export class InstagramService extends Service {
   /**
    * Post a comment on media
    */
-  async postComment(mediaId: number, text: string): Promise<number> {
+  async postComment(mediaId: number, _text: string): Promise<number> {
     if (!this.isRunning) {
       throw new Error("Instagram service is not running");
     }
 
-    console.log(`Posting comment on media ${mediaId}: ${text.substring(0, 50)}...`);
-
-    // Simulate comment ID
-    const commentId = Date.now();
-
-    return commentId;
+    return throwMissingInstagramClient(`comment post on media ${mediaId}`);
   }
 
   async handleSendPost(runtime: IAgentRuntime, content: Content): Promise<Memory> {
@@ -534,7 +521,7 @@ export class InstagramService extends Service {
       throw new Error("Instagram service is not running");
     }
 
-    console.log(`Liking media ${mediaId}`);
+    throwMissingInstagramClient(`media like for ${mediaId}`);
   }
 
   /**
@@ -545,7 +532,7 @@ export class InstagramService extends Service {
       throw new Error("Instagram service is not running");
     }
 
-    console.log(`Unliking media ${mediaId}`);
+    throwMissingInstagramClient(`media unlike for ${mediaId}`);
   }
 
   /**
@@ -556,7 +543,7 @@ export class InstagramService extends Service {
       throw new Error("Instagram service is not running");
     }
 
-    console.log(`Following user ${userId}`);
+    throwMissingInstagramClient(`user follow for ${userId}`);
   }
 
   /**
@@ -567,7 +554,7 @@ export class InstagramService extends Service {
       throw new Error("Instagram service is not running");
     }
 
-    console.log(`Unfollowing user ${userId}`);
+    throwMissingInstagramClient(`user unfollow for ${userId}`);
   }
 
   /**
@@ -578,13 +565,7 @@ export class InstagramService extends Service {
       throw new Error("Instagram service is not running");
     }
 
-    // In a real implementation, this would fetch from Instagram API
-    return {
-      pk: userId,
-      username: `user_${userId}`,
-      isPrivate: false,
-      isVerified: false,
-    };
+    return throwMissingInstagramClient(`user lookup by id ${userId}`);
   }
 
   /**
@@ -595,13 +576,7 @@ export class InstagramService extends Service {
       throw new Error("Instagram service is not running");
     }
 
-    // In a real implementation, this would fetch from Instagram API
-    return {
-      pk: 0,
-      username,
-      isPrivate: false,
-      isVerified: false,
-    };
+    return throwMissingInstagramClient(`user lookup by username ${username}`);
   }
 
   /**
@@ -612,20 +587,18 @@ export class InstagramService extends Service {
       throw new Error("Instagram service is not running");
     }
 
-    // In a real implementation, this would fetch from Instagram API
-    return [];
+    return throwMissingInstagramClient("thread list");
   }
 
   /**
    * Get messages in a thread
    */
-  async getThreadMessages(_threadId: string): Promise<InstagramMessage[]> {
+  async getThreadMessages(threadId: string): Promise<InstagramMessage[]> {
     if (!this.isRunning) {
       throw new Error("Instagram service is not running");
     }
 
-    // In a real implementation, this would fetch from Instagram API
-    return [];
+    return throwMissingInstagramClient(`thread message list for ${threadId}`);
   }
 
   async handleSendMessage(

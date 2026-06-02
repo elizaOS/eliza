@@ -278,11 +278,11 @@
       "blockers": [
         "supplier STEP/B-rep models for display, USB-C, cameras, buttons, radios, audio, haptics, and enclosure tooling are missing",
         "local real-footprint routed STEP exists for visual review only; supplier-approved production STEP with component 3D models is missing",
-        "routed-board clearance rerun has not passed",
+        "approved routed-board physical clearance report has not passed",
         "concept STEP envelopes are not supplier-approved geometry",
         "full CAD boolean interference report using routed board and supplier models is missing",
         "component height and courtyard data are not bound to production KiCad footprints",
-        "local routed KiCad PCB candidate exists, but release DRC/ERC evidence is blocked by 2304 DRC rows, 366 ERC rows, and no signed waivers",
+        "local routed KiCad PCB candidate exists, but release DRC/ERC evidence is blocked by 2201 DRC rows, 366 ERC rows, and no signed waivers",
         "supplier STEP or B-rep models for height-critical parts are missing",
         "local routed real-footprint STEP exists for visual review only; supplier-approved routed board STEP has not passed enclosure CAD import or clearance",
         "routed-board clearance, boolean interference, and physical fit results are missing",

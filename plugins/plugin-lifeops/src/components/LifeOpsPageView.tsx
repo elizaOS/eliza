@@ -66,7 +66,7 @@ function EnablePrompt({ loading, onEnable, t }: EnablePromptProps) {
           {...agentProps}
         >
           {loading
-            ? t("lifeopspage.enabling", { defaultValue: "Enabling…" })
+            ? t("lifeopspage.enabling", { defaultValue: "Enabling" })
             : enableLabel}
         </Button>
       </div>
