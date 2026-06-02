@@ -1516,13 +1516,10 @@ export class LocalInferenceEngine {
 			if (!this.activeEliza1Bundle && !this.dispatcher.hasLoadedModel()) {
 				try {
 					const assignments = await readEffectiveAssignments();
-					const textModelId =
-						assignments.TEXT_LARGE ?? assignments.TEXT_SMALL;
+					const textModelId = assignments.TEXT_LARGE ?? assignments.TEXT_SMALL;
 					if (textModelId) {
 						const installed = await listInstalledModels();
-						const target = installed.find(
-							(m) => m.id === textModelId,
-						);
+						const target = installed.find((m) => m.id === textModelId);
 						if (target) {
 							logger.info(
 								`[voice] Pre-loading text model ${textModelId} to activate Eliza-1 bundle for voice`,
