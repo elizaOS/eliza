@@ -10,6 +10,11 @@ name: Hetzner Provision Smoke
 
 on:
   workflow_dispatch:
+  # Scoped to the throwaway smoke branch so the push registers + triggers the
+  # run (a workflow_dispatch-only file on a non-default branch isn't yet
+  # registered for dispatch). Removed once the real provision is observed.
+  push:
+    branches: [claude/hetzner-provision-smoke]
 
 concurrency:
   group: hetzner-e2e
