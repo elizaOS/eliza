@@ -104,7 +104,7 @@ GET    /v1/kms/keys/:keyId/public                { algorithm? } -> { public_key_
 
 Auth: short-lived OIDC bearer (preferred) or mTLS. Reuses the credential-proxy auth pattern from `packages/cloud-api/src/steward/embedded.ts`.
 
-Additionally, a separate `TODO(audit-sink)` covers Steward (or Steward-fronted) implementation of the production audit-log endpoint that `HttpSinkStub` currently stubs.
+`HttpSink` can POST validated audit events to a Steward-fronted append-only audit endpoint once that endpoint is provisioned.
 
 ## Adoption checklist for other packages
 

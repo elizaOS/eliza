@@ -24,9 +24,11 @@
  * pulling the full ggml dependency in — exact parity with `qjl-cpu`
  * and `polarquant-cpu`.
  *
- * STATUS: scaffold. The reference kernels are stubbed against the
- * shared turbo_kernels.{c,h} primitives; SIMD lanes and the GGUF
- * converter are not wired yet. See AGENTS.md.
+ * The scalar reference kernels are implemented in this library, with
+ * per-arch lanes dispatched when compiled in. The GGUF helper writes
+ * TurboQuant runtime-cache metadata from turboquant.json sidecars; the
+ * elizaOS llama.cpp fork remains the authority for loading TBQ cache
+ * types at runtime. See AGENTS.md.
  */
 
 #ifndef TURBOQUANT_TURBOQUANT_H

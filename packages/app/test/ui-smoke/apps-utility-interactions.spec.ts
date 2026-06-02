@@ -249,7 +249,7 @@ test("companion app controls are interactive and error-free", async ({
     "true",
     { timeout: 90_000 },
   );
-  await expect(page.getByTestId("companion-chat-dock")).toBeVisible();
+  await expect(page.getByTestId("companion-header-shell")).toBeVisible();
 
   const voiceToggle = page.getByTestId("companion-voice-toggle");
   const initialVoicePressed = await voiceToggle.getAttribute("aria-pressed");
@@ -291,7 +291,7 @@ test("companion app controls are interactive and error-free", async ({
   await page.getByTestId("companion-shell-toggle-character").click();
   await expect(page.getByTestId("companion-character-editor")).toBeVisible();
   await page.getByTestId("companion-shell-toggle-companion").click();
-  await expect(page.getByTestId("companion-chat-dock")).toBeVisible();
+  await expect(page.getByTestId("companion-vrm-stage")).toBeVisible();
 
   await page.getByTestId("companion-emote-toggle").click();
   await expect(page.getByTestId("emote-picker")).toBeVisible();

@@ -36,19 +36,51 @@ export class FileSink implements AuditSink {
   }
 }
 
+export interface HttpSinkOptions {
+  endpoint: string;
+  fetch?: typeof fetch;
+  headers?: Record<string, string>;
+}
+
 /**
- * Production HTTP sink. Stub — real implementation will POST to the SOC2
- * audit-log pipeline (likely a Steward-fronted append-only store).
- *
- * TODO(audit-sink): wire to real endpoint once defined. Until then this sink
- * intentionally throws so callers detect mis-configuration in dev.
+ * Production HTTP sink. Posts one validated audit event per request to the
+ * configured append-only audit endpoint.
  */
-export class HttpSinkStub implements AuditSink {
+export class HttpSink implements AuditSink {
   readonly name = "http";
-  constructor(private readonly endpoint: string) {}
-  async emit(_event: AuditEvent): Promise<void> {
-    throw new Error(
-      `HttpSinkStub: audit endpoint not yet implemented (${this.endpoint})`,
-    );
+  private readonly endpoint: string;
+  private readonly fetchImpl: typeof fetch;
+  private readonly headers: Record<string, string>;
+
+  constructor(endpointOrOptions: string | HttpSinkOptions) {
+    const options =
+      typeof endpointOrOptions === "string"
+        ? { endpoint: endpointOrOptions }
+        : endpointOrOptions;
+    this.endpoint = options.endpoint;
+    this.fetchImpl = options.fetch ?? globalThis.fetch;
+    this.headers = options.headers ?? {};
+  }
+
+  async emit(event: AuditEvent): Promise<void> {
+    if (!this.fetchImpl) {
+      throw new Error("HttpSink requires a fetch implementation");
+    }
+    const response = await this.fetchImpl(this.endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...this.headers,
+      },
+      body: JSON.stringify(event),
+    });
+    if (!response.ok) {
+      throw new Error(
+        `HttpSink failed: ${response.status} ${response.statusText}`.trim(),
+      );
+    }
   }
 }
+
+/** @deprecated Use HttpSink. */
+export class HttpSinkStub extends HttpSink {}
