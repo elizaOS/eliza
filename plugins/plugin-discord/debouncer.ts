@@ -33,6 +33,20 @@ export interface ChannelDebouncerOptions {
 	getBotUserId?: () => string | undefined;
 	coalesceEnabled?: boolean;
 	maxBatch?: number;
+	/**
+	 * Only when true (strict / mention-only mode) do we carry recent unaddressed
+	 * messages forward into the next addressed batch. In respond-to-all mode the
+	 * agent already answers those messages on their own flush, so buffering them
+	 * would prepend already-handled chatter onto a later addressed turn.
+	 */
+	shouldRespondOnlyToMentions?: boolean;
+	/**
+	 * How long a recent unaddressed message stays eligible to be folded into a
+	 * following addressed message's "[Recent channel context]". Must be >= the
+	 * channel debounce window so a just-flushed unaddressed message is still live
+	 * when the addressed anchor lands a beat later.
+	 */
+	bufferTtlMs?: number;
 }
 
 export interface ChannelDebouncer {
@@ -58,6 +72,48 @@ export function createChannelDebouncer(
 	const maxBatch = Math.max(1, options.maxBatch ?? Number.POSITIVE_INFINITY);
 	const pending = new Map<string, ChannelPendingEntry>();
 	const lastResponseTime = new Map<string, number>();
+
+	// Carry recent unaddressed messages forward so a content-light addressed
+	// message (e.g. "@bot ^^" pointing at a question typed moments earlier in a
+	// separate debounce batch) still arrives with that question folded into
+	// "[Recent channel context]" — matching the within-batch case the bundler
+	// already handles. Recency/addressing-driven only; no content inspection.
+	const bufferUnaddressed =
+		options.shouldRespondOnlyToMentions === true && !coalesceEnabled;
+	const bufferTtlMs = Math.max(options.bufferTtlMs ?? 10_000, debounceMs);
+	const recentUnaddressed = new Map<
+		string,
+		{ message: DiscordMessage; at: number }[]
+	>();
+
+	const pruneRecent = (channelId: string, now: number): void => {
+		const buffered = recentUnaddressed.get(channelId);
+		if (!buffered) {
+			return;
+		}
+		const live = buffered.filter((entry) => now - entry.at < bufferTtlMs);
+		if (live.length > 0) {
+			recentUnaddressed.set(channelId, live);
+		} else {
+			recentUnaddressed.delete(channelId);
+		}
+	};
+
+	const rememberRecent = (message: DiscordMessage): void => {
+		const channelId = message.channel.id;
+		const now = Date.now();
+		const buffered = recentUnaddressed.get(channelId) ?? [];
+		buffered.push({ message, at: now });
+		recentUnaddressed.set(channelId, buffered);
+		pruneRecent(channelId, now);
+	};
+
+	const drainRecent = (channelId: string): DiscordMessage[] => {
+		pruneRecent(channelId, Date.now());
+		const buffered = recentUnaddressed.get(channelId);
+		recentUnaddressed.delete(channelId);
+		return buffered ? buffered.map((entry) => entry.message) : [];
+	};
 
 	const isBotTargeted = (message: DiscordMessage): boolean => {
 		const botId = options.getBotUserId?.() ?? options.botUserId;
@@ -97,20 +153,27 @@ export function createChannelDebouncer(
 		const channelId = message.channel.id;
 		const targeted = isBotTargeted(message);
 		if (targeted && !coalesceEnabled) {
+			const buffered = bufferUnaddressed ? drainRecent(channelId) : [];
 			const entry = pending.get(channelId);
 			if (entry) {
 				clearTimeout(entry.timer);
 				pending.delete(channelId);
 				entry.messages.push(message);
-				runSafely(() => onFlush(entry.messages));
+				runSafely(() => onFlush([...buffered, ...entry.messages]));
 			} else {
-				runSafely(() => onFlush([message]));
+				runSafely(() =>
+					onFlush(buffered.length > 0 ? [...buffered, message] : [message]),
+				);
 			}
 			return;
 		}
 
 		if (isInCooldown(channelId) && !targeted) {
 			return;
+		}
+
+		if (bufferUnaddressed && !targeted) {
+			rememberRecent(message);
 		}
 
 		if (debounceMs <= 0) {
@@ -140,6 +203,9 @@ export function createChannelDebouncer(
 		enqueue,
 		markResponded: (channelId: string) => {
 			lastResponseTime.set(channelId, Date.now());
+			// Buffered chatter has now been answered (or folded into the reply);
+			// drop it so it never re-bundles into a later unrelated response.
+			recentUnaddressed.delete(channelId);
 		},
 		flushAll: () => {
 			for (const key of [...pending.keys()]) {
@@ -153,6 +219,7 @@ export function createChannelDebouncer(
 			}
 			pending.clear();
 			lastResponseTime.clear();
+			recentUnaddressed.clear();
 		},
 	};
 }
