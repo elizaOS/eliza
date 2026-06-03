@@ -1,5 +1,4 @@
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
-import { CloudVideoBackground } from "@elizaos/ui";
 import { lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
 import { useT } from "@/providers/I18nProvider";
@@ -12,10 +11,9 @@ function StewardLoginSectionFallback() {
 
 function LoginBackground({ children }: { children: React.ReactNode }) {
   return (
-    <CloudVideoBackground
-      scrim={0.82}
-      scrimColor="rgba(0,0,0,1)"
+    <div
       className="theme-cloud min-h-screen bg-black text-white"
+      style={{ background: "var(--background)" }}
     >
       <div className="flex min-h-screen w-full flex-col">
         <div className="relative z-10 flex flex-1 items-center justify-center p-4">
@@ -24,7 +22,7 @@ function LoginBackground({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </div>
-    </CloudVideoBackground>
+    </div>
   );
 }
 

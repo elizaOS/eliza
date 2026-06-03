@@ -7,11 +7,13 @@ import {
   compactActionsForIntent,
 } from "./prompt-compaction.ts";
 import {
+  ACTIVE_VIEW_ELEMENT_RENDER_CAP,
   applyActiveViewAwareness,
   clearActiveViewContext,
   getActiveViewContext,
   renderActiveViewContextBlock,
   setActiveViewContext,
+  setActiveViewElements,
   VIEW_ACTION_MAP,
   validateViewActionMap,
   viewScopedActionNames,
@@ -107,6 +109,73 @@ describe("view-action-affinity", () => {
     // The wallet view scopes actions → the block names them for the planner.
     expect(block).toContain("most relevant while on this view");
     expect(block).toContain("EVM_SWAP");
+  });
+});
+
+describe("active-view element snapshot", () => {
+  const VIEW = {
+    viewId: "wallet",
+    viewLabel: "Wallet",
+    viewType: "gui" as const,
+    viewPath: "/wallet",
+  };
+
+  it("only accepts elements for the active view (gates stale reports)", () => {
+    setActiveViewContext(VIEW);
+    // A background/stale view's report is dropped.
+    expect(
+      setActiveViewElements("some-other-view", [
+        { id: "x", role: "button", label: "X" },
+      ]),
+    ).toBe(false);
+    expect(getActiveViewContext()?.elements).toBeUndefined();
+    // The active view's report sticks.
+    expect(
+      setActiveViewElements("wallet", [
+        { id: "send", role: "button", label: "Send" },
+      ]),
+    ).toBe(true);
+    expect(getActiveViewContext()?.elements).toHaveLength(1);
+  });
+
+  it("no-ops when no view is active", () => {
+    expect(
+      setActiveViewElements("wallet", [
+        { id: "send", role: "button", label: "Send" },
+      ]),
+    ).toBe(false);
+  });
+
+  it("renders elements into the awareness block, focused-first, by id", () => {
+    const block = renderActiveViewContextBlock({
+      ...VIEW,
+      elements: [
+        { id: "amount", role: "text-input", label: "Amount", value: "5" },
+        { id: "send", role: "button", label: "Send", focused: true },
+      ],
+    });
+    expect(block).toContain("Addressable elements currently in this view");
+    // Focused element is listed first.
+    const sendIdx = block.indexOf("- send [button]");
+    const amountIdx = block.indexOf("- amount [text-input]");
+    expect(sendIdx).toBeGreaterThan(-1);
+    expect(amountIdx).toBeGreaterThan(sendIdx);
+    expect(block).toContain('"Send" (focused)');
+    expect(block).toContain('"Amount" = "5"');
+  });
+
+  it("caps the rendered element list and notes the remainder", () => {
+    const many = Array.from(
+      { length: ACTIVE_VIEW_ELEMENT_RENDER_CAP + 5 },
+      (_unused, i) => ({ id: `el-${i}`, role: "button", label: `E${i}` }),
+    );
+    const block = renderActiveViewContextBlock({ ...VIEW, elements: many });
+    expect(block).toContain("…and 5 more — call list-elements for the rest.");
+  });
+
+  it("omits the elements section when none are reported", () => {
+    const block = renderActiveViewContextBlock(VIEW);
+    expect(block).not.toContain("Addressable elements currently in this view");
   });
 });
 
