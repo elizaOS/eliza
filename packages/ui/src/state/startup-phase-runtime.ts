@@ -110,6 +110,24 @@ function isRuntimeReadyFromLaunchProgress(progress: LaunchSnapshot): boolean {
   );
 }
 
+async function hydrateReadyAgentStatus(
+  deps: StartingRuntimeDeps,
+): Promise<void> {
+  try {
+    const status = await client.getStatus();
+    if (!status) return;
+
+    deps.setAgentStatus(status);
+    if (status.pendingRestart) {
+      deps.setPendingRestart(true);
+      deps.setPendingRestartReasons(status.pendingRestartReasons ?? []);
+    }
+  } catch {
+    // Progress snapshots are already enough to leave startup; full status
+    // hydration is only needed when the status endpoint is ready too.
+  }
+}
+
 /**
  * Fills in the full agent status once launch/boot progress reports the runtime
  * ready. Progress snapshots are enough to LEAVE startup, but they carry no

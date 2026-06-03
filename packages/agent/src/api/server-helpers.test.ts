@@ -54,9 +54,10 @@ describe("blocked object key sanitization", () => {
 
           expect(hasBlockedObjectKeyDeep(payload)).toBe(true);
           const clean = cloneWithoutBlockedObjectKeys(payload);
+          const cleanValue = cloneWithoutBlockedObjectKeys(value);
           expect(hasBlockedObjectKeyDeep(clean)).toBe(false);
           expect(clean).toEqual({
-            value,
+            value: cleanValue,
             wrapper: [{}],
           });
         },

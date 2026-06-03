@@ -5,6 +5,11 @@ import {
   seedAppStorage,
 } from "./helpers";
 
+test.skip(
+  true,
+  "The legacy companion backdrop surface was removed with the assistant home screen.",
+);
+
 type UiTheme = "light" | "dark";
 
 type Viewport = {
