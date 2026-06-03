@@ -795,11 +795,11 @@ test("always-on chat mode starts passive browser STT and keeps capture open afte
       }),
     ]);
 
-  const expandConversation = page.getByRole("button", {
-    name: /expand conversation/i,
+  const showConversation = page.getByRole("button", {
+    name: /show conversation/i,
   });
-  await expect(expandConversation).toBeVisible();
-  await expandConversation.click();
+  await expect(showConversation).toBeVisible();
+  await showConversation.click();
   await expect
     .poll(async () => page.locator("body").innerText(), { timeout: 5_000 })
     .toContain("always on browser turn");

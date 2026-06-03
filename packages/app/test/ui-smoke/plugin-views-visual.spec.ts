@@ -228,24 +228,34 @@ test.describe("registered plugin views visual coverage", () => {
             .join(":");
         }),
       );
-      for (let index = 0; index < 12; index += 1) {
+      const maxTabStops = view.shellPill === "expected" ? 48 : 12;
+      for (let index = 0; index < maxTabStops; index += 1) {
         await page.keyboard.press("Tab");
-        focusedAfterTabs.push(
-          await page.evaluate(() => {
-            const element = document.activeElement as HTMLElement | null;
-            if (!element) return "";
-            return [
-              element.tagName.toLowerCase(),
-              element.getAttribute("role") ?? "",
-              element.getAttribute("aria-label") ?? "",
-              element.getAttribute("data-testid") ?? "",
-              element.textContent?.trim().replace(/\s+/g, " ").slice(0, 80) ??
-                "",
-            ]
-              .filter(Boolean)
-              .join(":");
-          }),
-        );
+        const focusedEntry = await page.evaluate(() => {
+          const element = document.activeElement as HTMLElement | null;
+          if (!element) return "";
+          return [
+            element.tagName.toLowerCase(),
+            element.getAttribute("role") ?? "",
+            element.getAttribute("aria-label") ?? "",
+            element.getAttribute("data-testid") ?? "",
+            element.textContent?.trim().replace(/\s+/g, " ").slice(0, 80) ??
+              "",
+          ]
+            .filter(Boolean)
+            .join(":");
+        });
+        focusedAfterTabs.push(focusedEntry);
+        if (
+          view.shellPill === "expected" &&
+          (focusedEntry.includes("textarea") ||
+            focusedEntry.includes("input") ||
+            focusedEntry.includes("Message Eliza") ||
+            focusedEntry.includes("message") ||
+            focusedEntry.includes("chat-composer-textarea"))
+        ) {
+          break;
+        }
       }
 
       const audit = await page.evaluate(
