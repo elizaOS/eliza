@@ -499,6 +499,11 @@ export class EscalationService {
     if (runtime) {
       await persistState(runtime, state);
     }
+
+    // Drop the resolved escalation from the in-memory map. getActiveEscalationSync
+    // ignores resolved entries and the resolved state is persisted to cache, so
+    // retaining it only grows the map one entry per escalation ever created.
+    activeEscalations.delete(escalationId);
   }
 
   static getActiveEscalationSync(): EscalationState | null {
