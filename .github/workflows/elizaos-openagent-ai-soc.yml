@@ -154,6 +154,7 @@ jobs:
             ${{ inputs.aosp-root }}/out/target/product/eliza_ai_soc/vendor.img
             ${{ inputs.aosp-root }}/out/target/product/eliza_ai_soc/installed-files-vendor.txt
           if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload chip evidence logs
         if: always()
@@ -162,3 +163,4 @@ jobs:
           name: openagent-e1-chip-evidence
           path: packages/chip/docs/evidence/android/*.log
           if-no-files-found: warn
+          retention-days: 7

@@ -121,7 +121,10 @@ export function shouldExpandScenarioEdges(): boolean {
   return process.env.SCENARIO_EXPAND_EDGE_CASES === "1";
 }
 
-function withEdgeTurnText(turn: ScenarioDefinition["turns"][number], suffix: string) {
+function withEdgeTurnText(
+  turn: ScenarioDefinition["turns"][number],
+  suffix: string,
+) {
   if (!("text" in turn) || typeof turn.text !== "string" || !turn.text.trim()) {
     return turn;
   }
@@ -179,29 +182,68 @@ export function scenarioFileGlobAlternatives(normalizedGlob: string): string[] {
   return [...new Set(alternatives)];
 }
 
+function globToRegExpSource(glob: string): string {
+  let source = "^";
+  for (let i = 0; i < glob.length; ) {
+    const char = glob[i];
+    if (char === "*") {
+      if (glob[i + 1] === "*") {
+        if (glob[i + 2] === "/") {
+          source += "(?:.*/)?";
+          i += 3;
+        } else {
+          source += ".*";
+          i += 2;
+        }
+      } else {
+        source += "[^/]*";
+        i += 1;
+      }
+      continue;
+    }
+    if (char === "?") {
+      source += "[^/]";
+      i += 1;
+      continue;
+    }
+    source += char.replace(/[\\^$+?.()|[\]{}]/g, "\\$&");
+    i += 1;
+  }
+  return `${source}$`;
+}
+
+function matchesPosixGlob(value: string, glob: string): boolean {
+  return new RegExp(globToRegExpSource(glob)).test(value);
+}
+
+export function scenarioFileMatchesGlob(
+  file: string,
+  fileGlob: string,
+  cwd = process.cwd(),
+): boolean {
+  const resolvedFile = path.isAbsolute(file)
+    ? path.resolve(file)
+    : path.resolve(cwd, file);
+  const absoluteFile = toPosixPath(resolvedFile);
+  const cwdRelativeFile = toPosixPath(path.relative(cwd, resolvedFile));
+  const normalizedGlob = toPosixPath(
+    path.isAbsolute(fileGlob) ? path.resolve(fileGlob) : fileGlob,
+  );
+  const target = path.posix.isAbsolute(normalizedGlob)
+    ? absoluteFile
+    : cwdRelativeFile;
+
+  return scenarioFileGlobAlternatives(normalizedGlob).some((candidateGlob) =>
+    matchesPosixGlob(target, candidateGlob),
+  );
+}
+
 function matchesScenarioFileGlobs(
   file: string,
   fileGlobs: readonly string[],
 ): boolean {
-  const resolvedFile = path.resolve(file);
-  const absoluteFile = toPosixPath(resolvedFile);
-  const cwdRelativeFile = toPosixPath(
-    path.relative(process.cwd(), resolvedFile),
-  );
-
   return fileGlobs.some((fileGlob) => {
-    const normalizedGlob = toPosixPath(
-      path.isAbsolute(fileGlob) ? path.resolve(fileGlob) : fileGlob,
-    );
-    const candidateGlobs = scenarioFileGlobAlternatives(normalizedGlob);
-    if (path.posix.isAbsolute(normalizedGlob)) {
-      return candidateGlobs.some((candidateGlob) =>
-        path.posix.matchesGlob(absoluteFile, candidateGlob),
-      );
-    }
-    return candidateGlobs.some((candidateGlob) =>
-      path.posix.matchesGlob(cwdRelativeFile, candidateGlob),
-    );
+    return scenarioFileMatchesGlob(file, fileGlob);
   });
 }
 
@@ -363,7 +405,9 @@ export async function loadAllScenarios(
       }
     }
     const result = await loadScenarioFile(file);
-    const expanded = includeExpanded ? expandScenarioDefinition(file, result.scenario) : [];
+    const expanded = includeExpanded
+      ? expandScenarioDefinition(file, result.scenario)
+      : [];
     const candidates = [result, ...expanded];
     if (result.scenario.status === "pending" && !includePending) continue;
     for (const candidate of candidates) {
@@ -455,7 +499,9 @@ export async function validateScenarioCorpus(
     expansionMatches,
   };
   if (!valid) {
-    throw new Error(`[scenario-loader] invalid expanded corpus: ${JSON.stringify(result)}`);
+    throw new Error(
+      `[scenario-loader] invalid expanded corpus: ${JSON.stringify(result)}`,
+    );
   }
   return result;
 }

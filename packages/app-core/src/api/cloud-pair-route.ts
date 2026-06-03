@@ -11,8 +11,10 @@
  *   3. Cloud-api validates + consumes the token, returns
  *      `{ apiKey: <ELIZA_API_TOKEN> }`.
  *   4. This handler serves an HTML page with an inline script that stores the
- *      apiKey in sessionStorage, pins it on the current page globals, then
- *      redirects to `/`. The SPA consumes that same-tab session handoff on boot.
+ *      apiKey in sessionStorage and pins it on the page globals
+ *      `window.__ELIZAOS_API_TOKEN__` / `window.__ELIZA_API_TOKEN__` (the
+ *      globals the SPA's ElizaClient reads on hydrate), then redirects to `/`.
+ *      The SPA consumes that same-tab session handoff on boot.
  *
  * Why server-side relay: the agent web UI runs on the docker node's public
  * IP, which is not in cloud-api's CORS allowlist. A direct browser fetch to

@@ -2602,6 +2602,13 @@
         "@types/node": "^24.0.0",
       },
     },
+    "packages/registry": {
+      "name": "@elizaos/registry",
+      "version": "2.0.0-beta.0",
+      "devDependencies": {
+        "@types/node": "^24.0.0",
+      },
+    },
     "packages/robot": {
       "name": "@elizaos/robot",
       "version": "2.0.3-beta.1",

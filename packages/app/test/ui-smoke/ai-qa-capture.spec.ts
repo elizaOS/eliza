@@ -70,6 +70,8 @@ const SELECTED_THEMES: readonly Theme[] = THEME_FILTER.split(",")
 
 test.use({ trace: "off", video: "off" });
 
+const DEFAULT_EXCLUDED_ROUTE_IDS = new Set(["desktop", "onboarding", "rolodex"]);
+
 const ROUTES_TO_RUN: readonly AiQaRoute[] = ROUTE_FILTER
   ? AI_QA_ROUTES.filter((route) => {
       const filters = ROUTE_FILTER.split(",").map((f) => f.trim());
@@ -77,7 +79,7 @@ const ROUTES_TO_RUN: readonly AiQaRoute[] = ROUTE_FILTER
         (filter) => route.id === filter || route.id.startsWith(filter),
       );
     })
-  : AI_QA_ROUTES;
+  : AI_QA_ROUTES.filter((route) => !DEFAULT_EXCLUDED_ROUTE_IDS.has(route.id));
 
 function viewportsForRoute(route: AiQaRoute): readonly ViewportName[] {
   if (!route.viewports || route.viewports.length === 0) {

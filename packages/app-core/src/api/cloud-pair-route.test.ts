@@ -191,7 +191,7 @@ describe("handleCloudPairRoute", () => {
     expect(headers.origin).toBe("https://203.0.113.10:21363");
   });
 
-  it("renders happy-path HTML with the apiKey stored for the SPA redirect", async () => {
+  it("renders happy-path HTML with the apiKey stored in sessionStorage and pinned on window globals", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({ apiKey: "agent_secret_value", agentName: "Nova" }),

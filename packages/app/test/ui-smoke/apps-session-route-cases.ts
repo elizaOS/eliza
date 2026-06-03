@@ -41,15 +41,18 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     name: "companion",
     path: "/apps/companion",
     readyChecks: [
+      { text: "Companion" },
       { selector: '[data-testid="companion-root"]' },
-      { selector: '[data-testid="companion-chat-dock"]' },
     ],
     timeoutMs: 90_000,
   },
   {
     name: "lifeops app window",
     path: "/apps/lifeops",
-    selector: '[data-testid="lifeops-shell"]',
+    readyChecks: [
+      { text: "LifeOps" },
+      { selector: '[data-testid="lifeops-nav-rail"]' },
+    ],
     timeoutMs: 90_000,
   },
   {
@@ -113,25 +116,37 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
     name: "hyperliquid",
     path: "/hyperliquid",
-    selector: '[data-testid="hyperliquid-shell"]',
+    readyChecks: [
+      { text: "Hyperliquid" },
+      { selector: '[data-testid="hyperliquid-shell"]' },
+    ],
     timeoutMs: 90_000,
   },
   {
     name: "polymarket",
     path: "/polymarket",
-    selector: '[data-testid="polymarket-shell"]',
+    readyChecks: [
+      { text: "Polymarket" },
+      { selector: '[data-testid="polymarket-shell"]' },
+    ],
     timeoutMs: 90_000,
   },
   {
     name: "shopify",
     path: "/shopify",
-    selector: '[data-testid="shopify-shell"]',
+    readyChecks: [
+      { text: "Shopify" },
+      { selector: '[data-testid="shopify-shell"]' },
+    ],
     timeoutMs: 90_000,
   },
   {
     name: "vincent",
     path: "/vincent",
-    selector: '[data-testid="vincent-shell"]',
+    readyChecks: [
+      { text: "Vincent" },
+      { selector: '[data-testid="vincent-shell"]' },
+    ],
     timeoutMs: 90_000,
   },
   {

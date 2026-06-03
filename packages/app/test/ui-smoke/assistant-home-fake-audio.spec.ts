@@ -14,6 +14,8 @@ const CHAT_COMPOSER_SELECTOR =
 const CHAT_SEND_SELECTOR =
   '[data-testid="chat-composer-action"], button[aria-label="send"], button[aria-label="Send"], button[aria-label="Send message"]';
 
+test.skip(true, "The legacy assistant home surface was removed; / now lands on chat.");
+
 function pcm16WavTone(): Buffer {
   const sampleRate = 48_000;
   const seconds = 1.2;

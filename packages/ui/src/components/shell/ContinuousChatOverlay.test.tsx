@@ -137,6 +137,39 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getByLabelText("show conversation")).toBeTruthy();
   });
 
+  it("shows the attach (+) control", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    expect(screen.getByLabelText("attach image")).toBeTruthy();
+  });
+
+  it("attaches an image and enables an image-only send", async () => {
+    const controller = makeController({ messages: [] });
+    render(<ContinuousChatOverlay controller={controller} />);
+    // Empty draft + no image → mic, no send.
+    expect(screen.getByLabelText("talk")).toBeTruthy();
+    expect(screen.queryByLabelText("send")).toBeNull();
+
+    const fileInput = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["x"], "pic.png", { type: "image/png" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    // Once the read resolves, a thumbnail + send control appear.
+    await screen.findByLabelText("send");
+    expect(screen.getByLabelText(/remove pic\.png/)).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText("send"));
+    expect(controller.send).toHaveBeenCalledWith(
+      "",
+      expect.objectContaining({
+        images: expect.arrayContaining([
+          expect.objectContaining({ name: "pic.png", mimeType: "image/png" }),
+        ]),
+      }),
+    );
+  });
+
   it("toggles recording when the mic is pressed", () => {
     const controller = makeController();
     render(<ContinuousChatOverlay controller={controller} />);

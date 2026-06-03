@@ -53,3 +53,5 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: packages/os/usb-installer/build/
+          if-no-files-found: error
+          retention-days: 30

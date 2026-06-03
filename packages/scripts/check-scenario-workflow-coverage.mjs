@@ -40,6 +40,34 @@ const KEYWORD_GENERATOR = path.join(
   "scripts",
   "generate-keywords.mjs",
 );
+const SCENARIO_LIST_ENV_BLOCKLIST = [
+  "ELIZA_LIVE_SCENARIO_TEST",
+  "ELIZA_LIVE_TEST",
+  "ELIZA_SCENARIO_LLM_PROXY_STRICT",
+  "ELIZA_SCENARIO_USE_LLM_PROXY",
+  "LIFEOPS_LIVE_JUDGE_MIN_SCORE",
+  "SCENARIO_EXPAND_EDGE_CASES",
+  "SCENARIO_INCLUDE_PENDING",
+  "SCENARIO_LLM_PROXY_STRICT",
+  "SCENARIO_USE_LLM_PROXY",
+  "SKIP_REASON",
+  "TEST_LANE",
+];
+
+function scenarioListEnv(extraEnv = {}) {
+  const env = { ...process.env };
+  for (const key of SCENARIO_LIST_ENV_BLOCKLIST) {
+    delete env[key];
+  }
+  for (const [key, value] of Object.entries(extraEnv)) {
+    if (value === undefined || value === null) {
+      delete env[key];
+    } else {
+      env[key] = String(value);
+    }
+  }
+  return env;
+}
 
 function ensureGeneratedKeywordData() {
   if (existsSync(CORE_KEYWORD_DATA)) {
@@ -85,7 +113,7 @@ function runScenarioList(root, globs = [], extraEnv = {}) {
     [SCENARIO_CLI, "list", root, ...globs],
     {
       cwd: REPO_ROOT,
-      env: { ...process.env, ...extraEnv },
+      env: scenarioListEnv(extraEnv),
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -111,7 +139,7 @@ function workflowScenarioGlobs() {
 }
 
 function writeList(reportDir, fileName, rows) {
-  writeFileSync(path.join(reportDir, fileName), rows.join("\n") + "\n", "utf8");
+  writeFileSync(path.join(reportDir, fileName), `${rows.join("\n")}\n`, "utf8");
 }
 
 function scopedScenarioRows(scope, ids) {
@@ -454,18 +482,13 @@ mkdirSync(options.reportDir, { recursive: true });
   ].sort();
 
   const covered = new Set();
-  for (const glob of workflowScenarioGlobs()) {
-    for (const id of runScenarioList(DEFAULT_SCENARIO_ROOT, [glob])) {
-      covered.add(id);
-    }
-  }
-  for (const glob of [
+  const coverageGlobs = [
+    ...workflowScenarioGlobs(),
     "packages/test/scenarios/executive-assistant/*.scenario.ts",
     "packages/test/scenarios/connector-certification/*.scenario.ts",
-  ]) {
-    for (const id of runScenarioList(DEFAULT_SCENARIO_ROOT, [glob])) {
-      covered.add(id);
-    }
+  ];
+  for (const id of runScenarioList(DEFAULT_SCENARIO_ROOT, coverageGlobs)) {
+    covered.add(id);
   }
 
   const defaultSet = new Set(defaultIds);
@@ -491,7 +514,7 @@ mkdirSync(options.reportDir, { recursive: true });
   writeList(options.reportDir, "all-scenarios.txt", allScenarioRows);
   writeFileSync(
     path.join(options.reportDir, "workflow-coverage.json"),
-    JSON.stringify(summary, null, 2) + "\n",
+    `${JSON.stringify(summary, null, 2)}\n`,
     "utf8",
   );
   const runArtifacts = existingScenarioRunArtifacts(options.reportDir);
@@ -522,7 +545,7 @@ mkdirSync(options.reportDir, { recursive: true });
   );
 
   if (options.json) {
-    process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
+    process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
   } else {
     process.stdout.write(
       `scenario workflow coverage ${summary.coveredDefaultCount}/${summary.defaultScenarioCount}; missing ${summary.missingDefaultIds.length}\n`,
