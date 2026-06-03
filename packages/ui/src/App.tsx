@@ -57,7 +57,6 @@ import {
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
 } from "./events";
-import { CompactOnboarding } from "./first-run/CompactOnboarding";
 import { FirstRunScreen } from "./first-run/FirstRunScreen";
 import { OnboardingVoicePill } from "./first-run/OnboardingVoicePill";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
@@ -259,12 +258,7 @@ function useIsPopout(): boolean {
  * read from the URL (`?shellMode=` / `?shell-mode=`) or the
  * `ELIZAOS_SHELL_MODE` global the native shell may inject. Unset = full app.
  */
-type ShellMode =
-  | "chat-overlay"
-  | "onboarding-overlay"
-  | "launcher"
-  | "kiosk"
-  | "full";
+type ShellMode = "chat-overlay" | "launcher" | "kiosk" | "full";
 
 function readShellMode(): ShellMode {
   if (typeof window === "undefined") return "full";
@@ -277,7 +271,6 @@ function readShellMode(): ShellMode {
     (window as unknown as { ELIZAOS_SHELL_MODE?: string }).ELIZAOS_SHELL_MODE ??
     "";
   if (raw === "chat-overlay") return "chat-overlay";
-  if (raw === "onboarding-overlay") return "onboarding-overlay";
   if (raw === "launcher") return "launcher";
   if (raw === "kiosk") return "kiosk";
   return "full";
@@ -305,6 +298,7 @@ function ChatOverlayShell() {
 }
 
 /**
+<<<<<<< packages/ui/src/App.tsx
  * First-run onboarding overlay surface. Renders the floating
  * CompactOnboarding card (top-right) and the OnboardingVoicePill
  * (bottom-center) over a transparent, click-through background — no app
@@ -325,6 +319,8 @@ function OnboardingOverlayShell() {
 }
 
 /**
+=======
+>>>>>>> /tmp/claude-501/tmpdxwxeg4t
  * Locked appliance shell for the Linux OS kiosk window. The Electrobun bundle
  * runs as the entire GUI: a single fullscreen, frameless, non-closable
  * toplevel. This surface IS the view manager — agent-spawned dynamic views
@@ -484,6 +480,22 @@ function visibleDynamicPage(
   developerModeEnabled: boolean,
 ): page is ResolvedDynamicPage {
   return Boolean(page && (developerModeEnabled || !page.developerOnly));
+}
+
+/**
+ * Whether the active app-shell page wants to render edge-to-edge with no host
+ * top-bar/chrome. Looks the active tab up in the runtime page registry and
+ * reads its `fullBleed` flag — backward-compatible: pages that don't set it
+ * keep the normal chrome.
+ */
+function useTabIsFullBleed(tab: string): boolean {
+  return useMemo(
+    () =>
+      listAppShellPages().some(
+        (entry) => entry.id === tab && entry.fullBleed === true,
+      ),
+    [tab],
+  );
 }
 
 function trimmedNavigationPath(navigationPath: string): string {
@@ -839,6 +851,7 @@ type ShellContentProps = {
   isChat: boolean;
   isCompanionTab: boolean;
   isDesktopWorkspacePage: boolean;
+  isFullBleed: boolean;
   isHeartbeats: boolean;
   isSettingsPage: boolean;
   isWallets: boolean;
@@ -964,9 +977,7 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
     : null;
   return (
     <div key={`tab-shell-${props.tab}`} className={APP_SHELL_CLASS}>
-      {props.tab !== "orchestrator" ? (
-        <Header pageRightExtras={headerActions} />
-      ) : null}
+      <Header pageRightExtras={headerActions} />
       {props.desktopTabBar}
       <main className={routedShellMainClass(props.tab)}>
         <ViewRouter
@@ -1032,7 +1043,20 @@ function DesktopWorkspaceShellContent(props: ShellContentProps): ReactNode {
   );
 }
 
+function FullBleedShellContent(props: ShellContentProps): ReactNode {
+  // Edge-to-edge: no Header, no desktop tab bar, no surrounding padding — the
+  // page owns its full window (e.g. the odysseus orchestrator).
+  return (
+    <div key={`fullbleed-shell-${props.tab}`} className={APP_SHELL_CLASS}>
+      <main className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
+        <ViewRouter />
+      </main>
+    </div>
+  );
+}
+
 function ShellContent(props: ShellContentProps): ReactNode {
+  if (props.isFullBleed) return <FullBleedShellContent {...props} />;
   if (props.isChat) return <ChatRouteShellContent {...props} />;
   const companionContent = CompanionShellContent(props);
   if (companionContent) return companionContent;
@@ -1263,6 +1287,7 @@ export function App() {
   const isSettingsPage = tab === "settings" || tab === "voice";
   const isAppsToolPage = isAppsToolTab(tab);
   const isDesktopWorkspacePage = tab === "desktop";
+  const isFullBleed = useTabIsFullBleed(tab);
 
   // Keep hook order stable across first-run/auth state transitions.
   // Otherwise React can throw when first-run setup completes and the main shell mounts.
@@ -1445,6 +1470,7 @@ export function App() {
         isChat={isChat}
         isCompanionTab={isCompanionTab}
         isDesktopWorkspacePage={isDesktopWorkspacePage}
+        isFullBleed={isFullBleed}
         isHeartbeats={isHeartbeats}
         isSettingsPage={isSettingsPage}
         isWallets={isWallets}
@@ -1470,6 +1496,7 @@ export function App() {
       isWallets,
       isAppsToolPage,
       isDesktopWorkspacePage,
+      isFullBleed,
       characterHeaderActions,
       handleDeferredTaskOpen,
       customActionsPanelOpen,
@@ -1497,20 +1524,6 @@ export function App() {
       <BugReportProvider value={bugReport}>
         <ShellControllerProvider>
           <ChatOverlayShell />
-        </ShellControllerProvider>
-        <BugReportModal />
-      </BugReportProvider>
-    );
-  }
-
-  // First-run onboarding overlay window — render JUST the floating onboarding
-  // card over a transparent, click-through background, no app chrome or
-  // startup gate.
-  if (shellMode === "onboarding-overlay") {
-    return (
-      <BugReportProvider value={bugReport}>
-        <ShellControllerProvider>
-          <OnboardingOverlayShell />
         </ShellControllerProvider>
         <BugReportModal />
       </BugReportProvider>

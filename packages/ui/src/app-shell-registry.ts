@@ -22,6 +22,12 @@ export interface AppShellPageRegistration {
   developerOnly?: boolean;
   /** Optional named group the tab belongs to. */
   group?: string;
+  /**
+   * When true, the shell mounts this page edge-to-edge with no host
+   * top-bar/chrome — for views that own their full window, e.g. the odysseus
+   * orchestrator.
+   */
+  fullBleed?: boolean;
   /** The React component the shell mounts when this page is active. */
   Component: ComponentType<unknown>;
 }
