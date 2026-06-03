@@ -7,12 +7,12 @@ import {
   type Memory,
   requireConfirmation,
 } from "@elizaos/core";
-import { LifeOpsService } from "../lifeops/service.js";
 import {
   readTwilioCredentialsFromEnv,
   sendTwilioVoiceCall,
   type TwilioDeliveryResult,
-} from "@elizaos/plugin-phone";
+} from "@elizaos/plugin-phone/twilio";
+import { LifeOpsService } from "../lifeops/service.js";
 import {
   resolveActionArgs,
   type SubactionsMap,
@@ -631,7 +631,10 @@ async function dialOwner(
           ? `${ownerPrompt} Reply yes to confirm or no to cancel.`
           : "Voice call cancelled.",
       success: false,
-      values: { success: false, requiresConfirmation: ownerDecision.status === "pending" },
+      values: {
+        success: false,
+        requiresConfirmation: ownerDecision.status === "pending",
+      },
       data: {
         actionName: ACTION_NAME,
         action: "dial",

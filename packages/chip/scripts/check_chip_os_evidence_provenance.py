@@ -204,16 +204,20 @@ def provenance_commands(category: str, path: Path) -> list[str]:
     if category == "host_local_path":
         commands.append(f"python3 packages/chip/scripts/provenance_sanitize.py {path_text}")
     if category in {"missing_timestamp", "missing_claim_boundary"}:
-        commands.append(
-            f"python3 packages/chip/scripts/normalize_report_provenance.py {path_text}"
-        )
+        commands.append(f"python3 packages/chip/scripts/normalize_report_provenance.py {path_text}")
 
     if "peripherals" in path_parts or path_text.endswith("_sim.log"):
-        commands.append("python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py")
+        commands.append(
+            "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py"
+        )
     elif "eliza_launcher_runtime" in path.name or "android_launcher_runtime" in path_text:
-        commands.append("python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py")
+        commands.append(
+            "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py"
+        )
     elif "android_system_bridge" in path_text:
-        commands.append("python3 packages/chip/scripts/android/capture_system_bridge_runtime_evidence.py")
+        commands.append(
+            "python3 packages/chip/scripts/android/capture_system_bridge_runtime_evidence.py"
+        )
     elif "android" in path_parts:
         commands.append(
             "AOSP_DIR=/path/to/aosp packages/chip/scripts/boot_android_simulator.sh "
@@ -684,9 +688,13 @@ def build_report(roots: list[str]) -> dict[str, Any]:
     by_root = scan_root_summary(findings, roots)
     command_batches = sorted(
         {
-        tuple(str(command) for command in item.get("next_commands", []) if isinstance(command, str))
-        for item in findings
-        if item.get("next_commands")
+            tuple(
+                str(command)
+                for command in item.get("next_commands", [])
+                if isinstance(command, str)
+            )
+            for item in findings
+            if item.get("next_commands")
         }
     )
     return {

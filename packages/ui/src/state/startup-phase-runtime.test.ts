@@ -33,6 +33,13 @@ describe("runStartingRuntime", () => {
     vi.clearAllMocks();
     clientMock.getLaunchProgress.mockResolvedValue(null);
     clientMock.getBootProgress.mockResolvedValue(null);
+    clientMock.getStatus.mockResolvedValue({
+      state: "running",
+      agentName: "Playwright Smoke",
+      model: "ui-smoke",
+      uptime: 1_000,
+      startedAt: Date.now() - 1_000,
+    });
   });
 
   it("uses desktop launch progress before boot progress", async () => {
@@ -94,7 +101,7 @@ describe("runStartingRuntime", () => {
     );
 
     expect(clientMock.getBootProgress).not.toHaveBeenCalled();
-    expect(clientMock.getStatus).not.toHaveBeenCalled();
+    expect(clientMock.getStatus).toHaveBeenCalled();
     expect(deps.setAgentStatus).toHaveBeenCalledWith(
       expect.objectContaining({
         state: "running",
@@ -103,11 +110,18 @@ describe("runStartingRuntime", () => {
         startup: expect.objectContaining({ phase: "ready", attempt: 0 }),
       }),
     );
+    expect(deps.setAgentStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: "running",
+        agentName: "Playwright Smoke",
+        model: "ui-smoke",
+      }),
+    );
     expect(deps.setConnected).toHaveBeenCalledWith(true);
     expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
   });
 
-  it("uses desktop boot progress to leave the startup shell without /api/status", async () => {
+  it("hydrates full status after desktop boot progress leaves the startup shell", async () => {
     clientMock.getBootProgress.mockResolvedValue({
       state: "running",
       phase: "running",
@@ -133,13 +147,59 @@ describe("runStartingRuntime", () => {
       { current: null },
     );
 
-    expect(clientMock.getStatus).not.toHaveBeenCalled();
+    expect(clientMock.getStatus).toHaveBeenCalled();
     expect(deps.setAgentStatus).toHaveBeenCalledWith(
       expect.objectContaining({
         state: "running",
         agentName: "Eliza",
         port: 31337,
         startup: expect.objectContaining({ phase: "running", attempt: 0 }),
+      }),
+    );
+    expect(deps.setAgentStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: "running",
+        agentName: "Playwright Smoke",
+        model: "ui-smoke",
+      }),
+    );
+    expect(deps.setConnected).toHaveBeenCalledWith(true);
+    expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
+  });
+
+  it("still leaves startup when ready progress cannot hydrate full status", async () => {
+    clientMock.getStatus.mockRejectedValue({ status: 404 });
+    clientMock.getBootProgress.mockResolvedValue({
+      state: "running",
+      phase: "running",
+      lastError: null,
+      pluginsLoaded: 22,
+      pluginsFailed: 0,
+      database: "ok",
+      agentName: "Eliza",
+      port: 31337,
+      startedAt: Date.now() - 1_000,
+      updatedAt: new Date().toISOString(),
+    });
+
+    const dispatch = vi.fn();
+    const deps = createDeps();
+
+    await runStartingRuntime(
+      deps,
+      dispatch,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clientMock.getStatus).toHaveBeenCalled();
+    expect(deps.setAgentStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: "running",
+        agentName: "Eliza",
+        model: undefined,
       }),
     );
     expect(deps.setConnected).toHaveBeenCalledWith(true);

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   androidUsageRowsFromSignals,
+  mobileScreenTimeDataSourceFromSignals,
   mobileSignalPermissionTargetForAction,
   mobileSignalSetupActionBadge,
   mobileSignalSetupPrimaryActionLabel,
-  mobileScreenTimeDataSourceFromSignals,
   type ScreenTimeMobileSignal,
 } from "./mobile-signals.js";
 
@@ -194,10 +194,8 @@ describe("screen-time mobile signals", () => {
   });
 
   it("owns mobile health/screen-time permission setup presentation policy", () => {
-    const t = (
-      _key: string,
-      options?: { defaultValue?: string },
-    ): string => options?.defaultValue ?? "";
+    const t = (_key: string, options?: { defaultValue?: string }): string =>
+      options?.defaultValue ?? "";
 
     expect(
       mobileSignalSetupActionBadge(

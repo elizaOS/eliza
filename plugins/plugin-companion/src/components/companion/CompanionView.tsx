@@ -2,15 +2,16 @@
 // browser entry, so the previous lazy() was eagerly merged back into the
 // main chunk. Drop the wrapper to silence the dynamic↔static collision
 // warning and remove the unnecessary Suspense boundary overhead.
+
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { CharacterEditor } from "@elizaos/ui/components";
 import {
-  CharacterEditor,
   dispatchAppEmoteEvent,
   dispatchAppEvent,
   STOP_EMOTE_EVENT,
-  useApp,
-  useRenderGuard,
-} from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
+} from "@elizaos/ui/events";
+import { useRenderGuard } from "@elizaos/ui/hooks";
+import { useApp } from "@elizaos/ui/state";
 import {
   type CSSProperties,
   memo,

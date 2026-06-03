@@ -78,7 +78,7 @@ export function getAvailableTools(): MCPTool[] {
   return [
     {
       name: "get_markets",
-      description: "Get all active prediction markets",
+      description: "Get active prediction and/or perpetual markets",
       inputSchema: {
         type: "object",
         properties: {

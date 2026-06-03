@@ -1,21 +1,21 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import type { Trajectory } from "@elizaos/agent";
 import {
-  runActionBenchmark,
   type ActionBenchmarkRunOptions,
   type ActionBenchmarkRunResult,
+  runActionBenchmark,
 } from "./action-benchmark-runner.js";
 import {
-  writeBenchmarkMatrixArtifactFromArtifacts,
   type BenchmarkMatrixArtifactResult,
   type BenchmarkMatrixArtifactSource,
+  writeBenchmarkMatrixArtifactFromArtifacts,
 } from "./benchmark-matrix-artifact.js";
 import {
-  runBenchmarkVsCerebras,
   type BenchmarkVsCerebrasRunOptions,
   type BenchmarkVsCerebrasRunResult,
+  runBenchmarkVsCerebras,
 } from "./benchmark-vs-cerebras-runner.js";
 import {
   canonicalElizaOneTierSort,
@@ -25,25 +25,25 @@ import {
   parseElizaOneBenchmarkTiers,
 } from "./eliza1-benchmark-recipe.js";
 import {
-  EVAL_COMPARISON_ARTIFACT_SCHEMA,
-  runLocalEvalComparison,
-  type EvalComparisonRunOptions,
-  type EvalComparisonRunResult,
-} from "./eval-comparison-artifact.js";
-import {
-  stageEliza1Bundle,
   type StageEliza1BundleOptions,
   type StageEliza1BundleResult,
+  stageEliza1Bundle,
 } from "./eliza1-bundle-stager.js";
 import {
-  runFeedGeneration,
+  EVAL_COMPARISON_ARTIFACT_SCHEMA,
+  type EvalComparisonRunOptions,
+  type EvalComparisonRunResult,
+  runLocalEvalComparison,
+} from "./eval-comparison-artifact.js";
+import {
   type FeedGenerationRunOptions,
   type FeedGenerationRunResult,
+  runFeedGeneration,
 } from "./feed-generation-runner.js";
 import {
-  ingestHuggingFaceDataset,
   type HuggingFaceDatasetIngestResult,
   type IngestHuggingFaceDatasetOptions,
+  ingestHuggingFaceDataset,
 } from "./huggingface-dataset-ingest.js";
 import {
   runScenarios,
@@ -51,30 +51,31 @@ import {
   type ScenarioRunResult,
 } from "./scenario-runner.js";
 import {
-  collectTestTrajectories,
   type CollectTestTrajectoriesOptions,
+  collectTestTrajectories,
   type TestTrajectoryCollectionResult,
 } from "./test-trajectory-collector.js";
 import {
-  buildTrainingAnalysisIndex,
   type BuildTrainingAnalysisIndexOptions,
+  buildTrainingAnalysisIndex,
   type TrainingAnalysisIndex,
 } from "./training-analysis-index.js";
+import { trainingStateRoot } from "./training-config.js";
 import {
-  buildTrajectoryExportBundle,
+  type TrainingReadinessReport,
+  writeTrainingReadinessReport,
+} from "./training-readiness-report.js";
+import {
   type BuildTrajectoryExportBundleOptions,
+  buildTrajectoryExportBundle,
   type TrajectoryExportBundle,
 } from "./trajectory-export-bundle.js";
-import {
-  writeTrainingReadinessReport,
-  type TrainingReadinessReport,
-} from "./training-readiness-report.js";
-import { trainingStateRoot } from "./training-config.js";
 import { discoverWorkspaceRoot } from "./workspace-runtime.js";
 
 export const TRAINING_COLLECTION_RUN_SCHEMA = "eliza_training_collection_run";
 export const TRAINING_COLLECTION_RUN_VERSION = 1;
-export const TRAINING_COLLECTION_INDEX_SCHEMA = "eliza_training_collection_index";
+export const TRAINING_COLLECTION_INDEX_SCHEMA =
+  "eliza_training_collection_index";
 export const TRAINING_COLLECTION_INDEX_VERSION = 1;
 
 export interface TrainingCollectionRunOptions {
@@ -272,9 +273,7 @@ function actionBenchmarkPairsOption(
   value: TrainingCollectionRunOptions["actionBenchmarkPairs"],
 ): ActionBenchmarkPairOptions[] {
   if (typeof value === "string") {
-    return elizaOneActionBenchmarkPairs(
-      parseElizaOneBenchmarkTiers(value, []),
-    );
+    return elizaOneActionBenchmarkPairs(parseElizaOneBenchmarkTiers(value, []));
   }
   if (value && value.length > 0) {
     return value;
@@ -393,7 +392,9 @@ async function runActionBenchmarkCollectionStep(input: {
   options: TrainingCollectionRunOptions;
 }): Promise<ActionBenchmarkRunResult | ActionBenchmarkPairRunResult> {
   const { outputDir, workspaceRoot, options } = input;
-  const explicitPairs = actionBenchmarkPairsOption(options.actionBenchmarkPairs);
+  const explicitPairs = actionBenchmarkPairsOption(
+    options.actionBenchmarkPairs,
+  );
   if (explicitPairs.length > 0) {
     const pairs: ActionBenchmarkPairRunRecord[] = [];
     for (const [index, pair] of explicitPairs.entries()) {
@@ -778,6 +779,7 @@ export interface TrainingCollectionEvidenceSummary {
       trainedScore: number | null;
       improvementPercent: number | null;
       referenceScore: number | null;
+      trainedVsReferencePercent: number | null;
       modelBacked: boolean;
     }>;
     baselineProgress: {
@@ -876,24 +878,29 @@ function boolWithDefault(
   return typeof value === "boolean" ? value : fallback;
 }
 
-function liveActionBenchmarkRequested(options: TrainingCollectionRunOptions): boolean {
+function liveActionBenchmarkRequested(
+  options: TrainingCollectionRunOptions,
+): boolean {
   return (
     boolWithDefault(options.includeActionBenchmark, true) &&
     options.actionBenchmark?.dryRun === false
   );
 }
 
-function liveEvalComparisonRequested(options: TrainingCollectionRunOptions): boolean {
+function liveEvalComparisonRequested(
+  options: TrainingCollectionRunOptions,
+): boolean {
   return (
     boolWithDefault(options.includeEvalComparison, false) &&
     options.evalComparison?.dryRun === false
   );
 }
 
-function liveFeedGenerationRequested(options: TrainingCollectionRunOptions): boolean {
+function liveFeedGenerationRequested(
+  options: TrainingCollectionRunOptions,
+): boolean {
   return (
-    boolWithDefault(options.includeFeed, true) &&
-    options.feed?.dryRun === false
+    boolWithDefault(options.includeFeed, true) && options.feed?.dryRun === false
   );
 }
 
@@ -1158,6 +1165,7 @@ async function writeEliza1ModelRegistryArtifacts(input: {
   for (const tier of ELIZA_ONE_BENCHMARK_TIERS) {
     for (const variant of ["base", "trained"] as const) {
       const modelId = elizaOneBenchmarkModelId(tier, variant);
+      if (!modelId) continue;
       const baseModel =
         variant === "trained"
           ? (elizaOneBenchmarkModelId(tier, "base") ?? null)
@@ -1522,8 +1530,10 @@ function summarizeStepArtifacts(
       outputDir: step.outputDir,
       command: collectCommand(result),
       exitCode: numberOrNull(result.exitCode),
-      stdout: outputExcerpt(result.stdout) ?? collectOutputText(result, "stdout"),
-      stderr: outputExcerpt(result.stderr) ?? collectOutputText(result, "stderr"),
+      stdout:
+        outputExcerpt(result.stdout) ?? collectOutputText(result, "stdout"),
+      stderr:
+        outputExcerpt(result.stderr) ?? collectOutputText(result, "stderr"),
       paths: uniquePaths,
     };
   });
@@ -1577,9 +1587,7 @@ function buildCollectionRecipe(
         : null,
       actionBenchmarkPairs: actionBenchmarkPairsOption(
         options.actionBenchmarkPairs,
-      ).map(
-        sanitizeRecipeRecord,
-      ),
+      ).map(sanitizeRecipeRecord),
       benchmarkVsCerebras: sanitizeRecipeRecord(options.benchmarkVsCerebras),
       benchmarkMatrix: sanitizeRecipeRecord(options.benchmarkMatrix),
     },
@@ -1669,14 +1677,17 @@ function summarizeBenchmarkEvidence(input: {
       trainedScore: comparison.trainedScore,
       improvementPercent: comparison.improvementPercent,
       referenceScore: comparison.referenceScore,
+      trainedVsReferencePercent: comparison.trainedVsReferencePercent,
       modelBacked: true,
     }));
   const establishedTiers = Array.from(
     new Set(
       improvementComparisons
         .map((comparison) => normalizeBenchmarkTier(comparison.tier))
-        .filter((tier): tier is string =>
-          (ELIZA_ONE_BENCHMARK_TIERS as readonly string[]).includes(tier),
+        .filter(
+          (tier): tier is string =>
+            tier !== null &&
+            (ELIZA_ONE_BENCHMARK_TIERS as readonly string[]).includes(tier),
         ),
     ),
   ).sort(canonicalElizaOneTierSort);
@@ -1892,7 +1903,8 @@ function collectionSourceSample(
     title: artifact.title,
     path: artifact.path,
     schema: schemaOfArtifact(artifact) ?? null,
-    sourceKind: stringOrNull(source.kind) ?? stringOrNull(artifact.summary.source),
+    sourceKind:
+      stringOrNull(source.kind) ?? stringOrNull(artifact.summary.source),
     trajectoryId: stringOrNull(row.trajectoryId),
     scenarioId: stringOrNull(row.scenarioId),
     task:
@@ -1900,7 +1912,8 @@ function collectionSourceSample(
       stringOrNull(row.taskType) ??
       stringOrNull(row.purpose),
     input: row.input ?? row.llmInput ?? row.firstInput ?? row.firstStep ?? null,
-    output: row.output ?? row.llmOutput ?? row.firstOutput ?? row.reasoning ?? null,
+    output:
+      row.output ?? row.llmOutput ?? row.firstOutput ?? row.reasoning ?? null,
     model: stringOrNull(row.model) ?? stringOrNull(row.provider),
     systemPrompt: row.systemPrompt ?? null,
     callId: stringOrNull(row.callId),
@@ -1937,7 +1950,11 @@ function summarizeSourceSamples(
   for (const artifact of analysis.manifest.artifacts) {
     const schema = schemaOfArtifact(artifact);
     if (schema === "eliza_huggingface_dataset_ingest") {
-      appendSamplesFromSummary(samples.huggingFace, artifact, "hfSamplePreviews");
+      appendSamplesFromSummary(
+        samples.huggingFace,
+        artifact,
+        "hfSamplePreviews",
+      );
     } else if (
       artifact.kind === "trajectory_dataset" &&
       (schema === "feed_training_trajectory_export" ||
@@ -1971,7 +1988,11 @@ function summarizeSourceSamples(
     ) {
       appendSamplesFromSummary(samples.tests, artifact, "testSamplePreviews");
     } else if (schema === "eliza_training_jsonl_dataset") {
-      appendSamplesFromSummary(samples.trainingJsonl, artifact, "samplePreviews");
+      appendSamplesFromSummary(
+        samples.trainingJsonl,
+        artifact,
+        "samplePreviews",
+      );
     }
   }
 
@@ -2271,8 +2292,10 @@ function collectionBaselineProgress(
     new Set(
       (benchmarks.improvementComparisons ?? [])
         .map((comparison) => normalizeBenchmarkTier(comparison.tier))
-        .filter((tier): tier is string =>
-          (ELIZA_ONE_BENCHMARK_TIERS as readonly string[]).includes(tier),
+        .filter(
+          (tier): tier is string =>
+            tier !== null &&
+            (ELIZA_ONE_BENCHMARK_TIERS as readonly string[]).includes(tier),
         ),
     ),
   ).sort(canonicalElizaOneTierSort);
@@ -2301,10 +2324,6 @@ function summarizeCollectionManifest(
   const baselineProgress = collectionBaselineProgress(
     manifest.evidence.benchmarks,
   );
-  const percentDelta = (base: number | null, next: number | null) =>
-    base === null || next === null || base === 0
-      ? null
-      : Number((((next - base) / Math.abs(base)) * 100).toFixed(6));
   const benchmarkComparisonInventory =
     manifest.evidence.benchmarks.comparisonInventory?.length > 0
       ? manifest.evidence.benchmarks.comparisonInventory
@@ -2319,9 +2338,7 @@ function summarizeCollectionManifest(
             trainedScore: comparison.trainedScore,
             improvementPercent: comparison.improvementPercent,
             referenceScore: comparison.referenceScore,
-            trainedVsReferencePercent:
-              comparison.trainedVsReferencePercent ??
-              percentDelta(comparison.referenceScore, comparison.trainedScore),
+            trainedVsReferencePercent: comparison.trainedVsReferencePercent,
             dryRun: false,
             useMocks: false,
             modelBacked: comparison.modelBacked,
@@ -2329,7 +2346,9 @@ function summarizeCollectionManifest(
         );
   const sourceArtifacts = (manifest.evidence.artifactLinks ?? [])
     .filter(
-      (artifact): artifact is typeof artifact & {
+      (
+        artifact,
+      ): artifact is typeof artifact & {
         category:
           | "huggingface"
           | "feed"
@@ -2370,7 +2389,9 @@ function summarizeCollectionManifest(
   };
   const evidenceArtifacts = (manifest.evidence.artifactLinks ?? [])
     .filter(
-      (artifact): artifact is typeof artifact & {
+      (
+        artifact,
+      ): artifact is typeof artifact & {
         category: "eval" | "benchmark" | "model";
       } =>
         artifact.category === "eval" ||
@@ -2410,8 +2431,7 @@ function summarizeCollectionManifest(
     },
     benchmarks: {
       actionBenchmarkPairs: manifest.evidence.benchmarks.actionBenchmarkPairs,
-      benchmarkComparisons:
-        manifest.evidence.benchmarks.benchmarkComparisons,
+      benchmarkComparisons: manifest.evidence.benchmarks.benchmarkComparisons,
       caseSamples: manifest.evidence.benchmarks.caseSamples?.length ?? 0,
       tiers: manifest.evidence.benchmarks.tiers,
       comparisonInventory: benchmarkComparisonInventory.slice(0, 5),
@@ -2441,7 +2461,9 @@ async function readCollectionManifestSummary(
   }
 }
 
-async function discoverCollectionManifestPaths(root: string): Promise<string[]> {
+async function discoverCollectionManifestPaths(
+  root: string,
+): Promise<string[]> {
   try {
     const rootStat = await stat(root);
     if (!rootStat.isDirectory()) return [];
@@ -2468,7 +2490,9 @@ async function discoverCollectionManifestPaths(root: string): Promise<string[]> 
 export async function listTrainingCollections(
   options: ListTrainingCollectionsOptions = {},
 ): Promise<ListTrainingCollectionsResult> {
-  const root = resolve(options.root ?? join(trainingStateRoot(), "collections"));
+  const root = resolve(
+    options.root ?? join(trainingStateRoot(), "collections"),
+  );
   const indexJsonPath = join(root, "collection-index.json");
   const indexHtmlPath = join(root, "collection-index.html");
   const limit =
@@ -2477,9 +2501,9 @@ export async function listTrainingCollections(
       : 20;
   const summaries = (
     await Promise.all(
-      (await discoverCollectionManifestPaths(root)).map((manifestPath) =>
-        readCollectionManifestSummary(manifestPath),
-      ),
+      (
+        await discoverCollectionManifestPaths(root)
+      ).map((manifestPath) => readCollectionManifestSummary(manifestPath)),
     )
   ).filter((summary): summary is TrainingCollectionRunSummary => !!summary);
 
@@ -2521,7 +2545,7 @@ function buildCollectionIndexHtml(index: TrainingCollectionIndex): string {
                   `<a href="${escapeHtml(fileHref(artifact.path))}">${escapeHtml(`${artifact.category}:${artifact.title}`)}</a>`,
               )
               .join(" ")
-          : '<span>no source artifacts</span>';
+          : "<span>no source artifacts</span>";
       const sourceSampleRows = [
         ["hf", collection.sourceSamples.huggingFace],
         ["feed", collection.sourceSamples.feed],
@@ -2530,15 +2554,17 @@ function buildCollectionIndexHtml(index: TrainingCollectionIndex): string {
         ["tests", collection.sourceSamples.tests],
         ["jsonl", collection.sourceSamples.trainingJsonl],
       ].flatMap(([category, samples]) =>
-        (samples as TrainingCollectionSourceSample[]).slice(0, 2).map((sample) =>
-          [
-            category,
-            sample.trajectoryId ?? sample.scenarioId ?? sample.title,
-            sample.task ?? sample.sourceKind ?? sample.schema ?? "sample",
-            `input:${compactCollectionIndexValue(sample.input) || "n/a"}`,
-            `output:${compactCollectionIndexValue(sample.output) || "n/a"}`,
-          ].join(" "),
-        ),
+        (samples as TrainingCollectionSourceSample[])
+          .slice(0, 2)
+          .map((sample) =>
+            [
+              category,
+              sample.trajectoryId ?? sample.scenarioId ?? sample.title,
+              sample.task ?? sample.sourceKind ?? sample.schema ?? "sample",
+              `input:${compactCollectionIndexValue(sample.input) || "n/a"}`,
+              `output:${compactCollectionIndexValue(sample.output) || "n/a"}`,
+            ].join(" "),
+          ),
       );
       const sourceSampleSummary =
         sourceSampleRows.length > 0 ? sourceSampleRows.join(" | ") : "none";
@@ -2608,7 +2634,7 @@ function buildCollectionIndexHtml(index: TrainingCollectionIndex): string {
                   `<a href="${escapeHtml(fileHref(artifact.path))}">${escapeHtml(`${artifact.category}:${artifact.title}`)}</a>`,
               )
               .join(" ")
-          : '<span>no benchmark artifacts</span>';
+          : "<span>no benchmark artifacts</span>";
       const evalSummary = [
         `evals:${collection.evals.evalArtifacts}`,
         `comparisons:${collection.evals.evalComparisons}`,
@@ -2627,7 +2653,7 @@ function buildCollectionIndexHtml(index: TrainingCollectionIndex): string {
                   `<a href="${escapeHtml(fileHref(artifact.path))}">${escapeHtml(`${artifact.category}:${artifact.title}`)}</a>`,
               )
               .join(" ")
-          : '<span>no eval artifacts</span>';
+          : "<span>no eval artifacts</span>";
       const modelSummary = [
         `runs:${collection.training.trainingRuns}`,
         `models:${collection.training.models}`,
@@ -2662,7 +2688,7 @@ function buildCollectionIndexHtml(index: TrainingCollectionIndex): string {
                   `<a href="${escapeHtml(fileHref(artifact.path))}">${escapeHtml(`${artifact.category}:${artifact.title}`)}</a>`,
               )
               .join(" ")
-          : '<span>no model artifacts</span>';
+          : "<span>no model artifacts</span>";
       const coverageSummary = [
         `samples:${collection.coverage.readableSamples.total}`,
         `scored-evals:${collection.coverage.evals.scoredComparisons}/${collection.coverage.evals.comparisons}`,
@@ -2757,7 +2783,9 @@ export async function writeTrainingCollectionIndex(
   return index;
 }
 
-function buildCollectionReadme(manifest: TrainingCollectionRunManifest): string {
+function buildCollectionReadme(
+  manifest: TrainingCollectionRunManifest,
+): string {
   const evidence = manifest.evidence;
   const sourceSamples = evidence.sourceSamples;
   const coverage = collectionCoverage(evidence);
@@ -2779,16 +2807,18 @@ function buildCollectionReadme(manifest: TrainingCollectionRunManifest): string 
       ["Training JSONL", sourceSamples.trainingJsonl],
     ] as const
   ).flatMap(([source, samples]) =>
-    samples.slice(0, 6).map((sample) => [
-      source,
-      sample.title,
-      sample.task ?? sample.scenarioId ?? sample.sourceKind,
-      sample.trajectoryId,
-      sample.model,
-      sample.input,
-      sample.output,
-      markdownPathLink(sample.path),
-    ]),
+    samples
+      .slice(0, 6)
+      .map((sample) => [
+        source,
+        sample.title,
+        sample.task ?? sample.scenarioId ?? sample.sourceKind,
+        sample.trajectoryId,
+        sample.model,
+        sample.input,
+        sample.output,
+        markdownPathLink(sample.path),
+      ]),
   );
   const benchmarkReadiness = evidence.benchmarkReadiness;
   const baselineProgress = evidence.benchmarks.baselineProgress;
@@ -2799,16 +2829,18 @@ function buildCollectionReadme(manifest: TrainingCollectionRunManifest): string 
     check.detail,
     markdownPathLink(check.path),
   ]);
-  const modelRows = evidence.training.modelInventory.slice(0, 12).map((model) => [
-    model.tier,
-    model.variant,
-    model.model,
-    model.baseModel,
-    model.baseEvalScore,
-    model.trainedEvalScore,
-    markdownPathLink(model.outputPath),
-    model.evalImprovementPercent,
-  ]);
+  const modelRows = evidence.training.modelInventory
+    .slice(0, 12)
+    .map((model) => [
+      model.tier,
+      model.variant,
+      model.model,
+      model.baseModel,
+      model.baseEvalScore,
+      model.trainedEvalScore,
+      markdownPathLink(model.outputPath),
+      model.evalImprovementPercent,
+    ]);
   const comparisonRows = evidence.benchmarks.comparisonInventory
     .slice(0, 12)
     .map((comparison) => [
@@ -2840,16 +2872,18 @@ function buildCollectionReadme(manifest: TrainingCollectionRunManifest): string 
       comparison.trainedLatencyMs,
       markdownPathLink(comparison.reportPath),
     ]);
-  const caseRows = evidence.benchmarks.caseSamples.slice(0, 12).map((sample) => [
-    sample.tier,
-    sample.variant,
-    sample.caseId,
-    sample.pass,
-    sample.prompt,
-    sample.expectedAction,
-    sample.actualAction,
-    markdownPathLink(sample.trajectoryPath),
-  ]);
+  const caseRows = evidence.benchmarks.caseSamples
+    .slice(0, 12)
+    .map((sample) => [
+      sample.tier,
+      sample.variant,
+      sample.caseId,
+      sample.pass,
+      sample.prompt,
+      sample.expectedAction,
+      sample.actualAction,
+      markdownPathLink(sample.trajectoryPath),
+    ]);
   const gapRows = evidence.readinessGaps.map((gap) => [
     gap.status,
     gap.id,
@@ -2857,13 +2891,15 @@ function buildCollectionReadme(manifest: TrainingCollectionRunManifest): string 
     gap.recommendedCapability,
     gap.recommendedParams,
   ]);
-  const artifactRows = evidence.artifactLinks.slice(0, 24).map((artifact) => [
-    artifact.category,
-    artifact.kind,
-    artifact.schema,
-    artifact.title,
-    markdownPathLink(artifact.path),
-  ]);
+  const artifactRows = evidence.artifactLinks
+    .slice(0, 24)
+    .map((artifact) => [
+      artifact.category,
+      artifact.kind,
+      artifact.schema,
+      artifact.title,
+      markdownPathLink(artifact.path),
+    ]);
   const stepArtifactRows = evidence.stepArtifacts.flatMap((step) => {
     const command = step.command?.join(" ") ?? null;
     if (step.paths.length === 0) {
@@ -2880,16 +2916,18 @@ function buildCollectionReadme(manifest: TrainingCollectionRunManifest): string 
         ],
       ];
     }
-    return step.paths.slice(0, 8).map((path) => [
-      step.stepId,
-      step.status,
-      command,
-      step.exitCode,
-      step.stdout,
-      step.stderr,
-      path.label,
-      markdownPathLink(path.path),
-    ]);
+    return step.paths
+      .slice(0, 8)
+      .map((path) => [
+        step.stepId,
+        step.status,
+        command,
+        step.exitCode,
+        step.stdout,
+        step.stderr,
+        path.label,
+        markdownPathLink(path.path),
+      ]);
   });
 
   return `# Eliza Training Collection
@@ -2957,7 +2995,16 @@ ${markdownTable(
 ## Step Artifacts
 
 ${markdownTable(
-  ["Step", "Status", "Command", "Exit", "Stdout", "Stderr", "Path Label", "Path"],
+  [
+    "Step",
+    "Status",
+    "Command",
+    "Exit",
+    "Stdout",
+    "Stderr",
+    "Path Label",
+    "Path",
+  ],
   stepArtifactRows,
 )}
 ## Data Sources
@@ -2967,7 +3014,10 @@ ${markdownTable(
   [
     ["Hugging Face datasets", evidence.dataSources.huggingFaceDatasets],
     ["Feed datasets", evidence.dataSources.feedDatasets],
-    ["Natural trajectory bundles", evidence.dataSources.naturalTrajectoryBundles],
+    [
+      "Natural trajectory bundles",
+      evidence.dataSources.naturalTrajectoryBundles,
+    ],
     ["Scenario runs", evidence.dataSources.scenarioRuns],
     ["Scenario native datasets", evidence.dataSources.scenarioNativeDatasets],
     ["Test trajectories", evidence.dataSources.testTrajectories],
@@ -3016,13 +3066,32 @@ ${markdownTable(
 ## Eval Comparisons
 
 ${markdownTable(
-  ["Base Model", "Trained Model", "Backend", "Base Score", "Trained Score", "Improvement %", "Base Latency", "Trained Latency", "Report"],
+  [
+    "Base Model",
+    "Trained Model",
+    "Backend",
+    "Base Score",
+    "Trained Score",
+    "Improvement %",
+    "Base Latency",
+    "Trained Latency",
+    "Report",
+  ],
   evalComparisonRows,
 )}
 ## Benchmark Case Samples
 
 ${markdownTable(
-  ["Tier", "Variant", "Case", "Pass", "Input", "Expected", "Actual", "Trajectory"],
+  [
+    "Tier",
+    "Variant",
+    "Case",
+    "Pass",
+    "Input",
+    "Expected",
+    "Actual",
+    "Trajectory",
+  ],
   caseRows,
 )}
 ## Readiness Gaps
@@ -3084,7 +3153,8 @@ export async function runTrainingCollection(
   const generatedAt = (options.now?.() ?? new Date()).toISOString();
   const stateRoot = trainingStateRoot();
   const outputDir =
-    options.outputDir ?? join(stateRoot, "collections", safeTimestamp(generatedAt));
+    options.outputDir ??
+    join(stateRoot, "collections", safeTimestamp(generatedAt));
   const workspaceRoot = options.workspaceRoot
     ? resolve(options.workspaceRoot)
     : discoverWorkspaceRoot();
@@ -3317,6 +3387,17 @@ export async function runTrainingCollection(
         "training-readiness-report.json",
       ),
       artifactCounts: analysis.manifest.counts,
+      coverage: {
+        dataSources: analysis.manifest.coverage.dataSources,
+        readableSamples: analysis.manifest.coverage.readableSamples,
+        evals: analysis.manifest.coverage.evals,
+        benchmarks: analysis.manifest.coverage.benchmarks,
+        models: {
+          artifacts: analysis.manifest.coverage.models.artifacts,
+          stagedBundles: analysis.manifest.coverage.models.stagedBundles,
+          inventoryCount: analysis.manifest.coverage.models.inventory.length,
+        },
+      },
       stepCounts: summarizeStepCounts(steps),
       stepArtifacts: summarizeStepArtifacts(steps),
       dataSources: {
@@ -3354,6 +3435,14 @@ export async function runTrainingCollection(
         tiers: [],
         comparisonInventory: [],
         improvementComparisons: [],
+        baselineProgress: {
+          tierOrder: [...ELIZA_ONE_BENCHMARK_TIERS],
+          establishedTiers: [],
+          remainingTiers: [...ELIZA_ONE_BENCHMARK_TIERS],
+          nextTier: ELIZA_ONE_BENCHMARK_TIERS[0] ?? null,
+          smallestTierEstablished: false,
+          allTiersEstablished: false,
+        },
         caseSamples: [],
       },
       benchmarkReadiness: {

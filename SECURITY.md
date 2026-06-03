@@ -10,14 +10,10 @@ commitments.
 
 Email: **security@elizalabs.ai**
 
-For encrypted reports, use the project GPG key:
-
-```
-Fingerprint: TODO-PLACEHOLDER-REPLACE-WITH-REAL-FINGERPRINT
-```
-
-The public key will be published at `https://elizalabs.ai/.well-known/pgp-key.asc`
-once provisioned (see *human-in-loop* note below).
+Encrypted-report intake is not available until the organization GPG key is
+provisioned. The public key and fingerprint will be published at
+`https://elizalabs.ai/.well-known/pgp-key.asc` once provisioned (see
+*human-in-loop* note below).
 
 We will acknowledge receipt within **2 business days** and provide an initial
 triage assessment within **5 business days**.
@@ -72,8 +68,7 @@ Advisories on this repository.
 
 ## Human-in-loop checklist (must be completed before SOC2 audit)
 
-The following items are placeholders in this document and require an operator
-to provision real values:
+The following items require an operator to provision real values:
 
 - [ ] Generate organization GPG key for `security@elizalabs.ai`, publish public
       key at `https://elizalabs.ai/.well-known/pgp-key.asc`, update fingerprint

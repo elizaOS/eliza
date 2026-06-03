@@ -11,6 +11,13 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
+import {
+  isChatOverlayWindowShell,
+  isDetachedWindowShell,
+  isStandaloneWindowShell,
+  parseWindowShellRoute,
+  resolveDetachedShellTarget,
+} from "./platform/window-shell";
 
 const APP_TSX = readFileSync(resolve(__dirname, "./App.tsx"), "utf8");
 const APP_MAIN_TS = readFileSync(
@@ -29,15 +36,59 @@ const WINDOW_SHELL_TS = readFileSync(
   resolve(__dirname, "./platform/window-shell.ts"),
   "utf8",
 );
+const HEADER_TSX = readFileSync(
+  resolve(__dirname, "./components/shell/Header.tsx"),
+  "utf8",
+);
+const OVERLAY_TSX = readFileSync(
+  resolve(__dirname, "./components/shell/ContinuousChatOverlay.tsx"),
+  "utf8",
+);
+const CHATVIEW_TSX = readFileSync(
+  resolve(__dirname, "./components/pages/ChatView.tsx"),
+  "utf8",
+);
 
 describe("App standalone chat-overlay wiring", () => {
-  it("keeps the assistant pill out of the full app shell", () => {
+  it("mounts the always-present continuous chat overlay in the full app shell", () => {
     expect(APP_TSX).toContain('shellMode === "chat-overlay"');
     expect(APP_TSX).toContain("<ShellFoundationMount />");
     expect(APP_TSX).toContain("pointer-events-none fixed inset-0");
-    expect(APP_TSX).not.toContain(
-      "{isCoordinatorReady && <ShellFoundationMount />}",
-    );
+    // The floating glass chat (HomePill → AssistantOverlay → ChatSurface) is now
+    // mounted globally in the main shell so one continuous conversation floats
+    // over every view — reviving the "floating pill is the only chat" direction.
+    // It is no longer kept out of the full app shell.
+    expect(APP_TSX).toContain("Always-present continuous chat overlay");
+  });
+
+  it("gates the minimal conversational-OS shell behind MINIMAL_SHELL", () => {
+    // The flag drives both the minimal home and the header-nav suppression.
+    expect(APP_TSX).toContain('from "./components/shell/shell-chrome"');
+    expect(APP_TSX).toContain("if (MINIMAL_SHELL)");
+    expect(HEADER_TSX).toContain('from "./shell-chrome"');
+    expect(HEADER_TSX).toContain("MINIMAL_SHELL ? null");
+    // Full chat workspace lives in its own component so its hooks are never
+    // called conditionally behind the MINIMAL_SHELL early-return.
+    expect(APP_TSX).toContain("function FullChatWorkspaceShellContent");
+  });
+
+  it("restores the full 3-panel chat workspace + header nav", () => {
+    expect(APP_TSX).toContain("ConversationsSidebar");
+    expect(APP_TSX).toContain("TasksEventsPanel");
+    expect(APP_TSX).toContain("DeferredSetupChecklist");
+    // Header nav restored from the still-present navigation model.
+    expect(HEADER_TSX).toContain("getTabGroups");
+    expect(HEADER_TSX).toContain("primaryDesktopGroups");
+  });
+
+  it("uses the overlay as the chat tab input (no duplicate composer)", () => {
+    // ChatView can hide its in-view composer; the chat shell passes it so the
+    // overlay is the single shared input.
+    expect(CHATVIEW_TSX).toContain("hideComposer");
+    expect(APP_TSX).toContain("hideComposer");
+    // The composer swaps mic→send once there's a draft (one trailing control).
+    expect(OVERLAY_TSX).toContain("hasDraft");
+    expect(OVERLAY_TSX).toContain("hasDraft && !recording");
   });
 
   it("classifies chat-overlay as a standalone shell, not the main app", () => {
@@ -75,5 +126,66 @@ describe("App standalone chat-overlay wiring", () => {
     expect(USE_STARTUP_SHELL_CONTROLLER_TS).toContain(
       'coordinatorDispatchRef.current({ type: "FIRST_RUN_COMPLETE" })',
     );
+  });
+});
+
+// Behavioral coverage of the window-shell classification the wiring above only
+// asserts textually — these are pure functions, so we exercise the real logic.
+describe("window-shell route classification (behavioral)", () => {
+  it("parses the chat-overlay shellMode under both param spellings", () => {
+    expect(parseWindowShellRoute("?shellMode=chat-overlay")).toEqual({
+      mode: "chat-overlay",
+    });
+    expect(parseWindowShellRoute("?shell-mode=chat-overlay")).toEqual({
+      mode: "chat-overlay",
+    });
+  });
+
+  it("parses settings / surface / pill shells and falls back to main", () => {
+    expect(parseWindowShellRoute("")).toEqual({ mode: "main" });
+    expect(parseWindowShellRoute("?shell=settings&tab=cloud")).toEqual({
+      mode: "settings",
+      tab: "cloud",
+    });
+    expect(parseWindowShellRoute("?shell=surface&tab=browser")).toEqual({
+      mode: "surface",
+      tab: "browser",
+    });
+    expect(parseWindowShellRoute("?shell=pill")).toEqual({ mode: "pill" });
+    // Unknown surface tab is not a valid detached target → main.
+    expect(parseWindowShellRoute("?shell=surface&tab=bogus")).toEqual({
+      mode: "main",
+    });
+  });
+
+  it("classifies chat-overlay as standalone but NOT detached", () => {
+    const route = parseWindowShellRoute("?shellMode=chat-overlay");
+    expect(isChatOverlayWindowShell(route)).toBe(true);
+    expect(isStandaloneWindowShell(route)).toBe(true);
+    // The overlay floats inside the app — it has no detached window target.
+    expect(isDetachedWindowShell(route)).toBe(false);
+  });
+
+  it("treats the main shell as neither standalone nor chat-overlay", () => {
+    const route = parseWindowShellRoute("");
+    expect(isStandaloneWindowShell(route)).toBe(false);
+    expect(isChatOverlayWindowShell(route)).toBe(false);
+    expect(isDetachedWindowShell(route)).toBe(false);
+  });
+
+  it("maps detached surface routes to a target and refuses non-detached ones", () => {
+    expect(
+      resolveDetachedShellTarget(
+        parseWindowShellRoute("?shell=surface&tab=release"),
+      ),
+    ).toEqual({ tab: "settings", settingsSection: "updates" });
+    expect(() =>
+      resolveDetachedShellTarget(
+        parseWindowShellRoute("?shellMode=chat-overlay"),
+      ),
+    ).toThrow();
+    expect(() =>
+      resolveDetachedShellTarget(parseWindowShellRoute("")),
+    ).toThrow();
   });
 });

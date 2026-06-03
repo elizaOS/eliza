@@ -129,7 +129,9 @@ def test_boot_script_blocks_without_aosp_dir() -> None:
             )
     next_command_plan = data.get("next_command_plan", [])
     if len(next_command_plan) != 1:
-        raise AssertionError(f"android sim report must expose one command batch: {next_command_plan}")
+        raise AssertionError(
+            f"android sim report must expose one command batch: {next_command_plan}"
+        )
     batch = next_command_plan[0]
     if batch.get("id") != "android_sim_full_virtual_device_evidence":
         raise AssertionError(f"android sim command batch id mismatch: {batch}")

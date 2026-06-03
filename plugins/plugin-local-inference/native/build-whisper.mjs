@@ -390,6 +390,7 @@ async function main() {
   const buildArgs = [
     "--build",
     buildPath,
+    ...(process.platform === "win32" ? ["--config", "Release"] : []),
     "--target",
     "whisper",
     "--target",
@@ -442,7 +443,19 @@ async function main() {
         ]
       : process.platform === "win32"
         ? [
+            // CMake on Windows routes shared library outputs (whisper.dll,
+            // ggml.dll etc.) to RUNTIME_OUTPUT_DIRECTORY = <buildPath>/bin/
+            // and into a <config>/ subdir under MSBuild. Search those first,
+            // then fall back to the layout the Linux/macOS branches expect.
+            // Observed in CI: "whisper.vcxproj -> ...build-whisper/bin/Debug/whisper.dll".
+            path.join(buildPath, "bin", "Release", "whisper.dll"),
+            path.join(buildPath, "bin", "Debug", "whisper.dll"),
+            path.join(buildPath, "bin", "whisper.dll"),
+            path.join(subBuild, "src", "Release", "whisper.dll"),
+            path.join(subBuild, "src", "Debug", "whisper.dll"),
             path.join(subBuild, "src", "whisper.dll"),
+            path.join(subBuild, "Release", "whisper.dll"),
+            path.join(subBuild, "Debug", "whisper.dll"),
             path.join(subBuild, "whisper.dll"),
           ]
         : [
@@ -464,7 +477,11 @@ async function main() {
     : process.platform === "darwin"
       ? [path.join(buildPath, "libwhisper_eliza_adapter.dylib")]
       : process.platform === "win32"
-        ? [path.join(buildPath, "whisper_eliza_adapter.dll")]
+        ? [
+            path.join(buildPath, "Release", "whisper_eliza_adapter.dll"),
+            path.join(buildPath, "Debug", "whisper_eliza_adapter.dll"),
+            path.join(buildPath, "whisper_eliza_adapter.dll"),
+          ]
         : [path.join(buildPath, "libwhisper_eliza_adapter.so")];
   const adapterOut = adapterCandidates.find((p) => existsSync(p));
   if (!adapterOut) {
@@ -474,11 +491,24 @@ async function main() {
   }
   log(`built ${adapterOut}`);
 
-  const cliCandidates = [
-    path.join(buildPath, "bin", "whisper-cli"),
-    path.join(subBuild, "bin", "whisper-cli"),
-    path.join(subBuild, "whisper-cli"),
-  ];
+  const cliCandidates =
+    process.platform === "win32"
+      ? [
+          path.join(buildPath, "bin", "Release", "whisper-cli.exe"),
+          path.join(buildPath, "bin", "Debug", "whisper-cli.exe"),
+          path.join(buildPath, "bin", "whisper-cli.exe"),
+          path.join(subBuild, "bin", "Release", "whisper-cli.exe"),
+          path.join(subBuild, "bin", "Debug", "whisper-cli.exe"),
+          path.join(subBuild, "bin", "whisper-cli.exe"),
+          path.join(subBuild, "Release", "whisper-cli.exe"),
+          path.join(subBuild, "Debug", "whisper-cli.exe"),
+          path.join(subBuild, "whisper-cli.exe"),
+        ]
+      : [
+          path.join(buildPath, "bin", "whisper-cli"),
+          path.join(subBuild, "bin", "whisper-cli"),
+          path.join(subBuild, "whisper-cli"),
+        ];
   const cliOut = cliCandidates.find((p) => existsSync(p));
   if (cliOut) {
     log(`built ${cliOut}`);

@@ -1,17 +1,30 @@
 /**
- * voice-warmup — background "warm like embedding" for local voice models.
+ * voice-warmup — background "warm like embedding" for voice models.
  *
- * Unlike embedding (which has a runtime-free `ensureModel` facade), the local
- * voice models (Whisper STT / Kokoro TTS) only load through the live agent
- * runtime's `useModel(TRANSCRIPTION | TEXT_TO_SPEECH, …)` path — the Kokoro
- * bridge auto-starts on the first TEXT_TO_SPEECH call. So we warm them AFTER
- * the runtime is ready by firing one tiny request at each, fire-and-forget.
- * That actually loads (not just downloads) the models, so the first real voice
- * interaction is instant — the embedding warmup's spirit, via the path voice
- * already uses. Nothing in the voice engine is touched.
+ * Unlike embedding (which has a runtime-free `ensureModel` facade), the voice
+ * models (local Whisper STT / Kokoro TTS, or cloud ElevenLabs) only load
+ * through the live agent runtime's `useModel(TRANSCRIPTION | TEXT_TO_SPEECH, …)`
+ * path — the Kokoro bridge auto-starts on the first TEXT_TO_SPEECH call, and
+ * the cloud handler validates its connection. So we warm them AFTER the runtime
+ * is ready by firing one tiny request at each, fire-and-forget. That actually
+ * loads (not just downloads) the models, so the first real voice interaction is
+ * instant — the embedding warmup's spirit, via the path voice already uses.
+ * Nothing in the voice engine is touched.
  *
- * Gating keeps this off cloud-only setups (so it never triggers a paid cloud
- * TTS/STT call): warm only when local inference is the active path.
+ * BEHAVIOR CHANGE (PR #8175): warmup now fires for **both** local and cloud
+ * setups. Previously, warmup was gated on `localInferenceActive` and was
+ * suppressed for cloud-configured users. The gate has been removed.
+ *
+ * Impact for cloud users: at every desktop boot, two tiny API calls (one
+ * silent WAV for STT, one empty-string TTS) will be dispatched through the
+ * runtime's model router to whichever cloud voice provider is configured
+ * (e.g. ElevenLabs, Eliza Cloud TTS). These calls are billable if the
+ * provider charges per-request. They are intentionally small (~100 ms WAV for
+ * STT, empty string for TTS) and non-blocking (fire-and-forget). Failures are
+ * non-fatal and logged at WARN level.
+ *
+ * To suppress warmup entirely (both local and cloud) set:
+ *   ELIZA_SKIP_LOCAL_VOICE_WARMUP=1
  */
 
 /** Minimal runtime surface we need — avoids importing the heavy AgentRuntime. */
@@ -24,15 +37,17 @@ export interface VoiceWarmupGate {
   mobile: boolean;
   /** ELIZA_SKIP_LOCAL_VOICE_WARMUP is set. */
   skipEnv: boolean;
-  /** Local inference is the active model path (vs cloud/remote). */
-  localInferenceActive: boolean;
+  /**
+   * @deprecated No longer used — warmup fires for both local and cloud.
+   * Kept for API compatibility; callers may still pass it.
+   */
+  localInferenceActive?: boolean;
 }
 
-/** Pure policy: should we warm local voice models in the background? */
+/** Pure policy: should we warm voice models in the background? */
 export function shouldWarmupVoice(gate: VoiceWarmupGate): boolean {
   if (gate.mobile) return false;
   if (gate.skipEnv) return false;
-  if (!gate.localInferenceActive) return false;
   return true;
 }
 
@@ -77,9 +92,38 @@ type LogSink = {
 const noopLog: LogSink = { info: () => {}, warn: () => {} };
 
 /**
+ * Retry a warmup call up to `maxRetries` times when the error message
+ * indicates a transient HTTP issue (429 / 503). Waits `delayMs` between
+ * retries (doubles each attempt). Non-transient errors are re-thrown
+ * immediately so the caller's catch handler logs them.
+ */
+async function withRetry(
+  fn: () => Promise<void>,
+  maxRetries = 2,
+  delayMs = 3_000,
+): Promise<void> {
+  let attempt = 0;
+  while (true) {
+    try {
+      await fn();
+      return;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isTransient = /\b(429|503)\b/.test(msg);
+      if (!isTransient || attempt >= maxRetries) throw err;
+      attempt++;
+      await new Promise((r) => setTimeout(r, delayMs * attempt));
+    }
+  }
+}
+
+/**
  * Load both voice models by firing one warm request at each. Each call is
  * independently guarded: a failure (e.g. missing native lib) is logged and
  * skipped — the model simply loads on first real use instead. Never rejects.
+ *
+ * Transient cloud errors (429 / 503) are retried up to 2 times with backoff
+ * before being treated as non-fatal.
  */
 export async function warmVoiceModels(
   runtime: VoiceWarmupRuntime,
@@ -87,7 +131,10 @@ export async function warmVoiceModels(
   log: LogSink = noopLog,
 ): Promise<void> {
   try {
-    await runtime.useModel(types.ttsType, "Warming up voice.");
+    await withRetry(
+      () =>
+        runtime.useModel(types.ttsType, "Warming up voice.") as Promise<void>,
+    );
     log.info("[eliza] Voice TTS model: ready");
   } catch (err) {
     log.warn(
@@ -98,7 +145,13 @@ export async function warmVoiceModels(
   }
 
   try {
-    await runtime.useModel(types.transcriptionType, buildSilentWarmupWav());
+    await withRetry(
+      () =>
+        runtime.useModel(
+          types.transcriptionType,
+          buildSilentWarmupWav(),
+        ) as Promise<void>,
+    );
     log.info("[eliza] Voice STT model: ready");
   } catch (err) {
     log.warn(

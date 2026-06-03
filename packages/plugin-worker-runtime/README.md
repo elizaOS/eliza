@@ -76,8 +76,7 @@ This package is part of the elizaOS monorepo. It is `private: true` and consumed
 "@elizaos/plugin-worker-runtime": "workspace:*"
 ```
 
-## Known limitations (P1)
+## Known limitations
 
-- **Action callbacks are no-ops.** Action handlers that write their reply via the `callback` argument have that callback silently dropped. Return the result value directly instead.
 - **`runtime.registerEvent` is not supported.** Declare event handlers statically on the `Plugin.events` object.
-- **Dynamic surface announcement is not implemented.** Surfaces must be present on the `Plugin` object before `bootstrap()` is called; anything added inside `init()` is not sent to the host.
+- **Init-time dynamic additions are append-only.** Surfaces appended to the plugin object during `init()` are announced with `worker-announce-dynamic`; replacements, removals, and later runtime mutations are not announced.

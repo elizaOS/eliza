@@ -26,7 +26,7 @@ export const roomTable = pgTable("rooms", {
   source: text("source").notNull(),
   type: text("type").notNull(),
   messageServerId: uuid("message_server_id"),
-  worldId: uuid("world_id"), // no guarantee that world exists, it is optional for now
+  worldId: uuid("world_id"), // optional: rooms may be created before a world row exists
   // .references(() => worldTable.id, {
   //   onDelete: 'cascade',
   // }),

@@ -315,19 +315,13 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
                 "scope": "host_adb",
                 "claim_boundary": "operator_live_capture_commands_only_not_runtime_evidence",
                 "commands": [
-                    "test -n \"$CHIP_ANDROID_ADB_SERIAL\" || test -n \"$CHIP_ANDROID_ADB_HOSTPORT\"",
-                    (
-                        f"{RUNTIME_CAPTURE_BASE_COMMAND} "
-                        f'--adb-connect "{ADB_HOSTPORT_SENTINEL}"'
-                    ),
+                    'test -n "$CHIP_ANDROID_ADB_SERIAL" || test -n "$CHIP_ANDROID_ADB_HOSTPORT"',
+                    (f'{RUNTIME_CAPTURE_BASE_COMMAND} --adb-connect "{ADB_HOSTPORT_SENTINEL}"'),
                     (
                         f"{RUNTIME_CAPTURE_BASE_COMMAND} "
                         + " ".join(f"--adb-connect {address}" for address in ADB_CONNECT_CANDIDATES)
                     ),
-                    (
-                        f"{RUNTIME_CAPTURE_BASE_COMMAND} "
-                        "--adb-serial \"$CHIP_ANDROID_ADB_SERIAL\""
-                    ),
+                    (f'{RUNTIME_CAPTURE_BASE_COMMAND} --adb-serial "$CHIP_ANDROID_ADB_SERIAL"'),
                     RECHECK_COMMAND,
                 ],
                 "requires": [
@@ -414,7 +408,11 @@ def preferred_next_command(finding: Finding, commands: list[str]) -> str:
         for command in commands:
             if "capture_system_bridge_runtime_evidence.py" in command:
                 return command
-    if "manifest" in finding.code or "privapp" in finding.code or "product_packages" in finding.code:
+    if (
+        "manifest" in finding.code
+        or "privapp" in finding.code
+        or "product_packages" in finding.code
+    ):
         for command in commands:
             if command.startswith("m "):
                 return command

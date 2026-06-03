@@ -1267,8 +1267,8 @@ class CompositionalFeatureLearner:
         a = int(parents[0])
         b = int(parents[1])
         theta = 0.5 * jr.normal(theta_key, (2,), dtype=jnp.float32)
-        # Depth is computed from parents in init below; leave a placeholder
-        # of 1 here and let init compute the precise depth array.
+        # Depth is computed from parents in init below; return a neutral
+        # seed value here and let init compute the precise depth array.
         return op, a, b, theta, 1
 
     def init(self, feature_dim: int, key: Array) -> CompositionalFeatureState:

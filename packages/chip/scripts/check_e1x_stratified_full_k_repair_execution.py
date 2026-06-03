@@ -79,7 +79,9 @@ def s4_from_seed(parts: tuple[object, ...]) -> int:
 def selected_rows(row_count: int) -> list[int]:
     if row_count <= ROWS_PER_LAYER:
         return list(range(row_count))
-    return sorted({round(index * (row_count - 1) / (ROWS_PER_LAYER - 1)) for index in range(ROWS_PER_LAYER)})
+    return sorted(
+        {round(index * (row_count - 1) / (ROWS_PER_LAYER - 1)) for index in range(ROWS_PER_LAYER)}
+    )
 
 
 def execute_full_k_row(layer_index: int, output_row: int, cols: int) -> dict[str, int]:
@@ -136,7 +138,13 @@ def main() -> int:
         "stratified full-K repair execution inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_stratified_full_k_repair_execution_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_stratified_full_k_repair_execution_inputs_present",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
     stratified = load_json(STRATIFIED_FULL_K) if STRATIFIED_FULL_K.is_file() else {}
@@ -156,7 +164,13 @@ def main() -> int:
         "stratified full-K rows and window repair linkage are PASS",
         "stratified full-K repair dependency mismatch",
     )
-    checks.append({"id": "e1x_stratified_full_k_repair_execution_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_stratified_full_k_repair_execution_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     layers = [layer for layer in placement.get("layers", []) if isinstance(layer, dict)]
     logical_cols = int(placement.get("logical_cols", 0))
@@ -200,14 +214,16 @@ def main() -> int:
             output_checksum = mix64(output_checksum, int(result["row_trace_checksum"]))
 
             if len(sampled_rows) < 16:
-                sampled_rows.append({
-                    "layer_index": layer_index,
-                    "kind": kind,
-                    "output_row": output_row,
-                    "logical_core_index": logical_core,
-                    "lane_mac_count": int(result["lane_mac_count"]),
-                    "row_trace_checksum": int(result["row_trace_checksum"]),
-                })
+                sampled_rows.append(
+                    {
+                        "layer_index": layer_index,
+                        "kind": kind,
+                        "output_row": output_row,
+                        "logical_core_index": logical_core,
+                        "lane_mac_count": int(result["lane_mac_count"]),
+                        "row_trace_checksum": int(result["row_trace_checksum"]),
+                    }
+                )
 
             for case, data in case_data.items():
                 remap = data["remap"]
@@ -227,14 +243,16 @@ def main() -> int:
                     )
                     sampled = summary["sampled_remapped_rows"]
                     if isinstance(sampled, list) and len(sampled) < 8:
-                        sampled.append({
-                            "layer_index": layer_index,
-                            "kind": kind,
-                            "output_row": output_row,
-                            "logical_core_index": logical_core,
-                            "physical_row": physical[0],
-                            "physical_col": physical[1],
-                        })
+                        sampled.append(
+                            {
+                                "layer_index": layer_index,
+                                "kind": kind,
+                                "output_row": output_row,
+                                "logical_core_index": logical_core,
+                                "physical_row": physical[0],
+                                "physical_col": physical[1],
+                            }
+                        )
                 route_checksum = int(summary["route_checksum"])
                 for value in (
                     layer_index,
@@ -261,7 +279,13 @@ def main() -> int:
             f"{case} repair map routes stratified full-K rows onto usable physical cores",
             f"{case} stratified full-K repair route mismatch",
         )
-        checks.append({"id": f"e1x_stratified_full_k_repair_execution_{case}", "status": status, "detail": detail})
+        checks.append(
+            {
+                "id": f"e1x_stratified_full_k_repair_execution_{case}",
+                "status": status,
+                "detail": detail,
+            }
+        )
 
     repaired_ok = (
         not errors
@@ -277,7 +301,13 @@ def main() -> int:
         f"repaired stratified execution maps {total_rows} full-K rows across normal/high defect scenarios",
         "stratified full-K repaired execution mismatch: " + ", ".join(errors[:8]),
     )
-    checks.append({"id": "e1x_stratified_full_k_repair_execution_maps_rows", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_stratified_full_k_repair_execution_maps_rows",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
@@ -289,7 +319,9 @@ def main() -> int:
         "touched_logical_core_count": len(touched_logical_cores),
         "output_invariant_checksum": int(output_checksum),
         "normal_route_checksum": int(case_summaries.get("normal", {}).get("route_checksum", 0)),
-        "high_failure_route_checksum": int(case_summaries.get("high_failure", {}).get("route_checksum", 0)),
+        "high_failure_route_checksum": int(
+            case_summaries.get("high_failure", {}).get("route_checksum", 0)
+        ),
         "normal_touched_remapped_rows": int(
             case_summaries.get("normal", {}).get("touched_remapped_row_count", 0)
         ),

@@ -11,7 +11,9 @@ REPORT = ROOT / "build/reports/e1x_clustered_repair_stress.json"
 
 YIELD_REPAIR = ROOT / "build/reports/e1x_yield_repair_margin.json"
 NORMAL_REPAIR = ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_manifest.json"
-HIGH_REPAIR = ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json"
+HIGH_REPAIR = (
+    ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json"
+)
 
 FALSE_CLAIM_FLAGS = {
     "claim_allowed": False,
@@ -27,8 +29,18 @@ STRESS_CASES = [
     {"name": "row_stripe_16", "failed_rows": 16, "failed_cols": 0, "expect_repairable": True},
     {"name": "col_stripe_16", "failed_rows": 0, "failed_cols": 16, "expect_repairable": True},
     {"name": "cross_stripe_16x16", "failed_rows": 16, "failed_cols": 16, "expect_repairable": True},
-    {"name": "over_budget_row_stripe_17", "failed_rows": 17, "failed_cols": 0, "expect_repairable": False},
-    {"name": "over_budget_cross_17x16", "failed_rows": 17, "failed_cols": 16, "expect_repairable": False},
+    {
+        "name": "over_budget_row_stripe_17",
+        "failed_rows": 17,
+        "failed_cols": 0,
+        "expect_repairable": False,
+    },
+    {
+        "name": "over_budget_cross_17x16",
+        "failed_rows": 17,
+        "failed_cols": 16,
+        "expect_repairable": False,
+    },
 ]
 
 
@@ -97,7 +109,9 @@ def main() -> int:
         "clustered repair stress inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_clustered_repair_stress_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_clustered_repair_stress_inputs_present", "status": status, "detail": detail}
+    )
 
     yield_report = load_json(YIELD_REPAIR) if YIELD_REPAIR.is_file() else {}
     normal = load_json(NORMAL_REPAIR) if NORMAL_REPAIR.is_file() else {}
@@ -125,7 +139,9 @@ def main() -> int:
         "clustered stress uses the generated 512x342 logical mesh and 16x16 spare envelope",
         "clustered repair stress dependency mismatch",
     )
-    checks.append({"id": "e1x_clustered_repair_stress_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_clustered_repair_stress_dependencies_pass", "status": status, "detail": detail}
+    )
 
     cases = [
         analyze_case(
@@ -144,7 +160,9 @@ def main() -> int:
         "clustered stress cases match repairability expectations",
         "clustered repair stress expectation mismatch",
     )
-    checks.append({"id": "e1x_clustered_repair_stress_expectations", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_clustered_repair_stress_expectations", "status": status, "detail": detail}
+    )
 
     cross = next(case for case in cases if case["case"] == "cross_stripe_16x16")
     high_remaps = int(yield_report.get("summary", {}).get("high_failure_remapped_cores", 0))
@@ -160,7 +178,13 @@ def main() -> int:
         "16x16 cross-stripe stress is repairable while using most spare capacity",
         "cross-stripe clustered repair stress mismatch",
     )
-    checks.append({"id": "e1x_clustered_repair_stress_cross_stripe_margin", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_clustered_repair_stress_cross_stripe_margin",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     overloads_detected = all(
         (not bool(case["repairable"])) and bool(case["expectation_met"])
@@ -172,7 +196,9 @@ def main() -> int:
         "over-budget clustered cases are detected instead of counted as repairable",
         "clustered repair overload detection mismatch",
     )
-    checks.append({"id": "e1x_clustered_repair_stress_overload_detected", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_clustered_repair_stress_overload_detected", "status": status, "detail": detail}
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     repairable_cases = [case for case in cases if case["repairable"]]
@@ -226,8 +252,7 @@ def main() -> int:
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:
         print(
-            "BLOCKED: E1X clustered repair stress failed: "
-            + ", ".join(c["id"] for c in failures)
+            "BLOCKED: E1X clustered repair stress failed: " + ", ".join(c["id"] for c in failures)
         )
         return 1
     print(f"PASS: E1X clustered repair stress; report {REPORT.relative_to(ROOT)}")

@@ -1,8 +1,5 @@
-import {
-  APP_EMOTE_EVENT,
-  type AppEmoteEventDetail,
-  Z_GLOBAL_EMOTE,
-} from "@elizaos/ui";
+import { APP_EMOTE_EVENT, type AppEmoteEventDetail } from "@elizaos/ui/events";
+import { Z_GLOBAL_EMOTE } from "@elizaos/ui/utils";
 import {
   Accessibility,
   Activity,

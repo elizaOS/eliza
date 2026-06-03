@@ -1,5 +1,5 @@
 const notConfigured =
-  "@brighter/storage-adapter-s3 is stubbed in the Cloudflare Worker bundle. Configure the native R2 binding or S3 route adapter before using this path.";
+  "@brighter/storage-adapter-s3 is unavailable in the Cloudflare Worker bundle. Configure the native R2 binding or S3 route adapter before using this path.";
 
 function unavailable(): never {
   throw new Error(notConfigured);

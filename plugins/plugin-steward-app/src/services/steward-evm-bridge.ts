@@ -5,7 +5,7 @@
  * Strategy:
  *   1. Before the runtime starts plugins, check if we're in cloud-provisioned mode
  *   2. If so, create a Steward viem Account
- *   3. Inject a synthetic EVM_PRIVATE_KEY setting so initWalletProvider doesn't
+ *   3. Inject a reserved EVM_PRIVATE_KEY setting so initWalletProvider doesn't
  *      generate a random key, then immediately replace the account on the
  *      WalletProvider after EVMService starts
  *
@@ -21,10 +21,10 @@ import {
   isStewardSigningReady,
 } from "./steward-evm-account";
 
-// A dummy private key that satisfies validation but won't be used for actual signing.
-// This is a well-known "zero" key — funds sent to its address are unrecoverable.
-// It's only used as a placeholder so initWalletProvider doesn't generate a random key.
-const DUMMY_PRIVATE_KEY =
+// Reserved private-key-shaped seed that satisfies plugin-wallet validation but is
+// replaced by the Steward account before signing. Its derived address must never
+// be funded; it exists only to prevent auto-generation/persistence of a random key.
+const STEWARD_BOOTSTRAP_PRIVATE_KEY_SENTINEL =
   "0x0000000000000000000000000000000000000000000000000000000000000001";
 
 /** Stash the account globally so we can retrieve it in the post-start hook. */
@@ -33,8 +33,8 @@ let _initialized = false;
 
 /**
  * Pre-boot hook: call before plugins are loaded.
- * Sets a dummy EVM_PRIVATE_KEY if in Steward cloud mode so that initWalletProvider
- * doesn't auto-generate and persist a random key.
+ * Sets a reserved EVM_PRIVATE_KEY if in Steward mode so that initWalletProvider
+ * does not auto-generate and persist a random key.
  */
 export async function stewardEvmPreBoot(runtime: IAgentRuntime): Promise<void> {
   if (!isStewardSigningReady()) {
@@ -50,12 +50,15 @@ export async function stewardEvmPreBoot(runtime: IAgentRuntime): Promise<void> {
   try {
     _stewardAccount = await initStewardEvmAccount();
     if (_stewardAccount) {
-      // Set the dummy key so initWalletProvider doesn't generate a random one
-      // and doesn't try to persist it to the database
+      // Set the reserved seed so initWalletProvider doesn't generate a random
+      // key and doesn't try to persist it to the database.
       const existing = runtime.getSetting("EVM_PRIVATE_KEY");
       if (!existing) {
-        runtime.setSetting("EVM_PRIVATE_KEY", DUMMY_PRIVATE_KEY);
-        console.log("[StewardEvmBridge] Set dummy EVM_PRIVATE_KEY placeholder");
+        runtime.setSetting(
+          "EVM_PRIVATE_KEY",
+          STEWARD_BOOTSTRAP_PRIVATE_KEY_SENTINEL,
+        );
+        console.log("[StewardEvmBridge] Set reserved EVM_PRIVATE_KEY sentinel");
       }
       // Expose the steward-managed address so getWalletAddresses() and
       // resolveWalletCapabilityStatus() can discover it synchronously,

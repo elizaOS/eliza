@@ -102,6 +102,48 @@ export const containersEnv = {
     );
   },
 
+  /**
+   * Allowlist of image refs/prefixes permitted for coding-container deploys.
+   *
+   * SECURITY: coding-containers let an authenticated org run an OUTSIDE
+   * image (e.g. `ghcr.io/dexploarer/bnancy:latest`). Without an allowlist any
+   * authed org could run an arbitrary image on our nodes. This is the gate.
+   *
+   * Format: comma-separated glob prefixes, e.g.
+   *   `ghcr.io/dexploarer/*,ghcr.io/elizaos/*,ghcr.io/waifufun/*`
+   * A trailing `*` matches any suffix (repo path, tag, digest). An entry with
+   * no `*` must match the image exactly. Matching is case-insensitive on the
+   * registry/repo and ignores surrounding whitespace.
+   *
+   * Returns the parsed, normalized list. Empty list = allowlist disabled
+   * (handled at the call site so an unset env doesn't silently open the gate;
+   * see `isCodingContainerImageAllowed`).
+   *
+   * NOTE: the default entries (ghcr.io/dexploarer/*, ghcr.io/elizaos/*,
+   * ghcr.io/waifufun/*) are first-party namespaces. Review these if GitHub org
+   * access changes for any of those organizations.
+   */
+  codingContainerImageAllowlist(): string[] {
+    const env = getCloudAwareEnv();
+    const raw = pick(
+      env.CODING_CONTAINER_IMAGE_ALLOWLIST,
+      env.ELIZA_CODING_CONTAINER_IMAGE_ALLOWLIST,
+      env.CONTAINERS_CODING_IMAGE_ALLOWLIST,
+    );
+    if (raw === undefined) {
+      // Secure-by-default starter set. Operators override via env.
+      return [
+        "ghcr.io/dexploarer/*",
+        "ghcr.io/elizaos/*",
+        "ghcr.io/waifufun/*",
+      ];
+    }
+    return raw
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  },
+
   /** Explicit operator-pinned agent image, without the hardcoded fallback. */
   defaultAgentImageOverride(): string | undefined {
     const env = getCloudAwareEnv();

@@ -290,6 +290,7 @@ export type RemotePluginWorkerMessage =
   | WorkerInitCompleteMessage
   | WorkerRpcMessage
   | WorkerRpcResultMessage
+  | WorkerActionCallbackMessage
   | HostRpcMessage
   | HostRpcResultMessage
   | StreamChunkMessage
@@ -392,6 +393,13 @@ export interface WorkerRpcResultMessage {
     cause?: JsonValue;
     code?: string;
   };
+}
+
+/** Worker → host: action handler invoked the callback passed by the host. */
+export interface WorkerActionCallbackMessage {
+  type: "worker-action-callback";
+  callbackId: string;
+  payload: JsonValue;
 }
 
 /**

@@ -69,6 +69,49 @@ interface GetOAuthFlowStateParams {
   now?: number | Date;
 }
 
+function applyPatchOp(target: Record<string, unknown>, op: PatchOp): void {
+  if (!op.path) return;
+  const parts = op.path.split(".");
+  const last = parts.pop();
+  if (last === undefined) return;
+
+  let parent: Record<string, unknown> = target;
+  for (const segment of parts) {
+    const next = parent[segment];
+    if (next === null || typeof next !== "object") {
+      const created: Record<string, unknown> = {};
+      parent[segment] = created;
+      parent = created;
+    } else {
+      parent = next as Record<string, unknown>;
+    }
+  }
+
+  switch (op.op) {
+    case "set":
+      parent[last] = op.value;
+      break;
+    case "remove":
+      delete parent[last];
+      break;
+    case "push": {
+      const existing = parent[last];
+      if (Array.isArray(existing)) {
+        existing.push(op.value);
+      } else {
+        parent[last] = [op.value];
+      }
+      break;
+    }
+    case "increment": {
+      const existing = parent[last];
+      const delta = typeof op.value === "number" ? op.value : 1;
+      parent[last] = typeof existing === "number" ? existing + delta : delta;
+      break;
+    }
+  }
+}
+
 interface UpdateOAuthFlowStateParams {
   state?: string;
   stateHash?: string;
@@ -460,28 +503,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async ensureEmbeddingDimension(dimension: number) {
     return this.withDatabase(async () => {
-      const existingMemory = await this.db
-        .select()
-        .from(memoryTable)
-        .innerJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
-        .where(eq(memoryTable.agentId, this.agentId))
-        .limit(1);
-
-      if (existingMemory.length > 0) {
-        // The join result includes both memoryTable and embeddingTable columns
-        // Access embedding columns directly from the joined result
-        interface JoinedMemoryResult {
-          memories: typeof memoryTable.$inferSelect;
-          embeddings: typeof embeddingTable.$inferSelect;
-        }
-        const joinedResult = existingMemory[0] as JoinedMemoryResult;
-        Object.entries(DIMENSION_MAP).find(([_, colName]) => {
-          const embeddingCol = colName as keyof typeof embeddingTable.$inferSelect;
-          return joinedResult.embeddings[embeddingCol] !== null;
-        });
-        // We don't actually need to use usedDimension for now, but it's good to know it's there.
-      }
-
       const resolvedDimension = DIMENSION_MAP[dimension as keyof typeof DIMENSION_MAP];
       if (!resolvedDimension) {
         logger.warn(
@@ -2327,7 +2348,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
     }
 
-    // Ensure we always pass a JSON string to the SQL placeholder – if we pass an
+    // Ensure we always pass a JSON string to the SQL bind parameter; if we pass an
     // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
     const contentToInsert =
       typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
@@ -4772,11 +4793,28 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }
 
   async patchComponents(
-    _updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
+    updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
     _options?: { entityContext?: UUID }
   ): Promise<void> {
-    // No-op stub: patch operations require JSON patch support.
-    // Individual adapters (Postgres) can override with jsonb_set-based implementation.
+    for (const update of updates) {
+      const rows = await this.withDatabase(async () =>
+        this.db.select().from(componentTable).where(eq(componentTable.id, update.componentId))
+      );
+      const row = rows[0];
+      if (!row) continue;
+
+      const data = { ...((row.data ?? {}) as Record<string, unknown>) };
+      for (const op of update.ops) {
+        applyPatchOp(data, op);
+      }
+
+      await this.withDatabase(async () => {
+        await this.db
+          .update(componentTable)
+          .set({ data })
+          .where(eq(componentTable.id, update.componentId));
+      });
+    }
   }
 
   // ── Entity batch methods ──────────────────────────────────────────────

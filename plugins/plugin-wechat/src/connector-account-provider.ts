@@ -136,17 +136,6 @@ export function createWechatConnectorAccountProvider(
       _manager: ConnectorAccountManager,
     ): Promise<ConnectorAccount[]> => {
       const accounts = listWechatAccounts(runtime);
-      if (accounts.length === 0) {
-        // No accounts configured — surface a placeholder default so the
-        // connector is visible in the manager UI.
-        return [
-          toConnectorAccount({
-            id: WECHAT_DEFAULT_ACCOUNT_ID,
-            enabled: false,
-            apiKeyConfigured: false,
-          }),
-        ];
-      }
       return accounts.map(toConnectorAccount);
     },
     createAccount: async (

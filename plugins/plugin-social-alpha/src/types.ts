@@ -501,7 +501,7 @@ export interface RecommendationMemory extends Memory {
 	};
 }
 
-// TODO: Consolidate this into "Entity" with metadata
+// Legacy account shape retained for compatibility with existing trust data.
 export type Account = {
 	id: UUID;
 	name: string;

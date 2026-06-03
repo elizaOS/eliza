@@ -723,9 +723,7 @@ def test_validate_report_cli_accepts_artifact_root() -> None:
         if import_result.returncode != 0:
             raise AssertionError(import_result.stdout)
 
-        validate_result = run_runner(
-            ["validate-report", str(report_path), "--artifact-root", "."]
-        )
+        validate_result = run_runner(["validate-report", str(report_path), "--artifact-root", "."])
         if validate_result.returncode != 0:
             raise AssertionError(validate_result.stdout)
         if "valid" not in validate_result.stdout:
@@ -788,9 +786,7 @@ def test_e1_npu_nnapi_proof_check_preserves_missing_proof_blocker() -> None:
     ):
         raise AssertionError(json.dumps(status, indent=2))
     command_text = "\n".join(
-        command
-        for finding in findings
-        for command in finding.get("next_commands", [])
+        command for finding in findings for command in finding.get("next_commands", [])
     )
     for token in (
         'test -n "$CHIP_ANDROID_ADB_SERIAL" || test -n "$CHIP_ANDROID_ADB_HOSTPORT"',

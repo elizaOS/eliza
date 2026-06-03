@@ -22,12 +22,12 @@ src/
     key-namespace.ts    systemKey / orgKey / userKey builders + parseKeyId
     memory-adapter.ts   In-process adapter (tests and development)
     local-adapter.ts    Single-user desktop: HKDF-derived subkeys from a root key
-    steward-adapter.ts  Production stub: throws NotImplementedError until Steward ships endpoints
+    steward-adapter.ts  Production HTTP client for Steward KMS endpoints
     index.ts            createKmsClient factory + resolveKmsBackend + re-exports
   audit/
     actions.ts          AUDIT_ACTIONS const tuple — exhaustive list of legal action names
     types.ts            AuditEvent, AuditEventSchema (Zod), AuditActor, newEventId, nowIso
-    sink.ts             AuditSink interface, InMemorySink, ConsoleSink, FileSink, HttpSinkStub
+    sink.ts             AuditSink interface, InMemorySink, ConsoleSink, FileSink, HttpSink
     dispatcher.ts       AuditDispatcher class, METADATA_ALLOWLIST, redactMetadata
     index.ts            Re-exports actions / types / sink / dispatcher
   crypto/
@@ -48,7 +48,7 @@ import {
   createKmsClient, resolveKmsBackend,
   LocalKmsAdapter, MemoryKmsAdapter, StewardKmsAdapter,
   systemKey, orgKey, userKey, parseKeyId, isValidKeyId, withVersion, baseKeyId,
-  AuditDispatcher, InMemorySink, ConsoleSink, FileSink, HttpSinkStub,
+  AuditDispatcher, InMemorySink, ConsoleSink, FileSink, HttpSink,
   hkdfSha256,
 } from "@elizaos/security";
 
@@ -155,10 +155,10 @@ bun run --cwd packages/security clean        # rm -rf dist
 ## Conventions / gotchas
 
 - **AAD is required for any encrypt call where the key bundle is not unique per record.** Always include `table`, `row_id`, `column` in the AAD. The encrypt API does not enforce this at the type level — but the SOC2 controls in `docs/SOC2.md` require it.
-- **`StewardKmsAdapter` is a stub.** Every method throws `NotImplementedError`. The Steward endpoints are documented in `src/kms/steward-adapter.ts` and the README. Do not use this adapter in tests — use `MemoryKmsAdapter`.
+- **`StewardKmsAdapter` is an HTTP client.** The Steward endpoints are documented in `src/kms/steward-adapter.ts` and the README. Tests should fake `fetch` or use `MemoryKmsAdapter`; do not make live Steward calls in unit tests.
 - **`LocalKmsAdapter` signing is not persistent.** Sign key pairs are held in-process; they are regenerated on restart. Decrypt (symmetric) is persistent across restarts because HKDF is deterministic from the root key.
 - **Rotation does not break decrypt.** Pass the stored `keyVersion` to `decrypt()`. Old versions remain decryptable until a background re-encrypt job re-wraps them.
 - **`ELIZA_LOCAL_ROOT_KEY` must be exactly 32 bytes decoded.** Generate with `openssl rand -base64 32`. A random ephemeral key is generated only in `NODE_ENV=test`; outside test, a missing key throws `KmsError` rather than silently losing data.
 - **`METADATA_ALLOWLIST` is PII gate.** Keys not in the allowlist for the action prefix are silently dropped. Audit sinks see only allowlisted keys.
-- **`HttpSinkStub` always throws.** It is a placeholder for the production HTTP audit-log pipeline. Do not add it to sinks in live code yet.
+- **`HttpSink` posts JSON events.** It sends one event per POST and throws on non-2xx responses so `AuditDispatcher.onSinkError` can report delivery failures.
 - The `scripts/kms-sign.ts` and `scripts/kms-verify.ts` CLIs are used by non-Node (e.g. Python) publish flows to sign blobs; they require `ELIZA_KMS_PASSPHRASE`.

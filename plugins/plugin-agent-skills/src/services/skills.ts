@@ -707,7 +707,8 @@ export class AgentSkillsService extends Service {
 			watchDirs.push(this.workspaceSkillsDir);
 		}
 
-		// Only watch workspace for now (most likely to change during development)
+		// Auto-refresh watches workspace skills, the mutable source this service
+		// owns. Managed, bundled, and catalog skills refresh through load/sync flows.
 		if (watchDirs.length === 0) {
 			this.runtime.logger.debug(
 				"AgentSkills: No directories to watch for auto-refresh",

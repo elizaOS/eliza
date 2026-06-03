@@ -1,6 +1,6 @@
 import "./register-routes.ts";
 
-export { useWalletState } from "@elizaos/ui";
+export { useWalletState } from "@elizaos/ui/state";
 export { InventoryView } from "./InventoryView.tsx";
 export { ChainIcon } from "./inventory/ChainIcon.tsx";
 export {

@@ -11,12 +11,17 @@ import type { OSWorldAction } from "./types.js";
 
 // ── computer_13 → DesktopActionParams ───────────────────────────────────
 
+export interface OSWorldPointerState {
+  mouseDownAt?: [number, number];
+}
+
 /**
  * Convert an OSWorld computer_13 action to a DesktopActionParams.
  * Returns null for WAIT/DONE/FAIL (control flow, not desktop actions).
  */
 export function fromOSWorldAction(
   action: OSWorldAction,
+  pointerState?: OSWorldPointerState,
 ): DesktopActionParams | null {
   switch (action.action_type) {
     case "CLICK":
@@ -92,18 +97,32 @@ export function fromOSWorldAction(
       };
 
     case "MOUSE_DOWN":
-      // Start of a drag — just move to position for now
+      if (pointerState) {
+        pointerState.mouseDownAt = [action.x ?? 0, action.y ?? 0];
+      }
       return {
         action: "mouse_move",
         coordinate: [action.x ?? 0, action.y ?? 0],
       };
 
-    case "MOUSE_UP":
-      // End of a drag — just click at position
+    case "MOUSE_UP": {
+      const coordinate: [number, number] = [action.x ?? 0, action.y ?? 0];
+      if (pointerState?.mouseDownAt) {
+        const startCoordinate = pointerState.mouseDownAt;
+        delete pointerState.mouseDownAt;
+        return {
+          action: "drag",
+          startCoordinate,
+          coordinate,
+        };
+      }
+
+      // Direct stateless conversion cannot infer an earlier mouse-down point.
       return {
         action: "click",
-        coordinate: [action.x ?? 0, action.y ?? 0],
+        coordinate,
       };
+    }
 
     case "WAIT":
     case "DONE":

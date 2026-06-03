@@ -2,15 +2,28 @@ import { defineConfig } from "vitest/config";
 import {
   providerSdkAliases,
   providerSdkShimPlugin,
+  repoRoot,
 } from "../../packages/test/vitest/provider-sdk-aliases";
+
+const testAliases = [
+  {
+    find: "@elizaos/core/node",
+    replacement: `${repoRoot}/core/src/index.node.ts`,
+  },
+  ...providerSdkAliases,
+  {
+    find: "@elizaos/logger",
+    replacement: `${repoRoot}/logger/src/index.ts`,
+  },
+];
 
 export default defineConfig({
   plugins: [providerSdkShimPlugin()],
   resolve: {
-    alias: providerSdkAliases,
+    alias: testAliases,
   },
   test: {
-    alias: providerSdkAliases,
+    alias: testAliases,
     globals: true,
     environment: "node",
     include: [

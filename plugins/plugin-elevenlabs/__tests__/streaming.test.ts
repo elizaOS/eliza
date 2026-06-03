@@ -15,11 +15,16 @@ import { describe, expect, it, vi } from "vitest";
 
 const streamMock = vi.fn();
 const convertMock = vi.fn();
+const clientConfigMock = vi.fn();
 
 // Mock the SDK before the plugin module is loaded.
 vi.mock("@elevenlabs/elevenlabs-js", () => {
   return {
     ElevenLabsClient: class {
+      constructor(config: unknown) {
+        clientConfigMock(config);
+      }
+
       textToSpeech = {
         stream: streamMock,
       };
@@ -50,8 +55,10 @@ interface FakeRuntime {
   character: { settings: Record<string, unknown> };
 }
 
-function createFakeRuntime(settings: Record<string, string> = {}): FakeRuntime {
-  const merged: Record<string, string> = {
+function createFakeRuntime(
+  settings: Record<string, string | undefined> = {},
+): FakeRuntime {
+  const merged: Record<string, string | undefined> = {
     ELEVENLABS_API_KEY: "sk-test-fake",
     ELEVENLABS_VOICE_ID: "voice-123",
     ELEVENLABS_MODEL_ID: "eleven_monolingual_v1",
@@ -239,6 +246,57 @@ describe("plugin-elevenlabs TTS streaming", () => {
       ),
     ).rejects.toThrow(/ElevenLabs TTS .*required|must be a non-empty string/);
     expect(streamMock).not.toHaveBeenCalled();
+  });
+
+  it("uses a browser proxy without sending synthetic API credentials", async () => {
+    streamMock.mockReset();
+    clientConfigMock.mockReset();
+    const { stream } = makeChunkedStream([4], 0);
+    streamMock.mockResolvedValueOnce(stream);
+    const restoreDocument = setGlobalValue("document", {});
+
+    const { elevenLabsPlugin } = await import("../src/index.js");
+    const ttsHandler = elevenLabsPlugin.models?.TEXT_TO_SPEECH;
+    const runtime = createFakeRuntime({
+      ELEVENLABS_API_KEY: undefined,
+      ELEVENLABS_BROWSER_URL: "https://elevenlabs-proxy.example/v1",
+    });
+
+    await ttsHandler?.(
+      runtime as unknown as Parameters<NonNullable<typeof ttsHandler>>[0],
+      "browser proxy",
+    );
+
+    expect(clientConfigMock).toHaveBeenCalledWith({
+      baseUrl: "https://elevenlabs-proxy.example/v1",
+    });
+    expect(streamMock).toHaveBeenCalledTimes(1);
+
+    restoreDocument();
+  });
+
+  it("rejects browser TTS without an API key or browser proxy", async () => {
+    streamMock.mockReset();
+    clientConfigMock.mockReset();
+    const restoreDocument = setGlobalValue("document", {});
+
+    const { elevenLabsPlugin } = await import("../src/index.js");
+    const ttsHandler = elevenLabsPlugin.models?.TEXT_TO_SPEECH;
+    const runtime = createFakeRuntime({
+      ELEVENLABS_API_KEY: undefined,
+      ELEVENLABS_BROWSER_URL: undefined,
+    });
+
+    await expect(
+      ttsHandler?.(
+        runtime as unknown as Parameters<NonNullable<typeof ttsHandler>>[0],
+        "missing proxy",
+      ),
+    ).rejects.toThrow("ELEVENLABS_API_KEY is required");
+    expect(clientConfigMock).not.toHaveBeenCalled();
+    expect(streamMock).not.toHaveBeenCalled();
+
+    restoreDocument();
   });
 });
 

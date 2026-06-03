@@ -10,20 +10,17 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileWindow,
 } from "@elizaos/shared";
-import type { InventoryChainFilters } from "@elizaos/ui";
-import {
-  type ActivityEvent,
-  AppPageSidebar,
-  Button,
-  client,
-  cn,
-  PageLayout,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-  useActivityEvents,
-  useApp,
-} from "@elizaos/ui";
+import { client } from "@elizaos/ui/api";
+import { Button } from "@elizaos/ui/components";
+import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
+import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
+import { AppPageSidebar } from "@elizaos/ui/components/shared/AppPageSidebar";
+import { type ActivityEvent, useActivityEvents } from "@elizaos/ui/hooks";
+import { PageLayout } from "@elizaos/ui/layouts";
+import type { InventoryChainFilters } from "@elizaos/ui/state";
+import { useApp } from "@elizaos/ui/state";
+import { cn } from "@elizaos/ui/utils";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Activity,

@@ -530,9 +530,9 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         self.assertTrue(
             any(
                 "sha256sum" in command or "generateArchiveIntegrityEvidence" in command
-                for command in command_plan_by_id[
-                    "capture_android_release_artifact_integrity"
-                ]["commands"]
+                for command in command_plan_by_id["capture_android_release_artifact_integrity"][
+                    "commands"
+                ]
             )
         )
         self.assertTrue(

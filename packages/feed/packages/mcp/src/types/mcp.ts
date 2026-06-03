@@ -575,14 +575,29 @@ export interface GetFavoritePostsArgs {
 
 // Tool-specific return types (internal, before conversion to MCP format)
 export interface GetMarketsResult {
-  markets: Array<{
-    id: string;
-    question: string;
-    yesShares: string;
-    noShares: string;
-    liquidity: string;
-    endDate: string;
-  }>;
+  markets: Array<
+    | {
+        type: "prediction";
+        id: string;
+        question: string;
+        yesShares: string;
+        noShares: string;
+        liquidity: string;
+        endDate: string;
+      }
+    | {
+        type: "perpetual";
+        id: string;
+        ticker: string;
+        name: string | null;
+        currentPrice: number;
+        priceChange24h: number;
+        volume24h: number;
+        openInterest: number;
+        maxLeverage: number;
+        minOrderSize: number;
+      }
+  >;
 }
 
 export interface PlaceBetResult extends StringRecord<JsonValue> {

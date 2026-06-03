@@ -154,10 +154,6 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function baselinePlaceholder(task: TrajectoryTrainingTask): string {
-  return `# baseline placeholder for ${task}`;
-}
-
 const PLANNER_BASELINE = `task: Plan the next native tool calls for the current ContextObject.
 
 context_object:
@@ -175,6 +171,90 @@ rules:
 
 return:
 JSON object only. No markdown, no prose, no XML, no legacy formats.`;
+
+const SHOULD_RESPOND_BASELINE = `task: Decide whether the agent should respond to the current conversation turn.
+
+context_object:
+{{contextObject}}
+
+trajectory:
+{{trajectory}}
+
+rules:
+- choose respond when the user directly addresses the agent, asks for help, or the agent has a useful next action
+- choose ignore for ambient chatter, messages clearly meant for someone else, or turns where responding would add noise
+- choose stop when the conversation is complete or the user asks the agent to stop
+- ground the decision in the provided context and trajectory only
+
+return:
+JSON object only with decision ("respond" | "ignore" | "stop") and concise reasoning.`;
+
+const CONTEXT_ROUTING_BASELINE = `task: Route the current turn to the smallest useful execution context.
+
+context_object:
+{{contextObject}}
+
+trajectory:
+{{trajectory}}
+
+rules:
+- classify whether the turn needs ordinary reply generation, tool planning, memory/context lookup, media analysis, or no action
+- prefer the narrowest context that can satisfy the user request
+- do not invent capabilities that are absent from the context object
+- if the current context is sufficient for a direct answer, keep routing simple
+
+return:
+JSON object only with context, requiresTool, candidateAction when grounded, and concise reasoning.`;
+
+const RESPONSE_BASELINE = `task: Write the final user-facing response for the current turn.
+
+context_object:
+{{contextObject}}
+
+trajectory:
+{{trajectory}}
+
+rules:
+- answer directly using the available trajectory and context
+- include relevant tool outputs or results instead of describing that tools were run
+- be concise, concrete, and honest about any missing or failed evidence
+- do not promise background work after this response
+- do not include private chain-of-thought or implementation-only notes
+
+return:
+Natural language response text only.`;
+
+const MEDIA_DESCRIPTION_BASELINE = `task: Describe the supplied media for downstream agent reasoning.
+
+context_object:
+{{contextObject}}
+
+trajectory:
+{{trajectory}}
+
+rules:
+- identify visible subjects, text, layout, actions, and notable details
+- separate direct observations from uncertain inferences
+- mention safety-relevant, UI-relevant, or task-relevant details when present
+- avoid guessing identities or hidden intent without evidence
+
+return:
+JSON object only with summary, observations, text, uncertainty, and taskRelevantDetails.`;
+
+function defaultBaselineForTask(task: TrajectoryTrainingTask): string {
+  switch (task) {
+    case "should_respond":
+      return SHOULD_RESPOND_BASELINE;
+    case "context_routing":
+      return CONTEXT_ROUTING_BASELINE;
+    case "action_planner":
+      return PLANNER_BASELINE;
+    case "response":
+      return RESPONSE_BASELINE;
+    case "media_description":
+      return MEDIA_DESCRIPTION_BASELINE;
+  }
+}
 
 function firstStringExport(
   promptModule: Record<string, unknown>,
@@ -242,12 +322,12 @@ async function defaultDispatcher(
         };
       }
       const baselinePrompt = await loadBaselineForTask(input.task);
-      const optimizerName =
-        process.env.TRAIN_OPTIMIZER?.trim() ?? "gepa";
+      const optimizerName = process.env.TRAIN_OPTIMIZER?.trim() ?? "gepa";
       const result = await runNativeBackend({
         datasetPath: input.datasetPath,
         task: input.task,
-        optimizer: optimizerName as import("../optimizers/types.js").OptimizerName,
+        optimizer:
+          optimizerName as import("../optimizers/types.js").OptimizerName,
         baselinePrompt,
         runtime: { useModel: useModelHandler },
       });
@@ -323,47 +403,52 @@ function getOptimizedPromptService(
 }
 
 /**
- * Pull the live runtime template for the task. Falls back to the v5 planner
- * baseline for action-planner training, or a generic placeholder for other
- * tasks when the runtime cannot expose its template.
+ * Pull the live runtime template for the task. Falls back to concrete bundled
+ * task baselines when the runtime cannot expose its template.
  */
-async function loadBaselineForTask(
+export async function loadBaselineForTask(
   task: TrajectoryTrainingTask,
 ): Promise<string> {
   const prompts = await import("@elizaos/core").catch(() => null);
   if (!prompts) {
-    return task === "action_planner"
-      ? PLANNER_BASELINE
-      : baselinePlaceholder(task);
+    return defaultBaselineForTask(task);
   }
   const promptModule = prompts as Record<string, unknown>;
   switch (task) {
     case "should_respond":
-    case "context_routing":
       return (
         firstStringExport(promptModule, [
           "shouldRespondTemplate",
           "messageHandlerTemplate",
-        ]) ?? baselinePlaceholder(task)
+        ]) ?? defaultBaselineForTask(task)
+      );
+    case "context_routing":
+      return (
+        firstStringExport(promptModule, [
+          "messageHandlerTemplate",
+          "shouldRespondTemplate",
+        ]) ?? defaultBaselineForTask(task)
       );
     case "response":
       return (
         firstStringExport(promptModule, [
           "messageHandlerTemplate",
           "replyTemplate",
-        ]) ?? baselinePlaceholder(task)
+        ]) ?? defaultBaselineForTask(task)
       );
     case "action_planner":
       return (
         firstStringExport(promptModule, [
           "plannerTemplate",
-          "plannerTemplate",
+          "PLANNER_TEMPLATE",
         ]) ?? PLANNER_BASELINE
       );
     case "media_description":
       return (
-        firstStringExport(promptModule, ["imageDescriptionTemplate"]) ??
-        baselinePlaceholder(task)
+        firstStringExport(promptModule, [
+          "imageDescriptionTemplate",
+          "IMAGE_DESCRIPTION_TEMPLATE",
+        ]) ?? defaultBaselineForTask(task)
       );
   }
 }

@@ -301,7 +301,9 @@ def write_kicad_export_dir_candidate(path_text: str, artifact_id: str) -> dict[s
     board_rel = chip_rel(ROUTED_BOARD)
     schematic_rel = chip_rel(ROUTED_SCHEMATIC)
     if path_text == "board/kicad/e1-phone/production/gerbers":
-        export_runs.append(run_kicad_export(["pcb", "export", "gerbers", "-o", path_text, board_rel]))
+        export_runs.append(
+            run_kicad_export(["pcb", "export", "gerbers", "-o", path_text, board_rel])
+        )
     elif path_text == "board/kicad/e1-phone/production/gerbers/nc-drill-and-slots":
         export_runs.append(
             run_kicad_export(

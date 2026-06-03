@@ -55,15 +55,11 @@
       "@elizaos/plugin-remote-manifest": [
         "../plugin-remote-manifest/src/index.ts"
       ],
-      "@elizaos/plugin-remote-manifest/*": [
-        "../plugin-remote-manifest/src/*"
-      ],
+      "@elizaos/plugin-remote-manifest/*": ["../plugin-remote-manifest/src/*"],
       "@elizaos/plugin-worker-runtime": [
         "../plugin-worker-runtime/src/index.ts"
       ],
-      "@elizaos/plugin-worker-runtime/*": [
-        "../plugin-worker-runtime/src/*"
-      ],
+      "@elizaos/plugin-worker-runtime/*": ["../plugin-worker-runtime/src/*"],
       "@elizaos/plugin-app-manager": [
         "../../plugins/plugin-app-manager/src/index.ts"
       ],
@@ -136,6 +132,12 @@
       "react-dom/client": ["../../node_modules/@types/react-dom/client.d.ts"],
       "@elizaos/plugin-clawville": [
         "../../plugins/plugin-clawville/src/index.ts"
+      ],
+      "@elizaos/plugin-workflow": [
+        "../../plugins/plugin-workflow/dist/index.d.ts"
+      ],
+      "@elizaos/capacitor-messages": [
+        "../../plugins/plugin-native-messages/src/index.ts"
       ]
     }
   }

@@ -259,8 +259,10 @@ export function buildSandboxedCommand(
     }
     return { cmd: argv, sandbox: "none" };
   }
-  // Windows: no built-in equivalent. Job Object limits are out of scope here.
-  // TODO(soc2-a3-windows): integrate Job Object resource limits via FFI.
+  // Windows has no built-in equivalent to sandbox-exec/bwrap in this package.
+  // Remaining platform boundary: integrate Job Object resource limits via FFI
+  // and verify on Windows before reporting a sandbox stronger than env
+  // allowlisting.
   return { cmd: argv, sandbox: "none" };
 }
 

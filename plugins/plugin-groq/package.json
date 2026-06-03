@@ -4,7 +4,7 @@
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
-  "types": "dist/node/index.d.ts",
+  "types": "dist/index.d.ts",
   "browser": "dist/browser/index.browser.js",
   "repository": {
     "type": "git",
@@ -13,7 +13,7 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/node/index.d.ts",
+      "types": "./dist/index.d.ts",
       "browser": {
         "types": "./dist/browser/index.d.ts",
         "import": "./dist/browser/index.browser.js",
@@ -24,14 +24,7 @@
         "import": "./dist/node/index.node.js",
         "default": "./dist/node/index.node.js"
       },
-      "import": {
-        "types": "./dist/node/index.d.ts",
-        "default": "./dist/node/index.node.js"
-      },
-      "default": {
-        "types": "./dist/node/index.d.ts",
-        "default": "./dist/node/index.node.js"
-      }
+      "default": "./dist/node/index.node.js"
     },
     "./*.css": "./dist/*.css",
     "./*": {

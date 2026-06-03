@@ -1,0 +1,296 @@
+import { Check, Copy } from "lucide-react";
+import { marked, type Token, type Tokens } from "marked";
+import { type ReactNode, useState } from "react";
+
+// The coding agent writes markdown prose. We parse it with `marked` — a real
+// lexer, not a hand-rolled regex — then render its token AST directly to React
+// elements. Rendering the AST (rather than marked's HTML string) means nothing
+// is ever injected via dangerouslySetInnerHTML: raw HTML that appears in the
+// stream is shown as escaped text, never executed, so there's no XSS surface
+// and no sanitizer dependency. marked is pure ESM with zero dependencies, so it
+// also sidesteps the rolldown dev-optimizer's CommonJS-interop hang that
+// react-markdown's `style-to-js` dep triggers in this app.
+
+function alignStyle(align: Tokens.TableCell["align"]) {
+  return align ? { textAlign: align } : undefined;
+}
+
+export function sanitizeMarkdownUrl(value: string | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (
+    (trimmed.startsWith("/") && !trimmed.startsWith("//")) ||
+    trimmed.startsWith("./") ||
+    trimmed.startsWith("../") ||
+    trimmed.startsWith("#")
+  ) {
+    return trimmed;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (
+      parsed.protocol === "http:" ||
+      parsed.protocol === "https:" ||
+      parsed.protocol === "mailto:"
+    ) {
+      return trimmed;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function renderChildren(tokens: Token[] | undefined, key: string): ReactNode {
+  if (!tokens || tokens.length === 0) return null;
+  return tokens.map((token, index) => renderToken(token, `${key}.${index}`));
+}
+
+function renderToken(token: Token, key: string): ReactNode {
+  switch (token.type) {
+    case "space":
+    case "def":
+      return null;
+    case "paragraph":
+      return (
+        <p key={key} className="my-1 leading-relaxed first:mt-0 last:mb-0">
+          {renderChildren(token.tokens, key)}
+        </p>
+      );
+    case "heading": {
+      const depth = Math.min(Math.max(token.depth, 1), 4);
+      const Tag = `h${depth}` as "h1" | "h2" | "h3" | "h4";
+      return (
+        <Tag key={key} className="mt-2 mb-1 font-semibold text-txt first:mt-0">
+          {renderChildren(token.tokens, key)}
+        </Tag>
+      );
+    }
+    case "code":
+      return <CodeBlock key={key} code={token.text} lang={token.lang} />;
+    case "blockquote":
+      return (
+        <blockquote
+          key={key}
+          className="my-1 border-l-2 border-border pl-3 text-muted-strong"
+        >
+          {renderChildren(token.tokens, key)}
+        </blockquote>
+      );
+    case "list": {
+      const items = token.items.map((item, index) => {
+        // Composite path key (parent path + position): stable across this
+        // immutable, fully-recomputed AST render, and unique among siblings.
+        const itemKey = `${key}.${index}`;
+        return (
+          <li key={itemKey} className="my-0.5 marker:text-muted">
+            {item.task ? (
+              <input
+                type="checkbox"
+                checked={Boolean(item.checked)}
+                readOnly
+                aria-hidden
+                className="mr-1.5 align-middle accent-accent"
+              />
+            ) : null}
+            {renderChildren(item.tokens, itemKey)}
+          </li>
+        );
+      });
+      return token.ordered ? (
+        <ol
+          key={key}
+          start={typeof token.start === "number" ? token.start : undefined}
+          className="my-1 list-decimal space-y-0.5 pl-5"
+        >
+          {items}
+        </ol>
+      ) : (
+        <ul key={key} className="my-1 list-disc space-y-0.5 pl-5">
+          {items}
+        </ul>
+      );
+    }
+    case "table":
+      return (
+        <div key={key} className="my-1.5 overflow-x-auto">
+          <table className="w-full border-collapse text-2xs">
+            <thead>
+              <tr>
+                {token.header.map((cell, index) => {
+                  const cellKey = `${key}.h${index}`;
+                  return (
+                    <th
+                      key={cellKey}
+                      style={alignStyle(cell.align)}
+                      className="border border-border/60 bg-bg/40 px-2 py-1 text-left font-semibold text-txt"
+                    >
+                      {renderChildren(cell.tokens, cellKey)}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {token.rows.map((row, rowIndex) => {
+                const rowKey = `${key}.r${rowIndex}`;
+                return (
+                  <tr key={rowKey}>
+                    {row.map((cell, cellIndex) => {
+                      const cellKey = `${rowKey}c${cellIndex}`;
+                      return (
+                        <td
+                          key={cellKey}
+                          style={alignStyle(cell.align)}
+                          className="border border-border/50 px-2 py-1 align-top"
+                        >
+                          {renderChildren(cell.tokens, cellKey)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      );
+    case "hr":
+      return <hr key={key} className="my-2 border-border/50" />;
+    case "strong":
+      return (
+        <strong key={key} className="font-semibold text-txt">
+          {renderChildren(token.tokens, key)}
+        </strong>
+      );
+    case "em":
+      return (
+        <em key={key} className="italic">
+          {renderChildren(token.tokens, key)}
+        </em>
+      );
+    case "del":
+      return (
+        <del key={key} className="line-through opacity-80">
+          {renderChildren(token.tokens, key)}
+        </del>
+      );
+    case "codespan":
+      return (
+        <code
+          key={key}
+          className="break-words rounded-sm bg-bg/70 px-1 py-px font-mono text-[0.95em] text-txt-strong"
+        >
+          {token.text}
+        </code>
+      );
+    case "link": {
+      const href = sanitizeMarkdownUrl(token.href);
+      // Only open external (http/https/mailto) links in a new tab.
+      // Relative paths should navigate in the same context.
+      const isExternal =
+        href !== null &&
+        /^https?:/i.test(href);
+      return (
+        <a
+          key={key}
+          href={href ?? undefined}
+          title={token.title ?? undefined}
+          target={isExternal ? "_blank" : undefined}
+          rel={isExternal ? "noreferrer" : undefined}
+          className="text-txt-strong underline underline-offset-2 transition-colors hover:text-accent"
+        >
+          {renderChildren(token.tokens, key)}
+        </a>
+      );
+    }
+    case "image": {
+      const src = sanitizeMarkdownUrl(token.href);
+      if (!src) return token.text;
+      return (
+        <img
+          key={key}
+          src={src}
+          alt={token.text}
+          title={token.title ?? undefined}
+          className="my-1 max-w-full rounded-sm border border-border/50"
+        />
+      );
+    }
+    case "br":
+      return <br key={key} />;
+    case "escape":
+      return token.text;
+    case "text":
+      // A block-level text token (e.g. loose-list content) carries inline
+      // tokens; an inline text leaf is just its string.
+      return token.tokens && token.tokens.length > 0
+        ? renderChildren(token.tokens, key)
+        : token.text;
+    default:
+      // `html` and any other raw tokens are rendered as escaped text — never
+      // injected as markup — so stray tags in the stream can't execute.
+      return "raw" in token ? token.raw : null;
+  }
+}
+
+function CodeBlock({ code, lang }: { code: string; lang?: string }): ReactNode {
+  const [copied, setCopied] = useState(false);
+
+  const copy = () => {
+    // Guard for non-secure-context / older webviews where clipboard is absent.
+    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+      return;
+    }
+    navigator.clipboard.writeText(code).then(
+      () => {
+        setCopied(true);
+        // Brief confirmation, then revert to the resting copy icon.
+        setTimeout(() => setCopied(false), 1200);
+      },
+      () => undefined,
+    );
+  };
+
+  return (
+    <div className="group/code relative my-1 overflow-hidden rounded-sm border border-border/50 bg-bg/80">
+      {lang ? (
+        <div className="border-b border-border/40 px-2.5 py-0.5 font-mono text-3xs uppercase tracking-wide text-muted">
+          {lang}
+        </div>
+      ) : null}
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={copied ? "Copied" : "Copy code"}
+        // Unobtrusive: faded until the block is hovered/focused, fully shown
+        // once copied. Green only as the success affordance.
+        className={`absolute right-1 top-1 z-10 rounded p-1 text-muted opacity-0 transition-[color,opacity] hover:bg-bg-hover/60 hover:text-txt focus-visible:opacity-100 group-hover/code:opacity-100 ${
+          copied ? "text-ok opacity-100" : ""
+        }`}
+      >
+        {copied ? (
+          <Check className="h-3.5 w-3.5" aria-hidden />
+        ) : (
+          <Copy className="h-3.5 w-3.5" aria-hidden />
+        )}
+      </button>
+      <pre className="max-h-72 overflow-auto px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-txt">
+        <code className="whitespace-pre-wrap break-words">{code}</code>
+      </pre>
+    </div>
+  );
+}
+
+export function MarkdownText({ text }: { text: string }): ReactNode {
+  const tokens = marked.lexer(text);
+  return (
+    <div className="break-words text-xs text-txt">
+      {tokens.map((token, index) => renderToken(token, `t${index}`))}
+    </div>
+  );
+}

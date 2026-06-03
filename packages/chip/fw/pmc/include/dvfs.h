@@ -2,9 +2,8 @@
  * DVFS table loader interface.
  *
  * Tables are statically compiled into the PMC firmware from the YAML files
- * in docs/pd/dvfs-tables/. A build step (TBD) emits a corresponding C array
- * per corner; until then, the placeholder TT table in
- * fw/pmc/src/dvfs_arbiter.c is used.
+ * in docs/pd/dvfs-tables/. The current firmware carries only the TT seed
+ * table; missing SS/FF tables fail closed by returning NULL.
  */
 
 #ifndef ELIZA_PMC_DVFS_H

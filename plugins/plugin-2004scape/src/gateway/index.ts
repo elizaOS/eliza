@@ -53,6 +53,7 @@ export function startGateway(options: GatewayOptions): GatewayHandle {
   const botSessions = new Map<string, GatewayWs>();
   const sdkSessions = new Map<string, GatewayWs>();
   const latestState = new Map<string, BotWorldState>();
+  const backpressuredSockets = new Set<GatewayWs>();
 
   // ── Helpers ─────────────────────────────────────────────────────
 
@@ -76,11 +77,56 @@ export function startGateway(options: GatewayOptions): GatewayHandle {
   function removeSession(ws: GatewayWs): void {
     const { kind, username } = ws.data;
     const map = kind === "bot" ? botSessions : sdkSessions;
+    backpressuredSockets.delete(ws);
     // Only remove if this ws is still the current session for the username
     if (map.get(username) === ws) {
       map.delete(username);
       log(`[gateway] ${kind} disconnected: ${username}`);
     }
+  }
+
+  function sendGatewayMessage(
+    ws: GatewayWs,
+    payload: string,
+    description: string,
+  ): boolean {
+    const { kind, username } = ws.data;
+    let result: number;
+    try {
+      result = ws.send(payload);
+    } catch (error) {
+      log(
+        `[gateway] failed to send ${description} to ${kind}/${username}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      removeSession(ws);
+      return false;
+    }
+
+    if (result === 0) {
+      log(
+        `[gateway] dropped ${description} to ${kind}/${username}; closing unhealthy connection`,
+      );
+      removeSession(ws);
+      try {
+        ws.close(1011, "gateway send failed");
+      } catch {
+        // already closed
+      }
+      return false;
+    }
+
+    if (result < 0) {
+      if (!backpressuredSockets.has(ws)) {
+        log(
+          `[gateway] backpressure while sending ${description} to ${kind}/${username}`,
+        );
+      }
+      backpressuredSockets.add(ws);
+    }
+
+    return true;
   }
 
   function handleTakeover(kind: "bot" | "sdk", username: string): void {
@@ -177,7 +223,7 @@ export function startGateway(options: GatewayOptions): GatewayHandle {
         // Forward to matching SDK session
         const sdkWs = sdkSessions.get(username);
         if (sdkWs) {
-          sdkWs.send(raw);
+          sendGatewayMessage(sdkWs, raw, "state update");
         }
         return;
       }
@@ -186,7 +232,7 @@ export function startGateway(options: GatewayOptions): GatewayHandle {
       if (msg.type === "sdk_action_ack") {
         const sdkWs = sdkSessions.get(username);
         if (sdkWs) {
-          sdkWs.send(raw);
+          sendGatewayMessage(sdkWs, raw, "action ack");
         }
         return;
       }
@@ -200,7 +246,7 @@ export function startGateway(options: GatewayOptions): GatewayHandle {
       if (msg.type === "sdk_action") {
         const botWs = botSessions.get(username);
         if (botWs) {
-          botWs.send(raw);
+          sendGatewayMessage(botWs, raw, "sdk action");
         } else {
           // No bot client connected — send back a failure ack
           const ack: SDKActionAckMessage = {
@@ -209,7 +255,7 @@ export function startGateway(options: GatewayOptions): GatewayHandle {
             success: false,
             message: "No bot client connected",
           };
-          ws.send(JSON.stringify(ack));
+          sendGatewayMessage(ws, JSON.stringify(ack), "no-bot action ack");
         }
         return;
       }
@@ -263,7 +309,7 @@ export function startGateway(options: GatewayOptions): GatewayHandle {
               type: "sdk_state",
               state: cachedState,
             };
-            ws.send(JSON.stringify(msg));
+            sendGatewayMessage(ws, JSON.stringify(msg), "cached state");
             log(`[gateway] sent cached state to sdk/${username}`);
           }
         }
@@ -278,8 +324,11 @@ export function startGateway(options: GatewayOptions): GatewayHandle {
         removeSession(ws);
       },
 
-      drain(_ws: GatewayWs) {
-        // backpressure relieved — no-op for now
+      drain(ws: GatewayWs) {
+        if (backpressuredSockets.delete(ws)) {
+          const { kind, username } = ws.data;
+          log(`[gateway] backpressure relieved for ${kind}/${username}`);
+        }
       },
     },
   });
@@ -294,6 +343,7 @@ export function startGateway(options: GatewayOptions): GatewayHandle {
       botSessions.clear();
       sdkSessions.clear();
       latestState.clear();
+      backpressuredSockets.clear();
       log("[gateway] stopped");
     },
   };

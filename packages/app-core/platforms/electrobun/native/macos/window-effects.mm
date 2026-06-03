@@ -755,6 +755,167 @@ extern "C" int requestNotificationPermission(void) {
 	return 2;
 }
 
+// ---------------------------------------------------------------------------
+// Onboarding notification with action buttons
+// ---------------------------------------------------------------------------
+
+static NSString *const kElizaOnboardingCategoryId = @"ELIZA_ONBOARDING";
+static NSString *const kElizaOnboardingActionLocalDevice = @"ELIZA_LOCAL_DEVICE";
+static NSString *const kElizaOnboardingActionLocalCloudAI = @"ELIZA_LOCAL_CLOUD_AI";
+static NSString *const kElizaOnboardingActionCloud = @"ELIZA_USE_CLOUD";
+static NSString *const kElizaOnboardingNotifId = @"eliza-onboarding-setup";
+
+// 0 = no choice yet
+// 1 = local (all on-device)
+// 2 = local (cloud inference)
+// 3 = eliza cloud
+// 4 = dismissed
+static int elizaOnboardingChoice = 0;
+
+/**
+ * Delegate that captures action button taps on the onboarding notification.
+ * Installed as the UNUserNotificationCenter delegate before posting.
+ */
+API_AVAILABLE(macos(10.14))
+@interface ElizaOnboardingNotificationDelegate
+	: NSObject <UNUserNotificationCenterDelegate>
+@end
+
+@implementation ElizaOnboardingNotificationDelegate
+
+- (void)userNotificationCenter:(UNUserNotificationCenter *)center
+	   didReceiveNotificationResponse:(UNNotificationResponse *)response
+				 withCompletionHandler:(void (^)(void))completionHandler {
+	NSString *actionId = response.actionIdentifier;
+	if ([actionId isEqualToString:kElizaOnboardingActionLocalDevice]) {
+		elizaOnboardingChoice = 1;
+	} else if ([actionId isEqualToString:kElizaOnboardingActionLocalCloudAI]) {
+		elizaOnboardingChoice = 2;
+	} else if ([actionId isEqualToString:kElizaOnboardingActionCloud]) {
+		elizaOnboardingChoice = 3;
+	} else if ([actionId isEqualToString:UNNotificationDefaultActionIdentifier]) {
+		// User clicked the notification body itself.
+		elizaOnboardingChoice = 0;
+	} else if ([actionId isEqualToString:UNNotificationDismissActionIdentifier]) {
+		elizaOnboardingChoice = 4;
+	}
+	completionHandler();
+}
+
+// Show notification even when app is in foreground.
+- (void)userNotificationCenter:(UNUserNotificationCenter *)center
+	   willPresentNotification:(UNNotification *)notification
+		 withCompletionHandler:
+			 (void (^)(UNNotificationPresentationOptions))completionHandler {
+	if (@available(macOS 11.0, *)) {
+		completionHandler(UNNotificationPresentationOptionBanner |
+						  UNNotificationPresentationOptionSound);
+	} else {
+		completionHandler(UNNotificationPresentationOptionAlert |
+						  UNNotificationPresentationOptionSound);
+	}
+}
+
+@end
+
+static ElizaOnboardingNotificationDelegate *elizaOnboardingDelegate = nil;
+
+/**
+ * Post a native macOS notification with three action buttons:
+ *   "Local (On-Device)"   → choice 1  (all-local)
+ *   "Local (Cloud AI)"    → choice 2  (cloud-inference)
+ *   "Eliza Cloud"         → choice 3
+ *
+ * The user's choice is stored in a static variable readable via
+ * elizaOnboardingGetChoice(). Returns true if the notification was posted.
+ */
+extern "C" bool elizaOnboardingNotificationPost(const char *title,
+												const char *body) {
+	if (@available(macOS 10.14, *)) {
+		elizaOnboardingChoice = 0;
+
+		UNUserNotificationCenter *center =
+			[UNUserNotificationCenter currentNotificationCenter];
+
+		// Install delegate (once).
+		if (elizaOnboardingDelegate == nil) {
+			elizaOnboardingDelegate =
+				[[ElizaOnboardingNotificationDelegate alloc] init];
+		}
+		[center setDelegate:elizaOnboardingDelegate];
+
+		// Register category with three actions.
+		UNNotificationAction *localDeviceAction = [UNNotificationAction
+			actionWithIdentifier:kElizaOnboardingActionLocalDevice
+						   title:@"Local (On-Device)"
+						 options:UNNotificationActionOptionForeground];
+		UNNotificationAction *localCloudAIAction = [UNNotificationAction
+			actionWithIdentifier:kElizaOnboardingActionLocalCloudAI
+						   title:@"Local (Cloud AI)"
+						 options:UNNotificationActionOptionForeground];
+		UNNotificationAction *cloudAction = [UNNotificationAction
+			actionWithIdentifier:kElizaOnboardingActionCloud
+						   title:@"Eliza Cloud"
+						 options:UNNotificationActionOptionForeground];
+		UNNotificationCategory *category = [UNNotificationCategory
+			categoryWithIdentifier:kElizaOnboardingCategoryId
+						   actions:@[ localDeviceAction, localCloudAIAction, cloudAction ]
+				 intentIdentifiers:@[]
+						   options:UNNotificationCategoryOptionCustomDismissAction];
+		[center setNotificationCategories:[NSSet setWithObject:category]];
+
+		// Build content.
+		UNMutableNotificationContent *content =
+			[[UNMutableNotificationContent alloc] init];
+		[content setTitle:elizaNSStringFromCString(title)];
+		[content setBody:elizaNSStringFromCString(body)];
+		[content setCategoryIdentifier:kElizaOnboardingCategoryId];
+		[content setSound:[UNNotificationSound defaultSound]];
+
+		// Fire immediately (no trigger).
+		UNNotificationRequest *request =
+			[UNNotificationRequest requestWithIdentifier:kElizaOnboardingNotifId
+												 content:content
+												 trigger:nil];
+
+		__block bool posted = false;
+		dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+		[center addNotificationRequest:request
+				 withCompletionHandler:^(NSError *error) {
+					 posted = (error == nil);
+					 dispatch_semaphore_signal(sem);
+				 }];
+		dispatch_semaphore_wait(
+			sem, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)));
+		return posted;
+	}
+	return false;
+}
+
+/**
+ * Read the onboarding notification choice.
+ * Returns: 0=pending, 1=local-on-device, 2=local-cloud-ai, 3=eliza-cloud, 4=dismissed.
+ */
+extern "C" int elizaOnboardingGetChoice(void) {
+	return elizaOnboardingChoice;
+}
+
+/**
+ * Dismiss the onboarding notification if still showing.
+ */
+extern "C" void elizaOnboardingNotificationDismiss(void) {
+	if (@available(macOS 10.14, *)) {
+		[[UNUserNotificationCenter currentNotificationCenter]
+			removeDeliveredNotificationsWithIdentifiers:
+				@[ kElizaOnboardingNotifId ]];
+		[[UNUserNotificationCenter currentNotificationCenter]
+			removePendingNotificationRequestsWithIdentifiers:
+				@[ kElizaOnboardingNotifId ]];
+	}
+}
+
+
+
 static int elizaEventKitAuthorizationStatusToInt(EKAuthorizationStatus status) {
 	NSInteger raw = (NSInteger)status;
 	if (raw == 0) return 0; // not determined

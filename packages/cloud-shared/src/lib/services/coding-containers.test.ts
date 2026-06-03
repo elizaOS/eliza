@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test";
+import { containersEnv } from "../config/containers-env";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
-import { buildCodingContainerCreatePayload } from "./coding-containers";
+import {
+  buildCodingContainerCreatePayload,
+  buildCodingContainerSessionResponse,
+  isCodingContainerImageAllowed,
+} from "./coding-containers";
 
 describe("coding container payloads", () => {
   it("uses the coding remote runner image when configured", () => {
@@ -34,5 +39,122 @@ describe("coding container payloads", () => {
     );
 
     expect(payload.image).toBe("ghcr.io/example/custom-coding-image:latest");
+  });
+});
+
+describe("coding container session response url", () => {
+  it("prefers the per-agent public HTTPS url over the internal bridge url", () => {
+    const request = { agent: "claude" } as const;
+    const createPayload = buildCodingContainerCreatePayload(request);
+    const session = buildCodingContainerSessionResponse({
+      request,
+      createPayload,
+      upstreamData: {
+        id: "abc123de-0000-0000-0000-000000000000",
+        status: "running",
+        publicUrl: "https://abc123de-0000-0000-0000-000000000000.waifu.fun",
+        url: "http://10.0.0.5:3000",
+      },
+    });
+
+    expect(session.url).toBe(
+      "https://abc123de-0000-0000-0000-000000000000.waifu.fun",
+    );
+  });
+
+  it("falls back to the internal url when no public url is present", () => {
+    const request = { agent: "claude" } as const;
+    const createPayload = buildCodingContainerCreatePayload(request);
+    const session = buildCodingContainerSessionResponse({
+      request,
+      createPayload,
+      upstreamData: {
+        id: "abc123de-0000-0000-0000-000000000000",
+        status: "running",
+        url: "http://10.0.0.5:3000",
+      },
+    });
+
+    expect(session.url).toBe("http://10.0.0.5:3000");
+  });
+});
+
+describe("coding container image allowlist", () => {
+  const DEFAULT = [
+    "ghcr.io/dexploarer/*",
+    "ghcr.io/elizaos/*",
+    "ghcr.io/waifufun/*",
+  ];
+
+  it("allows images under an allowed prefix", () => {
+    expect(
+      isCodingContainerImageAllowed("ghcr.io/dexploarer/bnancy:latest", DEFAULT),
+    ).toBe(true);
+    expect(
+      isCodingContainerImageAllowed("ghcr.io/elizaos/eliza:stable", DEFAULT),
+    ).toBe(true);
+    expect(
+      isCodingContainerImageAllowed("ghcr.io/waifufun/runner:v2", DEFAULT),
+    ).toBe(true);
+  });
+
+  it("rejects images outside the allowlist", () => {
+    expect(
+      isCodingContainerImageAllowed("docker.io/library/nginx:latest", DEFAULT),
+    ).toBe(false);
+    expect(
+      isCodingContainerImageAllowed("ghcr.io/attacker/evil:latest", DEFAULT),
+    ).toBe(false);
+    // No bare-substring bypass: prefix must match from the start.
+    expect(
+      isCodingContainerImageAllowed(
+        "evil.io/ghcr.io/elizaos/eliza:stable",
+        DEFAULT,
+      ),
+    ).toBe(false);
+  });
+
+  it("is case-insensitive and trims whitespace", () => {
+    expect(
+      isCodingContainerImageAllowed("  GHCR.IO/Elizaos/Eliza:Stable  ", DEFAULT),
+    ).toBe(true);
+  });
+
+  it("fails closed on an empty allowlist", () => {
+    expect(isCodingContainerImageAllowed("ghcr.io/elizaos/eliza", [])).toBe(
+      false,
+    );
+  });
+
+  it("supports an explicit wildcard opt-out", () => {
+    expect(isCodingContainerImageAllowed("anything/at/all", ["*"])).toBe(true);
+  });
+
+  it("supports exact-match entries", () => {
+    expect(
+      isCodingContainerImageAllowed("ghcr.io/elizaos/eliza:stable", [
+        "ghcr.io/elizaos/eliza:stable",
+      ]),
+    ).toBe(true);
+    expect(
+      isCodingContainerImageAllowed("ghcr.io/elizaos/eliza:dev", [
+        "ghcr.io/elizaos/eliza:stable",
+      ]),
+    ).toBe(false);
+  });
+
+  it("env getter returns the secure default when unset", () => {
+    const allowlist = runWithCloudBindings({}, () =>
+      containersEnv.codingContainerImageAllowlist(),
+    );
+    expect(allowlist).toEqual(DEFAULT);
+  });
+
+  it("env getter parses a comma-separated override", () => {
+    const allowlist = runWithCloudBindings(
+      { CODING_CONTAINER_IMAGE_ALLOWLIST: "ghcr.io/foo/*, ghcr.io/bar/baz:1 " },
+      () => containersEnv.codingContainerImageAllowlist(),
+    );
+    expect(allowlist).toEqual(["ghcr.io/foo/*", "ghcr.io/bar/baz:1"]);
   });
 });

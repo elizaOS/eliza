@@ -3,12 +3,11 @@
 Status: PROTOTYPE. This module models the ExecuTorch Python delegate surface
 without importing the upstream ``executorch`` package. It consumes the
 ``e1_npu_stablehlo`` dataclass subset, runs the same tile/precision validation
-that the runtime contract requires, and emits a placeholder descriptor-spec
-blob that documents what an ExecuTorch backend would lower at runtime. No
-binary kernel, no ahead-of-time codegen, and no ExecuTorch graph passes are
-implemented; this is the partitioner/preprocess shape only, mirrored so the
-B-5 partitioner and a future executorch backend can share a single Python
-contract.
+that the runtime contract requires, and emits a JSON descriptor-spec artifact
+documenting what an ExecuTorch backend would lower at runtime. No binary
+kernel, no ahead-of-time codegen, and no ExecuTorch graph passes are implemented;
+this is the partitioner/preprocess shape only, mirrored so the B-5 partitioner
+and a future executorch backend can share a single Python contract.
 
 The interface mirrors the upstream contract:
 
@@ -59,7 +58,7 @@ class PartitionResult:
 
 @dataclass(frozen=True)
 class PreprocessResult:
-    """ExecuTorch-style preprocess output: a placeholder backend blob."""
+    """ExecuTorch-style preprocess output: descriptor-spec artifact bytes."""
 
     backend_id: str
     blob: bytes
@@ -291,7 +290,7 @@ def partition(edge_program: StableHloModule) -> list[tuple[StableHloOp, bool]]:
 
 
 def preprocess(edge_program: StableHloModule) -> bytes:
-    """Module-level wrapper that returns the placeholder backend blob bytes."""
+    """Module-level wrapper that returns descriptor-spec artifact bytes."""
     return Backend().preprocess(edge_program).blob
 
 

@@ -1,4 +1,13 @@
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
   Button,
   type CodingAgentAddAgentInput,
   type CodingAgentOrchestratorStatus,
@@ -1183,6 +1192,7 @@ function AcceptanceSection({
       <ul className="space-y-1">
         {criteria.map((criterion, index) => (
           <li
+            // biome-ignore lint/suspicious/noArrayIndexKey: criteria strings may repeat, so index disambiguates the composite key
             key={`${criterion}-${index}`}
             className="flex items-start gap-1.5 text-xs-tight text-txt"
           >
@@ -2028,16 +2038,46 @@ function TaskInspector({
             <option value="urgent">{labelPriority("urgent", t)}</option>
           </select>
         )}
-        <ControlButton
-          agentId="inspector-delete"
-          description="Delete this task"
-          icon={<Trash2 className="h-3 w-3" />}
-          label={t("orchestrator.action.delete", { defaultValue: "Delete" })}
-          onClick={onDelete}
-          disabled={busy}
-          tone="danger"
-          testId="orchestrator-delete"
-        />
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <ControlButton
+              agentId="inspector-delete"
+              description="Delete this task"
+              icon={<Trash2 className="h-3 w-3" />}
+              label={t("orchestrator.action.delete", { defaultValue: "Delete" })}
+              onClick={() => {}}
+              disabled={busy}
+              tone="danger"
+              testId="orchestrator-delete"
+            />
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t("orchestrator.confirmDeleteTitle", {
+                  defaultValue: "Delete task?",
+                })}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("orchestrator.confirmDelete", {
+                  defaultValue:
+                    "Delete this task and its transcript? This can't be undone.",
+                })}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>
+                {t("orchestrator.action.cancel", { defaultValue: "Cancel" })}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={onDelete}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {t("orchestrator.action.delete", { defaultValue: "Delete" })}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       {addAgentOpen ? (
@@ -2405,7 +2445,9 @@ export function OrchestratorWorkbench() {
       setMessageCursor(null);
       return;
     }
-    void fetchDetail(selectedId, true).catch(() => {});
+    void fetchDetail(selectedId, true).catch((err: unknown) => {
+      console.error("[OrchestratorWorkbench] fetchDetail (initial)", { err });
+    });
   }, [selectedId, fetchDetail]);
 
   useEffect(() => {
@@ -2413,7 +2455,10 @@ export function OrchestratorWorkbench() {
     // updates; this only covers a dropped/absent stream (reconnect fallback).
     if (!selectedId) return;
     const timer = window.setInterval(
-      () => void fetchDetail(selectedId, false).catch(() => {}),
+      () =>
+        void fetchDetail(selectedId, false).catch((err: unknown) => {
+          console.error("[OrchestratorWorkbench] fetchDetail (poll)", { err });
+        }),
       detailPollMs,
     );
     return () => window.clearInterval(timer);
@@ -2427,7 +2472,12 @@ export function OrchestratorWorkbench() {
     refetchTimerRef.current = window.setTimeout(() => {
       refetchTimerRef.current = null;
       const current = selectedIdRef.current;
-      if (current) void fetchDetail(current, false).catch(() => {});
+      if (current)
+        void fetchDetail(current, false).catch((err: unknown) => {
+          console.error("[OrchestratorWorkbench] fetchDetail (debounced)", {
+            err,
+          });
+        });
     }, 150);
   }, [fetchDetail]);
 
@@ -2457,7 +2507,12 @@ export function OrchestratorWorkbench() {
         await fn();
         await fetchTasksAndStatus(true);
         const current = selectedIdRef.current;
-        if (current) await fetchDetail(current, false).catch(() => {});
+        if (current)
+          await fetchDetail(current, false).catch((err: unknown) => {
+            console.error("[OrchestratorWorkbench] fetchDetail (mutation)", {
+              err,
+            });
+          });
       } catch (error) {
         setActionError(
           getClientErrorMessage(

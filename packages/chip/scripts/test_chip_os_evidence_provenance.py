@@ -74,13 +74,9 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
         self.assertGreaterEqual(categories["missing_timestamp"], 1)
         self.assertGreaterEqual(categories["nonpassing_status"], 1)
         assert_actionable_findings(self, data)
-        host_rows = [
-            row for row in data["findings"] if row["category"] == "host_local_path"
-        ]
+        host_rows = [row for row in data["findings"] if row["category"] == "host_local_path"]
         self.assertIn("provenance_sanitize.py", host_rows[0]["next_command"])
-        timestamp_rows = [
-            row for row in data["findings"] if row["category"] == "missing_timestamp"
-        ]
+        timestamp_rows = [row for row in data["findings"] if row["category"] == "missing_timestamp"]
         self.assertIn("normalize_report_provenance.py", timestamp_rows[0]["next_command"])
         self.assertEqual(
             data["scan_root_summary"][0]["root"],
@@ -623,9 +619,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
 
         assert_actionable_findings(self, data)
         commands = "\n".join(
-            command
-            for finding in data["findings"]
-            for command in finding.get("next_commands", [])
+            command for finding in data["findings"] for command in finding.get("next_commands", [])
         )
         self.assertIn("E1_NPU_CPU_FALLBACK_PERCENT=0", commands)
         self.assertIn("E1_NPU_UNSUPPORTED_OP_COUNT=0", commands)
@@ -660,9 +654,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
 
         assert_actionable_findings(self, data)
         commands = "\n".join(
-            command
-            for finding in data["findings"]
-            for command in finding.get("next_commands", [])
+            command for finding in data["findings"] for command in finding.get("next_commands", [])
         )
         self.assertIn("run_benchmarks.py run", commands)
         self.assertIn("--claim-level L5_PROTOTYPE_SILICON", commands)

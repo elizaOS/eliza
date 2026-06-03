@@ -1,4 +1,4 @@
-import type { InventoryChainFilters } from "@elizaos/ui";
+import type { InventoryChainFilters } from "@elizaos/ui/state";
 import type { ChainKey } from "./chainConfig.ts";
 import { resolveChainKey } from "./chainConfig.ts";
 

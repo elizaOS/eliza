@@ -3412,9 +3412,8 @@ ${report.tokenReports.join("\n")}
 			consistency,
 		};
 
-		// Get user's "archetype" - could be based on their history or default
-		// For now, we'll estimate based on their performance
-		let archetype = "newbie"; // Default
+			// Classify the user's archetype from observed performance metrics.
+			let archetype = "newbie"; // Default
 		if (winRate > 0.7 && averageProfit > 30) {
 			archetype = "elite_analyst";
 		} else if (winRate > 0.6 && averageProfit > 15) {
@@ -3856,7 +3855,6 @@ ${report.tokenReports.join("\n")}
 				);
 			}
 
-			// This is a placeholder for any data you might want to return from the script
 			return parsed.recommendations;
 		} catch (error) {
 			logger.error(

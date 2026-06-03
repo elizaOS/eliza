@@ -41,14 +41,14 @@ hooks (`getChatContext`, `getUserContext`, `resolveTargets`, `listRooms`, `fetch
 ```
 src/
   index.ts                       Plugin object, init() hook, re-exports
-  service.ts                     InstagramService class — connector registration + all API stubs
+  service.ts                     InstagramService class — connector registration + API backend boundary
   workflow-credential-provider.ts InstagramWorkflowCredentialProvider — Meta Graph API token supply
   connector-account-provider.ts  ConnectorAccountProvider impl for ConnectorAccountManager
   accounts.ts                    Config resolution: env vars, character.settings.instagram, multi-account
   constants.ts                   INSTAGRAM_SERVICE_NAME, MAX_*, SUPPORTED_MEDIA_TYPES, EVENT_PREFIX
   types.ts                       All TS types/interfaces/enums (InstagramConfig, InstagramUser, etc.)
-  actions/index.ts               Placeholder — no actions defined; DMs/comments use connectors
-  providers/index.ts             Placeholder — no providers defined; context via connector hooks
+  actions/index.ts               Empty action surface; DMs/comments use connectors
+  providers/index.ts             Empty provider surface; context comes from connector hooks
   __tests__/                     Vitest unit tests
 ```
 
@@ -119,23 +119,21 @@ pattern).
 
 ## Conventions / gotchas
 
-- **API stubs:** The current `InstagramService` methods (`sendDirectMessage`, `postComment`,
-  `getThreads`, etc.) are stubs that log and return synthetic data. Real Instagram API calls are not
-  implemented. Connect an actual client library (e.g., `instagram-private-api`) inside those
-  methods before shipping to production.
+- **API backend boundary:** `InstagramService` registers the connector/account surfaces, but this
+  package does not ship a concrete Instagram API client backend. API methods fail explicitly until a
+  backend such as `instagram-private-api` or an approved Graph API adapter is wired into
+  `src/service.ts`.
 - **Multi-account:** Each configured account gets its own `InstagramService` instance. The `start()`
   static method iterates `listInstagramAccountIds()` and registers one connector pair per account.
 - **Length caps:** `MAX_COMMENT_LENGTH = 1000` and `MAX_DM_LENGTH = 1000` are enforced in
   `service.ts` — DMs over the cap throw in `sendDirectMessage`, and `contentShaping.postProcess`
   auto-truncates comments via the module-local `truncateInstagramComment`. `MAX_CAPTION_LENGTH = 2200`
-  is defined in `constants.ts` but not yet enforced (no caption posting path exists in the stubs).
+  is reserved for a caption-posting path.
 - **PostConnector target:** `POST operation=send` requires `mediaId`, `target`, or `replyTo` in
   `content.metadata`; throws without one.
 - **WorkflowCredentialProvider is duck-typed** — it does not import `@elizaos/plugin-workflow` at
   compile time; the `serviceType = "workflow_credential_provider"` string is the only coupling.
-- **No `console.*` in new code** — use `runtime.logger.*` or the imported `logger` from
-  `@elizaos/core` (existing stubs use `console.log`; clean those up when implementing real API
-  calls).
+- **No `console.*`** — use `runtime.logger.*` or the imported `logger` from `@elizaos/core`.
 - **ESM only** — `"type": "module"` in `package.json`; all imports must use explicit `.js`
   extensions in compiled output.
 - **Node-only runtime** — declared in `package.json` under `eliza.platforms: ["node"]`.

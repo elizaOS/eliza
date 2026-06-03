@@ -3189,7 +3189,7 @@ export const logToChatListener = (entry: LogEntry) => {
 
           isLog: "true",
         })
-        .catch((err) => {
+        .catch((err: unknown) => {
           logger.debug(
             `[runtime] failed to send log message to target: ${err}`,
           );
@@ -3698,15 +3698,15 @@ export async function startEliza(
   }
 
   // 5-pre. Per-agent EVM + Solana wallet bootstrap is DEFERRED off the boot
-  // critical path — see startDeferredAgentWalletBootstrap(), fired from the
-  // deferred-services phase after the runtime is ready. The per-agent wallets
-  // are only consumed later by the in-app browser, never during boot or plugin
-  // resolution, and generating them (heavy EVM/Solana crypto import + encrypted
-  // vault writes) measured ~50s on the critical path. Firing it fire-and-forget
-  // after readiness cut agent boot from ~56s to ~6s. The opt-out
-  // (ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP), the cloud-container skip
-  // (ELIZA_CLOUD_PROVISIONED), and the TEE-gate suppression all still apply in
-  // the deferred path.
+  // critical path: it runs after the runtime is reachable (fired fire-and-forget
+  // from the deferred boot phase via ensureAgentWalletsLazy()), not during
+  // essential boot. This keeps the ~50s EVM/Solana crypto import + vault-write
+  // cost out of the time-to-reachable window. The opt-out
+  // (ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP) and cloud-container skip
+  // (ELIZA_CLOUD_PROVISIONED) are checked inside ensureAgentWalletsLazy();
+  // the TEE-gate suppression lives inside bridgeAgentWalletsToProcessEnv
+  // (agent-wallets.ts:359, opt-in via ELIZA_AGENT_WALLET_AS_USER=1) and
+  // revealAgentWalletPrivateKey (agent-wallets.ts:155).
 
   bootTimer.lap("pre-resolve-setup");
 
@@ -4604,20 +4604,36 @@ export async function startEliza(
     });
   };
 
-  // Per-agent EVM + Solana wallet bootstrap, deferred off the boot critical
-  // path (see the "5-pre" note above). Fire-and-forget: generating the keypairs
-  // (heavy EVM/Solana crypto import + encrypted vault writes) measured ~50s and
-  // must never block the agent becoming ready — the wallets are only consumed
-  // later by the in-app browser. The opt-out and cloud-container skip are kept
-  // here; the TEE-gate suppression lives inside ensureAgentWallets.
-  const startDeferredAgentWalletBootstrap = (): void => {
+  // Per-agent EVM + Solana wallet bootstrap is DEFERRED off the boot critical
+  // path: it runs after the runtime is reachable (fired fire-and-forget from
+  // the deferred boot phase below), not synchronously during essential boot.
+  // This keeps the ~50s crypto import cost (EVM + Solana keypair generation +
+  // encrypted vault writes) out of the time-to-reachable window.
+  //
+  // The opt-out (ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP), cloud-container skip
+  // (ELIZA_CLOUD_PROVISIONED), and TEE-gate suppression (inside
+  // bridgeAgentWalletsToProcessEnv and revealAgentWalletPrivateKey in
+  // agent-wallets.ts) all still apply.
+  //
+  // The init is a singleton: once the first call resolves, subsequent calls
+  // return the cached descriptors; a failure clears the singleton so the next
+  // call retries. This closure is local to startEliza — it is not attached to
+  // the runtime object. If a wallet route or signer needs true on-demand
+  // generation, wire it onto the runtime and call it from that path.
+  let walletInitPromise: Promise<
+    readonly import("./agent-wallets.ts").AgentWalletDescriptor[]
+  > | null = null;
+  const ensureAgentWalletsLazy = (): Promise<
+    readonly import("./agent-wallets.ts").AgentWalletDescriptor[]
+  > => {
     if (
       process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP === "1" ||
       process.env.ELIZA_CLOUD_PROVISIONED === "1"
     ) {
-      return;
+      return Promise.resolve([]);
     }
-    void (async () => {
+    if (walletInitPromise) return walletInitPromise;
+    walletInitPromise = (async () => {
       try {
         const { sharedVault } = await importAppCoreRuntime();
         const { ensureAgentWallets } = await import("./agent-wallets.ts");
@@ -4632,12 +4648,17 @@ export async function startEliza(
         logger.info(
           `[agent-wallets] agent="${agentId}" wallets ready (${summary})`,
         );
+        return descriptors;
       } catch (err) {
+        // Clear the singleton so the next access retries.
+        walletInitPromise = null;
         logger.warn(
           `[agent-wallets] failed to ensure wallets for agent="${agentId}": ${err instanceof Error ? err.message : String(err)}`,
         );
+        return [];
       }
     })();
+    return walletInitPromise;
   };
 
   // Essential boot: only what the runtime needs to become reachable (sql +
@@ -4833,7 +4854,11 @@ export async function startEliza(
     await enableAutonomyLoopIfAvailable(autonomyLoopEnabled);
     startAgentSkillsWarmup();
     startEmbeddingWarmup();
-    startDeferredAgentWalletBootstrap();
+    // Trigger the lazy wallet singleton fire-and-forget. This is a safety net
+    // — if no wallet route or signing flow triggers it earlier, wallets are
+    // still generated here. The singleton ensures this is a no-op if already
+    // resolved by an earlier caller.
+    void ensureAgentWalletsLazy();
     bootTimer.lap("deferred:autonomy+warmup");
 
     // Re-install action aliases now that deferred plugins have registered

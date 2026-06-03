@@ -76,11 +76,36 @@ async function installFakeAudioHomeRoutes(page: Page): Promise<{
     createdAt: timestamp,
     updatedAt: timestamp,
   };
+  const messages: Array<{
+    id: string;
+    role: "user" | "assistant";
+    text: string;
+    timestamp: number;
+  }> = [];
 
   await page.route("**/api/asr/local-inference", async (route) => {
     const body = route.request().postDataBuffer();
     asrBodies.push(body?.byteLength ?? 0);
     await fulfillJson(route, { text: "show me my views from fake audio" });
+  });
+
+  await page.route("**/api/config", async (route) => {
+    if (route.request().method() === "GET") {
+      await fulfillJson(route, {
+        messages: {
+          tts: {
+            provider: "local-inference",
+            asr: { provider: "local-inference" },
+          },
+        },
+      });
+      return;
+    }
+    if (route.request().method() === "PUT") {
+      await fulfillJson(route, { ok: true });
+      return;
+    }
+    await route.fallback();
   });
 
   await page.route("**/api/conversations", async (route) => {
@@ -99,7 +124,7 @@ async function installFakeAudioHomeRoutes(page: Page): Promise<{
     "**/api/conversations/fake-audio-conversation/messages",
     async (route) => {
       if (route.request().method() === "GET") {
-        await fulfillJson(route, { messages: [] });
+        await fulfillJson(route, { messages });
         return;
       }
       await route.fallback();
@@ -115,6 +140,20 @@ async function installFakeAudioHomeRoutes(page: Page): Promise<{
       prompts.push(payload.text ?? "");
       const assistantText =
         "I heard the local microphone capture and can open your views.";
+      messages.push(
+        {
+          id: `fake-audio-user-${messages.length + 1}`,
+          role: "user",
+          text: payload.text ?? "",
+          timestamp: Date.now(),
+        },
+        {
+          id: `fake-audio-assistant-${messages.length + 2}`,
+          role: "assistant",
+          text: assistantText,
+          timestamp: Date.now(),
+        },
+      );
       await route.fulfill({
         status: 200,
         contentType: "text/event-stream",
@@ -191,25 +230,49 @@ async function installScriptedMicrophoneStream(page: Page): Promise<void> {
   });
 }
 
-test("assistant home captures fake microphone audio through local ASR and replies", async ({
+test("assistant chat captures fake microphone audio through local ASR and replies", async ({
   page,
 }) => {
-  await seedAppStorage(page);
+  await seedAppStorage(page, {
+    "eliza:mobile-runtime-mode": "local",
+  });
   await installScriptedMicrophoneStream(page);
   const calls = await installFakeAudioHomeRoutes(page);
 
-  await openAppPath(page, "/");
-  await expect(page.getByTestId("home-view")).toBeVisible();
-  await page.getByRole("button", { name: /start voice input/i }).click();
+  await openAppPath(page, "/chat");
   await expect(
-    page.getByRole("button", { name: /stop voice input/i }),
+    page.getByRole("region", { name: "Chat workspace" }),
   ).toBeVisible();
-  await page.waitForTimeout(900);
-  await page.getByRole("button", { name: /stop voice input/i }).click();
+  await expect(page.getByTestId("chat-composer-textarea")).toBeEnabled();
 
-  await expect(page.getByTestId("home-assistant-transcript")).toContainText(
-    "local microphone capture and can open your views",
+  const mic = page
+    .locator('[data-chat-composer="true"] button[aria-pressed]')
+    .first();
+  await expect(mic).toBeVisible();
+  await expect(mic).toBeEnabled();
+  await mic.click();
+  const stopMic = page.getByRole("button", { name: /stop listening/i });
+  await expect(stopMic).toBeVisible();
+  await page.waitForTimeout(900);
+  await stopMic.click();
+  await expect(page.getByTestId("chat-composer-textarea")).toHaveValue(
+    "show me my views from fake audio",
   );
+  await page.getByTestId("chat-composer-action").click();
+
+  await expect(
+    page
+      .locator('[data-testid="chat-message"][data-role="user"]')
+      .filter({ hasText: "show me my views from fake audio" })
+      .last(),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator('[data-testid="chat-message"][data-role="assistant"]')
+      .filter({ hasText: "local microphone capture and can open your views" })
+      .last(),
+  ).toBeVisible();
+  await expect(page.getByTestId("chat-composer-textarea")).toHaveValue("");
   expect(calls.asrCalls()[0]).toBeGreaterThan(44);
   expect(calls.streamedPrompts()).toContain("show me my views from fake audio");
 });

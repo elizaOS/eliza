@@ -20,7 +20,7 @@
  * `RapidOCRService`, and compute `semantic_position` deterministically from
  * the bbox center against tile-relative thirds.
  *
- * Phase 2 (TODO — see `packages/native/plugins/doctr-cpp/AGENTS.md`): replace
+ * Phase 2 roadmap (see `packages/native/plugins/doctr-cpp/AGENTS.md`): replace
  * the adapter with `DoctrCoordOcrService`, which calls into the doctr-cpp
  * native plugin (db_resnet50 + crnn_vgg16_bn ported to ggml, dispatched by
  * the same elizaOS/llama.cpp fork that runs eliza-1's vision and text

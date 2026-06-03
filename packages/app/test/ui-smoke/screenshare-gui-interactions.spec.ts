@@ -150,22 +150,28 @@ test("screenshare GUI drives host lifecycle, copied details, remote connect, and
 
   await openAppPath(page, "/screenshare");
 
-  await expect(page.getByText("Host")).toBeVisible();
+  await expect(page.getByLabel("Host session id")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Start host session" }),
+  ).toBeVisible();
   await expect(page.getByText("Capabilities")).toBeVisible();
   await expect(page.getByText("Screenshot")).toBeVisible();
   await expect(page.getByText("Keyboard")).toBeVisible();
-  await expect(page.getByText("Ready").first()).toBeVisible();
+  await expect(page.getByText("playwright-frame")).toBeVisible();
+  await expect(page.getByText("playwright-input")).toBeVisible();
 
   await page.getByRole("button", { name: "Start host session" }).click();
   await expect
     .poll(() => recorder.startRequests())
     .toEqual([{ label: "This machine" }]);
   await expect(page.getByPlaceholder("Session").first()).toHaveValue(
-    "screen…ke-1",
+    "screen-smoke-1",
   );
-  await expect(page.getByPlaceholder("Token").first()).toHaveValue("•••• en-1");
-  await expect(page.getByText("3", { exact: true })).toBeVisible();
-  await expect(page.getByText("2", { exact: true })).toBeVisible();
+  await expect(page.getByPlaceholder("Token").first()).toHaveValue(
+    "screen-token-1",
+  );
+  await expect(page.locator("main")).toContainText("Frames: 3");
+  await expect(page.locator("main")).toContainText("Inputs: 2");
 
   await page.getByRole("button", { name: "Copy host details" }).click();
   await expect

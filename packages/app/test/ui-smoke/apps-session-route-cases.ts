@@ -207,6 +207,12 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
+    name: "odysseus app shell page",
+    path: "/odysseus",
+    selector: '[data-testid="odysseus-shell"]',
+    timeoutMs: 90_000,
+  },
+  {
     name: "orchestrator tui app shell page",
     path: "/orchestrator/tui",
     readyChecks: [
@@ -239,7 +245,7 @@ const managerVisibleViewTileCases = [
   { viewId: "smartglasses", path: "/apps/smartglasses" },
   { viewId: "steward", path: "/steward" },
   { viewId: "task-coordinator", path: "/task-coordinator" },
-  { viewId: "training", path: "/training" },
+  { viewId: "training", path: "/apps/fine-tuning" },
   { viewId: "trajectory-logger", path: "/trajectory-logger" },
   { viewId: "views-manager", path: "/views" },
   { viewId: "vincent", path: "/vincent" },

@@ -1153,14 +1153,10 @@ def main() -> int:
                 "min_gap_mm": scope_metrics["min_nonintentional_gap_mm"],
                 "min_nonintentional_gap_mm": scope_metrics["min_nonintentional_gap_mm"],
                 "min_all_pair_gap_mm": scope_metrics["min_all_pair_gap_mm"],
-                "interference_volume_mm3": scope_metrics[
-                    "unintentional_interference_volume_mm3"
-                ],
+                "interference_volume_mm3": scope_metrics["unintentional_interference_volume_mm3"],
                 "interference_count": scope_metrics["unintentional_interference_count"],
                 "intentional_contact_count": scope_metrics["intentional_contact_count"],
-                "intentional_overlap_volume_mm3": scope_metrics[
-                    "intentional_overlap_volume_mm3"
-                ],
+                "intentional_overlap_volume_mm3": scope_metrics["intentional_overlap_volume_mm3"],
                 "risk": scope["risk"],
                 "status": scope_metrics["status"],
             }

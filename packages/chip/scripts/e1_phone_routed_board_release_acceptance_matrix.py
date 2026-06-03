@@ -503,12 +503,10 @@ def candidate_end_to_end_context(
                 instance_disposition.get("support_pattern_instance_count", 0) or 0
             ),
             "pending_supplier_pad_map_or_order_instance_count": int(
-                instance_disposition.get("pending_supplier_pad_map_or_order_instance_count", 0)
-                or 0
+                instance_disposition.get("pending_supplier_pad_map_or_order_instance_count", 0) or 0
             ),
             "public_candidate_package_conflict_instance_count": int(
-                instance_disposition.get("public_candidate_package_conflict_instance_count", 0)
-                or 0
+                instance_disposition.get("public_candidate_package_conflict_instance_count", 0) or 0
             ),
             "local_step_instance_count": int(
                 instance_disposition.get("local_step_instance_count", 0) or 0

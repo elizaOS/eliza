@@ -1117,6 +1117,7 @@ export class TradeExecutionService {
     const result = await perpService.closePosition({
       userId: actorId,
       positionId: position.id,
+      percentage: decision.closePercentage,
     });
 
     // Record NPC trade for analytics/tracking

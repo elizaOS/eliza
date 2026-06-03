@@ -1,17 +1,25 @@
-import type { Component, Entity, IAgentRuntime, UUID } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import type {
+  Component,
+  Entity,
+  IAgentRuntime,
+  JsonValue,
+  UUID,
+} from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { getExpiringSessions, getStaleSessions } from "./storage";
-import type { FormSession } from "./types";
-import { FORM_SESSION_COMPONENT } from "./types";
+import { FORM_SESSION_COMPONENT, type FormSession } from "./types";
 
+const NOW = 1_700_000_000_000;
 const agentId = "00000000-0000-4000-8000-000000000201" as UUID;
 const entityId = "00000000-0000-4000-8000-000000000202" as UUID;
 const roomId = "00000000-0000-4000-8000-000000000203" as UUID;
 
-function makeSession(overrides: Partial<FormSession> = {}): FormSession {
-  const now = Date.now();
+function makeSession(
+  id: string,
+  overrides: Partial<FormSession> = {},
+): FormSession {
   return {
-    id: "session-1",
+    id,
     formId: "signup",
     formVersion: 1,
     entityId,
@@ -22,12 +30,12 @@ function makeSession(overrides: Partial<FormSession> = {}): FormSession {
     effort: {
       interactionCount: 1,
       timeSpentMs: 1000,
-      firstInteractionAt: now - 10_000,
-      lastInteractionAt: now - 10_000,
+      firstInteractionAt: NOW - 10_000,
+      lastInteractionAt: NOW - 10_000,
     },
-    expiresAt: now + 86_400_000,
-    createdAt: now - 10_000,
-    updatedAt: now - 10_000,
+    expiresAt: NOW + 86_400_000,
+    createdAt: NOW - 10_000,
+    updatedAt: NOW - 10_000,
     ...overrides,
   };
 }
@@ -42,8 +50,8 @@ function makeComponent(session: FormSession): Component {
     sourceEntityId: agentId,
     type: `${FORM_SESSION_COMPONENT}:${session.roomId}`,
     createdAt: session.createdAt,
-    data: session,
-  } as Component;
+    data: session as unknown as Record<string, JsonValue>,
+  };
 }
 
 function makeRuntime(components: Component[]): IAgentRuntime {
@@ -79,66 +87,86 @@ function makeRuntime(components: Component[]): IAgentRuntime {
   } as unknown as IAgentRuntime;
 }
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("form storage session scans", () => {
   it("returns stale live sessions and ignores unrelated or fresh components", async () => {
-    const now = Date.now();
-    const stale = makeSession({
-      id: "stale",
+    vi.setSystemTime(NOW);
+    const stale = makeSession("stale", {
       effort: {
         interactionCount: 2,
         timeSpentMs: 2000,
-        firstInteractionAt: now - 100_000,
-        lastInteractionAt: now - 90_000,
+        firstInteractionAt: NOW - 100_000,
+        lastInteractionAt: NOW - 90_000,
       },
     });
-    const fresh = makeSession({
-      id: "fresh",
+    const fresh = makeSession("fresh", {
       effort: {
         interactionCount: 1,
         timeSpentMs: 1000,
-        firstInteractionAt: now - 10_000,
-        lastInteractionAt: now - 5_000,
+        firstInteractionAt: NOW - 10_000,
+        lastInteractionAt: NOW - 5_000,
+      },
+    });
+    const stashed = makeSession("stashed", {
+      status: "stashed",
+      effort: {
+        interactionCount: 1,
+        timeSpentMs: 1000,
+        firstInteractionAt: NOW - 100_000,
+        lastInteractionAt: NOW - 90_000,
       },
     });
     const unrelated = {
-      ...makeComponent(makeSession({ id: "unrelated" })),
+      ...makeComponent(makeSession("unrelated")),
       type: "other_component",
     };
 
     const sessions = await getStaleSessions(
-      makeRuntime([makeComponent(stale), makeComponent(fresh), unrelated]),
+      makeRuntime([
+        makeComponent(stale),
+        makeComponent(fresh),
+        makeComponent(stashed),
+        unrelated,
+      ]),
       60_000,
     );
 
-    expect(sessions.map((session) => session.id)).toEqual(["stale"]);
+    expect(sessions.map((session) => session.id)).toEqual(["stale", "stashed"]);
   });
 
   it("returns live sessions expiring within the requested window", async () => {
-    const now = Date.now();
-    const expiring = makeSession({
-      id: "expiring",
+    vi.setSystemTime(NOW);
+    const expiring = makeSession("expiring", {
       status: "ready",
-      expiresAt: now + 30_000,
+      expiresAt: NOW + 30_000,
     });
-    const later = makeSession({
-      id: "later",
+    const stashed = makeSession("stashed", {
       status: "stashed",
-      expiresAt: now + 120_000,
+      expiresAt: NOW + 45_000,
     });
-    const expired = makeSession({
-      id: "expired",
-      expiresAt: now - 1,
+    const later = makeSession("later", {
+      expiresAt: NOW + 120_000,
+    });
+    const expired = makeSession("expired", {
+      expiresAt: NOW - 1,
     });
 
     const sessions = await getExpiringSessions(
       makeRuntime([
         makeComponent(expiring),
+        makeComponent(stashed),
         makeComponent(later),
         makeComponent(expired),
       ]),
       60_000,
     );
 
-    expect(sessions.map((session) => session.id)).toEqual(["expiring"]);
+    expect(sessions.map((session) => session.id)).toEqual([
+      "expiring",
+      "stashed",
+    ]);
   });
 });

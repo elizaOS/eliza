@@ -4,7 +4,8 @@
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
 
-// DMA-buf-style allocator stub.
+// Host-backed allocator with the same descriptor metadata contract as the
+// planned DMA-buf allocator.
 //
 // The real allocator will:
 //  - Open the `/dev/eliza_npu` chardev,

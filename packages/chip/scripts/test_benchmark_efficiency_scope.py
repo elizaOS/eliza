@@ -107,8 +107,9 @@ def test_structured_findings_cover_blocked_real_evidence() -> None:
     )
     if not isinstance(report_finding, dict):
         raise AssertionError(f"report blocker finding missing: {findings}")
-    if report_finding.get("next_command") != (
-        check_benchmark_efficiency_scope.REQUIRED_CAPTURE_COMMANDS["target_benchmark_report"]
+    if (
+        report_finding.get("next_command")
+        != (check_benchmark_efficiency_scope.REQUIRED_CAPTURE_COMMANDS["target_benchmark_report"])
     ):
         raise AssertionError(f"report blocker must lead with benchmark capture: {report_finding}")
     npu_finding = by_message.get(
@@ -116,8 +117,9 @@ def test_structured_findings_cover_blocked_real_evidence() -> None:
     )
     if not isinstance(npu_finding, dict):
         raise AssertionError(f"NPU blocker finding missing: {findings}")
-    if npu_finding.get("next_command") != (
-        check_benchmark_efficiency_scope.REQUIRED_CAPTURE_COMMANDS["npu_nnapi_proof"]
+    if (
+        npu_finding.get("next_command")
+        != (check_benchmark_efficiency_scope.REQUIRED_CAPTURE_COMMANDS["npu_nnapi_proof"])
     ):
         raise AssertionError(f"NPU blocker must lead with NNAPI capture: {npu_finding}")
     print("PASS structured benchmark efficiency findings cover blocked real evidence")
@@ -186,7 +188,9 @@ def test_capture_command_removal_fails() -> None:
         raise AssertionError(f"capture commands drifted: {commands!r}")
     target_command = commands.get("target_benchmark_report", "")
     if "--metadata benchmarks/results/target-phone/target-metadata.json" not in target_command:
-        raise AssertionError(f"target benchmark command must use runner --metadata: {target_command}")
+        raise AssertionError(
+            f"target benchmark command must use runner --metadata: {target_command}"
+        )
     if "--target-metadata" in target_command:
         raise AssertionError(f"target benchmark command uses obsolete flag: {target_command}")
     npu_command = commands.get("npu_nnapi_proof", "")
@@ -208,7 +212,9 @@ def test_generated_ap_benchmark_command_plan_is_checked() -> None:
     report = check_benchmark_efficiency_scope.build_report()
     plans = report.get("next_command_plan", [])
     if len(plans) != 3:
-        raise AssertionError(f"expected generated-AP, target-phone, and NPU command plans: {plans!r}")
+        raise AssertionError(
+            f"expected generated-AP, target-phone, and NPU command plans: {plans!r}"
+        )
     plan = plans[0]
     if plan.get("claim_boundary") != check_benchmark_efficiency_scope.GENERATED_AP_CLAIM_BOUNDARY:
         raise AssertionError(f"generated-AP claim boundary drifted: {plan!r}")
@@ -217,7 +223,9 @@ def test_generated_ap_benchmark_command_plan_is_checked() -> None:
         if snippet not in command_text:
             raise AssertionError(f"generated-AP command plan missing {snippet!r}: {plan!r}")
     mutated = copy.deepcopy(report)
-    mutated["next_command_plan"][0]["commands"] = ["scripts/build_firemarshal_eliza_ap_benchmarks_payload.sh"]
+    mutated["next_command_plan"][0]["commands"] = [
+        "scripts/build_firemarshal_eliza_ap_benchmarks_payload.sh"
+    ]
     expect_error(mutated, "capture_cpu_ap_evidence.py intake ap-benchmarks")
     plans_by_id = {item.get("id"): item for item in plans}
     target_plan = plans_by_id.get("capture_target_phone_l5_benchmark_report")
@@ -257,7 +265,10 @@ def test_generated_ap_benchmark_command_plan_is_checked() -> None:
     ):
         if token not in npu_commands:
             raise AssertionError(f"NPU NNAPI command plan missing {token!r}: {npu_plan!r}")
-    if npu_plan.get("claim_boundary") != check_benchmark_efficiency_scope.NPU_NNAPI_PROOF_CLAIM_BOUNDARY:
+    if (
+        npu_plan.get("claim_boundary")
+        != check_benchmark_efficiency_scope.NPU_NNAPI_PROOF_CLAIM_BOUNDARY
+    ):
         raise AssertionError(f"NPU NNAPI claim boundary drifted: {npu_plan!r}")
     mutated = copy.deepcopy(report)
     mutated["next_command_plan"] = [plans[0]]

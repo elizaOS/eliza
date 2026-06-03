@@ -102,4 +102,24 @@ describe("Instagram connector accounts", () => {
     expect(brandSend).toHaveBeenCalledWith("thread-brand", "hello");
     expect(ownerSend).not.toHaveBeenCalled();
   });
+
+  it("fails API operations explicitly instead of returning synthetic Instagram data", async () => {
+    const service = Object.create(InstagramService.prototype) as InstagramService;
+    Object.assign(service, {
+      isRunning: true,
+    });
+
+    await expect(service.sendDirectMessage("thread-1", "hello")).rejects.toThrow(
+      "requires a configured Instagram API client"
+    );
+    await expect(service.postComment(123, "hello")).rejects.toThrow(
+      "requires a configured Instagram API client"
+    );
+    await expect(service.getUserInfo(456)).rejects.toThrow(
+      "requires a configured Instagram API client"
+    );
+    await expect(service.getThreads()).rejects.toThrow(
+      "requires a configured Instagram API client"
+    );
+  });
 });

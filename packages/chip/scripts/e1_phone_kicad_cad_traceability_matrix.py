@@ -372,8 +372,7 @@ def build_report() -> dict[str, Any]:
             ),
             "mechanical_envelope": mechanical_envelope,
             "mechanical_envelope_defined": bool(mechanical_envelope),
-            "mechanical_envelope_release_credit": mechanical_envelope.get("release_credit")
-            is True,
+            "mechanical_envelope_release_credit": mechanical_envelope.get("release_credit") is True,
             "release_credit": record.get("release_credit"),
             "pass": record.get("pass") is True,
         }

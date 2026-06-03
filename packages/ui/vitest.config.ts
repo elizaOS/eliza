@@ -105,6 +105,21 @@ export default defineConfig({
         replacement: hostExternalStub,
       },
       {
+        // Dynamically loaded by DynamicViewLoader as a host-external plugin;
+        // stub it so the ui test build doesn't require its built dist.
+        find: /^@elizaos\/plugin-training$/,
+        replacement: hostExternalStub,
+      },
+      {
+        // Browser-safe screen-time helper imported by DynamicViewLoader; resolve
+        // to source so the ui test build doesn't require plugin-health's dist.
+        find: /^@elizaos\/plugin-health\/screen-time\/mobile-signal-setup$/,
+        replacement: resolve(
+          monorepoRoot,
+          "plugins/plugin-health/src/screen-time/mobile-signal-setup.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/capacitor-bun-runtime$/,
         replacement: bunRuntimeSrc,
       },

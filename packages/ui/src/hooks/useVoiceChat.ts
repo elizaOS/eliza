@@ -776,9 +776,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         return false;
       }
 
-      await ensureTalkModeListeners();
-
       try {
+        await ensureTalkModeListeners();
         const talkMode = getTalkModePlugin();
         const browserSpeechSupported = !!getSpeechRecognitionCtor();
         let permissions = await talkMode.checkPermissions().catch(() => null);

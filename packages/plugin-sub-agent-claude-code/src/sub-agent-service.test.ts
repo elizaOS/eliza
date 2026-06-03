@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AuditDispatcher, AuditEvent, EmitInput } from "@elizaos/security";
@@ -83,6 +83,7 @@ describe("ClaudeCodeSubAgentService", () => {
 
   it("spawns a session with safe cwd, filtered env, audit event, and initial prompt", async () => {
     const cwd = mkdtempSync(join(tmpdir(), "cc-service-"));
+    const safeCwd = realpathSync(cwd);
     const { dispatcher, events } = auditSink();
     process.env.ANTHROPIC_API_KEY = "must-not-forward";
     process.env.PATH = "/usr/bin";
@@ -104,7 +105,7 @@ describe("ClaudeCodeSubAgentService", () => {
     expect(result.sessionId).toStartWith("cc-");
     expect(spawned).toHaveLength(1);
     const spawnOptions = spawned[0] as Required<SpawnCall>;
-    expect(spawnOptions.cwd).toBe(cwd);
+    expect(spawnOptions.cwd).toBe(safeCwd);
     expect(spawnOptions.cmd).toContain("/usr/bin/env");
     expect(spawnOptions.cmd).toContain("--print");
     expect(spawnOptions.cmd).toContain("--model");
@@ -122,7 +123,7 @@ describe("ClaudeCodeSubAgentService", () => {
       metadata: {
         session_id: result.sessionId,
         binary: "/usr/bin/env",
-        cwd,
+        cwd: safeCwd,
         sandbox: result.sandbox,
       },
     });
@@ -155,6 +156,7 @@ describe("ClaudeCodeSubAgentService", () => {
 
   it("terminates sessions, finalizes audit exactly once, and handles unknown sessions", async () => {
     const cwd = mkdtempSync(join(tmpdir(), "cc-service-"));
+    const safeCwd = realpathSync(cwd);
     const { dispatcher, events } = auditSink();
     const service = new ClaudeCodeSubAgentService({
       workspaceRoots: [cwd],
@@ -166,7 +168,7 @@ describe("ClaudeCodeSubAgentService", () => {
     })) as { sessionId: string };
 
     await expect(service.listSessions()).resolves.toMatchObject({
-      sessions: [{ sessionId, cwd, model: null }],
+      sessions: [{ sessionId, cwd: safeCwd, model: null }],
     });
     await expect(service.terminate({ sessionId })).resolves.toEqual({
       terminated: true,

@@ -160,6 +160,7 @@
       "@elizaos/plugin-ollama": ["./plugins/plugin-ollama/index.ts"],
       "@elizaos/plugin-openai": ["./plugins/plugin-openai/index.ts"],
       "@elizaos/plugin-phone": ["./plugins/plugin-phone/src/index.ts"],
+      "@elizaos/plugin-phone/*": ["./plugins/plugin-phone/src/*"],
       "@elizaos/plugin-polymarket-app": [
         "./plugins/plugin-polymarket-app/src/index.ts"
       ],

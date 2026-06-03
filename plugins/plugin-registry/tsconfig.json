@@ -43,6 +43,12 @@
       "@elizaos/plugin-app-manager/*": ["../plugin-app-manager/src/*"],
       "@elizaos/plugin-agent-skills": ["../plugin-agent-skills/src/index.ts"],
       "@elizaos/plugin-agent-skills/*": ["../plugin-agent-skills/src/*"],
+      "@elizaos/plugin-task-coordinator": [
+        "../plugin-task-coordinator/src/index.ts"
+      ],
+      "@elizaos/plugin-task-coordinator/*": [
+        "../plugin-task-coordinator/src/*"
+      ],
       "@elizaos/plugin-wallet": ["../plugin-wallet/src/index.ts"],
       "@elizaos/plugin-wallet/*": ["../plugin-wallet/src/*"],
       "@elizaos/plugin-computeruse": ["../plugin-computeruse/dist/index.d.ts"],

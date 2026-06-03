@@ -283,6 +283,16 @@ export default defineConfig({
         ),
       },
       {
+        find: /^@elizaos\/plugin-phone\/twilio$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-phone",
+          "src",
+          "twilio.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/plugin-elizacloud\/cloud\/(.+)$/,
         replacement: path.join(
           elizaRoot,

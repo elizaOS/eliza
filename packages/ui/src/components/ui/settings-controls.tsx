@@ -1,4 +1,4 @@
-import type * as React from "react";
+import * as React from "react";
 
 import { cn } from "../../lib/utils";
 import { Field, FieldDescription, FieldLabel } from "./field";
@@ -45,18 +45,21 @@ export interface SettingsSelectTriggerProps
   children?: React.ReactNode;
 }
 
-export function SettingsSelectTrigger({
-  className,
-  variant = "compact",
-  ...props
-}: SettingsSelectTriggerProps) {
+export const SettingsSelectTrigger = React.forwardRef<
+  React.ElementRef<typeof SelectTrigger>,
+  SettingsSelectTriggerProps
+>(function SettingsSelectTrigger(
+  { className, variant = "compact", ...props },
+  ref,
+) {
   return (
     <SelectTrigger
+      ref={ref}
       className={cn(settingsSelectTriggerClassName(variant), className)}
       {...props}
     />
   );
-}
+});
 
 export interface SettingsInputProps extends Omit<InputProps, "variant"> {
   variant?: SettingsInputVariant;

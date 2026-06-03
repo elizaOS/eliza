@@ -20,6 +20,8 @@ def false_claim_flags(report: dict[str, Any]) -> dict[str, bool]:
     if report.get("status") != "COMPLETE_READY":
         flags["completion_claim_allowed"] = False
     return flags
+
+
 REQUIRED_REQUIREMENTS = {
     "research_doc",
     "current_research_watchlist",

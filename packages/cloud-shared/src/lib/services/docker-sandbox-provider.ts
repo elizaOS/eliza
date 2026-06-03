@@ -583,11 +583,20 @@ export class DockerSandboxProvider implements SandboxProvider {
     validateAgentName(agentName);
     validateAgentId(agentId);
 
-    const env = getCloudAwareEnv();
-    // requiresHeadscaleRoute() pins its own narrow getCloudAwareEnv() snapshot
-    // internally (see its default param), so pass no arg here — handing it the
-    // broad NodeJS.ProcessEnv would not satisfy its HeadscaleRouteEnv shape.
-    const headscaleRouteRequired = requiresHeadscaleRoute();
+    const cloudEnv = getCloudAwareEnv();
+    const env: HeadscaleRouteEnv = {
+      AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: cloudEnv.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK,
+      CONTAINERS_PUBLIC_BASE_DOMAIN: cloudEnv.CONTAINERS_PUBLIC_BASE_DOMAIN,
+      ELIZA_CLOUD_AGENT_BASE_DOMAIN: cloudEnv.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+      ENVIRONMENT: cloudEnv.ENVIRONMENT,
+      HEADSCALE_API_KEY: cloudEnv.HEADSCALE_API_KEY,
+      HEADSCALE_API_URL: cloudEnv.HEADSCALE_API_URL,
+      HEADSCALE_PUBLIC_URL: cloudEnv.HEADSCALE_PUBLIC_URL,
+    };
+    // Pass the same snapshot to requiresHeadscaleRoute so that both the
+    // HEADSCALE_API_KEY presence check and the route-required decision read
+    // from one consistent view of the environment.
+    const headscaleRouteRequired = requiresHeadscaleRoute(env);
     const headscaleEnabled = !!env.HEADSCALE_API_KEY?.trim();
     if (headscaleRouteRequired && !headscaleEnabled) {
       const errorMessage =

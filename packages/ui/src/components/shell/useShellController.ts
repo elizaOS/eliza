@@ -202,11 +202,13 @@ export function useShellController(): ShellController {
         : "idle";
 
   // Accept input while the agent is still booting; pre-ready sends queue (see
-  // `send`) and flush on ready. Still block mid-response, when the agent is
-  // stopped, or when a required local text model is not yet ready. Mirrors the
-  // ChatView composer gate plus the home model-readiness gate.
-  const canSend =
-    !chatSending && agentStatus?.state !== "stopped" && !modelStatus.blocksSend;
+  // `send`) and flush on ready. Still block mid-response or when the agent is
+  // stopped. This mirrors the canonical ChatView composer, which does NOT gate
+  // on local text-model readiness: the overlay is the single chat input on the
+  // /chat tab, so a missing/loading local model must not silently no-op the
+  // send — the server returns a failureKind gate ("Connect a provider") that
+  // the transcript renders, exactly as the in-view composer relied on.
+  const canSend = !chatSending && agentStatus?.state !== "stopped";
 
   return {
     phase,

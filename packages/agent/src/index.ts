@@ -85,6 +85,7 @@ export * from "./api/plugin-runtime-apply.ts";
 export type { PluginParamInfo } from "./api/plugin-validation.ts";
 export {
   applyCanonicalFirstRunConfig,
+  applyFirstRunCredentialPersistence,
   clearPersistedFirstRunConfig,
 } from "./api/provider-switch-config.ts";
 export { RegistryService } from "./api/registry-service.ts";

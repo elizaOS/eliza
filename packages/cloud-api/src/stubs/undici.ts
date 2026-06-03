@@ -1,5 +1,5 @@
 /**
- * undici — Cloudflare Workers stub.
+ * undici — Cloudflare Workers compatibility shim.
  *
  * The real undici is Node's fetch implementation; it imports `node:net`,
  * `node:perf_hooks`, `MessagePort`, etc. that don't exist on the Workers
@@ -28,22 +28,22 @@ export const TransformStream = globalThis.TransformStream;
 const NOT_AVAILABLE =
   "undici advanced features (Agent / Pool / Dispatcher / interceptors) are not available on Cloudflare Workers — use the global `fetch` directly.";
 
-class StubError {
+class WorkerUnavailableCtor {
   constructor() {
     throw new Error(NOT_AVAILABLE);
   }
 }
 
-export const Agent = StubError;
-export const Pool = StubError;
-export const Dispatcher = StubError;
-export const ProxyAgent = StubError;
-export const MockAgent = StubError;
-export const MockPool = StubError;
-export const Client = StubError;
-export const BalancedPool = StubError;
-export const RetryAgent = StubError;
-export const EnvHttpProxyAgent = StubError;
+export const Agent = WorkerUnavailableCtor;
+export const Pool = WorkerUnavailableCtor;
+export const Dispatcher = WorkerUnavailableCtor;
+export const ProxyAgent = WorkerUnavailableCtor;
+export const MockAgent = WorkerUnavailableCtor;
+export const MockPool = WorkerUnavailableCtor;
+export const Client = WorkerUnavailableCtor;
+export const BalancedPool = WorkerUnavailableCtor;
+export const RetryAgent = WorkerUnavailableCtor;
+export const EnvHttpProxyAgent = WorkerUnavailableCtor;
 export const setGlobalDispatcher = () => {};
 export const getGlobalDispatcher = () => {
   throw new Error(NOT_AVAILABLE);

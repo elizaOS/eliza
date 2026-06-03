@@ -19,6 +19,7 @@
 		"paths": {
 			"@elizaos/agent": ["../../packages/agent/src/index.ts"],
 			"@elizaos/agent/*": ["../../packages/agent/src/*"],
+			"@elizaos/app-core": ["./src/type-shims/app-core-root.ts"],
 			"@elizaos/app-core/agent-bridge": [
 				"../../packages/app-core/src/agent-bridge.ts"
 			],
@@ -79,6 +80,12 @@
 				"../../plugins/plugin-registry/src/index.ts"
 			],
 			"@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/src/*"],
+			"@elizaos/plugin-task-coordinator": [
+				"../../plugins/plugin-task-coordinator/src/index.ts"
+			],
+			"@elizaos/plugin-task-coordinator/*": [
+				"../../plugins/plugin-task-coordinator/src/*"
+			],
 			"@elizaos/plugin-worker-runtime": [
 				"../../packages/plugin-worker-runtime/src/index.ts"
 			],

@@ -45,6 +45,7 @@
 	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
+		"@elizaos/logger": "workspace:*",
 		"@elizaos/shared": "workspace:*",
 		"@elizaos/ui": "workspace:*",
 		"lucide-react": "^1.16.0",

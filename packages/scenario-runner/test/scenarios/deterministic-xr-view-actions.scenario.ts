@@ -1,3 +1,7 @@
+import {
+  registerPluginViews,
+  unregisterPluginViews,
+} from "@elizaos/agent/api/views-registry";
 import type {
   Action,
   IAgentRuntime,
@@ -285,6 +289,7 @@ function resetScenarioState(): void {
   scenarioState.frameTimer = null;
   scenarioState.ws?.close();
   scenarioState.ws = null;
+  unregisterPluginViews(scenarioXrViewPlugin.name);
   scenarioState.runtime = null;
   scenarioState.service = null;
   scenarioState.controls.length = 0;
@@ -423,6 +428,7 @@ async function seedXrScenario(
   ensureXrRoomsHaveWorldId(runtime);
   await runtime.registerPlugin(deterministicVisionPlugin);
   await runtime.registerPlugin(scenarioXrViewPlugin);
+  await registerPluginViews(scenarioXrViewPlugin, undefined, runtime);
   await runtime.registerPlugin(scenarioXrPlugin);
 
   const service = await waitForService(runtime);

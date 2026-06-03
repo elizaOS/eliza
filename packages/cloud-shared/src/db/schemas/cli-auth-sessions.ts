@@ -21,14 +21,8 @@ export const cliAuthSessions = pgTable(
     // endpoint that decrypts the api_keys row in-memory and marks the
     // session consumed.
     //
-    // TODO(auth-agent): wire `GET /api/v1/cli-auth/:session/token` in
-    //   packages/cloud-api/src/routes/v1/cli-auth.ts (or equivalent).
-    //   - Verify session is authenticated + not yet `consumed_at`.
-    //   - Look up the api_keys row, decrypt via
-    //     `decryptApiKey(orgId, rowId, encryptedField)`.
-    //   - Set `consumed_at = now()` in the same transaction.
-    //   - Return `{ apiKey, keyPrefix, expiresAt }` once; subsequent calls
-    //     must 410 Gone.
+    // Single-use retrieval is exposed at
+    // `GET /api/v1/cli-auth/:session/token`.
     consumed_at: timestamp("consumed_at"),
     status: text("status")
       .$type<"pending" | "authenticated" | "expired">()

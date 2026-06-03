@@ -92,10 +92,16 @@ const BENIGN_CONSOLE_PATTERNS = [
   /\[Eliza\] StatusBar plugin not available/i,
   /\[eliza\]\[startup:init\] Device bridge unavailable/i,
   /\[eliza\]\[startup:init\] Mobile agent tunnel/i,
+  /WebSocket connection to 'ws:\/\/127\.0\.0\.1:31337\/api\/local-inference\/device-bridge\?token=ui-smoke-local-agent-token' failed/i,
   /Web Bluetooth is not available/i,
 ];
 const BENIGN_PAGEERROR_PATTERNS = [
   /Cannot read properties of undefined \(reading 'catch'\)/i,
+];
+const GENERIC_RESOURCE_404 =
+  /Failed to load resource: the server responded with a status of 404 \(Not Found\)/i;
+const BENIGN_HTTP_ERROR_PATTERNS = [
+  /\/apps\/assets\/[^/]+\.(?:js|css|woff2?|map)$/i,
 ];
 
 const PLUGIN_HEADERS: NativePluginHeader[] = [
@@ -180,6 +186,7 @@ function installIssueGuards(page: Page): string[] {
   page.on("console", (message) => {
     const text = message.text();
     if (BENIGN_CONSOLE_PATTERNS.some((pattern) => pattern.test(text))) return;
+    if (GENERIC_RESOURCE_404.test(text)) return;
     if (message.type() === "error" || RED_ERROR_TEXT.test(text)) {
       issues.push(`console ${message.type()}: ${text}`);
     }
@@ -198,6 +205,14 @@ function installIssueGuards(page: Page): string[] {
     const failureText = request.failure()?.errorText ?? "";
     if (failureText === "net::ERR_ABORTED") return;
     issues.push(`requestfailed: ${url} ${failureText}`);
+  });
+  page.on("response", (response) => {
+    const status = response.status();
+    if (status < 400) return;
+    const url = response.url();
+    if (url.startsWith("data:") || url.startsWith("blob:")) return;
+    if (BENIGN_HTTP_ERROR_PATTERNS.some((pattern) => pattern.test(url))) return;
+    issues.push(`response ${status}: ${url}`);
   });
   return issues;
 }
@@ -1269,12 +1284,15 @@ test.describe("Facewear and smartglasses GUI interactions", () => {
         (await readFixture(page))?.smartglasses.wifiCredentials.at(-1),
       )
       .toEqual({ ssid: "LabNet", password: "correct horse" });
-    await page.getByRole("button", { name: "Native Setup" }).click();
+    await page
+      .getByRole("button", { name: /^(Native Setup|Native Wi-Fi Setup)$/ })
+      .click();
     await expect(page.getByText("Native Wi-Fi setup requested")).toBeVisible();
 
     await page.getByRole("button", { name: "Android" }).click();
+    await expect(page.getByText("Native bridge preferred")).toBeVisible();
     await expect(
-      page.getByText("native bridge for headset pairing"),
+      page.getByText("Use the host for pairing, Wi-Fi scan, and credentials."),
     ).toBeVisible();
     await page.getByRole("button", { name: "Guided Validation" }).click();
     await expect(

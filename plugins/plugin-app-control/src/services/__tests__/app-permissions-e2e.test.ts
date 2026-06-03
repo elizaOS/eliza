@@ -3,7 +3,7 @@
  *
  * Phase 2.5 end-to-end test for the app-permissions sandbox flow.
  * Wires AppRegistryService + AppWorkerHostService together via a
- * minimal runtime stub and walks the full registration -> auto-spawn
+ * minimal runtime test double and walks the full registration -> auto-spawn
  * -> grant -> invoke -> stop path.
  *
  * Path under test:

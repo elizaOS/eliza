@@ -14,6 +14,7 @@ import type {
   JsonValue,
   PluginSurfaceKind,
   RemotePluginPermissionGrant,
+  WorkerActionCallbackMessage,
   WorkerRpcMessage,
   WorkerRpcResultMessage,
 } from "@elizaos/plugin-remote-manifest";
@@ -215,9 +216,7 @@ async function invokeBySurface(
     }
     case "action": {
       // Action handler(runtime, message, state, options, callback, responses)
-      // `callback` is replaced by a CallbackProxy that round-trips back
-      // to the host as a worker-rpc surface=action.callback. Implemented
-      // in P1 step 4.
+      // `callback` round-trips back to the host when callbackId is provided.
       const params = args as {
         message: JsonValue;
         state: JsonValue;
@@ -226,7 +225,7 @@ async function invokeBySurface(
         /** Identifier for the host-side callback channel. */
         callbackId?: string;
       };
-      const callback = makeNoopCallback();
+      const callback = makeActionCallback(context.channel, params.callbackId);
       const result = await (entry.handler as ActionHandler)(
         context.runtime,
         params.message,
@@ -365,12 +364,17 @@ function checkPermission(
   }
 }
 
-function makeNoopCallback(): (data: JsonValue) => Promise<void> {
-  return async () => {
-    // P1: action callbacks are stubbed. The action-with-callback wiring
-    // is implemented in the action-surface-parity step (P1 step 4). For
-    // now, action handlers that don't reach for the callback work; ones
-    // that do are no-ops (their text is delivered via the orchestrator's
-    // own progress channel, which today owns the user-visible reply).
+function makeActionCallback(
+  channel: WorkerChannel,
+  callbackId?: string,
+): (data: JsonValue) => Promise<void> {
+  return async (data) => {
+    if (!callbackId) return;
+    const message: WorkerActionCallbackMessage = {
+      type: "worker-action-callback",
+      callbackId,
+      payload: (data ?? null) as JsonValue,
+    };
+    channel.send(message);
   };
 }

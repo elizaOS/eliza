@@ -1,4 +1,4 @@
-import type { Tab } from "@elizaos/ui";
+import type { Tab } from "@elizaos/ui/navigation";
 import type React from "react";
 
 /* ── Overlay tab set ───────────────────────────────────────────────── */

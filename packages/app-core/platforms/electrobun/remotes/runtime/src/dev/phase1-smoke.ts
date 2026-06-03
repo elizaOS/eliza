@@ -3,21 +3,21 @@ import { ElizaRuntimeManager } from "../bun/runtime-manager.ts";
 import type { RuntimeManagerEvent } from "../bun/protocol.ts";
 
 function write(value: string): void {
-	process.stdout.write(`${value}\n`);
+  process.stdout.write(`${value}\n`);
 }
 
 function printJson(label: string, value: object): void {
-	write(`${label}: ${JSON.stringify(value, null, 2)}`);
+  write(`${label}: ${JSON.stringify(value, null, 2)}`);
 }
 
 const logBuffer = new RuntimeLogBuffer();
 const manager = new ElizaRuntimeManager({
-	logBuffer,
-	onEvent: (event: RuntimeManagerEvent) => {
-		if (event.name === "runtime.error") {
-			write(`event ${event.name}: ${JSON.stringify(event.payload)}`);
-		}
-	},
+  logBuffer,
+  onEvent: (event: RuntimeManagerEvent) => {
+    if (event.name === "runtime.error") {
+      write(`event ${event.name}: ${JSON.stringify(event.payload)}`);
+    }
+  },
 });
 
 printJson("initial status", manager.status());

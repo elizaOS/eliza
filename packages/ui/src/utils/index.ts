@@ -11,6 +11,8 @@ export {
   resolveElizaPackageRootSync,
   stripAssistantStageDirections,
 } from "@elizaos/shared";
+export * from "../lib/floating-layers";
+export { cn } from "../lib/utils";
 export * from "./asset-url";
 export * from "./browser-tab-kit-types";
 export * from "./browser-tabs-renderer-registry";

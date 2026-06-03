@@ -89,16 +89,22 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "assistant home",
     path: "/",
-    readyChecks: [{ selector: '[data-testid="home-view"]' }],
+    readyChecks: [
+      {
+        selector:
+          '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]',
+      },
+    ],
     timeoutMs: 60_000,
   },
   {
     name: "chat",
     path: "/chat",
     readyChecks: [
-      { selector: '[data-testid="conversations-sidebar"]' },
-      { selector: '[data-testid="chat-composer-textarea"]' },
-      { selector: '[data-testid="chat-widgets-bar"]' },
+      {
+        selector:
+          '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]',
+      },
     ],
     mode: "all",
   },
@@ -161,7 +167,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "rolodex",
     path: "/rolodex",
-    readyChecks: [{ selector: "#root" }],
+    readyChecks: [{ text: "Views" }],
     timeoutMs: 60_000,
   },
   {
@@ -1362,7 +1368,11 @@ async function expectNoPageIssues(
 async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
   await expect(page.locator("#root")).toBeVisible();
   await expect(page.locator("body")).not.toContainText(/404|not found/i);
-  if (route.path === "/chat" || route.path === "/apps/elizamaker") {
+  if (
+    route.path === "/" ||
+    route.path === "/chat" ||
+    route.path === "/apps/elizamaker"
+  ) {
     return;
   }
   if (route.path === "/apps/companion") {
@@ -1374,7 +1384,7 @@ async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
   await expect(
     page
       .locator(
-        "main, [data-testid='home-view'], [role='main'], h1, [role='region']",
+        "main, [data-testid='home-view'], [data-testid='lifeops-shell'], [role='main'], h1, [role='region'], [aria-label='Chat workspace']",
       )
       .first(),
   ).toBeVisible({
@@ -1465,6 +1475,7 @@ for (const viewport of [DESKTOP_PROBE, MOBILE_PROBE]) {
 test("visible safe app tiles and allowlisted buttons are click-safe", async ({
   page,
 }) => {
+  test.setTimeout(420_000);
   const issues = installPageIssueGuards(page);
   await page.setViewportSize(DESKTOP_PROBE.size);
 

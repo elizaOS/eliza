@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { AuditDispatcher } from "../audit/dispatcher.js";
-import { InMemorySink, type AuditSink } from "../audit/sink.js";
+import { type AuditSink, HttpSink, InMemorySink } from "../audit/sink.js";
 import type { AuditEvent } from "../audit/types.js";
 
 class FailingSink implements AuditSink {
@@ -60,8 +60,9 @@ describe("AuditDispatcher", () => {
         password: "nope", // should be redacted
       },
     });
-    const ev = mem.snapshot()[0]!;
-    expect(ev.metadata).toEqual({ ip: "1.2.3.4", email_hash: "abc" });
+    const ev = mem.snapshot()[0];
+    expect(ev).toBeDefined();
+    expect(ev?.metadata).toEqual({ ip: "1.2.3.4", email_hash: "abc" });
   });
 
   it("drops metadata entirely when no key matches the allowlist", async () => {
@@ -73,6 +74,60 @@ describe("AuditDispatcher", () => {
       result: "success",
       metadata: { totally_unrelated: "x" },
     });
-    expect(mem.snapshot()[0]!.metadata).toBeUndefined();
+    const ev = mem.snapshot()[0];
+    expect(ev).toBeDefined();
+    expect(ev?.metadata).toBeUndefined();
+  });
+
+  it("posts audit events through HttpSink", async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
+    const sink = new HttpSink({
+      endpoint: "https://audit.example.test/events",
+      fetch: fetchImpl,
+      headers: { Authorization: "Bearer token" },
+    });
+
+    const event = await new AuditDispatcher({ sinks: [sink] }).emit({
+      actor: { type: "system", id: "test" },
+      action: "kms.key.access",
+      result: "success",
+    });
+
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://audit.example.test/events",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer token",
+        },
+        body: JSON.stringify(event),
+      }),
+    );
+  });
+
+  it("surfaces HttpSink non-2xx responses as sink errors", async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response("nope", { status: 500, statusText: "Nope" }),
+    );
+    const onSinkError = vi.fn();
+
+    await new AuditDispatcher({
+      sinks: [
+        new HttpSink({
+          endpoint: "https://audit.example.test/events",
+          fetch: fetchImpl,
+        }),
+      ],
+      onSinkError,
+    }).emit({
+      actor: { type: "system", id: "test" },
+      action: "kms.key.access",
+      result: "success",
+    });
+
+    expect(onSinkError).toHaveBeenCalledOnce();
+    expect(onSinkError.mock.calls[0]?.[0]).toMatchObject({ sink: "http" });
   });
 });

@@ -93,7 +93,6 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
   "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)
   "@elizaos/plugin-browser", // Browser workspace and Chrome/Safari companion bridge.
-  "@elizaos/plugin-video", // Video download / transcription (managed yt-dlp + ffmpeg with auto-update on extractor failure)
   // Built-in runtime capabilities (no longer external plugins):
   // - experience, todos, personality: advanced capabilities (advancedCapabilities: true)
   // - form: standalone @elizaos/plugin-form

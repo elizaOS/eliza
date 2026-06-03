@@ -23,18 +23,14 @@
       "@elizaos/security/*": ["../security/src/*"],
       "@elizaos/contracts": ["../contracts/src/index.ts"],
       "@elizaos/vault": ["../vault/src/index.ts"],
+      "@elizaos/cloud-routing": ["../cloud-routing/src/index.ts"],
+      "@elizaos/cloud-routing/*": ["../cloud-routing/src/*"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],
       "@elizaos/app-core/*": ["../app-core/src/*"],
       "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/*": ["../ui/src/*"],
-      "react": ["../app-core/node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": [
-        "../app-core/node_modules/@types/react/jsx-runtime.d.ts"
-      ],
-      "react/jsx-dev-runtime": [
-        "../app-core/node_modules/@types/react/jsx-dev-runtime.d.ts"
-      ],
-      "react-dom": ["../app-core/node_modules/@types/react-dom/index.d.ts"],
+      "@elizaos/skills": ["../skills/src/index.ts"],
+      "@elizaos/skills/*": ["../skills/src/*"],
       "@elizaos/plugin-browser": [
         "../../plugins/plugin-browser/dist/index.d.ts"
       ],
@@ -52,6 +48,12 @@
       ],
       "@elizaos/plugin-agent-orchestrator": [
         "../../plugins/plugin-agent-orchestrator/src/index.ts"
+      ],
+      "@elizaos/plugin-app-control": [
+        "../../plugins/plugin-app-control/src/index.ts"
+      ],
+      "@elizaos/plugin-app-control/*": [
+        "../../plugins/plugin-app-control/src/*"
       ],
       "@elizaos/plugin-app-manager": [
         "../../plugins/plugin-app-manager/src/index.ts"
@@ -92,10 +94,10 @@
       ],
       "@elizaos/plugin-xr": ["../../plugins/plugin-xr/src/index.ts"],
       "@elizaos/capacitor-appblocker": [
-        "../native-plugins/appblocker/src/index.ts"
+        "../../plugins/plugin-native-appblocker/src/index.ts"
       ],
       "@elizaos/capacitor-mobile-signals": [
-        "../native-plugins/mobile-signals/src/index.ts"
+        "../../plugins/plugin-native-mobile-signals/src/index.ts"
       ]
     }
   },

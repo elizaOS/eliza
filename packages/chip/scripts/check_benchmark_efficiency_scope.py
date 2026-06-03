@@ -470,20 +470,19 @@ def local_regression_targets_are_wired(makefile: str) -> bool:
 
 
 def generated_ap_benchmark_wiring_is_actionable(report: dict[str, Any]) -> bool:
-    commands = "\n".join(str(item) for item in list_values(report.get("next_commands_after_prerequisites_exist")))
+    commands = "\n".join(
+        str(item) for item in list_values(report.get("next_commands_after_prerequisites_exist"))
+    )
     packaged = mapping(report.get("packaged_generated_ap_workload"))
     accepted = mapping(report.get("accepted_benchmark_evidence"))
-    return (
-        report.get("schema") == "eliza.cpu_ap_benchmark_runner_wiring.v1"
-        and (
-            (
-                report.get("derived_command_available") is True
-                and report.get("runner_command_derivable") is True
-                and packaged.get("status") == "ready"
-                and all(snippet in commands for snippet in REQUIRED_GENERATED_AP_CAPTURE_SNIPPETS)
-            )
-            or accepted.get("accepted") is True
+    return report.get("schema") == "eliza.cpu_ap_benchmark_runner_wiring.v1" and (
+        (
+            report.get("derived_command_available") is True
+            and report.get("runner_command_derivable") is True
+            and packaged.get("status") == "ready"
+            and all(snippet in commands for snippet in REQUIRED_GENERATED_AP_CAPTURE_SNIPPETS)
         )
+        or accepted.get("accepted") is True
     )
 
 
@@ -816,9 +815,7 @@ def validate_report(data: dict[str, Any]) -> list[str]:
                     f"generated-AP benchmark command plan missing {snippet}",
                     errors,
                 )
-        plans_by_id = {
-            str(item.get("id")): item for item in command_plan if isinstance(item, dict)
-        }
+        plans_by_id = {str(item.get("id")): item for item in command_plan if isinstance(item, dict)}
         target_plan = plans_by_id.get("capture_target_phone_l5_benchmark_report")
         if not isinstance(target_plan, dict):
             errors.append("next_command_plan missing target-phone benchmark report batch")

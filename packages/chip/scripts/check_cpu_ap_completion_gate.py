@@ -153,43 +153,43 @@ def blocked_report(
         )
     return with_false_claim_flags(
         {
-        "schema": "eliza.cpu_ap_completion_gate.v1",
-        "status": "blocked",
-        "generated_utc": utc_now(),
-        "claim_boundary": (
-            "qemu_virt_linux_boot_is_reference_only_not_generated_eliza_cpu_ap_completion"
-        ),
-        "phone_2028_ap_claim_allowed": False,
-        "release_claim_allowed": False,
-        "linux_capable_cpu_claim_allowed": False,
-        "privileged_boot_claim_allowed": False,
-        "generated_cpu_ap_completion_claim_allowed": False,
-        "generated_detail": generated_detail,
-        "findings": findings,
-        "summary": {
-            "blockers": len(findings),
-            "manifest_errors": len(manifest_errors),
-            "missing_required_transcripts": len(missing_logs),
-            "next_capture_commands": len(next_capture),
-        },
-        "blocker_dependency_counts": {
-            "repo_artifact_generation": len(manifest_errors),
-            "live_device_validation": len(
-                [
-                    finding
-                    for finding in findings
-                    if finding.get("blocker_dependency") == "live_device_validation"
-                ]
+            "schema": "eliza.cpu_ap_completion_gate.v1",
+            "status": "blocked",
+            "generated_utc": utc_now(),
+            "claim_boundary": (
+                "qemu_virt_linux_boot_is_reference_only_not_generated_eliza_cpu_ap_completion"
             ),
-            "actionable_external_dependency": 0,
-        },
-        "missing_required_transcripts": missing_logs,
-        "next_capture_commands": next_capture,
-        "next_step": (
-            "Collect generated Eliza Rocket/RV64GC AP transcripts and rerun "
-            "python3 scripts/check_cpu_ap_completion_gate.py. QEMU virt Linux boot evidence "
-            "does not satisfy this CPU/AP completion claim."
-        ),
+            "phone_2028_ap_claim_allowed": False,
+            "release_claim_allowed": False,
+            "linux_capable_cpu_claim_allowed": False,
+            "privileged_boot_claim_allowed": False,
+            "generated_cpu_ap_completion_claim_allowed": False,
+            "generated_detail": generated_detail,
+            "findings": findings,
+            "summary": {
+                "blockers": len(findings),
+                "manifest_errors": len(manifest_errors),
+                "missing_required_transcripts": len(missing_logs),
+                "next_capture_commands": len(next_capture),
+            },
+            "blocker_dependency_counts": {
+                "repo_artifact_generation": len(manifest_errors),
+                "live_device_validation": len(
+                    [
+                        finding
+                        for finding in findings
+                        if finding.get("blocker_dependency") == "live_device_validation"
+                    ]
+                ),
+                "actionable_external_dependency": 0,
+            },
+            "missing_required_transcripts": missing_logs,
+            "next_capture_commands": next_capture,
+            "next_step": (
+                "Collect generated Eliza Rocket/RV64GC AP transcripts and rerun "
+                "python3 scripts/check_cpu_ap_completion_gate.py. QEMU virt Linux boot evidence "
+                "does not satisfy this CPU/AP completion claim."
+            ),
         }
     )
 
@@ -206,17 +206,17 @@ def main() -> int:
             write_report(
                 with_false_claim_flags(
                     {
-                    "schema": "eliza.cpu_ap_completion_gate.v1",
-                    "status": "fail",
-                    "generated_utc": utc_now(),
-                    "claim_boundary": "claimed_generated_cpu_ap_completion_requires_artifacts_and_evidence",
-                    "phone_2028_ap_claim_allowed": False,
-                    "release_claim_allowed": False,
-                    "linux_capable_cpu_claim_allowed": False,
-                    "privileged_boot_claim_allowed": False,
-                    "generated_cpu_ap_completion_claim_allowed": False,
-                    "summary": {"failures": 1},
-                    "next_step": "Run scripts/check_cpu_ap_evidence.py --require-evidence and repair the failing CPU/AP artifact or transcript.",
+                        "schema": "eliza.cpu_ap_completion_gate.v1",
+                        "status": "fail",
+                        "generated_utc": utc_now(),
+                        "claim_boundary": "claimed_generated_cpu_ap_completion_requires_artifacts_and_evidence",
+                        "phone_2028_ap_claim_allowed": False,
+                        "release_claim_allowed": False,
+                        "linux_capable_cpu_claim_allowed": False,
+                        "privileged_boot_claim_allowed": False,
+                        "generated_cpu_ap_completion_claim_allowed": False,
+                        "summary": {"failures": 1},
+                        "next_step": "Run scripts/check_cpu_ap_evidence.py --require-evidence and repair the failing CPU/AP artifact or transcript.",
                     }
                 )
             )
@@ -227,17 +227,17 @@ def main() -> int:
         write_report(
             with_false_claim_flags(
                 {
-                "schema": "eliza.cpu_ap_completion_gate.v1",
-                "status": "pass",
-                "generated_utc": utc_now(),
-                "claim_boundary": "generated_rocket_rv64gc_ap_artifacts_and_boot_evidence_present",
-                "phone_2028_ap_claim_allowed": False,
-                "release_claim_allowed": False,
-                "linux_capable_cpu_claim_allowed": True,
-                "privileged_boot_claim_allowed": True,
-                "generated_cpu_ap_completion_claim_allowed": True,
-                "summary": {"blockers": 0, "failures": 0},
-                "next_step": "none",
+                    "schema": "eliza.cpu_ap_completion_gate.v1",
+                    "status": "pass",
+                    "generated_utc": utc_now(),
+                    "claim_boundary": "generated_rocket_rv64gc_ap_artifacts_and_boot_evidence_present",
+                    "phone_2028_ap_claim_allowed": False,
+                    "release_claim_allowed": False,
+                    "linux_capable_cpu_claim_allowed": True,
+                    "privileged_boot_claim_allowed": True,
+                    "generated_cpu_ap_completion_claim_allowed": True,
+                    "summary": {"blockers": 0, "failures": 0},
+                    "next_step": "none",
                 }
             )
         )

@@ -216,13 +216,15 @@ The TypeScript implementation is always required. Python and Rust implementation
 
 The public plugin registry is served at [`plugins.elizacloud.ai`](https://plugins.elizacloud.ai). The runtime discovers community plugins by fetching `https://plugins.elizacloud.ai/generated-registry.json` (falling back to `index.json`), and recognizes any npm package whose `keywords` include `elizaos` as a plugin.
 
-After publishing to npm and making your GitHub repository public, generate the registry metadata the CLI would submit:
+The community registry source of truth lives in the monorepo at [`packages/registry`](https://github.com/elizaOS/eliza/tree/main/packages/registry). It replaced the archived, read-only `elizaos-plugins/registry` repository the old docs pointed at — see [elizaOS/eliza#8173](https://github.com/elizaOS/eliza/issues/8173).
+
+After publishing to npm (the `@elizaos/*` scope is reserved — use your own scope or an unscoped `elizaos-plugin-*` name) and making your GitHub repository public, generate the entry metadata:
 
 ```bash
 elizaos plugins submit . --dry-run
 ```
 
-The community registry source of truth lives in the monorepo at [`packages/registry`](https://github.com/elizaOS/eliza/tree/main/packages/registry) (it replaced the archived `elizaos-plugins/registry` repo — see [elizaOS/eliza#8173](https://github.com/elizaOS/eliza/issues/8173)). To get listed, add the printed `entries/third-party/<package>.json` file under `packages/registry/entries/third-party/`, then validate, regenerate, and open a pull request:
+Add the printed `entries/third-party/<package>.json` file under `packages/registry/entries/third-party/`, then validate, regenerate, and open a pull request:
 
 ```bash
 bun run --cwd packages/registry validate

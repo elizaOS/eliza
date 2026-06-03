@@ -42,7 +42,9 @@ CLAIM_BOUNDARY = (
 REQUIRED_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "capture_claim_boundary_recorded",
-        ("claim_boundary: provisioned_test_root_signed_image_simulator_only_not_silicon_attestation",),
+        (
+            "claim_boundary: provisioned_test_root_signed_image_simulator_only_not_silicon_attestation",
+        ),
     ),
     ("capture_command_exit_zero", ("## command_exit_code: 0",)),
     ("reset_vector_fetch", ("reset-vector-fetch", "<_start>")),

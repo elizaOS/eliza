@@ -1,16 +1,16 @@
 import { Hono } from "hono";
 import { verifyCronSecret } from "@/lib/auth/cron";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
-import { forwardCronToContainerControlPlane } from "../../_container-control-plane-forward";
+import { cronSupersededByDaemon } from "../../_container-control-plane-forward";
 
 /**
- * Warm pool replenisher cron. Forwards to the Node container control
- * plane, which can SSH into Hetzner nodes and start new pool containers.
+ * Warm pool replenisher cron. Work has been folded into the
+ * eliza-provisioning-worker daemon's own maintenance cycle.
  */
 async function handle(c: AppContext, env?: AppEnv["Bindings"]) {
   const authError = verifyCronSecret(c.req.raw, "[Pool Replenish]", env);
   if (authError) return authError;
-  return forwardCronToContainerControlPlane(c);
+  return cronSupersededByDaemon(c, "runInfraMaintenanceCycle (warm pool)");
 }
 
 const __hono_app = new Hono<AppEnv>();

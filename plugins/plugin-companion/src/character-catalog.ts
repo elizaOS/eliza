@@ -4,4 +4,4 @@ export {
   getCharacterAssets,
   getInjectedCharacter,
   getInjectedCharacters,
-} from "@elizaos/ui";
+} from "@elizaos/ui/character-catalog";

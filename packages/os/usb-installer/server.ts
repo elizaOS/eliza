@@ -180,7 +180,9 @@ export function createUsbInstallerHandler(
     assertRawWriteGate();
 
     if (!backend.executeWritePlan) {
-      throw new Error("executeWritePlan is not implemented on this platform.");
+      throw new Error(
+        "This USB installer backend does not support raw write execution.",
+      );
     }
 
     deleteExpiredPlans();

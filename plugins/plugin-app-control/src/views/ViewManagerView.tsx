@@ -91,7 +91,7 @@ function ViewCard({
 					background: viewManagerTheme.surfaceMuted,
 				}}
 				onError={(e) => {
-					// Hide broken image — the placeholder SVG served by the agent
+					// Hide broken image; the fallback SVG served by the agent
 					// renders via the src anyway; this guard handles network errors.
 					(e.target as HTMLImageElement).style.display = "none";
 				}}
@@ -326,7 +326,9 @@ function TuiStatusBadge({ view }: { view: ViewEntry }) {
 	return (
 		<span
 			style={{
-				color: view.available ? viewManagerTheme.accent : viewManagerTheme.danger,
+				color: view.available
+					? viewManagerTheme.accent
+					: viewManagerTheme.danger,
 				minWidth: 10,
 				display: "inline-block",
 			}}
@@ -398,14 +400,19 @@ function TuiViewRow({
 				gap: 12,
 				alignItems: "center",
 				padding: "8px 0",
-				borderTop: index === 0 ? "none" : `1px solid ${viewManagerTheme.borderAccent}`,
+				borderTop:
+					index === 0 ? "none" : `1px solid ${viewManagerTheme.borderAccent}`,
 			}}
 		>
 			<span style={{ color: viewManagerTheme.muted }}>
 				{String(index + 1).padStart(2, "0")}
 			</span>
-			<span style={{ color: viewManagerTheme.foreground, fontWeight: 700 }}>{view.label}</span>
-			<span style={{ color: viewManagerTheme.success }}>{view.viewType ?? "gui"}</span>
+			<span style={{ color: viewManagerTheme.foreground, fontWeight: 700 }}>
+				{view.label}
+			</span>
+			<span style={{ color: viewManagerTheme.success }}>
+				{view.viewType ?? "gui"}
+			</span>
 			<span
 				style={{
 					color: viewManagerTheme.muted,
@@ -416,7 +423,13 @@ function TuiViewRow({
 				{view.id}
 			</span>
 			<TuiStatusBadge view={view} />
-			<div style={{ gridColumn: "2 / 5", color: viewManagerTheme.muted, fontSize: 12 }}>
+			<div
+				style={{
+					gridColumn: "2 / 5",
+					color: viewManagerTheme.muted,
+					fontSize: 12,
+				}}
+			>
 				{view.description ?? view.pluginName}
 			</div>
 			<button
@@ -518,7 +531,9 @@ export function ViewManagerTuiView() {
 						marginBottom: 10,
 					}}
 				>
-					<strong style={{ color: viewManagerTheme.foreground }}>registered tui views</strong>
+					<strong style={{ color: viewManagerTheme.foreground }}>
+						registered tui views
+					</strong>
 					<TuiRefreshButton
 						loading={loading}
 						onClick={() => void fetchViews()}
@@ -527,7 +542,9 @@ export function ViewManagerTuiView() {
 
 				{error && <div style={{ color: viewManagerTheme.danger }}>{error}</div>}
 				{!error && views.length === 0 && !loading && (
-					<div style={{ color: viewManagerTheme.muted }}>no tui views registered</div>
+					<div style={{ color: viewManagerTheme.muted }}>
+						no tui views registered
+					</div>
 				)}
 				{views.map((view, index) => (
 					<TuiViewRow

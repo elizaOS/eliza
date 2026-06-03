@@ -6042,9 +6042,10 @@ def check_footprint_3d_model_library_map() -> None:
     for key, expected in expected_local_coverage.items():
         if local_coverage.get(key) != expected:
             raise SystemExit(f"footprint/3D map local development coverage stale: {key}")
-    if local_coverage["component_model_instance_count"] != summary[
-        "routed_local_development_footprint_count"
-    ]:
+    if (
+        local_coverage["component_model_instance_count"]
+        != summary["routed_local_development_footprint_count"]
+    ):
         raise SystemExit("footprint/3D map component instance count diverges from routed board")
     if local_coverage["release_credit_component_model_count"] != 0:
         raise SystemExit("footprint/3D map must keep local component models non-release")
@@ -8339,14 +8340,12 @@ def check_component_height_step_integration() -> None:
     development_clearance_context = routed_clearance.get("development_clearance_context", {})
     if not isinstance(development_clearance_context, dict):
         raise SystemExit("component height missing local candidate clearance context")
-    if (
-        routed.get("local_candidate_clearance_case_count")
-        != development_clearance_context.get("cases_mapped_to_candidate_step")
+    if routed.get("local_candidate_clearance_case_count") != development_clearance_context.get(
+        "cases_mapped_to_candidate_step"
     ):
         raise SystemExit("component height local candidate clearance case count stale")
-    if (
-        routed.get("local_candidate_ready_for_boolean_review")
-        != development_clearance_context.get("candidate_ready_for_local_review")
+    if routed.get("local_candidate_ready_for_boolean_review") != development_clearance_context.get(
+        "candidate_ready_for_local_review"
     ):
         raise SystemExit("component height local candidate review state stale")
     if routed.get("local_candidate_release_credit") is not False:
@@ -15528,7 +15527,9 @@ def check_objective_completion_trace_manifests() -> None:
         "instance_pin_step_release_credit_instance_count": int(
             instance_summary.get("release_credit_instance_count") or 0
         ),
-        "instance_pin_step_local_failure_count": int(instance_summary.get("local_failure_count") or 0),
+        "instance_pin_step_local_failure_count": int(
+            instance_summary.get("local_failure_count") or 0
+        ),
         "instance_pin_step_release_credit": instance_disposition.get("release_credit") is True,
     }
     for key, expected in expected_instance_progress.items():
@@ -15947,9 +15948,7 @@ def check_development_pattern_pinout_step_coverage() -> None:
             raise SystemExit(f"component model pinout binding diverges: {reference}")
         if bool(model.get("pinout_bound")) != bool(model.get("pinout_file")):
             raise SystemExit(f"component model pinout_bound flag diverges: {reference}")
-        expected_support_pattern_bound = bool(
-            model.get("support_pattern_has_explicit_provenance")
-        )
+        expected_support_pattern_bound = bool(model.get("support_pattern_has_explicit_provenance"))
         if bool(model.get("support_pattern_bound")) != expected_support_pattern_bound:
             raise SystemExit(f"component model support_pattern_bound flag diverges: {reference}")
         expected_pattern_bound = bool(model.get("pinout_file")) or expected_support_pattern_bound
@@ -15964,9 +15963,7 @@ def check_development_pattern_pinout_step_coverage() -> None:
             or int(model.get("terminal_contract_count") or 0) > 0
         )
         if bool(model.get("terminal_contract_bound")) != expected_terminal_contract_bound:
-            raise SystemExit(
-                f"component model terminal_contract_bound flag diverges: {reference}"
-            )
+            raise SystemExit(f"component model terminal_contract_bound flag diverges: {reference}")
         if model.get("support_pattern_has_explicit_provenance") and not model.get(
             "land_pattern_basis"
         ):
@@ -16115,9 +16112,10 @@ def check_development_pattern_pinout_step_coverage() -> None:
             "all_connections_have_endpoint_distance"
         ),
     }.items():
-        if trace_summary.get(trace_key) is not True or cad_connection_summary.get(
-            coverage_key
-        ) is not True:
+        if (
+            trace_summary.get(trace_key) is not True
+            or cad_connection_summary.get(coverage_key) is not True
+        ):
             raise SystemExit(f"KiCad/CAD traceability CAD connection detail missing: {trace_key}")
     if trace_summary.get("cad_connection_supplier_drawing_requirements_by_medium") != (
         cad_connection_summary.get("supplier_drawing_requirements_by_medium")
@@ -16208,9 +16206,16 @@ def check_development_pattern_pinout_step_coverage() -> None:
             "local_review_pass",
         ]:
             if record.get(key) is not True:
-                raise SystemExit(f"instance pin/STEP local flag not closed: {model['reference']} {key}")
-        if record.get("supplier_approved") is not False or record.get("release_credit") is not False:
-            raise SystemExit(f"instance pin/STEP record incorrectly grants release: {model['reference']}")
+                raise SystemExit(
+                    f"instance pin/STEP local flag not closed: {model['reference']} {key}"
+                )
+        if (
+            record.get("supplier_approved") is not False
+            or record.get("release_credit") is not False
+        ):
+            raise SystemExit(
+                f"instance pin/STEP record incorrectly grants release: {model['reference']}"
+            )
 
     print(
         "development pattern/pinout/STEP coverage ok: "
@@ -18066,7 +18071,10 @@ def check_routed_layout_si_drc_burndown() -> None:
         raise SystemExit("routed layout SI/DRC must record local routed board candidate")
     if output_map["routed_kicad_pcb"].get("present") is not False:
         raise SystemExit("routed layout SI/DRC routed candidate cannot be release-present")
-    if output_map["schematic_erc_report"].get("local_non_release_total_count") != expected_erc_total:
+    if (
+        output_map["schematic_erc_report"].get("local_non_release_total_count")
+        != expected_erc_total
+    ):
         raise SystemExit("routed layout SI/DRC ERC output count stale")
     if output_map["pcb_drc_report"].get("local_non_release_total_count") != expected_drc_total:
         raise SystemExit("routed layout SI/DRC DRC output count stale")

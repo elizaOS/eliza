@@ -58,6 +58,8 @@ export interface PredictionPosition {
   unrealizedPnL: number;
   resolved: boolean;
   resolution?: boolean | null;
+  /** ISO timestamp of market close, when available */
+  closesAt?: string | null;
   /** Position status: active, closed, resolved, cancelled */
   status?: string;
   /** ISO timestamp of when the position was opened */

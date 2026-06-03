@@ -55,7 +55,7 @@ function addProblemStatement(content: TrajectoryContent): TrajectoryContent {
       action: "",
       response: "",
       observation: problemStatement,
-      messages: [{ role: "system", content: "Problem Statement placeholder" }],
+      messages: [{ role: "system", content: problemStatement }],
     });
   }
 

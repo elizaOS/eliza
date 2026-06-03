@@ -603,9 +603,7 @@ def main() -> int:
                 )
             ),
             "local_component_model_directory_pattern_bound_model_record_count": (
-                local_progress.get(
-                    "component_model_directory_pattern_bound_model_record_count", 0
-                )
+                local_progress.get("component_model_directory_pattern_bound_model_record_count", 0)
             ),
             "local_component_model_directory_terminal_contract_bound_model_record_count": (
                 local_progress.get(

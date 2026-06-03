@@ -201,6 +201,21 @@ function getApiKey(runtime: IAgentRuntime): string | undefined {
   return fromRuntime ?? fromEnv;
 }
 
+function getElevenLabsClientConfig(runtime: IAgentRuntime): {
+  apiKey?: string;
+  baseUrl: string;
+} {
+  const apiKey = getApiKey(runtime)?.trim();
+  const baseUrl = getBaseURL(runtime);
+  if (apiKey) return { apiKey, baseUrl };
+  if (isBrowser() && baseUrl !== "https://api.elevenlabs.io/v1") {
+    return { baseUrl };
+  }
+  throw new Error(
+    "ELEVENLABS_API_KEY is required unless ELEVENLABS_BROWSER_URL is configured in browser mode",
+  );
+}
+
 /**
  * Function to retrieve voice settings based on runtime and environment variables.
  * @param {IAgentRuntime} runtime - The agent runtime object.
@@ -334,13 +349,7 @@ async function fetchSpeech(
   },
 ): Promise<Uint8Array> {
   try {
-    const baseUrl = getBaseURL(runtime);
-    // In browser mode with proxy URL, use a harmless placeholder key.
-    const apiKey = getApiKey(runtime) ?? (isBrowser() ? "sk-proxy" : undefined);
-    const client = new ElevenLabsClient({
-      apiKey: apiKey,
-      baseUrl,
-    });
+    const client = new ElevenLabsClient(getElevenLabsClientConfig(runtime));
 
     const stream = await client.textToSpeech.stream(params.voiceId, {
       text: params.text,
@@ -380,12 +389,7 @@ async function fetchTranscription(
   },
 ): Promise<string> {
   try {
-    const baseUrl = getBaseURL(runtime);
-    const apiKey = getApiKey(runtime) ?? (isBrowser() ? "sk-proxy" : undefined);
-    const client = new ElevenLabsClient({
-      apiKey: apiKey,
-      baseUrl,
-    });
+    const client = new ElevenLabsClient(getElevenLabsClientConfig(runtime));
 
     const body: BodySpeechToTextV1SpeechToTextPost = {
       modelId: parseSttModelId(params.modelId),

@@ -66,9 +66,7 @@ def test_assembly_blocks_with_missing_artifacts() -> None:
         if not findings or not all(finding.get("next_command") for finding in findings):
             raise AssertionError(json.dumps(assembly_report, indent=2))
         command_text = "\n".join(
-            command
-            for finding in findings
-            for command in finding.get("next_commands", [])
+            command for finding in findings for command in finding.get("next_commands", [])
         )
         for token in (
             "scripts/android/run_vts_smoke.sh",
@@ -79,9 +77,7 @@ def test_assembly_blocks_with_missing_artifacts() -> None:
             if token not in command_text:
                 raise AssertionError(command_text)
         command_plan = assembly_report.get("next_command_plan", [])
-        if assembly_report.get("summary", {}).get("next_command_batch_count") != len(
-            command_plan
-        ):
+        if assembly_report.get("summary", {}).get("next_command_batch_count") != len(command_plan):
             raise AssertionError(json.dumps(assembly_report, indent=2))
         if len(command_plan) != len(findings):
             raise AssertionError(json.dumps(assembly_report, indent=2))

@@ -28,7 +28,7 @@ CAPTURE_COMMANDS = {
     "dma_trace": "adb shell cat /sys/bus/platform/devices/10020000.npu/dma_trace",
 }
 PROOF_CAPTURE_COMMAND = (
-    "ANDROID_SERIAL=\"${CHIP_ANDROID_ADB_SERIAL:-$CHIP_ANDROID_ADB_HOSTPORT}\" "
+    'ANDROID_SERIAL="${CHIP_ANDROID_ADB_SERIAL:-$CHIP_ANDROID_ADB_HOSTPORT}" '
     "E1_NPU_WRITE_PROOF_JSON=1 "
     "E1_NPU_MACS_PER_INFERENCE=<measured-macs> "
     "E1_NPU_CYCLES=<measured-cycles> "
@@ -211,8 +211,8 @@ def structured_findings(local_blockers: list[dict[str, Any]]) -> list[dict[str, 
 
 def proof_next_commands() -> list[str]:
     return [
-        "test -n \"$CHIP_ANDROID_ADB_SERIAL\" || test -n \"$CHIP_ANDROID_ADB_HOSTPORT\"",
-        "test -z \"$CHIP_ANDROID_ADB_HOSTPORT\" || adb connect \"$CHIP_ANDROID_ADB_HOSTPORT\"",
+        'test -n "$CHIP_ANDROID_ADB_SERIAL" || test -n "$CHIP_ANDROID_ADB_HOSTPORT"',
+        'test -z "$CHIP_ANDROID_ADB_HOSTPORT" || adb connect "$CHIP_ANDROID_ADB_HOSTPORT"',
         PROOF_CAPTURE_COMMAND,
         "python3 scripts/check_e1_npu_nnapi_proof.py --probe-adb",
     ]

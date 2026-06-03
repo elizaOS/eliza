@@ -5,7 +5,6 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { runScenario } from "./executor";
 
@@ -62,9 +61,7 @@ describe("scenario executor action turns", () => {
         } as Action,
       ],
       {
-        useModel: vi.fn(async () =>
-          JSON.stringify({ response: "I opened remote-ledger." }),
-        ) as AgentRuntime["useModel"],
+        useModel: vi.fn() as AgentRuntime["useModel"],
       },
     );
 
@@ -81,7 +78,7 @@ describe("scenario executor action turns", () => {
             text: "open the remote ledger view",
             actionName: "VIEWS",
             options: { action: "pin", view: "remote-ledger" },
-            responseIncludesAny: ["I opened remote-ledger."],
+            responseIncludesAny: ["opened remote-ledger"],
           },
         ],
         finalChecks: [
@@ -102,6 +99,7 @@ describe("scenario executor action turns", () => {
     );
 
     expect(report.status).toBe("passed");
+    expect(runtime.useModel).not.toHaveBeenCalled();
     expect(validate).toHaveBeenCalledWith(
       runtime,
       expect.objectContaining({
@@ -117,7 +115,7 @@ describe("scenario executor action turns", () => {
     expect(handler).toHaveBeenCalledOnce();
     expect(report.turns[0]).toMatchObject({
       kind: "action",
-      responseText: "I opened remote-ledger.",
+      responseText: "opened remote-ledger",
       actionsCalled: [
         {
           actionName: "VIEWS",
@@ -198,9 +196,7 @@ describe("scenario executor action turns", () => {
         } as Action,
       ],
       {
-        useModel: vi.fn(async () =>
-          JSON.stringify({ response: "I opened local-notes instead." }),
-        ) as AgentRuntime["useModel"],
+        useModel: vi.fn() as AgentRuntime["useModel"],
       },
     );
 
@@ -227,49 +223,44 @@ describe("scenario executor action turns", () => {
     );
 
     expect(report.status).toBe("failed");
+    expect(runtime.useModel).not.toHaveBeenCalled();
     expect(report.turns[0]?.failedAssertions).toEqual([
-      'responseIncludesAny: expected response to include any of [opened remote-ledger], saw "I opened local-notes instead."',
+      'responseIncludesAny: expected response to include any of [opened remote-ledger], saw "opened local-notes instead"',
     ]);
   });
 
-  it("rewrites action callback output through TEXT_SMALL before scenario assertions", async () => {
+  it("uses action callback output directly before scenario assertions", async () => {
     const runtime = createRuntime(
       [
         {
           name: "VIEWS",
           description: "test action",
           validate: vi.fn(async () => true),
-          handler: vi.fn(async (_runtime, _message, _state, _options, callback) => {
-            await callback?.({ text: "stdout: opened view=remote-ledger" });
-            return { success: true };
-          }),
+          handler: vi.fn(
+            async (_runtime, _message, _state, _options, callback) => {
+              await callback?.({ text: "stdout: opened view=remote-ledger" });
+              return { success: true };
+            },
+          ),
         } as Action,
       ],
       {
         character: { name: "Milady" } as AgentRuntime["character"],
-        useModel: vi.fn(async (modelType, params) => {
-          expect(modelType).toBe(ModelType.TEXT_SMALL);
-          expect(String((params as { prompt?: string }).prompt)).toContain(
-            "stdout: opened view=remote-ledger",
-          );
-          return JSON.stringify({
-            response: "I opened the remote-ledger view.",
-          });
-        }) as AgentRuntime["useModel"],
+        useModel: vi.fn() as AgentRuntime["useModel"],
       },
     );
 
     const report = await runScenario(
       {
-        id: "action-turn-voiced",
-        title: "Action turn voiced",
+        id: "action-turn-direct-output",
+        title: "Action turn direct output",
         domain: "executor",
         turns: [
           {
             kind: "action",
             name: "open view",
             actionName: "VIEWS",
-            responseIncludesAny: ["I opened the remote-ledger view."],
+            responseIncludesAny: ["stdout: opened view=remote-ledger"],
           },
         ],
       },
@@ -283,12 +274,9 @@ describe("scenario executor action turns", () => {
 
     expect(report.status).toBe("passed");
     expect(report.turns[0]?.responseText).toBe(
-      "I opened the remote-ledger view.",
+      "stdout: opened view=remote-ledger",
     );
-    expect(runtime.useModel).toHaveBeenCalledWith(
-      ModelType.TEXT_SMALL,
-      expect.any(Object),
-    );
+    expect(runtime.useModel).not.toHaveBeenCalled();
   });
 
   it("reports expected and actual action arguments for selectedActionArguments failures", async () => {
@@ -305,9 +293,7 @@ describe("scenario executor action turns", () => {
         } as Action,
       ],
       {
-        useModel: vi.fn(async () =>
-          JSON.stringify({ response: "I opened local notes." }),
-        ) as AgentRuntime["useModel"],
+        useModel: vi.fn() as AgentRuntime["useModel"],
       },
     );
 
@@ -342,6 +328,7 @@ describe("scenario executor action turns", () => {
     );
 
     expect(report.status).toBe("failed");
+    expect(runtime.useModel).not.toHaveBeenCalled();
     expect(report.failedAssertions).toContainEqual({
       label: "selectedActionArguments",
       detail:

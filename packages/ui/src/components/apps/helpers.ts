@@ -277,8 +277,6 @@ export function filterAppsForCatalog(
       return false;
     }
     // Developer-only apps are hidden unless Developer Mode is on.
-    // TODO: server-side population pending — `developerOnly` and `visibleInAppStore`
-    // are declared in PluginApp but not yet plumbed through `RegistryAppInfo` API responses.
     if (app.developerOnly && !developerMode) {
       return false;
     }

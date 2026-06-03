@@ -29,6 +29,8 @@ def false_claim_flags(status: str) -> dict[str, bool]:
     if status != "STRICT_FORMAL_EVIDENCE_READY":
         flags["formal_proof_claim_allowed"] = False
     return flags
+
+
 STRICT_BLOCKS = ("e1_dbg_mmio_bridge", "e1_npu", "e1_dma", "e1_soc_top")
 
 

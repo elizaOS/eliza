@@ -24,11 +24,11 @@ from backend.ElizaPartitioner import ElizaPartitioner, GraphNode  # noqa: E402
 
 def _two_layer_mlp_nodes() -> list[GraphNode]:
     return [
-        GraphNode(name="x", target="placeholder"),
-        GraphNode(name="w0", target="placeholder"),
-        GraphNode(name="b0", target="placeholder"),
-        GraphNode(name="w1", target="placeholder"),
-        GraphNode(name="b1", target="placeholder"),
+        GraphNode(name="x", target="graph.input"),
+        GraphNode(name="w0", target="graph.input"),
+        GraphNode(name="b0", target="graph.input"),
+        GraphNode(name="w1", target="graph.input"),
+        GraphNode(name="b1", target="graph.input"),
         GraphNode(name="h", target="aten.linear.default", inputs=("x", "w0", "b0")),
         GraphNode(name="h_relu", target="aten.relu.default", inputs=("h",)),
         GraphNode(name="y", target="aten.linear.default", inputs=("h_relu", "w1", "b1")),
@@ -38,7 +38,7 @@ def _two_layer_mlp_nodes() -> list[GraphNode]:
 def test_partition_two_layer_mlp_routes_linear_and_relu_to_npu() -> None:
     nodes = _two_layer_mlp_nodes()
     result = ElizaPartitioner().partition_nodes(nodes)
-    # Placeholder nodes are not in the supported set; they get CPU-fallback
+    # Graph input nodes are not in the supported set; they get CPU-fallback
     # routing. The compute nodes form a single contiguous NPU partition.
     npu_targets = [n.target for p in result.npu_partitions for n in p.nodes]
     assert npu_targets == [

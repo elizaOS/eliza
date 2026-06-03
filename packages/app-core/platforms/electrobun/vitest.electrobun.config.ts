@@ -14,6 +14,7 @@ const remotePluginSrcRoot = path.resolve(
 );
 const sharedSrcRoot = path.resolve(__dirname, "../../../shared/src");
 const coreSrcRoot = path.resolve(__dirname, "../../../core/src");
+const loggerSrcRoot = path.resolve(__dirname, "../../../logger/src");
 
 export default defineConfig({
   resolve: {
@@ -25,6 +26,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/core\/(.*)$/,
         replacement: path.join(coreSrcRoot, "$1"),
+      },
+      {
+        find: /^@elizaos\/logger$/,
+        replacement: path.join(loggerSrcRoot, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/logger\/(.*)$/,
+        replacement: path.join(loggerSrcRoot, "$1"),
       },
       {
         find: /^@elizaos\/app-core$/,

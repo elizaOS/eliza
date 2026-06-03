@@ -1010,8 +1010,8 @@ export class DeviceBridge {
 	/**
 	 * On startup, read persisted pending requests back into memory. Their
 	 * promises are gone (the original caller's process is dead) so they can
-	 * only be resolved externally — for now we just re-queue them with a
-	 * fresh timeout, and the first device that connects will process them.
+	 * only be resolved externally, so we re-queue them with a fresh timeout.
+	 * The first connected device that can handle generation will process them.
 	 * If nothing consumes them within the timeout they reject quietly.
 	 *
 	 * Stale entries older than 24h are purged rather than resurrected.

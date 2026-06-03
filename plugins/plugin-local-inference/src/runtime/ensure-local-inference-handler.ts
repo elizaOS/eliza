@@ -38,6 +38,7 @@ import {
 	type UUID,
 } from "@elizaos/core";
 import type { CapacitorLlamaContext } from "../adapters/capacitor-llama/types";
+import { LocalInferenceUnavailableError } from "../provider";
 import {
 	type LocalInferenceLoader,
 	resolveLocalInferenceLoadArgs,
@@ -460,12 +461,22 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
 			return loader.generate(engineArgs);
 		}
 		if (!(await localInferenceEngine.available())) {
-			throw new Error(
+			// No native binding: signal UNAVAILABLE (typed) so the cross-provider
+			// router skips local inference and falls back to a registered cloud/API
+			// provider, instead of hard-failing the whole turn.
+			throw new LocalInferenceUnavailableError(
+				slot,
+				"backend_unavailable",
 				`[local-inference] No llama.cpp binding available for ${slot} request`,
 			);
 		}
 		if (!localInferenceEngine.hasLoadedModel()) {
-			throw new Error(
+			// No local model loaded: signal UNAVAILABLE (typed) so the router falls
+			// back to a registered cloud/API provider (e.g. Anthropic) when one
+			// exists, rather than hard-failing while a usable provider is present.
+			throw new LocalInferenceUnavailableError(
+				slot,
+				"backend_unavailable",
 				`[local-inference] No local model is active. Assign a model to ${slot} or activate one in Settings → Local models.`,
 			);
 		}

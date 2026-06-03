@@ -104,9 +104,7 @@ class ChipOsObjectiveEvidenceMatrixTests(unittest.TestCase):
                             ],
                         }
                     ],
-                    "next_command_plan": [
-                        {"commands": ["python3 scripts/check-aggregate.py"]}
-                    ],
+                    "next_command_plan": [{"commands": ["python3 scripts/check-aggregate.py"]}],
                 },
             )
             row = matrix.evaluate_requirement(req, report_dir)

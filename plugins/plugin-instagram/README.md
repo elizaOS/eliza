@@ -13,9 +13,9 @@ Adds Instagram integration to an Eliza agent:
 - **Multi-account** — configure multiple Instagram accounts; each gets its own connector pair.
 - **Workflow credentials** — supplies a `facebookGraphApi` token to workflow plugin nodes when `INSTAGRAM_PAGE_ACCESS_TOKEN` is set.
 
-> **Note:** The current service implementation contains API stubs. The connector and credential
-> plumbing is complete; production use requires wiring a real Instagram API client (e.g.
-> `instagram-private-api`) into the stub methods in `src/service.ts`.
+> **Note:** The connector and credential plumbing is complete, but this package does not ship a
+> concrete Instagram API client backend. Runtime API methods fail explicitly until a backend such as
+> `instagram-private-api` or an approved Graph API adapter is wired into `src/service.ts`.
 
 ## Installation
 
@@ -94,4 +94,3 @@ bun run --cwd plugins/plugin-instagram test        # unit tests
 bun run --cwd plugins/plugin-instagram typecheck   # type-check only
 bun run --cwd plugins/plugin-instagram lint        # lint + autofix
 ```
-

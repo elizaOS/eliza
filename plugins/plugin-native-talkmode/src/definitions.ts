@@ -60,7 +60,7 @@ export interface SpeakOptions {
   text: string;
   /** Optional directive overrides */
   directive?: TTSDirective;
-  /** Route through the on-device local-inference TTS endpoint on native Android */
+  /** Route through the on-device local-inference TTS endpoint on native mobile */
   useLocalInferenceTts?: boolean;
   /** Force use of system TTS */
   useSystemTts?: boolean;

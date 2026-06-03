@@ -56,7 +56,7 @@ const PUBLISHED_PACKAGE_FETCH_TIMEOUT_MS = 10_000;
 const ALLOW_REGISTRY_FETCH =
   process.env.ELIZA_RUNTIME_COPY_ALLOW_REGISTRY_FETCH === "1";
 const DEP_SKIP = new Set(["typescript", "@types/node"]);
-const ALWAYS_HOISTED_PACKAGES = new Set(["@elizaos/core", "commander"]);
+const ALWAYS_HOISTED_PACKAGES = new Set(["@elizaos/core", "commander", "pg", "pg-pool"]);
 const PACKAGED_DEPENDENCY_SKIPS = new Map<string, Set<string>>([
   // git-workspace-service declares @octokit/rest as both a dependency (^20)
   // and a peer (>=20). Desktop bundles it via plugin-agent-orchestrator,

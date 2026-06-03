@@ -75,9 +75,7 @@ def main() -> int:
         BOARD_ROOT / "production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml"
     )
     pad_pin_audit = load_yaml(BOARD_ROOT / "development-pad-pin-coverage-audit-2026-05-22.yaml")
-    instance_disposition = load_yaml(
-        BOARD_ROOT / "instance-pin-step-disposition-2026-06-02.yaml"
-    )
+    instance_disposition = load_yaml(BOARD_ROOT / "instance-pin-step-disposition-2026-06-02.yaml")
     public_cad_intake = load_yaml(BOARD_ROOT / "public-cad-source-intake-2026-05-28.yaml")
     mechanical_burndown = load_yaml(
         BOARD_ROOT / "enclosure-mechanical-release-burndown-2026-05-22.yaml"

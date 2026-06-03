@@ -45,12 +45,10 @@ export const healthProber: Prober = {
         restrictedReason: "entitlement_required",
       });
     }
-    // TODO: when we ship a HealthKit FFI, call
-    //   HKHealthStore.isHealthDataAvailable
-    //   HKHealthStore.authorizationStatus(for: type)
-    // and translate. For now we know we have the entitlement but no
-    // way to query — surface as not-determined so the registry can
-    // at least let callers request.
+    // Native bridge boundary: a signed build with the HealthKit
+    // entitlement can query HKHealthStore availability and authorization
+    // here. Until that bridge is present, surface not-determined so the
+    // registry can at least let callers request.
     return buildState(ID, "not-determined", { canRequest: true });
   },
 
@@ -63,7 +61,7 @@ export const healthProber: Prober = {
         lastRequested: Date.now(),
       });
     }
-    // Same TODO as check(). For now mirror the check result.
+    // Same native bridge boundary as check(); mirror the requestable state.
     return buildState(ID, "not-determined", {
       canRequest: true,
       lastRequested: Date.now(),

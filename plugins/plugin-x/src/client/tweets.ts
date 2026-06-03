@@ -10,6 +10,7 @@ import type {
   TTweetv2PollField,
   TTweetv2TweetField,
   TTweetv2UserField,
+  TweetRetweetedOrLikedByV2Params,
   TweetV2,
   UserV2,
 } from "twitter-api-v2";
@@ -1067,17 +1068,6 @@ export async function getTweetAnonymous(
   return getTweet(id, auth);
 }
 
-async function _uploadMedia(
-  _mediaData: Buffer,
-  _auth: TwitterAuth,
-  _mediaType: string,
-): Promise<string> {
-  // Twitter API v2 media upload is not yet fully implemented in twitter-api-v2 library
-  // This would require using the v1.1 media upload endpoint with proper OAuth
-  console.warn("Media upload not yet implemented for Twitter API v2");
-  throw new Error("Media upload not yet implemented for Twitter API v2");
-}
-
 // Function to create a quote tweet
 export async function createQuoteTweetRequest(
   text: string,
@@ -1135,6 +1125,28 @@ export async function likeTweet(
 }
 
 /**
+ * Unlikes a tweet with the given tweet ID.
+ * @param tweetId The ID of the tweet to unlike.
+ * @param auth The authentication object.
+ * @returns A promise that resolves when the tweet is unliked.
+ */
+export async function unlikeTweet(
+  tweetId: string,
+  auth: TwitterAuth,
+): Promise<void> {
+  const v2client = await auth.getV2Client();
+  if (!v2client) {
+    throw new Error("V2 client is not initialized");
+  }
+
+  try {
+    await v2client.v2.unlike((await v2client.v2.me()).data.id, tweetId);
+  } catch (error) {
+    throw new Error(`Failed to unlike tweet: ${errorMessage(error)}`);
+  }
+}
+
+/**
  * Retweets a tweet with the given tweet ID.
  * @param tweetId The ID of the tweet to retweet.
  * @param auth The authentication object.
@@ -1159,6 +1171,28 @@ export async function retweet(
   }
 }
 
+/**
+ * Removes a retweet for the given tweet ID.
+ * @param tweetId The ID of the tweet to unretweet.
+ * @param auth The authentication object.
+ * @returns A promise that resolves when the tweet is unretweeted.
+ */
+export async function unretweet(
+  tweetId: string,
+  auth: TwitterAuth,
+): Promise<void> {
+  const v2client = await auth.getV2Client();
+  if (!v2client) {
+    throw new Error("V2 client is not initialized");
+  }
+
+  try {
+    await v2client.v2.unretweet((await v2client.v2.me()).data.id, tweetId);
+  } catch (error) {
+    throw new Error(`Failed to unretweet: ${errorMessage(error)}`);
+  }
+}
+
 export async function createCreateLongTweetRequest(
   text: string,
   auth: TwitterAuth,
@@ -1178,22 +1212,34 @@ export async function createCreateLongTweetRequest(
  * All comments must remain in English.
  */
 export async function fetchRetweetersPage(
-  _tweetId: string,
-  _auth: TwitterAuth,
-  _cursor?: string,
-  _count = 40,
+  tweetId: string,
+  auth: TwitterAuth,
+  cursor?: string,
+  count = 40,
 ): Promise<{
   retweeters: Retweeter[];
   bottomCursor?: string;
   topCursor?: string;
 }> {
-  // Twitter API v2 does not provide an endpoint to fetch retweeters
-  // This functionality would require the API v2 retweeted_by endpoint
-  console.warn("Fetching retweeters not implemented for Twitter API v2");
+  const client = await auth.getV2Client();
+  const options: Partial<TweetRetweetedOrLikedByV2Params> = {
+    max_results: count,
+    "user.fields": ["description", "id", "name", "username"],
+    ...(cursor ? { pagination_token: cursor } : {}),
+  };
+
+  const response = await client.v2.tweetRetweetedBy(tweetId, options);
+  const users = response.data ?? [];
+
   return {
-    retweeters: [],
-    bottomCursor: undefined,
-    topCursor: undefined,
+    retweeters: users.map((user) => ({
+      rest_id: user.id,
+      screen_name: user.username,
+      name: user.name,
+      description: user.description,
+    })),
+    bottomCursor: response.meta.next_token,
+    topCursor: response.meta.previous_token,
   };
 }
 

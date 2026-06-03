@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import re
 import unittest
-from tempfile import TemporaryDirectory
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import check_cocotb_results
 from check_cocotb_results import CLAIM_BOUNDARY, PIPELINE_TARGETS

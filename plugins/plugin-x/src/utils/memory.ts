@@ -265,6 +265,29 @@ export async function addToRecentTweets(
   }
 }
 
+function normalizeTweetForDuplicateCheck(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^\p{L}\p{N}#@]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tweetTokenSimilarity(a: string, b: string): number {
+  const aTokens = new Set(a.split(" ").filter(Boolean));
+  const bTokens = new Set(b.split(" ").filter(Boolean));
+  if (aTokens.size === 0 && bTokens.size === 0) return 1;
+  if (aTokens.size === 0 || bTokens.size === 0) return 0;
+
+  let intersection = 0;
+  for (const token of aTokens) {
+    if (bTokens.has(token)) intersection += 1;
+  }
+  const union = aTokens.size + bTokens.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
 /**
  * Checks if a tweet text is a duplicate of recent tweets
  */
@@ -272,7 +295,7 @@ export async function isDuplicateTweet(
   runtime: IAgentRuntime,
   username: string,
   tweetText: string,
-  _similarityThreshold: number = 0.9,
+  similarityThreshold: number = 0.9,
 ): Promise<boolean> {
   try {
     const recentTweets = await getRecentTweets(runtime, username);
@@ -282,10 +305,9 @@ export async function isDuplicateTweet(
       return true;
     }
 
-    // Similarity check (simple for now, could use embeddings later)
-    const normalizedNew = tweetText.toLowerCase().trim();
+    const normalizedNew = normalizeTweetForDuplicateCheck(tweetText);
     for (const recent of recentTweets) {
-      const normalizedRecent = recent.toLowerCase().trim();
+      const normalizedRecent = normalizeTweetForDuplicateCheck(recent);
 
       // Check if tweets are very similar (e.g., only differ by punctuation)
       if (normalizedNew === normalizedRecent) {
@@ -296,6 +318,13 @@ export async function isDuplicateTweet(
       if (
         normalizedNew.includes(normalizedRecent) ||
         normalizedRecent.includes(normalizedNew)
+      ) {
+        return true;
+      }
+
+      if (
+        tweetTokenSimilarity(normalizedNew, normalizedRecent) >=
+        similarityThreshold
       ) {
         return true;
       }

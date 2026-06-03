@@ -167,9 +167,7 @@ def prepare_adb(args: argparse.Namespace) -> str | None:
                 args.timeout_seconds,
             )
             clean_state = state.strip()
-            transcript.append(
-                f"$ adb -s {args.adb_serial} get-state\n{clean_state}\n[rc={rc}]"
-            )
+            transcript.append(f"$ adb -s {args.adb_serial} get-state\n{clean_state}\n[rc={rc}]")
             transcript.append(f"REQUESTED_ADB_SERIAL={args.adb_serial}")
             if rc == 0 and clean_state.splitlines()[-1:] == ["device"]:
                 transcript.append(f"SELECTED_ADB_SERIAL={args.adb_serial}")

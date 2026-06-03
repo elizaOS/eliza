@@ -418,8 +418,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
                 encoding="utf-8",
             )
             sota_report = (
-                repo
-                / "packages/chip/docs/architecture-optimization/sota-2028/cache-report.md"
+                repo / "packages/chip/docs/architecture-optimization/sota-2028/cache-report.md"
             )
             sota_report.parent.mkdir(parents=True)
             sota_report.write_text(
