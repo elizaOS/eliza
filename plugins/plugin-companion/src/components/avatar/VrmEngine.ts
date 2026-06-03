@@ -180,8 +180,6 @@ let releaseKnownVrmWebGpuWarningFilterGlobal: (() => void) | null = null;
 let sharedDracoLoader: DRACOLoader | null = null;
 type CompatibleDracoLoader = Parameters<GLTFLoader["setDRACOLoader"]>[0];
 type CompatibleMeshoptDecoder = Parameters<GLTFLoader["setMeshoptDecoder"]>[0];
-type MeshoptFilter = "NONE" | "OCTAHEDRAL" | "QUATERNION" | "EXPONENTIAL";
-type MeshoptMode = "ATTRIBUTES" | "TRIANGLES" | "INDICES";
 let teleportSparkleTexture: THREE.CanvasTexture | null = null;
 let _cachedDracoDecoderPath: string | null = null;
 /** Lazy + cached: module-load resolution can be wrong in bundled/desktop init order. */
@@ -285,7 +283,7 @@ const compatibleMeshoptDecoder: NonNullable<CompatibleMeshoptDecoder> = {
     count: number,
     size: number,
     source: Uint8Array,
-    filter?: MeshoptFilter,
+    filter?: string,
   ) {
     callMeshoptFunction(
       "decodeVertexBuffer",
@@ -317,8 +315,8 @@ const compatibleMeshoptDecoder: NonNullable<CompatibleMeshoptDecoder> = {
     count: number,
     size: number,
     source: Uint8Array,
-    mode: MeshoptMode,
-    filter?: MeshoptFilter,
+    mode: string,
+    filter?: string,
   ) {
     callMeshoptFunction(
       "decodeGltfBuffer",
@@ -334,8 +332,8 @@ const compatibleMeshoptDecoder: NonNullable<CompatibleMeshoptDecoder> = {
     count: number,
     size: number,
     source: Uint8Array,
-    mode: MeshoptMode,
-    filter?: MeshoptFilter,
+    mode: string,
+    filter?: string,
   ) {
     const decoded = await callMeshoptFunction(
       "decodeGltfBufferAsync",
