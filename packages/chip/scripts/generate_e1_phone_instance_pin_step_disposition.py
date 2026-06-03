@@ -63,7 +63,6 @@ def main() -> int:
     for model in models:
         footprint = str(model.get("footprint") or "")
         reference = str(model.get("reference") or "")
-        pad_record = pad_records.get(footprint, {})
         trace_record = trace_by_footprint.get(footprint, {})
         step_text = str(model.get("local_discrete_step_file") or "")
         step_path = ROOT / step_text if step_text else None
@@ -199,7 +198,12 @@ def main() -> int:
             "contracts, and local STEP envelope files. This is not supplier land-pattern "
             "approval, production DRC/ERC, physical clearance, or fabrication release."
         ),
-        "source_artifacts": [rel(PAD_AUDIT), rel(COMPONENT_MANIFEST), rel(TRACEABILITY), rel(ROUTED_BOARD)],
+        "source_artifacts": [
+            rel(PAD_AUDIT),
+            rel(COMPONENT_MANIFEST),
+            rel(TRACEABILITY),
+            rel(ROUTED_BOARD),
+        ],
         "summary": summary,
         "local_failures": local_failures,
         "records": records,

@@ -8,8 +8,8 @@ PARENT = THIS_DIR.parents[1]
 if str(PARENT) not in sys.path:
     sys.path.insert(0, str(PARENT))
 
-from backend.ElizaPartitioner import GraphNode, Partition, PartitionResult
-from backend.ElizaPreprocessor import ElizaPreprocessor
+from backend.ElizaPartitioner import GraphNode, Partition, PartitionResult  # noqa: E402
+from backend.ElizaPreprocessor import ElizaPreprocessor  # noqa: E402
 
 
 def test_preprocessor_emits_deterministic_partition_metadata() -> None:

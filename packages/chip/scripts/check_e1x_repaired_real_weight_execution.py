@@ -24,19 +24,11 @@ REPORT = ROOT / "build/reports/e1x_repaired_real_weight_execution.json"
 PLACEMENT = ROOT / "benchmarks/results/e1x-real-graph-model-load.placement.json"
 FULL_NORM_REAL_WEIGHT = ROOT / "build/reports/e1x_full_norm_real_weight_rows.json"
 VOCAB_SAMPLED_K_REAL_WEIGHT = ROOT / "build/reports/e1x_vocab_sampled_k_real_weight_rows.json"
-ATTN_OUT_SAMPLED_K_REAL_WEIGHT = (
-    ROOT / "build/reports/e1x_attn_out_sampled_k_real_weight_rows.json"
-)
-ATTN_QKV_SAMPLED_K_REAL_WEIGHT = (
-    ROOT / "build/reports/e1x_attn_qkv_sampled_k_real_weight_rows.json"
-)
-MLP_GATE_SAMPLED_K_REAL_WEIGHT = (
-    ROOT / "build/reports/e1x_mlp_gate_sampled_k_real_weight_rows.json"
-)
+ATTN_OUT_SAMPLED_K_REAL_WEIGHT = ROOT / "build/reports/e1x_attn_out_sampled_k_real_weight_rows.json"
+ATTN_QKV_SAMPLED_K_REAL_WEIGHT = ROOT / "build/reports/e1x_attn_qkv_sampled_k_real_weight_rows.json"
+MLP_GATE_SAMPLED_K_REAL_WEIGHT = ROOT / "build/reports/e1x_mlp_gate_sampled_k_real_weight_rows.json"
 MLP_UP_SAMPLED_K_REAL_WEIGHT = ROOT / "build/reports/e1x_mlp_up_sampled_k_real_weight_rows.json"
-MLP_DOWN_SAMPLED_K_REAL_WEIGHT = (
-    ROOT / "build/reports/e1x_mlp_down_sampled_k_real_weight_rows.json"
-)
+MLP_DOWN_SAMPLED_K_REAL_WEIGHT = ROOT / "build/reports/e1x_mlp_down_sampled_k_real_weight_rows.json"
 FULL_PAYLOAD_REPAIR = ROOT / "build/reports/e1x_full_payload_repair_mapping.json"
 WINDOW_REPAIR = ROOT / "build/reports/e1x_window_repair_linkage.json"
 
@@ -221,11 +213,29 @@ def main() -> int:
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
     full_norm = load_json(FULL_NORM_REAL_WEIGHT) if FULL_NORM_REAL_WEIGHT.is_file() else {}
     vocab = load_json(VOCAB_SAMPLED_K_REAL_WEIGHT) if VOCAB_SAMPLED_K_REAL_WEIGHT.is_file() else {}
-    attn_out = load_json(ATTN_OUT_SAMPLED_K_REAL_WEIGHT) if ATTN_OUT_SAMPLED_K_REAL_WEIGHT.is_file() else {}
-    attn_qkv = load_json(ATTN_QKV_SAMPLED_K_REAL_WEIGHT) if ATTN_QKV_SAMPLED_K_REAL_WEIGHT.is_file() else {}
-    mlp_gate = load_json(MLP_GATE_SAMPLED_K_REAL_WEIGHT) if MLP_GATE_SAMPLED_K_REAL_WEIGHT.is_file() else {}
-    mlp_up = load_json(MLP_UP_SAMPLED_K_REAL_WEIGHT) if MLP_UP_SAMPLED_K_REAL_WEIGHT.is_file() else {}
-    mlp_down = load_json(MLP_DOWN_SAMPLED_K_REAL_WEIGHT) if MLP_DOWN_SAMPLED_K_REAL_WEIGHT.is_file() else {}
+    attn_out = (
+        load_json(ATTN_OUT_SAMPLED_K_REAL_WEIGHT)
+        if ATTN_OUT_SAMPLED_K_REAL_WEIGHT.is_file()
+        else {}
+    )
+    attn_qkv = (
+        load_json(ATTN_QKV_SAMPLED_K_REAL_WEIGHT)
+        if ATTN_QKV_SAMPLED_K_REAL_WEIGHT.is_file()
+        else {}
+    )
+    mlp_gate = (
+        load_json(MLP_GATE_SAMPLED_K_REAL_WEIGHT)
+        if MLP_GATE_SAMPLED_K_REAL_WEIGHT.is_file()
+        else {}
+    )
+    mlp_up = (
+        load_json(MLP_UP_SAMPLED_K_REAL_WEIGHT) if MLP_UP_SAMPLED_K_REAL_WEIGHT.is_file() else {}
+    )
+    mlp_down = (
+        load_json(MLP_DOWN_SAMPLED_K_REAL_WEIGHT)
+        if MLP_DOWN_SAMPLED_K_REAL_WEIGHT.is_file()
+        else {}
+    )
     full_payload_repair = load_json(FULL_PAYLOAD_REPAIR) if FULL_PAYLOAD_REPAIR.is_file() else {}
     window_repair = load_json(WINDOW_REPAIR) if WINDOW_REPAIR.is_file() else {}
 

@@ -43,15 +43,11 @@ DEFAULT_CAPTURE_LOGCAT = "packages/chip/docs/evidence/android/eliza_launcher_run
 DEFAULT_CAPTURE_TRANSCRIPT = (
     "packages/chip/docs/evidence/android/eliza_launcher_runtime_transcript.log"
 )
-SERIAL_CAPTURE_EVIDENCE = (
-    "packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.$CHIP_ANDROID_ADB_SERIAL.json"
-)
+SERIAL_CAPTURE_EVIDENCE = "packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.$CHIP_ANDROID_ADB_SERIAL.json"
 SERIAL_CAPTURE_LOGCAT = (
     "packages/chip/docs/evidence/android/eliza_launcher_runtime_logcat.$CHIP_ANDROID_ADB_SERIAL.txt"
 )
-SERIAL_CAPTURE_TRANSCRIPT = (
-    "packages/chip/docs/evidence/android/eliza_launcher_runtime_transcript.$CHIP_ANDROID_ADB_SERIAL.log"
-)
+SERIAL_CAPTURE_TRANSCRIPT = "packages/chip/docs/evidence/android/eliza_launcher_runtime_transcript.$CHIP_ANDROID_ADB_SERIAL.log"
 RECHECK_COMMAND = (
     "python3 packages/chip/scripts/check_android_launcher_runtime_evidence.py --json-only"
 )
@@ -195,7 +191,7 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
                 "scope": "host_adb",
                 "claim_boundary": "operator_live_capture_commands_only_not_runtime_evidence",
                 "commands": [
-                    "test -n \"$CHIP_ANDROID_ADB_SERIAL\" || test -n \"$CHIP_ANDROID_ADB_HOSTPORT\"",
+                    'test -n "$CHIP_ANDROID_ADB_SERIAL" || test -n "$CHIP_ANDROID_ADB_HOSTPORT"',
                     (
                         f"{RUNTIME_CAPTURE_SCRIPT} "
                         f'--adb-connect "{ADB_HOSTPORT_SENTINEL}" '
@@ -212,7 +208,7 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
                     ),
                     (
                         f"{RUNTIME_CAPTURE_SCRIPT} "
-                        "--adb-serial \"$CHIP_ANDROID_ADB_SERIAL\" "
+                        '--adb-serial "$CHIP_ANDROID_ADB_SERIAL" '
                         f"--output {SERIAL_CAPTURE_EVIDENCE} "
                         f"--logcat {SERIAL_CAPTURE_LOGCAT} "
                         f"--transcript {SERIAL_CAPTURE_TRANSCRIPT}"
@@ -240,11 +236,7 @@ def finding_payload(finding: Finding, command_plan: list[dict[str, object]]) -> 
             commands.extend(command for command in values if isinstance(command, str) and command)
     if commands:
         row["next_command"] = next(
-            (
-                command
-                for command in commands
-                if "capture_launcher_runtime_evidence.py" in command
-            ),
+            (command for command in commands if "capture_launcher_runtime_evidence.py" in command),
             commands[0],
         )
         row["next_commands"] = list(dict.fromkeys(commands))

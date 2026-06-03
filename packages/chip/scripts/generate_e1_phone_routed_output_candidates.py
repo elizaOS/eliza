@@ -820,10 +820,7 @@ def public_step_overlay_for_model(model: dict[str, Any]) -> dict[str, Any]:
         "J_REAR_CAMERA": {
             "record": "hirose_bm28b0_6_24dp_2_0_35v_53",
             "expected_footprints": {"CAMERA_24P_0P50_DEV"},
-            "path": (
-                "hirose_bm28b0_6_24dp_2_0_35v_53/"
-                "BM28B0.6-24DP_2-0.35V_3d_stp.stp"
-            ),
+            "path": ("hirose_bm28b0_6_24dp_2_0_35v_53/BM28B0.6-24DP_2-0.35V_3d_stp.stp"),
             "missing_status": "expected_hirose_bm28_24dp_step_missing",
         },
         "J_TOP_BOTTOM_FLEX_TOP": {
@@ -850,7 +847,8 @@ def public_step_overlay_for_model(model: dict[str, Any]) -> dict[str, Any]:
             "public_cad_step_overlay_release_credit": False,
         }
     step_path = (
-        ROOT / "board/kicad/e1-phone/production/sourcing/public-cad-downloads/"
+        ROOT
+        / "board/kicad/e1-phone/production/sourcing/public-cad-downloads/"
         / str(overlay["path"])
     )
     if not step_path.is_file():
@@ -1173,9 +1171,7 @@ def write_json_report(path: Path, artifact_id: str, source_requirement_id: str) 
                     "board/kicad/e1-phone/schematic/e1-phone.kicad_sch"
                 ),
                 "kicad_cli_version": raw_payload.get("kicad_version", ""),
-                "source_schematic_sha256": sha256(
-                    ROUTED_SCHEMATIC
-                )
+                "source_schematic_sha256": sha256(ROUTED_SCHEMATIC)
                 if ROUTED_SCHEMATIC.is_file()
                 else "",
                 "tool_exit_code": raw["run"].get("returncode"),

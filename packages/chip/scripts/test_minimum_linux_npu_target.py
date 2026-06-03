@@ -23,9 +23,7 @@ def load_check_module():
 
 
 def load_minimum_linux_module():
-    spec = importlib.util.spec_from_file_location(
-        "check_minimum_linux_target", MINIMUM_LINUX_CHECK
-    )
+    spec = importlib.util.spec_from_file_location("check_minimum_linux_target", MINIMUM_LINUX_CHECK)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

@@ -331,9 +331,7 @@ def check_log(component: str, path: Path, markers: list[str], findings: list[Fin
             )
         )
     pass_claim = "RESULT=0" in text and "eliza-evidence: status=PASS" in text
-    if pass_claim and (
-        "SELECTED_ADB_SERIAL=" not in text or "SELECTED_ADB_SERIAL=<none>" in text
-    ):
+    if pass_claim and ("SELECTED_ADB_SERIAL=" not in text or "SELECTED_ADB_SERIAL=<none>" in text):
         findings.append(
             Finding(
                 f"peripheral_pass_log_adb_target_not_validated:{component}",
@@ -467,8 +465,7 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
                     "adb devices",
                     (
                         f"{CAPTURE_SCRIPT} "
-                        f'--adb-connect "{ADB_HOSTPORT_SENTINEL}" '
-                        + " ".join(components)
+                        f'--adb-connect "{ADB_HOSTPORT_SENTINEL}" ' + " ".join(components)
                     ),
                     (
                         f"{CAPTURE_SCRIPT} "
@@ -477,7 +474,7 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
                         + " ".join(components)
                     ),
                     (
-                        f"{CAPTURE_SCRIPT} --adb-serial \"$CHIP_ANDROID_ADB_SERIAL\" "
+                        f'{CAPTURE_SCRIPT} --adb-serial "$CHIP_ANDROID_ADB_SERIAL" '
                         + " ".join(components)
                     ),
                     RECHECK_COMMAND,

@@ -12,19 +12,11 @@ REPORT = ROOT / "build/reports/e1x_real_weight_coverage_ladder.json"
 FULL_OUTPUT_WORKPLAN = ROOT / "build/reports/e1x_full_output_workplan.json"
 FULL_NORM_REAL_WEIGHT = ROOT / "build/reports/e1x_full_norm_real_weight_rows.json"
 VOCAB_SAMPLED_K_REAL_WEIGHT = ROOT / "build/reports/e1x_vocab_sampled_k_real_weight_rows.json"
-ATTN_OUT_SAMPLED_K_REAL_WEIGHT = (
-    ROOT / "build/reports/e1x_attn_out_sampled_k_real_weight_rows.json"
-)
-ATTN_QKV_SAMPLED_K_REAL_WEIGHT = (
-    ROOT / "build/reports/e1x_attn_qkv_sampled_k_real_weight_rows.json"
-)
-MLP_GATE_SAMPLED_K_REAL_WEIGHT = (
-    ROOT / "build/reports/e1x_mlp_gate_sampled_k_real_weight_rows.json"
-)
+ATTN_OUT_SAMPLED_K_REAL_WEIGHT = ROOT / "build/reports/e1x_attn_out_sampled_k_real_weight_rows.json"
+ATTN_QKV_SAMPLED_K_REAL_WEIGHT = ROOT / "build/reports/e1x_attn_qkv_sampled_k_real_weight_rows.json"
+MLP_GATE_SAMPLED_K_REAL_WEIGHT = ROOT / "build/reports/e1x_mlp_gate_sampled_k_real_weight_rows.json"
 MLP_UP_SAMPLED_K_REAL_WEIGHT = ROOT / "build/reports/e1x_mlp_up_sampled_k_real_weight_rows.json"
-MLP_DOWN_SAMPLED_K_REAL_WEIGHT = (
-    ROOT / "build/reports/e1x_mlp_down_sampled_k_real_weight_rows.json"
-)
+MLP_DOWN_SAMPLED_K_REAL_WEIGHT = ROOT / "build/reports/e1x_mlp_down_sampled_k_real_weight_rows.json"
 REPAIRED_REAL_WEIGHT = ROOT / "build/reports/e1x_repaired_real_weight_execution.json"
 
 EXPECTED_WORKPLAN_SHA256 = "ce900472ec1f82ecc128179c77d4a04f09bbff546dc3dfbfbe36e34d018558e2"
@@ -74,7 +66,9 @@ def main() -> int:
         "real-weight coverage ladder inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_real_weight_coverage_ladder_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_real_weight_coverage_ladder_inputs_present", "status": status, "detail": detail}
+    )
 
     reports = {name: load_json(path) if path.is_file() else {} for name, path in paths.items()}
     workplan = reports["full_output_workplan"].get("summary", {})
@@ -85,72 +79,200 @@ def main() -> int:
         {
             "name": "full_norm",
             "layer_kind": "norm",
-            "layer_count": int(reports["full_norm_real_weight"].get("summary", {}).get("executed_norm_layer_count", 0)),
-            "row_count": int(reports["full_norm_real_weight"].get("summary", {}).get("executed_norm_output_row_count", 0)),
-            "executed_mac_count": int(reports["full_norm_real_weight"].get("summary", {}).get("executed_norm_mac_count", 0)),
-            "represented_full_k_mac_count": int(reports["full_norm_real_weight"].get("summary", {}).get("executed_norm_mac_count", 0)),
+            "layer_count": int(
+                reports["full_norm_real_weight"]
+                .get("summary", {})
+                .get("executed_norm_layer_count", 0)
+            ),
+            "row_count": int(
+                reports["full_norm_real_weight"]
+                .get("summary", {})
+                .get("executed_norm_output_row_count", 0)
+            ),
+            "executed_mac_count": int(
+                reports["full_norm_real_weight"]
+                .get("summary", {})
+                .get("executed_norm_mac_count", 0)
+            ),
+            "represented_full_k_mac_count": int(
+                reports["full_norm_real_weight"]
+                .get("summary", {})
+                .get("executed_norm_mac_count", 0)
+            ),
             "sampled_k": 1,
         },
         {
             "name": "vocab_sampled_k",
             "layer_kind": "embedding+lm_head",
-            "layer_count": int(reports["vocab_sampled_k_real_weight"].get("summary", {}).get("executed_layer_count", 0)),
-            "row_count": int(reports["vocab_sampled_k_real_weight"].get("summary", {}).get("executed_vocab_output_row_count", 0)),
-            "executed_mac_count": int(reports["vocab_sampled_k_real_weight"].get("summary", {}).get("executed_vocab_sampled_k_mac_count", 0)),
-            "represented_full_k_mac_count": int(reports["vocab_sampled_k_real_weight"].get("summary", {}).get("represented_vocab_full_k_mac_count", 0)),
-            "sampled_k": int(reports["vocab_sampled_k_real_weight"].get("summary", {}).get("sampled_k", 0)),
+            "layer_count": int(
+                reports["vocab_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("executed_layer_count", 0)
+            ),
+            "row_count": int(
+                reports["vocab_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("executed_vocab_output_row_count", 0)
+            ),
+            "executed_mac_count": int(
+                reports["vocab_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("executed_vocab_sampled_k_mac_count", 0)
+            ),
+            "represented_full_k_mac_count": int(
+                reports["vocab_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("represented_vocab_full_k_mac_count", 0)
+            ),
+            "sampled_k": int(
+                reports["vocab_sampled_k_real_weight"].get("summary", {}).get("sampled_k", 0)
+            ),
         },
         {
             "name": "attn_out_sampled_k",
             "layer_kind": "attn_out_proj",
-            "layer_count": int(reports["attn_out_sampled_k_real_weight"].get("summary", {}).get("executed_layer_count", 0)),
-            "row_count": int(reports["attn_out_sampled_k_real_weight"].get("summary", {}).get("executed_attn_out_output_row_count", 0)),
-            "executed_mac_count": int(reports["attn_out_sampled_k_real_weight"].get("summary", {}).get("executed_attn_out_sampled_k_mac_count", 0)),
-            "represented_full_k_mac_count": int(reports["attn_out_sampled_k_real_weight"].get("summary", {}).get("represented_attn_out_full_k_mac_count", 0)),
-            "sampled_k": int(reports["attn_out_sampled_k_real_weight"].get("summary", {}).get("sampled_k", 0)),
+            "layer_count": int(
+                reports["attn_out_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("executed_layer_count", 0)
+            ),
+            "row_count": int(
+                reports["attn_out_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("executed_attn_out_output_row_count", 0)
+            ),
+            "executed_mac_count": int(
+                reports["attn_out_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("executed_attn_out_sampled_k_mac_count", 0)
+            ),
+            "represented_full_k_mac_count": int(
+                reports["attn_out_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("represented_attn_out_full_k_mac_count", 0)
+            ),
+            "sampled_k": int(
+                reports["attn_out_sampled_k_real_weight"].get("summary", {}).get("sampled_k", 0)
+            ),
         },
         {
             "name": "attn_qkv_sampled_k",
             "layer_kind": "attn_qkv_proj",
-            "layer_count": int(reports["attn_qkv_sampled_k_real_weight"].get("summary", {}).get("executed_layer_count", 0)),
-            "row_count": int(reports["attn_qkv_sampled_k_real_weight"].get("summary", {}).get("executed_attn_qkv_output_row_count", 0)),
-            "executed_mac_count": int(reports["attn_qkv_sampled_k_real_weight"].get("summary", {}).get("executed_attn_qkv_sampled_k_mac_count", 0)),
-            "represented_full_k_mac_count": int(reports["attn_qkv_sampled_k_real_weight"].get("summary", {}).get("represented_attn_qkv_full_k_mac_count", 0)),
-            "sampled_k": int(reports["attn_qkv_sampled_k_real_weight"].get("summary", {}).get("sampled_k", 0)),
+            "layer_count": int(
+                reports["attn_qkv_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("executed_layer_count", 0)
+            ),
+            "row_count": int(
+                reports["attn_qkv_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("executed_attn_qkv_output_row_count", 0)
+            ),
+            "executed_mac_count": int(
+                reports["attn_qkv_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("executed_attn_qkv_sampled_k_mac_count", 0)
+            ),
+            "represented_full_k_mac_count": int(
+                reports["attn_qkv_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("represented_attn_qkv_full_k_mac_count", 0)
+            ),
+            "sampled_k": int(
+                reports["attn_qkv_sampled_k_real_weight"].get("summary", {}).get("sampled_k", 0)
+            ),
         },
         {
             "name": "mlp_gate_sampled_k",
             "layer_kind": "mlp_gate_proj",
-            "layer_count": int(reports["mlp_gate_sampled_k_real_weight"].get("summary", {}).get("executed_layer_count", 0)),
-            "row_count": int(reports["mlp_gate_sampled_k_real_weight"].get("summary", {}).get("executed_mlp_gate_output_row_count", 0)),
-            "executed_mac_count": int(reports["mlp_gate_sampled_k_real_weight"].get("summary", {}).get("executed_mlp_gate_sampled_k_mac_count", 0)),
-            "represented_full_k_mac_count": int(reports["mlp_gate_sampled_k_real_weight"].get("summary", {}).get("represented_mlp_gate_full_k_mac_count", 0)),
-            "sampled_k": int(reports["mlp_gate_sampled_k_real_weight"].get("summary", {}).get("sampled_k", 0)),
+            "layer_count": int(
+                reports["mlp_gate_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("executed_layer_count", 0)
+            ),
+            "row_count": int(
+                reports["mlp_gate_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("executed_mlp_gate_output_row_count", 0)
+            ),
+            "executed_mac_count": int(
+                reports["mlp_gate_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("executed_mlp_gate_sampled_k_mac_count", 0)
+            ),
+            "represented_full_k_mac_count": int(
+                reports["mlp_gate_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("represented_mlp_gate_full_k_mac_count", 0)
+            ),
+            "sampled_k": int(
+                reports["mlp_gate_sampled_k_real_weight"].get("summary", {}).get("sampled_k", 0)
+            ),
         },
         {
             "name": "mlp_up_sampled_k",
             "layer_kind": "mlp_up_proj",
-            "layer_count": int(reports["mlp_up_sampled_k_real_weight"].get("summary", {}).get("executed_layer_count", 0)),
-            "row_count": int(reports["mlp_up_sampled_k_real_weight"].get("summary", {}).get("executed_mlp_up_output_row_count", 0)),
-            "executed_mac_count": int(reports["mlp_up_sampled_k_real_weight"].get("summary", {}).get("executed_mlp_up_sampled_k_mac_count", 0)),
-            "represented_full_k_mac_count": int(reports["mlp_up_sampled_k_real_weight"].get("summary", {}).get("represented_mlp_up_full_k_mac_count", 0)),
-            "sampled_k": int(reports["mlp_up_sampled_k_real_weight"].get("summary", {}).get("sampled_k", 0)),
+            "layer_count": int(
+                reports["mlp_up_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("executed_layer_count", 0)
+            ),
+            "row_count": int(
+                reports["mlp_up_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("executed_mlp_up_output_row_count", 0)
+            ),
+            "executed_mac_count": int(
+                reports["mlp_up_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("executed_mlp_up_sampled_k_mac_count", 0)
+            ),
+            "represented_full_k_mac_count": int(
+                reports["mlp_up_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("represented_mlp_up_full_k_mac_count", 0)
+            ),
+            "sampled_k": int(
+                reports["mlp_up_sampled_k_real_weight"].get("summary", {}).get("sampled_k", 0)
+            ),
         },
         {
             "name": "mlp_down_sampled_k",
             "layer_kind": "mlp_down_proj",
-            "layer_count": int(reports["mlp_down_sampled_k_real_weight"].get("summary", {}).get("executed_layer_count", 0)),
-            "row_count": int(reports["mlp_down_sampled_k_real_weight"].get("summary", {}).get("executed_mlp_down_output_row_count", 0)),
-            "executed_mac_count": int(reports["mlp_down_sampled_k_real_weight"].get("summary", {}).get("executed_mlp_down_sampled_k_mac_count", 0)),
-            "represented_full_k_mac_count": int(reports["mlp_down_sampled_k_real_weight"].get("summary", {}).get("represented_mlp_down_full_k_mac_count", 0)),
-            "sampled_k": int(reports["mlp_down_sampled_k_real_weight"].get("summary", {}).get("sampled_k", 0)),
+            "layer_count": int(
+                reports["mlp_down_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("executed_layer_count", 0)
+            ),
+            "row_count": int(
+                reports["mlp_down_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("executed_mlp_down_output_row_count", 0)
+            ),
+            "executed_mac_count": int(
+                reports["mlp_down_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("executed_mlp_down_sampled_k_mac_count", 0)
+            ),
+            "represented_full_k_mac_count": int(
+                reports["mlp_down_sampled_k_real_weight"]
+                .get("summary", {})
+                .get("represented_mlp_down_full_k_mac_count", 0)
+            ),
+            "sampled_k": int(
+                reports["mlp_down_sampled_k_real_weight"].get("summary", {}).get("sampled_k", 0)
+            ),
         },
     ]
 
     deps_ok = (
         reports["full_output_workplan"].get("status") == "PASS"
         and workplan.get("workplan_sha256") == EXPECTED_WORKPLAN_SHA256
-        and all(reports[name].get("status") == "PASS" for name in reports if name != "full_output_workplan")
+        and all(
+            reports[name].get("status") == "PASS"
+            for name in reports
+            if name != "full_output_workplan"
+        )
         and all(
             str(report.get("summary", {}).get("residual_blocker", "")).endswith(
                 "real_weight_checksum_missing"
@@ -165,12 +287,20 @@ def main() -> int:
         "full-output workplan and all current real-weight row evidence reports are PASS",
         "real-weight coverage ladder dependency mismatch",
     )
-    checks.append({"id": "e1x_real_weight_coverage_ladder_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_real_weight_coverage_ladder_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     total_layers = sum(int(component["layer_count"]) for component in components)
     represented_rows = sum(int(component["row_count"]) for component in components)
     executed_macs = sum(int(component["executed_mac_count"]) for component in components)
-    represented_full_k_macs = sum(int(component["represented_full_k_mac_count"]) for component in components)
+    represented_full_k_macs = sum(
+        int(component["represented_full_k_mac_count"]) for component in components
+    )
     row_fraction = represented_rows / full_rows if full_rows else 0.0
     executed_mac_fraction = executed_macs / full_macs if full_macs else 0.0
     represented_mac_fraction = represented_full_k_macs / full_macs if full_macs else 0.0
@@ -193,7 +323,13 @@ def main() -> int:
         "current real-weight gates represent every scheduled output row and full-K MAC identity while executing bounded K",
         "real-weight coverage totals mismatch",
     )
-    checks.append({"id": "e1x_real_weight_coverage_ladder_all_rows_represented", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_real_weight_coverage_ladder_all_rows_represented",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     blocker_ok = missing_full_k_macs == 12_932_546_560 and all(
         int(component["sampled_k"]) > 0 for component in components
@@ -203,7 +339,13 @@ def main() -> int:
         "coverage ladder preserves missing full-K/full-output real-weight checksum blocker",
         "real-weight coverage blocker boundary mismatch",
     )
-    checks.append({"id": "e1x_real_weight_coverage_ladder_preserves_full_k_blocker", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_real_weight_coverage_ladder_preserves_full_k_blocker",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {
@@ -221,7 +363,9 @@ def main() -> int:
         "represented_full_k_mac_fraction": represented_mac_fraction,
         "missing_full_k_real_weight_mac_count": missing_full_k_macs,
         "repaired_touched_logical_core_count": int(repaired.get("touched_logical_core_count", 0)),
-        "repaired_high_failure_remapped_rows": int(repaired.get("high_failure_touched_remapped_rows", 0)),
+        "repaired_high_failure_remapped_rows": int(
+            repaired.get("high_failure_touched_remapped_rows", 0)
+        ),
         "coverage_components_sha256": canonical_sha256(components),
         "workplan_sha256": str(workplan.get("workplan_sha256", "")),
         "components": components,

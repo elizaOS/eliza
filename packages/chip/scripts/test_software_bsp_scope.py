@@ -138,9 +138,7 @@ def test_next_command_plan_covers_blocked_aosp_evidence() -> None:
         if token not in joined:
             raise AssertionError(f"missing {token!r} in {joined}")
     aosp_findings = [
-        finding
-        for finding in report.get("findings", [])
-        if finding.get("target") == "aosp"
+        finding for finding in report.get("findings", []) if finding.get("target") == "aosp"
     ]
     if not aosp_findings:
         raise AssertionError("missing AOSP structured findings")

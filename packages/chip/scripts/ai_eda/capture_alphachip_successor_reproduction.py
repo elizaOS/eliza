@@ -28,6 +28,8 @@ def false_claim_flags(status: str) -> dict[str, bool]:
         flags["optimization_claim_allowed"] = False
         flags["reproduction_claim_allowed"] = False
     return flags
+
+
 TRAINING_SCHEMA = "eliza.ai_eda.macro_placement_torch_regressor_training_run.v1"
 INFERENCE_SCHEMA = "eliza.ai_eda.macro_placement_torch_inference_run.v1"
 REPLAY_QUEUE_SCHEMA = "eliza.ai_eda.macro_placement_replay_queue.v1"

@@ -273,7 +273,10 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
                     'class MainActivity { void onCreate(){ webView.addJavascriptInterface(systemBridge, "__elizaAndroidBridge"); } }\n',
                     encoding="utf-8",
                 )
-                write(gate.LAUNCHER_MAIN_ACTIVITY.parent / "ElizaAndroidSystemBridge.java", LIVE_APP_BRIDGE_TEXT)
+                write(
+                    gate.LAUNCHER_MAIN_ACTIVITY.parent / "ElizaAndroidSystemBridge.java",
+                    LIVE_APP_BRIDGE_TEXT,
+                )
                 gate.BRIDGE_GRADLE.write_text(
                     'plugins { id("com.android.application"); kotlin("android") }\n',
                     encoding="utf-8",
@@ -377,7 +380,10 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
                     'class MainActivity { void onCreate(){ webView.addJavascriptInterface(systemBridge, "__elizaAndroidBridge"); } }\n',
                     encoding="utf-8",
                 )
-                write(gate.LAUNCHER_MAIN_ACTIVITY.parent / "ElizaAndroidSystemBridge.java", LIVE_APP_BRIDGE_TEXT)
+                write(
+                    gate.LAUNCHER_MAIN_ACTIVITY.parent / "ElizaAndroidSystemBridge.java",
+                    LIVE_APP_BRIDGE_TEXT,
+                )
                 gate.BRIDGE_GRADLE.write_text(
                     'plugins { id("com.android.application"); kotlin("android") }\n',
                     encoding="utf-8",

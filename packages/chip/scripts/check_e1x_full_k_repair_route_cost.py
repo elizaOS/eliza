@@ -174,7 +174,9 @@ def main() -> int:
         "full-K repair route-cost inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_full_k_repair_route_cost_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_k_repair_route_cost_inputs_present", "status": status, "detail": detail}
+    )
 
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
     kind_coverage = load_json(KIND_COVERAGE) if KIND_COVERAGE.is_file() else {}
@@ -197,7 +199,9 @@ def main() -> int:
         "placement, kind coverage, and normal/high repair manifests are linked",
         "full-K repair route-cost dependency mismatch",
     )
-    checks.append({"id": "e1x_full_k_repair_route_cost_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_k_repair_route_cost_dependencies_pass", "status": status, "detail": detail}
+    )
 
     rungs = []
     for name, rows_per_layer, path in RUNG_REPORTS:
@@ -227,7 +231,9 @@ def main() -> int:
             f"{name} normal/high remap distances match executed repair row counts",
             f"{name} route-cost totals mismatch",
         )
-        checks.append({"id": f"e1x_full_k_repair_route_cost_{name}", "status": status, "detail": detail})
+        checks.append(
+            {"id": f"e1x_full_k_repair_route_cost_{name}", "status": status, "detail": detail}
+        )
 
     monotonic_ok = all(
         int(rungs[index]["high_failure"]["remapped_row_count"])
@@ -241,7 +247,13 @@ def main() -> int:
         "high-failure remap row and displacement totals increase across full-K rungs",
         "high-failure route-cost ladder is not monotonic",
     )
-    checks.append({"id": "e1x_full_k_repair_route_cost_monotonic_high_failure", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_k_repair_route_cost_monotonic_high_failure",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     final = rungs[-1] if rungs else {}
     final_normal = final.get("normal", {})
@@ -259,7 +271,13 @@ def main() -> int:
         "hyper-dense full-K remap route-cost spread covers high-failure spare displacement",
         "hyper-dense full-K route-cost distribution mismatch",
     )
-    checks.append({"id": "e1x_full_k_repair_route_cost_hyper_dense_distribution", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_k_repair_route_cost_hyper_dense_distribution",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {

@@ -149,11 +149,7 @@ def test_next_command_plan_covers_target_side_npu_capture() -> None:
     plan = report.get("next_command_plan", [])
     if not plan:
         raise AssertionError("missing NPU next_command_plan")
-    command_text = "\n".join(
-        command
-        for batch in plan
-        for command in batch.get("commands", [])
-    )
+    command_text = "\n".join(command for batch in plan for command in batch.get("commands", []))
     for token in (
         "capture_e1_npu_nnapi_evidence.sh",
         "check_e1_npu_nnapi_proof.py --probe-adb",

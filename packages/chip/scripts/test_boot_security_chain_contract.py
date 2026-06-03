@@ -521,9 +521,7 @@ class BootSecurityChainContractTests(unittest.TestCase):
                     doc.write_text(
                         "Implementation evidence captured and validated.\n", encoding="utf-8"
                     )
-                gate.KEY_CEREMONY.write_text(
-                    contract_backed_key_ceremony_doc(), encoding="utf-8"
-                )
+                gate.KEY_CEREMONY.write_text(contract_backed_key_ceremony_doc(), encoding="utf-8")
 
                 findings: list[gate.Finding] = []
                 gate.check_security_docs(findings)

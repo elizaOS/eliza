@@ -66,7 +66,9 @@ def s4_from_seed(parts: tuple[object, ...]) -> int:
 def selected_rows(row_count: int) -> list[int]:
     if row_count <= ROWS_PER_LAYER:
         return list(range(row_count))
-    return sorted({round(index * (row_count - 1) / (ROWS_PER_LAYER - 1)) for index in range(ROWS_PER_LAYER)})
+    return sorted(
+        {round(index * (row_count - 1) / (ROWS_PER_LAYER - 1)) for index in range(ROWS_PER_LAYER)}
+    )
 
 
 def execute_full_k_row(layer_index: int, output_row: int, cols: int) -> dict[str, int]:
@@ -97,7 +99,13 @@ def main() -> int:
         "stratified full-K real-weight row inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_stratified_full_k_real_weight_rows_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_stratified_full_k_real_weight_rows_inputs_present",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
     workplan = load_json(FULL_OUTPUT_WORKPLAN) if FULL_OUTPUT_WORKPLAN.is_file() else {}
@@ -119,7 +127,13 @@ def main() -> int:
         "workplan, expanded full-K rows, and real-weight coverage ladder are linked",
         "stratified full-K dependency mismatch",
     )
-    checks.append({"id": "e1x_stratified_full_k_real_weight_rows_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_stratified_full_k_real_weight_rows_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     layers = [layer for layer in placement.get("layers", []) if isinstance(layer, dict)]
     total_rows = 0
@@ -144,26 +158,30 @@ def main() -> int:
             layer_checksum = mix64(layer_checksum, output_row)
             layer_checksum = mix64(layer_checksum, int(result["row_trace_checksum"]))
             if len(row_results) < 4:
-                row_results.append({
-                    "output_row": output_row,
-                    "accumulator": int(result["accumulator"]),
-                    "requantized_s8": int(result["requantized_s8"]),
-                    "lane_mac_count": int(result["lane_mac_count"]),
-                    "row_trace_checksum": int(result["row_trace_checksum"]),
-                })
+                row_results.append(
+                    {
+                        "output_row": output_row,
+                        "accumulator": int(result["accumulator"]),
+                        "requantized_s8": int(result["requantized_s8"]),
+                        "lane_mac_count": int(result["lane_mac_count"]),
+                        "row_trace_checksum": int(result["row_trace_checksum"]),
+                    }
+                )
         aggregate_checksum = mix64(aggregate_checksum, layer_index)
         aggregate_checksum = mix64(aggregate_checksum, layer_checksum)
         if len(layer_results) < 16:
-            layer_results.append({
-                "layer_index": layer_index,
-                "layer_name": str(layer["name"]),
-                "kind": kind,
-                "rows": rows,
-                "cols": cols,
-                "selected_row_count": len(selected_rows(rows)),
-                "layer_full_k_checksum": layer_checksum,
-                "sample_rows": row_results,
-            })
+            layer_results.append(
+                {
+                    "layer_index": layer_index,
+                    "layer_name": str(layer["name"]),
+                    "kind": kind,
+                    "rows": rows,
+                    "cols": cols,
+                    "selected_row_count": len(selected_rows(rows)),
+                    "layer_full_k_checksum": layer_checksum,
+                    "sample_rows": row_results,
+                }
+            )
 
     full_rows = int(workplan.get("summary", {}).get("full_output_row_count", 0))
     full_macs = int(workplan.get("summary", {}).get("full_mac_count", 0))
@@ -185,15 +203,29 @@ def main() -> int:
         f"executed {total_rows} stratified full-K rows for {total_macs} real MACs",
         "stratified full-K real-weight execution mismatch",
     )
-    checks.append({"id": "e1x_stratified_full_k_real_weight_rows_execute_full_k", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_stratified_full_k_real_weight_rows_execute_full_k",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
-    blocker_ok = ladder.get("summary", {}).get("missing_full_k_real_weight_mac_count") == 12_932_546_560
+    blocker_ok = (
+        ladder.get("summary", {}).get("missing_full_k_real_weight_mac_count") == 12_932_546_560
+    )
     status, detail = pass_fail(
         blocker_ok,
         "stratified full-K rows improve full-K numerical evidence while preserving full-output blocker",
         "stratified full-K blocker boundary mismatch",
     )
-    checks.append({"id": "e1x_stratified_full_k_real_weight_rows_preserve_blocker", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_stratified_full_k_real_weight_rows_preserve_blocker",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     summary = {

@@ -106,7 +106,10 @@ class AndroidLauncherRuntimeEvidenceTests(unittest.TestCase):
         finding = report["findings"][0]
         self.assertIn("capture_launcher_runtime_evidence.py", finding["next_command"])
         self.assertTrue(
-            any("capture_launcher_runtime_evidence.py" in command for command in finding["next_commands"])
+            any(
+                "capture_launcher_runtime_evidence.py" in command
+                for command in finding["next_commands"]
+            )
         )
         self.assertNotIn("adb devices", finding["next_commands"])
         self.assertIn(

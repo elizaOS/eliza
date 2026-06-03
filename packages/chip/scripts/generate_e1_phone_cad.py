@@ -220,6 +220,7 @@ def cad_connection_mechanical_envelope(
         "release_credit": False,
     }
 
+
 CAD_CONNECTION_TERMINAL_ENDPOINTS: tuple[tuple[str, str, str], ...] = (
     ("display_touch_fpc", "display_fpc_connector", "display_lcm"),
     ("rear_camera_csi_fpc", "main_pcb", "rear_camera_module"),
@@ -3232,7 +3233,9 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
                 for token in ["speaker", "microphone", "earpiece", "haptic", "sensor"]
             )
         ),
-        "shield_ground": sorted(row["id"] for row in connection_rows if "ground_spring" in row["id"]),
+        "shield_ground": sorted(
+            row["id"] for row in connection_rows if "ground_spring" in row["id"]
+        ),
         "board_to_board": sorted(
             row["id"]
             for row in connection_rows
@@ -3389,11 +3392,13 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
     ]
     for deliverable in release_boundary_summary["supplier_required_deliverables"]:
         coverage_lines.append(f"- {deliverable}")
-    coverage_lines.extend([
-        "",
-        "## Connections",
-        "",
-    ])
+    coverage_lines.extend(
+        [
+            "",
+            "## Connections",
+            "",
+        ]
+    )
     for row in connection_rows:
         result = "PASS" if row["pass"] else "BLOCKED"
         coverage_lines.append(
@@ -6483,7 +6488,9 @@ def write_solid_cad_handoff_artifacts(
                 for token in ["speaker", "microphone", "earpiece", "haptic", "sensor"]
             )
         ),
-        "shield_ground": sorted(row["id"] for row in connection_rows if "ground_spring" in row["id"]),
+        "shield_ground": sorted(
+            row["id"] for row in connection_rows if "ground_spring" in row["id"]
+        ),
         "board_to_board": sorted(
             row["id"]
             for row in connection_rows
@@ -6645,11 +6652,13 @@ def write_solid_cad_handoff_artifacts(
     ]
     for deliverable in release_boundary_summary["supplier_required_deliverables"]:
         coverage_lines.append(f"- {deliverable}")
-    coverage_lines.extend([
-        "",
-        "## Connections",
-        "",
-    ])
+    coverage_lines.extend(
+        [
+            "",
+            "## Connections",
+            "",
+        ]
+    )
     for row in connection_rows:
         result = "PASS" if row["pass"] else "BLOCKED"
         coverage_lines.append(
@@ -16611,12 +16620,9 @@ def write_board_step_readiness_artifacts(
         return {
             "total_count": len(rows),
             "by_type": dict(sorted(by_type.items(), key=lambda item: (-item[1], item[0]))),
-            "by_severity": dict(
-                sorted(by_severity.items(), key=lambda item: (-item[1], item[0]))
-            ),
+            "by_severity": dict(sorted(by_severity.items(), key=lambda item: (-item[1], item[0]))),
             "examples_by_type": [
-                examples[key]
-                for key in sorted(examples, key=lambda key: (-by_type[key], key))
+                examples[key] for key in sorted(examples, key=lambda key: (-by_type[key], key))
             ],
         }
 
@@ -16677,9 +16683,7 @@ def write_board_step_readiness_artifacts(
     triage_lines.extend(["", "## Next Actions", ""])
     for action in local_kicad_triage["next_actions"]:
         triage_lines.append(f"- {action}")
-    (local_kicad_report_dir / "drc-erc-triage.md").write_text(
-        "\n".join(triage_lines) + "\n"
-    )
+    (local_kicad_report_dir / "drc-erc-triage.md").write_text("\n".join(triage_lines) + "\n")
     local_drc_total_count = int(local_drc_probe.get("violation_count") or 0) + int(
         local_drc_probe.get("unconnected_item_count") or 0
     )
@@ -16709,9 +16713,7 @@ def write_board_step_readiness_artifacts(
         "production_report_paths_are_candidate_metadata": True,
         "production_report_raw_kicad_payload_required_for_release": True,
         "local_drc_violation_count": int(local_drc_probe.get("violation_count") or 0),
-        "local_drc_unconnected_item_count": int(
-            local_drc_probe.get("unconnected_item_count") or 0
-        ),
+        "local_drc_unconnected_item_count": int(local_drc_probe.get("unconnected_item_count") or 0),
         "local_drc_total_count": local_drc_total_count,
         "local_erc_total_count": local_erc_total_count,
         "local_drc_top_types": local_kicad_triage["drc"].get("by_type", {}),

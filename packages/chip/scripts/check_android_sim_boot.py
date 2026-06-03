@@ -23,8 +23,7 @@ VIRTUAL_SMOKE_EVIDENCE = {
     "docs/evidence/android/renode_e1_soc_smoke.log",
 }
 VIRTUAL_SMOKE_CLAIM_BOUNDARY = (
-    "eliza-evidence: "
-    "claim_boundary=virtual_device_smoke_only_not_boot_or_compatibility_evidence"
+    "eliza-evidence: claim_boundary=virtual_device_smoke_only_not_boot_or_compatibility_evidence"
 )
 CTS_VTS_PLAN_EVIDENCE = "docs/evidence/android/eliza_ai_soc_cts_vts_plan.log"
 # A "pass" Android simulator boot must be backed by the structured launcher

@@ -70,7 +70,11 @@ def main() -> int:
         "missing inputs: " + ", ".join(missing),
     )
     checks.append(
-        {"id": "e1x_full_k_repair_route_cost_by_kind_inputs_present", "status": status, "detail": detail}
+        {
+            "id": "e1x_full_k_repair_route_cost_by_kind_inputs_present",
+            "status": status,
+            "detail": detail,
+        }
     )
 
     route_cost = load_json(ROUTE_COST) if ROUTE_COST.is_file() else {}
@@ -93,7 +97,11 @@ def main() -> int:
         "route-cost-by-kind dependency mismatch",
     )
     checks.append(
-        {"id": "e1x_full_k_repair_route_cost_by_kind_dependencies_pass", "status": status, "detail": detail}
+        {
+            "id": "e1x_full_k_repair_route_cost_by_kind_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
     )
 
     rungs = route_summary.get("rungs", [])
@@ -153,7 +161,11 @@ def main() -> int:
         "high-failure route displacement hotspots changed",
     )
     checks.append(
-        {"id": "e1x_full_k_repair_route_cost_by_kind_high_hotspots", "status": status, "detail": detail}
+        {
+            "id": "e1x_full_k_repair_route_cost_by_kind_high_hotspots",
+            "status": status,
+            "detail": detail,
+        }
     )
 
     ratio_summary = {

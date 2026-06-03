@@ -88,9 +88,7 @@ def main() -> int:
         "benchmark, repaired-run, and power/thermal reports are PASS",
         "one or more comparison dependencies are not PASS",
     )
-    checks.append(
-        {"id": "e1x_e1_comparison_dependencies_pass", "status": status, "detail": detail}
-    )
+    checks.append({"id": "e1x_e1_comparison_dependencies_pass", "status": status, "detail": detail})
 
     e1_baseline = e1_baseline_summary()
     e1x_config = scaled_8gb_config()
@@ -169,8 +167,7 @@ def main() -> int:
     )
     thermal_ok = (
         float(power_summary.get("local_sram_mib", 0.0)) == e1x_sram_mib
-        and float(power_summary.get("model_required_vs_sram", 0.0))
-        == model_required_vs_e1x_sram
+        and float(power_summary.get("model_required_vs_sram", 0.0)) == model_required_vs_e1x_sram
         and float(power_summary.get("peak_int8_tops", 0.0)) == e1x_peak_tops
         and peak_package_power_w < 23_000.0
         and peak_power_density_w_per_mm2 < 0.1

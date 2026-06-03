@@ -2400,9 +2400,7 @@ def report_next_command_plan(evidence: dict[str, object]) -> list[dict[str, Any]
     plan: list[dict[str, Any]] = []
     artifact_inventory = evidence.get("android_release_artifact_inventory")
     artifact_commands = (
-        artifact_inventory.get("commands", {})
-        if isinstance(artifact_inventory, dict)
-        else {}
+        artifact_inventory.get("commands", {}) if isinstance(artifact_inventory, dict) else {}
     )
     if not isinstance(artifact_commands, dict):
         artifact_commands = {}

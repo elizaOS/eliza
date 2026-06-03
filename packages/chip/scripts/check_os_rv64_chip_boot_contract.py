@@ -394,19 +394,11 @@ def preferred_finding_command(code: str, commands: list[str]) -> str:
         "riscv64_agent_runtime_smoke_not_pass",
     }:
         return next(
-            (
-                command
-                for command in commands
-                if "stage-agent-artifacts ARCH=riscv64" in command
-            ),
+            (command for command in commands if "stage-agent-artifacts ARCH=riscv64" in command),
             commands[0],
         )
     return next(
-        (
-            command
-            for command in commands
-            if "capture-generated-ap-chip-evidence.sh run" in command
-        ),
+        (command for command in commands if "capture-generated-ap-chip-evidence.sh run" in command),
         commands[0],
     )
 

@@ -218,7 +218,9 @@ class LinuxFirmwareBootChainContractTests(unittest.TestCase):
             if finding["code"] == "opensbi_handoff_command_placeholder"
         )
         self.assertEqual(placeholder["blocker_dependency"], "live_device_validation")
-        self.assertIn("check_software_bsp.py external-preflight opensbi", placeholder["next_command"])
+        self.assertIn(
+            "check_software_bsp.py external-preflight opensbi", placeholder["next_command"]
+        )
         self.assertIn("--opensbi-handoff-cmd", placeholder["next_command"])
         self.assertNotIn("check_software_bsp_external_preflight.py", placeholder["next_command"])
         reference_only = next(

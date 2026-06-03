@@ -40,12 +40,12 @@ PERMISSION_FILE_PATHS = (
     "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml",
 )
 AOSP_BUILD_ONLY_COMMAND = (
-    "test -n \"$AOSP_DIR\" && python3 packages/chip/scripts/run_with_timeout.py "
+    'test -n "$AOSP_DIR" && python3 packages/chip/scripts/run_with_timeout.py '
     "--timeout-seconds 2400 --label aosp-build-only-evidence -- "
     "packages/chip/scripts/boot_android_simulator.sh --build-only"
 )
 AOSP_FULL_RUNTIME_COMMAND = (
-    "test -n \"$AOSP_DIR\" && packages/chip/scripts/boot_android_simulator.sh "
+    'test -n "$AOSP_DIR" && packages/chip/scripts/boot_android_simulator.sh '
     "--run-cuttlefish --run-cts --run-vts --run-qemu --run-renode"
 )
 AOSP_EXPECTED_EVIDENCE = (

@@ -103,7 +103,9 @@ CLASSIFIED_BLOCKER_INVENTORY_PATH_PATTERNS = (
     ),
     re.compile(r"^packages/chip/docs/.+evidence-manifest\.json$", re.I),
     re.compile(r"^packages/chip/docs/security/tee-plan/.*\.md$", re.I),
-    re.compile(r"^packages/chip/docs/architecture-optimization/(?:sota-2028/)?[^/]*report.*\.md$", re.I),
+    re.compile(
+        r"^packages/chip/docs/architecture-optimization/(?:sota-2028/)?[^/]*report.*\.md$", re.I
+    ),
     re.compile(r"^packages/chip/docs/spec-db/competitor-.*\.(?:json|md|yaml|yml)$", re.I),
     re.compile(r"^packages/chip/docs/spec-db/requirements/.*\.(?:json|md|yaml|yml)$", re.I),
 )
@@ -410,7 +412,9 @@ def cleanup_commands(path: Path, line_number: int) -> list[str]:
     if "android" in parts or "aosp" in lower_path:
         commands.append("python3 packages/chip/scripts/check_android_sim_boot.py")
     if "linux" in parts or "elizaos" in parts:
-        commands.append("python3 packages/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only")
+        commands.append(
+            "python3 packages/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only"
+        )
     if "runtime" in lower_path or "peripheral" in lower_path:
         commands.append("python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py")
     commands.append(GENERIC_RECHECK_COMMAND)
@@ -620,9 +624,13 @@ def build_report(roots: list[str]) -> dict[str, Any]:
     by_root = scan_root_summary(findings, roots)
     command_batches = sorted(
         {
-        tuple(str(command) for command in item.get("next_commands", []) if isinstance(command, str))
-        for item in findings
-        if item.get("next_commands")
+            tuple(
+                str(command)
+                for command in item.get("next_commands", [])
+                if isinstance(command, str)
+            )
+            for item in findings
+            if item.get("next_commands")
         }
     )
     status = "blocked" if findings else "pass"

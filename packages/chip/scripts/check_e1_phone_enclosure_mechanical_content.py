@@ -2212,10 +2212,7 @@ def main() -> int:
             raise ValueError("CAD connection release-boundary lost terminal marker coverage")
         if release_boundary.get("all_connections_have_solid_step_parts") is not True:
             raise ValueError("CAD connection release-boundary lost solid STEP coverage")
-        if (
-            release_boundary.get("all_connections_bound_to_routed_development_records")
-            is not True
-        ):
+        if release_boundary.get("all_connections_bound_to_routed_development_records") is not True:
             raise ValueError("CAD connection release-boundary lost routed-record binding")
         if release_boundary.get("all_connections_supplier_release_required") is not True:
             raise ValueError("CAD connection release-boundary lost supplier-release requirement")

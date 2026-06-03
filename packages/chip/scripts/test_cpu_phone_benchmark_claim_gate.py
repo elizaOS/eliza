@@ -1665,7 +1665,8 @@ def test_report_level_findings_are_actionable() -> None:
         report_level = [
             item
             for item in report["findings"]
-            if item["name"] in {
+            if item["name"]
+            in {
                 "benchmark_report_schema",
                 "benchmark_report_claim_level",
                 "benchmark_report_dry_run",

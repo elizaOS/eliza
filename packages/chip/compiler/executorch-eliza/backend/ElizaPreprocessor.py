@@ -41,8 +41,7 @@ class ElizaPreprocessor:
             for node_index, node in enumerate(partition.nodes):
                 input_names = ", ".join(node.inputs) if node.inputs else "<none>"
                 lines.append(
-                    f"  // op_{node_index}: {node.name} target={node.target} "
-                    f"inputs={input_names}"
+                    f"  // op_{node_index}: {node.name} target={node.target} inputs={input_names}"
                 )
             lines.append("  return")
             lines.append("}")
