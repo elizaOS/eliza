@@ -77,7 +77,7 @@ describe("ContinuousChatOverlay", () => {
     const input = screen.getByLabelText("message") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "ping" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(controller.send).toHaveBeenCalledWith("ping");
+    expect(vi.mocked(controller.send).mock.calls[0]?.[0]).toBe("ping");
     expect(input.value).toBe("");
   });
 
