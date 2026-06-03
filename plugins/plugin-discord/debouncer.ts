@@ -106,6 +106,18 @@ export function createChannelDebouncer(
 		}
 	};
 
+	// Sweep every channel, not just the active one: a channel that buffers
+	// chatter and then goes quiet (no following pointer, no markResponded) would
+	// otherwise hold its Message entries — and the transitive discord.js graph
+	// they reference — until destroy(). Pruning all channels on each ingest keeps
+	// the map bounded to entries still inside the TTL as long as any channel sees
+	// traffic; the cost is one small array filter per tracked channel.
+	const pruneAll = (now: number): void => {
+		for (const channelId of [...recentUnaddressed.keys()]) {
+			pruneRecent(channelId, now);
+		}
+	};
+
 	const rememberRecent = (message: DiscordMessage): void => {
 		const channelId = message.channel.id;
 		const now = Date.now();
@@ -115,7 +127,7 @@ export function createChannelDebouncer(
 			buffered.splice(0, buffered.length - maxRecentBuffer);
 		}
 		recentUnaddressed.set(channelId, buffered);
-		pruneRecent(channelId, now);
+		pruneAll(now);
 	};
 
 	const drainRecent = (channelId: string): DiscordMessage[] => {
@@ -152,16 +164,24 @@ export function createChannelDebouncer(
 		});
 	};
 
-	// A "pointer" is an addressed message that, once its mentions are removed,
-	// has no word characters in any script — e.g. "@bot ^^", "@bot 👆", "@bot ?".
-	// It carries no content of its own and only points at recent messages, so we
-	// fold the recent-unaddressed buffer in to give the model that context.
-	// A message that contains any word (a real question or instruction) stands on
-	// its own and must route on its own text — folding unrelated recent chatter
-	// into it can derail that routing — so we do NOT fold for those.
+	// A "pointer" is an addressed message that, once its Discord markup tokens are
+	// removed, has no word characters in any script — e.g. "@bot ^^", "@bot 👆",
+	// "@bot ?", "@bot <#chan>". It carries no content of its own and only points
+	// at recent messages, so we fold the recent-unaddressed buffer in to give the
+	// model that context. A message that contains any word (a real question or
+	// instruction) stands on its own and must route on its own text — folding
+	// unrelated recent chatter into it can derail that routing — so we do NOT fold.
+	//
+	// Strip the full set of Discord markup tokens (user/role/channel mentions,
+	// custom + animated emoji, slash-command mentions, timestamps), not just user
+	// mentions: each is an id-bearing token with no words of its own, so a message
+	// built only from them is still a pointer.
 	const isPointerMessage = (message: DiscordMessage): boolean => {
-		const withoutMentions = (message.content ?? "").replace(/<@!?\d+>/g, "");
-		return !/[\p{L}\p{N}]/u.test(withoutMentions);
+		const withoutMarkup = (message.content ?? "").replace(
+			/<(?:@[!&]?\d+|#\d+|a?:\w+:\d+|\/[\w -]+:\d+|t:\d+(?::[tTdDfFR])?)>/g,
+			"",
+		);
+		return !/[\p{L}\p{N}]/u.test(withoutMarkup);
 	};
 
 	const isInCooldown = (channelId: string): boolean => {
