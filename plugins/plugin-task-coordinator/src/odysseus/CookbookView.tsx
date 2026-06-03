@@ -52,6 +52,7 @@ import {
 import { useEscapeClose } from "./hooks/useEscapeClose";
 import { useWindowControls } from "./hooks/useWindowControls";
 import { ResizeHandles } from "./ResizeHandles";
+import { PREF_KEYS, readPref, writePref } from "./util/storage";
 
 // cookbook.js tab row (lines 1427-1432). data-backend "Search" is the Download
 // tab in odysseus's internal naming; we use the visible labels.
@@ -90,6 +91,7 @@ const QUANT_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: "AWQ-4bit", label: "AWQ" },
   { value: "FP8", label: "FP8" },
   { value: "FP4", label: "FP4" },
+  { value: "NVFP4", label: "NVFP4" },
   { value: "", label: "Native" },
 ];
 
@@ -101,6 +103,21 @@ const ENGINE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: "vllm", label: "vLLM" },
   { value: "sglang", label: "SGLang" },
 ];
+
+// hwfit context-length range slider (cookbook-hwfit.js _CTX_PRESETS). The
+// slider indexes into these presets; 0 = the model's own max ("Max"). Default
+// index is 3 (50k). On change odysseus persists the chosen ctx, forces the sort
+// to fit-descending, and re-runs the scan.
+const CTX_PRESETS: ReadonlyArray<number> = [
+  8192, 16384, 32768, 50000, 131072, 0,
+];
+const CTX_DEFAULT_INDEX = 3;
+
+// cookbook-hwfit.js _ctxLabel: 0 → "Max"; ≥1000 → "<n>k"; else the raw value.
+function ctxLabel(value: number): string {
+  if (!value) return "Max";
+  return value >= 1000 ? `${Math.round(value / 1000)}k` : String(value);
+}
 
 // Serve-tab sort select (cookbook.js serve-sort).
 const SERVE_SORT_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
@@ -169,8 +186,24 @@ interface FitRow {
   vramGb: number;
   contextK: number | null;
   mode: string;
+  modeTitle: string;
   fit: HardwareFit;
   fitRank: number;
+}
+
+// cookbook-hwfit.js _requiresAcceleratorBackend: accelerator-only safetensors
+// quants (AWQ / GPTQ / FP8 / NVFP4) can't run under llama.cpp/Ollama (which need
+// GGUF) — they require vLLM or SGLang with a visible CUDA/ROCm accelerator. We
+// match the same set against the model's compact quant tag and display name,
+// the eliza analogues of upstream's quant/name/repo fields.
+const ACCEL_MODE_TITLE =
+  "Requires vLLM or SGLang with a visible CUDA/ROCm accelerator. " +
+  "llama.cpp and Ollama need GGUF files.";
+
+function requiresAcceleratorBackend(name: string, quant: string): boolean {
+  const q = quant.toUpperCase();
+  if (/^(AWQ|GPTQ|NVFP4)/.test(q) || q === "FP8") return true;
+  return /\b(awq|gptq|fp8|nvfp4)\b/i.test(name);
 }
 
 // Compact tabular quant tag for the scan table's fixed-width QUANT column. The
@@ -190,16 +223,20 @@ function compactQuant(model: CatalogModel): string {
 
 function toFitRow(model: CatalogModel, probe: HardwareProbe): FitRow {
   const fit = classifyFit(probe, model);
+  const name = model.displayName || model.id;
+  const quant = compactQuant(model);
+  const accel = requiresAcceleratorBackend(name, quant);
   return {
     id: model.id,
-    name: model.displayName || model.id,
+    name,
     params: model.parameterLabel || model.params,
-    quant: compactQuant(model),
+    quant,
     vramGb: model.sizeGb,
     contextK: model.contextLength
       ? Math.round(model.contextLength / 1024)
       : null,
-    mode: probe.gpu ? probe.gpu.backend : "cpu only",
+    mode: accel ? "vLLM/SGLang" : probe.gpu ? probe.gpu.backend : "cpu only",
+    modeTitle: accel ? ACCEL_MODE_TITLE : "",
     fit,
     fitRank: FIT_LEVEL_META[fit].rank,
   };
@@ -266,6 +303,15 @@ export function CookbookView({
   // FIT is the default-active sorted column upstream.
   const [fitSort, setFitSort] = useState("fit");
   const [fitReverse, setFitReverse] = useState(false);
+  // Ctx target-context slider (cookbook-hwfit.js). Persisted as the preset value;
+  // we map it back to a slider index, falling back to the default (50k) when no
+  // saved value or an unknown one is stored.
+  const [ctxIndex, setCtxIndex] = useState(() => {
+    const saved = readPref<number | null>(PREF_KEYS.hwfitContext, null);
+    if (saved == null) return CTX_DEFAULT_INDEX;
+    const idx = CTX_PRESETS.indexOf(saved);
+    return idx >= 0 ? idx : CTX_DEFAULT_INDEX;
+  });
 
   // Serve tab toolbar state.
   const [serveSort, setServeSort] = useState("name");
@@ -366,6 +412,17 @@ export function CookbookView({
         /* download failed to enqueue — the input stays so the user can retry */
       })
       .finally(() => setDownloading(false));
+  };
+
+  // cookbook-hwfit.js context slider change: persist the chosen preset, force the
+  // sort to fit-descending (best-fit first), and re-run the scan against the new
+  // context budget. Mirrors the upstream `change` handler's persist → sort → fetch.
+  const onCtxChange = (index: number) => {
+    setCtxIndex(index);
+    writePref(PREF_KEYS.hwfitContext, CTX_PRESETS[index]);
+    setFitSort("fit");
+    setFitReverse(false);
+    loadHardware();
   };
 
   // cookbook-hwfit.js header click: clicking the active column flips direction,
@@ -681,6 +738,35 @@ export function CookbookView({
                       </option>
                     ))}
                   </select>
+                  <span
+                    className="od-cb-help-chip"
+                    title="Higher numbers usually mean better quality, but they need more memory. Lower numbers fit on more hardware."
+                  >
+                    ?
+                  </span>
+                  {/* Ctx target-context slider (cookbook-hwfit.js #hwfit-context) */}
+                  <label
+                    className="od-cb-ctx-control"
+                    title="Context length for fit estimates. Lower it to find more models that could fit your hardware."
+                  >
+                    <span>Ctx</span>
+                    <span
+                      className="od-cb-help-chip od-cb-help-chip-inline"
+                      title="Context length. Lower it to find more models that could fit your hardware; raise it when you need longer chats or documents."
+                    >
+                      ?
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={CTX_PRESETS.length - 1}
+                      step={1}
+                      value={ctxIndex}
+                      onChange={(e) => onCtxChange(Number(e.target.value))}
+                      aria-label="Target context length"
+                    />
+                    <output>{ctxLabel(CTX_PRESETS[ctxIndex])}</output>
+                  </label>
                 </div>
 
                 {/* Toolbar row 2: server / RESCAN / EDIT */}
@@ -804,7 +890,10 @@ export function CookbookView({
                         </span>
                         <span className="od-cb-fit-col od-cb-fit-speed">—</span>
                         <span className="od-cb-fit-col od-cb-fit-score">—</span>
-                        <span className="od-cb-fit-col od-cb-fit-mode">
+                        <span
+                          className="od-cb-fit-col od-cb-fit-mode"
+                          title={row.modeTitle || undefined}
+                        >
                           {row.mode}
                         </span>
                       </div>

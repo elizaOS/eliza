@@ -27,6 +27,7 @@ import {
   Archive,
   Bell,
   Check,
+  Copy,
   Eraser,
   Forward,
   Menu,
@@ -227,6 +228,53 @@ function formatListDate(ts: number): string {
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
+// emailLibrary.js _splitRecipientList — split a comma-separated address list
+// while honoring quotes + angle brackets, so '"Doe, John" <j@x>' is one entry
+// and not torn apart on its internal comma (1:1 with the JS scanner).
+function splitRecipientList(raw: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let quote = false;
+  let angle = false;
+  const s = raw;
+  for (let i = 0; i < s.length; i += 1) {
+    const ch = s[i];
+    if (ch === '"' && s[i - 1] !== "\\") quote = !quote;
+    else if (ch === "<" && !quote) angle = true;
+    else if (ch === ">" && !quote) angle = false;
+
+    if (ch === "," && !quote && !angle) {
+      const part = cur.trim();
+      if (part) out.push(part);
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  const tail = cur.trim();
+  if (tail) out.push(tail);
+  return out;
+}
+
+// emailLibrary/utils.js _extractName — the display name from a `Name <addr>`
+// recipient string, falling back to the local-part of the address.
+function extractRecipientName(addr: string): string {
+  const m = addr.match(/^"?([^"<]+?)"?\s*<([^>]+)>\s*$/);
+  if (m) return m[1].trim();
+  const localPart = addr.split("@")[0];
+  return localPart || addr;
+}
+
+// emailLibrary.js _emailAddressFromRecipientText — pull the bare address out of
+// a recipient string (prefer the angle-bracketed form), used by the copy chip.
+function extractRecipientAddress(text: string): string {
+  const raw = text.trim();
+  const angle = raw.match(/<\s*([^<>@\s]+@[^<>\s]+)\s*>/);
+  if (angle) return angle[1].trim();
+  const any = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  return any ? any[0].trim() : raw;
+}
+
 // emailLibrary.js _showLibRemindSubmenu — compute the Later today / Tomorrow /
 // Next week preset dates relative to now (1:1 with the JS math).
 function buildRemindPresets(now: Date): RemindPreset[] {
@@ -385,6 +433,87 @@ class SmoothPad {
   }
 }
 
+// emailLibrary.js _recipientChipHtml + _wireRecipientChips — a From/To/Cc chip
+// that toggles between its display name and the full "Name <addr>" form on
+// click; expanded it reveals a small copy button that writes the bare address
+// to the clipboard, flashes a copied state, and surfaces the "Email copied"
+// toast (here via the parent's onCopied callback). 1:1 with the JS behavior.
+function RecipientChip({
+  full,
+  label,
+  className,
+  onCopied,
+}: {
+  full: string;
+  label: string;
+  className?: string;
+  onCopied: () => void;
+}): ReactNode {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const revertRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (revertRef.current !== null) clearTimeout(revertRef.current);
+    },
+    [],
+  );
+
+  const fullText = full.trim();
+  const address = extractRecipientAddress(fullText);
+  const labelText = (label || address || fullText).trim();
+  const display = expanded ? fullText || labelText : labelText;
+
+  const onCopy = useCallback(() => {
+    // Guard for non-secure-context / older webviews where clipboard is absent
+    // (mirrors the ChatMessages copy affordance).
+    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText)
+      return;
+    if (!address) return;
+    navigator.clipboard.writeText(address).then(
+      () => {
+        setCopied(true);
+        onCopied();
+        if (revertRef.current !== null) clearTimeout(revertRef.current);
+        revertRef.current = setTimeout(() => setCopied(false), 900);
+      },
+      () => undefined,
+    );
+  }, [address, onCopied]);
+
+  return (
+    <span
+      className={`od-email-recipient-chip${expanded ? " expanded" : ""}${className ? ` ${className}` : ""}`}
+    >
+      <button
+        type="button"
+        className="od-email-recipient-chip-label"
+        title={fullText || labelText}
+        aria-expanded={expanded}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        {display}
+      </button>
+      {expanded ? (
+        <button
+          type="button"
+          className={`od-email-recipient-chip-copy${copied ? " copied" : ""}`}
+          title={copied ? "Copied" : "Copy email"}
+          aria-label={copied ? "Copied" : "Copy email"}
+          onClick={onCopy}
+        >
+          {copied ? (
+            <Check size={11} aria-hidden="true" />
+          ) : (
+            <Copy size={11} aria-hidden="true" />
+          )}
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
 export function EmailView({
   open,
   onClose,
@@ -474,6 +603,33 @@ export function EmailView({
   // starts `collapsed`).
   const [attsExpanded, setAttsExpanded] = useState(false);
 
+  // Transient "Email copied" status surfaced by the recipient-chip copy button
+  // (emailLibrary.js showToast('Email copied')). Mirrors ModelsView's inline
+  // feedback pattern since this view has no separate toast surface.
+  const [feedback, setFeedback] = useState("");
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (feedbackTimerRef.current !== null) {
+        clearTimeout(feedbackTimerRef.current);
+      }
+    },
+    [],
+  );
+  const showCopied = useCallback(() => {
+    setFeedback("Email copied");
+    if (feedbackTimerRef.current !== null) {
+      clearTimeout(feedbackTimerRef.current);
+    }
+    feedbackTimerRef.current = setTimeout(() => {
+      setFeedback((cur) => (cur === "Email copied" ? "" : cur));
+    }, 1400);
+  }, []);
+
+  // emailLibrary.js _emailReaderForSelectAllTarget — Ctrl/Cmd+A while the open
+  // reader is focused selects ONLY the reader body, not the whole document.
+  const readerRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     if (!open) return;
     setSignatures(readPref<SavedSignature[]>(SIGNATURES_PREF_KEY, []));
@@ -493,6 +649,38 @@ export function EmailView({
     document.addEventListener("click", onDoc, true);
     return () => document.removeEventListener("click", onDoc, true);
   }, [menuUid, bulkMenuOpen]);
+
+  // emailLibrary.js global Ctrl/Cmd+A handler — while an email reader is open,
+  // a select-all selects ONLY the reader body contents, not the whole page,
+  // unless the keystroke originates in an editable field.
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "a") return;
+      const reader = readerRef.current;
+      if (!reader?.isConnected) return;
+      const target = e.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const sel = window.getSelection();
+      if (!sel) return;
+      const range = document.createRange();
+      range.selectNodeContents(reader);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [open]);
 
   // Folder list: real IMAP folders would replace this; the single static "Inbox"
   // option is what odysseus shows before a folder fetch lands (emailLibrary.js).
@@ -681,11 +869,20 @@ export function EmailView({
   }, [visibleMessages]);
 
   const runBulk = useCallback(
-    (action: "read" | "unread" | "archive" | "delete") => {
+    (action: "done" | "read" | "unread" | "archive" | "delete") => {
       const uids = Array.from(selectedUids);
       setBulkMenuOpen(false);
       if (uids.length === 0) return;
-      if (action === "read" || action === "unread") {
+      if (action === "done") {
+        // emailLibrary.js _bulkAction('done') — mark answered + read for the
+        // selected uids (fully client-side via the optimistic overrides).
+        setAnsweredOverride((prev) => {
+          const map = new Map(prev);
+          for (const uid of uids) map.set(uid, true);
+          return map;
+        });
+        setReadState(uids, true);
+      } else if (action === "read" || action === "unread") {
         setReadState(uids, action === "read");
       } else if (action === "archive") {
         onArchive?.(uids);
@@ -768,6 +965,11 @@ export function EmailView({
               </span>
             ) : null}
             <span className="od-email-stats">{statsLabel}</span>
+            {feedback ? (
+              <span className="od-email-feedback" role="status">
+                {feedback}
+              </span>
+            ) : null}
           </span>
           <button
             type="button"
@@ -990,6 +1192,14 @@ export function EmailView({
                 </button>
                 {bulkMenuOpen ? (
                   <div className="od-email-dropdown">
+                    <button
+                      type="button"
+                      className="od-email-dropdown-item"
+                      onClick={() => runBulk("done")}
+                    >
+                      <Check size={14} />
+                      <span>Done</span>
+                    </button>
                     <button
                       type="button"
                       className="od-email-dropdown-item"
@@ -1361,9 +1571,7 @@ export function EmailView({
                                       >
                                         <Check size={14} />
                                         <span>
-                                          {answered
-                                            ? "Mark Not Done"
-                                            : "Mark Done"}
+                                          {answered ? "Not Done" : "Done"}
                                         </span>
                                       </button>
                                     ) : null}
@@ -1419,37 +1627,32 @@ export function EmailView({
                       {/* ── Expanded reader (emailLibrary.js doclib-card-expanded
                           → opens the message "as a document" inline) ── */}
                       {isExpanded ? (
-                        <div className="od-email-reader">
+                        <div className="od-email-reader" ref={readerRef}>
                           <div className="od-email-reader-header">
                             <div className="od-email-reader-meta">
                               <div className="od-email-reader-meta-row">
                                 <strong>From:</strong>
                                 <span className="od-email-recipient-chips">
-                                  <span
-                                    className="od-email-recipient-chip"
-                                    title={`${m.fromName} <${m.fromAddress}>`}
-                                  >
-                                    {m.fromName || m.fromAddress}
-                                  </span>
+                                  <RecipientChip
+                                    full={`${m.fromName} <${m.fromAddress}>`}
+                                    label={m.fromName || m.fromAddress}
+                                    className="od-email-recipient-chip-from"
+                                    onCopied={showCopied}
+                                  />
                                 </span>
                               </div>
                               {m.to ? (
                                 <div className="od-email-reader-meta-row">
                                   <strong>To:</strong>
                                   <span className="od-email-recipient-chips">
-                                    {m.to
-                                      .split(",")
-                                      .map((a) => a.trim())
-                                      .filter(Boolean)
-                                      .map((a) => (
-                                        <span
-                                          key={a}
-                                          className="od-email-recipient-chip"
-                                          title={a}
-                                        >
-                                          {a}
-                                        </span>
-                                      ))}
+                                    {splitRecipientList(m.to).map((a) => (
+                                      <RecipientChip
+                                        key={a}
+                                        full={a}
+                                        label={extractRecipientName(a)}
+                                        onCopied={showCopied}
+                                      />
+                                    ))}
                                   </span>
                                 </div>
                               ) : null}
@@ -1457,19 +1660,14 @@ export function EmailView({
                                 <div className="od-email-reader-meta-row">
                                   <strong>Cc:</strong>
                                   <span className="od-email-recipient-chips">
-                                    {m.cc
-                                      .split(",")
-                                      .map((a) => a.trim())
-                                      .filter(Boolean)
-                                      .map((a) => (
-                                        <span
-                                          key={a}
-                                          className="od-email-recipient-chip"
-                                          title={a}
-                                        >
-                                          {a}
-                                        </span>
-                                      ))}
+                                    {splitRecipientList(m.cc).map((a) => (
+                                      <RecipientChip
+                                        key={a}
+                                        full={a}
+                                        label={extractRecipientName(a)}
+                                        onCopied={showCopied}
+                                      />
+                                    ))}
                                   </span>
                                 </div>
                               ) : null}

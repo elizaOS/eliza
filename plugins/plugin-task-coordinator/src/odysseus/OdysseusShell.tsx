@@ -197,7 +197,16 @@ export function OdysseusShell(): ReactNode {
     onCreated,
   });
 
-  const onNewChat = useCallback(() => setSelectedId(null), []);
+  // Entering the New Chat / welcome state (odysseus showWelcomeScreen): drop the
+  // selection AND discard any stale composer draft left from the previous
+  // session, so the input starts empty. Clearing `input` re-runs the Composer's
+  // autosize effect, which resets the textarea height (upstream sets
+  // `_msg.style.height = ''` then re-fires `input`). Switching between existing
+  // sessions goes through onSelect, not here, so genuine drafts are preserved.
+  const onNewChat = useCallback(() => {
+    setSelectedId(null);
+    setInput("");
+  }, [setInput]);
 
   const openPanel = useCallback(
     (panel: "theme" | "memory" | "skills" | "notes" | "settings") => {

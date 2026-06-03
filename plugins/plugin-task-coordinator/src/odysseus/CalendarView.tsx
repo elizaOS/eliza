@@ -200,6 +200,61 @@ function calColor(ev: CalEvent, calendars: LocalCalendar[]): string {
   return c ? c.color : "var(--accent)";
 }
 
+// odysseus calendar/utils.js `_calReadableTextColor` (+ `_hexToRgb`,
+// `_relativeLuminance`, `_contrastRatio`). Given an event's background colour,
+// pick a foreground (near-black ink or white) with the better WCAG contrast so
+// chip text stays legible on any calendar colour. Non-hex backgrounds (e.g. the
+// `var(--accent)` palette slot) aren't parseable, so we defer to the theme `fg`.
+function hexToRgb(c: string): { r: number; g: number; b: number } | null {
+  const m = c.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (!m) return null;
+  const hex =
+    m[1].length === 3
+      ? m[1]
+          .split("")
+          .map((ch) => ch + ch)
+          .join("")
+      : m[1];
+  return {
+    r: Number.parseInt(hex.slice(0, 2), 16),
+    g: Number.parseInt(hex.slice(2, 4), 16),
+    b: Number.parseInt(hex.slice(4, 6), 16),
+  };
+}
+
+function relativeLuminance({
+  r,
+  g,
+  b,
+}: {
+  r: number;
+  g: number;
+  b: number;
+}): number {
+  const coeff = [0.2126, 0.7152, 0.0722];
+  return [r, g, b]
+    .map((v) => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    })
+    .reduce((sum, c, i) => sum + c * coeff[i], 0);
+}
+
+function contrastRatio(a: number, b: number): number {
+  const light = Math.max(a, b);
+  const dark = Math.min(a, b);
+  return (light + 0.05) / (dark + 0.05);
+}
+
+function readableTextColor(bg: string): string {
+  const rgb = hexToRgb(bg);
+  if (!rgb) return "var(--fg)";
+  const lum = relativeLuminance(rgb);
+  const white = contrastRatio(lum, 1);
+  const ink = contrastRatio(lum, 0.006);
+  return ink >= white ? "#111820" : "#ffffff";
+}
+
 function newUid(): string {
   return `ev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -1353,18 +1408,21 @@ export function CalendarView({
                 <span className="od-cal-wk-dt">{d.getDate()}</span>
               </div>
               <div className="od-cal-wk-allday">
-                {allDayEvents.map((ev) => (
-                  <button
-                    type="button"
-                    className="od-cal-wk-allday-event"
-                    key={ev.uid}
-                    style={{ background: calColor(ev, calendars) }}
-                    title={ev.summary}
-                    onClick={() => openEdit(ev)}
-                  >
-                    {ev.summary}
-                  </button>
-                ))}
+                {allDayEvents.map((ev) => {
+                  const bg = calColor(ev, calendars);
+                  return (
+                    <button
+                      type="button"
+                      className="od-cal-wk-allday-event"
+                      key={ev.uid}
+                      style={{ background: bg, color: readableTextColor(bg) }}
+                      title={ev.summary}
+                      onClick={() => openEdit(ev)}
+                    >
+                      {ev.summary}
+                    </button>
+                  );
+                })}
               </div>
               <div
                 className="od-cal-wk-grid"
