@@ -8,6 +8,7 @@ import {
   MAX_CHAT_IMAGES,
 } from "../../utils/image-attachment";
 import type { ShellMessage } from "./shell-state";
+import { usePromptSuggestions } from "./usePromptSuggestions";
 import type { ShellController } from "./useShellController";
 
 /**
@@ -245,6 +246,9 @@ export function ContinuousChatOverlay({
   const hasDraft = draft.trim().length > 0;
   const hasImages = pendingImages.length > 0;
 
+  // Five tailored prompt suggestions for the resting overlay (pure/client-side).
+  const suggestions = usePromptSuggestions(messages);
+
   // Whisper: when a genuinely NEW line arrives while collapsed, surface the
   // recent lines for 12s. Keyed on the last message id (not length, and the
   // `expanded` dep early-returns) so toggling the panel never re-triggers it.
@@ -297,6 +301,19 @@ export function ContinuousChatOverlay({
     setExpanded(true);
     inputRef.current?.focus();
   }, [draft, pendingImages, canSend, send]);
+
+  // Tapping a suggestion sends it immediately (same path as submit), so the
+  // strip is a one-tap shortcut, not just a draft pre-fill.
+  const pickSuggestion = React.useCallback(
+    (text: string) => {
+      if (!canSend) return;
+      setDraft("");
+      send(text);
+      setExpanded(true);
+      inputRef.current?.focus();
+    },
+    [canSend, send],
+  );
 
   const addImageFiles = React.useCallback((files: FileList | File[]) => {
     void filesToImageAttachments(files)
@@ -517,6 +534,41 @@ export function ContinuousChatOverlay({
         >
           {transcript}
           <span aria-hidden="true">…</span>
+        </div>
+      ) : null}
+
+      {/* Five tailored prompt suggestions — keyboard-strip style, shown only on
+          the resting overlay (collapsed, ready, nothing typed/attached, not
+          listening) so they invite a first move without ever crowding an active
+          conversation. Tapping one sends it immediately. */}
+      {!expanded &&
+      !recording &&
+      !booting &&
+      canSend &&
+      !hasDraft &&
+      !hasImages ? (
+        <div
+          className="pointer-events-auto relative mb-2 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2"
+          data-testid="chat-suggestions"
+        >
+          {suggestions.map((s, i) => (
+            <button
+              key={s}
+              type="button"
+              data-testid={`chat-suggestion-${i}`}
+              aria-label={s}
+              onClick={() => pickSuggestion(s)}
+              className={cn(
+                "max-w-full truncate rounded-full border border-white/15 bg-black/40 px-3.5 py-1.5",
+                "text-[13px] text-white/80 backdrop-blur-xl transition-colors",
+                "shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_10px_30px_-12px_rgba(0,0,0,0.6)]",
+                "hover:border-white/30 hover:bg-white/15 hover:text-white",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+              )}
+            >
+              {s}
+            </button>
+          ))}
         </div>
       ) : null}
 
