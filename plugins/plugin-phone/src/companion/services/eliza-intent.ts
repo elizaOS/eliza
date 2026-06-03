@@ -96,7 +96,7 @@ export class ElizaIntentWeb extends WebPlugin implements ElizaIntentPlugin {
   async setPairingStatus(
     options: SetPairingStatusOptions,
   ): Promise<{ ok: boolean }> {
-    logger.debug("[ElizaIntentWeb] setPairingStatus (no-op on web)", {
+    logger.debug("[ElizaIntentWeb] setPairingStatus unavailable on web", {
       deviceIdLength: options.deviceId.length,
       agentUrlHost: (() => {
         try {

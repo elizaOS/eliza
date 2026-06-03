@@ -3,7 +3,7 @@
  *
  * Integration test for AppVerificationService.verifyApp against a real
  * temp project on disk that uses real `tsc` for typecheck. We do NOT rely
- * on a global eslint install — lint is wired to a no-op shim so the fast
+ * on a global eslint install — lint is wired to a local shim so the fast
  * profile (typecheck + lint) returns a pure typecheck verdict.
  *
  * The test is gated on `bun --version` succeeding because the verifier's

@@ -18,7 +18,7 @@
  *
  * The test runs entirely in-process with no network: the mock-base env
  * (`ELIZA_MOCK_HEALTH_BASE`) shadows the real apiBaseUrl during fetch
- * verification, so we drive `fetch` through a stub.
+ * verification, so we drive `fetch` through an injected test function.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

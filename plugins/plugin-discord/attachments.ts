@@ -458,7 +458,7 @@ export class AttachmentManager {
 	 * Processes a PDF attachment by fetching the PDF file from the specified URL,
 	 * converting it to text, generating a summary, and returning a Media object
 	 * with the extracted information.
-	 * If an error occurs during processing, a placeholder Media object is returned
+	 * If an error occurs during processing, an error Media object is returned
 	 * with an error message.
 	 *
 	 * @param {Attachment} attachment - The PDF attachment to process.

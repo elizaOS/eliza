@@ -866,7 +866,7 @@ export async function relaunchDiscordDesktopForCdp(
   } else {
     // Defensive: getDiscordDesktopCdpStatus already returns supported=false
     // for non-darwin/non-linux/non-win32 platforms, so this branch shouldn't be
-    // reached. Throw rather than silently no-op so a misconfigured caller
+    // reached. Throw rather than silently succeed so a misconfigured caller
     // surfaces immediately.
     throw new Error(
       `Discord Desktop relaunch not supported on ${process.platform}.`,

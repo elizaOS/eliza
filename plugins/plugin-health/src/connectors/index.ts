@@ -127,7 +127,7 @@ const CONNECTOR_LABELS: Record<
  * Until W1-F publishes the runtime context shape, the contribution emits
  * `disconnected` for status checks and `transport_error` for send/read so
  * downstream task scheduling treats the connector as unavailable rather
- * than silently no-op'ing.
+ * than silently succeeding.
  */
 function buildConnectorContribution(
   kind: (typeof HEALTH_CONNECTOR_KINDS)[number],

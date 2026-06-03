@@ -15,7 +15,7 @@ import { decodePairingPayload, type PairingPayload } from "./session-client";
  * arrives, we decode its pairing payload and notify the caller so the app
  * can navigate to the RemoteSession view.
  *
- * On web: no-op — logged once. This lets `bun run build` + `bun run dev`
+ * On web: unavailable — logged once. This lets `bun run build` + `bun run dev`
  * work in a browser without a simulator.
  */
 

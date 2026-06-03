@@ -496,11 +496,11 @@ export function createHealthActionRunner(
           values: {
             success: false,
             error: "PLANNER_SHOULDACT_FALSE",
-            noop: true,
+            skipped: true,
             suggestedSubaction: subaction,
           },
           data: {
-            noop: true,
+            skipped: true,
             error: "PLANNER_SHOULDACT_FALSE",
             suggestedSubaction: subaction,
           },

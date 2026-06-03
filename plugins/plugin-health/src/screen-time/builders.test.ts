@@ -73,7 +73,7 @@ function socialSummary(overrides?: Partial<LifeOpsSocialHabitSummary>) {
         label: "Browser",
         state: "partial",
         statusLabel: "Needs attention",
-        detail: "Permissions incomplete.",
+        detail: "Permissions need attention.",
       },
     ],
     fetchedAt: "2026-06-02T01:00:00.000Z",

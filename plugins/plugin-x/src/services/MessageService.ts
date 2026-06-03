@@ -210,6 +210,6 @@ export class TwitterMessageService implements IMessageService {
 
   async markAsRead(_messageIds: string[], _agentId: UUID): Promise<void> {
     // Twitter doesn't have a read/unread concept for tweets
-    logger.debug("Marking messages as read is a no-op for Twitter");
+    logger.debug("Marking messages as read is unsupported for Twitter");
   }
 }

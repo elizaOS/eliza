@@ -821,7 +821,7 @@ export async function refreshRunSession(
  * timer so the game actually stops doing work server-side instead of
  * just unmounting the viewer iframe.
  *
- * Idempotent: if the service isn't running this is a no-op.
+ * Idempotent: if the service isn't running this returns cleanly.
  */
 export async function stopRun(ctx: { runtime: unknown | null }): Promise<void> {
   const service = getScapeService(ctx.runtime as IAgentRuntime | null);

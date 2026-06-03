@@ -134,7 +134,7 @@ describe("Phase 2.5 — registry → auto-spawn → invoke end-to-end", () => {
 		return dir;
 	}
 
-	it("register() with isolation:'worker' is a no-op when the host service is not on the runtime", async () => {
+	it("register() with isolation:'worker' stays in-process when the host service is not on the runtime", async () => {
 		// Sanity check: the registry's auto-spawn lookup short-circuits
 		// when the host service isn't registered. The register() call
 		// must not throw and the host service must have zero workers.

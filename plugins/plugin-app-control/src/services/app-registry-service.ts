@@ -318,7 +318,7 @@ export class AppRegistryService extends Service {
 	}
 
 	override async stop(): Promise<void> {
-		// no-op — persistence is sync per write.
+		// Persistence is sync per write; no shutdown work is held.
 	}
 
 	private async bootstrap(): Promise<void> {
