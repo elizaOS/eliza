@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import type { ImageAttachment } from "../../api/client-types-chat";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import { useApp } from "../../state";
 import {
@@ -30,6 +31,7 @@ export interface ShellController {
     text: string,
     options?: {
       channelType?: "DM" | "VOICE_DM";
+      images?: ImageAttachment[];
       metadata?: Record<string, unknown>;
     },
   ) => void;
@@ -94,6 +96,7 @@ export function useShellController(): ShellController {
       text: string;
       options?: {
         channelType?: "DM" | "VOICE_DM";
+        images?: ImageAttachment[];
         metadata?: Record<string, unknown>;
       };
     }>
@@ -104,11 +107,14 @@ export function useShellController(): ShellController {
       text: string,
       options?: {
         channelType?: "DM" | "VOICE_DM";
+        images?: ImageAttachment[];
         metadata?: Record<string, unknown>;
       },
     ) => {
       const trimmed = text.trim();
-      if (!trimmed) return;
+      // An image-only turn is valid: only bail when there's neither text nor an
+      // attachment to send.
+      if (!trimmed && !options?.images?.length) return;
       if (!ready) {
         // Agent still booting — queue and flush on ready instead of dropping.
         pendingSendsRef.current.push({ text: trimmed, options });

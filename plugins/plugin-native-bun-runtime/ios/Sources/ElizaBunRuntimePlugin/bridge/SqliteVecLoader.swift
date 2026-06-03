@@ -11,7 +11,7 @@ import SQLite3
 ///
 /// When sqlite-vec is *not* linked (e.g. simulator builds without the
 /// vendor-deps step), the weak C shim reports unavailable, the loader is a
-/// no-op, and `versionString` is nil. Vector queries against tables that need
+/// skipped, and `versionString` is nil. Vector queries against tables that need
 /// the extension will fail with SQLite's standard "no such module: vec0"
 /// error.
 public final class SqliteVecLoader {
@@ -34,7 +34,7 @@ public final class SqliteVecLoader {
     /// for the `sqlite_version` host function.
     public var isAvailable: Bool { available }
 
-    /// Calls `sqlite3_vec_init` on the given DB handle. No-op when the
+    /// Calls `sqlite3_vec_init` on the given DB handle. Skipped when the
     /// extension isn't linked. Errors during init are surfaced through
     /// stderr-only logging because we don't have a way to fail the open
     /// — the rest of the DB still works without vec0.

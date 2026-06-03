@@ -29,6 +29,7 @@ export * from "./env";
 export * from "./errors";
 export * from "./format";
 export * from "./globals";
+export * from "./image-attachment";
 export * from "./labels";
 export * from "./log-prefix";
 export * from "./name-tokens";

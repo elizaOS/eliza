@@ -2575,6 +2575,205 @@ platform no-ops are separated from actionable runtime gaps.
   not treated as product runtime gaps unless they affect exported package
   behavior.
 
+### plugins/plugin-anthropic-proxy
+
+- Reworded off-mode service behavior and browser entry docs/source so the
+  Node-only proxy fallback is described as unavailable in browsers and as
+  running without a proxy in off mode, not as no-op/stub behavior.
+- Reworded the short-marker fingerprint test and SSE UTF-8 buffering comment
+  from no-op/incomplete wording to unchanged/partial-sequence wording.
+- Remaining package marker hit is the docs table entry for the literal
+  `cc-tool-stubs.ts` compatibility file.
+- Verified with:
+  - `diff -u plugins/plugin-anthropic-proxy/CLAUDE.md plugins/plugin-anthropic-proxy/AGENTS.md`
+  - `bun run --cwd plugins/plugin-anthropic-proxy typecheck`
+  - `bun run --cwd plugins/plugin-anthropic-proxy test`
+  - `bun run --cwd plugins/plugin-anthropic-proxy build`
+  - marker scan on `plugins/plugin-anthropic-proxy`
+
+### plugins/plugin-mcp
+
+- Reworded the Node-only browser entry from browser no-op/stub terminology to
+  browser-unavailable entry terminology in source, README, and mirrored package
+  guides.
+- Reworded tool-compatibility test-runtime errors so they do not claim a mock
+  implementation is unfinished.
+- Verified with:
+  - `diff -u plugins/plugin-mcp/CLAUDE.md plugins/plugin-mcp/AGENTS.md`
+  - `bun run --cwd plugins/plugin-mcp typecheck`
+  - `bun run --cwd plugins/plugin-mcp test`
+  - `bun run --cwd plugins/plugin-mcp build`
+  - marker scan on `plugins/plugin-mcp`
+
+### plugins/plugin-native-mobile-agent-bridge
+
+- Reworded web fallback docs/source/package metadata so non-native tunnel
+  behavior is described as an explicit unavailable/error fallback rather than a
+  stub/no-op tunnel.
+- Verified with:
+  - `diff -u plugins/plugin-native-mobile-agent-bridge/CLAUDE.md plugins/plugin-native-mobile-agent-bridge/AGENTS.md`
+  - `bun run --cwd plugins/plugin-native-mobile-agent-bridge build`
+  - marker scan on `plugins/plugin-native-mobile-agent-bridge`
+
+### plugins/plugin-native-desktop
+
+- Reworded web fallback docs and mirrored package guides so browser execution
+  is described as Web API fallback or unavailable return values instead of
+  no-op/stub behavior.
+- Verified with:
+  - `diff -u plugins/plugin-native-desktop/CLAUDE.md plugins/plugin-native-desktop/AGENTS.md`
+  - `bun run --cwd plugins/plugin-native-desktop build`
+  - marker scan on `plugins/plugin-native-desktop`
+
+### plugins/plugin-native-bun-runtime
+
+- Reworded web fallback tests and guide text from no-op shapes to unavailable
+  shapes, and reworded sqlite-vec and Kokoro phonemizer comments from no-op /
+  placeholder marker language to skipped registration / tone marker language.
+- Remaining package marker hits are intentional:
+  - the Kokoro pronunciation dictionary contains the Spanish word `todo`;
+  - `LlamaBridgeImpl.swift` reports a linked iOS inference `stub ABI`, which is
+    a real ABI label for the wrong native slice.
+- Verified with:
+  - `diff -u plugins/plugin-native-bun-runtime/CLAUDE.md plugins/plugin-native-bun-runtime/AGENTS.md`
+  - `bun run --cwd plugins/plugin-native-bun-runtime build`
+  - `bun run --cwd plugins/plugin-native-bun-runtime vitest run`
+  - marker scan on `plugins/plugin-native-bun-runtime`
+
+### plugins/plugin-facewear
+
+- Reworded Facewear guide/test/emulator marker language so deterministic test
+  transports, real bundle-size coverage, and the IWER raw-camera limitation are
+  described without stub/not-implemented wording.
+- Remaining package marker hits are intentional:
+  - Wi-Fi SSID/password UI input placeholder attributes in `SmartglassesView`;
+  - a feature-parity assertion that the native agent bridge source must not
+    contain the literal string `stub`.
+- Verified with:
+  - `diff -u plugins/plugin-facewear/CLAUDE.md plugins/plugin-facewear/AGENTS.md`
+  - `bun run --cwd plugins/plugin-facewear typecheck`
+  - `bun run --cwd plugins/plugin-facewear build`
+  - marker scan on `plugins/plugin-facewear`
+
+### scripts/build-riscv64-artifacts.sh
+
+- Reworded the `ELIZA_RISCV64_SMOKE` gate comment so unset means the build
+  driver skips all builds instead of calling the branch a no-op.
+- Verified with:
+  - `bash -n scripts/build-riscv64-artifacts.sh`
+  - marker scan on the script
+
+### plugins/plugin-ainex
+
+- Reworded websocket disconnect docs so closing an already-closed bridge is
+  described as returning cleanly rather than no-op behavior.
+- Verified with:
+  - `bun run --cwd plugins/plugin-ainex typecheck`
+  - `bun run --cwd plugins/plugin-ainex test`
+  - `bun run --cwd plugins/plugin-ainex build`
+  - marker scan on `plugins/plugin-ainex`
+
+### plugins/plugin-bluebubbles
+
+- Reworded connector-account deletion comments so character/env-backed
+  credentials are described as an out-of-band configuration boundary rather
+  than no-op provider behavior.
+- Verified with:
+  - `bun run --cwd plugins/plugin-bluebubbles typecheck`
+  - `bun run --cwd plugins/plugin-bluebubbles test`
+  - `bun run --cwd plugins/plugin-bluebubbles build`
+  - marker scan on `plugins/plugin-bluebubbles`
+
+### plugins/plugin-feishu
+
+- Reworded connector-account provider deletion comments so provider-layer
+  deletion returns cleanly while runtime credentials remain in character
+  settings.
+- Verified with:
+  - `bun run --cwd plugins/plugin-feishu typecheck`
+  - `bun run --cwd plugins/plugin-feishu test`
+  - `bun run --cwd plugins/plugin-feishu build`
+  - marker scan on `plugins/plugin-feishu`
+
+### plugins/plugin-line
+
+- Reworded connector-account provider deletion comments so provider-layer
+  deletion returns cleanly while runtime credentials remain in character
+  settings.
+- Verified with:
+  - `bun run --cwd plugins/plugin-line typecheck`
+  - `bun run --cwd plugins/plugin-line test`
+  - `bun run --cwd plugins/plugin-line build`
+  - marker scan on `plugins/plugin-line`
+
+### plugins/plugin-matrix
+
+- Reworded connector-account provider deletion comments so provider-layer
+  deletion returns cleanly while runtime credentials remain in character
+  settings.
+- Verified with:
+  - `bun run --cwd plugins/plugin-matrix typecheck`
+  - `bun run --cwd plugins/plugin-matrix test`
+  - `bun run --cwd plugins/plugin-matrix build`
+  - marker scan on `plugins/plugin-matrix`
+
+### plugins/plugin-native-wifi
+
+- Reworded the Android `requestNetwork` callback comment from no-op to empty
+  callback; connection state is still queried separately.
+- Verified with:
+  - `bun run --cwd plugins/plugin-native-wifi build`
+  - marker scan on `plugins/plugin-native-wifi`
+
+### plugins/plugin-native-phone
+
+- Reworded README platform support so iOS is explicitly unsupported rather
+  than listed as not implemented.
+- Verified with:
+  - `bun run --cwd plugins/plugin-native-phone build`
+  - marker scan on `plugins/plugin-native-phone`
+
+### plugins/plugin-ngrok
+
+- Reworded a Bun test-suite harness comment so `run()` delegates to `bun:test`
+  without no-op terminology.
+- Verified with:
+  - `bun run --cwd plugins/plugin-ngrok typecheck`
+  - `bun run --cwd plugins/plugin-ngrok test:unit`
+  - `bun run --cwd plugins/plugin-ngrok build`
+  - marker scan on `plugins/plugin-ngrok`
+
+### plugins/plugin-hyperliquid-app
+
+- Reworded the README's execution boundary so order placement is disabled by
+  design and the plugin is read-only, rather than saying placement is not
+  implemented.
+- Verified with:
+  - `bun run --cwd plugins/plugin-hyperliquid-app test`
+  - `bun run --cwd plugins/plugin-hyperliquid-app build`
+  - marker scan on `plugins/plugin-hyperliquid-app`
+
+### plugins/plugin-vision
+
+- Reworded the WS1 arbiter adapter's `release()` comment so WS1 lifecycle
+  ownership is described without no-op terminology.
+- Verified with:
+  - `bun run --cwd plugins/plugin-vision build`
+  - marker scan on `plugins/plugin-vision`
+- Build note: the Vision build completed successfully while preserving the
+  existing non-blocking declaration warnings for optional
+  `@tensorflow/tfjs-node` types.
+
+### one-hit UI / validation marker classifications
+
+- Remaining hits in this low-count scan are intentional:
+  - `plugins/plugin-feed`, `plugins/plugin-defense-of-the-agents`,
+    `plugins/plugin-clawville`, `plugins/plugin-companion`, and
+    `plugins/plugin-wifi` contain user-facing input placeholder attributes.
+  - `plugins/plugin-social-alpha` contains a Tailwind `placeholder:` utility.
+  - `plugins/plugin-telegram` has a real validation error for incomplete login
+    credentials.
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.

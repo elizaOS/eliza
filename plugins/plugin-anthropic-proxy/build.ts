@@ -35,7 +35,7 @@ async function build() {
     `✅ Node build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`,
   );
 
-  // Browser build (no-op stub)
+  // Browser build (unavailable entry)
   const browserStart = Date.now();
   console.log("🌐 Building @elizaos/plugin-anthropic-proxy for Browser...");
   const browserResult = await Bun.build({

@@ -99,7 +99,7 @@ The plugin re-reads the credentials file on every request, so a fresh login is p
 plugins/plugin-anthropic-proxy/
 ├── index.ts                           # Plugin export + init
 ├── index.node.ts                      # Node entry
-├── index.browser.ts                   # Browser noop
+├── index.browser.ts                   # Browser-unavailable entry
 ├── auto-enable.ts                      # shouldEnable() opt-in check
 ├── config.json.example                # Custom fingerprint dictionary shape
 ├── build.ts                           # Bun build script

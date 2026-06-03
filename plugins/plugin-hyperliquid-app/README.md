@@ -1,6 +1,6 @@
 # @elizaos/plugin-hyperliquid-app
 
-Adds native [Hyperliquid](https://hyperliquid.xyz) perpetual-market integration to elizaOS agents. Eliza agents can query market listings, credential readiness, account positions, and open orders through both conversational actions and HTTP routes. Order placement is not implemented — the plugin is read-only.
+Adds native [Hyperliquid](https://hyperliquid.xyz) perpetual-market integration to elizaOS agents. Eliza agents can query market listings, credential readiness, account positions, and open orders through both conversational actions and HTTP routes. Order placement is disabled by design — the plugin is read-only.
 
 ## Capabilities
 

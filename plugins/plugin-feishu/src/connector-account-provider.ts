@@ -101,7 +101,7 @@ export function createFeishuConnectorAccountProvider(
 			_accountId: string,
 			_manager: ConnectorAccountManager,
 		) => {
-			// No-op at provider layer — runtime credentials live in character
+			// Provider-layer deletion returns cleanly; runtime credentials live in character
 			// settings; deletion of those is out of band.
 		},
 	};

@@ -10,11 +10,12 @@ import {
   useState,
 } from "react";
 import { type CodingAgentSession, client } from "../../api/client";
-import type {
-  ConversationMessage,
-  ImageAttachment,
-} from "../../api/client-types-chat";
+import type { ConversationMessage } from "../../api/client-types-chat";
 import { fetchWithCsrf } from "../../api/csrf-client";
+import {
+  filesToImageAttachments,
+  MAX_CHAT_IMAGES,
+} from "../../utils/image-attachment";
 import { isRoutineCodingAgentMessage } from "../../chat";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
@@ -493,37 +494,12 @@ export function ChatView({
 
   const addImageFiles = useCallback(
     (files: FileList | File[]) => {
-      const imageFiles = Array.from(files).filter((f) =>
-        f.type.startsWith("image/"),
-      );
-      if (!imageFiles.length) return;
-
-      const readers = imageFiles.map(
-        (file) =>
-          new Promise<ImageAttachment>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-              const result = reader.result as string;
-              // result is "data:<mime>;base64,<data>" — strip the prefix
-              const commaIdx = result.indexOf(",");
-              const data = commaIdx >= 0 ? result.slice(commaIdx + 1) : result;
-              resolve({ data, mimeType: file.type, name: file.name });
-            };
-            reader.onerror = () =>
-              reject(reader.error ?? new Error("Failed to read file"));
-            reader.onabort = () => reject(new Error("File read aborted"));
-            reader.readAsDataURL(file);
-          }),
-      );
-
-      void Promise.all(readers)
+      void filesToImageAttachments(files)
         .then((attachments) => {
-          setChatPendingImages((prev) => {
-            const combined = [...prev, ...attachments];
-            // Mirror the server-side MAX_CHAT_IMAGES=4 limit so the user gets
-            // immediate feedback rather than a 400 after upload.
-            return combined.slice(0, 4);
-          });
+          if (!attachments.length) return;
+          setChatPendingImages((prev) =>
+            [...prev, ...attachments].slice(0, MAX_CHAT_IMAGES),
+          );
         })
         .catch((err: unknown) => {
           // A failed image read leaves nothing attached; tell the user rather

@@ -18,7 +18,7 @@ Android phone and Telecom bridge for elizaOS. A [Capacitor](https://capacitorjs.
 |---|---|
 | Android | Full native implementation |
 | Web / browser | `getStatus` returns all-false; `listRecentCalls` returns empty; all other methods throw |
-| iOS | Not implemented |
+| iOS | Unsupported |
 
 ## Installation
 

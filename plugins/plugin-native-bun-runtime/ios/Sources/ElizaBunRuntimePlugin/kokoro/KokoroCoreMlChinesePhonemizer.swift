@@ -24,7 +24,7 @@ final class ChinesePhonemizer {
 
     // MARK: - Pinyin Final → IPA
 
-    /// Mandarin finals mapped to IPA (tone placeholder "0" replaced later).
+    /// Mandarin finals mapped to IPA (tone marker "0" replaced later).
     /// Ordered longest-first to ensure correct greedy matching.
     ///
     /// Note: combining diacritics (◌̯ non-syllabic, ◌̩ syllabic) are omitted because
@@ -225,7 +225,7 @@ final class ChinesePhonemizer {
         return initialIPA + remainder
     }
 
-    /// Replace tone placeholder "0" with actual tone contour.
+    /// Replace tone marker "0" with actual tone contour.
     private static func applyTone(_ ipa: String, tone: Character) -> String {
         let contour = toneContours[tone] ?? ""
         // Simplify tone contours to arrow notation

@@ -1,7 +1,12 @@
 import * as React from "react";
 
+import type { ImageAttachment } from "../../api/client-types-chat";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
+import {
+  filesToImageAttachments,
+  MAX_CHAT_IMAGES,
+} from "../../utils/image-attachment";
 import type { ShellMessage } from "./shell-state";
 import type { ShellController } from "./useShellController";
 
@@ -48,6 +53,7 @@ const FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
 const SEND_GLYPH = "M18 10L25 18H21V27H15V18H11Z";
 const MIC_GLYPH =
   "M6 14H9V22H6Z M11.5 10H14.5V26H11.5Z M16.5 7H19.5V29H16.5Z M22 10H25V26H22Z M27 14H30V22H27Z";
+const PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
 
 function Glyph({ d }: { d: string }): React.JSX.Element {
   return (
@@ -213,8 +219,13 @@ export function ContinuousChatOverlay({
   const [expanded, setExpanded] = React.useState(false);
   const [whisperVisible, setWhisperVisible] = React.useState(false);
   const [pushToTalkActive, setPushToTalkActive] = React.useState(false);
+  const [pendingImages, setPendingImages] = React.useState<ImageAttachment[]>(
+    [],
+  );
+  const [imageError, setImageError] = React.useState<string | null>(null);
   const endRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const threadRef = React.useRef<HTMLDivElement>(null);
   const composerRef = React.useRef<HTMLDivElement>(null);
   const topBarRef = React.useRef<HTMLDivElement>(null);
@@ -232,6 +243,7 @@ export function ContinuousChatOverlay({
   const listening = phase === "listening";
   const responding = phase === "responding";
   const hasDraft = draft.trim().length > 0;
+  const hasImages = pendingImages.length > 0;
 
   // Whisper: when a genuinely NEW line arrives while collapsed, surface the
   // recent lines for 12s. Keyed on the last message id (not length, and the
@@ -271,12 +283,38 @@ export function ContinuousChatOverlay({
 
   const submit = React.useCallback(() => {
     const text = draft.trim();
-    if (!text || !canSend) return;
+    const images = pendingImages;
+    // An image-only turn is valid; only bail when there's nothing to send.
+    if ((!text && images.length === 0) || !canSend) return;
     setDraft("");
-    send(text);
+    setPendingImages([]);
+    setImageError(null);
+    send(text, images.length ? { images } : undefined);
     setExpanded(true);
     inputRef.current?.focus();
-  }, [draft, canSend, send]);
+  }, [draft, pendingImages, canSend, send]);
+
+  const addImageFiles = React.useCallback((files: FileList | File[]) => {
+    void filesToImageAttachments(files)
+      .then((attachments) => {
+        if (!attachments.length) return;
+        setImageError(null);
+        setPendingImages((prev) =>
+          [...prev, ...attachments].slice(0, MAX_CHAT_IMAGES),
+        );
+      })
+      .catch((err: unknown) => {
+        // Surface the failure inline rather than silently dropping the image —
+        // the overlay is pure, so it can't reach the global notice channel.
+        setImageError(
+          err instanceof Error ? err.message : "Couldn't read image",
+        );
+      });
+  }, []);
+
+  const removeImage = React.useCallback((index: number) => {
+    setPendingImages((prev) => prev.filter((_, i) => i !== index));
+  }, []);
 
   const clearPushToTalkTimer = React.useCallback(() => {
     if (pushToTalkTimerRef.current === null) return;
@@ -421,7 +459,7 @@ export function ContinuousChatOverlay({
           }}
           className={cn(
             GLASS_SHEET,
-            "pointer-events-auto relative mb-3 max-h-[58vh] w-full max-w-xl overflow-y-auto px-5 py-4",
+            "pointer-events-auto relative mb-3 max-h-[58vh] w-full max-w-3xl overflow-y-auto px-5 py-4",
             // No visible scrollbar — the thread still scrolls, the chrome just hides.
             "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
@@ -447,7 +485,7 @@ export function ContinuousChatOverlay({
           // line still announces; it just isn't left exposed during the fade-out.
           aria-hidden={!whisperVisible}
           className={cn(
-            "pointer-events-none relative mb-4 flex w-full max-w-xl flex-col transition-opacity duration-1000",
+            "pointer-events-none relative mb-4 flex w-full max-w-3xl flex-col transition-opacity duration-1000",
             whisperVisible ? "opacity-100" : "opacity-0",
           )}
         >
@@ -457,7 +495,7 @@ export function ContinuousChatOverlay({
         </div>
       ) : null}
       {!expanded && responding ? (
-        <div className="relative mb-4 w-full max-w-xl pl-12">
+        <div className="relative mb-4 w-full max-w-3xl pl-12">
           <TypingDots />
         </div>
       ) : null}
@@ -469,7 +507,7 @@ export function ContinuousChatOverlay({
           aria-live="polite"
           aria-atomic="true"
           className={cn(
-            "pointer-events-none relative mb-2 w-full max-w-xl text-center text-sm italic text-white/85",
+            "pointer-events-none relative mb-2 w-full max-w-3xl text-center text-sm italic text-white/85",
             FLOAT_SHADOW,
           )}
         >
@@ -481,7 +519,7 @@ export function ContinuousChatOverlay({
       {/* The always-present ambient composer (the heart of the layer) */}
       <div
         ref={composerRef}
-        className="pointer-events-auto relative w-full max-w-xl"
+        className="pointer-events-auto relative w-full max-w-3xl"
       >
         {/* Soft breath of light for live states — not a brand-colored alert ring.
             Always mounted; only opacity changes so it swells in/out over 700ms. */}
@@ -495,7 +533,62 @@ export function ContinuousChatOverlay({
               : "bg-[rgba(190,210,255,0.22)]",
           )}
         />
+        {/* Pending image attachments + any read error, above the bar. */}
+        {hasImages || imageError ? (
+          <div className="relative mb-2 flex flex-col gap-1.5">
+            {hasImages ? (
+              <div className="flex flex-wrap gap-2">
+                {pendingImages.map((img, i) => (
+                  <div
+                    key={`${img.name}-${i}`}
+                    className="group relative h-14 w-14 shrink-0"
+                  >
+                    <img
+                      src={`data:${img.mimeType};base64,${img.data}`}
+                      alt={img.name}
+                      className="h-14 w-14 rounded-lg border border-white/20 object-cover"
+                    />
+                    <button
+                      type="button"
+                      aria-label={`remove ${img.name}`}
+                      onClick={() => removeImage(i)}
+                      className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 text-xs text-white/90 backdrop-blur transition-colors hover:bg-black/90"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {imageError ? (
+              <p
+                role="alert"
+                className={cn("text-xs text-red-200/90", FLOAT_SHADOW)}
+              >
+                {imageError}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files) addImageFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
         <div className={cn(GLASS_BAR, "relative")}>
+          <SoftButton
+            glyph={PLUS_GLYPH}
+            label="attach image"
+            disabled={booting || pendingImages.length >= MAX_CHAT_IMAGES}
+            onClick={() => fileInputRef.current?.click()}
+            testId="chat-composer-attach"
+          />
           <input
             ref={inputRef}
             value={draft}
@@ -523,8 +616,8 @@ export function ContinuousChatOverlay({
           </span>
           {/* One trailing control, ChatGPT-style: mic when there's nothing to
               send (or while recording, to stop), swapping to send once the user
-              starts typing. */}
-          {hasDraft && !recording ? (
+              starts typing or attaches an image. */}
+          {(hasDraft || hasImages) && !recording ? (
             <SoftButton
               glyph={SEND_GLYPH}
               label={canSend ? "send" : "send (waiting for reply)"}

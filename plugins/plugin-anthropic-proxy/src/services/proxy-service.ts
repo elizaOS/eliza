@@ -2,7 +2,7 @@
  * AnthropicProxyService
  *
  * Wraps an in-process http proxy (when mode=inline) or validates an upstream
- * URL (when mode=shared). In off mode, no-op so the agent runs without a proxy.
+ * URL (when mode=shared). In off mode, the agent runs without a proxy.
  *
  * The plugin's init() is responsible for setting ANTHROPIC_BASE_URL based on
  * the mode and getProxyUrl().

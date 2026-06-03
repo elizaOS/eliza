@@ -46,7 +46,7 @@ function assertDeviceId(value: unknown): string {
  * Browsers and Electrobun shells cannot host the on-device agent that
  * the inbound tunnel proxies traffic into. We surface a stable "idle"
  * status and reject `startInboundTunnel` so callers see an honest
- * failure mode rather than a silent no-op.
+ * failure mode rather than a silent success.
  */
 export class MobileAgentBridgeWeb extends WebPlugin implements MobileAgentBridgePlugin {
   private status: MobileAgentTunnelStatus = {

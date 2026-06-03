@@ -1,6 +1,6 @@
 # @elizaos/capacitor-desktop
 
-Capacitor plugin that gives Eliza agent UIs access to native desktop OS capabilities. When running inside Electrobun it provides the full feature set; in a browser it falls back gracefully using Web APIs or safe no-ops.
+Capacitor plugin that gives Eliza agent UIs access to native desktop OS capabilities. When running inside Electrobun it provides the full feature set; in a browser it falls back gracefully using Web APIs or safe unavailable results.
 
 ## What it does
 
@@ -8,15 +8,15 @@ Adds the `Desktop` singleton to the renderer process with these capability group
 
 | Capability | Node/Electrobun | Browser |
 |---|---|---|
-| System tray (icon, tooltip, menu) | Full | No-op |
-| Global keyboard shortcuts | Full | No-op (`success: false`) |
-| Auto-launch at login | Full | No-op |
+| System tray (icon, tooltip, menu) | Full | Unavailable return |
+| Global keyboard shortcuts | Full | Unavailable return (`success: false`) |
+| Auto-launch at login | Full | Unavailable return |
 | Window management (size, position, fullscreen, opacity, always-on-top) | Full | Partial (fullscreen, focus, close) |
 | Native notifications | Full | Web Notification API |
 | Power monitor (battery, idle state) | Full | Battery API where available |
 | App controls (quit, relaunch, getPath, getVersion) | Full | Limited (`getPath` throws) |
 | Clipboard (text, HTML, RTF, image) | Full | Text + HTML via Clipboard API |
-| Shell (openExternal, showItemInFolder, beep) | Full | `window.open`; others no-op |
+| Shell (openExternal, showItemInFolder, beep) | Full | `window.open`; others unavailable |
 | System permissions (check/request) | Full via prober registry | camera, mic, location, notifications only |
 
 ## Events

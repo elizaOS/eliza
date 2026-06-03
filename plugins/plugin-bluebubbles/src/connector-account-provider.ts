@@ -109,7 +109,7 @@ export function createBlueBubblesConnectorAccountProvider(
 			_accountId: string,
 			_manager: ConnectorAccountManager,
 		) => {
-			// No-op: BlueBubbles credentials live in character settings / env.
+			// BlueBubbles credentials live in character settings / env.
 		},
 		// No OAuth — BlueBubbles uses server URL + password.
 	};

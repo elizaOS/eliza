@@ -38,9 +38,21 @@ import {
   isAgentSurfaceCapability,
   type ViewAgentRegistry,
 } from "../../agent-surface";
+import { client } from "../../api/index.ts";
 import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
+import { resolveAppBranding } from "@elizaos/shared";
 import { useTranslation } from "../../state/TranslationContext";
+import { useApp } from "../../state/useApp.ts";
+import { formatDetailTimestamp, selectLatestRunForApp, SurfaceBadge, SurfaceCard, SurfaceEmptyState, SurfaceGrid, SurfaceSection, toneForHealthState, toneForStatusText, toneForViewerAttachment } from "../apps/extensions/surface.tsx";
+import { registerDetailExtension } from "../apps/extensions/registry.ts";
+import { registerOverlayApp } from "../apps/overlay-app-registry.ts";
+import { GameOperatorShell } from "../apps/surfaces/GameOperatorShell.tsx";
+import { registerOperatorSurface } from "../apps/surfaces/registry.ts";
+import { PagePanel } from "../composites/page-panel/index.ts";
+import { Button } from "../ui/button.tsx";
 import { ErrorBoundary } from "../ui/error-boundary";
+import { Input } from "../ui/input.tsx";
+import { Spinner } from "../ui/spinner.tsx";
 import { registerViewInteractHandler } from "./view-interact-registry";
 
 interface ViewBundleModule {
@@ -67,43 +79,38 @@ function isReactComponentExport(
 
 type HostExternalImporter = () => Promise<Record<string, unknown>>;
 
-async function importAppCoreViewCompat(): Promise<Record<string, unknown>> {
-  const [
-    api,
-    shared,
-    pagePanel,
-    button,
-    input,
-    spinner,
-    overlayRegistry,
-    useApp,
-  ] = await Promise.all([
-    import("../../api/index.ts"),
-    import("@elizaos/shared"),
-    import("../composites/page-panel/index.ts"),
-    import("../ui/button.tsx"),
-    import("../ui/input.tsx"),
-    import("../ui/spinner.tsx"),
-    import("../apps/overlay-app-registry.ts"),
-    import("../../state/useApp.ts"),
-  ]);
+const APP_CORE_VIEW_COMPAT: Record<string, unknown> = {
+  client,
+  resolveAppBranding,
+  Button,
+  Input,
+  Spinner,
+  PagePanel,
+  GameOperatorShell,
+  registerDetailExtension,
+  registerOverlayApp,
+  registerOperatorSurface,
+  useApp,
+  SurfaceBadge,
+  SurfaceCard,
+  SurfaceEmptyState,
+  SurfaceGrid,
+  SurfaceSection,
+  formatDetailTimestamp,
+  selectLatestRunForApp,
+  toneForHealthState,
+  toneForStatusText,
+  toneForViewerAttachment,
+};
 
-  return {
-    ...api,
-    resolveAppBranding: shared.resolveAppBranding,
-    Button: button.Button,
-    Input: input.Input,
-    Spinner: spinner.Spinner,
-    PagePanel: pagePanel.PagePanel,
-    registerOverlayApp: overlayRegistry.registerOverlayApp,
-    useApp: useApp.useApp,
-  };
+async function importAppCoreViewCompat(): Promise<Record<string, unknown>> {
+  return APP_CORE_VIEW_COMPAT;
 }
 
 const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/app-core": importAppCoreViewCompat,
-  "@elizaos/app-core/browser": () => import("@elizaos/app-core/browser"),
-  "@elizaos/app-core/ui-compat": () => import("@elizaos/app-core/ui-compat"),
+  "@elizaos/app-core/browser": importAppCoreViewCompat,
+  "@elizaos/app-core/ui-compat": importAppCoreViewCompat,
   "@elizaos/capacitor-contacts": () => import("@elizaos/capacitor-contacts"),
   "@elizaos/capacitor-messages": () => import("@elizaos/capacitor-messages"),
   "@elizaos/capacitor-mobile-signals": () =>
