@@ -8,6 +8,19 @@
  * This is a separate native window from the onboarding card so each element
  * occupies only its own footprint — the OS routes clicks outside each window
  * straight to the desktop behind.
+ *
+ * WHY TWO PILL WINDOWS (voice-pill-window.ts vs pill-window.ts)?
+ *   - pill-window.ts — persistent chat-overlay pill; created at app boot via
+ *     shouldCreateDesktopPill(); always on top; shellMode=chat-overlay.
+ *     This is the live production voice/chat surface the user sees every day.
+ *   - voice-pill-window.ts (this file) — ephemeral onboarding-only voice pill;
+ *     spawned alongside the onboarding overlay window (onboarding-overlay-window.ts)
+ *     only for the duration of first-run; shellMode=onboarding-voice-pill.
+ *     Destroyed when onboarding completes; replaced by the persistent pill.
+ *
+ * Keep both until the onboarding voice UI is fully retired or merged into the
+ * persistent pill shell. They exist separately so the onboarding sequence can
+ * show a tailored voice prompt without touching the live overlay state machine.
  */
 
 import { type BrowserWindow, Screen } from "electrobun/bun";

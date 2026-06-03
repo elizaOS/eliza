@@ -11,8 +11,20 @@
  * instant — the embedding warmup's spirit, via the path voice already uses.
  * Nothing in the voice engine is touched.
  *
- * Warmup fires for **both** local and cloud setups — the router dispatches to
- * whichever backend the user configured. Failures are non-fatal and logged.
+ * BEHAVIOR CHANGE (PR #8175): warmup now fires for **both** local and cloud
+ * setups. Previously, warmup was gated on `localInferenceActive` and was
+ * suppressed for cloud-configured users. The gate has been removed.
+ *
+ * Impact for cloud users: at every desktop boot, two tiny API calls (one
+ * silent WAV for STT, one empty-string TTS) will be dispatched through the
+ * runtime's model router to whichever cloud voice provider is configured
+ * (e.g. ElevenLabs, Eliza Cloud TTS). These calls are billable if the
+ * provider charges per-request. They are intentionally small (~100 ms WAV for
+ * STT, empty string for TTS) and non-blocking (fire-and-forget). Failures are
+ * non-fatal and logged at WARN level.
+ *
+ * To suppress warmup entirely (both local and cloud) set:
+ *   ELIZA_SKIP_LOCAL_VOICE_WARMUP=1
  */
 
 /** Minimal runtime surface we need — avoids importing the heavy AgentRuntime. */

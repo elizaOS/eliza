@@ -33,12 +33,23 @@ export interface ResolvedOnboardingChoice {
   localInference: "all-local" | "cloud-inference";
 }
 
+/** Maximum number of times the notification is re-posted when dismissed. */
+const MAX_DISMISS_RETRIES = 3;
+
 /**
  * Post the onboarding notification and poll until the user picks an action.
- * Returns `null` if the notification could not be posted (e.g. non-macOS) or
- * the user dismissed it.
+ * Returns `null` if the notification could not be posted (e.g. non-macOS),
+ * the user dismissed it more than MAX_DISMISS_RETRIES times (falls back to
+ * the overlay), or an unrecognised choice is received.
+ *
+ * @param dismissRetryCount - internal recursion depth guard; callers should
+ *   omit this (defaults to 0). When it reaches MAX_DISMISS_RETRIES the
+ *   function returns null so the caller can fall back to the onboarding
+ *   overlay rather than looping indefinitely.
  */
-export async function waitForOnboardingNotificationChoice(): Promise<ResolvedOnboardingChoice | null> {
+export async function waitForOnboardingNotificationChoice(
+  dismissRetryCount = 0,
+): Promise<ResolvedOnboardingChoice | null> {
   const posted = postOnboardingNotification(
     "Welcome to Eliza",
     "Choose how to run your agent.",
@@ -51,38 +62,73 @@ export async function waitForOnboardingNotificationChoice(): Promise<ResolvedOnb
   }
   logger.info("[native-onboarding] Notification posted, waiting for choice…");
 
+  // Maximum time to wait for a user choice before giving up (5 minutes).
+  // This ensures the setInterval is always cleared even if the promise is
+  // abandoned (e.g. the overlay wins the race and the notification is ignored).
+  const POLL_TIMEOUT_MS = 5 * 60 * 1_000;
+
   return new Promise<ResolvedOnboardingChoice | null>((resolve) => {
+    let settled = false;
+    const settle = (value: ResolvedOnboardingChoice | null | PromiseLike<ResolvedOnboardingChoice | null>): void => {
+      if (settled) return;
+      settled = true;
+      clearInterval(timer);
+      clearTimeout(abandonTimeout);
+      // resolve() is Promise/A+ compliant — passing a PromiseLike chains it.
+      resolve(value);
+    };
+
     const timer = setInterval(() => {
       const choice: OnboardingChoice = getOnboardingChoice();
       if (choice === 0) return; // still waiting
 
-      clearInterval(timer);
+      // Dismiss the notification for all choice paths so macOS removes it
+      // from the notification centre before we settle/re-post.
       dismissOnboardingNotification();
 
       switch (choice) {
         case 1: // Local (On-Device)
           logger.info("[native-onboarding] User chose: local all-on-device");
-          resolve({ runtime: "local", localInference: "all-local" });
+          settle({ runtime: "local", localInference: "all-local" });
           break;
         case 2: // Local (Cloud AI)
           logger.info("[native-onboarding] User chose: local cloud-inference");
-          resolve({ runtime: "local", localInference: "cloud-inference" });
+          settle({ runtime: "local", localInference: "cloud-inference" });
           break;
         case 3: // Eliza Cloud
           logger.info("[native-onboarding] User chose: Eliza Cloud");
-          resolve({ runtime: "cloud", localInference: "all-local" });
+          settle({ runtime: "cloud", localInference: "all-local" });
           break;
-        case 4: // Dismissed — re-post
-          logger.info(
-            "[native-onboarding] Notification dismissed — re-posting",
-          );
-          // Recursive: re-post on dismiss
-          resolve(waitForOnboardingNotificationChoice());
+        case 4: // Dismissed
+          if (dismissRetryCount >= MAX_DISMISS_RETRIES) {
+            logger.warn(
+              `[native-onboarding] Notification dismissed ${MAX_DISMISS_RETRIES + 1} times — falling back to overlay`,
+            );
+            settle(null);
+          } else {
+            logger.info(
+              `[native-onboarding] Notification dismissed (retry ${dismissRetryCount + 1}/${MAX_DISMISS_RETRIES}) — re-posting`,
+            );
+            settle(
+              waitForOnboardingNotificationChoice(dismissRetryCount + 1),
+            );
+          }
           break;
         default:
-          resolve(null);
+          settle(null);
       }
     }, 500);
+
+    // Safety net: if the promise is abandoned (overlay wins the race or the
+    // caller is GC-ed) this timeout clears the interval so we don't leak.
+    const abandonTimeout = setTimeout(() => {
+      if (!settled) {
+        logger.warn(
+          "[native-onboarding] Timed out waiting for notification choice — clearing poll timer",
+        );
+        settle(null);
+      }
+    }, POLL_TIMEOUT_MS);
   });
 }
 
