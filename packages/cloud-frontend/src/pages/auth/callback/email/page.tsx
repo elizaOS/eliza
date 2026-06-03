@@ -39,23 +39,19 @@ export default function StewardEmailCallbackPage() {
       return;
     }
 
-    if (!returnTo) {
-      setStatus("error");
-      setError(
-        t("cloud.emailCallback.noRequest", {
-          defaultValue:
-            "Could not find the app authorization request. Start sign-in again from the app.",
-        }),
-      );
-      return;
-    }
+    // `returnTo` is set when the email flow was kicked off from the
+    // /app-auth/authorize page (third-party app integration). For a regular
+    // dashboard sign-in (e.g. magic link triggered from /login with a tenant
+    // whose `magicLinkBaseUrl` points back to this SPA), localStorage is
+    // empty and we fall back to /dashboard.
+    const destination = returnTo ?? "/dashboard";
 
     let redirectTimer: ReturnType<typeof setTimeout> | null = null;
     const finishSuccess = () => {
       clearStoredAppAuthorizeReturnTo();
       setStatus("success");
       redirectTimer = setTimeout(() => {
-        window.location.replace(returnTo);
+        window.location.replace(destination);
       }, 1500);
     };
 
