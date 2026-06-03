@@ -2774,6 +2774,77 @@ platform no-ops are separated from actionable runtime gaps.
   - `plugins/plugin-telegram` has a real validation error for incomplete login
     credentials.
 
+### plugins/plugin-app-control
+
+- Reworded app-registry shutdown, app-worker isolation, and app-worker test
+  comments so synchronous persistence and in-process app entries are described
+  directly rather than as no-op behavior. Updated the checked-in declaration
+  mirror and JS mirror comments for the worker-host service as well.
+- Verified with:
+  - `bun run --cwd plugins/plugin-app-control typecheck`
+  - `bun run --cwd plugins/plugin-app-control test`
+  - `bun run --cwd plugins/plugin-app-control build`
+  - marker scan on `plugins/plugin-app-control`
+
+### plugins/plugin-phone
+
+- Reworded Phone Companion web fallback logs/docs so pairing status, haptics,
+  and APNs are described as unavailable on web rather than no-op behavior.
+- Remaining marker hits are user-facing input placeholder attributes in the
+  dialer and pairing payload UI.
+- Verified with:
+  - `bun run --cwd plugins/plugin-phone typecheck`
+  - `bun run --cwd plugins/plugin-phone test`
+  - `bun run --cwd plugins/plugin-phone build`
+  - marker scan on `plugins/plugin-phone`
+
+### plugins/plugin-scape
+
+- Reworded Scape loop lifecycle and stop-run comments so already-running or
+  already-stopped paths are described as clean returns / current-loop retention
+  rather than no-ops, and provider context setup now calls the object minimal
+  rather than a stub.
+- Remaining marker hits are operator UI input placeholder attributes.
+- Verified with:
+  - `bun run --cwd plugins/plugin-scape build`
+  - marker scan on `plugins/plugin-scape`
+
+### plugins/plugin-x
+
+- Reworded Twitter read-state and base-client override errors so unsupported
+  mark-as-read behavior and abstract hook requirements are explicit instead of
+  no-op/not-implemented wording.
+- Reworded the base-client test runtime comment from stub terminology to
+  provided test surface terminology.
+- Verified with:
+  - `bun run --cwd plugins/plugin-x test`
+  - `bun run --cwd plugins/plugin-x build`
+  - marker scan on `plugins/plugin-x`
+
+### plugins/plugin-discord
+
+- Reworded PDF attachment fallback, connector-account deletion, and desktop
+  relaunch comments so error media, provider-layer credential boundaries, and
+  unsupported relaunch branches are described without placeholder/no-op
+  terminology.
+- Remaining marker hits are Discord component `placeholder` fields/types used
+  for select-menu labels.
+- Verified with:
+  - `bun run --cwd plugins/plugin-discord typecheck`
+  - `bun run --cwd plugins/plugin-discord build`
+  - marker scan on `plugins/plugin-discord`
+
+### plugins/plugin-health
+
+- Replaced planner-clarification response `noop: true` fields with
+  `skipped: true`, and reworded connector-degradation/test/screen-time status
+  markers from no-op/stub/incomplete terminology to unavailable/partial
+  wording.
+- Verified with:
+  - `bun run --cwd plugins/plugin-health test`
+  - `bun run --cwd plugins/plugin-health build`
+  - marker scan on `plugins/plugin-health`
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.

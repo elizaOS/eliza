@@ -12,10 +12,6 @@ import {
 import { type CodingAgentSession, client } from "../../api/client";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import { fetchWithCsrf } from "../../api/csrf-client";
-import {
-  filesToImageAttachments,
-  MAX_CHAT_IMAGES,
-} from "../../utils/image-attachment";
 import { isRoutineCodingAgentMessage } from "../../chat";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
@@ -35,6 +31,10 @@ import {
 import { useApp } from "../../state/useApp";
 import { getVrmPreviewUrl } from "../../state/vrm";
 import type { TranslateFn } from "../../types";
+import {
+  filesToImageAttachments,
+  MAX_CHAT_IMAGES,
+} from "../../utils/image-attachment";
 import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
 import { AccountRequiredCard } from "../chat/AccountRequiredCard";
 import { AgentActivityBox } from "../chat/AgentActivityBox";

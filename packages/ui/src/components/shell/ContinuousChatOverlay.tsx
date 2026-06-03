@@ -540,7 +540,7 @@ export function ContinuousChatOverlay({
               <div className="flex flex-wrap gap-2">
                 {pendingImages.map((img, i) => (
                   <div
-                    key={`${img.name}-${i}`}
+                    key={`${img.name}-${img.mimeType}-${img.data.length}`}
                     className="group relative h-14 w-14 shrink-0"
                   >
                     <img

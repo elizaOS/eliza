@@ -107,6 +107,12 @@ function userMessage(page: Page, text: string) {
     .locator('[data-testid="chat-message"][data-role="user"]')
     .filter({ hasText: text })
     .last()
+    .or(
+      conversationLog(page)
+        .locator('[data-role="user"]')
+        .filter({ hasText: text })
+        .last(),
+    )
     .or(conversationLog(page).getByText(text).last())
     .first();
 }
@@ -116,7 +122,12 @@ function assistantMessage(page: Page, text: string | RegExp) {
     .locator('[data-testid="chat-message"][data-role="assistant"]')
     .filter({ hasText: text })
     .last()
-    .or(conversationLog(page).locator("p").filter({ hasText: text }).last())
+    .or(
+      conversationLog(page)
+        .locator('[data-role="assistant"]')
+        .filter({ hasText: text })
+        .last(),
+    )
     .first();
 }
 

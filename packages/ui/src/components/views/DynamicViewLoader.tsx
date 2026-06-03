@@ -19,6 +19,7 @@
  * module has no interact export.
  */
 
+import { resolveAppBranding } from "@elizaos/shared";
 import { AlertTriangle, Ban, LoaderCircle } from "lucide-react";
 import {
   type ComponentType,
@@ -40,11 +41,21 @@ import {
 } from "../../agent-surface";
 import { client } from "../../api/index.ts";
 import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
-import { resolveAppBranding } from "@elizaos/shared";
 import { useTranslation } from "../../state/TranslationContext";
 import { useApp } from "../../state/useApp.ts";
-import { formatDetailTimestamp, selectLatestRunForApp, SurfaceBadge, SurfaceCard, SurfaceEmptyState, SurfaceGrid, SurfaceSection, toneForHealthState, toneForStatusText, toneForViewerAttachment } from "../apps/extensions/surface.tsx";
 import { registerDetailExtension } from "../apps/extensions/registry.ts";
+import {
+  formatDetailTimestamp,
+  SurfaceBadge,
+  SurfaceCard,
+  SurfaceEmptyState,
+  SurfaceGrid,
+  SurfaceSection,
+  selectLatestRunForApp,
+  toneForHealthState,
+  toneForStatusText,
+  toneForViewerAttachment,
+} from "../apps/extensions/surface.tsx";
 import { registerOverlayApp } from "../apps/overlay-app-registry.ts";
 import { GameOperatorShell } from "../apps/surfaces/GameOperatorShell.tsx";
 import { registerOperatorSurface } from "../apps/surfaces/registry.ts";
