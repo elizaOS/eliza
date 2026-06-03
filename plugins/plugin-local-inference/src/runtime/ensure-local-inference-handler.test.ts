@@ -357,11 +357,15 @@ describe("ensureLocalInferenceHandler", () => {
 		[ModelType.RESPONSE_HANDLER, "TEXT_SMALL"],
 	])("signals typed local unavailability for %s when the backend is unavailable", async (modelType, slot) => {
 		const { registrations, runtime } = makeRuntime();
-		engineState.available.mockResolvedValue(false);
 		engineState.hasLoadedModel.mockReturnValue(true);
 
+		// Register while the backend reports available (the pre-flight gate skips
+		// registration otherwise), then drop the binding to exercise the handler's
+		// runtime-defensive unavailability check — the real "binding went away
+		// after boot" scenario.
 		await ensureLocalInferenceHandler(runtime);
 		const handler = findRegisteredHandler(registrations, modelType);
+		engineState.available.mockResolvedValue(false);
 
 		await expect(
 			handler(runtime, {

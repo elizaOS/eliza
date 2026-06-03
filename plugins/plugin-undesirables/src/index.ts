@@ -39,6 +39,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as yaml from "js-yaml";
 import { validateUndesirableConfig } from "./environment.js";
+import { MemeTrendService } from "./services.js";
 
 // ============================================================
 // Constants
@@ -1187,6 +1188,7 @@ const undesirablePlugin: Plugin = {
   ],
   providers: [oracleProvider, soulProvider],
   evaluators: [marketIntelligenceEvaluator],
+  services: [MemeTrendService],
 };
 
 export default undesirablePlugin;

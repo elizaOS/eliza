@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
-import { type Plugin, defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../..");
@@ -11,6 +11,10 @@ const sharedSrc = path.resolve(here, "../../shared/src");
 const sharedAssets = path.resolve(here, "../../shared/assets");
 const coreBrowserShim = path.resolve(here, "src/eliza-core-browser-shim.ts");
 const fastRedactShim = path.resolve(here, "src/fast-redact-browser-shim.ts");
+const nodeBuiltinsShim = path.resolve(
+  here,
+  "src/node-builtins-browser-shim.ts",
+);
 const loggerSrc = path.resolve(repoRoot, "packages/logger/src/index.ts");
 
 // Brand components (ElizaLogo, lockups, …) reference assets under `/brand/*`
@@ -67,6 +71,14 @@ export default defineConfig({
       "@elizaos/logger": loggerSrc,
       "@elizaos/shared": sharedSrc,
       "fast-redact": fastRedactShim,
+      // The shared barrel re-exports a node-only package-root resolver
+      // (utils/eliza-root.ts). The catalog never calls it, but its top-level
+      // `node:*` imports throw under Vite's dev externalization — stub them.
+      "node:url": nodeBuiltinsShim,
+      "node:fs/promises": nodeBuiltinsShim,
+      "node:fs": nodeBuiltinsShim,
+      "node:path": nodeBuiltinsShim,
+      "node:os": nodeBuiltinsShim,
     },
   },
   optimizeDeps: {

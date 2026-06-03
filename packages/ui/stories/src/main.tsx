@@ -6,6 +6,17 @@ import { TranslationProvider } from "@ui-src/state/TranslationContext.tsx";
 import { App } from "./App.tsx";
 import "./stories.css";
 
+// The catalog has no API backend, so seed a stored UI language. That makes
+// TranslationProvider treat this as a returning visitor and skip the
+// first-visit `/api/i18n/locale` geo-suggestion fetch (which would 404 here).
+try {
+  if (!localStorage.getItem("eliza:ui-language")) {
+    localStorage.setItem("eliza:ui-language", "en");
+  }
+} catch {
+  // localStorage unavailable (private mode) — the fetch just stays best-effort.
+}
+
 const container = document.getElementById("root");
 if (!container) {
   throw new Error("root element missing");

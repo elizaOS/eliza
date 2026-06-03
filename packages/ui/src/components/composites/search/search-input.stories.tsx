@@ -29,15 +29,20 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {};
 
 export const WithValue: Story = {
-  args: { value: "memory leak", onClear: () => {} },
+  args: { value: "memory leak", onClear: () => {}, readOnly: true },
 };
 
 export const Loading: Story = {
-  args: { value: "indexing", loading: true },
+  args: { value: "indexing", loading: true, readOnly: true },
 };
 
 export const Disabled: Story = {
-  args: { value: "archived", disabled: true, onClear: () => {} },
+  args: {
+    value: "archived",
+    disabled: true,
+    onClear: () => {},
+    readOnly: true,
+  },
 };
 
 /** Controlled input wired to local state so the clear button works live. */

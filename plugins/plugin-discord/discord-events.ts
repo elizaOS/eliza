@@ -109,6 +109,7 @@ interface EventListenerConfig {
 	debounceMs: number;
 	channelDebounceMs: number;
 	responseCooldownMs: number;
+	recentContextTtlMs: number;
 	shouldRespondOnlyToMentions: boolean;
 }
 
@@ -165,6 +166,20 @@ function parseEventListenerConfig(
 				? Number.parseInt(responseCooldownMsSetting, 10) || 30000
 				: 30000;
 
+	// How long a recent unaddressed message stays eligible to be folded into a
+	// following pointer's "[Recent channel context]". Tunable like its siblings;
+	// the debouncer clamps it up to the channel debounce window.
+	const recentContextTtlMsSetting = service.runtime.getSetting(
+		"DISCORD_RECENT_CONTEXT_TTL_MS",
+	) as string | number | undefined;
+	const recentContextTtlMs =
+		typeof recentContextTtlMsSetting === "number"
+			? recentContextTtlMsSetting
+			: typeof recentContextTtlMsSetting === "string" &&
+					recentContextTtlMsSetting.trim()
+				? Number.parseInt(recentContextTtlMsSetting, 10) || 10000
+				: 10000;
+
 	const shouldRespondOnlyToMentions =
 		service.discordSettings.shouldRespondOnlyToMentions !== false;
 
@@ -173,6 +188,7 @@ function parseEventListenerConfig(
 		debounceMs,
 		channelDebounceMs,
 		responseCooldownMs,
+		recentContextTtlMs,
 		shouldRespondOnlyToMentions,
 	};
 }
@@ -193,6 +209,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 		debounceMs,
 		channelDebounceMs,
 		responseCooldownMs,
+		recentContextTtlMs,
 		shouldRespondOnlyToMentions,
 	} = parseEventListenerConfig(service);
 	const messageCoalesce = getDiscordMessageCoalesceConfig((key) =>
@@ -338,6 +355,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			coalesceEnabled: messageCoalesce.enabled,
 			maxBatch: messageCoalesce.maxBatch,
 			shouldRespondOnlyToMentions,
+			bufferTtlMs: recentContextTtlMs,
 		},
 	);
 

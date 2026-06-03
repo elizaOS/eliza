@@ -399,7 +399,7 @@ export const primitiveStories: StoryDefinition[] = [
     render: () => (
       <>
         <Avatar>
-          <AvatarImage src="https://elizaos.com/avatar.png" alt="" />
+          <AvatarImage src="/brand/logos/logo_orange_nobg.svg" alt="" />
           <AvatarFallback>EZ</AvatarFallback>
         </Avatar>
         <Avatar>

@@ -225,7 +225,7 @@ const workoutDefinition: ReminderTaskDefinition = {
     recordKey: HABIT_STARTER_KEYS.workout,
     cadence: "daily_afternoon",
     legacyCategory: "fitness",
-    workoutBlockerSeed: true,
+    workoutBlockerPlaceholder: true,
   },
 };
 

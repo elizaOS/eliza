@@ -28,6 +28,7 @@ import {
 import { type ProcessBodyConfig, processBody } from "./process-body.js";
 import { reverseMap } from "./reverse-map.js";
 import type { Pair } from "./sanitize.js";
+import type { SystemPromptStripConfig } from "./system-prompt.js";
 import { createSseStream } from "./sse-rewrite.js";
 import { getStainlessHeaders } from "./stainless-headers.js";
 
@@ -43,6 +44,7 @@ export interface ProxyServerOptions {
   propRenames?: ReadonlyArray<Pair>;
   systemPromptStrip?: ProcessBodyConfig["systemPromptStrip"];
   reverseMap?: ReadonlyArray<Pair>;
+  systemPromptStrip?: SystemPromptStripConfig;
   logger?: {
     info: (msg: string) => void;
     warn: (msg: string) => void;
@@ -95,6 +97,7 @@ export class ProxyServer {
   private readonly propRenames: ReadonlyArray<Pair>;
   private readonly systemPromptStrip?: ProcessBodyConfig["systemPromptStrip"];
   private readonly reverseMapPairs: ReadonlyArray<Pair>;
+  private readonly systemPromptStrip?: SystemPromptStripConfig;
   private readonly logger: NonNullable<ProxyServerOptions["logger"]>;
 
   constructor(opts: ProxyServerOptions = {}) {
@@ -109,6 +112,7 @@ export class ProxyServer {
     this.propRenames = opts.propRenames ?? DEFAULT_PROP_RENAMES;
     this.systemPromptStrip = opts.systemPromptStrip;
     this.reverseMapPairs = opts.reverseMap ?? DEFAULT_REVERSE_MAP;
+    this.systemPromptStrip = opts.systemPromptStrip;
     this.logger = opts.logger ?? silentLogger;
   }
 
