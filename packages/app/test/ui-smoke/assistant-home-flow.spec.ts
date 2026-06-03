@@ -697,7 +697,7 @@ test.describe("assistant home app flow", () => {
     page,
   }) => {
     await seedAssistantFlowStorage(page);
-    await installHomeSpeechRecognitionShim(page);
+    await installChatSpeechRecognitionShim(page);
     const assistantApi = await installAssistantFlowRoutes(page);
 
     await openReadyWorkspaceChat(page);
@@ -799,7 +799,7 @@ test.describe("assistant home app flow", () => {
     page,
   }) => {
     await seedAssistantFlowStorage(page);
-    await installHomeSpeechRecognitionShim(page);
+    await installChatSpeechRecognitionShim(page);
     const assistantApi = await installAssistantFlowRoutes(page);
 
     await openReadyWorkspaceChat(page);
