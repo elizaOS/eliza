@@ -227,8 +227,9 @@ export function DocumentLibraryView({
   // Debounce the query into a server-side refetch (offset reset to 0) so a term
   // matching a doc past the first page still surfaces. This also drives the
   // initial load: opening (or reopening, which resets query to "") flips a dep
-  // here. Client-side filtering below stays as a refinement of the loaded set,
-  // and client sort stays client-side (listDocuments has no sort param).
+  // here. When a query is active the returned page is already server-filtered
+  // across title, filename, source, and content text; local filtering below only
+  // handles extension chips and sort.
   useEffect(() => {
     if (!open) return;
     const handle = setTimeout(() => load(query), 250);
@@ -414,12 +415,9 @@ export function DocumentLibraryView({
   if (win.minimized) return null;
 
   const q = query.trim().toLowerCase();
-  const byQuery = q
-    ? docs.filter((d) => d.filename.toLowerCase().includes(q))
-    : docs;
   const byExt = activeExt
-    ? byQuery.filter((d) => (fileExtension(d.filename) || "—") === activeExt)
-    : byQuery;
+    ? docs.filter((d) => (fileExtension(d.filename) || "—") === activeExt)
+    : docs;
   const visible = sortDocs(byExt, sort);
   const extChips = extensionCounts(docs);
   const allSelected =
