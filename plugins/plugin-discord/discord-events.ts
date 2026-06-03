@@ -66,7 +66,10 @@ export interface DiscordServiceInternals {
 	voiceManager: DiscordService["voiceManager"];
 	messageDebouncer: MessageDebouncer | undefined;
 	channelDebouncer: ChannelDebouncer | undefined;
-	discordSettings: { shouldIgnoreBotMessages: boolean };
+	discordSettings: {
+		shouldIgnoreBotMessages: boolean;
+		shouldRespondOnlyToMentions?: boolean;
+	};
 	allowedChannelIds: string[] | undefined;
 	listenChannelIds?: string[];
 	allowAllSlashCommands: Set<string>;
@@ -162,13 +165,8 @@ function parseEventListenerConfig(
 				? Number.parseInt(responseCooldownMsSetting, 10) || 30000
 				: 30000;
 
-	const respondOnlyToMentionsSetting = service.runtime.getSetting(
-		"DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS",
-	);
-	const shouldRespondOnlyToMentions = !(
-		respondOnlyToMentionsSetting === false ||
-		respondOnlyToMentionsSetting === "false"
-	);
+	const shouldRespondOnlyToMentions =
+		service.discordSettings.shouldRespondOnlyToMentions !== false;
 
 	return {
 		listenCids,

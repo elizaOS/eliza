@@ -157,6 +157,18 @@ function makeRuntime(): {
 	return { registrations, runtime };
 }
 
+function findRegisteredHandler(
+	registrations: Registration[],
+	modelType: ModelType,
+): (runtime: AgentRuntime, params: Record<string, unknown>) => Promise<string> {
+	const registration = registrations.find((entry) => entry.modelType === modelType);
+	expect(registration).toBeDefined();
+	return registration?.handler as (
+		runtime: AgentRuntime,
+		params: Record<string, unknown>,
+	) => Promise<string>;
+}
+
 beforeEach(() => {
 	vi.clearAllMocks();
 	modeState.mode = "local";
@@ -293,18 +305,9 @@ describe("ensureLocalInferenceHandler", () => {
 		engineState.hasLoadedModel.mockReturnValue(true);
 
 		await ensureLocalInferenceHandler(runtime);
-		const registration = registrations.find(
-			(entry) => entry.modelType === ModelType.TEXT_SMALL,
-		);
-		const handler = registration?.handler as
-			| ((
-					runtime: AgentRuntime,
-					params: Record<string, unknown>,
-			  ) => Promise<string>)
-			| undefined;
-		expect(handler).toBeDefined();
+		const handler = findRegisteredHandler(registrations, ModelType.TEXT_SMALL);
 
-		await handler?.(runtime, {
+		await handler(runtime, {
 			messages: [
 				{ role: "system", content: "You are Eliza." },
 				{ role: "user", content: "hello. say hello back" },
@@ -323,6 +326,31 @@ describe("ensureLocalInferenceHandler", () => {
 			}),
 		);
 	});
+
+	it.each([
+		[ModelType.TEXT_SMALL, "TEXT_SMALL"],
+		[ModelType.TEXT_LARGE, "TEXT_LARGE"],
+		[ModelType.RESPONSE_HANDLER, "TEXT_SMALL"],
+	])(
+		"signals typed local unavailability for %s when no text model is loaded",
+		async (modelType, slot) => {
+			const { registrations, runtime } = makeRuntime();
+			engineState.hasLoadedModel.mockReturnValue(false);
+
+			await ensureLocalInferenceHandler(runtime);
+			const handler = findRegisteredHandler(registrations, modelType);
+
+			await expect(
+				handler(runtime, {
+					messages: [{ role: "user", content: "hello" }],
+				}),
+			).rejects.toMatchObject({
+				code: "LOCAL_INFERENCE_UNAVAILABLE",
+				modelType: slot,
+				reason: "backend_unavailable",
+			});
+		},
+	);
 
 	it("routes image description through the Eliza-1 vision arbiter", async () => {
 		const { registrations, runtime } = makeRuntime();
@@ -429,19 +457,13 @@ describe("ensureLocalInferenceHandler", () => {
 		engineState.hasLoadedModel.mockReturnValue(true);
 
 		await ensureLocalInferenceHandler(runtime);
-		const registration = registrations.find(
-			(entry) => entry.modelType === ModelType.RESPONSE_HANDLER,
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.RESPONSE_HANDLER,
 		);
-		const handler = registration?.handler as
-			| ((
-					runtime: AgentRuntime,
-					params: Record<string, unknown>,
-			  ) => Promise<string>)
-			| undefined;
-		expect(handler).toBeDefined();
 
 		const onStreamChunk = vi.fn();
-		await handler?.(runtime, {
+		await handler(runtime, {
 			messages: [{ role: "user", content: "hello" }],
 			streamStructured: true,
 			responseSkeleton: { spans: [] },
@@ -462,18 +484,12 @@ describe("ensureLocalInferenceHandler", () => {
 		engineState.hasLoadedModel.mockReturnValue(true);
 
 		await ensureLocalInferenceHandler(runtime);
-		const registration = registrations.find(
-			(entry) => entry.modelType === ModelType.RESPONSE_HANDLER,
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.RESPONSE_HANDLER,
 		);
-		const handler = registration?.handler as
-			| ((
-					runtime: AgentRuntime,
-					params: Record<string, unknown>,
-			  ) => Promise<string>)
-			| undefined;
-		expect(handler).toBeDefined();
 
-		await handler?.(runtime, {
+		await handler(runtime, {
 			messages: [{ role: "user", content: "hello" }],
 			providerOptions: { eliza: { thinking: "off" } },
 		});
