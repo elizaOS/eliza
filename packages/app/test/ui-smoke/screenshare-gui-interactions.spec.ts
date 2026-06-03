@@ -170,8 +170,8 @@ test("screenshare GUI drives host lifecycle, copied details, remote connect, and
   await expect(page.getByPlaceholder("Token").first()).toHaveValue(
     "screen-token-1",
   );
-  await expect(page.getByText("3", { exact: true })).toBeVisible();
-  await expect(page.getByText("2", { exact: true })).toBeVisible();
+  await expect(page.locator("main")).toContainText("Frames: 3");
+  await expect(page.locator("main")).toContainText("Inputs: 2");
 
   await page.getByRole("button", { name: "Copy host details" }).click();
   await expect

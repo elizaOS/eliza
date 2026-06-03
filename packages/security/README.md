@@ -32,7 +32,7 @@ const { ciphertext, nonce, authTag, keyId, keyVersion } = await kms.encrypt(
 
 - **`memory`** — in-process. Used by tests.
 - **`local`** — single-user desktop. HKDF-derives all sub-keys from a 32-byte root resolved via `@elizaos/vault`'s OS-keychain / scrypt-passphrase machinery.
-- **`steward`** — production. HTTP client against Steward's credential-proxy / KMS endpoints (see "Steward changes required" below). Currently scaffolded — every method throws `NotImplementedError` with the exact endpoint path Steward must expose.
+- **`steward`** — production. HTTP client against Steward's credential-proxy / KMS endpoints (see "Steward endpoint contract" below). It performs bearer-authenticated JSON requests and validates typed base64 responses.
 
 Backend selection:
 
@@ -85,9 +85,9 @@ Every event is validated against `AuditEventSchema` (Zod), passed through a per-
 
 The set of legal action names is `AUDIT_ACTIONS` in `src/audit/actions.ts`. Adding a new action requires a code change here plus a matching entry in `METADATA_ALLOWLIST` in `src/audit/dispatcher.ts`.
 
-## Steward changes required
+## Steward endpoint contract
 
-For the production adapter to leave stub territory, Steward needs the following endpoints (`TODO(steward-soc2)`):
+The production adapter calls the following Steward endpoints:
 
 ```
 POST   /v1/kms/keys                              { keyId, rotationDays? } -> { keyId, version }
