@@ -2680,7 +2680,8 @@ platform no-ops are separated from actionable runtime gaps.
 
 - Clarified the browser `stopDiscovery()` path: web platforms never start
   Bonjour/mDNS discovery, so there is no active discovery session to stop.
-  Remaining marker hits are Vitest `stubGlobal` / `unstubAllGlobals` test APIs.
+  Renamed the web test socket fixture from `FakeWebSocket` to `TestWebSocket`;
+  remaining marker hits are Vitest `stubGlobal` / `unstubAllGlobals` test APIs.
 - Verification: `bun run --cwd plugins/plugin-native-gateway test`,
   `bun run --cwd plugins/plugin-native-gateway build`, marker scan excluding
   generated output, and `git diff --check -- plugins/plugin-native-gateway`
