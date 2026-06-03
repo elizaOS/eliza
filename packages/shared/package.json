@@ -83,6 +83,16 @@
       "import": "./dist/local-inference/index.js",
       "default": "./dist/local-inference/index.js"
     },
+    "./local-inference/routing-preferences": {
+      "types": "./dist/local-inference/routing-preferences.d.ts",
+      "import": "./dist/local-inference/routing-preferences.js",
+      "default": "./dist/local-inference/routing-preferences.js"
+    },
+    "./local-inference/verify": {
+      "types": "./dist/local-inference/verify.d.ts",
+      "import": "./dist/local-inference/verify.js",
+      "default": "./dist/local-inference/verify.js"
+    },
     "./character-presets": {
       "types": "./dist/character-presets.d.ts",
       "import": "./dist/character-presets.js",
