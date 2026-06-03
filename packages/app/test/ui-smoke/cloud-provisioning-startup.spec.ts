@@ -65,24 +65,47 @@ async function fulfillJson(
   });
 }
 
-async function clickIfVisible(locator: Locator): Promise<boolean> {
+async function clickIfVisible(
+  locator: Locator,
+  timeoutMs = 2_000,
+): Promise<boolean> {
   const target = locator.first();
-  const visible = await target.isVisible({ timeout: 2_000 }).catch(() => false);
-  if (visible) {
-    await target.click();
-    return true;
+  try {
+    await target.waitFor({ state: "visible", timeout: timeoutMs });
+    await target.click({ timeout: timeoutMs });
+  } catch {
+    return false;
   }
-  return false;
+  return true;
 }
 
 async function startCloudRuntime(page: Page): Promise<void> {
   await clickIfVisible(page.getByRole("button", { name: "Get started" }));
   const startButton = page.getByRole("button", { name: /^Start$/ });
-  if (!(await clickIfVisible(startButton))) {
-    await page.getByRole("button", { name: /^Connect$/ }).click();
-    await expect(startButton).toBeVisible({ timeout: 30_000 });
+  if (await clickIfVisible(startButton, 30_000)) {
+    return;
   }
-  await startButton.click();
+
+  const compactCloudButton = page
+    .getByTestId("onboarding-toast")
+    .getByRole("button", { name: /^Eliza Cloud$/ });
+  if (await clickIfVisible(compactCloudButton, 10_000)) {
+    // Current compact onboarding may use the first cloud click to complete or
+    // refresh cloud auth state. If the toast is still actionable, click again to
+    // start provisioning with the now-connected cloud session.
+    await clickIfVisible(compactCloudButton, 15_000);
+    return;
+  }
+
+  const connectButton = page.getByRole("button", { name: /^Connect$/ });
+  if (await clickIfVisible(connectButton, 10_000)) {
+    if (await clickIfVisible(startButton, 30_000)) {
+      return;
+    }
+    return;
+  }
+
+  throw new Error("Cloud runtime did not show a Start or cloud selection action");
 }
 
 async function installCloudConnectionRoutes(
