@@ -1,0 +1,742 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Eliza Orchestrator Operator Inspector - Production Readiness</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f7f8fb;
+        --panel: #ffffff;
+        --ink: #18202f;
+        --muted: #667085;
+        --line: #d9deea;
+        --accent: #0f6b57;
+        --accent-soft: #e3f5ef;
+        --warn: #a15c00;
+        --warn-soft: #fff1d6;
+        --code-bg: #101828;
+        --code-ink: #f9fafb;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #111318;
+          --panel: #191d25;
+          --ink: #eef2f7;
+          --muted: #a8b0bf;
+          --line: #303846;
+          --accent: #6ed0b5;
+          --accent-soft: #17352e;
+          --warn: #f5b85b;
+          --warn-soft: #342513;
+          --code-bg: #0b0d12;
+          --code-ink: #f9fafb;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        line-height: 1.55;
+      }
+
+      main {
+        width: min(1120px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 32px 0 56px;
+      }
+
+      header {
+        padding: 28px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      h1,
+      h2,
+      h3 {
+        line-height: 1.2;
+        margin: 0;
+      }
+
+      h1 {
+        font-size: clamp(30px, 5vw, 52px);
+        max-width: 900px;
+      }
+
+      h2 {
+        font-size: 24px;
+        margin-bottom: 14px;
+      }
+
+      h3 {
+        font-size: 18px;
+        margin-top: 18px;
+        margin-bottom: 8px;
+      }
+
+      p {
+        margin: 10px 0 0;
+      }
+
+      a {
+        color: var(--accent);
+      }
+
+      .lede {
+        max-width: 860px;
+        color: var(--muted);
+        font-size: 18px;
+        margin-top: 16px;
+      }
+
+      .meta-grid,
+      .card-grid,
+      .two-col {
+        display: grid;
+        gap: 14px;
+      }
+
+      .meta-grid {
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        margin-top: 24px;
+      }
+
+      .card-grid {
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      }
+
+      .two-col {
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      }
+
+      section,
+      .card,
+      .callout {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      section {
+        margin-top: 18px;
+        padding: 24px;
+      }
+
+      .card,
+      .callout {
+        padding: 16px;
+      }
+
+      .label {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .value {
+        display: block;
+        margin-top: 6px;
+        font-weight: 700;
+        overflow-wrap: anywhere;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 3px 9px;
+        color: var(--accent);
+        background: var(--accent-soft);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .warning {
+        color: var(--warn);
+        background: var(--warn-soft);
+      }
+
+      ul,
+      ol {
+        margin: 10px 0 0;
+        padding-left: 22px;
+      }
+
+      li + li {
+        margin-top: 6px;
+      }
+
+      code,
+      pre {
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      code {
+        padding: 1px 4px;
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--line) 38%, transparent);
+      }
+
+      pre {
+        margin: 12px 0 0;
+        padding: 14px;
+        border-radius: 8px;
+        overflow-x: auto;
+        background: var(--code-bg);
+        color: var(--code-ink);
+      }
+
+      table {
+        width: 100%;
+        margin-top: 12px;
+        border-collapse: collapse;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      th,
+      td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: var(--muted);
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .quote {
+        border-left: 4px solid var(--accent);
+        padding-left: 14px;
+        color: var(--muted);
+        font-size: 18px;
+        margin-top: 12px;
+      }
+
+      details {
+        margin-top: 12px;
+      }
+
+      summary {
+        cursor: pointer;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <span class="badge">Production-readiness note</span>
+        <h1>Eliza Orchestrator Operator Inspector</h1>
+        <p class="lede">
+          Status, implementation inventory, verification evidence, and product
+          vision for the Conductor-inspired Eliza orchestrator inspector work.
+        </p>
+        <p class="quote">
+          Eliza is not a workflow DAG editor. It is a live agent room with
+          operator-grade inspection, intervention, and recovery.
+        </p>
+        <div class="meta-grid">
+          <div class="card">
+            <span class="label">Date</span>
+            <span class="value">June 3, 2026</span>
+          </div>
+          <div class="card">
+            <span class="label">Worktree</span>
+            <span class="value"
+              >/home/nubs/Git/iqlabs/eliza-labs/eliza-conductor-inspector</span
+            >
+          </div>
+          <div class="card">
+            <span class="label">Branch</span>
+            <span class="value">codex/conductor-inspector</span>
+          </div>
+          <div class="card">
+            <span class="label">Tracked upstream</span>
+            <span class="value">origin/codex/conductor-inspector</span>
+          </div>
+        </div>
+      </header>
+
+      <section>
+        <h2>Remote And Shipping Status</h2>
+        <div class="two-col">
+          <div class="callout">
+            <h3>Git remotes</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Operation</th>
+                  <th>Remote</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Fetch</td>
+                  <td><code>https://github.com/elizaOS/eliza.git</code></td>
+                </tr>
+                <tr>
+                  <td>Push</td>
+                  <td><code>git@github.com:elizaOS/eliza.git</code></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout">
+            <h3>Current shipment state</h3>
+            <p>
+              The branch has a closed GitHub PR association:
+              <a href="https://github.com/elizaOS/eliza/pull/8166">PR #8166</a>,
+              titled <em>feat(orchestrator): add Odysseus workbench and operator
+              inspector</em>.
+            </p>
+            <p>
+              The production-readiness hardening work described here is still
+              local and uncommitted in this worktree. It has not been pushed,
+              merged, or opened as a new PR yet.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>What We Have Now</h2>
+        <div class="card-grid">
+          <div class="card">
+            <h3>Inspectable task room</h3>
+            <p>
+              The operator workbench can inspect task detail, sub-agent
+              sessions, user and agent turns, reasoning blocks, system events,
+              tool calls, artifacts, and usage. Inspector drawers preserve ids
+              so polling refreshes can keep focus on the same logical record.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Normalized timeline</h3>
+            <p>
+              The backend now exposes a single mixed timeline endpoint for
+              messages and events. The UI uses that endpoint for initial fetches,
+              refreshes, and loading older history, which keeps tool, reasoning,
+              notice, and message ordering consistent.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Recovery controls</h3>
+            <p>
+              Retry turn, rerun from event, restart, and restart with edited plan
+              now exist as backend routes and UI client methods. Operator input
+              conflicts return explicit conflict errors instead of pretending to
+              succeed.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Immutable plan revisions</h3>
+            <p>
+              Plans can be stored as durable revision records, listed,
+              referenced by recovery actions, and applied to task state. Older
+              persisted task documents load with an empty revision list for
+              backwards compatibility.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Tool fidelity</h3>
+            <p>
+              ACP terminal tool updates are emitted into the timeline so the
+              inspector keeps final status, raw output, structured output, and
+              execute exit codes instead of leaving tools stuck at in-progress.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Side-effect honesty</h3>
+            <p>
+              User-message delivery and stop controls now report ACP-unavailable
+              failures and mark affected sessions as failed, rather than
+              silently recording a local success with no remote side effect.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Backend Surface</h2>
+        <p>
+          The durable orchestrator API now supports task lifecycle, room
+          messaging, telemetry, timeline inspection, plan revisioning, and
+          recovery.
+        </p>
+        <div class="two-col">
+          <div>
+            <h3>Task and room controls</h3>
+            <ul>
+              <li><code>GET /api/orchestrator/status</code></li>
+              <li><code>GET /api/orchestrator/tasks</code></li>
+              <li><code>POST /api/orchestrator/tasks</code></li>
+              <li><code>GET /api/orchestrator/tasks/:taskId</code></li>
+              <li><code>PATCH /api/orchestrator/tasks/:taskId</code></li>
+              <li><code>DELETE /api/orchestrator/tasks/:taskId</code></li>
+              <li><code>POST /api/orchestrator/tasks/:taskId/messages</code></li>
+              <li><code>GET /api/orchestrator/tasks/:taskId/messages</code></li>
+              <li><code>GET /api/orchestrator/tasks/:taskId/events</code></li>
+              <li><code>GET /api/orchestrator/tasks/:taskId/timeline</code></li>
+            </ul>
+          </div>
+          <div>
+            <h3>Recovery and plans</h3>
+            <ul>
+              <li><code>POST /api/orchestrator/tasks/:taskId/retry-turn</code></li>
+              <li>
+                <code>POST /api/orchestrator/tasks/:taskId/rerun-from-event</code>
+              </li>
+              <li><code>POST /api/orchestrator/tasks/:taskId/restart</code></li>
+              <li>
+                <code
+                  >POST /api/orchestrator/tasks/:taskId/restart-with-edited-plan</code
+                >
+              </li>
+              <li>
+                <code>GET /api/orchestrator/tasks/:taskId/plan-revisions</code>
+              </li>
+              <li>
+                <code>POST /api/orchestrator/tasks/:taskId/plan-revisions</code>
+              </li>
+              <li><code>POST /api/orchestrator/tasks/:taskId/agents</code></li>
+              <li>
+                <code
+                  >POST /api/orchestrator/tasks/:taskId/agents/:sessionId/stop</code
+                >
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Implementation Inventory</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Area</th>
+              <th>What changed</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Task store</td>
+              <td>
+                Added <code>planRevisions</code>, JSON migration for older
+                documents, store methods for adding revisions, uncapped primary
+                message/event history, and cloning around patches/revisions.
+              </td>
+            </tr>
+            <tr>
+              <td>Task service</td>
+              <td>
+                Added create/list plan revision flows, recovery flows, restart
+                with edited plan, normalized page DTOs, timeline listing, and
+                ACP-unavailable failure handling.
+              </td>
+            </tr>
+            <tr>
+              <td>Routes</td>
+              <td>
+                Added timeline, plan revision, retry, rerun, restart, and edited
+                restart routes. Missing tasks now 404 on paginated detail
+                surfaces. Operator input conflicts now return 409.
+              </td>
+            </tr>
+            <tr>
+              <td>DTO mapper and UI client</td>
+              <td>
+                Added normalized timeline types, plan revision DTOs, recovery
+                input types, client methods, and a server-client contract test
+                that pins nested runtime key sets.
+              </td>
+            </tr>
+            <tr>
+              <td>Operator workbench</td>
+              <td>
+                Switched initial load, refresh, and load-older behavior to the
+                normalized mixed timeline endpoint while preserving selected-task
+                guards against cross-task timeline contamination.
+              </td>
+            </tr>
+            <tr>
+              <td>ACP stream fidelity</td>
+              <td>
+                Emits terminal tool updates and parses structured adapter output,
+                raw output, diffs, and exit codes for inspector display.
+              </td>
+            </tr>
+            <tr>
+              <td>Typecheck plumbing</td>
+              <td>
+                Added missing UI tsconfig aliases for
+                <code>@elizaos/capacitor-messages</code> and
+                <code>@elizaos/capacitor-system</code>, making
+                <code>packages/ui typecheck</code> pass.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Verification Evidence</h2>
+        <p>
+          These checks passed in the current worktree after the latest hardening
+          and documentation pass.
+        </p>
+        <ul>
+          <li>
+            <code>bun run --cwd plugins/plugin-agent-orchestrator test:unit</code>
+            - 38 files, 483 tests passed.
+          </li>
+          <li>
+            <code>bun run --cwd plugins/plugin-agent-orchestrator build</code>
+            - Node, CJS, and declaration builds passed.
+          </li>
+          <li>
+            <code>bun run --cwd packages/ui typecheck</code> - passed.
+          </li>
+          <li>
+            <code>bun run --cwd packages/ui build</code> - passed.
+          </li>
+          <li>
+            <code
+              >bunx vitest run --config vitest.config.ts
+              src/api/client-agent-orchestrator-timeline.test.ts</code
+            >
+            - 3 tests passed.
+          </li>
+          <li>
+            <code>bun run --cwd plugins/plugin-task-coordinator build</code>
+            - JS, views, and types passed.
+          </li>
+          <li>
+            <code
+              >bun run --cwd packages/app test:e2e
+              test/ui-smoke/orchestrator-gui-workbench.spec.ts</code
+            >
+            - 4 Playwright smoke tests passed.
+          </li>
+          <li>
+            <code>bunx biome check &lt;20 touched files&gt;</code> - clean.
+          </li>
+          <li><code>git diff --check</code> - clean.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Vision</h2>
+        <div class="two-col">
+          <div>
+            <h3>Product direction</h3>
+            <ol>
+              <li>
+                Keep the primary experience as a live agent room, not a static
+                workflow designer.
+              </li>
+              <li>
+                Make every meaningful turn, tool call, session, artifact,
+                decision, and recovery action inspectable.
+              </li>
+              <li>
+                Let operators intervene with bounded, explicit side effects:
+                message, pause, stop, retry, rerun, restart, fork, validate, and
+                edit plan.
+              </li>
+              <li>
+                Preserve the durable context that makes recovery auditable: ids,
+                timestamps, raw tool records, source event ids, plan revisions,
+                and validation evidence.
+              </li>
+            </ol>
+          </div>
+          <div>
+            <h3>What we should avoid</h3>
+            <ul>
+              <li>Do not turn Eliza into a DAG editor.</li>
+              <li>Do not fabricate per-tool token or cost numbers.</li>
+              <li>Do not hide failed side effects behind optimistic UI success.</li>
+              <li>Do not discard timeline history needed for inspection.</li>
+              <li>
+                Do not add destructive rerun behavior until there is a dedicated
+                product and safety design.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Remaining Product Work</h2>
+        <div class="card-grid">
+          <div class="card">
+            <h3>Operator actions in the drawer</h3>
+            <p>
+              The backend/client recovery actions exist. The next UX step is to
+              expose careful buttons or menus from selected timeline/session/tool
+              records, with confirmation for disruptive actions.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Plan editor UI</h3>
+            <p>
+              The data model and routes support edited plan revisions. The UI
+              still needs a real plan-editing surface that shows base revision,
+              edit summary, and restart impact before creating the revision.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Remote/mobile live updates</h3>
+            <p>
+              The workbench still relies on polling. A production remote/mobile
+              version should use SSE or WebSocket updates and a registered tunnel
+              service instead of repeated polling.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Provider and verification UX</h3>
+            <p>
+              Provider policy is inspectable but not actively changeable, and
+              validation evidence is present but not yet a dedicated checklist
+              surface.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Shipping Plan</h2>
+        <ol>
+          <li>
+            Review the local diff and decide whether this hardening should
+            reopen the prior PR topic or become a fresh PR.
+          </li>
+          <li>
+            Commit the current work on <code>codex/conductor-inspector</code>.
+          </li>
+          <li>Push to <code>origin</code> using the configured SSH push remote.</li>
+          <li>
+            Open a new draft PR against <code>develop</code> with the verification
+            evidence above.
+          </li>
+          <li>
+            Watch CI for package build, app smoke, typecheck, and lint drift.
+          </li>
+        </ol>
+        <p>
+          Current recommendation: open a new draft PR. PR #8166 is closed, and
+          this is a production-readiness hardening pass over that branch rather
+          than the same shipment event.
+        </p>
+      </section>
+
+      <section>
+        <h2>Changed Files</h2>
+        <details open>
+          <summary>Implementation, tests, and support files</summary>
+          <ul>
+            <li><code>packages/app/test/ui-smoke/helpers.ts</code></li>
+            <li>
+              <code>packages/app/test/ui-smoke/orchestrator-gui-workbench.spec.ts</code>
+            </li>
+            <li><code>packages/ui/src/api/client-agent.ts</code></li>
+            <li><code>packages/ui/src/api/client-types-cloud.ts</code></li>
+            <li>
+              <code>packages/ui/src/api/client-agent-orchestrator-timeline.test.ts</code>
+            </li>
+            <li><code>packages/ui/tsconfig.json</code></li>
+            <li>
+              <code>plugins/plugin-agent-orchestrator/src/api/orchestrator-routes.ts</code>
+            </li>
+            <li>
+              <code>plugins/plugin-agent-orchestrator/src/services/acp-service.ts</code>
+            </li>
+            <li>
+              <code
+                >plugins/plugin-agent-orchestrator/src/services/orchestrator-task-mapper.ts</code
+              >
+            </li>
+            <li>
+              <code
+                >plugins/plugin-agent-orchestrator/src/services/orchestrator-task-service.ts</code
+              >
+            </li>
+            <li>
+              <code
+                >plugins/plugin-agent-orchestrator/src/services/orchestrator-task-store.ts</code
+              >
+            </li>
+            <li>
+              <code
+                >plugins/plugin-agent-orchestrator/src/services/orchestrator-task-types.ts</code
+              >
+            </li>
+            <li>
+              <code
+                >plugins/plugin-agent-orchestrator/__tests__/unit/acp-service.test.ts</code
+              >
+            </li>
+            <li>
+              <code
+                >plugins/plugin-agent-orchestrator/__tests__/unit/orchestrator-routes.test.ts</code
+              >
+            </li>
+            <li>
+              <code
+                >plugins/plugin-agent-orchestrator/__tests__/unit/orchestrator-task-mapper-contract.test.ts</code
+              >
+            </li>
+            <li>
+              <code
+                >plugins/plugin-agent-orchestrator/__tests__/unit/orchestrator-task-service.test.ts</code
+              >
+            </li>
+            <li>
+              <code
+                >plugins/plugin-agent-orchestrator/__tests__/unit/orchestrator-task-store.test.ts</code
+              >
+            </li>
+            <li>
+              <code>plugins/plugin-task-coordinator/src/OrchestratorWorkbench.tsx</code>
+            </li>
+            <li>
+              <code>plugins/plugin-task-coordinator/src/orchestrator-stream.tsx</code>
+            </li>
+            <li>
+              <code
+                >plugins/plugin-task-coordinator/__tests__/unit/orchestrator-stream.test.ts</code
+              >
+            </li>
+          </ul>
+        </details>
+      </section>
+    </main>
+  </body>
+</html>

@@ -75,6 +75,7 @@ function taskDetail(overrides: JsonRecord = {}) {
     artifacts: [],
     messages: [],
     transcripts: [],
+    planRevisions: [],
     ...overrides,
   };
 }
@@ -122,6 +123,45 @@ async function fulfillJson(
     contentType: "application/json",
     body: JSON.stringify(body),
   });
+}
+
+function timelinePage(
+  messages: JsonRecord[],
+  events: JsonRecord[],
+  url: URL,
+): { items: JsonRecord[]; nextCursor: string | null } {
+  const limit =
+    Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "100", 10)) ||
+    100;
+  const start =
+    Math.max(0, Number.parseInt(url.searchParams.get("cursor") ?? "0", 10)) ||
+    0;
+  const items = [
+    ...messages.map((message) => ({
+      id: `message:${message.id}`,
+      kind: "message",
+      threadId: message.threadId,
+      sessionId: message.sessionId ?? null,
+      timestamp: message.timestamp,
+      createdAt: message.createdAt,
+      message,
+    })),
+    ...events.map((event) => ({
+      id: `event:${event.id}`,
+      kind: "event",
+      threadId: event.threadId,
+      sessionId: event.sessionId ?? null,
+      timestamp: event.timestamp,
+      createdAt: event.createdAt,
+      event,
+    })),
+  ].sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
+  const page = items.slice(start, start + limit);
+  const next = start + limit;
+  return {
+    items: page,
+    nextCursor: next < items.length ? String(next) : null,
+  };
 }
 
 async function installOrchestratorWorkbenchRoutes(
@@ -322,6 +362,14 @@ async function installOrchestratorWorkbenchRoutes(
         ).length,
       };
       await fulfillJson(route, { stopped: true });
+      return;
+    }
+
+    if (
+      method === "GET" &&
+      pathname === "/api/orchestrator/tasks/smoke-task-1/timeline"
+    ) {
+      await fulfillJson(route, timelinePage(messages, events, url));
       return;
     }
 

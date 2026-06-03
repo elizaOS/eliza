@@ -17,6 +17,7 @@ import {
   type CodingAgentTaskSessionRecord,
   type CodingAgentTaskThread,
   type CodingAgentTaskThreadDetail,
+  type CodingAgentTaskTimelineItem,
   type CodingAgentTaskUsageSummary,
   client,
   useApp,
@@ -428,6 +429,19 @@ function mergeById<T extends { id: string; timestamp: number }>(
   for (const item of previous) byId.set(item.id, item);
   for (const item of incoming) byId.set(item.id, item);
   return [...byId.values()].sort((a, b) => a.timestamp - b.timestamp);
+}
+
+function splitTimelineItems(items: CodingAgentTaskTimelineItem[]): {
+  messages: CodingAgentTaskMessageRecord[];
+  events: CodingAgentTaskEventRecord[];
+} {
+  const messages: CodingAgentTaskMessageRecord[] = [];
+  const events: CodingAgentTaskEventRecord[] = [];
+  for (const item of items) {
+    if (item.kind === "message") messages.push(item.message);
+    else events.push(item.event);
+  }
+  return { messages, events };
 }
 
 interface NormalizedPlan {
@@ -2154,6 +2168,735 @@ function TaskInspector({
   );
 }
 
+function compactText(value: string, max = 6000): string {
+  if (value.length <= max) return value;
+  return `${value.slice(0, max).trimEnd()}\n\n… ${(
+    value.length - max
+  ).toLocaleString()} characters truncated`;
+}
+
+function hasRecordEntries(value: Record<string, unknown> | null | undefined) {
+  return Boolean(value && Object.keys(value).length > 0);
+}
+
+function JsonBlock({
+  value,
+  emptyLabel,
+}: {
+  value: unknown;
+  emptyLabel: string;
+}) {
+  const empty =
+    value === null ||
+    value === undefined ||
+    (Array.isArray(value) && value.length === 0) ||
+    (typeof value === "object" &&
+      !Array.isArray(value) &&
+      Object.keys(value as Record<string, unknown>).length === 0);
+  if (empty) {
+    return <p className="text-xs-tight text-muted">{emptyLabel}</p>;
+  }
+  const text =
+    typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  return (
+    <pre
+      className="max-h-72 overflow-auto rounded-md border border-border/40 bg-bg/60 px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-muted"
+      data-testid="orchestrator-detail-json"
+    >
+      {compactText(text)}
+    </pre>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: ReactNode }) {
+  if (value === null || value === undefined || value === "") return null;
+  return (
+    <div className="grid grid-cols-[5.25rem_minmax(0,1fr)] gap-2 text-xs-tight">
+      <span className="text-muted">{label}</span>
+      <span className="min-w-0 break-words text-txt">{value}</span>
+    </div>
+  );
+}
+
+function OperatorTabs({
+  active,
+  onSelect,
+  t,
+}: {
+  active: OperatorTab;
+  onSelect: (tab: OperatorTab) => void;
+  t: Translate;
+}) {
+  const tabs: Array<{ id: OperatorTab; label: string }> = [
+    {
+      id: "input",
+      label: t("orchestrator.detail.tabs.input", { defaultValue: "Input" }),
+    },
+    {
+      id: "output",
+      label: t("orchestrator.detail.tabs.output", { defaultValue: "Output" }),
+    },
+    {
+      id: "events",
+      label: t("orchestrator.detail.tabs.events", { defaultValue: "Events" }),
+    },
+    {
+      id: "usage",
+      label: t("orchestrator.detail.tabs.usage", { defaultValue: "Usage" }),
+    },
+  ];
+  return (
+    <div
+      className="flex rounded-md border border-border/50 bg-bg/40 p-0.5"
+      role="tablist"
+      aria-label={t("orchestrator.detail.tabsLabel", {
+        defaultValue: "Detail tabs",
+      })}
+    >
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          role="tab"
+          aria-selected={active === tab.id}
+          onClick={() => onSelect(tab.id)}
+          className={`flex-1 rounded px-2 py-1 text-2xs font-semibold uppercase tracking-[0.08em] transition-colors ${
+            active === tab.id
+              ? "bg-bg-hover text-txt-strong"
+              : "text-muted hover:bg-bg-hover/50 hover:text-txt"
+          }`}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function sessionUsage(
+  session: CodingAgentTaskSessionRecord,
+): CodingAgentTaskUsageSummary {
+  return {
+    inputTokens: session.inputTokens,
+    outputTokens: session.outputTokens,
+    reasoningTokens: session.reasoningTokens,
+    cacheTokens: session.cacheTokens,
+    totalTokens: session.totalTokens,
+    costUsd: session.costUsd,
+    state: session.usageState,
+    byProvider: [
+      {
+        provider: session.providerSource ?? session.framework,
+        model: session.model ?? undefined,
+        inputTokens: session.inputTokens,
+        outputTokens: session.outputTokens,
+        reasoningTokens: session.reasoningTokens,
+        cacheTokens: session.cacheTokens,
+        totalTokens: session.totalTokens,
+        costUsd: session.costUsd,
+        state: session.usageState,
+      },
+    ],
+  };
+}
+
+function blockSessionId(block: ConversationBlock): string | null {
+  if (block.kind === "tool") return block.tool.sessionId;
+  return block.sessionId;
+}
+
+function blockEventIds(block: ConversationBlock): string[] {
+  if (block.kind === "tool") return block.tool.eventIds;
+  if (block.kind === "reasoning") return block.eventIds;
+  if (block.kind === "notice") return [block.eventId];
+  return [];
+}
+
+function blockMessageIds(block: ConversationBlock): string[] {
+  if (block.kind === "user" || block.kind === "agent") return block.messageIds;
+  return [];
+}
+
+function blockSelection(
+  block: ConversationBlock,
+): Extract<DetailDrawerSelection, { kind: "block" }> {
+  return {
+    kind: "block",
+    blockKind: block.kind,
+    eventIds: blockEventIds(block),
+    messageIds: blockMessageIds(block),
+  };
+}
+
+function blockMatchesSelection(
+  block: ConversationBlock,
+  selection: Extract<DetailDrawerSelection, { kind: "block" }>,
+): boolean {
+  if (block.kind !== selection.blockKind) return false;
+  const eventIds = blockEventIds(block);
+  if (
+    selection.eventIds.length > 0 &&
+    selection.eventIds.some((id) => eventIds.includes(id))
+  ) {
+    return true;
+  }
+  const messageIds = blockMessageIds(block);
+  return (
+    selection.messageIds.length > 0 &&
+    selection.messageIds.some((id) => messageIds.includes(id))
+  );
+}
+
+function blockSelectionKey(selection: DetailDrawerSelection): string {
+  if (selection.kind === "task") return "task";
+  if (selection.kind === "session") return `session:${selection.sessionId}`;
+  return [
+    "block",
+    selection.blockKind,
+    selection.eventIds.join(","),
+    selection.messageIds.join(","),
+  ].join(":");
+}
+
+function blockTitle(block: ConversationBlock, t: Translate): string {
+  if (block.kind === "tool") return block.tool.title;
+  if (block.kind === "agent") return block.senderName;
+  if (block.kind === "user")
+    return t("orchestrator.detail.userTurn", { defaultValue: "User turn" });
+  if (block.kind === "reasoning")
+    return t("orchestrator.detail.reasoning", { defaultValue: "Reasoning" });
+  return block.eventType.replace(/_/g, " ");
+}
+
+function eventError(
+  events: CodingAgentTaskEventRecord[],
+  t: Translate,
+): string | null {
+  const error = events.find((event) => event.eventType === "error");
+  if (!error) return null;
+  const message =
+    typeof error.data?.message === "string"
+      ? error.data.message
+      : typeof error.data?.error === "string"
+        ? error.data.error
+        : error.summary;
+  return (
+    message.trim() ||
+    t("orchestrator.detail.errorFallback", { defaultValue: "Error" })
+  );
+}
+
+function blockError(
+  block: ConversationBlock | null,
+  events: CodingAgentTaskEventRecord[],
+  t: Translate,
+): string | null {
+  const fromEvent = eventError(events, t);
+  if (fromEvent) return fromEvent;
+  if (!block) return null;
+  if (block.kind === "agent" && block.tone === "error") {
+    return compactText(block.content, 600);
+  }
+  if (block.kind === "notice" && block.eventType === "error") {
+    return block.text;
+  }
+  if (block.kind === "tool" && block.tool.status === "failed") {
+    if (block.tool.output) return compactText(block.tool.output, 600);
+    if (typeof block.tool.exitCode === "number") {
+      return t("orchestrator.detail.toolExited", {
+        defaultValue: `Tool exited with code ${block.tool.exitCode}.`,
+        code: block.tool.exitCode,
+      });
+    }
+    return (
+      block.tool.rawStatus ??
+      t("orchestrator.detail.toolFailed", { defaultValue: "Tool failed." })
+    );
+  }
+  return null;
+}
+
+function sessionError(
+  session: CodingAgentTaskSessionRecord,
+  t: Translate,
+): string | null {
+  if (session.status !== "error" && session.status !== "errored") return null;
+  return (
+    session.completionSummary ??
+    session.activeTool ??
+    t("orchestrator.detail.sessionFailed", {
+      defaultValue: "Session failed.",
+    })
+  );
+}
+
+function ErrorFirstBanner({ text }: { text: string | null }) {
+  if (!text) return null;
+  return (
+    <div className="rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-2 text-xs-tight text-red-500">
+      {text}
+    </div>
+  );
+}
+
+function OperatorDrawerShell({
+  title,
+  subtitle,
+  closeLabel,
+  className,
+  style,
+  onClose,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  closeLabel: string;
+  className?: string;
+  style?: CSSProperties;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={`shrink-0 flex-col gap-2.5 overflow-y-auto border-l border-border/60 bg-bg p-2.5 ${className ?? "flex w-80"}`}
+      style={style}
+      data-testid="orchestrator-operator-detail"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="truncate text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+            {title}
+          </h3>
+          <p className="mt-0.5 truncate text-xs-tight font-medium text-txt">
+            {subtitle}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="-mr-1 rounded p-1 text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
+          aria-label={closeLabel}
+          data-testid="orchestrator-close-operator-detail"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function EventList({
+  events,
+  messages,
+  locale,
+  t,
+}: {
+  events: CodingAgentTaskEventRecord[];
+  messages: CodingAgentTaskMessageRecord[];
+  locale?: string;
+  t: Translate;
+}) {
+  if (events.length === 0 && messages.length === 0) {
+    return (
+      <p className="text-xs-tight text-muted">
+        {t("orchestrator.detail.noEvents", {
+          defaultValue: "No events captured.",
+        })}
+      </p>
+    );
+  }
+  const timeline = [
+    ...messages.map((message) => ({
+      kind: "message" as const,
+      id: message.id,
+      timestamp: message.timestamp,
+      record: message,
+    })),
+    ...events.map((event) => ({
+      kind: "event" as const,
+      id: event.id,
+      timestamp: event.timestamp,
+      record: event,
+    })),
+  ].sort((a, b) => a.timestamp - b.timestamp);
+  return (
+    <div className="space-y-1.5">
+      {timeline.map((item) => {
+        if (item.kind === "message") {
+          const message = item.record;
+          return (
+            <div
+              key={`message-${message.id}`}
+              className="rounded-md border border-border/40 bg-bg/40 p-2"
+            >
+              <div className="mb-1 flex items-center gap-2 text-2xs text-muted">
+                <span className="font-semibold text-txt">
+                  {message.senderKind}
+                </span>
+                <span>{message.direction}</span>
+                <span className="ml-auto tabular-nums">
+                  {formatClockTime(message.timestamp, locale)}
+                </span>
+              </div>
+              <JsonBlock
+                value={message}
+                emptyLabel={t("orchestrator.detail.noMessagePayload", {
+                  defaultValue: "No message payload.",
+                })}
+              />
+            </div>
+          );
+        }
+        const event = item.record;
+        return (
+          <div
+            key={`event-${event.id}`}
+            className="rounded-md border border-border/40 bg-bg/40 p-2"
+          >
+            <div className="mb-1 flex items-center gap-2 text-2xs text-muted">
+              <span className="font-semibold text-txt">
+                {event.eventType.replace(/_/g, " ")}
+              </span>
+              <span className="ml-auto tabular-nums">
+                {formatClockTime(event.timestamp, locale)}
+              </span>
+            </div>
+            {event.summary ? (
+              <p className="mb-1 text-xs-tight text-txt">{event.summary}</p>
+            ) : null}
+            <JsonBlock
+              value={event.data}
+              emptyLabel={t("orchestrator.detail.noEventData", {
+                defaultValue: "No event data.",
+              })}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function OperatorDetailDrawer({
+  selection,
+  block,
+  session,
+  events,
+  messages,
+  taskUsage,
+  className,
+  style,
+  onClose,
+  t,
+  locale,
+}: {
+  selection: DetailDrawerSelection;
+  block: ConversationBlock | null;
+  session: CodingAgentTaskSessionRecord | null;
+  events: CodingAgentTaskEventRecord[];
+  messages: CodingAgentTaskMessageRecord[];
+  taskUsage: CodingAgentTaskUsageSummary;
+  className?: string;
+  style?: CSSProperties;
+  onClose: () => void;
+  t: Translate;
+  locale?: string;
+}) {
+  const [tab, setTab] = useState<OperatorTab>("input");
+  const closeDetailsLabel = t("orchestrator.detail.close", {
+    defaultValue: "Close details",
+  });
+  const label = (key: string, defaultValue: string) =>
+    t(`orchestrator.detail.${key}`, { defaultValue });
+
+  if (selection.kind === "session" && !session) {
+    return (
+      <OperatorDrawerShell
+        title={t("orchestrator.detail.session", { defaultValue: "Session" })}
+        subtitle={t("orchestrator.detail.noLongerAvailable", {
+          defaultValue: "No longer available",
+        })}
+        closeLabel={closeDetailsLabel}
+        className={className}
+        style={style}
+        onClose={onClose}
+      >
+        <p className="text-xs-tight text-muted">
+          {t("orchestrator.detail.sessionDataChanged", {
+            defaultValue: "Session data changed.",
+          })}
+        </p>
+      </OperatorDrawerShell>
+    );
+  }
+  if (selection.kind === "block" && !block) {
+    return (
+      <OperatorDrawerShell
+        title={t("orchestrator.detail.event", { defaultValue: "Event" })}
+        subtitle={t("orchestrator.detail.noLongerAvailable", {
+          defaultValue: "No longer available",
+        })}
+        closeLabel={closeDetailsLabel}
+        className={className}
+        style={style}
+        onClose={onClose}
+      >
+        <p className="text-xs-tight text-muted">
+          {t("orchestrator.detail.timelineDataChanged", {
+            defaultValue: "Timeline data changed.",
+          })}
+        </p>
+      </OperatorDrawerShell>
+    );
+  }
+
+  const isSession = selection.kind === "session";
+  const title = isSession
+    ? t("orchestrator.detail.sessionDetail", { defaultValue: "Session detail" })
+    : t("orchestrator.detail.timelineDetail", {
+        defaultValue: "Timeline detail",
+      });
+  const subtitle = isSession
+    ? (session?.label ??
+      t("orchestrator.detail.session", { defaultValue: "Session" }))
+    : block
+      ? blockTitle(block, t)
+      : t("orchestrator.detail.event", { defaultValue: "Event" });
+  const activeUsage = session ? sessionUsage(session) : taskUsage;
+  const toolUsageFallbackLabel = session
+    ? label(
+        "perToolUsageUnavailable",
+        "Per-tool usage is not emitted yet; showing the owning session total.",
+      )
+    : label(
+        "perToolUsageTaskFallback",
+        "Per-tool usage is not emitted yet; showing the task total.",
+      );
+  const errorText =
+    isSession && session
+      ? sessionError(session, t)
+      : block
+        ? blockError(block, events, t)
+        : null;
+
+  let body: ReactNode;
+  if (tab === "input") {
+    if (isSession && session) {
+      body = (
+        <div className="space-y-2">
+          <DetailRow
+            label={label("status", "Status")}
+            value={session.status.replace(/_/g, " ")}
+          />
+          <DetailRow
+            label={label("framework", "Framework")}
+            value={session.framework}
+          />
+          <DetailRow
+            label={label("provider", "Provider")}
+            value={session.providerSource}
+          />
+          <DetailRow label={label("model", "Model")} value={session.model} />
+          <DetailRow
+            label={label("workdir", "Workdir")}
+            value={session.workdir}
+          />
+          <DetailRow label={label("repo", "Repo")} value={session.repo} />
+          <InspectorSection title={label("originalTask", "Original task")}>
+            <p className="whitespace-pre-wrap text-xs-tight text-txt">
+              {session.originalTask}
+            </p>
+          </InspectorSection>
+          {hasRecordEntries(session.metadata) ? (
+            <InspectorSection title={label("metadata", "Metadata")}>
+              <JsonBlock
+                value={session.metadata}
+                emptyLabel={label("noMetadata", "No metadata.")}
+              />
+            </InspectorSection>
+          ) : null}
+        </div>
+      );
+    } else if (block?.kind === "tool") {
+      const input = block.tool.rawInput ?? {};
+      body = (
+        <div className="space-y-2">
+          <DetailRow label={label("toolId", "Tool id")} value={block.tool.id} />
+          <DetailRow
+            label={label("kind", "Kind")}
+            value={block.tool.kind || "tool"}
+          />
+          <DetailRow
+            label={label("status", "Status")}
+            value={block.tool.rawStatus ?? block.tool.status}
+          />
+          <DetailRow
+            label={label("file", "File")}
+            value={block.tool.filePath}
+          />
+          <DetailRow
+            label={label("command", "Command")}
+            value={block.tool.command}
+          />
+          <DetailRow label={label("query", "Query")} value={block.tool.query} />
+          <JsonBlock
+            value={input}
+            emptyLabel={label("noToolInput", "No tool input captured.")}
+          />
+        </div>
+      );
+    } else if (block?.kind === "user") {
+      body = (
+        <pre className="whitespace-pre-wrap rounded-md border border-border/40 bg-bg/60 px-2.5 py-1.5 text-xs-tight text-txt">
+          {block.content}
+        </pre>
+      );
+    } else if (block?.kind === "agent") {
+      body = (
+        <JsonBlock
+          value={messages.map((message) => message.metadata)}
+          emptyLabel={label("noInputMetadata", "No input metadata captured.")}
+        />
+      );
+    } else {
+      body = (
+        <JsonBlock
+          value={events.map((event) => event.data)}
+          emptyLabel={label("noInput", "No input captured.")}
+        />
+      );
+    }
+  } else if (tab === "output") {
+    if (isSession && session) {
+      body = (
+        <div className="space-y-2">
+          <DetailRow
+            label={label("activeTool", "Active tool")}
+            value={session.activeTool}
+          />
+          <DetailRow
+            label={label("decisions", "Decisions")}
+            value={t("orchestrator.detail.decisionCounts", {
+              defaultValue: `${session.decisionCount} total · ${session.autoResolvedCount} auto`,
+              count: session.decisionCount,
+              auto: session.autoResolvedCount,
+            })}
+          />
+          <DetailRow
+            label={label("lastInput", "Last input")}
+            value={
+              session.lastInputSentAt
+                ? formatClockTime(session.lastInputSentAt, locale)
+                : null
+            }
+          />
+          <InspectorSection title={label("completion", "Completion")}>
+            {session.completionSummary ? (
+              <p className="whitespace-pre-wrap text-xs-tight text-txt">
+                {session.completionSummary}
+              </p>
+            ) : (
+              <p className="text-xs-tight text-muted">
+                {label("noCompletion", "No completion yet.")}
+              </p>
+            )}
+          </InspectorSection>
+        </div>
+      );
+    } else if (block?.kind === "tool") {
+      body = (
+        <div className="space-y-2">
+          <DetailRow
+            label={label("exit", "Exit")}
+            value={block.tool.exitCode}
+          />
+          <DetailRow
+            label={label("duration", "Duration")}
+            value={
+              block.tool.durationMs
+                ? formatDuration(block.tool.durationMs)
+                : null
+            }
+          />
+          <ToolBody tool={block.tool} />
+          <JsonBlock
+            value={block.tool.rawOutput}
+            emptyLabel={label("noRawOutput", "No raw output payload captured.")}
+          />
+        </div>
+      );
+    } else if (block?.kind === "agent" || block?.kind === "user") {
+      body = (
+        <pre className="whitespace-pre-wrap rounded-md border border-border/40 bg-bg/60 px-2.5 py-1.5 text-xs-tight text-txt">
+          {compactText(block.content)}
+        </pre>
+      );
+    } else if (block?.kind === "reasoning") {
+      body = (
+        <pre className="whitespace-pre-wrap rounded-md border border-border/40 bg-bg/60 px-2.5 py-1.5 text-xs-tight text-txt">
+          {compactText(block.text)}
+        </pre>
+      );
+    } else if (block) {
+      body = <p className="text-xs-tight text-txt">{block.text}</p>;
+    } else {
+      body = null;
+    }
+  } else if (tab === "events") {
+    body = (
+      <EventList events={events} messages={messages} locale={locale} t={t} />
+    );
+  } else {
+    body = (
+      <div className="space-y-2">
+        {block?.kind === "tool" ? (
+          <p className="text-xs-tight text-muted">{toolUsageFallbackLabel}</p>
+        ) : null}
+        <UsageSection usage={activeUsage} t={t} locale={locale} />
+      </div>
+    );
+  }
+
+  return (
+    <OperatorDrawerShell
+      title={title}
+      subtitle={subtitle}
+      closeLabel={closeDetailsLabel}
+      className={className}
+      style={style}
+      onClose={onClose}
+    >
+      <ErrorFirstBanner text={errorText} />
+      <div className="space-y-1.5 rounded-md border border-border/40 bg-bg/40 p-2">
+        {session ? (
+          <>
+            <DetailRow
+              label={label("session", "Session")}
+              value={session.sessionId}
+            />
+            <DetailRow
+              label={label("activity", "Activity")}
+              value={formatClockTime(session.lastActivityAt, locale)}
+            />
+          </>
+        ) : null}
+        {block ? (
+          <>
+            <DetailRow label={label("kind", "Kind")} value={block.kind} />
+            <DetailRow
+              label={label("time", "Time")}
+              value={formatClockTime(block.at, locale)}
+            />
+          </>
+        ) : null}
+      </div>
+      <OperatorTabs active={tab} onSelect={setTab} t={t} />
+      <div className="min-h-0">{body}</div>
+    </OperatorDrawerShell>
+  );
+}
+
 function readInitialTaskId(): string | null {
   if (typeof window === "undefined") return null;
   return new URLSearchParams(window.location.search).get("task");
@@ -2329,8 +3072,8 @@ export function OrchestratorWorkbench() {
     null,
   );
   const [messages, setMessages] = useState<CodingAgentTaskMessageRecord[]>([]);
-  const [messageCursor, setMessageCursor] = useState<string | null>(null);
   const [events, setEvents] = useState<CodingAgentTaskEventRecord[]>([]);
+  const [timelineCursor, setTimelineCursor] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [showArchived, setShowArchived] = useState(false);
@@ -2396,23 +3139,24 @@ export function OrchestratorWorkbench() {
 
   const fetchDetail = useCallback(async (id: string, reset: boolean) => {
     const token = ++detailReqRef.current;
-    const [nextDetail, messagePage, eventPage] = await Promise.all([
+    const [nextDetail, timelinePage] = await Promise.all([
       client.getCodingAgentTaskThread(id),
-      client.listOrchestratorTaskMessages(id, { limit: TIMELINE_PAGE_LIMIT }),
-      client.listOrchestratorTaskEvents(id, { limit: TIMELINE_PAGE_LIMIT }),
+      client.listOrchestratorTaskTimeline(id, { limit: TIMELINE_PAGE_LIMIT }),
     ]);
     // Discard if a newer fetch superseded this one, or if the selection moved on
     // while in flight — otherwise a non-reset poll/refresh could merge one task's
     // transcript into another task's room (cross-task contamination).
     if (token !== detailReqRef.current || id !== selectedIdRef.current) return;
+    const timeline = splitTimelineItems(timelinePage.items);
     setDetail(nextDetail);
     if (reset) {
-      setMessages(mergeById([], messagePage.items));
-      setMessageCursor(messagePage.nextCursor);
-      setEvents(mergeById([], eventPage.items));
+      setMessages(mergeById([], timeline.messages));
+      setEvents(mergeById([], timeline.events));
+      setTimelineCursor(timelinePage.nextCursor);
     } else {
-      setMessages((prev) => mergeById(prev, messagePage.items));
-      setEvents((prev) => mergeById(prev, eventPage.items));
+      setMessages((prev) => mergeById(prev, timeline.messages));
+      setEvents((prev) => mergeById(prev, timeline.events));
+      setTimelineCursor((prev) => prev ?? timelinePage.nextCursor);
     }
   }, []);
 
@@ -2444,7 +3188,7 @@ export function OrchestratorWorkbench() {
       setDetail(null);
       setMessages([]);
       setEvents([]);
-      setMessageCursor(null);
+      setTimelineCursor(null);
       return;
     }
     void fetchDetail(selectedId, true).catch((err: unknown) => {
@@ -2529,16 +3273,21 @@ export function OrchestratorWorkbench() {
     [fetchTasksAndStatus, fetchDetail, t],
   );
 
-  const loadOlderMessages = useCallback(async () => {
+  const loadOlderTimeline = useCallback(async () => {
     const current = selectedIdRef.current;
-    if (!current || !messageCursor) return;
-    const page = await client.listOrchestratorTaskMessages(current, {
-      cursor: messageCursor,
+    if (!current || !timelineCursor) return;
+    const page = await client.listOrchestratorTaskTimeline(current, {
+      cursor: timelineCursor,
       limit: TIMELINE_PAGE_LIMIT,
     });
-    setMessages((prev) => mergeById(prev, page.items));
-    setMessageCursor(page.nextCursor);
-  }, [messageCursor]);
+    // The selection may have moved on during the await — don't merge task A's
+    // history into task B (mirrors the fetchDetail guard).
+    if (current !== selectedIdRef.current) return;
+    const timeline = splitTimelineItems(page.items);
+    setMessages((prev) => mergeById(prev, timeline.messages));
+    setEvents((prev) => mergeById(prev, timeline.events));
+    setTimelineCursor(page.nextCursor);
+  }, [timelineCursor]);
 
   const handleSend = useCallback(() => {
     const current = selectedIdRef.current;
@@ -2732,7 +3481,7 @@ export function OrchestratorWorkbench() {
       role: "button",
       label: loadOlderLabel,
       group: "orchestrator-timeline",
-      description: "Load older messages in the task timeline",
+      description: "Load older entries in the task timeline",
     });
   const { ref: stopActiveRef, agentProps: stopActiveAgentProps } =
     useAgentElement<HTMLButtonElement>({
@@ -2902,12 +3651,12 @@ export function OrchestratorWorkbench() {
                 className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4"
                 data-testid="orchestrator-message-list"
               >
-                {messageCursor ? (
+                {timelineCursor ? (
                   <div className="flex justify-center">
                     <button
                       ref={loadOlderRef}
                       type="button"
-                      onClick={() => void loadOlderMessages()}
+                      onClick={() => void loadOlderTimeline()}
                       className="flex items-center gap-1 rounded-full border border-border/50 px-2.5 py-0.5 text-2xs text-muted transition-colors hover:bg-bg-hover/50"
                       data-testid="orchestrator-load-older"
                       aria-label={loadOlderLabel}

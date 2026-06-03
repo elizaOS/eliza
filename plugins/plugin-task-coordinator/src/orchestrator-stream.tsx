@@ -241,6 +241,7 @@ function normalizeOutput(value: unknown): string | undefined {
 interface ToolOutput {
   text?: string;
   diff?: { path?: string; oldText?: string; newText?: string };
+  exitCode?: number;
 }
 
 /** ACP tool results arrive as a JSON-encoded array of content blocks, e.g.
@@ -264,6 +265,7 @@ function parseToolOutput(raw: unknown): ToolOutput {
   const blocks = Array.isArray(value) ? value : [value];
   const texts: string[] = [];
   let diff: ToolOutput["diff"];
+  let parsedExitCode: number | undefined;
   for (const block of blocks) {
     const record = asRecord(block);
     if (!record) continue;
@@ -279,11 +281,22 @@ function parseToolOutput(raw: unknown): ToolOutput {
     }
     const inner = asRecord(record.content) ?? record;
     const text =
-      pickString(inner, "text", "content") ?? pickString(record, "text");
+      pickString(inner, "text", "content", "output") ??
+      pickString(record, "text", "output");
     if (text) texts.push(text);
+    const metadata = asRecord(record.metadata) ?? asRecord(inner.metadata);
+    const exitCode =
+      pickNumber(metadata, "exitCode", "exit_code") ??
+      pickNumber(record, "exitCode", "exit_code") ??
+      pickNumber(inner, "exitCode", "exit_code");
+    if (exitCode !== undefined) parsedExitCode = exitCode;
   }
   const joined = stripAnsi(texts.join("\n")).trim();
-  return { text: joined === "" ? undefined : joined, diff };
+  return {
+    text: joined === "" ? undefined : joined,
+    diff,
+    exitCode: parsedExitCode,
+  };
 }
 
 /** The raw `data.toolCall` object the ACP service forwards (see its field
@@ -327,6 +340,7 @@ function toToolView(
       parsed.diff?.newText !== undefined
     )
       outputDiff = parsed.diff;
+    if (parsed.exitCode !== undefined) exitCode = parsed.exitCode;
     const nextExit =
       pickNumber(asRecord(call.exitStatus), "exitCode") ??
       pickNumber(call, "exitCode");

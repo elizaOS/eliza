@@ -29,10 +29,19 @@ import {
 import {
   summarizeUsage,
   summarizeUsageRows,
+  type TaskEventDto,
+  type TaskMessageDto,
+  type TaskPlanRevisionDto,
   type TaskThreadDetailDto,
   type TaskThreadDto,
+  type TaskTimelineItemDto,
+  toTaskEventDto,
+  toTaskMessageDto,
+  toTaskPlanRevisionDto,
   toTaskThread,
   toTaskThreadDetail,
+  toTaskTimelineEventDto,
+  toTaskTimelineMessageDto,
 } from "./orchestrator-task-mapper.js";
 import { OrchestratorTaskStore } from "./orchestrator-task-store.js";
 import {
@@ -87,6 +96,45 @@ export interface AddMessageInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface RetryTaskTurnInput {
+  messageId?: string;
+  sessionId?: string;
+  instruction?: string;
+  planRevisionId?: string;
+  mode?: "same-session" | "new-session";
+  agent?: SpawnAgentForTaskOptions;
+}
+
+export interface RerunFromEventInput {
+  eventId: string;
+  instruction?: string;
+  planRevisionId?: string;
+  stopActive?: boolean;
+  preserveHistory?: boolean;
+  agent?: SpawnAgentForTaskOptions;
+}
+
+export interface RestartTaskInput {
+  instruction?: string;
+  planRevisionId?: string;
+  stopActive?: boolean;
+  agent?: SpawnAgentForTaskOptions;
+}
+
+export interface CreatePlanRevisionInput {
+  plan: Record<string, unknown>;
+  basePlanRevisionId?: string;
+  editSummary?: string;
+  createdBy?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RestartWithEditedPlanInput extends RestartTaskInput {
+  plan: Record<string, unknown>;
+  basePlanRevisionId?: string;
+  editSummary?: string;
+}
+
 export interface PageResult<T> {
   items: T[];
   nextCursor: string | null;
@@ -133,6 +181,79 @@ function num(value: unknown): number {
 
 function truncate(text: string, max = 2000): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+function findPlanRevision(
+  doc: OrchestratorTaskDocument,
+  planRevisionId?: string,
+): OrchestratorTaskDocument["planRevisions"][number] | undefined {
+  if (!planRevisionId) return undefined;
+  return doc.planRevisions.find((revision) => revision.id === planRevisionId);
+}
+
+function latestActiveSession(
+  doc: OrchestratorTaskDocument,
+): OrchestratorTaskSession | undefined {
+  return doc.sessions
+    .filter((session) => !TERMINAL_TASK_SESSION_STATUSES.has(session.status))
+    .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
+}
+
+function eventExcerpt(
+  event: OrchestratorTaskDocument["events"][number],
+): string {
+  const data =
+    Object.keys(event.data).length > 0
+      ? `\nData: ${truncate(JSON.stringify(event.data), 1200)}`
+      : "";
+  return `Event ${event.id} (${event.eventType}): ${event.summary}${data}`;
+}
+
+function retryInstruction(
+  doc: OrchestratorTaskDocument,
+  input: RetryTaskTurnInput,
+): string {
+  const source = input.messageId
+    ? doc.messages.find((message) => message.id === input.messageId)
+    : undefined;
+  const lines = [
+    input.instruction?.trim() || "Retry this turn and continue the task.",
+  ];
+  if (source) {
+    lines.push(
+      "",
+      `Source message ${source.id} (${source.senderKind}/${source.direction}):`,
+      truncate(source.content),
+    );
+  }
+  return lines.join("\n");
+}
+
+function rerunInstruction(
+  event: OrchestratorTaskDocument["events"][number],
+  instruction?: string,
+): string {
+  return [
+    instruction?.trim() || "Rerun from this event and continue the task.",
+    "",
+    eventExcerpt(event),
+  ].join("\n");
+}
+
+function withPlanRevisionContext(
+  instruction: string,
+  revision?: OrchestratorTaskDocument["planRevisions"][number],
+): string {
+  if (!revision) return instruction;
+  const lines = [
+    instruction,
+    "",
+    "--- Plan Revision ---",
+    `Revision: ${revision.id}`,
+  ];
+  if (revision.editSummary) lines.push(`Summary: ${revision.editSummary}`);
+  lines.push(`Plan: ${truncate(JSON.stringify(revision.plan), 2000)}`);
+  return lines.join("\n");
 }
 
 function omitUndefined<T extends object>(value: T): Partial<T> {
@@ -801,7 +922,23 @@ export class OrchestratorTaskService extends Service {
     const forwardedTo: string[] = [];
     const failedTo: Array<{ sessionId: string; error: string }> = [];
     const acp = this.acp();
-    if (acp && active.length > 0) {
+    if (!acp) {
+      const error = "ACP service unavailable";
+      if (active.length > 0) {
+        for (const session of active) {
+          failedTo.push({ sessionId: session.sessionId, error });
+          await this.store.updateSession(session.sessionId, {
+            status: "send_failed",
+          });
+        }
+      } else {
+        failedTo.push({ sessionId: "(auto-spawn)", error });
+      }
+      this.log("warn", "user message recorded but not delivered", {
+        taskId,
+        error,
+      });
+    } else if (active.length > 0) {
       const followUp = buildGoalFollowUp({
         goal: doc.task.goal,
         message: content,
@@ -828,7 +965,7 @@ export class OrchestratorTaskService extends Service {
           });
         }
       }
-    } else if (acp) {
+    } else {
       // No active coding agent — auto-spawn one to work on the message so
       // messaging the orchestrator "just works" (parity with claude/codex):
       // the default framework (opencode + Cerebras) into a per-task workdir.
@@ -847,22 +984,278 @@ export class OrchestratorTaskService extends Service {
     return { recorded: true, forwardedTo, failedTo };
   }
 
+  async createPlanRevision(
+    taskId: string,
+    input: CreatePlanRevisionInput,
+  ): Promise<TaskPlanRevisionDto | null> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return null;
+    if (
+      input.basePlanRevisionId &&
+      !findPlanRevision(doc, input.basePlanRevisionId)
+    ) {
+      throw new Error("Base plan revision not found");
+    }
+    const timestamp = Date.now();
+    const revision = {
+      id: randomUUID(),
+      taskId,
+      plan: structuredClone(input.plan),
+      basePlanRevisionId: input.basePlanRevisionId,
+      editSummary: input.editSummary,
+      createdBy: input.createdBy ?? "operator",
+      metadata: input.metadata ?? {},
+      timestamp,
+      createdAt: nowIso(),
+    };
+    await this.store.addPlanRevision(revision);
+    await this.store.updateTask(taskId, { currentPlan: revision.plan });
+    await this.store.addEvent({
+      id: randomUUID(),
+      taskId,
+      eventType: "plan_revision_created",
+      summary: input.editSummary ?? "Plan revision created",
+      data: {
+        planRevisionId: revision.id,
+        basePlanRevisionId: revision.basePlanRevisionId,
+        createdBy: revision.createdBy,
+      },
+      timestamp,
+      createdAt: revision.createdAt,
+    });
+    return toTaskPlanRevisionDto(revision);
+  }
+
+  async listPlanRevisions(
+    taskId: string,
+    opts: { limit?: number; cursor?: string } = {},
+  ): Promise<PageResult<TaskPlanRevisionDto> | null> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return null;
+    const page = paginate(doc.planRevisions, opts);
+    return { ...page, items: page.items.map(toTaskPlanRevisionDto) };
+  }
+
+  async retryTaskTurn(
+    taskId: string,
+    input: RetryTaskTurnInput = {},
+  ): Promise<TaskThreadDetailDto | null> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return null;
+    const planRevision = findPlanRevision(doc, input.planRevisionId);
+    if (input.planRevisionId && !planRevision) {
+      throw new Error("Plan revision not found");
+    }
+    const source = input.messageId
+      ? doc.messages.find((message) => message.id === input.messageId)
+      : undefined;
+    if (input.messageId && !source) {
+      throw new Error("Source message not found");
+    }
+    const instruction = withPlanRevisionContext(
+      retryInstruction(doc, input),
+      planRevision,
+    );
+    const mode = input.mode ?? "same-session";
+    if (planRevision) {
+      await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
+    }
+    await this.store.addEvent({
+      id: randomUUID(),
+      taskId,
+      sessionId: input.sessionId ?? source?.sessionId,
+      eventType: "retry_turn_requested",
+      summary: "Retry turn requested",
+      data: {
+        messageId: input.messageId,
+        sessionId: input.sessionId,
+        mode,
+        instruction: input.instruction,
+        planRevisionId: planRevision?.id,
+      },
+      timestamp: Date.now(),
+      createdAt: nowIso(),
+    });
+    await this.store.updateTask(taskId, { paused: false, status: "active" });
+    if (mode === "new-session") {
+      await this.spawnAgentForTask(taskId, {
+        ...input.agent,
+        task: instruction,
+      });
+      return this.getTask(taskId);
+    }
+
+    const sessionId =
+      input.sessionId ??
+      source?.sessionId ??
+      latestActiveSession(doc)?.sessionId;
+    if (!sessionId) {
+      throw new Error("sessionId is required for same-session retry");
+    }
+    const session = doc.sessions.find((item) => item.sessionId === sessionId);
+    if (!session) throw new Error("Session not found");
+    if (TERMINAL_TASK_SESSION_STATUSES.has(session.status)) {
+      throw new Error(
+        "Cannot retry in a terminal session; use new-session mode",
+      );
+    }
+    const sent = await this.sendToTaskAgent(
+      taskId,
+      sessionId,
+      instruction,
+      "validation_failed",
+    );
+    if (!sent) throw new Error("Failed to send retry instruction");
+    return this.getTask(taskId);
+  }
+
+  async rerunFromEvent(
+    taskId: string,
+    input: RerunFromEventInput,
+  ): Promise<TaskThreadDetailDto | null> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return null;
+    const planRevision = findPlanRevision(doc, input.planRevisionId);
+    if (input.planRevisionId && !planRevision) {
+      throw new Error("Plan revision not found");
+    }
+    if (input.preserveHistory === false) {
+      throw new Error(
+        "Destructive rerun is not supported; preserveHistory must be true",
+      );
+    }
+    const event = doc.events.find((item) => item.id === input.eventId);
+    if (!event) throw new Error("Source event not found");
+    if (input.stopActive === true) await this.stopActiveSessions(doc);
+    if (planRevision) {
+      await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
+    }
+    await this.store.addEvent({
+      id: randomUUID(),
+      taskId,
+      sessionId: event.sessionId,
+      eventType: "rerun_from_event_requested",
+      summary: "Rerun from event requested",
+      data: {
+        eventId: input.eventId,
+        stopActive: input.stopActive === true,
+        instruction: input.instruction,
+        planRevisionId: planRevision?.id,
+      },
+      timestamp: Date.now(),
+      createdAt: nowIso(),
+    });
+    await this.store.updateTask(taskId, { paused: false, status: "active" });
+    await this.spawnAgentForTask(taskId, {
+      ...input.agent,
+      task: withPlanRevisionContext(
+        rerunInstruction(event, input.instruction),
+        planRevision,
+      ),
+    });
+    return this.getTask(taskId);
+  }
+
+  async restartTask(
+    taskId: string,
+    input: RestartTaskInput = {},
+  ): Promise<TaskThreadDetailDto | null> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return null;
+    const planRevision = findPlanRevision(doc, input.planRevisionId);
+    if (input.planRevisionId && !planRevision) {
+      throw new Error("Plan revision not found");
+    }
+    if (input.stopActive !== false) await this.stopActiveSessions(doc);
+    const instruction = withPlanRevisionContext(
+      input.instruction?.trim() ||
+        "Restart this task from the current durable context. Reinspect the task timeline, then continue until the goal is met or you are blocked.",
+      planRevision,
+    );
+    if (planRevision) {
+      await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
+    }
+    await this.store.addEvent({
+      id: randomUUID(),
+      taskId,
+      eventType: "restart_requested",
+      summary: "Task restart requested",
+      data: {
+        stopActive: input.stopActive !== false,
+        instruction: input.instruction,
+        planRevisionId: planRevision?.id,
+      },
+      timestamp: Date.now(),
+      createdAt: nowIso(),
+    });
+    await this.store.updateTask(taskId, {
+      paused: false,
+      archived: false,
+      archivedAt: null,
+      closedAt: null,
+      status: "active",
+    });
+    await this.spawnAgentForTask(taskId, {
+      ...input.agent,
+      task: instruction,
+    });
+    return this.getTask(taskId);
+  }
+
+  async restartWithEditedPlan(
+    taskId: string,
+    input: RestartWithEditedPlanInput,
+  ): Promise<TaskThreadDetailDto | null> {
+    const revision = await this.createPlanRevision(taskId, {
+      plan: input.plan,
+      basePlanRevisionId: input.basePlanRevisionId,
+      editSummary: input.editSummary,
+      createdBy: "operator",
+    });
+    if (!revision) return null;
+    return this.restartTask(taskId, {
+      ...input,
+      planRevisionId: revision.id,
+      instruction:
+        input.instruction ??
+        input.editSummary ??
+        "Restart with the edited plan revision.",
+    });
+  }
+
   async listMessages(
     taskId: string,
     opts: { limit?: number; cursor?: string } = {},
-  ): Promise<PageResult<OrchestratorTaskDocument["messages"][number]>> {
+  ): Promise<PageResult<TaskMessageDto> | null> {
     const doc = await this.store.getTask(taskId);
-    if (!doc) return { items: [], nextCursor: null };
-    return paginate(doc.messages, opts);
+    if (!doc) return null;
+    const page = paginate(doc.messages, opts);
+    return { ...page, items: page.items.map(toTaskMessageDto) };
   }
 
   async listEvents(
     taskId: string,
     opts: { limit?: number; cursor?: string } = {},
-  ): Promise<PageResult<OrchestratorTaskDocument["events"][number]>> {
+  ): Promise<PageResult<TaskEventDto> | null> {
     const doc = await this.store.getTask(taskId);
-    if (!doc) return { items: [], nextCursor: null };
-    return paginate(doc.events, opts);
+    if (!doc) return null;
+    const page = paginate(doc.events, opts);
+    return { ...page, items: page.items.map(toTaskEventDto) };
+  }
+
+  async listTimeline(
+    taskId: string,
+    opts: { limit?: number; cursor?: string } = {},
+  ): Promise<PageResult<TaskTimelineItemDto> | null> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return null;
+    return paginate(
+      [
+        ...doc.messages.map(toTaskTimelineMessageDto),
+        ...doc.events.map(toTaskTimelineEventDto),
+      ],
+      opts,
+    );
   }
 
   async getUsage(taskId: string): Promise<TaskUsageSummary | null> {
@@ -985,12 +1378,17 @@ export class OrchestratorTaskService extends Service {
     });
     await this.recordMessage(taskId, {
       content: message,
-      senderKind: reason === "orchestrator" ? "orchestrator" : "user",
+      senderKind: reason === "user_message" ? "user" : "orchestrator",
       sessionId,
       direction: "stdin",
     });
     await this.store.updateSession(sessionId, { lastInputSentAt: Date.now() });
-    await acp.sendToSession(sessionId, followUp);
+    try {
+      await acp.sendToSession(sessionId, followUp);
+    } catch (err) {
+      await this.store.updateSession(sessionId, { status: "send_failed" });
+      throw err;
+    }
     return true;
   }
 
@@ -1000,15 +1398,18 @@ export class OrchestratorTaskService extends Service {
     const session = doc.sessions.find((s) => s.sessionId === sessionId);
     if (!session) return false;
     const acp = this.acp();
-    if (acp) {
-      try {
-        await acp.stopSession(sessionId);
-      } catch (err) {
-        await this.store.updateSession(sessionId, {
-          status: "stop_failed",
-        });
-        throw err;
-      }
+    if (!acp) {
+      await this.store.updateSession(sessionId, { status: "stop_failed" });
+      await this.store.updateTask(taskId, { status: "interrupted" });
+      throw new Error("ACP service unavailable; cannot stop active session");
+    }
+    try {
+      await acp.stopSession(sessionId);
+    } catch (err) {
+      await this.store.updateSession(sessionId, {
+        status: "stop_failed",
+      });
+      throw err;
     }
     await this.store.updateSession(sessionId, {
       status: "stopped",
@@ -1090,11 +1491,22 @@ export class OrchestratorTaskService extends Service {
   private async stopActiveSessions(
     doc: OrchestratorTaskDocument,
   ): Promise<void> {
-    const acp = this.acp();
-    if (!acp) return;
     const active = doc.sessions.filter(
       (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
     );
+    if (active.length === 0) return;
+    const acp = this.acp();
+    if (!acp) {
+      await Promise.all(
+        active.map((session) =>
+          this.store.updateSession(session.sessionId, {
+            status: "stop_failed",
+          }),
+        ),
+      );
+      await this.store.updateTask(doc.task.id, { status: "interrupted" });
+      throw new Error("ACP service unavailable; cannot stop active sessions");
+    }
     const failures: Array<{ sessionId: string; error: string }> = [];
     await Promise.all(
       active.map(async (session) => {

@@ -16,16 +16,21 @@ import type {
   CodingAgentOrchestratorStatus,
   CodingAgentTaskThread,
   CodingAgentTaskThreadDetail,
+  CodingAgentTaskTimelineItem,
 } from "@elizaos/ui";
 import { describe, expect, it } from "vitest";
 import type {
   TaskThreadDetailDto,
   TaskThreadDto,
+  TaskTimelineItemDto,
 } from "../../src/services/orchestrator-task-mapper.js";
 import {
   summarizeUsage,
+  summarizeUsageRows,
   toTaskThread,
   toTaskThreadDetail,
+  toTaskTimelineEventDto,
+  toTaskTimelineMessageDto,
 } from "../../src/services/orchestrator-task-mapper.js";
 import type { OrchestratorTaskDocument } from "../../src/services/orchestrator-task-types.js";
 
@@ -180,6 +185,19 @@ function fixtureDocument(): OrchestratorTaskDocument {
         response: "yes",
         reasoning: "safe edit",
         timestamp: 8,
+        createdAt: ISO,
+      },
+    ],
+    planRevisions: [
+      {
+        id: "plan-1",
+        taskId: "task-1",
+        plan: { summary: "edited plan", steps: ["one"] },
+        basePlanRevisionId: "plan-0",
+        editSummary: "tighten the plan",
+        createdBy: "operator",
+        metadata: { source: "ui" },
+        timestamp: 9,
         createdAt: ISO,
       },
     ],
@@ -350,6 +368,39 @@ const clientDetailReference: CodingAgentTaskThreadDetail = {
       createdAt: ISO,
     },
   ],
+  planRevisions: [
+    {
+      id: "plan-1",
+      threadId: "task-1",
+      plan: { summary: "edited plan", steps: ["one"] },
+      basePlanRevisionId: "plan-0",
+      editSummary: "tighten the plan",
+      createdBy: "operator",
+      metadata: { source: "ui" },
+      timestamp: 9,
+      createdAt: ISO,
+    },
+  ],
+};
+
+const clientTimelineMessageReference: CodingAgentTaskTimelineItem = {
+  id: "message:message-1",
+  kind: "message",
+  threadId: "task-1",
+  sessionId: "session-1",
+  timestamp: 1,
+  createdAt: ISO,
+  message: clientDetailReference.messages[0],
+};
+
+const clientTimelineEventReference: CodingAgentTaskTimelineItem = {
+  id: "event:event-1",
+  kind: "event",
+  threadId: "task-1",
+  sessionId: "session-1",
+  timestamp: 1,
+  createdAt: ISO,
+  event: clientDetailReference.events[0],
 };
 
 function expectSameKeys(
@@ -365,17 +416,37 @@ function expectSameKeys(
 describe("orchestrator DTO ↔ client contract", () => {
   const detail = toTaskThreadDetail(fixtureDocument());
   const thread = toTaskThread(fixtureDocument());
+  const timelineMessage = toTaskTimelineMessageDto(
+    fixtureDocument().messages[0],
+  );
+  const timelineEvent = toTaskTimelineEventDto(fixtureDocument().events[0]);
 
   it("keeps the server DTOs structurally assignable to the client types", () => {
     // Compile-time enforcement (transitive through every nested record):
     const serverThreadIsClient: CodingAgentTaskThread = thread;
     const serverDetailIsClient: CodingAgentTaskThreadDetail = detail;
+    const serverMessageTimelineIsClient: CodingAgentTaskTimelineItem =
+      timelineMessage;
+    const serverEventTimelineIsClient: CodingAgentTaskTimelineItem =
+      timelineEvent;
     const clientThreadIsServer: TaskThreadDto = clientThreadReference;
     const clientDetailIsServer: TaskThreadDetailDto = clientDetailReference;
+    const clientMessageTimelineIsServer: TaskTimelineItemDto =
+      clientTimelineMessageReference;
+    const clientEventTimelineIsServer: TaskTimelineItemDto =
+      clientTimelineEventReference;
     expect(serverThreadIsClient.id).toBe(thread.id);
     expect(serverDetailIsClient.id).toBe(detail.id);
+    expect(serverMessageTimelineIsClient.id).toBe(timelineMessage.id);
+    expect(serverEventTimelineIsClient.id).toBe(timelineEvent.id);
     expect(clientThreadIsServer.id).toBe(clientThreadReference.id);
     expect(clientDetailIsServer.id).toBe(clientDetailReference.id);
+    expect(clientMessageTimelineIsServer.id).toBe(
+      clientTimelineMessageReference.id,
+    );
+    expect(clientEventTimelineIsServer.id).toBe(
+      clientTimelineEventReference.id,
+    );
   });
 
   it("reproduces the exact thread key set", () => {
@@ -394,6 +465,7 @@ describe("orchestrator DTO ↔ client contract", () => {
     const artifact = detail.artifacts[0];
     const message = detail.messages[0];
     const transcript = detail.transcripts[0];
+    const planRevision = detail.planRevisions[0];
     const provider = detail.usage.byProvider[0];
     if (
       !session ||
@@ -402,6 +474,7 @@ describe("orchestrator DTO ↔ client contract", () => {
       !artifact ||
       !message ||
       !transcript ||
+      !planRevision ||
       !provider
     ) {
       throw new Error("fixture must produce one of every nested record");
@@ -417,9 +490,37 @@ describe("orchestrator DTO ↔ client contract", () => {
       "transcript",
     );
     expectSameKeys(
+      planRevision,
+      clientDetailReference.planRevisions[0],
+      "planRevision",
+    );
+    expectSameKeys(
       provider,
       clientThreadReference.usage.byProvider[0],
       "usage.byProvider",
+    );
+  });
+
+  it("reproduces the exact timeline item key sets", () => {
+    expectSameKeys(
+      timelineMessage,
+      clientTimelineMessageReference,
+      "timeline.message",
+    );
+    expectSameKeys(
+      timelineMessage.message,
+      clientTimelineMessageReference.message,
+      "timeline.message.record",
+    );
+    expectSameKeys(
+      timelineEvent,
+      clientTimelineEventReference,
+      "timeline.event",
+    );
+    expectSameKeys(
+      timelineEvent.event,
+      clientTimelineEventReference.event,
+      "timeline.event.record",
     );
   });
 
@@ -434,5 +535,43 @@ describe("orchestrator DTO ↔ client contract", () => {
     // usage field, so the workbench header renders without re-derivation.
     const status: Pick<CodingAgentOrchestratorStatus, "usage"> = { usage };
     expect(status.usage.byProvider[0]?.provider).toBe("anthropic");
+  });
+
+  it("does not overstate mixed-certainty usage as fully measured", () => {
+    const mixed = summarizeUsageRows([
+      {
+        id: "usage-measured",
+        taskId: "task-1",
+        sessionId: "session-1",
+        provider: "anthropic",
+        model: "claude",
+        inputTokens: 10,
+        outputTokens: 5,
+        reasoningTokens: 0,
+        cacheTokens: 0,
+        costUsd: 0.01,
+        state: "measured",
+        timestamp: 1,
+        createdAt: ISO,
+      },
+      {
+        id: "usage-estimated",
+        taskId: "task-1",
+        sessionId: "session-2",
+        provider: "openai",
+        model: "gpt",
+        inputTokens: 20,
+        outputTokens: 10,
+        reasoningTokens: 0,
+        cacheTokens: 0,
+        costUsd: 0,
+        state: "estimated",
+        timestamp: 2,
+        createdAt: ISO,
+      },
+    ]);
+
+    expect(mixed.totalTokens).toBe(45);
+    expect(mixed.state).toBe("estimated");
   });
 });
