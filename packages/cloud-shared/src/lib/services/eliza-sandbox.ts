@@ -824,13 +824,26 @@ export class ElizaSandboxService {
 
       try {
         // 2. Sandbox (via provider)
+        const callerEnv = (rec.environment_vars as Record<string, string>) ?? {};
+        // DATABASE_URL precedence: a self-contained image (e.g. a coding
+        // container running its own bot) can ship its OWN database. Do not
+        // silently clobber it with the managed Neon URL — that would force the
+        // image onto a DB it never asked for. If the caller already set
+        // DATABASE_URL, keep it and expose the managed URL under a distinct
+        // name (ELIZA_MANAGED_DATABASE_URL) so the image can opt in. Only when
+        // the caller did NOT supply one do we inject the managed URL as
+        // DATABASE_URL — the normal managed-agent path, byte-identical to before.
+        const callerSuppliedDatabaseUrl =
+          typeof callerEnv.DATABASE_URL === "string" && callerEnv.DATABASE_URL.trim().length > 0;
         handle = await (await this.getProvider()).create({
           agentId: rec.id,
           agentName: rec.agent_name ?? "CloudAgent",
           organizationId: rec.organization_id,
           environmentVars: {
-            ...((rec.environment_vars as Record<string, string>) ?? {}),
-            DATABASE_URL: dbUri,
+            ...callerEnv,
+            ...(callerSuppliedDatabaseUrl
+              ? { ELIZA_MANAGED_DATABASE_URL: dbUri }
+              : { DATABASE_URL: dbUri }),
           },
           // Path A: pass the persisted character so the container boots AS
           // this agent (see docker-sandbox-provider ELIZA_AGENT_CHARACTER_JSON

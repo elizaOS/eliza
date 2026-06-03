@@ -21,7 +21,6 @@ export type {
   CloudCodingPromotion,
   CloudCodingSyncDirection,
   CloudCodingSyncResult,
-  CloudContainerArchitecture,
   CloudVfsBundle,
   CloudVfsDeletedFile,
   CloudVfsFile,
