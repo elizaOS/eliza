@@ -1148,7 +1148,7 @@ int eliza_inference_asr_transcribe(
  * (W7). Per packages/inference/AGENTS.md §3 we do NOT fake it — the
  * capability probe returns 0 so EngineVoiceBridge / StreamingTranscriber
  * pick the fused batch ASR adapter instead of opening a session that would
- * only return ELIZA_ERR_NOT_IMPLEMENTED.
+ * only return the unsupported-operation error code.
  * These symbols exist so the ABI surface is complete and the loader's
  * version check (ffi-bindings.ts expects v3) succeeds.
  */
@@ -1164,7 +1164,7 @@ EliAsrStream * eliza_inference_asr_stream_open(
     (void) ctx;
     (void) sample_rate_hz;
     eliza_set_error(out_error,
-        "[libelizainference] streaming ASR session API is not implemented in this build "
+        "[libelizainference] streaming ASR session API is unsupported in this build "
         "(eliza_inference_asr_stream_supported() == 0); use the batch transcribe path");
     return nullptr;
 }
@@ -1177,7 +1177,7 @@ int eliza_inference_asr_stream_feed(
     (void) stream;
     (void) pcm;
     (void) n_samples;
-    eliza_set_error(out_error, "[libelizainference] streaming ASR is not implemented in this build");
+    eliza_set_error(out_error, "[libelizainference] streaming ASR is unsupported in this build");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
@@ -1193,7 +1193,7 @@ int eliza_inference_asr_stream_partial(
     (void) max_text_bytes;
     (void) out_tokens;
     if (io_n_tokens) *io_n_tokens = 0;
-    eliza_set_error(out_error, "[libelizainference] streaming ASR is not implemented in this build");
+    eliza_set_error(out_error, "[libelizainference] streaming ASR is unsupported in this build");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
@@ -1209,7 +1209,7 @@ int eliza_inference_asr_stream_finish(
     (void) max_text_bytes;
     (void) out_tokens;
     if (io_n_tokens) *io_n_tokens = 0;
-    eliza_set_error(out_error, "[libelizainference] streaming ASR is not implemented in this build");
+    eliza_set_error(out_error, "[libelizainference] streaming ASR is unsupported in this build");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
@@ -1327,7 +1327,7 @@ int eliza_inference_set_verifier_callback(
     (void) cb;
     (void) user_data;
     eliza_set_error(out_error,
-        "[libelizainference] native MTP verifier callback is not implemented in this build; "
+        "[libelizainference] native MTP verifier callback is unsupported in this build; "
         "the JS scheduler synthesizes verifier events from llama-server streaming deltas");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
@@ -1397,7 +1397,7 @@ void eliza_inference_free_tokens(int * tokens) {
  *
  * The JS runtime can use the ONNX Silero path today. Native VAD is an
  * additive fused-runtime backend; until the fused target wires it,
- * advertise unsupported and return structured not-implemented errors.
+ * advertise unsupported and return structured unsupported-operation errors.
  */
 
 int eliza_inference_vad_supported(void) {
@@ -1411,7 +1411,7 @@ EliVad * eliza_inference_vad_open(
     (void) ctx;
     (void) sample_rate_hz;
     eliza_set_error(out_error,
-        "[libelizainference] native VAD is not implemented in this build "
+        "[libelizainference] native VAD is unsupported in this build "
         "(eliza_inference_vad_supported() == 0); use the ONNX Silero VAD path");
     return nullptr;
 }
@@ -1426,7 +1426,7 @@ int eliza_inference_vad_process(
     (void) pcm;
     (void) n_samples;
     (void) out_probability;
-    eliza_set_error(out_error, "[libelizainference] native VAD is not implemented in this build");
+    eliza_set_error(out_error, "[libelizainference] native VAD is unsupported in this build");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
@@ -1434,7 +1434,7 @@ int eliza_inference_vad_reset(
     EliVad * vad,
     char ** out_error) {
     (void) vad;
-    eliza_set_error(out_error, "[libelizainference] native VAD is not implemented in this build");
+    eliza_set_error(out_error, "[libelizainference] native VAD is unsupported in this build");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 

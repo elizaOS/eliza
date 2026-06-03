@@ -6,8 +6,8 @@ Android agent staging step (`stage-android-agent.mjs`) when
 
 Upstream Bun ships no riscv64 release
 ([oven-sh/bun#21923](https://github.com/oven-sh/bun/issues/21923) closed
-without a roadmap). This pipeline builds one from source by cross-compiling
-on an x86_64 Linux host with Docker.
+without a committed release path). This pipeline builds one from source by
+cross-compiling on an x86_64 Linux host with Docker.
 
 ## Layout
 
@@ -207,8 +207,8 @@ failures inside Bun. Bump them together.
 |--------------|-----------------------------|--------|
 | LLInt        | Upstream                    | WebKit #229035 (closed r281757 2021-08-30) |
 | Baseline JIT | Optional, recipe-only locally | WebKit #239708 (closed r293316 2022-04-24) |
-| DFG JIT      | **Not implemented** (NEW)   | WebKit #238006 |
-| FTL JIT      | **Not implemented** (NEW)   | WebKit #239707 |
+| DFG JIT      | **No riscv64 patch series** (NEW) | WebKit #238006 |
+| FTL JIT      | **No riscv64 patch series** (NEW) | WebKit #239707 |
 
 `build.sh` defaults to C_LOOP for the publishable artifact. A Baseline
 experiment must pass `BUN_RISCV64_FORCE_CLOOP=0` and must first convert

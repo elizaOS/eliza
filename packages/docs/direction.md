@@ -1,10 +1,10 @@
 ---
-title: "Roadmap"
-sidebarTitle: "Roadmap"
+title: "Direction"
+sidebarTitle: "Direction"
 description: "Eliza and elizaOS direction and rationale; see the changelog for shipped changes."
 ---
 
-# Eliza roadmap
+# Eliza direction
 
 Direction and rationale for Eliza on elizaOS. Not exhaustive; see the **[Changelog](changelog.mdx)** for shipped changes with WHYs.
 

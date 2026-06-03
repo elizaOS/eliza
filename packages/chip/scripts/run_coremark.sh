@@ -138,7 +138,7 @@ case "${DUT}" in
         ;;
     board)
         write_blocked \
-            "board DUT runner not implemented" \
+            "board DUT runner unavailable before silicon" \
             "e1 silicon" \
             "Tapeout milestone 2028H1; not available pre-silicon"
         ;;

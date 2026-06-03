@@ -109,9 +109,8 @@ camera regardless of backend, the client requests:
 { "type": "command", "command": "camera.snapshot", "payload": { "camera": "external" } }
 ```
 
-The Obsbot Tiny/Tail/Meet pan-tilt is driven over USB-HID; we don't
-control it via the bridge yet (that's an open task — see "future work"
-below). Use the manufacturer's app to set the framing.
+The Obsbot Tiny/Tail/Meet pan-tilt is driven over USB-HID; the bridge does not
+control it yet. Use the manufacturer's app to set the framing.
 
 ### Calibration
 
@@ -268,7 +267,7 @@ unknowns require the AiNex to actually be on:
 - Camera intrinsics for the Obsbot (run the calibration block above
   once, save the YAML, point the perception pipeline at it).
 
-## Future work surfaced by this round
+## Follow-up surfaced by this round
 
 - Native bezier-gait → MuJoCo joint targets is not tuned for the real
   AiNex servo dynamics. Replace with the trained RL walk policy

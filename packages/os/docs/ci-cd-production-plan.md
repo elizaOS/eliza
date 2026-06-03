@@ -1,4 +1,4 @@
-# elizaOS Live OS — CI/CD production roadmap
+# elizaOS Live OS — CI/CD production plan
 
 Status snapshot: **8+ days of nightly red, no signed ISO ever published from CI.**
 The scaffolding for production-grade signed releases is already wired

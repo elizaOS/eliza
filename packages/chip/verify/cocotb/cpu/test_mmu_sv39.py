@@ -24,7 +24,7 @@ The tiny stub CPU has none of those. The test runs in two modes:
   - real mode: once the DUT exposes ``satp_q`` (or ``dut_has_mmu``) the
     cocotb body programs satp, the page table, and walks a load. This
     body is still a skeleton; flipping it on is gated by a real DUT in
-    `verify/cocotb/cpu/conftest.py` (TBD) and explicit env override.
+    `verify/cocotb/cpu/conftest.py` once available and explicit env override.
 """
 
 from __future__ import annotations

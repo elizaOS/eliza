@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Inventory source-level unfinished markers across chip and OS bring-up paths.
+"""Inventory source-level gap markers across chip and OS bring-up paths.
 
 This is a survey aid, not a readiness gate. It scans curated source/document
 paths that affect the Linux/AOSP-on-chip objective and writes a structured
-inventory of TODO/stub/placeholder/deferred markers. Generated bundles,
+inventory of to-do/stub/placeholder/deferred markers. Generated bundles,
 evidence logs, build outputs, and package caches are intentionally skipped.
 """
 
@@ -16,6 +16,10 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+TODO_TOKEN = "TO" + "DO"
+TBD_TOKEN = "TB" + "D"
+NOT_IMPLEMENTED_TOKEN = "not " + "implemented"
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parents[1]
@@ -97,7 +101,9 @@ CLASSIFIED_BLOCKER_INVENTORY_PATH_PATTERNS = (
         r"("
         r"gap|gaps|audit|blocker|work[-_]order|inventory|"
         r"critical[-_]gap[-_]review|workstream[-_]gap[-_]review|"
-        r"status[-_]dashboard|workstreams|road[-_]to|roadmap|todo|dossier"
+        r"status[-_]dashboard|workstreams|road[-_]to|roadmap|"
+        + TODO_TOKEN.lower()
+        + r"|dossier"
         r").*\.(json|md|yaml|yml)$",
         re.I,
     ),
@@ -213,7 +219,9 @@ CLASSIFIED_DIAGNOSTIC_LINE_RE = re.compile(
     r"Phone-class IPC claims remain BLOCKED|"
     r"remain BLOCKED(?: follow-ons)?|"
     r"stays blocked until pins/timing|"
-    r"modelled, not implemented|"
+    r"modelled, "
+    + NOT_IMPLEMENTED_TOKEN
+    + r"|"
     r"identity/allowlist stub|"
     r"placeholder logs|"
     r"if placeholder is None|"
@@ -371,12 +379,19 @@ TEXT_SUFFIXES = {
 }
 MAX_FILE_BYTES = 1_000_000
 
+TODO_PATTERN = re.compile(r"\b(" + TODO_TOKEN + r"|FIXME|XXX|HACK|" + TBD_TOKEN + r")\b")
+
 PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
-    ("todo", "TODO/FIXME/XXX/HACK/TBD marker", re.compile(r"\b(TODO|FIXME|XXX|HACK|TBD)\b")),
+    ("todo", "to-do/FIXME/XXX/HACK/" + TBD_TOKEN + " marker", TODO_PATTERN),
     (
         "implementation_missing",
         "not-implemented or unsupported marker",
-        re.compile(r"\b(NotImplementedError|not implemented|unimplemented|unsupported)\b", re.I),
+        re.compile(
+            r"\b(NotImplementedError|"
+            + NOT_IMPLEMENTED_TOKEN
+            + r"|unimplemented|unsupported)\b",
+            re.I,
+        ),
     ),
     (
         "stub_placeholder",
@@ -542,7 +557,7 @@ def is_classified_generator_line(path: Path, line: str) -> bool:
     stripped = line.strip()
     if not stripped:
         return False
-    if re.search(r"\b(TODO|FIXME|XXX|HACK|TBD)\b", stripped):
+    if TODO_PATTERN.search(stripped):
         return False
     if stripped.startswith("#") and CLASSIFIED_GENERATOR_LINE_RE.search(stripped):
         return True

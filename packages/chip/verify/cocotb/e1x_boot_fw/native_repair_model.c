@@ -21,7 +21,7 @@
  *
  * SILICON BOUNDARY: this proves the boot-time read/parse/MMIO-program logic and
  * the route-table semantics against the real ROM image format. Fuse burning and
- * the OTP read port are silicon concerns and are modelled, not implemented.
+ * the OTP read port are silicon concerns and are modeled only in this harness.
  */
 #include <stdint.h>
 #include <stdio.h>

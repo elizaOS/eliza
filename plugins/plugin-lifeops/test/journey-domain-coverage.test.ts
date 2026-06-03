@@ -581,7 +581,7 @@ describe("Domain 15 — Multi-channel & cross-channel search", () => {
       input({
         kind: "output",
         promptInstructions:
-          "search across channels for a thread about Q3 roadmap",
+          "search across channels for a thread about Q3 launch planning",
         trigger: { kind: "manual" },
         contextRequest: {
           includeOwnerFacts: ["preferredName", "locale"],

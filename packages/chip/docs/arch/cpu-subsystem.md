@@ -33,7 +33,7 @@ This is a tiny RV execution path for e1-chip proof, not a Linux-capable applicat
 | Integer ops | `LUI`, `AUIPC`, `ADDI`, `ADD`, `SUB` |
 | Memory ops | aligned 32-bit `LW`, `SW` |
 | Halt | `ECALL`/`EBREAK`, illegal instruction, or AXI error response |
-| Interrupts | level inputs are reflected through `irq_pending`; trap entry/CSR handling is not implemented |
+| Interrupts | level inputs are reflected through `irq_pending`; trap entry/CSR handling is outside the current CPU subset |
 
 The focused simulation wrapper `verify/cocotb/e1_tiny_cpu_contract_tb.sv` resets the CPU at `0x8000_0000`, preloads the DRAM model through a loader AXI-Lite path, then releases the CPU. The cocotb test `verify/cocotb/test_tiny_cpu_execution.py` proves fetch, execute, DRAM store, interrupt-controller MMIO write, halt, and external IRQ reflection.
 

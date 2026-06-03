@@ -760,7 +760,7 @@ export class SimulationRunner {
 		const templates: Record<ActorConfig["archetype"], string[]> = {
 			elite_analyst: [
 				`$${tokenSymbol} showing strong fundamentals. This is a long-term hold.`,
-				`Been researching $${tokenSymbol} - solid team and roadmap. Accumulating here.`,
+				`Been researching $${tokenSymbol} - solid team and execution plan. Accumulating here.`,
 			],
 			skilled_trader: [
 				`$${tokenSymbol} looking strong here. Adding to position.`,

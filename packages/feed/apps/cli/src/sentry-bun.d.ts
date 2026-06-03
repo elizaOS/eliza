@@ -4,8 +4,8 @@
  * the package's own types take precedence via the "types" field in
  * node_modules/@sentry/bun/package.json.
  *
- * TODO: Consider replacing with @types/sentry__bun package or contributing
- * these types upstream to DefinitelyTyped or Sentry's own repository.
+ * Replacement path: use @types/sentry__bun if it appears, or contribute these
+ * declarations upstream to DefinitelyTyped or Sentry's own repository.
  */
 declare module "@sentry/bun" {
   export interface Scope {

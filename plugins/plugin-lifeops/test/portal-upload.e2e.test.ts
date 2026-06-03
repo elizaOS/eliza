@@ -111,9 +111,5 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
       );
       expect(browserRequests).toHaveLength(0);
     }, 120_000);
-
-    it.todo(
-      "completes the full portal form fill and upload sequence once portal link and deck fixture are present",
-    );
   },
 );

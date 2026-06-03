@@ -72,7 +72,7 @@ re-run.
   on every push.
 - The actual eliza Cloud sandbox cores (data plane) — runtime autoscale.
 
-These are tracked as TODOs in
+These are tracked as follow-ups in
 [`../ARCHITECTURE.md`](../ARCHITECTURE.md#followups).
 
 ## Cost

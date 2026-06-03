@@ -516,7 +516,7 @@ require `monitor` + `npuFirmware` whenever `claims.npuProtected` is true.
 
 ---
 
-## 8. Sequenced roadmap
+## 8. Sequenced Plan
 
 ### Phase 1 — Buildable now (models, contracts, gates; no silicon)
 Establish the executable contract + fail-closed floor on a laptop.

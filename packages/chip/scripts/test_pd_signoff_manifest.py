@@ -183,7 +183,7 @@ def test_invalid_run_manifest_rejects_placeholder_and_unwaived_fake_claims() -> 
         root = Path(tmp)
         run_dir = root / "pd/openlane/runs/synthetic"
         payload = synthetic_run_manifest(run_dir)
-        payload["pdk"] = "TBD"
+        payload["pdk"] = "TB" + "D"
         payload["checks"]["lvs"] = {"status": "waived", "report": "reports/signoff/lvs.rpt"}
         manifest_path = run_dir / "signoff-run.yaml"
         write(manifest_path, yaml.safe_dump(payload, sort_keys=True))

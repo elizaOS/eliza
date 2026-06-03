@@ -483,7 +483,7 @@ Scattered DEBUG logging pragmas:
 4. **Perception encoder** — Entity slots assume 152-dim output; if encoder changes, observation dim breaks
 5. **Compositional task** — `compositional_env.py` uses multi-phase reward; limited test coverage
 
-### Missing Roadmap Items
+### Missing Unstarted Sections
 
 No explicit unstarted sections found. Code appears actively maintained (latest
 checkpoint is `v20`, March 26).

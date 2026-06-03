@@ -231,7 +231,7 @@ describe("MCP Tool Handlers - Atomic Operations", () => {
 });
 
 describe("MCP Tool Handlers - Error Messages", () => {
-  describe("Not Implemented Features", () => {
+  describe("Disabled Features", () => {
     it("should have correct x402 error message", () => {
       const errorMessage =
         "MCP tool payment_request is disabled until x402 support is registered in Feed MCP discovery.";

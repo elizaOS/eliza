@@ -61,12 +61,12 @@ export async function emitAuditEvent(
     return true;
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
-      // Endpoint not yet wired in cloud-api. Surface in dev for visibility but
-      // do not break user flows in prod.
+      // Endpoint unavailable in cloud-api. Surface in dev for visibility but do
+      // not break user flows in prod.
       if (import.meta.env.DEV) {
         // eslint-disable-next-line no-console
         console.warn(
-          "[audit-client] /api/v1/security/audit not implemented; event dropped",
+          "[audit-client] /api/v1/security/audit unavailable; event dropped",
           input,
         );
       }

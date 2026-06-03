@@ -257,8 +257,7 @@ describe("Action Invocation E2E", () => {
     healthBackendAvailable =
       (await detectHealthBackend().catch(() => "none")) !== "none";
     passwordManagerAvailable =
-      (await detectPasswordManagerBackend().catch(() => "none")) !==
-      "none";
+      (await detectPasswordManagerBackend().catch(() => "none")) !== "none";
     remoteDesktopAvailable =
       (await lifeOps.detectRemoteDesktopBackend().catch(() => "none")) !==
       "none";
@@ -435,7 +434,7 @@ describe("Action Invocation E2E", () => {
     );
 
     // Morning/night CHECKIN tests removed: the CHECKIN action was deleted in
-    // favor of scheduled tasks. See plugins/plugin-lifeops/src/actions/CHECKIN_MIGRATION.TODO.md.
+    // favor of scheduled tasks. See the LifeOps CHECKIN migration notes.
   });
 
   // ===================================================================

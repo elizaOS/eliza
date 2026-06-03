@@ -388,7 +388,7 @@ def asset_report(asset_id: str, lock: dict[str, dict[str, Any]]) -> dict[str, An
         if license_ok:
             blockers = [item for item in blockers if item != "license review is pending"]
         if not conversion_ok:
-            blockers.append("dataset-specific schema converter is not implemented")
+            blockers.append("dataset-specific schema converter evidence is absent")
             blockers.append("floorplan legality checker logs are not present")
         if not split_ok:
             blockers.append("split manifest and benchmark contamination review are not present")
@@ -472,7 +472,7 @@ def asset_report(asset_id: str, lock: dict[str, dict[str, Any]]) -> dict[str, An
             "summary": split.get("summary") if split else None,
         }
         if not conversion_ok:
-            blockers.append("dataset-specific schema converter is not implemented")
+            blockers.append("dataset-specific schema converter evidence is absent")
             blockers.append("floorplan legality checker logs are not present")
         if not split_ok:
             blockers.append("split manifest and benchmark contamination review are not present")
@@ -483,7 +483,7 @@ def asset_report(asset_id: str, lock: dict[str, dict[str, Any]]) -> dict[str, An
     else:
         blockers.extend(
             [
-                "dataset-specific schema converter is not implemented",
+                "dataset-specific schema converter evidence is absent",
                 "floorplan legality checker logs are not present",
                 "split manifest and benchmark contamination review are not present",
             ]

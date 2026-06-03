@@ -167,7 +167,7 @@ export const checkPredictionsAction: Action = {
           resolved: prediction.resolved,
           resolution: resolutionStr,
           daysUntil,
-          endDate: prediction.endDate?.toISOString().split("T")[0] ?? "TBD",
+          endDate: prediction.endDate?.toISOString().split("T")[0] ?? "unscheduled",
           yesShares,
           noShares,
         };
@@ -268,7 +268,7 @@ export const checkPredictionsAction: Action = {
           resolved: p.resolved,
           resolution: resolutionStr,
           daysUntil,
-          endDate: p.endDate?.toISOString().split("T")[0] ?? "TBD",
+          endDate: p.endDate?.toISOString().split("T")[0] ?? "unscheduled",
         };
       });
 

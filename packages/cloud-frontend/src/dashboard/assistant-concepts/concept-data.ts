@@ -446,7 +446,7 @@ function riskFor(direction: AssistantDirection, look: AssistantLook) {
       : "Persistent text can make the assistant feel less voice-native if hierarchy is too heavy.",
     look.id === "soft-sci-fi"
       ? "Immersive motion must be checked for performance and distraction."
-      : "The restrained visual system needs strong empty states to avoid feeling unfinished.",
+      : "The restrained visual system needs strong empty states to avoid feeling sparse.",
     direction.voicePolicy.includes("Always") ||
     direction.voicePolicy.includes("inferred")
       ? "Always-ready listening needs unmistakable privacy and mute semantics."

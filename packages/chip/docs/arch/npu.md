@@ -241,7 +241,7 @@ consumes, and dispatches MACs through the parameterized tile without
 redesigning the MAC array. Effective throughput targets the Trainium2
 4x-sparse-INT8 ratio extrapolated to INT4.
 
-There is no RTL, no compiler lowering, and no sparsity-decode microengine
+RTL, compiler lowering, and sparsity-decode microengine evidence are absent
 today. The opcode lands at `L2` and is tracked in
 `docs/spec-db/e1-npu-runtime-contract.json` as `phase: L2_planned`; the
 `sparse_int4_tile_2_4` capability appears in
@@ -324,7 +324,7 @@ This proves single-Conv2D im2col runtime orchestration over the current bounded
 GEMM ABI. It is not a general convolution compiler: SAME padding,
 strided/dilated convolution, grouped/depthwise convolution, layout conversion,
 fusion, graph partitioning, Android delegation, and hardware scheduling remain
-future work.
+release-track requirements.
 
 `lower_depthwise_conv2d_smoke` adds a separate tiny depthwise Conv2D evidence
 path for `stablehlo.depthwise_convolution`, `tflite.depthwise_conv_2d`, and
@@ -341,7 +341,7 @@ This proves direct depthwise-Conv2D runtime orchestration over the current
 scalar ABI. It is not a vector depthwise datapath or general convolution
 compiler: SAME padding, strided/dilated depthwise convolution, fused
 activation, Android delegation, and production compiler backend support remain
-future work.
+release-track requirements.
 
 `lower_grouped_conv2d_smoke` covers a separate tiny grouped Conv2D evidence
 path for `stablehlo.convolution`, `tflite.conv_2d`, and `eliza.grouped_conv2d`
@@ -360,7 +360,7 @@ This proves direct grouped-Conv2D runtime orchestration over the current scalar
 ABI. It is not a vector grouped-convolution datapath or general convolution
 compiler: depthwise fallback, SAME padding, strided/dilated grouped
 convolution, fused activation, Android delegation, and production compiler
-backend support remain future work.
+backend support remain release-track requirements.
 
 `lower_attention_qk_smoke` adds a tiny transformer-score evidence path for
 rank-4 `[batch][heads][tokens][head_dim]` query/key tensors. It accepts
@@ -377,7 +377,7 @@ count, `host_transposes_keys=true`, `host_iterates_heads=true`,
 This proves attention-QK score runtime orchestration only. It is not a complete
 attention kernel: scaling, masking, softmax, value projection, KV-cache paging,
 fusion, graph partitioning, Android delegation, and hardware scheduling remain
-future work.
+release-track requirements.
 
 `lower_attention_softmax_smoke` adds a bounded attention-softmax evidence path
 for rank-4 `[batch][heads][tokens][key_tokens]` int8 logits and an optional
@@ -415,7 +415,7 @@ evidence, total tile count, `requires_prequantized_attention=true`,
 This proves attention-AV context runtime orchestration only. It is not a
 complete attention kernel: softmax, scaling, masking, score normalization,
 KV-cache paging, fusion, graph partitioning, Android delegation, and hardware
-scheduling remain future work.
+scheduling remain release-track requirements.
 
 `lower_attention_smoke` composes the QK, softmax, and AV evidence paths into a
 bounded multi-head attention lowering for `eliza.attention`,
@@ -517,7 +517,7 @@ This proves transformer-MLP ReLU runtime orchestration over the current bounded
 GEMM and VRELU ABIs. It is not a production feed-forward compiler path:
 GELU/SwiGLU inside `lower_mlp_smoke`, fused bias add, fused residual add,
 normalization, activation fusion, graph partitioning, Android delegation, and
-hardware scheduling remain future work.
+hardware scheduling remain release-track requirements.
 
 `lower_swiglu_smoke` adds gated transformer-MLP evidence paths for
 `eliza.swiglu`, `eliza.gated_mlp`, `stablehlo.swiglu`, and `tflite.swiglu`
@@ -589,7 +589,7 @@ smoke schema and dispatches them through `lower_stablehlo_module_smoke`.
 This proves row-wise bias-add scalar broadcast orchestration only. It is not a
 vector add datapath or fused projection bias path: arbitrary-rank broadcasting,
 normalization, graph partitioning, Android delegation, and hardware scheduling
-remain future work.
+remain release-track requirements.
 
 `lower_residual_add_smoke` adds a tiny int8 residual-add evidence path for
 `stablehlo.add`, `stablehlo.residual_add`, `tflite.add`, and `eliza.residual_add`
@@ -606,7 +606,7 @@ through `lower_stablehlo_module_smoke`.
 This proves residual-add scalar runtime orchestration only. It is not a vector
 add datapath or fused transformer residual path: arbitrary broadcast add,
 normalization, graph partitioning, Android delegation, and hardware scheduling
-remain future work.
+remain release-track requirements.
 
 `lower_transformer_block_smoke` composes the current primitive lowerings into a
 tiny batch-1, single-head transformer block. It accepts
@@ -625,7 +625,7 @@ This proves single-head transformer-block runtime orchestration over current
 NPU-backed smoke primitives. It is not a production transformer compiler path:
 QK generation inside the block, softmax, scaling, masking, layer normalization,
 multi-head merge, KV-cache paging, fused kernels, Android delegation, and
-hardware scheduling remain future work.
+hardware scheduling remain release-track requirements.
 
 `lower_modern_decoder_block_smoke` composes the newer transformer primitive
 evidence into a tiny batch-1, single-head decoder block. It accepts
@@ -663,7 +663,7 @@ This proves modern decoder-block runtime orchestration over current NPU-backed
 smoke primitives. It is still not a production transformer decode kernel:
 exact exp/e softmax, scaling fusion, multi-head merge, KV-cache paging/update,
 vector norm/RoPE/gate/softmax datapaths, fused kernels, Android delegation,
-graph compilation, and hardware scheduling remain future work.
+graph compilation, and hardware scheduling remain release-track requirements.
 
 `lower_rope_smoke` adds a tiny rotary-position embedding evidence path for
 `eliza.rope`, `stablehlo.rope`, and `tflite.rope` records. It accepts int8

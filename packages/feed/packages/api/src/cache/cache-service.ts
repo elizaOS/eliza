@@ -897,8 +897,9 @@ export function getCacheStats() {
 /**
  * Clear all cache (use with caution!)
  *
- * @description Clears all in-memory cache entries. Redis cache clearing is not
- * implemented for safety reasons (to avoid clearing other application data).
+ * @description Clears all in-memory cache entries. Redis cache clearing is
+ * intentionally skipped for safety reasons (to avoid clearing other
+ * application data).
  *
  * @returns {Promise<void>}
  *
@@ -915,7 +916,7 @@ export async function clearAllCache(): Promise<void> {
   if (isRedisAvailable()) {
     // Only clear our namespaced keys, not the entire Redis instance
     logger.warn(
-      "Redis cache clear requested but not implemented for safety",
+      "Redis cache clear requested but skipped for safety",
       undefined,
       "CacheService",
     );

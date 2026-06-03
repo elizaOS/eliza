@@ -77,7 +77,7 @@ _SOURCES = [
 _PUBLIC_POLICY_CLAIMS = [
     {
         "source": "https://github.com/asimovinc/asimov-v1",
-        "claim": "README roadmap lists locomotion policy as a future item",
+        "claim": "README release notes list locomotion policy as unreleased",
         "artifact_status": "repository contains CAD/electrical/simulation assets; no released policy weights identified",
     },
     {

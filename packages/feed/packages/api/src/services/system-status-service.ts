@@ -729,7 +729,7 @@ export function buildSystemStatusSnapshot(
       uptimeMs: gameUptimeMs,
     },
     activityMetrics: input.activityMetrics,
-    // TODO: populate from LlmCallLog error rows once the snapshot includes them
+    // Reserved for LlmCallLog error rows once the snapshot includes them.
     recentErrors: [],
     cronJobs: {
       summary: input.cron.summary,

@@ -171,7 +171,7 @@ Run `bun run env:validate` to check required variables before starting.
 
 Vercel **Speed Insights** is enabled in production builds but **gated**: only selected high-traffic routes contribute vitals, **session sampling** reduces datapoint volume (default **50%** when the env var is omitted), and **minimal / embed** layout skips the component entirely. **Why:** RUM cost and dashboard noise scale with every page view; we keep signal on surfaces where Core Web Vitals correlate with product quality (feed, markets, wallet, etc.).
 
-Details, env migration notes, and roadmap: **[docs/observability/speed-insights.md](docs/observability/speed-insights.md)**.
+Details, env migration notes, and follow-ups: **[docs/observability/speed-insights.md](docs/observability/speed-insights.md)**.
 
 ---
 

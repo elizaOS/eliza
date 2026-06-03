@@ -458,7 +458,7 @@ function registerBenchmarkXConnectors(runtime: AgentRuntime): void {
         runtime,
         source: "x",
         index: 1,
-        text: "DM from @alex: quick question about the elizaOS roadmap.",
+        text: "DM from @alex: quick question about the elizaOS release plan.",
       }),
       makeBenchmarkConnectorMemory({
         runtime,
@@ -603,7 +603,9 @@ export function caseMatches(
   return false;
 }
 
-export function isAcceptableNoActionResponse(text: string | undefined): boolean {
+export function isAcceptableNoActionResponse(
+  text: string | undefined,
+): boolean {
   const trimmed = text?.trim();
   if (!trimmed) return false;
   if (!/[A-Za-z0-9]/.test(trimmed)) return false;
@@ -2254,8 +2256,7 @@ export function buildBenchmarkReportArtifact(
       passed: report.passed,
       failed: report.failed,
       accuracy: report.accuracy,
-      plannerAccuracy:
-        report.total === 0 ? 0 : plannerPassed / report.total,
+      plannerAccuracy: report.total === 0 ? 0 : plannerPassed / report.total,
       executionAccuracy:
         report.total === 0 ? 0 : executionPassed / report.total,
       latency: report.latency,

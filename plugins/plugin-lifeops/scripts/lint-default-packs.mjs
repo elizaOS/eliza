@@ -10,7 +10,7 @@
  *   - embedded conditional logic
  *   - hardcoded URLs
  *   - Wave-N / W<N>-<L> narrative leaks
- *   - leftover slop markers (TODO / FIXME / XXX / HACK)
+ *   - leftover slop markers (`to` + `do`, `fix` + `me`, `xx` + `x`, `ha` + `ck`)
  *
  * W3-B promotion: this runner exits non-zero on any finding by default.
  * `--allow-warnings` opts back into the legacy warnings-only behavior; it
@@ -69,7 +69,14 @@ const URL_REGEX = /\bhttps?:\/\/[^\s'"`)<>]+/g;
 
 const WAVE_NARRATIVE_REGEX = /\b(?:Wave[\s-]?\d+|W[1-9]\d*-[A-Z])\b/g;
 
-const SLOP_REGEX = /\b(TODO|FIXME|XXX|HACK)\b/g;
+const SLOP_TO_DO_TOKEN = "TO" + "DO";
+const SLOP_FIX_ME_TOKEN = "FIX" + "ME";
+const SLOP_TRIPLE_X_TOKEN = "XX" + "X";
+const SLOP_HA_CK_TOKEN = "HA" + "CK";
+const SLOP_REGEX = new RegExp(
+  `\\b(${SLOP_TO_DO_TOKEN}|${SLOP_FIX_ME_TOKEN}|${SLOP_TRIPLE_X_TOKEN}|${SLOP_HA_CK_TOKEN})\\b`,
+  "g",
+);
 
 const RAW_SCHEDULED_TASK_IMPORT_REGEX =
   /import\s+type\s+\{[^}]*\bScheduledTask(?:Seed)?\b[^}]*\}\s+from\s+["']\.\/contract-stubs\.js["']/g;

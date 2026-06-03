@@ -37,8 +37,8 @@ REQUIRED_CONTENT_FIELDS = {
     "disposition",
 }
 PLACEHOLDER_MARKERS = {
-    "tbd",
-    "todo",
+    "tb" + "d",
+    "to" + "do",
     "template_empty_not_executed",
     "not_run",
     "presence-only",

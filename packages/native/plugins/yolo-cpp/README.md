@@ -44,12 +44,11 @@ Output: `libyolo.a` plus
 
 ## GGUF conversion
 
-`scripts/yolo_to_gguf.py` is a SKELETON. The TODO blocks document
-each layer family that needs converting (Conv2d → fp16, BN → fp32
-sidecar stats, decoupled head). Run order, expected inputs, and
-metadata key contract are documented at the top of the file. The
-script raises `NotImplementedError` until those TODOs land so a
-half-built converter cannot pass for working.
+`scripts/yolo_to_gguf.py` converts Ultralytics YOLOv8n / YOLOv11n
+checkpoints into a single GGUF with Conv tensors, BN sidecar stats,
+decoupled-head tensors, locked metadata, and strict checkpoint-key
+validation. Run order, expected inputs, and metadata key contract are
+documented at the top of the file.
 
 ```
 python scripts/yolo_to_gguf.py \
@@ -67,7 +66,7 @@ src/yolo_nms.c               Real per-class NMS.
 src/yolo_postprocess.c       Real decoupled-head decode.
 src/yolo_stub.c              ENOSYS stub for graph entry points.
 src/yolo_internal.h          Library-private helpers (NMS, decode).
-scripts/yolo_to_gguf.py      Skeleton converter; TODO blocks documented.
+scripts/yolo_to_gguf.py      Strict Ultralytics checkpoint to GGUF converter.
 test/yolo_stub_smoke.c       ABI link probe.
 test/yolo_nms_test.c         Real NMS behaviour test.
 test/yolo_classes_test.c     Real class table test.

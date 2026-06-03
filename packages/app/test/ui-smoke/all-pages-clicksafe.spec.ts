@@ -380,12 +380,12 @@ function formatPageIssue(kind: string, value: unknown): string {
   return `${kind}: ${String(value)}`;
 }
 
-// In keyless stub mode the stub stack answers 501 (Not Implemented) for any
+// In keyless loopback mode the local stack answers 501 for any
 // dev-only or optional endpoint it does not model (e.g. /api/dev/stack,
 // /api/dev/console-log, /api/update/status). The renderer already degrades
 // gracefully on those — the page still mounts and the ready checks still pass —
-// but the browser emits a "Failed to load resource: ... 501 (Not Implemented)"
-// console error for the failed request. That is a stub-environment artifact,
+// but the browser emits a failed-resource console error for the request. That
+// is a loopback-environment artifact,
 // not a product defect (these endpoints return 200 in a real desktop runtime),
 // so it must not fail the render smoke. Every other console.error, every
 // pageerror, and every non-501 resource failure still gates the page.

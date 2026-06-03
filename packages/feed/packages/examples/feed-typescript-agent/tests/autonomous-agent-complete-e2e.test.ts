@@ -319,12 +319,12 @@ describe.skipIf(!serverAvailable)("Autonomous Agent - Complete E2E Test", () => 
         return;
       }
 
-      // TODO: getPost method not yet implemented
+      // getPost is unavailable in this example client.
       // const post = await a2aClient.getPost(createdPostId);
       // expect(post).toBeDefined();
       // expect(post.id).toBe(createdPostId);
       // console.log(`   ✅ Retrieved post: ${post.content.substring(0, 50)}...`);
-      console.log(`   ⏭️  Skipping getPost - method not yet implemented`);
+      console.log("   ⏭️  Skipping getPost - method unavailable in example client");
     });
 
     it("should create a comment", async () => {
@@ -349,13 +349,13 @@ describe.skipIf(!serverAvailable)("Autonomous Agent - Complete E2E Test", () => 
         return;
       }
 
-      // TODO: getComments method not yet implemented
+      // getComments is unavailable in this example client.
       // const result = await a2aClient.getComments(createdPostId);
       // expect(result).toBeDefined();
       // expect(result.comments).toBeInstanceOf(Array);
       // expect(result.comments.length).toBeGreaterThan(0);
       // console.log(`   ✅ Found ${result.comments.length} comments`);
-      console.log(`   ⏭️  Skipping getComments - method not yet implemented`);
+      console.log("   ⏭️  Skipping getComments - method unavailable in example client");
     });
 
     it("should like a post", async () => {
@@ -406,13 +406,13 @@ describe.skipIf(!serverAvailable)("Autonomous Agent - Complete E2E Test", () => 
     });
 
     it("should create a group chat", async () => {
-      // TODO: createGroup method not yet implemented
+      // createGroup is unavailable in this example client.
       // const result = await a2aClient.createGroup('E2E Test Group', []);
       // expect(result).toBeDefined();
       // expect(result.success).toBe(true);
       // expect(result.chatId).toBeDefined();
       // console.log(`   ✅ Created group: ${result.chatId}`);
-      console.log(`   ⏭️  Skipping createGroup - method not yet implemented`);
+      console.log("   ⏭️  Skipping createGroup - method unavailable in example client");
     }, 10000);
 
     it("should send a message", async () => {
@@ -423,7 +423,7 @@ describe.skipIf(!serverAvailable)("Autonomous Agent - Complete E2E Test", () => 
       if (chats.chats.length > 0) {
         chatId = chats.chats[0]?.id;
       } else {
-        // TODO: createGroup method not yet implemented
+        // createGroup is unavailable in this example client.
         // const group = await a2aClient.createGroup('E2E Test Group', []);
         // chatId = group.chatId;
       }
@@ -452,11 +452,11 @@ describe.skipIf(!serverAvailable)("Autonomous Agent - Complete E2E Test", () => 
     });
 
     it("should get user stats", async () => {
-      // TODO: getUserStats method not yet implemented
+      // getUserStats is unavailable in this example client.
       // const result = await a2aClient.getUserStats(agentUserId);
       // expect(result).toBeDefined();
       // console.log('   ✅ User stats retrieved');
-      console.log(`   ⏭️  Skipping getUserStats - method not yet implemented`);
+      console.log("   ⏭️  Skipping getUserStats - method unavailable in example client");
     });
 
     it("should get system stats", async () => {

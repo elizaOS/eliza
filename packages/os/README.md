@@ -46,4 +46,4 @@ The USB flasher under `usb-installer/` handles target selection, format, write, 
 
 ## User-facing docs
 
-Engineering notes for this package live in `docs/` (TEE plan, CI/CD roadmap, release plan, apt repo). Per-subsystem README files: `linux/README.md`, `android/README.md`, `usb-installer/README.md`.
+Engineering notes for this package live in `docs/` (TEE plan, CI/CD production plan, release plan, apt repo). Per-subsystem README files: `linux/README.md`, `android/README.md`, `usb-installer/README.md`.

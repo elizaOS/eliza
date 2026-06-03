@@ -170,7 +170,7 @@ def build_report() -> dict[str, Any]:
         {
             "id": "camera_isp_real_world_gap_fail_closed",
             "status": "pass"
-            if "not implemented" in str(camera_gap.get("claim_boundary", ""))
+            if "not available as product functions" in str(camera_gap.get("claim_boundary", ""))
             else "fail",
             "evidence": "docs/manufacturing/real-world-verification-gaps.yaml#camera_isp_stack",
         },

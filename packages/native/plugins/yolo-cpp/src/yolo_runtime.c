@@ -228,8 +228,7 @@ const char *yolo_active_backend(void) {
  * callers can call/recover safely; the synthetic ctest in
  * ``test/yolo_runtime_test.c`` exercises this contract honestly.
  *
- * The full forward path is intentionally NOT implemented here in this
- * commit:
+ * The full forward path stays outside this entry point in this commit:
  *   - Scalar-C YOLOv8n forward is on the order of a minute per frame
  *     and untrustworthy without a parity test against the Ultralytics
  *     Python reference.

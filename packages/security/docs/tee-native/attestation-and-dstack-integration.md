@@ -29,7 +29,7 @@ verifying the app's measured identity. Components:
 |---|---|
 | **VMM** | Runs on a bare-metal Intel TDX host. Parses `docker-compose` directly (no app changes), boots a CVM from a reproducible OS image, allocates CPU/RAM/confidential-GPU. |
 | **Guest agent** (`dstack-guest-agent`; legacy `tappd`, socket `/var/run/tappd.sock` → now `dstack.sock`) | Runs **inside** each CVM. Generates the TDX attestation quote (extends app data into RTMR3), provisions per-app keys from KMS, encrypts local disk, exposes the app interface over the unix socket. |
-| **KMS** | Runs in its **own** TEE. Verifies the CVM's TDX quote, enforces authorization via on-chain smart contracts, and derives **deterministic** per-app keys bound to the app's attested identity. Root key is TEE-protected (acknowledged single point of failure; MPC-KMS is the roadmap fix). |
+| **KMS** | Runs in its **own** TEE. Verifies the CVM's TDX quote, enforces authorization via on-chain smart contracts, and derives **deterministic** per-app keys bound to the app's attested identity. Root key is TEE-protected (acknowledged single point of failure; MPC-KMS is the planned fix). |
 | **Gateway** | Terminates TLS at the edge, auto-provisions ACME certs, routes to CVMs, uses **RA-TLS** for mutual attestation on internal hops. |
 | **meta-dstack** | Yocto layer producing the **reproducible** guest OS image, so the image hash (MRTD + RTMR0–2) is deterministic and verifiable. |
 
@@ -100,7 +100,7 @@ The invariant in both lanes: **our RoT key-ladder remains the device root even
 when dstack KMS is layered on top.** dstack KMS keys are *app-scoped and
 derivable*; the device identity / unseal key for the model weights and user data
 chains to the silicon DICE secret, never to a cloud KMS root (which dstack itself
-documents as a single point of failure — §1.1 #610, the MPC-KMS roadmap).
+documents as a single point of failure — §1.1 #610, the MPC-KMS upgrade path).
 
 ## 2. The one end-to-end attestation chain
 

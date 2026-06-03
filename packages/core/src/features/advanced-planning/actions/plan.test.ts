@@ -38,7 +38,7 @@ describe("PLAN action", () => {
 		});
 	});
 
-	test("updates supplied plan data instead of returning not implemented", async () => {
+	test("updates supplied plan data with persistence metadata", async () => {
 		const create = await runPlan({ action: "create", goal: "Ship dashboard" });
 		const plan = create.data?.plan;
 

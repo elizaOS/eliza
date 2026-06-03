@@ -25,7 +25,7 @@ The CPU/interconnect scaffold is separate from the e1-chip debug MMIO path. It u
 
 Unmapped AXI-Lite scaffold accesses return `DECERR`; reads also return `0xDEAD_BEEF`.
 
-The `256 MiB` row is the software-visible aperture contract, not implemented capacity. The current SRAM-backed RTL model under that aperture implements only `4 KiB`; accesses within `0x8000_0000` - `0x8FFF_FFFF` but outside the 4 KiB model return DRAM-model `SLVERR`, not AXI-Lite decode `DECERR`. The tiny CPU execution test uses the DRAM aperture as instruction and data memory. The current DRAM model implements aligned 32-bit words with byte strobes; the CPU subset only generates aligned `LW` and `SW`.
+The `256 MiB` row is the software-visible aperture contract, not modeled capacity. The current SRAM-backed RTL model under that aperture implements only `4 KiB`; accesses within `0x8000_0000` - `0x8FFF_FFFF` but outside the 4 KiB model return DRAM-model `SLVERR`, not AXI-Lite decode `DECERR`. The tiny CPU execution test uses the DRAM aperture as instruction and data memory. The current DRAM model implements aligned 32-bit words with byte strobes; the CPU subset only generates aligned `LW` and `SW`.
 
 The Linux-capable scaffold routes DMA master traffic only to the DRAM model. DMA access attempts outside the DRAM aperture must fail with a memory error and must not update MMIO targets. NPU and display are software-visible MMIO targets in this map, but NPU descriptor-master traffic and display framebuffer reads are not production DRAM fabric evidence. This is a local containment check, not an IOMMU or coherency implementation.
 

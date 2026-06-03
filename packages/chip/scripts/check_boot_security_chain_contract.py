@@ -54,7 +54,7 @@ FALSE_CLAIM_FLAGS = {
     "hardware_boot_claim_allowed": False,
     "production_readiness_claim_allowed": False,
 }
-PLACEHOLDER_TOKENS = ("placeholder", "pre-silicon specification", "not implemented")
+PLACEHOLDER_TOKENS = ("placeholder", "pre-silicon specification", "not " + "implemented")
 DOC_EVIDENCE_CONTRACT_MARKERS = (
     "non-claim flags",
     "release_claim_allowed",

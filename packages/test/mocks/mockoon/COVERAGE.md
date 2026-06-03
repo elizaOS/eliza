@@ -61,7 +61,7 @@ Lifeops.calendar new scenarios (20):
 - calendar.propose-times-respect-prefs
 - calendar.check-availability-thursday-morning
 - calendar.cancel-tentative-launch-checklist
-- calendar.reschedule-roadmap-sync-to-afternoon
+- calendar.reschedule-launch-sync-to-afternoon
 - calendar.delete-1on1-correctly
 - calendar.protect-deep-work-block
 - calendar.add-prep-buffer-before-1on1

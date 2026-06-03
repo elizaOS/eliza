@@ -34,7 +34,7 @@ const actor = {
     "Reimagining education.",
     "47 futures changed. (47 completions.)",
     "Empowering learners everywhere.",
-    "340 million points awarded. Learning outcomes: TBD.",
+    "340 million points awarded. Learning outcomes: unknown.",
   ],
   settings: {
     temperature: 0.7,

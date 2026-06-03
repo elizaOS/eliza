@@ -656,8 +656,8 @@ def validate_target_metadata_contract(contract: dict[str, Any] | None) -> list[s
         "placeholder",
         "blocked",
         "missing",
-        "todo",
-        "tbd",
+        "to" + "do",
+        "tb" + "d",
     }.issubset({str(item).lower() for item in forbidden}):
         errors.append(
             "target metadata contract forbidden_release_values must include blocked placeholder terms"

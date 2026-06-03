@@ -73,7 +73,7 @@ unless cherry-picks bring the regression along we should be fine. If
 the suspected commit range is documented in #281138 comments — bisect
 within the cherry-picked series.
 
-## What's still NOT implemented in WebKit
+## WebKit riscv64 JIT Gaps
 
 - **DFG JIT** (WebKit bug #238006 — NEW, no patch series). Acceptable.
 - **FTL JIT** (WebKit bug #239707 — NEW, no patch series). Acceptable.

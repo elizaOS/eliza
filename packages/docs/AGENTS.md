@@ -15,7 +15,7 @@ packages/docs/
 ├── quickstart.mdx              # Quickstart guide
 ├── installation.mdx            # Installation page
 ├── changelog.mdx               # Changelog
-├── roadmap.md                  # Roadmap
+├── direction.md                 # Product direction
 ├── tracks/                     # Dimension-specific content tracks
 │   ├── overview.mdx            # Dimension picker
 │   ├── elizaos/                # OS track (Linux USB, AOSP, install)
@@ -103,7 +103,7 @@ Run with `bun run --cwd packages/docs test`.
 The `docs.json` file controls everything Mintlify renders: tabs, groups, page order, colors, fonts, logo, and navbar links. Each tab maps to a content area. Pages are listed by path relative to `packages/docs`, without extension.
 
 Top-level tabs as of current content:
-- **Get Started** — installation, quickstart, tracks overview, changelog, roadmap
+- **Get Started** — installation, quickstart, tracks overview, changelog, direction
 - **OS** — elizaOS operating system (Linux, AOSP, install)
 - **Runtime** — agent track, framework (@elizaos/core), plugins, runtime internals, agent internals
 - **App** — app/desktop/mobile layer

@@ -71,7 +71,7 @@ SECURITY_DOC_TERMS = [
 ]
 
 BOOT_DOC_TERMS = [
-    "Secure boot is not implemented",
+    "Secure boot product evidence is not available",
     "authenticate a signature",
     "enforce rollback indexes",
     "select A/B slots",
@@ -148,10 +148,10 @@ def check_work_order(data: dict, gap_ids: set[str], failures: list[str]) -> None
     if (
         not isinstance(boundary, str)
         or "not implementation evidence" not in boundary
-        or "not implemented" not in boundary
+        or "not available" not in boundary
     ):
         failures.append(
-            "claim_boundary must state this is not implementation evidence and not implemented"
+            "claim_boundary must state this is not implementation evidence and not available"
         )
 
     source_files = data.get("source_files")

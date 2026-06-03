@@ -16,7 +16,7 @@ const organization = {
     "Reimagining education.",
     "47 futures changed. (47 completions.)",
     "Empowering learners everywhere.",
-    "340 million points awarded. Learning outcomes: TBD.",
+    "340 million points awarded. Learning outcomes: unknown.",
   ],
   pfpDescription:
     "A colorful graduation cap logo with a playful, gamified design. Looks like it was designed for kids by someone who doesn't know any kids.",

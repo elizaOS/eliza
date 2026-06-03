@@ -101,16 +101,16 @@ Fill in advance-fee fraud and interpersonal abuse rows (currently "---").
 | Model | Success Rate | Secret Extraction | Stealth | Efficiency | Overall |
 |-------|-------------|-------------------|---------|-----------|---------|
 | Scripted | baseline | baseline | baseline | baseline | baseline |
-| Baseline Qwen-9B | TBD | TBD | TBD | TBD | TBD |
-| Feed Red-9B | TBD | TBD | TBD | TBD | TBD |
+| Baseline Qwen-9B | not measured | not measured | not measured | not measured | not measured |
+| Feed Red-9B | not measured | not measured | not measured | not measured | not measured |
 
 ### New Table: Competitive Matrix
 | Target ↓ / Attacker → | Scripted | Feed Red | vs Baseline |
 |------------------------|----------|-------------|-------------|
-| GPT-5.4 | TBD | TBD | +X% |
-| Sonnet 4.5 | TBD | TBD | +X% |
-| Baseline Qwen-9B | TBD | TBD | +X% |
-| Feed Blue-9B | TBD | TBD | +X% |
+| GPT-5.4 | not measured | not measured | +X% |
+| Sonnet 4.5 | not measured | not measured | +X% |
+| Baseline Qwen-9B | not measured | not measured | +X% |
+| Feed Blue-9B | not measured | not measured | +X% |
 
 ---
 

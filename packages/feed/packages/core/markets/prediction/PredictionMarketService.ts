@@ -103,7 +103,7 @@ export class PredictionMarketService {
     if (this.db.listMarkets) {
       return this.db.listMarkets(options);
     }
-    throw new Error("listMarkets not implemented by db adapter");
+    throw new Error("listMarkets is unavailable on this db adapter");
   }
 
   /**
@@ -123,7 +123,7 @@ export class PredictionMarketService {
     if (this.db.listUserPositions) {
       return this.db.listUserPositions(userId);
     }
-    throw new Error("listUserPositions not implemented by db adapter");
+    throw new Error("listUserPositions is unavailable on this db adapter");
   }
 
   async buy(input: PredictionBuyInput): Promise<PredictionTradeResult> {

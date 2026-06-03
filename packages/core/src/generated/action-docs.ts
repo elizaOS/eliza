@@ -6650,7 +6650,7 @@ export const allActionsSpec = {
 		{
 			name: "PERPETUAL_MARKET",
 			description:
-				"Use registered perpetual market providers. target selects the provider; Hyperliquid is registered today. action=read reads public state with kind: status, markets, market, positions, or funding. action=place_order reports trading readiness; signed order placement is disabled in this app scaffold.",
+				"Use registered perpetual market providers. target selects the provider; Hyperliquid is registered today. action=read reads public state with kind: status, markets, market, positions, or funding. action=place_order reports trading readiness; signed order placement is disabled in this read-only app.",
 			parameters: [
 				{
 					name: "target",

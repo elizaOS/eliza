@@ -1060,7 +1060,7 @@ describeIfKey("Domain 15 — Multi-channel & cross-channel search", () => {
       input({
         kind: "output",
         promptInstructions:
-          "search across channels for a thread about Q3 roadmap",
+          "search across channels for a thread about Q3 launch planning",
         contextRequest: {
           includeOwnerFacts: ["preferredName", "locale"],
           includeRecentTaskStates: { kind: "output", lookbackHours: 48 },

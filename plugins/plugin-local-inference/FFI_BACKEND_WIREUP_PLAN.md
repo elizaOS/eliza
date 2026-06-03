@@ -226,7 +226,7 @@ Estimated total work to land Step F once vision + resize parity exist:
 | Risk | Mitigation status |
 |---|---|
 | Silent vision/slot failures when FFI active | ✅ Dispatcher throws actionable errors; slot save/restore now landed (subprocess fallback for vision only) |
-| Tokenizer mismatch produces gibberish | ⚠️ Runtime vocab-size assertion still TODO in the adapter. Mitigated in practice by the engine loading one model at a time. |
+| Tokenizer mismatch produces gibberish | ⚠️ Runtime vocab-size assertion is still absent in the adapter. Mitigated in practice by the engine loading one model at a time. |
 | Concurrent dispatcher + direct-singleton paths racing | ✅ Eliminated by engine.ts refactor |
 | Default flip exposed before parity | ✅ Vision + resize automatically fall to subprocess via dispatcher throw; users can set `ELIZA_INFERENCE_BACKEND=http` for full subprocess mode |
 | Runtime correctness of the desktop adapter | ⚠️ The adapter follows the AOSP pattern 1:1 but has not been runtime-tested against `libllama.dylib` in this environment (cmake OOMs). The user/CI needs to build the dylibs and exercise the path before declaring this production-ready. |

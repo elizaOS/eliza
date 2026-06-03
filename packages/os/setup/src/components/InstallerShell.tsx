@@ -24,9 +24,9 @@ const TABS: Tab[] = [
 // Placeholder panels
 // ---------------------------------------------------------------------------
 
-// TODO: integrate USB installer in-process — currently launches the
+// USB installer integration note: currently launches the
 // standalone `packages/os/usb-installer` either as a separate dev server or
-// as the packaged `elizaOS USB Installer.app`. Tracking issue: TBD.
+// as the packaged `elizaOS USB Installer.app`. Tracking issue: pending.
 const USB_INSTALLER_DEV_URL = "http://127.0.0.1:3742";
 const USB_INSTALLER_DOWNLOAD_URL = "https://elizaos.ai/downloads#usb-installer";
 

@@ -770,7 +770,7 @@ def check_target(name: str) -> tuple[list[str], list[str]]:
     missing = [path for path in spec["required"] if existing_repo_path(path) is None]
     if missing:
         errors.append(
-            f"{name} BSP is not implemented; missing required artifacts: " + ", ".join(missing)
+            f"{name} BSP is missing required artifacts: " + ", ".join(missing)
         )
 
     present_text = "\n".join(

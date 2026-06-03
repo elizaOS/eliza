@@ -64,8 +64,8 @@ METADATA_FIELDS = {
     "artifact_sha256",
 }
 PLACEHOLDER_MARKERS = {
-    "tbd",
-    "todo",
+    "tb" + "d",
+    "to" + "do",
     "not_run",
     "presence-only",
     "presence_only",

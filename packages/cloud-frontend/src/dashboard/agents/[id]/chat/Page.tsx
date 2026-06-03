@@ -15,8 +15,8 @@ import { useAgent } from "../../../../lib/data/eliza-agents";
 /**
  * In-cloud chat surface for a sandbox agent (container instance).
  *
- * TODO(eliza-cloud-chat-backend): Wire this page to render
- * `<ElizaChatInterface />` with a room scoped to this container.
+ * Cloud chat backend boundary: render `<ElizaChatInterface />` here only after
+ * there is a room API scoped to this container.
  * Today, `eliza-chat-interface.tsx` is character-room based via the
  * global chat store and `/api/characters/:ref/...` endpoints — there
  * is no equivalent room/message API for sandbox containers, so we

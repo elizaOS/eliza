@@ -22,7 +22,7 @@ describe("market-realism-metrics", () => {
       markets: [
         {
           id: "m1",
-          question: "Will OpenAGI publish a roadmap?",
+          question: "Will OpenAGI publish a release plan?",
           yesShares: 5200,
           noShares: 4800,
           liquidity: 18_000,
@@ -49,7 +49,7 @@ describe("market-realism-metrics", () => {
       markets: [
         {
           id: "active-market",
-          question: "Will OpenAGI publish a roadmap?",
+          question: "Will OpenAGI publish a release plan?",
           yesShares: 5200,
           noShares: 4800,
           liquidity: 18_000,

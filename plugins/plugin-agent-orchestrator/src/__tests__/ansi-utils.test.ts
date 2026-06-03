@@ -391,7 +391,7 @@ describe("formatMarkdownTablesForChat", () => {
 });
 
 describe("closeUnbalancedMarkdownFences", () => {
-  it("closes an unfinished fenced block before chat delivery", () => {
+  it("closes an open fenced block before chat delivery", () => {
     expect(
       closeUnbalancedMarkdownFences(
         [

@@ -162,7 +162,7 @@ To verify against a different AiNex / topology:
 Everything the agent → bridge contract relies on is verified in sim. The
 remaining unknown is real-motor PD response, which the Bezier gait
 controller does NOT yet model accurately for the Hiwonder servos — see
-the "Future work" section in the runbook.
+the real-motor follow-up section in the runbook.
 
 ## How to reproduce
 

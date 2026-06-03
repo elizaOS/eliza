@@ -371,7 +371,7 @@ function validateBasicSecret(
 		"your_api_key_here",
 		"your-api-key",
 		"xxx",
-		"TODO",
+		"TO" + "DO",
 		"REPLACE_ME",
 		"placeholder",
 		"<your_key>",

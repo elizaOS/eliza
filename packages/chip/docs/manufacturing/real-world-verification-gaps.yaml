@@ -248,7 +248,7 @@ gaps:
     status: draft_local_plan
     evidence_manifest: docs/manufacturing/release-manifest.yaml
     local_check: scripts/check_real_world_gates.py
-    claim_boundary: Modem, baseband, RF front-end, SIM/eSIM, carrier provisioning, and cellular data/voice/SMS are not implemented.
+    claim_boundary: Modem, baseband, RF front-end, SIM/eSIM, carrier provisioning, and cellular data/voice/SMS are not available as product functions.
     required_evidence:
       - Selected modem module or chipset integration record with host interface, power, reset, wake, SIM or eSIM, antenna, RF, firmware, and driver ownership.
       - Hardware transcript proving modem enumeration, firmware identity, SIM or eSIM presence, network registration, data session, voice or IMS disposition, SMS disposition, suspend wake, and recovery from reset.
@@ -264,7 +264,7 @@ gaps:
     status: draft_local_plan
     evidence_manifest: docs/manufacturing/release-manifest.yaml
     local_check: scripts/check_real_world_gates.py
-    claim_boundary: Wi-Fi, Bluetooth, GNSS, and NFC product functions are not implemented; current Wi-Fi files are reference scaffolds only.
+    claim_boundary: Wi-Fi, Bluetooth, GNSS, and NFC product functions are not available; current Wi-Fi files are reference scaffolds only.
     required_evidence:
       - Selected module or chip records for Wi-Fi, Bluetooth, GNSS, and NFC with host buses, firmware, antennas, coexistence, clocks, resets, and regulatory boundaries.
       - Hardware transcripts proving Wi-Fi scan/association/IP throughput, Bluetooth controller attach/pairing/audio or data role, GNSS fix or simulator lock, and NFC tag or reader operation.
@@ -281,7 +281,7 @@ gaps:
     status: draft_local_plan
     evidence_manifest: docs/manufacturing/release-manifest.yaml
     local_check: scripts/check_real_world_gates.py
-    claim_boundary: Camera sensors, CSI, ISP, tuning, autofocus, flash, and Android camera HAL are not implemented.
+    claim_boundary: Camera sensors, CSI, ISP, tuning, autofocus, flash, and Android camera HAL are not available as product functions.
     required_evidence:
       - Selected image sensor, lens, actuator, flash, CSI lane mapping, clock, reset, regulator, and ISP ownership records.
       - Hardware transcripts proving media graph enumeration, frame capture, exposure/gain control, color pipeline, still capture, video capture, and failure recovery.
@@ -297,7 +297,7 @@ gaps:
     status: draft_local_plan
     evidence_manifest: docs/manufacturing/release-manifest.yaml
     local_check: scripts/check_real_world_gates.py
-    claim_boundary: Audio codec, speakers, microphones, headset, DSP, routing, and Android audio HAL are not implemented.
+    claim_boundary: Audio codec, speakers, microphones, headset, DSP, routing, and Android audio HAL are not available as product functions.
     required_evidence:
       - Selected codec, amplifier, microphone, speaker, headset, I2S or PDM or SLIMbus, clocks, power, jack detect, and acoustic path records.
       - Hardware transcripts proving playback, capture, loopback, volume, mute, routing, underrun handling, suspend resume, and thermal or current limits.
@@ -314,7 +314,7 @@ gaps:
     status: draft_local_plan
     evidence_manifest: docs/manufacturing/release-manifest.yaml
     local_check: scripts/check_real_world_gates.py
-    claim_boundary: Touch, buttons, IMU, proximity, ambient light, magnetometer, fingerprint, and haptics are not implemented.
+    claim_boundary: Touch, buttons, IMU, proximity, ambient light, magnetometer, fingerprint, and haptics are not available as product functions.
     required_evidence:
       - Selected sensors, touch controller, buttons, haptic driver, interrupt lines, regulators, calibration storage, and mechanical stack records.
       - Hardware transcripts proving input event delivery, sensor enumeration, sampling, calibration, suspend wake, haptic actuation, and error recovery.
@@ -331,7 +331,7 @@ gaps:
     status: draft_local_plan
     evidence_manifest: docs/manufacturing/release-manifest.yaml
     local_check: scripts/check_real_world_gates.py
-    claim_boundary: USB-C, removable or managed storage, fastboot/ADB, update, rollback, and recovery product flows are not implemented.
+    claim_boundary: USB-C, removable or managed storage, fastboot/ADB, update, rollback, and recovery product flows are not available as product functions.
     required_evidence:
       - Selected USB PHY or controller, Type-C/PD policy, ESD, storage device, partition map, boot slots, recovery, and update ownership records.
       - Hardware transcripts proving USB enumeration, role switching, charging/data policy, storage read/write integrity, ADB or fastboot access, OTA install, rollback, and recovery boot.
@@ -348,7 +348,7 @@ gaps:
     status: draft_local_plan
     evidence_manifest: docs/manufacturing/release-manifest.yaml
     local_check: scripts/check_real_world_gates.py
-    claim_boundary: Battery, charger, PMIC, fuel gauge, regulators, thermal sensors, throttling, and safety policy are not implemented.
+    claim_boundary: Battery, charger, PMIC, fuel gauge, regulators, thermal sensors, throttling, and safety policy are not available as product functions.
     required_evidence:
       - Selected cell, pack protection, charger, PMIC, fuel gauge, regulators, thermistors, thermal zones, and enclosure thermal path records.
       - Hardware transcripts proving charge/discharge, fuel-gauge reporting, regulator telemetry, thermal readings, throttling, shutdown, suspend resume, and fault handling.
@@ -364,7 +364,7 @@ gaps:
     status: draft_local_plan
     evidence_manifest: docs/manufacturing/release-manifest.yaml
     local_check: scripts/check_real_world_gates.py
-    claim_boundary: Secure boot, key provisioning, verified boot, debug lock, anti-rollback, and attestation are not implemented.
+    claim_boundary: Secure boot, key provisioning, verified boot, debug lock, anti-rollback, and attestation are not available as product evidence.
     required_evidence:
       - Root-of-trust, ROM, bootloader, key ladder, fuse or OTP, debug-auth, rollback index, recovery, and manufacturing provisioning records.
       - Hardware transcripts proving signed boot acceptance, unsigned image rejection, rollback rejection, debug lock/unlock policy, key erasure handling, and attestation or device identity behavior.
@@ -380,7 +380,7 @@ gaps:
     status: draft_local_plan
     evidence_manifest: docs/manufacturing/release-manifest.yaml
     local_check: scripts/check_real_world_gates.py
-    claim_boundary: FCC, CE, UKCA, ISED, PTCRB/GCF, SAR, safety, RoHS/REACH, WEEE, and privacy/compliance release are not implemented.
+    claim_boundary: FCC, CE, UKCA, ISED, PTCRB/GCF, SAR, safety, RoHS/REACH, WEEE, and privacy/compliance release are not available as product evidence.
     required_evidence:
       - Product compliance matrix naming target countries, radio technologies, safety standards, EMC standards, environmental obligations, labels, manuals, and responsible owners.
       - Accredited lab reports or module grant reuse analysis for EMC, radio, SAR/RF exposure, safety, battery, charger, and regional markings.
@@ -396,7 +396,7 @@ gaps:
     status: draft_local_plan
     evidence_manifest: docs/manufacturing/release-manifest.yaml
     local_check: scripts/check_real_world_gates.py
-    claim_boundary: Privacy permissions, telemetry defaults, data retention, secure wipe, sensor indicators, and user data protection are not implemented.
+    claim_boundary: Privacy permissions, telemetry defaults, data retention, secure wipe, sensor indicators, and user data protection are not available as product evidence.
     required_evidence:
       - Privacy threat model and data-flow inventory for camera, microphone, location, radios, sensors, identifiers, crash logs, update logs, and factory logs.
       - Hardware or target-OS transcripts proving permission enforcement, privacy indicators, telemetry opt-in or disabled defaults, identifier reset behavior, secure wipe, factory reset, and log redaction.
@@ -413,7 +413,7 @@ gaps:
     status: draft_local_plan
     evidence_manifest: docs/manufacturing/release-manifest.yaml
     local_check: scripts/check_real_world_gates.py
-    claim_boundary: Factory test, calibration, serialization, key provisioning, radio calibration, and outgoing quality release are not implemented.
+    claim_boundary: Factory test, calibration, serialization, key provisioning, radio calibration, and outgoing quality release are not available as product evidence.
     required_evidence:
       - Factory station plan covering board ID, serial, MAC addresses, IMEI if cellular, keys, calibration blobs, radio test mode, labels, rework, and audit logs.
       - Hardware transcripts proving automated test coverage for power rails, boot, storage, USB, display, touch, camera, audio, radios, sensors, haptics, thermal sensors, secure boot state, and debug lock state.

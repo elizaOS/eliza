@@ -5,8 +5,8 @@ learning research. Built on JAX for hardware acceleration, the framework emphasi
 temporal uniformity — every component updates at every time step, with no special
 training phases or batch processing.
 
-Roadmap
--------
+Completed Milestones
+--------------------
 | Step | Focus | Status |
 |------|-------|--------|
 | 1 | Fixed-feature continual supervised learning | **Complete** |

@@ -673,7 +673,7 @@ export class SubAgentRouter extends Service {
     // Capture the real git change set the sub-agent produced, scoped to the
     // baseline recorded at spawn. This is ground truth — it replaces the
     // model's raw step transcript in the completion narration (which leaked
-    // verbatim to the user and read as unfinished work to the planner) and
+    // verbatim to the user and read as pending work to the planner) and
     // is persisted so "what did you change / show me the diff" can be
     // answered from the actual change set instead of a confabulated edit.
     let changeSet: WorkspaceChangeSet | undefined;
@@ -1785,7 +1785,7 @@ function composeNarration(
     // Build the completion narration from the real git change set, not the
     // sub-agent's raw step transcript. For weak coding models that transcript
     // is a dump of tool plans + tool outputs that (a) leaked verbatim to the
-    // user and (b) read as unfinished work to the planner, driving respawns.
+    // user and (b) read as pending work to the planner, driving respawns.
     // Preserve any deployed URL the sub-agent claimed so the downstream
     // reachability verification still runs.
     const urls = collectVerifiableUrlCandidates(response ?? "");
@@ -1804,7 +1804,7 @@ function composeNarration(
   // produced no change set: never narrate its raw step prose. On weak coding
   // models that prose is tool-loop reasoning ("I need to call read properly.
   // Seems stuck. Let's retry.") that leaks verbatim to the user and reads as
-  // unfinished work to the planner. Surface only the public URL(s) it claimed
+  // pending work to the planner. Surface only the public URL(s) it claimed
   // (loopback dropped, verified downstream); a genuine failure is covered by
   // the separate build-incomplete report.
   const retryCount = (session.metadata as Record<string, unknown> | undefined)

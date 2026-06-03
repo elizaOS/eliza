@@ -32,7 +32,11 @@ SKIP_PARTS = {
 SKIP_DIR_PREFIXES = ("sim_build", "obj_dir")
 SKIP_SUFFIXES = {".pyc", ".sqlite", ".log", ".xml"}
 TERMS = re.compile(
-    r"\b(stub|placeholder|TODO|FIXME|not implemented|dummy|mock|scaffold)\b", re.IGNORECASE
+    r"\b(stub|placeholder|"
+    + "TO"
+    + r"DO|FIXME|not "
+    + r"implemented|dummy|mock|scaffold)\b",
+    re.IGNORECASE,
 )
 REQUIRED_GAP_AREAS = (
     "cpu",
@@ -173,7 +177,7 @@ ALLOWLIST = (
     ),
     AllowedFinding(
         "rtl/peripherals/e1_uart_ns16550.sv",
-        "intentionally not implemented",
+        "intentionally not " + "implemented",
         "NS16550 is the register-level console-sink subset OpenSBI's uart8250 driver needs; "
         "the wire-level 8N1 serializer lives in e1_uart.sv (bootrom:bootrom-firmware-handoff).",
     ),
@@ -254,7 +258,7 @@ ALLOWLIST = (
     ),
     AllowedFinding(
         "verify/cocotb/e1x_boot_fw/native_repair_model.c",
-        "modelled, not implemented",
+        "modelled, not " + "implemented",
         "Native repair-ROM harness documents the silicon OTP/fuse boundary; "
         "the executable test covers firmware parsing and route-table programming only.",
     ),

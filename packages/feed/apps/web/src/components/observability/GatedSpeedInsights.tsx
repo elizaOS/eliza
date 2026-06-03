@@ -19,7 +19,7 @@
  * **Why `disabled`?** Minimal / embed layouts (`x-minimal-layout`) are not comparable
  * to the full app (different chrome and assets); skipping avoids biased vitals and cost.
  *
- * @see docs/observability/speed-insights.md — full rationale, env table, roadmap.
+ * @see docs/observability/speed-insights.md — full rationale, env table, and rollout notes.
  */
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { useCallback, useMemo } from "react";

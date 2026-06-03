@@ -11,12 +11,12 @@ export interface AgentConfigurationData {
   /**
    * Controls autonomous trading capability for the agent.
    *
-   * TODO(tech-debt): Unify field naming across the stack. Currently:
+   * Naming convergence note: unify field naming across the stack. Currently:
    * - Frontend: `autonomousEnabled` (this prop)
    * - DB schema: `autonomousTrading` (packages/db/src/schema/user-agent-configs.ts)
    * - API translation: handled in agent creation/update routes
    *
-   * Planned refactor: rename to `autonomousTrading` everywhere for consistency
+   * Planned rename: use `autonomousTrading` everywhere for consistency
    * with other autonomous toggles (autonomousPosting, autonomousCommenting, etc.)
    * and remove the API translation layer.
    *

@@ -142,7 +142,7 @@ TEE." That is the right kind of gap to have.
   control that costs performance (tagged `[PERF]`, MEE+integrity-tree bandwidth
   is the dominant cost), and 05 proposes the recovery for each.
 
-## 4. One sequenced roadmap
+## 4. One sequenced plan
 
 The lanes' individual phasings collapse into three program phases gated by
 hardware availability. Effort is the buildable-subset estimate per lane.

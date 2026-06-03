@@ -4,7 +4,7 @@ import type { ChatConversationSummary } from "./chat-types";
 
 const conversation: ChatConversationSummary = {
   id: "conv-1",
-  title: "Planning the launch roadmap",
+  title: "Planning the launch sequence",
   updatedAtLabel: "2h ago",
 };
 

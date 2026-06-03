@@ -118,7 +118,7 @@ interface CapacitorLlamaStreamingPlugin {
 	}): Promise<{ streamHandle: string }>;
 	prefill(args: { streamHandle: string; tokens: number[] }): Promise<void>;
 	/**
- * Iteration is event-based on the native side — Capacitor plugin
+	 * Iteration is event-based on the native side — Capacitor plugin
 	 * `addListener("llmStreamStep", cb)` fires for each step.  The JS
 	 * binding shape we want is synchronous-ish for symmetry with bun:ffi;
 	 * the adapter in `buildIosBinding`

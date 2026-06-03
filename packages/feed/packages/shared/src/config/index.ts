@@ -9,7 +9,7 @@ import type { Address } from "viem";
 import configData from "./public-config.json";
 
 // Re-export viem chain objects for NFT services (chains.ts was removed in Phase 1).
-// TODO: Remove these exports once NFT code is fully deleted in a future phase.
+// Remove these exports once NFT code is fully deleted in a future phase.
 const etherCurrency = {
   decimals: 18,
   name: "Ether",

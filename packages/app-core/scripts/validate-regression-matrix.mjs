@@ -69,6 +69,19 @@ const MANIFEST_PATH = path.join(
 );
 const manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
 
+function normalizeGuardMarker(marker) {
+  if (typeof marker === "string") return marker;
+  if (
+    Array.isArray(marker) &&
+    marker.every((part) => typeof part === "string")
+  ) {
+    return marker.join("");
+  }
+  throw new Error(
+    `Regression matrix guard marker must be a string or string-part array: ${JSON.stringify(marker)}`,
+  );
+}
+
 function parsePathAliases(raw) {
   if (!raw?.trim()) return [];
 
@@ -360,8 +373,9 @@ function ensureDesktopInventory(failures) {
   }
 
   for (const { relativePath, text } of inventoryTexts) {
-    for (const marker of manifest.guards.forbiddenDesktopInventoryMarkers ??
+    for (const rawMarker of manifest.guards.forbiddenDesktopInventoryMarkers ??
       []) {
+      const marker = normalizeGuardMarker(rawMarker);
       if (text.includes(marker)) {
         failures.push(
           `${relativePath} still contains forbidden desktop inventory marker "${marker}".`,

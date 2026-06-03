@@ -203,10 +203,10 @@ OPTION_SCENARIOS = [
 
 SUMMARY_SCENARIOS = [
     {
-        "topics": ["product roadmap", "Q2 hiring", "infra cost"],
-        "keyPoints": ["Roadmap focused on retention features", "Hiring slowed for runway",
+        "topics": ["product plan", "Q2 hiring", "infra cost"],
+        "keyPoints": ["Product plan focused on retention features", "Hiring slowed for runway",
                       "Migrating cold storage to R2 for cost"],
-        "summary": "Discussed Q2 priorities: retention features lead the roadmap, hiring is paused, and we're migrating cold storage to R2 to cut infra cost."
+        "summary": "Discussed Q2 priorities: retention features lead the product plan, hiring is paused, and we're migrating cold storage to R2 to cut infra cost."
     },
     {
         "topics": ["incident postmortem", "alerting gaps", "on-call rotation"],
@@ -934,7 +934,7 @@ def gen_post_creation(encoder: ExpectedResponseEncoder, rng: random.Random, n: i
         "draft channel announcement: {topic}",
     ]
     topics = ["the new release", "our hiring update", "an upcoming event",
-              "a postmortem", "a community shoutout", "a roadmap teaser"]
+              "a postmortem", "a community shoutout", "a launch-plan teaser"]
     for i in range(n):
         topic = topics[i % len(topics)]
         msg = phrasings[i % len(phrasings)].format(topic=topic)
@@ -1044,7 +1044,7 @@ def gen_message_classifier(encoder: ExpectedResponseEncoder, rng: random.Random,
          "budget,timeline", "venue-booked", 0.85),
         ("what's 2 + 2", "simple", "direct_action",
          "math", "user", "none", "none", 0.99),
-        ("organize a 4-week sprint roadmap", "medium", "sequential_planning",
+        ("organize a 4-week sprint plan", "medium", "sequential_planning",
          "project_management,analysis", "engineers,pm",
          "deadlines", "backlog-prioritized", 0.88),
         ("transform our entire customer support workflow", "enterprise", "strategic_planning",
@@ -2189,7 +2189,7 @@ def _sample_value_for_param(p: dict, plugin: str, action_name: str, idx: int,
     if n in ("dirpath",):
         return ["/tmp", "/var/log", "src/", "build/"][idx % 4]
     if n == "content":
-        return ["# Meeting Notes\n- Discuss roadmap\n- Pick reviewer",
+        return ["# Meeting Notes\n- Discuss product plan\n- Pick reviewer",
                 "console.log('hello world');",
                 "appended line"][idx % 3]
     if n == "selector":

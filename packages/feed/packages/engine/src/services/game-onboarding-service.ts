@@ -297,8 +297,8 @@ export async function completeOnboardingStep(
 
     if (lastError) {
       // All retries exhausted - log for manual reconciliation
-      // TODO: Consider adding a persistent retry queue (e.g., DB-backed job table)
-      // to ensure points are eventually awarded even after process restart
+      // A persistent retry queue (e.g., DB-backed job table) would allow points
+      // to be reconciled automatically after process restart.
       logger.warn(
         `Failed to award bonus points for onboarding step after ${maxPointsRetries} attempts - manual reconciliation needed`,
         {

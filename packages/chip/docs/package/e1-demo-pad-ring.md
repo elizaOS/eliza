@@ -48,7 +48,7 @@ The package pinout remains the machine-readable contract:
 
 - Foundry IO, power, ground, corner, clamp, and ESD cells are not selected.
 - Pad-ring floorplan, keepouts, pad pitch, pad placement, and bond-pad geometry
-  are not implemented.
+  are absent.
 - IO timing, drive strength, clamp, leakage, and voltage-tolerance models are
   missing.
 - Padframe-inclusive DRC, LVS, antenna, ESD, and latch-up evidence is missing.

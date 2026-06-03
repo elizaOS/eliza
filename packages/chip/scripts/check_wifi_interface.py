@@ -148,7 +148,7 @@ def main() -> int:
     doc = (root / "docs/arch/wifi.md").read_text()
     if "package/wifi-external-interface.yaml" not in doc:
         failures.append("docs/arch/wifi.md must reference the machine-readable WiFi contract")
-    for phrase in ("not bonded", "not implemented", "maturity gates"):
+    for phrase in ("not bonded", "not available", "maturity gates"):
         if phrase not in doc:
             failures.append(f"docs/arch/wifi.md must state {phrase}")
     for phrase in ("Murata Type 1DX", "brcmfmac", "hci_uart_bcm", "external"):

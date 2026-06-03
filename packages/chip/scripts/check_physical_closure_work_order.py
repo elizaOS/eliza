@@ -256,8 +256,9 @@ def main() -> int:
         artifact_names = validate_text_list(
             f"{item_id}.artifact_names", item.get("artifact_names"), 2, failures
         )
+        blocked_tokens = ("TB" + "D", "TO" + "DO", "PLACEHOLDER")
         for artifact in artifact_names:
-            if any(token in artifact.upper() for token in ("TBD", "TODO", "PLACEHOLDER")):
+            if any(token in artifact.upper() for token in blocked_tokens):
                 failures.append(
                     f"{item_id}.artifact_names must not contain placeholder token: {artifact}"
                 )

@@ -1,7 +1,7 @@
 # Critical Gap Review - 2026-05-17
 
-This is a critical review of stubs, scaffolds, LARP risks, unfinished gaps,
-unfinished implementations, missing evidence, and untested claims. It is not a
+This is a critical review of stubs, scaffolds, LARP risks, open gaps,
+partial implementations, missing evidence, and untested claims. It is not a
 completion report. A gap is closed only when the listed gate passes with real
 evidence or the claim is removed from scope.
 
@@ -16,9 +16,10 @@ evidence or the claim is removed from scope.
 
 ## Pass 2 Review Method
 
-This pass searched for explicit and implicit incompletion markers: to-do tags,
-fix-me tags, `stub`, `placeholder`, `not implemented`, `not yet`, `future`,
-`blocked`, `scaffold`, `skeleton`, `TBD`, `mock`, `dummy`, `fake`,
+This pass searched for explicit and implicit gap markers: task tags,
+fix-me tags, `stub`, `placeholder`, unsupported-implementation phrases,
+deferred-status words, `blocked`, `scaffold`, `skeleton`, unresolved-owner
+labels, `mock`, `dummy`, `fake`,
 `software reference only`, and missing-tool paths. The results below are
 classified by whether they are release blockers, implementation gaps, test
 gaps, claim-boundary risks, or normal generated-artifact rerun requirements.
@@ -73,7 +74,7 @@ tracked, but it does not prove the real subsystem exists.
 | Tiny CPU subset | Complete gap | `make cocotb-cpu` proves a small instruction subset only. | Add more fail-closed tests for illegal, unaligned, bus-error, interrupt-pending, and reset behavior. | RV64GC/privileged boot path with timer, IRQ, UART, RAM, DTS, and boot transcript. |
 | Pad-level chip vs Linux scaffold split | LARP risk | `e1_chip_top` and `e1_linux_soc_contract` prove different boundaries. | Add status/check output that names the proven boundary for each test. | One selected prototype top with end-to-end software and RTL evidence. |
 | DRAM is SRAM-backed | Scaffold | `e1_soc_top` debug-visible DRAM aperture; `e1_axi_lite_dram` model. | Keep size/semantics machine-documented and tested for DMA/MMIO consistency. | External memory controller/PHY or a blocked DRAM-controller gate. |
-| Display scanout lacks real framebuffer integration | Untested/unfinished | Display registers/timing tests, constant data in top integration. | Add framebuffer fetch contract tests and underflow/status behavior. | Panel/DSI/DRM path, pixel formats, bandwidth, underrun, and driver tests. |
+| Display scanout lacks real framebuffer integration | Untested/partial | Display registers/timing tests, constant data in top integration. | Add framebuffer fetch contract tests and underflow/status behavior. | Panel/DSI/DRM path, pixel formats, bandwidth, underrun, and driver tests. |
 | NPU is a bounded GEMM prototype | Prototype gap | Scratchpad GEMM and MMIO tests. | Add operator coverage report and fail-closed unsupported-op accounting. | Command queue, DMA descriptors, runtime ABI, NNAPI/delegate, and system memory protection. |
 | Boot ROM placeholder | Placeholder | `boot_vector_placeholder` contract word. | Replace placeholder word with a tiny executable boot flow for the selected target or make it a blocked release gate. | Versioned boot ROM image, reset vector, signature/security policy, and boot smoke evidence. |
 | Formal depth for top | Untested/deep-blocked | Routine top uses structural Yosys evidence; deep top BMC can stall on SRAM state. | Keep shallow formal bounded and add protocol-local assertions where tractable. | Deep/coverage proof plan with bounded memories or abstractions. |
@@ -110,7 +111,7 @@ tracked, but it does not prove the real subsystem exists.
 | Stub audit ownership narrow | Reporting blind spot | `verify/check_stub_audit.py` focuses RTL/sim/verification. | Centralize allowed stub inventory across workstreams or link to manifests. | No unaudited placeholder term in release scope. |
 | Archive claim level | LARP risk | Archive can contain useful scaffold evidence. | Ensure archive includes claim level, blocked gates, and mvp-status output. | Release bundle is self-describing and cannot be mistaken for product readiness. |
 
-## Workstream E: Product Features Not Implemented
+## Workstream E: Product Feature Evidence Pending
 
 These are complete gaps until explicitly staffed. They must remain excluded from
 any MVP/product claim.

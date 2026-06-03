@@ -271,7 +271,7 @@ export class DryRunUsbInstallerBackend implements UsbInstallerBackend {
   async createWritePlan(request: WriteRequest): Promise<WritePlan> {
     if (!request.dryRun) {
       throw new Error(
-        "Non-dry-run writes are blocked: raw USB writes are not implemented in this package.",
+        "Non-dry-run writes are blocked: this package exposes only the dry-run backend.",
       );
     }
 

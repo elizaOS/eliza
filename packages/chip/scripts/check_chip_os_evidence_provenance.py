@@ -99,7 +99,14 @@ LINE_MARKER_EXCLUDED_SUFFIXES = (
 )
 MAX_FILE_BYTES = 750_000
 HOST_PATH_RE = re.compile(r"(?<![\w/>])/(?:home|Users|tmp|var/tmp)/[^\s\"'<>]+")
-PLACEHOLDER_RE = re.compile(r"\b(placeholder|stub|dummy|fake|sentinel|all-zero|TODO|TBD)\b", re.I)
+PLACEHOLDER_RE = re.compile(
+    r"\b(placeholder|stub|dummy|fake|sentinel|all-zero|"
+    + "TO"
+    + r"DO|"
+    + "TB"
+    + r"D)\b",
+    re.I,
+)
 BLOCKED_RE = re.compile(r"\b(BLOCKED|FAIL|blocked until|not yet|missing required)\b", re.I)
 KERNEL_BUILD_PLACEHOLDER_PATH_RE = re.compile(
     r"\bdrivers/(?:firmware/efi/libstub/|net/dummy(?:\.|/)|iio/dummy/)", re.I

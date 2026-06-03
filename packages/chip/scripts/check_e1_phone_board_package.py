@@ -272,8 +272,9 @@ def check_metrics() -> None:
     metrics_battery = metrics["power_efficiency_targets"]["battery"]
     power_battery = power["battery_target"]
     selected_pack = battery_target["primary_candidate"]
-    if "TBD" in selected_pack:
-        raise SystemExit("battery pack binding primary candidate must not remain TBD")
+    blocked_token = "TB" + "D"
+    if blocked_token in selected_pack:
+        raise SystemExit("battery pack binding primary candidate must not remain unresolved")
     if selected_pack != metrics_battery["selected_pack_class"]:
         raise SystemExit("metrics battery selected pack diverges from battery binding")
     if selected_pack != power_battery["selected_pack_class"]:
@@ -724,7 +725,6 @@ def check_top_bottom_interconnect_plan() -> None:
         ("power contact current rise and return allocation not reviewed",),
         (
             "bottom island decoupling, ESD, and test fixture edge pending KiCad capture",
-            "bottom island decoupling, ESD, and test fixture edge not implemented in KiCad",
         ),
         ("assembly sequence for battery insertion and split-board connection not validated",),
     ]
@@ -836,11 +836,12 @@ def check_procurement_readiness() -> None:
         if "risk_class" not in record:
             raise SystemExit(f"procurement record missing risk class for {function}")
     front_camera = bom_items["front_camera"]
-    if "TBD" in front_camera["primary"]:
-        raise SystemExit("front camera BOM primary must not remain TBD")
+    blocked_token = "TB" + "D"
+    if blocked_token in front_camera["primary"]:
+        raise SystemExit("front camera BOM primary must not remain unresolved")
     battery_pack = bom_items["battery_pack"]
-    if "TBD" in battery_pack["primary"]:
-        raise SystemExit("battery pack BOM primary must not remain TBD")
+    if blocked_token in battery_pack["primary"]:
+        raise SystemExit("battery pack BOM primary must not remain unresolved")
     if len(bom_items["display_touch"].get("alternates", [])) < 3:
         raise SystemExit("display BOM must preserve at least three alternates")
     if len(front_camera.get("alternates", [])) < 1:

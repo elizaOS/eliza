@@ -32,4 +32,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`docs/api-authentication.md`** — “Why this model exists” summary and cross-link to consistency doc.
 - **`docs/anthropic-cot-budget.md`** — Per-agent settings, env default/max, operator checklist, MCP/A2A scope.
 - **`docs/unit-testing-agent-mocks.md`** — Agent `mock.module` pitfalls.
-- **`docs/ROADMAP.md`** — Done / near-term items.
+- **`docs/direction.md`** — Done / near-term items.

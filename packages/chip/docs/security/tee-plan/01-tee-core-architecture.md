@@ -298,7 +298,7 @@ exactly as `cocotb-soc-boot-smoke` does today). No target may report a passing
 security claim — every report carries a `claim_boundary` string and
 `release_claim_allowed: false` until the corresponding real transcript exists.
 
-## 6. Phased roadmap
+## 6. Phased Plan
 
 **Phase 1 — secure-vault subset (buildable now, no whole-OS).** W1, W2, W7, W8.
 A small `private` region protected by the Smepmp TSM wall (W4 RTL lands here

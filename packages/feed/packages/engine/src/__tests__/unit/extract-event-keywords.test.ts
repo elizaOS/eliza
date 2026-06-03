@@ -254,7 +254,7 @@ describe("extractEventKeywords", () => {
     });
 
     it("should extract reveal events", () => {
-      const keywords = extractEventKeywords("Company reveals product roadmap");
+      const keywords = extractEventKeywords("Company reveals product launch plan");
       expect(keywords).toContain("reveal");
     });
 

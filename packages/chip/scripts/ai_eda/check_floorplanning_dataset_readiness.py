@@ -24,7 +24,7 @@ FALSE_CLAIM_FLAGS = {
 }
 REQUIRED_ASSETS = {"intel-floorset", "r-zoo-rectilinear-floorplan"}
 REQUIRED_BLOCKER_FRAGMENTS = {
-    "dataset-specific schema converter is not implemented",
+    "dataset-specific schema converter evidence is absent",
     "split manifest and benchmark contamination review are not present",
     "generated floorplans must remain quarantined",
 }
@@ -197,7 +197,7 @@ def validate_asset(asset: Any) -> list[str]:
                         asset_id, conversion.get("artifact"), "conversion_evidence.artifact"
                     )
                 )
-                required_fragments.discard("dataset-specific schema converter is not implemented")
+                required_fragments.discard("dataset-specific schema converter evidence is absent")
             if not isinstance(split, dict):
                 errors.append(f"{asset_id}: split_evidence must be a mapping")
             elif split.get("available") is True:
@@ -248,7 +248,7 @@ def validate_asset(asset: Any) -> list[str]:
                         asset_id, conversion.get("artifact"), "conversion_evidence.artifact"
                     )
                 )
-                required_fragments.discard("dataset-specific schema converter is not implemented")
+                required_fragments.discard("dataset-specific schema converter evidence is absent")
                 required_fragments.discard("floorplan legality checker logs are not present")
             elif not isinstance(conversion, dict):
                 errors.append(f"{asset_id}: conversion_evidence must be a mapping")

@@ -109,7 +109,7 @@
       "responses": [
         {
           "uuid": "00000008-0000-4000-8000-lifeopspresence",
-          "body": "{\"timezone\":\"America/Los_Angeles\",\"windowStart\":\"2026-04-22T07:00:00.000Z\",\"windowEnd\":\"2026-04-23T07:00:00.000Z\",\"busy\":[{\"start\":\"2026-04-22T16:00:00.000Z\",\"end\":\"2026-04-22T16:30:00.000Z\",\"summary\":\"Standup\",\"calendarId\":\"primary\"},{\"start\":\"2026-04-22T18:30:00.000Z\",\"end\":\"2026-04-22T19:30:00.000Z\",\"summary\":\"Roadmap review\",\"calendarId\":\"primary\"},{\"start\":\"2026-04-22T20:30:00.000Z\",\"end\":\"2026-04-22T21:00:00.000Z\",\"summary\":\"1:1 with Moon\",\"calendarId\":\"primary\"}]}",
+          "body": "{\"timezone\":\"America/Los_Angeles\",\"windowStart\":\"2026-04-22T07:00:00.000Z\",\"windowEnd\":\"2026-04-23T07:00:00.000Z\",\"busy\":[{\"start\":\"2026-04-22T16:00:00.000Z\",\"end\":\"2026-04-22T16:30:00.000Z\",\"summary\":\"Standup\",\"calendarId\":\"primary\"},{\"start\":\"2026-04-22T18:30:00.000Z\",\"end\":\"2026-04-22T19:30:00.000Z\",\"summary\":\"Launch review\",\"calendarId\":\"primary\"},{\"start\":\"2026-04-22T20:30:00.000Z\",\"end\":\"2026-04-22T21:00:00.000Z\",\"summary\":\"1:1 with Moon\",\"calendarId\":\"primary\"}]}",
           "latency": 0,
           "statusCode": 200,
           "label": "OK",

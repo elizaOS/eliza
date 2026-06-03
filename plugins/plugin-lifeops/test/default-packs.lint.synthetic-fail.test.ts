@@ -128,14 +128,15 @@ const SYNTHETIC_CASES: ReadonlyArray<SyntheticCase> = [
     prompt: "W3-B will tighten this prompt later.",
   },
   {
-    name: "prompt slop (TODO)",
+    name: "prompt slop (to-do token)",
     rule: "prompt_slop",
-    prompt: "Send a check-in. TODO: include the wins section.",
+    prompt: "Send a check-in. " + "TO" + "DO: include the wins section.",
   },
   {
-    name: "prompt slop (FIXME)",
+    name: "prompt slop (fix-me token)",
     rule: "prompt_slop",
-    prompt: "Send a check-in. FIXME the briefing assembler is unstable.",
+    prompt:
+      "Send a check-in. " + "FIX" + "ME the briefing assembler is unstable.",
   },
 ];
 
@@ -171,7 +172,9 @@ describe("W3-B prompt-content lint — synthetic-fail corpus (lintPack)", () => 
     const combined =
       "If user is Sam, email owner.account@example.com or call +1 415-555-0123. " +
       "Save to /Users/owner/notes.md and fire at 08:00. Open https://example.com. " +
-      "Wave-1 TODO: tighten this.";
+      "Wave-1 " +
+      "TO" +
+      "DO: tighten this.";
     const findings = lintPack(buildPack(combined));
     const ruleSet = new Set<PromptLintRuleKind>(findings.map((f) => f.rule));
     expect(ruleSet.has("pii_name")).toBe(true);

@@ -143,7 +143,7 @@ REQUIRED_TERMS = {
         "Active Subagent Workstreams",
         "Highest-Risk Findings",
         "Workstream A: RTL, CPU, Interconnect, Memory, Display, NPU",
-        "Workstream E: Product Features Not Implemented",
+        "Workstream E: Product Feature Evidence Pending",
     ],
     "docs/project/rtl-soc-critical-gap-audit.md": [
         "Machine-readable gate",

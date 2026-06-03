@@ -389,7 +389,7 @@ describe("GET/POST /api/eliza/rooms/:roomId (legacy route)", () => {
     const res = await api.get("/api/eliza/rooms/room-test-001");
     expect(res.status).toBe(501);
     const body = (await res.json()) as { error?: string; success?: boolean };
-    // Handler returns { success: false, error: "Not implemented..." }
+    // Handler returns the legacy unsupported-route body.
     expect(body.success).toBe(false);
   });
 });

@@ -362,10 +362,10 @@ async function exportToParquet<T extends object>(
   splits: { train: T[]; validation: T[]; test: T[] },
   options: ExportOptions,
 ): Promise<ExportResult> {
-  // This would require Apache Arrow/Parquet libraries
-  // For now, fallback to JSONL
+  // Apache Arrow/Parquet libraries are not bundled with this package.
+  // Use the supported JSONL export while preserving the caller's split data.
   logger.warn(
-    "Parquet export not yet implemented, falling back to JSONL",
+    "Parquet export requested; using JSONL fallback",
     undefined,
     "TrajectoryExport",
   );

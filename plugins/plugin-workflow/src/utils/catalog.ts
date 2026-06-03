@@ -9,7 +9,7 @@ import type {
 /**
  * workflows node catalog with keyword-based search
  * @note Uses embedded catalog (457 nodes as of April 2025)
- * @roadmap v2 can add dynamic refresh via GET /node-types.
+ * @note Dynamic refresh via GET /node-types belongs in a catalog-refresh pass.
  */
 
 const NODE_CATALOG = defaultNodesData as NodeDefinition[];

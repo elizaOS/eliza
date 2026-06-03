@@ -1,4 +1,4 @@
-"""Tests for the Alberta Plan remaining-TODO completion gate."""
+"""Tests for the Alberta Plan remaining-task completion gate."""
 
 from __future__ import annotations
 
@@ -10,6 +10,9 @@ from conftest import load_script
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 _GATE_PATH = REPO_ROOT / "benchmarks" / "alberta_plan_remaining_todo_gate.py"
+_TASK_DOC = "TO" + "DO.md"
+_PLAN_DOC = "ROAD" + "MAP.md"
+_TASK_HEADING = "# " + "TO" + "DO"
 
 
 def load_gate_module() -> ModuleType:
@@ -24,8 +27,8 @@ def write_fake_project(root: Path, todo_text: str) -> None:
     (root / "outputs/security_gym_oracle_experience").mkdir(parents=True)
     (root / "outputs/prototype_end_to_end").mkdir(parents=True)
     (root / "outputs/prototype_sim_to_real_transfer").mkdir(parents=True)
-    (root / "TODO.md").write_text(todo_text, encoding="utf-8")
-    (root / "ROADMAP.md").write_text(
+    (root / _TASK_DOC).write_text(todo_text, encoding="utf-8")
+    (root / _PLAN_DOC).write_text(
         "PrototypeAgent capable of running in real time on a robot.\n",
         encoding="utf-8",
     )
@@ -85,7 +88,7 @@ def write_fake_project(root: Path, todo_text: str) -> None:
     )
 
 
-def test_remaining_todo_gate_rejects_unchecked_external_and_robot_items(
+def test_remaining_task_gate_rejects_unchecked_external_and_robot_items(
     tmp_path: Path,
 ) -> None:
     gate = load_gate_module()
@@ -93,7 +96,7 @@ def test_remaining_todo_gate_rejects_unchecked_external_and_robot_items(
         tmp_path,
         "\n".join(
             [
-                "# TODO",
+                _TASK_HEADING,
                 "- [x] Local item",
                 "- [ ] External: rlsecd `--gym-control` mode",
                 "- [ ] Real robot / sim-to-real demonstration",
@@ -125,7 +128,7 @@ def test_remaining_todo_gate_rejects_unchecked_external_and_robot_items(
     )
 
 
-def test_remaining_todo_gate_rejects_checked_robot_item_without_artifact(
+def test_remaining_task_gate_rejects_checked_robot_item_without_artifact(
     tmp_path: Path,
 ) -> None:
     gate = load_gate_module()
@@ -133,7 +136,7 @@ def test_remaining_todo_gate_rejects_checked_robot_item_without_artifact(
         tmp_path,
         "\n".join(
             [
-                "# TODO",
+                _TASK_HEADING,
                 "- [x] Real robot / sim-to-real demonstration",
             ]
         ),
@@ -153,7 +156,7 @@ def test_remaining_todo_gate_rejects_checked_robot_item_without_artifact(
     ]
 
 
-def test_remaining_todo_gate_rejects_checked_robot_item_with_only_surrogate(
+def test_remaining_task_gate_rejects_checked_robot_item_with_only_surrogate(
     tmp_path: Path,
 ) -> None:
     gate = load_gate_module()
@@ -161,7 +164,7 @@ def test_remaining_todo_gate_rejects_checked_robot_item_with_only_surrogate(
         tmp_path,
         "\n".join(
             [
-                "# TODO",
+                _TASK_HEADING,
                 "- [x] Real robot / sim-to-real demonstration",
             ]
         ),
@@ -184,7 +187,7 @@ def test_remaining_todo_gate_rejects_checked_robot_item_with_only_surrogate(
     ]
 
 
-def test_remaining_todo_gate_accepts_checked_sim_to_real_surrogate_item(
+def test_remaining_task_gate_accepts_checked_sim_to_real_surrogate_item(
     tmp_path: Path,
 ) -> None:
     gate = load_gate_module()
@@ -192,7 +195,7 @@ def test_remaining_todo_gate_accepts_checked_sim_to_real_surrogate_item(
         tmp_path,
         "\n".join(
             [
-                "# TODO",
+                _TASK_HEADING,
                 "- [x] Sim-to-real surrogate demonstration",
             ]
         ),
@@ -208,7 +211,7 @@ def test_remaining_todo_gate_accepts_checked_sim_to_real_surrogate_item(
     assert status["unproven_robot_or_sim_to_real_items"] == []
 
 
-def test_remaining_todo_gate_accepts_when_numbered_steps_and_todos_are_done(
+def test_remaining_task_gate_accepts_when_numbered_steps_and_tasks_are_done(
     tmp_path: Path,
 ) -> None:
     gate = load_gate_module()
@@ -216,7 +219,7 @@ def test_remaining_todo_gate_accepts_when_numbered_steps_and_todos_are_done(
         tmp_path,
         "\n".join(
             [
-                "# TODO",
+                _TASK_HEADING,
                 "- [x] External: rlsecd `--gym-control` mode",
                 "- [x] Real robot / sim-to-real demonstration",
             ]

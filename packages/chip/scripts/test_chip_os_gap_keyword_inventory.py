@@ -194,7 +194,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             checker.write_text(
                 'raise SystemExit("runtime must remain blocked until evidence exists")\n'
                 'errors.append("placeholder evidence is rejected")\n'
-                'if "TBD" in payload:\n'
+                'if "TB' + 'D" in payload:\n'
                 '    blockers.append("release blocker remains classified")\n'
                 "# TODO remove this real checker maintenance gap\n",
                 encoding="utf-8",
@@ -248,7 +248,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
         self.assertEqual(report["summary"]["findings"], 1)
         self.assertEqual(report["findings"][0]["path"], "packages/chip/docs/arch/boot.md")
 
-    def test_project_roadmap_and_todo_audits_are_not_source_gaps(self) -> None:
+    def test_project_planning_and_todo_audits_are_not_source_gaps(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             roadmap = repo / "packages/chip/docs/project/road-to-mediatek.md"

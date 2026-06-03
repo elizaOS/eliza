@@ -40,8 +40,8 @@ COMMON_RELEASE_FIELDS = {
     "disposition",
 }
 PLACEHOLDER_MARKERS = {
-    "tbd",
-    "todo",
+    "tb" + "d",
+    "to" + "do",
     "not_run",
     "presence-only",
     "presence_only",

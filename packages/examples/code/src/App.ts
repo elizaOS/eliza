@@ -110,7 +110,11 @@ async function handleTaskSlashCommand(
     const task = resolveTaskQuery(tasks, query);
     const taskId = task ? getTaskId(task) : null;
     if (!task || !taskId) {
-      addMessage(currentRoomId, "system", "Usage: /task switch <number|id|name>");
+      addMessage(
+        currentRoomId,
+        "system",
+        "Usage: /task switch <number|id|name>",
+      );
       return true;
     }
     service.setCurrentTask(taskId);
@@ -237,10 +241,7 @@ function resolveTaskPaneVisibility(
   return null;
 }
 
-function resolveTaskQuery(
-  tasks: CodeTask[],
-  query: string,
-): CodeTask | null {
+function resolveTaskQuery(tasks: CodeTask[], query: string): CodeTask | null {
   const trimmed = query.trim();
   if (!trimmed) return null;
 

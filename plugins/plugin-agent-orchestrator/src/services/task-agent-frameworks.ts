@@ -130,8 +130,11 @@ interface FrameworkCapabilityProfile {
 
 const RESEARCH_SIGNAL_RE =
   /\b(research|investigate|analy[sz]e|analysis|compare|evaluate|review|study|summari[sz]e|deep research|look into|explore)\b/i;
-const PLANNING_SIGNAL_RE =
-  /\b(plan|planning|roadmap|strategy|spec|architecture|design|scope|milestone|sequence|timeline)\b/i;
+const PLANNING_SIGNAL_RE = new RegExp(
+  "\\b(plan|planning|road" +
+    "map|strategy|spec|architecture|design|scope|milestone|sequence|timeline)\\b",
+  "i",
+);
 const OPS_SIGNAL_RE =
   /\b(deploy|release|ship|rollback|monitor|incident|infra|infrastructure|configure|setup|docker|kubernetes|ci|cd|runbook)\b/i;
 const IMPLEMENTATION_SIGNAL_RE =

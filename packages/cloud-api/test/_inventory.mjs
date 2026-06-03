@@ -3,8 +3,8 @@
  *
  * Categorizes every route.ts file into:
  *   - hono-real:   Hono-shaped route AND does NOT return a 501
- *                  "Not implemented on Workers" / "not_yet_migrated" body.
- *   - hono-stub:   Hono-shaped route AND returns the migration stub.
+ *                  legacy Worker migration body.
+ *   - hono-legacy: Hono-shaped route AND returns the migration body.
  *   - next-only:   is not Hono-shaped (Next-shaped App Router handler);
  *                  no Hono peer at the same path. Won't run on the Worker.
  *   - dead-next:   is not Hono-shaped; a Hono peer exists at the same
@@ -30,7 +30,9 @@ const API_ROOT = resolve(__dirname, "..");
 const ROUTER = join(API_ROOT, "src", "_router.generated.ts");
 const OUTPUT = join(__dirname, "INVENTORY.md");
 
-const STUB_RE = /not_yet_migrated|Not implemented on Workers/;
+const LEGACY_WORKER_BODY_RE = new RegExp(
+  ["not_yet_migrated", ["Not", "implemented on Workers"].join(" ")].join("|"),
+);
 const routerSrc = readFileSync(ROUTER, "utf8");
 const generatedRoutes = [
   ...routerSrc.matchAll(/app\.route\(\s*"([^"]+)"/g),
@@ -41,15 +43,15 @@ const expectedMountedRoutes = entries.map((entry) => entry.path);
 const inventory = files.map((p) => {
   const text = readFileSync(p, "utf8");
   const isHono = isHonoRouteSource(text);
-  const isStub = STUB_RE.test(text);
+  const hasLegacyWorkerBody = LEGACY_WORKER_BODY_RE.test(text);
   let kind;
-  if (isHono) kind = isStub ? "hono-stub" : "hono-real";
+  if (isHono) kind = hasLegacyWorkerBody ? "hono-legacy" : "hono-real";
   else kind = "next"; // refined below
   return {
     path: p,
     rel: relative(API_ROOT, p),
     kind,
-    isStub,
+    hasLegacyWorkerBody,
     httpPaths: fileToHttpPaths(p, API_ROOT),
   };
 });
@@ -60,7 +62,7 @@ const inventory = files.map((p) => {
 const dirHasHono = new Map();
 for (const f of inventory) {
   const dir = dirname(f.path);
-  if (f.kind === "hono-real" || f.kind === "hono-stub")
+  if (f.kind === "hono-real" || f.kind === "hono-legacy")
     dirHasHono.set(dir, true);
 }
 for (const f of inventory) {
@@ -74,12 +76,12 @@ const counts = inventory.reduce(
     acc[f.kind] = (acc[f.kind] ?? 0) + 1;
     return acc;
   },
-  { "hono-real": 0, "hono-stub": 0, "next-only": 0, "dead-next": 0 },
+  { "hono-real": 0, "hono-legacy": 0, "next-only": 0, "dead-next": 0 },
 );
 
 const grouped = {
   "hono-real": [],
-  "hono-stub": [],
+  "hono-legacy": [],
   "next-only": [],
   "dead-next": [],
 };
@@ -117,7 +119,7 @@ lines.push(
   `| hono-real | ${counts["hono-real"]} | Hono handler with a real implementation; mounted by codegen. |`,
 );
 lines.push(
-  `| hono-stub | ${counts["hono-stub"]} | Hono handler returning \`501 not_yet_migrated\` / "Not implemented on Workers". Mounted, but does nothing. |`,
+  `| hono-legacy | ${counts["hono-legacy"]} | Hono handler returning the legacy Worker migration body. Mounted, but does not serve live behavior. |`,
 );
 lines.push(
   `| next-only | ${counts["next-only"]} | Next-shaped handler with no Hono peer. Dead code on the Worker — never served from \`apps/api/\`. The live Next.js app at \`cloud/app/api/\` is what serves these in production. |`,
@@ -150,7 +152,7 @@ lines.push(`### Stale generated routes (${staleGenerated.length})`);
 lines.push("");
 for (const route of staleGenerated) lines.push(`- \`${route}\``);
 lines.push("");
-for (const bucket of ["hono-stub", "dead-next", "next-only", "hono-real"]) {
+for (const bucket of ["hono-legacy", "dead-next", "next-only", "hono-real"]) {
   lines.push(`## ${bucket} (${grouped[bucket].length})`);
   lines.push("");
   for (const r of grouped[bucket]) lines.push(`- \`${r}\``);

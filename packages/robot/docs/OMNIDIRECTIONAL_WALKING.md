@@ -217,7 +217,7 @@ policy passes the honest gate. Do it as a finetune, not from scratch.
 **Push-perturbation (external-force) training is a known gap** in the on-policy
 PPO recipe here. The SOTA answer for recovering from shoves is **off-policy
 FastTD3**, which handles perturbation robustness better than PPO at this scale.
-Treat push-recovery as future work on a FastTD3 backend, not as a tweak to the
+Treat push-recovery as follow-up on a FastTD3 backend, not as a tweak to the
 PPO recipe above.
 
 ---

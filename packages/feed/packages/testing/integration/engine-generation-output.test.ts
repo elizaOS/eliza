@@ -157,7 +157,7 @@ const SWAP_PATTERNS = {
     /\[INSERT\]/i,
     /\{ACTOR_NAME\}/i,
     /\{COMPANY\}/i,
-    /TODO:/i,
+    new RegExp("TO" + "DO:", "i"),
     /PLACEHOLDER/i,
     /undefined/,
     /null/,

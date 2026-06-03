@@ -47,7 +47,7 @@ For kernel builds that insist on the `linux-gnu` triplet, symlink or pass
 `CROSS_COMPILE=riscv64-elf-` explicitly — the kernel does not require the
 `linux-gnu` suffix.
 
-## Future work to unblock userspace builds on host
+## Host Userspace Build Follow-ups
 
 1. Use a Linux container (Docker or OrbStack) with `apt install
    crossbuild-essential-riscv64` — adds glibc cross in seconds. Out of

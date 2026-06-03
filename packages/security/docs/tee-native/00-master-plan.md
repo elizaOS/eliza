@@ -252,7 +252,7 @@ A drift correction the swarm surfaced, now settled:
 
 ---
 
-## 8. Unified sequenced roadmap
+## 8. Unified sequenced plan
 
 Three program phases gated by hardware availability; effort is the buildable-subset
 estimate.

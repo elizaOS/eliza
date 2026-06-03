@@ -1,4 +1,4 @@
-# ROADMAP — from here to a real, fully-complete elizaOS Live
+# Release Path — from here to a real, fully-complete elizaOS Live
 
 This is the honest road. `PLAN.md` is the phase map; the `docs/specs/`
 are the turn-by-turn directions; **this doc is the realistic schedule,

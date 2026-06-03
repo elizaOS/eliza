@@ -28,7 +28,7 @@ const meta = {
           type="button"
           className="rounded-sm px-2 py-1.5 text-left text-sm text-txt hover:bg-black/10"
         >
-          Roadmap planning
+          Launch planning
         </button>
         <button
           type="button"

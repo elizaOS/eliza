@@ -442,7 +442,7 @@ if command -v identify >/dev/null 2>&1; then
 fi
 if rg -n \
     'Tails-based|Tails Cloner|Tails Documentation|Connect Tails|Tails USB stick|elizaOS \(Tails-based\)' \
-    README.md ROADMAP.md docs/user-experience.md docs/mode-parity.md \
+    README.md RELEASE_PATH.md docs/user-experience.md docs/mode-parity.md \
     PLAN.md docs/build-infrastructure.md \
     tails/auto/build tails/auto/config \
     tails/config/chroot_local-includes/etc \

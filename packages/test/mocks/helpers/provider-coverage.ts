@@ -444,7 +444,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     knownGaps: [
       "No webhook delivery simulation",
       "No full GraphQL grammar (fragments, aliases, pagination cursors)",
-      "No attachment, comment, cycle, or roadmap surfaces",
+      "No attachment, comment, cycle, or project-planning surfaces",
       "No rate-limit or permission-error variants",
     ],
     validation: [],

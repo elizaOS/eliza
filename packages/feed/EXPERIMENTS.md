@@ -173,10 +173,10 @@ bun run src/index.ts --model Qwen/Qwen3-4B \
 
 | Target ↓ / Attacker → | Scripted | Baseline 9B | Feed Red-9B |
 |------------------------|----------|-------------|----------------|
-| GPT-5.4                | TBD      | TBD         | TBD            |
-| Sonnet 4.5             | TBD      | TBD         | TBD            |
-| Baseline Qwen-9B       | TBD      | TBD         | TBD            |
-| Feed Blue-9B        | TBD      | TBD         | TBD            |
+| GPT-5.4                | not measured | not measured | not measured |
+| Sonnet 4.5             | not measured | not measured | not measured |
+| Baseline Qwen-9B       | not measured | not measured | not measured |
+| Feed Blue-9B           | not measured | not measured | not measured |
 
 **Run one cell** (e.g., Feed Red-9B attacking GPT-5.4):
 ```bash

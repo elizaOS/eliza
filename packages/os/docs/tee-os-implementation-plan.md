@@ -519,7 +519,7 @@ golden manifest, and security-version ≥ minimum.
 
 ---
 
-## 7. Sequenced roadmap
+## 7. Sequenced Plan
 
 Effort in person-months (PM). Gates are fail-closed and name their dependency.
 

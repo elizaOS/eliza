@@ -131,8 +131,8 @@ and `packages/native/plugins/doctr-cpp/scripts/doctr_to_gguf.py`:
   yolov11n)`);
 - pinned upstream commit recorded both in code and in the GGUF
   metadata key — runtime refuses unknown commits;
-- `NotImplementedError` in every TODO block so a half-built converter
-  cannot pass for working.
+- strict checkpoint-key validation so a half-built or wrong-family
+  converter run cannot pass for working.
 
 The first conversion pass packs Conv2d weights as fp16 and BN running
 stats as fp32 sidecar tensors (gamma, beta, running_mean,

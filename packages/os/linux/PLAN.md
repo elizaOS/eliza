@@ -63,7 +63,7 @@ What exists right now:
 - The old root-level usbeliza Linux prototype was removed from this branch;
   this directory is the active Linux distro path.
 
-See [`ROADMAP.md`](./ROADMAP.md) for the honest road from here to a real,
+See [`RELEASE_PATH.md`](./RELEASE_PATH.md) for the honest road from here to a real,
 fully-working demo.
 
 ---
@@ -340,7 +340,7 @@ runtime-package validation direction.
 2.2 GB) — much larger than first estimated. The resulting ISO could be
 3–4 GB. And `chrome-sandbox` under Tails' AppArmor + read-only squashfs is
 the most likely "boots but won't render" failure (`--no-sandbox` fallback
-documented). See the spec + ROADMAP risk section.
+documented). See the spec and release-path risk section.
 
 ---
 

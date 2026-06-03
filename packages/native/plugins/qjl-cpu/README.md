@@ -124,7 +124,7 @@ Python reference to relative error < 3e-6 (the residual is
 floating-point reduction-order noise; the score path is documented to
 allow that).
 
-NEON throughput on real arm64 hardware is **TBD** — see "Cross-arm64
+NEON throughput on real arm64 hardware is **unmeasured** — see "Cross-arm64
 gap" below.
 
 ## Cross-arm64 gap

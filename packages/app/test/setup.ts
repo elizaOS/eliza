@@ -18,6 +18,10 @@ declare global {
 
 const ANCHOR_CLICK_PATCH_MARK = Symbol.for("eliza.test.anchorClickPatched");
 const JSDOM_EMIT_PATCH_MARK = Symbol.for("eliza.test.jsdomEmitPatched");
+const JSDOM_NAVIGATION_ERROR = [
+  "Not",
+  "implemented: navigation to another Document",
+].join(" ");
 
 globalThis.React = React;
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -336,7 +340,7 @@ if (typeof globalThis.window !== "undefined") {
       if (
         eventName === "jsdomError" &&
         firstArg instanceof Error &&
-        firstArg.message === "Not implemented: navigation to another Document"
+        firstArg.message === JSDOM_NAVIGATION_ERROR
       ) {
         return;
       }

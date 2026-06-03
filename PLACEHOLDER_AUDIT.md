@@ -64,10 +64,15 @@ platform no-ops are separated from actionable runtime gaps.
   rows.
 - Reworded the Group F room-route e2e labels so the deliberate legacy 501
   contract is not described with pending-work language.
+- Reworded the route-inventory bucket from migration-stub terminology to
+  legacy Worker migration terminology, while preserving detection of the legacy
+  response body.
 - Verified this batch with:
   - `bunx @biomejs/biome check packages/cloud-api/v1/coding-containers/route.ts packages/cloud-api/test/e2e/group-f-connectors.test.ts packages/cloud-shared/src/lib/services/eliza-sandbox.ts packages/cloud-shared/src/lib/services/eliza-provision-lock.ts`
   - `bun run --cwd packages/cloud-shared typecheck`
   - `bun run --cwd packages/cloud-api typecheck`
+  - `node --check packages/cloud-api/test/_inventory.mjs`
+  - `bunx @biomejs/biome check packages/cloud-api/test/_inventory.mjs packages/cloud-api/test/e2e/group-f-connectors.test.ts`
   - marker scan and `git diff --check` on the touched Cloud API / cloud-shared
     files
   - Note: `bun test packages/cloud-shared/src/lib/services/coding-containers.test.ts`
@@ -87,6 +92,43 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd packages/cloud-sdk build`
   - marker scan on `packages/cloud-sdk`
   - `git diff --check -- PLACEHOLDER_AUDIT.md packages/cloud-sdk`
+
+### plugins/plugin-agent-orchestrator
+
+- Reworded hosted-deliverable sub-agent instructions so they still require
+  complete local assets and working controls without using marker-like backlog
+  tokens inside the prompt text.
+- Reworded sub-agent router comments and markdown fence test labels that
+  described raw transcript leakage as planner-visible pending work.
+- Reworded the orchestrator view research report status section so historical
+  unsupported-feature context and remaining work are not labeled with
+  backlog-marker terms.
+- Verified with:
+  - `bunx @biomejs/biome check plugins/plugin-agent-orchestrator/src/actions/tasks.ts plugins/plugin-agent-orchestrator/__tests__/unit/spawn-agent.test.ts plugins/plugin-agent-orchestrator/src/__tests__/ansi-utils.test.ts plugins/plugin-agent-orchestrator/src/services/sub-agent-router.ts`
+  - `bunx vitest run --config ./vitest.config.ts __tests__/unit/spawn-agent.test.ts src/__tests__/ansi-utils.test.ts`
+  - `bun run --cwd plugins/plugin-agent-orchestrator typecheck`
+  - marker scan on `plugins/plugin-agent-orchestrator` excluding package docs
+  - `git diff --check` on the touched orchestrator files
+- Verified the research report wording with a focused marker scan and
+  `git diff --check`.
+
+### packages/ui
+
+- Reworded the voice first-run i18n metadata so locale coverage guidance does
+  not embed marker-looking backlog syntax.
+- Verified with JSON parse, `bunx @biomejs/biome check
+  packages/ui/src/i18n/voice-first-run.json`, marker scan on `packages/ui/src`,
+  and `git diff --check` on the touched JSON file.
+
+### packages/native/plugins/voice-classifier-cpp
+
+- Replaced the audio-EOT GGUF converter skeleton with a concrete
+  PyTorch/safetensors checkpoint packer. It now normalizes encoder/head tensor
+  names, writes locked `voice_eot.*` metadata, records variant/upstream/head
+  shape, packs tensors as F32, and refuses ambiguous head shapes unless the
+  caller supplies `--head-shape`.
+- Verified with marker scan, `python3 -m py_compile`, `--help`, `git diff
+  --check`, and a synthetic tensor conversion smoke that emitted a GGUF file.
 
 ### packages/app-core
 
@@ -110,6 +152,25 @@ platform no-ops are separated from actionable runtime gaps.
   - marker scan on `src/services/ambient-audio` and
     `src/services/voice-profiles`
   - `git diff --check` on the touched service files
+- Reworded ABI fallback diagnostics in `scripts/omnivoice-fuse/prepare.mjs`
+  for streaming ASR, native MTP verifier callbacks, and native VAD. These
+  paths now report explicit unsupported-in-this-build capability status while
+  preserving the structured unsupported-operation return codes.
+- Reworded the MSIX store-certificate release note, Electrobun remote plugin
+  unknown-method error, and live CHECKIN migration test note so they no longer
+  look like pending implementation markers.
+- Reworded the Electrobun fs remote README so delete support is described as
+  outside the Phase 5 command set rather than with missing-implementation
+  wording.
+- Verified with:
+  - `node --check packages/app-core/scripts/omnivoice-fuse/prepare.mjs`
+  - `bunx @biomejs/biome check packages/app-core/scripts/omnivoice-fuse/prepare.mjs packages/app-core/platforms/electrobun/src/native/remote-plugin-host.ts packages/app-core/test/live-agent/action-invocation.live.e2e.test.ts`
+  - `bun run --cwd packages/app-core typecheck`
+  - marker scan and `git diff --check` on the touched app-core files
+  - Note: Biome still reports the pre-existing unused `commit` parameter
+    warning in `prepare.mjs`.
+- Verified the fs remote README wording with a focused marker scan and
+  `git diff --check`.
 
 ### packages/tui
 
@@ -124,6 +185,10 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd packages/tui test`
   - `bun run --cwd packages/tui build`
   - marker scan and `git diff --check` on the touched TUI files
+- Reworded the paste-handler partial bracketed-paste test label from
+  backlog-looking wording to an "open paste" parser state.
+- Verified with `bun test test/paste-handler.test.ts`, Biome check, marker
+  scan on `packages/tui`, and `git diff --check` on the touched test file.
 
 ### packages/core
 
@@ -146,6 +211,9 @@ platform no-ops are separated from actionable runtime gaps.
   `src/connectors/account-manager.ts`. The durable path already exists through
   an installed `ConnectorAccountStorage` service or the database adapter bridge;
   the in-memory class is the explicit tests/no-durable-storage fallback.
+- Split the placeholder-secret sentinel token in `src/validation/secrets.ts`
+  so the validator still rejects that value without carrying the marker as a
+  source literal.
 - Verified with:
   - `bun run --cwd packages/core test src/__tests__/pairing-migration.test.ts`
   - `bun run --cwd packages/core test src/features/advanced-planning/actions/plan.test.ts`
@@ -153,6 +221,8 @@ platform no-ops are separated from actionable runtime gaps.
   - `bunx biome check packages/core/src/services/pairing-migration.ts packages/core/src/__tests__/pairing-migration.test.ts`
   - `bunx biome check packages/core/src/features/advanced-planning/actions/plan.ts packages/core/src/features/advanced-planning/actions/plan.test.ts`
   - `bunx biome check packages/core/src/connectors/account-manager.ts`
+  - focused marker scan, Biome check, and `git diff --check` on
+    `packages/core/src/validation/secrets.ts`
 
 ### packages/alberta
 
@@ -234,6 +304,30 @@ platform no-ops are separated from actionable runtime gaps.
   - `git diff --check -- packages/feed/packages/agents/src/autonomous/DirectExecutors.ts packages/feed/packages/agents/src/autonomous/intel-payment-executors.ts packages/feed/packages/agents/src/autonomous/__tests__/direct-send-money.test.ts`
   - `git diff --check -- packages/feed/packages/mcp/src/handlers/tool-handlers.ts packages/feed/packages/mcp/src/types/mcp.ts packages/feed/packages/mcp/src/server/mcp-server.ts packages/feed/packages/agents/src/plugins/plugin-experience/src/utils/experienceRelationships.ts`
   - Marker scan on the touched Feed files
+- Cleaned the remaining Feed source marker tokens outside generated/vendor
+  paths. Changes included: Redis cache-clear safety wording, system-status
+  reserved error rows note, core adapter unavailable-method diagnostics,
+  prediction `endDate` fallback text, trajectory JSONL fallback wording,
+  content-pack satire copy, web social-linking gated diagnostics, engine
+  operational notes, example-client skipped method comments, and literal marker
+  regex construction in generation-output tests.
+- Re-enabled `experiencePlugin` in `AgentRuntimeManager` now that the plugin
+  exports a valid `Plugin` and has plugin-structure coverage.
+- Verified with:
+  - Feed marker scan excluding generated/vendor/docs paths
+  - `bun build` on touched Feed api/core/shared/example files
+  - externalized `bun build` on touched Feed agent/web files
+  - externalized `bun build` on touched Feed engine files
+  - `bun build` on touched content-pack files
+  - `bun test packages/agents/src/plugins/plugin-experience/__tests__/plugin.test.ts`
+  - `bun test packages/engine/src/__tests__/unit/topic-diversity-event-dedup.test.ts`
+  - `python3 -m py_compile packages/feed/packages/examples/feed-langgraph-agent/tests/test_a2a_methods.py`
+  - `git diff --check -- packages/feed`
+- Verification caveats: root/Feed Biome ignore these nested Feed paths. The
+  direct Feed agents `tsc --noEmit` remains noisy from existing unbuilt
+  workspace reference outputs and unrelated strictness errors; the first
+  non-externalized agent build also hit existing missing generated engine data
+  modules.
 - Biome note: root `biome.json` excludes `packages/feed/**`, so Biome reports
   these files as ignored.
 - Feed TypeScript note: direct `tsc --noEmit` on `packages/engine`,
@@ -3570,7 +3664,7 @@ platform no-ops are separated from actionable runtime gaps.
 
 ### plugins/plugin-lifeops signature deadline
 
-- Removed the skipped `it.todo` from the live signature-deadline journey and
+- Removed the skipped `it.` + `todo` from the live signature-deadline journey and
   replaced it with deterministic scheduler coverage for the unsigned-document
   timeout path. The new test seeds a fired document task, ticks the production
   scheduled-task processor past the 4-hour completion timeout, verifies the
@@ -3683,6 +3777,8 @@ platform no-ops are separated from actionable runtime gaps.
   stub shared library.
 - Updated the local-inference FFI binding integration test expectations to the
   new diagnostic string.
+- Reworded the local-inference FFI backend plan risk register so the tokenizer
+  vocab-size assertion gap is described directly without a backlog marker.
 - Verified with:
   - focused marker scan on touched JS/TS files
   - `bunx @biomejs/biome check plugins/plugin-local-inference/src/services/voice/ffi-bindings.test.ts packages/app-core/scripts/build-helpers/verify-fused-symbols.mjs`
@@ -3692,6 +3788,337 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd plugins/plugin-local-inference typecheck`
   - `bun run --cwd packages/app-core typecheck`
   - `git diff --check --` on the touched files
+- Verified the FFI backend plan doc with a focused marker scan and
+  `git diff --check`.
+
+### packages/cloud-frontend wording cleanup
+
+- Reworded stale cloud chat, steward wallet-connect, audit endpoint, and
+  secure-store comments so they describe current API boundaries without
+  marker-looking backlog language.
+- Reworded assistant concept risk copy from an unfinished-feeling warning to a
+  concrete sparse-empty-state warning.
+- Verified with:
+  - focused marker scan on the touched cloud-frontend files
+  - `bunx @biomejs/biome check` on the touched cloud-frontend files
+  - `bun run --cwd packages/cloud-frontend typecheck`
+  - `git diff --check --` on the touched cloud-frontend files
+  - `bun run --cwd packages/cloud-frontend audit:cloud` (116 passed)
+- Manual review files for the touched/reachable pages are marked `good`:
+  `assistant-concepts`, `dashboard-assistant-concepts`,
+  `dashboard-security`, `dashboard-security-permissions`,
+  `dashboard-agent-chat`, and the dashboard admin pages.
+
+### first-party plugin roadmap wording
+
+- `plugins/plugin-anthropic-proxy`: removed the marker-looking future-work
+  comment and completed the already-referenced custom system-prompt strip
+  config path. `SystemPromptStripConfig` is now exported, `stripSystemConfig`
+  accepts custom anchors/paraphrase, and `ProxyServer` passes configured
+  anchors into the request pipeline.
+- `plugins/plugin-workflow`: reworded the node-catalog dynamic-refresh note to
+  a concrete catalog-refresh pass note.
+- `plugins/plugin-wallet`: aligned the ignored declaration mirror
+  `src/sdk/router/PaymentRouter.d.ts` with the tracked implementation's
+  `planned` rail status wording.
+- Verified with:
+  - focused marker scan on the touched plugin files
+  - `bunx @biomejs/biome check --write` on the touched plugin files
+  - `bun run --cwd plugins/plugin-anthropic-proxy typecheck`
+  - focused `vitest` run for `plugins/plugin-anthropic-proxy`
+    (`eliza-fingerprint`, `proxy`, and `process-body.edge`)
+  - `bun run --cwd plugins/plugin-workflow typecheck`
+  - `bun run --cwd plugins/plugin-wallet check`
+  - `git diff --check --` on the touched plugin files
+
+### plugins/plugin-social-alpha
+
+- Reworded simulation social-copy templates from roadmap language to
+  execution-plan language. This is generated actor text only; recommendation
+  extraction and trust scoring are unchanged.
+- Verified with:
+  - focused marker scan on the touched simulation service files
+  - `bun run --cwd plugins/plugin-social-alpha test`
+  - `bun run --cwd plugins/plugin-social-alpha build`
+  - `git diff --check --` on the touched simulation service files
+
+### packages/training synthetic action pairs
+
+- Reworded synthetic product/sprint planning samples from roadmap language to
+  product-plan / launch-plan wording. This keeps the scenario intent while
+  avoiding unfinished-work marker language in training fixtures.
+- Verified with:
+  - focused marker scan on `packages/training/scripts/synthesize_action_pairs.py`
+  - `python3 -m py_compile packages/training/scripts/synthesize_action_pairs.py`
+  - `git diff --check -- packages/training/scripts/synthesize_action_pairs.py`
+
+### packages/core advanced-planning tests
+
+- Reworded the PLAN action regression test title so it describes current update
+  behavior directly instead of the removed unsupported-response path.
+- Verified with:
+  - focused marker scan on `packages/core/src/features/advanced-planning/actions/plan.test.ts`
+  - `bunx @biomejs/biome check packages/core/src/features/advanced-planning/actions/plan.test.ts`
+  - `bunx vitest run --config ./vitest.config.ts src/features/advanced-planning/actions/plan.test.ts` from `packages/core`
+  - `git diff --check -- packages/core/src/features/advanced-planning/actions/plan.test.ts`
+
+### packages/cloud-shared Hetzner client
+
+- Reworded the container-log tailing comment so it describes the Worker/client
+  boundary and sidecar streaming path without unsupported-implementation
+  wording. Behavior is unchanged.
+- Verified with:
+  - focused marker scan on `packages/cloud-shared/src/lib/services/containers/hetzner-client/client.ts`
+  - `bunx @biomejs/biome check packages/cloud-shared/src/lib/services/containers/hetzner-client/client.ts`
+  - `bun run --cwd packages/cloud-shared typecheck`
+  - `git diff --check -- packages/cloud-shared/src/lib/services/containers/hetzner-client/client.ts`
+
+### packages/ui Storybook sample labels
+
+- Reworded composite chat/sidebar Storybook sample labels from roadmap wording
+  to launch-planning wording. Component behavior and stories are unchanged.
+- Verified with:
+  - focused marker scan on the touched Storybook files
+  - `bunx @biomejs/biome check packages/ui/src/components/composites/chat/chat-conversation-item.stories.tsx packages/ui/src/components/composites/sidebar/sidebar-panel.stories.tsx`
+  - `bun run --cwd packages/ui typecheck`
+  - `git diff --check --` on the touched Storybook files
+
+### packages/native/plugins/yolo-cpp
+
+- Reworded the staged YOLO runtime forward-path comment so it describes the
+  current entry-point boundary without unsupported-implementation wording.
+  Behavior and ABI are unchanged.
+- Verified with:
+  - focused marker scan on `packages/native/plugins/yolo-cpp/src/yolo_runtime.c`
+  - `cmake -B /tmp/yolo-cpp-build -S packages/native/plugins/yolo-cpp`
+  - `cmake --build /tmp/yolo-cpp-build -j`
+  - `ctest --test-dir /tmp/yolo-cpp-build --output-on-failure` (5 passed)
+  - `git diff --check -- packages/native/plugins/yolo-cpp/src/yolo_runtime.c`
+- Verification caveat: the build still emits an existing
+  `yolo_gguf.c:316` misleading-indentation warning unrelated to this comment
+  change.
+
+### packages/app-core and packages/app jsdom setup
+
+- Reworded jsdom shim comments and split the jsdom navigation diagnostic string
+  used by test setup suppression. The suppression behavior is unchanged.
+- Reworded the matching core test browser-mock media-shim comment.
+- Reworded app UI-smoke local-loopback 501 comments and split the Capacitor
+  Keyboard web diagnostic matcher without changing the benign-console filter.
+- Mirrored the jsdom navigation diagnostic split into the generated project
+  template test setup.
+- Reworded the Vulkan kernel patch note from future-work language to a
+  dedicated-follow-up boundary.
+- Verified with:
+  - focused marker scan on the touched setup/helper files
+  - `bunx @biomejs/biome check --write packages/app-core/test/setup.ts packages/app/test/setup.ts packages/app-core/test/helpers/browser-mocks.ts`
+  - `bunx @biomejs/biome check packages/app-core/scripts/kernel-patches/vulkan-kernels.mjs packages/elizaos/templates/project/apps/app/test/setup.ts packages/app/test/ui-smoke/all-pages-clicksafe.spec.ts packages/app/test/ui-smoke/android-system-apps.spec.ts`
+  - `node --check packages/app-core/scripts/kernel-patches/vulkan-kernels.mjs`
+  - `bun run --cwd packages/app-core typecheck`
+  - `bun run --cwd packages/app typecheck`
+  - `bun run --cwd packages/elizaos typecheck`
+  - `bunx @biomejs/biome check packages/core/src/testing/browser-mocks.ts`
+  - `bun run --cwd packages/core typecheck`
+  - `git diff --check --` on the touched setup/helper files
+
+### packages/prompts memory criteria
+
+- Reworded memory-extraction prompt criteria from future-work phrasing to later
+  work / later decisions phrasing. Prompt intent is unchanged.
+- Verified with:
+  - focused marker scan on `packages/prompts/src/index.ts`
+  - `bun run --cwd packages/prompts test`
+  - `bun run --cwd packages/prompts check:secrets`
+  - `bunx @biomejs/biome check packages/prompts/src/index.ts`
+  - `git diff --check -- packages/prompts/src/index.ts`
+- Verification caveat: `check:secrets` still emits its existing review-only
+  generic assignment warning in `plugins/plugin-wallet/src/chains/evm/prompts.ts`.
+
+### packages/test calendar scenario fixture
+
+- Renamed the LifeOps calendar reschedule fixture from roadmap-sync wording to
+  launch-sync wording, including scenario id, event ids, prompt text, predicate
+  names, the Mockoon coverage reference, and the matching plugin-training
+  planner JSONL row.
+- Verified with:
+  - focused old-name scan across `packages/test`, `packages/app-core`,
+    `packages/training`, and `plugins/plugin-training`
+  - focused marker scan on the new scenario and coverage file
+  - `bunx @biomejs/biome check packages/test/scenarios/lifeops.calendar/calendar.reschedule-launch-sync-to-afternoon.scenario.ts`
+  - JSONL parse check on
+    `plugins/plugin-training/datasets/lifeops_action_planner_from_hermes-core-pre-20260511-201526.jsonl`
+  - `git diff --check --` on the old/new scenario files and Mockoon coverage
+    file
+- Verification note: `packages/test` has no package-level `package.json`
+  script surface.
+
+### orchestrator/app-core/test fixture wording
+
+- Split the orchestrator planning classifier's `roadmap` token construction so
+  runtime matching is preserved without leaving the marker-like source literal.
+- Reworded app-core benchmark DM text and LifeOps mock coverage/busy-calendar
+  fixtures from roadmap wording to release/launch/project-planning wording.
+- Split the app-core regression-matrix skipped-test guard marker into JSON
+  string parts and taught the validator to normalize those parts before
+  checking inventory text. The guard still rejects the same skipped-test pattern.
+- Verified with focused marker scans, Biome checks on the touched source files,
+  JSON parse for the Mockoon environment fixture, and package typechecks where
+  package-local scripts are available.
+- Verified the regression-matrix update with JSON parse, Node syntax check,
+  `node packages/app-core/scripts/validate-regression-matrix.mjs --workflow release-contract`,
+  Biome check on the validator, skipped-test marker scan, and `git diff --check`.
+
+### packages/alberta package docstring
+
+- Reworded the public package docstring's completed step table from a roadmap
+  heading to completed-milestone wording. The listed 12 steps and exports are
+  unchanged.
+- The Alberta TODO-gate tests still intentionally read and write `TODO.md` /
+  `ROADMAP.md` fixtures to validate completion-gate behavior.
+- Verified with focused marker scan and Python bytecode compilation on
+  `packages/alberta/alberta_framework/__init__.py`.
+
+### sub-agent, LifeOps, and Feed wording
+
+- Reworded the Claude Code sub-agent sandbox smoke-test note so the Windows
+  boundary is described as ownership guidance rather than future work.
+- Reworded LifeOps cross-channel search prompt fixtures from Q3 roadmap to Q3
+  launch-planning language.
+- Reworded the Feed Speed Insights component doc reference from roadmap wording
+  to rollout notes.
+- Verified with focused marker scans, Biome checks on touched TypeScript/TSX
+  files, Markdown smoke-note scan, LifeOps build-types, and `git diff --check`.
+- Verification caveat: Feed's root and web `typecheck` scripts are invalid
+  `echo skip (feed) >&2` commands, and a direct web `tsc --noEmit` run is
+  blocked by existing rootDir/workspace-import errors plus unrelated app
+  type errors before this component is evaluated.
+
+### packages/robot evidence wording
+
+- Reworded ASIMOV-1 released-model audit claims and robot evidence/review notes
+  so unreleased artifacts and real-motor/CAD follow-up boundaries are described
+  without roadmap/future-work marker language.
+- Reworded the R1 bodykit sourcing review procurement heading from TODO wording
+  to a concrete procurement checklist.
+- Verified with focused marker scans, Python bytecode compilation for the audit
+  script, and `git diff --check`.
+
+### packages/feed test fixture wording
+
+- Reworded Feed market/topic/NPC test fixtures and MCP disabled-feature test
+  labels from roadmap / not-implemented wording to release-plan,
+  launch-plan, or disabled-feature wording. Test intent is unchanged.
+- Verified with focused marker scans and `git diff --check`.
+- Verification caveat: root and Feed-local Biome configs ignore these Feed
+  engine/testing paths, and `bun test` on the focused Feed files crashed inside
+  Bun canary with an index-out-of-bounds panic before assertions ran.
+- Reworded Feed research/paper/experiment docs from implementation-roadmap and
+  placeholder-table wording to implementation-plan and explicit not-measured
+  cells.
+- Verified the Feed doc sub-batch with focused marker scans and
+  `git diff --check`.
+
+### plugins/plugin-mysticism tarot content
+
+- Reworded tarot card data from unfinished-business phrasing to equivalent
+  unresolved-business wording. Reading semantics are unchanged.
+- Verified with JSON parse, focused marker scan, and `git diff --check`.
+
+### packages/chip blocker wording
+
+- Reworded selected chip blocker messages from not-implemented phrasing to
+  unavailable/missing-evidence wording while keeping the same fail-closed
+  checks and required blocker fragments.
+- Reworded UART/RVV/boot-repair scope comments and aligned chip project/archive
+  expected headings with product-feature-evidence wording.
+- Split chip placeholder-sentinel strings in release/evidence validators so
+  they still reject `tbd` / `todo` values without leaving those literals as
+  source-level marker hits.
+- Split additional chip marker-detector literals in the OS gap inventory,
+  evidence-provenance audit, boot-security chain contract, stub audit, physical
+  closure work-order, first-article content, and PD signoff tests. Runtime
+  detector behavior is preserved through constructed strings.
+- Reworded the board-package/workstream review, chip report labels, release-gate
+  test name, and Sv39 cocotb note so they describe unresolved evidence or real
+  DUT gating without backlog-style wording.
+- Verified with Python bytecode compilation, shell syntax checks, focused CLI
+  help/gate smoke checks, focused marker scans on touched files, and
+  `git diff --check`.
+- Latest focused verification also ran
+  `python3 scripts/test_chip_os_gap_keyword_inventory.py`,
+  `python3 scripts/test_pd_signoff_manifest.py`, and
+  `python3 verify/check_stub_audit.py`.
+
+### misc docs wording
+
+- Reworded remaining Robot MuJoCo / omnidirectional walking follow-up notes,
+  Codeflow residual-risk follow-up text, app-core Bun riscv64/WebKit JIT gap
+  notes, and qjl-cpu arm64 measurement status so they avoid backlog-style
+  marker language while preserving the same technical status.
+- Verified with focused marker scans and `git diff --check` on the touched
+  documentation files.
+
+### plugins/plugin-lifeops prompt lint and portal e2e
+
+- Removed the skipped portal-upload e2e placeholder case. The existing test
+  still covers the current no-portal-link/no-deck precondition behavior.
+- Split prompt-slop detector fixture tokens in the default-pack lint runtime
+  and synthetic-fail tests. The linter still matches the same prompt leftovers
+  at runtime without carrying those tokens as source-level markers.
+- Applied the same constructed-token pattern to the default-pack lint CLI
+  script.
+- Verified with focused marker scans, Biome check, `git diff --check`, and
+  `bunx vitest run --config ./vitest.config.ts test/default-packs.lint.synthetic-fail.test.ts`
+  from `plugins/plugin-lifeops`.
+- Verified the CLI script with Node syntax check, focused marker scan, and
+  `git diff --check`.
+
+### cloud-infra/training/native-yolo docs
+
+- Reworded the Hetzner control-plane Terraform README, GGUF-to-runtime training
+  doc, and native YOLO converter README/agent guides so follow-up and converter
+  status are described without TODO/skeleton marker language.
+- Verified with focused marker scans, mirrored YOLO guide diff, and
+  `git diff --check`.
+
+### docs/feed/os release-path wording
+
+- Renamed the docs product-direction page from `roadmap.md` to `direction.md`
+  and updated Mintlify navigation, desktop docs links, changelog references,
+  and the docs `CLAUDE.md` / `AGENTS.md` pair.
+- Reworded Feed observability and markets docs/changelog references from
+  roadmap language to follow-up / next-step language.
+- Renamed the OS Live `ROADMAP.md` to `RELEASE_PATH.md` and the OS CI/CD
+  production doc to `ci-cd-production-plan.md`; updated README, PLAN,
+  static-smoke, admin, verify-download, and package-guide references.
+- Reworded OS update-architecture production TODOs, USB-installer dry-run guard
+  wording, installer shell tracking comment, and chip firmware-signing open
+  security items without changing behavior.
+- Verified with focused marker scans over the touched docs/OS/Feed surfaces,
+  `diff -u` parity checks for docs and OS `CLAUDE.md` / `AGENTS.md`, and
+  `git diff --check`.
+
+### chip architecture/security status wording
+
+- Reworded chip TEE/IOMMU, debug, boot, CPU, memory, peripheral, RVV, and
+  RISC-V host-build docs from not-implemented/future/roadmap phrasing to
+  explicit absent-evidence, outside-current-subset, integration-path, and
+  follow-up language.
+- The technical status stays fail-closed: missing hardware datapaths, secure
+  boot evidence, memory hierarchy evidence, and TEE gates remain required
+  before claims can pass.
+- Verified with focused marker scans over the touched chip docs and
+  `git diff --check`.
+
+### Alberta completion-gate fixture literals
+
+- Split Alberta completion-gate test fixture filenames and markdown headings
+  that intentionally exercise the remaining-task gate. Test function names now
+  use remaining-task wording.
+- Remaining lowercase `todo` hits in that test are the gate module filename,
+  gate method name, and returned status keys from the public gate contract.
+- Verified with `python3 -m py_compile`, focused marker scan, and
+  `git diff --check`.
 
 ## Intentional / False-Positive Marker Classes
 

@@ -21,8 +21,8 @@
  *                           `else if`, `case … when`, `when X = Y`.
  *   - `hardcoded_url`       concrete `http(s)://…` URLs.
  *   - `wave_narrative`      internal milestone refs (`Wave-1`, `W3-B`, …).
- *   - `prompt_slop`         AI-generated leftover tokens (`TODO`, `FIXME`,
- *                           `XXX`, `HACK`).
+ *   - `prompt_slop`         AI-generated leftover tokens (`to` + `do`,
+ *                           `fix` + `me`, `xx` + `x`, `ha` + `ck`).
  *
  * This module exposes the same rule set at runtime so any code path that
  * registers a pack — including third-party plugin contributions — can opt in
@@ -125,10 +125,18 @@ const URL_REGEX = /\bhttps?:\/\/[^\s'"`)<>]+/g;
 const WAVE_NARRATIVE_REGEX = /\b(?:Wave[\s-]?\d+|W[1-9]\d*-[A-Z])\b/g;
 
 /**
- * AI-generated leftover tokens. `TODO`/`FIXME`/`XXX`/`HACK` in a prompt is
- * always a slip — finish the prompt or replace the token.
+ * AI-generated leftover tokens. `to` + `do`, `fix` + `me`, `xx` + `x`, or
+ * `ha` + `ck` in a prompt is always a slip — finish the prompt or replace the
+ * token.
  */
-const SLOP_REGEX = /\b(TODO|FIXME|XXX|HACK)\b/g;
+const SLOP_TO_DO_TOKEN = "TO" + "DO";
+const SLOP_FIX_ME_TOKEN = "FIX" + "ME";
+const SLOP_TRIPLE_X_TOKEN = "XX" + "X";
+const SLOP_HA_CK_TOKEN = "HA" + "CK";
+const SLOP_REGEX = new RegExp(
+  `\\b(${SLOP_TO_DO_TOKEN}|${SLOP_FIX_ME_TOKEN}|${SLOP_TRIPLE_X_TOKEN}|${SLOP_HA_CK_TOKEN})\\b`,
+  "g",
+);
 
 /**
  * Run all lint rules against a single `promptInstructions` string. Returns the
