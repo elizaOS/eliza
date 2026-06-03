@@ -27,9 +27,26 @@ export default defineConfig({
   resolve: {
     ...baseConfig.resolve,
     alias: [
+      // Companion view components import lean primitives, the API client, event
+      // names, hooks, and state from `@elizaos/ui` subpaths (`/components`,
+      // `/api`, `/events`, `/hooks`, `/state`, `/utils`). The `/components`
+      // subpath (src/components/index.ts) re-exports the entire cloud-ui
+      // frontend surface (code/react-syntax-highlighter, docs/react-router-dom,
+      // react-day-picker, ...), whose dist builds use bare deep imports that are
+      // bun-hoisted under node_modules/.bun and not resolvable from this
+      // plugin's context — vite's import-analysis then fails to load the test
+      // files. The companion tests `vi.mock("@elizaos/ui")` with the exports
+      // these components consume, so resolve those subpaths to the same module
+      // id as the bare barrel: the mock then covers them and the heavy source
+      // barrel (with its cloud-ui subtree) is never transformed. Subpaths the
+      // tests do NOT mock (e.g. `/agent-surface`) stay resolved to real source.
       {
-        find: /^@elizaos\/ui$/,
+        find: /^@elizaos\/ui(\/(components|api|events|hooks|state|utils))?$/,
         replacement: path.join(repoRoot, "packages/ui/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/ui\/(.+)$/,
+        replacement: path.join(repoRoot, "packages/ui/src/$1"),
       },
       {
         find: /^react$/,
