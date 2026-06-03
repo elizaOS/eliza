@@ -31,6 +31,7 @@ import {
 } from "react";
 import {
   AgentElementOverlay,
+  AgentSurfaceElementReporter,
   AgentSurfaceProvider,
   getViewRegistry,
   handleAgentSurfaceCapability,
@@ -665,6 +666,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
           <View {...viewProps} />
         </ErrorBoundary>
         <AgentElementOverlay />
+        <AgentSurfaceElementReporter />
       </AgentSurfaceProvider>
     </div>
   );

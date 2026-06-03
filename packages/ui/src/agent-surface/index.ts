@@ -16,6 +16,10 @@ export {
   isAgentSurfaceCapability,
 } from "./capabilities";
 export {
+  AgentSurfaceElementReporter,
+  useAgentSurfaceElementReporter,
+} from "./element-reporter";
+export {
   AgentButton,
   type AgentButtonProps,
   AgentInput,

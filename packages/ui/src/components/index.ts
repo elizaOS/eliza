@@ -227,6 +227,7 @@ export * from "./pages/ElizaCloudDashboard";
 export * from "./pages/HeartbeatsView";
 export * from "./pages/LogsView";
 export * from "./pages/MediaGalleryView";
+export * from "./pages/MemoryDetailPanel";
 export * from "./pages/MemoryViewerView";
 export * from "./pages/PageScopedChatPane";
 export * from "./pages/PluginsPageView";
@@ -241,10 +242,10 @@ export * from "./pages/TaskEditor";
 export * from "./pages/TasksPageView";
 export * from "./pages/TrajectoriesView";
 export * from "./pages/TrajectoryDetailView";
-// VectorBrowserView omitted — it is a heavy three.js (WebGL) surface lazy-loaded
-// inside DatabasePageView so neither it nor three ship in the always-loaded
-// @elizaos/ui barrel. Import it directly from ./pages/VectorBrowserView if a
-// caller genuinely needs it.
+// VectorBrowserView lives in @elizaos/plugin-vector-browser — it is a heavy
+// three.js (WebGL) surface loaded dynamically so neither it nor three ship in
+// the always-loaded @elizaos/ui barrel. Its pure layout/parse helpers remain
+// here in ./pages/vector-browser-utils (re-exported from the root barrel).
 export * from "./pages/WorkflowEditor";
 export * from "./pages/workflow-graph-events";
 export * from "./settings/ApiKeyConfig";
@@ -307,6 +308,7 @@ export * from "./ui/select";
 export * from "./ui/separator";
 export * from "./ui/sheet";
 export * from "./ui/skeleton";
+export * from "./ui/skeleton-layouts";
 export * from "./ui/slider";
 export * from "./ui/status-badge";
 export * from "./ui/switch";
