@@ -263,11 +263,14 @@ platform no-ops are separated from actionable runtime gaps.
   `Test*` / `installTest*` names across the web, Android, iOS, and Electrobun
   shim packages. The placeholder/stub/TODO/fake marker scan is now clean for
   the host-shim source and package guides.
+- Reworded `installWebShim()` idempotency from no-op wording to an explicit
+  single-install operation.
 - Remaining `mock` hits are Bun's test double API (`mock`, `mock.calls`,
   `mockImplementationOnce`) and are not package implementation gaps.
 - Verified with:
   - `bun run --cwd packages/plugin-host-shim typecheck`
   - `bun run --cwd packages/plugin-host-shim test`
+  - `bun run --cwd packages/plugin-host-shim build`
   - `bun run --cwd packages/plugin-host-shim-android typecheck`
   - `bun run --cwd packages/plugin-host-shim-android test`
   - `bun run --cwd packages/plugin-host-shim-ios typecheck`
@@ -1294,13 +1297,48 @@ platform no-ops are separated from actionable runtime gaps.
 - Replaced `console.*` service logging with the structured `logger` import.
 - Updated `README.md`, `CLAUDE.md`, and `AGENTS.md` to describe the connector
   surface and concrete API backend boundary.
+- Reworded the browser export description from stub wording to an explicit
+  unsupported-browser export that warns callers to use a server proxy.
 - Added regression coverage in `src/__tests__/accounts.test.ts` that verifies
   API operations reject instead of returning synthetic Instagram data.
 - Verified with:
   - `bun run --cwd plugins/plugin-instagram test src/__tests__/accounts.test.ts`
+  - `bun run --cwd plugins/plugin-instagram test`
   - `bun run --cwd plugins/plugin-instagram typecheck`
+  - `bun run --cwd plugins/plugin-instagram build`
   - `bunx biome check plugins/plugin-instagram/src/service.ts plugins/plugin-instagram/src/__tests__/accounts.test.ts plugins/plugin-instagram/CLAUDE.md plugins/plugin-instagram/AGENTS.md plugins/plugin-instagram/README.md`
   - marker scan and `git diff --check` on the touched Instagram files
+
+### plugins/plugin-lmstudio
+
+- Reworded the LM Studio detection helper comment so tests provide an injected
+  fake `fetch` implementation instead of "stubbing" network state. No runtime
+  behavior changed.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-lmstudio typecheck`
+  - `bun run --cwd plugins/plugin-lmstudio test`
+  - `bun run --cwd plugins/plugin-lmstudio build`
+  - package marker scan excluding generated output
+  - `git diff --check -- plugins/plugin-lmstudio PLACEHOLDER_AUDIT.md`
+
+### plugins/plugin-minecraft
+
+- Removed an empty WebSocket `close` handler from the Mineflayer bridge server;
+  bots remain long-lived until destroyed, and there is no inert close callback
+  left to classify.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-minecraft typecheck`
+  - `bun run --cwd plugins/plugin-minecraft test`
+  - `bun run --cwd plugins/plugin-minecraft build`
+  - package marker scan excluding generated output
+  - `git diff --check -- plugins/plugin-minecraft PLACEHOLDER_AUDIT.md`
+- Caveat: `bun run --cwd plugins/plugin-minecraft/mineflayer-server build`
+  currently fails in this checkout before the touched close-handler area
+  because the nested bridge package dependencies/types (`mineflayer`,
+  `minecraft-data`, `mineflayer-pathfinder`, `vec3`) are not available to the
+  standalone subpackage build.
 
 ### plugins/plugin-music
 
