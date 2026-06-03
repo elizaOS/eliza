@@ -2044,7 +2044,9 @@ function TaskInspector({
               agentId="inspector-delete"
               description="Delete this task"
               icon={<Trash2 className="h-3 w-3" />}
-              label={t("orchestrator.action.delete", { defaultValue: "Delete" })}
+              label={t("orchestrator.action.delete", {
+                defaultValue: "Delete",
+              })}
               onClick={() => {}}
               disabled={busy}
               tone="danger"
@@ -2880,7 +2882,7 @@ export function OrchestratorWorkbench() {
 
         {/* Center timeline — hidden on mobile until a task is selected. */}
         <main
-          className={`min-w-0 flex-1 flex-col bg-bg-accent/10 pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+5rem)] ${
+          className={`min-w-0 flex-1 flex-col bg-bg-accent/10 ${
             isMobile ? (selectedId ? "flex" : "hidden") : "flex"
           }`}
           data-testid="orchestrator-timeline"
@@ -2961,7 +2963,7 @@ export function OrchestratorWorkbench() {
                   </button>
                 </div>
               ) : null}
-              <div className="border-t border-border/50 bg-bg px-4 py-3">
+              <div className="border-t border-border/50 bg-bg px-4 pt-3 pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+6rem)]">
                 <div className="flex items-end gap-2">
                   <textarea
                     ref={composerRef}
