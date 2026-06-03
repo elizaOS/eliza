@@ -87,7 +87,8 @@ export function resolveEvmSigningCapability(
     return {
       kind: "cloud-view-only",
       canSign: false,
-      reason: "Cloud wallet provisioned (view-only — local signing unavailable)",
+      reason:
+        "Cloud wallet provisioned (view-only — local signing unavailable)",
     };
   }
 
