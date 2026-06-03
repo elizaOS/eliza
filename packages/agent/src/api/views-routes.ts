@@ -13,6 +13,7 @@
  *   GET  /api/views/:id/<asset>        — compiled bundle chunk/asset
  *   GET  /api/views/:id/hero           — hero image (image/*)
  *   POST /api/views/:id/navigate       — broadcast shell navigation event (JSON)
+ *   POST /api/views/:id/elements       — report the view's addressable element snapshot
  *   POST /api/views/:id/interact       — agent-view interaction (capability dispatch)
  *   POST /api/views/interact-result    — frontend result callback (resolves pending interact)
  */
@@ -30,8 +31,10 @@ import {
 } from "@elizaos/core";
 import { type RouteHelpers, readJsonBody } from "@elizaos/shared";
 import {
+  type ActiveViewElement,
   clearActiveViewContext,
   setActiveViewContext,
+  setActiveViewElements,
 } from "../runtime/view-action-affinity.ts";
 import {
   PendingRequestMap,
@@ -60,6 +63,34 @@ function parseViewTypeValue(value: unknown): ViewType | undefined {
   return value === "gui" || value === "tui" || value === "xr"
     ? (value as ViewType)
     : undefined;
+}
+
+/** Hard cap on accepted element reports to bound memory + prompt growth. */
+const MAX_REPORTED_VIEW_ELEMENTS = 200;
+
+/**
+ * Validate + normalize an untrusted element-snapshot body into the strict
+ * ActiveViewElement[] shape. Drops malformed entries (no string id) rather than
+ * throwing — a partial snapshot is still useful to the planner.
+ */
+function normalizeActiveViewElements(raw: unknown): ActiveViewElement[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ActiveViewElement[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const r = item as Record<string, unknown>;
+    if (typeof r.id !== "string" || r.id.length === 0) continue;
+    const el: ActiveViewElement = {
+      id: r.id,
+      role: typeof r.role === "string" && r.role.length > 0 ? r.role : "element",
+      label: typeof r.label === "string" && r.label.length > 0 ? r.label : r.id,
+    };
+    if (typeof r.value === "string") el.value = r.value;
+    if (r.focused === true) el.focused = true;
+    out.push(el);
+    if (out.length >= MAX_REPORTED_VIEW_ELEMENTS) break;
+  }
+  return out;
 }
 
 function contentTypeForViewAsset(assetPath: string): string {
@@ -771,6 +802,24 @@ export async function handleViewsRoutes(
       ...(action ? { action } : {}),
       ...(alwaysOnTop ? { alwaysOnTop } : {}),
     });
+    return true;
+  }
+
+  // ── POST /api/views/:id/elements ─────────────────────────────────────────
+  // The shell's agent-surface registry reports this view's addressable element
+  // snapshot (id/role/label/value/focused) so the planner's "# Active View"
+  // block can list elements and act on them by id without a list-elements
+  // round-trip. Gated server-side on `id` matching the active (navigated-to)
+  // view via setActiveViewElements, so a background/stale surface can't
+  // overwrite the foreground view's elements (accepted=false when it doesn't
+  // match — the report is simply dropped).
+  if (method === "POST" && subResource === "elements") {
+    const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
+      () => null,
+    );
+    const elements = normalizeActiveViewElements(body?.elements);
+    const accepted = setActiveViewElements(id, elements);
+    json(res, { ok: true, viewId: id, accepted, count: elements.length });
     return true;
   }
 
