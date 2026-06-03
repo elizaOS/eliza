@@ -239,7 +239,12 @@ export function prependDesktopChildPathDirectory(
   childEnv: Record<string, string | undefined>,
   directory: string,
 ): boolean {
-  const existingPathKey = childEnv.PATH !== undefined ? "PATH" : "Path";
+  const existingPathKey =
+    childEnv.PATH !== undefined
+      ? "PATH"
+      : childEnv.Path !== undefined
+        ? "Path"
+        : "PATH";
   const existingPath = childEnv[existingPathKey]?.trim();
   if (!existingPath) {
     childEnv[existingPathKey] = directory;
