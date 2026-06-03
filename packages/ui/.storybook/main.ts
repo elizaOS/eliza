@@ -92,6 +92,7 @@ const config: StorybookConfig = {
         find: /^@elizaos\/capacitor-(contacts|messages|mobile-signals|phone|system)$/,
         replacement: hostExternalStub,
       },
+      { find: /^llama-cpp-capacitor$/, replacement: hostExternalStub },
       { find: /^@elizaos\/plugin-browser$/, replacement: hostExternalStub },
       // Node builtins pulled by local-inference services (reachable from the
       // state graph) — stubbed so useApp()-dependent stories import cleanly.
@@ -117,6 +118,15 @@ const config: StorybookConfig = {
     // Shared UI source reads Node's `process.env` unguarded at module load;
     // shim it so those modules import cleanly in the browser catalog.
     cfg.define = { ...(cfg.define ?? {}), "process.env": "({})" };
+    cfg.optimizeDeps ??= {};
+    cfg.optimizeDeps.exclude = [
+      ...(cfg.optimizeDeps.exclude ?? []),
+      "@napi-rs/keyring",
+      "@napi-rs/keyring-darwin-arm64",
+      "discord.js",
+      "qrcode-terminal",
+      "zlib-sync",
+    ];
     return cfg;
   },
 };
