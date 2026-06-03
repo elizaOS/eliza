@@ -82,6 +82,29 @@ vi.mock("@elizaos/ui", () => ({
   useIntervalWhenDocumentVisible: vi.fn(),
 }));
 
+// FineTuningView imports these runtime helpers from @elizaos/ui subpaths (not the
+// barrel), so they must be mocked at their real specifiers for the spies below to
+// intercept the source's calls.
+vi.mock("@elizaos/ui/agent-surface", () => ({
+  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
+}));
+
+vi.mock("@elizaos/ui/hooks", () => ({
+  useIntervalWhenDocumentVisible: vi.fn(),
+}));
+
+vi.mock("@elizaos/ui/layouts", () => ({
+  ContentLayout: ({ children }: { children: React.ReactNode }) =>
+    React.createElement("div", {}, children),
+}));
+
+vi.mock("@elizaos/ui/utils", () => ({
+  confirmDesktopAction: vi.fn(),
+  openExternalUrl: vi.fn(),
+  parsePositiveFloat: (value: string) => Number.parseFloat(value),
+  parsePositiveInteger: (value: string) => Number.parseInt(value, 10),
+}));
+
 vi.mock("./fine-tuning-panels.js", () => ({
   asTrainingEvent: vi.fn(),
   DatasetSection: () => React.createElement("section", {}, "datasets"),
