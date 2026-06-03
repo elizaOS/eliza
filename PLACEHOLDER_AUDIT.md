@@ -149,6 +149,23 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd packages/scenario-runner typecheck`
   - `bunx biome check packages/scenario-runner/src/runtime-factory.ts`
 
+### packages/security
+
+- Finished the Steward KMS adapter in `src/kms/steward-adapter.ts`. It now
+  performs bearer-authenticated HTTP requests to the documented Steward KMS
+  endpoints, encodes request payloads as base64, validates typed JSON/base64
+  responses, and surfaces malformed/non-2xx responses as `KmsError` instead of
+  throwing a permanent unsupported-operation placeholder.
+- Updated `README.md`, `CLAUDE.md`, `AGENTS.md`, and KMS factory comments to
+  describe Steward as a real HTTP client with an external endpoint contract.
+- Added `src/__tests__/steward-adapter.test.ts` covering every KMS operation,
+  auth headers, request encoding, response decoding, and error handling.
+- Verified with:
+  - `bun run --cwd packages/security test src/__tests__/steward-adapter.test.ts src/__tests__/factory.test.ts`
+  - `bun run --cwd packages/security typecheck`
+  - `bunx biome check packages/security/src/kms/steward-adapter.ts packages/security/src/kms/index.ts packages/security/src/kms/types.ts packages/security/src/__tests__/steward-adapter.test.ts packages/security/src/__tests__/factory.test.ts`
+  - marker scan and `git diff --check` on the touched Security files
+
 ### packages/agent
 
 - Finished host-side registration for dynamically announced remote-plugin
@@ -493,12 +510,6 @@ platform no-ops are separated from actionable runtime gaps.
 - `src/commands/deploy.ts` still has a real deploy path that is not wired to a
   complete backend contract. This cannot be finished safely without defining the
   deployment API behavior and auth/target semantics.
-
-### packages/security
-
-- `src/kms/steward-adapter.ts` still depends on Steward KMS endpoint behavior
-  that is not present in this workspace. Treat as blocked on the external KMS
-  API contract rather than a local code stub.
 
 ### plugins/plugin-capacitor-bridge
 
