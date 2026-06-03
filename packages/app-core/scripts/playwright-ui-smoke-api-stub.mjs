@@ -2402,6 +2402,8 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "GET" && url.pathname === "/api/status") {
     sendJson(req, res, 200, {
       state: "running",
+      agentName: "Playwright Smoke",
+      model: "ui-smoke",
       startup: { phase: "running", attempt: 0 },
       pendingRestart: false,
       pendingRestartReasons: [],

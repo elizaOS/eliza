@@ -14,9 +14,9 @@ afterEach(() => {
 });
 
 describe("MINIMAL_SHELL", () => {
-  it("defaults to true when the preference is unset", async () => {
+  it("defaults to false when the preference is unset", async () => {
     const { MINIMAL_SHELL } = await import("./shell-chrome");
-    expect(MINIMAL_SHELL).toBe(true);
+    expect(MINIMAL_SHELL).toBe(false);
   });
 
   it("is false when eliza:minimal-shell is explicitly '0'", async () => {
@@ -25,20 +25,20 @@ describe("MINIMAL_SHELL", () => {
     expect(MINIMAL_SHELL).toBe(false);
   });
 
-  it("is true for any non-'0' value", async () => {
+  it("is true when eliza:minimal-shell is explicitly '1'", async () => {
     window.localStorage.setItem("eliza:minimal-shell", "1");
     const { MINIMAL_SHELL } = await import("./shell-chrome");
     expect(MINIMAL_SHELL).toBe(true);
   });
 
-  it("falls back to true if localStorage access throws", async () => {
+  it("falls back to false if localStorage access throws", async () => {
     const spy = vi
       .spyOn(Storage.prototype, "getItem")
       .mockImplementation(() => {
         throw new Error("denied");
       });
     const { MINIMAL_SHELL } = await import("./shell-chrome");
-    expect(MINIMAL_SHELL).toBe(true);
+    expect(MINIMAL_SHELL).toBe(false);
     spy.mockRestore();
   });
 });
