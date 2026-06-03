@@ -208,8 +208,9 @@ export function _resetOcrProvidersForTests(): void {
  * runtime dep on plugin-vision (computeruse is the higher-level seam), so
  * the runtime registers a provider here at boot.
  *
- * Phase 2 target: replace the transitional RapidOCR-backed adapter with the
- * native doctr-cpp provider once `packages/native/plugins/doctr-cpp/` ships.
+ * The current in-tree provider is the RapidOCR-backed adapter registered by
+ * `@elizaos/plugin-vision`; native providers can register the same interface
+ * when they are available.
  */
 export interface CoordOcrSemantic {
   readonly position:

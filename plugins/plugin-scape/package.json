@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-scape",
-  "version": "2.0.3-beta.0",
+  "version": "2.0.3-beta.1",
   "type": "module",
   "description": "'scape — first-class agent integration for xRSPS. Autonomous RuneScape-alike agent with JSON-encoded state, Scape Journal, and directed-prompt operator control.",
   "main": "./dist/index.js",

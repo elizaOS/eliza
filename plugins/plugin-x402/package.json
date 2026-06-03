@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-x402",
-  "version": "2.0.3-beta.0",
+  "version": "2.0.3-beta.1",
   "description": "x402 micropayment middleware for elizaOS plugin HTTP routes",
   "type": "module",
   "main": "dist/index.js",

@@ -378,8 +378,8 @@ export interface ComputerUseConfig {
  */
 export type ComputerUseMode = "yolo" | "sandbox";
 
-/** Pluggable sandbox backend identifier. */
-export type SandboxBackendName = "docker" | "qemu";
+/** Implemented sandbox backend identifier. */
+export type SandboxBackendName = "docker";
 
 export interface SandboxConfig {
   backend: SandboxBackendName;

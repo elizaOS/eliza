@@ -100,13 +100,6 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/ui$/,
-        replacement: path.resolve(
-          packageDir,
-          "../ui/src/backgrounds/CloudVideoBackground.tsx",
-        ),
-      },
-      {
         find: /^@elizaos\/ui\/button$/,
         replacement: path.resolve(
           packageDir,

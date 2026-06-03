@@ -10,7 +10,7 @@ Cell legend:
 
 - `verified` — exercised on real hardware in CI or by a maintainer
 - `code-parity` — feature-equivalent code path exists, runtime untested
-- `stub` — surface present but no real implementation
+- `unavailable` — surface present but not available in this delivery model
 - `blocked: <reason>` — OS does not allow the operation in our delivery model
 
 ## Capability matrix
@@ -29,7 +29,7 @@ Cell legend:
 | permissions probe — accessibility | n/a | code-parity (TCC database read) | n/a (no per-app gate) | n/a | code-parity (AccessibilityService running flag) |
 | permissions probe — screen recording | n/a | code-parity (TCC database read) | code-parity (`CapabilityAccessManager\\graphicsCaptureProgrammatic`) | code-parity (ReplayKit prompt outcome) | code-parity (MediaProjection consent outcome) |
 | permissions probe — camera / microphone | n/a | code-parity (TCC database read) | code-parity (`CapabilityAccessManager\\webcam` / `\\microphone`) | code-parity (AVAuthorizationStatus) | code-parity (CAMERA / RECORD_AUDIO runtime grant) |
-| OCR | code-parity (Tesseract subprocess) | code-parity (Tesseract; Apple Vision via iOS bridge when running on iPad-as-host) | code-parity (Tesseract subprocess) | code-parity (Apple Vision OCR via `visionOcr`) | stub (no Android-native OCR provider yet — falls back to Tesseract on host) |
+| OCR | code-parity (Tesseract subprocess) | code-parity (Tesseract; Apple Vision via iOS bridge when running on iPad-as-host) | code-parity (Tesseract subprocess) | code-parity (Apple Vision OCR via `visionOcr`) | unavailable (no Android-native OCR provider; falls back to Tesseract on host) |
 | AppIntents (driving other apps via system shortcuts) | blocked: not an iOS-only concept | blocked: not an iOS-only concept | blocked: not an iOS-only concept | code-parity (`appIntentInvoke`, registry covers Mail / Messages / Notes / Reminders / Music / Maps / Safari) | blocked: Android equivalent is Intent dispatch, not exposed here |
 | memory pressure signal | verified (host RSS sampling) | code-parity (host RSS sampling) | code-parity (host RSS sampling) | code-parity (`UIApplicationDidReceiveMemoryWarningNotification` + `os_proc_available_memory`) | code-parity (`onTrimMemory` ComponentCallbacks2) |
 | process listing | verified (`/proc`) | code-parity (`ps -axco`) | code-parity (`Get-Process | ConvertTo-Json`) | blocked: no cross-app enumeration | code-parity (UsageStatsManager) |

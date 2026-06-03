@@ -1737,13 +1737,22 @@ platform no-ops are separated from actionable runtime gaps.
 
 ### plugins/plugin-computeruse
 
-- Remaining native/sandbox markers are platform boundaries:
-  - AOSP privileged input actor is documented as a stub for consumer flavor.
-  - Optional VLM adapter is a typed endpoint stub.
-  - OCR no-op fallback is intentionally used when no OCR provider is present.
-  - QEMU backend is a Phase 2 stub.
-  - Android process-list and native capture paths remain stubs or host
-    fallbacks until Android-native providers are available.
+- Removed the selectable QEMU sandbox backend stub. Sandbox mode now accepts
+  the implemented Docker backend only; the throwing `qemu-backend.ts` file,
+  QEMU exports, config parsing branch, docs listing, and Phase-2-specific tests
+  were removed.
+- Reworded non-test source markers for the optional VLM adapter, AOSP
+  privileged-input path, Android process-list behavior, OCR adapter no-op
+  provider, compatibility route adapter, and sandbox test fakes. The
+  non-test `src/` marker scan is now clean.
+- Renamed the parity taxonomy status from `stub` to `unavailable` for delivery
+  models where a surface exists but cannot run in that target.
+- Verified with:
+  - `bun run --cwd plugins/plugin-computeruse test src/sandbox/sandbox-driver.test.ts src/__tests__/aosp-input-actor.test.ts`
+  - `bun run --cwd plugins/plugin-computeruse typecheck`
+  - `bun run --cwd plugins/plugin-computeruse build`
+  - `bunx @biomejs/biome check` on the touched computer-use files
+  - source marker scan excluding tests: `TODO|FIXME|not implemented|Phase 2|future|placeholder|stub`
 
 ### plugins/plugin-local-inference
 

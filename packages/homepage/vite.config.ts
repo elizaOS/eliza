@@ -102,13 +102,6 @@ export default defineConfig({
           "../ui/src/cloud-ui/components/product-switcher.tsx",
         ),
       },
-      {
-        find: /^@elizaos\/ui$/,
-        replacement: path.resolve(
-          __dirname,
-          "../ui/src/backgrounds/CloudVideoBackground.tsx",
-        ),
-      },
     ],
   },
   server: {

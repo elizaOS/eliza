@@ -130,9 +130,8 @@ src/
     types.ts                 OSWorld-specific type definitions
 
   sandbox/
-    sandbox-driver.ts        Sandbox driver (Docker/QEMU backends)
+    sandbox-driver.ts        Sandbox driver (Docker backend)
     docker-backend.ts        Docker backend
-    qemu-backend.ts          QEMU backend
     surface-types.ts         Shared surface type definitions
     types.ts                 Sandbox-specific types
     index.ts                 Public re-exports

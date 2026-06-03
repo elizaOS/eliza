@@ -472,7 +472,7 @@ export async function handleComputerUseCompatRoutes(
 
 /**
  * Runtime plugin route adapter. The runtime plugin route bridge passes
- * `(req, res, runtime)` — wrap into a CompatRuntimeState stub for the
+ * `(req, res, runtime)` — wrap into a CompatRuntimeState adapter for the
  * shared dispatcher.
  */
 export function computerUseRouteHandler() {

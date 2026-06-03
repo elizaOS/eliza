@@ -182,22 +182,15 @@ img {
   overflow: hidden;
   padding-top: clamp(7rem, 10vw, 10rem);
   padding-bottom: clamp(3rem, 7vw, 6rem);
+  background: var(--brand-blue);
   color: var(--brand-white);
 }
 
-.cloud-background,
 .cloud-scrim {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-}
-
-.cloud-background {
-  z-index: 0;
-}
-
-.cloud-scrim {
   z-index: 2;
   background:
     linear-gradient(

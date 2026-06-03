@@ -14,13 +14,17 @@ export interface CapabilityDetectionOptions {
  *
  *   verified         — exercised on real hardware (Linux/macOS in CI today)
  *   code-parity      — feature-equivalent code path exists, runtime untested
- *   stub             — surface present but no real implementation
+ *   unavailable      — surface present but not available in this delivery model
  *   blocked          — OS does not allow the operation in our delivery model
  *
  * iOS / Android live in `mobile/parity-status.md`; they are not desktop OSes
  * and don't pass through `detectPlatformCapabilities`.
  */
-export type ParityStatus = "verified" | "code-parity" | "stub" | "blocked";
+export type ParityStatus =
+  | "verified"
+  | "code-parity"
+  | "unavailable"
+  | "blocked";
 
 export interface ParityNote {
   readonly status: ParityStatus;

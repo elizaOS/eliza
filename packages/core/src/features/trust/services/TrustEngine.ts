@@ -286,6 +286,11 @@ export class TrustEngine extends Service {
 	private trustConfig: TrustCalculationConfig;
 	private profileCache: Map<string, TrustProfile> = new Map();
 	private readonly cacheTimeout = 5 * 60 * 1000; // 5 minutes
+	// profileCache keys are per entity+context; stale entries are only invalidated
+	// per-affected-entity, so without a size bound the cache grows once per unique
+	// (entity, context) pair. Cap it (FIFO eviction) — entries are recomputed on a
+	// cache miss, so eviction is semantically transparent.
+	private readonly maxProfileCacheEntries = 2000;
 	private readonly maxInteractionsInMemory = 500;
 	private interactions: TrustInteraction[] = [];
 	private rateLimits: Map<
@@ -378,6 +383,11 @@ export class TrustEngine extends Service {
 
 		// Save to cache and storage
 		this.profileCache.set(cacheKey, profile);
+		while (this.profileCache.size > this.maxProfileCacheEntries) {
+			const oldest = this.profileCache.keys().next().value;
+			if (oldest === undefined) break;
+			this.profileCache.delete(oldest);
+		}
 		await this.saveTrustProfile(profile, context);
 
 		return profile;

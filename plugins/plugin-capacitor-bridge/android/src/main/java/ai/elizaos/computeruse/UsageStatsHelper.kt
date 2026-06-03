@@ -1,4 +1,4 @@
-// Device-validation scope: checklist in ANDROID_CONSTRAINTS.md.
+// Device behavior scope: checklist in ANDROID_CONSTRAINTS.md.
 //
 // UsageStatsHelper — wraps UsageStatsManager for app enumeration.
 //

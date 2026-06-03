@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/macosreminders",
-  "version": "2.0.3-beta.0",
+  "version": "2.0.3-beta.1",
   "description": "macOS Apple Reminders native bridge policy helpers for Eliza runtimes.",
   "type": "module",
   "main": "./dist/index.js",

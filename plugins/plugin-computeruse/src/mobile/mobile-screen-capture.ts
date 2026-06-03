@@ -45,7 +45,7 @@ export interface MobileScreenCaptureSourceDeps {
   /**
    * Override how raw JPEG bytes are produced from the base64 payload. The
    * default uses Node's `Buffer.from(..., "base64")`; tests can inject a
-   * stub when running in a browser-only context.
+   * decoder when running in a browser-only context.
    */
   decodeJpeg?: (jpegBase64: string) => Buffer;
 }

@@ -27,7 +27,6 @@ export {
   BrandTabsResponsive,
   BrandTabsTrigger,
   brandButtonVariants,
-  CloudSkyBackground,
   CornerBrackets,
   DashboardSection,
   DashboardStatCard,

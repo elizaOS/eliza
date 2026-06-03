@@ -24,6 +24,14 @@ export class ContextualPermissionSystem {
 		string,
 		{ decision: AccessDecision; expiry: number }
 	>();
+
+	/**
+	 * Cap on cached permission decisions. The cache is keyed by a full
+	 * serialization of the access request, so its key space is effectively
+	 * unbounded over a long-running process. LRU eviction (with the lazy TTL
+	 * check on read) keeps it bounded.
+	 */
+	private static readonly MAX_PERMISSION_CACHE_ENTRIES = 2000;
 	private elevations = new Map<
 		string,
 		ElevationRequest & { expiresAt: number }
@@ -105,8 +113,11 @@ export class ContextualPermissionSystem {
 	async checkAccess(request: AccessRequest): Promise<AccessDecision> {
 		const cacheKey = JSON.stringify(request);
 		const cached = this.permissionCache.get(cacheKey);
-		if (cached && cached.expiry > Date.now()) {
-			return cached.decision;
+		if (cached) {
+			if (cached.expiry > Date.now()) {
+				return cached.decision;
+			}
+			this.permissionCache.delete(cacheKey);
 		}
 
 		// Security Module Checks
@@ -386,10 +397,20 @@ export class ContextualPermissionSystem {
 		};
 		if (decision.allowed) {
 			const cacheKey = JSON.stringify(request);
+			this.permissionCache.delete(cacheKey);
 			this.permissionCache.set(cacheKey, {
 				decision,
 				expiry: Date.now() + (decision.ttl || 300000),
 			});
+			if (
+				this.permissionCache.size >
+				ContextualPermissionSystem.MAX_PERMISSION_CACHE_ENTRIES
+			) {
+				const oldest = this.permissionCache.keys().next().value;
+				if (oldest !== undefined) {
+					this.permissionCache.delete(oldest);
+				}
+			}
 		}
 		return decision;
 	}

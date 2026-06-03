@@ -1,5 +1,4 @@
 import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared/brand";
-import { CloudVideoBackground } from "@elizaos/ui";
 import {
   ArrowRight,
   BadgeCheck,
@@ -175,14 +174,6 @@ export default function MarketingPage() {
 
       <main id="main">
         <section className="brand-section brand-section--cloud app-hero">
-          <CloudVideoBackground
-            style={{
-              position: "absolute",
-              inset: 0,
-              width: "100%",
-              height: "100%",
-            }}
-          />
           <div className="app-cloud-scrim" />
           <div className="app-band-inner app-hero-grid app-hero-copy--cloud">
             <div className="app-hero-copy">

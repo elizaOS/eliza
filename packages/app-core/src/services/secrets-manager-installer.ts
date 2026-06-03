@@ -133,6 +133,12 @@ function sessionKey(backendId: InstallableBackendId): string {
 const MAX_LINE_LENGTH = 2_000;
 const MAX_HISTORY_EVENTS = 500;
 const DEFAULT_SIGNIN_TIMEOUT_MS = 60_000;
+/**
+ * Cap on retained install jobs. The installer is a process-lifetime singleton,
+ * so without this the `jobs` map grows one entry per install forever (each
+ * holding up to MAX_HISTORY_EVENTS log events). Active jobs are never evicted.
+ */
+const MAX_RETAINED_JOBS = 100;
 
 export class SecretsManagerInstaller {
   private readonly jobs = new Map<string, MutableJob>();
@@ -187,10 +193,28 @@ export class SecretsManagerInstaller {
       child: null,
     };
     this.jobs.set(job.id, job);
+    this.evictTerminalJobs();
 
     setImmediate(() => this.runInstallJob(job, built.command, built.args));
 
     return snapshotOf(job);
+  }
+
+  /**
+   * Drop the oldest terminal (succeeded/failed) jobs once the retained-job cap
+   * is exceeded. Insertion order in the Map is oldest-first, so we walk it in
+   * order and remove terminal jobs until back under the cap. Active jobs
+   * (pending/running) are never removed.
+   */
+  private evictTerminalJobs(): void {
+    if (this.jobs.size <= MAX_RETAINED_JOBS) return;
+    for (const [id, job] of this.jobs) {
+      if (this.jobs.size <= MAX_RETAINED_JOBS) break;
+      if (job.status === "succeeded" || job.status === "failed") {
+        job.emitter.removeAllListeners();
+        this.jobs.delete(id);
+      }
+    }
   }
 
   /** Subscribe to events for a running job. Returns an unsubscribe function. */

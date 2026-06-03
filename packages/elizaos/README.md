@@ -59,10 +59,11 @@ elizaos plugins submit --registry owner/repo
 
 ### `elizaos deploy`
 
-Experimental Eliza Cloud deploy. Currently only `--dry-run` is functional and prints the planned deploy sequence.
+Print the Eliza Cloud deployment plan for the current project. The CLI does not perform deployment side effects; authenticated build, Vercel, and domain orchestration stay in Eliza Cloud.
 
 ```bash
-elizaos deploy --dry-run
+elizaos deploy
+elizaos deploy --app-id <id> --domain app.example.com
 ```
 
 ### `elizaos capability-router connect`
