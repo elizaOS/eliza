@@ -4,12 +4,15 @@ import { logger } from "@elizaos/core";
 import type { ElizaConfig } from "@elizaos/shared";
 import {
   isElizaSettingsDebugEnabled,
-  isPlainObject,
   migrateLegacyRuntimeConfig,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
 import JSON5 from "json5";
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 import { readConfigEnvSync } from "../api/config-env.ts";
 import { syncSolanaPublicKeyEnv } from "../api/wallet-env-sync.ts";
 import { isVaultRef } from "../runtime/operations/vault-bridge.ts";

@@ -6,24 +6,13 @@
 // feature navigation; the shell renders this rail only in the collapsed state.
 
 import {
-  BookOpen,
   Boxes,
   Brain,
-  CalendarDays,
-  Columns2,
-  FileText,
-  FlaskConical,
-  Images,
   ListChecks,
-  Mail,
-  MessagesSquare,
-  Mic,
   Palette,
   PanelLeft,
-  Pencil,
   Plus,
   Settings,
-  ShieldAlert,
   SlidersHorizontal,
   StickyNote,
   Zap,
@@ -38,19 +27,8 @@ export function IconRail({
   onOpenSkills,
   onOpenNotes,
   onOpenSettings,
-  onOpenCompare,
-  onOpenResearch,
-  onOpenDocs,
-  onOpenCalendar,
-  onOpenEmail,
-  onOpenGallery,
-  onOpenCookbook,
   onOpenModels,
   onOpenTasks,
-  onOpenEditor,
-  onOpenGroup,
-  onOpenAdmin,
-  onOpenVoice,
   onOpenPresets,
 }: {
   onToggleSidebar: () => void;
@@ -125,42 +103,6 @@ export function IconRail({
       <button
         type="button"
         className="od-rail-btn"
-        onClick={onOpenDocs}
-        title="Documents"
-        aria-label="Documents"
-      >
-        <FileText size={18} />
-      </button>
-      <button
-        type="button"
-        className="od-rail-btn"
-        onClick={onOpenCompare}
-        title="Compare"
-        aria-label="Compare"
-      >
-        <Columns2 size={18} />
-      </button>
-      <button
-        type="button"
-        className="od-rail-btn"
-        onClick={onOpenResearch}
-        title="Deep Research"
-        aria-label="Deep Research"
-      >
-        <FlaskConical size={18} />
-      </button>
-      <button
-        type="button"
-        className="od-rail-btn"
-        onClick={onOpenCalendar}
-        title="Calendar"
-        aria-label="Calendar"
-      >
-        <CalendarDays size={18} />
-      </button>
-      <button
-        type="button"
-        className="od-rail-btn"
         onClick={onOpenTasks}
         title="Tasks"
         aria-label="Tasks"
@@ -175,69 +117,6 @@ export function IconRail({
         aria-label="Models"
       >
         <Boxes size={18} />
-      </button>
-      <button
-        type="button"
-        className="od-rail-btn"
-        onClick={onOpenEmail}
-        title="Email"
-        aria-label="Email"
-      >
-        <Mail size={18} />
-      </button>
-      <button
-        type="button"
-        className="od-rail-btn"
-        onClick={onOpenGallery}
-        title="Gallery"
-        aria-label="Gallery"
-      >
-        <Images size={18} />
-      </button>
-      <button
-        type="button"
-        className="od-rail-btn"
-        onClick={onOpenCookbook}
-        title="Cookbook"
-        aria-label="Cookbook"
-      >
-        <BookOpen size={18} />
-      </button>
-      <button
-        type="button"
-        className="od-rail-btn"
-        onClick={onOpenGroup}
-        title="Group Chat"
-        aria-label="Group Chat"
-      >
-        <MessagesSquare size={18} />
-      </button>
-      <button
-        type="button"
-        className="od-rail-btn"
-        onClick={onOpenEditor}
-        title="Image Editor"
-        aria-label="Image Editor"
-      >
-        <Pencil size={18} />
-      </button>
-      <button
-        type="button"
-        className="od-rail-btn"
-        onClick={onOpenAdmin}
-        title="Admin"
-        aria-label="Admin"
-      >
-        <ShieldAlert size={18} />
-      </button>
-      <button
-        type="button"
-        className="od-rail-btn"
-        onClick={onOpenVoice}
-        title="Voice"
-        aria-label="Voice"
-      >
-        <Mic size={18} />
       </button>
       <button
         type="button"

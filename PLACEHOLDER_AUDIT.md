@@ -166,6 +166,22 @@ platform no-ops are separated from actionable runtime gaps.
   - `bunx biome check packages/security/src/kms/steward-adapter.ts packages/security/src/kms/index.ts packages/security/src/kms/types.ts packages/security/src/__tests__/steward-adapter.test.ts packages/security/src/__tests__/factory.test.ts`
   - marker scan and `git diff --check` on the touched Security files
 
+### packages/sweagent
+
+- Replaced the inspector "Problem Statement placeholder" messages in both
+  `typescript/src/inspector/server.ts` and
+  `python/sweagent/inspector/server.py`. The prepended trajectory item now
+  carries the actual first user problem statement in both `observation` and
+  `messages`.
+- Verified with:
+  - `python3 -m py_compile packages/sweagent/python/sweagent/inspector/server.py`
+  - `bun run --cwd packages/sweagent test`
+  - marker scan and `git diff --check` on the touched inspector files
+- Not verified with direct `bun build` of the TypeScript inspector: this
+  partial vendored SWE-agent tree cannot resolve `packages/node_modules/js-yaml`,
+  consistent with the package guide warning that the full SWE-agent build graph
+  is not vendored on this branch.
+
 ### packages/agent
 
 - Finished host-side registration for dynamically announced remote-plugin
@@ -195,9 +211,14 @@ platform no-ops are separated from actionable runtime gaps.
   `observation_channel_cumulant_fn` compatibility helper. The default Step 3
   cumulant path is now a named, exported contract that validates dimensions and
   maps demons deterministically onto next-observation channels.
+- Reworded the neutral seed depth comment in
+  `alberta_framework/core/compositional_features.py`; `init()` computes the
+  precise depth array from parents, so the returned `1` is not unfinished
+  behavior.
 - Added `tests/test_pipeline.py` coverage for channel wrapping and invalid
   dimensions.
 - Verified with:
+  - `python3 -m py_compile packages/alberta/alberta_framework/core/compositional_features.py`
   - marker scan on the touched Alberta files
 - Not verified with pytest in this workspace: both the system Python and the
   bundled Codex Python are missing `jax`, so
@@ -225,9 +246,17 @@ platform no-ops are separated from actionable runtime gaps.
   `UiRenderer` and dispatches widget UI actions through
   `WIDGET_UI_ACTION_EVENT` with typed detail.
 - Added `src/widgets/WidgetHost.test.tsx`.
+- Replaced stale "for now" wording in
+  `src/services/local-inference/device-bridge.ts` and the checked-in
+  declaration mirror. The restored pending-generate path is now documented as a
+  deliberate requeue contract.
+- Reworded `src/widgets/registry.ts` task-list fallback commentary so it
+  describes the LifeOps sidebar compatibility rule without looking like a TODO
+  marker.
 - Verified with:
   - `bun run --cwd packages/ui test src/widgets/WidgetHost.test.tsx`
   - `bun run --cwd packages/ui typecheck`
+  - `bun build packages/ui/src/services/local-inference/device-bridge.ts --target=bun --outfile=/tmp/ui-device-bridge-check.js`
   - `bunx biome check` on touched UI files
   - `git diff --check`
 

@@ -3,9 +3,8 @@
  *
  * This test pins the intended shared shape for connector setup routes.
  * Today most connectors diverge — see docs/first-run-contracts.md §5.
- * Normalization is tracked as a follow-up; failures here are expected
- * for now and use `test.fails(...)` so the suite produces useful signal
- * without blocking CI.
+ * Normalization is tracked as a follow-up; expected failures use
+ * `test.fails(...)` so the suite produces useful signal without blocking CI.
  *
  * The contract every connector plugin's setup-routes export MUST satisfy:
  *

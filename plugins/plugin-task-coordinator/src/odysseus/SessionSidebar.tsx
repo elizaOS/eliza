@@ -25,37 +25,27 @@
 import type { CodingAgentTaskThread } from "@elizaos/ui";
 import {
   ArrowUpDown,
-  BookOpen,
   Bot,
   Boxes,
   Brain,
-  CalendarDays,
   Check,
   ChevronDown,
   ChevronRight,
-  Columns2,
-  FileText,
-  FlaskConical,
   Folder,
   FolderPlus,
   GitFork,
   GripVertical,
-  Images,
   ListChecks,
   Mail,
   MessageSquare,
-  MessagesSquare,
-  Mic,
   MoreHorizontal,
   Palette,
   PanelLeft,
-  Pencil,
   Pin,
   Plus,
   Search,
   SearchCode,
   Settings,
-  ShieldAlert,
   SlidersHorizontal,
   Star,
   StickyNote,
@@ -94,20 +84,15 @@ const SECTION_COLLAPSED_KEY = "session-section-collapsed";
 // #tools-section is collapsible like #sessions-section).
 const TOOLS_COLLAPSED_KEY = "tools-section-collapsed";
 
-// Feature-navigation rows that live in the expanded sidebar (odysseus
-// #tools-section + #email-section + #models-section). icon/label/tool map onto
-// the host's openTool dispatcher; every tool id is a real existing view.
-// Brain→memory and Library→documents mirror odysseus's tool ids.
+// Feature-navigation rows that live in the expanded sidebar. Only expose tools
+// backed by current elizaOS task-room or local panel contracts; aspirational
+// Odysseus panels stay hidden until their runtime routes exist.
 const TOOL_ROWS: { tool: ToolId; label: string; Icon: typeof Brain }[] = [
   { tool: "memory", label: "Brain", Icon: Brain },
-  { tool: "calendar", label: "Calendar", Icon: CalendarDays },
-  { tool: "compare", label: "Compare", Icon: Columns2 },
-  { tool: "cookbook", label: "Cookbook", Icon: BookOpen },
-  { tool: "research", label: "Deep Research", Icon: FlaskConical },
-  { tool: "gallery", label: "Gallery", Icon: Images },
-  { tool: "docs", label: "Library", Icon: FileText },
   { tool: "notes", label: "Notes", Icon: StickyNote },
   { tool: "tasks", label: "Tasks", Icon: ListChecks },
+  { tool: "models", label: "Models", Icon: Boxes },
+  { tool: "skills", label: "Skills", Icon: Zap },
   { tool: "theme", label: "Theme", Icon: Palette },
 ];
 
@@ -115,12 +100,7 @@ const TOOL_ROWS: { tool: ToolId; label: string; Icon: typeof Brain }[] = [
 // list. Grouped into a "More" cluster so every rail launcher stays reachable
 // from the expanded sidebar.
 const MORE_ROWS: { tool: ToolId; label: string; Icon: typeof Brain }[] = [
-  { tool: "group", label: "Group Chat", Icon: MessagesSquare },
-  { tool: "editor", label: "Image Editor", Icon: Pencil },
-  { tool: "voice", label: "Voice", Icon: Mic },
-  { tool: "skills", label: "Skills", Icon: Zap },
   { tool: "presets", label: "Presets", Icon: SlidersHorizontal },
-  { tool: "admin", label: "Admin", Icon: ShieldAlert },
   { tool: "settings", label: "Settings", Icon: Settings },
 ];
 
@@ -939,7 +919,7 @@ export function SessionSidebar({
         const next = st.order.filter((x) => x !== st.id);
         const at = before ? next.indexOf(before) : next.length;
         next.splice(at < 0 ? next.length : at, 0, st.id);
-        if (next.join(" ") === st.order.join(" ")) return;
+        if (next.join("::") === st.order.join("::")) return;
         // Persist the full manual order: dragged unfiled list + any other
         // threads (folder-assigned / not currently visible) appended in their
         // existing relative order, so the saved order stays total.

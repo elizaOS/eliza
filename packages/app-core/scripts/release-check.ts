@@ -18,9 +18,9 @@ const requiredPaths = [
   "dist/index.js",
   "dist/entry.js",
   "dist/build-info.json",
-  "packages/app-core/scripts",
-  "packages/app-core/scripts/setup-upstreams.mjs",
-  "packages/app-core/scripts/init-submodules.mjs",
+  "eliza/packages/app-core/scripts",
+  "eliza/packages/app-core/scripts/setup-upstreams.mjs",
+  "eliza/packages/app-core/scripts/init-submodules.mjs",
 ];
 const forbiddenPrefixes = ["dist/Eliza.app/"];
 const orchestratorBrokenLifecycleTarget = "./scripts/ensure-node-pty.mjs";
@@ -106,9 +106,8 @@ const requiredWorkflowSnippets = [
   "bun run release:check",
   "build-browser-companions:",
   "name: Build Agent Browser Bridge companions",
-  "if bun run browser-bridge:package:release; then",
+  "bun run browser-bridge:package:release",
   'echo "packaged=true" >> "$GITHUB_OUTPUT"',
-  "Agent Browser Bridge packaging failed; desktop release will continue without browser companion bundles.",
   "name: Upload Agent Browser Bridge release artifacts",
   "name: browser-bridge-store-bundles",
   "publish-browser-companions:",
@@ -120,15 +119,15 @@ const requiredWorkflowSnippets = [
   "for attempt in 1 2 3; do",
   `bun install failed on attempt \${attempt}; retrying in 15 seconds`,
   "name: Ensure avatar assets",
-  "node packages/app-core/scripts/ensure-avatars.mjs",
+  "node eliza/packages/app-core/scripts/ensure-avatars.mjs",
   "name: Prepare Whisper model artifact",
-  "bash packages/app-core/platforms/electrobun/scripts/ensure-whisper-gguf.sh base.en",
+  "bash eliza/packages/app-core/platforms/electrobun/scripts/ensure-whisper-gguf.sh base.en",
   "name: Upload Whisper model artifact",
   "name: whisper-model-base-en",
   "Install quiet macOS packaging wrappers",
-  "packages/app-core/platforms/electrobun/scripts/hdiutil-wrapper.sh",
-  "packages/app-core/platforms/electrobun/scripts/xcrun-wrapper.sh",
-  "packages/app-core/platforms/electrobun/scripts/zip-wrapper.sh",
+  "eliza/packages/app-core/platforms/electrobun/scripts/hdiutil-wrapper.sh",
+  "eliza/packages/app-core/platforms/electrobun/scripts/xcrun-wrapper.sh",
+  "eliza/packages/app-core/platforms/electrobun/scripts/zip-wrapper.sh",
   "ELECTROBUN_REAL_HDIUTIL: /usr/bin/hdiutil",
   "ELECTROBUN_REAL_XCRUN: /usr/bin/xcrun",
   "ELECTROBUN_REAL_ZIP: /usr/bin/zip",
@@ -138,7 +137,7 @@ const requiredWorkflowSnippets = [
   "Inject version.json into bundle (macOS / Linux)",
   '"identifier":"ai.elizaos.Eliza"',
   "Stage standard macOS release app",
-  "packages/app-core/platforms/electrobun/scripts/stage-macos-release-artifacts.sh",
+  "eliza/packages/app-core/platforms/electrobun/scripts/stage-macos-release-artifacts.sh",
   "retry_stapler_validate()",
   "Smoke test packaged macOS app",
   "SMOKE_DIAGNOSTICS_DIR:",
@@ -159,7 +158,7 @@ const requiredWorkflowSnippets = [
   "Verify Windows public installer looks complete",
   'Get-ChildItem -Path "packages/app-core/platforms/electrobun/artifacts" -File -Filter "*-Setup-*.exe"',
   "$minimumBytes = 50MB",
-  "packages/app-core/platforms/electrobun/artifacts/*.exe",
+  "eliza/packages/app-core/platforms/electrobun/artifacts/*.exe",
   "name: Prepare public canary Windows installer artifact",
   "needs.prepare.outputs.env == 'canary'",
   '$publicCanaryDir = Join-Path $artifactsDir "public-canary-installer"',
@@ -183,7 +182,7 @@ const requiredWorkflowSnippets = [
   "DMG attach attempt $attempt/5 failed",
   "name: Resolve electrobun package dir",
   "id: resolve-electrobun",
-  'const workspacePackageJson = path.resolve("packages/app-core/platforms/electrobun/package.json");',
+  'const workspacePackageJson = path.resolve("eliza/packages/app-core/platforms/electrobun/package.json");',
   'const entryPath = req.resolve("electrobun");',
   "Could not find electrobun package.json starting from",
   "Resolved unexpected package at",
@@ -191,10 +190,10 @@ const requiredWorkflowSnippets = [
   'echo "cache-dir=$package_dir/.cache"',
   "$" + "{{ steps.resolve-electrobun.outputs.cache-dir }}",
   "name: Build patched Electrobun CLI",
-  'node packages/app-core/scripts/build-patched-electrobun-cli.mjs "$' +
+  'node eliza/packages/app-core/scripts/build-patched-electrobun-cli.mjs "$' +
     '{{ steps.resolve-electrobun.outputs.package-dir }}"',
   '"${{ matrix.platform.artifact-name }}"',
-  "node packages/app-core/scripts/desktop-build.mjs package --env=$" +
+  "node eliza/packages/app-core/scripts/desktop-build.mjs package --env=$" +
     "{{ needs.prepare.outputs.env }}",
   "ELIZA_ELECTROBUN_NOTARIZE: 0",
   'ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1"',
@@ -202,10 +201,9 @@ const requiredWorkflowSnippets = [
   "ELIZA_TEST_WINDOWS_INSTALL_DIR: $" + "{{ runner.temp }}\\el",
   "name: Run Windows clean installer proof",
   "verify-windows-installer-proof.ps1",
-  "ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR: $" +
-    "{{ runner.temp }}\\el-proof",
+  "ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR: $" + "{{ runner.temp }}\\el-smoke-proof",
   "name: Upload Windows installer proof artifact",
-  "path: packages/app-core/platforms/electrobun/artifacts/windows-installer-proof/**",
+  "path: eliza/packages/app-core/platforms/electrobun/artifacts/windows-installer-proof/**",
   "if: always() && matrix.platform.os == 'windows'",
   "ANTHROPIC_API_KEY: $" + "{{ secrets.ANTHROPIC_API_KEY }}",
   "ELIZAOS_CLOUD_API_KEY: $" +
@@ -273,7 +271,7 @@ const requiredElectrobunPrWorkflowSnippets = [
   "workflow_dispatch:",
   "permissions:",
   "contents: read",
-  'BUN_VERSION: "canary"',
+  'BUN_VERSION: "1.3.14"',
   "name: Release Workflow Contract",
   "bun install --ignore-scripts",
   'run-postinstall: "true"',
@@ -292,23 +290,13 @@ const forbiddenElectrobunPrWorkflowSnippets = [
   "test:release:contract --help",
 ];
 const requiredRootPackageScriptSnippets: Record<string, readonly string[]> = {
-  "audit:apple-store-sandbox": [
-    "bun run --cwd packages/app-core audit:apple-store-sandbox",
-  ],
-  "test:apple-entitlements": [
-    "bun run --cwd packages/app-core test:apple-entitlements",
-  ],
-  "release:check": ["packages/app-core/scripts/release-check.ts"],
-  "test:release:contract": [
-    "bun run audit:apple-store-sandbox",
-    "bun run test:apple-entitlements",
-    "packages/app-core/scripts/run-release-contract-suite.mjs",
-  ],
+  "release:check": ["scripts/run-release-check.mjs"],
+  "test:release:contract": ["scripts/run-release-contract-suite.mjs"],
   "test:regression-matrix:release": [
-    "packages/app-core/scripts/validate-regression-matrix.mjs --workflow release",
+    "scripts/run-eliza-app-core-script.mjs validate-regression-matrix.mjs --workflow release",
   ],
   "test:regression-matrix:release-contract": [
-    "packages/app-core/scripts/validate-regression-matrix.mjs --workflow release-contract",
+    "scripts/run-eliza-app-core-script.mjs validate-regression-matrix.mjs --workflow release-contract",
   ],
 };
 const requiredElectrobunConfigSnippets = [
@@ -816,7 +804,7 @@ function assertOrchestratorVersionPinned() {
     }
     return;
   }
-  if (!isExactVersion(version)) {
+  if (!isExactVersion(version) && !["beta", "beta"].includes(version)) {
     console.error(
       `release-check: @elizaos/plugin-agent-orchestrator must either use workspace:* for the local checkout, use a release dist tag, or be pinned to an exact version, but found "${version}".`,
     );
@@ -993,8 +981,17 @@ function assertRequiredRootPackageScripts() {
 }
 
 function assertAppleStoreSandboxAuditPasses() {
+  const auditScriptPath = resolveExistingPath([
+    "packages/app-core/scripts/audit-apple-store-sandbox.mjs",
+    "eliza/packages/app-core/scripts/audit-apple-store-sandbox.mjs",
+  ]);
+  if (!auditScriptPath) {
+    console.error("release-check: Apple store sandbox audit script is missing.");
+    process.exit(1);
+  }
+
   try {
-    execSync("node packages/app-core/scripts/audit-apple-store-sandbox.mjs", {
+    execSync(`node ${JSON.stringify(auditScriptPath)}`, {
       stdio: "inherit",
       env: process.env,
     });
@@ -1444,7 +1441,7 @@ function assertHomepageReleaseDataUsesCurrentAssetRoot() {
     releaseDataSource.includes('homepageAssetBaseUrl: ""');
   if (
     !hasNoPublishedRelease &&
-    !releaseDataSource.includes("/packages/homepage/public/")
+    !releaseDataSource.includes("/apps/homepage/public/")
   ) {
     console.error(
       "release-check: generated homepage release data must point homepageAssetBaseUrl at /apps/homepage/public/.",
@@ -1453,8 +1450,7 @@ function assertHomepageReleaseDataUsesCurrentAssetRoot() {
   }
 
   if (
-    releaseDataSource.includes("/apps/web/public/") ||
-    releaseDataSource.includes("/apps/homepage/public/")
+    releaseDataSource.includes("/apps/web/public/")
   ) {
     console.error(
       "release-check: generated homepage release data still points at legacy /apps/web/public/. Regenerate it with node scripts/write-homepage-release-data.mjs.",

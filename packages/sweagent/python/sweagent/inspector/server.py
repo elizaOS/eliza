@@ -31,7 +31,7 @@ def add_problem_statement(content):
                 "action": "",
                 "response": "",
                 "observation": problem_statement,
-                "messages": [{"role": "system", "content": "Problem Statement placeholder"}],
+                "messages": [{"role": "system", "content": problem_statement}],
             },
         )
     return content

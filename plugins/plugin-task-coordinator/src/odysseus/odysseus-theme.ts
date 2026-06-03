@@ -387,6 +387,14 @@ export const ODYSSEUS_CSS = `
   position:relative; z-index:2; padding:5px 0 0; min-height:25px; }
 .odysseus-root .od-chat-meta { font-size:.75em; line-height:1; color:color-mix(in srgb, var(--fg) 40%, transparent);
   white-space:nowrap; display:flex; align-items:center; gap:6px; }
+.odysseus-root .od-room-error { display:flex; align-items:center; justify-content:space-between; gap:12px;
+  max-width:800px; width:100%; margin:8px auto 4px; padding:8px 10px; flex-shrink:0;
+  border:1px solid color-mix(in srgb, var(--red) 45%, var(--border)); border-radius:10px;
+  background:color-mix(in srgb, var(--red) 10%, var(--panel)); color:var(--fg); font-size:.78rem; }
+.odysseus-root .od-room-error button { border:1px solid color-mix(in srgb, var(--fg) 15%, transparent);
+  border-radius:7px; background:color-mix(in srgb, var(--fg) 8%, transparent); color:var(--fg);
+  padding:4px 8px; font-size:.72rem; cursor:pointer; flex-shrink:0; }
+.odysseus-root .od-room-error button:hover { background:color-mix(in srgb, var(--fg) 13%, transparent); }
 
 /* ── message log ── */
 .odysseus-root .od-chat-history { flex:1; overflow-y:auto; overflow-x:hidden; overscroll-behavior-y:none;

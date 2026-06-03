@@ -1499,31 +1499,46 @@ export async function startEliza(
       const apiPort = process.env.ELIZA_API_PORT
         ? resolveDesktopApiPort(process.env)
         : resolveServerOnlyPort(process.env);
-      const { port: actualApiPort } = await startApiServer({
-        port: apiPort,
-        runtime: currentRuntime,
-        onRestart: async () => {
-          if (!currentRuntime) {
-            return null;
-          }
+      let actualApiPort: number;
+      try {
+        const startedApiServer = await startApiServer({
+          port: apiPort,
+          runtime: currentRuntime,
+          onRestart: async () => {
+            if (!currentRuntime) {
+              return null;
+            }
 
-          await upstreamShutdownRuntime(currentRuntime, "server-only restart");
+            await upstreamShutdownRuntime(currentRuntime, "server-only restart");
 
-          const restarted =
-            (await upstreamStartElizaWithPgliteCompat({
-              ...options,
-              headless: true,
-              serverOnly: false,
-            })) ?? undefined;
+            const restarted =
+              (await upstreamStartElizaWithPgliteCompat({
+                ...options,
+                headless: true,
+                serverOnly: false,
+              })) ?? undefined;
 
-          currentRuntime = restarted
-            ? await repairRuntimeAfterBoot(restarted)
-            : undefined;
-          earlyCompatState.current = currentRuntime ?? null;
+            currentRuntime = restarted
+              ? await repairRuntimeAfterBoot(restarted)
+              : undefined;
+            earlyCompatState.current = currentRuntime ?? null;
 
-          return currentRuntime ?? null;
-        },
-      });
+            return currentRuntime ?? null;
+          },
+        });
+        actualApiPort = startedApiServer.port;
+      } catch (apiErr) {
+        const apiErrMsg =
+          apiErr instanceof Error
+            ? (apiErr.stack ?? apiErr.message)
+            : String(apiErr);
+        logger.error(`[eliza] API server failed to start: ${apiErrMsg}`);
+        console.error(apiErrMsg);
+        if (options?.serverOnly) {
+          process.exit(1);
+        }
+        throw apiErr;
+      }
 
       // WHY: `startApiServer` may bind a different port than requested (busy
       // socket, upstream policy). Shells, scripts, and follow-up code reading

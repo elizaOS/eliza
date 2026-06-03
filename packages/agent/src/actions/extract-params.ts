@@ -44,7 +44,6 @@
 
 import {
   composePrompt,
-  extractActionParamsTemplate,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -92,6 +91,25 @@ export interface ExtractActionParamsArgs<
 }
 
 const DEFAULT_RECENT_MESSAGES_LIMIT = 8;
+const EXTRACT_ACTION_PARAMS_TEMPLATE = `You are filling in missing parameters for the {{actionName}} action.
+Action description: {{actionDescription}}
+
+Parameter schema:
+{{schemaLines}}
+
+Already-supplied parameters: {{existingJson}}
+
+Missing required fields you must extract: {{missingFields}}
+
+{{recentConversationBlock}}
+
+Current user message: {{currentMessageText}}
+
+Return a JSON object containing values for the MISSING fields.
+If a value is genuinely indeterminable from the conversation, return null for that field.
+Example: {"subaction": "search", "query": "github"}
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`;
 
 /**
  * Run a small LLM extraction call to fill in missing required params from
@@ -265,7 +283,7 @@ function buildExtractionPrompt(args: {
       recentConversationBlock,
       currentMessageText: currentMessageText || "(empty)",
     },
-    template: extractActionParamsTemplate,
+    template: EXTRACT_ACTION_PARAMS_TEMPLATE,
   });
 }
 

@@ -25,10 +25,27 @@ if (packageNames.length === 0) {
 }
 
 const rootPkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-const { workspaceDirs, nameToDir } = collectWorkspaceMaps(
-  root,
-  rootPkg.workspaces ?? [],
-);
+const rootWorkspaceMaps = collectWorkspaceMaps(root, rootPkg.workspaces ?? []);
+const workspaceDirs = [...rootWorkspaceMaps.workspaceDirs];
+const nameToDir = new Map(rootWorkspaceMaps.nameToDir);
+
+const nestedElizaPackageJson = join(root, "eliza", "package.json");
+if (existsSync(nestedElizaPackageJson)) {
+  const elizaRoot = join(root, "eliza");
+  const elizaPkg = JSON.parse(readFileSync(nestedElizaPackageJson, "utf8"));
+  const elizaWorkspaceMaps = collectWorkspaceMaps(
+    elizaRoot,
+    elizaPkg.workspaces ?? [],
+  );
+  for (const dir of elizaWorkspaceMaps.workspaceDirs) {
+    workspaceDirs.push(dir);
+  }
+  for (const [name, dir] of elizaWorkspaceMaps.nameToDir) {
+    if (!nameToDir.has(name)) {
+      nameToDir.set(name, dir);
+    }
+  }
+}
 const candidateBases = [root, ...workspaceDirs];
 
 function getNodeModulesEntry(baseDir, packageName) {

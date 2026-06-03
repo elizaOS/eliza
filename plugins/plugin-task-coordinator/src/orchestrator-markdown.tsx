@@ -15,6 +15,36 @@ function alignStyle(align: Tokens.TableCell["align"]) {
   return align ? { textAlign: align } : undefined;
 }
 
+export function sanitizeMarkdownUrl(value: string | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (
+    (trimmed.startsWith("/") && !trimmed.startsWith("//")) ||
+    trimmed.startsWith("./") ||
+    trimmed.startsWith("../") ||
+    trimmed.startsWith("#")
+  ) {
+    return trimmed;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (
+      parsed.protocol === "http:" ||
+      parsed.protocol === "https:" ||
+      parsed.protocol === "mailto:"
+    ) {
+      return trimmed;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 function renderChildren(tokens: Token[] | undefined, key: string): ReactNode {
   if (!tokens || tokens.length === 0) return null;
   return tokens.map((token, index) => renderToken(token, `${key}.${index}`));
@@ -158,29 +188,34 @@ function renderToken(token: Token, key: string): ReactNode {
           {token.text}
         </code>
       );
-    case "link":
+    case "link": {
+      const href = sanitizeMarkdownUrl(token.href);
       return (
         <a
           key={key}
-          href={token.href}
+          href={href ?? undefined}
           title={token.title ?? undefined}
-          target="_blank"
-          rel="noreferrer"
+          target={href ? "_blank" : undefined}
+          rel={href ? "noreferrer" : undefined}
           className="text-txt-strong underline underline-offset-2 transition-colors hover:text-accent"
         >
           {renderChildren(token.tokens, key)}
         </a>
       );
-    case "image":
+    }
+    case "image": {
+      const src = sanitizeMarkdownUrl(token.href);
+      if (!src) return token.text;
       return (
         <img
           key={key}
-          src={token.href}
+          src={src}
           alt={token.text}
           title={token.title ?? undefined}
           className="my-1 max-w-full rounded-sm border border-border/50"
         />
       );
+    }
     case "br":
       return <br key={key} />;
     case "escape":

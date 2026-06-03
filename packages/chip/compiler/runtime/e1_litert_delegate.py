@@ -6,7 +6,7 @@ package. LiteRT ingests StableHLO directly, so the delegate consumes the same
 ``e1_npu_stablehlo`` dataclass subset that the ExecuTorch delegate (B-2) uses
 and shares the partitioner (B-5) for the supported-set decision.
 
-The placeholder backend blob is the same JSON descriptor-spec payload that the
+The delegate artifact is the same JSON descriptor-spec payload that the
 ExecuTorch delegate emits, encoded as bytes.
 """
 

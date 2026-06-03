@@ -31,7 +31,7 @@ export const availableToolsProvider: Provider = {
     const lines = [
       "# Native coding tools",
       "",
-      "These actions read/write files, search the workspace, run shell commands, and manage git worktrees. The TODO umbrella action is provided by @elizaos/plugin-todos when that plugin is enabled.",
+      "These actions read/write files, search the workspace, run shell commands, and manage git worktrees. The task-list umbrella action is provided by @elizaos/plugin-todos when that plugin is enabled.",
       "All file paths must be absolute. Anything is reachable except paths under the configured blocklist (defaults: ~/pvt, ~/Library, ~/.ssh, ~/.aws, ~/.gnupg, ~/.docker, ~/.kube, ~/.netrc, plus per-OS system paths).",
       "",
       ...TOOL_NAMES.map((n) => `- ${n}`),

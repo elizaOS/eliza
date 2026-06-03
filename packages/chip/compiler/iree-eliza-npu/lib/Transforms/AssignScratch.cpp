@@ -26,9 +26,9 @@ class AssignScratchPass
     : public impl::AssignScratchPassBase<AssignScratchPass> {
 public:
   void runOnOperation() override {
-    // TODO(elizanpu): full liveness-aware allocator. Today this pass
-    // verifies that all explicit scratch_offset / byte_count attributes
-    // stay within the 64-byte budget set by the dialect verifiers.
+    // The current dialect requires explicit scratch_offset / byte_count
+    // attributes; this pass enforces that every encoded descriptor stays within
+    // the 64-byte budget set by the dialect verifiers.
     getOperation().walk([&](Operation *op) {
       if (auto dma = dyn_cast<TileDmaOp>(op))
         (void)dma.verify();

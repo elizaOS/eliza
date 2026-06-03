@@ -24,6 +24,7 @@ import {
 import { type ReactNode, useMemo, useState } from "react";
 import { countDiff, DiffStat, DiffView, lineDiff } from "./orchestrator-diff";
 import { MarkdownText } from "./orchestrator-markdown";
+export { sanitizeMarkdownUrl } from "./orchestrator-markdown";
 import { ReasoningCell } from "./orchestrator-reasoning";
 import { formatClockTime, formatDuration, stripAnsi } from "./view-format";
 
@@ -375,7 +376,6 @@ type Atom =
 function messageLane(message: CodingAgentTaskMessageRecord): string {
   if (message.senderKind === "user") return "user";
   const stream = message.direction === "stderr" ? "err" : "out";
-<<<<<<< plugins/plugin-task-coordinator/src/orchestrator-stream.tsx
   // Fall back to the message id, not a shared empty string, so unrelated
   // session-less output never coalesces into one rendered turn.
   return `${message.senderKind}:${message.sessionId ?? message.id}:${stream}`;
@@ -386,11 +386,6 @@ function toolGroupKey(
   toolCallId: string,
 ): string {
   return `${event.sessionId ?? event.threadId ?? "sessionless"}:${toolCallId}`;
-=======
-  // Fall back to the message id (not a shared "") when there's no session, so
-  // unrelated session-less outputs never coalesce into one merged turn.
-  return `${message.senderKind}:${message.sessionId ?? message.id}:${stream}`;
->>>>>>> /tmp/claude-501/tmpaggi1s86
 }
 
 /** Turn the polled message + event records into the ordered conversation the
@@ -582,186 +577,6 @@ export function buildConversation(
   return blocks;
 }
 
-<<<<<<< plugins/plugin-task-coordinator/src/orchestrator-stream.tsx
-// --- Lightweight markdown ---------------------------------------------------
-// The agent writes markdown prose; rendering it (code fences, inline code,
-// bold, lists, headings) is what makes the room read like a chat rather than a
-// log. This is deliberately small — no external markdown engine — matching the
-// in-repo precedent (config-field's preview renderer).
-
-const FENCE = /```([\w-]*)\n?([\s\S]*?)```/g;
-const SAFE_MARKDOWN_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
-
-function hasUnsafeControlCharacter(value: string): boolean {
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index);
-    if (code <= 31 || code === 127) return true;
-  }
-  return false;
-}
-
-export function sanitizeMarkdownUrl(href: string): string | null {
-  const value = href.trim();
-  if (!value || hasUnsafeControlCharacter(value)) return null;
-
-  const protocolMatch = /^[a-z][a-z0-9+.-]*:/i.exec(value);
-  if (!protocolMatch) return value;
-
-  const protocol = protocolMatch[0].toLowerCase();
-  return SAFE_MARKDOWN_LINK_PROTOCOLS.has(protocol) ? value : null;
-}
-
-function renderInline(text: string, keyBase: string): ReactNode[] {
-  const nodes: ReactNode[] = [];
-  const pattern = /\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\(([^\s)]+)\)/g;
-  let last = 0;
-  let index = 0;
-  let match = pattern.exec(text);
-  while (match !== null) {
-    if (match.index > last) nodes.push(text.slice(last, match.index));
-    if (match[1] !== undefined) {
-      nodes.push(
-        <strong key={`${keyBase}-b${index}`} className="font-semibold text-txt">
-          {match[1]}
-        </strong>,
-      );
-    } else if (match[2] !== undefined) {
-      nodes.push(
-        <code
-          key={`${keyBase}-c${index}`}
-          className="rounded bg-bg/70 px-1 py-px font-mono text-[0.95em] text-accent"
-        >
-          {match[2]}
-        </code>,
-      );
-    } else if (match[3] !== undefined) {
-      const href = sanitizeMarkdownUrl(match[4]);
-      if (!href) {
-        nodes.push(<span key={`${keyBase}-l${index}`}>{match[3]}</span>);
-        last = match.index + match[0].length;
-        index += 1;
-        match = pattern.exec(text);
-        continue;
-      }
-      nodes.push(
-        <a
-          key={`${keyBase}-l${index}`}
-          href={href}
-          target="_blank"
-          rel="noreferrer"
-          className="text-accent underline underline-offset-2"
-        >
-          {match[3]}
-        </a>,
-      );
-    }
-    last = match.index + match[0].length;
-    index += 1;
-    match = pattern.exec(text);
-  }
-  if (last < text.length) nodes.push(text.slice(last));
-  return nodes;
-}
-
-function renderProse(text: string, keyBase: string): ReactNode {
-  const lines = text.split("\n");
-  return lines.map((line, lineIndex) => {
-    const key = `${keyBase}-${lineIndex}`;
-    if (line.trim() === "") return <div key={key} className="h-2" />;
-    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
-    if (heading) {
-      return (
-        <div key={key} className="mt-1 font-semibold text-txt">
-          {renderInline(heading[2], key)}
-        </div>
-      );
-    }
-    const bullet = /^\s*[-*•]\s+(.*)$/.exec(line);
-    if (bullet) {
-      return (
-        <div key={key} className="flex gap-1.5">
-          <span className="select-none text-muted">•</span>
-          <span className="min-w-0 flex-1">{renderInline(bullet[1], key)}</span>
-        </div>
-      );
-    }
-    const numbered = /^\s*(\d+)\.\s+(.*)$/.exec(line);
-    if (numbered) {
-      return (
-        <div key={key} className="flex gap-1.5">
-          <span className="select-none tabular-nums text-muted">
-            {numbered[1]}.
-          </span>
-          <span className="min-w-0 flex-1">
-            {renderInline(numbered[2], key)}
-          </span>
-        </div>
-      );
-    }
-    return (
-      <div key={key} className="break-words leading-relaxed">
-        {renderInline(line, key)}
-      </div>
-    );
-  });
-}
-
-export function MarkdownText({ text }: { text: string }): ReactNode {
-  const segments: ReactNode[] = [];
-  let last = 0;
-  let index = 0;
-  FENCE.lastIndex = 0;
-  let match = FENCE.exec(text);
-  while (match !== null) {
-    if (match.index > last) {
-      segments.push(
-        <div key={`p${index}`}>
-          {renderProse(text.slice(last, match.index), `p${index}`)}
-        </div>,
-      );
-    }
-    segments.push(
-      <CodeBlock
-        key={`f${index}`}
-        language={match[1]}
-        code={match[2].replace(/\n$/, "")}
-      />,
-    );
-    last = match.index + match[0].length;
-    index += 1;
-    match = FENCE.exec(text);
-  }
-  if (last < text.length) {
-    segments.push(
-      <div key={`p${index}`}>{renderProse(text.slice(last), `p${index}`)}</div>,
-    );
-  }
-  return <div className="space-y-0.5">{segments}</div>;
-}
-
-function CodeBlock({
-  language,
-  code,
-}: {
-  language?: string;
-  code: string;
-}): ReactNode {
-  return (
-    <div className="my-1 overflow-hidden rounded-md border border-border/50 bg-bg/80">
-      {language ? (
-        <div className="border-b border-border/40 px-2 py-0.5 font-mono text-2xs text-muted">
-          {language}
-        </div>
-      ) : null}
-      <pre className="max-h-72 overflow-auto px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-txt">
-        {code}
-      </pre>
-    </div>
-  );
-}
-
-=======
->>>>>>> /tmp/claude-501/tmpaggi1s86
 // --- Conversation block views ----------------------------------------------
 
 const TOOL_ICON_BY_KIND: Record<string, LucideIcon> = {

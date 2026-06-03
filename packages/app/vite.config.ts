@@ -210,6 +210,10 @@ const json5EsmEntry = path.join(
   path.dirname(_require.resolve("json5/package.json")),
   "dist/index.mjs",
 );
+const markedEntry = path.join(
+  elizaRoot,
+  "plugins/plugin-task-coordinator/node_modules/marked/lib/marked.esm.js",
+);
 // @opentelemetry/api is a transitive runtime dep of @elizaos/core's browser
 // bundle (StackContextManager / streaming-context tracing) but is not hoisted
 // where packages/app can resolve the bare specifier, so Vite served its ~46
@@ -1921,6 +1925,9 @@ export const INVALID_TRACER_PROVIDER = {};
         ),
       },
       { find: /^json5$/, replacement: json5EsmEntry },
+      ...(fs.existsSync(markedEntry)
+        ? [{ find: /^marked$/, replacement: markedEntry }]
+        : []),
       {
         // Per-icon deep imports (emitted by the lucide-per-icon-imports plugin)
         // resolve here — the exact alias below only matches the bare specifier.

@@ -35,6 +35,14 @@ async function patchGeneratedSafariProjectVersions(projectPath) {
     /CURRENT_PROJECT_VERSION = [^;]+;/g,
     `CURRENT_PROJECT_VERSION = ${safariVersions.buildVersion};`,
   );
+  source = source.replace(
+    /PRODUCT_BUNDLE_IDENTIFIER = "ai\.elizaos\.browserbridge\.Agent-Browser-Bridge";/g,
+    `PRODUCT_BUNDLE_IDENTIFIER = ${bundleIdentifier};`,
+  );
+  source = source.replace(
+    /PRODUCT_BUNDLE_IDENTIFIER = "ai\.elizaos\.browserbridge\.Agent-Browser-Bridge\.Extension";/g,
+    `PRODUCT_BUNDLE_IDENTIFIER = ${bundleIdentifier}.Extension;`,
+  );
   await fs.writeFile(projectFile, source);
 }
 

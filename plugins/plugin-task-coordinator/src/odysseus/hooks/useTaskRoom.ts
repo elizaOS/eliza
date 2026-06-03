@@ -52,6 +52,9 @@ export interface TaskRoom {
   conversation: ConversationBlock[];
   isActive: boolean;
   loading: boolean;
+  error: string | null;
+  stale: boolean;
+  retry: () => void;
 }
 
 export function useTaskRoom(selectedId: string | null): TaskRoom {
@@ -61,29 +64,49 @@ export function useTaskRoom(selectedId: string | null): TaskRoom {
   const [messages, setMessages] = useState<CodingAgentTaskMessageRecord[]>([]);
   const [events, setEvents] = useState<CodingAgentTaskEventRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [stale, setStale] = useState(false);
 
   const reqRef = useRef(0);
   const selectedRef = useRef<string | null>(selectedId);
   const refetchTimer = useRef<number | null>(null);
   selectedRef.current = selectedId;
 
-  const fetchDetail = useCallback(async (id: string, reset: boolean) => {
-    const token = ++reqRef.current;
-    const [nextDetail, messagePage, eventPage] = await Promise.all([
-      client.getCodingAgentTaskThread(id),
-      client.listOrchestratorTaskMessages(id, { limit: TIMELINE_PAGE_LIMIT }),
-      client.listOrchestratorTaskEvents(id, { limit: TIMELINE_PAGE_LIMIT }),
-    ]);
-    if (token !== reqRef.current || id !== selectedRef.current) return;
-    setDetail(nextDetail);
-    if (reset) {
-      setMessages(mergeById([], messagePage.items));
-      setEvents(mergeById([], eventPage.items));
-    } else {
-      setMessages((prev) => mergeById(prev, messagePage.items));
-      setEvents((prev) => mergeById(prev, eventPage.items));
-    }
-  }, []);
+  const fetchDetail = useCallback(
+    async (id: string, reset: boolean): Promise<boolean> => {
+      const token = ++reqRef.current;
+      try {
+        const [nextDetail, messagePage, eventPage] = await Promise.all([
+          client.getCodingAgentTaskThread(id),
+          client.listOrchestratorTaskMessages(id, {
+            limit: TIMELINE_PAGE_LIMIT,
+          }),
+          client.listOrchestratorTaskEvents(id, { limit: TIMELINE_PAGE_LIMIT }),
+        ]);
+        if (token !== reqRef.current || id !== selectedRef.current) {
+          return false;
+        }
+        setDetail(nextDetail);
+        if (reset) {
+          setMessages(mergeById([], messagePage.items));
+          setEvents(mergeById([], eventPage.items));
+        } else {
+          setMessages((prev) => mergeById(prev, messagePage.items));
+          setEvents((prev) => mergeById(prev, eventPage.items));
+        }
+        setError(null);
+        setStale(false);
+        return true;
+      } catch (err) {
+        if (token === reqRef.current && id === selectedRef.current) {
+          setError(err instanceof Error ? err.message : "Failed to load task");
+          setStale(!reset && detail != null);
+        }
+        return false;
+      }
+    },
+    [detail],
+  );
 
   // Selection change → reset room + initial fetch.
   useEffect(() => {
@@ -91,11 +114,12 @@ export function useTaskRoom(selectedId: string | null): TaskRoom {
       setDetail(null);
       setMessages([]);
       setEvents([]);
+      setError(null);
+      setStale(false);
       return;
     }
     setLoading(true);
     void fetchDetail(selectedId, true)
-      .catch(() => {})
       .finally(() => {
         if (selectedRef.current === selectedId) setLoading(false);
       });
@@ -112,7 +136,7 @@ export function useTaskRoom(selectedId: string | null): TaskRoom {
     if (!selectedId) return;
     const ms = isActive ? ACTIVE_POLL_INTERVAL_MS : POLL_INTERVAL_MS;
     const timer = window.setInterval(
-      () => void fetchDetail(selectedId, false).catch(() => {}),
+      () => void fetchDetail(selectedId, false),
       ms,
     );
     return () => window.clearInterval(timer);
@@ -125,7 +149,7 @@ export function useTaskRoom(selectedId: string | null): TaskRoom {
       if (refetchTimer.current != null)
         window.clearTimeout(refetchTimer.current);
       refetchTimer.current = window.setTimeout(() => {
-        void fetchDetail(selectedId, false).catch(() => {});
+        void fetchDetail(selectedId, false);
       }, REFETCH_DEBOUNCE_MS);
     };
     const unsubscribe = client.streamOrchestratorTask(
@@ -173,5 +197,13 @@ export function useTaskRoom(selectedId: string | null): TaskRoom {
     [messages, events, sessionLabelById, mainAgentName, finishedSessionIds],
   );
 
-  return { detail, conversation, isActive, loading };
+  const retry = useCallback(() => {
+    if (!selectedRef.current) return;
+    setLoading(true);
+    void fetchDetail(selectedRef.current, detail == null).finally(() => {
+      if (selectedRef.current) setLoading(false);
+    });
+  }, [detail, fetchDetail]);
+
+  return { detail, conversation, isActive, loading, error, stale, retry };
 }

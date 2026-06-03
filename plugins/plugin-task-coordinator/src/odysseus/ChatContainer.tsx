@@ -23,6 +23,9 @@ export function ChatContainer({
   onSearch,
   onOpenPanel,
   onOpenModels,
+  roomError,
+  roomStale,
+  onRetryRoom,
 }: {
   title: string;
   conversation: ConversationBlock[];
@@ -40,10 +43,25 @@ export function ChatContainer({
     panel: "theme" | "memory" | "skills" | "notes" | "settings",
   ) => void;
   onOpenModels?: () => void;
+  roomError?: string | null;
+  roomStale?: boolean;
+  onRetryRoom?: () => void;
 }): ReactNode {
   return (
     <main className="od-chat-container" aria-label="Chat area">
       <ChatTopBar title={title} />
+      {roomError ? (
+        <div className="od-room-error" role="status">
+          <span>
+            {roomStale
+              ? "Showing the last loaded task state. Refresh failed."
+              : "Could not load this task room."}
+          </span>
+          <button type="button" onClick={onRetryRoom}>
+            Retry
+          </button>
+        </div>
+      ) : null}
       {conversation.length === 0 ? (
         <div className="od-welcome">
           <div className="od-welcome-title">

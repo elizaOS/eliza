@@ -169,7 +169,14 @@ export function OdysseusShell(): ReactNode {
     return () => window.clearInterval(timer);
   }, [refreshThreads]);
 
-  const { detail, conversation, isActive } = useTaskRoom(selectedId);
+  const {
+    detail,
+    conversation,
+    isActive,
+    error: roomError,
+    stale: roomStale,
+    retry: retryRoom,
+  } = useTaskRoom(selectedId);
 
   const activeSessionId = useMemo(() => {
     const session = (detail?.sessions ?? []).find((s) => s.stoppedAt == null);
@@ -647,6 +654,9 @@ export function OdysseusShell(): ReactNode {
           onSearch={() => setSearchOpen(true)}
           onOpenPanel={openPanel}
           onOpenModels={() => setModelsOpen(true)}
+          roomError={roomError}
+          roomStale={roomStale}
+          onRetryRoom={retryRoom}
         />
         {/* Bottom-left dock of minimized tool windows (odysseus
           #minimized-dock), above the composer. Renders nothing until a view

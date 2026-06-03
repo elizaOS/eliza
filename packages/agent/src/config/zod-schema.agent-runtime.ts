@@ -1,4 +1,4 @@
-import { parseDurationMs } from "@elizaos/shared";
+import { parseDurationMs } from "../../../shared/src/cli/parse-duration.ts";
 import { z } from "zod";
 import {
   BlockStreamingChunkSchema,

@@ -12,12 +12,13 @@
 include "mlir/Pass/PassBase.td"
 
 def AssignScratchPass : Pass<"elizanpu-assign-scratch", "::mlir::func::FuncOp"> {
-  let summary = "Linearly allocate the 64-byte scratchpad across descriptor lifetimes";
+  let summary = "Verify explicit 64-byte scratchpad assignments across descriptors";
   let description = [{
-    Walks the dispatch region and assigns concrete `scratch_offset` /
-    `byte_count` values to every `elizanpu.tile_dma` and `elizanpu.gemm_s8`
-    op, preserving liveness ordering. Fails if any single dispatch region
-    requires more than 64 bytes of live storage.
+    Walks the dispatch region and verifies the concrete `scratch_offset` /
+    `byte_count` values carried by every `elizanpu.tile_dma` and `elizanpu.gemm_s8`
+    op. The dialect syntax requires these attributes before this pass runs, so
+    the pass fails closed through op verifiers when any descriptor exceeds the
+    64-byte scratchpad contract.
   }];
   let constructor = "::mlir::elizanpu::createAssignScratchPass()";
 }

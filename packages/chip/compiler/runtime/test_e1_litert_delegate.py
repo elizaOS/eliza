@@ -137,7 +137,7 @@ def test_partition_rejects_invalid_payload() -> None:
         e1_litert_delegate_partition(delegate, "{ not a module")
 
 
-def test_invoke_returns_placeholder_blob_with_descriptor_specs() -> None:
+def test_invoke_returns_descriptor_artifact_with_descriptor_specs() -> None:
     delegate = e1_litert_delegate_create()
     result = e1_litert_delegate_invoke(delegate, json.dumps(_supported_payload()))
 
