@@ -50,15 +50,14 @@ const CHATVIEW_TSX = readFileSync(
 );
 
 describe("App standalone chat-overlay wiring", () => {
-  it("mounts the always-present continuous chat overlay in the full app shell", () => {
+  it("mounts the continuous chat overlay outside the full chat tab", () => {
     expect(APP_TSX).toContain('shellMode === "chat-overlay"');
     expect(APP_TSX).toContain("<ShellFoundationMount />");
     expect(APP_TSX).toContain("pointer-events-none fixed inset-0");
-    // The floating glass chat (HomePill → AssistantOverlay → ChatSurface) is now
-    // mounted globally in the main shell so one continuous conversation floats
-    // over every view — reviving the "floating pill is the only chat" direction.
-    // It is no longer kept out of the full app shell.
-    expect(APP_TSX).toContain("Always-present continuous chat overlay");
+    // The floating glass chat remains available in the main shell, but the full
+    // chat tab keeps its richer in-view composer unless minimal shell is enabled.
+    expect(APP_TSX).toContain("Continuous chat overlay");
+    expect(APP_TSX).toContain('tab !== "chat" || MINIMAL_SHELL');
   });
 
   it("gates the minimal conversational-OS shell behind MINIMAL_SHELL", () => {
@@ -81,11 +80,12 @@ describe("App standalone chat-overlay wiring", () => {
     expect(HEADER_TSX).toContain("primaryDesktopGroups");
   });
 
-  it("uses the overlay as the chat tab input (no duplicate composer)", () => {
-    // ChatView can hide its in-view composer; the chat shell passes it so the
-    // overlay is the single shared input.
+  it("keeps the real chat composer in full shell mode", () => {
+    // ChatView can hide its in-view composer for minimal shell experiments, but
+    // the full chat workspace keeps the richer composer capabilities available.
     expect(CHATVIEW_TSX).toContain("hideComposer");
-    expect(APP_TSX).toContain("hideComposer");
+    expect(APP_TSX).toContain('<ChatView key="chat-view" />');
+    expect(APP_TSX).toContain('tab !== "chat" || MINIMAL_SHELL');
     // The composer swaps mic→send once there's a draft (one trailing control).
     expect(OVERLAY_TSX).toContain("hasDraft");
     expect(OVERLAY_TSX).toContain("hasDraft && !recording");

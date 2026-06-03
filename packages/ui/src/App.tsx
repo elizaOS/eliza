@@ -974,12 +974,10 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
 // TasksEventsPanel widgets (right), under the standard Header. Self-contained
 // (activity events, widget-collapse, and the mobile surface live here), so the
 // ShellContent contract stays unchanged. On narrow screens it collapses to a
-// single-pane switcher driven by the Header toggles. The ContinuousChatOverlay
-// stays mounted on this tab too (it floats over every view); the duplicate
-// composer is avoided by passing `hideComposer` to ChatView, so the overlay is
-// the single shared input (both read the same conversation via
-// useShellController). Rendered only when MINIMAL_SHELL is off; kept in its own
-// component so its hooks are never called conditionally.
+// single-pane switcher driven by the Header toggles. In full-chrome mode this
+// keeps the real ChatView composer so attachments, stop controls, task creation,
+// and share-payload recovery stay available. Rendered only when MINIMAL_SHELL is
+// off; kept in its own component so its hooks are never called conditionally.
 function FullChatWorkspaceShellContent(props: ShellContentProps): ReactNode {
   const isMobile = useMediaQuery(CHAT_MOBILE_MEDIA_QUERY);
   const { events: activityEvents, clearEvents } = useActivityEvents();
@@ -1000,10 +998,7 @@ function FullChatWorkspaceShellContent(props: ShellContentProps): ReactNode {
         className="mx-3 mb-3 mt-3 xl:mx-5"
         onOpenTask={props.handleDeferredTaskOpen}
       />
-      {/* The ContinuousChatOverlay provides the input on the chat tab, so the
-          in-view composer is hidden to avoid a duplicate (both share the same
-          conversation via useShellController). */}
-      <ChatView key="chat-view" hideComposer />
+      <ChatView key="chat-view" />
     </div>
   );
 
@@ -1786,15 +1781,15 @@ export function App() {
           tab !== "apps" &&
           tab !== "views" && <GameViewOverlay />}
         {/*
-          Always-present continuous chat overlay (ContinuousChatOverlay) — one
-          ambient glass conversation (the app's single active conversation via
-          useShellController) that floats over EVERY view, including the chat tab
-          (there the in-view ChatView composer is hidden, so the overlay is the
-          single shared input). It survives tab/view changes because it renders
-          here in the persistent sibling region, and is pointer-events-none
+          Continuous chat overlay (ContinuousChatOverlay) — one ambient glass
+          conversation (the app's single active conversation via
+          useShellController) that floats over non-chat views. The full chat tab
+          keeps ChatView's richer composer; minimal-shell mode still uses this
+          overlay as the chat surface. It survives tab/view changes because it
+          renders here in the persistent sibling region, and is pointer-events-none
           except its own composer/messages, so the view behind stays live.
         */}
-        <ContinuousChatOverlayMount />
+        {(tab !== "chat" || MINIMAL_SHELL) && <ContinuousChatOverlayMount />}
         <ShellOverlays actionNotice={actionNotice} />
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}
