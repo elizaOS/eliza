@@ -200,6 +200,12 @@ function hasBrokenSymlink(filePath: string): boolean {
 
 function resolveRuntimeBundleSourcePath(rootDir: string): string {
   const runtimeDistPath = path.join(rootDir, "dist");
+  // The runtime dist only exists in packaged/build contexts. In tests and other
+  // import-time consumers it may be absent; bail out before any fs scan so
+  // importing this config never throws ENOENT.
+  if (!fs.existsSync(runtimeDistPath)) {
+    return runtimeDistPath;
+  }
   const runtimeNodeModulesPath = path.join(runtimeDistPath, "node_modules");
   if (!hasBrokenSymlink(runtimeNodeModulesPath)) {
     return runtimeDistPath;
