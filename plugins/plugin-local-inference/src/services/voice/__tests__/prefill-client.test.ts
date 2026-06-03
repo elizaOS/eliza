@@ -139,7 +139,7 @@ describe("prefillOptimistic", () => {
 		expect(result.eotProb).toBe(0.85);
 		expect(result.tokenCount).toBeGreaterThanOrEqual(1);
 		expect(result.prefillMs).toBeGreaterThanOrEqual(0);
-		expect(result.backend).toBe("slot-save-stub");
+		expect(result.backend).toBe("slot-save-emulation");
 	});
 
 	it("a /completion HTTP error is swallowed — result is still valid", async () => {

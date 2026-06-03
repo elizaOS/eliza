@@ -152,7 +152,7 @@ describe("BargeInController — VAD-driven barge-in", () => {
 				pauseDurationMs: 200,
 			});
 			vad.emit({ type: "speech-end", timestampMs: 500, speechDurationMs: 350 });
-			// Not yet past the grace window.
+			// Still inside the grace window.
 			vi.advanceTimersByTime(400);
 			expect(signals.map((s) => s.type)).toEqual(["pause-tts"]);
 			// Past it → resume.

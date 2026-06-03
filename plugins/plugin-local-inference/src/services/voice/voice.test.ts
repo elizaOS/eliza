@@ -36,7 +36,7 @@ function makePreset(): SpeakerPreset {
 	};
 }
 
-class StubBackend implements OmniVoiceBackend {
+class FakeBackend implements OmniVoiceBackend {
 	calls = 0;
 	cancelObserved: number[] = [];
 	delay = 0;
@@ -383,7 +383,7 @@ describe("PhraseCache", () => {
 
 describe("VoiceScheduler end-to-end", () => {
 	it("synthesizes phrases via test backend and emits PCM", async () => {
-		const backend = new StubBackend();
+		const backend = new FakeBackend();
 		const sink = new InMemoryAudioSink();
 		const phraseEvents: Phrase[] = [];
 		const audioEvents: AudioChunk[] = [];
@@ -420,7 +420,7 @@ describe("VoiceScheduler end-to-end", () => {
 	it("marks agent speaking while committed audio can be interrupted", async () => {
 		vi.useFakeTimers();
 		try {
-			const backend = new StubBackend();
+			const backend = new FakeBackend();
 			backend.samplesPerToken = 240;
 			const sink = new InMemoryAudioSink();
 			const sched = new VoiceScheduler(
@@ -448,7 +448,7 @@ describe("VoiceScheduler end-to-end", () => {
 	it("time-budget flushes a buffered phrase without waiting for another token", async () => {
 		vi.useFakeTimers();
 		try {
-			const backend = new StubBackend();
+			const backend = new FakeBackend();
 			const sink = new InMemoryAudioSink();
 			const phraseEvents: Phrase[] = [];
 			const sched = new VoiceScheduler(
@@ -510,7 +510,7 @@ describe("VoiceScheduler end-to-end", () => {
 	});
 
 	it("drops audio for phrases overlapping rejected token range", async () => {
-		const backend = new StubBackend();
+		const backend = new FakeBackend();
 		backend.delay = 20;
 		const sink = new InMemoryAudioSink();
 		const rollbacks: number[] = [];
@@ -541,7 +541,7 @@ describe("VoiceScheduler end-to-end", () => {
 	});
 
 	it("barge-in cancels in-flight synthesis at next kernel boundary", async () => {
-		const backend = new StubBackend();
+		const backend = new FakeBackend();
 		backend.delay = 30;
 		const sink = new InMemoryAudioSink();
 		let cancelEmitted = 0;
@@ -572,7 +572,7 @@ describe("VoiceScheduler end-to-end", () => {
 	});
 
 	it("drops audio for IPA-mode sub-phrase chunks overlapping rejected range", async () => {
-		const backend = new StubBackend();
+		const backend = new FakeBackend();
 		backend.delay = 20;
 		const sink = new InMemoryAudioSink();
 		const tokenizer = new RuleBasedEnglishPhonemeTokenizer();
@@ -606,7 +606,7 @@ describe("VoiceScheduler end-to-end", () => {
 	});
 
 	it("uses phrase cache for precomputed common utterances (no backend call)", async () => {
-		const backend = new StubBackend();
+		const backend = new FakeBackend();
 		const sink = new InMemoryAudioSink();
 		const phraseCache = new PhraseCache();
 		phraseCache.put({
@@ -637,7 +637,7 @@ describe("VoiceScheduler end-to-end", () => {
 	});
 
 	it("opportunistically caches synthesized phrases for repeated stream text", async () => {
-		const backend = new StubBackend();
+		const backend = new FakeBackend();
 		const sink = new InMemoryAudioSink();
 		const sched = new VoiceScheduler(
 			{
@@ -661,7 +661,7 @@ describe("VoiceScheduler end-to-end", () => {
 	});
 
 	it("opportunistically caches direct TEXT_TO_SPEECH calls", async () => {
-		const backend = new StubBackend();
+		const backend = new FakeBackend();
 		const sched = new VoiceScheduler(
 			{
 				chunkerConfig: { maxTokensPerPhrase: 10 },
@@ -680,7 +680,7 @@ describe("VoiceScheduler end-to-end", () => {
 	});
 
 	it("pauses TTS on a provisional barge-in, resumes on a blip (no audio lost)", async () => {
-		const backend = new StubBackend();
+		const backend = new FakeBackend();
 		const sink = new InMemoryAudioSink();
 		const paused: number[] = [];
 		const resumed: number[] = [];
@@ -736,7 +736,7 @@ describe("VoiceScheduler end-to-end", () => {
 	});
 
 	it("hard-stop barge-in drains the ring buffer and cancels in-flight TTS", async () => {
-		const backend = new StubBackend();
+		const backend = new FakeBackend();
 		backend.delay = 25;
 		const sink = new InMemoryAudioSink();
 		let cancels = 0;
@@ -878,7 +878,7 @@ describe("VoiceScheduler end-to-end", () => {
 	});
 
 	it("cancelPendingTts drops not-yet-spoken audio without signalling a barge-in", async () => {
-		const backend = new StubBackend();
+		const backend = new FakeBackend();
 		backend.delay = 20;
 		const sink = new InMemoryAudioSink();
 		let cancels = 0;

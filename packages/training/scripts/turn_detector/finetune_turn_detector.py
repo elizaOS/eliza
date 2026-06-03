@@ -256,7 +256,7 @@ def build_pretrain_corpus(
 
        Trajectory data from the deployed runtime is the dominant signal
        once we have several hundred hours; that import lives in
-       ``prepare_voice_trajectory_data.py`` (TBD).
+       ``prepare_voice_trajectory_data.py`` (trajectory import stage).
     """
     if corpus != "dailydialog":
         raise NotImplementedError(

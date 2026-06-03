@@ -154,7 +154,7 @@ export async function wireCoordinatorBridgesWhenReady<S extends WirableState>(
       !!wireSwarmSynthesis,
     );
     logger.warn(
-      `[eliza-api] Coordinator wiring incomplete after ${MAX_RETRIES} retries (${context})`,
+      `[eliza-api] Coordinator wiring missing bridges after ${MAX_RETRIES} retries (${context})`,
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -184,7 +184,7 @@ function broadcastWarning(
 
   state.broadcastWs?.({
     type: "system-warning",
-    message: `Coordinator wiring incomplete (${context}): ${reason}. Missing bridges: ${missing}`,
+    message: `Coordinator wiring missing bridges (${context}): ${reason}. Missing bridges: ${missing}`,
     ts: Date.now(),
   });
 }

@@ -9,3 +9,12 @@ import { sql } from "drizzle-orm";
 export function elizaProvisionAdvisoryLockSql(organizationId: string, agentId: string) {
   return sql`SELECT pg_advisory_xact_lock(hashtext(${organizationId}), hashtext(${agentId}))`;
 }
+
+/**
+ * Per-organization coding-container image lock. This serializes the idempotent
+ * "one active sandbox per image" creation path without constraining warm-pool
+ * rows or unrelated custom-image agents at the schema level.
+ */
+export function elizaCodingContainerImageAdvisoryLockSql(organizationId: string, image: string) {
+  return sql`SELECT pg_advisory_xact_lock(hashtext(${organizationId}), hashtext(${`coding-container:${image}`}))`;
+}

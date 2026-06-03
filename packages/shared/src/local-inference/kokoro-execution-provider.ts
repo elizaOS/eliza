@@ -10,7 +10,7 @@
  * `KOKORO_EXECUTION_PROVIDER_IDS` is the runtime allowlist used by callers
  * that validate untrusted input (env var, persisted preference, request
  * body). The default stays `"cpu"` so behaviour is unchanged until the
- * future wiring PR lands.
+ * Android provider wiring lands.
  */
 
 export const KOKORO_EXECUTION_PROVIDER_IDS = [
@@ -50,7 +50,7 @@ export function parseKokoroExecutionProvider(
  * spreads `executionProviders`, and passes it to `InferenceSession.create`.
  *
  * Keep the shape compatible with the literal at
- * `kokoro/kokoro-runtime.ts:240-247` so the future wiring change is a
+ * `kokoro/kokoro-runtime.ts:240-247` so the provider wiring change is a
  * pure spread.
  */
 export interface KokoroOrtSessionOptionsPatch {

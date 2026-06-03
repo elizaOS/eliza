@@ -203,7 +203,7 @@ export function parseExpressiveTags(replyText: string): ParsedExpressiveText {
 	// biome-ignore lint/suspicious/noAssignInExpressions: standard regex-exec loop.
 	while ((m = re.exec(text)) !== null) {
 		// Zero-width matches can't happen (the pattern needs `[…]`), but guard
-		// anyway so a future pattern change can't wedge the loop.
+		// anyway so a pattern change can't wedge the loop.
 		if (m[0].length === 0) {
 			re.lastIndex += 1;
 			continue;

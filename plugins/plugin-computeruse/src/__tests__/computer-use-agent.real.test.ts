@@ -15,9 +15,9 @@
  * What it asserts:
  *   - On a Linux host with `xrandr` / `import` (ImageMagick) or `scrot`
  *     installed, `runComputerUseAgentLoop` captures the live screen,
- *     marshals it through a stub Brain, walks two steps (`wait` →
+ *     marshals it through a fake Brain, walks two steps (`wait` →
  *     `finish`), and terminates cleanly with `reason: "finish"`.
- *   - No NVIDIA GPU required — the Brain is fully stubbed via the
+ *   - No NVIDIA GPU required — the Brain is replaced via the
  *     `Brain.invokeModel` injection point.
  */
 
@@ -77,7 +77,7 @@ function fakeService(): ComputerUseService {
   } as unknown as ComputerUseService;
 }
 
-describe("Computer-use agent — real Linux end-to-end with stub VLM", () => {
+describe("Computer-use agent — real Linux end-to-end with fake VLM", () => {
   it("captures live screen frames, walks wait→finish, terminates cleanly", async () => {
     // Try a real capture once. If the host has no screen tools we skip,
     // since the env is the constraint, not the cascade logic.

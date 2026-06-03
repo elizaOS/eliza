@@ -548,8 +548,8 @@ FILE_SCENARIOS = [
      "args": {"action": "write", "path": "/tmp/note.txt", "content": "hello world"}},
     {"op": "write", "msg": "create /tmp/config.json with {\"debug\": true}",
      "args": {"action": "write", "path": "/tmp/config.json", "content": "{\"debug\": true}"}},
-    {"op": "write", "msg": "save 'TODO: refactor' to ~/notes/todo.md",
-     "args": {"action": "write", "path": "~/notes/todo.md", "content": "TODO: refactor"}},
+    {"op": "write", "msg": "save 'refactor note' to ~/notes/todo.md",
+     "args": {"action": "write", "path": "~/notes/todo.md", "content": "refactor note"}},
     # append
     {"op": "append", "msg": "append 'export PATH=$PATH:/opt/bin' to ~/.bashrc",
      "args": {"action": "append", "path": "~/.bashrc",

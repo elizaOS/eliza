@@ -206,7 +206,7 @@ export function evaluateTeeEvidencePolicy(
  * provider would accept a DevMode quote, the agent refuses it under the
  * production profile. It does NOT replace real quote-signature verification
  * (BLOCKED on TDX/CoVE hardware) — it only rejects self-declared non-prod
- * markers. Absence of these markers is not proof of a genuine quote.
+ * markers. Absence of these markers is not evidence of a genuine quote.
  */
 function detectSimulatedEvidence(evidence: TeeEvidence): string | undefined {
   const kind = evidence.kind.toLowerCase();

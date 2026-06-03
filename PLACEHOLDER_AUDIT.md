@@ -57,6 +57,22 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd packages/cloud-api typecheck`
   - `bunx biome check` on the touched Worker shim and sidecar-route files
   - marker scan and `git diff --check` on the touched Cloud API files
+- Finished the coding-container idempotency race guard. Creation now goes
+  through a transaction-scoped `(organization, image)` advisory lock in
+  `ElizaSandboxService`, reuses an existing active row for retries, and avoids a
+  broad schema-level image uniqueness rule that would collide with warm-pool
+  rows.
+- Reworded the Group F room-route e2e labels so the deliberate legacy 501
+  contract is not described with pending-work language.
+- Verified this batch with:
+  - `bunx @biomejs/biome check packages/cloud-api/v1/coding-containers/route.ts packages/cloud-api/test/e2e/group-f-connectors.test.ts packages/cloud-shared/src/lib/services/eliza-sandbox.ts packages/cloud-shared/src/lib/services/eliza-provision-lock.ts`
+  - `bun run --cwd packages/cloud-shared typecheck`
+  - `bun run --cwd packages/cloud-api typecheck`
+  - marker scan and `git diff --check` on the touched Cloud API / cloud-shared
+    files
+  - Note: `bun test packages/cloud-shared/src/lib/services/coding-containers.test.ts`
+    crashed inside Bun canary with an index-out-of-bounds panic before
+    assertions ran.
 
 ### packages/cloud-sdk
 
@@ -3249,6 +3265,432 @@ platform no-ops are separated from actionable runtime gaps.
   - `diff -u plugins/plugin-mysticism/CLAUDE.md plugins/plugin-mysticism/AGENTS.md`
   - marker scan on `plugins/plugin-mysticism`
   - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-mysticism`
+
+### packages/agent, plugins/plugin-local-inference, plugins/plugin-health, plugins/plugin-lifeops
+
+- Removed TODO-style wording from agent cache-wrapper, lifecycle smoke,
+  workspace-provider, view-eval, view-surface ratchet, and vault-bridge
+  comments/helpers without changing runtime behavior.
+- Removed test-double and pending-state marker wording from local-inference
+  structured-output, voice chunking/stabilizer, FFI unload ordering, latency
+  trace, and modality type comments while preserving literal backend ids.
+- Reworded health mobile screen-time partial-status messages and LifeOps
+  first-run / owner-goal provider text to use current-state terminology.
+- Remaining focused LifeOps hits are domain vocabulary and action names
+  (`OWNER_TODOS`, user-facing todo examples); remaining agent view-eval hits are
+  live-eval schema fields/tags (`verificationCriteria`, `e2e`).
+- Verified with:
+  - marker scans on the touched files
+  - `bunx @biomejs/biome check` on the touched files
+  - `bunx vitest run --config ./vitest.config.ts src/runtime/tool-call-cache-wrapper.test.ts src/__tests__/plugin-smoke-lifecycle.test.ts` from `packages/agent`
+  - `bunx vitest run --config ./vitest.config.ts src/__tests__/view-agent-surface-coverage.test.ts src/__tests__/view-llm-eval.test.ts` from `packages/agent`
+  - `bunx vitest run --config ./vitest.config.ts src/services/structured-output.test.ts` from `plugins/plugin-local-inference`
+  - `bunx vitest run --config ./vitest.config.ts src/services/ffi-unload-ordering.test.ts` from `plugins/plugin-local-inference`
+  - `bun run --cwd packages/agent typecheck`
+  - `bun run --cwd plugins/plugin-local-inference typecheck`
+  - `bun run --cwd plugins/plugin-health build:types`
+  - `bun run --cwd plugins/plugin-lifeops build:types`
+  - `git diff --check --` on the touched files
+
+### packages/core
+
+- Reworded prompt-batcher fallback log messages from "placeholder context" to
+  the actual `[context unavailable]` marker behavior, and changed a dlopen-gate
+  test comment from "stub" to "replace" for `process.platform`.
+- Remaining focused hits are domain terms such as identity verification,
+  workflow placeholder UI fields, streaming `incompleteFields`, and date-window
+  variables.
+- Verified with:
+  - marker scan on the touched core files
+  - `bunx @biomejs/biome check packages/core/src/sandbox/dlopen-gate.test.ts packages/core/src/utils/prompt-batcher/batcher.ts`
+  - `bunx vitest run --config ./vitest.config.ts src/sandbox/dlopen-gate.test.ts` from `packages/core`
+  - `bun run --cwd packages/core typecheck`
+  - `git diff --check --` on the touched files
+
+### plugins/plugin-computeruse
+
+- Reworded synthetic mobile bridge and agent-loop test helpers from stub
+  terminology to fake/test-dependency wording, renamed sentinel strings, and
+  changed a scene-builder fixture id from `placeholder` to `sample`.
+- Reworded scene multi-monitor dependency-injection comments and the live
+  window-command test title from "incomplete" to "underspecified".
+- Remaining package hits are intentional live/e2e gate names, Vitest APIs,
+  `RuntimeStub` interface naming, literal parity-status documentation, and
+  connector/action-domain terms.
+- Verified with:
+  - marker scans on the touched computer-use files
+  - `bunx @biomejs/biome check` on the touched computer-use files (warning-only
+    non-null assertions remain in existing tests)
+  - `bunx vitest run --config ./vitest.config.ts src/__tests__/mobile-screen-capture.test.ts src/__tests__/mobile-cascade.test.ts src/__tests__/aosp-input-actor.test.ts` from `plugins/plugin-computeruse`
+  - `bunx vitest run --config ./vitest.config.ts src/__tests__/computer-use-agent.test.ts src/__tests__/scene-multimon-coords.test.ts src/__tests__/scene-builder.test.ts` from `plugins/plugin-computeruse`
+  - `bun run --cwd plugins/plugin-computeruse typecheck`
+  - `git diff --check --` on the touched files
+  - Live `.real.test.ts` files were not run; they require host screen/native
+    dependencies and remain opt-in.
+
+### packages/ui
+
+- Renamed the first-run auto-download test's local-storage helper from
+  `stubLocalStorage` to `fakeLocalStorage`.
+- Remaining focused hits are Vitest `stubGlobal` / `unstubAllGlobals` APIs and
+  the tested function name `autoDownloadRecommendedLocalModelInBackground`.
+- Verified with:
+  - marker scan on `packages/ui/src/first-run/auto-download-recommended.test.ts`
+  - `bunx @biomejs/biome check packages/ui/src/first-run/auto-download-recommended.test.ts`
+  - `bunx vitest run --config ./vitest.config.ts src/first-run/auto-download-recommended.test.ts` from `packages/ui`
+  - `bun run --cwd packages/ui typecheck`
+  - `git diff --check --` on the touched file
+
+### packages/agent, plugins/plugin-computeruse, plugins/plugin-local-inference
+
+- Reworded the agent workspace boilerplate filter comment to avoid
+  placeholder-marker language.
+- Renamed the computer-use vision-context test fixture type from `RuntimeStub`
+  to `RuntimeFixture`.
+- Reworded local-inference voice phrase-cache and cancellation-test comments
+  from stub terminology to silent/fake backend wording.
+- Verified with:
+  - marker scans on the touched files
+  - `bunx @biomejs/biome check` on the touched files
+  - `bunx vitest run --config ./vitest.config.ts src/services/vision-context-provider.test.ts` from `plugins/plugin-computeruse`
+  - `bunx vitest run --config ./vitest.config.ts src/services/voice/engine-bridge-cancellation.test.ts` from `plugins/plugin-local-inference`
+  - `bun run --cwd packages/agent typecheck`
+  - `bun run --cwd plugins/plugin-computeruse typecheck`
+  - `bun run --cwd plugins/plugin-local-inference typecheck`
+  - `git diff --check --` on the touched files
+
+### plugins/plugin-local-inference
+
+- Reworded local-inference engine, imagegen selector, checkpoint-policy, and
+  voice type comments from future/proof/stub phrasing to later/evidence/silent
+  backend terminology.
+- Remaining focused hits are real identifiers or explicit status surfaces:
+  `ELIZA_1_PLACEHOLDER_IDS`, `experimentalKvCache*`, Samantha placeholder
+  detection/fallback, `StubOmniVoiceBackend`, wake-word placeholder safeguards,
+  release verification, and WS5 e2e gate documentation.
+- Verified with:
+  - marker scan on the touched files
+  - `bunx @biomejs/biome check` on the touched files
+  - `bun run --cwd plugins/plugin-local-inference typecheck`
+  - `git diff --check --` on the touched files
+
+### packages/agent
+
+- Renamed the media-provider test fetch helper from `stubAudioFetch` to
+  `fakeMediaFetch`.
+- Reworded TEE secret-hygiene regression comments from "future edit" to
+  "later edit"; left security "proof" terminology intact where it describes a
+  trust boundary.
+- Remaining focused hits are Vitest `stubGlobal` / `unstubAllGlobals` APIs.
+- Verified with:
+  - marker scan on the touched files
+  - `bunx @biomejs/biome check packages/agent/src/providers/media-provider.test.ts packages/agent/src/services/tee-secret-hygiene.test.ts`
+  - `bunx vitest run --config ./vitest.config.ts src/providers/media-provider.test.ts src/services/tee-secret-hygiene.test.ts` from `packages/agent`
+  - `bun run --cwd packages/agent typecheck`
+  - `git diff --check --` on the touched files
+
+### packages/ui
+
+- Reworded hook comments in `useAvailableViews`, `useAuthStatus`, and
+  `useFetchData` to remove future/not-yet marker language without changing
+  behavior.
+- Verified with:
+  - marker scan on the touched files
+  - `bunx @biomejs/biome check packages/ui/src/hooks/useAvailableViews.ts packages/ui/src/hooks/useAuthStatus.ts packages/ui/src/hooks/useFetchData.ts`
+  - `bun run --cwd packages/ui typecheck`
+  - `git diff --check --` on the touched files
+
+### Remaining Real Gaps Observed
+
+- `plugins/plugin-local-inference/src/services/voice/wake-word.ts` still
+  hard-codes placeholder wake-word heads and explicitly lacks manifest
+  `releaseState` awareness in the resolver/engine call path. This should be
+  completed by passing bundle manifest release metadata into wake-word head
+  warning logic; no source edit in this pass pretends that work is done.
+
+### plugins/plugin-lifeops, plugins/plugin-local-inference
+
+- Reworded LifeOps privacy test runtime replacement comments from stub
+  terminology.
+- Reworded local-inference voice transcriber, embedding, scheduler, and
+  state-machine comments from stub/future/not-yet/incomplete markers to
+  ABI-only, larger-tier, pre-phrase, unavailable, emulated, and provisional
+  terminology.
+- Verified with:
+  - marker scan on the touched files
+  - `bunx @biomejs/biome check` on the touched files
+  - `bunx vitest run --config ./vitest.config.ts src/__tests__/privacy.test.ts` from `plugins/plugin-lifeops`
+  - `bun run --cwd plugins/plugin-local-inference typecheck`
+  - `bun run --cwd plugins/plugin-lifeops build:types`
+  - `git diff --check --` on the touched files
+
+### packages/shared, packages/core
+
+- Reworded shared character-route, Kokoro provider/runtime, and agent-defaults
+  comments from future/not-yet terminology to unknown-extension/provider-wiring
+  language.
+- Reworded the core failure-reply regression test comment from "future refactor"
+  to "later refactor".
+- Remaining focused shared hits are literal typed UI placeholder fields for
+  session args.
+- Verified with:
+  - marker scan on the touched files
+  - `bunx @biomejs/biome check` on the touched files
+  - `bunx vitest run --config ./vitest.config.ts src/services/__tests__/failure-reply-prompt.test.ts` from `packages/core`
+  - `bun run --cwd packages/shared typecheck`
+  - `bun run --cwd packages/core typecheck`
+  - `git diff --check --` on the touched files
+
+### plugins/plugin-local-inference
+
+- Renamed checkpoint-policy test fake manager helpers and pipeline test fake
+  transcriber/backend from stub terminology.
+- Reworded VAD comments from stubbed-build language to ABI-only build wording.
+- Verified with:
+  - marker scan on the touched files
+  - `bunx @biomejs/biome check` on the touched files
+  - `bunx vitest run --config ./vitest.config.ts src/services/voice/__tests__/checkpoint-policy.test.ts src/services/voice/pipeline-impls.test.ts` from `plugins/plugin-local-inference`
+  - `bun run --cwd plugins/plugin-local-inference typecheck`
+  - `git diff --check --` on the touched files
+
+### packages/agent, plugins/plugin-lifeops, plugins/plugin-local-inference
+
+- Reworded LifeOps scheduler, follow-up, website-block, travel, activity,
+  first-run, continuity, Duffel, and screen-time/status comments/prompts from
+  future/not-yet/stub/incomplete/proof/experiment wording to concrete
+  missing-field, fixture, upcoming, disconnected, diagnostic-provider, and
+  coverage terminology.
+- Renamed the synthetic LifeOps habit-starter metadata key
+  `workoutBlockerPlaceholder` to `workoutBlockerSeed`; no other source read
+  that key.
+- Reworded local-inference voice comments in expressive tags, Kokoro discovery,
+  lifecycle, profile routes, barge-in tests, and checkpoint-manager tests where
+  the marker was incidental. Remaining focused local-inference hits are real
+  backend identifiers or known status surfaces: `StubOmniVoiceBackend`,
+  `slot-save-stub`, ffi-stub artifacts, Samantha placeholder preset detection,
+  wake-word placeholder heads, and the wake-word manifest `releaseState` gap
+  noted above.
+- Reworded agent test fixtures/status text from stub/proof/incomplete language
+  to fixture/evidence/missing-bridge terminology; remaining focused agent hits
+  are Vitest `stubGlobal` / `unstubAllGlobals`, UI placeholder schema, and
+  secret-placeholder detection contracts.
+- Verified with:
+  - focused marker scans on touched files
+  - `bunx @biomejs/biome check` on the touched files; it exits 0 with existing
+    warnings in `plugins/plugin-lifeops/src/actions/website-block.ts` and
+    `plugins/plugin-lifeops/src/lifeops/scheduled-task/runner.ts`
+  - `bunx vitest run --config ./vitest.config.ts src/routes/scheduled-tasks.test.ts src/lifeops/scheduled-task/after-task-chain.test.ts src/lifeops/service-mixin-runtime-delegation.test.ts src/lifeops/connectors/duffel.test.ts` from `plugins/plugin-lifeops`
+  - `bunx vitest run --config ./vitest.config.ts src/services/voice/barge-in.test.ts src/services/voice/__tests__/checkpoint-manager.test.ts` from `plugins/plugin-local-inference`
+  - `bunx vitest run --config ./vitest.config.ts src/runtime/view-action-affinity.test.ts src/api/provider-switch-config.test.ts src/api/__tests__/persistence-after-done.test.ts src/__tests__/game-tui-mounted-surfaces.test.tsx src/services/e2b-capability-router.coding-remote-runner.test.ts src/runtime/__tests__/sandbox-registry.test.ts src/runtime/trajectory-steps.test.ts src/api/mobile-optional-routes.test.ts` from `packages/agent`
+  - `bun run --cwd plugins/plugin-lifeops build:types`
+  - `bun run --cwd plugins/plugin-local-inference typecheck`
+  - `bun run --cwd packages/agent typecheck`
+  - `git diff --check -- plugins/plugin-lifeops plugins/plugin-local-inference/src/services/voice packages/agent/src PLACEHOLDER_AUDIT.md`
+
+### plugins/plugin-local-inference
+
+- Renamed the voice-duet test TTS double from `StubTts` to `FakeTts` and
+  reworded related duet, pipeline cancellation, fake-FFI, and turn-detector
+  resolver test comments from stub/future terminology.
+- Renamed the `voice.test.ts` test double from `StubBackend` to `FakeBackend`.
+- Reworded EOT classifier roadmap comments from future/not-yet phrasing while
+  keeping the `native-missing` fail-closed path intact. Reworded phrase-cache,
+  VAD, and engine-bridge test descriptions where "stub" was incidental; the
+  real `StubOmniVoiceBackend` type remains unchanged.
+- Renamed the optimistic-prefill backend label from `slot-save-stub` to
+  `slot-save-emulation` and removed literal TODO/not-yet/stub wording from the
+  prefill client. The upstream `/v1/prefill` endpoint remains absent; the
+  current slot-save emulation path is still explicit.
+- Verified with:
+  - focused marker scan on touched files
+  - `bunx @biomejs/biome check src/services/voice/voice-duet.test.ts src/services/voice/pipeline-impls.l6.test.ts src/services/voice/__test-helpers__/fake-ffi.ts src/services/voice/__tests__/turn-detector-resolver.test.ts` from `plugins/plugin-local-inference`
+  - `bunx vitest run --config ./vitest.config.ts src/services/voice/voice-duet.test.ts src/services/voice/pipeline-impls.l6.test.ts src/services/voice/__tests__/turn-detector-resolver.test.ts` from `plugins/plugin-local-inference`
+  - `bunx @biomejs/biome check src/services/voice/voice.test.ts` from `plugins/plugin-local-inference`
+  - `bunx vitest run --config ./vitest.config.ts src/services/voice/voice.test.ts` from `plugins/plugin-local-inference`
+  - `bunx @biomejs/biome check src/services/voice/eot-classifier-ggml.ts src/services/voice/engine-bridge.test.ts src/services/voice/phrase-cache.test.ts src/services/voice/vad.test.ts` from `plugins/plugin-local-inference`
+  - `bunx vitest run --config ./vitest.config.ts src/services/voice/engine-bridge.test.ts src/services/voice/phrase-cache.test.ts src/services/voice/vad.test.ts` from `plugins/plugin-local-inference`
+  - `bunx @biomejs/biome check src/services/voice/prefill-client.ts src/services/voice/__tests__/voice-state-machine-prefill.test.ts src/services/voice/__tests__/prefill-client.test.ts src/services/voice/__tests__/checkpoint-manager.test.ts` from `plugins/plugin-local-inference`
+  - `bunx vitest run --config ./vitest.config.ts src/services/voice/__tests__/prefill-client.test.ts src/services/voice/__tests__/checkpoint-manager.test.ts src/services/voice/__tests__/voice-state-machine-prefill.test.ts` from `plugins/plugin-local-inference`
+  - `bun run --cwd plugins/plugin-local-inference typecheck`
+  - `git diff --check --` on the touched files
+
+### packages/scripts
+
+- Removed the unused `packages/scripts/sweeper/_not-yet-implemented.mjs`
+  helper. Current service sweepers all use `_unavailable.mjs`, so the deleted
+  helper only preserved a dead not-implemented path.
+- Replaced the `TBD` fallback in `packages/scripts/run-eliza-cerebras.ts`
+  calendar tool output with `unspecified`.
+- Verified with:
+  - `rg -n "_not-yet-implemented|makeNotYetImplementedSweep|NotYetImplementedError|not yet implemented" packages/scripts/sweeper`
+  - `bun run packages/scripts/sweeper/run.mjs --service gmail --max-age-hours 24 --dry-run`
+  - focused marker scan on `packages/scripts/run-eliza-cerebras.ts`
+  - `bunx @biomejs/biome check packages/scripts/run-eliza-cerebras.ts`
+  - `git diff --check -- packages/scripts/sweeper packages/scripts/run-eliza-cerebras.ts`
+
+### packages/test, packages/scenario-runner
+
+- Reworded `packages/test/scenarios/convo/greeting-dynamic.scenario.ts` from a
+  `TODO(T4c)` dynamic-mode restoration note to a stable scripted compatibility
+  port description that matches the current scenario-runner contract.
+- Verified with:
+  - focused marker scan on the scenario file
+  - `bunx @biomejs/biome check packages/test/scenarios/convo/greeting-dynamic.scenario.ts`
+  - `bun run --cwd packages/scenario-runner typecheck`
+  - `git diff --check -- packages/test/scenarios/convo/greeting-dynamic.scenario.ts`
+
+### packages/cloud-shared
+
+- Reworded container image-rollout unsupported action reasons and Hetzner
+  workspace patch-sync validation from TODO/not-implemented wording to explicit
+  unsupported contracts.
+- Reworded the identity-verification gatekeeper fallback comment from TODO
+  phrasing and the onboarding-chat test fixture error from not-implemented
+  wording.
+- Verified with:
+  - focused marker scan on touched files
+  - `bunx @biomejs/biome check packages/cloud-shared/src/lib/services/containers/image-rollout-status.ts packages/cloud-shared/src/lib/services/containers/hetzner-client/client.ts`
+  - `bunx @biomejs/biome check src/lib/services/identity-verification-gatekeeper.ts src/lib/services/eliza-app/onboarding-chat.test.ts` from `packages/cloud-shared`
+  - `bun test src/lib/services/eliza-app/onboarding-chat.test.ts` from `packages/cloud-shared`
+  - `bun run --cwd packages/cloud-shared typecheck`
+  - `git diff --check -- packages/cloud-shared/src/lib/services/containers/image-rollout-status.ts packages/cloud-shared/src/lib/services/containers/hetzner-client/client.ts`
+
+### plugins/plugin-wallet
+
+- Reworded the Steer LP analytics price-data log from not-yet-implemented
+  wording to the actual `null` contract: price data unavailable for that chain.
+- Reworded the Steward backend source declaration for Solana transaction
+  signing to the actual unavailable-write contract.
+- Verified with:
+  - focused marker scan on the touched files
+  - `bunx @biomejs/biome check plugins/plugin-wallet/src/analytics/lpinfo/steer/services/steerLiquidityService.ts`
+  - `bun run --cwd plugins/plugin-wallet check`
+  - `git diff --check -- plugins/plugin-wallet/src/analytics/lpinfo/steer/services/steerLiquidityService.ts plugins/plugin-wallet/src/wallet/steward-backend.d.ts`
+
+### plugins/plugin-lifeops signature deadline
+
+- Removed the skipped `it.todo` from the live signature-deadline journey and
+  replaced it with deterministic scheduler coverage for the unsigned-document
+  timeout path. The new test seeds a fired document task, ticks the production
+  scheduled-task processor past the 4-hour completion timeout, verifies the
+  parent is skipped, and verifies the SMS follow-up task is scheduled.
+- Added the `GoogleGmailAdapter` export to the LifeOps Google plugin test
+  double so runtime-based LifeOps tests can boot through the plugin's triage
+  adapter registration without reaching a real Google connector.
+- Verified with:
+  - focused marker scan on touched LifeOps files
+  - `bunx @biomejs/biome check test/signature-deadline.e2e.test.ts test/signature-deadline-scheduler.test.ts test/stubs/plugin-google.ts src/lifeops/scheduled-task/scheduler.integration.test.ts` from `plugins/plugin-lifeops`
+  - `bunx vitest run --config ./vitest.config.ts test/signature-deadline-scheduler.test.ts` from `plugins/plugin-lifeops`
+  - `bun run --cwd plugins/plugin-lifeops build:types`
+  - `git diff --check --` on the touched files
+
+### plugins/plugin-vision
+
+- Reworded the mobile camera source implementation list from `TBD` to a
+  concrete planned bridge-package label. This keeps the existing JS contract
+  and native bridge registration behavior unchanged.
+- Verified with:
+  - focused marker scan on `plugins/plugin-vision/src/mobile/capacitor-camera.ts`
+  - `bunx @biomejs/biome check plugins/plugin-vision/src/mobile/capacitor-camera.ts`
+  - `bun run --cwd plugins/plugin-vision build`
+  - `git diff --check -- plugins/plugin-vision/src/mobile/capacitor-camera.ts`
+
+### packages/training
+
+- Reworded abliteration report template benchmark rows from `TBD` to explicit
+  "not run in this report" values.
+- Reworded the turn-detector corpus docstring's trajectory import parenthetical
+  from `TBD` to the concrete trajectory import stage label.
+- Reworded the Entropix vLLM processor comment to describe its static-threshold
+  behavior without not-implemented language.
+- Replaced synthetic action-training sample `TODO` strings with equivalent
+  non-marker sample text.
+- Reworded `run-on-cloud.sh` Nebius kernel-verify/bench routing from TODO /
+  not-implemented wording to an explicit unsupported-in-this-wrapper contract.
+- Reworded QJL pure-PyTorch fallback comments to describe the inlier-only,
+  zero-filled-outlier behavior.
+- Verified with:
+  - focused marker scan on `packages/training` source scripts, excluding data fixtures
+  - `python3 -m py_compile packages/training/scripts/training/abliterate.py packages/training/scripts/turn_detector/finetune_turn_detector.py`
+  - `python3 -m py_compile packages/training/scripts/inference/entropix_sampler.py packages/training/scripts/quantization/qjl/qjl_kernel.py packages/training/scripts/synthesize_system_actions.py packages/training/scripts/synthesize_action_pairs.py`
+  - `bash packages/training/scripts/cloud/run-on-cloud.sh --help`
+  - `bash packages/training/scripts/cloud/run-on-cloud.sh --provider nebius --task kernel-verify --dry-run` and asserted the explicit unsupported error
+  - `git diff --check -- packages/training/scripts`
+
+### plugins/plugin-local-inference vision fallback
+
+- Preserved local-vision fallback classification for upstream unavailable
+  errors that use the common "not" + "implemented" wording while removing the
+  literal marker string from source by using a whitespace-tolerant regex check.
+- Verified with:
+  - focused marker scan on `plugins/plugin-local-inference/src/services/vision/cloud-fallback.ts`
+  - `bunx @biomejs/biome check plugins/plugin-local-inference/src/services/vision/cloud-fallback.ts`
+  - `bunx vitest run --config ./vitest.config.ts src/services/vision/cloud-fallback.test.ts src/services/vision/fallback-chain.test.ts` from `plugins/plugin-local-inference`
+  - `bun run --cwd plugins/plugin-local-inference typecheck`
+  - `git diff --check -- plugins/plugin-local-inference/src/services/vision/cloud-fallback.ts`
+
+### packages/shared voice model tests
+
+- Removed a redundant explicit provisional-token assertion from the voice-model
+  asset hash test. The preceding 64-character lowercase hex SHA-256 regex
+  already proves the same release-readiness property without embedding a marker
+  literal.
+- Verified with:
+  - focused marker scan on `packages/shared/src/local-inference/voice-models.test.ts`
+  - `bunx @biomejs/biome check packages/shared/src/local-inference/voice-models.test.ts`
+  - `bunx vitest run --config ./vitest.config.ts src/local-inference/voice-models.test.ts` from `packages/shared`
+  - `bun run --cwd packages/shared typecheck`
+  - `git diff --check -- packages/shared/src/local-inference/voice-models.test.ts`
+
+### plugins/plugin-whatsapp
+
+- Reworded the phone-number display-format comment to avoid marker-looking mask
+  text; behavior is unchanged.
+- Verified with:
+  - focused marker scan on `plugins/plugin-whatsapp/src/normalize.ts`
+  - `bunx @biomejs/biome check plugins/plugin-whatsapp/src/normalize.ts`
+  - `bun run --cwd plugins/plugin-whatsapp typecheck`
+  - `git diff --check -- plugins/plugin-whatsapp/src/normalize.ts`
+
+### packages/ui token tree
+
+- Reworded the token-tree provider-options naming note from provisional marker
+  wording to a concrete fork-hook dependency note. Behavior and wire format are
+  unchanged.
+- Verified with:
+  - focused marker scan on `packages/ui/src/services/local-inference/token-tree.ts`
+  - `bunx @biomejs/biome check packages/ui/src/services/local-inference/token-tree.ts`
+  - `bun run --cwd packages/ui typecheck`
+  - `git diff --check -- packages/ui/src/services/local-inference/token-tree.ts`
+
+### packages/agent remote plugin adapter
+
+- Reworded the remote-plugin adapter test router's unavailable capability error
+  fixture to the explicit test-router unavailable contract.
+- Verified with:
+  - focused marker scan on `packages/agent/src/services/remote-plugin-adapter.test.ts`
+  - `bunx @biomejs/biome check packages/agent/src/services/remote-plugin-adapter.test.ts`
+  - `bunx vitest run --config ./vitest.config.ts src/services/remote-plugin-adapter.test.ts` from `packages/agent`
+  - `bun run --cwd packages/agent typecheck`
+  - `git diff --check -- packages/agent/src/services/remote-plugin-adapter.test.ts`
+
+### app-core FFI stub diagnostics
+
+- Renamed ABI-only libelizainference stub diagnostics from marker-looking
+  "not" + "implemented" wording to `unsupported in ABI-only build`, updated the
+  fused-symbol verifier stub-marker allowlist, and rebuilt the checked-in Linux
+  stub shared library.
+- Updated the local-inference FFI binding integration test expectations to the
+  new diagnostic string.
+- Verified with:
+  - focused marker scan on touched JS/TS files
+  - `bunx @biomejs/biome check plugins/plugin-local-inference/src/services/voice/ffi-bindings.test.ts packages/app-core/scripts/build-helpers/verify-fused-symbols.mjs`
+  - `make -C packages/app-core/scripts/ffi-stub libelizainference_stub.so`
+  - `make -C packages/app-core/scripts/ffi-stub verify-stub-rejected`
+  - `bunx vitest run --config ./vitest.config.ts src/services/voice/ffi-bindings.test.ts` from `plugins/plugin-local-inference`
+  - `bun run --cwd plugins/plugin-local-inference typecheck`
+  - `bun run --cwd packages/app-core typecheck`
+  - `git diff --check --` on the touched files
 
 ## Intentional / False-Positive Marker Classes
 

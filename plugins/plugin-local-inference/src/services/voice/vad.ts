@@ -51,7 +51,7 @@ import type {
 import { SileroVadGgml, VadGgmlUnavailableError } from "./vad-ggml";
 
 /** Thrown when the Silero VAD backend cannot be loaded — the native VAD FFI
- *  is missing or stubbed, the model file is absent, or the model is corrupt.
+ *  is missing or ABI-only, the model file is absent, or the model is corrupt.
  *  There is no fallback; voice features that depend on VAD must surface
  *  this. */
 export class VadUnavailableError extends Error {
@@ -186,8 +186,8 @@ export class GgmlSileroVad {
 	}
 
 	/** True when the libelizainference build exports the native VAD ABI and
-	 *  advertises support. False on stub builds or when the C++ side has not
-	 *  yet been linked against the whisper-style `whisper_vad_*` runtime. */
+	 *  advertises support. False on ABI-only builds or when the C++ side has
+	 *  not been linked against the whisper-style `whisper_vad_*` runtime. */
 	static isSupported(ffi: ElizaInferenceFfi | null | undefined): boolean {
 		if (!ffi || typeof ffi.vadSupported !== "function") return false;
 		return ffi.vadSupported();
@@ -544,7 +544,7 @@ export async function resolveVadProvider(
 				}
 				// Ensure the bundled GGML model is on disk before opening the
 				// native session. This keeps the failure mode "no model file"
-				// distinct from a build with a stubbed VAD.
+				// distinct from a build with an ABI-only VAD.
 				const modelPath = resolveSileroVadPath({
 					modelPath: opts.modelPath,
 					bundleRoot: opts.bundleRoot,

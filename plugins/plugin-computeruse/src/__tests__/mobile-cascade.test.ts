@@ -1,10 +1,10 @@
 /**
  * WS7 ↔ WS8 — Mobile cascade integration.
  *
- * Drives the full agent loop on a stubbed Android bridge:
+ * Drives the full agent loop on a fake Android bridge:
  *   Scene (parsed from Kotlin AX JSON)
  *     → MobileScreenCaptureSource.captureAllDisplays() (JPEG bytes)
- *     → Brain (stubbed)
+ *     → Brain (fake runtime)
  *     → Cascade (`ScreenSeekeR`)
  *     → dispatch → MobileComputerInterface.leftClick
  *     → AndroidComputerUseBridge.dispatchGesture(tap)
@@ -83,13 +83,17 @@ function makeFakeBridge(opts: FakeAndroidBridgeOpts = {}): {
   }> = [];
   const ax = opts.axTreeJson ?? DEFAULT_AX_JSON;
   const frame = opts.frame ?? defaultFrame();
-  const stub = <T>(code = "internal_error" as const) =>
-    Promise.resolve({ ok: false as const, code, message: "stub" }) as Promise<
+  const bridgeFailure = <T>(code = "internal_error" as const) =>
+    Promise.resolve({
+      ok: false as const,
+      code,
+      message: "fake bridge failure",
+    }) as Promise<
       { ok: false; code: typeof code; message: string } & { data?: T }
     >;
   const bridge = {
-    startMediaProjection: () => stub(),
-    stopMediaProjection: () => stub(),
+    startMediaProjection: () => bridgeFailure(),
+    stopMediaProjection: () => bridgeFailure(),
     captureFrame: async () => ({ ok: true as const, data: frame }),
     getAccessibilityTree: async () => ({
       ok: true as const,
@@ -105,8 +109,8 @@ function makeFakeBridge(opts: FakeAndroidBridgeOpts = {}): {
       data: { ok: true },
     }),
     setText: async () => ({ ok: true as const, data: { ok: true } }),
-    enumerateApps: () => stub(),
-    getMemoryPressureSnapshot: () => stub(),
+    enumerateApps: () => bridgeFailure(),
+    getMemoryPressureSnapshot: () => bridgeFailure(),
     dispatchMemoryPressure: async ({
       level,
       freeMb,
@@ -119,10 +123,10 @@ function makeFakeBridge(opts: FakeAndroidBridgeOpts = {}): {
       opts.onMemoryPressure?.(level, freeMb);
       return { ok: true as const, data: { ok: true } };
     },
-    startCamera: () => stub(),
+    startCamera: () => bridgeFailure(),
     stopCamera: () =>
       Promise.resolve({ ok: true as const, data: { ok: true } }),
-    captureFrameCamera: () => stub(),
+    captureFrameCamera: () => bridgeFailure(),
   } as unknown as AndroidComputerUseBridge;
   return { bridge, taps, pressureEvents };
 }
@@ -316,7 +320,7 @@ describe("Mobile cascade — onTrimMemory → arbiter eviction → Brain reload"
     });
     const scene = buildScene();
     const capture = new MobileScreenCaptureSource({ getBridge: () => bridge });
-    const computer = new MobileComputerInterface({
+    const _computer = new MobileComputerInterface({
       getBridge: () => bridge,
       getDisplay: () => androidDisplay(),
       getScene: () => scene,

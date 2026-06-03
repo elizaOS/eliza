@@ -1143,8 +1143,8 @@ export class LocalInferenceEngine {
 	/**
 	 * Vision describe via the running llama.cpp mtmd path. Requires
 	 * the optimized llama.cpp backend (the in-process node-llama-cpp adapter
-	 * does not expose mmproj yet — see `services/vision/node-llama-cpp.ts`
-	 * for the planned mtmd binding). The mmproj GGUF must have been
+	 * does not expose mmproj; see `services/vision/node-llama-cpp.ts`
+	 * for the mtmd binding path). The mmproj GGUF must have been
 	 * declared by the active catalog tier and present on disk under the
 	 * bundle root; if not, the active backend throws.
 	 *
@@ -1165,7 +1165,7 @@ export class LocalInferenceEngine {
 	}> {
 		this.markActivity();
 		// The dispatcher throws an actionable error if the active backend
-		// doesn't implement describeImage (e.g. node-llama-cpp or a future
+		// doesn't implement describeImage (e.g. node-llama-cpp or a later
 		// FFI backend without mmproj parity). No need for a pre-check.
 		return this.dispatcher.describeImage(args);
 	}
@@ -1348,7 +1348,7 @@ export class LocalInferenceEngine {
 
 	/**
 	 * Close + drop a conversation handle. Persists the final KV state to
-	 * disk so a future open with the same id can lazy-restore. Idempotent;
+	 * disk so a later open with the same id can lazy-restore. Idempotent;
 	 * closing an unknown id is a no-op.
 	 */
 	async closeConversation(handle: ConversationHandle): Promise<void> {
@@ -1634,7 +1634,7 @@ export class LocalInferenceEngine {
 	 * `VoiceScheduler` → TTS → audio sink.
 	 *
 	 * Gated behind a complete real backend chain (AGENTS.md §3 — no silent
-	 * stub-mode "voice"):
+	 * backend-mode "voice"):
 	 *   - a `MicSource` (caller-supplied, or `DesktopMicSource` under Electrobun),
 	 *   - a Silero v5 GGML VAD (caller-supplied detector, or `createSileroVadDetector()` — runs through libelizainference's native VAD ABI),
 	 *   - a working ASR (the bridge's `createStreamingTranscriber` throws

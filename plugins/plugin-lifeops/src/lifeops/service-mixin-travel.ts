@@ -1,9 +1,3 @@
-import type { LifeOpsCalendarService } from "./service-mixin-calendar.js";
-import type {
-  Constructor,
-  LifeOpsServiceBase,
-  MixinClass,
-} from "./service-mixin-core.js";
 import {
   createOrder,
   createPayment,
@@ -17,6 +11,12 @@ import {
   type SearchFlightsResult,
   searchFlights,
 } from "@elizaos/plugin-elizacloud/cloud/duffel-client";
+import type { LifeOpsCalendarService } from "./service-mixin-calendar.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 import type {
   FlightBookingExecutionResult,
   PreparedFlightBooking,
@@ -39,7 +39,7 @@ import type {
  * attachments:    false   — no file attachments.
  * deliveryStatus: false   — provider-side delivery receipts do not apply.
  *
- * Scope: flights only. Hotels and car hire are deferred to a future iteration.
+ * Scope: flights only. Hotels and car hire are outside this capability.
  */
 export const TRAVEL_CAPABILITIES = {
   inbound: false,

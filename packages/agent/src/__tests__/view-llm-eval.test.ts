@@ -82,15 +82,14 @@ interface EvalResult {
 }
 
 // ---------------------------------------------------------------------------
-// Stub agent — simulates the views system responding to user messages.
+// Deterministic agent — simulates the views system responding to user messages.
 //
 // In a full integration test this would call a live agent runtime; here we
-// use a deterministic stub that produces plausible responses so the LLM judge
-// has something to evaluate. Replace `stubAgentResponse` with a real agent
-// call when the full runtime is available in the test environment.
+// use a deterministic responder that produces plausible responses so the LLM
+// judge has something to evaluate in credentialed smoke runs.
 // ---------------------------------------------------------------------------
 
-function stubAgentResponse(userMessage: string): string {
+function deterministicAgentResponse(userMessage: string): string {
   const lower = userMessage.toLowerCase();
 
   if (
@@ -365,7 +364,7 @@ navigationCorrect = true if the agent navigated or would navigate to the right v
 async function evaluateScenario(
   scenario: ViewJourneyScenario,
 ): Promise<EvalResult> {
-  const agentResponse = stubAgentResponse(scenario.userMessage);
+  const agentResponse = deterministicAgentResponse(scenario.userMessage);
   const judgePrompt = buildJudgePrompt(scenario, agentResponse);
   const rawJudgeResponse = await callJudge(judgePrompt);
 

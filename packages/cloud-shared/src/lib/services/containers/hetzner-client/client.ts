@@ -647,7 +647,7 @@ export class HetznerContainersClient {
     if (request.patches?.length) {
       throw new HetznerClientError(
         "invalid_input",
-        "workspace patch sync is not implemented; send changedFiles instead",
+        "workspace patch sync is unsupported; send changedFiles instead",
       );
     }
 

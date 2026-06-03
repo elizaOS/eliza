@@ -19,11 +19,10 @@
  * idempotent on the same `modelId`, so when the same tier covers multiple
  * kinds we end up with one bundle download and a per-kind audit trail.
  *
- * When the architecture later splits the bundle into separately addressable
- * sub-archives (per `packages/inference/AGENTS.md` §2 future work), the
- * per-kind selection in {@link modelIdForKind} is where the per-modality
- * model id would diverge — the rest of the orchestrator already wraps each
- * artifact in its own `Promise.allSettled` slot.
+ * When the architecture splits the bundle into separately addressable
+ * sub-archives, the per-kind selection in {@link modelIdForKind} is where the
+ * per-modality model id diverges — the rest of the orchestrator already wraps
+ * each artifact in its own `Promise.allSettled` slot.
  *
  * `signedInCloud === true` skips the `text` artifact: cloud-routed inference
  * handles TEXT_LARGE / TEXT_SMALL, and we don't want a multi-gig text weight

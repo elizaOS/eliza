@@ -106,7 +106,7 @@ const FRAME_SAMPLES = 1280;
  *
  * The default backend (`GgmlWakeWordModel`) calls into the native FFI
  * synchronously; the method is still `async` so the interface fits a
- * future async-friendly backend (e.g. a worker-thread variant) and
+ * async-friendly backend variant (e.g. worker-thread based) and
  * matches the same shape the previous ONNX backend exposed to callers.
  */
 export type { WakeWordModel } from "./types.js";

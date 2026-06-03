@@ -2,7 +2,7 @@
  * Unit tests for `CheckpointManager` (REST-backed) and
  * `MockCheckpointManager` (in-memory).
  *
- * `CheckpointManager` is verified by stubbing the underlying fetch and
+ * `CheckpointManager` is verified by replacing the underlying fetch and
  * asserting the REST URLs / methods. `MockCheckpointManager` is verified
  * by save/restore/discard round-trips that check the recorded operations
  * + the snapshot replay semantics.
@@ -201,7 +201,7 @@ describe("prefillOptimistic", () => {
 			},
 			{ checkpointManager: mock, fetchImpl: makePrefillFetch() },
 		);
-		expect(result.backend).toBe("slot-save-stub");
+		expect(result.backend).toBe("slot-save-emulation");
 		expect(result.eotProb).toBe(0.7);
 		expect(result.checkpointHandle.slotId).toBe("conv-1");
 		// The handle should be live and restorable.

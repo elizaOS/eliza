@@ -67,7 +67,7 @@ export async function reflectOnSendConfirmation(
     "",
     "Determine if the user CLEARLY confirmed they want this message sent.",
     "Confirmation signals: 'yes', 'send it', 'go ahead', 'looks good, send it', 'confirm'",
-    "Rejection signals: 'no', 'wait', 'hold on', 'change it', 'actually...', 'not yet'",
+    "Rejection signals: 'no', 'wait', 'hold on', 'change it', 'actually...', 'not now'",
     "Ambiguous (treat as NOT confirmed): single words that could mean anything, unrelated responses",
     "",
     'Return JSON only, for example {"confirmed":true,"reasoning":"brief explanation"}.',

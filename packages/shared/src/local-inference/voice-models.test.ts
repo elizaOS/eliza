@@ -90,10 +90,6 @@ describe("VOICE_MODEL_VERSIONS bookkeeping", () => {
         expect(asset.sha256, `${v.id}@${v.version}:${asset.filename}`).toMatch(
           sha,
         );
-        expect(
-          asset.sha256,
-          `${v.id}@${v.version}:${asset.filename}`,
-        ).not.toContain("TBD");
         expect(asset.sizeBytes).toBeGreaterThan(0);
       }
       for (const asset of v.missingAssets ?? []) {

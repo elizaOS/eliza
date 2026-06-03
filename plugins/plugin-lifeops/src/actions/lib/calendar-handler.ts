@@ -1690,7 +1690,7 @@ function resolveCalendarLlmWindow(
 
 // Wide window used by update_event / delete_event lookups when the user
 // gave no time hint. Reaches 1 year back and 5 years forward — far enough
-// to find a future birthday or a recent past meeting without scanning the
+// to find an upcoming birthday or a recent past meeting without scanning the
 // entire account.
 function buildWideLookupRange(timeZone: string): {
   timeMin: string;

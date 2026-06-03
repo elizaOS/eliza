@@ -7,7 +7,7 @@
 # This wraps the existing primitives instead of duplicating them:
 #   * vast.ai      → the `vastai` CLI (VAST_API_KEY)  [implemented here]
 #   * nebius       → `train_nebius.sh` (NEBIUS_*)     [delegated for --task train;
-#                                                      kernel-verify/bench TODO]
+#                                                      kernel-verify/bench stay vast-only here]
 #   * --task train → delegates to ../train_vast.sh provision-and-train
 #
 # Usage:
@@ -146,7 +146,7 @@ fi
 
 # --------------------------------------------------------------------------
 # kernel-verify / bench — provision a single instance, run, pull, teardown.
-[[ "$PROVIDER" == "vast" ]] || die "--task $TASK --provider nebius not implemented yet — kernel-verify/bench currently support vast only (extend scripts/lib/backends/nebius.py + this branch)"
+[[ "$PROVIDER" == "vast" ]] || die "--task $TASK --provider nebius unsupported in run-on-cloud.sh — kernel-verify/bench currently support vast only (use scripts/lib/backends/nebius.py plus a dedicated branch)"
 
 command -v vastai >/dev/null 2>&1 || die "the 'vastai' CLI is required: pip install --user vastai"
 VAST_Q="$(gpu_to_vast_query "$GPU")"

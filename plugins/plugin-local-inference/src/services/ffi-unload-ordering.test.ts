@@ -15,7 +15,7 @@ const adapterMock = vi.hoisted(() => ({
 
 // Replace the FFI adapter module entirely so importing it never pulls bun:ffi
 // or dlopens a native library. desktop-ffi-backend-runtime.ts only value-imports
-// `loadDesktopLlama` + `desktopLlamaDylibsPresent`, so those are all we stub.
+// `loadDesktopLlama` + `desktopLlamaDylibsPresent`, so those are the only fakes.
 vi.mock("./desktop-llama-adapter", () => ({
 	desktopLlamaDylibsPresent: () => true,
 	loadDesktopLlama: vi.fn(async () => ({

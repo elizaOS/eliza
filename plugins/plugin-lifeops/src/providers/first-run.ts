@@ -1,5 +1,5 @@
 /**
- * `firstRunProvider` — surfaces the "first-run not yet completed" affordance
+ * `firstRunProvider` — surfaces the pending first-run affordance
  * to the planner. Goes silent the moment first-run is `complete`.
  *
  * Affordance shape (frozen — `wave1-interfaces.md` §4.1):

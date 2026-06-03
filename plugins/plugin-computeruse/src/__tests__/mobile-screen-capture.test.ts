@@ -36,31 +36,31 @@ function fakeBridge(
     | CapturedScreenFrame
     | { ok: false; code: "capture_unavailable"; message: string },
 ): AndroidComputerUseBridge {
-  const stub = <T>(): Promise<
+  const bridgeFailure = <T>(): Promise<
     { ok: false; code: "internal_error"; message: string } & { data?: T }
   > =>
     Promise.resolve({
       ok: false as const,
       code: "internal_error" as const,
-      message: "stub",
+      message: "fake bridge failure",
     });
   return {
-    startMediaProjection: () => stub(),
-    stopMediaProjection: () => stub(),
+    startMediaProjection: () => bridgeFailure(),
+    stopMediaProjection: () => bridgeFailure(),
     captureFrame: async () => {
       if ("ok" in frame) return frame;
       return { ok: true, data: frame };
     },
-    getAccessibilityTree: () => stub(),
-    dispatchGesture: () => stub(),
-    performGlobalAction: () => stub(),
-    setText: () => stub(),
-    enumerateApps: () => stub(),
-    getMemoryPressureSnapshot: () => stub(),
-    dispatchMemoryPressure: () => stub(),
-    startCamera: () => stub(),
+    getAccessibilityTree: () => bridgeFailure(),
+    dispatchGesture: () => bridgeFailure(),
+    performGlobalAction: () => bridgeFailure(),
+    setText: () => bridgeFailure(),
+    enumerateApps: () => bridgeFailure(),
+    getMemoryPressureSnapshot: () => bridgeFailure(),
+    dispatchMemoryPressure: () => bridgeFailure(),
+    startCamera: () => bridgeFailure(),
     stopCamera: () => Promise.resolve({ ok: true, data: { ok: true } }),
-    captureFrameCamera: () => stub(),
+    captureFrameCamera: () => bridgeFailure(),
   } as AndroidComputerUseBridge;
 }
 
@@ -106,7 +106,7 @@ describe("MobileScreenCaptureSource — happy path", () => {
   });
 
   it("decodeJpeg override is honored", async () => {
-    const tag = Buffer.from("decoded-by-stub");
+    const tag = Buffer.from("decoded-by-test-decoder");
     const src = new MobileScreenCaptureSource({
       getBridge: () => fakeBridge(fakeFrame()),
       decodeJpeg: () => tag,

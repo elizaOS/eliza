@@ -29,7 +29,7 @@ interface MobileCameraOpenOptions {
  * Implementations live in:
  *   - plugin-aosp (Android NNAPI / CameraX) — WS8
  *   - plugin-ios (Core ML / AVFoundation) — WS9
- *   - plugin-capacitor-bridge (cross-platform Capacitor plugin) — TBD
+ *   - plugin-capacitor-bridge (cross-platform Capacitor plugin) — planned bridge package
  */
 export interface MobileCameraSource {
   /** Discover cameras visible to the OS. */

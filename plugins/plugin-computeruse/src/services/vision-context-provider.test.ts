@@ -33,7 +33,7 @@ vi.mock("../platform/windows-list.js", () => ({
 import { listProcesses } from "../platform/process-list.js";
 import { listWindows } from "../platform/windows-list.js";
 
-interface RuntimeStub {
+interface RuntimeFixture {
   cache: Map<string, unknown>;
   computerUse: ComputerUseService | null;
   runtime: IAgentRuntime;
@@ -41,7 +41,7 @@ interface RuntimeStub {
 
 function makeRuntime(
   opts: { taskGoal?: unknown; scene?: Scene | null } = {},
-): RuntimeStub {
+): RuntimeFixture {
   const cache = new Map<string, unknown>();
   if (opts.taskGoal !== undefined) {
     cache.set(VISION_CONTEXT_TASK_GOAL_CACHE_KEY, opts.taskGoal);

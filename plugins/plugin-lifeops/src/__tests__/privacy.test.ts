@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 
 const CONNECTOR_ACCOUNT_SERVICE_TYPE = "connector_account";
 
-// Stub the runtime values pulled in from @elizaos/core so the test does not
+// Replace the runtime values pulled in from @elizaos/core so the test does not
 // transitively load advanced-capabilities action specs (which require build
 // artifacts that may not be present in this test environment). Type-only
 // imports above are erased at runtime and do not trigger this load.

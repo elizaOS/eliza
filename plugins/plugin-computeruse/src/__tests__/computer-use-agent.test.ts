@@ -1,7 +1,7 @@
 /**
  * WS7 — Agent loop integration test (no live screen).
  *
- * Drives `runComputerUseAgentLoop` with fully synthetic deps: a stub Brain,
+ * Drives `runComputerUseAgentLoop` with fully synthetic deps: a fake Brain,
  * a fake `captureAll` that emits a hand-rolled PNG, and a fake service that
  * returns a deterministic Scene. Asserts:
  *
@@ -83,7 +83,7 @@ async function captureAll(): Promise<DisplayCapture[]> {
   return Array.from(fakeCaptures().values());
 }
 
-describe("runComputerUseAgentLoop — stubbed Brain", () => {
+describe("runComputerUseAgentLoop — fake Brain", () => {
   it("terminates cleanly on `finish`", async () => {
     const brain = new Brain(null, {
       invokeModel: async () =>

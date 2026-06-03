@@ -116,7 +116,7 @@ describe("SandboxRegistry (agent runtime)", () => {
 });
 
 describe("buildSandboxRegistryFromEnv", () => {
-  it("returns null when the SANDBOX_REGISTRY_* env is incomplete (feature flag off)", () => {
+  it("returns null when the SANDBOX_REGISTRY_* env has missing fields (feature flag off)", () => {
     expect(buildSandboxRegistryFromEnv({})).toBeNull();
     expect(
       buildSandboxRegistryFromEnv({

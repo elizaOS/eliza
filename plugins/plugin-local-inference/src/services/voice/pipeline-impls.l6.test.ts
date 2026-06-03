@@ -2,7 +2,7 @@
  * L6 — event-driven cancellation tests for `cancelToSignal` in
  * `pipeline-impls.ts`. The function is module-internal; we exercise it
  * through `MtpDraftProposer.propose`, which is the only public
- * caller. The `MtpTextRunner` stub records the `AbortSignal` it
+ * caller. The `MtpTextRunner` fake records the `AbortSignal` it
  * received so we can assert it aborts synchronously on `onCancel()`.
  */
 

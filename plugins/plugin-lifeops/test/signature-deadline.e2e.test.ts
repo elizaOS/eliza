@@ -11,10 +11,10 @@
  *
  * Gate: ELIZA_LIVE_TEST=1 + provider key + Twilio mock available.
  *
- * NOTE: Full automatic escalation timing is not yet implemented in the
- * lifeops background scheduler.  The test verifies that the agent can
- * be triggered manually to initiate the signing flow, and asserts the
- * outbound Twilio call appears in the mock ledger on second nudge.
+ * NOTE: Automatic timeout-to-escalation scheduling is covered by
+ * `test/signature-deadline-scheduler.test.ts`. This live journey stays
+ * model-focused: it verifies that the agent can be triggered manually to
+ * initiate the signing flow and enqueue the approval request.
  */
 
 import crypto from "node:crypto";
@@ -137,9 +137,5 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
         `Agent must enqueue a sign_document approval referencing the NDA. Approvals=${pending.length}, reply=${reply}`,
       ).toBe(true);
     }, 120_000);
-
-    it.todo(
-      "escalates via SMS 4 hours before if NDA is still unsigned (requires background scheduler support)",
-    );
   },
 );

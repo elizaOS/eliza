@@ -177,28 +177,19 @@ async function createCodingContainer(
     );
   }
 
-  // ── Idempotency: return existing running/pending sandbox if present ──────
-  // Prevents duplicate rows on client retries. Query by dockerImage +
-  // organizationId for a non-terminal sandbox row before creating a new one.
-  // Note: this is a best-effort guard; a small race window exists between the
-  // check and the insert. The provision job is also idempotent via
-  // enqueueAgentProvisionOnce, so duplicate job creation is safe.
-  // TODO: add a unique index on (organization_id, docker_image) filtered to
-  // status IN ('pending','running') for a fully race-free guard.
-  const existingSandboxes = await elizaSandboxService.listAgents(
-    user.organization_id,
-  );
-  const ACTIVE_STATUSES = new Set([
-    "pending",
-    "provisioning",
-    "running",
-  ] as const);
-  const existing = existingSandboxes.find(
-    (s) =>
-      s.docker_image === payload.image &&
-      ACTIVE_STATUSES.has(s.status as "pending" | "provisioning" | "running"),
-  );
-  if (existing) {
+  // ── Idempotency: serialize by (organization, image) and return the active row.
+  // The service takes a transaction-scoped advisory lock before checking for a
+  // pending/provisioning/running sandbox, closing retry races without applying a
+  // broad schema constraint that would collide with warm-pool rows.
+  const createResult = await elizaSandboxService.createCodingContainerAgent({
+    organizationId: user.organization_id,
+    userId: user.id,
+    agentName: payload.name || payload.project_name,
+    environmentVars: payload.environment_vars,
+    dockerImage: payload.image,
+  });
+  if (createResult.idempotent) {
+    const existing = createResult.agent;
     logger.info(
       "[CodingContainers API] returning existing active sandbox (idempotency)",
       {
@@ -218,14 +209,8 @@ async function createCodingContainer(
     );
   }
 
-  // ── Create the sandbox row carrying the custom image + coding env vars ──
-  const sandbox = await elizaSandboxService.createAgent({
-    organizationId: user.organization_id,
-    userId: user.id,
-    agentName: payload.name || payload.project_name,
-    environmentVars: payload.environment_vars,
-    dockerImage: payload.image,
-  });
+  // ── Use the newly-created sandbox row carrying the custom image + coding env vars ──
+  const sandbox = createResult.agent;
 
   // ── Inject the container's own public URL as PUBLIC_BASE_URL ──────────────
   // The sandbox id exists now (pre-provision) and the per-agent gateway serves

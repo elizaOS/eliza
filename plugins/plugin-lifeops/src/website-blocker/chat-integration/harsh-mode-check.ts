@@ -9,7 +9,7 @@ import { BLOCK_RULES_TABLE } from "./block-rule-schema.js";
  * a window of unprotected state.
  *
  * Returns false when the runtime database adapter is unavailable
- * (e.g. unit tests with a stub runtime). The hosts-file engine has no
+ * (e.g. unit tests with a minimal runtime fixture). The hosts-file engine has no
  * rule store of its own, so an unconfigured runtime cannot have rules.
  */
 export async function hasActiveHarshNoBypassRule(

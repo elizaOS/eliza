@@ -796,7 +796,7 @@ export class VoiceRunMetrics {
 		const lastMb = rssN > 0 ? (this.rssSamples[rssN - 1] as number) : null;
 		const maxMb = rssN > 0 ? Math.max(...this.rssSamples) : null;
 		// Leak heuristic: ≥4 samples, monotone non-decreasing, and grew by more
-		// than the threshold (default 256 MB). Not a proof — a flag.
+		// than the threshold (default 256 MB). This is a warning flag.
 		const threshold = this.opts.leakGrowthMbThreshold ?? 256;
 		let monotone = rssN >= 4;
 		for (let i = 1; i < rssN; i++) {

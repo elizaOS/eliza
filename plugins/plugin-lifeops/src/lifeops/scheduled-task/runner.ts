@@ -888,7 +888,7 @@ export function createScheduledTaskRunner(
     const task = await deps.store.get(taskId);
     if (!task) throw new Error(`pipeline: task ${taskId} not found`);
     // D12: when callers invoke pipeline("failed") (or any terminal state the
-    // runner did not yet record), bring the parent's terminal state into
+    // runner has not recorded), bring the parent's terminal state into
     // alignment with the dispatched outcome before propagating to children.
     // `apply("complete" | "skip")` already writes the matching status, so we
     // only flip when the parent is still live and the outcome differs.

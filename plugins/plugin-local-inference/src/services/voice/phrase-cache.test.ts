@@ -158,7 +158,7 @@ describe("EngineVoiceBridge phrase prewarm + first-audio filler", () => {
 		rmSync(bundleRoot, { recursive: true, force: true });
 	});
 
-	it("hasRealTtsBackend() is false for the stub backend", () => {
+	it("hasRealTtsBackend() is false for the silent backend", () => {
 		const bridge = EngineVoiceBridge.start({
 			bundleRoot,
 			useFfiBackend: false,

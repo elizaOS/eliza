@@ -43,7 +43,7 @@ const CONVERTED_PLUGINS = [
   "plugin-lifeops",
 ] as const;
 
-/** Views not yet converted — must be empty for the ratchet to be satisfied. */
+/** Remaining views to convert; must stay empty for the ratchet to pass. */
 const PENDING_PLUGINS: readonly string[] = [];
 
 function walkTsx(dir: string): string[] {

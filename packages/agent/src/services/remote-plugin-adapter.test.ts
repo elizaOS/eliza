@@ -5025,7 +5025,7 @@ function makeRouter(
   const unavailable = async () => {
     throw new CapabilityError({
       code: "CAPABILITY_UNAVAILABLE",
-      message: "not implemented",
+      message: "capability unavailable in test router",
       capability: "plugin",
     });
   };

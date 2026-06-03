@@ -691,7 +691,7 @@ describe("LifeOps messaging mixin runtime delegation", () => {
     });
   });
 
-  it("reports WhatsApp missing hooks when the runtime service is connected but incomplete", async () => {
+  it("reports WhatsApp missing hooks when the runtime service is connected but missing send hooks", async () => {
     const service = serviceWithConnectorGrants({
       services: {
         whatsapp: {

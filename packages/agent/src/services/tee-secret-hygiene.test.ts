@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
  * or a telemetry/crash serializer. Commandment 9 + the TEE contract require
  * that decrypted weights/keys stay in process memory and never leak to logs,
  * env dumps, or crash reports. This runs in the normal `bun test` lane so a
- * future edit that logs a secret fails CI immediately.
+ * later edit that logs a secret fails CI immediately.
  *
  * It deliberately matches secret *material* identifiers, not scope labels:
  * logging the string "model-key" (the key id) is fine; logging the decrypted
@@ -69,7 +69,7 @@ describe("TEE confidential-module secret hygiene (A9)", () => {
  * serialized output. The unseal/key-release scopes (`model-key`,
  * `state-volume`, `keyMaterial`, `masterSecret`, `privateKey`, `weights`, …)
  * must never appear as a field these serializers emit. Today none do; this is a
- * regression gate so a future edit that pipes a secret scope into a crash report
+ * regression gate so a later edit that pipes a secret scope into a crash report
  * or telemetry payload fails CI immediately.
  *
  * Like the part-1 scan it matches code, not comments: a doc-comment mentioning

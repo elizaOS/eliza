@@ -363,7 +363,7 @@ export interface TranscriptMetadataDefaults {
 
 /**
  * True when the loaded fused library has a working streaming ASR decoder
- * (not just the v2 symbols — the stub exports them but `asrStreamSupported`
+ * (not just the v2 symbols — an ABI-only build exports them but `asrStreamSupported`
  * returns false). This is the gate `createStreamingTranscriber` uses to
  * pick the fused path over the fused-batch interim adapter.
  */
@@ -480,9 +480,9 @@ export interface FfiBatchTranscriberOptions {
 /**
  * Interim streaming-ASR adapter over the fused `libelizainference` **batch**
  * decoder (`eliza_inference_asr_transcribe`, ABI v1). The fused build's true
- * streaming decoder (`eliza_inference_asr_stream_*`, ABI v2) is W7's job and
- * is an honest stub today; until it lands this adapter is the contract-clean
- * interim — it runs inside the one shipped llama.cpp/GGML build and emits
+ * streaming decoder (`eliza_inference_asr_stream_*`, ABI v2) reports unsupported
+ * until its runtime lands; this adapter is the contract-clean interim — it runs
+ * inside the one shipped llama.cpp/GGML build and emits
  * Qwen2-BPE token-vocab text (AGENTS.md §1, §4), so no second ggml is
  * vendored and no tokenizer-family mismatch is introduced.
  *

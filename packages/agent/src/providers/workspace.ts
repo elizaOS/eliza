@@ -227,7 +227,7 @@ function normalizeBoilerplateText(value: string): string {
 
 /**
  * Returns true if the file content matches the built-in boilerplate template.
- * Used to skip injecting generic placeholder docs into the prompt.
+ * Used to skip injecting generic boilerplate docs into the prompt.
  */
 export function isDefaultBoilerplate(name: string, content: string): boolean {
   const templates = [

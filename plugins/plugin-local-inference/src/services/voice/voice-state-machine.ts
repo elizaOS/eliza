@@ -105,7 +105,7 @@ export type VoiceStateEvent =
  *
  *   - `resumed` — `speech-active` re-entered LISTENING; the draft was
  *                 speculative against a transcript that turned out to be
- *                 incomplete.
+ *                 still provisional.
  *   - `barge-in` — the user interrupted while the agent was speaking; the
  *                  draft's downstream TTS has already been hard-stopped.
  *   - `shutdown` — `dispose()` was called.
@@ -196,7 +196,7 @@ export interface VoiceStateMachineOptions {
 	 * Whether to actually call into the `CheckpointManager`. When `false`,
 	 * the state machine still transitions through the same states but
 	 * never saves/restores. Default `true` — callers turn the feature off
-	 * here when upstream `--ctx-checkpoints` is not yet available.
+	 * here when upstream `--ctx-checkpoints` is unavailable.
 	 */
 	enableCheckpoints?: boolean;
 	/**
@@ -484,7 +484,7 @@ export class VoiceStateMachine {
 		this.abortActiveDraft("resumed");
 		// C7 — drop the in-flight prefill (SPEECH_ACTIVE_REBOUND). The prefill
 		// checkpoint will be cleaned up by the server's slot-reuse eviction
-		// (no explicit discard REST call available in the stub path).
+		// (no explicit discard REST call is available on the emulated path).
 		this.prefillPromise = null;
 		if (this.enabled && this.checkpoint) {
 			const handle = this.checkpoint;

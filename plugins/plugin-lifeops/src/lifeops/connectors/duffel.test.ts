@@ -61,7 +61,7 @@ describe("createDuffelConnectorContribution", () => {
     });
   });
 
-  it("rejects incomplete flight searches before reading credentials", async () => {
+  it("rejects flight searches with missing fields before reading credentials", async () => {
     const connector = createDuffelConnectorContribution({} as IAgentRuntime);
 
     await expect(

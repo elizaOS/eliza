@@ -64,7 +64,7 @@ export const markFollowupDoneAction: Action = {
   ],
   description:
     "Mark a contact as already followed-up-with (updates lastContactedAt to now). " +
-    "Use this only when the interaction already happened, not for future reminders. " +
+    "Use this only when the interaction already happened, not for upcoming reminders. " +
     "Requires either an explicit contactId (UUID) or an unambiguous contactName. " +
     "Ambiguous names return a clarifying response without modifying any contact.",
   contexts: ["contacts", "tasks", "calendar", "messaging"],

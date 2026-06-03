@@ -280,7 +280,7 @@ export function validateChannel(
       registered: true,
       connected: false,
       fallbackToInApp: true,
-      warning: `Channel "${normalized}" is registered but not yet connected — your reminders will fall back to in-app until you connect it.`,
+      warning: `Channel "${normalized}" is registered but currently disconnected — your reminders will fall back to in-app until you connect it.`,
     };
   }
   return {

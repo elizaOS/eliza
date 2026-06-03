@@ -76,9 +76,9 @@ function latestRunForApp(
   return { run: matchingRuns[0] ?? null, matchingRuns };
 }
 
-function stubComponent(name: string) {
+function fixtureComponent(name: string) {
   return ({ children }: { children?: ReactTypes.ReactNode }) =>
-    React.createElement("div", { "data-stub": name }, children);
+    React.createElement("div", { "data-fixture": name }, children);
 }
 
 const uiMock = vi.hoisted(() => ({
@@ -88,12 +88,12 @@ const uiMock = vi.hoisted(() => ({
   Input: (props: ReactTypes.InputHTMLAttributes<HTMLInputElement>) =>
     React.createElement("input", props),
   client: { sendAppRunMessage, controlAppRun },
-  GameOperatorShell: stubComponent("GameOperatorShell"),
-  SurfaceBadge: stubComponent("SurfaceBadge"),
-  SurfaceCard: stubComponent("SurfaceCard"),
-  SurfaceEmptyState: stubComponent("SurfaceEmptyState"),
-  SurfaceGrid: stubComponent("SurfaceGrid"),
-  SurfaceSection: stubComponent("SurfaceSection"),
+  GameOperatorShell: fixtureComponent("GameOperatorShell"),
+  SurfaceBadge: fixtureComponent("SurfaceBadge"),
+  SurfaceCard: fixtureComponent("SurfaceCard"),
+  SurfaceEmptyState: fixtureComponent("SurfaceEmptyState"),
+  SurfaceGrid: fixtureComponent("SurfaceGrid"),
+  SurfaceSection: fixtureComponent("SurfaceSection"),
   formatDetailTimestamp: (value: unknown) => String(value ?? ""),
   selectLatestRunForApp: latestRunForApp,
   toneForHealthState: () => "neutral",

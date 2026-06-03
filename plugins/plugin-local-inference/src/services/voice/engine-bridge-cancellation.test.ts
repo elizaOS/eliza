@@ -18,7 +18,7 @@
  *      firing the scheduler's `BargeInController.hardStop` to assert
  *      the canonical token aborts with reason="barge-in".
  *
- * The bridge here runs against the stub TTS backend + injected lifecycle
+ * The bridge here runs against the silent TTS backend + injected lifecycle
  * loaders so the tests don't depend on a fused libelizainference build.
  * The W3-9 contract is unchanged on this path: the coordinator owns the
  * token, the bridge owns the coordinator, the state machine reads the
@@ -115,7 +115,7 @@ function noopCheckpointManager(): import("./checkpoint-manager").CheckpointManag
 	};
 }
 
-/** EOT classifier stub — always returns the prepared probability. */
+/** EOT classifier fake — always returns the prepared probability. */
 function fixedEotClassifier(prob: number) {
 	return {
 		async score(_partial: string): Promise<number> {

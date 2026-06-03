@@ -350,7 +350,7 @@ function buildMockActions(): Action[] {
     handler: async (_rt, _msg, _state, options) => {
       const params = options.parameters as Record<string, unknown>;
       const title = (params?.title as string) ?? "Untitled meeting";
-      const time = (params?.time as string) ?? "TBD";
+      const time = (params?.time as string) ?? "unspecified";
       const attendees = (params?.attendees as string) ?? "";
       printStage(
         "TOOL",

@@ -226,7 +226,7 @@ describe("compactActionsForIntent with view-scoped actions", () => {
     "12:00 User: hello there",
   ].join("\n");
 
-  it("stubs an action's params when neither intent nor view keeps it", () => {
+  it("summarizes an action's params when neither intent nor view keeps it", () => {
     const out = compactActionsForIntent(PROMPT);
     // PLAY_EMOTE param schema is dropped for plain chat with no active view…
     expect(out).toContain("- PLAY_EMOTE: play an avatar emote");
@@ -242,7 +242,7 @@ describe("compactActionsForIntent with view-scoped actions", () => {
     );
     // The companion view scopes PLAY_EMOTE → its params survive compaction.
     expect(out).toContain("emote: string, intensity: number");
-    // The unrelated action is still stubbed.
+    // The unrelated action still loses param detail.
     expect(out).not.toContain("foo: string");
   });
 
@@ -267,7 +267,7 @@ describe("compactActionsForIntent with view-scoped actions", () => {
     }
     // Weighting: the companion view's PLAY_EMOTE keeps full params…
     expect(prompt).toContain("emote: string, intensity: number");
-    // …unrelated action stays stubbed…
+    // …unrelated action stays summarized…
     expect(prompt).not.toContain("foo: string");
     // …and awareness is injected once, before the action catalogue.
     expect(prompt).toContain("# Active View");

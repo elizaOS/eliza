@@ -530,7 +530,7 @@ describe("GgmlSileroVad", () => {
 		});
 	});
 
-	it("VadUnavailableError code 'ffi-missing' is the canonical signal for a stub libelizainference build", () => {
+	it("VadUnavailableError code 'ffi-missing' is the canonical signal for an ABI-only libelizainference build", () => {
 		const err = new VadUnavailableError("ffi-missing", "no symbols");
 		expect(err).toBeInstanceOf(VadUnavailableError);
 		expect(err.code).toBe("ffi-missing");

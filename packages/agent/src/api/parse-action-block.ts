@@ -1,5 +1,5 @@
 /**
- * Local stub for CoordinationLLMResponse — removed from
+ * Local compatibility type for CoordinationLLMResponse — removed from
  * @elizaos/plugin-agent-orchestrator 2.x.
  */
 export interface CoordinationLLMResponse {

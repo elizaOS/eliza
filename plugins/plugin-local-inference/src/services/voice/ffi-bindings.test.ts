@@ -335,7 +335,7 @@ describe("ffi-bindings — integration via bun subprocess against stub dylib", (
 		expect(report.threwLifecycleError).toBe(true);
 		expect(report.errorCode).toBe("kernel-missing");
 		// The C stub's diagnostic must surface verbatim.
-		expect(report.errorMessage).toMatch(/not implemented in stub/);
+		expect(report.errorMessage).toMatch(/unsupported in ABI-only build/);
 	});
 
 	it("mmapEvict against the stub returns ELIZA_ERR_NOT_IMPLEMENTED as a structured error", () => {
@@ -343,7 +343,7 @@ describe("ffi-bindings — integration via bun subprocess against stub dylib", (
 		expectHarnessOk(report);
 		expect(report.threwLifecycleError).toBe(true);
 		expect(report.errorCode).toBe("kernel-missing");
-		expect(report.errorMessage).toMatch(/not implemented in stub/);
+		expect(report.errorMessage).toMatch(/unsupported in ABI-only build/);
 	});
 
 	it("mmapAcquire against the stub returns ELIZA_ERR_NOT_IMPLEMENTED as a structured error", () => {
@@ -353,7 +353,7 @@ describe("ffi-bindings — integration via bun subprocess against stub dylib", (
 		expectHarnessOk(report);
 		expect(report.threwLifecycleError).toBe(true);
 		expect(report.errorCode).toBe("kernel-missing");
-		expect(report.errorMessage).toMatch(/not implemented in stub/);
+		expect(report.errorMessage).toMatch(/unsupported in ABI-only build/);
 	});
 
 	it("stub advertises native VAD unsupported", () => {

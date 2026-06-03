@@ -64,7 +64,7 @@ export type { RamBudget } from "./types.js";
 
 /**
  * Loader contract — keeps the helper testable without touching disk.
- * Production callers pass `defaultManifestLoader`; tests inject a stub.
+ * Production callers pass `defaultManifestLoader`; tests inject a fake loader.
  */
 export type ManifestLoader = (
 	modelId: string,

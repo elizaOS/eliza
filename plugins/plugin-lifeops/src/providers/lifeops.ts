@@ -162,7 +162,7 @@ function summarizeActiveGoals(
     const reviewedAtIso = readGoalReviewedAt(goal);
     const lastReviewedFragment = reviewedAtIso
       ? `last reviewed ${formatRelativePast(reviewedAtIso, now)}`
-      : "not yet reviewed";
+      : "review pending";
     return `- ${truncateGoalTitle(goal.title)} (${goal.reviewState}, ${lastReviewedFragment})`;
   });
   if (active.length > top.length) {
@@ -566,7 +566,7 @@ export const lifeOpsProvider: Provider = {
           "Use MESSAGE action=read_channel/search with source=x for X/Twitter DMs. Use POST action=read/search with source=x for X/Twitter timeline, mentions, and topic search. Do not route X reads/search to a platform-specific X action.",
           "Use BLOCK target=website for website blocking requests, including timed focus sessions, indefinite distraction blocking, or phrasing like 'block these sites until I finish my workout'. Clarify duration or unblock expectations when details are ambiguous; there is no separate todo-gated website block action.",
           "Use ROOM for targeted connector chat mute/unmute when the owner names a Telegram/Discord/etc. room that is not the current chat, especially temporary mutes like 'mute the crypto signals Telegram group for 24 hours'. Pass platform + chatName + durationMinutes; ROOM also handles current-room follow/unfollow/mute/unmute when those parameters are omitted.",
-          "Use COMPUTER_USE for portal uploads, Finder/Desktop work like taking screenshots or creating folders, browser workflows, and file-handling tasks on the owner's machine, including future instructions like 'when I send over the deck, upload it to the portal for me.'",
+          "Use COMPUTER_USE for portal uploads, Finder/Desktop work like taking screenshots or creating folders, browser workflows, and file-handling tasks on the owner's machine, including deferred instructions like 'when I send over the deck, upload it to the portal for me.'",
           "Use MANAGE_BROWSER_BRIDGE for installing/refreshing the Chrome/Safari companion extension and managing companion connection state ('open chrome extensions', 'reveal the bridge folder', 'refresh browser bridge'). Use BROWSER for tab control, navigation, clicks, typing, screenshots, and DOM reads — including LifeOps browser sessions like 'list my browser tabs' or 'navigate the work tab to gmail'.",
           "Use REMOTE_DESKTOP to start, list, check, end, or revoke a remote desktop session so the owner can connect from a phone. Requests like 'start a remote desktop session' or 'let me connect from my phone' belong here even if the action needs confirmation or a pairing step.",
           "Use RESOLVE_REQUEST when the owner is resolving a pending approval item. Examples: 'approve the pending travel booking request' or 'reject that pending approval request and say it needs changes'.",

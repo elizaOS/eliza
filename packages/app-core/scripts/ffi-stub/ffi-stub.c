@@ -14,7 +14,7 @@
  *   - `eliza_inference_destroy()` frees the context.
  *   - `eliza_inference_free_string()` frees library-allocated strings.
  *
- * What returns ELIZA_ERR_NOT_IMPLEMENTED:
+ * What returns the ABI unsupported-operation error code:
  *   - mmap_acquire / mmap_evict — the real implementation requires the
  *     fused build's mmap of the weight files.
  *   - tts_synthesize / tts_synthesize_stream — need OmniVoice.
@@ -30,16 +30,16 @@
  *   - cancel_tts — OK (cancelling nothing is not an error).
  *   - set_verifier_callback — OK no-op (no native speculative loop).
  *
- * What returns 0 (capability probes — "this build does not implement
- * the streaming path"):
+ * What returns 0 (capability probes — "this ABI-only build has no
+ * streaming path"):
  *   - tts_stream_supported, asr_stream_supported.
  *   - vad_supported.
  *
  * Per `packages/inference/AGENTS.md` §3 + §9: the stub does NOT
  * fabricate fake outputs, does NOT log, does NOT pretend success.
- * Every entry that requires the real fused build returns the
- * structured "not implemented" code with a diagnostic the binding
- * surfaces as `VoiceLifecycleError({ code: "missing-ffi" })`.
+ * Every entry that requires the real fused build returns the structured
+ * unsupported-operation code with a diagnostic the binding surfaces as
+ * `VoiceLifecycleError({ code: "missing-ffi" })`.
  */
 
 #include "ffi.h"
@@ -148,7 +148,7 @@ int eliza_inference_mmap_acquire(
         return ELIZA_ERR_INVALID_ARG;
     }
     set_error(out_error,
-        "[libelizainference-stub] mmap_acquire: not implemented in stub — fused build required");
+        "[libelizainference-stub] mmap_acquire: unsupported in ABI-only build — fused build required");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
@@ -168,7 +168,7 @@ int eliza_inference_mmap_evict(
         return ELIZA_ERR_INVALID_ARG;
     }
     set_error(out_error,
-        "[libelizainference-stub] mmap_evict: not implemented in stub — fused build required");
+        "[libelizainference-stub] mmap_evict: unsupported in ABI-only build — fused build required");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
@@ -199,7 +199,7 @@ int eliza_inference_tts_synthesize(
         return ELIZA_ERR_INVALID_ARG;
     }
     set_error(out_error,
-        "[libelizainference-stub] tts_synthesize: not implemented in stub — fused build required");
+        "[libelizainference-stub] tts_synthesize: unsupported in ABI-only build — fused build required");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
@@ -235,7 +235,7 @@ int eliza_inference_tts_synthesize_stream(
         return ELIZA_ERR_INVALID_ARG;
     }
     set_error(out_error,
-        "[libelizainference-stub] tts_synthesize_stream: not implemented in stub — fused build required");
+        "[libelizainference-stub] tts_synthesize_stream: unsupported in ABI-only build — fused build required");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
@@ -295,7 +295,7 @@ int eliza_inference_encode_reference(
         return ELIZA_ERR_INVALID_ARG;
     }
     set_error(out_error,
-        "[libelizainference-stub] encode_reference: not implemented in stub — fused build required");
+        "[libelizainference-stub] encode_reference: unsupported in ABI-only build — fused build required");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
@@ -327,7 +327,7 @@ EliVad * eliza_inference_vad_open(
         return NULL;
     }
     set_error(out_error,
-        "[libelizainference-stub] vad_open: not implemented in stub — fused build required");
+        "[libelizainference-stub] vad_open: unsupported in ABI-only build — fused build required");
     return NULL;
 }
 
@@ -343,7 +343,7 @@ int eliza_inference_vad_process(
     (void)n_samples;
     (void)out_probability;
     set_error(out_error,
-        "[libelizainference-stub] vad_process: not implemented in stub — fused build required");
+        "[libelizainference-stub] vad_process: unsupported in ABI-only build — fused build required");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
@@ -353,7 +353,7 @@ int eliza_inference_vad_reset(
 {
     (void)vad;
     set_error(out_error,
-        "[libelizainference-stub] vad_reset: not implemented in stub — fused build required");
+        "[libelizainference-stub] vad_reset: unsupported in ABI-only build — fused build required");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
@@ -387,7 +387,7 @@ EliWakeWord * eliza_inference_wakeword_open(
         return NULL;
     }
     set_error(out_error,
-        "[libelizainference-stub] wakeword_open: not implemented in stub — fused build with wake-word GGUF runtime required");
+        "[libelizainference-stub] wakeword_open: unsupported in ABI-only build — fused build with wake-word GGUF runtime required");
     return NULL;
 }
 
@@ -403,7 +403,7 @@ int eliza_inference_wakeword_score(
     (void)n_samples;
     (void)out_probability;
     set_error(out_error,
-        "[libelizainference-stub] wakeword_score: not implemented in stub — fused build with wake-word GGUF runtime required");
+        "[libelizainference-stub] wakeword_score: unsupported in ABI-only build — fused build with wake-word GGUF runtime required");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
@@ -413,7 +413,7 @@ int eliza_inference_wakeword_reset(
 {
     (void)wake;
     set_error(out_error,
-        "[libelizainference-stub] wakeword_reset: not implemented in stub — fused build with wake-word GGUF runtime required");
+        "[libelizainference-stub] wakeword_reset: unsupported in ABI-only build — fused build with wake-word GGUF runtime required");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
@@ -444,7 +444,7 @@ int eliza_inference_asr_transcribe(
         return ELIZA_ERR_INVALID_ARG;
     }
     set_error(out_error,
-        "[libelizainference-stub] asr_transcribe: not implemented in stub — fused build required");
+        "[libelizainference-stub] asr_transcribe: unsupported in ABI-only build — fused build required");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
@@ -472,7 +472,7 @@ EliAsrStream * eliza_inference_asr_stream_open(
         return NULL;
     }
     set_error(out_error,
-        "[libelizainference-stub] asr_stream_open: not implemented in stub — fused build required");
+        "[libelizainference-stub] asr_stream_open: unsupported in ABI-only build — fused build required");
     return NULL;
 }
 
@@ -486,7 +486,7 @@ int eliza_inference_asr_stream_feed(
     (void)pcm;
     (void)n_samples;
     set_error(out_error,
-        "[libelizainference-stub] asr_stream_feed: not implemented in stub — fused build required");
+        "[libelizainference-stub] asr_stream_feed: unsupported in ABI-only build — fused build required");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
@@ -504,7 +504,7 @@ int eliza_inference_asr_stream_partial(
     (void)out_tokens;
     (void)io_n_tokens;
     set_error(out_error,
-        "[libelizainference-stub] asr_stream_partial: not implemented in stub — fused build required");
+        "[libelizainference-stub] asr_stream_partial: unsupported in ABI-only build — fused build required");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
@@ -522,7 +522,7 @@ int eliza_inference_asr_stream_finish(
     (void)out_tokens;
     (void)io_n_tokens;
     set_error(out_error,
-        "[libelizainference-stub] asr_stream_finish: not implemented in stub — fused build required");
+        "[libelizainference-stub] asr_stream_finish: unsupported in ABI-only build — fused build required");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 

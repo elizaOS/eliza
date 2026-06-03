@@ -166,7 +166,7 @@ describe("dlopen-gate", () => {
 	});
 
 	describe("store build on non-darwin", () => {
-		// Skipped on darwin: we cannot stub `process.platform` (the value is
+		// Skipped on darwin: we cannot replace `process.platform` (the value is
 		// baked into the module-load decision in getBundleContentsRoot); we
 		// document the no-op behavior here and rely on the platform check at
 		// the top of assertDlopenPathAllowed.

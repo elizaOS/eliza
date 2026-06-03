@@ -8,7 +8,7 @@
  *   - `MtpTargetVerifier` derives accept tokens + `done` from the
  *     server's streamed deltas (and falls back to splitting plain text)
  *   - the impls drive a real `VoicePipeline` end-to-end through a
- *     `VoiceScheduler` (wired-through path) with a stub `StreamingTranscriber`
+ *     `VoiceScheduler` (wired-through path) with a fake `StreamingTranscriber`
  */
 
 import { describe, expect, it } from "vitest";
@@ -45,10 +45,10 @@ const audio: TranscriptionAudio = {
 };
 
 /**
- * Minimal `StreamingTranscriber` stub for the wired-through test: `feed`
+ * Minimal `StreamingTranscriber` fake for the wired-through test: `feed`
  * accumulates nothing, `flush()` returns the supplied transcript.
  */
-function stubTranscriber(transcript: string): StreamingTranscriber {
+function fakeTranscriber(transcript: string): StreamingTranscriber {
 	return {
 		feed: () => {},
 		async flush(): Promise<TranscriptUpdate> {
@@ -128,7 +128,7 @@ describe("MissingAsrTranscriber", () => {
 				ringBufferCapacity: 4096,
 				sampleRate: 24000,
 			},
-			{ backend: new StubBackend(), sink },
+			{ backend: new FakeBackend(), sink },
 		);
 		const pipeline = new VoicePipeline(
 			{
@@ -235,7 +235,7 @@ describe("MtpTargetVerifier", () => {
 
 describe("wired-through VoicePipeline (StreamingTranscriber + llama-server draft/verify)", () => {
 	it("runs ASR → draft∥verify → chunker → TTS end to end", async () => {
-		const transcriber = stubTranscriber("hi");
+		const transcriber = fakeTranscriber("hi");
 		// Round 1: drafter proposes ["foo."], verifier accepts ["foo.", " bar."]
 		//   (budget for a 1-token draft = 2; produced == 2 → not done).
 		// Round 2: drafter proposes nothing (empty), verifier accepts ["end."]
@@ -259,7 +259,7 @@ describe("wired-through VoicePipeline (StreamingTranscriber + llama-server draft
 				ringBufferCapacity: 4096,
 				sampleRate: 24000,
 			},
-			{ backend: new StubBackend(), sink },
+			{ backend: new FakeBackend(), sink },
 		);
 		const pipeline = new VoicePipeline(
 			{ scheduler, transcriber, drafter, verifier },
@@ -274,7 +274,7 @@ describe("wired-through VoicePipeline (StreamingTranscriber + llama-server draft
 	});
 });
 
-class StubBackend {
+class FakeBackend {
 	async synthesize(args: {
 		phrase: { id: number; fromIndex: number; toIndex: number };
 		cancelSignal: { cancelled: boolean };

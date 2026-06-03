@@ -2196,7 +2196,7 @@ def _sample_value_for_param(p: dict, plugin: str, action_name: str, idx: int,
         return ["button.submit", "#search", "input[name=email]",
                 ".tab-bar > a"][idx % 4]
     if n in ("oldtext", "old_text", "find"):
-        return ["TODO", "console.log", "deprecated"][idx % 3]
+        return ["legacyCall", "console.log", "deprecated"][idx % 3]
     if n in ("newtext", "new_text", "replace"):
         return ["// done", "logger.info", "current"][idx % 3]
     if n == "encoding":

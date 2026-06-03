@@ -1,9 +1,9 @@
 /**
  * Wiring / cancel / shape test for the two-agents-talking-endlessly path the
- * `voice:duet` harness drives — run headlessly with stub backends + the
+ * `voice:duet` harness drives — run headlessly with fake backends + the
  * `DuetAudioBridge`:
  *
- *   agent A `replyText` → A's (stub) TTS → DuetSink (24 kHz → 16 kHz) → a ring
+ *   agent A `replyText` → A's fake TTS → DuetSink (24 kHz → 16 kHz) → a ring
  *   → B's `PushMicSource` → B's VAD/ASR → B's `generate` → B's `replyText` →
  *   B's TTS → A's ring → … (3 round-trips).
  *
@@ -46,11 +46,11 @@ import type {
 const TTS_RATE = 24_000;
 const ASR_RATE = 16_000;
 
-/** A stub "TTS backend" for the wiring path: each `speak(text)` pushes a
+/** A fake "TTS backend" for the wiring path: each `speak(text)` pushes a
  *  deterministic burst of NON-ZERO 24 kHz PCM into a sink (the `DuetSink`).
- *  (AGENTS.md §3 bans a *silent* stub in production; a clearly-a-test stub
+ *  (AGENTS.md §3 bans silent production fallbacks; a clearly test-only fake
  *  that emits real PCM is fine here.) */
-class StubTts {
+class FakeTts {
 	constructor(
 		private readonly sink: { write(pcm: Float32Array, sr: number): void },
 	) {}
@@ -135,7 +135,7 @@ const vadEnd = (ms: number, dur: number): VadEvent => ({
 	speechDurationMs: dur,
 });
 
-describe("voice:duet — wiring (stub backends + DuetAudioBridge)", () => {
+describe("voice:duet — wiring (fake backends + DuetAudioBridge)", () => {
 	it("resampleLinear: 24 kHz → 16 kHz keeps the 3:2 sample ratio; no-op when rates match", () => {
 		const a = new Float32Array(48_000);
 		for (let i = 0; i < a.length; i++) a[i] = Math.sin(i / 100);
@@ -173,8 +173,8 @@ describe("voice:duet — wiring (stub backends + DuetAudioBridge)", () => {
 		await pushA.start();
 		await pushB.start();
 
-		const ttsA = new StubTts(bridge.sinkForA());
-		const ttsB = new StubTts(bridge.sinkForB());
+		const ttsA = new FakeTts(bridge.sinkForA());
+		const ttsB = new FakeTts(bridge.sinkForB());
 		const vadB = new ScriptableVad();
 		const transcriberB = new TestTranscriber("that's an interesting point");
 		const vadA = new ScriptableVad();
@@ -219,7 +219,7 @@ describe("voice:duet — wiring (stub backends + DuetAudioBridge)", () => {
 			generate: (r: VoiceGenerateRequest) => Promise<VoiceTurnOutcome>;
 		}): Promise<{ outcome: VoiceTurnOutcome; trace: LatencyTrace | null }> => {
 			const turnId = args.myTracer.beginTurn({ roomId: args.roomId });
-			// peer-utterance-end = the producer drained (synchronous for the stub).
+			// peer-utterance-end = the producer drained (synchronous for the fake).
 			args.myTracer.mark(turnId, "peer-utterance-end");
 			args.vad.emit(vadStart(0));
 			for (let i = 0; i < 4; i++) {
@@ -330,7 +330,7 @@ describe("voice:duet — wiring (stub backends + DuetAudioBridge)", () => {
 		const sink = {
 			write: (pcm: Float32Array, sr: number) => sinkChunks.push({ pcm, sr }),
 		};
-		const tts = new StubTts(sink);
+		const tts = new FakeTts(sink);
 		const ctrl = new AbortController();
 		let threw = false;
 		const generate = async (

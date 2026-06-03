@@ -178,7 +178,7 @@ describe("VoiceStateMachine + C7 prefill integration", () => {
 		expect(commits[0].transcript).toBe("how do I bake bread");
 		// The prefill result is attached.
 		expect(commits[0].prefillResult).toBeDefined();
-		expect(commits[0].prefillResult?.backend).toBe("slot-save-stub");
+		expect(commits[0].prefillResult?.backend).toBe("slot-save-emulation");
 		expect(commits[0].prefillResult?.checkpointHandle).toBeDefined();
 	});
 

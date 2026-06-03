@@ -120,7 +120,7 @@ export function resolveEffectiveLadder(
 }
 
 export interface EscalationCursor {
-  /** Current step index. -1 = not yet escalated. */
+  /** Current step index. -1 = escalation has not started. */
   stepIndex: number;
   /** ISO of the most recent dispatch (or task fire for step -1). */
   lastDispatchedAt: string;

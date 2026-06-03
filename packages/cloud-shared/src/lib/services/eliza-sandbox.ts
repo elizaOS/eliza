@@ -5,7 +5,7 @@
 
 import crypto from "node:crypto";
 import { isIP } from "node:net";
-import { sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { type Database, dbWrite } from "../../db/helpers";
 import {
   type AgentBackupSnapshotType,
@@ -20,6 +20,7 @@ import {
   type AgentBackupStateData,
   agentSandboxBackups,
   agentSandboxes,
+  type NewAgentSandbox,
   type NewAgentSandboxBackup,
 } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
@@ -40,7 +41,10 @@ import {
   stripReservedElizaConfigKeys,
   withReusedElizaCharacterOwnership,
 } from "./eliza-agent-config";
-import { elizaProvisionAdvisoryLockSql } from "./eliza-provision-lock";
+import {
+  elizaCodingContainerImageAdvisoryLockSql,
+  elizaProvisionAdvisoryLockSql,
+} from "./eliza-provision-lock";
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
 import { getNeonClient, NeonClientError } from "./neon-client";
 import { JOB_TYPES } from "./provisioning-job-types";
@@ -482,18 +486,13 @@ export class ElizaSandboxService {
 
   // Agent CRUD
 
-  async createAgent(params: CreateAgentParams): Promise<AgentSandbox> {
-    logger.info("[agent-sandbox] Creating agent", {
-      orgId: params.organizationId,
-      name: params.agentName,
-    });
-
+  private buildAgentInsertData(params: CreateAgentParams): NewAgentSandbox {
     const sanitizedConfig = stripReservedElizaConfigKeys(params.agentConfig);
     const agentConfig = params.characterId
       ? withReusedElizaCharacterOwnership(sanitizedConfig)
       : sanitizedConfig;
 
-    return agentSandboxesRepository.create({
+    return {
       organization_id: params.organizationId,
       user_id: params.userId,
       agent_name: params.agentName,
@@ -503,6 +502,58 @@ export class ElizaSandboxService {
       database_status: "none",
       ...(params.characterId && { character_id: params.characterId }),
       ...(params.dockerImage && { docker_image: params.dockerImage }),
+    };
+  }
+
+  async createAgent(params: CreateAgentParams): Promise<AgentSandbox> {
+    logger.info("[agent-sandbox] Creating agent", {
+      orgId: params.organizationId,
+      name: params.agentName,
+    });
+
+    return agentSandboxesRepository.create(this.buildAgentInsertData(params));
+  }
+
+  async createCodingContainerAgent(params: CreateAgentParams & { dockerImage: string }): Promise<{
+    agent: AgentSandbox;
+    idempotent: boolean;
+  }> {
+    logger.info("[agent-sandbox] Creating coding-container agent", {
+      orgId: params.organizationId,
+      name: params.agentName,
+      image: params.dockerImage,
+    });
+
+    return dbWrite.transaction(async (tx) => {
+      await tx.execute(
+        elizaCodingContainerImageAdvisoryLockSql(params.organizationId, params.dockerImage),
+      );
+
+      const [existing] = await tx
+        .select()
+        .from(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.organization_id, params.organizationId),
+            eq(agentSandboxes.docker_image, params.dockerImage),
+            sql`${agentSandboxes.pool_status} IS NULL`,
+            sql`${agentSandboxes.status} IN ('pending', 'provisioning', 'running')`,
+          ),
+        )
+        .orderBy(desc(agentSandboxes.created_at))
+        .for("update")
+        .limit(1);
+
+      if (existing) {
+        return { agent: existing, idempotent: true };
+      }
+
+      const [created] = await tx
+        .insert(agentSandboxes)
+        .values(this.buildAgentInsertData(params))
+        .returning();
+      if (!created) throw new Error("Failed to create coding-container agent record");
+      return { agent: created, idempotent: false };
     });
   }
 

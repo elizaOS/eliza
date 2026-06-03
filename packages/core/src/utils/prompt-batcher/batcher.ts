@@ -973,7 +973,7 @@ export class PromptBatcher {
 						sectionId: section.id,
 						error,
 					},
-					"Prompt batcher contextBuilder failed; using placeholder context",
+					"Prompt batcher contextBuilder failed; using unavailable-context marker",
 				);
 				pieces.push("[context unavailable]");
 			}
@@ -1007,7 +1007,7 @@ export class PromptBatcher {
 							slug,
 							error,
 						},
-						"Prompt batcher context resolver failed; using placeholder context",
+						"Prompt batcher context resolver failed; using unavailable-context marker",
 					);
 					resolvedText = "[context unavailable]";
 				}

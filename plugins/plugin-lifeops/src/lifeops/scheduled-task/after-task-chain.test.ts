@@ -10,7 +10,7 @@
  * `after_task` trigger pointing at the parent, and remains in `scheduled`
  * even after the parent reaches the recorded terminal outcome.
  *
- * If a future runner gains an `after_task` evaluator, the
+ * If the runner gains an `after_task` evaluator, the
  * "child does not auto-fire" assertion below is the contract that needs to
  * change first — making this file the canonical seam.
  */

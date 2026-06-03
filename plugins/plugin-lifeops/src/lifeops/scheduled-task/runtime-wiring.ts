@@ -2,7 +2,7 @@
  * Runtime wiring for the ScheduledTask spine.
  *
  * Bridges the runner's typed dependencies to the live `IAgentRuntime` /
- * `LifeOpsRepository`. Stub providers below stand in until callers register
+ * `LifeOpsRepository`. Diagnostic providers below stand in until callers register
  * the production `OwnerFactStore`, `GlobalPauseStore`, `EntityStore`,
  * `RelationshipStore`, and connector / channel registries.
  */

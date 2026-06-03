@@ -32,7 +32,7 @@ const CONTINUITY_COMMAND_TIMEOUT_MS = 5_000;
 
 /**
  * Injectable shell-runner used by the continuity probe. Defaults to a real
- * `execFile`-backed runner; tests override this with a deterministic stub
+ * `execFile`-backed runner; tests override this with a deterministic fixture
  * instead of touching `xcrun` / `system_profiler` on the developer machine.
  */
 export interface ContinuityShellRunner {
@@ -224,7 +224,7 @@ export async function probeContinuityDevices(args: {
   agentId: string;
   now?: Date;
   /**
-   * Optional shell runner override. Tests inject a stub to avoid spawning
+   * Optional shell runner override. Tests inject a fixture to avoid spawning
    * `xcrun` and `system_profiler` on the host machine.
    */
   shell?: ContinuityShellRunner;

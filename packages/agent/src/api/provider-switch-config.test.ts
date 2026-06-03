@@ -232,7 +232,7 @@ describe("openAiBaseUrlIsThirdParty", () => {
   });
 
   it("returns true for openai.com subdomains other than api.openai.com", () => {
-    // Future-proof: this protects against someone pointing at
+    // Regression guard: this protects against someone pointing at
     // `platform.openai.com` or `dashboard.openai.com` by mistake.
     process.env.OPENAI_BASE_URL = "https://platform.openai.com/v1";
     expect(openAiBaseUrlIsThirdParty()).toBe(true);

@@ -79,10 +79,9 @@ try:
     class VLLMEntropixProcessor(VLLMLP):
         def __init__(self, vocab_size: int, device: torch.device, *_, **__):
             # vLLM v1 passes per-request sampling config through `extra_args`
-            # on the SamplingParams, not the processor ctor — wiring those into
-            # per-request EntropixThresholds is not implemented; this processor
-            # uses the static defaults for every request. Override the module
-            # constants if you need different thresholds for now.
+            # on the SamplingParams, not the processor ctor. This processor
+            # uses static EntropixThresholds for every request; override the
+            # module constants if you need different thresholds for now.
             self.th = EntropixThresholds()
 
         def is_argmax_invariant(self) -> bool:

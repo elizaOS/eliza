@@ -496,7 +496,7 @@ function coercePayload(
     }
     default:
       // For schedule/modify/cancel/book/call/spend the upstream caller has
-      // not yet wired structured payload extraction. We surface null so the
+      // no structured payload extraction. We surface null so the
       // caller can either request approval with a synthesized message or
       // skip this tick. We never fabricate recipients or amounts.
       return null;

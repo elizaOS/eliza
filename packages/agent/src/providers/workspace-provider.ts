@@ -103,7 +103,7 @@ export function buildContext(
   for (const f of files) {
     if (f.missing || !f.content?.trim()) continue;
     // Skip files that are still the default boilerplate — they add ~3k of
-    // generic placeholder text with zero useful context for the model.
+    // generic template text with zero useful context for the model.
     if (isDefaultBoilerplate(f.name, f.content)) continue;
     const trimmed = f.content.trim();
     // Per-file truncation

@@ -324,12 +324,12 @@ export class CheckpointPolicy {
  * The format is the only thing callers outside the policy ever see —
  * `GatedCheckpointManager.getNamedHandle('pre-speculative-T123')` returns
  * the same handle the policy used. Keep it stable; if the format changes
- * in a future PR, audit every consumer of `getNamedHandle`.
+ * in a later change, audit every consumer of `getNamedHandle`.
  */
 export function checkpointNameFor(turnId: string): string {
 	// The gated manager's REST filename validation allows
 	// `[A-Za-z0-9._-]`, and turn ids in the voice loop are short integer
-	// strings. Sanitize defensively for the (unlikely) future where turn
+	// strings. Sanitize defensively for the unlikely case where turn
 	// ids carry colons or slashes.
 	const safe = turnId.replace(/[^A-Za-z0-9._-]/g, "_");
 	return `pre-speculative-T${safe}`;

@@ -326,7 +326,7 @@ describe("scheduled-tasks REST handler", () => {
     );
   });
 
-  it("GET /api/lifeops/dev/registries surfaces every registry kind for runtime composability proof", async () => {
+  it("GET /api/lifeops/dev/registries surfaces every registry kind for runtime composability coverage", async () => {
     const runner = makeRunner();
     const fakeRuntime = {} as AgentRuntime;
 
@@ -421,9 +421,9 @@ describe("scheduled-tasks REST handler", () => {
       builtinKeys: new Set(),
     });
     featureFlagRegistry.register({
-      key: "acme.experiment",
-      label: "Acme experiment",
-      description: "Synthetic feature flag for the composability proof.",
+      key: "acme.beta_feature",
+      label: "Acme beta feature",
+      description: "Synthetic feature flag for composability coverage.",
       defaultEnabled: false,
       namespace: "third_party",
     });
@@ -495,7 +495,7 @@ describe("scheduled-tasks REST handler", () => {
     // Feature flags.
     expect(
       (payload.featureFlags as Array<{ key: string }>).map((f) => f.key),
-    ).toContain("acme.experiment");
+    ).toContain("acme.beta_feature");
   });
 
   it("rejects /api/lifeops/dev/registries when not on loopback", async () => {

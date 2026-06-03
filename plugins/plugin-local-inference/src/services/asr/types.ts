@@ -25,7 +25,7 @@
  *        - `aosp-ffi`        — bun:ffi shim around the AOSP NDK Whisper /
  *          Qwen-ASR JNI handle (unavailable until the AOSP fused
  *          ASR symbols are exported).
- *        - `fake`            — deterministic in-process stub used by tests.
+ *        - `fake`            — deterministic in-process backend used by tests.
  *
  * Cache contract:
  *

@@ -21,7 +21,7 @@
  *         order in the runtime model registry, NOT as a sub-backend of
  *         this capability — Edge TTS is a different `provider` from the
  *         runtime's perspective.
- *       - `fake`      — deterministic in-process stub used by tests.
+ *       - `fake`      — deterministic in-process backend used by tests.
  *
  * Audio format contract:
  *   The arbiter's `speak` request returns Uint8Array. The bytes carry the

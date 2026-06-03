@@ -313,7 +313,7 @@ export function formatWhatsAppPhoneNumber(phoneNumber: string): string {
   if (!normalized) {
     return phoneNumber;
   }
-  // Format as +XX XXX XXX XXXX for display
+  // Format as country code plus grouped local digits for display.
   const digits = normalized.replace(/^\+/, "");
   if (digits.length <= 10) {
     return normalized;

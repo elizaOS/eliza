@@ -2453,7 +2453,7 @@ export async function runLifeOperationHandler(
           : deferredDefinitionDraft?.request.title) ?? params.title,
       );
 
-      // Parameter enhancement fills gaps when structured planner input is incomplete.
+      // Parameter enhancement fills gaps when structured planner input is partial.
       // Skip when options.parameters already contain the complete
       // definition-create shape, or when reusing a confirmed deferred draft.
       let llmPlan: Awaited<

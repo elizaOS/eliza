@@ -6,7 +6,7 @@
  * Until then it returns an empty list so the ViewManagerPage renders gracefully.
  *
  * Polling interval: 30s. The endpoint is expected to be cheap (in-memory list).
- * A future iteration can replace polling with a WebSocket subscription when
+ * Polling can be replaced with a WebSocket subscription when
  * plugins are installed or uninstalled at runtime.
  */
 

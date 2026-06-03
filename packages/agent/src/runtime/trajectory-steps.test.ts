@@ -372,7 +372,7 @@ function createMockRuntime(engine: MockSqlEngine): IAgentRuntime {
   } as unknown as IAgentRuntime;
 }
 
-// Replace drizzle-orm with a stub that gives us the raw SQL text directly.
+// Replace drizzle-orm with a fixture that gives us the raw SQL text directly.
 // We patch the dynamic import cache by intercepting the `import("drizzle-orm")`
 // in `getSqlRaw()` via a module-mock.
 

@@ -243,7 +243,7 @@ function browserReadinessSummary(
     case "stale":
       return "No connected browser companion has checked in recently";
     case "permission_blocked":
-      return "Browser companion permissions or site access are incomplete";
+      return "Browser companion permissions or site access need attention";
   }
 }
 

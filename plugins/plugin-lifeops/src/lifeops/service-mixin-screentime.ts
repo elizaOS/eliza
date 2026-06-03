@@ -1,12 +1,13 @@
 import crypto from "node:crypto";
 import {
-  browserBridgeCompanionIsRecent,
-  browserBridgePermissionsReady,
   type BrowserBridgeCompanionStatus,
   type BrowserBridgeSettings,
+  browserBridgeCompanionIsRecent,
+  browserBridgePermissionsReady,
   isBrowserBridgePaused,
 } from "@elizaos/plugin-browser";
 import {
+  androidUsageRowsFromSignals,
   buildScreenTimeBreakdown,
   buildScreenTimeMetrics,
   buildScreenTimeSummary,
@@ -15,17 +16,16 @@ import {
   computePriorScreenTimeRange,
   computeScreenTimeRange,
   enumerateScreenTimeHistoryDays,
-  androidUsageRowsFromSignals,
-  isSystemInactivityApp,
   isSocialCategory,
+  isSystemInactivityApp,
   mergeScreenTimeAggregateRows,
   mobileScreenTimeDataSourceFromSignals,
+  type ScreenTimeAggregateRow,
+  type ScreenTimeWeeklyAverageItem,
   screenTimeBucketList,
   screenTimeDeviceLabel,
   screenTimeRangeLabel,
   screenTimeSourceLabel,
-  type ScreenTimeAggregateRow,
-  type ScreenTimeWeeklyAverageItem,
 } from "@elizaos/plugin-health";
 import type {
   LifeOpsScreenTimeDaily,
@@ -673,7 +673,7 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
               browserState === "live"
                 ? "Browser focus sessions are included in website totals."
                 : browserState === "partial"
-                  ? "Browser tracking is enabled but permissions, recency, or pause state are incomplete."
+                  ? "Browser tracking is enabled but permissions, recency, or pause state need attention."
                   : "Browser tracking is disabled or no companion is connected.",
           },
           {

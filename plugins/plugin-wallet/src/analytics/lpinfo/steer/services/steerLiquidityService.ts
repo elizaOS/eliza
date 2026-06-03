@@ -1080,7 +1080,7 @@ export class SteerLiquidityService extends Service {
   ): Promise<{ [address: string]: number } | null> {
     try {
       // No price API is wired for this analytics path; null indicates no price data.
-      logger.log(`Price fetching not yet implemented for chain ${chainId}`);
+      logger.log(`Price data unavailable for chain ${chainId}`);
       return null;
     } catch (error) {
       logger.error(

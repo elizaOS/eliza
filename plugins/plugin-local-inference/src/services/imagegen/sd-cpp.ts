@@ -26,7 +26,7 @@
  * Availability is checked at load time by spawning the binary with
  * `--version`. CUDA loads also require explicit capability evidence from
  * an adjacent manifest, `--help`, or `--version`; a Linux NVIDIA GPU alone
- * is not proof that the installed binary was compiled with CUDA.
+ * is not evidence that the installed binary was compiled with CUDA.
  *
  * Accelerator flags (from `ImageGenLoadArgs.accelerator`):
  *
@@ -68,7 +68,7 @@
  *     submit ...`; staple. Drop into releases.elizaos.ai/sd-cpp/<version>/
  *     darwin-{arm64,x86_64}/sd. macOS Apple Silicon prefers `mflux` over
  *     sd-cpp (see `mflux.ts`), but sd-cpp Metal is the fallback.
- *   Linux riscv64 (CPU): not yet shipped. Cross-compile via
+ *   Linux riscv64 (CPU): unavailable as a shipped binary. Cross-compile via
  *     `zig cc --target=riscv64-linux-musl` (same toolchain
  *     packages/app-core/scripts/aosp/compile-libllama.mjs uses; see also
  *     `native/build-omnivoice.mjs` for the omnivoice / ggml precedent).

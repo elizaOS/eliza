@@ -201,12 +201,12 @@ export function summarizeImageRollout(params: {
       {
         action: "canary",
         reason:
-          "TODO: requires per-cohort claim routing and health gates before replacing ready pool entries.",
+          "Unsupported until per-cohort claim routing and health gates protect ready-pool replacement.",
       },
       {
         action: "rollback",
         reason:
-          "TODO: requires persisted previous desired image and operator approval before automated rollback.",
+          "Unsupported until previous desired images are persisted and operator approval gates automated rollback.",
       },
     ],
   };

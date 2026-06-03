@@ -10,7 +10,7 @@
  *   - that the runtime does NOT auto-fall-through on handler errors,
  *   - and how a caller can implement an explicit try/catch fallback.
  *
- * The test is intentionally provider-agnostic — it registers stub handlers
+ * The test is intentionally provider-agnostic — it registers fake handlers
  * named "local" and "openai" so the contract is observable without booting
  * any real ASR backend.
  */

@@ -472,7 +472,7 @@ export async function extractDeferredLifeDraftFollowupWithLlm(args: {
     "",
     "Choose confirm when the user clearly approves saving the current draft now.",
     "Choose edit when the user wants to change the draft or continue specifying it before saving.",
-    "Choose cancel when the user says not to save it, never mind, not yet, hold off, or equivalent.",
+    "Choose cancel when the user says not to save it, never mind, not now, hold off, or equivalent.",
     "Choose none when the follow-up is unrelated or too ambiguous to attach to the draft.",
     "",
     "Previewed draft:",

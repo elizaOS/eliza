@@ -6,9 +6,9 @@ import type {
   State,
 } from "@elizaos/core";
 import {
-	ModelType,
-	requireConfirmation,
-	runWithTrajectoryContext,
+  ModelType,
+  requireConfirmation,
+  runWithTrajectoryContext,
 } from "@elizaos/core";
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import {
@@ -388,7 +388,7 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
     "- Only start a block when the user is clearly asking to block websites now.",
     "- Do not encode user authorization in JSON; authorization is collected on a follow-up user message.",
     "- Generic focus-block requests like 'turn on a focus block for all social media sites' belong here; do not invent a task gate for them.",
-    "- If the user says not yet, later, hold off, wait, or is only discussing candidate sites, set shouldAct=false and explain that you will wait for confirmation.",
+    "- If the user says not now, later, hold off, wait, or is only discussing candidate sites, set shouldAct=false and explain that you will wait for confirmation.",
     "- If the current request refers to previously mentioned websites, recover them from recent conversation context.",
     "- If the websites are unclear or missing, set shouldAct=false and ask the user to name the public hostnames explicitly.",
     "- Prefer bare public hostnames like x.com in the websites array.",

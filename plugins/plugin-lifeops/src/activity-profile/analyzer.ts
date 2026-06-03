@@ -886,7 +886,7 @@ function median(sorted: number[]): number {
   const left = sorted[mid - 1];
   const right = sorted[mid];
   if (left === undefined || right === undefined) {
-    throw new Error("[activity-profile] median pair is incomplete");
+    throw new Error("[activity-profile] median pair is missing");
   }
   return Math.round((left + right) / 2);
 }
