@@ -37,4 +37,5 @@ export const PREF_KEYS = {
   customThemes: "custom-themes",
   sidebarWidth: "sidebar-width",
   pinnedThreads: "pinned-threads",
+  hwfitContext: "hwfit-target-context",
 } as const;

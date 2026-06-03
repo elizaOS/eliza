@@ -358,7 +358,13 @@ export function Composer({
         return;
       }
     }
-    if (event.key === "Enter" && !event.shiftKey) {
+    // Enter confirming an IME composition must not submit (chat.js keydown
+    // guards submit with !e.isComposing).
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      !event.nativeEvent.isComposing
+    ) {
       event.preventDefault();
       onSubmit();
     }

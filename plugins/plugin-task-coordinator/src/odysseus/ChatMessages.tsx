@@ -93,9 +93,14 @@ function AgentFooter({ content }: { content: string }): ReactNode {
 export function ChatMessages({
   conversation,
   locale,
+  sending,
 }: {
   conversation: ConversationBlock[];
   locale?: string;
+  // Reply-in-flight flag (the React analogue of odysseus chat.js `isStreaming`).
+  // While true the history is marked aria-busy so screen readers wait for the
+  // settled response instead of announcing every streamed token.
+  sending?: boolean;
 }): ReactNode {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -126,7 +131,12 @@ export function ChatMessages({
   }, [conversation.length, lastBlock?.key, lastContentLen]);
 
   return (
-    <div className="od-chat-history" ref={scrollRef} onScroll={onScroll}>
+    <div
+      className="od-chat-history"
+      ref={scrollRef}
+      onScroll={onScroll}
+      aria-busy={sending ? "true" : "false"}
+    >
       {conversation.map((block) => {
         if (block.kind === "user")
           return <UserBubble key={block.key} block={block} locale={locale} />;
