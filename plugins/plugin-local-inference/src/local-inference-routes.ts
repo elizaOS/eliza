@@ -1064,7 +1064,7 @@ export async function handleLocalInferenceChatCommand(
 				activeModelId: activeModelState.modelId,
 				provider: "elizacloud",
 			},
-			"Future chat model calls will prefer Eliza Cloud.",
+			"Subsequent chat model calls will prefer Eliza Cloud.",
 		);
 	}
 

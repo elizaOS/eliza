@@ -3,11 +3,8 @@
  *
  * Two sources merge here:
  *   1. The plugin's own `widgets` field on its `Plugin` instance (canonical).
- *   2. The static `PLUGIN_WIDGET_MAP` below, kept as a fallback for plugins
- *      that haven't migrated to declaring widgets on the Plugin instance yet.
- *
- * TODO: Migrate each entry into the owning plugin's `widgets` field, then
- * delete its row from `PLUGIN_WIDGET_MAP`.
+ *   2. The static `PLUGIN_WIDGET_MAP` below, kept as an empty compatibility
+ *      fallback for older callers.
  */
 
 import type { Plugin, PluginWidgetDeclaration } from "@elizaos/core";
@@ -18,48 +15,7 @@ export type PluginWidgetDeclarationServer = PluginWidgetDeclaration;
  * Static map of plugin widget declarations.
  * Key: plugin ID. Value: array of widget declarations.
  */
-export const PLUGIN_WIDGET_MAP: Record<string, PluginWidgetDeclaration[]> = {
-  lifeops: [
-    {
-      id: "lifeops.overview",
-      pluginId: "lifeops",
-      slot: "chat-sidebar",
-      label: "LifeOps Overview",
-      icon: "Sparkles",
-      order: 90,
-      defaultEnabled: true,
-    },
-    {
-      id: "lifeops.google",
-      pluginId: "lifeops",
-      slot: "chat-sidebar",
-      label: "Google Services",
-      icon: "Plug2",
-      order: 150,
-      defaultEnabled: true,
-    },
-  ],
-  "agent-orchestrator": [
-    {
-      id: "agent-orchestrator.apps",
-      pluginId: "agent-orchestrator",
-      slot: "chat-sidebar",
-      label: "App Runs",
-      icon: "Activity",
-      order: 150,
-      defaultEnabled: true,
-    },
-    {
-      id: "agent-orchestrator.activity",
-      pluginId: "agent-orchestrator",
-      slot: "chat-sidebar",
-      label: "Activity",
-      icon: "Activity",
-      order: 300,
-      defaultEnabled: true,
-    },
-  ],
-};
+export const PLUGIN_WIDGET_MAP: Record<string, PluginWidgetDeclaration[]> = {};
 
 /** Strip common scope/prefix to compare a Plugin.name against a PluginEntry.id. */
 function normalizePluginIdentity(value: string): string {

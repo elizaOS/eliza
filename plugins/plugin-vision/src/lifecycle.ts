@@ -300,7 +300,7 @@ function adaptWS1ArbiterToIModelArbiter(ws1: WS1ArbiterLike): IModelArbiter {
  * Two resolution paths:
  *   1. Direct: a service named `MEMORY_ARBITER` / `memory_arbiter` /
  *      `memoryArbiter` that already implements the `IModelArbiter` shape.
- *      Used by tests and any future first-class arbiter service.
+ *      Used by tests and standalone arbiter services.
  *   2. WS1 bridge: a `localInferenceLoader` / `localInference` service that
  *      exposes `getMemoryArbiter()` returning the WS1 `MemoryArbiter`. We
  *      adapt it to `IModelArbiter` via `adaptWS1ArbiterToIModelArbiter` so

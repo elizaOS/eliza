@@ -47,7 +47,7 @@ export function useChatSidebarVisibility(): ChatSidebarVisibilityHook {
         const defaultEnabled = candidate.defaultEnabled !== false;
 
         // If the requested state matches the default, drop the explicit
-        // override so future default flips propagate naturally.
+        // override so later default changes propagate naturally.
         const nextOverrides = { ...prev.overrides };
         if (next === defaultEnabled) {
           delete nextOverrides[key];

@@ -539,10 +539,9 @@ function resolveWorkspaceRoots(): string[] {
     return uniquePaths([envRoot]);
   }
 
-  // Phase 3: only search cwd — parent-directory and module-relative fallbacks
-  // removed. Repo-local ./eliza submodule + setup:upstreams symlinks handle
-  // plugin resolution for development. Set ELIZA_WORKSPACE_ROOT explicitly
-  // for external override scenarios.
+  // Search cwd by default. Repo-local ./eliza submodule +
+  // setup:upstreams symlinks handle plugin resolution for development. Set
+  // ELIZA_WORKSPACE_ROOT explicitly for external override scenarios.
   return uniquePaths([process.cwd()]);
 }
 
@@ -1435,7 +1434,8 @@ async function discoverPluginCandidatesUncached(): Promise<
   }
 
   // 2. workspace `plugins/` dir — covers cases where the plugin is in the
-  //    repo but not yet symlinked into node_modules. Cheap fall-through.
+  //    repo source tree without a matching node_modules link. Cheap
+  //    fall-through.
   for (const root of resolveWorkspaceRoots()) {
     const pluginsDir = path.join(root, "plugins");
     let entries: import("node:fs").Dirent[];
@@ -2019,8 +2019,8 @@ export async function resolvePlugins(
     }
   }
 
-  // Persist repaired install records so future startups do not keep trying
-  // to import from stale install directories.
+  // Persist repaired install records so subsequent startups stop importing
+  // from stale install directories.
   if (repairedInstallRecords.size > 0) {
     try {
       saveElizaConfig(config);

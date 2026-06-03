@@ -19,6 +19,7 @@ import type {
 	IAgentRuntime,
 	JsonValue,
 	Memory,
+	Service,
 	State,
 } from "../../../types/index.ts";
 import {
@@ -237,9 +238,9 @@ async function handleCreateRequest(
 	callback?: HandlerCallback,
 ) {
 	const action: PaymentAction = "create_request";
-	const client = runtime.getService(
+	const client = runtime.getService<Service & PaymentRequestsClient>(
 		PAYMENT_REQUESTS_CLIENT_SERVICE,
-	) as unknown as PaymentRequestsClient | null;
+	);
 	if (!client) {
 		return {
 			success: false,
@@ -289,12 +290,12 @@ async function handleDeliverLink(
 	callback?: HandlerCallback,
 ) {
 	const action: PaymentAction = "deliver_link";
-	const client = runtime.getService(
+	const client = runtime.getService<Service & PaymentRequestsClient>(
 		PAYMENT_REQUESTS_CLIENT_SERVICE,
-	) as unknown as PaymentRequestsClient | null;
-	const registry = runtime.getService(
-		SENSITIVE_DISPATCH_REGISTRY_SERVICE,
-	) as unknown as SensitiveRequestDispatchRegistry | null;
+	);
+	const registry = runtime.getService<
+		Service & SensitiveRequestDispatchRegistry
+	>(SENSITIVE_DISPATCH_REGISTRY_SERVICE);
 	if (!client || !registry) {
 		return {
 			success: false,
@@ -396,9 +397,9 @@ async function handleVerifyPayload(
 	callback?: HandlerCallback,
 ) {
 	const action: PaymentAction = "verify_payload";
-	const bus = runtime.getService(
+	const bus = runtime.getService<Service & PaymentBusClient>(
 		PAYMENT_BUS_CLIENT_SERVICE,
-	) as unknown as PaymentBusClient | null;
+	);
 	if (!bus) {
 		return {
 			success: false,
@@ -446,9 +447,9 @@ async function handleSettle(
 	callback?: HandlerCallback,
 ) {
 	const action: PaymentAction = "settle";
-	const settler = runtime.getService(
+	const settler = runtime.getService<Service & PaymentSettler>(
 		PAYMENT_SETTLER_SERVICE,
-	) as unknown as PaymentSettler | null;
+	);
 	if (!settler) {
 		return {
 			success: false,
@@ -496,9 +497,9 @@ async function handleAwaitCallback(
 	callback?: HandlerCallback,
 ) {
 	const action: PaymentAction = "await_callback";
-	const bus = runtime.getService(
+	const bus = runtime.getService<Service & PaymentBusClient>(
 		PAYMENT_BUS_CLIENT_SERVICE,
-	) as unknown as PaymentBusClient | null;
+	);
 	if (!bus) {
 		return {
 			success: false,
@@ -559,9 +560,9 @@ async function handleCancelRequest(
 	callback?: HandlerCallback,
 ) {
 	const action: PaymentAction = "cancel_request";
-	const client = runtime.getService(
+	const client = runtime.getService<Service & PaymentRequestsClient>(
 		PAYMENT_REQUESTS_CLIENT_SERVICE,
-	) as unknown as PaymentRequestsClient | null;
+	);
 	if (!client) {
 		return {
 			success: false,

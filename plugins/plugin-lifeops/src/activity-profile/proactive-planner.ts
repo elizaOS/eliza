@@ -65,9 +65,8 @@ export const SOCIAL_OVERUSE_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4h
 
 /**
  * True if `firedAt` is set and the gap to `now` is shorter than the
- * once-per-day guard window. Future timestamps (firedAt > now) — which
- * shouldn't happen but indicate a clock glitch — are also treated as
- * recent so we don't fire again.
+ * once-per-day guard window. Clock-skewed timestamps (firedAt > now) are also
+ * treated as recent so we don't fire again.
  */
 function firedRecently(firedAt: number | undefined, now: Date): boolean {
   if (!firedAt) return false;
@@ -270,7 +269,7 @@ export function planGm(
  * authoritative night summary.
  *
  * Division of responsibility (intentional, do NOT consolidate without a
- * design discussion — see review #10 P0.1 + wave-3 punt notes):
+ * routing-layer design review):
  *
  * - **Chat surface (the user-visible night summary):** owned by
  *   `processSleepCycleCheckins` →
@@ -294,9 +293,9 @@ export function planGm(
  * diverge on window (3h vs 2h), gate (per-day SQL vs 12h timestamp),
  * content (LLM briefing vs compact feed message), and chat-suppression. They
  * are not redundant: the chat night summary is the user-visible artifact;
- * this is feed-only telemetry. Future maintainers: a unifying sweep would
- * need a routing-layer redesign (collapse the two sources, then choose a
- * single content path), not just a delete here.
+ * this is feed-only telemetry. A unifying sweep needs a routing-layer redesign
+ * (collapse the two sources, then choose a single content path), not just a
+ * delete here.
  */
 export function planGn(
   profile: ActivityProfile,
@@ -602,8 +601,7 @@ export function planSocialOveruseCheck(
   const lastFiredAt = firedToday?.socialOveruseCheckedAt;
   if (typeof lastFiredAt === "number") {
     const elapsedMs = currentTime.getTime() - lastFiredAt;
-    // Future timestamps shouldn't happen, but treat them as "still in
-    // cooldown" so a clock glitch never causes a re-fire.
+    // Clock-skewed timestamps stay in cooldown so a time jump never causes a re-fire.
     if (elapsedMs < SOCIAL_OVERUSE_COOLDOWN_MS) {
       return null;
     }

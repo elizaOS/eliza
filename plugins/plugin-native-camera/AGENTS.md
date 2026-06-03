@@ -100,7 +100,7 @@ Capacitor plugin registration name: `"ElizaCamera"` (used internally by `@capaci
 ## Conventions / gotchas
 
 - **Not an elizaOS runtime plugin.** There is no `Plugin` object with actions/providers/services. Capacitor plugins are loaded by the Capacitor runtime, not the elizaOS plugin loader.
-- **Web permission flow.** `startPreview()` calls `getUserMedia()` directly, which triggers the OS dialog implicitly. A migration comment in `web.ts` notes this should eventually be preceded by an explicit permission probe; see the comment block in `CameraWeb.startPreview`.
+- **Web permission flow.** `startPreview()` calls `getUserMedia()` directly, which triggers the browser/OS dialog implicitly. Native permission probing is handled outside this Capacitor web fallback.
 - **Web flash/torch.** The `MediaDevices` API does not expose torch control on web. `hasFlash` is inferred from `MediaTrackCapabilities.torch`; it will always be `false` on most desktop browsers.
 - **Video mime type selection.** `CameraWeb` tries `video/webm;codecs=vp9,opus` → `vp8,opus` → `video/webm` → `video/mp4` in order. `stopRecording()` returns a `blob:` URL, not a file path.
 - **Manual focus/exposure on web.** `setFocusPoint` and `setExposurePoint` throw if the device does not report `"manual"` in its `focusMode`/`exposureMode` capabilities — which is the case for most desktop webcams.

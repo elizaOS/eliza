@@ -123,10 +123,9 @@ export interface CloudRouteState {
   saveConfig?: (config: CloudConfigLike) => void;
   createTelemetrySpan?: CreateTelemetrySpanLike;
   /**
-   * Optional runtime restart hook. When Phase 8 lands the cloud-wallet
-   * provisioning integration, the cloud-login handler will call this to
-   * rebind plugin-wallet to the cloud provider. Threaded
-   * from server.ts the same way provider-switch-routes does.
+   * Optional runtime restart hook used after cloud-login provisioning to
+   * rebind plugin-wallet to the cloud provider. Threaded from server.ts the
+   * same way provider-switch-routes does.
    */
   restartRuntime?: (reason: string) => Promise<boolean> | boolean;
 }

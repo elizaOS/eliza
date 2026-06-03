@@ -4,7 +4,7 @@ Native Hyperliquid perpetual-market integration for elizaOS agents: status, mark
 
 ## Purpose / role
 
-Adds Hyperliquid perpetual-market capabilities to an Eliza agent. Registers an action (`PERPETUAL_MARKET`), a service (`PerpetualMarketService`), ten HTTP routes under `/api/hyperliquid/`, and three UI views (standard, XR, TUI). Loaded opt-in via `registerAppRoutePluginLoader`; see `src/register-routes.ts`. Execution (order placement) is intentionally disabled — only read operations are implemented.
+Adds Hyperliquid perpetual-market capabilities to an Eliza agent. Registers an action (`PERPETUAL_MARKET`), a service (`PerpetualMarketService`), eleven HTTP routes under `/api/hyperliquid/`, and three UI views (standard, XR, TUI). Loaded opt-in via `registerAppRoutePluginLoader`; see `src/register-routes.ts`. Execution (order placement) is intentionally disabled — only read operations are implemented.
 
 ## Plugin surface
 
@@ -25,6 +25,7 @@ All routes are `rawPath: true`. POST routes always return 501 (execution disable
 |---|---|---|
 | GET | `/api/hyperliquid/status` | Credential and readiness status |
 | GET | `/api/hyperliquid/markets` | All perpetual markets from Hyperliquid Info API |
+| GET | `/api/hyperliquid/funding` | Current funding rates and asset contexts from Hyperliquid Info API |
 | GET | `/api/hyperliquid/positions` | Account positions (requires account address) |
 | GET | `/api/hyperliquid/orders` | Open orders (requires account address) |
 | POST | `/api/hyperliquid/orders/open` | Disabled — returns 501 |
@@ -104,9 +105,9 @@ The action (`PERPETUAL_MARKET`) calls the agent's local API via `resolveDesktopA
 
 ## Conventions / gotchas
 
-- **Execution is permanently disabled** in this scaffold. All POST routes return 501. The `place_order` action op always returns an error explaining why. This is intentional.
+- **Execution is permanently disabled** in this read-only app. All POST routes return 501. The `place_order` action op always returns an error explaining why. This is intentional.
 - **Route handler bridging:** The elizaOS `Route` type uses `RouteRequest`/`RouteResponse`; the route logic expects Node `http.IncomingMessage`/`http.ServerResponse`. `plugin.ts` casts via `toHttpIncomingMessage`/`toHttpServerResponse` — keep these guards if adding routes.
-- **`funding` kind is not wired.** The action returns a static explanation message; no real API call is made for `kind=funding`.
+- **`funding` kind is wired through `metaAndAssetCtxs`.** The action reads `/api/hyperliquid/funding` and can optionally filter by `coin` / `asset` / `symbol`.
 - **Context gating:** `PERPETUAL_MARKET` only fires when `state` contains a `finance`, `crypto`, `trading`, or `payments` selected context, OR when the message contains recognized keywords in ~8 languages. Do not remove the keyword list without updating tests.
 - **`HyperliquidClient`** is created by patching `ElizaClient.prototype` at import time (`src/client.ts`). Import `"./client"` as a side effect before calling the extended methods.
 - **Overlay app registration** (`src/hyperliquid-app.ts`) happens as a side effect when `src/register.ts` is imported. The plugin entrypoint exports `src/register.ts` so this is automatic when the plugin loads.

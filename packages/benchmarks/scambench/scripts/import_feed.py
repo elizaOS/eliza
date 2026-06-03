@@ -1,8 +1,9 @@
 """Import scenarios from feedSocial/scambench into the scambench corpus.
 
 Source: https://github.com/FeedSocial/scambench (no LICENSE file present
-at time of import; attributed per-record under research/benchmark fair use,
-pending upstream license confirmation).
+at time of import). The importer records `license=unspecified-upstream` and
+per-record attribution so generated data cannot be mistaken for release-ready
+vendored corpus material.
 
 Mapping
 -------

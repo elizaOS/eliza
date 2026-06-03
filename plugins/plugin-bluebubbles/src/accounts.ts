@@ -1,5 +1,5 @@
 /**
- * Multi-account scaffolding for the BlueBubbles connector.
+ * Account resolution for the BlueBubbles connector.
  *
  * Each "account" represents a distinct BlueBubbles server URL + password pair.
  * In practice there is usually one BlueBubbles server per macOS host, but the
@@ -60,8 +60,15 @@ export interface BlueBubblesMultiAccountConfig {
 	serverUrl?: string;
 	password?: string;
 	webhookPath?: string;
+	autoStartCommand?: string;
+	autoStartArgs?: string[];
+	autoStartCwd?: string;
+	autoStartWaitMs?: number;
 	dmPolicy?: DmPolicy;
 	groupPolicy?: GroupPolicy;
+	allowFrom?: string[];
+	groupAllowFrom?: string[];
+	sendReadReceipts?: boolean;
 	/** Per-account configuration overrides */
 	accounts?: Record<string, BlueBubblesAccountConfig>;
 }
@@ -107,10 +114,73 @@ export function getMultiAccountConfig(
 		serverUrl: characterBlueBubbles?.serverUrl,
 		password: characterBlueBubbles?.password,
 		webhookPath: characterBlueBubbles?.webhookPath,
+		autoStartCommand: characterBlueBubbles?.autoStartCommand,
+		autoStartArgs: characterBlueBubbles?.autoStartArgs,
+		autoStartCwd: characterBlueBubbles?.autoStartCwd,
+		autoStartWaitMs: characterBlueBubbles?.autoStartWaitMs,
 		dmPolicy: characterBlueBubbles?.dmPolicy,
 		groupPolicy: characterBlueBubbles?.groupPolicy,
+		allowFrom: characterBlueBubbles?.allowFrom,
+		groupAllowFrom: characterBlueBubbles?.groupAllowFrom,
+		sendReadReceipts: characterBlueBubbles?.sendReadReceipts,
 		accounts: characterBlueBubbles?.accounts,
 	};
+}
+
+function getStringSetting(
+	runtime: IAgentRuntime,
+	key: string,
+): string | undefined {
+	const value = runtime.getSetting(key);
+	return typeof value === "string" ? value : undefined;
+}
+
+function parseStringList(raw: string | undefined): string[] {
+	if (!raw) return [];
+	const trimmed = raw.trim();
+	if (!trimmed) return [];
+
+	if (trimmed.startsWith("[")) {
+		try {
+			const parsed = JSON.parse(trimmed);
+			if (Array.isArray(parsed)) {
+				return parsed
+					.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+					.filter(Boolean);
+			}
+		} catch {
+			// Fall through to comma-separated parsing.
+		}
+	}
+
+	return trimmed
+		.split(",")
+		.map((entry) => entry.trim())
+		.filter(Boolean);
+}
+
+function parseNonNegativeInt(
+	raw: string | undefined,
+	fallback: number,
+): number {
+	if (!raw) return fallback;
+	const parsed = Number.parseInt(raw, 10);
+	if (!Number.isFinite(parsed) || parsed < 0) {
+		return fallback;
+	}
+	return parsed;
+}
+
+function firstNonEmptyString(
+	...values: Array<string | undefined>
+): string | undefined {
+	for (const value of values) {
+		const trimmed = value?.trim();
+		if (trimmed) {
+			return trimmed;
+		}
+	}
+	return undefined;
 }
 
 /**
@@ -121,12 +191,8 @@ export function listBlueBubblesAccountIds(runtime: IAgentRuntime): string[] {
 	const accounts = config.accounts;
 	const ids = new Set<string>();
 
-	const envServerUrl = runtime.getSetting("BLUEBUBBLES_SERVER_URL") as
-		| string
-		| undefined;
-	const envPassword = runtime.getSetting("BLUEBUBBLES_PASSWORD") as
-		| string
-		| undefined;
+	const envServerUrl = getStringSetting(runtime, "BLUEBUBBLES_SERVER_URL");
+	const envPassword = getStringSetting(runtime, "BLUEBUBBLES_PASSWORD");
 
 	const baseConfigured = Boolean(
 		config.serverUrl?.trim() && config.password?.trim(),
@@ -190,49 +256,98 @@ export function resolveBlueBubblesAccount(
 	const multiConfig = getMultiAccountConfig(runtime);
 	const accountConfig = getAccountConfig(runtime, normalizedAccountId) ?? {};
 
-	const baseEnabled = multiConfig.enabled !== false;
+	const envServerUrl = getStringSetting(runtime, "BLUEBUBBLES_SERVER_URL");
+	const envPassword = getStringSetting(runtime, "BLUEBUBBLES_PASSWORD");
+	const envEnabled = getStringSetting(runtime, "BLUEBUBBLES_ENABLED") !== "false";
+	const envAutoStartArgs = parseStringList(
+		getStringSetting(runtime, "BLUEBUBBLES_AUTOSTART_ARGS"),
+	);
+	const envAllowFrom = parseStringList(
+		getStringSetting(runtime, "BLUEBUBBLES_ALLOW_FROM"),
+	);
+	const envGroupAllowFrom = parseStringList(
+		getStringSetting(runtime, "BLUEBUBBLES_GROUP_ALLOW_FROM"),
+	);
+
+	const baseEnabled = multiConfig.enabled !== false && envEnabled;
 	const accountEnabled = accountConfig.enabled !== false;
 	const enabled = baseEnabled && accountEnabled;
 
-	const envServerUrl = runtime.getSetting("BLUEBUBBLES_SERVER_URL") as
-		| string
-		| undefined;
-	const envPassword = runtime.getSetting("BLUEBUBBLES_PASSWORD") as
-		| string
-		| undefined;
-
 	const serverUrl =
-		accountConfig.serverUrl?.trim() ||
-		multiConfig.serverUrl?.trim() ||
-		envServerUrl?.trim() ||
-		"";
+		firstNonEmptyString(
+			accountConfig.serverUrl,
+			multiConfig.serverUrl,
+			envServerUrl,
+		) ?? "";
 	const password =
-		accountConfig.password?.trim() ||
-		multiConfig.password?.trim() ||
-		envPassword?.trim() ||
-		"";
+		firstNonEmptyString(
+			accountConfig.password,
+			multiConfig.password,
+			envPassword,
+		) ?? "";
 
 	const configured = Boolean(serverUrl && password);
+	const webhookPath =
+		accountConfig.webhookPath ??
+		multiConfig.webhookPath ??
+		getStringSetting(runtime, "BLUEBUBBLES_WEBHOOK_PATH") ??
+		undefined;
+	const autoStartCommand =
+		accountConfig.autoStartCommand ??
+		multiConfig.autoStartCommand ??
+		getStringSetting(runtime, "BLUEBUBBLES_AUTOSTART_COMMAND");
+	const autoStartArgs =
+		accountConfig.autoStartArgs ?? multiConfig.autoStartArgs ?? envAutoStartArgs;
+	const autoStartCwd =
+		accountConfig.autoStartCwd ??
+		multiConfig.autoStartCwd ??
+		getStringSetting(runtime, "BLUEBUBBLES_AUTOSTART_CWD");
+	const autoStartWaitMs =
+		accountConfig.autoStartWaitMs ??
+		multiConfig.autoStartWaitMs ??
+		parseNonNegativeInt(
+			getStringSetting(runtime, "BLUEBUBBLES_AUTOSTART_WAIT_MS"),
+			15000,
+		);
+	const dmPolicy =
+		accountConfig.dmPolicy ??
+		multiConfig.dmPolicy ??
+		(getStringSetting(runtime, "BLUEBUBBLES_DM_POLICY") as DmPolicy) ??
+		"pairing";
+	const groupPolicy =
+		accountConfig.groupPolicy ??
+		multiConfig.groupPolicy ??
+		(getStringSetting(runtime, "BLUEBUBBLES_GROUP_POLICY") as GroupPolicy) ??
+		"allowlist";
+	const allowFrom =
+		accountConfig.allowFrom ?? multiConfig.allowFrom ?? envAllowFrom;
+	const groupAllowFrom =
+		accountConfig.groupAllowFrom ??
+		multiConfig.groupAllowFrom ??
+		envGroupAllowFrom;
+	const sendReadReceipts =
+		accountConfig.sendReadReceipts ??
+		multiConfig.sendReadReceipts ??
+		getStringSetting(runtime, "BLUEBUBBLES_SEND_READ_RECEIPTS") !== "false";
 
-	const resolvedConfig: BlueBubblesConfig | null = configured
-		? {
+	const resolvedConfig: BlueBubblesConfig | null =
+		configured
+			? {
 				serverUrl,
 				password,
-				webhookPath:
-					accountConfig.webhookPath ?? multiConfig.webhookPath ?? undefined,
-				autoStartCommand: accountConfig.autoStartCommand,
-				autoStartArgs: accountConfig.autoStartArgs,
-				autoStartCwd: accountConfig.autoStartCwd,
-				autoStartWaitMs: accountConfig.autoStartWaitMs,
-				dmPolicy: accountConfig.dmPolicy ?? multiConfig.dmPolicy ?? "pairing",
-				groupPolicy:
-					accountConfig.groupPolicy ?? multiConfig.groupPolicy ?? "allowlist",
-				allowFrom: accountConfig.allowFrom ?? [],
-				groupAllowFrom: accountConfig.groupAllowFrom ?? [],
-				sendReadReceipts: accountConfig.sendReadReceipts ?? true,
+				webhookPath,
+				autoStartCommand,
+				autoStartArgs,
+				autoStartCwd,
+				autoStartWaitMs,
+				dmPolicy,
+				groupPolicy,
+				allowFrom,
+				groupAllowFrom,
+				sendReadReceipts,
 				enabled,
 			}
-		: null;
+			: null;
 
 	return {
 		accountId: normalizedAccountId,

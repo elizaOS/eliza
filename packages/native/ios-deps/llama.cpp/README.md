@@ -30,8 +30,8 @@ that is unfit for our use:
    refuses to initialize at runtime.
 4. **`lm_` symbol prefix fork.** The package is built from a fork that
    renames `ggml_*` → `lm_ggml_*` to avoid conflicts with React Native
-   `llama.rn`. That's fine for them, but it complicates any future swap to
-   stock upstream tooling.
+   `llama.rn`. That's fine for them, but it complicates switching to stock
+   upstream tooling.
 
 Building from source costs ~5 minutes on a current Mac and gives us:
 

@@ -15,6 +15,7 @@ import type {
 	IAgentRuntime,
 	JsonValue,
 	Memory,
+	Service,
 	State,
 } from "../../../types/index.ts";
 import {
@@ -91,9 +92,9 @@ export const bindOAuthCredentialAction: Action = {
 		callback?: HandlerCallback,
 	) => {
 		const params = readParams(options);
-		const client = runtime.getService(
+		const client = runtime.getService<Service & OAuthIntentsClient>(
 			OAUTH_INTENTS_CLIENT_SERVICE,
-		) as unknown as OAuthIntentsClient | null;
+		);
 		if (!client) {
 			return {
 				success: false,

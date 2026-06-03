@@ -32,8 +32,8 @@
  * - The DB file may not exist when no benchmarks have run yet. In that case
  *   every endpoint returns an empty result — *not* a 5xx. Producers in W1-B*
  *   will populate it.
- * - The schema is locked to v1 in the Python module. Any future migration is
- *   a coordinated change.
+ * - The schema is locked to v1 in the Python module. Schema migration is a
+ *   coordinated change across the Python store and these routes.
  */
 
 import fs from "node:fs";

@@ -236,9 +236,9 @@ console.log("[build-mobile] pglite dist:", pgliteDist);
 // WebView, not node-llama-cpp.
 const nativeStubs = {
   "@elizaos/app-core": path.join(stubsDir, "app-core-runtime.cjs"),
-  // `node:sqlite` is a Node.js 22+ built-in (DatabaseSync) that Bun 1.3.x on
-  // arm64-Android does not yet implement, so an unstubbed reference bombs the
-  // bundle resolve:
+  // `node:sqlite` is a Node.js 22+ built-in (DatabaseSync). Bun 1.3.x on
+  // arm64-Android does not provide that resolver, so an unstubbed reference
+  // bombs the bundle resolve:
   //   error: Could not resolve: "node:sqlite". Maybe you need to "bun install"?
   // The local-inference voice caches (e.g.
   // `plugins/plugin-local-inference/src/services/voice/first-line-cache.ts`)

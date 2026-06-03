@@ -7,7 +7,7 @@
  * HTTP API (`@elizaos/plugin-wallet` sign endpoints) over fetch.
  *
  * The shim is consumed via `buildWalletShim({ apiBase, signToken, walletName,
- * walletIcon, solanaPublicKey, evmAddress })` which substitutes the placeholder
+ * walletIcon, solanaPublicKey, evmAddress })` which substitutes the config
  * `__SHIM_CONFIG__` token and returns a self-contained string suitable for
  * `Page.addInitScript` / `BROWSER eval` / a MAIN-world content script.
  *

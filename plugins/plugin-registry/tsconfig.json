@@ -56,12 +56,16 @@
       "@elizaos/plugin-registry": ["./src/index.ts"],
       "@elizaos/plugin-registry/*": ["./src/*"],
       "@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
-      "@elizaos/plugin-browser/*": ["../plugin-browser/src/*"]
+      "@elizaos/plugin-browser/*": ["../plugin-browser/src/*"],
+      "@elizaos/plugin-training": [
+        "../../packages/ui/src/types/host-external-modules.ts"
+      ]
     }
   },
   "include": [
     "src/**/*",
     "../../packages/app-core/src/ambient-modules.d.ts",
+    "../../packages/ui/src/types/host-external-modules.ts",
     "../../packages/ui/src/cloud-ui/types/react-syntax-highlighter.d.ts"
   ],
   "exclude": [

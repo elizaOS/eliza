@@ -508,7 +508,7 @@ def load_web_browsing_tasks(split: str = "test", limit: int | None = None) -> li
     Upstream only ships the prompt fixtures here; the full
     HTML-trace dataset is hosted on HuggingFace. We delegate the
     dataset load to ``packages/benchmarks/mind2web`` and only return
-    task stubs keyed by the prompt index. The Web Browsing adapter
+    prompt-index task handles. The Web Browsing adapter
     pulls real samples on demand.
     """
     prompt_file = UPSTREAM_DATA / "mind2web" / "prompt" / "llm_prompt.json"
@@ -591,8 +591,8 @@ def load_webshop_tasks(split: str = "test", limit: int | None = None) -> list[Ag
 
     Upstream's WebShop env relies on the WebShop Flask sim (a separate
     repo) plus a multi-gigabyte product corpus. We don't vendor the
-    corpus; instead we read upstream's task list shape and stub each
-    task. The Web Shopping adapter pulls items lazily via the local
+    corpus; instead we expose deterministic task IDs for the official
+    split shape. The Web Shopping adapter pulls items lazily via the local
     WebShop bridge when ``WEBSHOP_DATA_DIR`` is set.
     """
     # Upstream's webshop has no JSON-shipped task list in this snapshot;

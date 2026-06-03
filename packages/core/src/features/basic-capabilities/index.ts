@@ -1322,7 +1322,7 @@ export const basicServices: ServiceClass[] = [
 	// from the on-disk store (<stateDir>/optimized-prompts/<task>). Cheap
 	// in-memory cache; registering it on every runtime so the planner-loop
 	// can pick up artifacts produced by `bun run train -- --backend native`.
-	OptimizedPromptService as unknown as ServiceClass,
+	OptimizedPromptService,
 ];
 
 /**

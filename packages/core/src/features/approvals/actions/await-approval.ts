@@ -14,6 +14,7 @@ import type {
 	IAgentRuntime,
 	JsonValue,
 	Memory,
+	Service,
 	State,
 } from "../../../types/index.ts";
 import {
@@ -83,9 +84,9 @@ export const awaitApprovalAction: Action = {
 		callback?: HandlerCallback,
 	) => {
 		const params = readParams(options);
-		const bus = runtime.getService(
+		const bus = runtime.getService<Service & ApprovalCallbackBusClient>(
 			APPROVAL_CALLBACK_BUS_CLIENT_SERVICE,
-		) as unknown as ApprovalCallbackBusClient | null;
+		);
 		if (!bus) {
 			return {
 				success: false,

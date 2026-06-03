@@ -91,7 +91,7 @@ describe("iOS AppIntent registry", () => {
         expect(typeof param.required).toBe("boolean");
         if (param.type === "enum") {
           expect(Array.isArray(param.enumValues)).toBe(true);
-          expect(param.enumValues!.length).toBeGreaterThan(0);
+          expect(param.enumValues?.length).toBeGreaterThan(0);
         }
       }
       expect(["donated", "system"]).toContain(intent.source);
@@ -106,8 +106,8 @@ describe("iOS AppIntent registry", () => {
   it("findIosAppIntent finds a known system intent", () => {
     const intent = findIosAppIntent("com.apple.mobilenotes.create-note");
     expect(intent).toBeDefined();
-    expect(intent!.bundleId).toBe("com.apple.mobilenotes");
-    expect(intent!.parameters.find((p) => p.name === "body")).toBeDefined();
+    expect(intent?.bundleId).toBe("com.apple.mobilenotes");
+    expect(intent?.parameters.find((p) => p.name === "body")).toBeDefined();
   });
 
   it("findIosAppIntent returns undefined for unknown ids", () => {
@@ -128,7 +128,7 @@ describe("iOS AppIntent registry", () => {
   it("Maps directions intent declares the expected transport enum", () => {
     const maps = findIosAppIntent("com.apple.Maps.directions");
     expect(maps).toBeDefined();
-    const transport = maps!.parameters.find((p) => p.name === "transport");
+    const transport = maps?.parameters.find((p) => p.name === "transport");
     expect(transport?.type).toBe("enum");
     expect(transport?.enumValues).toEqual(
       expect.arrayContaining(["driving", "walking", "transit", "cycling"]),
@@ -176,24 +176,48 @@ function fakeBridge(
         },
       }),
     replayKitForegroundStart: () =>
-      Promise.resolve({ ok: false, code: "internal_error", message: "stub" }),
+      Promise.resolve({
+        ok: false,
+        code: "internal_error",
+        message: "unavailable",
+      }),
     replayKitForegroundStop: () =>
-      Promise.resolve({ ok: false, code: "internal_error", message: "stub" }),
+      Promise.resolve({
+        ok: false,
+        code: "internal_error",
+        message: "unavailable",
+      }),
     replayKitForegroundDrain: () =>
-      Promise.resolve({ ok: false, code: "internal_error", message: "stub" }),
+      Promise.resolve({
+        ok: false,
+        code: "internal_error",
+        message: "unavailable",
+      }),
     broadcastExtensionHandshake: () =>
-      Promise.resolve({ ok: false, code: "internal_error", message: "stub" }),
+      Promise.resolve({
+        ok: false,
+        code: "internal_error",
+        message: "unavailable",
+      }),
     visionOcr: visionImpl,
     appIntentList: () => Promise.resolve({ ok: true, data: { intents: [] } }),
     appIntentInvoke: () =>
-      Promise.resolve({ ok: false, code: "internal_error", message: "stub" }),
+      Promise.resolve({
+        ok: false,
+        code: "internal_error",
+        message: "unavailable",
+      }),
     accessibilitySnapshot: () =>
-      Promise.resolve({ ok: false, code: "internal_error", message: "stub" }),
+      Promise.resolve({
+        ok: false,
+        code: "internal_error",
+        message: "unavailable",
+      }),
     foundationModelGenerate: () =>
       Promise.resolve({
         ok: false,
         code: "foundation_model_unavailable",
-        message: "stub",
+        message: "unavailable",
       }),
     memoryPressureProbe: () =>
       Promise.resolve({

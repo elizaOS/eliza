@@ -226,8 +226,8 @@ export function createGitHubConnectorAccountProvider(
         .getStorage()
         .listAccounts(GITHUB_SERVICE_TYPE);
       if (stored.length > 0) return stored;
-      // Synthesize from legacy GITHUB_USER_PAT / GITHUB_AGENT_PAT env-vars when
-      // SQL storage has not yet materialized rows for them.
+      // Synthesize from legacy GITHUB_USER_PAT / GITHUB_AGENT_PAT env vars
+      // when the connector account store has no persisted GitHub rows.
       return synthesizeEnvAccounts(runtime);
     },
 

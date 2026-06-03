@@ -623,7 +623,7 @@ export class VideoService extends IVideoService {
       `Transcription completed in ${(endTime - startTime) / 1000} seconds`,
     );
 
-    // Don't delete the MP3 file as it might be needed for future use
+    // Keep the MP3 in the content cache; callers own cache retention.
     return transcript || "Transcription failed";
   }
 

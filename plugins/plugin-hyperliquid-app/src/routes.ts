@@ -13,6 +13,8 @@ import {
   type HyperliquidApiWalletStatus,
   type HyperliquidCredentialMode,
   type HyperliquidExecutionDisabledResponse,
+  type HyperliquidFundingRate,
+  type HyperliquidFundingResponse,
   type HyperliquidMarket,
   type HyperliquidMarketsResponse,
   type HyperliquidOrder,
@@ -52,6 +54,7 @@ interface HyperliquidConfig {
 
 interface HyperliquidInfoClient {
   getMarkets(): Promise<HyperliquidMarket[]>;
+  getFundingRates(): Promise<HyperliquidFundingRate[]>;
   getPositions(accountAddress: string): Promise<HyperliquidPosition[]>;
   getOpenOrders(accountAddress: string): Promise<HyperliquidOrder[]>;
 }
@@ -140,6 +143,24 @@ export async function handleHyperliquidRoute(
         "[HyperliquidRoutes] Market fetch failed",
       );
       sendJsonError(res, 502, "Hyperliquid market fetch failed");
+    }
+    return true;
+  }
+
+  if (pathname === "/api/hyperliquid/funding") {
+    try {
+      const payload: HyperliquidFundingResponse = {
+        rates: await client.getFundingRates(),
+        source: "hyperliquid-info-meta-and-asset-ctxs",
+        fetchedAt: now().toISOString(),
+      };
+      sendJson(res, 200, payload);
+    } catch (error) {
+      logger.error(
+        { error: describeError(error) },
+        "[HyperliquidRoutes] Funding-rate fetch failed",
+      );
+      sendJsonError(res, 502, "Hyperliquid funding-rate fetch failed");
     }
     return true;
   }
@@ -235,6 +256,12 @@ export function createHyperliquidInfoClient({
     async getMarkets() {
       const meta = await infoRequest<unknown>({ type: "meta" });
       return parseMarkets(meta);
+    },
+    async getFundingRates() {
+      const metaAndCtxs = await infoRequest<unknown>({
+        type: "metaAndAssetCtxs",
+      });
+      return parseFundingRates(metaAndCtxs);
     },
     async getPositions(accountAddress) {
       const state = await infoRequest<unknown>({
@@ -377,6 +404,34 @@ function parseMarkets(value: unknown): HyperliquidMarket[] {
       maxLeverage: readOptionalNumber(item, "maxLeverage"),
       onlyIsolated: readOptionalBoolean(item, "onlyIsolated") ?? false,
       isDelisted: readOptionalBoolean(item, "isDelisted") ?? false,
+    };
+  });
+}
+
+function parseFundingRates(value: unknown): HyperliquidFundingRate[] {
+  if (!Array.isArray(value) || value.length < 2) {
+    throw new Error("Hyperliquid metaAndAssetCtxs response must be a pair");
+  }
+  const markets = parseMarkets(value[0]);
+  const contexts = value[1];
+  if (!Array.isArray(contexts)) {
+    throw new Error("Hyperliquid metaAndAssetCtxs response missing contexts");
+  }
+
+  return contexts.map((entry, index) => {
+    const context = asRecord(entry, "Hyperliquid asset context");
+    const market = markets[index];
+    if (!market) {
+      throw new Error(`Hyperliquid asset context ${index} has no market`);
+    }
+    return {
+      coin: market.name,
+      index,
+      funding: readRequiredString(context, "funding"),
+      premium: readOptionalString(context, "premium"),
+      markPx: readOptionalString(context, "markPx"),
+      oraclePx: readOptionalString(context, "oraclePx"),
+      openInterest: readOptionalString(context, "openInterest"),
     };
   });
 }

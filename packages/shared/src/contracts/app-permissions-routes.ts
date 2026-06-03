@@ -72,9 +72,9 @@ export const GetAppPermissionsResponseSchema = AppPermissionsViewSchema;
  * the further check that each namespace is recognised AND was
  * declared in the app's manifest happens server-side in
  * `setGrantedNamespaces` (which has access to the registry entry).
- * Doing the recognised-namespace check here too would force every
- * future namespace addition to ship a zod-schema bump *and* a parser
- * bump in lockstep, which is friction we don't need.
+ * Doing the recognised-namespace check here too would force every namespace
+ * addition to ship a zod-schema bump *and* a parser bump in lockstep, which
+ * is friction we don't need.
  */
 export const PutAppPermissionsRequestSchema = z
   .object({

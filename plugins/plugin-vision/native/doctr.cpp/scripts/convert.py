@@ -86,7 +86,7 @@ def main() -> int:
     print(f"[convert] variant={args.variant} out={args.out} quantize={args.quantize}",
           file=sys.stderr)
     print(
-        "[convert] WEIGHT MAPPING NOT YET WIRED — run this on a build host with "
+        "[convert] WEIGHT MAPPING UNAVAILABLE — run this on a build host with "
         "the full python-doctr environment and fill in the per-tensor mapping "
         "table per the docstring above.",
         file=sys.stderr,

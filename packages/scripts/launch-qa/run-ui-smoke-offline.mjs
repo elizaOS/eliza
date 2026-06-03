@@ -2,10 +2,10 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { getFreePort } from "../../packages/app/test/utils/get-free-port.mjs";
+import { getFreePort } from "../../app/test/utils/get-free-port.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(scriptDir, "..", "..");
+const repoRoot = path.resolve(scriptDir, "..", "..", "..");
 const defaultSpec = "test/ui-smoke/all-pages-clicksafe.spec.ts";
 const readyTimeoutMs = 180_000;
 const defaultTestGreps = [
@@ -138,7 +138,7 @@ async function runDefaultRouteMatrix() {
     );
     const child = spawn(
       "node",
-      ["packages/scripts/launch-qa/run-ui-smoke-stub.mjs", "--grep", grep],
+      ["packages/scripts/launch-qa/run-ui-smoke-offline.mjs", "--grep", grep],
       {
         cwd: repoRoot,
         env: process.env,

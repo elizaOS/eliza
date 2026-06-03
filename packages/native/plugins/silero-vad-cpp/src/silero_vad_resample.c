@@ -1,7 +1,7 @@
 /*
  * silero-vad-cpp — linear PCM resampler.
  *
- * Real (non-stubbed) implementation of `silero_vad_resample_linear`.
+ * Implementation of `silero_vad_resample_linear`.
  * The Silero v5 graph only accepts 16 kHz input, but mic capture in
  * the wild arrives at 8 / 16 / 22.05 / 44.1 kHz; this TU is the
  * minimal, deterministic resample step that bridges that gap.
@@ -11,7 +11,7 @@
  * VAD (we only need an unbiased "is there voice" probability — the
  * model is robust to mild aliasing from upsampling, and
  * downsampling from 22.05/44.1 kHz to 16 kHz is what the Silero
- * authors used to train v5 in the first place). A future pass can
+ * authors used to train v5 in the first place). A higher-order path can
  * swap in a windowed sinc resampler behind the same signature
  * without touching callers.
  *

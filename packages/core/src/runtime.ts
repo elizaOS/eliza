@@ -3884,7 +3884,8 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	/**
-	 * Get all registered service types (includes lazy-registered, not yet started)
+	 * Get all registered service types, including lazy-registered services
+	 * that have not started.
 	 * @returns Array of registered service type names
 	 */
 	getRegisteredServiceTypes(): ServiceTypeName[] {
@@ -3892,7 +3893,8 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	/**
-	 * Check if a service type is registered (class registered; may not be started yet)
+	 * Check if a service type is registered; its class may still be awaiting
+	 * startup.
 	 * @param serviceType - The service type to check
 	 * @returns true if the service is registered
 	 */

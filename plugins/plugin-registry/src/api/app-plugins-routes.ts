@@ -3,7 +3,7 @@ import type http from "node:http";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-// === Phase 4F ===
+// Consolidated from packages/app-core/src/api/plugins-routes.ts.
 // Moved from packages/app-core/src/api/plugins-routes.ts into the
 // @elizaos/plugin-registry plugin. Both agent-internal helpers
 // (@elizaos/agent) and app-core-internal helpers (@elizaos/app-core) are

@@ -75,7 +75,7 @@ All read via `runtime.getSetting(...)` in `utils/config.ts`:
 | `ROBLOX_API_KEY` | Yes | — | Roblox Open Cloud API key; sensitive |
 | `ROBLOX_UNIVERSE_ID` | Yes | — | Target universe ID |
 | `ROBLOX_PLACE_ID` | No | — | Narrows scope to a specific place |
-| `ROBLOX_WEBHOOK_SECRET` | No | — | For future inbound webhook validation; stored in config but not consumed yet |
+| `ROBLOX_WEBHOOK_SECRET` | No | — | Stored on config for external inbound bridges; the built-in plugin is outbound-only |
 | `ROBLOX_MESSAGING_TOPIC` | No | `"eliza-agent"` | Open Cloud Messaging Service topic |
 | `ROBLOX_DRY_RUN` | No | `false` | String `"true"` suppresses actual publish calls |
 

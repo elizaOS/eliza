@@ -60,8 +60,8 @@ export interface DefaultRuntimeOperationManagerOptions {
   classifier?: IntentClassifier;
   healthChecker: HealthChecker;
   /**
-   * Tier → strategy. The cold strategy is required for Phase 1; warm/hot
-   * are optional and added by sibling agents.
+   * Tier → strategy. Cold is the conservative baseline; warm/hot strategies
+   * are registered by hosts that support lighter-weight reload paths.
    */
   strategies: Partial<Record<ReloadTier, ReloadStrategy>>;
 }
@@ -137,10 +137,10 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
 
     // Snapshot the classify context BEFORE prepare() runs: prepare() mutates
     // the live config to the target provider, so reading currentProvider after
-    // it would always equal the target → every provider-switch would classify
-    // as "hot" and a not-yet-loaded provider plugin (e.g. switching elizacloud
-    // → cerebras, or onboarding a first provider) would never get the cold
-    // restart that actually loads it, leaving the runtime with no provider.
+    // it would always equal the target, so every provider-switch would
+    // classify as "hot" and an unloaded provider plugin (e.g. switching
+    // elizacloud -> cerebras, or onboarding a first provider) would miss the
+    // cold restart that loads it, leaving the runtime with no provider.
     const ctxBeforePrepare = this.classifyContext();
     const prepareResult = req.prepare ? await req.prepare() : undefined;
     const preparedIntent =
@@ -201,7 +201,7 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
 
     await this.repository.update(id, { status: "running" });
 
-    // Phase: validate (the route layer already validated; this records the
+    // Validation gate (the route layer already validated; this records the
     // gate boundary so the phase log is complete).
     const validateAt = Date.now();
     await this.repository.appendPhase(id, {
@@ -246,7 +246,7 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
       return;
     }
 
-    // Phase: health-check.
+    // Health-check gate.
     const healthStart = Date.now();
     await this.repository.appendPhase(id, {
       name: "health-check",

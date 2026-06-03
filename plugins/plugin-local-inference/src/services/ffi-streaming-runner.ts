@@ -9,9 +9,8 @@
  * itself. It takes a narrow `LlmStreamingBinding` (see
  * `services/llm-streaming-binding.ts`) + an opaque `LlmCtxHandle` as
  * constructor arguments — that way it can be driven by libelizainference
- * (via `wrapElizaInferenceFfi`) OR a future desktop libllama+shim
- * adapter (Step B of FFI_BACKEND_WIREUP_PLAN.md) without dragging in
- * TTS/ASR surfaces. A single context can host concurrent generation
+ * (via `wrapElizaInferenceFfi`) or any desktop libllama shim adapter without
+ * dragging in TTS/ASR surfaces. A single context can host concurrent generation
  * sessions (one per pinned slot); the runner serialises with
  * `slotInFlight`.
  *
@@ -74,7 +73,7 @@ export class FfiStreamingRunner {
 	/**
 	 * Constructor takes the narrow `LlmStreamingBinding` (see
 	 * `services/llm-streaming-binding.ts`) so both libelizainference (via
-	 * `wrapElizaInferenceFfi`) and a future desktop libllama adapter can
+	 * `wrapElizaInferenceFfi`) and desktop libllama adapters can
 	 * satisfy it. The runner never touches TTS/ASR/mmap surfaces.
 	 */
 	constructor(

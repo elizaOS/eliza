@@ -73,7 +73,7 @@ export interface ToolView {
   /** Tool result/output, ANSI-stripped. */
   output?: string;
   /** Process exit code for `execute` tools (0 = success); null/undefined when
-   * not an exec tool or not yet finished. */
+   * the tool is not an exec invocation or is still running. */
   exitCode?: number | null;
   /** Wall-clock duration in ms from the tool's first to last event. */
   durationMs?: number;

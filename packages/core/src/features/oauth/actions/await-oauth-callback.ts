@@ -13,6 +13,7 @@ import type {
 	IAgentRuntime,
 	JsonValue,
 	Memory,
+	Service,
 	State,
 } from "../../../types/index.ts";
 import {
@@ -82,9 +83,9 @@ export const awaitOAuthCallbackAction: Action = {
 		callback?: HandlerCallback,
 	) => {
 		const params = readParams(options);
-		const bus = runtime.getService(
+		const bus = runtime.getService<Service & OAuthCallbackBusClient>(
 			OAUTH_CALLBACK_BUS_CLIENT_SERVICE,
-		) as unknown as OAuthCallbackBusClient | null;
+		);
 		if (!bus) {
 			return {
 				success: false,

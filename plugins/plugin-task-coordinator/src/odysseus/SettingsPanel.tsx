@@ -81,8 +81,8 @@ import { PREF_KEYS, readPref, writePref } from "./util/storage";
 // search provider / result-count / key fields are odysseus's /api/auth/settings
 // surface, which eliza's client does NOT expose — so this view owns its own
 // (non-shared) pref rather than adding to the shared PREF_KEYS table, matching
-// the CompareView precedent (COMPARE_VOTES_KEY). If a future eliza search-config
-// endpoint lands, promote this to PREF_KEYS.searchSettings (see integrationNotes).
+// the CompareView precedent (COMPARE_VOTES_KEY). A server-backed search-config
+// endpoint should promote this to PREF_KEYS.searchSettings (see integrationNotes).
 const SEARCH_SETTINGS_KEY = "search-settings";
 
 // odysseus settings-sidebar tabs (index.html data-settings-tab values), 1:1.
@@ -1755,8 +1755,8 @@ export function SettingsPanel({
                     {searchStatus}
                   </div>
                   <div className="od-settings-note">
-                    Stored as a local browser preference — eliza does not yet
-                    expose a search-config endpoint to persist this server-side.
+                    Stored as a local browser preference; this view has no
+                    server-side search-config endpoint.
                   </div>
                 </div>
               </div>

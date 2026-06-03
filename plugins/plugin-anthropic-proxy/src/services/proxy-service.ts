@@ -9,7 +9,11 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { ProxyServer } from "../proxy/server.js";
+import type { Pair } from "../proxy/sanitize.js";
+import type { SystemPromptStripConfig } from "../proxy/system-prompt.js";
 
 export type ProxyMode = "inline" | "shared" | "off";
 
@@ -21,10 +25,20 @@ export interface ProxyServiceConfig {
   bindHost: string;
   upstream?: string;
   credentialsPath?: string;
+  configPath?: string;
   envToken?: string;
   proxyAuthToken?: string;
   verbose: boolean;
+  fingerprintConfig?: FingerprintConfig;
   configError?: string;
+}
+
+export interface FingerprintConfig {
+  replacements?: ReadonlyArray<Pair>;
+  toolRenames?: ReadonlyArray<Pair>;
+  propRenames?: ReadonlyArray<Pair>;
+  reverseMap?: ReadonlyArray<Pair>;
+  systemPromptStrip?: SystemPromptStripConfig;
 }
 
 function readEnv(name: string): string | undefined {
@@ -75,6 +89,113 @@ function setAnthropicBaseUrl(target: string): void {
   }
 }
 
+function readPairArray(value: unknown, field: string): ReadonlyArray<Pair> {
+  if (!Array.isArray(value)) {
+    throw new Error(`${field} must be an array of [from, to] string pairs`);
+  }
+  return value.map((entry, index): Pair => {
+    if (
+      !Array.isArray(entry) ||
+      entry.length !== 2 ||
+      typeof entry[0] !== "string" ||
+      typeof entry[1] !== "string" ||
+      entry[0].length === 0
+    ) {
+      throw new Error(`${field}[${index}] must be [from, to] strings`);
+    }
+    return [entry[0], entry[1]];
+  });
+}
+
+function readSystemPromptStrip(value: unknown): SystemPromptStripConfig {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("systemPromptStrip must be an object");
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.start !== "string" ||
+    record.start.length === 0 ||
+    typeof record.end !== "string" ||
+    record.end.length === 0 ||
+    typeof record.paraphrase !== "string" ||
+    record.paraphrase.length === 0
+  ) {
+    throw new Error(
+      "systemPromptStrip requires non-empty start, end, and paraphrase strings",
+    );
+  }
+  const minStripLen =
+    record.minStripLen === undefined ? undefined : Number(record.minStripLen);
+  if (
+    minStripLen !== undefined &&
+    (!Number.isFinite(minStripLen) || minStripLen < 0)
+  ) {
+    throw new Error("systemPromptStrip.minStripLen must be a non-negative number");
+  }
+  return {
+    start: record.start,
+    end: record.end,
+    paraphrase: record.paraphrase,
+    ...(minStripLen !== undefined ? { minStripLen } : {}),
+  };
+}
+
+function loadFingerprintConfig(configPath: string): FingerprintConfig {
+  const raw = readFileSync(configPath, "utf8");
+  const parsed = JSON.parse(raw) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("config root must be an object");
+  }
+  const record = parsed as Record<string, unknown>;
+  const config: FingerprintConfig = {};
+  if (record.replacements !== undefined) {
+    config.replacements = readPairArray(record.replacements, "replacements");
+  }
+  if (record.toolRenames !== undefined) {
+    config.toolRenames = readPairArray(record.toolRenames, "toolRenames");
+  }
+  if (record.propRenames !== undefined) {
+    config.propRenames = readPairArray(record.propRenames, "propRenames");
+  }
+  if (record.reverseMap !== undefined) {
+    config.reverseMap = readPairArray(record.reverseMap, "reverseMap");
+  }
+  if (record.systemPromptStrip !== undefined) {
+    config.systemPromptStrip = readSystemPromptStrip(record.systemPromptStrip);
+  }
+  return config;
+}
+
+function resolveFingerprintConfig(): {
+  configPath?: string;
+  fingerprintConfig?: FingerprintConfig;
+  configError?: string;
+} {
+  const explicit = readEnv("CLAUDE_MAX_PROXY_CONFIG_PATH");
+  const configPath = explicit ? resolve(explicit) : resolve("config.json");
+  if (!existsSync(configPath)) {
+    return explicit
+      ? {
+          configPath,
+          configError: `CLAUDE_MAX_PROXY_CONFIG_PATH not found: ${configPath}`,
+        }
+      : {};
+  }
+  try {
+    return {
+      configPath,
+      fingerprintConfig: loadFingerprintConfig(configPath),
+    };
+  } catch (error) {
+    return {
+      configPath,
+      configError: `Invalid anthropic proxy config ${configPath}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+}
+
 export function resolveConfig(): ProxyServiceConfig {
   const modeRaw = (readEnv("CLAUDE_MAX_PROXY_MODE") ?? "inline").toLowerCase();
   const validMode =
@@ -83,6 +204,7 @@ export function resolveConfig(): ProxyServiceConfig {
 
   const portRaw = readEnv("CLAUDE_MAX_PROXY_PORT");
   const port = portRaw ? Number.parseInt(portRaw, 10) || 18801 : 18801;
+  const fingerprint = resolveFingerprintConfig();
 
   return {
     mode,
@@ -90,12 +212,14 @@ export function resolveConfig(): ProxyServiceConfig {
     bindHost: readEnv("CLAUDE_MAX_PROXY_BIND_HOST") ?? "127.0.0.1",
     upstream: readEnv("CLAUDE_MAX_PROXY_UPSTREAM"),
     credentialsPath: readEnv("CLAUDE_MAX_CREDENTIALS_PATH"),
+    configPath: fingerprint.configPath,
     envToken: readEnv("CLAUDE_CODE_OAUTH_TOKEN"),
     proxyAuthToken: readEnv("CLAUDE_MAX_PROXY_AUTH_TOKEN"),
     verbose: readEnv("CLAUDE_MAX_PROXY_VERBOSE") === "true",
-    ...(validMode
-      ? {}
-      : { configError: `Invalid CLAUDE_MAX_PROXY_MODE: ${modeRaw}` }),
+    fingerprintConfig: fingerprint.fingerprintConfig,
+    configError:
+      fingerprint.configError ??
+      (validMode ? undefined : `Invalid CLAUDE_MAX_PROXY_MODE: ${modeRaw}`),
   };
 }
 
@@ -119,11 +243,14 @@ export class AnthropicProxyService extends Service {
     const config = resolveConfig();
     service.proxyConfig = config;
     if (config.configError) {
-      service.startError = config.configError;
-      logger.warn(
-        `[anthropic-proxy] ${service.startError} — falling back to off`,
-      );
-    }
+    service.startError = config.configError;
+    logger.warn(
+      `[anthropic-proxy] ${service.startError} — falling back to off`,
+    );
+    service.effectiveMode = "off";
+    service.effectiveUrl = null;
+    return service;
+  }
 
     if (config.mode === "off") {
       service.effectiveMode = "off";
@@ -175,6 +302,11 @@ export class AnthropicProxyService extends Service {
       envToken: config.envToken,
       proxyAuthToken: config.proxyAuthToken,
       verbose: config.verbose,
+      replacements: config.fingerprintConfig?.replacements,
+      toolRenames: config.fingerprintConfig?.toolRenames,
+      propRenames: config.fingerprintConfig?.propRenames,
+      reverseMap: config.fingerprintConfig?.reverseMap,
+      systemPromptStrip: config.fingerprintConfig?.systemPromptStrip,
       logger: {
         info: (m) => logger.info(`[anthropic-proxy] ${m}`),
         warn: (m) => logger.warn(`[anthropic-proxy] ${m}`),

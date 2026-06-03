@@ -18,7 +18,7 @@
 // getCodingAgentTaskThread and renders the thread's decision log as runs.
 // odysseus's create-task form, ssh/script action types, cron pickers, and the
 // CalDAV-style onboarding have no eliza backend, so the "Add" tab renders an
-// honest empty placeholder rather than a fake builder. When the orchestrator
+// honest empty state rather than a fake builder. When the orchestrator
 // has zero threads we show odysseus's faithful "No tasks yet" empty state.
 
 import {

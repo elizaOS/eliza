@@ -1,5 +1,5 @@
 /**
- * Browser stub for the Capacitor-llama adapter. Browsers cannot run
+ * Browser-unavailable Capacitor-llama adapter. Browsers cannot run
  * `libllama.so` directly; callers should proxy through a server or switch
  * providers. All model handlers throw with a clear message.
  */
@@ -48,7 +48,7 @@ const unsupportedImageDescription = (
 
 export const localAiPlugin: Plugin = {
 	name: pluginName,
-	description: "Local AI plugin (browser stub; use a server proxy)",
+	description: "Local AI plugin (unavailable in browsers; use a server proxy)",
 	async init(_config, _runtime: IAgentRuntime): Promise<void> {
 		logger.warn(
 			`[plugin-${pluginName}] Capacitor-llama adapter is not supported directly in browsers.`,

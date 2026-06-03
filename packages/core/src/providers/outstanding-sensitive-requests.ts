@@ -13,6 +13,7 @@ import type {
 	Memory,
 	Provider,
 	ProviderResult,
+	Service,
 	State,
 } from "../types/index.ts";
 
@@ -48,9 +49,9 @@ export const outstandingSensitiveRequestsProvider: Provider = {
 		message: Memory,
 		_state?: State,
 	): Promise<ProviderResult> => {
-		const client = runtime.getService(
+		const client = runtime.getService<Service & SensitiveRequestsClient>(
 			SENSITIVE_REQUESTS_CLIENT_SERVICE,
-		) as unknown as SensitiveRequestsClient | null;
+		);
 		const identityId =
 			typeof message.entityId === "string" ? message.entityId : undefined;
 

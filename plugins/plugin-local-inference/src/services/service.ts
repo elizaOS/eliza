@@ -1,8 +1,8 @@
 /**
  * Public facade for the local-inference service.
  *
- * Single entry point used by the API routes, the settings UI, and any
- * future orchestration code. Holds singleton instances of the downloader
+ * Single entry point used by the API routes, settings UI, and orchestration
+ * code. Holds singleton instances of the downloader
  * and active-model coordinator so subscribers receive the same event
  * stream across the process.
  */

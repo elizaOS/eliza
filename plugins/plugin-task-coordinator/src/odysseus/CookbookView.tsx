@@ -842,7 +842,7 @@ export function CookbookView({
                   <button
                     type="button"
                     className="od-cb-gpu-btn od-cb-edit"
-                    title="Set hardware manually — eliza probes hardware directly, so manual override isn't wired here."
+                    title="Set hardware manually — eliza probes hardware directly, so manual override is disabled here."
                     disabled
                   >
                     EDIT
@@ -1072,7 +1072,7 @@ export function CookbookView({
                 <input
                   type="password"
                   className="od-cb-field-input"
-                  placeholder="hf_… — token storage isn't wired in this orchestrator"
+                  placeholder="hf_… — token storage is disabled in this orchestrator"
                   aria-label="HuggingFace token"
                   disabled
                 />

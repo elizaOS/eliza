@@ -57,7 +57,7 @@ import {
 /**
  * The minimal shape this module consumes from an `Action`. Accepting the
  * structural pick keeps the helper testable in isolation (no handlers /
- * validators need stubbing).
+ * validators need test doubles).
  */
 export type PlannerAction = Pick<
 	Action,

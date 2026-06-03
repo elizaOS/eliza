@@ -15,6 +15,7 @@ import type {
 	IAgentRuntime,
 	JsonValue,
 	Memory,
+	Service,
 	State,
 } from "../../../types/index.ts";
 import {
@@ -83,9 +84,9 @@ export const bindIdentityToSessionAction: Action = {
 		callback?: HandlerCallback,
 	) => {
 		const params = readParams(options);
-		const gatekeeper = runtime.getService(
-			IDENTITY_VERIFICATION_GATEKEEPER_SERVICE,
-		) as unknown as IdentityVerificationGatekeeperClient | null;
+		const gatekeeper = runtime.getService<
+			Service & IdentityVerificationGatekeeperClient
+		>(IDENTITY_VERIFICATION_GATEKEEPER_SERVICE);
 		if (!gatekeeper) {
 			return {
 				success: false,

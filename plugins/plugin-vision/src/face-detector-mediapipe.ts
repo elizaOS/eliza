@@ -1,11 +1,8 @@
 // face-detector-mediapipe.ts — DEPRECATED.
 //
-// The previous implementation used `onnxruntime-node` to run BlazeFace. As
-// part of the ggml runtime migration (see `VISION_RUNTIME_MIGRATION.md`),
-// this alternate detector is being replaced by the RetinaFace ggml port in
-// Phase 3. Until that port lands, this class throws on initialize() and the
-// runtime falls through to the legacy `face-api.js` face library (also
-// scheduled for removal in Phase 3).
+// The previous implementation used `onnxruntime-node` to run BlazeFace. That
+// backend is no longer shipped. This compatibility class reports unavailable
+// and the runtime uses the configured face-recognition backend instead.
 //
 // Kept as a migration shim so existing imports (test fixtures) continue to
 // compile without touching the test layout. The class is internal and not
@@ -35,7 +32,6 @@ export class MediaPipeFaceDetector {
   }
 
   static async isAvailable(): Promise<boolean> {
-    // Always unavailable until the RetinaFace ggml port lands.
     return false;
   }
 
@@ -45,13 +41,13 @@ export class MediaPipeFaceDetector {
 
   async initialize(): Promise<void> {
     throw new Error(
-      "[MediaPipeFace] ONNX backend removed in ggml migration; RetinaFace ggml port remains pending — see VISION_RUNTIME_MIGRATION.md Phase 3.",
+      "[MediaPipeFace] ONNX backend removed in ggml migration; use the configured face-recognition backend instead.",
     );
   }
 
   async detect(_imageBuffer: Buffer): Promise<MediaPipeFaceDetection[]> {
     throw new Error(
-      "[MediaPipeFace] migration in progress; no replacement available yet.",
+      "[MediaPipeFace] ONNX backend removed in ggml migration; use the configured face-recognition backend instead.",
     );
   }
 

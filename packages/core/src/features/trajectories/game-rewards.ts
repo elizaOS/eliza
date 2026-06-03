@@ -26,5 +26,5 @@ export async function buildGameStateFromDB(
 export async function recomputeTrajectoryRewards(
 	_trajectoryIds: string[],
 ): Promise<void> {
-	// Intentionally a no-op placeholder; reward recomputation is environment-specific.
+	// Environment-specific reward engines write rewards before this hook returns.
 }

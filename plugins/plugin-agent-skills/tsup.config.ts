@@ -12,7 +12,7 @@ export default defineConfig({
 		"path",
 		"child_process",
 		"@elizaos/core",
-		// Phase 4E: skill routes/services depend on @elizaos/agent for
+		// Skill routes/services depend on @elizaos/agent for
 		// `resolveDefaultAgentWorkspaceDir` and `createIntegrationTelemetrySpan`.
 		// The agent loads us at runtime; we must not bundle it.
 		"@elizaos/agent",

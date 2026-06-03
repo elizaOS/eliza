@@ -1,7 +1,7 @@
 /**
  * @elizaos/plugin-registry — public barrel.
  *
- * === Phase 4F ===
+ * Consolidated plugin registry surfaces.
  *
  * This plugin owns the plugin-discovery / install / route surfaces that were
  * previously split between `@elizaos/agent` and `@elizaos/app-core`:

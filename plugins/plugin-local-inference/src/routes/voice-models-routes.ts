@@ -265,7 +265,7 @@ export async function resolveInstalledVersions(
 }
 
 /* ----------------------------------------------------------------- *
- * Updater dependency-injection hook (tests stub the updater).        *
+ * Updater dependency-injection hook (tests inject a fake updater).   *
  * ----------------------------------------------------------------- */
 
 let updaterOverride: VoiceModelUpdater | null = null;
@@ -280,7 +280,7 @@ function getUpdater(): VoiceModelUpdater {
 }
 
 /* ----------------------------------------------------------------- *
- * Download dependency-injection hook (tests stub the downloader to    *
+ * Download dependency-injection hook (tests inject a fake downloader  *
  * avoid touching the network).                                        *
  * ----------------------------------------------------------------- */
 
@@ -499,7 +499,7 @@ export async function handleVoiceModelsRoutes(
 			);
 			return true;
 		}
-		// First asset only — multi-asset downloads are a future iteration.
+		// First asset only; this endpoint handles one published voice archive per request.
 		if (status.latestKnown.ggufAssets.length === 0) {
 			sendJsonError(res, `no assets published for ${id}`, 409);
 			return true;

@@ -1,17 +1,16 @@
-// face-detector-ggml.ts — EXPERIMENTAL.
+// face-detector-ggml.ts — ggml-backed BlazeFace binding.
 //
 // bun:ffi binding for the BlazeFace head exposed by the standalone
 // `packages/native/plugins/face-cpp/` library. This is the ggml-backed
-// replacement for `face-detector-mediapipe.ts` (ONNX, deprecated). It
+// replacement for the removed ONNX detector surface. It
 // exposes the same surface (`MediaPipeFaceConfig`, `MediaPipeFaceDetection`,
 // `BlazeFaceGgmlDetector` modeled on `MediaPipeFaceDetector`) so existing
-// callers can migrate behind the planned `setFaceBackend("ggml")` toggle
-// without touching call sites.
+// callers can opt into the native backend without touching call sites.
 //
-// EXPERIMENTAL: the C ABI is frozen but the model entries
-// (`face_detect_open`, `face_detect`) currently return `-ENOSYS` from the
-// native face-cpp library. `BlazeFaceGgmlDetector.isAvailable()` returns false until both the
-// compiled `libface.<so|dylib|dll>` AND the BlazeFace GGUF artifact exist.
+// The C ABI is frozen but some native builds return `-ENOSYS` from
+// `face_detect_open` / `face_detect`. `BlazeFaceGgmlDetector.isAvailable()`
+// returns false until both the compiled `libface.<so|dylib|dll>` and the
+// BlazeFace GGUF artifact exist.
 // Until those land, every public method falls through to a clear error —
 // there is no silent fallback to a different backend.
 //
@@ -30,8 +29,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /**
- * Same shape the deprecated MediaPipe detector exports. Kept identical so
- * the migration toggle is a one-line change at the call site.
+ * Same shape the removed ONNX detector exported. Kept identical so callers can
+ * select the native backend without reshaping results.
  */
 export interface MediaPipeFaceConfig {
   modelUrl?: string;
@@ -257,10 +256,9 @@ async function loadBindings(): Promise<FaceDetectBindings | null> {
 }
 
 /**
- * EXPERIMENTAL ggml-backed BlazeFace face detector. Mirrors the
- * deprecated `MediaPipeFaceDetector` surface — same constructor config,
- * same `MediaPipeFaceDetection` output shape — so the planned
- * `setFaceBackend("ggml")` toggle is a one-line swap at the call site.
+ * ggml-backed BlazeFace face detector. Mirrors the
+ * `MediaPipeFaceDetector` compatibility surface — same constructor config,
+ * same `MediaPipeFaceDetection` output shape.
  *
  * Currently disabled (`isAvailable()` returns `false`) until the
  * face-cpp model entries gain runtime implementations and a BlazeFace GGUF

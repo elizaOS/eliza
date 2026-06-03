@@ -12,7 +12,7 @@ import {
 // The consolidated "Glance" overview is intentionally not registered —
 // the right rail now surfaces Calendar, Inbox, and Automations as three
 // focused widgets instead. The overview component stays exported so the
-// LifeOps page view (or future entry points) can still render it.
+// LifeOps page view (or other entry points) can still render it.
 registerBuiltinWidgets([...LIFEOPS_CHANNEL_WIDGETS]);
 
 registerBuiltinWidgetDeclarations(

@@ -3,14 +3,14 @@
 Standalone C library + GGUF conversion scripts that port BlazeFace
 (face detection) and a 128-d face embedding network (FaceNet-style
 or ArcFace-mini) onto the elizaOS/llama.cpp fork's ggml dispatcher.
-Once it lands it replaces `face-detector-mediapipe.ts` (ONNX) and
-`face-recognition.ts` (face-api.js / TensorFlow.js / ONNX) in
-plugin-vision.
+The native runtime replaces the ONNX-backed `face-detector-mediapipe.ts`
+path and provides the face-embedding surface needed to retire the
+`face-recognition.ts` face-api.js / TensorFlow.js stack after production
+parity rollout.
 
-Today the model entry points in `include/face/face.h` are a **stub**
-(`face_detect_open`, `face_detect`, `face_embed_open`, `face_embed`
-return `-ENOSYS`) but the model-independent helpers are real and
-tested:
+Today the model entry points in `include/face/face.h` are implemented by
+`src/face_model.c` with pure-C scalar BlazeFace and embedder forwards.
+The model-independent helpers are real and tested:
 
 - `face_blazeface_make_anchors` — 896-anchor table for the
   128x128 BlazeFace front model.
@@ -38,17 +38,19 @@ ctest --test-dir build --output-on-failure
 
 ```
 include/face/face.h           Public C ABI (frozen — see AGENTS.md).
-src/face_stub.c               ENOSYS stub for the model entries.
+src/face_model.c              Native CPU model runtime.
+src/face_blazeface.c          BlazeFace forward path.
+src/face_embed.c              128-d embedder forward path.
 src/face_anchor_decode.c      BlazeFace anchor table + decoder (real).
 src/face_align.c              5-point affine warp + bilinear sampler (real).
 src/face_distance.c           Cosine + L2 distance helpers (real).
-scripts/blazeface_to_gguf.py  BlazeFace converter; TODO blocks documented.
-scripts/face_embed_to_gguf.py Embedder converter; TODO blocks documented.
-test/face_stub_smoke.c        Build-only smoke test for the stub model ABI.
+scripts/blazeface_to_gguf.py  BlazeFace converter.
+scripts/face_embed_to_gguf.py Embedder converter.
+test/face_abi_smoke.c         Build-only smoke test for the public ABI.
 test/face_anchor_test.c       Behavioural test for the anchor pipeline.
 test/face_align_test.c        Behavioural test for the 5-point aligner.
 test/face_distance_test.c     Behavioural test for the distance helpers.
-CMakeLists.txt                Builds libface + the four test binaries.
+CMakeLists.txt                Builds libface + native test binaries.
 ```
 
 ## License

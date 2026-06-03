@@ -2,8 +2,8 @@
  * Local ASR (transcription) capability — public entry point.
  *
  * This module is what `provider.ts` (`createTranscriptionHandler`), the
- * voice pipeline bridge, and any future ASR consumer imports to register
- * the capability with the WS1 MemoryArbiter.
+ * voice pipeline bridge, and additional ASR consumers import to register the
+ * capability with the WS1 MemoryArbiter.
  *
  * Wiring:
  *

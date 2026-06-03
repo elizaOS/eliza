@@ -1,5 +1,5 @@
 /**
- * Phase 2.3 fixture plugin. Exports a tiny Plugin shape with two
+ * Worker-host fixture plugin. Exports a tiny Plugin shape with two
  * actions:
  *
  * - `ECHO`: returns `{ echoed: content }`. Proves the host can pass

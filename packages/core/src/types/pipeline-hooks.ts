@@ -197,7 +197,7 @@ export type PipelineHookContext =
 	| ({ phase: "model_stream_chunk" } & ModelStreamHookCorrelation & {
 				chunk: string;
 				accumulated?: string;
-				/** When the delta comes from DPE / structured streaming (future). */
+				/** Field path for deltas produced by DPE / structured streaming. */
 				field?: string;
 			})
 	| ({ phase: "model_stream_end" } & ModelStreamHookCorrelation & {

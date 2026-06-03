@@ -50,8 +50,8 @@ static int test_reset_zeros_every_field(void) {
         return 1;
     }
 
-    /* Per-field check so a future struct addition that reset forgets
-     * about would surface here too. */
+    /* Per-field check so a struct addition that reset forgets about
+     * would surface here too. */
     for (size_t i = 0; i < SILERO_VAD_STATE_HIDDEN_DIM; ++i) {
         if (state.h_in[i] != 0.0f || state.h_out[i] != 0.0f) {
             fprintf(stderr,

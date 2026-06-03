@@ -211,8 +211,8 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
     optional: ["intent", "query", "details"],
   },
   bulk_reschedule: {
-    description: "Preview bulk reschedule. Push cohort to future window.",
-    descriptionCompressed: "preview bulk reschedule cohort future-window",
+    description: "Preview bulk reschedule. Push cohort to later window.",
+    descriptionCompressed: "preview bulk reschedule cohort later-window",
     required: [],
     optional: ["timeZone", "intent"],
   },

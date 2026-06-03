@@ -69,7 +69,7 @@ bun run --cwd plugins/plugin-social-alpha test        # vitest run --passWithNoT
 bun run --cwd plugins/plugin-social-alpha clean       # rm -rf dist .turbo node_modules
 ```
 
-`lint`, `format`, `typecheck` are no-ops (`echo` stubs) — the source is partially vendor-derived.
+`lint`, `format`, `typecheck` are release-skip scripts — the source is partially vendor-derived.
 
 ## Config / env vars
 
@@ -112,6 +112,6 @@ Plugin-level config keys (set in agent character or environment):
 - **Single LLM call per message.** Relevance checking and recommendation extraction are merged into one `TEXT_LARGE` call (`RELEVANCE_AND_EXTRACTION_TEMPLATE` in `events.ts`). An empty `recommendations` array means "not relevant" — both cases are handled identically.
 - **Deduplication window.** Identical token+type recommendations within 30 minutes are dropped (`RECENT_REC_DUPLICATION_TIMEFRAME_MS`).
 - **Frontend.** The leaderboard UI is a standalone React/Vite SPA built into `dist/`. It is served via the `/display` route. Run `bun run build` before the frontend routes will work.
-- **`typecheck` / `lint` / `format` are skipped** — the package.json scripts are stubs. Use the repo-root biome/typecheck commands if you need to verify types.
+- **`typecheck` / `lint` / `format` are skipped** — the package.json scripts intentionally echo release-skip messages. Use the repo-root biome/typecheck commands if you need type checks.
 - **`bignumber.js`** is used for precise arithmetic in price calculations (see `clients.ts`).
 - See repo root `AGENTS.md` for architecture commandments, logger rules, and ESM conventions.

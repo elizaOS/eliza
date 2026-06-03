@@ -105,7 +105,7 @@ Use `RLMTrajectoryIntegration` from `trajectory-integration.ts`. It accepts an o
 - **No fallback inference:** When the Python subprocess fails to start, `RLMClient.infer()` throws. Use `getStatus()` for diagnostics before routing traffic through RLM.
 - **Python subprocess path:** The subprocess is spawned relative to `__dirname/../python`. The Python package must be installed as `elizaos_plugin_rlm` (i.e. `pip install git+https://github.com/alexzhang13/rlm.git` followed by packaging it under that module name, or use the provided server shim).
 - **`assertRecordedLlmCall` enforcement:** `RLMClient.infer()` calls `assertRecordedLlmCall` from `@elizaos/core` at entry, requiring that all calls go through `recordLlmCall()`. The plugin's `handleTextGeneration` satisfies this by wrapping the client call in `recordLlmCall`. If you call `RLMClient.infer()` directly outside a `recordLlmCall` context it will throw.
-- **No streaming:** Streaming is not supported; all model type handlers return `Promise<string>`.
+- **No streaming:** The RLM adapter returns complete text responses; all model type handlers return `Promise<string>`.
 - **Token counting:** Uses a naive `text.length / 4` approximation — matches the Python fallback but is inaccurate for non-ASCII content.
 - **Node-only:** `"eliza".platforms: ["node"]`. Not usable in browser or mobile runtimes.
 - See root `AGENTS.md` for repo-wide conventions (logger usage, ESM, naming, architecture rules).

@@ -14,6 +14,7 @@ import type {
 	IAgentRuntime,
 	JsonValue,
 	Memory,
+	Service,
 	State,
 } from "../../../types/index.ts";
 import {
@@ -204,9 +205,9 @@ export const requestIdentityVerificationAction: Action = {
 		callback?: HandlerCallback,
 	) => {
 		const params = readParams(options);
-		const client = runtime.getService(
+		const client = runtime.getService<Service & ApprovalRequestsClient>(
 			APPROVAL_REQUESTS_CLIENT_SERVICE,
-		) as unknown as ApprovalRequestsClient | null;
+		);
 		if (!client) {
 			return {
 				success: false,

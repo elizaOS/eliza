@@ -2,10 +2,10 @@
  * @module plugin-app-control/workers/app-worker-entry
  *
  * Bun worker entry point spawned by AppWorkerHostService for apps
- * that declare `isolation: "worker"`. Phase 2.3 surface: dynamically
- * imports the app's plugin module from `workerData.pluginEntryPath`,
- * builds an action registry, and dispatches `invokeAction` requests
- * across the postMessage bridge.
+ * that declare `isolation: "worker"`. The entry dynamically imports the
+ * app's plugin module from `workerData.pluginEntryPath`, builds an action
+ * registry, and dispatches `invokeAction` requests across the postMessage
+ * bridge.
  *
  * Wire format (parentPort messages):
  *
@@ -128,9 +128,9 @@ function hasDeclaredFsOperation(operation: "read" | "write"): boolean {
 }
 
 /**
- * Phase 2.4 worker-side gated capabilities. Plugins that opt into the
- * sandbox model call `runtime.fetch(...)` and `runtime.fs.readFile(...)`
- * instead of reaching for `globalThis.fetch` / `node:fs` directly.
+ * Worker-side gated capabilities. Plugins that opt into the sandbox model
+ * call `runtime.fetch(...)` and `runtime.fs.readFile(...)` instead of reaching
+ * for `globalThis.fetch` / `node:fs` directly.
  *
  * `runtime.fetch` is allowed iff:
  *   - `grantedNamespaces` includes "net"
@@ -142,10 +142,10 @@ function hasDeclaredFsOperation(operation: "read" | "write"): boolean {
  *   - a `statePath` was assigned at boot
  *   - the resolved absolute path is contained in `statePath`
  *
- * Phase 2.4 keeps the gate dumb on purpose — exact-host or `*.suffix`
- * matching for net, statePath-prefix containment for fs. The full
- * glob-against-`fs.read`/`fs.write` patterns from the manifest land
- * when there's a real third-party app exercising the contract.
+ * The gate is intentionally simple: exact-host or `*.suffix` matching for net,
+ * and statePath-prefix containment for fs. The manifest-level `fs.read` and
+ * `fs.write` declarations currently authorize the operation class; path
+ * narrowing is enforced by the per-app statePath sandbox.
  */
 async function gatedFetch(
 	url: string | URL,
@@ -300,7 +300,7 @@ async function loadPlugin(entryPath: string): Promise<{
  * plugins can't accidentally leak the sandbox by touching an un-gated
  * `runtime.*` member.
  */
-function makeRuntimeStub(): unknown {
+function makeSandboxRuntimeFacade(): unknown {
 	const exposed: Record<string | symbol, unknown> = {
 		slug,
 		agentId,
@@ -348,7 +348,7 @@ async function dispatchInvokeAction(
 			content: content ?? {},
 		};
 		const result = await action.handler(
-			makeRuntimeStub(),
+			makeSandboxRuntimeFacade(),
 			message,
 			undefined,
 			options ?? {},

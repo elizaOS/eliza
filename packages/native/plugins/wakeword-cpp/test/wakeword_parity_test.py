@@ -24,7 +24,7 @@ structural divergence (wrong op order, wrong axis, dropped layer,
 etc.) while staying robust against the residual sources above. The
 1e-3-bit-exact target the task brief calls for is achievable only
 with an fp32 GGUF and fp32 carry-aligned chunked melspec — both
-out of scope for this Phase 2 bring-up.
+out of scope for this native-runtime bring-up.
 
 Fixtures: this test does NOT ship a 1000-clip held-out set. It runs
 both engines on synthesized audio (silence + a chirp + a noise burst)

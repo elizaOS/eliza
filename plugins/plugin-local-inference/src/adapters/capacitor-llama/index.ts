@@ -1,7 +1,7 @@
 /**
  * Local-AI plugin backed by the Capacitor-llama adapter.
  *
- * This is the unified replacement for the deprecated capacitor-llama adapter.
+ * This is the unified replacement for the legacy capacitor-llama adapter.
  * It registers a `Plugin` that handles `ModelType.TEXT_SMALL/LARGE/EMBEDDING`
  * via `CapacitorLlamaContext` — a single contract that resolves to
  * `llama-cpp-capacitor` on mobile and the desktop bun:ffi adapter on

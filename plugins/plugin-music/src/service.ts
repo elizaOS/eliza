@@ -647,7 +647,7 @@ export class MusicService extends Service {
    * 1. Is discord service available? (optional dependency)
    * 2. Is Discord connected to this guild?
    * 3. If yes, auto-subscribe Discord to the broadcast
-   * 4. If not yet connected, attach listener to subscribe when it connects
+   * 4. If the connection is pending, attach listener to subscribe on connect
    *
    * This happens transparently - user just plays music, and it works.
    *

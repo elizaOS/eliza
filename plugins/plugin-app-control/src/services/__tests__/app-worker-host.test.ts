@@ -1,8 +1,8 @@
 /**
  * @module plugin-app-control/services/__tests__/app-worker-host
  *
- * Phase 2.2 integration test for AppWorkerHostService. Proves the
- * three load-bearing things for the rest of Phase 2:
+ * Integration coverage for AppWorkerHostService. Proves the three
+ * load-bearing worker-host contracts:
  *
  *   1. The host can spawn a Bun worker_threads Worker with the
  *      app-worker-entry.ts file.
@@ -14,9 +14,8 @@
  *
  * The test uses no agent runtime; AppWorkerHostService.spawn() is
  * called directly with a fixture SpawnOptions. The
- * `startForRegisteredApp` path that pulls from AppRegistryService is
- * exercised by Phase 2.5's end-to-end test once the registry plumbing
- * lands.
+ * `startForRegisteredApp` path that pulls from AppRegistryService is covered
+ * by the registry-to-worker end-to-end test.
  */
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -34,7 +33,7 @@ const FIXTURE_PLUGIN_PATH = path.resolve(
 	"../../../test/fixtures/sandbox-plugin/plugin.ts",
 );
 
-describe("AppWorkerHostService — Phase 2.2 bridge", () => {
+describe("AppWorkerHostService worker bridge", () => {
 	let service: AppWorkerHostService;
 
 	beforeEach(() => {
@@ -153,7 +152,7 @@ describe("AppWorkerHostService — Phase 2.2 bridge", () => {
 		expect(second.bootedAt).toBe(first.bootedAt);
 	});
 
-	describe("Phase 2.3 — plugin loading + action dispatch", () => {
+	describe("plugin loading + action dispatch", () => {
 		it("loads the fixture plugin and reports its actions in ping", async () => {
 			await service.spawn({
 				slug: "fixture-plugin-load",
@@ -258,7 +257,7 @@ describe("AppWorkerHostService — Phase 2.2 bridge", () => {
 		});
 	});
 
-	describe("Phase 2.4 — fs + net capability gates", () => {
+	describe("fs + net capability gates", () => {
 		let httpServer: http.Server;
 		let httpServerUrl: string;
 		let stateRoot: string;

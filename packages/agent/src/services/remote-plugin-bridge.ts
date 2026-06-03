@@ -3,7 +3,7 @@
  *
  * Sits between a `RemotePluginHost`-managed worker (or any
  * `BridgeChannel`-shaped transport) and an `IAgentRuntime`. On
- * `worker-announce-plugin` it walks the descriptor, synthesises stub
+ * `worker-announce-plugin` it walks the descriptor, synthesises proxy
  * Plugin contributions (actions, providers, events, models) whose
  * handlers proxy back to the worker over `worker-rpc`, and registers
  * the resulting Plugin with `runtime.registerPlugin(...)`.
@@ -13,8 +13,9 @@
  * `composeState`, etc.) and the result is shipped back as
  * `host-rpc-result`.
  *
- * P1 wires: actions, providers, events, models, evaluators, action callbacks.
- * Deferred: services, routes, views (P2), streaming model tokens (P2).
+ * Wired: actions, providers, events, models, evaluators, action callbacks,
+ * services, routes, and views. Streaming model token forwarding remains a
+ * separate bridge capability.
  */
 
 import type {
@@ -34,7 +35,6 @@ import type {
   JsonValue,
   RemoteFunctionRef,
   RemotePluginWorkerMessage,
-  WorkerActionCallbackMessage,
   WorkerAnnounceDynamicMessage,
   WorkerAnnouncePluginMessage,
   WorkerRpcMessage,
@@ -67,6 +67,12 @@ interface PendingRequest {
   timer: ReturnType<typeof setTimeout> | undefined;
 }
 
+interface WorkerActionCallbackEnvelope {
+  type: "worker-action-callback";
+  callbackId: string;
+  payload: JsonValue;
+}
+
 /** rpc-id → live handler function on the worker side. */
 type RpcId = string;
 
@@ -78,6 +84,13 @@ interface AttachedState {
   actionCallbacks: Map<string, NonNullable<Parameters<Action["handler"]>[4]>>;
   nextRequestId: () => number;
   unsubscribe: (() => void) | undefined;
+}
+
+function isWorkerActionCallbackEnvelope(
+  message: RemotePluginWorkerMessage,
+): message is RemotePluginWorkerMessage & WorkerActionCallbackEnvelope {
+  const candidate = message as { type?: unknown };
+  return candidate.type === "worker-action-callback";
 }
 
 export class RemotePluginBridge {
@@ -134,6 +147,14 @@ export class RemotePluginBridge {
   }
 
   private async onMessage(message: RemotePluginWorkerMessage): Promise<void> {
+    // Keep this staged callback envelope source-typed here so the bridge does
+    // not depend on ignored plugin-remote-manifest dist declarations being
+    // regenerated before every workspace typecheck.
+    if (isWorkerActionCallbackEnvelope(message)) {
+      await this.handleActionCallback(message);
+      return;
+    }
+
     switch (message.type) {
       case "worker-announce-plugin":
         await this.handleAnnounce(message as WorkerAnnouncePluginMessage);
@@ -145,9 +166,6 @@ export class RemotePluginBridge {
         return;
       case "worker-rpc-result":
         this.handleRpcResult(message as WorkerRpcResultMessage);
-        return;
-      case "worker-action-callback":
-        await this.handleActionCallback(message as WorkerActionCallbackMessage);
         return;
       case "host-rpc":
         await this.handleHostRpc(message as HostRpcMessage);
@@ -346,7 +364,7 @@ export class RemotePluginBridge {
       | Array<JsonObject & { name: string; handler: RemoteFunctionRef }>
       | undefined;
     if (actions?.length) {
-      plugin.actions = actions.map((action) => this.makeActionStub(action));
+      plugin.actions = actions.map((action) => this.makeActionProxy(action));
     }
 
     const providers = descriptor.providers as
@@ -354,7 +372,7 @@ export class RemotePluginBridge {
       | undefined;
     if (providers?.length) {
       plugin.providers = providers.map((provider) =>
-        this.makeProviderStub(provider),
+        this.makeProviderProxy(provider),
       );
     }
 
@@ -364,7 +382,7 @@ export class RemotePluginBridge {
     if (events) {
       const eventMap: NonNullable<Plugin["events"]> = {};
       for (const [eventName, refs] of Object.entries(events)) {
-        const handlers = refs.map((ref) => this.makeEventHandlerStub(ref));
+        const handlers = refs.map((ref) => this.makeEventHandlerProxy(ref));
         (eventMap as Record<string, unknown[]>)[eventName] = handlers;
       }
       plugin.events = eventMap;
@@ -379,7 +397,7 @@ export class RemotePluginBridge {
       >;
       for (const [modelType, ref] of Object.entries(models)) {
         (modelMap as Record<string, unknown>)[modelType] =
-          this.makeModelHandlerStub(ref);
+          this.makeModelHandlerProxy(ref);
       }
       plugin.models = modelMap;
     }
@@ -403,7 +421,7 @@ export class RemotePluginBridge {
       | undefined;
     if (services?.length) {
       plugin.services = services.map((svc) =>
-        this.makeServiceClassStub(svc),
+        this.makeServiceClassProxy(svc),
       ) as Plugin["services"];
     }
   }
@@ -420,7 +438,7 @@ export class RemotePluginBridge {
       | undefined;
     if (routes?.length) {
       plugin.routes = routes
-        .map((r) => this.makeRouteStub(r))
+        .map((r) => this.makeRouteProxy(r))
         .filter((r): r is NonNullable<Plugin["routes"]>[number] => r !== null);
     }
   }
@@ -442,7 +460,7 @@ export class RemotePluginBridge {
     }
   }
 
-  private makeActionStub(
+  private makeActionProxy(
     descriptor: JsonObject & { name: string; handler: RemoteFunctionRef },
   ): Action {
     const name = descriptor.name;
@@ -512,7 +530,7 @@ export class RemotePluginBridge {
     return action;
   }
 
-  private makeProviderStub(
+  private makeProviderProxy(
     descriptor: JsonObject & { name: string; get: RemoteFunctionRef },
   ): Provider {
     const name = descriptor.name;
@@ -553,7 +571,7 @@ export class RemotePluginBridge {
   }
 
   /**
-   * Build a {@link ServiceClass} stub from a service descriptor. The
+   * Build a {@link ServiceClass} proxy from a service descriptor. The
    * returned class has the announced serviceType and a static `start`
    * factory that constructs an instance whose declared rpcMethods
    * worker-rpc into the worker's service trampoline.
@@ -562,7 +580,7 @@ export class RemotePluginBridge {
    * private worker methods from the host, which is the whole point of
    * the opt-in.
    */
-  private makeServiceClassStub(descriptor: {
+  private makeServiceClassProxy(descriptor: {
     serviceType: string;
     rpcMethods: string[];
     capabilityDescription?: string;
@@ -609,11 +627,11 @@ export class RemotePluginBridge {
   }
 
   /**
-   * Build a route stub. The agent's plugin-route registration code
+   * Build a route proxy. The agent's plugin-route registration code
    * picks up `plugin.routes[i]` exactly as for direct plugins; the
    * `routeHandler` here forwards via worker-rpc.
    */
-  private makeRouteStub(descriptor: {
+  private makeRouteProxy(descriptor: {
     path: string;
     routeHandler?: RemoteFunctionRef;
     type?: unknown;
@@ -641,7 +659,7 @@ export class RemotePluginBridge {
     return route;
   }
 
-  private makeEventHandlerStub(ref: RemoteFunctionRef) {
+  private makeEventHandlerProxy(ref: RemoteFunctionRef) {
     return async (payload: unknown): Promise<void> => {
       await this.workerRpc<JsonValue>(
         "event",
@@ -651,7 +669,7 @@ export class RemotePluginBridge {
     };
   }
 
-  private makeModelHandlerStub(ref: RemoteFunctionRef) {
+  private makeModelHandlerProxy(ref: RemoteFunctionRef) {
     return async (
       _runtime: IAgentRuntime,
       params: JsonValue,
@@ -715,7 +733,7 @@ export class RemotePluginBridge {
   }
 
   private async handleActionCallback(
-    message: WorkerActionCallbackMessage,
+    message: WorkerActionCallbackEnvelope,
   ): Promise<void> {
     const callback = this.state.actionCallbacks.get(message.callbackId);
     if (!callback) return;

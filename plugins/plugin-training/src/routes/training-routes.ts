@@ -282,7 +282,7 @@ export async function handleTrainingRoutes(
     return true;
   }
 
-  // ── Auto-training trigger surface (Phase 4) ─────────────────────────────
+  // ── Auto-training trigger surface ───────────────────────────────────────
   if (method === "GET" && pathname === "/api/training/auto/status") {
     const trigger = getTriggerEntry(runtime);
     if (!trigger) {

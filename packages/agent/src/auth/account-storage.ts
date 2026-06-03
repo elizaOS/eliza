@@ -27,7 +27,7 @@ export interface AccountCredentialRecord {
    * Existing OAuth credential blob — `{ access, refresh, expires }`
    * for OAuth accounts; for `api-key` accounts only `access` is
    * meaningful (refresh is the empty string and expires is `0` /
-   * a far-future sentinel by convention of the caller).
+   * a distant-expiry sentinel by convention of the caller).
    */
   credentials: OAuthCredentials;
   createdAt: number;

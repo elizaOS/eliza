@@ -87,6 +87,79 @@ describe("Hyperliquid route and info client behavior", () => {
     });
   });
 
+  it("fetches current funding rates through metaAndAssetCtxs", async () => {
+    const fetchImpl = vi.fn(
+      async (_input: string | URL | Request, init?: RequestInit) => {
+        expect(init).toMatchObject({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "metaAndAssetCtxs" }),
+        });
+        return Response.json([
+          {
+            universe: [
+              { name: "BTC", szDecimals: 5, maxLeverage: 50 },
+              { name: "ETH", szDecimals: 4, maxLeverage: 50 },
+            ],
+          },
+          [
+            {
+              funding: "0.0000125",
+              premium: "0.00031774",
+              markPx: "14.3161",
+              oraclePx: "14.32",
+              openInterest: "688.11",
+            },
+            {
+              funding: "-0.000001",
+              premium: "-0.00002",
+              markPx: "6.0436",
+              oraclePx: "6.0457",
+              openInterest: "1882.55",
+            },
+          ],
+        ]);
+      },
+    ) as HyperliquidFetch;
+    const res = responseRecorder();
+
+    await expect(
+      handleHyperliquidRoute(
+        {} as http.IncomingMessage,
+        res as unknown as http.ServerResponse,
+        "/api/hyperliquid/funding",
+        "GET",
+        { fetchImpl, now: fixedNow },
+      ),
+    ).resolves.toBe(true);
+
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({
+      rates: [
+        {
+          coin: "BTC",
+          index: 0,
+          funding: "0.0000125",
+          premium: "0.00031774",
+          markPx: "14.3161",
+          oraclePx: "14.32",
+          openInterest: "688.11",
+        },
+        {
+          coin: "ETH",
+          index: 1,
+          funding: "-0.000001",
+          premium: "-0.00002",
+          markPx: "6.0436",
+          oraclePx: "6.0457",
+          openInterest: "1882.55",
+        },
+      ],
+      source: "hyperliquid-info-meta-and-asset-ctxs",
+      fetchedAt: "2026-05-01T12:00:00.000Z",
+    });
+  });
+
   it("returns status without fetch and rejects non-GET methods as execution-disabled", async () => {
     const statusRes = responseRecorder();
     await expect(

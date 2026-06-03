@@ -410,7 +410,7 @@ async function startStreamPipeline(
                 resolve(true);
               }
             } catch {
-              // Frame file not yet ready -- poll again
+              // Frame writer can race the first stat; keep polling.
             }
           }, 200);
           setTimeout(() => {

@@ -111,7 +111,7 @@ function isValidPairCode(code: string): boolean {
 
 /**
  * Looks up the backend verify service from the runtime service registry.
- * Returns null when the backend has not yet registered it.
+ * Returns null when the backend verify service is absent from this runtime.
  */
 function resolveVerifyService(
 	runtime: IAgentRuntime,

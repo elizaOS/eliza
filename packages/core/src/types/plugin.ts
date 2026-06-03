@@ -882,12 +882,12 @@ export interface Plugin {
 	 * and registered with the runtime exactly as plugins have always been.
 	 * Setting `"remote"` requires a {@link Plugin.remote} block; the host
 	 * installs the plugin via `RemotePluginHost` and the runtime mirrors its
-	 * surfaces through stubs that proxy across the wire envelope.
+	 * surfaces through proxies across the wire envelope.
 	 *
 	 * For remote-mode plugins, the surface arrays (`actions`, `providers`,
 	 * `services`, `models`, `events`, `routes`, `views`, `widgets`,
 	 * `componentTypes`, `evaluators`, `init`) describe what the WORKER
-	 * contributes; the host runtime materialises matching stubs.
+	 * contributes; the host runtime materialises matching proxies.
 	 */
 	mode?: PluginMode;
 
@@ -1006,7 +1006,7 @@ export interface Plugin {
 	 *
 	 * All three are OR'd — if any condition is met the plugin is auto-enabled.
 	 * The hardcoded map in `plugin-auto-enable.ts` still serves as a fallback
-	 * for plugins that have not yet adopted `autoEnable`.
+	 * for plugins without `autoEnable`.
 	 */
 	autoEnable?: {
 		/** Enable when any of these env vars are set and non-empty. */

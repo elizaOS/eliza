@@ -35,7 +35,7 @@ export interface SimulatedActorV2 {
 	id: UUID;
 	username: string;
 	archetype: ActorArchetypeV2;
-	trustScore?: number; // Expected trust score for validation
+	trustScore?: number; // Expected trust score for scenario checks
 	callHistory: SimulatedCallV2[];
 	preferences: {
 		favoriteTokenTypes?: TokenScenario["type"][];

@@ -61,14 +61,14 @@ function makeFakeBridge(opts: {
     setTexts: [],
     capturedFrames: 0,
   };
-  const stub = <T>(
+  const unavailable = <T>(
     code = "internal_error" as const,
   ): Promise<
     { ok: false; code: typeof code; message: string } & { data?: T }
-  > => Promise.resolve({ ok: false, code, message: "stub" });
+  > => Promise.resolve({ ok: false, code, message: "unavailable" });
   const bridge = {
-    startMediaProjection: () => stub(),
-    stopMediaProjection: () => stub(),
+    startMediaProjection: () => unavailable(),
+    stopMediaProjection: () => unavailable(),
     captureFrame: async () => {
       calls.capturedFrames += 1;
       if (opts.captureError) {
@@ -88,7 +88,7 @@ function makeFakeBridge(opts: {
         },
       };
     },
-    getAccessibilityTree: () => stub(),
+    getAccessibilityTree: () => unavailable(),
     dispatchGesture: async (g: GestureArgs) => {
       calls.gestures.push(g);
       if (opts.gestureError) {
@@ -108,13 +108,13 @@ function makeFakeBridge(opts: {
       calls.setTexts.push(text);
       return { ok: true as const, data: { ok: true } };
     },
-    enumerateApps: () => stub(),
-    getMemoryPressureSnapshot: () => stub(),
-    dispatchMemoryPressure: () => stub(),
-    startCamera: () => stub(),
+    enumerateApps: () => unavailable(),
+    getMemoryPressureSnapshot: () => unavailable(),
+    dispatchMemoryPressure: () => unavailable(),
+    startCamera: () => unavailable(),
     stopCamera: () =>
       Promise.resolve({ ok: true as const, data: { ok: true } }),
-    captureFrameCamera: () => stub(),
+    captureFrameCamera: () => unavailable(),
   } as unknown as AndroidComputerUseBridge;
   return { bridge, calls };
 }

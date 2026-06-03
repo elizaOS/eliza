@@ -320,7 +320,7 @@ NATIVE_PLUGINS=(
 
     "silero-vad-cpp       packages/native/plugins/silero-vad-cpp/build/riscv64/libsilero_vad.a"
     "silero-vad-cpp       packages/native/plugins/silero-vad-cpp/build/riscv64/libsilero_vad.so"
-    "silero-vad-cpp       packages/native/plugins/silero-vad-cpp/build/riscv64/silero_vad_stub_smoke"
+    "silero-vad-cpp       packages/native/plugins/silero-vad-cpp/build/riscv64/silero_vad_abi_smoke"
     "silero-vad-cpp       packages/native/plugins/silero-vad-cpp/build/riscv64/silero_vad_resample_test"
     "silero-vad-cpp       packages/native/plugins/silero-vad-cpp/build/riscv64/silero_vad_runtime_test"
     "silero-vad-cpp       packages/native/plugins/silero-vad-cpp/build/riscv64/silero_vad_state_test"
@@ -337,7 +337,7 @@ NATIVE_PLUGINS=(
 
     "wakeword-cpp         packages/native/plugins/wakeword-cpp/build/riscv64/libwakeword.a"
     "wakeword-cpp         packages/native/plugins/wakeword-cpp/build/riscv64/libwakeword.so"
-    "wakeword-cpp         packages/native/plugins/wakeword-cpp/build/riscv64/wakeword_stub_smoke"
+    "wakeword-cpp         packages/native/plugins/wakeword-cpp/build/riscv64/wakeword_abi_smoke"
     "wakeword-cpp         packages/native/plugins/wakeword-cpp/build/riscv64/wakeword_melspec_test"
     "wakeword-cpp         packages/native/plugins/wakeword-cpp/build/riscv64/wakeword_runtime_test"
     "wakeword-cpp         packages/native/plugins/wakeword-cpp/build/riscv64/wakeword_window_test"
@@ -352,7 +352,7 @@ NATIVE_PLUGINS=(
 
     "face-cpp             packages/native/plugins/face-cpp/build/riscv64/libface.a"
     "face-cpp             packages/native/plugins/face-cpp/build/riscv64/libface.so"
-    "face-cpp             packages/native/plugins/face-cpp/build/riscv64/face_stub_smoke"
+    "face-cpp             packages/native/plugins/face-cpp/build/riscv64/face_abi_smoke"
     "face-cpp             packages/native/plugins/face-cpp/build/riscv64/face_align_test"
     "face-cpp             packages/native/plugins/face-cpp/build/riscv64/face_anchor_test"
     "face-cpp             packages/native/plugins/face-cpp/build/riscv64/face_distance_test"
@@ -360,7 +360,7 @@ NATIVE_PLUGINS=(
     "face-cpp             packages/native/plugins/face-cpp/build/riscv64/face_runtime_test"
 
     "doctr-cpp            packages/native/plugins/doctr-cpp/build/riscv64/libdoctr.a"
-    "doctr-cpp            packages/native/plugins/doctr-cpp/build/riscv64/doctr_stub_smoke"
+    "doctr-cpp            packages/native/plugins/doctr-cpp/build/riscv64/doctr_abi_smoke"
 )
 
 # MTP libllama + ggml family stages into either:

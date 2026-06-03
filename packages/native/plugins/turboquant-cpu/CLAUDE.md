@@ -1,7 +1,7 @@
 # turboquant-cpu — AGENTS
 
 Standalone C library for the **TurboQuant** weight/value-cache
-quantization formats (`block_tbq3_0`, `block_tbq4_0`, and the future
+quantization formats (`block_tbq3_0`, `block_tbq4_0`, and
 `block_tbq3_tcq`). Sibling of `qjl-cpu` (K-cache) and
 `polarquant-cpu` (V-cache + Q4 weights). The combined fork that ships
 all three is **`elizaOS/llama.cpp @ v0.1.0-eliza`** (vendored at
@@ -35,8 +35,8 @@ test/turboquant_smoke.c            Block-encode/decode round-trip smoke test.
                                    Asserts sizeof(block_tbq3_0)==14, sizeof(block_tbq4_0)==18.
 scripts/turboquant_to_gguf.py      Metadata-only GGUF writer for turboquant.json
                                    runtime-cache sidecars.
-fork-integration/                  Reserved for in-fork drop-ins (not yet populated;
-                                   the elizaOS fork already has TBQ baked in upstream
+fork-integration/                  Reserved for in-fork drop-ins; the elizaOS
+                                   fork already has TBQ baked in upstream
                                    of this directory, see the patches/README.md).
 CMakeLists.txt                     Builds libturboquant.a + turboquant_smoke.
 ```
@@ -82,8 +82,8 @@ artifact paths, build commands, kernel-contract test references).
 
 - Not a llama.cpp integration. The fork already contains TBQ.
 - Not a complete SIMD library for every CPU. The scalar reference is
-  always present and the RVV lane is wired for RISC-V builds; AVX2 /
-  NEON lanes are still future per-arch additions beside `tbq_block_ref.c`.
+  always present and the RVV lane is wired for RISC-V builds; x86 and arm64
+  hosts currently use the scalar reference beside `tbq_block_ref.c`.
 - Not the K-cache compressor. That's `qjl-cpu`. TBQ4_0 keys are an
   alternative path the fork supports for callers that want a stricter
   4-bit K format than QJL's 1-bit JL sketch.

@@ -18,6 +18,7 @@ import type {
 	HandlerOptions,
 	IAgentRuntime,
 	Memory,
+	Service,
 	State,
 } from "../../../types/index.ts";
 import {
@@ -145,12 +146,12 @@ export const deliverPluginConfigFormAction: Action = {
 			};
 		}
 
-		const client = runtime.getService(
+		const client = runtime.getService<Service & PluginConfigClient>(
 			PLUGIN_CONFIG_CLIENT_SERVICE,
-		) as unknown as PluginConfigClient | null;
-		const registry = runtime.getService(
-			SENSITIVE_DISPATCH_REGISTRY_SERVICE,
-		) as unknown as SensitiveRequestDispatchRegistry | null;
+		);
+		const registry = runtime.getService<
+			Service & SensitiveRequestDispatchRegistry
+		>(SENSITIVE_DISPATCH_REGISTRY_SERVICE);
 		if (!client || !registry) {
 			return {
 				success: false,

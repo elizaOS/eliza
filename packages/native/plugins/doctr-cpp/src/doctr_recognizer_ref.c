@@ -72,6 +72,7 @@
 #include <errno.h>
 #include <math.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -97,7 +98,7 @@ static int conv_bn_relu(
     float **scratch, size_t *scratch_cap,
     float **out, int *hout, int *wout, int *cout_actual)
 {
-    char buf[128];
+    char buf[192];
     int64_t dims[4]; int nd;
 
     snprintf(buf, sizeof buf, "%s.weight", conv_prefix);
@@ -169,6 +170,17 @@ int doctr_recognizer_forward(
     int cc = 3, ch = target_h, cw = target_w;
     float *scratch = NULL; size_t scratch_cap = 0;
     float *next = NULL; int nh = 0, nw = 0, nc = 0;
+    float *step_in = NULL;
+    float *h0 = NULL;
+    float *c0 = NULL;
+    float *h0r = NULL;
+    float *c0r = NULL;
+    float *lay0 = NULL;
+    float *h1 = NULL;
+    float *c1 = NULL;
+    float *h1r = NULL;
+    float *c1r = NULL;
+    float *lay1 = NULL;
 
 #define CBR(conv_idx, bn_idx, in_c, out_c, sh_, sw_, ph_, pw_, kh_, kw_) do { \
     char cp[64], bp[64];                                                       \
@@ -250,13 +262,13 @@ int doctr_recognizer_forward(
     /* Input to the BiLSTM is one 512-vector per timestep. We materialize
      * it by reading `cur` channel-by-channel: cur is (cc, 1, T), so
      * index t -> cur[c * T + t]. */
-    float *step_in = fresh((size_t)feat_dim);
-    float *h0  = fresh((size_t)H_lstm);
-    float *c0  = fresh((size_t)H_lstm);
-    float *h0r = fresh((size_t)H_lstm);
-    float *c0r = fresh((size_t)H_lstm);
+    step_in = fresh((size_t)feat_dim);
+    h0 = fresh((size_t)H_lstm);
+    c0 = fresh((size_t)H_lstm);
+    h0r = fresh((size_t)H_lstm);
+    c0r = fresh((size_t)H_lstm);
     /* Layer-0 outputs forward+reverse, concatenated to 2*H_lstm dim per timestep. */
-    float *lay0 = fresh((size_t)T_steps * 2 * H_lstm);
+    lay0 = fresh((size_t)T_steps * 2 * H_lstm);
     if (!step_in || !h0 || !c0 || !h0r || !c0r || !lay0) { rc = -ENOMEM; goto lstm_oom; }
     memset(h0, 0, sizeof(float) * H_lstm);
     memset(c0, 0, sizeof(float) * H_lstm);
@@ -279,11 +291,11 @@ int doctr_recognizer_forward(
     }
 
     /* Layer 1 — input is now (T_steps, 2*H_lstm). */
-    float *h1  = fresh((size_t)H_lstm);
-    float *c1  = fresh((size_t)H_lstm);
-    float *h1r = fresh((size_t)H_lstm);
-    float *c1r = fresh((size_t)H_lstm);
-    float *lay1 = fresh((size_t)T_steps * 2 * H_lstm);
+    h1 = fresh((size_t)H_lstm);
+    c1 = fresh((size_t)H_lstm);
+    h1r = fresh((size_t)H_lstm);
+    c1r = fresh((size_t)H_lstm);
+    lay1 = fresh((size_t)T_steps * 2 * H_lstm);
     if (!h1 || !c1 || !h1r || !c1r || !lay1) { rc = -ENOMEM; goto lstm_oom; }
     memset(h1, 0, sizeof(float) * H_lstm);
     memset(c1, 0, sizeof(float) * H_lstm);

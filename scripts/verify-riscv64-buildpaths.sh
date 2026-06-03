@@ -354,7 +354,7 @@ smoke_name_for_pkg() {
         qjl-cpu) echo "qjl_int8_smoke";;
         polarquant-cpu) echo "polar_simd_parity_test";;
         turboquant-cpu) echo "turboquant_smoke";;
-        silero-vad-cpp) echo "silero_vad_stub_smoke";;
+        silero-vad-cpp) echo "silero_vad_abi_smoke";;
         *) echo "";;
     esac
 }

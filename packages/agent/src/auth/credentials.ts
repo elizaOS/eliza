@@ -219,9 +219,7 @@ export async function getAccessToken(
         logger.error(`[auth] Unknown provider: ${provider}`);
         return null;
       } else {
-        logger.error(
-          `[auth] Refresh not implemented for provider: ${provider}`,
-        );
+        logger.error(`[auth] Refresh unsupported for provider: ${provider}`);
         return null;
       }
     } catch (err) {

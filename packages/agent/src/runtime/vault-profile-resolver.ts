@@ -8,10 +8,10 @@
  * we resolve once at agent boot rather than instrumenting every call
  * site.
  *
- * Scope: this is the minimum-viable wiring per the spec —
+ * Scope:
  *   - Only `agent` scope rules apply; the runtime knows agentId.
- *   - `app` and `skill` scope rules are persisted but not yet
- *     resolved here (no call site has the context).
+ *   - `app` and `skill` scope rules are persisted for call sites that
+ *     provide that context; this boot resolver has only agent context.
  *
  * Idempotent: re-running for the same agent overwrites with the same
  * value. Opt-out via `ELIZA_DISABLE_VAULT_PROFILE_RESOLVER=1`.

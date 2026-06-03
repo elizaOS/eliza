@@ -1,5 +1,5 @@
 /*
- * silero-vad-cpp Phase 2 runtime test.
+ * silero-vad-cpp runtime test.
  *
  * Loads the GGUF fixture supplied as argv[1] (the build system passes
  * `${CMAKE_BINARY_DIR}/silero-vad-v5.gguf`), runs two pairs of windows

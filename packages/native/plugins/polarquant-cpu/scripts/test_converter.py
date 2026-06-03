@@ -5,7 +5,7 @@ Builds a synthetic 128 x 128 fp32 "linear" weight, runs the vendored
 PolarQuant encoder over it to produce a sidecar, packs the sidecar
 into a GGUF via the converter, and reads the GGUF back to verify:
 
-  1. The Q4_POLAR=45 type tag survives the round trip.
+  1. The Q4_POLAR=47 type tag survives the round trip.
   2. The element shape is preserved.
   3. The packed payload bytes are exactly what we get from packing
      the same codes / norms / qjl directly via pack_layer().
@@ -36,7 +36,7 @@ sys.path.insert(0, str(_HERE))
 import polarquant_to_gguf as conv  # noqa: E402
 
 # Make the vendored polarquant python importable too.
-_REPO = _HERE.parents[3]  # eliza/
+_REPO = _HERE.parents[4]  # eliza/
 sys.path.insert(
     0,
     str(_REPO / "packages" / "training" / "scripts" / "quantization"),
@@ -46,19 +46,19 @@ from polarquant.polar_quant import polar_quantize  # noqa: E402
 import gguf  # noqa: E402
 
 # gguf.GGUFReader insists on its own enum for tensor types and rejects
-# Q4_POLAR=45 with a ValueError on read.  Patch the enum so the
+# Q4_POLAR=47 with a ValueError on read.  Patch the enum so the
 # integration test can round-trip our custom type the same way the
-# eventual llama.cpp fork integration will (registering Q4_POLAR=45
+# llama.cpp fork integration does (registering Q4_POLAR=47
 # in ggml-common.h).  Done here, not in the converter, because the
 # converter writes via _pack("I", ...) which already accepts arbitrary
 # ints.
 def _patch_gguf_quant_enum() -> None:
     from enum import IntEnum
     QType = gguf.GGMLQuantizationType
-    if any(int(m) == 45 for m in QType):
+    if any(int(m) == 47 for m in QType):
         return
     members = {m.name: int(m) for m in QType}
-    members["Q4_POLAR"] = 45
+    members["Q4_POLAR"] = 47
     new_enum = IntEnum("GGMLQuantizationType", members)
     gguf.GGMLQuantizationType = new_enum
     # Patch the reader module too -- it captured the original by name.
@@ -136,8 +136,8 @@ def run_test() -> int:
             arch="polarquant",
         )
 
-        if stats["type_number"] != 45:
-            failures.append(f"type_number {stats['type_number']} != 45")
+        if stats["type_number"] != 47:
+            failures.append(f"type_number {stats['type_number']} != 47")
         if stats["n_layers"] != 1:
             failures.append(f"n_layers {stats['n_layers']} != 1")
         if not stats["use_qjl"]:
@@ -182,8 +182,8 @@ def run_test() -> int:
             t = tensors[0]
             if t.name != layer_name:
                 failures.append(f"tensor name {t.name!r} != {layer_name!r}")
-            if int(t.tensor_type) != 45:
-                failures.append(f"tensor type {int(t.tensor_type)} != 45")
+            if int(t.tensor_type) != 47:
+                failures.append(f"tensor type {int(t.tensor_type)} != 47")
             shape_tuple = tuple(int(x) for x in t.shape)
             # GGUF stores shape with little-end-axis-first; 128x128 is
             # symmetric so we accept either order without ambiguity.

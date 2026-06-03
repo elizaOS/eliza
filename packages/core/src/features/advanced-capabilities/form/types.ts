@@ -20,7 +20,7 @@
  * 1. **Agent-Native**: Designed for conversational, asynchronous interactions.
  *    No form UI - the agent extracts data and guides the conversation.
  *
- * 2. **Future-Compatible**: Many fields are optional with sensible defaults.
+ * 2. **Forward-Compatible**: Many fields are optional with sensible defaults.
  *    The `meta` field on most interfaces allows arbitrary extension.
  *
  * 3. **Scoped Sessions**: Sessions are keyed by (entityId + roomId) because
@@ -73,7 +73,7 @@ export interface FormControlDependency {
 }
 
 /**
- * UI hints for future frontends.
+ * UI hints for graphical frontends.
  */
 export interface FormControlUI {
 	/** Section name for grouping fields */
@@ -168,7 +168,7 @@ export interface FormControl {
 	example?: string;
 
 	// ═══ UI HINTS ═══
-	/** Hints for future GUI rendering */
+	/** Hints for GUI rendering */
 	ui?: FormControlUI;
 
 	// ═══ I18N ═══

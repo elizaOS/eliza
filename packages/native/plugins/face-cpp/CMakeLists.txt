@@ -11,17 +11,17 @@ endif()
 
 include_directories(include src)
 
-# Phase 2: real BlazeFace + face-embed forward graphs (pure-C scalar
-# reference today; the elizaOS/llama.cpp ggml dispatch is a Phase 3
-# swap behind the same C ABI). The model entries (face_detect_open /
+# Current runtime: real BlazeFace + face-embed forward graphs (pure-C
+# scalar reference today; ggml dispatch can swap in behind the same C
+# ABI). The model entries (face_detect_open /
 # face_embed_open / forward + post-process) live in face_model.c. The
-# model-independent helpers (anchors, alignment, distance) keep their
-# Phase 1 implementations.
+# model-independent helpers (anchors, alignment, distance) are shared
+# by the runtime and their unit tests.
 #
 # Architecture portability: every TU below is plain scalar C with no
 # x86/ARM/RVV intrinsics, so the same source list builds on x86_64,
 # aarch64, and riscv64 without any CMAKE_SYSTEM_PROCESSOR branching.
-# When SIMD TUs are added (Phase 3 ggml dispatch), mirror the qjl-cpu
+# When SIMD or ggml-dispatch TUs are added, mirror the qjl-cpu
 # pattern: separate per-arch TUs (avx2/neon/rvv), each compiled only
 # for its own arch via a CMAKE_SYSTEM_PROCESSOR conditional.
 set(FACE_SRCS
@@ -59,10 +59,10 @@ endif()
 
 enable_testing()
 
-add_executable(face_stub_smoke test/face_stub_smoke.c)
-target_link_libraries(face_stub_smoke PRIVATE face)
-target_compile_options(face_stub_smoke PRIVATE -O2 -Wall -Wextra)
-add_test(NAME face_stub_smoke COMMAND face_stub_smoke)
+add_executable(face_abi_smoke test/face_abi_smoke.c)
+target_link_libraries(face_abi_smoke PRIVATE face)
+target_compile_options(face_abi_smoke PRIVATE -O2 -Wall -Wextra)
+add_test(NAME face_abi_smoke COMMAND face_abi_smoke)
 
 add_executable(face_anchor_test test/face_anchor_test.c)
 target_link_libraries(face_anchor_test PRIVATE face)

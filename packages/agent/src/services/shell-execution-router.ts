@@ -89,12 +89,8 @@ export function resolveShellExecutionMode(
 function backendForSandboxManager(
   manager: SandboxManager,
 ): ShellSandboxBackend {
-  // SandboxManager keeps its engine private; reach in only to label the
-  // backend in ShellResult. If the shape ever changes, the fallback is the
-  // safe "none" value and callers still see a well-formed result.
-  const engine = (manager as unknown as { engine?: { engineType?: string } })
-    .engine;
-  const engineType = engine?.engineType;
+  // "auto" only appears in config; a constructed engine is always concrete.
+  const engineType = manager.engineType;
   if (engineType === "docker") return "docker";
   if (engineType === "apple-container") return "apple-container";
   return "none";

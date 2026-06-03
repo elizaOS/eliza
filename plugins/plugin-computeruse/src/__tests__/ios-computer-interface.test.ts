@@ -22,11 +22,15 @@ import {
 } from "../mobile/ios-computer-interface.js";
 import type { Scene } from "../scene/scene-types.js";
 
-function stubBridge(
+function fakeBridge(
   overrides: Partial<IosComputerUseBridge> = {},
 ): IosComputerUseBridge {
   const generic = <T>(): Promise<IosBridgeResult<T>> =>
-    Promise.resolve({ ok: false, code: "internal_error", message: "stub" });
+    Promise.resolve({
+      ok: false,
+      code: "internal_error",
+      message: "unavailable",
+    });
   return {
     probe: () =>
       Promise.resolve({
@@ -82,7 +86,7 @@ function stubBridge(
 
 describe("IosComputerInterface — screenshot", () => {
   it("drains the first frame from replayKitForegroundDrain", async () => {
-    const bridge = stubBridge();
+    const bridge = fakeBridge();
     const iface = new IosComputerInterface({
       getBridge: () => bridge,
       getReplayKitSessionId: () => "rk-session-1",
@@ -96,7 +100,7 @@ describe("IosComputerInterface — screenshot", () => {
   });
 
   it("throws when no ReplayKit session is active", async () => {
-    const bridge = stubBridge();
+    const bridge = fakeBridge();
     const iface = new IosComputerInterface({
       getBridge: () => bridge,
       getReplayKitSessionId: () => null,
@@ -107,7 +111,7 @@ describe("IosComputerInterface — screenshot", () => {
   });
 
   it("throws when the bridge returns no frames", async () => {
-    const bridge = stubBridge({
+    const bridge = fakeBridge({
       replayKitForegroundDrain: () =>
         Promise.resolve({ ok: true, data: { frames: [] } }),
     });
@@ -119,7 +123,7 @@ describe("IosComputerInterface — screenshot", () => {
   });
 
   it("surfaces bridge errors with code + message", async () => {
-    const bridge = stubBridge({
+    const bridge = fakeBridge({
       replayKitForegroundDrain: () =>
         Promise.resolve({
           ok: false,
@@ -162,7 +166,7 @@ describe("IosComputerInterface — input refused with redirect", () => {
   ];
   for (const [name, fn] of cases) {
     it(`${name} throws with "not supported on iOS" message`, async () => {
-      const iface = new IosComputerInterface({ getBridge: () => stubBridge() });
+      const iface = new IosComputerInterface({ getBridge: () => fakeBridge() });
       // Pointer-input refusal redirects to App Intents; keyboard-input
       // refusal points at "keyboards are app-local only". Either message
       // is a valid refusal — both point the caller at IOS_CONSTRAINTS.md.
@@ -176,7 +180,7 @@ describe("IosComputerInterface — input refused with redirect", () => {
 describe("IosComputerInterface — invokeAppIntent", () => {
   it("forwards intent id and parameters to the bridge", async () => {
     let received: IntentInvocationRequest | null = null;
-    const bridge = stubBridge({
+    const bridge = fakeBridge({
       appIntentInvoke: (req) => {
         received = req;
         return Promise.resolve({
@@ -197,11 +201,11 @@ describe("IosComputerInterface — invokeAppIntent", () => {
     expect(result.success).toBe(true);
     expect(result.intentId).toBe("com.apple.mobilenotes.create-note");
     expect(received).not.toBeNull();
-    expect(received!.parameters).toEqual({ body: "hello", title: "test" });
+    expect(received?.parameters).toEqual({ body: "hello", title: "test" });
   });
 
   it("throws with structured code + message on bridge failure", async () => {
-    const bridge = stubBridge({
+    const bridge = fakeBridge({
       appIntentInvoke: () =>
         Promise.resolve({
           ok: false,
@@ -309,7 +313,7 @@ describe("IosComputerInterface — metadata + AX", () => {
       displayId: IOS_LOGICAL_DISPLAY_ID,
     });
     expect(onlyIos).toHaveLength(1);
-    expect(onlyIos[0]!.label).toBe("OK");
+    expect(onlyIos[0]?.label).toBe("OK");
   });
 
   it("rejects unknown displayId", () => {
@@ -328,7 +332,7 @@ describe("IosComputerInterface — metadata + AX", () => {
 
 describe("makeIosComputerInterface factory", () => {
   it("returns an IosComputerInterface instance", () => {
-    const iface = makeIosComputerInterface({ getBridge: () => stubBridge() });
+    const iface = makeIosComputerInterface({ getBridge: () => fakeBridge() });
     expect(iface).toBeInstanceOf(IosComputerInterface);
   });
 });

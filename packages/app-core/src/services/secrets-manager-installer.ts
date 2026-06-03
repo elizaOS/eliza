@@ -83,7 +83,7 @@ interface MutableJob {
 
 /**
  * Injectable spawn for tests. Production callers omit this and get the real
- * `node:child_process` `spawn`. Tests pass a stub that returns a synthetic
+ * `node:child_process` `spawn`. Tests pass a fixture that returns a synthetic
  * `ChildProcess`-like object so we don't actually fork brew/npm.
  */
 export type SpawnFn = (

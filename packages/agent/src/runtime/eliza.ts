@@ -4269,7 +4269,7 @@ export async function startEliza(
   // configured: `evaluateTeeBootGate` returns secretsEnabled:true and normal/
   // local-only boots are unaffected. When ELIZA_TEE_REQUIRED (or a production
   // profile) resolves a required policy and the evidence is not trusted, the
-  // gate fails closed and high-value capabilities (remote plugin sync; future
+  // gate fails closed and high-value capabilities (remote plugin sync plus
   // model-key/signing consumers) are withheld. Boot still proceeds in a
   // degraded, secret-less mode — it never silently continues with secrets.
   let teeBootGateResult: TeeBootGate | undefined;

@@ -104,9 +104,8 @@ export async function handleCloudVoiceRoutes(
     const voices = await fetchCatalog(runtime);
     sendJsonResponse(res, 200, { voices });
   } catch {
-    // The catalog already swallows per-endpoint failures and returns an
-    // empty list, but defend against any future change that lets an
-    // exception escape.
+    // The catalog already swallows per-endpoint failures and returns an empty
+    // list, but keep this route fail-closed if an exception escapes.
     const empty: CloudVoiceCatalogEntry[] = [];
     sendJsonResponse(res, 200, { voices: empty });
   }

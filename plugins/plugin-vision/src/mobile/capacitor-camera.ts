@@ -155,7 +155,7 @@ export class UnavailableMobileCameraSource implements MobileCameraSource {
   async close(): Promise<void> {}
 }
 
-/** @deprecated Use UnavailableMobileCameraSource. */
+/** Compatibility alias for older imports. */
 export const CapacitorCameraStub = UnavailableMobileCameraSource;
 
 /**

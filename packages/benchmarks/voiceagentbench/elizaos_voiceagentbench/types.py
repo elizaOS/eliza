@@ -5,8 +5,8 @@ The chat-turn primitive is :class:`MessageTurn`, a subclass of
 fields:
 
   * ``audio_input: bytes | None`` - raw audio bytes for voice-in turns.
-  * ``audio_output: bytes | None`` - raw audio bytes for direct-audio
-    responses (reserved for future direct-audio adapters).
+  * ``audio_output: bytes | None`` - raw audio bytes emitted by adapters that
+    support direct-audio responses.
 
 Because :class:`MessageTurn` *is a* base ``MessageTurn``, every adapter
 that types its argument against the LifeOpsBench / tau-bench base
@@ -35,9 +35,8 @@ class MessageTurn(_BaseMessageTurn):
     """LifeOpsBench :class:`MessageTurn` extended with audio fields.
 
     ``audio_input`` carries raw audio bytes for the voice-in path.
-    ``audio_output`` is reserved for future direct-audio response
-    adapters and is unused by the cascaded STT baseline. Both default
-    to :data:`None` so every existing text-path caller keeps working.
+    ``audio_output`` is unused by the cascaded STT baseline. Both default to
+    :data:`None` so every existing text-path caller keeps working.
 
     Adapters without direct-audio support MUST transcribe ``audio_input``
     to text via STT (Groq Whisper baseline) and feed the resulting

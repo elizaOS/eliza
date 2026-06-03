@@ -2,9 +2,9 @@
  * @module plugin-app-control/services/app-worker-host-service
  *
  * Spawns one Bun `node:worker_threads` Worker per registered app that
- * declares `isolation: "worker"` in its manifest. Phase 2.2 surface:
- * a thin lifecycle owner + typed RPC client that the rest of the
- * Phase 2 work (action invocation, FS/net gating) builds on.
+ * declares `isolation: "worker"` in its manifest. Owns worker lifecycle,
+ * typed RPC, action invocation, and gated runtime bridge calls for sandboxed
+ * apps.
  *
  * - `start(slug)` spawns the worker if the registered entry declares
  *   `isolation: "worker"`. Entries with `"none"` stay in-process.
@@ -18,8 +18,8 @@
  *   diagnostics.
  *
  * The service is registered alongside `AppRegistryService` in
- * `plugin-app-control/src/index.ts`. It does not auto-start workers
- * during bootstrap — Phase 2.5 wires that.
+ * `plugin-app-control/src/index.ts`. On service start it asks the registry for
+ * persisted worker-isolated apps and best-effort spawns them.
  */
 
 import { existsSync } from "node:fs";
@@ -188,8 +188,8 @@ async function resolvePluginEntryPath(
 /**
  * Internal helper so tests can construct a worker without going
  * through the registry lookup path. Exposed via the service for the
- * Phase 2.2 fixture test that doesn't need a full registry to prove
- * the bridge round-trip.
+ * worker-host fixture test that doesn't need a full registry to prove the
+ * bridge round-trip.
  */
 export interface SpawnOptions {
 	slug: string;
@@ -211,7 +211,7 @@ export class AppWorkerHostService extends Service {
 	static override serviceType = APP_WORKER_HOST_SERVICE_TYPE;
 
 	override capabilityDescription =
-		"Spawns and manages Bun workers for apps declaring isolation:'worker'. Phase 2 enforcement substrate.";
+		"Spawns and manages Bun workers for apps declaring isolation:'worker'.";
 
 	private readonly workers = new Map<string, SpawnedWorker>();
 	private readonly stateDir: string;

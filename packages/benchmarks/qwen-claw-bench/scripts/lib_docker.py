@@ -548,18 +548,16 @@ def _extract_usage(transcript: List[Dict[str, Any]]) -> Dict[str, Any]:
         totals["cost_usd"] += cost.get("total", 0.0)
     return totals
 
-def cleanup_containers(prefix: str = "qwenclawbench-") -> int:
+def cleanup_containers() -> int:
     """Kill and remove all QwenClawBench Docker containers (matched by label).
 
     Containers are labeled at creation with ``qwenclawbench=1`` (see QWENCLAWBENCH_CONTAINER_LABEL).
-    The ``prefix`` argument is deprecated and ignored; kept for backward compatibility.
 
     Also cleans up the per-container openclaw home copies under
     /tmp/qwenclawbench/docker_homes/.
 
     Returns the number of containers removed.
     """
-    _ = prefix  # deprecated, unused
     # List matching containers (running or stopped)
     result = subprocess.run(
         [

@@ -8,9 +8,8 @@
  * requested edit. After the agent completes and emits PLUGIN_CREATE_DONE the
  * view registry picks up bundle changes automatically on the next request.
  *
- * Metadata edits (label, description, tags) that don't require UI changes
- * are not yet supported via this handler — those require plugin config surgery
- * which is out of scope for a coding sub-agent dispatch.
+ * Metadata-only edits (label, description, tags) require plugin config
+ * changes, which are outside this coding sub-agent dispatch path.
  */
 
 import { promises as fs } from "node:fs";

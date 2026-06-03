@@ -36,7 +36,7 @@ export class TokenInfoService extends Service {
   static override serviceType = TOKEN_INFO_SERVICE_TYPE;
 
   override capabilityDescription =
-    "Token information provider registry for DexScreener, Birdeye, CoinGecko, and future crypto data sources";
+    "Token information provider registry for DexScreener, Birdeye, CoinGecko, and additional crypto data sources";
 
   private readonly providers = new Map<string, TokenInfoProvider>();
   private readonly aliases = new Map<string, string>();

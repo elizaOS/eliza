@@ -169,9 +169,9 @@ export interface VoiceModelVersion {
  * The publish pipeline prepends a new version; never edit a published
  * entry in place (sha + size are the audit trail).
  *
- * Initial release values: assets/revisions are placeholders until the I6
- * (omnivoice), I7 (kokoro), I1 (turn-detector), I2 (speaker-encoder +
- * diarizer), and I3 (voice-emotion) publish pipelines fill them in.
+ * Asset hashes and revisions are pinned audit data. `missingAssets` records
+ * unavailable upstream artifacts explicitly instead of using provisional
+ * checksums.
  */
 export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
   {
@@ -541,7 +541,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
       {
         // af_sam — mel-fit voice clone anchor=0.2; shipped per user override.
         // evalGatePass=false: WER=1.0, UTMOS=2.32, SpkSim=0.15 (all fail gates).
-        // Production sam voice is OmniVoice preset; this is Kokoro experimental slot.
+        // Production sam voice is OmniVoice preset; this is Kokoro eval slot.
         filename: "voice/kokoro/voices/af_sam.bin",
         sha256:
           "6874670865ce984a5400afc87176706c5ed88671999c59ed0dff5dcde664277b",

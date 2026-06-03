@@ -616,6 +616,26 @@ const rawAppLifeOpsPlugin: Plugin = {
     "Personal assistant workspace: executive workflows, owner approvals, scheduled tasks, calendar, inbox, documents, reminders, money admin, and focused owner-operation views.",
   dependencies: [GOOGLE_CONNECTOR_PLUGIN_PACKAGE],
   schema: lifeOpsSchema,
+  widgets: [
+    {
+      id: "lifeops.overview",
+      pluginId: "lifeops",
+      slot: "chat-sidebar",
+      label: "LifeOps Overview",
+      icon: "Sparkles",
+      order: 90,
+      defaultEnabled: true,
+    },
+    {
+      id: "lifeops.google",
+      pluginId: "lifeops",
+      slot: "chat-sidebar",
+      label: "Google Services",
+      icon: "Plug2",
+      order: 150,
+      defaultEnabled: true,
+    },
+  ],
   actions: [
     // Canonical owner-operation umbrellas. Each umbrella registers itself + its
     // per-action virtuals via

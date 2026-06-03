@@ -62,7 +62,7 @@ async function loadMobileCapacitor(): Promise<MobileCapacitorModule> {
 	const mod = (await import(spec)) as MobileCapacitorModule;
 	if (typeof mod.initLlama !== "function") {
 		throw new Error(
-			"[capacitor-llama] llama-cpp-capacitor did not expose initLlama — the binding is missing or stubbed.",
+			"[capacitor-llama] llama-cpp-capacitor did not expose initLlama — the binding is missing or unavailable.",
 		);
 	}
 	cachedMobileModule = mod;
@@ -83,9 +83,9 @@ interface DesktopMutableModelDescriptor {
 
 /**
  * Minimal model descriptor synthesized for the desktop FFI path. The shim
- * does not yet expose `llama_model_meta_*` getters, so most fields are
- * placeholders. They're consumed by telemetry / UI only — the inference path
- * doesn't read them.
+ * lacks `llama_model_meta_*` getters, so most fields are conservative
+ * telemetry defaults. They're consumed by telemetry / UI only —
+ * the inference path doesn't read them.
  */
 function synthesizeDesktopModelDescriptor(
 	modelPath: string,

@@ -4,14 +4,14 @@
  *   - `SandboxDriver` proxies every Driver op through `SandboxBackend.invoke`
  *     using the right tagged envelope.
  *   - `DockerBackend` runs `docker run` + `docker cp` + `docker exec` against
- *     the injected stubs and round-trips one op through the helper stdio.
+ *     the injected fakes and round-trips one op through the helper stdio.
  *   - `createSandboxDriver` selects the right backend by name.
  *   - `getCurrentDriver` consults the service config and returns either null
  *     (yolo) or a SandboxDriver (sandbox), and is loud about misconfig.
  *   - `resolveModeFromEnv` defaults to yolo for unknown values.
  *
  * No actual `child_process.spawn` happens — tests inject `spawnExec` and
- * `runShell` stubs.
+ * `runShell` fakes.
  */
 
 import { EventEmitter } from "node:events";
@@ -59,7 +59,7 @@ function makeRecordingBackend(
   } as RecordingBackend;
 }
 
-// Minimal child-process-shaped stub for `spawnExec`. We only need stdout +
+// Minimal child-process-shaped fake for `spawnExec`. We only need stdout +
 // stdin + stderr; the backend reads `.stdout.on('data', ...)` and writes
 // to `.stdin.write(...)`.
 class FakeChildProcess extends EventEmitter {
@@ -168,7 +168,7 @@ describe("SandboxDriver", () => {
   });
 });
 
-// ── DockerBackend — start + invoke + stop with stubbed spawn ───────────────
+// ── DockerBackend — start + invoke + stop with fake spawn ───────────────
 
 describe("DockerBackend", () => {
   it("runs docker run + cp + exec on start, round-trips a JSON op, and rm on stop", async () => {

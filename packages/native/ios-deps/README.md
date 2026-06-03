@@ -37,6 +37,10 @@ bun run build:llama-cpp                 # both slices + xcframework
 bun run build:llama-cpp:device          # device slice only
 bun run build:llama-cpp:simulator       # simulator slice only
 bun run clean:llama-cpp                 # nuke dist/ + build/
+bun run build:sqlite-vec                # both slices + xcframework
+bun run build:sqlite-vec:device         # device slice only
+bun run build:sqlite-vec:simulator      # simulator slice only
+bun run clean:sqlite-vec                # nuke dist/ + build/
 
 # Override source repo (parity check, fork-regression bisect, etc.):
 LLAMA_CPP_REPO=https://github.com/ggml-org/llama.cpp \
@@ -65,6 +69,11 @@ llama.cpp/dist/
 See `llama.cpp/README.md` for the full xcframework story including the
 Swift shim contract (`shim/LlamaShim.h`), the flag-by-flag CMake surface,
 and the verification recipes (`nm -gU`, `otool -l`).
+
+The sqlite-vec build follows the same host-gated contract. `build:sqlite-vec`
+reuses an existing `sqlite-vec/dist/SqliteVec.xcframework` when present, and
+the full `all` build compiles locally only when
+`ELIZA_SQLITE_VEC_BUILD_IOS=1` is set on a macOS host with Xcode.
 
 ## Consumers
 

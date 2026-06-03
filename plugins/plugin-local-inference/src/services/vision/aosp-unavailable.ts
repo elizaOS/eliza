@@ -1,5 +1,5 @@
 /**
- * AOSP vision-describe backend stub (WS2).
+ * AOSP vision-describe backend contract (WS2).
  *
  * The bun:ffi llama.cpp binding in `@elizaos/plugin-aosp-local-inference`
  * already exposes the embedding helpers (`llama_set_embeddings`,
@@ -16,7 +16,7 @@
  * symbols, the implementation in `plugin-aosp-local-inference/src/
  * aosp-llama-vision.ts` (to be added) will satisfy this contract.
  *
- * Required native symbols (libeliza-llama-shim, to be added):
+ * Required native symbols (libeliza-llama-shim):
  *
  *   eliza_llama_mtmd_init_from_file(
  *     mmproj_path: const char *,
@@ -70,7 +70,7 @@
  * pointers across the FFI boundary (which bun:ffi handles, but at the
  * cost of two extra pointer dereferences per frame).
  *
- * Until the native side lands, this module's `loadAospVisionBackend`
+ * Until the native side exports those symbols, this module's `loadAospVisionBackend`
  * throws a structured error that the arbiter / handler can surface as
  * "vision not available on this platform". It does NOT register
  * silently — silent unavailability would let the runtime fall back to
@@ -124,7 +124,7 @@ export async function loadAospVisionBackend(
 		throw new VisionBackendUnavailableError(
 			"aosp",
 			"binding_missing_mtmd",
-			"[vision/aosp] libeliza-llama-shim does not export the mtmd symbols yet. The AOSP shim needs eliza_llama_mtmd_init_from_file / _encode / _describe / _free. Until the native side lands, vision-describe on AOSP falls back to the cloud path (or stays disabled when the user opted out of cloud).",
+			"[vision/aosp] libeliza-llama-shim does not export the mtmd symbols. The AOSP shim needs eliza_llama_mtmd_init_from_file / _encode / _describe / _free. Until the native side exports them, vision-describe on AOSP falls back to the cloud path (or stays disabled when the user opted out of cloud).",
 		);
 	}
 	if (!existsSync(loadArgs.mmprojPath)) {

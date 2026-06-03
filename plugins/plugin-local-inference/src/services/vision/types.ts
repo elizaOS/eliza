@@ -48,7 +48,7 @@ export type VisionImageInput =
  * projected-token cache entries from different VL families that share
  * the same hash space — Qwen3-VL tokens are not interchangeable with
  * Florence-2 tokens. Default is `qwen3-vl` (the WS2 deliverable);
- * future families register under their own identifier.
+ * each additional family registers under its own identifier.
  */
 export interface VisionDescribeRequest {
 	image: VisionImageInput;

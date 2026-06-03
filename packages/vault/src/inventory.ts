@@ -103,7 +103,7 @@ export function categorizeKey(key: string): VaultEntryCategory {
   if (
     /(?:_PRIVATE_KEY|_MNEMONIC|_SEED_PHRASE)$/i.test(key) ||
     /^(?:EVM|SOLANA|BTC|ETH|BITCOIN)_/i.test(key) ||
-    // wallet.<agent>.<chain>.privateKey  (Phase 3 storage)
+    // wallet.<agent>.<chain>.privateKey
     key.startsWith("wallet.") ||
     // Legacy per-agent shape: agent.<name>.wallet.<chain>
     /(?:^|\.)wallet\./i.test(key)

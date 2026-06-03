@@ -21,9 +21,9 @@
  *          ship to (x86_64, arm64, riscv64); replaces the previous
  *          OpenVINO Python-worker path.
  *        - `coreml`          — Capacitor bridge to a Core ML Whisper
- *          model on iOS (stub here until the bridge ships).
+ *          model on iOS (unavailable until the bridge ships).
  *        - `aosp-ffi`        — bun:ffi shim around the AOSP NDK Whisper /
- *          Qwen-ASR JNI handle (stub today; lands when the AOSP fused
+ *          Qwen-ASR JNI handle (unavailable until the AOSP fused
  *          ASR symbols are exported).
  *        - `fake`            — deterministic in-process stub used by tests.
  *

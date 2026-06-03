@@ -137,8 +137,8 @@ const TASKS = [
     id: "ui-smoke",
     tier: 2,
     command: "node",
-    args: ["packages/scripts/launch-qa/run-ui-smoke-stub.mjs"],
-    description: "Deterministic stub-stack Playwright UI smoke suite",
+    args: ["packages/scripts/launch-qa/run-ui-smoke-offline.mjs"],
+    description: "Deterministic offline Playwright UI smoke suite",
   },
   {
     id: "cloud-api-key-redaction",

@@ -1317,8 +1317,7 @@ export class VisionService extends Service {
       // Estimate facing based on motion direction (simplified)
       let facing: "camera" | "away" | "left" | "right" | "unknown" = "unknown";
       if (this.lastFrame) {
-        // In Phase 1, we'll just use 'unknown' or random assignment
-        // Phase 2 will implement proper pose detection
+        // Without a pose backend this service only records a coarse default.
         facing = "camera"; // Default assumption
       }
 

@@ -35,7 +35,7 @@ import {
   registerHealthDefaultPacks,
 } from "./default-packs/index.js";
 
-// Public surface — consumers (app-lifeops + future plugins) import the
+// Public surface — consumers (app-lifeops and other plugins) import the
 // helpers they need by name from `@elizaos/plugin-health`.
 
 export * from "./actions/index.js";

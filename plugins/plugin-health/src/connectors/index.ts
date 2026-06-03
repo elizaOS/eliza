@@ -227,7 +227,7 @@ export function registerHealthConnectors(
   if (!registry) {
     logger.info(
       { src: "plugin:health", waiting_on: "W1-F connectorRegistry" },
-      "Skipping plugin-health connector registration (registry not yet available)",
+      "Skipping plugin-health connector registration (registry unavailable)",
     );
     return;
   }
@@ -251,7 +251,7 @@ export function registerHealthAnchors(
   if (!registry) {
     logger.info(
       { src: "plugin:health", waiting_on: "W1-A anchorRegistry" },
-      "Skipping plugin-health anchor registration (registry not yet available)",
+      "Skipping plugin-health anchor registration (registry unavailable)",
     );
     return;
   }
@@ -278,7 +278,7 @@ export function registerHealthBusFamilies(
   if (!registry) {
     logger.info(
       { src: "plugin:health", waiting_on: "W1-A or W2-D busFamilyRegistry" },
-      "Skipping plugin-health bus-family registration (registry not yet available)",
+      "Skipping plugin-health bus-family registration (registry unavailable)",
     );
     return;
   }

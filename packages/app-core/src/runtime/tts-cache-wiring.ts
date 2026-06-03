@@ -105,11 +105,10 @@ export async function wrapEdgeTtsHandlerWithFirstLineCache(
           ) ?? "audio-24khz-48kbitrate-mono-mp3";
 
         // Edge TTS doesn't expose a stable voice revision token. Synthesize
-        // one bound to the SDK package id + selected output format so that
-        // a future Edge backend swap (sample rate change, codec change)
-        // invalidates cached bytes. The `node-edge-tts` package version
-        // isn't easily resolvable at runtime; we conservatively pin
-        // `edge-tts:v1`.
+        // one bound to the SDK package id + selected output format so backend
+        // sample-rate or codec changes invalidate cached bytes. The
+        // `node-edge-tts` package version isn't easily resolvable at runtime;
+        // we conservatively pin `edge-tts:v1`.
         const voiceRevision = `edge-tts:v1:${outputFormat}`;
 
         const rate = readEdgeTtsSetting(runtime, "EDGE_TTS_RATE");

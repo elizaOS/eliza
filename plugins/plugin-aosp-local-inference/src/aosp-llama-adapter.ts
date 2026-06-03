@@ -264,13 +264,13 @@ interface LlamaSymbols {
 /**
  * Bound shim symbols. We bind only what `loadModel` / `embed` / `generate`
  * actually call — speculative bindings get dlsym'd at dlopen time and
- * silently widen the surface a future refactor might rely on. Setters
+ * can silently widen the surface available to adapter changes. Setters
  * for fields whose llama.cpp defaults are correct for AOSP CPU
  * (`use_mmap=true`, `use_mlock=false`, `vocab_only=false`,
  * `check_tensors=false`, `offload_kqv`/`flash_attn` not relevant on phone
  * CPU, `no_perf` cosmetic) are intentionally not bound. Adding one is a
- * one-line edit here + one-line edit in `dlopenShim` if a future LoadOptions
- * field needs it.
+ * one-line edit here + one-line edit in `dlopenShim` when `LoadOptions`
+ * gains a supported field that needs it.
  */
 interface ShimSymbols {
   // model_params
@@ -519,9 +519,8 @@ export function kvCacheTypeNameToEnum(name: KvCacheTypeName): number {
     case "q4_polar":
       return GGML_TYPE_Q4_POLAR;
     default: {
-      // Exhaustive switch — fall here only if a future type is added without
-      // updating the map. Throw with the offending name so a future caller
-      // doesn't silently get f16.
+      // Exhaustive switch — fall here only when the union and map drift.
+      // Throw with the offending name so callers never silently get f16.
       const exhaustive: never = name;
       throw new Error(`[aosp-llama] Unknown KV cache type: ${exhaustive}`);
     }
@@ -2417,8 +2416,8 @@ class AospLlamaAdapter implements AospLoader {
    * Pooling contract: `loadModel()` initialises the context with
    * `pooling_type = MEAN` (verified against b4500 llama.h enum), so
    * `llama_get_embeddings_seq(ctx, 0)` returns exactly `n_embd` floats and
-   * we never need the per-token fallback path. If a future change ever
-   * sets `pooling_type = NONE`, this method must reject — reading
+   * we never need the per-token fallback path. If configuration ever sets
+   * `pooling_type = NONE`, this method must reject — reading
    * `llama_get_embeddings(ctx)` for `written * n_embd` floats races with
    * llama.cpp's per-decode `n_outputs` and would over-read for
    * output-pruning models.

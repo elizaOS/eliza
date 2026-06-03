@@ -22,6 +22,7 @@ const declarations = `import type { Plugin } from "@elizaos/core";
 
 export declare function getElizaGreeting(): string;
 export declare function generateElizaResponse(input: string): string;
+export declare function generateElizaEmbedding(input: string): number[];
 export declare const elizaClassicPlugin: Plugin;
 export declare const plugin: Plugin;
 export default elizaClassicPlugin;

@@ -787,10 +787,10 @@ export class TrajectoriesService extends Service {
 	/**
 	 * Resolve the *real* SQL-backed TrajectoriesService from the runtime.
 	 *
-	 * The Eliza core registers a lightweight no-op stub under the same
-	 * "trajectories" serviceType.  getService() returns whichever
-	 * instance was started first (usually the stub).  This helper scans
-	 * all registered services of that type and returns the one that
+	 * The Eliza core can register a lightweight fallback under the same
+	 * "trajectories" serviceType. getService() returns whichever
+	 * instance was started first. This helper scans all registered services
+	 * of that type and returns the one that
 	 * actually exposes the full trajectory lifecycle API (startTrajectory).
 	 */
 	/**
@@ -807,7 +807,7 @@ export class TrajectoriesService extends Service {
 			return first;
 		}
 
-		// Slow path — the core stub won, scan all services for the real one.
+		// Slow path: the core fallback won, scan all services for the real one.
 		const all =
 			typeof runtime.getServicesByType === "function"
 				? runtime.getServicesByType(TrajectoriesService.serviceType)
@@ -822,9 +822,9 @@ export class TrajectoriesService extends Service {
 
 	/**
 	 * Async version that waits for the real SQL-backed service to finish
-	 * starting.  The core registers a no-op stub that starts synchronously;
-	 * the real plugin starts asynchronously (DB init).  This method polls
-	 * briefly so callers don't have to guess at timing.
+	 * starting. The core fallback starts synchronously; the real plugin starts
+	 * asynchronously (DB init). This method polls briefly so callers don't have
+	 * to guess at timing.
 	 */
 	static async waitForService(
 		runtime: IAgentRuntime,
@@ -1492,7 +1492,7 @@ export class TrajectoriesService extends Service {
 		// could read the trajectory before logLlmCall's write completed.
 		const trajectoryId = this.stepToTrajectory.get(params.stepId);
 		if (!trajectoryId) {
-			// Async resolution when stepId was not yet mapped (legacy paths).
+			// Async resolution for legacy paths that populate the step map later.
 			void (async () => {
 				const resolved = await this.resolveTrajectoryId(params.stepId);
 				if (!resolved) return;

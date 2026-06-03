@@ -889,8 +889,8 @@ async function callRegisterAndCaptureLoader(
  * `$ELIZA_STATE_DIR/local-inference/models/`. Both files are staged by
  * the AOSP build (`scripts/elizaos/stage-default-models.mjs`) and
  * extracted by `ElizaAgentService.extractAssetsIfNeeded` before bun
- * starts. We pick the role from the sibling `manifest.json` so a future
- * model swap doesn't need a code change.
+ * starts. We pick the role from the sibling `manifest.json` so model bundle
+ * swaps do not need code changes.
  */
 interface BundledModelManifestEntry {
   // The build-time staging script (`scripts/elizaos/stage-default-models.mjs`)

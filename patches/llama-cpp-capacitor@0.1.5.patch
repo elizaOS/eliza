@@ -138,21 +138,21 @@ diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 +find_library(ANDROID_LIB android)
 +
 +if(ELIZA_SKIP_MTP_ANDROID_LIB)
-+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/eliza-mtp-stub.cpp" "extern \"C\" int eliza_mtp_stub() { return 0; }\n")
++    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/eliza-mtp-smoke.cpp" "extern \"C\" int eliza_mtp_smoke() { return 0; }\n")
 +    if(ANDROID_ABI STREQUAL "riscv64")
-+        set(ELIZA_STUB_OUTPUT_NAME "llama-cpp-riscv64")
++        set(ELIZA_SMOKE_OUTPUT_NAME "llama-cpp-riscv64")
 +    else()
-+        set(ELIZA_STUB_OUTPUT_NAME "llama-cpp-arm64")
++        set(ELIZA_SMOKE_OUTPUT_NAME "llama-cpp-arm64")
 +    endif()
-+    add_library(${ELIZA_STUB_OUTPUT_NAME} SHARED "${CMAKE_CURRENT_BINARY_DIR}/eliza-mtp-stub.cpp")
-+    target_link_libraries(${ELIZA_STUB_OUTPUT_NAME} PRIVATE ${LOG_LIB} ${ANDROID_LIB})
++    add_library(${ELIZA_SMOKE_OUTPUT_NAME} SHARED "${CMAKE_CURRENT_BINARY_DIR}/eliza-mtp-smoke.cpp")
++    target_link_libraries(${ELIZA_SMOKE_OUTPUT_NAME} PRIVATE ${LOG_LIB} ${ANDROID_LIB})
 +    set_target_properties(
-+        ${ELIZA_STUB_OUTPUT_NAME}
++        ${ELIZA_SMOKE_OUTPUT_NAME}
 +        PROPERTIES
-+        OUTPUT_NAME "${ELIZA_STUB_OUTPUT_NAME}"
++        OUTPUT_NAME "${ELIZA_SMOKE_OUTPUT_NAME}"
 +        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/jniLibs/${ANDROID_ABI}"
 +    )
-+    message(STATUS "Building Eliza MTP JNI smoke stub for Android ${ANDROID_ABI}")
++    message(STATUS "Building Eliza MTP JNI smoke library for Android ${ANDROID_ABI}")
 +    return()
 +endif()
 +

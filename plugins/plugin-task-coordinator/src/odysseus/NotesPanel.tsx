@@ -8,8 +8,7 @@
 // select-mode + bulk archive/delete, and the archive view (tinted pane,
 // unarchive, delete-forever) with undo — all persisted in localStorage.
 //
-// DELIBERATELY OUT OF SCOPE (each needs a backend eliza does not yet have, so
-// rendering it would be a dead control):
+// SERVER-BACKED SURFACES OMITTED FROM THIS LOCAL-STORAGE PORT:
 //   - Reminders / recurrence / fire-loop / browser Notification — needs a
 //     server scheduler (plugin-background-runner). A local timer that only
 //     fires while this tab+panel are open is not a real reminder, so the bell
@@ -17,7 +16,7 @@
 //   - Goal note type — odysseus goals are AI-decomposed server-side.
 //   - Draw/canvas note + custom background-image color — both need the
 //     /api/upload image backend.
-// These land when an eliza notes service + plugin-background-runner exists.
+// Those controls belong in an eliza notes service + plugin-background-runner.
 
 import { Minus } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";

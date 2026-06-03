@@ -34,7 +34,7 @@ Per-task aggregate weights `0.5 * tool_selection + 0.4 * parameter_match (+ 0.1 
 The agent contract is the cross-bench `MessageTurn`. VoiceAgentBench defines its own `MessageTurn` (in `types.py`) that subclasses `eliza_lifeops_bench.types.MessageTurn` and adds two additive fields:
 
 - `audio_input: bytes | None` - raw audio bytes for voice-in turns.
-- `audio_output: bytes | None` - reserved for future direct-audio response adapters.
+- `audio_output: bytes | None` - raw audio bytes emitted by adapters that support direct-audio responses.
 
 Because the VAB `MessageTurn` is a subclass of the LifeOps base, every adapter typed against the LifeOps / tau-bench primitive accepts our extended instances unchanged.
 
@@ -42,7 +42,7 @@ STT backends live in `stt.py`. `GroqWhisperSTT` is the wired cascaded baseline (
 
 ## Adapters
 
-- `eliza` - delegates to LifeOps `cerebras-direct` (scenario-free Eliza shape).
+- `eliza` - calls the Eliza runtime HTTP benchmark endpoint (`/api/benchmark/message`).
 - `hermes` - delegates to LifeOps Hermes bridge.
 - `openclaw` - delegates to LifeOps OpenClaw bridge.
 

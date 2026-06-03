@@ -32,7 +32,7 @@ export function registerHealthDefaultPacks(runtime: IAgentRuntime): void {
   if (!registry) {
     logger.info(
       { src: "plugin:health" },
-      "Skipping plugin-health default-pack registration (registry not yet available)",
+      "Skipping plugin-health default-pack registration (registry unavailable)",
     );
     return;
   }

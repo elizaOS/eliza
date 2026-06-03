@@ -18,6 +18,7 @@ import type {
 	HandlerOptions,
 	IAgentRuntime,
 	Memory,
+	Service,
 	State,
 } from "../../../types/index.ts";
 import {
@@ -38,8 +39,9 @@ function readParams(options: HandlerOptions | undefined): AwaitParams {
 }
 
 function getBus(runtime: IAgentRuntime): SubAgentChildDecisionBus | null {
-	return (runtime.getService(SUB_AGENT_CHILD_DECISION_BUS_SERVICE) ??
-		null) as unknown as SubAgentChildDecisionBus | null;
+	return runtime.getService<Service & SubAgentChildDecisionBus>(
+		SUB_AGENT_CHILD_DECISION_BUS_SERVICE,
+	);
 }
 
 export const awaitChildAgentDecisionAction: Action = {

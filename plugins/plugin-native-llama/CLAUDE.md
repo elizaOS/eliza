@@ -40,7 +40,7 @@ src/
   generate-stream.test.ts
   kv-cache-resolver.test.ts
   token-tree-codec.test.ts
-android/                    Reserved for Android-specific native stubs (currently empty)
+android/                    Reserved for Android-specific native sources (currently empty)
 rollup.config.mjs           Rollup bundle config (IIFE + CJS outputs; ESM comes from tsc)
 ```
 

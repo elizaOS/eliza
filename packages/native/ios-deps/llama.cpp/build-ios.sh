@@ -110,7 +110,7 @@ LLAMA_CPP_VERSION_FILE="$ROOT_DIR/../VERSIONS"
 if [[ -f "$LLAMA_CPP_VERSION_FILE" ]]; then
   PINNED_REF="$(awk -F= '$1 == "llama.cpp" { print $2; exit }' "$LLAMA_CPP_VERSION_FILE")"
 fi
-[[ -n "${PINNED_REF:-}" && "$PINNED_REF" != PLACEHOLDER* ]] \
+[[ -n "${PINNED_REF:-}" && "$PINNED_REF" != excluded-* ]] \
   || die "missing llama.cpp pin in $LLAMA_CPP_VERSION_FILE"
 
 # Source repo. Defaults to the elizaOS-controlled fork (carries the

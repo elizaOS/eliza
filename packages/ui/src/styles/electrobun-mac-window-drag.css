@@ -5,7 +5,7 @@
  * - Chromium honors -webkit-app-region for drag/no-drag regions.
  * - System WKWebView often does not — actual move/resize chrome lives in
  *   apps/app/electrobun/native/macos/window-effects.mm (see docs/guides/electrobun-mac-window-chrome.md).
- * - We still ship these rules so CEF or future web engines get sensible defaults
+ * - We still ship these rules so CEF or other web engines get sensible defaults
  *   without duplicating policy only in native code.
  *
  * html.eliza-electrobun-macos-titlebar is toggled from apps/app/src/main.tsx

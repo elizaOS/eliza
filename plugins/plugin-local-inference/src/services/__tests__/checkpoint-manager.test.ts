@@ -4,7 +4,7 @@
  *   - Feature flag gating (constructor option AND env var precedence).
  *   - Capability detection caching + force-reprobe.
  *   - Named-handle registry with TTL eviction.
- *   - REST URL/method assertions via fetch stub.
+ *   - REST URL/method assertions via mocked fetch.
  *   - Cancel-fallback path (`SseDisconnectFn` when gate off).
  *
  * NO real llama-server. NO model loads. Pure fetch mocking.

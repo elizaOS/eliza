@@ -100,7 +100,7 @@ function isAwakeState(state: LifeOpsCircadianState): boolean {
  * - `sleep.detected` fires on any -> sleeping transition.
  * - `nap.detected` fires on any -> napping transition.
  * - `bedtime.imminent` fires once when minutesUntilBedtimeTarget crosses
- *   from >30 to <=30 with a future target.
+ *   from >30 to <=30 with a target after the current time.
  * - `regularity.changed` fires on regularityClass transitions.
  */
 export function deriveSleepWakeEvents(args: {

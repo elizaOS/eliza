@@ -76,6 +76,22 @@ export interface HyperliquidMarketsResponse {
   fetchedAt: string;
 }
 
+export interface HyperliquidFundingRate {
+  coin: string;
+  index: number;
+  funding: string;
+  premium: string | null;
+  markPx: string | null;
+  oraclePx: string | null;
+  openInterest: string | null;
+}
+
+export interface HyperliquidFundingResponse {
+  rates: HyperliquidFundingRate[];
+  source: "hyperliquid-info-meta-and-asset-ctxs";
+  fetchedAt: string;
+}
+
 export interface HyperliquidPosition {
   coin: string;
   size: string;

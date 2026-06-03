@@ -15,7 +15,7 @@ gpu_arch: sm_120
 vram_gb: 32
 mem_bandwidth_gbps: 1792
 fp8_supported: true
-fp4_supported: true                # future: KV in FP4 once the kernel lands
+fp4_supported: true                # hardware-capable; KV FP4 requires matching runtime kernels
 nvlink: false
 
 bundle_recommendations:

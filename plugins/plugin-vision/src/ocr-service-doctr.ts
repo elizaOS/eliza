@@ -9,7 +9,7 @@
 //
 // The C++ side runs only the forward passes. Post-processing is pure TS to
 // keep the native surface minimal and to share the same decode logic with
-// any future on-device OCR (Apple Vision returns text directly so its
+// native OCR providers that return logits. Apple Vision returns text directly so its
 // recognition path skips steps 2-4).
 //
 // **No fallback** — if doctr.cpp + GGUFs aren't available the service throws

@@ -1,10 +1,10 @@
 /**
  * @module plugin-app-control/services/__tests__/app-permissions-e2e
  *
- * Phase 2.5 end-to-end test for the app-permissions sandbox flow.
- * Wires AppRegistryService + AppWorkerHostService together via a
- * minimal runtime test double and walks the full registration -> auto-spawn
- * -> grant -> invoke -> stop path.
+ * End-to-end test for the app-permissions sandbox flow. Wires
+ * AppRegistryService + AppWorkerHostService together via a minimal runtime
+ * test double and walks the full registration -> auto-spawn -> grant -> invoke
+ * -> stop path.
  *
  * Path under test:
  *
@@ -15,8 +15,8 @@
  *   4. Invoke a fixture action through the worker host bridge.
  *   5. Cleanly tear down both services.
  *
- * This is the slice that proves the contract layers from Phase 1 +
- * Phase 2.1-2.4 actually compose into a working pipeline.
+ * This slice proves the permission, registry, worker-host, and worker-entry
+ * contracts compose into a working pipeline.
  */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -97,7 +97,7 @@ function makeRuntime(services: Map<string, unknown>): IAgentRuntime {
 	} as unknown as IAgentRuntime;
 }
 
-describe("Phase 2.5 — registry → auto-spawn → invoke end-to-end", () => {
+describe("registry to worker auto-spawn invoke end-to-end", () => {
 	let env: TestEnv;
 	let registry: AppRegistryService;
 	let host: AppWorkerHostService;

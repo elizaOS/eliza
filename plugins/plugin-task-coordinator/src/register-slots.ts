@@ -5,7 +5,7 @@
  * The root app loads this module from its main entry so app-core's slot
  * wrappers — CodingAgentSettingsSection,
  * CodingAgentTasksPanel, CodingAgentControlChip — render the real
- * components. Without this import they render as `null` placeholders.
+ * components. Without this import they render as empty slot defaults.
  *
  * This keeps app-core → app-task-coordinator off the static import graph
  * (app-core depends only on its own slot registry) while still letting

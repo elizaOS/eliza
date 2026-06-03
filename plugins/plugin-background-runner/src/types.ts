@@ -61,8 +61,8 @@ export interface ScheduleOptions {
 }
 
 /**
- * Service-type slug for `runtime.registerService`. A future plugin that wraps
- * a different background-execution backend (e.g. Tauri 2 mobile) can register
- * under the same slug; first-active-wins keeps the runtime single-rooted.
+ * Service-type slug for `runtime.registerService`. Alternative
+ * background-execution backends (e.g. Tauri 2 mobile) can register under the
+ * same slug; first-active-wins keeps the runtime single-rooted.
  */
 export const BACKGROUND_RUNNER_SERVICE_TYPE = 'background_runner' as const;

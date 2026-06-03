@@ -5,10 +5,10 @@
  *  - list/fetch mapping from platform payload to MessageRef
  *  - draft lifecycle (createDraft + sendDraft) and optional schedule/manage/search
  *
- * Until the underlying plugins exist (tracked under T5X in the plan), each
- * adapter reports isAvailable=false and returns an empty list from
- * listMessages. sendDraft throws NotYetImplementedError because a silent
- * no-op would violate the "no stub" rule.
+ * Adapters without an available underlying plugin report isAvailable=false
+ * and return an empty list from listMessages. sendDraft throws
+ * NotYetImplementedError because a silent no-op would violate the connector
+ * contract.
  */
 
 import { logger } from "../../../../logger.ts";
@@ -34,8 +34,9 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
 	abstract isAvailable(runtime: IAgentRuntime): boolean;
 
 	/**
-	 * Default capability profile: a stub adapter advertises nothing. Concrete
-	 * adapters override to declare what their underlying connector supports.
+	 * Default capability profile: an unavailable base adapter advertises
+	 * nothing. Concrete adapters override to declare what their underlying
+	 * connector supports.
 	 */
 	capabilities(): MessageAdapterCapabilities {
 		return {

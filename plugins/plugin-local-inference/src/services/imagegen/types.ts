@@ -19,8 +19,7 @@
  *        - `tensorrt` — packaged `imagegen.exe` / `trtexec` wrapper
  *          (Windows NVIDIA).
  *        - `aosp`   — bun:ffi to `eliza_llama_imagegen_*` symbols in
- *          libeliza-llama-shim (Android JNI; stub here until shim
- *          ships).
+ *          libeliza-llama-shim (Android JNI; unavailable until shim ships).
  *        - `fake`   — deterministic in-process stub used by tests.
  *
  * All backends implement the same `load → generate → dispose` shape so the

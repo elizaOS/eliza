@@ -56,7 +56,7 @@ else
   echo "  kept    : $ENV_DIR/env (already present)"
 fi
 
-# --- units: substitute placeholders, write to the user unit dir ---------------
+# --- units: substitute template tokens, write to the user unit dir ------------
 render_unit() {
   local src="$1" dst="$2"
   sed -e "s|__WORKDIR__|$WORKDIR|g" \

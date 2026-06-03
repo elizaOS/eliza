@@ -1,8 +1,8 @@
 // Loads + live-updates one task room, mirroring the proven OrchestratorWorkbench
 // pattern (three tiers: initial fetch on selection, reconcile poll, SSE
 // change-ping → debounced tail refetch). Returns the odysseus conversation
-// (block list) plus activity state. The SessionEvent contract is unchanged —
-// this is the "reuse existing ACP" path from the port roadmap (Phase 1).
+// (block list) plus activity state. The SessionEvent contract is unchanged;
+// this is the reuse-existing-ACP path for the port.
 
 import type {
   CodingAgentTaskEventRecord,

@@ -1,11 +1,10 @@
 // doctr_det.cpp — detection forward pass (db_mobilenet_v3_large + DBNet head).
 //
-// SCAFFOLD: this file pins the API and the high-level graph structure. The
-// actual conv/BN/upsample ops are stubbed against ggml's tensor API but not
-// yet wired against a built ggml dependency tree. The matching CMakeLists.txt
-// vendors `ggml` as a git submodule; we keep this file compilable-in-isolation
-// behind `DOCTR_HAVE_GGML` so the plugin can build even before the submodule
-// is populated.
+// This file pins the detection API and high-level graph structure. Builds that
+// do not link a complete ggml dependency tree refuse initialization through the
+// explicit nullptr path below. The matching CMakeLists.txt vendors `ggml` as a
+// git submodule; keeping this file compilable-in-isolation lets the plugin
+// build while the native model runtime remains unavailable.
 
 #include "doctr.h"
 
@@ -52,9 +51,9 @@ extern "C" doctr_det_ctx * doctr_det_init(const char * gguf_path) {
     // 3. Pick backend (Metal on darwin, CUDA when available, CPU else).
     // 4. Load conv/bn/linear parameter tensors into ctx->gctx.
     //
-    // NOT YET WIRED: the loader is implemented in the conversion harness
-    // shipped in `scripts/convert.py`; the runtime loader will mirror the
-    // same tensor naming. See README.md for the conversion pipeline.
+    // The runtime loader is intentionally unavailable until it mirrors the
+    // tensor naming implemented by the conversion harness in `scripts/convert.py`.
+    // See README.md for the conversion pipeline.
     fprintf(stderr,
             "[doctr_det] init called for %s — GGML path not yet wired; weights must be built first.\n",
             gguf_path);

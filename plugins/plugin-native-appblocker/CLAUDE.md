@@ -51,10 +51,11 @@ Only scripts that exist in `package.json`:
 
 ```bash
 bun run --cwd plugins/plugin-native-appblocker build         # tsc + rollup → dist/
+bun run --cwd plugins/plugin-native-appblocker test          # vitest web fallback contract
 bun run --cwd plugins/plugin-native-appblocker clean         # rm dist/
 ```
 
-There are no test or lint scripts in this package.
+There is no lint script in this package.
 
 ## Config / env vars
 

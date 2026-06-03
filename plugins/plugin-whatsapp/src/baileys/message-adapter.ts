@@ -39,7 +39,7 @@ export class MessageAdapter {
       case "template":
         return { text: this.renderTemplate(msg.content as WhatsAppTemplate) };
       default:
-        throw new Error(`Message type ${msg.type} is not yet supported for Baileys`);
+        throw new Error(`Message type ${msg.type} is outside the Baileys adapter contract`);
     }
   }
 

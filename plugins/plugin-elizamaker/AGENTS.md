@@ -84,7 +84,7 @@ Whitelist data is persisted to `<stateDir>/whitelist.json` (mode 0600). OG code 
 ## Conventions / gotchas
 
 - **No actions/providers/evaluators** — this plugin is pure HTTP route surface. Do not add agent-facing actions here without a deliberate design decision.
-- **Service init is async and deferred.** `Plugin.init` fires `void initializeRegistryAndDropServices(runtime)` without awaiting. Routes guard against `null` service and return 503 when the service is not yet ready or not configured.
+- **Service init is async and deferred.** `Plugin.init` fires `void initializeRegistryAndDropServices(runtime)` without awaiting. Routes guard against `null` service and return 503 while the service is still initializing or not configured.
 - **ethers v6 only.** `drop-service.ts` and `merkle-tree.ts` use ethers v6 APIs (`ethers.solidityPackedKeccak256`, `ethers.formatEther`, etc.). Do not mix v5 patterns.
 - **Merkle tree is in-memory and rebuilt per request** from `whitelist.json`. No caching — acceptable for small whitelists; add caching if the list grows large.
 - **FxTwitter API** (`api.fxtwitter.com`) is used for tweet verification — no API key required. Rate limits apply.

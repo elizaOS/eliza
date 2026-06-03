@@ -40,10 +40,10 @@ describe("assertProvisioningWorkerPreflight", () => {
         env: { ELIZA_KMS_BACKEND: "steward" } as NodeJS.ProcessEnv,
         createKmsClient: () => ({
           getOrCreateKey: async () => {
-            throw new Error("Steward endpoint not yet available");
+            throw new Error("Steward endpoint unavailable");
           },
         }),
       }),
-    ).rejects.toThrow("Steward endpoint not yet available");
+    ).rejects.toThrow("Steward endpoint unavailable");
   });
 });

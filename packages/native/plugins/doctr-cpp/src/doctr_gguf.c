@@ -1,12 +1,12 @@
 /*
- * Minimal GGUF v3 reader for doctr-cpp Phase 2.
+ * Minimal GGUF v3 reader for doctr-cpp.
  *
  * The doctr GGUF is produced by scripts/doctr_to_gguf.py with
  * arch="doctr" and contains only fp32 tensors plus a handful of
  * string/uint32 metadata keys. The full GGUF spec carries dozens of
  * tensor dtypes and quantization blocks; we deliberately only parse
  * what we emit. Unknown dtypes are a hard error — silent acceptance
- * would let a quantized future GGUF load and produce garbage output.
+ * would let an unsupported quantized GGUF load and produce garbage output.
  *
  * Layout (GGUF v3, little-endian):
  *   header:
@@ -340,7 +340,8 @@ doctr_gguf *doctr_gguf_open(const char *path, int *err) {
     for (uint64_t i = 0; i < n_tensors; ++i) {
         g->tensors[i].data_off += g->tensor_data_off;
         if (g->tensors[i].data_off + g->tensors[i].n_bytes > map_size) {
-            if (err) *err = -EINVAL; goto fail;
+            if (err) *err = -EINVAL;
+            goto fail;
         }
     }
 

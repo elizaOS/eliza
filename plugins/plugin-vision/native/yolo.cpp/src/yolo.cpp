@@ -1,9 +1,8 @@
 // yolo.cpp — YOLOv8 forward pass via ggml.
 //
-// SCAFFOLD: matches the structure of doctr_det.cpp. Pins the API + graph
-// outline; the actual conv/bn/silu/upsample wiring lands once the GGUF
-// conversion script is run on a build host and we can verify the tensor
-// names match what we expect.
+// Matches the structure of doctr_det.cpp. Pins the API + graph outline; builds
+// without a verified GGUF tensor mapping use the explicit backend-unavailable
+// return path below.
 //
 // The C side runs only the CNN forward pass. Preprocessing (letterbox + RGB
 // CHW normalize), output decode (cxcywh + per-class score → axis-aligned
@@ -50,7 +49,7 @@ extern "C" yolo_ctx * yolo_init(const char * gguf_path) {
     //    YOLOv8 topology (24 conv blocks + 3 detection heads).
     // 3. Build cgraph for the forward pass.
     fprintf(stderr,
-            "[yolo] init called for %s — GGML path not yet wired; weights must be built first.\n",
+            "[yolo] init called for %s — GGML runtime loader unavailable; weights must be built and mapped first.\n",
             gguf_path);
     delete ctx;
     return nullptr;

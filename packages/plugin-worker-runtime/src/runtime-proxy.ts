@@ -6,8 +6,8 @@
  *
  * P1 ships the methods required by action / provider / event / model
  * handlers (`getService`, `useModel`, `getMemory`, `createMemory`,
- * `emitEvent`, `registerEvent`, `getSetting`, `setSetting`,
- * `composeState`) plus action callback marshalling. The remainder of the
+ * `emitEvent`, `getSetting`, `setSetting`, `composeState`) plus action
+ * callback marshalling. The remainder of the
  * runtime surface (database, routes, advanced event APIs) is added
  * incrementally as plugin authors reach for it; an `unknown method`
  * host-rpc returns a typed error rather than silently dropping the call.
@@ -30,7 +30,6 @@ export const SUPPORTED_RUNTIME_METHODS = [
   "createMemory",
   "updateMemory",
   "emitEvent",
-  "registerEvent",
   "getSetting",
   "setSetting",
   "composeState",
@@ -194,7 +193,7 @@ export function buildRuntimeProxyApi(proxy: RuntimeProxy): RuntimeProxyApi {
     },
     registerEvent: async (_name, _handler) => {
       throw new Error(
-        "runtime.registerEvent inside a remote-mode plugin is not yet supported in P1; declare events via Plugin.events instead.",
+        "runtime.registerEvent inside a remote-mode plugin cannot serialize callbacks; declare events via Plugin.events instead.",
       );
     },
     getSetting: (key) => proxy.call("getSetting", { key }),

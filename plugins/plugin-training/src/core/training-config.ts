@@ -45,7 +45,7 @@ export interface TrainingConfig {
    * training is skipped (with a logger note). Manual triggers always allow
    * the caller to specify a backend explicitly.
    *
-   * Defaults to `[]` until Phase 5 wires the `native` backend.
+   * Defaults to `["native"]`, the in-process optimizer backend.
    */
   backends: TrainingBackend[];
   perTaskOverrides?: Partial<Record<TrajectoryTrainingTask, PerTaskOverride>>;

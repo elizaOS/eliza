@@ -5,7 +5,7 @@ import {
 } from "./credential-tunnel-service.ts";
 
 describe("credential-tunnel-service", () => {
-  it("declareScope returns a 64-char hex token, a scope id, and a future expiry", () => {
+  it("declareScope returns a 64-char hex token, a scope id, and an unexpired expiry", () => {
     const service = createCredentialTunnelService();
     const scope = service.declareScope({
       childSessionId: "pty-1-abc",

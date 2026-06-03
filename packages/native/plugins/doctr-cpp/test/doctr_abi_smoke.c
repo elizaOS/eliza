@@ -1,11 +1,9 @@
 /*
- * Build-only smoke test for the doctr-cpp ENOSYS stub.
+ * Build-only smoke test for the doctr-cpp public ABI.
  *
  * Confirms the C ABI declared in `include/doctr/doctr.h` links and
- * that every entry point reports the expected `-ENOSYS`. This is
- * intentionally not a behavioural test — once the real ggml-backed
- * implementation lands, the parity / quality tests will live next to
- * it and this smoke test stays as a "the ABI still compiles" guard.
+ * that the obvious error contracts hold. Model behavior is covered by
+ * GGUF-backed tests when fixtures are staged.
  */
 
 #include "doctr/doctr.h"
@@ -18,21 +16,21 @@
 int main(void) {
     int failures = 0;
 
-    if (strcmp(doctr_active_backend(), "stub") != 0) {
-        fprintf(stderr, "[doctr-stub-smoke] unexpected backend: %s\n",
+    if (strcmp(doctr_active_backend(), "cpu-ref") != 0) {
+        fprintf(stderr, "[doctr-abi-smoke] unexpected backend: %s\n",
                 doctr_active_backend());
         ++failures;
     }
 
     doctr_session *session = (doctr_session *)0x1; /* clobbered by doctr_open */
     int rc = doctr_open("/nonexistent.gguf", &session);
-    if (rc != -ENOSYS) {
-        fprintf(stderr, "[doctr-stub-smoke] doctr_open returned %d, expected %d\n",
-                rc, -ENOSYS);
+    if (rc != -ENOENT) {
+        fprintf(stderr, "[doctr-abi-smoke] doctr_open returned %d, expected %d\n",
+                rc, -ENOENT);
         ++failures;
     }
     if (session != NULL) {
-        fprintf(stderr, "[doctr-stub-smoke] doctr_open did not clear out handle\n");
+        fprintf(stderr, "[doctr-abi-smoke] doctr_open did not clear out handle\n");
         ++failures;
     }
 
@@ -44,13 +42,13 @@ int main(void) {
     doctr_detection detections[2] = {{{0, 0, 0, 0}, 0.0f}, {{0, 0, 0, 0}, 0.0f}};
     size_t count = 12345;
     rc = doctr_detect(NULL, &image, detections, 2, &count);
-    if (rc != -ENOSYS) {
-        fprintf(stderr, "[doctr-stub-smoke] doctr_detect returned %d, expected %d\n",
-                rc, -ENOSYS);
+    if (rc != -EINVAL) {
+        fprintf(stderr, "[doctr-abi-smoke] doctr_detect returned %d, expected %d\n",
+                rc, -EINVAL);
         ++failures;
     }
     if (count != 0) {
-        fprintf(stderr, "[doctr-stub-smoke] doctr_detect did not zero out_count (%zu)\n",
+        fprintf(stderr, "[doctr-abi-smoke] doctr_detect did not zero out_count (%zu)\n",
                 count);
         ++failures;
     }
@@ -66,20 +64,20 @@ int main(void) {
         .char_confidences_length = 99,
     };
     rc = doctr_recognize_word(NULL, &image, &reco);
-    if (rc != -ENOSYS) {
-        fprintf(stderr, "[doctr-stub-smoke] doctr_recognize_word returned %d, expected %d\n",
-                rc, -ENOSYS);
+    if (rc != -EINVAL) {
+        fprintf(stderr, "[doctr-abi-smoke] doctr_recognize_word returned %d, expected %d\n",
+                rc, -EINVAL);
         ++failures;
     }
     if (reco.text_utf8_length != 0 || reco.char_confidences_length != 0) {
-        fprintf(stderr, "[doctr-stub-smoke] doctr_recognize_word did not reset lengths\n");
+        fprintf(stderr, "[doctr-abi-smoke] doctr_recognize_word did not reset lengths\n");
         ++failures;
     }
     if (text[0] != '\0') {
-        fprintf(stderr, "[doctr-stub-smoke] doctr_recognize_word did not NUL-terminate\n");
+        fprintf(stderr, "[doctr-abi-smoke] doctr_recognize_word did not NUL-terminate\n");
         ++failures;
     }
 
-    printf("[doctr-stub-smoke] failures=%d\n", failures);
+    printf("[doctr-abi-smoke] failures=%d\n", failures);
     return failures == 0 ? 0 : 1;
 }

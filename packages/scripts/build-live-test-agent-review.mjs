@@ -63,7 +63,7 @@ function verdictFor(finding) {
     case "model-artifact-hint":
       return {
         verdict: "model-artifact-hint",
-        action: "Review the focused model-script page and built-in artifact path; wrap future runs when possible.",
+        action: "Review the focused model-script page and built-in artifact path; use the artifact wrapper for reruns when possible.",
       };
     case "non-model-excluded":
       return {

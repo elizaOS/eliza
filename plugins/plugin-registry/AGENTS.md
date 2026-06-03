@@ -83,7 +83,7 @@ Env vars consumed indirectly at route-handler call time:
 
 1. Open `src/api/plugin-routes.ts`.
 2. Add a new `if (method === "..." && pathname === "/api/...")` block before the final `return false`.
-3. Destructure any new helpers you need from `ctx: PluginRouteContext`. If a helper does not yet exist on the context, add it to the `PluginRouteContext` interface and wire it in `@elizaos/agent`'s server where `handlePluginRoutes` is called.
+3. Destructure any new helpers you need from `ctx: PluginRouteContext`. For a new helper, add it to the `PluginRouteContext` interface and wire it in `@elizaos/agent`'s server where `handlePluginRoutes` is called.
 4. Return `true` to signal the request was handled.
 
 ### Add a new route to the compat-tier handler
