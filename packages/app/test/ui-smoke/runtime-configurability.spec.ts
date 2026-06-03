@@ -6,14 +6,9 @@ import {
   seedAppStorage,
 } from "./helpers";
 
-// "Local, Cloud, etc. all work out of the box and are successfully
-// configurable." The production web bundle is cloud-only, so the onboarding
-// runtime selector normally shows Cloud alone (see first-run-startup.spec.ts).
-// This spec injects the host signals a desktop/device shell sets before React
-// boots — an API base (flips `cloudOnly` → false) and the Electrobun window
-// marker (flips `canSelectLocalRuntime` → true) — so the full runtime matrix
-// renders: Cloud, Local, Remote. It then drives each branch to prove every
-// runtime is reachable and configurable, not just displayed.
+// Startup first-run now uses compact onboarding. The production web bundle is
+// cloud-only by default; this spec also injects the host signals a desktop shell
+// sets before React boots so the local peer appears next to Eliza Cloud.
 
 async function fulfillJson(
   route: Route,
@@ -63,7 +58,7 @@ async function injectFullCapabilityHost(page: Page): Promise<void> {
   });
 }
 
-test("onboarding exposes local, cloud, and remote runtimes and each is configurable", async ({
+test("compact onboarding exposes available local and cloud runtime choices", async ({
   page,
 }) => {
   await installRenderTelemetryGuard(page);
@@ -74,48 +69,20 @@ test("onboarding exposes local, cloud, and remote runtimes and each is configura
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  const shell = page.getByTestId("first-run-shell");
-  await expect(shell).toBeVisible({ timeout: 20_000 });
+  const toast = page.getByTestId("onboarding-toast");
+  await expect(toast).toBeVisible({ timeout: 20_000 });
+  await expect(toast).toContainText("Set up your agent");
 
-  // All three runtimes must be offered out of the box on a full-capability host.
-  const cloud = page.getByTestId("first-run-runtime-cloud");
-  const local = page.getByTestId("first-run-runtime-local");
-  const remote = page.getByTestId("first-run-runtime-remote");
+  const cloud = toast.getByRole("button", { name: "Eliza Cloud" });
+  const local = toast.getByRole("button", { name: "Use Local" });
   await expect(cloud).toBeVisible({ timeout: 15_000 });
   await expect(local).toBeVisible({ timeout: 15_000 });
-  await expect(remote).toBeVisible({ timeout: 15_000 });
-
-  // Local is configurable: selecting it reveals the inference sub-choice, and
-  // both "all local" and "route inference through cloud" must be selectable.
-  await local.click();
-  const allLocal = page.getByTestId("first-run-local-all-local");
-  const cloudInference = page.getByTestId("first-run-local-cloud-inference");
-  await expect(allLocal).toBeVisible({ timeout: 10_000 });
-  await expect(cloudInference).toBeVisible();
-  await cloudInference.check({ force: true });
-  await expect(cloudInference).toBeChecked();
-  await allLocal.check({ force: true });
-  await expect(allLocal).toBeChecked();
-
-  // Cloud is configurable: re-selecting it is the recommended resting choice
-  // and collapses the local sub-choice.
-  await cloud.click();
-  await expect(allLocal).toHaveCount(0);
-
-  // Remote is configurable: selecting it advances to the endpoint + token form
-  // so another device can point at this machine.
-  await remote.click();
-  const back = page.getByRole("button", { name: /runtime/i });
-  await expect(back).toBeVisible({ timeout: 10_000 });
-  // Returning to the runtime step keeps the selector intact (no dead end).
-  await back.click();
-  await expect(cloud).toBeVisible({ timeout: 10_000 });
 
   await expectNoRenderTelemetryErrors(page, "runtime configurability");
-  await expect(shell).toBeVisible();
+  await expect(toast).toBeVisible();
 });
 
-test("onboarding survives browser back and forward while runtime choices churn", async ({
+test("compact onboarding survives first-run runtime target navigation", async ({
   page,
 }) => {
   await installRenderTelemetryGuard(page);
@@ -127,36 +94,28 @@ test("onboarding survives browser back and forward while runtime choices churn",
   await page.goto("/?runtime=first-run&runtimeTarget=remote", {
     waitUntil: "domcontentloaded",
   });
-  const shell = page.getByTestId("first-run-shell");
-  await expect(shell).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole("button", { name: /runtime/i })).toBeVisible({
-    timeout: 10_000,
-  });
+  const toast = page.getByTestId("onboarding-toast");
+  await expect(toast).toBeVisible({ timeout: 20_000 });
 
   await page.goto("/?runtime=first-run&runtimeTarget=local", {
     waitUntil: "domcontentloaded",
   });
-  await expect(shell).toBeVisible({ timeout: 20_000 });
-  const allLocal = page.getByTestId("first-run-local-all-local");
-  await expect(allLocal).toBeVisible({ timeout: 10_000 });
-
-  await page.goBack({ waitUntil: "domcontentloaded" });
-  await expect(shell).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole("button", { name: /runtime/i })).toBeVisible({
+  await expect(toast).toBeVisible({ timeout: 20_000 });
+  await expect(toast.getByRole("button", { name: "Use Local" })).toBeVisible({
     timeout: 10_000,
   });
 
-  await page.goForward({ waitUntil: "domcontentloaded" });
-  await expect(shell).toBeVisible({ timeout: 20_000 });
-  await expect(allLocal).toBeVisible({ timeout: 10_000 });
   await page.goBack({ waitUntil: "domcontentloaded" });
-  await expect(shell).toBeVisible({ timeout: 20_000 });
+  await expect(toast).toBeVisible({ timeout: 20_000 });
 
-  await page.getByRole("button", { name: /runtime/i }).click();
-  const cloud = page.getByTestId("first-run-runtime-cloud");
-  await expect(cloud).toBeVisible({ timeout: 10_000 });
-  await cloud.click();
-  await expect(allLocal).toHaveCount(0);
+  await page.goForward({ waitUntil: "domcontentloaded" });
+  await expect(toast).toBeVisible({ timeout: 20_000 });
+  await page.goBack({ waitUntil: "domcontentloaded" });
+  await expect(toast).toBeVisible({ timeout: 20_000 });
+
+  await expect(toast.getByRole("button", { name: "Eliza Cloud" })).toBeVisible({
+    timeout: 10_000,
+  });
 
   await expectNoRenderTelemetryErrors(page, "runtime browser history");
 });

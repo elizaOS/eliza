@@ -7,10 +7,9 @@ import {
 } from "./helpers";
 
 // Every other ui-smoke spec seeds `eliza:first-run-complete = "1"`, so the
-// onboarding surface (FirstRunScreen → FirstRunShell, "Where should Eliza
-// run?") never gets render-telemetry coverage. That surface is exactly where
-// the agent-start render loop froze onboarding, so this spec lands on it with
-// the guard armed and drives the runtime selection that preceded the freeze.
+// onboarding surface never gets render-telemetry coverage. Startup now renders
+// compact onboarding from StartupScreen, so this spec lands on that current
+// surface with the guard armed and checks the runtime choices remain stable.
 
 async function fulfillJson(
   route: Route,
@@ -60,45 +59,22 @@ test("first-run onboarding renders without a render loop and lets the runtime be
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  const shell = page.getByTestId("first-run-shell");
-  await expect(shell).toBeVisible({ timeout: 20_000 });
+  const toast = page.getByTestId("onboarding-toast");
+  await expect(toast).toBeVisible({ timeout: 20_000 });
+  await expect(toast).toContainText("Set up your agent");
 
-  // The typed prompt reveals the runtime cards. Cloud is the recommended
-  // resting choice and is always offered. The Local and Remote cards only
-  // render on hosts that own their hardware (desktop / dev / an injected API
-  // base); the production web bundle the ui-smoke stub serves is cloud-only
-  // (see shouldUseCloudOnlyBranding in app/src/main.tsx), so it legitimately
-  // shows Cloud alone. Assert the optional cards only when present.
-  const cloud = page.getByTestId("first-run-runtime-cloud");
-  await expect(cloud).toBeVisible({ timeout: 15_000 });
-
-  const remote = page.getByTestId("first-run-runtime-remote");
-  if (await remote.count()) {
-    await expect(remote).toBeVisible();
-  }
-
-  // If Local is offered, selecting it exposes the inference sub-choice — drive
-  // that branch too. Otherwise churn the Cloud selection to exercise the same
-  // re-render path that previously froze onboarding.
-  const local = page.getByTestId("first-run-runtime-local");
+  await expect(toast.getByRole("button", { name: "Eliza Cloud" })).toBeVisible(
+    { timeout: 15_000 },
+  );
+  const local = toast.getByRole("button", { name: "Use Local" });
   if (await local.count()) {
-    await local.click();
-    await expect(
-      page.getByTestId("first-run-local-all-local"),
-    ).toBeVisible({ timeout: 10_000 });
-    await cloud.click();
-  } else {
-    // Stay on the runtime step (clicking Remote navigates away). Re-selecting
-    // Cloud repeatedly re-renders the selector — the same churn path that
-    // previously froze onboarding.
-    for (let i = 0; i < 4; i++) {
-      await cloud.click();
-    }
+    await expect(local).toBeVisible();
   }
 
-  // Dwell so any churn-driven loop would cross the telemetry error threshold.
+  // Dwell so any startup/onboarding render loop would cross the telemetry
+  // error threshold.
   await page.waitForTimeout(4_000);
 
   await expectNoRenderTelemetryErrors(page, "first-run onboarding");
-  await expect(shell).toBeVisible();
+  await expect(toast).toBeVisible();
 });

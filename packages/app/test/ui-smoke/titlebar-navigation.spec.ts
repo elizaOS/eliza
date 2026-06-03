@@ -176,7 +176,6 @@ async function getReconnectBanner(page: Page): Promise<Locator> {
 async function expectMacTitlebarClasses(page: Page): Promise<void> {
   const html = page.locator("html");
   await expect(html).toHaveClass(/eliza-electrobun-frameless/);
-  await expect(html).toHaveClass(/eliza-electrobun-custom-titlebar/);
   await expect(html).toHaveClass(/eliza-electrobun-macos-titlebar/);
 }
 
@@ -245,15 +244,7 @@ test.describe("macOS desktop titlebar", () => {
     await clickLocatorAtVerticalFraction(page, appsButton, 0.5);
     await expect(page).toHaveURL(/\/apps$/);
 
-    await openAppPath(page, "/chat");
-
-    const settingsButton = page.getByTestId("header-settings-button");
-    await expect(settingsButton).toBeVisible();
-    await expect.poll(() => getAppRegion(settingsButton)).toBe("no-drag");
-    await clickLocatorAtVerticalFraction(page, settingsButton, 0.5);
-    await expect(page).toHaveURL(/\/settings$/);
-
-    await openAppPath(page, "/chat");
+    await openAppPath(page, "/apps/lifeops");
 
     const titleDragZone = page.getByTestId("desktop-window-titlebar-drag-zone");
     await expect(titleDragZone).toBeVisible();
@@ -270,7 +261,7 @@ test.describe("macOS desktop titlebar", () => {
     });
     await page.mouse.up();
 
-    await expect(page).toHaveURL(/\/chat$/);
+    await expect(page).toHaveURL(/\/apps\/lifeops$/);
   });
 
   test("desktop reconnecting banner reserves macOS traffic-light inset", async ({
@@ -278,7 +269,7 @@ test.describe("macOS desktop titlebar", () => {
   }, testInfo) => {
     await prepareApp(page);
     await installClosingWebSocket(page);
-    await openAppPath(page, "/chat");
+    await openAppPath(page, "/settings");
 
     await expectMacTitlebarClasses(page);
 

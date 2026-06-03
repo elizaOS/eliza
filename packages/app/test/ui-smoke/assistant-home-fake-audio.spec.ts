@@ -10,6 +10,8 @@ import {
 const FAKE_AUDIO_DIR = path.join(process.cwd(), "test-results", "fixtures");
 const FAKE_AUDIO_PATH = path.join(FAKE_AUDIO_DIR, "assistant-home-script.wav");
 
+test.skip(true, "The legacy assistant home surface was removed; / now lands on chat.");
+
 function pcm16WavTone(): Buffer {
   const sampleRate = 48_000;
   const seconds = 1.2;

@@ -8,6 +8,8 @@ import {
   seedAppStorage,
 } from "./helpers";
 
+test.skip(true, "The legacy homescreen edit surface was removed; / now lands on chat.");
+
 /**
  * Homescreen edit-mode e2e — the client half of the HOMESCREEN action loop.
  *

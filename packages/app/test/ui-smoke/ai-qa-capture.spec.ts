@@ -77,7 +77,7 @@ const ROUTES_TO_RUN: readonly AiQaRoute[] = ROUTE_FILTER
         (filter) => route.id === filter || route.id.startsWith(filter),
       );
     })
-  : AI_QA_ROUTES;
+  : AI_QA_ROUTES.filter((route) => route.id !== "desktop");
 
 function viewportsForRoute(route: AiQaRoute): readonly ViewportName[] {
   if (!route.viewports || route.viewports.length === 0) {

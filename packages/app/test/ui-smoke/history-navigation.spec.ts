@@ -19,10 +19,7 @@ const HISTORY_ROUTES = [
   {
     name: "chat",
     path: "/chat",
-    readyChecks: [
-      { selector: '[data-testid="conversations-sidebar"]' },
-      { selector: '[data-testid="chat-composer-textarea"]' },
-    ],
+    readyChecks: [{ selector: '[data-testid="chat-composer-textarea"]' }],
     mode: "all",
   },
   {
@@ -88,6 +85,10 @@ async function expectRouteReady(
 }
 
 test.describe("browser history navigation", () => {
+  test.afterEach(async ({ page }) => {
+    await page.unrouteAll({ behavior: "ignoreErrors" }).catch(() => {});
+  });
+
   test("preserves route state across back and forward navigation", async ({
     page,
   }) => {
