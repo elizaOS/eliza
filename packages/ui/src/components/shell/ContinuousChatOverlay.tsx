@@ -64,16 +64,19 @@ function SoftButton({
   onClick,
   disabled,
   active,
+  testId,
 }: {
   glyph: string;
   label: string;
   onClick?: () => void;
   disabled?: boolean;
   active?: boolean;
+  testId?: string;
 }): React.JSX.Element {
   return (
     <button
       type="button"
+      data-testid={testId}
       aria-label={label}
       aria-pressed={active}
       // aria-disabled (not the native attr) so the button stays focusable and its
@@ -380,6 +383,7 @@ export function ContinuousChatOverlay({
             }}
             placeholder={booting ? "connecting…" : "say anything…"}
             aria-label="message"
+            data-testid="chat-composer-textarea"
             aria-describedby={booting ? "cc-booting-hint" : undefined}
             aria-disabled={booting}
             readOnly={booting}
@@ -397,6 +401,7 @@ export function ContinuousChatOverlay({
               label={canSend ? "send" : "send (waiting for reply)"}
               disabled={!canSend}
               onClick={submit}
+              testId="chat-composer-action"
             />
           ) : (
             <SoftButton
