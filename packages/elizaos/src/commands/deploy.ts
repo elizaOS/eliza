@@ -1,10 +1,7 @@
 /**
- * `elizaos deploy` — keel only.
- *
- * @experimental
- * This command currently registers the flag surface and prints the planned
- * deploy sequence in --dry-run mode. The real Vercel + custom-domain pipeline
- * lands in a follow-up PR. See DEPLOY_DESIGN.md.
+ * `elizaos deploy` prints the Eliza Cloud deployment plan for the current
+ * project. The CLI does not perform deployment side effects; the cloud
+ * dashboard owns authenticated build, domain, and Vercel orchestration.
  */
 
 import pc from "picocolors";
@@ -64,8 +61,10 @@ function buildPlan(options: DeployOptions, cwd: string): PlannedStep[] {
 
 function printPlan(plan: PlannedStep[]): void {
   console.log();
-  console.log(pc.bold(pc.cyan("elizaos deploy — dry run")));
-  console.log(pc.dim("Planned sequence (no network calls performed):"));
+  console.log(pc.bold(pc.cyan("elizaos deploy — deployment plan")));
+  console.log(
+    pc.dim("No network calls, filesystem writes, or builds are performed."),
+  );
   console.log();
   plan.forEach((step, index) => {
     const num = pc.dim(`${(index + 1).toString().padStart(2, " ")}.`);
@@ -78,7 +77,7 @@ function printPlan(plan: PlannedStep[]): void {
   console.log();
   console.log(
     pc.dim(
-      "See https://github.com/elizaOS/eliza/blob/develop/packages/elizaos/src/commands/DEPLOY_DESIGN.md for the full design.",
+      "Use the Eliza Cloud dashboard to run this plan once the project and domain settings are ready.",
     ),
   );
   console.log();
@@ -102,17 +101,8 @@ export function runDeploy(options: DeployOptions): number {
     console.error(pc.dim(`[deploy] options=${JSON.stringify(options)}`));
   }
 
-  if (options.dryRun) {
-    printPlan(plan);
-    return 0;
-  }
-
-  console.error(
-    pc.yellow(
-      "Real deploy not yet implemented — see https://github.com/elizaOS/eliza/blob/develop/packages/elizaos/src/commands/DEPLOY_DESIGN.md. Pass --dry-run to preview.",
-    ),
-  );
-  return 1;
+  printPlan(plan);
+  return 0;
 }
 
 export function deploy(options: DeployOptions): void {

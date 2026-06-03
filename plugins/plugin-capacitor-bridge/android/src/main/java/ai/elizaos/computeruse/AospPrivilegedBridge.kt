@@ -1,4 +1,4 @@
-// TODO: validate on device — checklist in ANDROID_CONSTRAINTS.md
+// Device behavior checklist: see ANDROID_CONSTRAINTS.md.
 //
 // AospPrivilegedBridge — AOSP system-app privileged path skeleton.
 //

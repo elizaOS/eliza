@@ -6,7 +6,7 @@
  * downstream branches on `mode`; callers receive a `Driver` and use it.
  *
  *   - `createSandboxDriver(opts)` constructs a `SandboxDriver` wired to the
- *     requested backend (`docker` or `qemu`). Throws
+ *     requested backend (`docker`). Throws
  *     `SandboxBackendUnavailableError` if the backend cannot be constructed.
  *   - `getCurrentDriver(runtime)` consults `ComputerUseService.getConfig()`
  *     and returns either the host driver shim or a sandbox driver. This is
@@ -23,7 +23,6 @@ import type {
   SandboxConfig,
 } from "../types.js";
 import { DockerBackend, type DockerBackendOptions } from "./docker-backend.js";
-import { QemuBackend } from "./qemu-backend.js";
 import { SandboxDriver } from "./sandbox-driver.js";
 import {
   type Driver,
@@ -65,13 +64,6 @@ export function createSandboxDriver(
       env: opts.options?.env,
       ...(opts.dockerOverrides ?? {}),
     });
-    return new SandboxDriver(backend);
-  }
-
-  if (opts.backend === "qemu") {
-    // QemuBackend's constructor throws SandboxBackendUnavailableError until
-    // Phase 2. Surfacing the throw here keeps the mode-selection seam loud.
-    const backend = new QemuBackend({ image: opts.image });
     return new SandboxDriver(backend);
   }
 
@@ -121,8 +113,6 @@ export function resolveModeFromEnv(raw: string | undefined): ComputerUseMode {
 
 export type { DockerBackendOptions } from "./docker-backend.js";
 export { DockerBackend } from "./docker-backend.js";
-export type { QemuBackendOptions } from "./qemu-backend.js";
-export { QemuBackend } from "./qemu-backend.js";
 export { SandboxDriver } from "./sandbox-driver.js";
 export type {
   FileActionResult,

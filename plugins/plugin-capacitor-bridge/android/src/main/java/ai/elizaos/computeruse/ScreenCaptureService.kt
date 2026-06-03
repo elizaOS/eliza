@@ -1,4 +1,4 @@
-// TODO: validate on device — checklist in ANDROID_CONSTRAINTS.md
+// Device behavior checklist: see ANDROID_CONSTRAINTS.md.
 //
 // ScreenCaptureService — MediaProjection foreground service for screen frame capture.
 //

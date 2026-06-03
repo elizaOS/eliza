@@ -92,13 +92,11 @@ program
 
 program
   .command("deploy")
-  .description(
-    "Deploy the current elizaOS project to Eliza Cloud (experimental — keel only)",
-  )
-  .option("--app-id <id>", "Eliza Cloud app UUID to deploy")
-  .option("--domain <host>", "Custom domain to attach after deploy")
-  .option("--dry-run", "Print the planned deploy sequence without running it")
-  .option("--verbose", "Echo backend requests to stderr")
+  .description("Print the Eliza Cloud deployment plan for this project")
+  .option("--app-id <id>", "Eliza Cloud app UUID to include in the plan")
+  .option("--domain <host>", "Custom domain to include in the plan")
+  .option("--dry-run", "Accepted for compatibility; deploy is always a preview")
+  .option("--verbose", "Echo resolved deploy inputs to stderr")
   .action(deploy);
 
 registerPluginsCommand(program);

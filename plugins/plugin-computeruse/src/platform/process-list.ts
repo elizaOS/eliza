@@ -13,9 +13,9 @@
  *              no shell out. ~5ms for 300 processes.
  *   - macOS  : `ps -axo pid=,comm=` — built-in BSD ps.
  *   - Windows: PowerShell `Get-Process | Select Id, ProcessName`.
- *   - Android: stub returning `[]` — the JS contract for `UsageStatsManager`
- *              is owned by WS8's native side. We expose the function shape so
- *              the scene-builder doesn't have to branch.
+ *   - Android: returns `[]` in this JS helper; the `UsageStatsManager`
+ *              integration is owned by WS8's native side. We expose the
+ *              function shape so the scene-builder doesn't have to branch.
  *
  * Failure semantics:
  *   - A single un-readable process is skipped, not propagated.

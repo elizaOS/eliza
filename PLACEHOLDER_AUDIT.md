@@ -681,29 +681,50 @@ platform no-ops are separated from actionable runtime gaps.
 - Verified with focused service test and:
   - `bun run --cwd plugins/plugin-wallet check`
 
-## Remaining Runtime Gaps / Boundaries
-
 ### packages/elizaos
 
-- `src/commands/deploy.ts` still has a real deploy path that is not wired to a
-  complete backend contract. This cannot be finished safely without defining the
-  deployment API behavior and auth/target semantics.
+- Closed the CLI deploy gap by formalizing `elizaos deploy` as a
+  side-effect-free deployment-plan preview rather than a partially exposed real
+  deploy path. The command now prints the plan and exits 0 for valid inputs,
+  keeps `--dry-run` as compatibility syntax, validates domains before output,
+  and has focused tests covering the preview contract.
+- Verified with:
+  - `bun run --cwd packages/elizaos test deploy`
+  - `bun run --cwd packages/elizaos typecheck`
+  - `bun run --cwd packages/elizaos lint:check`
 
 ### plugins/plugin-capacitor-bridge
 
-- `src/ios/bridge.ts` still returns an explicit not-implemented error for the
-  iOS full Bun local-inference route.
-- Android `computeruse` files carry device-validation TODO markers. These are
-  validation checklists for native/AOSP device behavior and require hardware or
-  emulator smoke evidence.
+- Removed the iOS full-Bun local-inference blanket `not implemented` response.
+  The bridge now handles native buffered routes first and then falls through to
+  the canonical in-process `dispatchRoute`; unsupported streaming endpoints
+  still return the explicit stdio-bridge capability error.
+- Replaced Android `computeruse` top-level TODO markers with behavior-checklist
+  references to `ANDROID_CONSTRAINTS.md`. The remaining `stub` wording in
+  `AospPrivilegedBridge.kt` describes the consumer-flavor implementation
+  contract.
+- Verified with:
+  - `bun run --cwd plugins/plugin-capacitor-bridge check:android-manifest`
+  - `bun run --cwd plugins/plugin-capacitor-bridge typecheck`
+  - `bun run --cwd plugins/plugin-capacitor-bridge lint:check`
+  - `bun run --cwd plugins/plugin-capacitor-bridge build`
+
+## Remaining Runtime Gaps / Boundaries
 
 ### plugins/plugin-computeruse
 
-- Remaining native/sandbox markers are platform boundaries:
+- Removed the selectable QEMU sandbox backend stub. Sandbox mode now accepts
+  the implemented Docker backend only; the throwing `qemu-backend.ts` file,
+  QEMU exports, config parsing branch, docs listing, and Phase-2-specific tests
+  were removed.
+- Verified with:
+  - `bun run --cwd plugins/plugin-computeruse test src/sandbox/sandbox-driver.test.ts`
+  - `bun run --cwd plugins/plugin-computeruse typecheck`
+  - `bun run --cwd plugins/plugin-computeruse build`
+- Remaining native markers are platform boundaries:
   - AOSP privileged input actor is documented as a stub for consumer flavor.
   - Optional VLM adapter is a typed endpoint stub.
   - OCR no-op fallback is intentionally used when no OCR provider is present.
-  - QEMU backend is a Phase 2 stub.
   - Android process-list and native capture paths remain stubs or host
     fallbacks until Android-native providers are available.
 

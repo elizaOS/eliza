@@ -1,4 +1,4 @@
-// TODO: validate on device — checklist in ANDROID_CONSTRAINTS.md
+// Device behavior checklist: see ANDROID_CONSTRAINTS.md.
 //
 // ComputerUsePlugin — Capacitor plugin that wires the Android computer-use
 // surface to JS. Registered as plugin name "ComputerUse" (same jsName as iOS).

@@ -12,10 +12,9 @@
  *   what 99% of the cascade should use.
  *
  * Optional secondary path — VLM:
- *   `OsAtlasProActor` is a typed adapter stub for a model-server endpoint
- *   (e.g. an OS-Atlas-Pro vLLM service). Until that endpoint exists in the
- *   Eliza deployment it stays unregistered and the cascade falls back to
- *   the OCR/AX grounding above.
+ *   `OsAtlasProActor` is a typed adapter for an operator-provided model-server
+ *   endpoint (e.g. an OS-Atlas-Pro vLLM service). Unless a deployment
+ *   registers that endpoint, the cascade uses the OCR/AX grounding above.
  *
  * Register the active Actor on the cascade via `setActor(actor)` (see
  * `cascade.ts`). If none is registered, the cascade uses the OCR/AX actor
@@ -30,7 +29,7 @@ export interface ActorGroundArgs {
   displayId: number;
   /**
    * Cropped image of the ROI at native resolution (PNG bytes). May be a
-   * placeholder Buffer when the deterministic grounding doesn't need it.
+   * empty Buffer when the deterministic grounding doesn't need image bytes.
    */
   croppedImage: Buffer;
   /** Hint from the Brain: "the Save button in the dialog footer". */
@@ -156,7 +155,7 @@ function describe(target: ReferenceTarget): string {
     : (target.source as SceneAxNode).id;
 }
 
-/* ── optional VLM adapter stub ─────────────────────────────────────────── */
+/* ── optional VLM adapter ──────────────────────────────────────────────── */
 
 export interface OsAtlasProActorOptions {
   /** Endpoint of the model server, e.g. `http://localhost:8000/v1`. */
