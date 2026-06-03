@@ -21,7 +21,6 @@
     "esModuleInterop": true,
     "paths": {
       "@/*": ["./src/*"],
-      "@elizaos/ui": ["../ui/src/backgrounds/CloudVideoBackground.tsx"],
       "@elizaos/ui/cloud-ui/components/icons": [
         "../ui/src/cloud-ui/components/icons.tsx"
       ],

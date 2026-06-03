@@ -245,6 +245,7 @@
         "@elizaos/plugin-task-coordinator": "workspace:*",
         "@elizaos/plugin-training": "workspace:*",
         "@elizaos/plugin-trajectory-logger": "workspace:*",
+        "@elizaos/plugin-vector-browser": "workspace:*",
         "@elizaos/plugin-vincent": "workspace:*",
         "@elizaos/plugin-wallet": "workspace:*",
         "@elizaos/plugin-wallet-ui": "workspace:*",
@@ -5193,6 +5194,27 @@
         "@elizaos/core": ">=1.0.0",
       },
     },
+    "plugins/plugin-vector-browser": {
+      "name": "@elizaos/plugin-vector-browser",
+      "version": "2.0.3-beta.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
+        "@elizaos/ui": "workspace:*",
+        "lucide-react": "^1.0.0",
+      },
+      "devDependencies": {
+        "@types/react": "^19.0.0",
+        "react": "^19.0.0",
+        "three": "^0.184.0",
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vite": "^8.0.0",
+      },
+      "peerDependencies": {
+        "react": ">=18.0.0",
+      },
+    },
     "plugins/plugin-video": {
       "name": "@elizaos/plugin-video",
       "version": "2.0.3-beta.0",
@@ -6499,6 +6521,8 @@
     "@elizaos/plugin-tunnel": ["@elizaos/plugin-tunnel@workspace:plugins/plugin-tunnel"],
 
     "@elizaos/plugin-twitch": ["@elizaos/plugin-twitch@workspace:plugins/plugin-twitch"],
+
+    "@elizaos/plugin-vector-browser": ["@elizaos/plugin-vector-browser@workspace:plugins/plugin-vector-browser"],
 
     "@elizaos/plugin-video": ["@elizaos/plugin-video@workspace:plugins/plugin-video"],
 

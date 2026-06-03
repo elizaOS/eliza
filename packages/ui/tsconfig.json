@@ -23,6 +23,9 @@
         "../../plugins/plugin-shopify-ui/src/index.ts"
       ],
       "@elizaos/plugin-training": ["./src/types/host-external-modules.ts"],
+      "@elizaos/plugin-vector-browser": [
+        "./src/types/host-external-modules.ts"
+      ],
       "@elizaos/plugin-vincent": ["../../plugins/plugin-vincent/src/index.ts"],
       "@elizaos/plugin-lifeops-browser": [
         "../../plugins/plugin-lifeops-browser/src/index.ts"
