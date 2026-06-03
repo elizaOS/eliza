@@ -40,6 +40,7 @@ export const VIEW_CASES: ViewCase[] = (
     ["vincent", "tui", "/vincent/tui"],
     ["wallet", "gui", "/wallet"],
     ["wallet", "tui", "/wallet/tui"],
+    ["vector-browser", "gui", "/vector-browser"],
     ["2004scape", "gui", "/2004scape"],
     ["2004scape", "tui", "/2004scape/tui"],
     ["feed", "gui", "/feed"],

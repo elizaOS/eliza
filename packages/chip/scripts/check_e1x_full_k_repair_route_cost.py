@@ -5,6 +5,7 @@ import json
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
+from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_full_k_repair_route_cost.json"
@@ -50,7 +51,7 @@ def utc_now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def load_json(path: Path) -> dict:
+def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -75,15 +76,15 @@ def selected_rows(row_count: int, rows_per_layer: int) -> list[int]:
     )
 
 
-def coord_key(coord: dict) -> tuple[int, int]:
+def coord_key(coord: dict[str, Any]) -> tuple[int, int]:
     return int(coord["row"]), int(coord["col"])
 
 
-def logical_core_for_row(layer: dict, output_row: int) -> int:
+def logical_core_for_row(layer: dict[str, Any], output_row: int) -> int:
     return int(layer["core_index_start"]) + (output_row // int(layer["rows_per_core"]))
 
 
-def load_remap(path: Path) -> tuple[dict, dict[tuple[int, int], tuple[int, int]]]:
+def load_remap(path: Path) -> tuple[dict[str, Any], dict[tuple[int, int], tuple[int, int]]]:
     report = load_json(path)
     remap = {
         coord_key(entry["logical"]): coord_key(entry["physical"])
@@ -97,11 +98,11 @@ def add_count(target: dict[str, int], key: str, value: int = 1) -> None:
 
 
 def analyze_case(
-    layers: list[dict],
+    layers: list[dict[str, Any]],
     logical_cols: int,
     rows_per_layer: int,
     remap: dict[tuple[int, int], tuple[int, int]],
-) -> dict:
+) -> dict[str, Any]:
     remapped_rows = 0
     total_distance = 0
     max_distance = 0
@@ -203,7 +204,7 @@ def main() -> int:
         {"id": "e1x_full_k_repair_route_cost_dependencies_pass", "status": status, "detail": detail}
     )
 
-    rungs = []
+    rungs: list[dict[str, Any]] = []
     for name, rows_per_layer, path in RUNG_REPORTS:
         report = load_json(path) if path.is_file() else {}
         summary = report.get("summary", {})
@@ -256,8 +257,8 @@ def main() -> int:
     )
 
     final = rungs[-1] if rungs else {}
-    final_normal = final.get("normal", {})
-    final_high = final.get("high_failure", {})
+    final_normal = cast(dict[str, Any], final.get("normal", {}))
+    final_high = cast(dict[str, Any], final.get("high_failure", {}))
     final_ok = (
         int(final_normal.get("remapped_row_count", 0)) == 44
         and int(final_high.get("remapped_row_count", 0)) == 760

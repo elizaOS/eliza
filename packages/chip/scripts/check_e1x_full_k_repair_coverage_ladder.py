@@ -112,7 +112,7 @@ def main() -> int:
     for name, rows_per_layer, path, expected_sha in RUNG_REPORTS:
         report = load_json(path) if path.is_file() else {}
         summary = report.get("summary", {})
-        rung = {
+        rung: dict[str, int | float | str] = {
             "name": name,
             "rows_per_layer": rows_per_layer,
             "row_count": int(summary.get("executed_stratified_full_k_row_count", 0)),

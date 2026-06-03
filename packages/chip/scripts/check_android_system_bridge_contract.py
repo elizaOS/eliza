@@ -541,12 +541,15 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     missing_app_bridge_channels = sorted(
         channel for channel in required_app_bridge_channels if channel not in app_bridge_text
     )
+    app_bridge_live_state_incomplete = (
+        not app_bridge_path.is_file()
+        or bool(missing_app_bridge_channels)
+        or "AndroidSystemProvider: live-state" not in app_bridge_text
+        or "privileged_android_system_bridge_not_bound" not in app_bridge_text
+    )
     add_if(
         findings,
-        not app_bridge_path.is_file()
-        or missing_app_bridge_channels
-        or "AndroidSystemProvider: live-state" not in app_bridge_text
-        or "privileged_android_system_bridge_not_bound" not in app_bridge_text,
+        app_bridge_live_state_incomplete,
         "launcher_app_bridge_live_state_surface_incomplete",
         "launcher app-side bridge does not expose live Android state channels with a stable runtime marker and fail-closed unavailable path",
         (

@@ -10,6 +10,7 @@ declare module "@elizaos/plugin-hyperliquid-app";
 declare module "@elizaos/plugin-polymarket-app";
 declare module "@elizaos/plugin-wallet-ui";
 declare module "@elizaos/app-model-tester";
+declare module "@elizaos/plugin-vector-browser/register";
 declare module "@elizaos/plugin-contacts/register";
 declare module "@elizaos/plugin-device-settings/register";
 declare module "@elizaos/plugin-messages/register";
