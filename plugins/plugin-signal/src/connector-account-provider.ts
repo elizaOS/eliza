@@ -105,7 +105,7 @@ export function createSignalConnectorAccountProvider(
     deleteAccount: async (_accountId: string, _manager: ConnectorAccountManager) => {
       // Persistent credentials for Signal live in signal-cli auth dir;
       // unlinking happens via `signalLogout`. Deletion at the manager layer is
-      // a no-op marker.
+      // only a connector-manager account marker.
     },
     // Signal uses device-link pairing (QR code via signal-cli), not OAuth.
     // startOAuth/completeOAuth intentionally omitted.

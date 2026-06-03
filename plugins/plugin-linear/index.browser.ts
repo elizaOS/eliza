@@ -5,7 +5,7 @@ const pluginName = "@elizaos/plugin-linear-ts";
 
 export const linearPlugin: Plugin = {
 	name: pluginName,
-	description: "Linear plugin (browser stub; use a server proxy)",
+	description: "Linear plugin (unsupported browser export; use a server proxy)",
 	async init(
 		_config: Record<string, string>,
 		_runtime: IAgentRuntime,

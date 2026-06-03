@@ -36,8 +36,7 @@ const pluginName = "discord";
  */
 export const discordPlugin: Plugin = {
 	name: pluginName,
-	description:
-		"Discord plugin (browser entry unavailable; use a server proxy)",
+	description: "Discord plugin (browser entry unavailable; use a server proxy)",
 	async init(_config, _runtime: IAgentRuntime): Promise<void> {
 		logger.warn(
 			`[plugin-${pluginName}] Browser environment detected. Discord plugin requires Node.js. ` +

@@ -122,8 +122,8 @@ async function hydrateReadyAgentStatus(
   deps: StartingRuntimeDeps,
 ): Promise<void> {
   try {
-    const status = await client.getStatus();
-    if (!status || status.state !== "running") return;
+		const status = await client.getStatus();
+		if (status?.state !== "running") return;
 
     deps.setAgentStatus(status);
     if (status.pendingRestart) {

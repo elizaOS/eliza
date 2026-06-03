@@ -156,7 +156,7 @@ await withProgress(deps, "Doing work", async () => {
 - The command registry is **module-level state** (a `Map`). In a single Node/Bun process all imports share the same registry; in tests always call `clearCliCommands()` in `beforeEach` / `afterEach` to avoid cross-test pollution.
 - `buildProgram` iterates `listCliCommands()` at call time. Register all commands before calling `buildProgram`.
 - `registerCliCommand` silently replaces on duplicate name (with a `logger.warn`). Use distinct names to avoid accidental overrides.
-- The plugin object itself has no persistent resources: `dispose` is a no-op and `init` only logs.
+- The plugin object itself has no persistent resources: `dispose` returns immediately and `init` only logs.
 - `createProgressReporter` writes directly to `process.stdout` using ANSI escapes when `isTTY`; it degrades to plain `deps.log` in non-TTY environments (CI, piped output).
 - `parseDurationMs` returns `{ valid: false, ms: 0 }` on bad input — always check `valid` before using `ms`.
 - Build output goes to `dist/` (`.gitignored`). The package ships only `dist/` — no `src/` in the published tarball.

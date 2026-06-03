@@ -32,7 +32,9 @@ async function build() {
     `Node build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`,
   );
 
-  console.log("Building @elizaos/plugin-omnivoice for Browser (unavailable entry)...");
+  console.log(
+    "Building @elizaos/plugin-omnivoice for Browser (unavailable entry)...",
+  );
   const browserStart = Date.now();
   const browserResult = await Bun.build({
     entrypoints: ["src/index.browser.ts"],
