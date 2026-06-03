@@ -258,7 +258,8 @@ export function resolveBlueBubblesAccount(
 
 	const envServerUrl = getStringSetting(runtime, "BLUEBUBBLES_SERVER_URL");
 	const envPassword = getStringSetting(runtime, "BLUEBUBBLES_PASSWORD");
-	const envEnabled = getStringSetting(runtime, "BLUEBUBBLES_ENABLED") !== "false";
+	const envEnabled =
+		getStringSetting(runtime, "BLUEBUBBLES_ENABLED") !== "false";
 	const envAutoStartArgs = parseStringList(
 		getStringSetting(runtime, "BLUEBUBBLES_AUTOSTART_ARGS"),
 	);
@@ -297,7 +298,9 @@ export function resolveBlueBubblesAccount(
 		multiConfig.autoStartCommand ??
 		getStringSetting(runtime, "BLUEBUBBLES_AUTOSTART_COMMAND");
 	const autoStartArgs =
-		accountConfig.autoStartArgs ?? multiConfig.autoStartArgs ?? envAutoStartArgs;
+		accountConfig.autoStartArgs ??
+		multiConfig.autoStartArgs ??
+		envAutoStartArgs;
 	const autoStartCwd =
 		accountConfig.autoStartCwd ??
 		multiConfig.autoStartCwd ??
@@ -330,9 +333,8 @@ export function resolveBlueBubblesAccount(
 		multiConfig.sendReadReceipts ??
 		getStringSetting(runtime, "BLUEBUBBLES_SEND_READ_RECEIPTS") !== "false";
 
-	const resolvedConfig: BlueBubblesConfig | null =
-		configured
-			? {
+	const resolvedConfig: BlueBubblesConfig | null = configured
+		? {
 				serverUrl,
 				password,
 				webhookPath,
@@ -347,7 +349,7 @@ export function resolveBlueBubblesAccount(
 				sendReadReceipts,
 				enabled,
 			}
-			: null;
+		: null;
 
 	return {
 		accountId: normalizedAccountId,

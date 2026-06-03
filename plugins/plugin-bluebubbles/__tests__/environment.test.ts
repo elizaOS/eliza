@@ -142,8 +142,9 @@ describe("BlueBubbles account resolution", () => {
 			},
 		);
 
-		expect(listEnabledBlueBubblesAccounts(runtime).map((item) => item.accountId))
-			.toEqual(["work"]);
+		expect(
+			listEnabledBlueBubblesAccounts(runtime).map((item) => item.accountId),
+		).toEqual(["work"]);
 		expect(resolveDefaultBlueBubblesAccountId(runtime)).toBe("work");
 
 		const service = new BlueBubblesService(runtime);
