@@ -101,9 +101,7 @@ CLASSIFIED_BLOCKER_INVENTORY_PATH_PATTERNS = (
         r"("
         r"gap|gaps|audit|blocker|work[-_]order|inventory|"
         r"critical[-_]gap[-_]review|workstream[-_]gap[-_]review|"
-        r"status[-_]dashboard|workstreams|road[-_]to|roadmap|"
-        + TODO_TOKEN.lower()
-        + r"|dossier"
+        r"status[-_]dashboard|workstreams|road[-_]to|roadmap|" + TODO_TOKEN.lower() + r"|dossier"
         r").*\.(json|md|yaml|yml)$",
         re.I,
     ),
@@ -219,9 +217,7 @@ CLASSIFIED_DIAGNOSTIC_LINE_RE = re.compile(
     r"Phone-class IPC claims remain BLOCKED|"
     r"remain BLOCKED(?: follow-ons)?|"
     r"stays blocked until pins/timing|"
-    r"modelled, "
-    + NOT_IMPLEMENTED_TOKEN
-    + r"|"
+    r"modelled, " + NOT_IMPLEMENTED_TOKEN + r"|"
     r"identity/allowlist stub|"
     r"placeholder logs|"
     r"if placeholder is None|"
@@ -387,9 +383,7 @@ PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
         "implementation_missing",
         "not-implemented or unsupported marker",
         re.compile(
-            r"\b(NotImplementedError|"
-            + NOT_IMPLEMENTED_TOKEN
-            + r"|unimplemented|unsupported)\b",
+            r"\b(NotImplementedError|" + NOT_IMPLEMENTED_TOKEN + r"|unimplemented|unsupported)\b",
             re.I,
         ),
     ),

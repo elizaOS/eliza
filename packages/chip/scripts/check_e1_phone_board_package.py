@@ -723,9 +723,7 @@ def check_top_bottom_interconnect_plan() -> None:
         ("flex stackup, bend radius, stiffener, and strain relief not drawn",),
         ("USB2 and audio SI across the flex not simulated or measured",),
         ("power contact current rise and return allocation not reviewed",),
-        (
-            "bottom island decoupling, ESD, and test fixture edge pending KiCad capture",
-        ),
+        ("bottom island decoupling, ESD, and test fixture edge pending KiCad capture",),
         ("assembly sequence for battery insertion and split-board connection not validated",),
     ]
     for blocker_aliases in required_release_blockers:

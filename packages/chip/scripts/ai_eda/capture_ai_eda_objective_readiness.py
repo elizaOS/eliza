@@ -274,20 +274,25 @@ def main() -> int:
     alphachip_successor = load_json(alphachip_successor_path)
     alphachip_successor_reproduction = load_json(alphachip_successor_reproduction_path)
     full_training_matrix = load_json(full_training_matrix_path)
+    research_doc_has_task_backlog = (
+        len(research_doc_text) > 50_000
+        and "Implementation tasks:" in research_doc_text
+        and "Acceptance:" in research_doc_text
+    )
 
     requirements: list[dict[str, Any]] = []
     requirements.append(
         requirement(
             "research_doc",
-            "Detailed current research plan and TODO backlog",
-            "PROVEN"
-            if len(research_doc_text) > 50_000 and "TODO" in research_doc_text
-            else "INCOMPLETE",
+            "Detailed current research plan and implementation task backlog",
+            "PROVEN" if research_doc_has_task_backlog else "INCOMPLETE",
             [args.research_doc],
-            "Research document must be substantial and carry implementation TODOs.",
+            "Research document must be substantial and carry implementation tasks plus acceptance gates.",
             []
-            if len(research_doc_text) > 50_000 and "TODO" in research_doc_text
-            else ["research doc is missing, short, or lacks TODO markers"],
+            if research_doc_has_task_backlog
+            else [
+                "research doc is missing, short, or lacks implementation task and acceptance-gate sections"
+            ],
         )
     )
     requirements.append(
