@@ -289,7 +289,11 @@ export function ContinuousChatOverlay({
     setDraft("");
     setPendingImages([]);
     setImageError(null);
-    send(text, images.length ? { images } : undefined);
+    if (images.length) {
+      send(text, { images });
+    } else {
+      send(text);
+    }
     setExpanded(true);
     inputRef.current?.focus();
   }, [draft, pendingImages, canSend, send]);

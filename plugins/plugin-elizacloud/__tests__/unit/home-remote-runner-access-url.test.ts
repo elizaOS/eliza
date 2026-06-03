@@ -74,7 +74,7 @@ describe("buildHomeRemoteRunnerSshTunnel", () => {
     });
   });
 
-  it("rejects incomplete or unsafe SSH tunnel settings", () => {
+  it("rejects missing or unsafe SSH tunnel settings", () => {
     expect(
       buildHomeRemoteRunnerSshTunnel({
         remoteBaseUrl: "http://127.0.0.1:2468",

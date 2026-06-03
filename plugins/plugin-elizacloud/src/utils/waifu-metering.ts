@@ -10,12 +10,12 @@
  * What was missing is the *signal back to waifu*: waifu's burn rollup
  * (`apps/worker/src/processors/agent-rollup.ts`) reads `inference.spent`
  * agent_events to compute `agentDailyBurnUsd` / `agentRunwayDays`, but falls
- * back to a $5/day placeholder when no such events exist. Nothing emitted them.
+ * back to a $5/day default estimate when no such events exist. Nothing emitted them.
  *
  * This bridge listens for the runtime `MODEL_USED` event (emitted by the cloud
  * model handlers after each inference) and POSTs a signed `inference.spent`
- * webhook to waifu's receiver (`POST /webhooks/eliza-cloud/inference`). It is a
- * no-op unless the container is provisioned with the waifu metering env knobs,
+ * webhook to waifu's receiver (`POST /webhooks/eliza-cloud/inference`). It is
+ * inactive unless the container is provisioned with the waifu metering env knobs,
  * so it never fires for non-hosted (local dev / standalone) agents.
  *
  * Token counts are exact (reported by the gateway). USD is the authoritative
@@ -113,7 +113,7 @@ export function resolveWaifuMeteringConfig(
  * inference events to the credits receiver: the credits mapper defaults unknown
  * payloads to `credits.topped_up`, which would corrupt credit state. If we
  * cannot safely derive an inference URL, return undefined so the bridge stays
- * a no-op.
+ * disabled.
  */
 export function resolveInferenceWebhookUrl(runtime: IAgentRuntime): string | undefined {
   const explicit = readEnv(runtime, "WAIFU_INFERENCE_WEBHOOK_URL");
@@ -279,7 +279,7 @@ export async function postInferenceSpent(
 
 /**
  * Build the MODEL_USED event handler that forwards inference spend to waifu.
- * Resolves config lazily per-event so it stays a no-op until the metering env
+ * Resolves config lazily per-event so it stays inactive until the metering env
  * is present, and so config changes (rare) are picked up without a restart.
  */
 export function createWaifuMeteringHandler(

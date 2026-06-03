@@ -58,7 +58,7 @@ The plugin has two distinct export surfaces:
 |---|---|---|
 | `MODEL_USED` | `createWaifuMeteringHandler()` | `src/utils/waifu-metering.ts` |
 
-Forwards per-inference token and USD spend to the Cloud metering endpoint when the container is a hosted agent. No-op otherwise.
+Forwards per-inference token and USD spend to the Cloud metering endpoint when the container is a hosted agent. Inactive otherwise.
 
 ### Routes (via `elizaCloudRoutePlugin`)
 

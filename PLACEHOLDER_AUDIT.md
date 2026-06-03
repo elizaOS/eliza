@@ -2658,6 +2658,20 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd plugins/plugin-native-bun-runtime vitest run`
   - marker scan on `plugins/plugin-native-bun-runtime`
 
+### plugins/plugin-native-llama
+
+- Reworded feature-detected native bridge compatibility docs, source comments,
+  debug logging, and test names from stub/no-op terminology to explicit
+  warn-and-skip, unavailable adapter, or unchanged pass-through behavior.
+- Updated mirrored package guides so stock bridge behavior is described as
+  warning and skipping unsupported operations.
+- The package marker scan is now clean.
+- Verified with:
+  - `diff -u plugins/plugin-native-llama/CLAUDE.md plugins/plugin-native-llama/AGENTS.md`
+  - `bun run --cwd plugins/plugin-native-llama test`
+  - `bun run --cwd plugins/plugin-native-llama build`
+  - marker scan on `plugins/plugin-native-llama`
+
 ### plugins/plugin-facewear
 
 - Reworded Facewear guide/test/emulator marker language so deterministic test

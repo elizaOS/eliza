@@ -54,41 +54,40 @@ describe("App standalone chat-overlay wiring", () => {
     expect(APP_TSX).toContain('shellMode === "chat-overlay"');
     expect(APP_TSX).toContain("<ShellFoundationMount />");
     expect(APP_TSX).toContain("pointer-events-none fixed inset-0");
-    // The floating glass chat remains available in the main shell, but the full
-    // chat tab keeps its richer in-view composer unless minimal shell is enabled.
+    // The floating glass chat remains available in the main shell, including
+    // the ambient /chat route.
     expect(APP_TSX).toContain("Continuous chat overlay");
-    expect(APP_TSX).toContain('tab !== "chat" || MINIMAL_SHELL');
+    expect(APP_TSX).toContain("including the /chat route");
   });
 
-  it("gates the minimal conversational-OS shell behind MINIMAL_SHELL", () => {
-    // The flag drives both the minimal home and the header-nav suppression.
-    expect(APP_TSX).toContain('from "./components/shell/shell-chrome"');
-    expect(APP_TSX).toContain("if (MINIMAL_SHELL)");
+  it("keeps minimal shell chrome decisions inside Header", () => {
+    // The app shell always mounts the ambient chat route; Header owns the
+    // minimal-shell navigation suppression.
+    expect(APP_TSX).toContain("function ChatRouteShellContent");
+    expect(APP_TSX).toContain("minimalHomeGreeting");
     expect(HEADER_TSX).toContain('from "./shell-chrome"');
     expect(HEADER_TSX).toContain("MINIMAL_SHELL ? null");
-    // Full chat workspace lives in its own component so its hooks are never
-    // called conditionally behind the MINIMAL_SHELL early-return.
-    expect(APP_TSX).toContain("function FullChatWorkspaceShellContent");
+    expect(APP_TSX).not.toContain("function FullChatWorkspaceShellContent");
   });
 
-  it("restores the full 3-panel chat workspace + header nav", () => {
-    expect(APP_TSX).toContain("ConversationsSidebar");
-    expect(APP_TSX).toContain("TasksEventsPanel");
-    expect(APP_TSX).toContain("DeferredSetupChecklist");
+  it("keeps the ambient chat route under header nav", () => {
+    expect(APP_TSX).toContain("function ChatRouteShellContent");
+    expect(APP_TSX).toContain('<div key="chat-shell"');
+    expect(APP_TSX).toContain("<Header />");
     // Header nav restored from the still-present navigation model.
     expect(HEADER_TSX).toContain("getTabGroups");
     expect(HEADER_TSX).toContain("primaryDesktopGroups");
   });
 
-  it("keeps the real chat composer in full shell mode", () => {
-    // ChatView can hide its in-view composer for minimal shell experiments, but
-    // the full chat workspace keeps the richer composer capabilities available.
+  it("keeps the ambient overlay composer as the chat route composer", () => {
+    // ChatView still supports hidden-composer embedding, but /chat now uses the
+    // persistent ambient overlay as its composer.
     expect(CHATVIEW_TSX).toContain("hideComposer");
-    expect(APP_TSX).toContain('<ChatView key="chat-view" />');
-    expect(APP_TSX).toContain('tab !== "chat" || MINIMAL_SHELL');
+    expect(APP_TSX).toContain("<ContinuousChatOverlayMount />");
+    expect(APP_TSX).toContain("floats over EVERY view, including the /chat");
     // The composer swaps mic→send once there's a draft (one trailing control).
     expect(OVERLAY_TSX).toContain("hasDraft");
-    expect(OVERLAY_TSX).toContain("hasDraft && !recording");
+    expect(OVERLAY_TSX).toContain("(hasDraft || hasImages) && !recording");
   });
 
   it("classifies chat-overlay as a standalone shell, not the main app", () => {

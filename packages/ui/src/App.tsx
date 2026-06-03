@@ -1112,10 +1112,9 @@ function ShellFoundationMount() {
 /**
  * Reads the shared shell controller from context and renders the always-present
  * continuous chat overlay — one ambient glass conversation (the app's single
- * active conversation via useShellController) that floats over every view. It
- * replaces the legacy HomePill in the main shell; the dedicated chat tab keeps
- * its full in-view ChatView, so there is no duplicate composer. Returns null
- * until a controller provider is present.
+ * active conversation via useShellController) that floats over every view,
+ * including the /chat route's ambient home. Returns null until a controller
+ * provider is present.
  */
 function ContinuousChatOverlayMount(): ReactNode {
   const controller = useShellControllerContext();

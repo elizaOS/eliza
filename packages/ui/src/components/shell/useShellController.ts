@@ -120,7 +120,11 @@ export function useShellController(): ShellController {
         pendingSendsRef.current.push({ text: trimmed, options });
         return;
       }
-      void sendChatText(trimmed, options);
+      if (options) {
+        void sendChatText(trimmed, options);
+        return;
+      }
+      void sendChatText(trimmed);
     },
     [ready, sendChatText],
   );
@@ -132,7 +136,11 @@ export function useShellController(): ShellController {
     if (queued.length === 0) return;
     pendingSendsRef.current = [];
     for (const { text, options } of queued) {
-      void sendChatText(text, options);
+      if (options) {
+        void sendChatText(text, options);
+      } else {
+        void sendChatText(text);
+      }
     }
   }, [ready, sendChatText]);
 
