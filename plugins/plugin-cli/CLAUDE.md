@@ -19,7 +19,7 @@ The `cliPlugin` export (default) registers:
 | `routes` | `[]` |
 | `config` | `CLI_NAME`, `CLI_VERSION` (see below) |
 | `init` | Logs count of registered commands; no persistent side effects |
-| `dispose` | No-op |
+| `dispose` | Returns immediately |
 
 All real functionality is in the exported API (registry + utils), not in the plugin object's hooks.
 

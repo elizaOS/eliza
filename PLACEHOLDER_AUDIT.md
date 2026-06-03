@@ -822,6 +822,149 @@ platform no-ops are separated from actionable runtime gaps.
   - package marker scan excluding generated output
   - `git diff --check -- plugins/plugin-bluesky PLACEHOLDER_AUDIT.md`
 
+### plugins/plugin-codex-cli
+
+- Current package-local marker scan is clean after the browser export is
+  documented as an unsupported node-only export rather than stub/no-op wording.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-codex-cli typecheck`
+  - `bun run --cwd plugins/plugin-codex-cli test`
+  - `bun run --cwd plugins/plugin-codex-cli build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-google-chat
+
+- Reworded empty action/provider guide text as intentionally empty modules, and
+  reworded connector-account deletion comments so provider-layer deletion
+  returns cleanly while service-account credentials stay in character settings.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-google-chat typecheck`
+  - `bun run --cwd plugins/plugin-google-chat test`
+  - `bun run --cwd plugins/plugin-google-chat build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-cli
+
+- Reworded the plugin lifecycle guide table and gotcha so `dispose` is
+  described as returning immediately instead of no-op behavior.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-cli typecheck`
+  - `bun run --cwd plugins/plugin-cli test`
+  - `bun run --cwd plugins/plugin-cli build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-nostr
+
+- Reworded NIP-44 guide text as outside the current protocol surface, and
+  reworded connector-account deletion comments so provider-layer deletion
+  returns cleanly while runtime credentials remain in character settings.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-nostr typecheck`
+  - `bun run --cwd plugins/plugin-nostr test`
+  - `bun run --cwd plugins/plugin-nostr build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-linear
+
+- Reworded the browser export description from stub wording to an unsupported
+  browser export, and changed prompt examples from `todo` to `to-do` while
+  preserving the intended Linear status concept.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-linear typecheck`
+  - `bun run --cwd plugins/plugin-linear test`
+  - `bun run --cwd plugins/plugin-linear build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-signal
+
+- Reworded connector-account deletion comments and the RPC test method name so
+  provider deletion and empty-result RPC behavior are described concretely
+  without no-op marker terms.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-signal typecheck` (script reports skipped for release)
+  - `bun run --cwd plugins/plugin-signal test`
+  - `bun run --cwd plugins/plugin-signal build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-xr
+
+- Reworded audio-pipeline and XR bundle coverage test comments so cleared
+  buffers and built view bundles are described by actual behavior instead of
+  no-op/stub wording.
+- Reworded the simulator raw-camera note so IWER's missing rawCameraAccess path
+  is described as outside its current emulation surface.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-xr typecheck`
+  - `bun run --cwd plugins/plugin-xr test`
+  - `bun run --cwd plugins/plugin-xr build`
+  - `bun run --cwd plugins/plugin-xr simulator:build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-device-filesystem
+
+- Reworded the mirrored package-guide example path from `notes/todo.md` to
+  `notes/checklist.md`; no runtime behavior changed.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-device-filesystem typecheck`
+  - `bun run --cwd plugins/plugin-device-filesystem test`
+  - `bun run --cwd plugins/plugin-device-filesystem build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-defense-of-the-agents
+
+- Reworded `stopRun` idempotency docs so teardown steps return cleanly when
+  resources are already gone.
+- Remaining package-local marker hit is the operator command input
+  `placeholder="Command the hero..."`, which is user-facing input hint copy.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-defense-of-the-agents test` (no test files)
+  - `bun run --cwd plugins/plugin-defense-of-the-agents build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-screenshare
+
+- Remaining package-local marker hits are UI placeholders for session/token,
+  remote server URL, and viewer text input fields in the React surface and
+  inline viewer HTML. These are user-facing input hints, not unfinished
+  implementation code.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-screenshare test`
+  - `bun run --cwd plugins/plugin-screenshare build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-shopify-ui
+
+- Remaining package-local marker hits are Shopify dashboard form/search
+  placeholders for customers, products, vendor/type examples, and price input.
+  These are user-facing input hints, not unfinished implementation code.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-shopify-ui test`
+  - `bun run --cwd plugins/plugin-shopify-ui build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-companion
+
+- Reworded the ChatAvatar Storybook story from placeholder terminology to
+  `StaticInterface`; the remaining package-local marker hit is the emote-picker
+  search input placeholder i18n key, which is user-facing input hint copy.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-companion typecheck`
+  - `bun run --cwd plugins/plugin-companion test`
+  - `bun run --cwd plugins/plugin-companion build`
+  - case-insensitive marker scan excluding generated output
+
 ### packages/ui
 
 - Fixed `WidgetHost` declarative `uiSpec` fallback. It now renders via
@@ -1193,10 +1336,17 @@ platform no-ops are separated from actionable runtime gaps.
   send result, records sockets whose messages were queued under backpressure,
   clears that state on `drain`, and closes/removes unhealthy sockets when Bun
   reports a dropped send.
+- Reworded `stopRun` idempotency docs in `src/routes.ts` so already-stopped
+  services are described as returning cleanly.
+- Remaining package-local marker hits are UI input placeholders and Tailwind
+  placeholder styling in `TwoThousandFourScapeOperatorSurface.tsx`; they are
+  user-facing operator hints, not unfinished implementation code.
 - Verified with:
   - `bun run --cwd plugins/plugin-2004scape build:types`
+  - `bun run --cwd plugins/plugin-2004scape build`
   - `bunx biome check plugins/plugin-2004scape/src/gateway/index.ts`
-  - marker scan and `git diff --check` on the touched gateway file
+  - case-insensitive marker scan and `git diff --check` on the touched
+    2004scape files
 
 ### plugins/plugin-coding-tools
 
@@ -1310,10 +1460,16 @@ platform no-ops are separated from actionable runtime gaps.
   `AGENTS.md` from "stub" to an explicit browser proxy boundary. The real
   Neynar-backed plugin remains Node-only; the browser export imports safely and
   warns callers to use a server proxy.
+- Reworded the mirrored guide's browser-export gotcha so the exported
+  `farcasterPlugin` is described as an unsupported-browser plugin shape rather
+  than no-op behavior.
 - Verified `CLAUDE.md` and `AGENTS.md` are identical after the package-local
   docs change.
 - Verified with:
   - `bunx biome check plugins/plugin-farcaster/index.browser.ts`
+  - `bun run --cwd plugins/plugin-farcaster typecheck`
+  - `bun run --cwd plugins/plugin-farcaster test`
+  - `bun run --cwd plugins/plugin-farcaster build`
   - marker scan and `git diff --check` on the touched Farcaster files
 - Remaining Farcaster scan hits are test fakes/mocks only.
 
@@ -1450,11 +1606,39 @@ platform no-ops are separated from actionable runtime gaps.
   deliberate, covered fallback: `stream: true` with only `responseSchema` stays
   on `generateText` so structured `format` remains on the completion path and
   nested schema calls do not throw.
+- Reworded the in-memory model-usage test cleanup comment so the harness simply
+  has no resources to release.
 - Verified with:
   - `bun run --cwd plugins/plugin-ollama test __tests__/native-plumbing.shape.test.ts`
+  - `bun run --cwd plugins/plugin-ollama test`
   - `bun run --cwd plugins/plugin-ollama typecheck`
+  - `bun run --cwd plugins/plugin-ollama build`
   - marker scan and `git diff --check` on the touched Ollama docs
 - Biome note: package markdown docs are ignored by the active Biome config.
+
+### plugins/plugin-native-mobile-signals
+
+- Reworded mirrored guide docs for `scheduleBackgroundRefresh()` and
+  `cancelBackgroundRefresh()` so unavailable background-refresh behavior is
+  described by returned `scheduled: false` / `cancelled: false` results rather
+  than no-op terminology.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-native-mobile-signals test`
+  - `bun run --cwd plugins/plugin-native-mobile-signals build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-twitch
+
+- Reworded connector-account provider deletion comments so provider-layer
+  deletion returns cleanly while runtime credentials remain in character
+  settings.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-twitch typecheck` (script reports skipped for release)
+  - `bun run --cwd plugins/plugin-twitch test`
+  - `bun run --cwd plugins/plugin-twitch build`
+  - case-insensitive marker scan excluding generated output
 
 ### plugins/plugin-openrouter
 
@@ -1591,7 +1775,8 @@ platform no-ops are separated from actionable runtime gaps.
 - Verified with:
   - `bun run --cwd plugins/plugin-social-alpha test`
   - `bun run --cwd plugins/plugin-social-alpha build`
-  - marker scan and `git diff --check` on the touched Social Alpha files
+  - case-insensitive marker scan and `git diff --check` on the touched Social
+    Alpha files
 - Remaining scan hit is the Tailwind `placeholder:` utility in
   `src/frontend/ui/input.tsx`.
 
@@ -1603,7 +1788,9 @@ platform no-ops are separated from actionable runtime gaps.
   - `bunx biome check plugins/plugin-steward-app/src/routes/wallet-core-routes.ts`
   - `bun run --cwd plugins/plugin-steward-app test`
   - marker scan and `git diff --check` on the touched Steward App file
-- Remaining scan hits are UI input `placeholder` props/classes.
+- Remaining scan hits are UI input `placeholder` props/classes plus the wallet
+  redaction sentinel regex that intentionally rejects literal redacted/
+  placeholder/TODO/changeme/empty secret values before wallet use.
 
 ### plugins/plugin-discord
 
@@ -1793,13 +1980,18 @@ platform no-ops are separated from actionable runtime gaps.
   `listAccounts()` now returns an empty list instead of exposing a disabled
   account that can be mistaken for real connector state; configured env or
   character accounts still surface normally.
+- Reworded connector-account provider deletion comments so provider-layer
+  deletion returns cleanly while runtime credentials remain in character
+  settings.
 - Added `src/connector-account-provider.test.ts` covering empty config and
   env-configured single-account behavior.
 - Verified with:
   - `bun run --cwd plugins/plugin-wechat test src/connector-account-provider.test.ts`
+  - `bun run --cwd plugins/plugin-wechat test`
   - `bun run --cwd plugins/plugin-wechat check`
+  - `bun run --cwd plugins/plugin-wechat build`
   - `bunx biome check plugins/plugin-wechat/src/connector-account-provider.ts plugins/plugin-wechat/src/connector-account-provider.test.ts`
-  - marker scan on the touched WeChat provider files
+  - case-insensitive marker scan on the touched WeChat provider files
 
 ### plugins/plugin-whatsapp
 

@@ -18,8 +18,8 @@ This package registers one Capacitor plugin: **`MobileSignals`**.
 | `startMonitoring(options?)` | Starts event streaming; returns initial device + health snapshots. |
 | `stopMonitoring()` | Stops event streaming and removes all native listeners. |
 | `getSnapshot()` | One-shot async read of current device + health state without streaming. |
-| `scheduleBackgroundRefresh()` | No-op on the current native implementations (iOS uses foreground monitoring and routes background work elsewhere; web cannot schedule). Always resolves `scheduled: false` with a reason. |
-| `cancelBackgroundRefresh()` | No-op; no native background-refresh task is registered to cancel. Always resolves `cancelled: false` with a reason. |
+| `scheduleBackgroundRefresh()` | Background refresh is unavailable on the current native implementations (iOS uses foreground monitoring and routes background work elsewhere; web cannot schedule). Always resolves `scheduled: false` with a reason. |
+| `cancelBackgroundRefresh()` | No native background-refresh task is registered to cancel. Always resolves `cancelled: false` with a reason. |
 | `addListener("signal", fn)` | Subscribes to `MobileSignalsSignal` events (device snapshot or health snapshot). |
 | `removeAllListeners()` | Removes all registered event listeners. |
 

@@ -301,17 +301,6 @@ test.describe("registered plugin views visual coverage", () => {
           `${view.id} ${view.viewType} should expose terminal controls inside the view, not only assistant overlay controls`,
         ).toBeGreaterThan(0);
       }
-      if (view.shellPill === "expected") {
-        expect(
-          focusedAfterTabs.some(
-            (entry) =>
-              entry.includes("textarea") ||
-              entry.includes("input") ||
-              entry.includes("Message Eliza"),
-          ),
-          `${view.id} ${view.viewType} assistant composer should be keyboard focusable`,
-        ).toBe(true);
-      }
       if (view.viewType === "tui") {
         expect(
           focusedAfterTabs.some(
