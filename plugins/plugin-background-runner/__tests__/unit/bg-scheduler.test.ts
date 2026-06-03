@@ -93,7 +93,7 @@ describe('plugin-background-runner: CapacitorBgScheduler', () => {
     });
   });
 
-  test('cancel is a no-op when nothing is scheduled', async () => {
+  test('cancel does not dispatch when nothing is scheduled', async () => {
     const runner = makeRunner();
     const scheduler = new CapacitorBgScheduler(runner, { isCapacitor: true });
     await scheduler.cancel();
@@ -136,7 +136,7 @@ describe('plugin-background-runner: IntervalBgScheduler', () => {
     expect(scheduler.isScheduled()).toBe(false);
   });
 
-  test('cancel is a no-op when no interval is scheduled', async () => {
+  test('cancel leaves state unchanged when no interval is scheduled', async () => {
     const scheduler = new IntervalBgScheduler();
     await scheduler.cancel();
     expect(scheduler.isScheduled()).toBe(false);

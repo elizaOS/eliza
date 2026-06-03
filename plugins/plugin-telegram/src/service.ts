@@ -2420,9 +2420,8 @@ export class TelegramService extends Service {
       chatId = parts.chatId;
       threadId = parts.threadId;
     } else if (target.roomId) {
-      // Fallback: Try to use roomId if channelId isn't available
-      // This assumes roomId maps directly to Telegram chat ID or requires lookup
-      // Placeholder - requires logic to map roomId -> telegram chat ID if different
+      // Fallback: use room metadata to resolve Telegram chat/thread IDs when
+      // channelId is unavailable.
       const room = await runtime.getRoom(target.roomId);
       const metadata = room?.metadata as Record<string, unknown> | undefined;
       const metadataThreadId =

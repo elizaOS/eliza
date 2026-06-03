@@ -4,7 +4,7 @@ AOSP-only llama.cpp FFI bindings (via `bun:ffi`) and local-inference bootstrap f
 
 ## Purpose / role
 
-This package wires `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `TEXT_TO_SPEECH`, and `TRANSCRIPTION` model handlers for Eliza agents running on Android (AOSP). It is not an elizaOS `Plugin` object — it exports two call-time bootstrap functions consumed by `@elizaos/agent`'s mobile entrypoint and by `@elizaos/plugin-local-inference`'s `ensure-local-inference-handler.ts`. Both modules self-gate on `ELIZA_LOCAL_LLAMA=1` (or `process.arch === "riscv64"`) and are no-ops on every other platform, so they can be imported unconditionally from the mobile agent barrel without breaking non-AOSP builds.
+This package wires `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `TEXT_TO_SPEECH`, and `TRANSCRIPTION` model handlers for Eliza agents running on Android (AOSP). It is not an elizaOS `Plugin` object — it exports two call-time bootstrap functions consumed by `@elizaos/agent`'s mobile entrypoint and by `@elizaos/plugin-local-inference`'s `ensure-local-inference-handler.ts`. Both modules self-gate on `ELIZA_LOCAL_LLAMA=1` (or `process.arch === "riscv64"`) and return without registration on every other platform, so they can be imported unconditionally from the mobile agent barrel without breaking non-AOSP builds.
 
 ## Plugin surface
 

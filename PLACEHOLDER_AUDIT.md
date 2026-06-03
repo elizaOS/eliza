@@ -2052,6 +2052,168 @@ platform no-ops are separated from actionable runtime gaps.
 - Verified with focused service test and:
   - `bun run --cwd plugins/plugin-wallet check`
 
+### packages/cloud-services
+
+- Reworded the Vast vLLM startup script so dense-model expert-parallel `EP=1`
+  is described as having no effect, and so the heartbeat schema emits `null`
+  for `kv_bytes_per_token` until the heartbeat agent computes exact model
+  dimensions.
+- Renamed the container-control-plane autoscale steady-state response action
+  from `"noop"` to `"unchanged"` when no worker count change is required.
+- Verified with:
+  - `bun run --cwd packages/cloud-services/container-control-plane typecheck`
+  - `bun run --cwd packages/cloud-services/container-control-plane lint`
+  - `bash -n packages/cloud-services/vast-pyworker/onstart-vllm.sh`
+  - marker scan on `packages/cloud-services`
+
+### packages/security
+
+- Reworded TEE-native docs so the current RoT/fused-key status is described as
+  development-only / development-test-key evidence instead of placeholder
+  wording, and so the OS workstream says it will create the confidential
+  profile rather than scaffold it.
+- Verified with:
+  - `bun run --cwd packages/security typecheck`
+  - `bun run --cwd packages/security test`
+  - marker scan on `packages/security/docs/tee-native`
+
+### packages/alberta
+
+- Re-scanned the remaining Alberta low-count marker hits. The remaining `TODO`
+  strings are fixture text and path names in
+  `tests/test_alberta_plan_remaining_todo_gate.py` plus the external
+  acceptance spec's reader for unchecked TODO text; they are the package's
+  TODO-completion gate tests, not unfinished runtime implementation.
+- Verification note: focused pytest for the gate tests was attempted but fails
+  during `tests/conftest.py` import because this workspace Python environment
+  does not have `jax` installed.
+
+### prototypes/homescreen-canvas
+
+- Reworded the editing overlay text from "placeholder" to "editing guide".
+- Remaining hits are CSS / DOM placeholder attributes on chat and prompt input
+  controls, which are user-facing input hints rather than implementation
+  placeholders.
+- Verification note: `bunx prettier --check prototypes/homescreen-canvas/index.html`
+  currently reports existing style differences in the prototype page; no broad
+  file reformat was applied.
+
+### patches
+
+- Remaining patch marker hits are intentional dependency-patch content:
+  - `patches/vitest@4.1.5.patch` preserves upstream Vitest's `noop` helper
+    import and Vite-version TODO comment.
+  - `patches/llama-cpp-capacitor@0.1.5.patch` adds an Android MTP JNI smoke
+    stub path for smoke builds without MTP libraries.
+- These patches were not rewritten because changing patch payload prose can
+  break patch application or obscure the upstream/compatibility contract.
+
+### deploy/systemd
+
+- Reworded the OAuth refresh helper so the healthy-token branch says it skips
+  refresh instead of calling the branch a no-op.
+- Verified with `bash -n deploy/systemd/bin/eliza-refresh-oauth.sh`.
+
+### upstreams/electrobun-patches
+
+- Reworded the idempotent patch-apply helper so already-applied patches are
+  described as skipped cleanly rather than no-op.
+- Verified with `bash -n upstreams/electrobun-patches/apply.sh`.
+
+### plugins/plugin-background-runner
+
+- Removed the unused `"noop"` member from `BgSchedulerKind`; the only concrete
+  scheduler kinds are `"capacitor"` and `"interval"`.
+- Reworded cancel tests and runner-JS install guidance so empty cancel
+  behavior and host-provided runner files are not labeled as no-op/stub code.
+- Verified with:
+  - `diff -u plugins/plugin-background-runner/CLAUDE.md plugins/plugin-background-runner/AGENTS.md`
+  - `bun run --cwd plugins/plugin-background-runner typecheck`
+  - `bun run --cwd plugins/plugin-background-runner test`
+  - `bun run --cwd plugins/plugin-background-runner build`
+  - marker scan on `plugins/plugin-background-runner`
+
+### plugins/plugin-aosp-local-inference
+
+- Reworded non-AOSP registration paths in source and mirrored package guides
+  so they say registration returns false or is skipped, not no-op.
+- Reworded the streaming decimal parser/test marker from incomplete to partial
+  decimal token, matching the parser state under test.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical after the guide update.
+- Verified with:
+  - `bun run --cwd plugins/plugin-aosp-local-inference typecheck`
+  - `bun run --cwd plugins/plugin-aosp-local-inference test`
+  - `bun run --cwd plugins/plugin-aosp-local-inference build`
+  - marker scan on `plugins/plugin-aosp-local-inference`
+
+### plugins/plugin-coding-tools
+
+- Reworded `RipgrepService.stop()` to describe that no persistent ripgrep
+  process is held, and changed identical-edit test fixture text away from
+  noop wording.
+- Verified with:
+  - `bun run --cwd plugins/plugin-coding-tools typecheck`
+  - `bun run --cwd plugins/plugin-coding-tools test`
+  - `bun run --cwd plugins/plugin-coding-tools build`
+  - marker scan on `plugins/plugin-coding-tools`
+
+### plugins/plugin-imessage
+
+- Reworded AppleScript chat-query history, connector-account deletion, legacy
+  route test-runtime typing, and short-line parser fixtures so they do not use
+  stub/no-op/incomplete wording for implemented behavior.
+- Verified with:
+  - `bun run --cwd plugins/plugin-imessage typecheck`
+  - `bun run --cwd plugins/plugin-imessage test`
+  - `bun run --cwd plugins/plugin-imessage build`
+  - marker scan on `plugins/plugin-imessage`
+
+### plugins/plugin-hyperscape
+
+- Reworded `stopRun()` source and mirrored package guides so stateless teardown
+  is described as a clean return rather than a no-op.
+- Remaining marker hits are UI textarea/input placeholder attributes in
+  `src/ui/HyperscapeOperatorSurface.tsx`.
+- Verified with:
+  - `diff -u plugins/plugin-hyperscape/CLAUDE.md plugins/plugin-hyperscape/AGENTS.md`
+  - `bun run --cwd plugins/plugin-hyperscape build`
+  - marker scan on `plugins/plugin-hyperscape`
+
+### plugins/plugin-native-system
+
+- Reworded web/browser docs and mirrored guides from stub terminology to web
+  fallback terminology. Runtime behavior is unchanged: web returns fallback
+  status/settings values or throws Android-only errors.
+- Verified with:
+  - `diff -u plugins/plugin-native-system/CLAUDE.md plugins/plugin-native-system/AGENTS.md`
+  - `bun run --cwd plugins/plugin-native-system build`
+  - marker scan on `plugins/plugin-native-system`
+
+### plugins/plugin-tee
+
+- Reworded the browser entry and mirrored package guides from browser-stub
+  terminology to browser-unavailable entry terminology.
+- Verified with:
+  - `diff -u plugins/plugin-tee/CLAUDE.md plugins/plugin-tee/AGENTS.md`
+  - `bun run --cwd plugins/plugin-tee typecheck` (package script prints that
+    release typecheck is skipped)
+  - `bun run --cwd plugins/plugin-tee test` (no test files in `src/__tests__`,
+    exits 0)
+  - `bun run --cwd plugins/plugin-tee build`
+  - marker scan on `plugins/plugin-tee`
+
+### plugins/plugin-telegram
+
+- Reworded the room-ID fallback comment and MarkdownV2 formatter internals so
+  metadata lookup and temporary sentinel strings are not labeled as
+  placeholder logic.
+- Remaining marker hit is the real runtime validation error
+  `"Telegram login credentials are incomplete"`.
+- Verified with:
+  - `bun run --cwd plugins/plugin-telegram test`
+  - `bun run --cwd plugins/plugin-telegram build`
+  - marker scan on `plugins/plugin-telegram`
+
 ## Remaining Runtime Gaps / Boundaries
 
 ### plugins/plugin-computeruse
@@ -2173,9 +2335,9 @@ platform no-ops are separated from actionable runtime gaps.
 - Remaining Security markers are in TEE-native planning/threat-model docs and
   test assertions:
   - `docs/tee-native/*` intentionally records unresolved silicon/attestation
-    gaps: RoT placeholder keys, mock evidence bridges, secure-boot/debug claims
-    requiring fused keys, and lab-blocked side-channel/fault-injection proof.
-    These require real hardware/TEE evidence and should stay visible.
+    gaps: development-only RoT state, mock evidence bridges, secure-boot/debug
+    claims requiring fused keys, and lab-blocked side-channel/fault-injection
+    proof. These require real hardware/TEE evidence and should stay visible.
   - `src/__tests__/dispatcher.test.ts` inspects Vitest `mock.calls` for injected
     sink error handling; this is test API terminology, not a product mock.
 

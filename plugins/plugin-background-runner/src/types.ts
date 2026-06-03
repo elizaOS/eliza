@@ -35,7 +35,7 @@ export interface IBgTaskScheduler {
   readonly kind: BgSchedulerKind;
 }
 
-export type BgSchedulerKind = 'capacitor' | 'interval' | 'noop';
+export type BgSchedulerKind = 'capacitor' | 'interval';
 
 export interface ScheduleOptions {
   /**

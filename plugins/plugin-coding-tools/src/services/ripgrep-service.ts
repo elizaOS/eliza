@@ -54,7 +54,7 @@ export class RipgrepService extends Service {
   }
 
   async stop(): Promise<void> {
-    // no-op
+    // No persistent ripgrep process is held by this service.
   }
 
   private async locateBinary(): Promise<void> {

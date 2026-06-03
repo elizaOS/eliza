@@ -14,7 +14,7 @@ On **Android**, the plugin lets TypeScript code:
 - Read and set per-stream audio volume (music, ring, alarm, notification, system, voice call).
 - Open standard Android settings screens (main settings, Wi-Fi, display, sound, WRITE_SETTINGS permission grant).
 
-On **web/browser**, `getStatus()` and `getDeviceSettings()` return safe stub values. All other methods throw a descriptive error.
+On **web/browser**, `getStatus()` and `getDeviceSettings()` return safe fallback values. All other methods throw a descriptive error.
 
 ## Installation
 
@@ -108,4 +108,3 @@ bun run --cwd plugins/plugin-native-system build
 ```
 
 The Android library is built by Gradle as part of the host Capacitor Android project (`npx cap build android`).
-

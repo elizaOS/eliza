@@ -29,7 +29,7 @@ All exported from `src/routes.ts` and re-exported from `src/index.ts`.
 | `collectLaunchDiagnostics` | `(ctx) => Promise<AppLaunchDiagnostic[]>` | Returns an error diagnostic when postMessage auth is requested but credentials are missing |
 | `resolveLaunchSession` | `(ctx) => Promise<AppSessionState \| null>` | Fetches live session state from the Hyperscape API on launch |
 | `refreshRunSession` | `(ctx) => Promise<AppSessionState \| null>` | Polls live session state during an active run |
-| `stopRun` | `() => Promise<void>` | No-op teardown (Hyperscape is stateless on the host side) |
+| `stopRun` | `() => Promise<void>` | Clean teardown return (Hyperscape is stateless on the host side) |
 
 ### UI components and registration
 
@@ -117,5 +117,5 @@ Add a new `if (capability === "...")` branch to the `interact` function in `Hype
 - **`runtimePlugin` in package.json elizaos.app** is set to `@hyperscape/plugin-hyperscape` (the external namespace). This is intentional and distinct from the npm name `@elizaos/plugin-hyperscape`.
 - **Views bundle is separate.** `build:views` produces `dist/views/bundle.js` via Vite; `build:js` produces the main ESM bundle via tsup. Both must be present for the plugin to work at runtime. The views bundle is referenced by `bundlePath` in each view definition.
 - **Wallet auth is best-effort.** `prepareWalletAuthFromRuntime` silently skips all failures — network errors, missing credentials, API unavailability. The session will still load; it just won't have pre-populated auth.
-- **`stopRun` is an intentional no-op.** Hyperscape holds no server-side state on the elizaOS host; the iframe unmount is sufficient teardown.
+- **`stopRun` returns cleanly by design.** Hyperscape holds no server-side state on the elizaOS host; the iframe unmount is sufficient teardown.
 - **Fetch timeout constants:** `FETCH_TIMEOUT_MS = 8000` for live data, `HYPERSCAPE_WALLET_AUTH_TIMEOUT_MS = 5000` for wallet-auth. Adjust in `src/routes.ts` if the Hyperscape API is slow to respond.

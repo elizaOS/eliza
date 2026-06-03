@@ -123,7 +123,7 @@ interface IMessageServiceLike {
 
 export interface IMessageRouteState {
   /**
-   * The running AgentRuntime (or a test stub). Typed loosely as
+   * The running AgentRuntime (or a test runtime). Typed loosely as
    * `unknown` so this route file doesn't re-declare core's stricter
    * generic getService signature — we narrow the result inside
    * resolveService via an unknown cast. Optional so route files

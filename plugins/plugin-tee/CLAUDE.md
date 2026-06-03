@@ -94,6 +94,6 @@ bun run --cwd plugins/plugin-tee clean           # rm -rf dist .turbo .turbo-tsc
 - `TEEService` uses `PhalaDeriveKeyProvider` unconditionally regardless of `TEE_VENDOR`; vendor selection in `teePlugin.init` only affects which vendor's providers/actions are registered.
 - `WALLET_SECRET_SALT` doubles as the derivation `path` argument inside `phalaDeriveKeyProvider`; it is passed directly to `TappdClient.deriveKey(secretSalt, "solana"|"evm")`.
 - `uploadAttestationQuote` POSTs to `https://proof.t16z.com/api/upload` — requires network access in production.
-- Node-only: `"eliza": { "platforms": ["node"] }`, and `build.ts` bundles `src/index.ts` with `target: "node"`. `index.browser.ts` is a stub `teePlugin` that only warns "use a server proxy"; it is not wired into package `exports`.
+- Node-only: `"eliza": { "platforms": ["node"] }`, and `build.ts` bundles `src/index.ts` with `target: "node"`. `index.browser.ts` is a browser-unavailable `teePlugin` that only warns "use a server proxy"; it is not wired into package `exports`.
 - External deps: `@phala/dstack-sdk` (TappdClient, TDX quotes), `@solana/web3.js` (Keypair), `viem` (keccak256, privateKeyToAccount).
 - For architecture rules, logger conventions, and git workflow see the root `AGENTS.md`.

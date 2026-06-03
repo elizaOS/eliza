@@ -67,9 +67,42 @@ function isReactComponentExport(
 
 type HostExternalImporter = () => Promise<Record<string, unknown>>;
 
+async function importAppCoreViewCompat(): Promise<Record<string, unknown>> {
+  const [
+    api,
+    shared,
+    pagePanel,
+    button,
+    input,
+    spinner,
+    overlayRegistry,
+    useApp,
+  ] = await Promise.all([
+    import("../../api/index.ts"),
+    import("@elizaos/shared"),
+    import("../composites/page-panel/index.ts"),
+    import("../ui/button.tsx"),
+    import("../ui/input.tsx"),
+    import("../ui/spinner.tsx"),
+    import("../apps/overlay-app-registry.ts"),
+    import("../../state/useApp.ts"),
+  ]);
+
+  return {
+    ...api,
+    resolveAppBranding: shared.resolveAppBranding,
+    Button: button.Button,
+    Input: input.Input,
+    Spinner: spinner.Spinner,
+    PagePanel: pagePanel.PagePanel,
+    registerOverlayApp: overlayRegistry.registerOverlayApp,
+    useApp: useApp.useApp,
+  };
+}
+
 const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
-  "@elizaos/app-core": () => import("@elizaos/app-core"),
-  "@elizaos/app-core/browser": () => import("@elizaos/app-core"),
+  "@elizaos/app-core": importAppCoreViewCompat,
+  "@elizaos/app-core/browser": () => import("@elizaos/app-core/browser"),
   "@elizaos/app-core/ui-compat": () => import("@elizaos/app-core/ui-compat"),
   "@elizaos/capacitor-contacts": () => import("@elizaos/capacitor-contacts"),
   "@elizaos/capacitor-messages": () => import("@elizaos/capacitor-messages"),

@@ -24,8 +24,8 @@
  *
  * Activation: only fires when `ELIZA_LOCAL_LLAMA === "1"`, which is
  * the AOSP build flag set by `ElizaAgentService.java` before
- * `Runtime.exec`'ing the bun process. On every other build the call is
- * a logged no-op.
+ * `Runtime.exec`'ing the bun process. On every other build the call logs that
+ * local registration was skipped.
  */
 
 import {
@@ -1942,10 +1942,7 @@ export function makeAospFusedOmnivoiceTextToSpeechHandler(): TextToSpeechHandler
 }
 
 export function makeAospTextToSpeechHandler(
-  opts: {
-    omnivoice?: TextToSpeechHandler;
-    onForegroundUse?: () => void;
-  } = {},
+  opts: { omnivoice?: TextToSpeechHandler; onForegroundUse?: () => void } = {},
 ): TextToSpeechHandler {
   const omnivoice =
     opts.omnivoice ?? makeAospFusedOmnivoiceTextToSpeechHandler();

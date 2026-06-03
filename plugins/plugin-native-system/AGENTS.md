@@ -4,7 +4,7 @@ A Capacitor plugin that bridges Android system-role status and device-settings c
 
 ## Purpose / Role
 
-Exposes Android system capabilities — role status (home, dialer, SMS, assistant), screen brightness, and audio-volume control — to TypeScript code running inside a Capacitor-based Eliza agent on Android. On web/browser it provides stub implementations that either return empty data or throw descriptive errors. This package is a Capacitor plugin, not an elizaOS plugin that registers actions/services with `AgentRuntime`; it is consumed by higher-level elizaOS packages that need native Android access.
+Exposes Android system capabilities — role status (home, dialer, SMS, assistant), screen brightness, and audio-volume control — to TypeScript code running inside a Capacitor-based Eliza agent on Android. On web/browser it provides fallback implementations that either return empty data or throw descriptive errors. This package is a Capacitor plugin, not an elizaOS plugin that registers actions/services with `AgentRuntime`; it is consumed by higher-level elizaOS packages that need native Android access.
 
 ## Plugin Surface
 
@@ -25,7 +25,7 @@ This is a **Capacitor plugin**, not an elizaOS runtime plugin. It does not regis
 | `openWriteSettings()` | Android only | Opens WRITE_SETTINGS permission screen for the app. |
 | `openDisplaySettings()` | Android only | Opens display settings. |
 | `openSoundSettings()` | Android only | Opens sound/volume settings. |
-| `getDeviceSettings()` | Android + web | Brightness (0–1), brightness mode, WRITE_SETTINGS permission flag, and volume levels for all streams. Web returns static stub values. |
+| `getDeviceSettings()` | Android + web | Brightness (0–1), brightness mode, WRITE_SETTINGS permission flag, and volume levels for all streams. Web returns static fallback values. |
 | `setScreenBrightness({ brightness })` | Android only | Sets system brightness (0–1). Requires WRITE_SETTINGS permission. |
 | `setVolume({ stream, volume, showUi? })` | Android only | Sets volume for a named audio stream. |
 
@@ -47,7 +47,7 @@ plugins/plugin-native-system/
   src/
     index.ts          Entry point; calls registerPlugin("ElizaSystem") and re-exports definitions
     definitions.ts    All TypeScript types and the SystemPlugin interface
-    web.ts            Web fallback (SystemWeb extends WebPlugin); stubs return data or throw
+    web.ts            Web fallback (SystemWeb extends WebPlugin); returns fallback data or throws
   android/
     src/main/
       AndroidManifest.xml                        Declares MODIFY_AUDIO_SETTINGS + WRITE_SETTINGS
@@ -87,7 +87,7 @@ Android permissions declared in `AndroidManifest.xml` (merged into the host app)
 ### Add a new plugin method
 
 1. Add the method signature to `SystemPlugin` in `src/definitions.ts`.
-2. Add a web stub in `src/web.ts` (`SystemWeb` class) — throw a descriptive error or return a safe default.
+2. Add a web fallback in `src/web.ts` (`SystemWeb` class) — throw a descriptive error or return a safe default.
 3. Add the `@PluginMethod` implementation in `android/src/main/java/ai/eliza/plugins/system/SystemPlugin.kt`.
 4. If the method requires a new Android permission, add a `<uses-permission>` entry to `android/src/main/AndroidManifest.xml`.
 5. Run `bun run --cwd plugins/plugin-native-system build` to verify TypeScript compilation.

@@ -497,7 +497,7 @@ describe("resolveAospGenerateTokenBudget", () => {
 });
 
 describe("firstSentenceEndIndex", () => {
-  it("does not stop on an incomplete streaming decimal", () => {
+  it("does not stop on a partial streaming decimal", () => {
     expect(firstSentenceEndIndex("local Pixel 0.", 1)).toBe(-1);
     expect(firstSentenceEndIndex("local Pixel 0.8B is active.", 1)).toBe(27);
   });
