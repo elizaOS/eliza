@@ -37,7 +37,12 @@ export const Loading: Story = {
 };
 
 export const Disabled: Story = {
-  args: { value: "archived", disabled: true, onClear: () => {}, readOnly: true },
+  args: {
+    value: "archived",
+    disabled: true,
+    onClear: () => {},
+    readOnly: true,
+  },
 };
 
 /** Controlled input wired to local state so the clear button works live. */

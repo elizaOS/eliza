@@ -2,8 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers";
 import { LoadingScreen } from "./LoadingScreen";
 
-const MOCK_VRM_URL =
-  "data:model/gltf-binary;base64,Z2xURgAAAAAAAAAAAAAAAA==";
+const MOCK_VRM_URL = "data:model/gltf-binary;base64,Z2xURgAAAAAAAAAAAAAAAA==";
 
 /**
  * LoadingScreen is prop-gated, not context-gated: it always renders the
