@@ -42,7 +42,6 @@ export interface ProxyServerOptions {
   replacements?: ReadonlyArray<Pair>;
   toolRenames?: ReadonlyArray<Pair>;
   propRenames?: ReadonlyArray<Pair>;
-  systemPromptStrip?: ProcessBodyConfig["systemPromptStrip"];
   reverseMap?: ReadonlyArray<Pair>;
   systemPromptStrip?: SystemPromptStripConfig;
   logger?: {
@@ -95,7 +94,6 @@ export class ProxyServer {
   private readonly replacements: ReadonlyArray<Pair>;
   private readonly toolRenames: ReadonlyArray<Pair>;
   private readonly propRenames: ReadonlyArray<Pair>;
-  private readonly systemPromptStrip?: ProcessBodyConfig["systemPromptStrip"];
   private readonly reverseMapPairs: ReadonlyArray<Pair>;
   private readonly systemPromptStrip?: SystemPromptStripConfig;
   private readonly logger: NonNullable<ProxyServerOptions["logger"]>;
@@ -110,7 +108,6 @@ export class ProxyServer {
     this.replacements = opts.replacements ?? DEFAULT_REPLACEMENTS;
     this.toolRenames = opts.toolRenames ?? DEFAULT_TOOL_RENAMES;
     this.propRenames = opts.propRenames ?? DEFAULT_PROP_RENAMES;
-    this.systemPromptStrip = opts.systemPromptStrip;
     this.reverseMapPairs = opts.reverseMap ?? DEFAULT_REVERSE_MAP;
     this.systemPromptStrip = opts.systemPromptStrip;
     this.logger = opts.logger ?? silentLogger;
