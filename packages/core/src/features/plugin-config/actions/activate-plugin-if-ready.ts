@@ -14,6 +14,7 @@ import type {
 	HandlerOptions,
 	IAgentRuntime,
 	Memory,
+	Service,
 	State,
 } from "../../../types/index.ts";
 import {
@@ -86,9 +87,9 @@ export const activatePluginIfReadyAction: Action = {
 			};
 		}
 
-		const client = runtime.getService(
+		const client = runtime.getService<Service & PluginConfigClient>(
 			PLUGIN_CONFIG_CLIENT_SERVICE,
-		) as unknown as PluginConfigClient | null;
+		);
 		if (!client) {
 			return {
 				success: false,

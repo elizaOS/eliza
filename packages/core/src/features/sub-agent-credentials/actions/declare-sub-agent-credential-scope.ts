@@ -19,6 +19,7 @@ import type {
 	HandlerOptions,
 	IAgentRuntime,
 	Memory,
+	Service,
 	State,
 } from "../../../types/index.ts";
 import {
@@ -39,8 +40,9 @@ function readParams(options: HandlerOptions | undefined): DeclareParams {
 }
 
 function getBridge(runtime: IAgentRuntime): SubAgentCredentialBridge | null {
-	return (runtime.getService(SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE) ??
-		null) as unknown as SubAgentCredentialBridge | null;
+	return runtime.getService<Service & SubAgentCredentialBridge>(
+		SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
+	);
 }
 
 export const declareSubAgentCredentialScopeAction: Action = {

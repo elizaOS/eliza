@@ -12,6 +12,7 @@ import type {
 	HandlerOptions,
 	IAgentRuntime,
 	Memory,
+	Service,
 	State,
 } from "../../../types/index.ts";
 import {
@@ -85,9 +86,9 @@ export const submitBallotVoteAction: Action = {
 		options?: HandlerOptions,
 		callback?: HandlerCallback,
 	) => {
-		const client = runtime.getService(
+		const client = runtime.getService<Service & SecretBallotsClient>(
 			SECRET_BALLOTS_CLIENT_SERVICE,
-		) as unknown as SecretBallotsClient | null;
+		);
 		if (!client) {
 			return {
 				success: false,

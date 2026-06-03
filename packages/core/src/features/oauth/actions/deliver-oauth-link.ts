@@ -20,6 +20,7 @@ import type {
 	IAgentRuntime,
 	JsonValue,
 	Memory,
+	Service,
 	State,
 } from "../../../types/index.ts";
 import {
@@ -134,12 +135,12 @@ export const deliverOAuthLinkAction: Action = {
 		callback?: HandlerCallback,
 	) => {
 		const params = readParams(options);
-		const client = runtime.getService(
+		const client = runtime.getService<Service & OAuthIntentsClient>(
 			OAUTH_INTENTS_CLIENT_SERVICE,
-		) as unknown as OAuthIntentsClient | null;
-		const registry = runtime.getService(
-			SENSITIVE_DISPATCH_REGISTRY_SERVICE,
-		) as unknown as SensitiveRequestDispatchRegistry | null;
+		);
+		const registry = runtime.getService<
+			Service & SensitiveRequestDispatchRegistry
+		>(SENSITIVE_DISPATCH_REGISTRY_SERVICE);
 		if (!client || !registry) {
 			return {
 				success: false,

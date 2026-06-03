@@ -13,6 +13,7 @@ import type {
 	Memory,
 	Provider,
 	ProviderResult,
+	Service,
 	State,
 } from "../types/index.ts";
 
@@ -45,9 +46,9 @@ export const linkedIdentitiesProvider: Provider = {
 		message: Memory,
 		_state?: State,
 	): Promise<ProviderResult> => {
-		const client = runtime.getService(
+		const client = runtime.getService<Service & IdentityLinkClient>(
 			IDENTITY_LINK_CLIENT_SERVICE,
-		) as unknown as IdentityLinkClient | null;
+		);
 		const identityId =
 			typeof message.entityId === "string" ? message.entityId : undefined;
 

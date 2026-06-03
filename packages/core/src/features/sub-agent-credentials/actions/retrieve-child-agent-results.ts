@@ -14,6 +14,7 @@ import type {
 	HandlerOptions,
 	IAgentRuntime,
 	Memory,
+	Service,
 	State,
 } from "../../../types/index.ts";
 import {
@@ -31,8 +32,9 @@ function readParams(options: HandlerOptions | undefined): RetrieveParams {
 }
 
 function getClient(runtime: IAgentRuntime): SubAgentChildResultsClient | null {
-	return (runtime.getService(SUB_AGENT_CHILD_RESULTS_CLIENT_SERVICE) ??
-		null) as unknown as SubAgentChildResultsClient | null;
+	return runtime.getService<Service & SubAgentChildResultsClient>(
+		SUB_AGENT_CHILD_RESULTS_CLIENT_SERVICE,
+	);
 }
 
 export const retrieveChildAgentResultsAction: Action = {
