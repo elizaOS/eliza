@@ -9,7 +9,6 @@ import type {
 /**
  * workflows node catalog with keyword-based search
  * @note Uses embedded catalog (457 nodes as of April 2025)
- * @todo Add dynamic refresh via GET /node-types in v2
  */
 
 const NODE_CATALOG = defaultNodesData as NodeDefinition[];

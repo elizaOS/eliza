@@ -6,7 +6,7 @@ Coding-agent task coordinator and session control surface for elizaOS agents.
 
 This plugin adds a UI workbench for managing coding-agent task threads and PTY sessions. It registers view panels (standard, XR, and TUI variants) into the elizaOS app shell for both the task coordinator and the multi-agent orchestrator surfaces. It has no server-side runtime component (no actions, providers, services, or evaluators); all agent/task state is owned by `@elizaos/plugin-agent-orchestrator` — this plugin is the display and control layer only.
 
-The plugin is opt-in: it must be listed in the agent's plugin configuration. Once loaded, it registers its views into the app shell and fills the slot registry entries (`CodingAgentControlChip`, `CodingAgentSettingsSection`, `CodingAgentTasksPanel`, `PtyConsoleBase`) that `@elizaos/ui` exposes as null placeholders without this plugin.
+The plugin is opt-in: it must be listed in the agent's plugin configuration. Once loaded, it registers its views into the app shell and fills the slot registry entries (`CodingAgentControlChip`, `CodingAgentSettingsSection`, `CodingAgentTasksPanel`, `PtyConsoleBase`) that `@elizaos/ui` leaves empty without this plugin.
 
 ## Plugin surface
 
@@ -52,7 +52,7 @@ Registers three pages in the `developer` group via `registerAppShellPage` from `
 src/
   index.ts                         Plugin definition — views + capabilities declared here
   register.ts                      App-shell page registration (/odysseus, /orchestrator, /orchestrator/tui)
-  register-slots.ts                Slot registry fills for ui null-placeholders
+  register-slots.ts                Slot registry fills for ui empty-slot defaults
   CodingAgentTasksPanel.tsx        Task thread list + PTY session panel; re-exports OrchestratorWorkbench
   OrchestratorWorkbench.tsx        Multi-agent orchestration workbench (main UI)
   CodingAgentControlChip.tsx       Header chip: active session count + stop-all
@@ -146,7 +146,7 @@ These prefixes are used to build preference keys sent to the agent prefs API; th
 
 - **Two build steps.** The plugin has both a tsup JS build (`build:js`) and a Vite view-bundle build (`build:views`). The view bundle entry is `src/CodingAgentTasksPanel.tsx` and outputs `dist/views/bundle.js`. Both must be built; `build` runs them in sequence.
 - **View bundle re-exports.** `CodingAgentTasksPanel.tsx` re-exports `OrchestratorWorkbench` so a single bundle serves all `componentExport` names the view manifest declares.
-- **Slot registry is a side-effect import.** `register-slots.ts` must be imported by the host app to activate the slot fills. Without it, the UI renders null placeholders in place of the coding-agent components.
+- **Slot registry is a side-effect import.** `register-slots.ts` must be imported by the host app to activate the slot fills. Without it, the UI renders empty slot defaults in place of the coding-agent components.
 - **No server runtime.** This plugin registers zero actions, providers, services, or evaluators. All task/session state lives in `@elizaos/plugin-agent-orchestrator`. API boundary helpers in `src/api/` are utilities for route handlers in app-core, not plugin-registered routes.
 - **PTY console buffer cap.** `PtyConsoleBase` caps displayed output at 200,000 characters (`MAX_BUFFER_CHARS`). Older output is silently trimmed from the head.
 - **Live e2e test requires real Codex CLI.** `test:e2e:manual` (`test/coding-agent-codex-artifact.live.e2e.test.ts`) is skipped unless the `codex` binary is in PATH and `~/.codex/auth.json` exists.

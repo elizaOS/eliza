@@ -27,7 +27,7 @@ const exec = promisify(execFile);
  *
  *   - "in-house"   → Eliza's local store (OS keychain master + AES-GCM file)
  *   - "1password"  → 1Password CLI (`op`); references stored locally
- *   - "protonpass" → Proton Pass (scaffolded; vendor CLI not stable yet)
+ *   - "protonpass" → Proton Pass CLI (`pass-cli`); references stored locally
  *   - "bitwarden"  → Bitwarden CLI (`bw`); references stored locally
  *
  * Three modes the user can run in:
@@ -150,7 +150,7 @@ export interface CreateManagerOptions {
   /** Provide your own Vault. Default: `createVault()`. */
   readonly vault?: Vault;
   /**
-   * Subprocess executor for password-manager CLIs. Tests inject a stub.
+   * Subprocess executor for password-manager CLIs. Tests inject a fake runner.
    * Defaults to a real `child_process.execFile`-based runner.
    */
   readonly exec?: ExecFn;
@@ -624,16 +624,38 @@ async function isOnePasswordDesktopActive(
 }
 
 async function detectProtonPass(): Promise<BackendStatus> {
-  const present = await isCommandAvailable("protonpass-cli");
-  return {
-    id: "protonpass",
-    label: "Proton Pass",
-    available: present,
-    authMode: null,
-    detail: present
-      ? "Detected; reference storage will be wired when the vendor CLI stabilizes."
-      : "`protonpass-cli` not installed (vendor CLI is in beta).",
-  };
+  const present = await isCommandAvailable("pass-cli");
+  if (!present) {
+    return {
+      id: "protonpass",
+      label: "Proton Pass",
+      available: false,
+      signedIn: false,
+      authMode: null,
+      detail:
+        "`pass-cli` CLI not installed. Install from https://protonpass.github.io/pass-cli/get-started/installation/.",
+    };
+  }
+
+  try {
+    await exec("pass-cli", ["test"], { timeout: 5000 });
+    return {
+      id: "protonpass",
+      label: "Proton Pass",
+      available: true,
+      signedIn: true,
+      authMode: null,
+    };
+  } catch {
+    return {
+      id: "protonpass",
+      label: "Proton Pass",
+      available: true,
+      signedIn: false,
+      authMode: null,
+      detail: "`pass-cli` is installed but not signed in. Run `pass-cli login`.",
+    };
+  }
 }
 
 async function detectBitwarden(vault: Vault): Promise<BackendStatus> {

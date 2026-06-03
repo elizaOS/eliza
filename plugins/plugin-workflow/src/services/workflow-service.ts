@@ -283,9 +283,9 @@ export class WorkflowService extends Service {
 
     // Fetch host-supplied bias hints early (before keyword extraction) so the
     // LLM is told which providers the host already knows it can satisfy.
-    // We pass empty `relevantNodes` / `relevantCredTypes` here because we do
-    // not yet have searchNodes results — `preferredProviders` is derived from
-    // the host's connector config alone (independent of node search). The
+    // We pass empty `relevantNodes` / `relevantCredTypes` here before
+    // node-catalog search runs: `preferredProviders` is derived from the
+    // host's connector config alone (independent of node search). The
     // full runtime context (with credentials + facts) is fetched again later
     // once we have the filtered node list.
     const earlyContext = await this.fetchRuntimeContext([], opts?.userId ?? 'local');

@@ -656,11 +656,11 @@ export async function getStewardTokenBalances(
   }
 }
 
-// ── Extended steward operations (not yet in @stwd/sdk) ───────────────────────
+// ── Steward REST operations outside the current @stwd/sdk surface ────────────
 
 /**
  * Build auth headers for direct steward API calls.
- * Used for endpoints not yet exposed in the SDK (pending, approve, deny).
+ * Used by direct REST adapters for pending, approve, and deny endpoints.
  */
 export function buildStewardHeaders(
   env: NodeJS.ProcessEnv = process.env,

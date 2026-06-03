@@ -14,7 +14,8 @@
  *      DEFAULT_PROP_RENAMES, DEFAULT_REVERSE_MAP, SYSTEM_CONFIG_PARAPHRASE) —
  *      these are *framework-shaped*. v0.2.0 ships eliza defaults derived from
  *      profiling `@elizaos/native-reasoning` outbound calls. Non-eliza users
- *      override via `config.json` (see config.json.example).
+ *      override via `config.json` or `CLAUDE_MAX_PROXY_CONFIG_PATH` (see
+ *      config.json.example).
  *
  * The OpenClaw-specific dictionary that v0.1.0 inherited from proxy.js was
  * removed in v0.2.0 — it leaked OC-specific tool names like `sessions_spawn`
@@ -72,7 +73,7 @@ export const CC_TOOL_STUBS: readonly string[] = [
 //
 // These are the dictionaries the AnthropicProxyService boots with when no
 // explicit override is supplied. Eliza-shaped by default; bring-your-own via
-// `config.json` for any other framework.
+// `config.json` or `CLAUDE_MAX_PROXY_CONFIG_PATH` for any other framework.
 //
 // See ./eliza-fingerprint.ts for the full enumeration with rationale.
 

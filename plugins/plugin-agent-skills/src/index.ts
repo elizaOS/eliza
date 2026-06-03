@@ -12,7 +12,7 @@
  */
 
 export { useSkillAction } from "./actions/use-skill";
-// === Phase 4E: consolidated skill code from packages/agent ===
+// Consolidated skill code from packages/agent.
 // HTTP route handlers + supporting services moved from packages/agent/src/api/
 // and packages/agent/src/services/. The agent's server.ts now imports them
 // from this barrel instead of co-locating them with the runtime.

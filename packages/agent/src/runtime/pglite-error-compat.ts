@@ -1,10 +1,9 @@
 /**
  * Pglite error utilities.
  *
- * These are defined locally because the published @elizaos/plugin-sql npm
- * package (beta dist-tag) does not yet export them. Once the plugin-sql
- * submodule ships a release that includes pglite/errors.ts, this local copy can
- * be removed.
+ * These are defined locally as an agent compatibility shim for plugin-sql
+ * releases that lack the pglite/errors.ts export. Remove this local copy when
+ * the package dependency guarantees that export.
  */
 
 export const PGLITE_ERROR_CODES = {

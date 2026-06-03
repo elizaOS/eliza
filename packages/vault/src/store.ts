@@ -7,7 +7,7 @@ import type { StoredEntry } from "./types.js";
  * On-disk representation of the vault.
  *
  * One file: `<workDir>/vault.json` mode 0600. Atomic writes via temp +
- * rename. No nested structures, no migration scaffolding, no version
+ * rename. No nested structures and no version
  * gates beyond a single integer.
  */
 
@@ -64,7 +64,7 @@ export async function writeStore(path: string, data: StoreData): Promise<void> {
     await fs.rename(tmp, path);
   } catch (renameErr) {
     // rename failure (cross-device, EROFS, ENOSPC) leaves the tmp file
-    // behind. Best-effort cleanup so future writes aren't blocked by stale
+    // behind. Best-effort cleanup so subsequent writes aren't blocked by stale
     // junk under the same per-pid prefix.
     await fs.rm(tmp, { force: true }).catch(() => {});
     throw renameErr;

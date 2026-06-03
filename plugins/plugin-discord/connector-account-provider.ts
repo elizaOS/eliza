@@ -1,7 +1,7 @@
 /**
  * Discord ConnectorAccountManager provider.
  *
- * Adapts the existing multi-account scaffolding in `accounts.ts` to the
+ * Adapts the account resolution helpers in `accounts.ts` to the
  * `ConnectorAccountProvider` contract from
  * `@elizaos/core/connectors/account-manager`.
  *
@@ -13,7 +13,7 @@
  *
  * OAuth: Discord uses bot installation (out-of-band) plus an in-app pairing
  * flow handled by `owner-pairing-service.ts`. `startOAuth` returns a Discord
- * application install URL; `completeOAuth` is a no-op marker because the
+ * application install URL; `completeOAuth` records completion because the
  * pairing happens via the `/eliza-pair` slash command, not a redirect.
  */
 
@@ -131,8 +131,8 @@ export function createDiscordConnectorAccountProvider(
 			_accountId: string,
 			_manager: ConnectorAccountManager,
 		) => {
-			// No-op at the provider layer — runtime credentials live in character
-			// settings; deletion of those is out of band.
+			// Runtime credentials live in character settings; deletion of those is
+			// out of band for this provider adapter.
 		},
 		startOAuth: async (
 			request: ConnectorOAuthStartRequest,

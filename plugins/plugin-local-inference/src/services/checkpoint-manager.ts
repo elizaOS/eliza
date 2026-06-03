@@ -96,8 +96,8 @@ export type SseDisconnectFn = (slotId: number) => void;
 export interface GatedCheckpointManagerOptions {
 	/**
 	 * `http://host:port` base URL of the running checkpoint runtime. May be `null`
-	 * when the caller has not yet started the server — every method then
-	 * routes through the no-op path until `setBaseUrl` is called.
+	 * before the caller starts the server — every method then routes through
+	 * the no-op path until `setBaseUrl` is called.
 	 */
 	baseUrl: string | null;
 	/**

@@ -880,7 +880,7 @@ export function getGlobalRegistry(): TokenRegistry {
 }
 
 /** Create a fresh registry pre-populated for a single chain.
- * @internal — reserved for future per-chain filtering API
+ * @internal — reserved for per-chain filtering API
  */
 export function createChainRegistry(_chainId: number): TokenRegistry {
   return new TokenRegistry(); // loads all tokens; filter via listTokens(chainId)

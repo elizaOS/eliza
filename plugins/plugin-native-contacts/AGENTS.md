@@ -39,7 +39,7 @@ plugins/plugin-native-contacts/
   src/
     index.ts          — registerPlugin("ElizaContacts") + re-exports everything from definitions
     definitions.ts    — all TypeScript interfaces (ContactSummary, ContactsPlugin, …)
-    web.ts            — ContactsWeb (WebPlugin stub: listContacts=[], others throw)
+    web.ts            — ContactsWeb fallback: listContacts=[], writes throw
   android/
     src/main/
       AndroidManifest.xml                         — READ_CONTACTS + WRITE_CONTACTS permissions
@@ -69,7 +69,7 @@ None. This plugin requires no env vars. Android runtime permissions (`READ_CONTA
 ### Add a new bridge method
 
 1. Add the method signature to `src/definitions.ts` in `ContactsPlugin`.
-2. Implement the no-op stub in `src/web.ts` (`ContactsWeb`).
+2. Implement the web fallback in `src/web.ts` (`ContactsWeb`).
 3. Implement the real method in `android/src/main/java/ai/eliza/plugins/contacts/ContactsPlugin.kt` — annotate with `@PluginMethod`, check permissions with `hasPermission(Manifest.permission.*)`, resolve or reject the `PluginCall`.
 4. Run `bun run --cwd plugins/plugin-native-contacts build` to regenerate `dist/`.
 5. Rebuild the host Android app so the new method is available in the webview bridge.

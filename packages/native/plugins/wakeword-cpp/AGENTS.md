@@ -1,4 +1,4 @@
-# wakeword-cpp — Phase 2 (real runtime)
+# wakeword-cpp — native runtime
 
 Standalone C library that ports
 [dscripka/openWakeWord](https://github.com/dscripka/openWakeWord)'s
@@ -39,7 +39,7 @@ are not present.
   `scripts/wakeword_to_gguf.py::OPENWAKEWORD_UPSTREAM_COMMIT`. The
   runtime reads `wakeword.upstream_commit` from each GGUF and refuses
   loads when the three GGUFs disagree among themselves.
-- The placeholder head bundled in eliza-1 today
+- The compatibility head bundled in eliza-1 today
   (`hey-eliza-int8.onnx`) is the upstream `hey_jarvis_v0.1` weights
   re-rendered through the int8 path under the eliza-1 head name. A
   real "hey eliza" head is trained by
@@ -80,8 +80,7 @@ HEAD_WINDOW       = 16    # embeddings per classifier step
 ## C ABI (frozen by `include/wakeword/wakeword.h`)
 
 The runtime implements every entry point declared in the header. The
-contract is unchanged from Phase 1 — only the implementation behind
-it became real.
+public contract is stable; backend changes must stay behind it.
 
 - `wakeword_open(melspec_gguf, embedding_gguf, classifier_gguf, *out)`
   — load all three GGUFs, validate that
@@ -131,14 +130,14 @@ Output: `libwakeword.a` (linked by the in-tree ctest binaries) and
 
 Test binaries:
 
-- `wakeword_stub_smoke` — link-only check on the public ABI (NULL
+- `wakeword_abi_smoke` — link-only check on the public ABI (NULL
   arguments, missing files, NULL handle entry points).
 - `wakeword_melspec_test` — spectral correctness check for the
   legacy (no-GGUF) C-side mel front-end on a 1 kHz / 4 kHz tone.
-  This is unchanged from Phase 1; the runtime path uses the
+  The runtime path uses the
   upstream filter bank loaded from `melspec.gguf` instead.
 - `wakeword_window_test` — sliding-window framing correctness;
-  unchanged from Phase 1.
+  retained for the standalone framing helper.
 - `wakeword_runtime_test` — end-to-end smoke against the real
   runtime. Loads the three GGUFs and runs silence + a synthesized
   chirp through `wakeword_process`. **Refuses** to run without the
@@ -177,11 +176,11 @@ the older single-`openwakeword.gguf` artefact.
   per `wakeword_process` call (per chunk of audio); large chunk-size
   variation slightly perturbs the floor relative to the upstream
   Python reference, which usually batches whole utterances. The
-  parity test's ±0.15 tolerance covers this; a future pass can add
-  a streaming peak tracker if tighter agreement is needed.
+  parity test's ±0.15 tolerance covers this; tighter agreement would
+  require a streaming peak tracker.
 - **No `wakeword_reset`.** The streaming state lives on the session
   and `wakeword_close` + `wakeword_open` is the only way to clear
-  it. Adding an in-place reset is a 30-line follow-up if the voice
+  it. Adding an in-place reset is a small API extension if the voice
   lifecycle ever needs it.
 - **No SIMD.** The 20-conv stack is the dominant cost (≈300 K MACs
   per 80 ms hop, ≈4 ms wall-clock on a Ryzen laptop core in `-O3`).
@@ -194,7 +193,7 @@ the older single-`openwakeword.gguf` artefact.
   parity test's tolerance covers this; switching to fp32 storage is
   a flip in the converter (`np.float16` → `np.float32`).
 
-## Repo layout (post-Phase 2)
+## Repo layout
 
 ```
 packages/native/plugins/wakeword-cpp/
@@ -202,16 +201,16 @@ packages/native/plugins/wakeword-cpp/
 ├── CMakeLists.txt
 ├── README.md                       # 1-paragraph summary
 ├── include/wakeword/wakeword.h     # frozen C ABI
-├── scripts/wakeword_to_gguf.py     # the converter (real, not a stub)
+├── scripts/wakeword_to_gguf.py     # ONNX-to-GGUF converter
 ├── src/
 │   ├── wakeword_internal.h         # shared dimensions & melspec API
 │   ├── wakeword_melspec.c          # streaming log-mel (GGUF + legacy modes)
 │   ├── wakeword_runtime.c          # session lifecycle + embedding + classifier
-│   └── wakeword_window.c           # 80 ms sliding-window framer (Phase 1, unchanged)
+│   └── wakeword_window.c           # 80 ms sliding-window framer
 └── test/
     ├── wakeword_melspec_test.c     # spectral correctness (legacy mode)
     ├── wakeword_parity_test.py     # C ↔ ONNX parity gate
     ├── wakeword_runtime_test.c     # end-to-end runtime smoke
-    ├── wakeword_stub_smoke.c       # public-ABI link smoke
-    └── wakeword_window_test.c      # framing correctness (Phase 1, unchanged)
+    ├── wakeword_abi_smoke.c        # public-ABI link smoke
+    └── wakeword_window_test.c      # framing correctness
 ```

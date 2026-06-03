@@ -1,5 +1,5 @@
 /**
- * Phase 1 — scan: deterministic git log parsing.
+ * Step 1 — scan: deterministic git log parsing.
  *
  * Calls `git log` once with a NUL-separated custom format and `--name-status
  * --numstat` for file-level change info. No LLM. Diff snippets are NOT

@@ -148,8 +148,8 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-elevenlabs", // ElevenLabs text-to-speech
   "@elizaos/plugin-music", // Library, playback, and streaming routes.
   "@elizaos/plugin-gitpathologist", // forensic git-history analysis (opt-in via ELIZA_GITPATHOLOGIST, auto-on when .git/ exists)
-  // "@elizaos/plugin-directives", // directive processing - not yet ready
-  // "@elizaos/plugin-mcp", // MCP protocol support - not yet ready
-  // "@elizaos/plugin-scheduling", // scheduling - not yet ready
+  // "@elizaos/plugin-directives", // directive processing remains opt-in
+  // "@elizaos/plugin-mcp", // MCP protocol support remains opt-in
+  // "@elizaos/plugin-scheduling", // scheduling remains opt-in
   // todos: now built-in as advanced capability (advancedCapabilities: true)
 ];

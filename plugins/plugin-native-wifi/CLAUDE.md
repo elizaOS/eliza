@@ -71,7 +71,7 @@ Required Android permissions (runtime-requested by the host app):
 To add a new method to this Capacitor plugin:
 
 1. **Define the TypeScript signature** in `src/definitions.ts` — add the method to `WiFiPlugin` and any new DTOs.
-2. **Add the web stub** in `src/web.ts` inside `WiFiWeb`. It must satisfy the new interface and should resolve with empty/false data and call `warnOnce()`.
+2. **Add the web fallback** in `src/web.ts` inside `WiFiWeb`. It must satisfy the new interface and should resolve with empty/false data and call `warnOnce()`.
 3. **Implement in Kotlin** in `android/src/main/java/ai/eliza/plugins/wifi/WiFiPlugin.kt` — annotate the method with `@PluginMethod`. Reject with a clear string on missing permissions rather than letting the platform silently return empty data.
 4. Add any new Android permissions to `android/src/main/AndroidManifest.xml` with a comment explaining why they are needed.
 5. Rebuild: `bun run --cwd plugins/plugin-native-wifi build`.

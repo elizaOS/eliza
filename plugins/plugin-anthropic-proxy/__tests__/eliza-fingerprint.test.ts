@@ -152,6 +152,26 @@ describe("eliza fingerprint — system prompt strip", () => {
     const result = stripSystemConfig(wirePayload);
     expect(result.stripped).toBe(0);
   });
+
+  it("supports configured anchors and paraphrase for non-eliza recurring blocks", () => {
+    const recurring =
+      "FRAMEWORK_START " +
+      "This long framework policy block repeats on every request. ".repeat(8) +
+      "FRAMEWORK_END";
+    const wirePayload = `{"system":[{"type":"text","text":"Keep this.\\n${recurring}\\nKeep that."}]}`;
+    const result = stripSystemConfig(wirePayload, {
+      start: "FRAMEWORK_START",
+      end: "FRAMEWORK_END",
+      paraphrase: '{"type":"text","text":"Short framework policy."}',
+      minStripLen: 20,
+    });
+    expect(result.stripped).toBeGreaterThan(0);
+    expect(result.body).not.toContain("FRAMEWORK_START");
+    expect(result.body).not.toContain("FRAMEWORK_END");
+    expect(result.body).toContain("Short framework policy.");
+    expect(result.body).toContain("Keep this.");
+    expect(result.body).toContain("Keep that.");
+  });
 });
 
 describe("eliza fingerprint — patterns", () => {

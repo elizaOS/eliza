@@ -66,17 +66,17 @@ function escapeUrl(url: string): string {
  * In addition to processing code blocks, inline code, links, bold, strikethrough, and italic,
  * it converts any header lines (those starting with one or more `#`) to bold text.
  *
- * Note: This solution uses a sequence of regex‐replacements and placeholders.
+ * Note: This solution uses a sequence of regex replacements and sentinel tokens.
  * It makes assumptions about non–nested formatting and does not cover every edge case.
  */
 export function convertMarkdownToTelegram(markdown: string): string {
-  // We will temporarily replace recognized markdown tokens with placeholders.
-  // Each placeholder is a string like "\u0000{index}\u0000".
+  // Temporarily replace recognized markdown tokens with sentinels.
+  // Each sentinel is a string like "\u0000{index}\u0000".
   const replacements: string[] = [];
   function storeReplacement(formatted: string): string {
-    const placeholder = `\u0000${replacements.length}\u0000`;
+    const sentinel = `\u0000${replacements.length}\u0000`;
     replacements.push(formatted);
-    return placeholder;
+    return sentinel;
   }
 
   let converted = markdown;
@@ -159,7 +159,7 @@ export function convertMarkdownToTelegram(markdown: string): string {
     },
   );
 
-  // Define the placeholder marker as a string constant
+  // Define the sentinel marker as a string constant.
   const NULL_CHAR = String.fromCharCode(0);
   const PLACEHOLDER_PATTERN = new RegExp(`(${NULL_CHAR}\\d+${NULL_CHAR})`, "g");
   const PLACEHOLDER_TEST = new RegExp(`^${NULL_CHAR}\\d+${NULL_CHAR}$`);
@@ -168,7 +168,7 @@ export function convertMarkdownToTelegram(markdown: string): string {
   const finalEscaped = converted
     .split(PLACEHOLDER_PATTERN)
     .map((segment) => {
-      // If the segment is a placeholder (matches the pattern), leave it untouched.
+      // If the segment is a sentinel marker, leave it untouched.
       if (PLACEHOLDER_TEST.test(segment)) {
         return segment;
       } else {
@@ -178,7 +178,7 @@ export function convertMarkdownToTelegram(markdown: string): string {
     })
     .join("");
 
-  // Finally, substitute back all placeholders with their preformatted content.
+  // Finally, substitute back all sentinels with their preformatted content.
   const finalResult = finalEscaped.replace(PLACEHOLDER_REPLACE, (_, index) => {
     return replacements[Number.parseInt(index, 10)];
   });

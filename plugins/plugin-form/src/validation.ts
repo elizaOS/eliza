@@ -380,7 +380,7 @@ function validateDate(
   }
 
   // Min/max as timestamps
-  // WHY: Form definition can set date ranges (e.g., future dates only)
+  // WHY: Form definition can set date ranges (e.g., dates after today only)
   if (control.min !== undefined && dateValue.getTime() < control.min) {
     return {
       valid: false,

@@ -4,7 +4,7 @@
  * Bridges plugin-telegram to the @elizaos/core ConnectorAccountManager so the
  * generic HTTP CRUD surface can list, create, patch, and delete Telegram
  * accounts. Telegram bots authenticate via a long-lived bot token (no OAuth);
- * `startOAuth` / `completeOAuth` are intentionally not implemented.
+ * `startOAuth` / `completeOAuth` are intentionally unsupported.
  *
  * Single-account env-only configurations (TELEGRAM_BOT_TOKEN) are surfaced as
  * a synthesized 'default' account with role 'AGENT' so downstream consumers
@@ -84,7 +84,7 @@ export function createTelegramConnectorAccountProvider(
         );
 
       // If env-only single-account flow is configured but the resolved
-      // accounts list is empty (e.g. token not yet validated), fall back to
+      // accounts list is empty (e.g. token validation has not completed), fall back to
       // surfacing a 'default' entry so downstream UIs always have an anchor.
       if (synthesized.length === 0 && persisted.length === 0) {
         const fallback = resolveTelegramAccount(runtime, DEFAULT_ACCOUNT_ID);

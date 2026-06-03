@@ -1,8 +1,8 @@
 /**
  * Content-hashed cache for projected vision-language tokens (WS1 deliverable).
  *
- * Vision models in the Eliza-1 stack (Qwen3-VL, Florence-2, future
- * Apothic-VL) all go through the same expensive projector step: raw pixel
+ * Vision models in the Eliza-1 stack (Qwen3-VL, Florence-2, Apothic-VL) all
+ * go through the same expensive projector step: raw pixel
  * bytes → patch embeddings → projector → tokens that the text decoder
  * actually consumes. When the user pastes the same screenshot three times
  * in a row, or when computer-use takes near-duplicate frames of an idle

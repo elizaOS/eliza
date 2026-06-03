@@ -60,7 +60,7 @@ plugins/plugin-openai/
   types/
     index.ts             # Plugin-local types: TTSVoice, ImageSize, TokenUsage, TextStreamResult,
                          #   OpenAIPluginConfig, API response shapes, etc.
-  prompts/               # evaluators.json (empty evaluators stub — plugin ships no evaluators)
+  prompts/               # evaluators.json (empty evaluator list — plugin ships no evaluators)
   __tests__/             # Vitest unit tests
 ```
 

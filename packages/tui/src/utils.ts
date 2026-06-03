@@ -10,8 +10,8 @@ export function getSegmenter(): Intl.Segmenter {
 /**
  * Check if a grapheme cluster (after segmentation) could possibly be an RGI emoji.
  * This is a fast heuristic to avoid the expensive rgiEmojiRegex test.
- * The tested Unicode blocks are deliberately broad to account for future
- * Unicode additions.
+ * The tested Unicode blocks are deliberately broad so newer Unicode versions
+ * keep matching likely emoji ranges.
  */
 function couldBeEmoji(segment: string): boolean {
   const cp = segment.codePointAt(0)!;

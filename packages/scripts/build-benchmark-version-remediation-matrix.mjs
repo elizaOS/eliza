@@ -85,7 +85,7 @@ function classify(entry, closureRow) {
       gapType: "no-previous-run",
       disposition: "needs-history",
       action:
-        "Keep the current playback-backed row and rerun the benchmark after the next instrumentation change so future comparison has a previous row.",
+        "Keep the current playback-backed row and rerun the benchmark after the next instrumentation change so the selected current row has a previous row.",
     };
   }
   if (!previousTargetPlayback) {

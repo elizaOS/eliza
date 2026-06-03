@@ -62,7 +62,7 @@
  *   Android (arm64-v8a JNI): cross-compile through the NDK against the
  *     same upstream; not consumed directly here — `plugin-aosp-local-inference`
  *     wraps it as `libstable-diffusion-jni.so` and the AOSP backend (see
- *     `aosp-stub.ts`) calls into it via the eliza-llama-shim FFI surface.
+ *     `aosp-unavailable.ts`) calls into it via the eliza-llama-shim FFI surface.
  *   macOS (Metal): cmake -B build -DSD_METAL=ON; codesign with the Eliza
  *     Labs Developer ID Application cert and notarize via `xcrun notarytool
  *     submit ...`; staple. Drop into releases.elizaos.ai/sd-cpp/<version>/
@@ -213,7 +213,7 @@ export async function loadSdCppImageGenBackend(
 
 			if (opts.fakeImageBytes) {
 				// Test path: skip the subprocess entirely. The deterministic
-				// stub is what `__tests__/imagegen-handler.test.ts` uses.
+				// in-memory bytes are what `__tests__/imagegen-handler.test.ts` uses.
 				await fs.writeFile(outputPath, opts.fakeImageBytes);
 				const elapsed = Math.max(1, now() - startMs);
 				if (req.onProgressChunk)

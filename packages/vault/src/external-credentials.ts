@@ -9,7 +9,7 @@
  *   list*  → metadata only, never returns passwords
  *   reveal* → explicit second step, returns username + password (+ totp)
  *
- * The CLI is shelled out via an injected `ExecFn` so tests can stub the
+ * The CLI is shelled out via an injected `ExecFn` so tests can fake the
  * subprocess without spawning real processes.
  */
 
@@ -43,7 +43,7 @@ export class BackendNotSignedInError extends Error {
 }
 
 /**
- * Subprocess executor injected by the manager (tests pass a stub).
+ * Subprocess executor injected by the manager (tests pass a fake runner).
  *
  * Mirrors `node:child_process.execFile` with promises: returns combined
  * stdout/stderr, throws on non-zero exit. The `env` option matters for
@@ -459,12 +459,12 @@ function parseJsonObject<T>(raw: string): T {
 
 /**
  * Production `ExecFn` wrapping `node:child_process.execFile`. Tests inject
- * stubs instead of using this. Lives here so callers can `import` a single
+ * fake runners instead of using this. Lives here so callers can `import` a single
  * default rather than wiring `child_process` themselves.
  */
 export function defaultExecFn(): ExecFn {
   // Lazy require so the test environment doesn't accidentally run real
-  // subprocesses if a test forgets to inject a stub.
+  // subprocesses if a test forgets to inject a fake runner.
   return async (cmd, args, opts) => {
     const childProcess = await import("node:child_process");
     return new Promise((resolve, reject) => {

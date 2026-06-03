@@ -379,7 +379,7 @@ interface AdapterWithDb {
 
 /**
  * Best-effort grab of the Drizzle DB handle off the live runtime adapter.
- * Returns null when the runtime is not yet up or the adapter has not
+ * Returns null when the runtime is unavailable or the adapter has not
  * exposed a `db` field. Callers MUST treat null as "service unavailable"
  * — it is never authentication.
  */

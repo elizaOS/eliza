@@ -4,7 +4,7 @@ The cascaded baseline transcribes a query's ``audio_bytes`` to text before
 forwarding to the agent's text path. Missing audio or missing credentials are
 hard failures so benchmark reports cannot silently use ground-truth transcripts.
 
-Direct-audio adapters (future work) bypass this shim entirely.
+Direct-audio adapters bypass this shim entirely.
 """
 
 from __future__ import annotations

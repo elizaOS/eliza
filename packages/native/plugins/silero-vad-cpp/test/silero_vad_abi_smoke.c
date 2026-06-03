@@ -1,14 +1,11 @@
 /*
  * Build-only smoke test for the silero-vad-cpp public ABI.
  *
- * Phase 1 named this "stub smoke" because every model entry point
- * returned `-ENOSYS`. Phase 2 wires the real runtime in
- * `src/silero_vad_runtime.c`; this test now confirms the public ABI
- * still links and that the runtime's *error paths* behave per the
- * header contract:
+ * Confirms the public ABI links and that the runtime's error paths behave
+ * per the header contract:
  *
  *   - `silero_vad_active_backend()` reports a non-NULL diagnostic
- *     string. The Phase 2 default is `"native-cpu"`.
+ *     string. The native CPU runtime reports `"native-cpu"`.
  *   - `silero_vad_open(<missing>, &out)` returns `-ENOENT` and clears
  *     the out handle.
  *   - `silero_vad_open(NULL, ...)` and `silero_vad_open(path, NULL)`
@@ -38,7 +35,7 @@ int main(void) {
     const char *backend = silero_vad_active_backend();
     if (backend == NULL || backend[0] == '\0') {
         fprintf(stderr,
-                "[silero-vad-stub-smoke] silero_vad_active_backend returned NULL/empty\n");
+                "[silero-vad-abi-smoke] silero_vad_active_backend returned NULL/empty\n");
         ++failures;
     }
 
@@ -47,13 +44,13 @@ int main(void) {
     int rc = silero_vad_open("/nonexistent.gguf", &handle);
     if (rc != -ENOENT) {
         fprintf(stderr,
-                "[silero-vad-stub-smoke] silero_vad_open(missing) returned %d, expected %d\n",
+                "[silero-vad-abi-smoke] silero_vad_open(missing) returned %d, expected %d\n",
                 rc, -ENOENT);
         ++failures;
     }
     if (handle != NULL) {
         fprintf(stderr,
-                "[silero-vad-stub-smoke] silero_vad_open(missing) did not clear out handle\n");
+                "[silero-vad-abi-smoke] silero_vad_open(missing) did not clear out handle\n");
         ++failures;
     }
 
@@ -62,13 +59,13 @@ int main(void) {
     rc = silero_vad_open(NULL, &handle);
     if (rc != -EINVAL) {
         fprintf(stderr,
-                "[silero-vad-stub-smoke] silero_vad_open(NULL path) returned %d, expected %d\n",
+                "[silero-vad-abi-smoke] silero_vad_open(NULL path) returned %d, expected %d\n",
                 rc, -EINVAL);
         ++failures;
     }
     if (handle != NULL) {
         fprintf(stderr,
-                "[silero-vad-stub-smoke] silero_vad_open(NULL path) did not clear out handle\n");
+                "[silero-vad-abi-smoke] silero_vad_open(NULL path) did not clear out handle\n");
         ++failures;
     }
 
@@ -76,7 +73,7 @@ int main(void) {
     rc = silero_vad_open("/nonexistent.gguf", NULL);
     if (rc != -EINVAL) {
         fprintf(stderr,
-                "[silero-vad-stub-smoke] silero_vad_open(NULL out) returned %d, expected %d\n",
+                "[silero-vad-abi-smoke] silero_vad_open(NULL out) returned %d, expected %d\n",
                 rc, -EINVAL);
         ++failures;
     }
@@ -85,7 +82,7 @@ int main(void) {
     rc = silero_vad_reset_state(NULL);
     if (rc != -EINVAL) {
         fprintf(stderr,
-                "[silero-vad-stub-smoke] silero_vad_reset_state(NULL) returned %d, expected %d\n",
+                "[silero-vad-abi-smoke] silero_vad_reset_state(NULL) returned %d, expected %d\n",
                 rc, -EINVAL);
         ++failures;
     }
@@ -96,13 +93,13 @@ int main(void) {
     rc = silero_vad_process(NULL, window, SILERO_VAD_WINDOW_SAMPLES_16K, &prob);
     if (rc != -EINVAL) {
         fprintf(stderr,
-                "[silero-vad-stub-smoke] silero_vad_process(NULL) returned %d, expected %d\n",
+                "[silero-vad-abi-smoke] silero_vad_process(NULL) returned %d, expected %d\n",
                 rc, -EINVAL);
         ++failures;
     }
     if (prob != 0.0f) {
         fprintf(stderr,
-                "[silero-vad-stub-smoke] silero_vad_process(NULL) did not clear prob (%f)\n",
+                "[silero-vad-abi-smoke] silero_vad_process(NULL) did not clear prob (%f)\n",
                 (double)prob);
         ++failures;
     }
@@ -111,11 +108,11 @@ int main(void) {
     rc = silero_vad_close(NULL);
     if (rc != 0) {
         fprintf(stderr,
-                "[silero-vad-stub-smoke] silero_vad_close(NULL) returned %d, expected 0\n",
+                "[silero-vad-abi-smoke] silero_vad_close(NULL) returned %d, expected 0\n",
                 rc);
         ++failures;
     }
 
-    printf("[silero-vad-stub-smoke] failures=%d\n", failures);
+    printf("[silero-vad-abi-smoke] failures=%d\n", failures);
     return failures == 0 ? 0 : 1;
 }

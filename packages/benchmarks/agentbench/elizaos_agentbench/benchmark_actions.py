@@ -1,4 +1,4 @@
-"""Compatibility stubs for removed Python Eliza AgentBench actions."""
+"""Compatibility no-ops for removed Python Eliza AgentBench actions."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ def create_benchmark_actions() -> list[object]:
 
 
 def create_benchmark_plugin() -> None:
-    """Compatibility stub for the removed Python Eliza plugin."""
+    """Compatibility no-op for the removed Python Eliza plugin."""
     return None
 
 

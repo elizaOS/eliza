@@ -1,6 +1,6 @@
-import { makeNotYetImplementedSweep } from "./_not-yet-implemented.mjs";
+import { makeUnavailableSweep } from "./_unavailable.mjs";
 
-export default makeNotYetImplementedSweep({
+export default makeUnavailableSweep({
   service: "twilio",
   blockingTask: "T9e",
   reason: "waiting on Twilio call-recording DELETE wrapper (voice plugin)",

@@ -27,14 +27,18 @@
     "build:llama-cpp:device": "bash llama.cpp/build-ios.sh device",
     "build:llama-cpp:simulator": "bash llama.cpp/build-ios.sh simulator",
     "clean:llama-cpp": "bash llama.cpp/build-ios.sh clean",
-    "build:sqlite-vec": "node -e \"process.stderr.write('sqlite-vec build script not yet wired; see sqlite-vec/README.md\\n'); process.exit(1)\"",
-    "build": "bun run build:llama-cpp"
+    "build:sqlite-vec": "bash sqlite-vec/build-ios.sh",
+    "build:sqlite-vec:device": "bash sqlite-vec/build-ios.sh device",
+    "build:sqlite-vec:simulator": "bash sqlite-vec/build-ios.sh simulator",
+    "clean:sqlite-vec": "bash sqlite-vec/build-ios.sh clean",
+    "build": "bun run build:llama-cpp && bun run build:sqlite-vec"
   },
   "files": [
     "VERSIONS",
     "llama.cpp/build-ios.sh",
     "llama.cpp/shim/",
     "llama.cpp/README.md",
+    "sqlite-vec/build-ios.sh",
     "sqlite-vec/README.md",
     "README.md"
   ]

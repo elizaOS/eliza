@@ -1,5 +1,5 @@
 /**
- * Phase 3 — score: per-commit health delta + running EMA.
+ * Step 3 — score: per-commit health delta + running EMA.
  *
  * Deterministic. The goal is a stable, explainable score that a human can
  * sanity-check against the actual history. No LLM.

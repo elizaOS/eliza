@@ -21,9 +21,8 @@
 //
 // QJL is **on by default** in this in-fork TU because the GGUF
 // converter at scripts/polarquant_to_gguf.py only ever emits Q4_POLAR
-// tensors with the QJL bits populated.  If a future converter wants
-// the no-QJL variant it should bump a metadata key in the GGUF and
-// the type-traits hookup will branch on that.
+// tensors with the QJL bits populated. A no-QJL variant should bump a
+// metadata key in the GGUF and the type-traits hookup will branch on that.
 #include "quants-polar.h"
 
 #include <math.h>

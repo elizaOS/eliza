@@ -8,21 +8,21 @@ The end goal is to delete the ONNX dependency from the voice front-end
 entirely (see the repo-wide ONNX-removal initiative the parallel
 `yolo-cpp` and `doctr-cpp` ports are part of).
 
-This document is the contract the port must satisfy. Today the model
-entry points in `include/silero_vad/silero_vad.h` are a **stub**
-(`src/silero_vad_stub.c`) that returns `-ENOSYS` for every call. Two
-companion TUs are *real* and exercised by ctest already:
+This document is the contract the port must satisfy. The model entry
+points in `include/silero_vad/silero_vad.h` are implemented by the
+native CPU runtime in `src/silero_vad_runtime.c`. Two companion TUs are
+exercised by ctest and used by the runtime:
 
 - `src/silero_vad_state.c` — pure-C LSTM hidden / cell state container
   with `reset` and `promote` helpers (validated by
   `test/silero_vad_state_test.c`).
 - `src/silero_vad_resample.c` — pure-C linear PCM resampler so callers
   running at 8 / 22.05 / 44.1 kHz can normalize to the model's
-  required 16 kHz before the model entry points become non-stub
-  (validated by `test/silero_vad_resample_test.c`).
+  required 16 kHz before calling the model entry points (validated by
+  `test/silero_vad_resample_test.c`).
 
-The port plan replaces only `silero_vad_stub.c` — the public ABI, the
-state struct, and the resampler stay byte-for-byte the same.
+The public ABI, state struct, and resampler are stable. Backend changes
+must stay behind this surface.
 
 ## Why this lives here
 
@@ -80,7 +80,7 @@ conditional and ONNX-export sludge, is:
    `(1, 2, 2, 1)` taking (129, 4) → (128, 4) → (64, 2) → (64, 1) →
    (128, 1). All are kernel=3 / pad=1.
 4. **LSTM.** Single layer, **128-dim hidden + 128-dim cell** (NOT 64
-   as Phase 1 mistakenly recorded — the v5 ONNX model's `state`
+   as early notes incorrectly recorded — the v5 ONNX model's `state`
    input is shaped `[2, B, 128]`). PyTorch gate order
    (`i, f, g, o`). One timestep per window. The per-session state
    struct in `src/silero_vad_state.h` carries `h_in`, `c_in` from
@@ -92,16 +92,14 @@ Total compute per 32 ms window is small enough that a CPU-only build
 on a laptop sustains real-time well below 1% of the 32 ms hop — which
 is the whole point of the gate.
 
-The Phase 2 implementation in `src/silero_vad_runtime.c` is pure-C
+The native CPU implementation in `src/silero_vad_runtime.c` is pure-C
 scalar (no SIMD, no link to libggml). The `silero_vad_active_backend()`
-diagnostic returns `"native-cpu"`. A future pass can swap in an
-AVX2/NEON dispatcher (or the ggml CPU backend) and report the change
-through that field without touching the rest of the ABI.
+diagnostic returns `"native-cpu"`. SIMD or ggml dispatchers can be
+added behind the same ABI and report the change through that field.
 
 ## C ABI (frozen by `include/silero_vad/silero_vad.h`)
 
-The stub already implements this surface; the real port must match it
-byte-for-byte:
+The native CPU runtime implements this surface:
 
 - `silero_vad_open(const char *gguf_path, silero_vad_handle *out)` —
   load a Silero VAD GGUF produced by `scripts/silero_vad_to_gguf.py`.
@@ -118,16 +116,15 @@ byte-for-byte:
   `silero_vad_resample.c` is what they should use upstream).
 - `silero_vad_close(silero_vad_handle h)` — release everything.
   NULL-safe.
-- `silero_vad_active_backend(void)` — diagnostics only. The Phase 2
-  implementation returns `"native-cpu"`. A future SIMD or ggml
-  dispatcher can change the value here without touching the ABI.
+- `silero_vad_active_backend(void)` — diagnostics only. The native CPU
+  implementation returns `"native-cpu"`. SIMD or ggml dispatchers can
+  change the value here without touching the ABI.
 
 Threading: reentrant against distinct sessions; sharing one session
 across threads is the caller's mutex problem.
 
-Error codes: `errno`-style negatives. `-ENOSYS` from the stub,
-`-ENOENT` for missing GGUF, `-EINVAL` for shape mismatch / NULL
-arguments. No silent fallbacks.
+Error codes: `errno`-style negatives. `-ENOENT` for missing GGUF and
+`-EINVAL` for shape mismatch / NULL arguments. No silent fallbacks.
 
 ## GGUF conversion (`scripts/silero_vad_to_gguf.py`)
 
@@ -142,8 +139,8 @@ Mirrors the layering already used by
   `SAMPLE_RATE_HZ = 16000`);
 - pinned upstream commit recorded both in code and in the GGUF
   metadata key — runtime refuses unknown commits;
-- `NotImplementedError` in every TODO block so a half-built converter
-  cannot pass for working.
+- strict validation so an unsupported or malformed ONNX model cannot
+  pass for a valid Silero v5 16 kHz artifact.
 
 The first pass packs all weights as fp16. Later passes can layer the
 existing TurboQuant / Q4_POLAR types on the LSTM gate matrices
@@ -152,9 +149,9 @@ converters demonstrate.
 
 ## elizaOS/llama.cpp fork integration
 
-The runtime calls live in this library; the fork only needs to expose
-its ggml dispatcher and (already-present) `ggml_lstm` op. The
-integration plan is:
+The runtime calls live in this library. The current implementation is
+native scalar C; a ggml-backed dispatcher can be added without changing
+callers:
 
 1. **Bring up the front-end + encoder first.** All conv ops are
    already supported. Validate by running the dummy-input-zero path
@@ -166,15 +163,11 @@ integration plan is:
    the upstream Python output stream within tolerance.
 3. **Add the linear head + sigmoid.** Single matmul + activation.
 4. **Wire to the fork's dispatcher.** The library already advertises
-   `silero_vad_active_backend()`; the real impl reports the bound
-   backend's name (`ggml-cpu`, `ggml-metal`, etc.).
-5. **Replace the stub.** `silero_vad_stub.c` is removed from
-   `CMakeLists.txt`; the real implementation TUs (`silero_vad_open.c`,
-   `silero_vad_process.c`, etc.) are added in its place. The stub
-   smoke test (`test/silero_vad_stub_smoke.c`) is replaced with the
-   parity test described below; the state and resample tests stay
-   exactly as they are — they are validating utilities the port
-   already depends on.
+   `silero_vad_active_backend()`; a dispatcher-backed implementation
+   reports the bound backend's name (`ggml-cpu`, `ggml-metal`, etc.).
+5. **Keep parity coverage.** The ABI smoke, runtime fixture test,
+   state test, resample test, and Python parity test must continue to
+   pass when a dispatcher replaces the scalar kernels.
 
 ## Replacement of the ONNX path in `vad.ts`
 
@@ -211,7 +204,7 @@ Outputs:
 - `libsilero_vad.so` (`.dylib` / `.dll`) — shared library, dlopen'd
   by the bun:ffi binding in
   `plugins/plugin-local-inference/src/services/voice/vad-ggml.ts`.
-- `silero_vad_stub_smoke` — confirms the public ABI links and the
+- `silero_vad_abi_smoke` — confirms the public ABI links and the
   runtime's error paths behave per the header (`-ENOENT` on missing
   GGUF, `-EINVAL` on NULL/wrong-arg, etc.).
 - `silero_vad_state_test` — validates the LSTM state helpers.
@@ -230,7 +223,7 @@ per-window probability agreement within ±0.02. Verified on the dev
 host: mean diff 1.8e-4, p95 6.2e-4, max 4.1e-3, 0 / 156 windows over
 threshold.
 
-## Phase 2 status (delivered)
+## Current status
 
 - Pinned snakers4/silero-vad upstream commit
   (`980b17e9d56463e51393a8d92ded473f1b17896a`) + automatic download
@@ -239,9 +232,8 @@ threshold.
   `scripts/silero_vad_to_gguf.py` — emits a ~600 KB fp16 GGUF with
   the v5 16 kHz weights and locked metadata keys.
 - Real `silero_vad_open` / `_process` / `_reset_state` / `_close` /
-  `_active_backend` in `src/silero_vad_runtime.c` (replacing the
-  Phase 1 ENOSYS stub, which is gone). Pure-C scalar; no link to
-  libggml.
+  `_active_backend` in `src/silero_vad_runtime.c`. Pure-C scalar; no
+  link to libggml.
 - Parity test (`test/silero_vad_parity_test.py`) and runtime test
   (`test/silero_vad_runtime_test.c`) both passing.
 - `vad-ggml.ts` dlopens the new shared library via `bun:ffi`;

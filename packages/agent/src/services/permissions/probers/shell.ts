@@ -6,13 +6,10 @@
  * `PermissionManager.setShellEnabled` in
  * `packages/app-core/platforms/electrobun/src/native/permissions.ts`).
  *
- * For now, default to `granted` on all platforms. The registry can swap
- * this with a richer prober that consults the runtime config flag.
- *
- * INTEGRATION TODO: when the registry-side wiring lands, expose a hook so
- * this prober can read the user-toggled `shellEnabled` flag without
- * importing the Electrobun module (which is a one-way dependency from
- * agent → app-core that the registry agent should mediate).
+ * The default prober reports granted access because shell execution is gated
+ * elsewhere by the runtime's shell router and app-internal configuration. A
+ * registry-provided prober can replace this one when a host wants permission
+ * status to mirror a user-toggled `shellEnabled` flag.
  */
 
 import type { PermissionState, Prober } from "../contracts.js";

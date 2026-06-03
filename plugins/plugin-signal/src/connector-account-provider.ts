@@ -1,7 +1,7 @@
 /**
  * Signal ConnectorAccountManager provider.
  *
- * Adapts the existing multi-account scaffolding in `accounts.ts` to the
+ * Adapts the account resolution helpers in `accounts.ts` to the
  * `ConnectorAccountProvider` contract from
  * `@elizaos/core/connectors/account-manager`.
  *
@@ -104,8 +104,8 @@ export function createSignalConnectorAccountProvider(
     },
     deleteAccount: async (_accountId: string, _manager: ConnectorAccountManager) => {
       // Persistent credentials for Signal live in signal-cli auth dir;
-      // unlinking happens via `signalLogout`. Deletion at the manager layer is
-      // a no-op marker.
+      // unlinking happens via `signalLogout`. Deletion at the manager layer
+      // leaves the local signal-cli credential store untouched.
     },
     // Signal uses device-link pairing (QR code via signal-cli), not OAuth.
     // startOAuth/completeOAuth intentionally omitted.

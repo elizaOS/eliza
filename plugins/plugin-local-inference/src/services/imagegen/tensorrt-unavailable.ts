@@ -1,5 +1,5 @@
 /**
- * TensorRT image-gen backend stub (WS3) — Windows NVIDIA.
+ * TensorRT image-gen backend contract (WS3) — Windows NVIDIA.
  *
  * On Windows NVIDIA hosts, packaged `imagegen.exe` (built against
  * TensorRT 10.x with the Demo Diffusion plan) is the fastest path —

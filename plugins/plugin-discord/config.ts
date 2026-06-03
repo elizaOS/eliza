@@ -208,7 +208,7 @@ export type DiscordAccountConfig = {
 // ============================================================
 
 export type DiscordChannelConfig = {
-	/** Optional per-account Discord configuration (multi-account). */
+	/** Optional named Discord account configuration records. */
 	accounts?: Record<string, DiscordAccountConfig>;
 } & DiscordAccountConfig;
 

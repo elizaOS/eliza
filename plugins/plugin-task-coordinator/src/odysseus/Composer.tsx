@@ -55,7 +55,7 @@ interface SlashCommand {
 const MAX_VISIBLE = 12;
 
 // Honest reason shown on slash rows that odysseus exposes but the orchestrator
-// backend has no path for (web/document/bash quick-toggles, todos, tours, fork).
+// backend does not handle (web/document/bash quick-toggles, todos, tours, fork).
 // They render for 1:1 chrome but stay inert rather than no-op or fabricate.
 const NO_BACKEND = "Not available in the Orchestrator";
 
@@ -136,9 +136,9 @@ export function Composer({
   // /new, /web, /doc, /todo, /demo, /note, /fork, /bash (then /clear, /memory,
   // /settings below the fold). Rows whose target surface exists in the clone are
   // wired to a real Composer prop (onNewChat / onInput / onSearch / onOpenPanel
-  // / onOpenModels); odysseus's quick-toggle / todo / tour / fork rows have no
-  // orchestrator backend, so they render faithfully but DISABLED with an honest
-  // title — not omitted (1:1 chrome), not faked. Memoized on the wired handlers.
+  // / onOpenModels); odysseus's quick-toggle / todo / tour / fork rows are
+  // outside the orchestrator backend, so they render faithfully but DISABLED
+  // with an honest title. Memoized on the wired handlers.
   const commands = useMemo<SlashCommand[]>(
     () => [
       {

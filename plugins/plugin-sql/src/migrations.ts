@@ -126,8 +126,8 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
       );
       logger.debug("[Migration] ✓ Snapshot cache cleared");
     } catch (_error) {
-      // If migrations schema doesn't exist yet, that's fine - no cache to clear
-      logger.debug("[Migration] ⊘ No snapshot cache to clear (migrations schema not yet created)");
+      // If migrations schema is absent, there is no cache to clear.
+      logger.debug("[Migration] ⊘ No snapshot cache to clear (migrations schema absent)");
     }
 
     // Disable RLS only on tables that have it enabled

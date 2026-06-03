@@ -71,9 +71,9 @@ Transport contract: `send(msg)`, `onMessage(handler) → unsubscribe`, `close()`
 What plugin handlers receive as their `runtime` argument. Each method issues a `host-rpc` message and awaits `host-rpc-result`.
 
 **Supported methods (`SUPPORTED_RUNTIME_METHODS`):**
-`getService`, `useModel`, `getMemory`, `createMemory`, `updateMemory`, `emitEvent`, `registerEvent`, `getSetting`, `setSetting`, `composeState`.
+`getService`, `useModel`, `getMemory`, `createMemory`, `updateMemory`, `emitEvent`, `getSetting`, `setSetting`, `composeState`.
 
-`runtime.registerEvent()` is not yet wired for remote-mode; calling it throws. Declare event handlers statically on the `Plugin.events` object instead.
+`runtime.registerEvent()` cannot serialize a live callback over host-RPC. Declare event handlers statically on the `Plugin.events` object so bootstrap can announce stable RPC handler ids.
 
 ### `buildAnnounceDescriptor(plugin, registry)` — `src/descriptor.ts`
 
@@ -153,6 +153,6 @@ Implement `WorkerChannel` in `src/envelope.ts` (or a separate file), export it, 
 - **Init-time dynamic surfaces are supported.** `bootstrap()` announces the static surfaces first, then snapshots any plugin surfaces appended by `init()` and sends them as `worker-announce-dynamic` before `init-complete`. Later runtime mutation after `bootstrap()` completes is still not announced.
 - **Action callbacks are proxied.** If the host provides an action callback, the bridge assigns a callback id and routes worker callback payloads back over `worker-action-callback`.
 - **Service instances are lazy and per-worker.** The `serviceInstances` WeakMap in `descriptor.ts` caches the `Promise<RemoteServiceInstance>` for each `RemoteServiceClass`. The first host invocation of any method on a service triggers `service.start(runtime)`. Subsequent calls reuse the cached instance for the worker's lifetime.
-- **`runtime.registerEvent` is not wired.** Calling it inside a remote handler throws. Declare event handlers in the static `Plugin.events` object.
+- **Remote event registration is static.** Calling `runtime.registerEvent` inside a remote handler throws because function callbacks cannot cross host-RPC. Declare event handlers in the static `Plugin.events` object.
 - **`"tests"` surface is not host-RPC reachable.** The dispatcher explicitly rejects it with a clear error.
 - **HMAC auth is opt-in.** Pass `rpcAuth` in `DispatchContext` to require MAC verification; omitting it disables the check entirely (appropriate for local workers).

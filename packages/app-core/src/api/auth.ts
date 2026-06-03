@@ -372,8 +372,8 @@ interface CompatStateLike {
  * Canonical async route guard.
  *
  * When the runtime DB is up, delegates to {@link ensureCompatApiAuthorizedAsync}
- * so cookie + CSRF + machine-session paths work. When the DB is not yet
- * available (early boot), falls back to {@link ensureCompatApiAuthorized}
+ * so cookie + CSRF + machine-session paths work. During early boot before the
+ * DB is available, falls back to {@link ensureCompatApiAuthorized}
  * (bearer-only).
  *
  * Pass `skipCsrf: true` for routes that mint cookies / handle their own CSRF

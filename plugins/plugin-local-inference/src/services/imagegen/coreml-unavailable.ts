@@ -1,5 +1,5 @@
 /**
- * Core ML image-gen backend stub (WS3) — iOS via Capacitor bridge.
+ * Core ML image-gen backend contract (WS3) — iOS via Capacitor bridge.
  *
  * The contract for the Swift side. The real implementation lives in
  * `eliza/packages/app-core/platforms/ios/App/App/ImageGenBridge.swift`
@@ -23,8 +23,8 @@
  * the `.mlpackage` directories are dropped into the app's Documents
  * folder by the bundle installer.
  *
- * Until the Swift skeleton is fleshed out and the Capacitor plugin
- * exposes the binding, `loadCoreMlImageGenBackend` throws a structured
+ * Until the Swift bridge is present and the Capacitor plugin exposes the
+ * binding, `loadCoreMlImageGenBackend` throws a structured
  * `ImageGenBackendUnavailableError` so the selector can fall through
  * — but on iOS there is no fall-through (sd-cpp doesn't run on iOS,
  * mflux is macOS-only). A `coreml_unavailable` error there means
@@ -83,7 +83,7 @@ export interface CoreMlImageGenBridge {
 	/**
 	 * True when the Swift `ImageGenBridge.swift` is present AND a
 	 * `.mlpackage` has been resolved for the active tier. False when
-	 * either is missing — the stub backend throws on `generate` in
+	 * either is missing — the backend throws on `generate` in
 	 * that case rather than producing a synthetic PNG.
 	 */
 	isAvailable(): boolean;

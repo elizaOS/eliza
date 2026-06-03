@@ -26,7 +26,7 @@
  * order/payment endpoints touch real booking infrastructure. For CI
  * coverage of the HTTP layer, rely on the fetch-mocked tests in this
  * file (covering search, order, payment mapping) and/or add an offline
- * harness with a local HTTP server stub in a follow-up.
+ * harness with a local HTTP server fixture.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

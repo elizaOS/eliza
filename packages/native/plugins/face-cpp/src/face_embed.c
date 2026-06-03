@@ -101,7 +101,7 @@ static int load_embed_block(const face_gguf *g, const char *prefix,
                             int cin, int cout, int stride,
                             embed_block *out)
 {
-    char buf[128];
+    char buf[192];
     int64_t dims[4]; int nd;
 
     snprintf(buf, sizeof buf, "%s.dw.weight", prefix);

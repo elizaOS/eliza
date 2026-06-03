@@ -52,9 +52,8 @@ Files.app side. Add them in the host app's iOS shell, not in this package.
 
 No special manifest changes are required for Capacitor `Directory.Documents`
 (the Capacitor Filesystem plugin handles scoped storage and MediaStore on
-Android 10+). If a future feature needs cross-app sharing through
-`MediaStore.Downloads`, that belongs in the host app's AndroidManifest, not
-here.
+Android 10+). Cross-app sharing through `MediaStore.Downloads` belongs in the
+host app's AndroidManifest, not here.
 
 ## Service type
 

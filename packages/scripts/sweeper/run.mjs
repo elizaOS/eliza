@@ -10,8 +10,8 @@
  * exports a default async function `sweep({ maxAgeMs, dryRun, logger })` that
  * returns `{ deleted: number, kept: number, notes: string[] }`.
  *
- * Sweepers for integrations whose backends aren't yet implemented will throw
- * `NotYetImplementedError` — that's expected while those integrations land,
+ * Sweepers for integrations whose cleanup backends are unavailable throw
+ * `UnavailableSweeperError` — that's expected while those integrations land,
  * and translates to a yellow warning in the workflow summary rather than a
  * red failure. A real failure is anything else.
  */
@@ -89,11 +89,11 @@ for (const svc of servicesToRun) {
     if (
       err &&
       typeof err === "object" &&
-      err.name === "NotYetImplementedError"
+      err.name === "UnavailableSweeperError"
     ) {
       results.push({
         service: svc,
-        status: "not-yet-implemented",
+        status: "unavailable",
         reason: String(err.message ?? err),
       });
     } else {
@@ -125,7 +125,7 @@ for (const r of results) {
   const notes =
     r.status === "ok"
       ? (r.notes || []).join("; ")
-      : r.status === "not-yet-implemented"
+      : r.status === "unavailable"
         ? r.reason
         : r.reason;
   lines.push(

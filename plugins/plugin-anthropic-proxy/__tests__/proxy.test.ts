@@ -1,4 +1,7 @@
 import { createServer } from "node:http";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { computeBillingFingerprint } from "../src/proxy/billing-fingerprint.js";
 import {
@@ -333,5 +336,57 @@ describe("config resolver", () => {
     expect(cfg.mode).toBe("inline");
     expect(cfg.port).toBe(18801);
     expect(cfg.bindHost).toBe("127.0.0.1");
+  });
+
+  it("loads fingerprint overrides from CLAUDE_MAX_PROXY_CONFIG_PATH", () => {
+    const dir = mkdtempSync(join(tmpdir(), "anthropic-proxy-config-"));
+    cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+    const configPath = join(dir, "config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        replacements: [["framework-A", "framework-B"]],
+        toolRenames: [["custom_tool", "Read"]],
+        propRenames: [["customProp", "path"]],
+        reverseMap: [["framework-B", "framework-A"]],
+        systemPromptStrip: {
+          start: "FRAMEWORK_START",
+          end: "FRAMEWORK_END",
+          paraphrase: '{"type":"text","text":"Short framework policy."}',
+          minStripLen: 10,
+        },
+      }),
+    );
+
+    const cfg = withEnv(
+      {
+        CLAUDE_MAX_PROXY_CONFIG_PATH: configPath,
+        CLAUDE_MAX_PROXY_MODE: "off",
+      },
+      () => resolveConfig(),
+    );
+
+    expect(cfg.configError).toBeUndefined();
+    expect(cfg.configPath).toBe(configPath);
+    expect(cfg.fingerprintConfig?.replacements).toEqual([
+      ["framework-A", "framework-B"],
+    ]);
+    expect(cfg.fingerprintConfig?.systemPromptStrip).toMatchObject({
+      start: "FRAMEWORK_START",
+      end: "FRAMEWORK_END",
+      minStripLen: 10,
+    });
+  });
+
+  it("fails closed when an explicit fingerprint config path is missing", () => {
+    const cfg = withEnv(
+      {
+        CLAUDE_MAX_PROXY_CONFIG_PATH: "/missing/anthropic-proxy-config.json",
+        CLAUDE_MAX_PROXY_MODE: "inline",
+      },
+      () => resolveConfig(),
+    );
+    expect(cfg.mode).toBe("inline");
+    expect(cfg.configError).toContain("CLAUDE_MAX_PROXY_CONFIG_PATH not found");
   });
 });

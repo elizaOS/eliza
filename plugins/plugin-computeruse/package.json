@@ -39,7 +39,8 @@
     "postinstall": "node scripts/ensure-platform-deps.mjs",
     "build": "bun run build.ts",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsgo --noEmit",
+    "validate:ios-device-evidence": "node scripts/validate-ios-device-evidence.mjs"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"

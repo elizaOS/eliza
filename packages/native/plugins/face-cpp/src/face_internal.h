@@ -1,7 +1,7 @@
 /*
- * face-cpp internal Phase 2 reference header.
+ * face-cpp internal native-runtime header.
  *
- * Phase 2 is a pure-C scalar reference implementation: a minimal GGUF
+ * The current runtime is a pure-C scalar reference implementation: a minimal GGUF
  * v3 reader (mmap, F32 + F16 tensors only), an image preprocessor
  * (bilinear resize + normalize), the small NN kernels both heads need
  * (Conv2D, depthwise 3x3, pointwise 1x1, ReLU, MaxPool, Linear,

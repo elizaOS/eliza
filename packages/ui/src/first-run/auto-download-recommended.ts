@@ -16,7 +16,7 @@
  *
  * Failure modes:
  *   - agent never comes up within the deadline → silent no-op, no marker.
- *     A future boot can retry.
+ *     The next boot can retry.
  *   - hub fetch fails → silent no-op, no marker. Same retry semantics.
  *   - download POST fails → silent no-op, no marker.
  */

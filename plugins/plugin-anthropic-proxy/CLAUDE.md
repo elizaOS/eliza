@@ -26,7 +26,7 @@ No providers or evaluators.
 plugins/plugin-anthropic-proxy/
 ├── index.ts                        # Plugin definition + init(); re-exports public API
 ├── index.node.ts                   # Node-specific entry (imports from index.ts)
-├── index.browser.ts                # Browser no-op entry
+├── index.browser.ts                # Browser compatibility entry with no server lifecycle
 ├── auto-enable.ts                  # shouldEnable() — lightweight, no transitive imports
 ├── config.json.example             # Custom fingerprint dictionary shape
 ├── src/
@@ -100,11 +100,11 @@ If credentials are missing the service degrades to `off` mode and logs a warning
 Edit `src/proxy/eliza-fingerprint.ts`. The four arrays (`ELIZA_REPLACEMENTS`, `ELIZA_TOOL_RENAMES`, `ELIZA_PROP_RENAMES`, `ELIZA_REVERSE_MAP`) are re-exported as the `DEFAULT_*` constants in `constants.ts` and picked up automatically by `ProxyServer`.
 
 **Custom dictionaries for a non-elizaOS tool surface:**
-Drop a `config.json` (shape: `config.json.example`) next to the agent root. Any of the four dictionary arrays (`replacements`, `toolRenames`, `propRenames`, `reverseMap`) is merged over the eliza defaults at startup.
+Drop a `config.json` (shape: `config.json.example`) next to the agent root, or set `CLAUDE_MAX_PROXY_CONFIG_PATH` to an explicit file. Any of the four dictionary arrays (`replacements`, `toolRenames`, `propRenames`, `reverseMap`) replaces the eliza default for that field at startup; omitted fields keep the built-in eliza defaults. `systemPromptStrip` can also provide alternate start/end anchors plus a paraphrase for a recurring non-eliza system-prompt block.
 
 ## Conventions / gotchas
 
-- **Node-only.** The `index.browser.ts` entry is a no-op; `package.json` guards with `"eliza.platforms": ["node"]`.
+- **Node-only.** The `index.browser.ts` entry is an inert compatibility export; `package.json` guards with `"eliza.platforms": ["node"]`.
 - **`auto-enable.ts` must stay lightweight.** The manifest engine loads it for every plugin at boot. No transitive imports; env reads only.
 - **`ANTHROPIC_BASE_URL` side-effect.** The service sets this process-level env var on start. If another plugin or the agent shell already set it to a real value, the proxy will not override it (only overrides unset or `"auto"`).
 - **Credentials are re-read per request.** A fresh `claude auth login` is picked up immediately with no agent restart.

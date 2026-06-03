@@ -82,20 +82,19 @@ native scheduler.
 
 `@capacitor/background-runner` re-enters a dedicated JS context (NOT the
 WebView) when the OS wakes the app. The runner script lives outside the
-plugin and is written by the host app's build (Wave 3D in this repo's
-delivery plan).
+plugin and is supplied by the host app platform tree:
 
 - iOS: `ios/App/App/runners/eliza-tasks.js`
 - Android: `android/app/src/main/assets/runners/eliza-tasks.js`
 
-Both files have the same contract: respond to the `wake` event by calling
-back into the running app via the device-secret-authed loopback endpoint
-(see "Wake authentication" below).
+In this repo the canonical checked-in sources are:
 
-> Cross-wave: the runner JS files are scaffolded by Wave 3D
-> (`plugin-background-runner` companion task in the host app). Until Wave 3D
-> lands, manually copy a minimal stub that posts to
-> `http://127.0.0.1:31337/api/internal/wake` with the device secret.
+- `packages/app-core/platforms/ios/App/App/runners/eliza-tasks.js`
+- `packages/app-core/platforms/android/app/src/main/assets/runners/eliza-tasks.js`
+
+Both files are byte-identical and tested by this plugin's unit suite. They
+respond to the `wake` event by calling back into the running app via the
+device-secret-authed loopback endpoint (see "Wake authentication" below).
 
 ## iOS — `BGTaskScheduler`
 

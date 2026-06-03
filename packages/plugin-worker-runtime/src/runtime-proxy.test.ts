@@ -212,14 +212,14 @@ describe("buildRuntimeProxyApi", () => {
     await expect(compose).resolves.toEqual({ composed: true });
   });
 
-  it("fails fast for unsupported in-worker registerEvent calls", async () => {
+  it("fails fast for in-worker registerEvent calls", async () => {
     const channel = new FakeChannel();
     const runtime = buildRuntimeProxyApi(
       new RuntimeProxy({ channel, allocRequestId: () => 1 }),
     );
 
     await expect(runtime.registerEvent("event", () => {})).rejects.toThrow(
-      "runtime.registerEvent inside a remote-mode plugin is not yet supported",
+      "runtime.registerEvent inside a remote-mode plugin cannot serialize callbacks",
     );
     expect(channel.sent).toEqual([]);
   });

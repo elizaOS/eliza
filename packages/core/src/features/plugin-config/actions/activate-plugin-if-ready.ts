@@ -110,7 +110,7 @@ export const activatePluginIfReadyAction: Action = {
 			logger.info(
 				`[ActivatePluginIfReady] plugin=${pluginName} not_ready missing=${status.missing.length}`,
 			);
-			const text = `Plugin '${pluginName}' is not yet ready. Missing: ${status.missing.join(", ")}.`;
+			const text = `Plugin '${pluginName}' is not ready. Missing: ${status.missing.join(", ")}.`;
 			if (callback) {
 				await callback({ text, action: "ACTIVATE_PLUGIN_IF_READY" });
 			}

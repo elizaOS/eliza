@@ -112,6 +112,6 @@ type SignalAccountConfig = {
 // ============================================================
 
 export type SignalConfig = {
-  /** Optional per-account Signal configuration (multi-account). */
+  /** Optional named Signal account configuration records. */
   accounts?: Record<string, SignalAccountConfig>;
 } & SignalAccountConfig;

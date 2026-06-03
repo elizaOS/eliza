@@ -1,10 +1,11 @@
 /**
  * Tests for the Capacitor BackgroundRunner JS at
- * `packages/app/ios/App/App/runners/eliza-tasks.js` (Android copy is identical).
+ * `packages/app-core/platforms/ios/App/App/runners/eliza-tasks.js`
+ * (Android copy is identical).
  *
  * The runner executes inside Capacitor's sandboxed JSContext at OS wake time.
  * We can't spin up that runtime here, so the test loads the source as text,
- * stubs `addEventListener` + `fetch` + `console`, evaluates it in a fresh
+ * fakes `addEventListener` + `fetch` + `console`, evaluates it in a fresh
  * scope to extract the `handleWake` function the file installs on globalThis,
  * then exercises that function directly.
  *
@@ -168,7 +169,7 @@ describe('runners/eliza-tasks.js — handleWake', () => {
     const body = JSON.parse(call.init.body ?? '{}') as { kind: string; deadlineMs: number };
     expect(body.kind).toBe('refresh');
     expect(typeof body.deadlineMs).toBe('number');
-    // 30s deadline - ~2.5s buffer = ~27.5s; deadlineMs is absolute, must be in the future.
+    // 30s deadline - ~2.5s buffer = ~27.5s; deadlineMs is absolute and later than now.
     expect(body.deadlineMs).toBeGreaterThan(Date.now());
 
     expect(result).toMatchObject({

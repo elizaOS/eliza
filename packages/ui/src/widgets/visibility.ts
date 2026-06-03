@@ -10,9 +10,9 @@
  * id is absent from the override map we fall back to `declaration.defaultEnabled`,
  * so default flips don't reset users who never touched the toggle.
  *
- * Wallet/browser widgets that have not yet shipped get the same treatment:
- * once their plugin loads them, they appear with `defaultEnabled` and the user
- * can hide them via the same panel.
+ * Wallet/browser widgets use the same path once their plugin registers them:
+ * they appear with `defaultEnabled` and the user can hide them via the same
+ * panel.
  */
 
 const CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY = "eliza:chat-sidebar:visibility";

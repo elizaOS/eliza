@@ -1,8 +1,8 @@
 /**
  * Admin Docker Container Audit API
  *
- * TODO(node-only): blocked from Workers due to `ssh2` (DockerSSHClient).
- * Ghost container detection requires SSH-`docker ps` against each node.
+ * Worker boundary: DockerSSHClient depends on `ssh2`, which workerd cannot
+ * load. Ghost container detection requires SSH-`docker ps` against each node.
  */
 
 import { Hono } from "hono";

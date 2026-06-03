@@ -127,7 +127,7 @@ describe("setup source constants are still the documented values", () => {
  * is a `vi.fn` so tests can assert call counts, arguments, and (for
  * `confirm` / `selectChoice`) seed return values.
  *
- * The previous `ClackStub` shape stringified spinner messages through
+ * The previous Clack observer shape stringified spinner messages through
  * `_lastSpinner.stop.mock.calls`. The new observer model exposes the same
  * messages via the dedicated event methods (`onAuthFailure`,
  * `onProvisionTimeout`, `onProvisionFailure`, `onProvisionSuccess`), so
@@ -237,7 +237,7 @@ const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   vi.useRealTimers();
-  // Install a typed fetch mock so per-test setAvailability() can stub
+  // Install a typed fetch mock so per-test setAvailability() can queue
   // responses while any unintended call surfaces a loud failure.
   const fetchMock: typeof fetch = vi.fn<typeof fetch>(async (input) => {
     throw new Error(`Unexpected fetch in test: ${String(input)}`);

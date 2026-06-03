@@ -50,7 +50,7 @@ const statuses = await manager.detectBackends();
 //     { id: "in-house",   available: true,  signedIn: true,  label: "Eliza (local, encrypted)" },
 //     { id: "1password",  available: true,  signedIn: true,  label: "1Password" },
 //     { id: "bitwarden",  available: true,  signedIn: false, label: "Bitwarden", detail: "`bw` is installed but not signed in. Use the Sign-in button." },
-//     { id: "protonpass", available: false,                 label: "Proton Pass", detail: "`protonpass-cli` not installed (vendor CLI is in beta)." },
+//     { id: "protonpass", available: false, signedIn: false, label: "Proton Pass", detail: "`pass-cli` CLI not installed. Install from https://protonpass.github.io/pass-cli/get-started/installation/." },
 //   ]
 
 // User picks their backends in Settings:

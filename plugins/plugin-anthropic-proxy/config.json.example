@@ -22,9 +22,16 @@
     ["YOUR_DISTINCTIVE_HEADER", "YOUR_DISTINCTIVE_HEADER"]
   ],
 
+  "systemPromptStrip": {
+    "start": "YOUR_RECURRING_SYSTEM_BLOCK_START",
+    "end": "YOUR_RECURRING_SYSTEM_BLOCK_END",
+    "paraphrase": "{\"type\":\"text\",\"text\":\"Short equivalent instruction for that recurring block.\"}",
+    "minStripLen": 200
+  },
+
   "_notes": [
     "Every entry in `reverseMap` should mirror an entry in `replacements` so that the response stream round-trips losslessly.",
     "Tool rename targets must not collide \u2014 each Anthropic-side name should appear at most once in the values column.",
-    "If your framework injects a recurring system-prompt block you want stripped, file an issue \u2014 v0.3 will expose configurable strip anchors."
+    "systemPromptStrip is optional. Omit it to use the built-in eliza channel-gag anchors and paraphrase."
   ]
 }

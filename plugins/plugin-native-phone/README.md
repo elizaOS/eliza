@@ -18,7 +18,7 @@ Android phone and Telecom bridge for elizaOS. A [Capacitor](https://capacitorjs.
 |---|---|
 | Android | Full native implementation |
 | Web / browser | `getStatus` returns all-false; `listRecentCalls` returns empty; all other methods throw |
-| iOS | Not implemented |
+| iOS | Unsupported by this Android Telecom bridge |
 
 ## Installation
 
@@ -50,9 +50,9 @@ The plugin declares the following permissions in its `AndroidManifest.xml`. Some
 | `CALL_PHONE` | `placeCall` | Yes |
 | `READ_CALL_LOG` | `listRecentCalls` | Yes |
 | `READ_PHONE_STATE` | Telecom status queries | Declared |
-| `ANSWER_PHONE_CALLS` | Future Telecom connection service | Declared |
-| `MANAGE_OWN_CALLS` | Future Telecom connection service | Declared |
-| `WRITE_CALL_LOG` | Future write support | Declared |
+| `ANSWER_PHONE_CALLS` | Telecom connection service capability | Declared |
+| `MANAGE_OWN_CALLS` | Telecom connection service capability | Declared |
+| `WRITE_CALL_LOG` | Call-log write capability | Declared |
 
 ## Usage
 

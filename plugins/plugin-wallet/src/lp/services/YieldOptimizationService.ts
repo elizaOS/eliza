@@ -1,5 +1,5 @@
 import { type IAgentRuntime, Service } from "@elizaos/core";
-import { LAMPORTS_PER_SOL } from "@solana/web3.js"; // For SOL price placeholder
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import type {
   IDexInteractionService,
   IUserLpProfileService,
@@ -11,12 +11,11 @@ import type {
 import type { DexInteractionService } from "./DexInteractionService.ts";
 import type { UserLpProfileService } from "./UserLpProfileService.ts";
 
-// Placeholder constants - should be configurable or dynamically fetched
 const _AVG_SOL_TX_FEE_LAMPORTS = BigInt(5000); // Average fee for a simple Solana transaction
 const AVG_SWAP_TX_FEE_LAMPORTS = BigInt(10000); // Potentially higher for swaps involving more accounts/CUs
 const AVG_LP_ADD_REMOVE_TX_FEE_LAMPORTS = BigInt(15000); // LP operations can be more complex
-const PLACEHOLDER_SOL_PRICE_USD = 150; // Placeholder for SOL price in USD
-const _PLACEHOLDER_SWAP_FEE_BPS = 30; // Placeholder for swap fee in basis points (0.3%)
+const DEFAULT_SOL_PRICE_USD = 150;
+const _DEFAULT_SWAP_FEE_BPS = 30; // Default swap fee in basis points (0.3%)
 
 /**
  * Interface for the YieldOptimizationService.
@@ -204,7 +203,7 @@ export class YieldOptimizationService
     }
     const allAvailablePools = await this.fetchAllPoolData();
     const opportunities: OptimizationOpportunity[] = [];
-    const solPriceUsdForCosting = PLACEHOLDER_SOL_PRICE_USD;
+    const solPriceUsdForCosting = this.resolveSolPriceUsd();
 
     for (const position of currentPositions) {
       const { underlyingTokens } = position;
@@ -336,5 +335,19 @@ export class YieldOptimizationService
     _currentTokenB: string,
   ): Promise<OptimizationOpportunity[]> {
     return [];
+  }
+
+  private resolveSolPriceUsd(): number {
+    const raw =
+      this.runtime?.getSetting?.("LP_SOL_PRICE_USD") ??
+      this.runtime?.getSetting?.("SOL_PRICE_USD");
+    if (typeof raw !== "string" || raw.trim().length === 0) {
+      return DEFAULT_SOL_PRICE_USD;
+    }
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new Error(`LP_SOL_PRICE_USD must be a positive number, received ${raw}`);
+    }
+    return parsed;
   }
 }

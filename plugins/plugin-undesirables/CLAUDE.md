@@ -37,11 +37,9 @@ All actions validate that a workspace is loaded (`getWorkspace(runtime) !== null
 |---|---|
 | `UNDESIRABLE_MARKET_INTELLIGENCE` | Passive evaluator; triggers on TCG card keywords (e.g., "charizard", "psa grade"). Fetches Oracle search results and calls back with live pricing context without requiring an explicit user action. |
 
-### Services (1)
+### Services
 
-| Name | Type | Role |
-|---|---|---|
-| `MemeTrendService` | `MEME_TREND_MONITOR` | Scaffold — currently a no-op registered to reserve the service type. Planned: poll trending meme templates and inject into Meme Machine context. |
+None. The plugin exposes actions, providers, and one passive evaluator only.
 
 ## Layout
 
@@ -52,7 +50,6 @@ src/
                     built-in DEMO_SOUL constant, oracleFetch helper
   environment.ts    validateUndesirableConfig() — checks UNDESIRABLES_WORKSPACE
                     exists and contains SOUL.md
-  services.ts       MemeTrendService (no-op scaffold)
 ```
 
 ## Commands
@@ -89,8 +86,8 @@ The workspace directory is expected to contain:
 2. Add it to the `providers` array in `undesirablePlugin`.
 
 **Add a new service:**
-1. Extend `Service` from `@elizaos/core` in `src/services.ts`.
-2. Add it to the `services` array in `undesirablePlugin`.
+1. Create a concrete `Service` subclass with a real runtime responsibility.
+2. Add it to the `services` array in `undesirablePlugin` and cover start/stop behavior with tests.
 
 ## Conventions / gotchas
 
@@ -102,5 +99,4 @@ The workspace directory is expected to contain:
 - **Demo soul:** the `DEMO_SOUL` constant in `index.ts` is the fallback personality. It ships with all 26 skill descriptions inline (no files). This is the path taken when `UNDESIRABLES_WORKSPACE` is unset or invalid.
 - **No npm scope:** this package is published as `plugin-undesirables` (not `@elizaos/plugin-undesirables`). It is a community plugin, not a first-party elizaOS package.
 - **License:** BUSL-1.1 — not MIT/Apache. Review before redistributing.
-- **`MemeTrendService`** is a declared stub. Its `pollTrends()` method is never called. Do not treat it as functional until it is wired to a real polling loop.
 - The root `AGENTS.md` covers repo-wide logger, ESM, and architecture rules — they apply here too.

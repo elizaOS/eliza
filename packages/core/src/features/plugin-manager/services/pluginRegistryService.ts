@@ -220,7 +220,7 @@ function entryToPlugin(
 	};
 }
 
-function stubPlugin(name: string, gitRef: string): RegistryPlugin {
+function indexEntryToPlugin(name: string, gitRef: string): RegistryPlugin {
 	const repo = gitRef.replace(/^github:/, "");
 	const isBuiltIn = name.startsWith("@elizaos/");
 	return {
@@ -405,7 +405,7 @@ async function fetchIndexRegistry(): Promise<Map<string, RegistryPlugin>> {
 	const data = (await response.json()) as Record<string, string>;
 	const plugins = new Map<string, RegistryPlugin>();
 	for (const [name, gitRef] of Object.entries(data)) {
-		plugins.set(name, stubPlugin(name, gitRef));
+		plugins.set(name, indexEntryToPlugin(name, gitRef));
 	}
 	return plugins;
 }

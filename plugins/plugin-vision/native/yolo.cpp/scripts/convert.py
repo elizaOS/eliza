@@ -62,7 +62,7 @@ def main() -> int:
         file=sys.stderr,
     )
     print(
-        "[convert] WEIGHT MAPPING NOT YET WIRED — run this on a build host with "
+        "[convert] WEIGHT MAPPING UNAVAILABLE — run this on a build host with "
         "the full ultralytics + gguf environment and fill in the per-tensor "
         "mapping table. The structure is: load YOLO(<variant>.pt).model, "
         "iterate model.named_parameters(), fuse BN into preceding conv, write "

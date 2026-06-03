@@ -1,8 +1,8 @@
 /*
- * Pure-C reference NN kernels for doctr-cpp Phase 2.
+ * Pure-C reference NN kernels for doctr-cpp.
  *
  * No SIMD, no OpenMP, no allocator gymnastics — just slow, obvious,
- * verifiable code. Phase 3 swaps each of these out for a SIMD path
+ * verifiable code. SIMD dispatch can swap each of these out
  * behind a runtime dispatcher (see packages/native-plugins/qjl-cpu's
  * pattern). Until then the goal is correctness against PyTorch
  * reference outputs.

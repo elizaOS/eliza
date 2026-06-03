@@ -34,7 +34,7 @@ The overlay app is registered automatically in the elizaOS UI shell when the pac
 
 - Running inside the elizaOS Android shell.
 - `@elizaos/capacitor-system` native Capacitor plugin registered in the native layer.
-- Android `WRITE_SETTINGS` permission for brightness control (prompted from within the UI if not yet granted).
+- Android `WRITE_SETTINGS` permission for brightness control (prompted from within the UI when missing).
 
 ## Package
 

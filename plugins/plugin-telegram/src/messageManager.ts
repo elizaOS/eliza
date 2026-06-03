@@ -1079,7 +1079,7 @@ export class MessageManager {
     const reaction = ctx.update.message_reaction;
     const reactedToMessageId = reaction.message_id;
 
-    const originalMessagePlaceholder: Partial<Message> = {
+    const reactionMessageSnapshot: Partial<Message> = {
       message_id: reactedToMessageId,
       chat: reaction.chat,
       from: ctx.from,
@@ -1190,7 +1190,7 @@ export class MessageManager {
         accountId: this.accountId,
         metadata: { accountId: this.accountId },
         ctx,
-        originalMessage: originalMessagePlaceholder as Message, // Cast needed due to placeholder
+        originalMessage: reactionMessageSnapshot as Message,
         reactionString: reactionType === "emoji" ? reactionEmoji : reactionType,
         originalReaction: firstReaction as ReactionType,
       } as TelegramReactionReceivedPayload);
@@ -1204,7 +1204,7 @@ export class MessageManager {
         accountId: this.accountId,
         metadata: { accountId: this.accountId },
         ctx,
-        originalMessage: originalMessagePlaceholder as Message, // Cast needed due to placeholder
+        originalMessage: reactionMessageSnapshot as Message,
         reactionString: reactionType === "emoji" ? reactionEmoji : reactionType,
         originalReaction: firstReaction as ReactionType,
       } as TelegramReactionReceivedPayload);

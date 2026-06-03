@@ -57,7 +57,7 @@ export function getBaseURL(runtime: SettingsProvider): string {
 
 /**
  * Root LM Studio URL (without `/v1`) — used for diagnostics. Mirrors how
- * `plugin-ollama` exposes `getApiBase` so future health probes can append
+ * `plugin-ollama` exposes `getApiBase` so health probes can append
  * their own paths.
  */
 export function getApiBase(runtime: SettingsProvider): string {

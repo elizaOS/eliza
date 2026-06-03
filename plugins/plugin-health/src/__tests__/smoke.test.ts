@@ -7,8 +7,8 @@
  *   - smoke: cross-platform — non-darwin `health_signal_observed` falls back
  *     to `user_acknowledged` with logged degradation.
  *
- * Until W1-A's `ScheduledTask` runner lands, the smoke test is structural
- * (the bus and runner do not yet exist as concrete code). It verifies:
+ * This smoke test stays structural and does not depend on a concrete
+ * `ScheduledTask` runner. It verifies:
  *   - the moved sleep-wake-events deriver produces the canonical events for
  *     a circadian state transition (sleep → wake.confirmed),
  *   - the default-pack records validate against the W1-A frozen schema and

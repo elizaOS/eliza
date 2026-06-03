@@ -1,4 +1,4 @@
-// OdysseusShell — root of the odysseus port (Phase 1: shell + chat/streaming).
+// OdysseusShell — root of the odysseus port (shell + chat/streaming).
 // Pixel-faithful odysseus chrome (icon rail + 240px sidebar + chat container)
 // wired to the existing ACP task-room contracts. Registered at /odysseus so the
 // live /orchestrator workbench keeps working while this is iterated; it becomes

@@ -126,7 +126,7 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 // - All current text GGUFs ship at the 128k half-context floor or the 262k
 //   native tier, so every tier requires `turbo3_tcq`. The validator also
 //   enforces the same requirement dynamically for any bundle that declares
-//   a >64k text file, so a future tier cannot publish long-context text
+//   a >64k text file, so additional tiers cannot publish long-context text
 //   without TCQ.
 //
 // Q4 is the release text quant baseline. TCQ is part of the release contract
@@ -230,8 +230,8 @@ export const Eliza1FilesSchema = z.object({
 	embedding: z.array(Eliza1FileEntrySchema).optional(),
 	// Optional image-generation artifacts. Most Eliza-1 base bundles do not
 	// carry diffusion weights; those are documented in
-	// packages/chip/ELIZA_1_BUNDLE_EXTRAS.json and downloaded on first use. When a
-	// future bundle does ship local image-gen weights inline, list them here
+	// packages/chip/ELIZA_1_BUNDLE_EXTRAS.json and downloaded on first use. When an
+	// additional bundle ships local image-gen weights inline, list them here
 	// and provide matching `lineage.imagegen`.
 	imagegen: z.array(Eliza1FileEntrySchema).optional(),
 	vad: z.array(Eliza1FileEntrySchema).optional(),

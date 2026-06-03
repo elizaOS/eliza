@@ -245,13 +245,13 @@ describe("perpetualMarketAction handler", () => {
     expect(data.target).toBe("hyperliquid");
   });
 
-  it("place_order is scaffolded but disabled", async () => {
+  it("place_order reports read-only app execution", async () => {
     installFetchMock({
       "/api/hyperliquid/status": {
         publicReadReady: true,
         signerReady: false,
         executionReady: false,
-        executionBlockedReason: "scaffold disabled in app",
+        executionBlockedReason: "read-only app execution",
         accountAddress: null,
         apiBaseUrl: "https://api.hyperliquid.xyz",
         credentialMode: "none",
@@ -289,7 +289,7 @@ describe("perpetualMarketAction handler", () => {
         publicReadReady: true,
         signerReady: false,
         executionReady: false,
-        executionBlockedReason: "scaffold disabled",
+        executionBlockedReason: "read-only app execution",
         accountAddress: null,
         apiBaseUrl: "https://api.hyperliquid.xyz",
         credentialMode: "none",
@@ -344,17 +344,34 @@ describe("perpetualMarketAction handler", () => {
     expect(Array.isArray(data.markets)).toBe(true);
   });
 
-  it("read kind=funding reports the not-yet-wired rationale", async () => {
-    installFetchMock({});
+  it("read kind=funding fetches current funding rates from the local API route", async () => {
+    installFetchMock({
+      "/api/hyperliquid/funding": {
+        rates: [
+          {
+            coin: "BTC",
+            index: 0,
+            funding: "0.0000125",
+            premium: "0.00031774",
+            markPx: "14.3161",
+            oraclePx: "14.32",
+            openInterest: "688.11",
+          },
+        ],
+        source: "hyperliquid-info-meta-and-asset-ctxs",
+        fetchedAt: "2026-04-29T12:00:00.000Z",
+      },
+    });
     const service = await startService();
     const { result } = await invoke(
       { action: "read", kind: "funding" },
       service,
     );
     expect(result.success).toBe(true);
-    const data = result.data as { kind?: string; notWired?: boolean };
+    const data = result.data as { kind?: string; rates?: unknown[] };
     expect(data.kind).toBe("funding");
-    expect(data.notWired).toBe(true);
+    expect(data.rates).toHaveLength(1);
+    expect(result.text).toContain("BTC");
   });
 
   it("read kind=market requires a coin/asset identifier", async () => {

@@ -7,10 +7,10 @@
  * and it debits the organization's credit balance on every call. That debit is
  * authoritative and already happens server-side.
  *
- * What was missing is the *signal back to waifu*: waifu's burn rollup
+ * This bridge supplies the *signal back to waifu*: waifu's burn rollup
  * (`apps/worker/src/processors/agent-rollup.ts`) reads `inference.spent`
  * agent_events to compute `agentDailyBurnUsd` / `agentRunwayDays`, but falls
- * back to a $5/day placeholder when no such events exist. Nothing emitted them.
+ * uses a $5/day fallback when no such events exist.
  *
  * This bridge listens for the runtime `MODEL_USED` event (emitted by the cloud
  * model handlers after each inference) and POSTs a signed `inference.spent`

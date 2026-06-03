@@ -149,10 +149,20 @@ Mac Catalyst builds.
 
 ## Validation checklist
 
-The Swift code in this repo is unverified locally because there is no iOS
-device available. Every file is marked
-`// TODO: validate on device — checklist in IOS_CONSTRAINTS.md`. Before
-shipping any of this:
+The iOS bridge contract is covered by TypeScript tests, but physical iOS
+device behavior is not proven by this repository alone. The required evidence
+manifest is `docs/ios-device-validation.json`; keep it in
+`requires_device_evidence` until a real device run records device/build
+metadata, artifacts, and per-method results. Release gates that require
+physical proof should run:
+
+```bash
+bun run --cwd plugins/plugin-computeruse validate:ios-device-evidence -- --require-complete
+```
+
+Without `--require-complete`, the same command validates that the manifest
+still tracks every required method and evidence field. Before shipping any
+iOS bridge release, complete the manifest for:
 
 ### Simulator vs device
 

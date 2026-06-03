@@ -15,7 +15,7 @@
  * is one phoneme — i.e. emit progress per id — but production deployments
  * lift this to ~8 phonemes to amortise the ONNX forward pass on small
  * windows. This file intentionally has no dependency on the rest of the
- * voice scaffold so it can be reused by the fine-tune evaluator script.
+ * voice runtime stack so it can be reused by the fine-tune evaluator script.
  */
 
 import type { KokoroPhonemeSequence, KokoroPhonemizer } from "./types.js";

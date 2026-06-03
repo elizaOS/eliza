@@ -205,7 +205,7 @@ export function detectIntentCategories(prompt: string): string[] {
 /**
  * Build the set of action names that should get full param detail.
  * Universal actions are always included. Intent-matched actions are
- * added based on detected categories. Everything else gets stub-only.
+ * added based on detected categories. Everything else gets summary-only.
  */
 export function buildFullParamActionSet(
   intentCategories: string[],
@@ -298,7 +298,7 @@ export function compactCodingExamplesForIntent(prompt: string): string {
 /**
  * Context-aware action formatting. Replaces the available-actions block in
  * the prompt with a version where only intent-relevant actions keep full
- * parameter detail — the rest are stubs with just name + description.
+ * parameter detail — the rest keep just name + description.
  *
  * Supports the current markdown action catalogue emitted by the planner:
  *   # Available Actions
@@ -306,7 +306,7 @@ export function compactCodingExamplesForIntent(prompt: string): string {
  *     parameters: { ...JSON schema summary... }
  *
  * If no intents are detected (general chat), only universal actions
- * (REPLY, NONE, IGNORE) keep full params — all others are stubbed.
+ * (REPLY, NONE, IGNORE) keep full params — all others are summarized.
  */
 export function compactActionsForIntent(
   prompt: string,
@@ -327,7 +327,7 @@ export function compactActionsForIntent(
   const intentCategories = detectIntentCategories(prompt);
   // When no specific intent is detected, it's general chat — only universal
   // actions (REPLY, NONE, IGNORE) need full detail. All other actions get
-  // stubs so the LLM knows they exist but doesn't waste context on params.
+  // summary entries so the LLM knows they exist without spending context on params.
   // Actions scoped to the active view are also kept full so the planner can
   // drive whatever the user is currently looking at.
   const fullParamActions = buildFullParamActionSet(
@@ -410,7 +410,7 @@ function compactStructuredActionsBlock(
     if (!entry.name || fullParamActions.has(entry.name)) {
       return entry.entryLines.join("\n");
     }
-    // Stub: keep only `- NAME: description`; drop parameter schema details.
+    // Summary entry: keep only `- NAME: description`; drop parameter schema details.
     return entry.entryLines[0];
   });
 

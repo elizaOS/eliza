@@ -1,13 +1,12 @@
 // YOLO object detector — yolo-cpp ggml/ref backend.
 //
-// Phase 2 — backed by `packages/native/plugins/yolo-cpp` (the standalone C
-// library that ports Ultralytics YOLOv8n / YOLOv11n away from
-// onnxruntime). Falls through to the onnxruntime path
-// (`yolo-detector.ts`) when:
+// Backed by `packages/native/plugins/yolo-cpp` (the standalone C library that
+// ports Ultralytics YOLOv8n / YOLOv11n away from onnxruntime). Falls through to
+// the onnxruntime path (`yolo-detector.ts`) when:
 //   - `bun:ffi` isn't available (non-Bun runtime),
 //   - the native shared library hasn't been built yet,
 //   - the native library returns -ENOSYS for `yolo_detect` (the
-//     forward pass is staged — see
+//     forward pass is not available in the loaded native build; see
 //     `packages/native/plugins/yolo-cpp/src/yolo_runtime.c` TU header).
 //
 // Public surface mirrors `YOLODetector` from `yolo-detector.ts` byte-
@@ -486,12 +485,11 @@ export class YOLODetector {
     );
 
     if (rc === ERRNO_ENOSYS) {
-      // Forward pass staged — log once per process and return empty.
-      // Caller decides whether to fall back; the typical path is the
-      // service layer racing this against yolo-detector.ts and
-      // picking whichever returns.
+      // Forward pass unavailable in this native build. Caller decides whether
+      // to fall back; the typical path is the service layer racing this against
+      // yolo-detector.ts and picking whichever returns.
       logger.warn(
-        `${MODULE_TAG} yolo_detect returned -ENOSYS (forward pass staged in yolo_runtime.c). Falling back to empty detections; the onnxruntime path remains the production detector until Phase 3.`,
+        `${MODULE_TAG} yolo_detect returned -ENOSYS in the loaded native library. Falling back to empty detections; the onnxruntime detector remains available via yolo-detector.ts.`,
       );
       return [];
     }

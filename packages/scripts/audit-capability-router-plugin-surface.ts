@@ -129,7 +129,7 @@ compareSets(
 for (const method of pluginRpcMethods) {
   if (!fixtureServerSource.includes(`case "${method}"`)) {
     failures.push(
-      `RuntimeBrokerCapabilityMethod.${method} is not implemented by capability-router-fixture-server.`,
+      `RuntimeBrokerCapabilityMethod.${method} is missing a capability-router-fixture-server case.`,
     );
   }
 }

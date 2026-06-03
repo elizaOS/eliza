@@ -124,6 +124,28 @@ class GaitParams(BaseModel):
     default_height_m: float = Field(
         gt=0.0, description="Nominal standing torso height (m)."
     )
+    thigh_length_m: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Optional analytic gait IK thigh length (hip pitch to knee).",
+    )
+    shin_length_m: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Optional analytic gait IK shin length (knee to ankle).",
+    )
+    neutral_hip_pitch_rad: float | None = Field(
+        default=None,
+        description="Optional neutral sagittal hip pitch for analytic gait IK.",
+    )
+    neutral_knee_rad: float | None = Field(
+        default=None,
+        description="Optional neutral sagittal knee angle for analytic gait IK.",
+    )
+    neutral_ankle_pitch_rad: float | None = Field(
+        default=None,
+        description="Optional neutral sagittal ankle pitch for analytic gait IK.",
+    )
     controller: GaitController
 
 

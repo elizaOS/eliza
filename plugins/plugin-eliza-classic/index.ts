@@ -1,6 +1,8 @@
 import type { GenerateTextParams, IAgentRuntime, Plugin } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 
+const EMBEDDING_DIMENSIONS = 1536;
+
 const responses = [
   { pattern: /\bmother\b/i, response: "Tell me more about your family." },
   {
@@ -66,8 +68,57 @@ async function handleText(
   });
 }
 
-async function handleEmbedding(): Promise<number[]> {
-  return Array.from({ length: 1536 }, (_, index) => (index === 0 ? 1 : 0));
+function fnv1a32(input: string): number {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash;
+}
+
+function embeddingTextFromParams(params: unknown): string {
+  if (typeof params === "string") return params;
+  if (params && typeof params === "object") {
+    const record = params as Record<string, unknown>;
+    if (typeof record.text === "string") return record.text;
+    if (typeof record.prompt === "string") return record.prompt;
+    if (typeof record.input === "string") return record.input;
+  }
+  return "";
+}
+
+export function generateElizaEmbedding(input: string): number[] {
+  const embedding = Array.from({ length: EMBEDDING_DIMENSIONS }, () => 0);
+  const tokens = input.toLowerCase().match(/[a-z0-9']+/g) ?? [];
+  const features = tokens.length > 0 ? tokens : [""];
+
+  for (const token of features) {
+    const tokenHash = fnv1a32(token);
+    const index = tokenHash % EMBEDDING_DIMENSIONS;
+    const sign = tokenHash & 1 ? 1 : -1;
+    embedding[index] += sign;
+
+    if (token.length > 3) {
+      const prefixHash = fnv1a32(token.slice(0, 4));
+      embedding[prefixHash % EMBEDDING_DIMENSIONS] += prefixHash & 1 ? 0.5 : -0.5;
+    }
+  }
+
+  const magnitude = Math.hypot(...embedding);
+  if (magnitude === 0) {
+    embedding[0] = 1;
+    return embedding;
+  }
+
+  return embedding.map((value) => value / magnitude);
+}
+
+async function handleEmbedding(
+  _runtime: IAgentRuntime,
+  params: unknown,
+): Promise<number[]> {
+  return generateElizaEmbedding(embeddingTextFromParams(params));
 }
 
 export const elizaClassicPlugin: Plugin = {

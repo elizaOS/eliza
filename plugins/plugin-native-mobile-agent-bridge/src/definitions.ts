@@ -74,7 +74,7 @@ export interface MobileAgentTunnelStateEvent {
  * MobileAgentBridge plugin surface.
  *
  * Implementations:
- *   - Web stub: returns `{ available: false }` plus a no-op tunnel.
+ *   - Web fallback: returns `{ available: false }` plus an error-state tunnel.
  *   - iOS: URLSessionWebSocketTask + WebView IPC dispatch into the
  *     in-process local-agent bridge.
  *   - Android: OkHttp WebSocket + foreground-service local-agent request

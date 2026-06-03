@@ -25,7 +25,18 @@ pgvector operators (`<->`, `<=>`, `cosine_distance(...)`) for
 sqlite-vec's `vec_distance_l2(...)` / virtual-table `MATCH` syntax. That
 swap is a separate plugin-sql change, outside this package.
 
-## How to build (manual; do not run inside CI yet)
+## How to build
+
+```bash
+cd packages/native/ios-deps
+ELIZA_SQLITE_VEC_BUILD_IOS=1 bun run build:sqlite-vec
+```
+
+The script reads the pinned `sqlite-vec=<tag>` entry from `../VERSIONS`, clones
+the upstream source into `sqlite-vec/src/`, builds device and Apple-Silicon
+simulator slices, and writes `sqlite-vec/dist/SqliteVec.xcframework`.
+
+Manual equivalent:
 
 ```bash
 # 1. Clone at the pinned tag.
@@ -91,12 +102,12 @@ const v = __ELIZA_BRIDGE__.sqlite_version();
 console.log(v.sqlite, v.sqlite_vec);
 ```
 
-## Current status
+## Link status
 
-**Not yet linked.** The static lib has not been built and dropped into
-the Pod. The Swift loader compiles fine without it (it falls back to a
-no-op), and the JS shim still works for non-vector queries. The agent
-will need this extension before embeddings + similarity search work on
-iOS.
+The build harness produces `dist/SqliteVec.xcframework`; the Capacitor pod can
+link it by adding the framework path shown above. The Swift loader compiles
+without the framework and falls back to a no-op, and the JS shim still works for
+non-vector queries. iOS embeddings and similarity search require linking this
+extension in the app target.
 
-When you build the lib, also bump the pin in `../VERSIONS`.
+When bumping upstream, update the pin in `../VERSIONS`.

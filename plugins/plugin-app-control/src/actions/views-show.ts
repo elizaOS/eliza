@@ -136,8 +136,8 @@ async function navigateToView(
 	requestedViewType?: ViewType,
 ): Promise<string> {
 	// Emit navigate event via POST /api/views/:id/navigate (shell listens).
-	// If that route 501s (not yet implemented in all shells), fall back to a
-	// descriptive message — the user can click through to the view manually.
+	// If a shell returns 501 for this route, fall back to a descriptive message;
+	// the user can click through to the view manually.
 	const port = resolveServerOnlyPort(process.env);
 	const base = `http://127.0.0.1:${port}`;
 

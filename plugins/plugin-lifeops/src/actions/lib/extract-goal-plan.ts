@@ -320,7 +320,7 @@ export function buildGoalCreateExtractionPrompt(
   return [
     "Ground the user's goal into something the system can actually review later.",
     "The user may speak in any language and may refer to a previous goal draft or clarification exchange.",
-    "A goal is only ready to save when future progress can be evaluated from evidence.",
+    "A goal is only ready to save when later progress can be evaluated from evidence.",
     "Do not treat a label-only aspiration as ready just because it has a nice title.",
     "",
     "CRITICAL GROUNDING RULE:",

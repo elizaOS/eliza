@@ -12,7 +12,7 @@ Standard LLMs degrade on long inputs ("context rot"). This plugin integrates the
 
 This allows processing of inputs far beyond a model's native context window using smaller, cheaper models.
 
-When the Python backend is not installed the plugin still loads, but model calls fail explicitly instead of returning placeholder responses.
+When the Python backend is not installed the plugin still loads, but model calls fail explicitly instead of returning fallback responses.
 
 ## Capabilities added
 

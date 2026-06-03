@@ -162,7 +162,7 @@ function cancelFirstRun(): never {
 /**
  * Read whether the runtime config holds cached cloud-wallet descriptors.
  * Uses defensive accessors because `wallet.cloud` is introduced by the
- * cloud-wallet module (Phase 3) and may not exist in older configs.
+ * cloud-wallet config block and may not exist in older configs.
  */
 function hasCloudWalletBinding(config: ElizaConfig): boolean {
   const walletSection = config.wallet;

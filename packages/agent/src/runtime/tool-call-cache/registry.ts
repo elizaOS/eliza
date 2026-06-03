@@ -5,7 +5,7 @@
  * with `cacheable: true`. The default for any tool not in the registry is
  * `cacheable: false` so side-effect tools (send_email, post_message,
  * write_file, run_code, …) are guaranteed never to short-circuit through
- * the cache, even if a future caller forgets to register them.
+ * the cache unless they are explicitly registered.
  *
  * TTLs default to 24h. Tools with shorter freshness needs (file reads
  * against a working tree) get short TTLs; tools whose results are stable

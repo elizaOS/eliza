@@ -4,7 +4,7 @@ A Capacitor plugin that reads and writes Apple Calendar events through EventKit,
 
 ## Purpose / Role
 
-This package exposes a `AppleCalendar` Capacitor plugin object that Eliza agents embedded in an iOS or macOS Electrobun application can call to interact with the device's native calendar store via EventKit. On web/browser targets the plugin stubs every method with a graceful `not_supported` error — no calendar access is possible outside the native runtime. The package is **not** an elizaOS `Plugin` object (no actions/providers/services); it is a Capacitor native-bridge library imported by whichever elizaOS plugin or service layer needs calendar access.
+This package exposes a `AppleCalendar` Capacitor plugin object that Eliza agents embedded in an iOS or macOS Electrobun application can call to interact with the device's native calendar store via EventKit. On web/browser targets the plugin returns a graceful `not_supported` fallback for native-only methods — no calendar access is possible outside the native runtime. The package is **not** an elizaOS `Plugin` object (no actions/providers/services); it is a Capacitor native-bridge library imported by whichever elizaOS plugin or service layer needs calendar access.
 
 ## Plugin Surface
 
@@ -65,7 +65,7 @@ None. This package reads no environment variables and has no runtime configurati
 ### Add a new method to the Capacitor bridge
 
 1. Define the method signature in `src/definitions.ts` on `AppleCalendarPlugin` and add any input/output interfaces.
-2. Add a stub returning `{ ...unsupported }` in `src/web.ts` so browser targets keep compiling.
+2. Add the web fallback returning `{ ...unsupported }` in `src/web.ts` so browser targets keep compiling.
 3. Add the native implementation in `ios/Sources/CalendarPlugin/CalendarPlugin.swift`:
    - Register it in `pluginMethods` with `CAPPluginMethod(name: "myMethod", returnType: CAPPluginReturnPromise)`.
    - Implement `@objc func myMethod(_ call: CAPPluginCall)`.

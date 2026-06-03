@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * triage-tests.mjs — Phase 3 of the elizaOS test-stack overhaul.
+ * triage-tests.mjs — test-stack triage report generator.
  *
  * Walks every test file under the repo (excluding vendored/build dirs) and
  * classifies each as KEEP / DELETE / CONVERT based on imports and content

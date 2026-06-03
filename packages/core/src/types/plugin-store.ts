@@ -76,7 +76,7 @@ export interface PluginTableSchema {
 export interface PluginSchema {
 	pluginName: string;
 	tables: PluginTableSchema[];
-	version?: number; // For future migration support
+	version?: number; // Schema version for migrations.
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

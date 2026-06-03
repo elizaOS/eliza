@@ -207,7 +207,7 @@ export async function verifyBootstrapToken(
 
   const now = options.now?.() ?? Date.now();
   // Defence in depth: jose already rejects expired tokens, but an attacker
-  // who controls the signing key could mint with a future `exp` we still
+  // who controls the signing key could mint with an excessive `exp` we still
   // refuse to honour beyond reason.
   if (claims.exp * 1000 <= now) return { ok: false, reason: "expired" };
 

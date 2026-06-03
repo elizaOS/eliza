@@ -1,6 +1,6 @@
-import { makeNotYetImplementedSweep } from "./_not-yet-implemented.mjs";
+import { makeUnavailableSweep } from "./_unavailable.mjs";
 
-export default makeNotYetImplementedSweep({
+export default makeUnavailableSweep({
   service: "telegram",
   blockingTask: "T5c",
   reason: "waiting on plugin-telegram bot deleteMessage wrapper",

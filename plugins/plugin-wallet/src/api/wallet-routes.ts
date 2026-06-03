@@ -1,4 +1,4 @@
-// === Phase 4D: extracted wallet routes from packages/agent ===
+// === Wallet routes extracted from packages/agent ===
 //
 // This handler is consumed by the agent HTTP server (packages/agent/src/api/server.ts).
 // To keep `@elizaos/plugin-wallet` free of `@elizaos/agent` imports (and thus

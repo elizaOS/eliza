@@ -49,7 +49,7 @@ src/
   service.ts                    BlueBubblesService — main service class
   client.ts                     BlueBubblesClient — REST API wrapper
   environment.ts                Config parsing from runtime settings
-  accounts.ts                   Multi-account scaffolding
+  accounts.ts                   Account resolution for default + named BlueBubbles servers
   connector-account-provider.ts ConnectorAccountManager provider
   workflow-credential-provider.ts Workflow credential bridge
   setup-routes.ts               Setup-contract HTTP routes
@@ -135,9 +135,10 @@ blocks under `character.settings.bluebubbles.accounts.<id>`.
   `normalizeHandle()` in `src/environment.ts`.
 - **No actions registered.** All send/receive flows go through the
   `registerSendHandler` / message-connector path, not plugin actions.
-- **Multi-account.** Multiple BlueBubbles servers can be configured via
-  `character.settings.bluebubbles.accounts.<accountId>`. The current service
-  only instantiates the default account; the account scaffolding in
-  `src/accounts.ts` is the extension point for full multi-account support.
+- **Accounts.** Multiple BlueBubbles server records can be configured via
+  `character.settings.bluebubbles.accounts.<accountId>` and are exposed through
+  the connector-account provider. A service instance connects to the resolved
+  default account (`default` when configured, otherwise the first enabled named
+  account); run separate agent instances for simultaneous independent servers.
 - **Build.** Uses `build.ts` (tsc) via `bun run build.ts`. Output is ESM
   only (`"type": "module"`), entry `dist/index.js`.

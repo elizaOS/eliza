@@ -77,6 +77,6 @@ export type IMessageAccountConfig = {
 // ============================================================
 
 export type IMessageConfig = {
-  /** Optional per-account iMessage configuration (multi-account). */
+  /** Optional named account records for connector-account inventory. */
   accounts?: Record<string, IMessageAccountConfig>;
 } & IMessageAccountConfig;

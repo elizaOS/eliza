@@ -20,8 +20,8 @@
  * generation queue).
  *
  * The registry tracks the high-water mark of concurrently-open conversations
- * so the engine can warn (or, in the future, restart llama-server with a
- * higher --parallel) when the load outgrows the configured slot count.
+ * so the engine can warn, or later restart llama-server with a higher
+ * --parallel, when the load outgrows the configured slot count.
  */
 
 import { createHash } from "node:crypto";

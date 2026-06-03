@@ -1,5 +1,5 @@
 /*
- * Image preprocessing for doctr-cpp Phase 2.
+ * Image preprocessing for doctr-cpp.
  *
  * Two flavours:
  *   - letterbox-resize for the detector (1024x1024 canvas, aspect
@@ -47,8 +47,10 @@ void doctr_normalize_imagenet_inplace(float *plane, int channels, int hw) {
 static inline void sample_rgb_bilinear(
     const uint8_t *rgb, int src_w, int src_h, float sy, float sx, float out[3])
 {
-    if (sx < 0) sx = 0; if (sx > src_w - 1) sx = (float)(src_w - 1);
-    if (sy < 0) sy = 0; if (sy > src_h - 1) sy = (float)(src_h - 1);
+    if (sx < 0) sx = 0;
+    if (sx > src_w - 1) sx = (float)(src_w - 1);
+    if (sy < 0) sy = 0;
+    if (sy > src_h - 1) sy = (float)(src_h - 1);
     int x0 = (int)floorf(sx); int y0 = (int)floorf(sy);
     int x1 = x0 + 1 < src_w ? x0 + 1 : x0;
     int y1 = y0 + 1 < src_h ? y0 + 1 : y0;

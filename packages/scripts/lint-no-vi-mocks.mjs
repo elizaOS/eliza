@@ -18,7 +18,7 @@
  * Exit 1 if any violations found; exit 0 otherwise.
  *
  * NOTE: This lint intentionally fails the entire repo today (~5000+ matches).
- * That is the gate for Phase 4 deletion — do NOT suppress results here.
+ * That is the gate for deleting the remaining mocks — do NOT suppress results here.
  */
 
 import fs from "node:fs";

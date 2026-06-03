@@ -198,4 +198,4 @@ void dequantize_row_q4_polar_rvv(
 #endif /* __riscv && __riscv_v_intrinsic */
 
 /* Avoid ISO C "empty translation unit" pedantic error when RVV is undefined. */
-typedef int polar_dequant_rvv_iso_c_tu_stub;
+typedef int polar_dequant_rvv_iso_c_empty_tu_marker;

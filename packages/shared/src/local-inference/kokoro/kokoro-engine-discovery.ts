@@ -48,8 +48,8 @@ export interface KokoroEngineDiscoveryResult {
    *   2. `KOKORO_DEFAULT_VOICE_ID` (Samantha / `af_same`) when its preset is
    *      on disk — the canonical Eliza-1 voice
    *   3. Loud fallback to `KOKORO_FALLBACK_VOICE_ID` (`af_bella`) with a
-   *      console warning so operators see the degradation; this fires while
-   *      the samantha LoRA pipeline has not yet produced a real `af_same.bin`
+   *      console warning so operators see the degradation; this fires when
+   *      the Samantha voice pack is absent from the staged model directory
    *   4. First voice pack whose `.bin` is actually staged (last resort —
    *      lets a single arbitrary voice work for unusual install layouts)
    */

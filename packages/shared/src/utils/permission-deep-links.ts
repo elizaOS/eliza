@@ -6,10 +6,10 @@
  * `openPermissionSettings(id)` when a permission is denied and the user
  * clicks "Open System Settings".
  *
- * Win32 / Linux: stubbed with a console warning. Native equivalents (Windows
- * `ms-settings:privacy-*`, GNOME `gnome-control-center privacy`, etc.) can
- * be wired in when those platforms gain real support — until then the chat
- * surface advertises the limitation up-front.
+ * Win32 / Linux: intentionally return a warning-only fallback. Native
+ * equivalents (Windows `ms-settings:privacy-*`, GNOME
+ * `gnome-control-center privacy`, etc.) should be added only when the
+ * surrounding permission flows support those platforms end to end.
  */
 
 import type { PermissionId } from "../contracts/permissions.js";
@@ -82,8 +82,9 @@ export interface OpenPermissionSettingsDeps {
 
 /**
  * Open the system settings pane for the given permission. Resolves once the
- * opener has been invoked (it doesn't wait for the user). Win32 / Linux:
- * no-op (no system settings deep links implemented for those platforms yet).
+ * opener has been invoked (it doesn't wait for the user). Win32 / Linux use
+ * the warning-only fallback because this utility currently supports macOS
+ * privacy panes.
  */
 export async function openPermissionSettings(
   id: PermissionId,

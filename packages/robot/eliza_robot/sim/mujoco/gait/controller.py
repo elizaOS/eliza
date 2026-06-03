@@ -33,9 +33,6 @@ import numpy as np
 from .bezier import advance_gait_phase, get_rz
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    # The RobotProfile abstraction is being introduced by W1.4 and may
-    # not yet exist on disk. Importing under TYPE_CHECKING keeps mypy
-    # happy without forcing a runtime dependency on the profile module.
     from eliza_robot.profiles import RobotProfile  # noqa: F401
 
 
@@ -57,7 +54,6 @@ HEAD_PAN, HEAD_TILT = 12, 13
 
 # Nominal AiNex link lengths (meters) — these match the
 # ``ainex_primitives.xml`` capsule lengths within a few millimeters.
-# TODO: read from RobotProfile once the schema lands (W1.4).
 _THIGH_LENGTH = 0.10   # hip pitch -> knee
 _SHIN_LENGTH = 0.10    # knee -> ankle
 _LEG_LENGTH = _THIGH_LENGTH + _SHIN_LENGTH  # 0.20 m fully extended
@@ -107,7 +103,11 @@ def _right_sagittal_pose(
     return -float(hip_pitch), -float(knee), -float(ankle_pitch)
 
 
-def _two_link_ik(target_z: float) -> tuple[float, float, float]:
+def _two_link_ik(
+    target_z: float,
+    thigh_length: float = _THIGH_LENGTH,
+    shin_length: float = _SHIN_LENGTH,
+) -> tuple[float, float, float]:
     """Solve hip-pitch / knee / ankle-pitch for a desired hip-to-foot
     vertical distance ``target_z``.
 
@@ -128,12 +128,13 @@ def _two_link_ik(target_z: float) -> tuple[float, float, float]:
     # Clamp to the reachable range, leaving a small margin so the knee
     # never fully locks (cos(theta) = 1 is singular for the IK Jacobian).
     z_min = 0.05
-    z_max = _LEG_LENGTH - 1e-3
+    leg_length = thigh_length + shin_length
+    z_max = leg_length - 1e-3
     z = float(np.clip(target_z, z_min, z_max))
 
     # Law of cosines: z^2 = a^2 + b^2 - 2ab*cos(pi - knee)
     # =>  cos(knee_interior) = (a^2 + b^2 - z^2) / (2ab)
-    a, b = _THIGH_LENGTH, _SHIN_LENGTH
+    a, b = float(thigh_length), float(shin_length)
     cos_interior = (a * a + b * b - z * z) / (2 * a * b)
     cos_interior = float(np.clip(cos_interior, -1.0, 1.0))
     interior = np.arccos(cos_interior)        # 0 = straight, pi = fully folded
@@ -149,7 +150,7 @@ def _two_link_ik(target_z: float) -> tuple[float, float, float]:
 
 
 def _gait_value(gait_cfg: Any, names: tuple[str, ...], default: float) -> float:
-    """Read gait config from either a dict-like stub or a real profile model."""
+    """Read gait config from either a mapping or a profile model."""
     if isinstance(gait_cfg, dict):
         for name in names:
             if name in gait_cfg:
@@ -168,10 +169,9 @@ class BezierGaitController:
     Parameters
     ----------
     profile:
-        Optional :class:`RobotProfile` (introduced in W1.4). When
-        provided, ``swing_height``, ``cycle_hz``, ``stance_width`` and
-        ``foot_offset`` are pulled from the profile. Until the profile
-        schema lands, the explicit kwargs serve as the source of truth.
+        Optional :class:`RobotProfile`. When provided, gait timing, stance,
+        analytic IK link lengths, and neutral sagittal pose fields are pulled
+        from the profile when declared. Explicit kwargs remain the fallback.
     swing_height:
         Maximum foot lift during swing (m).
     cycle_hz:
@@ -205,14 +205,33 @@ class BezierGaitController:
             foot_offset = float(
                 _gait_value(gait_cfg, ("foot_offset_m", "foot_offset"), foot_offset)
             )
-        # TODO: once W1.4 ships, also pull link lengths and the neutral
-        # standing pose from the profile instead of the hard-coded
-        # constants at the top of this file.
 
         self.swing_height = float(swing_height)
         self.cycle_hz = float(cycle_hz)
         self.stance_width = float(stance_width)
         self.foot_offset = float(foot_offset)
+        gait_cfg = getattr(profile, "gait", None) if profile is not None else {}
+        self.thigh_length = _gait_value(gait_cfg, ("thigh_length_m",), _THIGH_LENGTH)
+        self.shin_length = _gait_value(gait_cfg, ("shin_length_m",), _SHIN_LENGTH)
+        self.neutral_hip_pitch = _gait_value(
+            gait_cfg,
+            ("neutral_hip_pitch_rad",),
+            _DEFAULT_HIP_PITCH,
+        )
+        self.neutral_knee = _gait_value(
+            gait_cfg,
+            ("neutral_knee_rad",),
+            _DEFAULT_KNEE,
+        )
+        self.neutral_ankle_pitch = _gait_value(
+            gait_cfg,
+            ("neutral_ankle_pitch_rad",),
+            _DEFAULT_ANKLE_PITCH,
+        )
+        self.nominal_height = (
+            self.thigh_length * np.cos(self.neutral_hip_pitch)
+            + self.shin_length * np.cos(self.neutral_hip_pitch + self.neutral_knee)
+        )
         self._ik_foot_offset = (
             float(self.foot_offset) if abs(float(self.foot_offset)) <= 0.04 else 0.0
         )
@@ -255,11 +274,19 @@ class BezierGaitController:
         # Convert lift into a hip-to-foot distance. When the foot is on
         # the ground we want the nominal stance height; lifting the foot
         # by ``rz`` shortens the hip-to-foot distance by ``rz``.
-        hip_to_foot = _DEFAULT_NOMINAL_HEIGHT - desired_lift - self._ik_foot_offset
+        hip_to_foot = self.nominal_height - desired_lift - self._ik_foot_offset
 
         # Solve IK per leg.
-        l_hip_pitch, l_knee, l_ank_pitch = _two_link_ik(float(hip_to_foot[0]))
-        r_hip_pitch, r_knee, r_ank_pitch = _two_link_ik(float(hip_to_foot[1]))
+        l_hip_pitch, l_knee, l_ank_pitch = _two_link_ik(
+            float(hip_to_foot[0]),
+            self.thigh_length,
+            self.shin_length,
+        )
+        r_hip_pitch, r_knee, r_ank_pitch = _two_link_ik(
+            float(hip_to_foot[1]),
+            self.thigh_length,
+            self.shin_length,
+        )
 
         # Forward velocity bias: lean the swing leg slightly forward.
         # Stance leg stays centered. We detect "swinging" as the foot
@@ -344,14 +371,14 @@ class BezierGaitController:
         q = np.zeros(NUM_JOINTS, dtype=np.float64)
         # Legs. Sagittal pitch-chain signs are mirrored by side in the MJCF.
         l_hip, l_knee, l_ankle = _left_sagittal_pose(
-            _DEFAULT_HIP_PITCH,
-            _DEFAULT_KNEE,
-            _DEFAULT_ANKLE_PITCH,
+            self.neutral_hip_pitch,
+            self.neutral_knee,
+            self.neutral_ankle_pitch,
         )
         r_hip, r_knee, r_ankle = _right_sagittal_pose(
-            _DEFAULT_HIP_PITCH,
-            _DEFAULT_KNEE,
-            _DEFAULT_ANKLE_PITCH,
+            self.neutral_hip_pitch,
+            self.neutral_knee,
+            self.neutral_ankle_pitch,
         )
         q[L_HIP_PITCH] = l_hip
         q[L_KNEE] = l_knee

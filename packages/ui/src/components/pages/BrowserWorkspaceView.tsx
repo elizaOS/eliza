@@ -1469,9 +1469,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           return;
         }
 
-        // Pick the most-recently-modified entry. Multi-account selection
-        // is a future UI improvement — at first save time only one entry
-        // typically exists per domain.
+        // Pick the most-recently-modified entry; first-save flows typically
+        // have one entry per domain.
         const sorted = [...candidates].sort(
           (a, b) => b.updatedAt - a.updatedAt,
         );

@@ -29,7 +29,7 @@
  * one handle across threads is the caller's mutex problem.
  *
  * Error handling: every entry point returns `int` — zero on success,
- * negative `errno`-style codes on failure. The stub returns `-ENOSYS`.
+ * negative `errno`-style codes on failure.
  *
  * No silent fallbacks. A missing GGUF, a bad shape, or a corrupt graph
  * surfaces as a structured error, never as a "best effort 0.0".
@@ -67,7 +67,6 @@ typedef struct wakeword_session *wakeword_handle;
  *
  * Returns:
  *   0          — session opened.
- *   -ENOSYS    — stub build (no real backend wired).
  *   -EINVAL    — NULL `out`, or NULL/empty path.
  *   -ENOENT    — one of the GGUFs is missing on disk.
  *   -EIO       — a GGUF failed to load (corrupt header, version mismatch).
@@ -97,7 +96,6 @@ int wakeword_close(wakeword_handle h);
  *
  * Returns:
  *   0          — score was written.
- *   -ENOSYS    — stub build.
  *   -EINVAL    — NULL handle, NULL pcm pointer with non-zero count, or
  *                NULL `score_out`.
  */
@@ -110,7 +108,7 @@ int wakeword_process(wakeword_handle h,
  * Set the detection threshold used by higher-level callers that want a
  * boolean fired/not-fired view. The score returned by `wakeword_process`
  * is unaffected — this is purely advisory state stored on the session
- * for callers that read it back via a future `wakeword_get_threshold`.
+ * for callers that expose a boolean gate.
  *
  * `threshold` must be in [0, 1]. Default on `wakeword_open` is
  * `WAKEWORD_DEFAULT_THRESHOLD` (0.5).
@@ -120,9 +118,10 @@ int wakeword_set_threshold(wakeword_handle h, float threshold);
 /* ---------------- diagnostics ---------------- */
 
 /*
- * Capability string of the active backend. The stub returns `"stub"`;
- * the real impl returns `"ggml-cpu"`, `"ggml-metal"`, etc. Must not be
- * freed by the caller.
+ * Capability string of the active backend. The native CPU implementation
+ * returns `"native-cpu"`; dispatcher-backed implementations can return
+ * names such as `"ggml-cpu"` or `"ggml-metal"`. Must not be freed by
+ * the caller.
  */
 const char *wakeword_active_backend(void);
 

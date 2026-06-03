@@ -349,7 +349,7 @@ export async function handleWhatsAppRoute(
           servicePhone = (waService.phoneNumber as string) ?? null;
         }
       } catch {
-        /* service not yet registered */
+        /* service unavailable during setup status lookup */
       }
     }
 

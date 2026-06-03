@@ -35,17 +35,19 @@
  * - One autofill record per user per form
  * - Updated on each submission
  *
- * ## Limitations
+ * ## Component-store tradeoffs
  *
- * The current implementation has limitations:
+ * The component-backed implementation has two important scaling properties:
  *
  * 1. **No Cross-Entity Queries**: Can't efficiently find all stale
  *    sessions across all users. This affects nudge system.
  *
  * 2. **No Indexes**: Component queries are sequential scans.
- *    For high-volume usage, consider database-level optimizations.
+ *    High-volume deployments should add database-level optimizations.
  *
- * These are acceptable for v1 but noted for future improvement.
+ * These tradeoffs keep the plugin self-contained on the elizaOS component
+ * store while preserving a clear path for deployments that need indexed
+ * operational queries.
  */
 
 import type { Component, IAgentRuntime, JsonValue, UUID } from "@elizaos/core";

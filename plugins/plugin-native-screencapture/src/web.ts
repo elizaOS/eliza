@@ -50,7 +50,7 @@ function assertQuality(value: unknown): number {
   return value / 100;
 }
 
-/** ImageCapture is a newer web API not yet in all TS lib definitions */
+/** Local ImageCapture declaration for TS lib sets that omit this web API. */
 declare class ImageCapture {
   constructor(track: MediaStreamTrack);
   grabFrame(): Promise<ImageBitmap>;

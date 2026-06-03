@@ -22,7 +22,7 @@
  *      Generates a Hann window + 80-mel triangular filter bank
  *      in-process so the spectral-correctness unit test
  *      (`test/wakeword_melspec_test.c`) can run without a GGUF on
- *      hand. This is the same generic 0–8000 Hz bank the Phase 1
+ *      hand. This is the same generic 0–8000 Hz bank the standalone
  *      reference shipped — kept here so `wakeword_mel_bin_center_hz`
  *      stays exercised against a known oracle.
  *

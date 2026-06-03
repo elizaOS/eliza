@@ -6,7 +6,7 @@ export const elizaOSCloudPlugin: Plugin = {
     "ElizaOS Cloud browser facade. Node-only routes and services are exported from the node entry.",
 };
 
-// Browser-side no-op stubs for the named exports that ship from the Node
+// Browser-side inert shims for the named exports that ship from the Node
 // entry. The renderer needs the names to statically resolve so the bundler
 // doesn't fail with MISSING_EXPORT. These functions are never executed in
 // the browser since the consumers are server-side routes; in eliza local-mode

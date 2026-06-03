@@ -57,7 +57,8 @@ export interface BackendInstallSpec {
  *   - Bitwarden CLI: `brew install bitwarden-cli` (formula, not cask) or
  *     `npm install -g @bitwarden/cli`
  *     (https://bitwarden.com/help/cli/)
- *   - Proton Pass CLI: vendor CLI is in beta, no automated install path yet.
+ *   - Proton Pass CLI: official install scripts for `pass-cli`
+ *     (https://protonpass.github.io/pass-cli/get-started/installation/)
  */
 export const BACKEND_INSTALL_SPECS: Readonly<
   Record<Exclude<BackendId, "in-house">, BackendInstallSpec>
@@ -110,24 +111,24 @@ export const BACKEND_INSTALL_SPECS: Readonly<
         {
           kind: "manual",
           instructions:
-            "Proton Pass CLI is in closed beta. Track Proton's roadmap or use the desktop app.",
-          url: "https://proton.me/pass",
+            "Install Proton Pass CLI (`pass-cli`) with Proton's macOS/Linux install script.",
+          url: "https://protonpass.github.io/pass-cli/get-started/installation/",
         },
       ],
       linux: [
         {
           kind: "manual",
           instructions:
-            "Proton Pass CLI is in closed beta. Track Proton's roadmap or use the desktop app.",
-          url: "https://proton.me/pass",
+            "Install Proton Pass CLI (`pass-cli`) with Proton's macOS/Linux install script.",
+          url: "https://protonpass.github.io/pass-cli/get-started/installation/",
         },
       ],
       win32: [
         {
           kind: "manual",
           instructions:
-            "Proton Pass CLI is in closed beta. Track Proton's roadmap or use the desktop app.",
-          url: "https://proton.me/pass",
+            "Install Proton Pass CLI (`pass-cli`) with Proton's Windows install script.",
+          url: "https://protonpass.github.io/pass-cli/get-started/installation/",
         },
       ],
     },

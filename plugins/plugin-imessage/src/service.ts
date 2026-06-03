@@ -965,10 +965,9 @@ export class IMessageService extends Service implements IIMessageService {
    * participant handles. Returns an empty list if the chat.db reader is
    * unavailable (Node runtime, missing FDA, etc.).
    *
-   * Previously this method used an AppleScript stub against
-   * Messages.app's `chats` collection. That verb works but is slow and
-   * returns a coarser view (no participant handles, no style field), so
-   * the chat.db path is strictly better when it's available.
+   * The older Messages.app AppleScript chat listing works but is slow and
+   * returns a coarser view (no participant handles, no style field), so the
+   * chat.db path is strictly better when it's available.
    */
   async getChats(): Promise<IMessageChat[]> {
     if (!this.chatDb) {

@@ -1,16 +1,16 @@
 /**
  * Kokoro TTS ORT execution-provider configuration.
  *
- * Tracks elizaOS/eliza#7667 — readiness scaffold for a Tensor TPU / NNAPI
- * delegate on Android. This module is intentionally side-effect free; Android
- * callers still must gate any non-CPU provider through the AOSP NNAPI probe
- * before constructing the Kokoro runtime.
+ * Tracks elizaOS/eliza#7667 — execution-provider contract for Tensor TPU /
+ * NNAPI delegates on Android. This module is intentionally side-effect free;
+ * Android callers still must gate any non-CPU provider through the AOSP NNAPI
+ * probe before constructing the Kokoro runtime.
  *
  * The exported `KokoroExecutionProvider` is the public knob, and
  * `KOKORO_EXECUTION_PROVIDER_IDS` is the runtime allowlist used by callers
  * that validate untrusted input (env var, persisted preference, request
- * body). The default stays `"cpu"` so behaviour is unchanged until the
- * future wiring PR lands.
+ * body). The default stays `"cpu"` unless the caller has already verified a
+ * non-CPU provider is available in its ORT build.
  */
 
 export const KOKORO_EXECUTION_PROVIDER_IDS = [
@@ -49,9 +49,8 @@ export function parseKokoroExecutionProvider(
  * pure data). The runtime Kokoro loader pre-builds an options object,
  * spreads `executionProviders`, and passes it to `InferenceSession.create`.
  *
- * Keep the shape compatible with the literal at
- * `kokoro/kokoro-runtime.ts:240-247` so the future wiring change is a
- * pure spread.
+ * Keep the shape compatible with the ORT session-options literal in
+ * `kokoro/kokoro-runtime.ts` so callers can spread this patch directly.
  */
 export interface KokoroOrtSessionOptionsPatch {
   executionProviders: KokoroExecutionProvider[];

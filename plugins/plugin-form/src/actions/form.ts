@@ -2,10 +2,9 @@
  * @module actions/form
  * @description Planner action for managing form sessions.
  *
- * Today only `action=restore` is implemented — it rehydrates the most recent
- * stashed form for the current entity. The action is a NOUN-shaped router so
- * future verbs (start / submit / cancel / stash) can land alongside `restore`
- * without minting new top-level action names.
+ * `action=restore` rehydrates the most recent stashed form for the current
+ * entity. Other form lifecycle operations are handled by FormService and the
+ * post-message evaluator.
  *
  * Restore is a planner-driven Action (not part of the post-message form
  * evaluator) because the restored form context must reach the provider
@@ -221,8 +220,7 @@ export const formAction: Action = {
   },
 
   /**
-   * Handler: dispatches by `action` to the per-verb handler. Only `restore`
-   * is implemented today.
+ * Handler: dispatches by `action` to the per-verb handler.
    */
   handler: async (
     runtime: IAgentRuntime,
@@ -235,18 +233,7 @@ export const formAction: Action = {
     if (subaction === "restore") {
       return handleRestore(runtime, message, callback);
     }
-    // No other subactions are implemented yet — readFormSubaction defaults
-    // to restore, so this branch is unreachable. Keep an explicit fallback
-    // so future subactions can be added without breaking the contract.
-    return {
-      success: false,
-      text: `FORM action=${subaction} not yet implemented`,
-      data: {
-        actionName: "FORM",
-        [CANONICAL_SUBACTION_KEY]: subaction,
-        errorCode: "not_implemented",
-      },
-    };
+    return handleRestore(runtime, message, callback);
   },
 
   // Example conversations for training/documentation

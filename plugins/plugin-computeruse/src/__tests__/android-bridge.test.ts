@@ -410,26 +410,26 @@ describe("Android bridge featureCheck", () => {
 function buildFakeAndroidBridge(
   overrides: Partial<AndroidComputerUseBridge> = {},
 ): AndroidComputerUseBridge {
-  const stub = <T>(
+  const unavailable = <T>(
     code: AndroidBridgeErrorCode = "internal_error",
   ): Promise<AndroidBridgeResult<T>> =>
-    Promise.resolve({ ok: false, code, message: "stub" });
+    Promise.resolve({ ok: false, code, message: "unavailable" });
 
   return {
-    probe: () => stub("internal_error"),
-    startMediaProjection: () => stub("internal_error"),
-    stopMediaProjection: () => stub("internal_error"),
-    captureFrame: () => stub("capture_unavailable"),
-    getAccessibilityTree: () => stub("accessibility_unavailable"),
-    dispatchGesture: () => stub("accessibility_unavailable"),
-    performGlobalAction: () => stub("accessibility_unavailable"),
-    setText: () => stub("accessibility_unavailable"),
-    enumerateApps: () => stub("permission_denied"),
-    getMemoryPressureSnapshot: () => stub("internal_error"),
-    dispatchMemoryPressure: () => stub("internal_error"),
-    startCamera: () => stub("permission_denied"),
+    probe: () => unavailable("internal_error"),
+    startMediaProjection: () => unavailable("internal_error"),
+    stopMediaProjection: () => unavailable("internal_error"),
+    captureFrame: () => unavailable("capture_unavailable"),
+    getAccessibilityTree: () => unavailable("accessibility_unavailable"),
+    dispatchGesture: () => unavailable("accessibility_unavailable"),
+    performGlobalAction: () => unavailable("accessibility_unavailable"),
+    setText: () => unavailable("accessibility_unavailable"),
+    enumerateApps: () => unavailable("permission_denied"),
+    getMemoryPressureSnapshot: () => unavailable("internal_error"),
+    dispatchMemoryPressure: () => unavailable("internal_error"),
+    startCamera: () => unavailable("permission_denied"),
     stopCamera: () => Promise.resolve({ ok: true, data: { ok: true } }),
-    captureFrameCamera: () => stub("camera_not_open"),
+    captureFrameCamera: () => unavailable("camera_not_open"),
     ...overrides,
   };
 }

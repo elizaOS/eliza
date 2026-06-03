@@ -45,8 +45,10 @@ function readEscalateSubaction(
 	return "admin";
 }
 
-function notYetImplemented(subaction: EscalateSubaction): ActionResult {
-	const text = `ESCALATE action=${subaction} not yet implemented`;
+function unsupportedEscalationTarget(
+	subaction: Exclude<EscalateSubaction, "admin">,
+): ActionResult {
+	const text = `ESCALATE action=${subaction} is not supported by the core autonomy action; configure a plugin-owned escalation action for that target.`;
 	return {
 		success: false,
 		text,
@@ -54,7 +56,7 @@ function notYetImplemented(subaction: EscalateSubaction): ActionResult {
 		data: {
 			actionName: "ESCALATE",
 			[CANONICAL_SUBACTION_KEY]: subaction,
-			errorCode: "not_implemented",
+			errorCode: "unsupported_escalation_target",
 		},
 	};
 }
@@ -184,17 +186,16 @@ async function escalateToAdmin(
 /**
  * Escalate Action
  *
- * Allows an autonomous agent to escalate a message to a human. The `admin`
- * action surfaces the message to the configured admin user; `owner` and
- * `third_party` are reserved for future escalation routes (account owner,
- * external paged human) and currently return a "not yet implemented" result.
+ * Allows an autonomous agent to escalate a message to a human. The core action
+ * supports the configured `admin` target; owner and third-party escalation
+ * targets belong in plugin-owned actions with their own delivery contracts.
  */
 export const escalateAction: Action = {
 	name: "ESCALATE",
 	contexts: ["admin", "messaging", "agent_internal"],
 	roleGate: { minRole: "ADMIN" },
 	description:
-		"Escalate from autonomous context to a human. action=admin sends to the configured admin; owner/third_party are placeholders.",
+		"Escalate from autonomous context to a human. action=admin sends to the configured admin; owner/third_party return an explicit unsupported-target result unless a plugin provides its own route.",
 	similes: ["SEND_TO_ADMIN"],
 	parameters: [
 		{
@@ -285,7 +286,7 @@ export const escalateAction: Action = {
 		if (subaction === "admin") {
 			return escalateToAdmin(runtime, message, callback);
 		}
-		return notYetImplemented(subaction);
+		return unsupportedEscalationTarget(subaction);
 	},
 };
 

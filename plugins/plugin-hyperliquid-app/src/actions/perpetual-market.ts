@@ -12,6 +12,8 @@ import type {
 import { Service } from "@elizaos/core";
 import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
 import type {
+  HyperliquidFundingRate,
+  HyperliquidFundingResponse,
   HyperliquidMarket,
   HyperliquidMarketsResponse,
   HyperliquidOrdersResponse,
@@ -139,9 +141,6 @@ const HYPERLIQUID_PLACE_ORDER_OP_ALIASES = new Set([
   "long",
   "short",
 ]);
-
-const FUNDING_NOT_WIRED_REASON =
-  "Hyperliquid funding-rate reads are not yet wired to a route in the native app. Use kind=markets for perpetual metadata or kind=status for credential readiness.";
 
 const PLACE_ORDER_DISABLED_REASON =
   "Signed Hyperliquid exchange execution is disabled in the native app. Use the Hyperliquid UI or a dedicated signer to place orders.";
@@ -352,6 +351,21 @@ function formatMarket(market: HyperliquidMarket | null): string {
   ].join("\n");
 }
 
+function fundingLine(rate: HyperliquidFundingRate): string {
+  const premium = rate.premium ? ` premium ${rate.premium}` : "";
+  const openInterest = rate.openInterest ? ` OI ${rate.openInterest}` : "";
+  const mark = rate.markPx ? ` mark ${rate.markPx}` : "";
+  return `- ${rate.coin}: funding ${rate.funding}${premium}${openInterest}${mark}`;
+}
+
+function formatFundingRates(rates: readonly HyperliquidFundingRate[]): string {
+  if (rates.length === 0) return "No Hyperliquid funding rates found.";
+  return `Hyperliquid current funding rates:\n${rates
+    .slice(0, 20)
+    .map(fundingLine)
+    .join("\n")}`;
+}
+
 async function handleStatus(
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
@@ -477,14 +491,29 @@ async function handlePositions(
 }
 
 async function handleFunding(
+  options: HandlerOptions | Record<string, unknown> | undefined,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
-  return emit(callback, FUNDING_NOT_WIRED_REASON, {
+  const coin =
+    readStringParam(options, "coin") ??
+    readStringParam(options, "asset") ??
+    readStringParam(options, "symbol");
+  const response = await fetchHyperliquidJson<HyperliquidFundingResponse>(
+    "/api/hyperliquid/funding",
+  );
+  const rates = coin
+    ? response.rates.filter(
+        (rate) => rate.coin.toUpperCase() === coin.toUpperCase(),
+      )
+    : response.rates;
+  return emit(callback, formatFundingRates(rates), {
     op: "read" satisfies HyperliquidOp,
     compatActionName: HYPERLIQUID_READ_COMPAT_NAME,
     kind: "funding" satisfies HyperliquidReadKind,
-    notWired: true,
-    reason: FUNDING_NOT_WIRED_REASON,
+    rates,
+    source: response.source,
+    fetchedAt: response.fetchedAt,
+    ...(coin ? { coin } : {}),
   });
 }
 
@@ -514,7 +543,7 @@ async function handleReadOperation(
       case "positions":
         return await handlePositions(callback);
       case "funding":
-        return await handleFunding(callback);
+        return await handleFunding(options, callback);
     }
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error);
@@ -736,7 +765,7 @@ export const perpetualMarketAction: Action = {
     ...HYPERLIQUID_PLACE_ORDER_COMPAT_SIMILES,
   ],
   description:
-    "Use registered perpetual market providers. target selects the provider; Hyperliquid is registered today. action=read reads public state with kind: status, markets, market, positions, or funding. action=place_order reports trading readiness; signed order placement is disabled in this app scaffold.",
+    "Use registered perpetual market providers. target selects the provider; Hyperliquid is registered today. action=read reads public state with kind: status, markets, market, positions, or funding. action=place_order reports trading readiness; signed order placement is disabled in this read-only app.",
   descriptionCompressed:
     "Perpetual market router: target hyperliquid; action read or place_order.",
   parameters: [

@@ -372,7 +372,7 @@ export class RemoteSigningRuntimeService extends Service {
     this.signing = signing;
   }
 
-  /** The active signing service, or undefined when not yet attached. */
+  /** The active signing service, or undefined before boot attaches it. */
   get service(): RemoteSigningService | undefined {
     return this.signing;
   }

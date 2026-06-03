@@ -176,7 +176,7 @@ function buildPayload() {
     {
       id: "external-gates",
       status: "blocked",
-      requirement: "External live gates are documented with readiness probes and placeholder-only rerun commands.",
+      requirement: "External live gates are documented with readiness probes and redacted rerun commands.",
       evidence: `CEREBRAS_API_KEY present=${gap.credentials?.cerebrasApiKeyPresent ? "yes" : "no"}; OSWorld runnable providers=${gap.osworld?.providerReadiness?.runnableProviderCount || 0}; HL_PRIVATE_KEY present=${gap.credentials?.hyperliquidPrivateKeyPresent ? "yes" : "no"}. OSWorld provider access and Hyperliquid private key remain external gates.`,
       link: "../gap-evidence/index.html",
       nextAction: "Provide an OSWorld provider and HL_PRIVATE_KEY, then run the recorded rerun commands.",
@@ -185,7 +185,7 @@ function buildPayload() {
       id: "secret-handling",
       status: "proven",
       requirement: "Secret values are used only by environment presence checks and are not persisted into generated reports.",
-      evidence: `Run contract ok=${runContract.summary.ok}; gap evidence stores presence only; Hyperliquid rerun command uses placeholders; verifier includes a raw-key scan over generated report roots.`,
+      evidence: `Run contract ok=${runContract.summary.ok}; gap evidence stores presence only; Hyperliquid rerun command uses redacted values; verifier includes a raw-key scan over generated report roots.`,
       link: "../run-contract/index.html",
       nextAction: "Continue running the raw-key scan after every rebuild.",
     },

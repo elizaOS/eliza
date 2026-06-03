@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { type HelperSpawn, runHelper } from "../src/helper";
 
-function createSpawnStub(options: {
+function createFakeSpawn(options: {
   stdout?: string;
   stderr?: string;
   closeCode?: number;
@@ -43,7 +43,7 @@ function createSpawnStub(options: {
 
 describe("runHelper", () => {
   it("serializes the request and parses the last JSON stdout line", async () => {
-    const { spawn, requests } = createSpawnStub({
+    const { spawn, requests } = createFakeSpawn({
       stdout:
         'debug prelude\n{"success":true,"id":"alarm-1","fireAt":"2026-06-01T07:00:00Z"}\n',
       stderr: "diagnostic line",
@@ -78,7 +78,7 @@ describe("runHelper", () => {
     { stdout: "", message: "produced no stdout" },
     { stdout: "not json\n", message: /Unexpected token|JSON/ },
   ])("rejects malformed helper output %#", async ({ stdout, message }) => {
-    const { spawn } = createSpawnStub({ stdout });
+    const { spawn } = createFakeSpawn({ stdout });
 
     await expect(
       runHelper(
@@ -89,7 +89,7 @@ describe("runHelper", () => {
   });
 
   it("rejects spawn errors without hanging", async () => {
-    const { spawn } = createSpawnStub({ error: new Error("spawn denied") });
+    const { spawn } = createFakeSpawn({ error: new Error("spawn denied") });
 
     await expect(
       runHelper(

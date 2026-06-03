@@ -76,7 +76,7 @@ export function isDefaultEligibleId(id: string): boolean {
 
 /**
  * Per-tier publish-state hint. Keys are tier ids that are known to have
- * an incomplete Hugging Face bundle at the time the catalog snapshot was
+ * a pending Hugging Face bundle at the time the catalog snapshot was
  * cut. Tiers not listed here default to `"published"`. The recommender
  * consults this map (or a `publishStatus` field on a synthetic
  * `CatalogModel`) before recommending a first-run default — see

@@ -121,6 +121,6 @@ export type FeishuAccountConfig = {
 // ============================================================
 
 export type FeishuConfig = {
-	/** Optional per-account Feishu configuration (multi-account). */
+	/** Optional named Feishu account configuration records. */
 	accounts?: Record<string, FeishuAccountConfig>;
 } & FeishuAccountConfig;

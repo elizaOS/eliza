@@ -308,7 +308,7 @@ async function handleStatus(
       servicePhone = typeof waState.phoneNumber === "string" ? waState.phoneNumber : null;
     }
   } catch {
-    /* service not yet registered */
+    /* service unavailable during setup status lookup */
   }
 
   res.status(200).json({

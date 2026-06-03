@@ -123,7 +123,7 @@ export class DatabaseMigrationService {
           const errorMsg = rlsError instanceof Error ? rlsError.message : String(rlsError);
           logger.warn(
             { src: "plugin:sql", error: errorMsg },
-            "Failed to re-apply RLS (this is OK if server_id columns are not yet in schemas)"
+            "Failed to re-apply RLS (expected while schemas are still missing server_id columns)"
           );
         }
       } else {

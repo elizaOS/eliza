@@ -1,7 +1,7 @@
 # PolarQuant Q4 — `Apothic-AI/llama.cpp-1bit-turboquant` integration
 
 This directory holds the patch set + drop-in source files that register
-`block_q4_polar` (`GGML_TYPE_Q4_POLAR = 45`) inside the Apothic
+`block_q4_polar` (`GGML_TYPE_Q4_POLAR = 47`) inside the elizaOS
 llama.cpp fork.  The standalone reference library in the parent
 directory is the source of truth for the kernels; the files here are
 the in-fork shim that makes those kernels available through llama.cpp's
@@ -12,7 +12,7 @@ type-traits dispatch.
 | File | Drop into | Purpose |
 |---|---|---|
 | `ggml-common.h.patch`  | `ggml/src/ggml-common.h`            | adds `block_q4_polar` struct + the `#define QK_POLAR 128` constant. |
-| `ggml.h.patch`         | `ggml/include/ggml.h`               | adds `GGML_TYPE_Q4_POLAR = 45` to the `ggml_type` enum. |
+| `ggml.h.patch`         | `ggml/include/ggml.h`               | adds `GGML_TYPE_Q4_POLAR = 47` to the `ggml_type` enum. |
 | `quants-polar.c`       | `ggml/src/ggml-cpu/quants-polar.c`  | new TU: scalar + AVX2 + NEON quantize / dequantize / dot. |
 | `ggml-cpu.c.patch`     | `ggml/src/ggml-cpu/ggml-cpu.c`      | adds the `type_traits[GGML_TYPE_Q4_POLAR]` row. |
 | `ggml-quants.c.patch`  | `ggml/src/ggml-quants.c`            | adds the `case GGML_TYPE_Q4_POLAR` in `ggml_quantize_chunk`. |
@@ -48,8 +48,8 @@ When a kernel changes, update both:
   2. the matching block in `quants-polar.c` here (so the in-fork build
      picks up the change).
 
-A future cleanup could collapse this duplication by `#include`-ing the
-standalone library headers directly inside `quants-polar.c`, but that
+This duplication can be collapsed by `#include`-ing the standalone library
+headers directly inside `quants-polar.c` once that
 requires a tighter ABI agreement on `ggml_fp16_t` <-> `polar_fp16_t`
 than the fork currently exposes.
 

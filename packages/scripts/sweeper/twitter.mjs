@@ -1,6 +1,6 @@
-import { makeNotYetImplementedSweep } from "./_not-yet-implemented.mjs";
+import { makeUnavailableSweep } from "./_unavailable.mjs";
 
-export default makeNotYetImplementedSweep({
+export default makeUnavailableSweep({
   service: "twitter",
   blockingTask: "T8g",
   reason:

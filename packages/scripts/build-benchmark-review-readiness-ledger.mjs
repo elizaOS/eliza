@@ -206,7 +206,7 @@ function buildPayload() {
         affordance("Cerebras key presence", "ready", `CEREBRAS_API_KEY present=${gap.credentials?.cerebrasApiKeyPresent ? "yes" : "no"}; value not persisted.`),
         affordance("OSWorld provider", "blocked", `Runnable OSWorld providers=${gap.osworld?.providerReadiness?.runnableProviderCount || 0}.`),
         affordance("Hyperliquid credential", "blocked", `HL_PRIVATE_KEY present=${gap.credentials?.hyperliquidPrivateKeyPresent ? "yes" : "no"}.`),
-        affordance("rerun commands", "ready", `${(gap.remediationCommands?.osworld || []).length + (gap.remediationCommands?.hyperliquid || []).length} placeholder rerun commands.`),
+        affordance("rerun commands", "ready", `${(gap.remediationCommands?.osworld || []).length + (gap.remediationCommands?.hyperliquid || []).length} redacted rerun commands.`),
       ],
       caveats: ["Progress is blocked on local/external provider state, not report generation."],
     },

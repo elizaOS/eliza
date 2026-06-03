@@ -3,7 +3,7 @@
 Standalone C library for QJL (1-bit JL transform) K-cache compression on
 CPU. Mirrors the upstream CUDA reference at
 `packages/training/scripts/quantization/qjl/csrc/`. Designed to be the
-algorithmic source of truth for the future llama.cpp `block_qjl1_256`
+algorithmic source of truth for the llama.cpp `block_qjl1_256`
 GGML quant type and `GGML_OP_ATTN_SCORE_QJL` op (see the porting plan
 at `docs/porting/on-device-quantization-porting-plan.md` section
 "QJL NEON kernel + GGML K-cache hook").

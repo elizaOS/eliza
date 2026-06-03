@@ -1,11 +1,11 @@
 /*
- * silero-vad-cpp — real model runtime (Phase 2).
+ * silero-vad-cpp — native CPU model runtime.
  *
- * Replaces the ENOSYS stub in `silero_vad_stub.c`. Loads a GGUF
- * produced by `scripts/silero_vad_to_gguf.py` and runs the Silero v5
- * (16 kHz) graph end-to-end in pure C — no SIMD, no third-party math
- * library, no ggml link. Per-window cost is small enough on a laptop
- * CPU that real-time stays comfortably below 1% of the 32 ms hop.
+ * Loads a GGUF produced by `scripts/silero_vad_to_gguf.py` and runs
+ * the Silero v5 (16 kHz) graph end-to-end in pure C — no SIMD, no
+ * third-party math library, no ggml link. Per-window cost is small
+ * enough on a laptop CPU that real-time stays comfortably below 1%
+ * of the 32 ms hop.
  *
  * Architecture (matches the converter; see
  * `scripts/silero_vad_to_gguf.py` for the rationale and tensor names):
@@ -880,8 +880,7 @@ int silero_vad_close(silero_vad_handle h) {
 
 const char *silero_vad_active_backend(void) {
     /* Honest about what this build is: pure-C scalar, no SIMD, no ggml
-     * link. A future pass can swap in an AVX2/NEON dispatcher (or the
-     * ggml CPU backend) and report the change here without touching
-     * the rest of the ABI. */
+     * link. AVX2/NEON or ggml dispatch can report a different backend
+     * here without touching the rest of the ABI. */
     return "native-cpu";
 }

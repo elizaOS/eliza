@@ -1,5 +1,5 @@
 /**
- * AOSP image-gen backend stub (WS3) — Android via JNI.
+ * AOSP image-gen backend contract (WS3) — Android via JNI.
  *
  * On AOSP the canonical fast path is stable-diffusion.cpp built into
  * `libstable-diffusion-jni.so` and exposed through a JNI surface in
@@ -49,7 +49,7 @@
  *   The shim defaults to `"vulkan"` and falls back to `"cpu"` only when
  *   Vulkan compute is unavailable.
  *
- * Until the shim ships the symbols above, `loadAospImageGenBackend`
+ * Until the shim exports the symbols above, `loadAospImageGenBackend`
  * throws a structured `ImageGenBackendUnavailableError` so the selector
  * can fall back to a desktop-bridge or surface "unavailable" to the UI.
  *

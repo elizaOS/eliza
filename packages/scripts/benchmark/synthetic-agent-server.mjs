@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * stub-agent-server.mjs — minimal in-process HTTP stub that mimics the
- * agent surface profile-inference.mjs talks to. Exists ONLY to validate
- * the harness end-to-end without standing up a real elizaOS instance.
+ * synthetic-agent-server.mjs — minimal in-process HTTP server that mimics the
+ * agent surface profile-inference.mjs talks to. Exists ONLY to validate the
+ * benchmark harness end-to-end without standing up a real elizaOS instance.
  *
  * Implemented endpoints:
  *   GET    /api/health
@@ -17,7 +17,7 @@
  *   POST   /api/conversations/:id/messages/stream   (SSE)
  *
  * Usage:
- *   node packages/scripts/benchmark/stub-agent-server.mjs [--port 31337]
+ *   node packages/scripts/benchmark/synthetic-agent-server.mjs [--port 31337]
  *     [--require-installed-models]
  */
 
@@ -71,14 +71,14 @@ function sendJson(res, status, body) {
 function syntheticReply(prompt) {
   // Deterministic synthetic reply length scaled to prompt for realism.
   const len = Math.max(20, Math.min(prompt.length, 300));
-  return `[stub reply] echo of ${prompt.length}-char prompt: ${prompt.slice(0, 40)}... (${len} synthetic chars)`;
+  return `[synthetic reply] echo of ${prompt.length}-char prompt: ${prompt.slice(0, 40)}... (${len} synthetic chars)`;
 }
 
 function installedModel(modelId) {
   return {
     id: modelId,
     displayName: modelId,
-    path: `/stub/models/${modelId}.gguf`,
+    path: `/synthetic/models/${modelId}.gguf`,
     source: "eliza-download",
     installedAt: new Date().toISOString(),
   };
@@ -93,7 +93,7 @@ function installModel(modelId) {
 function completedDownload(modelId) {
   const now = new Date().toISOString();
   return {
-    jobId: `stub-download:${modelId}`,
+    jobId: `synthetic-download:${modelId}`,
     modelId,
     state: "completed",
     received: 1024,
@@ -210,7 +210,7 @@ const server = http.createServer(async (req, res) => {
         await sleep(Math.min(800, 80 + text.length / 2));
         return sendJson(res, 200, {
           text: syntheticReply(text),
-          agentName: "StubBot",
+          agentName: "SyntheticBot",
         });
       }
     }
@@ -244,13 +244,15 @@ const server = http.createServer(async (req, res) => {
           await sleep(8);
         }
         res.write(
-          `data: ${JSON.stringify({ type: "done", fullText: reply, agentName: "StubBot" })}\n\n`,
+          `data: ${JSON.stringify({ type: "done", fullText: reply, agentName: "SyntheticBot" })}\n\n`,
         );
         return res.end();
       }
     }
 
-    sendJson(res, 404, { error: `No stub handler for ${method} ${pathname}` });
+    sendJson(res, 404, {
+      error: `No synthetic handler for ${method} ${pathname}`,
+    });
   } catch (err) {
     sendJson(res, 500, { error: err.message ?? String(err) });
   }
@@ -258,7 +260,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(args.port, "127.0.0.1", () => {
   process.stdout.write(
-    `[stub-agent-server] listening on 127.0.0.1:${args.port}\n`,
+    `[synthetic-agent-server] listening on 127.0.0.1:${args.port}\n`,
   );
 });
 

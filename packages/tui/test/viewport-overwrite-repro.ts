@@ -79,17 +79,17 @@ async function main(): Promise<void> {
   ui.requestRender();
   await sleep(300);
 
-  // Phase 1: Stream pre-tool text until viewport is exceeded.
+  // Step 1: Stream pre-tool text until viewport is exceeded.
   await streamLines(buffer, "PRE-TOOL LINE", preCount, 30, ui);
 
-  // Phase 2: Simulate tool call pause and tool output.
+  // Step 2: Simulate tool call pause and tool output.
   buffer.append(["", "--- TOOL CALL START ---", "(pause...)", ""]);
   ui.requestRender();
   await sleep(700);
 
   await streamLines(buffer, "TOOL OUT", toolCount, 20, ui);
 
-  // Phase 3: Post-tool streaming. This is where overwrite often appears.
+  // Step 3: Post-tool streaming. This is where overwrite often appears.
   buffer.append(["", "=== POST-TOOL STREAM ==="]);
   ui.requestRender();
   await sleep(300);

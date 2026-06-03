@@ -18,7 +18,7 @@ This package exports a typed API object, not elizaOS actions/providers. The full
 
 **Auto Launch** (`setAutoLaunch`, `getAutoLaunchStatus`) — configure login-item / startup behavior. Node only; no-op on web.
 
-**Window Management** (`setWindowOptions`, `getWindowBounds`, `setWindowBounds`, `minimizeWindow`, `maximizeWindow`, `unmaximizeWindow`, `closeWindow`, `showWindow`, `hideWindow`, `focusWindow`, `isWindowMaximized`, `isWindowMinimized`, `isWindowVisible`, `isWindowFocused`, `setAlwaysOnTop`, `setFullscreen`, `setOpacity`) — control the Electrobun window. Web stubs use `window.close()`, `window.focus()`, fullscreen API.
+**Window Management** (`setWindowOptions`, `getWindowBounds`, `setWindowBounds`, `minimizeWindow`, `maximizeWindow`, `unmaximizeWindow`, `closeWindow`, `showWindow`, `hideWindow`, `focusWindow`, `isWindowMaximized`, `isWindowMinimized`, `isWindowVisible`, `isWindowFocused`, `setAlwaysOnTop`, `setFullscreen`, `setOpacity`) — control the Electrobun window. Browser fallbacks use `window.close()`, `window.focus()`, fullscreen API, or no-op responses where the web platform has no equivalent.
 
 **Notifications** (`showNotification`, `closeNotification`) — show OS notifications. Node: Electrobun native; web: Web Notification API with permission prompt.
 

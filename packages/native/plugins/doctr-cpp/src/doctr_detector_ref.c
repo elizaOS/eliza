@@ -43,11 +43,11 @@
  * (1024x1024 by default). DBNet postprocess turns it into bboxes via
  * doctr_dbnet_postprocess().
  *
- * Phase 2 implements the full forward pass in scalar C. Phase 3 will
- * replace the Conv2D op with an im2col + AVX2/NEON GEMM dispatch. The
+ * This file implements the full forward pass in scalar C. SIMD dispatch can
+ * replace the Conv2D op with an im2col + AVX2/NEON GEMM path. The
  * cumulative work here is on the order of a few minutes per call on a
  * modern x86 — acceptable for the ref test, far too slow for prod;
- * Phase 3 is what makes it interesting.
+ * dispatcher path is what makes it production-ready.
  */
 
 #include "doctr_internal.h"
@@ -78,7 +78,7 @@ static int conv_bn_relu_fresh(
     int cout_expected, int kh, int kw,
     float **out, int *hout, int *wout)
 {
-    char buf[160];
+    char buf[512];
     int64_t dims[4]; int nd;
 
     snprintf(buf, sizeof buf, "%s.weight", conv_name);
@@ -137,7 +137,7 @@ static int bottleneck(
     const float *x, int hin, int win,
     float **out, int *hout, int *wout)
 {
-    char nm_conv[160], nm_bn[160];
+    char nm_conv[512], nm_bn[512];
     float *t1 = NULL, *t2 = NULL, *t3 = NULL, *ds = NULL;
     int h1, w1, h2, w2, h3, w3;
     int rc;
@@ -169,7 +169,7 @@ static int bottleneck(
     if (rc != 0) return rc;
 
     if (has_downsample) {
-        char dsc[160], dsb[160];
+        char dsc[512], dsb[512];
         snprintf(dsc, sizeof dsc, "%s.downsample.0", block_prefix);
         snprintf(dsb, sizeof dsb, "%s.downsample.1", block_prefix);
         int dh, dw;
@@ -205,7 +205,7 @@ static int run_layer(
     const float *x, int hin, int win,
     float **out, int *hout, int *wout)
 {
-    char buf[160];
+    char buf[512];
     float *cur = NULL;
     int   ch = hin, cw_ = win;
     int   in_c = ch_in;

@@ -2,7 +2,7 @@
  * Local image-generation capability (WS3) — public entry point.
  *
  * This module is what `provider.ts` (`createImageGenerationHandler`),
- * the UI image-gen action, and any future image-gen skill imports to
+ * the UI image-gen action, and image-gen skill imports to
  * register the capability with the WS1 MemoryArbiter.
  *
  * Wiring:
@@ -35,7 +35,7 @@ export {
 	type AospImageGenHandle,
 	type LoadAospImageGenBackendOptions,
 	loadAospImageGenBackend,
-} from "./aosp-stub";
+} from "./aosp-unavailable";
 export {
 	type ImageGenBackendChoice,
 	type ImageGenBackendId,
@@ -48,7 +48,7 @@ export {
 	type CoreMlImageGenBridge,
 	type LoadCoreMlImageGenBackendOptions,
 	loadCoreMlImageGenBackend,
-} from "./coreml-stub";
+} from "./coreml-unavailable";
 export {
 	ImageGenBackendUnavailableError,
 	isImageGenUnavailable,
@@ -70,7 +70,7 @@ export {
 export {
 	loadTensorRtImageGenBackend,
 	type TensorRtBackendOptions,
-} from "./tensorrt-stub";
+} from "./tensorrt-unavailable";
 export type {
 	ImageGenBackend,
 	ImageGenBackendLoader,

@@ -836,7 +836,7 @@ export class DesktopLlamaAdapter {
 	 * llama_init_from_model is itself thread-safe (Metal registry uses
 	 * static std::mutex; CUDA/Vulkan ctx ctors are independent) and
 	 * bun:ffi calls block the JS thread, so within one call the for-loop
-	 * inside resizeParallel is already safe. This lock exists so future
+	 * inside resizeParallel is already safe. This lock exists so later
 	 * `await`s added inside resizeParallel cannot let two callers
 	 * interleave pool mutations (push/pop on ctxPool, hasDecodedFlags,
 	 * drafterAttached).
@@ -1547,7 +1547,7 @@ export class DesktopLlamaAdapter {
 				`[desktop-llama] llama_state_seq_load_file returned ${read} for ${filename}`,
 			);
 		}
-		// Mark hasDecoded on this ctx so future openSession calls clear KV.
+		// Mark hasDecoded on this ctx so subsequent openSession calls clear KV.
 		this.hasDecodedFlags[sess.ctxIdx] = true;
 	}
 

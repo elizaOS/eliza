@@ -2,7 +2,7 @@
  * Local text-to-speech capability (WS5) — public entry point.
  *
  * This module is what `provider.ts` (`createTextToSpeechHandler`), the
- * voice lifecycle service, and any future TTS skill imports to register
+ * voice lifecycle service, and TTS skill imports use to register
  * the capability with the WS1 `MemoryArbiter`.
  *
  * Wiring:

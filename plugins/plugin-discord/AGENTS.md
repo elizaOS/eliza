@@ -36,7 +36,7 @@ None registered. The plugin operates entirely through services and events.
 ```
 plugins/plugin-discord/
   index.ts                    Plugin definition + public barrel exports; init registers connector provider, reads env vars, logs banner
-  index.browser.ts            Browser entry stub (Discord.js needs Node APIs; exports a no-op plugin)
+  index.browser.ts            Browser compatibility export (Discord.js needs Node APIs; use a server proxy)
   banner.ts                   printBanner — ANSI startup banner with tiered invite-URL permissions
   service.ts                  DiscordService — main gateway service (discord.js Client, message/voice/interaction handling)
   voice.ts                    VoiceManager helper called by DiscordService for audio RX/TX, STT integration

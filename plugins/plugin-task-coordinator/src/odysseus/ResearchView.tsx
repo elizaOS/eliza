@@ -11,11 +11,11 @@
 // pixel-exact clone of the FULL Deep Research surface that renders its honest
 // empty state by default — exactly like panel.js _renderJobs with zero jobs:
 // the query box is the call to action, the jobs list stays empty (no centered
-// placeholder copy), and the "All past research found in Library, Research"
+// centered empty-state copy), and the "All past research found in Library, Research"
 // link surfaces under the title. We never seed fabricated runs.
 // The job-card / synapse-graph / cited-report components below are complete and
 // light up unchanged once an eliza deep-research plugin + SSE progress stream is
-// wired — that wiring is the documented follow-up.
+// wired.
 
 import {
   ChevronDown,

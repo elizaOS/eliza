@@ -517,8 +517,8 @@ export interface BootstrapOptimizationOptions {
   configLoader?: () => TrainingConfig;
   notifier?: UserNotifier;
   /**
-   * Override the service used to trigger the run. Tests pass a stub; in
-   * production the registered TrainingTriggerService is looked up from
+   * Override the service used to trigger the run. Tests pass a fake service;
+   * in production the registered TrainingTriggerService is looked up from
    * runtime.services.
    */
   triggerOverride?: (input: {

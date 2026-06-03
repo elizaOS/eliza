@@ -1,5 +1,5 @@
 /**
- * The Undesirables — ElizaOS Plugin v2.3
+ * The Undesirables — elizaOS Plugin v2.3
  * ========================================
  * Pioneers "Personality-as-Code" via verifiable soul workspaces.
  * Each of 4,444 NFTs generates a unique AI personality from its visual traits.
@@ -10,7 +10,7 @@
  * - All Users: Live TCG Oracle data via free search endpoint
  *
  * Features:
- * - 10 actions + 24 skill matchers
+ * - 9 actions + 24 skill matchers
  * - Live Oracle provider (real market data from 427K+ products)
  * - Demo soul for non-holders (drives mint conversion)
  * - Market analysis with personality-driven perspective
@@ -39,7 +39,6 @@ import * as fs from "fs";
 import * as path from "path";
 import * as yaml from "js-yaml";
 import { validateUndesirableConfig } from "./environment.js";
-import { MemeTrendService } from "./services.js";
 
 // ============================================================
 // Constants
@@ -1186,7 +1185,6 @@ const undesirablePlugin: Plugin = {
   ],
   providers: [oracleProvider, soulProvider],
   evaluators: [marketIntelligenceEvaluator],
-  services: [MemeTrendService],
 };
 
 export default undesirablePlugin;

@@ -15,16 +15,16 @@
  * full enumeration in
  * https://github.com/0xSolace/eliza/blob/feat/plugin-anthropic-proxy/plugins/plugin-anthropic-proxy/docs/eliza-fingerprint.md
  *
- * For non-eliza agents, supply override dictionaries via config.json — see
- * config.json.example in the plugin root.
+ * For non-eliza agents, supply override dictionaries via config.json or
+ * CLAUDE_MAX_PROXY_CONFIG_PATH — see config.json.example in the plugin root.
  */
 
 // ─── Layer 2: String Trigger Replacements ───────────────────────────────────
 // Find/replace pairs applied via split/join over the entire request body.
 //
-// Identity entries (find === replace) act as presence detectors — the byte
-// parity guarantees the reverse map round-trips without surprise. Future
-// tuning can replace the right side with neutral synonyms.
+// Identity entries (find === replace) act as presence detectors. The byte
+// parity guarantees the reverse map round-trips without surprise; custom
+// dictionaries can replace the right side with neutral synonyms.
 export const ELIZA_REPLACEMENTS: ReadonlyArray<readonly [string, string]> = [
   // framework / package identifiers
   ["@elizaos/native-reasoning", "@elizaos/native-reasoning"],

@@ -3,16 +3,16 @@
  *
  * Not part of the public ABI — the public surface only exposes
  * `silero_vad_reset_state(handle)` (clears the state inside the
- * opaque session). This header gives the eventual ggml-backed port
- * (and the unit tests in `test/silero_vad_state_test.c`) a typed
+ * opaque session). This header gives the native runtime, dispatcher
+ * backends, and unit tests in `test/silero_vad_state_test.c` a typed
  * struct + a deterministic reset routine they can exercise without
  * a loaded model.
  *
  * Shape rationale: the Silero v5 graph carries a single LSTM layer
- * with 64-dim hidden + 64-dim cell state; the runtime threads the
+ * with 128-dim hidden + 128-dim cell state; the runtime threads the
  * "input" copy of each (the value the next inference reads) through
  * the model and writes the "output" copy back. Exposing both halves
- * lets the future ggml port keep the in/out separation explicit
+ * lets backend implementations keep the in/out separation explicit
  * without changing the public ABI.
  */
 
@@ -42,9 +42,9 @@ void silero_vad_state_reset(silero_vad_state_t *state);
 
 /*
  * Promote the just-written `*_out` arrays to the next inference's
- * `*_in` arrays. The eventual ggml port calls this between windows
- * so the LSTM advances its recurrent state in lock-step with the
- * input stream. Memory-safe with NULL (no-op).
+ * `*_in` arrays. Runtime backends call this between windows so the
+ * LSTM advances its recurrent state in lock-step with the input
+ * stream. Memory-safe with NULL (no-op).
  */
 void silero_vad_state_promote(silero_vad_state_t *state);
 

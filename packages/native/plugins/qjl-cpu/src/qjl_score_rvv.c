@@ -111,4 +111,4 @@ void qjl_score_qk_rvv(const float *q_sketch,
 #endif /* __riscv && __riscv_v_intrinsic */
 
 /* Avoid ISO C "empty translation unit" pedantic diagnostics when RVV is undefined. */
-typedef int qjl_score_rvv_iso_c_tu_stub;
+typedef int qjl_score_rvv_iso_c_empty_tu_marker;

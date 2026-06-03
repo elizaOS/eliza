@@ -15,9 +15,8 @@ endif()
 # header).
 include_directories(include src)
 
-# Phase 2: the model entry points are real. The stub is gone. We keep
-# the resampler + state-management TUs as they were — both are still
-# pure-C utilities the runtime uses.
+# Current runtime: the model entry points are real. The resampler and
+# state-management TUs remain pure-C utilities the runtime uses.
 #
 # Architecture portability: every TU below is plain scalar C with no
 # x86/ARM/RVV intrinsics, so the same source list builds on x86_64,
@@ -50,10 +49,10 @@ enable_testing()
 
 # Build-only smoke for the public ABI (now backed by the real runtime —
 # `silero_vad_open` against a missing path returns -ENOENT, etc.).
-add_executable(silero_vad_stub_smoke test/silero_vad_stub_smoke.c)
-target_link_libraries(silero_vad_stub_smoke PRIVATE silero_vad)
-target_compile_options(silero_vad_stub_smoke PRIVATE -O2 -Wall -Wextra)
-add_test(NAME silero_vad_stub_smoke COMMAND silero_vad_stub_smoke)
+add_executable(silero_vad_abi_smoke test/silero_vad_abi_smoke.c)
+target_link_libraries(silero_vad_abi_smoke PRIVATE silero_vad)
+target_compile_options(silero_vad_abi_smoke PRIVATE -O2 -Wall -Wextra)
+add_test(NAME silero_vad_abi_smoke COMMAND silero_vad_abi_smoke)
 
 # Real test for the LSTM state helpers.
 add_executable(silero_vad_state_test test/silero_vad_state_test.c)
@@ -67,7 +66,7 @@ target_link_libraries(silero_vad_resample_test PRIVATE silero_vad)
 target_compile_options(silero_vad_resample_test PRIVATE -O2 -Wall -Wextra)
 add_test(NAME silero_vad_resample_test COMMAND silero_vad_resample_test)
 
-# Phase 2 runtime test: load a fixture GGUF (dropped by the converter
+# Runtime test: load a fixture GGUF (dropped by the converter
 # into ${CMAKE_BINARY_DIR}/silero-vad-v5.gguf if the operator runs the
 # converter before ctest), run two windows (silence + synthetic
 # speech-like noise), assert the silence prob < the noise prob and

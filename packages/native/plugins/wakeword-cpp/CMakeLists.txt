@@ -11,7 +11,7 @@ endif()
 
 include_directories(include src)
 
-# Phase 2: real runtime (`wakeword_runtime.c`) replaces the ENOSYS stub.
+# Current runtime: the model entry points are real.
 # The melspec + window TUs are pure-C utilities the runtime uses.
 #
 # Architecture portability: every TU below is plain scalar C with no
@@ -45,10 +45,10 @@ enable_testing()
 
 # Build-only smoke for the public ABI (now backed by the real runtime —
 # `wakeword_open` against a missing path returns -ENOENT, etc.).
-add_executable(wakeword_stub_smoke test/wakeword_stub_smoke.c)
-target_link_libraries(wakeword_stub_smoke PRIVATE wakeword)
-target_compile_options(wakeword_stub_smoke PRIVATE -O2 -Wall -Wextra)
-add_test(NAME wakeword_stub_smoke COMMAND wakeword_stub_smoke)
+add_executable(wakeword_abi_smoke test/wakeword_abi_smoke.c)
+target_link_libraries(wakeword_abi_smoke PRIVATE wakeword)
+target_compile_options(wakeword_abi_smoke PRIVATE -O2 -Wall -Wextra)
+add_test(NAME wakeword_abi_smoke COMMAND wakeword_abi_smoke)
 
 # Spectral correctness: legacy mode (no GGUF) on a 1 kHz / 4 kHz tone.
 add_executable(wakeword_melspec_test test/wakeword_melspec_test.c)
@@ -62,7 +62,7 @@ target_link_libraries(wakeword_window_test PRIVATE wakeword)
 target_compile_options(wakeword_window_test PRIVATE -O2 -Wall -Wextra)
 add_test(NAME wakeword_window_test COMMAND wakeword_window_test)
 
-# Phase 2 runtime test: opens the three GGUFs the converter writes,
+# Runtime test: opens the three GGUFs the converter writes,
 # pushes silence + a synthetic chirp, asserts honest score gates. The
 # test refuses to run without the GGUFs (a missing fixture must NOT
 # pass for "OK"). Drop them under ${CMAKE_BINARY_DIR}/wakeword/<phrase>.{melspec,embedding,classifier}.gguf

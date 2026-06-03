@@ -1,4 +1,4 @@
-// === Phase 4G: apps routes extracted to @elizaos/plugin-app-manager ===
+// apps routes extracted to @elizaos/plugin-app-manager.
 // Re-export the public surface so downstream callers that imported from
 // `@elizaos/agent` keep working during the transition. New callers
 // should import from `@elizaos/plugin-app-manager` directly.
@@ -8,7 +8,7 @@ export {
   type FavoriteAppsStore,
   handleAppsRoutes,
 } from "@elizaos/plugin-app-manager";
-// === Phase 4D: wallet routes extracted to @elizaos/plugin-wallet ===
+// wallet routes extracted to @elizaos/plugin-wallet.
 // Keep the compatibility surface, but lazy-load the wallet implementation.
 // The agent API barrel is loaded during local-server startup, and a static
 // re-export would make every runtime require the full wallet/trading stack

@@ -3,7 +3,7 @@
  * registration helper.
  *
  * Adapter coverage (Wave A):
- * - `dm` — provided by `plugin-discord` and (future) other connector plugins.
+ * - `dm` — provided by `plugin-discord` and other connector plugins.
  *   Not registered here.
  * - `owner_app_inline` — Eliza app private chat inline form.
  * - `cloud_authenticated_link` — cloud-hosted page (cloud paired).

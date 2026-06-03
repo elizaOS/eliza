@@ -91,9 +91,9 @@ The plugin includes comprehensive error handling for:
 - API rate limits
 - Market data unavailability
 
-## Future Enhancements
+## Enhancement Backlog
 
-Potential future features:
+Potential feature additions:
 
 - Position management actions (deposit, withdraw, borrow, repay)
 - Yield optimization recommendations

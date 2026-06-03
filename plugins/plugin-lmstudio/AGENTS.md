@@ -46,7 +46,7 @@ plugins/plugin-lmstudio/
     index.ts             LMStudioConfig, LMStudioModelInfo, LMStudioModelsResponse
   __tests__/
     config.test.ts       Unit tests for config resolution
-    detect.test.ts       Unit tests for detectLMStudio with stubbed fetch
+    detect.test.ts       Unit tests for detectLMStudio with deterministic fetch
     text.shape.test.ts   Unit tests for normalizeNativeTools, normalizeToolChoice, normalizeNativeMessages
     integration.test.ts  Integration tests (requires live LM Studio)
 ```

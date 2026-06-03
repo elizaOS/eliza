@@ -2,12 +2,11 @@
 
 C reference + AVX2 + NEON kernels and a GGUF converter for the
 on-device PolarQuant Q4 weight format (`block_q4_polar`, GGML type
-tag `Q4_POLAR=45`).
+tag `Q4_POLAR=47`).
 
 The standalone static library here is the behavioural source of truth
 for the kernels.  Drop-in patches for the
-[Apothic-AI/llama.cpp-1bit-turboquant](https://github.com/Apothic-AI/llama.cpp-1bit-turboquant)
-fork live under `fork-integration/` (separate `quants-polar.{h,c}` +
+elizaOS llama.cpp fork live under `fork-integration/` (separate `quants-polar.{h,c}` +
 `.patch` deltas for `ggml-common.h`, `ggml.h`, `ggml-cpu.c`,
 `ggml-quants.c`, and `ggml/src/ggml-cpu/CMakeLists.txt`).
 
@@ -32,7 +31,7 @@ fork live under `fork-integration/` (separate `quants-polar.{h,c}` +
 | `test/polar_dot_test.c`       | Dot product against an unquantized fp32 reference, same tolerance. |
 | `test/polar_simd_parity_test.c` | SIMD-vs-scalar parity over 100 random blocks (dequant max-abs <= 5e-5, dot rel-err <= 1e-5). |
 | `scripts/gen_centroids.py`    | Regenerates `polar_centroids.h` bit-for-bit from the Lloyd-Max solver in `polar_quant.py`. |
-| `scripts/polarquant_to_gguf.py` | Pack a PolarQuant safetensors sidecar into a Q4_POLAR=45 GGUF. |
+| `scripts/polarquant_to_gguf.py` | Pack a PolarQuant safetensors sidecar into a Q4_POLAR=47 GGUF. |
 | `scripts/test_converter.py`   | Synthesize a 128x128 linear, encode + convert + read back. |
 | `fork-integration/`           | In-fork drop-in: `quants-polar.{h,c}` + `*.patch` for the apothic llama.cpp fork. |
 
@@ -56,7 +55,7 @@ the layout llama.cpp's existing 4-bit kernels assume so SIMD unpacking
 ports cleanly).
 
 `qjl[0]` bit 0 holds the per-block residual sign; bytes 1..15 are
-reserved for a future per-coordinate residual without breaking the
+reserved for a per-coordinate residual extension without breaking the
 on-disk size.
 
 ## Build + test
@@ -92,7 +91,7 @@ python scripts/polarquant_to_gguf.py \
 Reads the sidecar's `<layer>.codes` (int8), `<layer>.norms` (fp16),
 optional `<layer>.qjl` (uint8) tensors; packs each layer into
 `block_q4_polar` records; and writes a GGUF where every quantized
-tensor is typed `Q4_POLAR=45`.  Header metadata:
+tensor is typed `Q4_POLAR=47`.  Header metadata:
 
 | Key | Value |
 |---|---|
@@ -115,8 +114,8 @@ python scripts/test_converter.py
 
 Synthesizes a 128x128 fp32 weight, runs the vendored PolarQuant
 encoder over it, drives the converter, and reads the GGUF back via
-`gguf.GGUFReader` (with `Q4_POLAR=45` patched into the enum to
-mirror what the upstream registration step will do).
+`gguf.GGUFReader` (with `Q4_POLAR=47` patched into the enum to
+mirror the elizaOS fork registration).
 
 ## Validation results
 
@@ -150,7 +149,7 @@ non-aarch64 dev hosts.
 
 ## In-fork integration
 
-The Apothic llama.cpp fork integration (registers `Q4_POLAR=45`,
+The elizaOS llama.cpp fork integration (registers `Q4_POLAR=47`,
 wires the type-traits dispatch) is staged in `fork-integration/`:
 
 - `quants-polar.{h,c}` — drop-in for `ggml/src/ggml-cpu/`,

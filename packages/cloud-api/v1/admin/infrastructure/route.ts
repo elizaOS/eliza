@@ -1,7 +1,7 @@
 /**
  * GET /api/v1/admin/infrastructure
  *
- * Stubbed at 501 on the Worker. The original handler calls
+ * Explicit 501 on the Worker. The original handler calls
  * `getAdminInfrastructureSnapshot`, which transitively imports `ssh2`
  * (Node-only) for live Docker-node SSH inspection. Sidecar handles this;
  * SPA gets a clear 501 instead of a 404.

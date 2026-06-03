@@ -84,14 +84,13 @@ if(TURBOQUANT_RISCV)
     )
 endif()
 
-# x86 / arm host builds intentionally do not yet list NEON or AVX2 TUs:
-# only the scalar reference and the dispatcher get linked. Sister tasks
-# add tbq_*_neon.c / tbq_*_avx2.c here.
+# x86 / arm host builds intentionally link the scalar reference and dispatcher
+# only; there are no tbq_*_neon.c or tbq_*_avx2.c source files in this package.
 if(TURBOQUANT_X86)
-    # placeholder: AVX2 sister kernels will land in a follow-up task.
+    # Scalar reference path.
 endif()
 if(TURBOQUANT_ARM)
-    # placeholder: NEON sister kernels will land in a follow-up task.
+    # Scalar reference path.
 endif()
 
 # turboquant_smoke: block-encode/decode round-trip for TBQ3/TBQ4. Asserts

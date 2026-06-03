@@ -616,7 +616,7 @@ function ContactDetail({ contact, t }: { contact: ContactSummary; t: TFn }) {
       <p className="text-xs text-muted">
         {t("contacts.detail.readOnlyNote", {
           defaultValue:
-            "Editing existing contacts is not yet supported on this device.",
+            "Editing existing contacts is unavailable on this device.",
         })}
       </p>
     </div>

@@ -20,12 +20,9 @@
  *   1. Hashes the request's image bytes (model-family-scoped).
  *   2. Checks the arbiter's vision-embedding cache.
  *   3. On miss: calls `backend.describe(request)`, lets the backend
- *      run its own projector + decoder. (Today we don't have a typed
- *      hook to extract the projected tokens after the backend runs;
- *      that wiring is planned for when the elizaOS fork's mtmd binding
- *      lands `getProjectedTokens()` on the handle.) The result is
- *      returned and the cache stays empty for this hash — the
- *      decoder text is what the caller wanted anyway.
+ *      run its own projector + decoder. Backends that cannot expose projected
+ *      tokens return decoder text only, so the cache stays empty for this hash.
+ *      The decoder text is what the caller wanted anyway.
  *   4. On hit: calls `backend.describe(request, { projectedTokens })`.
  *      Backends that support pre-projected token reuse skip the
  *      projector entirely. Backends that don't ignore the hint; the
@@ -37,7 +34,7 @@ export {
 	type AospMtmdHandle,
 	type LoadAospVisionBackendOptions,
 	loadAospVisionBackend,
-} from "./aosp-stub";
+} from "./aosp-unavailable";
 export {
 	type CapacitorLlamaMtmdBinding,
 	type CapacitorLlamaMtmdHandle,

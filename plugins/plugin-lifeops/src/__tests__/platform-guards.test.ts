@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Stub @elizaos/core so loading apple-reminders/website-blocker does not pull
+// Mock @elizaos/core so loading apple-reminders/website-blocker does not pull
 // in the full runtime logger transitive (adze, etc.) — these tests only
 // exercise the early `if (!isDarwin())` and missing-hosts-file branches.
 vi.mock("@elizaos/core", () => ({
@@ -16,7 +16,7 @@ vi.mock("@elizaos/core", () => ({
 
 const ORIGINAL_PLATFORM = process.platform;
 
-function stubPlatform(platform: NodeJS.Platform): void {
+function overridePlatform(platform: NodeJS.Platform): void {
   Object.defineProperty(process, "platform", {
     configurable: true,
     value: platform,
@@ -32,8 +32,8 @@ function restorePlatform(): void {
 
 // Reset the module registry before every test so that any guard which captures
 // `process.platform` at module-init time (instead of at call time) still sees
-// the per-test platform stub. Today `isDarwin()` reads the value lazily, but
-// this future-proofs the suite against that refactor.
+// the per-test platform override. Today `isDarwin()` reads the value lazily,
+// but this keeps the suite valid if that guard later moves to module init.
 beforeEach(() => {
   vi.resetModules();
 });
@@ -44,25 +44,25 @@ describe("platform/host helper", () => {
   });
 
   it("isDarwin returns true on darwin", async () => {
-    stubPlatform("darwin");
+    overridePlatform("darwin");
     const { isDarwin } = await import("../platform/host.js");
     expect(isDarwin()).toBe(true);
   });
 
   it("isDarwin returns false on win32", async () => {
-    stubPlatform("win32");
+    overridePlatform("win32");
     const { isDarwin } = await import("../platform/host.js");
     expect(isDarwin()).toBe(false);
   });
 
   it("isDarwin returns false on linux", async () => {
-    stubPlatform("linux");
+    overridePlatform("linux");
     const { isDarwin } = await import("../platform/host.js");
     expect(isDarwin()).toBe(false);
   });
 
   it("darwinUnavailableActionResult returns the PLATFORM_UNSUPPORTED shape", async () => {
-    stubPlatform("win32");
+    overridePlatform("win32");
     const { darwinUnavailableActionResult } = await import(
       "../platform/host.js"
     );
@@ -89,7 +89,7 @@ describe("platform guards — apple reminders bridge", () => {
   });
 
   it("createNativeAppleReminderLikeItem returns not_supported on win32", async () => {
-    stubPlatform("win32");
+    overridePlatform("win32");
     const { createNativeAppleReminderLikeItem } = await import(
       "../lifeops/apple-reminders.js"
     );
@@ -105,7 +105,7 @@ describe("platform guards — apple reminders bridge", () => {
   });
 
   it("updateNativeAppleReminderLikeItem returns not_supported on win32", async () => {
-    stubPlatform("win32");
+    overridePlatform("win32");
     const { updateNativeAppleReminderLikeItem } = await import(
       "../lifeops/apple-reminders.js"
     );
@@ -122,7 +122,7 @@ describe("platform guards — apple reminders bridge", () => {
   });
 
   it("deleteNativeAppleReminderLikeItem returns not_supported on win32", async () => {
-    stubPlatform("win32");
+    overridePlatform("win32");
     const { deleteNativeAppleReminderLikeItem } = await import(
       "../lifeops/apple-reminders.js"
     );
@@ -140,7 +140,7 @@ describe("platform guards — website blocker engine", () => {
   });
 
   it("reports unavailable when the hosts file path is missing on win32", async () => {
-    stubPlatform("win32");
+    overridePlatform("win32");
     const { getSelfControlStatus } = await import(
       "../website-blocker/engine.js"
     );

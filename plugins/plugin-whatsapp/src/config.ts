@@ -110,7 +110,7 @@ export type WhatsAppAccountConfig = {
 // ============================================================
 
 export type WhatsAppChannelConfig = {
-  /** Optional per-account WhatsApp configuration (multi-account). */
+  /** Optional named WhatsApp account configuration records. */
   accounts?: Record<string, WhatsAppAccountConfig>;
   /** Optional provider capability tags used for agent/runtime guidance. */
   capabilities?: string[];

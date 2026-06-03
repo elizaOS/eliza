@@ -1,5 +1,5 @@
 /**
- * Tests for the `OcrWithCoordsService` interface and the transitional
+ * Tests for the `OcrWithCoordsService` interface and the
  * `RapidOcrCoordAdapter`. These verify:
  *   1. `computeSemanticPosition` matches the strict-thirds rule exactly,
  *      including the "middle + center" → "center" collapse.

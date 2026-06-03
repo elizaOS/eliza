@@ -11,7 +11,7 @@
  *      registry's current set (excluding ourselves).
  *   3. Invoke that provider's original handler directly — bypassing
  *      `runtime.useModel` which would recurse into us.
- *   4. Record the observed latency so future "fastest" picks have data.
+ *   4. Record the observed latency so later "fastest" picks have data.
  *   5. On handler failure: retry the next eligible provider in priority
  *      order until exhausted (except in `manual` mode with an explicit
  *      preferred provider — that throws verbatim).

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ModelType } from "@elizaos/core";
 import {
   elizaClassicPlugin,
+  generateElizaEmbedding,
   generateElizaResponse,
   getElizaGreeting,
 } from "./index.js";
@@ -39,6 +40,17 @@ describe("eliza-classic deterministic responses", () => {
     );
   });
 
+  it("generates normalized deterministic lexical embeddings", () => {
+    const familyEmbedding = generateElizaEmbedding("mother father family");
+    const workEmbedding = generateElizaEmbedding("deadline project work");
+    const repeatEmbedding = generateElizaEmbedding("mother father family");
+
+    expect(familyEmbedding).toHaveLength(1536);
+    expect(Math.hypot(...familyEmbedding)).toBeCloseTo(1, 8);
+    expect(repeatEmbedding).toEqual(familyEmbedding);
+    expect(workEmbedding).not.toEqual(familyEmbedding);
+  });
+
   it("registers deterministic handlers for text, planning, and embedding models", async () => {
     expect(elizaClassicPlugin.models?.[ModelType.TEXT_NANO]).toBeTypeOf(
       "function",
@@ -51,9 +63,10 @@ describe("eliza-classic deterministic responses", () => {
       ModelType.TEXT_EMBEDDING
     ] as ((runtime: unknown, params: unknown) => Promise<number[]>) | undefined;
 
-    const embedding = await embeddingHandler?.({} as never, {} as never);
+    const embedding = await embeddingHandler?.({} as never, {
+      text: "I feel sad today",
+    } as never);
     expect(embedding).toHaveLength(1536);
-    expect(embedding?.[0]).toBe(1);
-    expect(embedding?.slice(1).every((value) => value === 0)).toBe(true);
+    expect(Math.hypot(...(embedding ?? []))).toBeCloseTo(1, 8);
   });
 });

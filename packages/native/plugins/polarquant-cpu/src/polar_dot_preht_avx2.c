@@ -111,4 +111,4 @@ void ggml_vec_dot_q4_polar_preht_f32_avx2(
 #endif /* __AVX2__ */
 
 /* Avoid ISO C "empty translation unit" pedantic error when __AVX2__ is undefined. */
-typedef int polar_dot_preht_avx2_iso_c_tu_stub;
+typedef int polar_dot_preht_avx2_iso_c_empty_tu_marker;

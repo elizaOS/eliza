@@ -2,7 +2,7 @@
  * Browser-specific entry point for @elizaos/core
  *
  * This file exports only browser-compatible modules and provides
- * stubs or alternatives for Node.js-specific functionality.
+ * compatibility shims or alternatives for Node.js-specific functionality.
  * Streaming context manager is auto-detected at runtime.
  */
 
@@ -199,7 +199,7 @@ export function resolveStateDir(
 	return `${xdgStateHome ?? "/.local/state"}/${namespace}`;
 }
 
-// Browser stubs for Node-only path helpers. These exist on the Node entry
+// Browser shims for Node-only path helpers. These exist on the Node entry
 // (see utils/state-dir.ts) and are imported by server-side runtime modules
 // (e.g. @elizaos/agent/src/config/paths.ts) that may be statically reached
 // by the renderer bundle's dep graph. The values returned are unused in the
@@ -210,13 +210,13 @@ export function resolveOAuthDir(): string {
 
 export async function runPluginMigrations(): Promise<void> {}
 
-// Browser-specific exports or stubs for Node-only features
+// Browser-specific exports and shims for Node-only features.
 export const isBrowser = true;
 export const isNode = false;
 
 /**
- * Browser stub for server health checks
- * In browser environment, this is a no-op
+ * Browser health contract for server-only checks.
+ * In browser environment, this reports not-applicable.
  */
 export const serverHealth = {
 	check: async () => ({ status: "not-applicable", environment: "browser" }),
@@ -226,6 +226,6 @@ export const serverHealth = {
 // Cloud-routing helpers (`toRuntimeSettings`, etc.) are pure functions
 // used by app-core's sensitive-requests/cloud-link-adapter at static
 // import time. Browser-safe — no Node deps — so include them here so
-// Rollup can satisfy the named import without falling back to the
-// stub plugin.
+// Rollup can satisfy the named import without falling back to a compatibility
+// plugin.
 export * from "./cloud-routing";

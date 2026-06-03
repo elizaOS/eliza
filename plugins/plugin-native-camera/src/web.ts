@@ -92,8 +92,8 @@ export class CameraWeb extends WebPlugin {
   }> = [];
 
   async getDevices(): Promise<{ devices: CameraDevice[] }> {
-    // enumerateDevices() returns device stubs without labels unless the user
-    // has already granted camera permission via a prior getUserMedia() call.
+    // enumerateDevices() returns unlabeled device records unless the user has
+    // already granted camera permission via a prior getUserMedia() call.
     // We intentionally do NOT call getUserMedia() here because it requires a
     // user gesture and would throw NotAllowedError if called programmatically.
     const mediaDevices = getMediaDevices();
@@ -180,12 +180,8 @@ export class CameraWeb extends WebPlugin {
       audio: false,
     };
 
-    // PERMISSIONS_MIGRATION: this getUserMedia() call triggers the OS
-    // camera-permission dialog implicitly. New flow probes via
-    // `cameraProber` from
-    // `packages/agent/src/services/permissions/probers/camera.ts` first,
-    // then asks the user, only then opens the stream. Will be retired by
-    // the chat-surface migration agent.
+    // Browser camera permission is requested by opening the stream. Native
+    // permission probing is handled outside this Capacitor web fallback.
     this.mediaStream = await getMediaDevices().getUserMedia(constraints);
     this.previewElement = options.element;
 

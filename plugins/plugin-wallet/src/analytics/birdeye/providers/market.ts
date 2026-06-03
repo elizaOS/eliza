@@ -79,8 +79,7 @@ export const marketProvider: Provider = {
     try {
       //console.log('BIRDEYE_CRYPTOCURRENCY_MARKET_DATA getting');
 
-      // define the market
-      // FIXME: get out of runtime.getSettings
+      // Static Solana market addresses used for the Birdeye overview.
       const TOKEN_ADDRESSES = {
         SOL: "So11111111111111111111111111111111111111112",
         BTC: "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh", // wBTC

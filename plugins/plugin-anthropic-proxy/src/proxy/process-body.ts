@@ -19,6 +19,7 @@ import { buildBillingBlock } from "./billing-fingerprint.js";
 import { processToolsSection } from "./cc-tool-stubs.js";
 import type { Pair } from "./sanitize.js";
 import { applyReplacements } from "./sanitize.js";
+import type { SystemPromptStripConfig } from "./system-prompt.js";
 import { stripSystemConfig } from "./system-prompt.js";
 import { applyQuotedRenames } from "./tool-rename.js";
 
@@ -26,6 +27,7 @@ export interface ProcessBodyConfig {
   replacements: ReadonlyArray<Pair>;
   toolRenames: ReadonlyArray<Pair>;
   propRenames: ReadonlyArray<Pair>;
+  systemPromptStrip?: SystemPromptStripConfig;
   stripSystemConfig?: boolean;
   stripToolDescriptions?: boolean;
   injectCCStubs?: boolean;
@@ -104,7 +106,7 @@ export function processBody(
   // Layer 4: System prompt template bypass
   let systemConfigStripped = 0;
   if (config.stripSystemConfig !== false) {
-    const r = stripSystemConfig(m);
+    const r = stripSystemConfig(m, config.systemPromptStrip);
     m = r.body;
     systemConfigStripped = r.stripped;
   }

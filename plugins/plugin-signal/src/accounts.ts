@@ -116,7 +116,7 @@ export function normalizeAccountId(accountId?: string | null): string {
 }
 
 /**
- * Gets the multi-account configuration from runtime settings
+ * Gets the account configuration records from runtime settings
  */
 function getMultiAccountConfig(runtime: IAgentRuntime): SignalMultiAccountConfig {
   const characterSignal = runtime.character.settings?.signal as
@@ -280,7 +280,7 @@ export function listEnabledSignalAccounts(runtime: IAgentRuntime): ResolvedSigna
 }
 
 /**
- * Checks if multi-account mode is enabled
+ * Checks whether more than one enabled account is configured
  */
 export function isMultiAccountEnabled(runtime: IAgentRuntime): boolean {
   const accounts = listEnabledSignalAccounts(runtime);

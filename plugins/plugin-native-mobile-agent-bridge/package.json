@@ -79,7 +79,7 @@
     ],
     "runtime": "both",
     "platformDetails": {
-      "browser": "Stub for non-native runtimes. Real transport lives on iOS/Android only.",
+      "browser": "Error-state fallback for non-native runtimes. Real transport lives on iOS/Android only.",
       "ios": true,
       "android": true
     }

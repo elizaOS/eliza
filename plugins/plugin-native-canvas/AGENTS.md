@@ -97,7 +97,7 @@ This plugin reads no environment variables. Configuration is entirely call-time 
 
 1. Declare the method signature in `src/definitions.ts` inside `CanvasPlugin`.
 2. Implement it in `src/web.ts` in the `CanvasWeb` class.
-3. Add native stubs/implementations in `ios/Sources/CanvasPlugin/CanvasPlugin.swift` and `android/src/main/java/ai/eliza/plugins/canvas/CanvasPlugin.kt`.
+3. Add native handlers/implementations in `ios/Sources/CanvasPlugin/CanvasPlugin.swift` and `android/src/main/java/ai/eliza/plugins/canvas/CanvasPlugin.kt`.
 4. Re-export any new types from `src/index.ts` via `export * from "./definitions"` (already done).
 
 ### Add a new event

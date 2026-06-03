@@ -1,8 +1,8 @@
 /**
  * Admin Infrastructure Container Actions API
  *
- * TODO(node-only): blocked from Workers due to `ssh2` (DockerSSHClient).
- * Performs `docker logs/restart/stop/start/inspect/pull-image` over SSH.
+ * Worker boundary: DockerSSHClient depends on `ssh2`, which workerd cannot
+ * load. Performs `docker logs/restart/stop/start/inspect/pull-image` over SSH.
  */
 
 import { Hono } from "hono";

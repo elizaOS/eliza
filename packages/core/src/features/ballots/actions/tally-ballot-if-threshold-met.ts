@@ -99,7 +99,7 @@ export const tallyBallotIfThresholdMetAction: Action = {
 
 		const text = outcome.tallied
 			? `Ballot ${ballotId} tallied.`
-			: `Ballot ${ballotId} has not yet met its threshold.`;
+			: `Ballot ${ballotId} threshold unmet.`;
 		if (callback) {
 			await callback({ text, action: "TALLY_BALLOT_IF_THRESHOLD_MET" });
 		}

@@ -282,7 +282,7 @@ describe("GENERATE_MEDIA — video unsupported", () => {
 		expect(result.data?.computerUseAction).toBe(
 			"GENERATE_MEDIA_VIDEO_UNSUPPORTED",
 		);
-		expect(result.text).toMatch(/not yet supported/);
+		expect(result.text).toMatch(/unavailable in the local inference backend/);
 		expect(useModel).not.toHaveBeenCalled();
 	});
 });

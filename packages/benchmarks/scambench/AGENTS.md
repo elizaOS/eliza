@@ -34,11 +34,10 @@ corpus (`packages/training/data/normalized/scambench.jsonl`) is absent.
 ## Test the harness
 
 ```bash
-pytest scambench/tests/ -v
+PYTHONPATH=/home/shaw/milady/eliza/packages pytest packages/benchmarks/scambench -v
 ```
 
-Run from `packages/benchmarks/`. No install step — the package is part of the
-monorepo `benchmarks` namespace.
+No install step — the package is part of the monorepo `benchmarks` namespace.
 
 ## Layout
 

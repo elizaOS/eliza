@@ -219,12 +219,12 @@ async function runProbe(url: string, timeoutMs: number): Promise<boolean> {
 
   // The agent's /api/health responds with one of two shapes depending on
   // version:
-  //   { ok: true, agent, bun, uptime }                 ← spike stub
+  //   { ok: true, agent, bun, uptime }                 ← legacy probe shape
   //   { ready: true, runtime: "ok", database: "ok",
   //     agentState: "running", uptime, ...}            ← real @elizaos/agent
-  // Treat either as healthy. `ok === true` covers the stub; `ready === true`
+  // Treat either as healthy. `ok === true` covers the legacy shape; `ready === true`
   // and `agentState === "running"` cover the real runtime. Without this, the
-  // The local option stays hidden even when the agent is plainly up.
+  // local option stays hidden even when the agent is plainly up.
   return isHealthyBody(body);
 }
 

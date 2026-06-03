@@ -16,8 +16,8 @@
  *   - `requestPayment` is the agent-side bridge: today it surfaces the
  *     requirement back to the owner via the runtime logger so the UI /
  *     planner can route the user to the existing wallet top-up flow.
- *     Auto-pay is intentionally not implemented here — the actual money
- *     movement is Cloud-side and gated by the wallet UI (commandment 4).
+ *     Auto-pay is outside this route boundary: actual money movement is
+ *     Cloud-side and gated by the wallet UI (commandment 4).
  *
  * No silent failures: a malformed 402 throws so the action layer can
  * surface a clear "payment-required" message rather than treating the

@@ -1,5 +1,5 @@
 /**
- * Phase 5 — narrate: LLM post-mortem for drift inflections.
+ * Step 5 — narrate: LLM post-mortem for drift inflections.
  *
  * One LLM call per drift, capped by `budget`.
  *

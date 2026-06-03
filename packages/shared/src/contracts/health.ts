@@ -13,8 +13,8 @@
  * deeply interleaved with non-health types. A physical split would require
  * Wave-2 work to untangle without churn on every importer.
  *
- * Instead, this file gives plugin-health (and any future cross-package
- * caller) a stable canonical alias to import from:
+ * Instead, this file gives plugin-health and other cross-package callers a
+ * stable canonical alias to import from:
  *
  *   import type { LifeOpsHealthSignal } from "@elizaos/shared";
  *

@@ -18,7 +18,7 @@ export {
   TOKEN_INFO_SERVICE_TYPE,
   TokenInfoService,
 } from "./analytics/token-info/index.js";
-// === Phase 4D: extracted wallet routes from packages/agent ===
+// === Wallet routes extracted from packages/agent ===
 // `handleWalletRoutes` is consumed by the agent HTTP server at
 // `packages/agent/src/api/server.ts`. The file itself is deliberately
 // `@elizaos/agent`-free; the agent injects all required helpers via the

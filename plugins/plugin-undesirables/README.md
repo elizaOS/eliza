@@ -35,7 +35,7 @@ With no config, a demo soul loads automatically. To use a downloaded soul worksp
 
 **Evaluators (1):** `UNDESIRABLE_MARKET_INTELLIGENCE` — passive; on TCG card keywords it queries the Oracle search endpoint and calls back with live pricing context.
 
-**Services (1):** `MemeTrendService` (`MEME_TREND_MONITOR`) — no-op scaffold reserving the service type.
+**Services:** none. The plugin exposes actions, providers, and one passive evaluator.
 
 **Skills:** the demo soul ships 26 skill descriptions inline. `UNDESIRABLE_LOAD_SKILL` keyword-routes a message to one of 24 of them.
 
@@ -80,7 +80,6 @@ src/
   index.ts          Plugin export, all actions, both providers, evaluator,
                     workspace loader, DEMO_SOUL, oracleFetch helper
   environment.ts    validateUndesirableConfig() — checks UNDESIRABLES_WORKSPACE
-  services.ts       MemeTrendService (no-op scaffold)
 ```
 
 ## Commands

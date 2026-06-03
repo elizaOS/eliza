@@ -113,4 +113,34 @@ describe("iMessage message connector registration", () => {
       })
     );
   });
+
+  it("rejects non-default account ids at the connector boundary", async () => {
+    const registrations: MessageConnectorRegistration[] = [];
+    const runtime = makeRuntime(registrations);
+    const service = {
+      getStatus: vi.fn(makeStatus),
+      getContacts: vi.fn(() => new Map()),
+      getChats: vi.fn(async () => []),
+      getRecentMessages: vi.fn(async () => []),
+      getMessages: vi.fn(async () => []),
+      sendMessage: vi.fn(async () => ({ success: true, messageId: "msg-1" })),
+    } as IMessageService;
+
+    IMessageService.registerSendHandlers(runtime, service);
+
+    await expect(
+      registrations[0].sendHandler(
+        runtime,
+        {
+          source: "imessage",
+          accountId: "work",
+          entityId: "+1 (415) 555-2671" as UUID,
+        } as ConnectorTargetInfo,
+        { text: "hello" } as ConnectorContent
+      )
+    ).rejects.toThrow(
+      "iMessage uses the single local macOS Messages account; unsupported accountId: work"
+    );
+    expect(service.sendMessage).not.toHaveBeenCalled();
+  });
 });

@@ -3,8 +3,7 @@
 (crnn_vgg16_bn) checkpoints into a single GGUF the doctr-cpp runtime
 loads through its in-house tensor reader (see ``src/doctr_gguf.c``).
 
-This used to be a skeleton that raised NotImplementedError. It is now
-a working converter against ``python-doctr`` >= 1.0:
+This is a working converter against ``python-doctr`` >= 1.0:
 
   pip install --break-system-packages python-doctr
 
@@ -17,8 +16,8 @@ The runtime refuses to load a GGUF whose ``doctr.detector`` /
 ``doctr.recognizer`` / ``doctr.detector_input_size`` /
 ``doctr.recognizer_input_h`` keys disagree with the C ABI.
 
-Tensors are emitted as fp32 for the first pass. Phase 3 will layer
-Q4_POLAR / TurboQuant on top using the same scaffolding
+Tensors are emitted as fp32. Quantized builds can layer Q4_POLAR /
+TurboQuant on top using the same scaffolding
 ``polarquant_to_gguf.py`` demonstrates (the GGUF format already
 supports per-tensor type overrides).
 

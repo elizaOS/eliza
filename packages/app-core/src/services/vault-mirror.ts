@@ -36,7 +36,7 @@ export function sharedSecretsManager(): SecretsManager {
   // downstream callers see a stable `{ manager: null }` after first access.
   // Defensive: the primary fix is breaking the cycle (see
   // `vault-bootstrap.ts` agent-bridge lazy import), but this guard keeps
-  // future cycle re-introductions from silently bricking boot.
+  // cycle regressions from silently bricking boot.
   if (!state) {
     state = { manager: null };
   }

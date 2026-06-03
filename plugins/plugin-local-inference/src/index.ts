@@ -40,7 +40,7 @@ export {
 	sanitizeLocalInferenceSpeechText,
 	sniffAudioContentType,
 } from "./routes/local-inference-tts-route.js";
-// === Phase 4A: embedding-presets extracted from packages/agent ===
+// Embedding preset detection exported for runtime boot wiring.
 export {
 	detectEmbeddingPreset,
 	detectEmbeddingTier,

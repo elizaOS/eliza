@@ -127,7 +127,7 @@ declare module "jsdom" {
   }
 }
 
-/** WebGPU Navigator extension (not yet in all lib.dom versions) */
+/** WebGPU Navigator extension absent from some lib.dom versions */
 declare global {
   interface Navigator {
     gpu?: unknown;

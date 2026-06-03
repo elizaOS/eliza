@@ -487,7 +487,7 @@ export class KaminoService extends Service {
         multisig: KAMINO_MULTISIG,
         dataSize: 0, // Not available via API
         lamports: 0, // Not available via API
-        owner: "System Program", // Placeholder
+        owner: "System Program", // Default owner label for API-limited responses
         executable: false,
         rentEpoch: 0,
       };

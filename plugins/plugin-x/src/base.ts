@@ -249,12 +249,12 @@ export class ClientBase {
   callback: ((self: ClientBase) => void | Promise<void>) | null = null;
 
   /**
-   * This method is called when the application is ready.
-   * It throws an error indicating that it is not implemented in the base class
-   * and should be implemented in the subclass.
+   * Lifecycle hook for concrete clients that need startup readiness work.
    */
   onReady() {
-    throw new Error("Not implemented in base class, please call from subclass");
+    throw new Error(
+      "ClientBase.onReady must be overridden by concrete clients",
+    );
   }
 
   /**

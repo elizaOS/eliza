@@ -39,7 +39,7 @@
  *   - Merges extracted values UNDER existing planner values (planner wins
  *     on every field)
  *   - Returns silently with whatever was extractable; handler decides what
- *     to do if the result is still incomplete.
+ *     to do if required fields remain missing.
  */
 
 import {

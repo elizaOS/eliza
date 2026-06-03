@@ -1,4 +1,4 @@
-# face-cpp — port plan
+# face-cpp — native runtime
 
 Standalone C library that ports two ONNX-backed face stages out of
 `plugins/plugin-vision` and onto the elizaOS/llama.cpp fork's ggml
@@ -13,12 +13,12 @@ dispatcher:
 Both heads share a single C ABI (`include/face/face.h`) and load from
 GGUF artifacts produced by the converter scripts in `scripts/`.
 
-This document is the contract the port must satisfy. Today the
-library is a **stub for the model entries** plus **real
-implementations for the model-independent helpers** (anchor table,
-anchor decode, 5-point alignment + bilinear sampler, cosine / L2
-embedding distance). The real port plan replaces `src/face_stub.c`
-without changing the ABI.
+This document is the contract the runtime must satisfy. The model
+entries are implemented by `src/face_model.c` with pure-C scalar
+BlazeFace and embedder forwards, plus real model-independent helpers
+(anchor table, anchor decode, 5-point alignment + bilinear sampler,
+cosine / L2 embedding distance). Backend upgrades must stay behind the
+same ABI.
 
 ## Why this lives here
 
@@ -70,14 +70,14 @@ without changing the ABI.
   - Recorded in `scripts/face_embed_to_gguf.py` as
     `EMBED_UPSTREAM_COMMIT`.
 
-  (`arcface_mini_128` is reserved as a future variant; the C ABI
-  accepts both names but only `facenet_128` is shipped today.)
+  (`arcface_mini_128` is accepted by the C ABI for compatibility, but
+  only `facenet_128` is shipped today.)
 
 ## C ABI (frozen by `include/face/face.h`)
 
 The header declares two opaque handles (`face_detect_handle`,
-`face_embed_handle`) plus three groups of entry points. The stub
-already implements the ABI; the real port must match it byte-for-byte.
+`face_embed_handle`) plus three groups of entry points. The native CPU
+runtime implements this ABI.
 
 ### Detection
 - `face_detect_open(gguf_path, *out)` — load a BlazeFace GGUF.
@@ -97,7 +97,7 @@ already implements the ABI; the real port must match it byte-for-byte.
   preprocessor, run forward, and L2-normalize the 128-d output.
 - `face_embed_close(handle)`.
 - `face_embed_distance(*a, *b)` — cosine distance between two
-  unit-norm 128-d embeddings. Real (not stubbed) helper.
+  unit-norm 128-d embeddings.
 - `face_embed_distance_l2(*a, *b)` — L2 distance counterpart.
 
 ### Anchors (real today)
@@ -115,8 +115,9 @@ already implements the ABI; the real port must match it byte-for-byte.
   sampler.
 
 ### Diagnostics
-- `face_active_backend()` — `"stub"` today, `"ggml-cpu"` /
-  `"ggml-metal"` / etc. once the model TUs land.
+- `face_active_backend()` — diagnostics. Returns `"ggml-cpu-ref"` for
+  the current pure-C scalar runtime; dispatcher-backed builds can
+  report `"ggml-cpu"`, `"ggml-metal"`, etc.
 
 Coordinate convention: every bbox is `{x, y, w, h}` in source-image
 absolute pixel coordinates (`(x, y)` is top-left). Landmarks are
@@ -126,10 +127,9 @@ left-eye, right-eye, nose-tip, mouth-centre, left-ear, right-ear.
 Threading: reentrant against distinct handles; sharing one across
 threads is the caller's mutex problem.
 
-Error codes: `errno`-style negatives. `-ENOSYS` from the stub model
-entries, `-ENOENT` for missing GGUF, `-EINVAL` for shape mismatch /
-degenerate input, `-ENOSPC` for caller-buffer overflow. No silent
-fallbacks.
+Error codes: `errno`-style negatives. `-ENOENT` for missing GGUF,
+`-EINVAL` for shape mismatch / degenerate input, `-ENOSPC` for
+caller-buffer overflow. No silent fallbacks.
 
 ## GGUF conversion
 
@@ -144,42 +144,40 @@ Two scripts, mirroring the layering in
   - `face.anchor_count`        = `896`
   - `face.anchor_strides`      = `[8, 16]`
   - `face.anchor_per_cell`     = `[2, 6]`
-  - `face.upstream_commit`     = TODO (pin at conversion time)
+  - `face.upstream_commit`     = `"hollance/BlazeFace-PyTorch@2c5b59d"`
 - `scripts/face_embed_to_gguf.py` — fp16 conversion of either
   `arcface_mini_128` (buffalo_s MobileFaceNet) or `facenet_128`
   (InceptionResnetV1). Writes:
   - `face.embedder`            = one of `FACE_EMBEDDER_*`
   - `face.embedder_input_size` = `112`
   - `face.embedder_dim`        = `128`
-  - `face.upstream_commit`     = TODO (pin at conversion time)
+  - `face.upstream_commit`     = `"facenet-pytorch==2.5.3"`
 
-Both scripts ship `NotImplementedError` in every TODO block so a
-half-built converter cannot pass for working.
+Both scripts validate their expected tensor names and metadata before
+writing GGUF artifacts.
 
 ## elizaOS/llama.cpp fork integration
 
-The port's runtime calls live in this library; the fork only needs to
-expose its ggml dispatcher and the standard 2-D conv / norm / activation
-ops both heads use. The integration plan:
+The runtime calls live in this library. The current implementation is a
+pure-C scalar reference; a ggml dispatcher can be added behind the same
+ABI using the standard 2-D conv / norm / activation ops both heads use:
 
-1. **Bring up BlazeFace first.** Architecture is a small
+1. **Keep BlazeFace parity.** Architecture is a small
    BlazeBlock-based feature extractor (depthwise + pointwise convs)
    plus per-stride classification and regression heads. All ops are
    already available in the fork (`ggml_conv_2d`, `ggml_norm`,
    ReLU/PReLU). Anchor decode (`face_anchor_decode.c`) is already done
-   and tested; the model entry just needs to call it after the
-   forward pass and run IoU-NMS on the result.
-2. **Bring up the embedder next.** Both supported families are
+   and tested; the model entry calls it after the forward pass and runs
+   IoU-NMS on the result.
+2. **Keep embedder parity.** Both supported families are
    convolutional (MobileFaceNet for arcface_mini_128;
    InceptionResnetV1 for facenet_128). The 5-point affine warp
-   (`face_align.c`) is already done and tested; the model entry just
-   needs to call it before the forward pass and L2-normalize the 128-d
-   output.
+   (`face_align.c`) is done and tested; the model entry calls it before
+   the forward pass and L2-normalizes the 128-d output.
 3. **Wire to the fork's dispatcher.** Expose a
    `face_set_ggml_backend(backend)` setter (mirroring
-   `polarquant-cpu`'s registration path). The stub already advertises
-   `face_active_backend()`; the real impl reports the bound backend's
-   name.
+   `polarquant-cpu`'s registration path). `face_active_backend()`
+   reports the bound backend's name.
 4. **Add a fork patch directory if needed.** None expected for the
    first pass — both models use stock ops.
 
@@ -204,30 +202,25 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-Output: `libface.a` plus four test binaries:
-- `face_stub_smoke`    — model-entry ABI returns `-ENOSYS`.
+Output: `libface.a`, `libface.so` (`.dylib` / `.dll` on other
+platforms), plus native test binaries:
+- `face_abi_smoke`     — public ABI links and error contracts hold.
 - `face_anchor_test`   — anchor table + decode behaviour.
 - `face_align_test`    — 5-point similarity warp + bilinear sampler.
 - `face_distance_test` — cosine + L2 distance on unit-norm vectors.
+- `face_runtime_test`  — detector runtime against a synthetic GGUF.
+- `face_embed_runtime_test` — embedder runtime against a synthetic GGUF.
 
-All four pass on the dev host today.
+The optional Python parity test runs when its upstream dependencies and
+fixtures are available.
 
-## What's missing before the port is real
+## Remaining rollout work
 
-- Pinned `google/mediapipe` commit + recorded BlazeFace weights
-  download recipe.
-- Pinned upstream commit + recorded weights download recipe for the
-  chosen embedder family.
-- `discover_blazeface_tensors`, `discover_embedder_tensors`,
-  `write_gguf` implementations in the two converter scripts (TODO
-  blocks call out the exact work).
-- Real `face_detect_open` / `face_detect` / `face_embed_open` /
-  `face_embed` translation units that drive the ggml dispatcher.
-- IoU-NMS implementation (called by `face_detect` after
-  `face_blazeface_decode`).
 - Parity test: ingest a small set of real face crops, run both the
   Python reference (`onnxruntime` BlazeFace + insightface buffalo_s)
   and this library, assert per-bbox IoU ≥ 0.95 and per-pair embedding
   cosine distance ≤ 0.05.
-- `fork-integration/` patches if any new ggml ops are needed (none
-  expected for the first pass).
+- Production rollout of the GGUF-backed plugin-vision bindings and
+  migration of existing user face libraries when the embedding family
+  changes.
+- Optional ggml / SIMD dispatcher behind the same public ABI.

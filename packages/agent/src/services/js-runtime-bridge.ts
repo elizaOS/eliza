@@ -275,10 +275,9 @@ let cachedBridge: JsRuntimeBridge | null = null;
 export async function resolveJsRuntimeBridge(): Promise<JsRuntimeBridge> {
   if (cachedBridge) return cachedBridge;
 
-  // Distribution profile is queried so future logic can lock down dev-only
-  // bridges (e.g. host-node import of arbitrary file paths) on App Store
-  // builds. Currently informational only — the call also validates the env
-  // var and throws on an unrecognized value.
+  // Distribution profile validates the env var and leaves a single chokepoint
+  // for locking down dev-only bridges (e.g. host-node import of arbitrary file
+  // paths) on App Store builds.
   resolveDistributionProfile();
 
   if (isNodeLikeRuntime()) {

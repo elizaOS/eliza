@@ -27,9 +27,9 @@
  *   not through `bun:ffi`. They are governed separately by the Node
  *   loader's own search path and by signing on the bundled `.node`
  *   artifacts.
- * - Non-darwin platforms — only macOS App Sandbox imposes the
- *   library-validation rule. Linux/Windows store variants will get their
- *   own enforcement when those distribution targets land.
+ * - Non-darwin platforms — this gate enforces the macOS App Sandbox
+ *   library-validation rule only. Linux/Windows distribution constraints use
+ *   their own loader and signing policies.
  */
 
 import { existsSync } from "node:fs";
@@ -38,7 +38,7 @@ import { isStoreBuild } from "../build-variant.ts";
 
 /**
  * Cached bundle root once we've resolved it from `process.execPath`.
- * `undefined` = not yet resolved (next call probes execPath).
+ * `undefined` = cache empty (next call probes execPath).
  * `null` = probed and no `.app` bundle context exists (dev run, source
  * checkout, plain `bun` invocation).
  * `string` = resolved `<...>/<Name>.app/Contents` path.

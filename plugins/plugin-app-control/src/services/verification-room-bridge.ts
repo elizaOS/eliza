@@ -46,7 +46,7 @@ const VERIFY_PLUGIN_METHOD = "verifyPlugin";
  * Dedupe TTL for verdict events keyed by `${sessionId}:${verdict}`.
  *
  * The broadcast bus may replay events under network blips, supervisor
- * retries, or a future multi-listener architecture. A real verdict for
+ * retries, or multi-listener deployments. A real verdict for
  * a given session lands once, within seconds; 10 minutes is well past
  * the window where a duplicate is anything other than a replay.
  */
