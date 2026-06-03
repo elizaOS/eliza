@@ -190,13 +190,18 @@ function renderToken(token: Token, key: string): ReactNode {
       );
     case "link": {
       const href = sanitizeMarkdownUrl(token.href);
+      // Only open external (http/https/mailto) links in a new tab.
+      // Relative paths should navigate in the same context.
+      const isExternal =
+        href !== null &&
+        /^https?:/i.test(href);
       return (
         <a
           key={key}
           href={href ?? undefined}
           title={token.title ?? undefined}
-          target={href ? "_blank" : undefined}
-          rel={href ? "noreferrer" : undefined}
+          target={isExternal ? "_blank" : undefined}
+          rel={isExternal ? "noreferrer" : undefined}
           className="text-txt-strong underline underline-offset-2 transition-colors hover:text-accent"
         >
           {renderChildren(token.tokens, key)}

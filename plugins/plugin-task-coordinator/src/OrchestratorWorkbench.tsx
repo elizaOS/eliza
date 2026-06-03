@@ -1,4 +1,13 @@
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
   Button,
   type CodingAgentAddAgentInput,
   type CodingAgentOrchestratorStatus,
@@ -2029,16 +2038,46 @@ function TaskInspector({
             <option value="urgent">{labelPriority("urgent", t)}</option>
           </select>
         )}
-        <ControlButton
-          agentId="inspector-delete"
-          description="Delete this task"
-          icon={<Trash2 className="h-3 w-3" />}
-          label={t("orchestrator.action.delete", { defaultValue: "Delete" })}
-          onClick={onDelete}
-          disabled={busy}
-          tone="danger"
-          testId="orchestrator-delete"
-        />
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <ControlButton
+              agentId="inspector-delete"
+              description="Delete this task"
+              icon={<Trash2 className="h-3 w-3" />}
+              label={t("orchestrator.action.delete", { defaultValue: "Delete" })}
+              onClick={() => {}}
+              disabled={busy}
+              tone="danger"
+              testId="orchestrator-delete"
+            />
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t("orchestrator.confirmDeleteTitle", {
+                  defaultValue: "Delete task?",
+                })}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("orchestrator.confirmDelete", {
+                  defaultValue:
+                    "Delete this task and its transcript? This can't be undone.",
+                })}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>
+                {t("orchestrator.action.cancel", { defaultValue: "Cancel" })}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={onDelete}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {t("orchestrator.action.delete", { defaultValue: "Delete" })}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       {addAgentOpen ? (
@@ -3044,21 +3083,12 @@ export function OrchestratorWorkbench() {
             onReopen={() =>
               runMutation(() => client.reopenCodingAgentTaskThread(detail.id))
             }
-            onDelete={() => {
-              const confirmed =
-                typeof window === "undefined" ||
-                window.confirm(
-                  t("orchestrator.confirmDelete", {
-                    defaultValue:
-                      "Delete this task and its transcript? This can't be undone.",
-                  }),
-                );
-              if (!confirmed) return;
+            onDelete={() =>
               runMutation(async () => {
                 await client.deleteOrchestratorTask(detail.id);
                 setSelectedId(null);
-              });
-            }}
+              })
+            }
             onFork={() =>
               runMutation(async () => {
                 const forked = await client.forkOrchestratorTask(detail.id);
