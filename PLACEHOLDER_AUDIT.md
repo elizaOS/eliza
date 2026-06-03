@@ -979,6 +979,9 @@ platform no-ops are separated from actionable runtime gaps.
 - Reworded the browser export description from stub wording to an unsupported
   browser export, and changed prompt examples from `todo` to `to-do` while
   preserving the intended Linear status concept.
+- Current remaining marker hits are Vitest spy APIs in
+  `src/actions/routers.test.ts` (`mockResolvedValue`, `mockRestore`, and
+  `.mock.calls`) used to verify Linear router delegation and callback wrapping.
 - Verified `CLAUDE.md` and `AGENTS.md` are identical.
 - Verified with:
   - `bun run --cwd plugins/plugin-linear typecheck`
@@ -1451,6 +1454,9 @@ platform no-ops are separated from actionable runtime gaps.
 
 - Reworded the Capacitor plugin registration comment in `src/index.ts` so the
   native/web fallback contract no longer reads like a temporary mobile gap.
+- Current remaining marker hits are Vitest `stubGlobal` / `unstubAllGlobals`
+  APIs in `src/web.test.ts`, used to install and clear fetch test doubles for
+  the web fallback.
 - Verified with:
   - `bun run --cwd plugins/plugin-native-agent build`
   - `bunx biome check plugins/plugin-native-agent/src/index.ts`
@@ -1585,7 +1591,12 @@ platform no-ops are separated from actionable runtime gaps.
   `README.md`. The image upload route already stores explicit
   extraction/description-unavailable text and returns warnings when image
   description fails; the docs now describe that real behavior.
-- Verified with marker scan and `git diff --check` on the touched docs.
+- Remaining package marker hits are Vitest `vi.mock` / `vi.mocked` APIs in
+  `test/routes.test.ts`, used to isolate the document service loader and type
+  the runtime memory spy.
+- Verified with marker scan and `git diff --check` on the touched docs/audit
+  entry. The package has no local unit-test script; only live manual e2e is
+  defined in `package.json`.
 
 ### plugins/plugin-elevenlabs
 
@@ -1676,6 +1687,9 @@ platform no-ops are separated from actionable runtime gaps.
   unsupported-browser export that warns callers to use a server proxy.
 - Added regression coverage in `src/__tests__/accounts.test.ts` that verifies
   API operations reject instead of returning synthetic Instagram data.
+- Replaced direct `.mock.calls` inspection in the account connector test with
+  an explicit captured registrations array; the package marker scan is now
+  clean.
 - Verified with:
   - `bun run --cwd plugins/plugin-instagram test src/__tests__/accounts.test.ts`
   - `bun run --cwd plugins/plugin-instagram test`
@@ -1702,6 +1716,9 @@ platform no-ops are separated from actionable runtime gaps.
 - Removed an empty WebSocket `close` handler from the Mineflayer bridge server;
   bots remain long-lived until destroyed, and there is no inert close callback
   left to classify.
+- Current remaining marker hits are Vitest `mockResolvedValue` /
+  `mockReturnValue` APIs in `__tests__/mc-action.test.ts`, used to define
+  Minecraft service and waypoint test doubles.
 - Verified `CLAUDE.md` and `AGENTS.md` are identical.
 - Verified with:
   - `bun run --cwd plugins/plugin-minecraft typecheck`
@@ -3201,6 +3218,37 @@ platform no-ops are separated from actionable runtime gaps.
   - `diff -u plugins/plugin-native-location/CLAUDE.md plugins/plugin-native-location/AGENTS.md`
   - marker scan on `plugins/plugin-native-location`
   - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-native-location`
+
+### plugins/app-model-tester
+
+- No source edits were needed. Remaining marker hits are Vitest `vi.mock`
+  module mocks in `src/model-tester-app.test.ts`, used to isolate overlay and
+  shell page registration side effects while importing the app module.
+- Verified with:
+  - `diff -u plugins/app-model-tester/CLAUDE.md plugins/app-model-tester/AGENTS.md`
+  - `bun run --cwd plugins/app-model-tester test src/model-tester-app.test.ts`
+  - marker scan on `plugins/app-model-tester`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/app-model-tester`
+
+### plugins/plugin-google-meet-cute
+
+- No source edits were needed. The package-local marker scan only matches the
+  generated `bun.lock` entries for `@vitest/mocker`; there are no source files,
+  package manifest, or package-local `CLAUDE.md` / `AGENTS.md` files in this
+  directory.
+- Verified with:
+  - marker scan on `plugins/plugin-google-meet-cute`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-google-meet-cute`
+
+### plugins/plugin-mysticism
+
+- No source edits were needed. Remaining marker hits are generated
+  package-local `bun.lock` entries for `@vitest/mocker`; the source tree has no
+  placeholder/stub/todo markers under the current scan.
+- Verified with:
+  - `diff -u plugins/plugin-mysticism/CLAUDE.md plugins/plugin-mysticism/AGENTS.md`
+  - marker scan on `plugins/plugin-mysticism`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-mysticism`
 
 ## Intentional / False-Positive Marker Classes
 

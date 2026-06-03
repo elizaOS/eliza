@@ -33,6 +33,7 @@ jobs:
           name: sbom-spdx-json
           path: sbom.spdx.json
           if-no-files-found: error
+          retention-days: 7
 
   vulnerability-scan:
     runs-on: ubuntu-latest
@@ -57,3 +58,4 @@ jobs:
           name: grype-sarif
           path: grype.sarif
           if-no-files-found: ignore
+          retention-days: 7

@@ -167,4 +167,24 @@ describe("ContinuousChatOverlay", () => {
     );
     expect(screen.getByText(/tell me about the coast/)).toBeTruthy();
   });
+
+  it("keeps the ambient layer non-blocking for controls behind it", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+
+    const root = screen.getByTestId("continuous-chat-overlay");
+    expect(root.className).toContain("pointer-events-none");
+
+    const interactiveRegions = root.querySelectorAll(".pointer-events-auto");
+    expect(interactiveRegions.length).toBeGreaterThan(0);
+    expect(Array.from(interactiveRegions)).not.toContain(root);
+  });
+
+  it("exposes the canonical chat composer test id on the overlay input only", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+
+    expect(screen.getByTestId("chat-composer-textarea")).toBe(
+      screen.getByLabelText("message"),
+    );
+    expect(screen.getAllByTestId("chat-composer-textarea")).toHaveLength(1);
+  });
 });
