@@ -141,4 +141,31 @@ describe("ContinuousChatOverlay", () => {
     );
     expect(screen.getByText(/tell me about the coast/)).toBeTruthy();
   });
+
+  it("ambient layer is pointer-events-none so it cannot occlude the view behind", () => {
+    // The overlay floats at a high z-index over every view (incl. game/overlay
+    // surfaces). Its outer container MUST be pointer-events-none so clicks pass
+    // through to controls behind it; only its own composer bar opts back in via
+    // pointer-events-auto. This is the structural guard against the overlay
+    // swallowing taps meant for GameViewOverlay / overlay-app controls.
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const root = screen.getByTestId("continuous-chat-overlay");
+    expect(root.className).toContain("pointer-events-none");
+    // The interactive composer (the only thing that should capture pointer
+    // events) is a pointer-events-auto descendant, not the full-bleed container.
+    const composer = root.querySelector(".pointer-events-auto");
+    expect(composer).toBeTruthy();
+    expect(composer).not.toBe(root);
+  });
+
+  it("exposes the canonical chat-composer-textarea testid (single shared input)", () => {
+    // When the overlay is the shell's single composer (ChatView's in-view
+    // composer hidden via hideComposer), it carries the same testid the rest of
+    // the system + dev-smoke e2e use to locate the chat input — and only one.
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    expect(screen.getByTestId("chat-composer-textarea")).toBe(
+      screen.getByLabelText("message"),
+    );
+    expect(screen.getAllByTestId("chat-composer-textarea")).toHaveLength(1);
+  });
 });

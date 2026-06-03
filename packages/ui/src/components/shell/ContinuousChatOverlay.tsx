@@ -380,6 +380,11 @@ export function ContinuousChatOverlay({
             }}
             placeholder={booting ? "connecting…" : "say anything…"}
             aria-label="message"
+            // The overlay is the canonical chat input when it's the shell's
+            // single composer (the in-view ChatView composer is hidden via
+            // `hideComposer`), so it carries the same testid the rest of the
+            // system + e2e (dev-smoke) use to find the chat composer.
+            data-testid="chat-composer-textarea"
             aria-describedby={booting ? "cc-booting-hint" : undefined}
             aria-disabled={booting}
             readOnly={booting}
