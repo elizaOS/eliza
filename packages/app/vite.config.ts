@@ -223,15 +223,37 @@ const markedEntry = path.join(
 // Resolve each browser entry from the app scope and alias the bare specifier so
 // the dep is resolvable and pre-bundlable. `default` is the browser condition
 // for yaml/uuid; adze is plain ESM via its `main` field.
-const yamlBrowserEntry = path.join(
-  path.dirname(_require.resolve("yaml/package.json")),
-  "browser/index.js",
-);
-const uuidBrowserEntry = path.join(
-  path.dirname(_require.resolve("uuid/package.json")),
-  "dist/index.js",
-);
-const adzeEntry = _require.resolve("adze");
+// Resolution is best-effort: precisely because these are transitive deps,
+// a fresh install (CI) may not expose them to the app scope at all — a thrown
+// resolve here kills config load and with it the whole production build, which
+// doesn't need these dev-server pre-bundle aliases in the first place.
+const yamlBrowserEntry = (() => {
+  try {
+    return path.join(
+      path.dirname(_require.resolve("yaml/package.json")),
+      "browser/index.js",
+    );
+  } catch {
+    return undefined;
+  }
+})();
+const uuidBrowserEntry = (() => {
+  try {
+    return path.join(
+      path.dirname(_require.resolve("uuid/package.json")),
+      "dist/index.js",
+    );
+  } catch {
+    return undefined;
+  }
+})();
+const adzeEntry = (() => {
+  try {
+    return _require.resolve("adze");
+  } catch {
+    return undefined;
+  }
+})();
 // @opentelemetry/api is a transitive runtime dep of @elizaos/core's browser
 // bundle (StackContextManager / streaming-context tracing) but is not hoisted
 // where packages/app can resolve the bare specifier, so Vite served its ~46
@@ -1835,9 +1857,13 @@ export const INVALID_TRACER_PROVIDER = {};
         replacement: path.resolve(here, "src/shims/use-sync-external-store.ts"),
       },
       { find: /^json5$/, replacement: json5EsmEntry },
-      { find: /^yaml$/, replacement: yamlBrowserEntry },
-      { find: /^uuid$/, replacement: uuidBrowserEntry },
-      { find: /^adze$/, replacement: adzeEntry },
+      ...(yamlBrowserEntry
+        ? [{ find: /^yaml$/, replacement: yamlBrowserEntry }]
+        : []),
+      ...(uuidBrowserEntry
+        ? [{ find: /^uuid$/, replacement: uuidBrowserEntry }]
+        : []),
+      ...(adzeEntry ? [{ find: /^adze$/, replacement: adzeEntry }] : []),
       ...(fs.existsSync(markedEntry)
         ? [{ find: /^marked$/, replacement: markedEntry }]
         : []),
