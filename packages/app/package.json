@@ -118,6 +118,7 @@
     "@elizaos/plugin-task-coordinator": "workspace:*",
     "@elizaos/plugin-training": "workspace:*",
     "@elizaos/plugin-trajectory-logger": "workspace:*",
+    "@elizaos/plugin-vector-browser": "workspace:*",
     "@elizaos/plugin-vincent": "workspace:*",
     "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/plugin-wallet-ui": "workspace:*",

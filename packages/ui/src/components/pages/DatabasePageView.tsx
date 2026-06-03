@@ -8,10 +8,11 @@ import { DatabaseView } from "./DatabaseView";
 import { MediaGalleryView } from "./MediaGalleryView";
 
 // VectorBrowserView is a heavy three.js (WebGL) surface and pulls the injected
-// THREE runtime. Load it dynamically so it (and three) only ship when the user
-// actually opens the vectors tab, never with the always-loaded Database page.
+// THREE runtime. It lives in its own plugin package and is loaded dynamically
+// so it (and three) only ship when the user actually opens the vectors tab,
+// never with the always-loaded Database page.
 const VectorBrowserView = lazy(async () => ({
-  default: (await import("./VectorBrowserView")).VectorBrowserView,
+  default: (await import("@elizaos/plugin-vector-browser")).VectorBrowserView,
 }));
 
 // The SegmentedControl is a composite that renders its own internal buttons and

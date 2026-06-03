@@ -54,6 +54,10 @@ export const SIDE_EFFECT_APP_MODULE_LOADERS: readonly SideEffectAppModuleLoader[
       load: () => import("@elizaos/app-model-tester"),
     },
     {
+      key: "@elizaos/plugin-vector-browser/register",
+      load: () => import("@elizaos/plugin-vector-browser/register"),
+    },
+    {
       key: "@elizaos/plugin-contacts/register",
       load: () => import("@elizaos/plugin-contacts/register"),
     },
