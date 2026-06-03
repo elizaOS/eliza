@@ -19,7 +19,7 @@ The repository already has a useful start:
 - FP8 E4M3 scalar dot smoke,
 - descriptor-stream scaffolding,
 - transformer MLP and single-head transformer-block smoke lowering,
-- NPU 2028 roadmap and target specs.
+- NPU 2028 phase-gate and target specs.
 
 The large gaps are also explicit:
 
@@ -114,7 +114,7 @@ Acceptance gates:
 - numerical tolerance documented per precision,
 - Linux userspace smoke for a toy transformer layer.
 
-## Priority 4: Low Precision Roadmap
+## Priority 4: Low Precision Phase-In
 
 Implement precision in stages:
 
@@ -272,5 +272,5 @@ The next implementation patch should be `L1_DESCRIPTOR_DMA_RUNTIME`:
 - add a scratchpad-bank model,
 - add runtime and cocotb tests,
 - update `docs/spec-db/e1-npu-runtime-contract.json`,
-- update `docs/spec-db/npu-2028-roadmap.yaml`,
+- update the NPU 2028 phase-gate spec,
 - keep every performance claim at smoke/prototype level until RTL timing exists.

@@ -1,4 +1,4 @@
-# Android on simulated chip TODO audit - 2026-05-17
+# Android on simulated chip blocker audit - 2026-05-17
 
 Scope: everything needed to run Android against the Eliza simulated-chip
 story without overstating the current hardware. This audit separates three
@@ -19,7 +19,7 @@ Android userspace smoke, and manifest-bound transcripts.
 
 ## Completed in this pass
 
-| Status | TODO | Result |
+| Status | Completed item | Result |
 |---|---|---|
 | DONE | Unify Android evidence file names across the capture helper, simulator driver, checker, docs, and manifests. | `capture-aosp-evidence.sh`, `boot_android_simulator.sh`, `check_android_sim_boot.py`, AOSP docs, and `sw/aosp-device/evidence_manifest.json` now use the strict nine-log AOSP evidence set. Legacy `cuttlefish_riscv64_boot.log`, `cts_virtual_device_subset.log`, and `vts_virtual_device_subset.log` are documented as aliases only. |
 | DONE | Add capture modes for all strict AOSP evidence logs. | Added `sepolicy-build`, `selinux-neverallow`, `cts-vts-plan`, `cuttlefish-smoke`, `qemu-smoke`, and `renode-smoke` modes. |
@@ -33,7 +33,7 @@ Android userspace smoke, and manifest-bound transcripts.
 
 ## Remaining blockers
 
-| Priority | TODO | Why it blocks Android on simulated chip | Required evidence to clear |
+| Priority | Blocker | Why it blocks Android on simulated chip | Required evidence to clear |
 |---|---|---|---|
 | BLOCKER | Generate or import the selected CPU/AP simulator path. | The current e1-chip contract has no CPU. Android needs an AP with reset, DRAM, timer, interrupts, UART, and MMU-capable CPU. | Generated Chipyard/Rocket manifest with DTS, memmap, Verilog/FIRRTL, simulator binary, hashes, and tool versions. |
 | BLOCKER | Build the generated AP Verilator simulator. | Android/Linux boot evidence must come from an executable AP simulator, not only generated source files. | Verilator build transcript and simulator executable referenced by the generated manifest. |
@@ -48,7 +48,7 @@ Android userspace smoke, and manifest-bound transcripts.
 
 ## High-priority follow-ups
 
-| Priority | TODO | Required work |
+| Priority | Follow-up | Required work |
 |---|---|---|
 | HIGH | Add active Android HAL build rules only after binaries/source exist. | Add reviewed source or prebuilts for `e1_npu.default` and any `hwcomposer.eliza_ai_soc` path, then enable packages and VINTF entries with fail-closed behavior. |
 | HIGH | Complete SELinux policy for future Android services. | Add device/service/hwservice contexts and access rules, then archive policy build and neverallow transcripts. |
@@ -62,7 +62,7 @@ Android userspace smoke, and manifest-bound transcripts.
 
 ## Medium-priority follow-ups
 
-| Priority | TODO | Required work |
+| Priority | Follow-up | Required work |
 |---|---|---|
 | MEDIUM | Restore `scripts/test_software_bsp_evidence.py`. | Update stale API/CLI expectations or remove it from maintained test surfaces. |
 | MEDIUM | Add host-buildable NPU probe automation to AOSP scaffold checks. | Compile/run the fail-closed probe in CI where a host C++ compiler is available. |

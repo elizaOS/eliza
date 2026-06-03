@@ -34,7 +34,7 @@ much as per-chip TOPS. The key ideas are:
 - Pod-level scaling to 4096 chips, using interconnect topology as a product
   feature.
 
-E1 implication: add an embedding/sparse gather/scatter roadmap item now, even if
+E1 implication: add an embedding/sparse gather/scatter requirement now, even if
 the first RTL is only a small SRAM-backed sparse/load coalescer. LLM and recommender
 models are memory dominated, and a dense GEMM-only accelerator misses this class.
 

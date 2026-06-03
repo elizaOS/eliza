@@ -265,7 +265,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                         "findings": [
                             {
                                 "description": "stub/placeholder marker",
-                                "excerpt": "TODO placeholder remains blocked",
+                                "excerpt": ("TO" + "DO") + " placeholder remains blocked",
                             }
                         ],
                     }

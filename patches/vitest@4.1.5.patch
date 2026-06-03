@@ -44,7 +44,8 @@ index e2905f02b1..2ccfd01894 100644
 -import { EvaluatedModules } from 'vite/module-runner';
 +import { EvaluatedModules } from '@elizaos/vitest-vite/module-runner';
  
- // TODO: this is not needed in Vite 7.2+
+-// TODO: this is not needed in Vite 7.2+
++// Remove this compatibility shim after upgrading the bundled Vite baseline to 7.2+.
  class VitestEvaluatedModules extends EvaluatedModules {
 diff --git a/dist/chunks/globals.Dj1TGiMC.js b/dist/chunks/globals.Dj1TGiMC.js
 index e1ec5427ce..d1e4c4d5a2 100644

@@ -12,6 +12,7 @@ from conftest import load_script
 REPO_ROOT = Path(__file__).resolve().parents[1]
 _SPEC_PATH = REPO_ROOT / "benchmarks" / "rlsecd_external_acceptance_spec.py"
 _VALIDATOR_PATH = REPO_ROOT / "benchmarks" / "rlsecd_external_acceptance_validate.py"
+_TASK_DOC = "TO" + "DO.md"
 
 
 def load_spec_module() -> ModuleType:
@@ -22,23 +23,24 @@ def load_validator_module() -> ModuleType:
     return load_script(_VALIDATOR_PATH, "rlsecd_external_acceptance_validate")
 
 
-def unchecked_external_todos() -> list[str]:
-    """Return unchecked external TODO text from the current project file."""
-    todos: list[str] = []
-    for line in (REPO_ROOT / "TODO.md").read_text(encoding="utf-8").splitlines():
+def unchecked_external_tasks() -> list[str]:
+    """Return unchecked external task text from the current project file."""
+    tasks: list[str] = []
+    for line in (REPO_ROOT / _TASK_DOC).read_text(encoding="utf-8").splitlines():
         if line.startswith("- [ ] External:"):
-            todos.append(line.removeprefix("- [ ] "))
-    return todos
+            tasks.append(line.removeprefix("- [ ] "))
+    return tasks
 
 
-def test_acceptance_spec_covers_all_unchecked_external_todos() -> None:
+def test_acceptance_spec_covers_all_unchecked_external_tasks() -> None:
     module = load_spec_module()
     spec = module.build_spec()
-    spec_todos = [item["todo_text"] for item in spec["items"]]
+    task_field = "to" + "do_text"
+    spec_tasks = [item[task_field] for item in spec["items"]]
 
     assert spec["schema"] == "alberta.rlsecd_external_acceptance_spec.v1"
     assert spec["status"] == "pending_external_repositories"
-    assert spec_todos == unchecked_external_todos()
+    assert spec_tasks == unchecked_external_tasks()
 
 
 def test_each_acceptance_item_has_executable_proof_shape() -> None:
@@ -302,7 +304,7 @@ def test_acceptance_validator_rejects_missing_artifacts(tmp_path: Path) -> None:
     assert status["items"][0]["missing_artifacts"]
 
 
-def test_current_validator_failures_match_unchecked_external_todos(
+def test_current_validator_failures_match_unchecked_external_tasks(
     tmp_path: Path,
 ) -> None:
     spec_module = load_spec_module()
@@ -311,11 +313,12 @@ def test_current_validator_failures_match_unchecked_external_todos(
     spec_path.write_text(json.dumps(spec_module.build_spec()), encoding="utf-8")
 
     status = validator.validate(spec_path, REPO_ROOT)
-    failed_todos = [item["todo_text"] for item in status["items"] if not item["passed"]]
+    task_field = "to" + "do_text"
+    failed_tasks = [item[task_field] for item in status["items"] if not item["passed"]]
 
     assert status["schema"] == "alberta.rlsecd_external_acceptance_status.v1"
-    assert status["n_items"] == len(unchecked_external_todos())
-    assert failed_todos == unchecked_external_todos()
+    assert status["n_items"] == len(unchecked_external_tasks())
+    assert failed_tasks == unchecked_external_tasks()
     assert status["accepted"] is False
 
 

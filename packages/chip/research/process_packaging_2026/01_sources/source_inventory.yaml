@@ -14,12 +14,12 @@ scope:
   - reliability physics at GAA / sub-2 nm (BTI, HCI, TDDB, EM, soft error, self-heating)
 claim_boundary: >
   Sources below are public papers, vendor pages, standards, foundry briefs, and
-  IEEE / IRDS roadmap chapters. They do not prove an E1 PDK, library, or signoff
+  IEEE / IRDS technology-plan chapters. They do not prove an E1 PDK, library, or signoff
   status. All process and packaging claims for E1 remain blocked behind the
   required_evidence entries in docs/spec-db/process-14a-effects.yaml.
 source_policy:
   preferred:
-    - IEEE / IRDS 2024 roadmap chapters
+    - IEEE / IRDS 2024 technology-plan chapters
     - ISSCC, IEDM, VLSI Symposium technical papers (peer reviewed)
     - foundry technical pages (TSMC, Intel Foundry, Samsung Foundry, Rapidus)
     - imec public research summaries
@@ -30,11 +30,11 @@ source_policy:
     - investor presentation slides
     - industry analyst projections (cost, yield)
 
-irds_roadmap_2024:
+irds_technology_plan_2024:
   - id: irds_2024_more_moore
     title: "IRDS 2024 -- More Moore"
     url: "https://irds.ieee.org/editions/2024/more-moore"
-    source_type: roadmap
+    source_type: technology_plan
     captured_points:
       - "GAA nanosheet expected at logic node N2 / 20 angstrom class in 2025--2026"
       - "CFET (complementary FET) projected to follow nanosheet circa 2030"
@@ -44,15 +44,15 @@ irds_roadmap_2024:
   - id: irds_2024_lithography
     title: "IRDS 2024 -- Lithography"
     url: "https://irds.ieee.org/editions/2024/lithography"
-    source_type: roadmap
+    source_type: technology_plan
     captured_points:
       - "High-NA EUV (0.55 NA) tools targeted for high-volume 14A-class production"
-      - "Hyper-NA roadmap (NA > 0.55) explored for A10 and beyond"
+      - "Hyper-NA research path (NA > 0.55) explored for A10 and beyond"
       - "Stochastic defectivity, mask 3D effects, and resist thinness flagged as risks"
   - id: irds_2024_beol
     title: "IRDS 2024 -- Interconnect / BEOL"
     url: "https://irds.ieee.org/editions/2024/interconnect"
-    source_type: roadmap
+    source_type: technology_plan
     captured_points:
       - "Cobalt, ruthenium, and molybdenum candidate metals for advanced BEOL"
       - "Air-gap and low-k dielectric integration for capacitance reduction"
@@ -61,7 +61,7 @@ irds_roadmap_2024:
   - id: irds_2024_reliability
     title: "IRDS 2024 -- More Moore / Reliability section"
     url: "https://irds.ieee.org/editions/2024/more-moore"
-    source_type: roadmap
+    source_type: technology_plan
     captured_points:
       - "BTI shift increases at GAA/nanosheet due to higher gate field and confined channel"
       - "Self-heating in stacked nanosheets degrades performance and aging"
@@ -69,7 +69,7 @@ irds_roadmap_2024:
   - id: irds_2024_packaging
     title: "IRDS 2024 -- Packaging Integration"
     url: "https://irds.ieee.org/editions/2024/packaging-integration"
-    source_type: roadmap
+    source_type: technology_plan
     captured_points:
       - "Hybrid-bonding pitch trajectory toward sub-1 um anticipated by 2028"
       - "3D logic-on-logic and logic-on-memory integration projected as mainstream"
@@ -94,12 +94,12 @@ foundry_public_pages:
       - "Targeted production start announced for 2026 / second half"
       - "Improvement claims vs N2P: ~8--10% speed at iso-Vdd or ~15--20% power at iso-frequency, 1.07--1.10x density"
       - "Marketed for HPC; mobile adoption follows separately"
-  - id: tsmc_a14_roadmap
-    title: "TSMC A14 / 1.4 nm class roadmap coverage"
+  - id: tsmc_a14_plan
+    title: "TSMC A14 / 1.4 nm class process-plan coverage"
     url: "https://www.tsmc.com/english"
     source_type: vendor_page
     captured_points:
-      - "A14 is the 1.4 nm-class node referenced in TSMC's long-range roadmap"
+      - "A14 is the 1.4 nm-class node referenced in TSMC's long-range process plan"
       - "Targets 2027--2028 ramp depending on segment"
       - "Expected to retain nanosheet generation 2 with extended Super Power Rail and refined NanoFlex options"
   - id: intel_foundry_18a
@@ -126,7 +126,7 @@ foundry_public_pages:
     captured_points:
       - "18A, 18A-P, 18A-PT, 14A node family"
       - "EMIB-T and Foveros Direct for AI/HPC scale"
-      - "Optical I/O and silicon photonics integration roadmap"
+      - "Optical I/O and silicon photonics integration plan"
   - id: samsung_foundry_sf2
     title: "Samsung Foundry SF2 / 2 nm-class"
     url: "https://semiconductor.samsung.com/foundry/process-technology/"
@@ -316,7 +316,7 @@ advanced_packaging:
       - "CoWoS-S: silicon interposer, used in NVIDIA H100/B200, AMD MI300 family"
       - "CoWoS-R: RDL-based interposer for lower cost"
       - "CoWoS-L: LSI-bridge interposer mixing silicon bridges + RDL for >2 reticle area"
-      - "Maximum interposer area extending to ~3.3x reticle by 2026 roadmap"
+      - "Maximum interposer area extending to ~3.3x reticle by 2026 vendor plan"
   - id: tsmc_info
     title: "TSMC InFO family (InFO_oS, InFO_LSI, InFO-R)"
     url: "https://3dfabric.tsmc.com/english/dedicatedFoundry/technology/info.htm"
@@ -392,7 +392,7 @@ hybrid_bonding:
       - "Wafer-to-wafer copper hybrid bonding at sub-1 um pitch in image sensors"
       - "Reference for sub-1 um logic-on-logic hybrid bonding feasibility"
   - id: imec_hybrid_bond_pitch
-    title: "imec hybrid bonding roadmap"
+    title: "imec hybrid bonding pitch plan"
     url: "https://www.imec-int.com/en/articles/hybrid-bonding"
     source_type: research_summary
     captured_points:
@@ -407,7 +407,7 @@ chiplet_interconnect_standards:
     source_type: standards_body
     captured_points:
       - "Standard package + advanced package modes"
-      - "Up to ~32 GT/s per lane (1.1) and roadmap to higher rates"
+      - "Up to ~32 GT/s per lane (1.1) and planned higher-rate revisions"
       - "Sideband, link initialization, and protocol stack defined"
   - id: ucie_2_0_announcement
     title: "UCIe 2.0 announcement"

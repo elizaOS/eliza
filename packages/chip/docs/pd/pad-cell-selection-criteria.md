@@ -91,15 +91,15 @@ left blank.
 | ----------------------------------------------- | ------ | ------- | ------- | ------- | ---------------------------------------------------- |
 | IO voltage covers 3.3 V                         | hard   | yes     | yes     | yes     | Hard requirement; any "no" disqualifies.             |
 | Core voltage 1.8 V available                    | hard   | yes     | yes     | yes     | Hard requirement.                                    |
-| HBM >= 2 kV documented                          | hard   | yes     | yes     | tbd     | Must be cited from foundry docs.                     |
-| CDM >= 250 V documented                         | hard   | yes     | tbd     | tbd     |                                                      |
-| Native Schmitt input pad                        | high   | yes     | yes     | tbd     | Required for `RST_N`.                                |
-| Two output drive strengths                      | high   | yes     | yes     | tbd     |                                                      |
-| Corner pad cell available                       | high   | yes     | yes     | tbd     |                                                      |
+| HBM >= 2 kV documented                          | hard   | yes     | yes     | uncited | Must be cited from foundry docs.                     |
+| CDM >= 250 V documented                         | hard   | yes     | uncited | uncited |                                                      |
+| Native Schmitt input pad                        | high   | yes     | yes     | uncited | Required for `RST_N`.                                |
+| Two output drive strengths                      | high   | yes     | yes     | uncited |                                                      |
+| Corner pad cell available                       | high   | yes     | yes     | uncited |                                                      |
 | Open-source flow (OpenLane/OpenROAD) supported  | high   | yes     | yes     | partial | Drives the rest of the signoff chain.                |
 | No NDA required                                 | high   | yes     | yes     | yes     | Keeps the project openly auditable.                  |
 | Foundry shuttle frequency                       | med    | high    | med     | low     |                                                      |
-| Per-pin pull-up/down option                     | med    | yes     | yes     | tbd     |                                                      |
+| Per-pin pull-up/down option                     | med    | yes     | yes     | uncited |                                                      |
 | Cost per mm^2 on shared shuttle                 | med    | low     | low     | low     |                                                      |
 | Production-grade ESD (HBM 4 kV / CDM 500 V)     | low    | no      | partial | no      | Demo chip only; not required.                        |
 

@@ -87,19 +87,19 @@ bash pty:true workdir:~/project background:true command:"codex exec --full-auto 
 # Returns sessionId for tracking
 
 # Monitor progress
-process action:log sessionId:XXX
+process action:log sessionId:SESSION_ID
 
 # Check if done
-process action:poll sessionId:XXX
+process action:poll sessionId:SESSION_ID
 
 # Send input (if agent asks a question)
-process action:write sessionId:XXX data:"y"
+process action:write sessionId:SESSION_ID data:"y"
 
 # Submit with Enter (like typing "yes" and pressing Enter)
-process action:submit sessionId:XXX data:"yes"
+process action:submit sessionId:SESSION_ID data:"yes"
 
 # Kill if needed
-process action:kill sessionId:XXX
+process action:kill sessionId:SESSION_ID
 ```
 
 **Why workdir matters:** Agent wakes up in a focused directory, doesn't wander off reading unrelated files (like your soul.md 😅).
@@ -217,7 +217,7 @@ bash pty:true workdir:/tmp/issue-99 background:true command:"bun install && code
 
 # 3. Monitor progress
 process action:list
-process action:log sessionId:XXX
+process action:log sessionId:SESSION_ID
 
 # 4. Create PRs after fixes
 cd /tmp/issue-78 && git push -u origin fix/issue-78
@@ -276,9 +276,9 @@ otto gateway wake --text "Done: [brief summary of what was built]" --mode now
 **Example:**
 
 ```bash
-bash pty:true workdir:~/project background:true command:"codex --yolo exec 'Build a REST API for todos.
+bash pty:true workdir:~/project background:true command:"codex --yolo exec 'Build a REST API for tasks.
 
-When completely finished, run: otto gateway wake --text \"Done: Built todos REST API with CRUD endpoints\" --mode now'"
+When completely finished, run: otto gateway wake --text \"Done: Built tasks REST API with CRUD endpoints\" --mode now'"
 ```
 
 This triggers an immediate wake event — Skippy gets pinged in seconds, not 10 minutes.

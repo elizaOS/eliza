@@ -35,7 +35,7 @@ All four are BLOCKED until foundry agreements are executed.
 | Power delivery | Frontside | Tractable debug, thermal modeling, DFM. BSPDN tax avoided. |
 | Wafer price | ~$30-33k | Cheapest 2 nm-class entry point. |
 | Customer surface | Apple A20-A21, Qualcomm, MTK | Tool / IP / PHY ecosystem co-evolves with these customers. |
-| Hard-IP availability | LPDDR5X PHY shipping at 3 nm / N2 | LPDDR6 PHY on N2P/A14 roadmaps. |
+| Hard-IP availability | LPDDR5X PHY shipping at 3 nm / N2 | LPDDR6 PHY in N2P/A14 vendor delivery plans. |
 
 BSPDN A14P variant slips to 2029. Apple, Qualcomm, MediaTek, Samsung, Google
 all use frontside power delivery on TSMC N3P / Samsung SF2 in 2025-2026.
@@ -226,7 +226,7 @@ Q-end decision tree
    ↓ yes → step 2
 
 2. Hard-IP availability at the chosen node — are the following on a vendor's
-   roadmap with a delivery date inside the 2028 production window?
+   committed delivery plan with a date inside the 2028 production window?
    - LPDDR5X (mature) or LPDDR6 (preferred) PHY at the selected node
    - USB 3.2 / USB4 PHY at the selected node
    - MIPI D-PHY v3 / C-PHY v2 at the selected node
@@ -261,12 +261,12 @@ track instead of pretending the BLOCKED lane is live.
 ## 9. Sources
 
 - `docs/architecture-optimization/sota-2028/process-nodes.md` — full SOTA report
-- TSMC public roadmap (Tom's Hardware): A12 / A13 / N2U; A16 → 2027; A14 → 2028
+- TSMC public process-node plan (Tom's Hardware): A12 / A13 / N2U; A16 → 2027; A14 → 2028
 - TSMC Tech Symposium 2025: A14 +15% perf @ iso-power vs N2
-- Intel Foundry roadmap: 18A-PT (3D stacking), 14A (BSPDN + High-NA)
+- Intel Foundry process-node plan: 18A-PT (3D stacking), 14A (BSPDN + High-NA)
 - imec backside-PDN DTCO studies
-- IEEE IRDS 2024 More Moore roadmap
+- IEEE IRDS 2024 More Moore edition
 - TechPowerUp A19 Pro die-shot (98.68 mm²)
 - Notebookcheck S8E5 die-shot (~126.2 mm²)
 - WikiChip N3 SRAM stall + N2 38.1 Mb/mm² resume
-- Synopsys / Cadence / Rambus LPDDR PHY roadmaps
+- Synopsys / Cadence / Rambus LPDDR PHY delivery plans

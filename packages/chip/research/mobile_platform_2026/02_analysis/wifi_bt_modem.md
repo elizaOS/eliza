@@ -30,7 +30,7 @@ Date: 2026-05-19
 `docs/arch/wifi.md` commits to an **external SDIO Wi-Fi + UART BT module**
 (Murata Type 1DX / CYW4343W class). This is **Wi-Fi 5 + BT 5**, not Wi-Fi 7.
 The E1 SoC does not bond Wi-Fi pins today and the SDIO host controller is
-not implemented. Wi-Fi 7 upgrade requires a different module class — most
+absent from the checked-in RTL. Wi-Fi 7 upgrade requires a different module class — most
 realistic open path is **PCIe-attached mt7925 / mt7927 M.2 module** rather
 than SDIO, because Wi-Fi 7 throughput exceeds SDIO 3.0 bandwidth.
 

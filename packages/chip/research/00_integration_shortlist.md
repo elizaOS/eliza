@@ -15,9 +15,9 @@ missing.
 
 | Item        | Status | Artifact                                                                                                                                    | Validator                                |
 | ----------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| A-1, A-2, A-4 | landed | `docs/arch/npu.md` + `docs/spec-db/e1-npu-runtime-contract.json` + `docs/spec-db/npu-2028-roadmap.yaml` (MX, group INT4, sparse-tile spec) | `make npu-runtime-contract-check`        |
+| A-1, A-2, A-4 | landed | `docs/arch/npu.md` + `docs/spec-db/e1-npu-runtime-contract.json` + NPU 2028 phase-gate spec (MX, group INT4, sparse-tile spec) | `make npu-runtime-contract-check`        |
 | A-3 (BitNet ternary) | landed | RTL: `rtl/npu/e1_npu.sv` (`dot16_ternary_mode_q`, lane decode 00/01/10, reserved 11 rejected); cocotb: 5 cases in `verify/cocotb/test_e1_npu.py` | `make cocotb-npu`                        |
-| A-5 (DMA writeback spec) | landed | `docs/arch/npu.md` writeback semantics + `descriptor_word_template` + `command_buffer_image` + `docs/spec-db/npu-2028-roadmap.yaml` L1 TODO | `make npu-roadmap-check`                 |
+| A-5 (DMA writeback spec) | landed | `docs/arch/npu.md` writeback semantics + `descriptor_word_template` + `command_buffer_image` + NPU phase-gate L1 descriptor-DMA requirement | `make npu-roadmap-check`                 |
 | A-8 (perf counters)  | landed | `rtl/npu/e1_npu.sv` `PERF_STALL_CYCLES`/`PERF_SCRATCH_BYTES`/`PERF_THERMAL_THROTTLE` + contract + check script                                | `make npu-runtime-contract-check`        |
 | B-1..B-5    | landed | `compiler/runtime/{e1_npu_stablehlo,e1_npu_partitioner,e1_executorch_delegate,e1_litert_delegate}.py` + `e1_litert_delegate.h` + `CommandBuffer` on `e1_npu_runtime.py` + 46 new pytest cases | `make typecheck` + `pytest compiler/runtime` |
 | C-1..C-7    | landed | `docs/spec-db/cpu-2028-target.yaml`                                                                                                          | `make cpu-2028-target-check`             |
@@ -296,7 +296,7 @@ Verdict: H-1..H-5 are direct config + script changes. Implementable now.
 
 | ID | Item | Useful | Tractable | Benefit | Source IDs |
 | --- | --- | :---: | :---: | --- | --- |
-| I-1 | Keep frontside-PDN baseline + BSPDN as parallel variant in `process-14a-effects.yaml`; require IR/EM/thermal per variant | Y | now | Locks the contract to the published foundry roadmap reality | `intel_powervia_vlsi2023`, `tsmc_super_power_rail`, `samsung_bspdn_iedm2023` |
+| I-1 | Keep frontside-PDN baseline + BSPDN as parallel variant in `process-14a-effects.yaml`; require IR/EM/thermal per variant | Y | now | Locks the contract to the published foundry plan reality | `intel_powervia_vlsi2023`, `tsmc_super_power_rail`, `samsung_bspdn_iedm2023` |
 | I-2 | Bind NanoFlex/FinFLEX cell library variant selection in PD library manifest | Y | now | Captures cell-library DTCO choices the foundry exposes | `tsmc_nanoflex`, `samsung_finflex` |
 | I-3 | Adopt nanosheet-specific reliability derates (BTI, self-heating, Mo/Ru EM) | Y | now (spec) | Replaces FinFET-era lifetime derates | `bti_nanosheet_ted2023`, `self_heating_nanosheet_edl2024`, `em_advanced_beol_tdmr2024` |
 | I-4 | SRAM Vmin/ECC/repair plan: SECDED + bit-interleaving + repair-fuse policy + BIST | Y | now (spec) | Closes `sram_density_vmin_and_ecc` blocker | `tsmc_2nm_sram_iedm2023`, `samsung_2nm_sram_isscc2024`, `soft_error_advanced_node_iolts2024` |
@@ -343,7 +343,7 @@ current `develop` branch, must respect `packages/chip/CLAUDE.md` and
 | --- | --- | --- |
 | `npu_rtl_ops` | `rtl/npu/`, `verify/cocotb/test_e1_npu*`, `verify/verilator/test_npu*`, `compiler/runtime/e1_npu_runtime.py`, `docs/arch/npu.md`, `docs/spec-db/e1-npu-runtime-contract.json`, `scripts/check_e1_npu_runtime_contract.py` | A-3 (BitNet ternary), A-8 (perf counters), A-5 (DMA writeback spec wiring) |
 | `npu_compiler` | `compiler/runtime/`, `compiler/runtime/test_*` | B-1..B-5 |
-| `npu_spec` | `docs/spec-db/e1-npu-runtime-contract.json`, `docs/spec-db/npu-2028-target.yaml`, `docs/spec-db/npu-2028-roadmap.yaml`, `docs/arch/npu.md`, `docs/arch/npu-microarch.md` | A-1 spec, A-2 spec, A-4 spec, A-6 spec, A-7 spec |
+| `npu_spec` | `docs/spec-db/e1-npu-runtime-contract.json`, `docs/spec-db/npu-2028-target.yaml`, NPU 2028 phase-gate spec, `docs/arch/npu.md`, `docs/arch/npu-microarch.md` | A-1 spec, A-2 spec, A-4 spec, A-6 spec, A-7 spec |
 | `cpu_spec` | `docs/spec-db/cpu-2028-target.yaml` (new), `docs/arch/cpu-subsystem.md`, `docs/arch/linux-capable-cpu-contract.md` | C-1..C-7 |
 | `memory_spec` | `docs/spec-db/memory-2028-target.yaml` (new), `docs/arch/memory-subsystem.md`, `docs/arch/interconnect.md` | D-1..D-9 (spec-only) |
 | `security_spec` | `docs/arch/security.md`, `docs/security/*.md`, `docs/spec-db/security-2028-target.yaml` (new) | E-1..E-8 (spec-only) |
@@ -361,4 +361,4 @@ Each agent must:
    `make typecheck`, `make docs-check`, and the subsystem-specific check.
 3. Report what landed, what was deferred, and what was blocked.
 4. Stay inside the path scope above. If a change touches another scope,
-   it is recorded as a follow-up item, not implemented in this pass.
+   it is recorded as a follow-up item outside this pass.

@@ -278,7 +278,7 @@ online_sources:
     url: "https://www.3gpp.org/specifications-technologies/releases/release-18"
     relevance:
       - XR, RedCap, AI/ML, NR-NTN, NR sidelink relays
-      - Reference for any 5G-NR modem roadmap claim
+      - Reference for any 5G-NR modem plan claim
   - id: 3gpp_rel19_overview
     title: "3GPP Release 19 overview"
     url: "https://www.3gpp.org/specifications-technologies/releases/release-19"
@@ -332,7 +332,7 @@ online_sources:
     url: "https://opencores.org/projects/ufshc"
     relevance:
       - Sparse but documented baseline; not silicon-proven
-      - Useful as gap marker for E1 storage roadmap
+      - Useful as gap marker for E1 storage planning
 
   # --- Open phone platforms ---
   - id: pinephone_pro_wiki

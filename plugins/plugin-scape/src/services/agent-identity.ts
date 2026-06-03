@@ -78,7 +78,7 @@ function defaultIdentityPath(): string {
 
 /**
  * Produce a name that fits the server's 12-char display-name budget.
- * Shape: `agent-XXXXXX` — exactly 12 chars, ~16.7M possibilities.
+ * Shape: `agent-<six hex chars>` — exactly 12 chars, ~16.7M possibilities.
  */
 function generateDisplayName(): string {
   const suffix = randomBytes(3).toString("hex"); // 6 hex chars

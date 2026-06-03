@@ -22,9 +22,9 @@ BSPDN paper, imec forksheet / CFET / 2D-material research summaries.
 | Samsung  | SF3        | MBCFET (GAA)     | no                        | shipping 2022--2024      |
 | Samsung  | SF2        | MBCFET gen-2     | optional (SF2Z follow-on) | 2025/2026                |
 | Samsung  | SF1.4      | MBCFET gen-3     | BSPDN                     | 2027 announced           |
-| Rapidus  | 2 nm       | Nanosheet        | option in roadmap         | 2027 pilot / 2027--2028  |
+| Rapidus  | 2 nm       | Nanosheet        | option in vendor plan     | 2027 pilot / 2027--2028  |
 
-References: `tsmc_n2_overview`, `tsmc_a16_announcement`, `tsmc_a14_roadmap`,
+References: `tsmc_n2_overview`, `tsmc_a16_announcement`, `tsmc_a14_plan`,
 `intel_foundry_18a`, `intel_foundry_14a`, `samsung_foundry_sf2`,
 `samsung_bspdn_iedm2023`, `rapidus_2nm`. These dates and option names are
 quoted from public foundry pages and press; they are planning context, not
@@ -96,7 +96,7 @@ n-FET and p-FET sheets to reduce n--p spacing without merging the channels.
 - CFET stacks p over n vertically, sharing the gate stack. The published
   area-scaling claim is ~30--50% vs nanosheet for inverter / SRAM cells.
 - The first credible foundry CFET node is consistently placed beyond 2028 in
-  vendor roadmaps. TSMC has not announced a CFET node; Intel discussions
+  vendor plans. TSMC has not announced a CFET node; Intel discussions
   reference CFET "post-14A". Samsung and Rapidus reference research-stage
   only.
 

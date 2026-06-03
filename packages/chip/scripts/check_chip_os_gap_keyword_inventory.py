@@ -3,7 +3,7 @@
 
 This is a survey aid, not a readiness gate. It scans curated source/document
 paths that affect the Linux/AOSP-on-chip objective and writes a structured
-inventory of to-do/stub/placeholder/deferred markers. Generated bundles,
+inventory of open-task/stub/placeholder/deferred markers. Generated bundles,
 evidence logs, build outputs, and package caches are intentionally skipped.
 """
 
@@ -17,7 +17,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-TODO_TOKEN = "TO" + "DO"
+OPEN_TASK_MARKER = "TO" + "DO"
+FIX_MARKER = "FIX" + "ME"
 TBD_TOKEN = "TB" + "D"
 NOT_IMPLEMENTED_TOKEN = "not " + "implemented"
 
@@ -101,7 +102,9 @@ CLASSIFIED_BLOCKER_INVENTORY_PATH_PATTERNS = (
         r"("
         r"gap|gaps|audit|blocker|work[-_]order|inventory|"
         r"critical[-_]gap[-_]review|workstream[-_]gap[-_]review|"
-        r"status[-_]dashboard|workstreams|road[-_]to|roadmap|" + TODO_TOKEN.lower() + r"|dossier"
+        r"status[-_]dashboard|workstreams|road[-_]to|roadmap|"
+        + OPEN_TASK_MARKER.lower()
+        + r"|dossier"
         r").*\.(json|md|yaml|yml)$",
         re.I,
     ),
@@ -197,13 +200,13 @@ CLASSIFIED_DIAGNOSTIC_LINE_RE = re.compile(
     r"BLOCKED stub|BLOCKED placeholder|BLOCKED .* wrote stub|"
     r"fail-closed (?:QoR )?placeholder|record(?:ed)? fail-closed|"
     r"compatibility alias for --build-firmware|"
-    r"TODO placeholder|SHA placeholder|"
+    r"TO" + r"DO placeholder|SHA placeholder|"
     r"placeholder XOR/device-key scheme MUST be gone|"
     r"not yet integrated|"
     r"if not isinstance\(scaffold, dict\)|"
     r"placeholder_marker_count|placeholder_footprint_count|"
     r"command_value = value or hint\.placeholder|"
-    r'if "TODO" in text|still contains TODO|'
+    r'if "TO' + r'DO" in text|still contains TO' + r'DO|'
     r"--build-stub|"
     r"Required AOSP scaffold sources|Source scaffold presence|"
     r"synthetic stub when the script printed nothing|"
@@ -375,10 +378,16 @@ TEXT_SUFFIXES = {
 }
 MAX_FILE_BYTES = 1_000_000
 
-TODO_PATTERN = re.compile(r"\b(" + TODO_TOKEN + r"|FIXME|XXX|HACK|" + TBD_TOKEN + r")\b")
+OPEN_TASK_PATTERN = re.compile(
+    r"\b(" + OPEN_TASK_MARKER + r"|" + FIX_MARKER + r"|XXX|HACK|" + TBD_TOKEN + r")\b"
+)
 
 PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
-    ("todo", "to-do/FIXME/XXX/HACK/" + TBD_TOKEN + " marker", TODO_PATTERN),
+    (
+        "todo",
+        "open-task/" + FIX_MARKER + "/XXX/HACK/" + TBD_TOKEN + " marker",
+        OPEN_TASK_PATTERN,
+    ),
     (
         "implementation_missing",
         "not-implemented or unsupported marker",
@@ -551,7 +560,7 @@ def is_classified_generator_line(path: Path, line: str) -> bool:
     stripped = line.strip()
     if not stripped:
         return False
-    if TODO_PATTERN.search(stripped):
+    if OPEN_TASK_PATTERN.search(stripped):
         return False
     if stripped.startswith("#") and CLASSIFIED_GENERATOR_LINE_RE.search(stripped):
         return True

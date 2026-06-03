@@ -17,7 +17,7 @@ in `docs/spec-db/npu-2028-target.yaml`:
 ## SRAM bitcell density at advanced nodes
 
 SRAM scaling decoupled from logic scaling years ago. Public data from TSMC,
-Samsung, Intel, and imec roadmap presentations indicates the following
+Samsung, Intel, and imec technology-plan presentations indicates the following
 representative high-density (HD) SRAM bitcell areas:
 
 | Process | HD SRAM bitcell area | Macro density (Mb/mm^2) |

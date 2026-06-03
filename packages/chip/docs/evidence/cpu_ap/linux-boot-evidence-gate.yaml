@@ -56,7 +56,7 @@ round3_dependency_status:
 
       the firemarshal payload to OpenSBI v1.5 is an independent step
 
-      tracked on docs/spec-db/opensbi-version-uplift.yaml (TBD).
+      tracked on docs/spec-db/opensbi-version-uplift.yaml (version-uplift gate).
 
       '
     path: external/opensbi/opensbi

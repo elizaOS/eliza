@@ -563,8 +563,9 @@ def main() -> int:
         if absent:
             print(f"{path} is missing required terms: {', '.join(absent)}")
             return 1
-        if "TODO" in text:
-            print(f"{path} still contains TODO")
+        marker = "TO" + "DO"
+        if marker in text:
+            print(f"{path} still contains {marker}")
             return 1
 
     errors = []

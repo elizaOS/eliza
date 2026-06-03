@@ -178,11 +178,11 @@ window) makes the field semantically real.
 
 ### L1. NeuroSim for CIM modeling
 
-Only relevant if a CIM tile becomes an E1 roadmap item.
+Only relevant if a CIM tile enters the E1 requirement set.
 
 ### L2. ASTRA-sim for multi-die
 
-Only relevant if a multi-die phone AP variant becomes a roadmap item.
+Only relevant if a multi-die phone AP variant enters the E1 requirement set.
 
 ### L3. PowerNet for ML-driven IR-drop
 

@@ -77,7 +77,7 @@ still 50-55% short of the 180 GB/s peak target.
 LPDDR6 is in active JEDEC standardization in 2026. Public announcements indicate:
 
 - Per-pin rate targets in the 10.667-14.4 Gb/s range, with first products
-  targeting 10.667-12.8 Gb/s and roadmaps extending toward 14.4 Gb/s.
+  targeting 10.667-12.8 Gb/s and vendor plans extending toward 14.4 Gb/s.
 - A new sub-channel architecture (24-bit sub-channel, x4-style organization)
   rather than the LPDDR5 x16 with two 8-bit pseudo-channels.
 - On-die ECC and link error correction integrated by default.

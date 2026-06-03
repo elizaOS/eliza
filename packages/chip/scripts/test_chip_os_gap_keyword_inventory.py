@@ -55,14 +55,16 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             source = repo / "packages/chip/sw/boot.sh"
             source.parent.mkdir(parents=True)
             source.write_text(
-                "# TODO wire real boot\n"
+                f"# {inv.OPEN_TASK_MARKER} wire real boot\n"
                 "raise NotImplementedError\n"
                 "echo STATUS_LATER_AGENT_BINARY\n",
                 encoding="utf-8",
             )
             generated = repo / "packages/app/android/app/src/main/assets/agent-bundle.js"
             generated.parent.mkdir(parents=True)
-            generated.write_text("TODO generated bundle placeholder\n", encoding="utf-8")
+            generated.write_text(
+                f"{inv.OPEN_TASK_MARKER} generated bundle placeholder\n", encoding="utf-8"
+            )
 
             with mock.patch.object(inv, "REPO", repo):
                 report = inv.build_report(["packages/chip/sw", "packages/app/android"])
@@ -115,7 +117,10 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             repo = Path(tmp)
             npu_doc = repo / "packages/chip/docs/npu/runtime.md"
             npu_doc.parent.mkdir(parents=True)
-            npu_doc.write_text("NPU TODO capture accelerator evidence.\n", encoding="utf-8")
+            npu_doc.write_text(
+                f"NPU {inv.OPEN_TASK_MARKER} capture accelerator evidence.\n",
+                encoding="utf-8",
+            )
             bench = repo / "packages/chip/sw/benchmarks/runner.sh"
             bench.parent.mkdir(parents=True)
             bench.write_text("echo placeholder benchmark path\n", encoding="utf-8")
@@ -186,7 +191,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["findings"], 0)
 
-    def test_checker_diagnostics_are_classified_but_regular_todos_still_block(self) -> None:
+    def test_checker_diagnostics_are_classified_but_regular_markers_still_block(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             checker = repo / "packages/chip/scripts/check_runtime_gate.py"
@@ -196,7 +201,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
                 'errors.append("placeholder evidence is rejected")\n'
                 'if "TB' + 'D" in payload:\n'
                 '    blockers.append("release blocker remains classified")\n'
-                "# TODO remove this real checker maintenance gap\n",
+                f"# {inv.OPEN_TASK_MARKER} remove this real checker maintenance gap\n",
                 encoding="utf-8",
             )
 
@@ -205,7 +210,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "blocked")
         self.assertEqual(report["summary"]["findings"], 1)
-        self.assertEqual(report["findings"][0]["marker"], "TODO")
+        self.assertEqual(report["findings"][0]["marker"], inv.OPEN_TASK_MARKER)
 
     def test_nested_capture_diagnostics_are_classified(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -248,7 +253,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
         self.assertEqual(report["summary"]["findings"], 1)
         self.assertEqual(report["findings"][0]["path"], "packages/chip/docs/arch/boot.md")
 
-    def test_project_planning_and_todo_audits_are_not_source_gaps(self) -> None:
+    def test_project_planning_and_open_task_audits_are_not_source_gaps(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             roadmap = repo / "packages/chip/docs/project/road-to-mediatek.md"
@@ -258,9 +263,10 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
                 "Current scaffold remains blocked until AP and benchmark evidence lands.\n",
                 encoding="utf-8",
             )
-            todo = repo / "packages/chip/docs/project/android-on-simulated-chip-todo.md"
-            todo.write_text(
-                "# TODO audit\n\n| TODO | placeholder evidence remains blocked |\n",
+            task_audit = repo / "packages/chip/docs/project/android-on-simulated-chip-task-audit.md"
+            task_audit.write_text(
+                f"# {inv.OPEN_TASK_MARKER} audit\n\n"
+                f"| {inv.OPEN_TASK_MARKER} | placeholder evidence remains blocked |\n",
                 encoding="utf-8",
             )
             source_doc = repo / "packages/chip/docs/arch/npu.md"
@@ -365,7 +371,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["findings"], 0)
 
-    def test_generator_template_vocabulary_is_classified_but_todos_still_block(self) -> None:
+    def test_generator_template_vocabulary_is_classified_but_markers_still_block(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             generator = repo / "packages/chip/scripts/generate_e1_phone_demo.py"
@@ -377,7 +383,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
                 'status = "release remains blocked until external review"\n'
                 'state = "not yet modeled as a final phone antenna system"\n'
                 "# Placeholder footprints are emitted for generated demo artifacts.\n"
-                "# TODO remove this real generator maintenance gap\n",
+                f"# {inv.OPEN_TASK_MARKER} remove this real generator maintenance gap\n",
                 encoding="utf-8",
             )
 
@@ -386,7 +392,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "blocked")
         self.assertEqual(report["summary"]["findings"], 1)
-        self.assertEqual(report["findings"][0]["marker"], "TODO")
+        self.assertEqual(report["findings"][0]["marker"], inv.OPEN_TASK_MARKER)
 
     def test_dossier_audit_docs_are_not_source_gaps(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

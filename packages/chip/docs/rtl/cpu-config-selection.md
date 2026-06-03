@@ -40,16 +40,17 @@ recorded under `build/evidence/cpu_ap/`):
 
 ```text
 repo:    https://github.com/ucb-bar/chipyard
-ref:     1.12.0
-SHA:     TODO_PIN_CHIPYARD_SHA
+ref:     main-2026-05-20
+SHA:     48f904aefbb3903dce6efa7901982642853ae6a7
 record:  git -C external/chipyard rev-parse HEAD > build/evidence/cpu_ap/chipyard.sha
          git -C external/chipyard submodule status --recursive \
               > build/evidence/cpu_ap/chipyard-submodules.txt
 ```
 
-Bootstrap is `scripts/bootstrap_chipyard.sh`; that script must be updated to
-`git checkout <SHA>` after the SHA is filled in. Until then it floats on the
-default branch and **must not** satisfy any release gate.
+Bootstrap is `scripts/bootstrap_chipyard.sh`; that script verifies the tag
+resolves to the pinned SHA and checks it out detached. The generated AP path
+still **must not** satisfy any release gate until the generated RTL manifest
+and boot evidence are archived.
 
 Generator invocation (target, not yet wired into `Makefile`):
 
@@ -99,9 +100,11 @@ is built only by the explicit `make rocket-elab` target.
 
 Each step is a separate logical commit on its own branch off `ws/cpu-boot-spec`:
 
-1. **Pin upstream.** Fill `TODO_PIN_CHIPYARD_SHA` in this doc, add the
-   `git checkout` step to `scripts/bootstrap_chipyard.sh`, and archive
-   `build/evidence/cpu_ap/chipyard.sha` + recursive submodule status.
+1. **Archive upstream provenance.** Run `scripts/bootstrap_chipyard.sh`,
+   archive `build/evidence/cpu_ap/chipyard.sha` plus recursive submodule
+   status, and keep the manifest pin in
+   `docs/generators/chipyard/eliza-rocket-manifest.json` in lockstep with this
+   doc.
 2. **Add Scala config.** Author `ElizaE1Config.scala` under
    `rtl/wrappers/chipyard/src/main/scala/`. No build wiring yet.
 3. **Add elaboration target.** New `make rocket-elab` runs the Chipyard

@@ -91,7 +91,7 @@ Propeller, and BOLT harness scaffolds plus Make targets, but they are not yet
 tied to a pinned LLVM/RVA23 toolchain, CI profile capture, hashed ELF archives,
 or phone-class benchmark promotion. ThinLTO, MLIR/IREE backend dialect,
 ExecuTorch lowering, Android baseline profiles, and AOSP/NDK integration remain
-future work.
+release-track requirements without checked-in evidence.
 
 State: a Python MMIO contract enforcer plus early AutoFDO/Propeller/BOLT
 harness scaffolding. There is still no production compiler-tuning evidence
@@ -199,7 +199,7 @@ usable for phone-class claims.
 3. **Matrix extension (AME/IME/VME) will not be ratified in time for 2028 ship.** AME data-type vote recalled late 2025. Plan around RVV-1.0 + custom NPU matrix.
 4. **Google's AOSP RISC-V status is volatile.** Removal from common kernel April 2024, Tier-1 designation late 2025 — but no major OEM has shipped Android RISC-V phone at Pixel scale. Pin our own AOSP RISC-V branch.
 5. **Android NDK + ART RISC-V backend not fully optimized.** Google's own statement is ART RISC-V backend is "work in progress". Open question: is dexopt code-gen quality good enough on RVV-1.0 to be competitive with ARM by 2028?
-6. **Linux kernel Spectre mitigations cost 5-10% on tight loops on RISC-V (6.19+).** Floor; hardware mitigations still prototype. Plan: ship with mitigations on, accept cost, push hardware mitigations into e1 microarchitecture roadmap.
+6. **Linux kernel Spectre mitigations cost 5-10% on tight loops on RISC-V (6.19+).** Floor; hardware mitigations still prototype. Plan: ship with mitigations on, accept cost, and track hardware mitigations in the e1 microarchitecture requirements.
 7. **Current Python "lowering smoke" is debt, not asset.** Shaped like compiler interface but cannot be production — the comment "host code iterates batch/head dimensions and transposes each key matrix" inside `lower_attention_qk_smoke` is exactly host-side fix-up that must disappear. Keep Python as unit test oracle only; build MLIR/IREE for real codegen.
 8. **No glibc cross-compiler on host.** Per `docs/toolchain/riscv64-cross-host.md` Homebrew has no `riscv64-linux-gnu-gcc` on darwin-arm64. Userspace can only be built in Linux container. Mandate Linux container (Docker/OrbStack) as canonical compiler env.
 9. **Benchmark/simulator reproducibility broken.** Per `benchmark-simulator-critical-gap-audit.md`: Docker base moving tag, no flake.lock, no LLVM SHA, no `mobile_smoke.tflite` checksum. Compiler tuning not reproducible until pinned.

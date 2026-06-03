@@ -58,7 +58,7 @@ the ElizaRocketConfig single Rocket hart, which provides Sv39 + 16 ASIDs.
 - Steal-time accounting (SBI STA, v3.0 draft): in flight on the lists.
 - Required for Android `aosp_cf_riscv64_phone` Cuttlefish boot via crosvm
   on a KVM-RV host. Eliza E1 does not need H today, but any 2028 product
-  roadmap targeting Android virtualization HAL or virtio-based isolation
+  product plan targeting Android virtualization HAL or virtio-based isolation
   must pull H into the AP.
 
 ## Sscofpmf and performance monitoring

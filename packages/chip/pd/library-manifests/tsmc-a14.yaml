@@ -16,7 +16,7 @@ procurement_gate:
     - Executed TSMC OIP / NDA agreement at A14.
     - SRAM compiler at A14 (continuation of N2 38.1 Mb/mm² macro family).
     - LPDDR5X / LPDDR6 PHY available at A14 from Synopsys / Cadence / Rambus.
-      LPDDR6 PHY at N2P / A14 is on vendor roadmaps but not all units are taped out yet.
+      LPDDR6 PHY at N2P / A14 is in vendor delivery plans but not all units are taped out yet.
     - USB 3.2 / USB4 PHY at A14.
     - MIPI D-PHY v3 / C-PHY v2 IP at A14.
     - PCIe Gen5 PHY at A14 (optional).

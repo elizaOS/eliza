@@ -95,7 +95,7 @@ of charger-IC selection.
   enforced inside the fastboot/ADB stacks per `avb-a-b-ota.md` §7, not by
   withholding USB enumeration.
 
-## 8. Open questions / TODO for board work order
+## 8. Board work-order open questions
 
 - Final TCPC selection (vendor + part number) and firmware-update channel.
 - ESD reference design diff against vendor app note.

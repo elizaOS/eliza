@@ -44,7 +44,7 @@ affect source, release claims, or tapeout-facing artifacts.
 - Simulator and NPU architecture search should start with manifest-backed
   design-space exploration. ZigZag, Timeloop/Accelergy, DOSA, and newer
   generative DSE work such as DiffAxE can prioritize experiments, but product
-  claims require runtime-contract, roadmap, benchmark, synthesis, and simulator
+  claims require runtime-contract, phase-gate, benchmark, synthesis, and simulator
   evidence.
 - Memory, interconnect, NoC, and accelerator-system simulation are strong
   candidates for AI-guided design-space exploration, but only after the E1

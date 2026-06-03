@@ -83,7 +83,7 @@ Reading: standard-cell preflight, not signoff-grade. 100 ns clock means closure 
 - No multi-corner STA evidence; OpenSTA inside OpenLane is single-corner.
 - No CTS beyond TritonCTS H-tree; no CCOpt / mesh.
 - No IO/PHY hard-IP: no DDR/LPDDR/USB/MIPI/PCIe PHY, no clocking PLLs as hard IP, no SRAM compiler beyond Sky130 OpenRAM-class.
-- No DFT/scan/ATPG (only roadmap items in `ai_for_chip_design_sota.md` referencing Fault / OpenROAD-DFT).
+- No DFT/scan/ATPG (only research notes in `ai_for_chip_design_sota.md` referencing Fault / OpenROAD-DFT).
 - No DFM, antenna at advanced node, fill rules beyond Sky130 defaults.
 - No UPF / multi-power-domain flow.
 
@@ -132,7 +132,7 @@ Reading: standard-cell preflight, not signoff-grade. 100 ns clock means closure 
 - **Post-route PPA validator** for AlphaChip placements: re-run OpenROAD detailed route on AlphaChip-exported `.plc` and capture routed wirelength, DRC count, congestion histogram, hold/setup TNS, max-slew/cap violations. Today `compare_proxy_costs.sh` stops at proxy.
 - **Multi-corner STA** evidence beyond OpenLane single-corner. Even on Sky130, run TT/SS/FF + 2 RC corners → 6-corner closure as methodology baseline.
 - **IR-drop budget**: `pd/signoff/pdn-current/local-budget.md` exists as stub; replace with actual `OpenROAD psm` static-IR maps + Voltus/RedHawk dynamic-IR plan tagged "blocked: commercial tool" per AGENTS.md.
-- **DFT / scan / ATPG**: status today is roadmap only. Add Yosys+ABC scan-insertion pass and Fault-driven scan-chain stitching as Sky130-level evidence floor.
+- **DFT / scan / ATPG**: status today is research-note only. Add Yosys+ABC scan-insertion pass and Fault-driven scan-chain stitching as Sky130-level evidence floor.
 
 ### D.3 PPA targets to commit to in spec-db
 
@@ -196,7 +196,7 @@ Reading: standard-cell preflight, not signoff-grade. 100 ns clock means closure 
 - [Synopsys DSO.ai 100 tapeouts](https://news.synopsys.com/2023-02-07-AI-designed-Chips-Reach-Scale-with-First-100-Commercial-Tape-outs-Using-Synopsys-Technology)
 - [Synopsys SF2 GAA flow certification](https://news.synopsys.com/2024-06-12-Synopsys-Achieves-Certification-of-its-AI-driven-Digital-and-Analog-Flows-and-IP-on-Samsung-Advanced-SF2-GAA-Process)
 - [DREAMPlace GitHub](https://github.com/limbo018/DREAMPlace)
-- [TSMC N2P plans / NanoFlex](https://www.anandtech.com/show/18832/tsmc-outlines-2nm-plans-n2p-brings-backside-power-delivery-in-2026-n2x-added-to-roadmap)
+- AnandTech: TSMC N2P plans / NanoFlex
 - [TSMC N2P loses BSPDN](https://www.tomshardware.com/tech-industry/tsmcs-2nm-nodes-get-nanoflex-n2p-loses-backside-power-delivery)
 - [TSMC A16](https://www.tsmc.com/english/dedicatedFoundry/technology/logic/l_A16)
 - [Intel 18A](https://www.intel.com/content/www/us/en/foundry/process/18a.html)

@@ -18,7 +18,7 @@ We must pick one of three procurement paths.
 | Path | Description | Cost (NRE) | Time-to-FA | Risk |
 | --- | --- | --- | --- | --- |
 | **A. Catalog daughtercard (v0)** | 6-8 catalog buck/LDO ICs from Renesas/MPS/TI/Maxim on a daughtercard, controlled by Ibex PMC via SPMI v2.0 (with I2C fallback). | < $100k for proto BOM + board NRE | < 2 months from PMC firmware ready | LOW: catalog parts have published data sheets, qualification packs, public IBIS, public thermal models. |
-| **B. Closed-IP license (v1 candidate)** | License Synaptics / Dialog / Qorvo mobile PMIC IP and integrate as separate package-in-package die. | $1M-3M license + IP integration NRE | 12-18 months | HIGH: closed register maps, NDA gates, must accept upstream roadmap timing. |
+| **B. Closed-IP license (v1 candidate)** | License Synaptics / Dialog / Qorvo mobile PMIC IP and integrate as separate package-in-package die. | $1M-3M license + IP integration NRE | 12-18 months | HIGH: closed register maps, NDA gates, must accept upstream vendor timing. |
 | **C. Custom analog (v2 candidate)** | Hire analog team, tape out a dedicated PMIC on an older mixed-signal node (180 nm BCD / 65 nm), package alongside SoC. | $5M-15M | 24-36 months | VERY HIGH: requires analog team, separate tapeout, separate qualification, separate yield curve. |
 
 ## Selected path
@@ -42,8 +42,8 @@ Rationale:
 
 | Rail group | Catalog candidate (planning-only) | Notes |
 | --- | --- | --- |
-| `VDD_CPU_BIG`, `VDD_CPU_LITTLE`, `VDD_NPU` | Renesas RAA48xxx / TI TPS6594x mobile buck (3-rail SiP) | DVFS via SPMI; one die covers three DVFS rails. |
-| `VDD_GPU`, `VDD_SOC_FABRIC`, `VDD_SRAM` | Renesas RAA48xxx / MPS MP8869 dual-buck | DVFS via SPMI. |
+| `VDD_CPU_BIG`, `VDD_CPU_LITTLE`, `VDD_NPU` | Renesas RAA48-series / TI TPS6594x mobile buck (3-rail SiP) | DVFS via SPMI; one die covers three DVFS rails. |
+| `VDD_GPU`, `VDD_SOC_FABRIC`, `VDD_SRAM` | Renesas RAA48-series / MPS MP8869 dual-buck | DVFS via SPMI. |
 | LPDDR rail group | TI TPS6594x LPDDR companion | VDDQ + VDD1 + VDD2H/2L per JEDEC. |
 | `VDD_AON`, `VDD_PMC`, `VDD_IO_18`, `VDD_IO_33` | Catalog LDOs + buck (TI / Maxim) | Always-on rails; LDO chosen for low quiescent. |
 | `VDD_USB_PCIE_PHY`, `VDD_PHY_ANALOG`, `VDD_RF_REF` | Catalog low-noise LDOs (TI TLV/LT) | Low-noise analog reference. |
@@ -71,7 +71,8 @@ selects against signal integrity and qualification reports.
 
 - Specific catalog part numbers not selected.
 - Daughtercard schematic not in `board/kicad/`.
-- SPMI v2.0 master firmware not implemented (skeleton lives in
+- SPMI v2.0 master firmware absent beyond the checked-in bring-up scaffold
+  (source lives in
   `fw/pmc/src/spmi.c`).
 - Qualification package import (IBIS/SPICE/thermal) not landed in
   `pd/signoff/si-pi/package-models/`.

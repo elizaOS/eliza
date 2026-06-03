@@ -85,7 +85,7 @@ explore those gaps *before* committing more RTL.
 
 - Distributed training/inference simulator from Meta / Intel / GT.
 - Not applicable to the single-package E1 phone AP target. Reference only;
-  worth tracking if a multi-die phone-AP variant becomes a roadmap item.
+  worth tracking if a multi-die phone-AP variant enters the E1 requirement set.
 
 ## Operator-level workload generators
 
@@ -122,7 +122,7 @@ explore those gaps *before* committing more RTL.
 4. Treat MAESTRO/GAMMA/Mind Mappings/dMazeRunner/Interstellar as
    compiler-side references; not benchmark-evidence producers.
 5. Do not introduce NeuroSim or ASTRA-sim into the evidence chain until a
-   CIM or multi-die roadmap item is formally in scope.
+   CIM or multi-die requirement is formally in scope.
 
 Every report produced by these simulators must obey the rule from
 `docs/benchmarks/benchmark-matrix.md`: never report NPU TOPS alone.

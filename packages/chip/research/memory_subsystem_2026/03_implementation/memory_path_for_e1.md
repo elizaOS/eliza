@@ -226,7 +226,7 @@ evidence per `docs/architecture-optimization/compute-silicon.md`.
 - It does not claim that any of the above is implemented in E1 RTL today.
 - It does not claim a specific vendor for LPDDR6 IP, PHY, SMMU, or NoC.
 - It does not claim that 14A SRAM density targets are met; the source data
-  used 2 nm published macros and roadmapped 14A briefs as upper-bound
+  used 2 nm published macros and public 14A planning briefs as upper-bound
   references.
 - It does not claim that the Ramulator/DRAMsim simulators are bit-accurate
   for the target LPDDR6 product; they are reference cycle-level models.

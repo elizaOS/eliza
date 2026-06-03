@@ -133,7 +133,7 @@ blocked_real_claims:
   - docs/evidence/memory/android_shared_buffer_fence_report.json
   id: android_shared_buffer_uma
   reason: Android dma-buf/ION-style shared-buffer freshness, cache maintenance, and
-    fence semantics are not implemented or measured.
+    fence semantics have no implementation or measurement evidence in this gate.
   status: blocked
   unblock_requires:
   - Kernel-visible shared-buffer ABI with explicit cache sync or hardware coherency

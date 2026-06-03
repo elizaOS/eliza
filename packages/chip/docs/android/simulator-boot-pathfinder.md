@@ -10,7 +10,7 @@ Authoritative sibling docs (read these first):
 - `docs/android/bsp-critical-gap-audit-2026-05-17.md` — canonical BSP blocker list.
 - `docs/project/prototype-status-dashboard.md` — current PASS/BLOCK posture.
 - `docs/project/aosp-simulator-completion-gate.yaml` — strict Android evidence gate.
-- `docs/project/android-on-simulated-chip-todo-2026-05-17.md` — single source of
+- `docs/project/android-on-simulated-chip-blocker-audit-2026-05-17.md` — single source of
   truth for the three tracks (AOSP virtual-device, generated AP simulator,
   current e1-chip RTL).
 - `docs/sim/boot-tiers-progress.md` and `docs/sim/tier2-boot-success-2026-05-18.md` —
@@ -105,7 +105,7 @@ already wraps paths 1 and 2 with the same nine-log gate.
 
 ## Concrete blockers between the chip simulator and an Android boot
 
-In dependency order, drawn from `android-on-simulated-chip-todo-2026-05-17.md`,
+In dependency order, drawn from `android-on-simulated-chip-blocker-audit-2026-05-17.md`,
 `bsp-critical-gap-audit-2026-05-17.md`, and the current evidence inventory:
 
 1. **No CPU in the e1-chip RTL.** `e1_chip.has_cpu=false`. Required: select and

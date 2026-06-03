@@ -81,7 +81,7 @@ OpenABC-D (`openabcd_repo`), LSOracle (`lsoracle_repo`), Mockturtle
 academic anchors for ML-driven logic optimization and microarchitecture DSE.
 For E1:
 
-- These are research-grade. Treat as roadmap items, not P0 dependencies.
+- These are research-grade. Treat as tracked requirements, not P0 dependencies.
 - The current Yosys 0.50+ + abc9 path is already strong enough for the
   Sky130 PD smoke.
 - BOOM-Explorer-style microarchitecture sweeps are out of scope at the PD
