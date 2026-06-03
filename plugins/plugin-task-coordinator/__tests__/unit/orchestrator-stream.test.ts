@@ -2,10 +2,12 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
-  buildConversation,
-  type ConversationBlock,
   MarkdownText,
   sanitizeMarkdownUrl,
+} from "../../src/orchestrator-markdown";
+import {
+  buildConversation,
+  type ConversationBlock,
 } from "../../src/orchestrator-stream";
 
 type MessageRecord = Parameters<typeof buildConversation>[0][number];
