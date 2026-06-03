@@ -157,6 +157,7 @@ export function GroupChatView({
   const [addModel, setAddModel] = useState("");
   const [addLabel, setAddLabel] = useState("");
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   // "Start" → kick the room with the chosen mode. Honest about delivery (see note).
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
@@ -204,6 +205,7 @@ export function GroupChatView({
     setPicking(false);
     setAddError(null);
     setStartError(null);
+    setRemoveError(null);
     reloadRoom(activeTaskId);
     const unsubscribe = client.streamOrchestratorTask(activeTaskId, () => {
       reloadRoom(activeTaskId);
@@ -258,12 +260,19 @@ export function GroupChatView({
   const removeParticipant = (participant: Participant) => {
     if (!activeTaskId || !participant.sessionId || removingId) return;
     setRemovingId(participant.id);
+    setRemoveError(null);
     void client
       .stopOrchestratorAgent(activeTaskId, participant.sessionId)
-      .catch(() => false)
-      .then(() => {
-        if (activeTaskId) reloadRoom(activeTaskId);
-      })
+      .then(
+        () => {
+          if (activeTaskId) reloadRoom(activeTaskId);
+        },
+        () => {
+          // Don't reload on failure — the row really is still there, so leave
+          // it and surface the error instead of silently re-rendering it back.
+          setRemoveError(`Could not remove ${participant.label}.`);
+        },
+      )
       .finally(() => {
         setRemovingId(null);
       });
@@ -510,6 +519,15 @@ export function GroupChatView({
               ))
             )}
           </div>
+
+          {/* Remove failed — the "×" hit the orchestrator but stopOrchestratorAgent
+              rejected, so the row is genuinely still present. Surface it here
+              rather than silently reloading the same row back. */}
+          {removeError ? (
+            <span className="od-group-picker-error" role="alert">
+              {removeError}
+            </span>
+          ) : null}
 
           {/* ── Add-participant: odysseus's dashed full-width button →
               inline picker (group.js #group-add-btn). eliza spawns a real

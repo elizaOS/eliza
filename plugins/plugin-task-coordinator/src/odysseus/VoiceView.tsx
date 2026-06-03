@@ -239,7 +239,14 @@ export function VoiceView({
   }, []);
 
   useEffect(() => {
-    if (!open) teardownCapture();
+    if (!open) {
+      teardownCapture();
+      // Reset the recorder so a close mid-recording (or after a mic error)
+      // doesn't leave a stuck "Recording…"/error toast over a now-null
+      // captureRef whose Stop button would no-op on reopen.
+      setRecState("idle");
+      setRecError(null);
+    }
   }, [open, teardownCapture]);
 
   useEffect(() => teardownCapture, [teardownCapture]);

@@ -421,8 +421,10 @@ export function ModelsView({
   const [query, setQuery] = useState("");
 
   const loadProvider = useCallback(
-    (prov: string) => {
-      if (modelsByProvider[prov]) return;
+    (prov: string, force = false) => {
+      // The catch sets modelsByProvider[prov] = [] (truthy), so without `force`
+      // a retry's stale closure would early-return and never refetch.
+      if (!force && modelsByProvider[prov]) return;
       setLoadingProvider(prov);
       void client
         .fetchModels(prov)
@@ -444,7 +446,11 @@ export function ModelsView({
     [modelsByProvider],
   );
 
-  // Hydrate local prefs + scan the default provider on open.
+  // Hydrate local prefs + scan the default provider on open. Gated to `open`
+  // only: loadProvider is recreated on every setModelsByProvider, so keeping it
+  // in the deps would re-run this (re-reading all prefs) on each scan
+  // completion. Hydration must happen once per open.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: open is the only intended trigger; loadProvider is excluded on purpose so prefs hydrate once per open.
   useEffect(() => {
     if (!open) return;
     setFavorites(readPref<string[]>(FAVORITES_KEY, []));
@@ -453,17 +459,47 @@ export function ModelsView({
     setSortMode(readPref<SortMode>(SORT_KEY, ""));
     setCollapsed(readPref<Record<string, boolean>>(COLLAPSE_KEY, {}));
     loadProvider("openai");
-  }, [open, loadProvider]);
+  }, [open]);
+
+  // Close the sort dropdown on outside-click / Escape (modelPicker.js menu
+  // close: a document listener that closes when the click lands outside the
+  // wrap). Only registered while the menu is open.
+  useEffect(() => {
+    if (!sortMenuOpen) return;
+    const onMouseDown = (e: MouseEvent) => {
+      const target = e.target;
+      if (target instanceof Element && target.closest(".od-models-sort-wrap")) {
+        return;
+      }
+      setSortMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Escape closes just the menu — keep it from also reaching the
+      // window-level useEscapeClose and closing the whole window (escMenuStack).
+      e.stopPropagation();
+      setSortMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [sortMenuOpen]);
 
   const allModels = modelsByProvider[provider] ?? [];
 
+  // Recent/Favorites are cross-provider id lists, so the lookup must span every
+  // catalogue scanned this session — not just the active provider's — or pins
+  // from other providers vanish when their tab isn't selected. Deduped by id.
   const byId = useMemo(() => {
     const map = new Map<string, ProviderModelRecord>();
-    for (const m of allModels) {
+    for (const m of Object.values(modelsByProvider).flat()) {
       if (!map.has(m.id)) map.set(m.id, m);
     }
     return map;
-  }, [allModels]);
+  }, [modelsByProvider]);
 
   // Sorted catalogue (odysseus models.js sort dispatch). Memoized so the full
   // catalogue is only re-sorted when its inputs change — not on every favorite
@@ -857,6 +893,14 @@ export function ModelsView({
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Escape") {
+                      // Don't let the window-level useEscapeClose listener also
+                      // fire — Escape in the search box clears the query first
+                      // (modelPicker.js search keydown stopPropagation). That
+                      // listener is a native window keydown handler, so the
+                      // synthetic stopPropagation alone won't reach it; stop the
+                      // underlying native event too.
+                      e.stopPropagation();
+                      e.nativeEvent.stopPropagation();
                       if (query) setQuery("");
                       else onClose();
                     }
@@ -892,7 +936,9 @@ export function ModelsView({
                         delete next[provider];
                         return next;
                       });
-                      loadProvider(provider);
+                      // force the refetch past loadProvider's cache guard (the
+                      // catch left a truthy [] behind for this provider).
+                      loadProvider(provider, true);
                     }}
                   >
                     Retry scan

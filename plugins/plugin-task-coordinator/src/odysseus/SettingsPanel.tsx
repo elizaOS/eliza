@@ -700,9 +700,22 @@ function formatKeyCaps(combo: string): readonly string[] {
   });
 }
 
+// Mirrors platform.js IS_MAC (and useKeyboardShortcuts' detectIsMac): all Apple
+// platforms, where a Magic Keyboard's Option key sets AltGraph just like a Mac's
+// — so they get the same AltGr carve-out below.
+const IS_MAC =
+  typeof navigator !== "undefined" &&
+  (/Mac|iPhone|iPad/.test(navigator.platform || "") ||
+    /Mac/.test(navigator.userAgent || ""));
+
 // Build a combo string from a keydown (odysseus _comboFromEvent). Returns ""
 // for modifier-only presses so they are never recorded as a binding.
 function comboFromEvent(e: KeyboardEvent): string {
+  // Drop a stray AltGr keystroke (e.g. AltGr+E to type € on AZERTY/QWERTZ): a
+  // non-mac browser reports AltGr AS Ctrl+Alt, so without this guard it would
+  // be recorded as a bogus ctrl+alt+<char> binding. onKey ignores empty combos.
+  if (!IS_MAC && e.ctrlKey && e.altKey && e.getModifierState?.("AltGraph"))
+    return "";
   const parts: string[] = [];
   if (e.ctrlKey || e.metaKey) parts.push("ctrl");
   if (e.altKey) parts.push("alt");
@@ -1133,12 +1146,15 @@ export function SettingsPanel({
       .then((r) => setPlugins(r.plugins))
       .catch(() => setPlugins([]));
 
-    const stored = readPref<SearchSettings>(
-      SEARCH_SETTINGS_KEY,
-      DEFAULT_SEARCH_SETTINGS,
-    );
-    setSearch(stored);
-    setCountMode(isPresetCount(stored.resultCount) ? "preset" : "custom");
+    // Merge on read: readPref returns the raw parsed blob, so a partial stored
+    // object (e.g. an older write missing apiKey) would otherwise leave
+    // search.apiKey undefined and crash the searchStatus / warn-class
+    // .trim() calls during render. Spread DEFAULT first so every field is
+    // present, and feed the MERGED object to the preset-count detection.
+    const stored = readPref<Partial<SearchSettings>>(SEARCH_SETTINGS_KEY, {});
+    const merged: SearchSettings = { ...DEFAULT_SEARCH_SETTINGS, ...stored };
+    setSearch(merged);
+    setCountMode(isPresetCount(merged.resultCount) ? "preset" : "custom");
 
     void client
       .getCharacter()

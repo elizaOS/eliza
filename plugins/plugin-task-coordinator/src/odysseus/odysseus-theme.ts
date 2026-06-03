@@ -12241,4 +12241,48 @@ export const ODYSSEUS_CSS = `
    leaving the JSX label prop semantic. The Added Models sub-heads already
    uppercase via .od-set-ep-list-head in the base theme. */
 .odysseus-root .od-set-ep-head { text-transform: uppercase; letter-spacing: 0.03em; }
+/* ===== fix-wave: ReasoningCell shimmer ===== */
+/* Luminance-sweep shimmer for the streaming reasoning cell
+   (orchestrator-reasoning.tsx). A moving mask-image window briefly lifts the
+   alpha of the masked glyphs, reading as a highlight traveling across the muted
+   text -- no second color is introduced. Hoisted here out of a per-instance
+   inline style tag so it is emitted once for the whole shell instead of once
+   per ReasoningCell. The selector is intentionally NOT scoped under
+   .odysseus-root: the cell also renders in the standalone OrchestratorWorkbench
+   timeline (which uses these same eliza tokens), so the class must resolve in
+   both contexts. The reduced-motion guard drops the animation and the mask. */
+.orchestrator-reasoning-shimmer {
+  -webkit-mask-image: linear-gradient(
+    100deg,
+    rgba(0, 0, 0, 0.45) 30%,
+    rgba(0, 0, 0, 1) 50%,
+    rgba(0, 0, 0, 0.45) 70%
+  );
+  mask-image: linear-gradient(
+    100deg,
+    rgba(0, 0, 0, 0.45) 30%,
+    rgba(0, 0, 0, 1) 50%,
+    rgba(0, 0, 0, 0.45) 70%
+  );
+  -webkit-mask-size: 220% 100%;
+  mask-size: 220% 100%;
+  animation: orchestrator-reasoning-sweep 1.8s linear infinite;
+}
+@keyframes orchestrator-reasoning-sweep {
+  from {
+    -webkit-mask-position: 180% 0;
+    mask-position: 180% 0;
+  }
+  to {
+    -webkit-mask-position: -80% 0;
+    mask-position: -80% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .orchestrator-reasoning-shimmer {
+    -webkit-mask-image: none;
+    mask-image: none;
+    animation: none;
+  }
+}
 `;

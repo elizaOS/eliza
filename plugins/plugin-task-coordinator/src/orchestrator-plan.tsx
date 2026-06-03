@@ -1,5 +1,5 @@
 import { Check, ChevronRight, Circle, Loader } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 // The orchestrator's current plan/todo list. The sub-agent (opencode) emits its
 // todo snapshot as an ACP `plan` update; the backend sanitizes it onto the
@@ -56,6 +56,12 @@ export function PlanDock({
   // dock once there's an active step keeps the live work visible.
   const hasActive = entries.some((entry) => entry.status === "in_progress");
   const [open, setOpen] = useState(hasActive);
+  // A plan can start all-pending (collapsed) and only later gain an in-progress
+  // step; the lazy init above runs once at mount, so reopen on the false→true
+  // transition. Only forces open (never re-collapses), preserving manual toggle.
+  useEffect(() => {
+    if (hasActive) setOpen(true);
+  }, [hasActive]);
   if (entries.length === 0) return null;
   const done = entries.filter((entry) => entry.status === "completed").length;
 

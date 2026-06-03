@@ -171,12 +171,28 @@ export function DocumentLibraryView({
   const [bulkRunning, setBulkRunning] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // The currently-open per-card menu and the bulk-actions dropdown each mount a
+  // single wrapper at a time; refs let the outside-click effect tell an inside
+  // pointerdown from an outside one.
+  const cardMenuRef = useRef<HTMLSpanElement>(null);
+  const bulkActionsRef = useRef<HTMLDivElement>(null);
 
-  const load = useCallback(() => {
+  // The query is wired server-side (DocumentListOptions.query → the `q` param in
+  // buildDocumentListParams), matching odysseus's documents tab which sends the
+  // search term to the backend (documentLibrary.js:315). Client-side filtering
+  // alone would only ever match within the first loaded page; with >PAGE_SIZE
+  // docs a term matching an unloaded doc would wrongly read "No documents
+  // match". So load() forwards the trimmed query and resets the page.
+  const load = useCallback((searchQuery: string) => {
+    const trimmed = searchQuery.trim();
     setLoading(true);
     setFailed(false);
     void client
-      .listDocuments({ limit: PAGE_SIZE, offset: 0 })
+      .listDocuments({
+        query: trimmed || undefined,
+        limit: PAGE_SIZE,
+        offset: 0,
+      })
       .then((r) => {
         setDocs(r.documents);
         setTotal(r.total);
@@ -206,14 +222,46 @@ export function DocumentLibraryView({
     setSelectedIds(new Set());
     setActionsOpen(false);
     inputRef.current?.focus();
-    load();
-  }, [open, load]);
+  }, [open]);
+
+  // Debounce the query into a server-side refetch (offset reset to 0) so a term
+  // matching a doc past the first page still surfaces. This also drives the
+  // initial load: opening (or reopening, which resets query to "") flips a dep
+  // here. Client-side filtering below stays as a refinement of the loaded set,
+  // and client sort stays client-side (listDocuments has no sort param).
+  useEffect(() => {
+    if (!open) return;
+    const handle = setTimeout(() => load(query), 250);
+    return () => clearTimeout(handle);
+  }, [open, query, load]);
+
+  // Dismiss an open per-card menu / bulk-actions dropdown on an outside click —
+  // neither has an intrinsic dismissal otherwise. Only registered while a menu
+  // is open; a pointerdown outside the open wrapper closes it.
+  const menuOpen = menuId !== null || actionsOpen;
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target instanceof Node ? e.target : null;
+      if (target && cardMenuRef.current?.contains(target)) return;
+      if (target && bulkActionsRef.current?.contains(target)) return;
+      setMenuId(null);
+      setActionsOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [menuOpen]);
 
   const loadMore = () => {
     if (loading || docs.length >= total) return;
     setLoading(true);
+    const trimmed = query.trim();
     void client
-      .listDocuments({ limit: PAGE_SIZE, offset: docs.length })
+      .listDocuments({
+        query: trimmed || undefined,
+        limit: PAGE_SIZE,
+        offset: docs.length,
+      })
       .then((r) => {
         setDocs((prev) => [...prev, ...r.documents]);
         setTotal(r.total);
@@ -307,7 +355,7 @@ export function DocumentLibraryView({
       })
       .then(() => {
         setCreating(false);
-        load();
+        load(query);
       })
       .catch(() => {
         setCreating(false);
@@ -337,7 +385,7 @@ export function DocumentLibraryView({
           reader.readAsText(file);
         }),
     );
-    void Promise.all(reads).then(load);
+    void Promise.all(reads).then(() => load(query));
   };
 
   // odysseus libraryEnterSelectMode / libraryExitSelectMode (1089-1110).
@@ -634,7 +682,7 @@ export function DocumentLibraryView({
                 <span className="od-doclib-bulk-count">
                   {selectedIds.size} Selected
                 </span>
-                <div className="od-doclib-bulk-actions">
+                <div className="od-doclib-bulk-actions" ref={bulkActionsRef}>
                   <button
                     type="button"
                     className="od-doclib-toolbar-btn"
@@ -783,7 +831,10 @@ export function DocumentLibraryView({
                       </button>
 
                       {!selectMode ? (
-                        <span className="od-doclib-actions">
+                        <span
+                          className="od-doclib-actions"
+                          ref={menuId === doc.id ? cardMenuRef : null}
+                        >
                           <button
                             type="button"
                             className="od-doclib-item-btn"

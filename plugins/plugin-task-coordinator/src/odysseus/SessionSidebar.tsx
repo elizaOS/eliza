@@ -222,8 +222,11 @@ function ThreadRow({
   const renameRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (editing) renameRef.current?.focus();
-  }, [editing]);
+    if (editing) {
+      setDraft(thread.title);
+      renameRef.current?.focus();
+    }
+  }, [editing, thread.title]);
   useEffect(() => {
     if (!menuOpen) setFolderSubOpen(false);
   }, [menuOpen]);
@@ -397,7 +400,7 @@ function ThreadRow({
               </div>
             ) : null}
           </div>
-          {confirmingDelete ? (
+          {pinned ? null : confirmingDelete ? (
             <div className="od-thread-menu-confirm">
               <span>Delete this conversation?</span>
               <div className="od-thread-menu-confirm-actions">
@@ -1144,7 +1147,7 @@ export function SessionSidebar({
         onRename(thread.id, title);
       }}
       onCancelRename={() => setEditingId(null)}
-      onRequestDelete={() => setConfirmDeleteId(thread.id)}
+      onRequestDelete={() => requestDelete(thread.id)}
       onConfirmDelete={() => {
         setMenuOpenId(null);
         setConfirmDeleteId(null);
