@@ -7,8 +7,7 @@ import type { Plugin } from "@elizaos/core";
  * dynamically loaded view so neither the component nor three ship in the
  * always-loaded @elizaos/ui bundle. The view is served by the agent router at
  * `/api/views/vector-browser/bundle.js` and mounted by the shell's
- * DynamicViewLoader. The Database page also embeds it directly via a lazy
- * `import("@elizaos/plugin-vector-browser")`.
+ * DynamicViewLoader.
  */
 export const vectorBrowserPlugin: Plugin = {
   name: "@elizaos/plugin-vector-browser",

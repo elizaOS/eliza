@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import { lazy, Suspense } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useApp } from "../../state";
 import { SegmentedControl } from "../ui/segmented-control";
+import { DynamicViewLoader } from "../views/DynamicViewLoader";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { DatabaseView } from "./DatabaseView";
 import { MediaGalleryView } from "./MediaGalleryView";
@@ -11,9 +11,8 @@ import { MediaGalleryView } from "./MediaGalleryView";
 // THREE runtime. It lives in its own plugin package and is loaded dynamically
 // so it (and three) only ship when the user actually opens the vectors tab,
 // never with the always-loaded Database page.
-const VectorBrowserView = lazy(async () => ({
-  default: (await import("@elizaos/plugin-vector-browser")).VectorBrowserView,
-}));
+const VECTOR_BROWSER_BUNDLE_URL = "/api/views/vector-browser/bundle.js";
+const VECTOR_BROWSER_COMPONENT_EXPORT = "VectorBrowserView";
 
 // The SegmentedControl is a composite that renders its own internal buttons and
 // does not forward refs to them, so each tab registers with the agent surface
@@ -99,15 +98,12 @@ export function DatabasePageView({
   if (databaseSubTab === "vectors") {
     return (
       <ShellViewAgentSurface viewId="database">
-        <Suspense
-          fallback={
-            <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
-              {t("common.loading", { defaultValue: "Loading…" })}
-            </div>
-          }
-        >
-          <VectorBrowserView leftNav={leftNav} contentHeader={contentHeader} />
-        </Suspense>
+        <DynamicViewLoader
+          bundleUrl={VECTOR_BROWSER_BUNDLE_URL}
+          componentExport={VECTOR_BROWSER_COMPONENT_EXPORT}
+          viewId="vector-browser"
+          viewProps={{ leftNav, contentHeader }}
+        />
       </ShellViewAgentSurface>
     );
   }

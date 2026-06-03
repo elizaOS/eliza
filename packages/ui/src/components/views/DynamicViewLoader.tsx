@@ -496,6 +496,8 @@ interface DynamicViewLoaderProps {
   componentExport?: string;
   /** The view's stable ID, used in error state messages. */
   viewId: string;
+  /** Optional props forwarded to the loaded view root component. */
+  viewProps?: Record<string, unknown>;
   /** Presentation/runtime family for this view. Defaults to GUI. */
   viewType?: "gui" | "tui" | "xr";
 }
@@ -515,6 +517,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   bundleUrl,
   componentExport = "default",
   viewId,
+  viewProps: forwardedViewProps,
   viewType = "gui",
 }: DynamicViewLoaderProps) {
   const [bundle, setBundle] = useState<ViewBundleModule | null>(null);
@@ -664,6 +667,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
 
   const View = bundle.component;
   const viewProps = {
+    ...forwardedViewProps,
     exitToApps: () => {
       if (typeof window !== "undefined") {
         window.history.pushState(null, "", "/views");
