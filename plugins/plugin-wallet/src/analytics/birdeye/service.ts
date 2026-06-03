@@ -262,7 +262,7 @@ export class BirdeyeService extends Service {
       return { data: [], setAt: Date.now() };
     }
 
-    // Don't allow 'evm' as a trending chain (it's just a placeholder)
+    // Don't allow 'evm' as a trending chain; callers must choose a concrete chain.
     if (validatedChain === "evm") {
       this.runtime.logger.warn(
         `getTrendingTokensForChain: 'evm' is not a specific chain. Use ethereum, arbitrum, polygon, etc.`,

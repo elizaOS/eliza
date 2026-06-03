@@ -6,7 +6,7 @@ release-data fallback, installer-script, and CI-gate work in this branch.
 Status terms:
 
 - `Repo-ready`: code or docs exist in this repo and local verification passes.
-- `Repo TODO`: implementation can be completed in this repo without external
+- `Repo-owned`: implementation can be completed in this repo without external
   accounts, hardware, or production credentials.
 - `External blocker`: launch depends on hardware, app-store review, production
   credentials, phone numbers, release signing, or deployed cloud services.
@@ -18,8 +18,8 @@ Status terms:
 | Eliza App homepage tagline: "Your Eliza, everywhere." | Repo-ready | Keep the first viewport focused on app download and one personal agent. |
 | Shared product switcher: ElizaOS, App, Cloud, Docs, GitHub | Repo-ready | Update URLs if final domains differ. |
 | One taxonomy: ElizaOS, Eliza App, Eliza Cloud | Repo-ready | Keep docs and public copy aligned when Cloud/OS branches land. |
-| One account identity across app, cloud, and OS | Repo TODO | Enforce account/session linking in Cloud and OS onboarding routes; fix identity projection reads/writes before messaging launch. |
-| One agent per user | Repo TODO | Add a durable one-agent uniqueness gate at provisioning and make duplicate webhook/onboarding calls idempotent. |
+| One account identity across app, cloud, and OS | Repo-owned | Enforce account/session linking in Cloud and OS onboarding routes; fix identity projection reads/writes before messaging launch. |
+| One agent per user | Repo-owned | Add a durable one-agent uniqueness gate at provisioning and make duplicate webhook/onboarding calls idempotent. |
 
 ## Downloads And Stores
 
@@ -28,7 +28,7 @@ Status terms:
 | macOS `.dmg` direct download | External blocker | Publish signed/notarized Apple Silicon and Intel DMGs to the GitHub release. |
 | Windows `.exe` direct download | External blocker | Publish signed `ElizaOSApp-Setup*.exe` to the GitHub release. |
 | Linux `.deb` direct download | External blocker | Publish release `.deb` to the GitHub release. |
-| Linux `.rpm`, AppImage, `.tar.gz` | Repo TODO / external blocker | Ensure release jobs actually produce and attach the promised formats. The launch gate now requires all claimed desktop formats. |
+| Linux `.rpm`, AppImage, `.tar.gz` | Repo-owned / external blocker | Ensure release jobs actually produce and attach the promised formats. The launch gate now requires all claimed desktop formats. |
 | No dead fallback installer URLs | Repo-ready | Fallback cards open the GitHub releases page instead of guessed filenames. |
 | Public deploy blocks without release assets | Repo-ready | `bun run check:release-data` fails until required artifacts exist. |
 | App Store, Play Store, Mac App Store, Microsoft Store | External blocker | Create store listings, finish review, then replace disabled cards with real URLs and review status. |
@@ -49,13 +49,13 @@ Status terms:
 | Requirement | Status | Remaining work |
 |---|---:|---|
 | Homepage entrypoints for iMessage, Discord, Telegram, WhatsApp | Repo-ready | Cards link into `/get-started?method=...`. |
-| Shared stateless onboarding worker | Repo TODO | Finish structural handoff checks and route all unlinked messaging identities through the same worker. |
+| Shared stateless onboarding worker | Repo-owned | Finish structural handoff checks and route all unlinked messaging identities through the same worker. |
 | Cerebras `gpt-oss-120b` onboarding model | External blocker | Configure production Cerebras credentials and verify worker routing. |
-| Discord bot invite/onboarding | Repo TODO / external blocker | `bun run --cwd packages/cloud-shared preflight:messaging-gateways` exposes missing credentials; still need production OAuth/gateway deployment. |
-| Telegram bot onboarding | Repo TODO / external blocker | Gateway preflight checks BotFather token and webhook secret; still need signed identity-link completion. |
+| Discord bot invite/onboarding | Repo-owned / external blocker | `bun run --cwd packages/cloud-shared preflight:messaging-gateways` exposes missing credentials; still need production OAuth/gateway deployment. |
+| Telegram bot onboarding | Repo-owned / external blocker | Gateway preflight checks BotFather token and webhook secret; still need signed identity-link completion. |
 | WhatsApp onboarding | External blocker | Gateway preflight checks Meta env; still need official WhatsApp Business Platform account, templates, and opt-in compliance. |
 | iMessage blue-text gateway | External blocker | Gateway preflight checks relay/headscale env; still need user-owned Mac, spare iPhone, BlueBubbles, Headscale node, relay credentials, and health checks. |
-| Transcript handoff into real agent | Repo TODO | Persist source platform, setup session, target agent, and copied transcript state. |
+| Transcript handoff into real agent | Repo-owned | Persist source platform, setup session, target agent, and copied transcript state. |
 
 ## Cloud Console And One-Agent Admin
 
@@ -64,7 +64,7 @@ Status terms:
 | "My Agent" tab in Cloud | Owned by Cloud stream | Verify in cloud-ui branch; homepage points to `/dashboard/my-agents`. |
 | Remove consumer generation studio/character chat from cloud console | Owned by Cloud stream | Verify route removals and sidebar state in Cloud PR. |
 | API keys, docs, billing, settings, payment | Owned by Cloud stream | Verify developer dashboard routes after Cloud stream merges. |
-| App connects to provisioned Cloud agent | Repo TODO / external blocker | End-to-end provision, auth link, and bridge URL smoke in deployed Cloud. |
+| App connects to provisioned Cloud agent | Repo-owned / external blocker | End-to-end provision, auth link, and bridge URL smoke in deployed Cloud. |
 
 ## Release And CI
 

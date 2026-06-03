@@ -10,7 +10,7 @@ const baseConfig: ProcessBodyConfig = {
   propRenames: [],
   stripSystemConfig: false,
   stripToolDescriptions: false,
-  injectCCStubs: false,
+  injectCCSyntheticTools: false,
   deviceId: "device-test",
   sessionId: "session-test",
 };

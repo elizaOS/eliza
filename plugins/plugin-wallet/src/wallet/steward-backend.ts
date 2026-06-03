@@ -41,7 +41,7 @@ const STEWARD_MODULE_ID = ["@elizaos", "app-steward"].join("/");
 /**
  * Cloud / mobile signing via Steward for EVM. Solana addresses may be exposed from
  * Steward when `/vault/.../addresses` returns them; Solana **transaction** signing is
- * not implemented here yet — callers must treat Solana writes as unavailable until wired.
+ * unavailable here — callers must treat Solana writes as unavailable until wired.
  */
 export class StewardBackend implements WalletBackend {
   readonly kind = "steward" as const;
@@ -126,7 +126,7 @@ export class StewardBackend implements WalletBackend {
 
   getSolanaSigner(): never {
     throw new StewardUnavailableError(
-      "Solana transaction signing via Steward is not implemented in this runtime yet.",
+      "Solana transaction signing via Steward is unavailable in this runtime yet.",
     );
   }
 

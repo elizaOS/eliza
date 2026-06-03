@@ -6,7 +6,7 @@
  * description text can't corrupt depth.
  */
 
-import { CC_TOOL_STUBS } from "./constants.js";
+import { CC_SYNTHETIC_TOOLS } from "./constants.js";
 
 function findMatchingBracket(str: string, start: number): number {
   let d = 0;
@@ -38,23 +38,23 @@ function findMatchingBracket(str: string, start: number): number {
 export interface ToolSectionResult {
   body: string;
   descriptionsStripped: number;
-  stubsInjected: number;
+  syntheticToolsInjected: number;
 }
 
 export function processToolsSection(
   m: string,
   stripDescriptions: boolean,
-  injectStubs: boolean,
+  injectSyntheticTools: boolean,
 ): ToolSectionResult {
   const toolsIdx = m.indexOf('"tools":[');
   if (toolsIdx === -1) {
-    return { body: m, descriptionsStripped: 0, stubsInjected: 0 };
+    return { body: m, descriptionsStripped: 0, syntheticToolsInjected: 0 };
   }
 
   if (stripDescriptions) {
     const toolsEndIdx = findMatchingBracket(m, toolsIdx + '"tools":'.length);
     if (toolsEndIdx === -1) {
-      return { body: m, descriptionsStripped: 0, stubsInjected: 0 };
+      return { body: m, descriptionsStripped: 0, syntheticToolsInjected: 0 };
     }
     let section = m.slice(toolsIdx, toolsEndIdx + 1);
     let from = 0;
@@ -76,35 +76,35 @@ export function processToolsSection(
       from = vs + 1;
       stripped++;
     }
-    let stubsInjected = 0;
-    if (injectStubs) {
+    let syntheticToolsInjected = 0;
+    if (injectSyntheticTools) {
       const insertAt = '"tools":['.length;
       section =
         section.slice(0, insertAt) +
-        CC_TOOL_STUBS.join(",") +
+        CC_SYNTHETIC_TOOLS.join(",") +
         "," +
         section.slice(insertAt);
-      stubsInjected = CC_TOOL_STUBS.length;
+      syntheticToolsInjected = CC_SYNTHETIC_TOOLS.length;
     }
     return {
       body: m.slice(0, toolsIdx) + section + m.slice(toolsEndIdx + 1),
       descriptionsStripped: stripped,
-      stubsInjected,
+      syntheticToolsInjected,
     };
   }
 
-  if (injectStubs) {
+  if (injectSyntheticTools) {
     const insertAt = toolsIdx + '"tools":['.length;
     return {
       body:
         m.slice(0, insertAt) +
-        CC_TOOL_STUBS.join(",") +
+        CC_SYNTHETIC_TOOLS.join(",") +
         "," +
         m.slice(insertAt),
       descriptionsStripped: 0,
-      stubsInjected: CC_TOOL_STUBS.length,
+      syntheticToolsInjected: CC_SYNTHETIC_TOOLS.length,
     };
   }
 
-  return { body: m, descriptionsStripped: 0, stubsInjected: 0 };
+  return { body: m, descriptionsStripped: 0, syntheticToolsInjected: 0 };
 }

@@ -226,10 +226,10 @@ describe("plugin-health smoke (W1-B)", () => {
   });
 
   it("connector / anchor / bus-family registration tolerates a missing registry (Wave-1 soft-dep posture)", () => {
-    const fakeRuntime = {} as never;
-    expect(() => registerHealthConnectors(fakeRuntime)).not.toThrow();
-    expect(() => registerHealthAnchors(fakeRuntime)).not.toThrow();
-    expect(() => registerHealthBusFamilies(fakeRuntime)).not.toThrow();
+    const testRuntime = {} as never;
+    expect(() => registerHealthConnectors(testRuntime)).not.toThrow();
+    expect(() => registerHealthAnchors(testRuntime)).not.toThrow();
+    expect(() => registerHealthBusFamilies(testRuntime)).not.toThrow();
   });
 
   it("connector / anchor / bus-family registration calls registry methods when registries are present", () => {
@@ -260,15 +260,15 @@ describe("plugin-health smoke (W1-B)", () => {
       },
       list: () => busList,
     };
-    const fakeRuntime = {
+    const testRuntime = {
       connectorRegistry,
       anchorRegistry,
       busFamilyRegistry,
     } as RuntimeWithHealthRegistries as never;
 
-    registerHealthConnectors(fakeRuntime);
-    registerHealthAnchors(fakeRuntime);
-    registerHealthBusFamilies(fakeRuntime);
+    registerHealthConnectors(testRuntime);
+    registerHealthAnchors(testRuntime);
+    registerHealthBusFamilies(testRuntime);
 
     expect(connectorList.map((c) => c.kind)).toEqual([
       "apple_health",
@@ -299,8 +299,8 @@ describe("plugin-health smoke (W1-B)", () => {
       byCapability: (capability) =>
         connectorList.filter((c) => c.capabilities.includes(capability)),
     };
-    const fakeRuntime = { connectorRegistry } as never;
-    registerHealthConnectors(fakeRuntime);
+    const testRuntime = { connectorRegistry } as never;
+    registerHealthConnectors(testRuntime);
     const apple = connectorList.find((c) => c.kind === "apple_health");
     expect(apple).toBeDefined();
     if (!apple) throw new Error("apple_health should be registered");

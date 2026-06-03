@@ -135,10 +135,10 @@ describe("resolveSafeBinary", () => {
 
   it("rejects absolute paths outside the whitelist", () => {
     const root = mkdtempSync(join(tmpdir(), "evil-"));
-    const fake = join(root, "claude");
-    writeFileSync(fake, "#!/bin/sh\necho fake\n");
-    chmodSync(fake, 0o755);
-    expect(() => resolveSafeBinary(fake)).toThrow(SubAgentBinaryError);
+    const blockedBinary = join(root, "claude");
+    writeFileSync(blockedBinary, "#!/bin/sh\necho test binary\n");
+    chmodSync(blockedBinary, 0o755);
+    expect(() => resolveSafeBinary(blockedBinary)).toThrow(SubAgentBinaryError);
   });
 
   it("resolves a bare binary name only from whitelisted PATH entries", () => {

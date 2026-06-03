@@ -20,6 +20,18 @@ export default defineConfig({
 			"@elizaos/plugin-computeruse": fileURLToPath(
 				new URL("../plugin-computeruse/src/index.ts", import.meta.url),
 			),
+			"@elizaos/shared/local-inference/routing-preferences": fileURLToPath(
+				new URL(
+					"../../packages/shared/src/local-inference/routing-preferences.ts",
+					import.meta.url,
+				),
+			),
+			"@elizaos/shared/local-inference/verify": fileURLToPath(
+				new URL(
+					"../../packages/shared/src/local-inference/verify.ts",
+					import.meta.url,
+				),
+			),
 			"@elizaos/shared/local-inference": fileURLToPath(
 				new URL(
 					"../../packages/shared/src/local-inference/index.ts",

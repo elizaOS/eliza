@@ -5,11 +5,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createReportCache, makeCacheKey } from "../src/cache/report-cache.ts";
 import type { PathologyReport } from "../src/types.ts";
 
-function fakeReport(overrides: Partial<PathologyReport> = {}): PathologyReport {
+function sampleReport(overrides: Partial<PathologyReport> = {}): PathologyReport {
   const cacheKey = makeCacheKey({ surface: "src/api", since: "14d" });
   return {
     surface: "src/api",
-    repoRoot: "/fake",
+    repoRoot: "/repo",
     window: { since: "2026-04-01T00:00:00Z", until: "2026-04-15T00:00:00Z" },
     commitCount: 3,
     authors: ["alice"],
@@ -54,7 +54,7 @@ describe("createReportCache", () => {
 
   it("reads back what it writes", () => {
     const cache = createReportCache(dir);
-    const report = fakeReport();
+    const report = sampleReport();
     cache.write(report);
     const back = cache.read(report.cacheKey);
     expect(back).toEqual(report);
@@ -62,7 +62,7 @@ describe("createReportCache", () => {
 
   it("does not leave temporary files after a successful write", () => {
     const cache = createReportCache(dir);
-    cache.write(fakeReport());
+    cache.write(sampleReport());
 
     expect(readdirSync(dir).filter((file) => file.endsWith(".tmp"))).toEqual([]);
   });
@@ -81,14 +81,14 @@ describe("createReportCache", () => {
   it("lists reports sorted newest-first", () => {
     const cache = createReportCache(dir);
     cache.write(
-      fakeReport({
+      sampleReport({
         cacheKey: "a",
         surface: "old",
         generatedAt: "2026-04-01T00:00:00Z",
       })
     );
     cache.write(
-      fakeReport({
+      sampleReport({
         cacheKey: "b",
         surface: "new",
         generatedAt: "2026-04-10T00:00:00Z",
@@ -102,7 +102,7 @@ describe("createReportCache", () => {
 
   it("skips malformed cache files when listing reports", () => {
     const cache = createReportCache(dir);
-    cache.write(fakeReport({ cacheKey: "good", surface: "ok" }));
+    cache.write(sampleReport({ cacheKey: "good", surface: "ok" }));
     writeFileSync(path.join(dir, "bad.json"), "{not json", "utf8");
 
     expect(cache.list().map((entry) => entry.surface)).toEqual(["ok"]);
@@ -111,7 +111,7 @@ describe("createReportCache", () => {
   it("isFreshFor returns true only when HEAD matches", () => {
     const cache = createReportCache(dir);
     const head = "1111111111111111111111111111111111111111";
-    cache.write(fakeReport({ headSha: head }));
+    cache.write(sampleReport({ headSha: head }));
     const key = makeCacheKey({ surface: "src/api", since: "14d" });
     expect(cache.isFreshFor(key, head)).toBe(true);
     expect(cache.isFreshFor(key, "2222222222222222222222222222222222222222")).toBe(false);

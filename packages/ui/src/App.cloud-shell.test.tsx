@@ -57,7 +57,7 @@ describe("App standalone chat-overlay wiring", () => {
     // The floating glass chat remains available in the main shell, including
     // the ambient /chat route.
     expect(APP_TSX).toContain("Continuous chat overlay");
-    expect(APP_TSX).toContain("including the /chat route");
+    expect(APP_TSX).toContain("<ContinuousChatOverlayMount />");
   });
 
   it("keeps minimal shell chrome decisions inside Header", () => {

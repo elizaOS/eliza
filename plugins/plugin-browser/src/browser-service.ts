@@ -56,7 +56,7 @@ export interface BrowserTargetResolutionContext {
  *
  * Targets MAY decline subactions they don't support — throw a clear
  * `Error` from `execute` and the caller will see the message. Don't
- * silently no-op.
+ * silently ignore it.
  */
 export interface BrowserTarget {
   /** Stable identifier — `workspace`, `bridge`, `computeruse`, etc. */

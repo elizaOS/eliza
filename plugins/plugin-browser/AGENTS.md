@@ -117,7 +117,7 @@ Plugin activation: `config.features.browser` must be truthy (object with `enable
 
 **Add a new browser target** (e.g. a Playwright-based target):
 1. Create `src/targets/my-target.ts` exporting a factory that returns a `BrowserTarget` (interface in `src/browser-service.ts`).
-2. Implement `id`, `name`, `description`, `kind`, `priority`, `available()`, and `execute(command)`. Throw a clear `Error` for unsupported subactions — never silently no-op.
+2. Implement `id`, `name`, `description`, `kind`, `priority`, `available()`, and `execute(command)`. Throw a clear `Error` for unsupported subactions instead of silently ignoring them.
 3. Register in `BrowserService.start` (in `src/browser-service.ts`) or let another plugin call `browserService.registerTarget(myTarget)` at init.
 
 **Add a new action**:

@@ -9,14 +9,14 @@ import { stopAction, walkForwardAction, waveAction } from "../src/actions";
 import { batteryProvider, robotStateProvider } from "../src/providers";
 import { AinexService } from "../src/service";
 
-interface FakeRuntime {
+interface TestRuntimeState {
   service: AinexService | null;
   settings: Record<string, string>;
 }
 
 function buildRuntime(): IAgentRuntime {
-  const state: FakeRuntime = { service: null, settings: {} };
-  // Minimal IAgentRuntime fake with only the methods actions/providers reach for.
+  const state: TestRuntimeState = { service: null, settings: {} };
+  // Minimal IAgentRuntime surface with only the methods actions/providers reach for.
   const runtime: Partial<IAgentRuntime> = {
     agentId: "test-agent" as IAgentRuntime["agentId"],
     getSetting: (key: string) => state.settings[key] ?? null,
@@ -93,16 +93,16 @@ describe("plugin-ainex integration", () => {
     server = await buildBridgeServer();
     runtime = buildRuntime();
     (
-      runtime as unknown as { __state: FakeRuntime }
+      runtime as unknown as { __state: TestRuntimeState }
     ).__state.settings.ELIZA_AINEX_BRIDGE_URL = server.url;
     const service = await AinexService.start(runtime);
-    (runtime as unknown as { __state: FakeRuntime }).__state.service = service;
+    (runtime as unknown as { __state: TestRuntimeState }).__state.service = service;
     // Give the session.hello + telemetry replay a moment to settle.
     await new Promise((r) => setTimeout(r, 30));
   });
 
   afterEach(async () => {
-    const state = (runtime as unknown as { __state: FakeRuntime }).__state;
+    const state = (runtime as unknown as { __state: TestRuntimeState }).__state;
     await state.service?.stop();
     state.service = null;
     await server.close();

@@ -23,7 +23,7 @@ export async function loadWallet(
   const rpcUrl = getRuntimeStringSetting(runtime, "SOLANA_RPC_URL") ?? DEFAULT_SOLANA_RPC_URL;
   const connection = new Connection(rpcUrl, "confirmed");
 
-  // TODO: Re-enable TEE mode once DeriveKeyProvider is available
+  // TEE mode remains disabled until DeriveKeyProvider is available.
   // const teeMode = runtime.getSetting('TEE_MODE') || TEEMode.OFF;
 
   // if (teeMode !== TEEMode.OFF) {

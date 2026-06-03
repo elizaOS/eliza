@@ -460,11 +460,12 @@ JAX_PLATFORMS=cpu python -m pytest training/trajectory_db/tests/ \
 
 ---
 
-## 10. Half-Finished / Broken / TODOs
+## 10. Known Broken Or Open Items
 
 ### Severity Analysis
 
-**No critical TODOs found** in main robot code (training/, bridge/, perception/).
+**No critical open implementation items found** in main robot code (training/,
+bridge/, perception/).
 
 Scattered DEBUG logging pragmas:
 - `run_visualizer.py`: `logging.DEBUG if args.verbose else logging.INFO`

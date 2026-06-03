@@ -18,7 +18,7 @@ const walletClient = vi.hoisted(() => ({
   getWalletMarketOverview: vi.fn(),
   getWalletTradingProfile: vi.fn(),
 }));
-const appMock = vi.hoisted(() => ({
+const appHooks = vi.hoisted(() => ({
   useApp: vi.fn(),
 }));
 
@@ -66,8 +66,7 @@ vi.mock("@elizaos/ui", () => ({
     React.createElement("div", props),
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
   useActivityEvents: () => ({ events: [] }),
-  useAgentElement: () => ({ ref: vi.fn(), agentProps: {} }),
-  useApp: appMock.useApp,
+  useApp: appHooks.useApp,
 }));
 
 import { InventoryTuiView, InventoryView, interact } from "./InventoryView";
@@ -144,7 +143,7 @@ const marketOverview = {
   },
 };
 
-function mockWalletClient() {
+function seedWalletClientResponses() {
   walletClient.getWalletAddresses.mockResolvedValue({
     evmAddress: "0xabc",
     solanaAddress: "So111",
@@ -194,7 +193,7 @@ afterEach(() => {
 
 describe("InventoryTuiView", () => {
   it("mounts wallet balances, NFTs, market movers, and current TUI state", async () => {
-    mockWalletClient();
+    seedWalletClientResponses();
 
     const { container } = render(React.createElement(InventoryTuiView));
 
@@ -220,7 +219,7 @@ describe("InventoryTuiView", () => {
   });
 
   it("supports terminal capabilities for wallet state, market overview, and trading profile", async () => {
-    mockWalletClient();
+    seedWalletClientResponses();
 
     await expect(
       interact("terminal-wallet-state", { limit: 2 }),
@@ -264,13 +263,13 @@ describe("InventoryTuiView", () => {
   });
 
   it("restores sidebar state and preserves back navigation when opening RPC settings", async () => {
-    mockWalletClient();
+    seedWalletClientResponses();
     window.localStorage.setItem("eliza:wallets:sidebar:collapsed", "true");
     window.localStorage.setItem("eliza:wallets:sidebar:width", "9999");
     window.history.replaceState(null, "", "/inventory");
     const setTab = vi.fn();
 
-    appMock.useApp.mockReturnValue({
+    appHooks.useApp.mockReturnValue({
       walletEnabled: true,
       walletAddresses: { evmAddress: "0xabc", solanaAddress: "So111" },
       walletConfig: {

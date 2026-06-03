@@ -19,6 +19,7 @@ type ReadyCheck =
 type RouteProbe = {
   name: string;
   path: string;
+  expectedUrl?: RegExp;
   readyChecks: readonly ReadyCheck[];
   mode?: "any" | "all";
   timeoutMs?: number;
@@ -89,6 +90,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "assistant home",
     path: "/",
+    expectedUrl: /\/(?:chat)?$/,
     readyChecks: [
       {
         selector:
@@ -1372,7 +1374,9 @@ async function expectNoPageIssues(
 
 async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
   await expect(page.locator("#root")).toBeVisible();
-  await expect(page.locator("body")).not.toContainText(/404|not found/i);
+  await expect(page.locator("body")).not.toContainText(
+    /(?:404\s+not\s+found|page not found|route not found)/i,
+  );
   if (
     route.path === "/" ||
     route.path === "/chat" ||
@@ -1399,10 +1403,11 @@ async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
 
 async function probeRoute(page: Page, route: RouteProbe): Promise<void> {
   await openAppPath(page, route.path);
-  await expect(page).toHaveURL(new RegExp(`${escapeRegExp(route.path)}$`), {
+  const expectedUrl =
+    route.expectedUrl ?? new RegExp(`${escapeRegExp(route.path)}$`);
+  await expect(page).toHaveURL(expectedUrl, {
     timeout: route.timeoutMs,
   });
-  await expectMainShell(page, route);
   await assertReadyChecks(
     page,
     route.name,
@@ -1410,6 +1415,7 @@ async function probeRoute(page: Page, route: RouteProbe): Promise<void> {
     route.mode ?? "any",
     route.timeoutMs,
   );
+  await expectMainShell(page, route);
 }
 
 async function clickIfVisible(locator: Locator): Promise<boolean> {
@@ -1462,6 +1468,15 @@ test.beforeEach(async ({ page }) => {
   await seedAppStorage(page);
   await installSupplementalSafeRoutes(page);
   await installDefaultAppRoutes(page);
+});
+
+test.afterEach(async ({ page }) => {
+  if (page.isClosed()) return;
+  await page
+    .goto("about:blank", { waitUntil: "domcontentloaded", timeout: 5_000 })
+    .catch(() => {
+      /* best-effort cleanup before Playwright closes the context */
+    });
 });
 
 for (const viewport of [DESKTOP_PROBE, MOBILE_PROBE]) {

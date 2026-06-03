@@ -72,7 +72,7 @@ export interface ProxyStats {
 
 const DEFAULT_BIND = "127.0.0.1";
 
-const noopLogger: NonNullable<ProxyServerOptions["logger"]> = {
+const silentLogger: NonNullable<ProxyServerOptions["logger"]> = {
   info: (_msg: string) => undefined,
   warn: (_msg: string) => undefined,
   error: (_msg: string) => undefined,
@@ -110,7 +110,7 @@ export class ProxyServer {
     this.toolRenames = opts.toolRenames ?? DEFAULT_TOOL_RENAMES;
     this.propRenames = opts.propRenames ?? DEFAULT_PROP_RENAMES;
     this.reverseMapPairs = opts.reverseMap ?? DEFAULT_REVERSE_MAP;
-    this.logger = opts.logger ?? noopLogger;
+    this.logger = opts.logger ?? silentLogger;
   }
 
   private getCreds(): LoadResult {

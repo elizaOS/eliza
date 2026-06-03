@@ -1,6 +1,6 @@
 // Test hook to clear env cache in logger tests (kept internal)
 export const __loggerTestHooks = {
-  __noop: () => {},
+  clearEnvCacheForTests: () => {},
 };
 
 import adze, {

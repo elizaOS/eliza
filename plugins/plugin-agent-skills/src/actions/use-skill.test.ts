@@ -245,23 +245,23 @@ describe("useSkillAction", () => {
 		const tempDir = await fs.mkdtemp(
 			path.join(os.tmpdir(), "use-skill-command-only-"),
 		);
-		const scriptPath = path.join(tempDir, "noop.sh");
+		const scriptPath = path.join(tempDir, "command-only.sh");
 		await fs.writeFile(
 			scriptPath,
-			"#!/usr/bin/env bash\nprintf '%s' '{\"cmd\":[\"bash\",\"-lc\",\"noop\"]}'\n",
+			"#!/usr/bin/env bash\nprintf '%s' '{\"cmd\":[\"bash\",\"-lc\",\"command-only\"]}'\n",
 			"utf8",
 		);
 		await fs.chmod(scriptPath, 0o755);
 
 		const skill = {
-			slug: "noop",
-			name: "Noop",
-			description: "Noop script",
+			slug: "command-only",
+			name: "Command Only",
+			description: "Command envelope script",
 			version: "1.0.0",
 			content: "",
 			frontmatter: {},
 			path: tempDir,
-			scripts: ["noop.sh"],
+			scripts: ["command-only.sh"],
 			references: [],
 			assets: [],
 			loadedAt: 0,
@@ -269,12 +269,12 @@ describe("useSkillAction", () => {
 		};
 		const service = {
 			getLoadedSkill: vi.fn((slug: string) =>
-				slug === "noop" ? skill : undefined,
+				slug === "command-only" ? skill : undefined,
 			),
 			getLoadedSkills: vi.fn(() => [skill]),
 			isSkillEnabled: vi.fn(() => true),
 			checkSkillEligibility: vi.fn(async () => ({
-				slug: "noop",
+				slug: "command-only",
 				eligible: true,
 				reasons: [],
 				checkedAt: 0,
@@ -292,9 +292,9 @@ describe("useSkillAction", () => {
 		try {
 			const result = await useSkillAction.handler(
 				Object.assign(Object.create(null) as IAgentRuntime, runtimeShape),
-				{ content: { text: "use noop skill" } } as Memory,
+				{ content: { text: "use command-only skill" } } as Memory,
 				undefined,
-				{ parameters: { slug: "noop", mode: "script" } },
+				{ parameters: { slug: "command-only", mode: "script" } },
 				vi.fn(),
 			);
 
@@ -471,13 +471,13 @@ describe("useSkillAction", () => {
 	it("skips invocation capture when no trajectory step is active", async () => {
 		mockedGetTrajectoryContext.mockReturnValue(undefined);
 		const skill = {
-			slug: "noop",
-			name: "Noop",
-			description: "noop",
+			slug: "guidance-only",
+			name: "Guidance Only",
+			description: "guidance-only",
 			version: "1.0.0",
 			content: "",
 			frontmatter: {},
-			path: "/skills/noop",
+			path: "/skills/guidance-only",
 			scripts: [],
 			references: [],
 			assets: [],
@@ -489,13 +489,13 @@ describe("useSkillAction", () => {
 			getLoadedSkills: vi.fn(() => [skill]),
 			isSkillEnabled: vi.fn(() => true),
 			checkSkillEligibility: vi.fn(async () => ({
-				slug: "noop",
+				slug: "guidance-only",
 				eligible: true,
 				reasons: [],
 				checkedAt: 0,
 			})),
 			getSkillInstructions: vi.fn(() => ({
-				slug: "noop",
+				slug: "guidance-only",
 				body: "body",
 				estimatedTokens: 1,
 			})),
@@ -506,9 +506,9 @@ describe("useSkillAction", () => {
 
 		const result = await useSkillAction.handler(
 			Object.assign(Object.create(null) as IAgentRuntime, runtimeShape),
-			{ content: { text: "use noop skill" } } as Memory,
+			{ content: { text: "use guidance-only skill" } } as Memory,
 			undefined,
-			{ parameters: { slug: "noop", mode: "guidance" } },
+			{ parameters: { slug: "guidance-only", mode: "guidance" } },
 			vi.fn(),
 		);
 

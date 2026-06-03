@@ -14,8 +14,8 @@
  * Anchored to the system array so it can never match conversation history
  * by accident.
  *
- * For non-eliza framework agents, the strip silently no-ops (the marker
- * isn't present) — the rest of the pipeline still runs. To strip a
+ * For non-eliza framework agents, the strip leaves the payload unchanged when
+ * the marker isn't present — the rest of the pipeline still runs. To strip a
  * different framework's recurring section, override the system-prompt
  * anchors via plugin config (future work).
  */

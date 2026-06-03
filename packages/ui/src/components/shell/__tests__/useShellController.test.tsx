@@ -76,7 +76,7 @@ describe("useShellController", () => {
     rerender();
 
     expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
-    expect(appMock.value.sendChatText).toHaveBeenCalledWith(
+    expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe(
       "hello while booting",
     );
   });
@@ -89,6 +89,6 @@ describe("useShellController", () => {
     act(() => result.current.send("hi"));
 
     expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
-    expect(appMock.value.sendChatText).toHaveBeenCalledWith("hi");
+    expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe("hi");
   });
 });

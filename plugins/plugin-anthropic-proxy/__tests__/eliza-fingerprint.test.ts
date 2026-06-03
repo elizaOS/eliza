@@ -139,7 +139,7 @@ describe("eliza fingerprint — system prompt strip", () => {
     expect(result.body).toContain("More content here.");
   });
 
-  it("no-ops when the eliza marker is not present", () => {
+  it("leaves the payload unchanged when the eliza marker is not present", () => {
     const wirePayload = `{"system":[{"type":"text","text":"You are some other bot."}]}`;
     const result = stripSystemConfig(wirePayload);
     expect(result.stripped).toBe(0);

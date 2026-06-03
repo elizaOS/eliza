@@ -763,7 +763,7 @@ class TrackingDashboard:
             "objects": True,
         }
 
-        # No-signal placeholders
+        # Pre-rendered no-signal frames
         self._ns_robot = _no_signal_frame(
             self._cfg.camera.width, self._cfg.camera.height,
             "ROBOT CAMERA - NO SIGNAL",

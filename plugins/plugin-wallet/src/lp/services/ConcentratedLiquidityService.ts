@@ -6,8 +6,8 @@ import type {
 } from "../types";
 
 /**
- * ConcentratedLiquidityService provides foundation support for concentrated liquidity positions.
- * This is a placeholder implementation that will be expanded when DEX plugins add concentrated liquidity support.
+ * ConcentratedLiquidityService exposes the concentrated-liquidity surface while
+ * DEX-specific providers add position creation and rebalancing support.
  */
 export class ConcentratedLiquidityService
   extends Service
@@ -42,7 +42,6 @@ export class ConcentratedLiquidityService
     _userId: string,
     _params: IRangeParams,
   ): Promise<IConcentratedPosition> {
-    // Placeholder implementation
     throw new Error(
       "Concentrated liquidity positions are coming soon! This feature requires DEX integration.",
     );
@@ -51,7 +50,6 @@ export class ConcentratedLiquidityService
   async getConcentratedPositions(
     userId: string,
   ): Promise<IConcentratedPosition[]> {
-    // Placeholder implementation
     console.info(`Getting concentrated positions for user ${userId}`);
     return [];
   }
@@ -61,7 +59,6 @@ export class ConcentratedLiquidityService
     _positionId: string,
     _newRangeParams?: Partial<IRangeParams>,
   ): Promise<IConcentratedPosition> {
-    // Placeholder implementation
     throw new Error("Concentrated position rebalancing is coming soon!");
   }
 

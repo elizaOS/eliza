@@ -34,7 +34,7 @@ builds, but it is not enough for launch.
   download shown to users.
 - App Store, Play Store, Mac App Store, and Microsoft Store cards remain marked
   "Coming soon" until approved store URLs exist.
-- Store targets are generated release data, not hard-coded placeholder links.
+- Store targets are generated release data, not hard-coded fallback links.
 - No package-manager or stale install command is presented as the primary
   install path.
 

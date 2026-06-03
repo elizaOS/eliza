@@ -58,6 +58,20 @@ platform no-ops are separated from actionable runtime gaps.
   - `bunx biome check` on the touched Worker shim and sidecar-route files
   - marker scan and `git diff --check` on the touched Cloud API files
 
+### packages/cloud-sdk
+
+- Renamed the public-routes unit-test transport from `FakeTransport` to
+  `TestTransport`. The fixture still records calls for path-building
+  assertions; it is not an unfinished SDK transport.
+- Marker scan on the package is now clean.
+- Verified with:
+  - `diff -u packages/cloud-sdk/CLAUDE.md packages/cloud-sdk/AGENTS.md`
+  - `bun run --cwd packages/cloud-sdk typecheck`
+  - `bun run --cwd packages/cloud-sdk test`
+  - `bun run --cwd packages/cloud-sdk build`
+  - marker scan on `packages/cloud-sdk`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md packages/cloud-sdk`
+
 ### packages/app-core
 
 - Added concrete ambient-audio primitives under
@@ -85,11 +99,13 @@ platform no-ops are separated from actionable runtime gaps.
 
 - Reworded identity-theme and editor delete test wording so unchanged styling
   and empty delete operations are not described as no-op behavior.
+- Reworded image-test and virtual-terminal helper comments so cacheless
+  invalidation and absent stdin are described directly.
 - Remaining `incomplete` / `unfinished paste` hits in `src/stdin-buffer.ts`,
   `src/tui.ts`, and stdin/paste tests are terminal protocol parser states for
   partial escape or bracketed-paste sequences, not unfinished implementation.
 - Verified with:
-  - `bun run --cwd packages/tui test test/editor.test.ts`
+  - `bun run --cwd packages/tui test`
   - `bun run --cwd packages/tui build`
   - marker scan and `git diff --check` on the touched TUI files
 
@@ -313,6 +329,22 @@ platform no-ops are separated from actionable runtime gaps.
   - mirrored guide comparison
   - marker scan on `packages/prompts`
   - `git diff --check -- packages/prompts`
+
+### packages/skills
+
+- Reworded the coding-agent bundled skill so the store-build `TASKS` gate is
+  described as a blocked action rather than a stub action.
+- Remaining marker hits are intentional bundled-skill instructional content:
+  Notion/Things task examples use `Todo`/`todo`, skill-creator examples
+  intentionally generate TODO/template placeholder scaffolds for brand-new
+  skills, and monetized-app skills use the canonical reserved
+  `https://placeholder.invalid` registration URL before patching in the real
+  container URL.
+- Verified with:
+  - `diff -u packages/skills/CLAUDE.md packages/skills/AGENTS.md`
+  - `bun run --cwd packages/skills test`
+  - `bun run --cwd packages/skills build`
+  - marker scan on `packages/skills`
 
 ### packages/scripts
 
@@ -609,6 +641,14 @@ platform no-ops are separated from actionable runtime gaps.
   `tests/rl/test_text_conditioned_pipeline.py`, and
   `scripts/validate_robot_training_inputs.py` now use explicit mesh,
   calibration fallback, fixture, and trainer-input wording.
+- Reworded the multi-robot profile guide, SSD port assessment, scripted skill
+  checkpoint hook, RL wave fallback, arm-test overlay helper, MuJoCo backend
+  idle-walk path, tracking dashboard no-signal frames, ASIMOV-1 dry-run docs,
+  locomotion metrics prose, and MuJoCo inference RNG locals so implemented
+  fallback/dry-run behavior is not labeled as placeholder/no-op/fake/dummy
+  work.
+- Renamed ASIMOV LiveKit dry-run helper classes from `Fake*` to `DryRun*` and
+  updated focused command-probe tests.
 - Verified with:
   - `python3 -m py_compile packages/robot/eliza_robot/policy/openpi/server.py packages/robot/tests/policy/openpi/test_server.py`
   - `./.venv/bin/python -m pytest tests/policy/openpi/test_client.py tests/policy/openpi/test_server.py -q`
@@ -628,12 +668,18 @@ platform no-ops are separated from actionable runtime gaps.
   - `python3 -m py_compile packages/robot/scripts/generate_eliza_human_donor_blender.py packages/robot/eliza_robot/erobot/mjcf.py packages/robot/scripts/validate_robot_training_inputs.py packages/robot/tests/policy/openpi/test_client.py packages/robot/tests/rl/test_text_conditioned_pipeline.py`
   - `./.venv/bin/ruff check scripts/generate_eliza_human_donor_blender.py eliza_robot/erobot/mjcf.py scripts/validate_robot_training_inputs.py tests/policy/openpi/test_client.py tests/rl/test_text_conditioned_pipeline.py`
   - `./.venv/bin/python -m pytest tests/test_profiles.py tests/policy/openpi/test_client.py tests/rl/test_text_conditioned_pipeline.py -q`
+  - `python3 -m py_compile packages/robot/eliza_robot/rl/skills/base.py packages/robot/eliza_robot/rl/skills/rl_wave_skill.py packages/robot/eliza_robot/sim/mujoco/arm_test.py packages/robot/eliza_robot/bridge/backends/mujoco_backend.py packages/robot/eliza_robot/perception/tracking_visualizer/dashboard.py packages/robot/eliza_robot/asimov_1/livekit_dry_run.py packages/robot/tests/asimov_1/test_real_command_probe.py`
+  - `uv run pytest tests/asimov_1/test_real_command_probe.py -q` from
+    `packages/robot`
+  - `python3 -m py_compile packages/robot/eliza_robot/rl/locomotion_metrics.py packages/robot/eliza_robot/sim/mujoco/inference.py`
   - marker scan on the touched OpenPI files
   - marker scan on the touched MuJoCo gait files
   - marker scan on the touched compositional MuJoCo files
   - marker scan on the touched perception files
   - marker scan on `scripts/generate_unitree_profile.py`
   - marker scan on the additional touched Robot source/docs/test files
+  - source/docs marker scan on `packages/robot/docs`,
+    `packages/robot/eliza_robot`, and `packages/robot/src`
   - `git diff --check` on the touched Robot files
 
 ### packages/app
@@ -661,9 +707,38 @@ platform no-ops are separated from actionable runtime gaps.
   `config-schema.mdx` and `configuration.mdx` with the current shared config
   contract: `AudioConfig` is intentionally open-ended and accepts arbitrary
   audio subsystem keys until stable typed fields are promoted into the schema.
+- Reworded docs-only platform/roadmap/status markers so concrete behavior is
+  described without implying unfinished implementation:
+  - Capacitor haptics is now described as inactive on unsupported platforms;
+  - packaged-app NODE_PATH branches are described as skipped by the
+    `existsSync` guard;
+  - the Claude refresh helper is documented as exiting without refresh when
+    credentials are still fresh;
+  - rate-limit throttling is named as future hardening rather than a missing
+    implementation;
+  - generated action catalog and connector docs describe unsupported parity
+    commands and CI compatibility packages directly;
+  - chip, stability, and voice-gap docs now distinguish development hardware,
+    remaining provider-specific gaps, and test doubles from runtime stubs.
 - Verified with:
   - `bun run --cwd packages/docs test`
-  - marker scan on the touched docs files
+  - marker scan on `packages/docs`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md packages/docs`
+
+### packages/homepage
+
+- Reworded homepage launch-planning docs so repo-owned launch work and release
+  fallback URL checks are not labeled as TODOs or placeholder links inside the
+  homepage package. The remaining launch blockers are still visible as
+  repo-owned or external-blocker rows.
+- Remaining scan hits are runtime UI affordances: input `placeholder` props,
+  Tailwind `placeholder:*` classes, i18n keys whose names include
+  `placeholder`, phone-number format examples, and a `noopener` false positive.
+- Verified with:
+  - `diff -u packages/homepage/CLAUDE.md packages/homepage/AGENTS.md`
+  - `bun run --cwd packages/homepage test`
+  - marker scan on `packages/homepage`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md packages/homepage`
 
 ### packages/training
 
@@ -762,12 +837,34 @@ platform no-ops are separated from actionable runtime gaps.
 
 - Removed the lone false-positive marker in `src/logger.ts` by rewording the
   file-log skip-condition comment from "No-op" to explicit skip conditions.
+- Renamed the internal logger test-hook member from `__noop` to
+  `clearEnvCacheForTests`, matching the hook's compatibility purpose without
+  marker terminology.
 - Verified with:
   - `bun run --cwd packages/logger lint`
   - `bun run --cwd packages/logger typecheck`
+  - `bun run --cwd packages/logger build`
   - marker scan on the package
+  - `git diff --check -- PLACEHOLDER_AUDIT.md packages/logger`
   - Local guide note: `packages/logger/CLAUDE.md` exists, but no sibling
     `AGENTS.md` is present in this checkout.
+- Verification note: `bun run --cwd packages/logger test` currently fails
+  before running tests because `packages/logger/vitest.config.ts` is missing
+  while the package script references it.
+
+### packages/plugin-sub-agent-claude-code
+
+- Renamed the disallowed-binary test fixture in `src/sandbox.test.ts` from
+  `fake` to `blockedBinary`. The test still verifies that absolute binaries
+  outside the allowlist are rejected with `SubAgentBinaryError`.
+- Marker scan on the package is now clean.
+- Verified with:
+  - `diff -u packages/plugin-sub-agent-claude-code/CLAUDE.md packages/plugin-sub-agent-claude-code/AGENTS.md`
+  - `bun run --cwd packages/plugin-sub-agent-claude-code typecheck`
+  - `bun run --cwd packages/plugin-sub-agent-claude-code test`
+  - `bun run --cwd packages/plugin-sub-agent-claude-code build`
+  - marker scan on `packages/plugin-sub-agent-claude-code`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md packages/plugin-sub-agent-claude-code`
 
 ### packages/registry
 
@@ -868,6 +965,8 @@ platform no-ops are separated from actionable runtime gaps.
 - Reworded NIP-44 guide text as outside the current protocol surface, and
   reworded connector-account deletion comments so provider-layer deletion
   returns cleanly while runtime credentials remain in character settings.
+- Current remaining marker hit is Vitest `useFakeTimers` in the service
+  hardening test.
 - Verified `CLAUDE.md` and `AGENTS.md` are identical.
 - Verified with:
   - `bun run --cwd plugins/plugin-nostr typecheck`
@@ -998,7 +1097,17 @@ platform no-ops are separated from actionable runtime gaps.
   `BrowserBridgeRouteService`, maps the current bridge page to `MessageRef`,
   and supports filtered list/get behavior.
 - Added focused adapter tests.
-- Verified with focused test, typecheck, and diff check.
+- Reworded target-extension docs and bridge target comments so unsupported
+  subactions and defaulted tab fields are described without no-op/stub
+  terminology.
+- Remaining marker hits are intentional DOM selector support for finding
+  inputs by HTML `placeholder` text and the `BrowserWorkspaceFindBy`
+  `"placeholder"` discriminator.
+- Verified with:
+  - `diff -u plugins/plugin-browser/CLAUDE.md plugins/plugin-browser/AGENTS.md`
+  - `bun run --cwd plugins/plugin-browser typecheck`
+  - `bun run --cwd plugins/plugin-browser test`
+  - marker scan on `plugins/plugin-browser`
 
 ### plugins/plugin-phone
 
@@ -1085,8 +1194,11 @@ platform no-ops are separated from actionable runtime gaps.
 
 ### plugins/plugin-vector-browser
 
-- Classified remaining marker hits as real UI search input placeholder text and
-  Tailwind `placeholder:` utility styling in `src/VectorBrowserView.tsx`.
+- Classified remaining marker hits as:
+  - real UI search input placeholder text and Tailwind `placeholder:` utility
+    styling in `src/VectorBrowserView.tsx`;
+  - the shared `ListSkeleton` loading-state component import, which is an
+    implemented UI component rather than a skeletal implementation.
 - Verified with:
   - `bun run --cwd plugins/plugin-vector-browser typecheck`
   - marker scan on `plugins/plugin-vector-browser`
@@ -1097,12 +1209,15 @@ platform no-ops are separated from actionable runtime gaps.
 - Removed the build script's fallback declaration path. The package now relies
   on `tsc --project tsconfig.build.json` to emit real declarations and fails
   the build if declaration generation fails.
+- Current remaining marker hit is Vitest `useFakeTimers` in the local storage
+  service test.
 - Verified with:
   - `bun run --cwd plugins/plugin-local-storage typecheck`
   - `bun run --cwd plugins/plugin-local-storage test`
   - `bun run --cwd plugins/plugin-local-storage build`
   - marker scan on `plugins/plugin-local-storage`
   - `git diff --check -- plugins/plugin-local-storage`
+  - `diff -u plugins/plugin-local-storage/CLAUDE.md plugins/plugin-local-storage/AGENTS.md`
 
 ### plugins/plugin-shell
 
@@ -1135,11 +1250,13 @@ platform no-ops are separated from actionable runtime gaps.
 - Removed stale placeholder wording from `src/types.ts`; the
   `RobotProfileDescriptor` is the concrete bridge/Python profile mirror.
 - Reworded the focused action test helper comment to avoid marking a deliberate
-  minimal test fake as a source stub, and applied Biome's mechanical cleanup in
-  the touched test file.
+  minimal test runtime as a source stub, renamed the runtime state type from
+  `FakeRuntime` to `TestRuntimeState`, and applied Biome's mechanical cleanup
+  in the touched test file.
 - Verified with:
   - `bun run --cwd plugins/plugin-ainex test test/service-actions.test.ts`
   - `bun run --cwd plugins/plugin-ainex typecheck`
+  - `bun run --cwd plugins/plugin-ainex build`
   - `bunx biome check plugins/plugin-ainex/src/types.ts plugins/plugin-ainex/test/service-actions.test.ts`
   - marker scan on the touched AiNex files
 
@@ -1149,27 +1266,72 @@ platform no-ops are separated from actionable runtime gaps.
   `src/services/skills.ts`. The watcher scope is now documented as a deliberate
   workspace-skill contract; managed, bundled, and catalog skills refresh through
   load/sync flows.
+- Reworded memory-store initialization, trajectory annotation skipping,
+  command-token install comments, and test fixture names so intentional empty
+  behavior is described without no-op/stub terminology.
+- Remaining package marker hit is intentional taxonomy data:
+  `Productivity: ["calendar", "task", "todo", "note", "document"]`.
 - Verified with:
+  - `diff -u plugins/plugin-agent-skills/CLAUDE.md plugins/plugin-agent-skills/AGENTS.md`
   - `bun run --cwd plugins/plugin-agent-skills typecheck`
-  - `bunx biome check plugins/plugin-agent-skills/src/services/skills.ts`
-  - marker scan and `git diff --check` on the touched Agent Skills file
+  - `bun run --cwd plugins/plugin-agent-skills test`
+  - `bun run --cwd plugins/plugin-agent-skills build`
+  - marker scan on `plugins/plugin-agent-skills`
+
+### plugins/plugin-workflow
+
+- Reworded the embedded catalog v2 refresh note, connector-credential empty
+  delete semantics, route-test catalog provider docs, and validate/eviction
+  test names from TODO/no-op/stub terminology to roadmap, skip, provider, and
+  clean-workflow wording.
+- Remaining marker hits are intentional workflow-domain terms:
+  `workflows-nodes-base.noOp` is a real pass-through node type; `placeholder`
+  is a UI parameter/credential/prompt concept used by the workflow generator
+  and credential tests; `workbench-todo`/`metadata.todo` are automation tags;
+  and the generation prompt explicitly forbids placeholder/incomplete output
+  when runtime facts are available.
+- Verified with:
+  - `diff -u plugins/plugin-workflow/CLAUDE.md plugins/plugin-workflow/AGENTS.md`
+  - `bun run --cwd plugins/plugin-workflow typecheck`
+  - `bun test __tests__/unit/catalog.test.ts __tests__/unit/validateAndRepair.test.ts __tests__/unit/credential-store-eviction.test.ts __tests__/unit/workflow-clarification.test.ts` from `plugins/plugin-workflow`
+  - `bun run --cwd plugins/plugin-workflow build`
+  - marker scan on `plugins/plugin-workflow`
+- Verification note: full `bun run --cwd plugins/plugin-workflow test:unit`
+  currently times out one existing long-running embedded service test,
+  `EmbeddedWorkflowService > WorkflowService uses the embedded backend without
+  external runtime settings`; the rest of that run passed before the timeout.
+  A first focused test command from the repo root also hit a Bun canary
+  `index out of bounds` crash, then the same files passed when rerun from the
+  plugin directory with shorter paths.
 
 ### plugins/plugin-anthropic-proxy
 
-- Reworded Layer 5 proxy comments and package docs so `cc-tool-stubs.ts` is
-  described as synthetic Claude Code tool injection for fingerprint
-  compatibility, not as unfinished stub behavior.
-- Kept exported names such as `injectCCStubs` / `stubsInjected` unchanged to
-  avoid a terminology-only API break in the exported `ProcessBodyConfig` and
-  `ProcessBodyResult` surfaces.
+- Reworded Layer 5 proxy comments and package docs and renamed
+  `cc-tool-stubs.ts` to `cc-tool-injection.ts`; internal constants/config/stats
+  now use synthetic Claude Code tool terminology for fingerprint compatibility,
+  not unfinished stub behavior.
+- Renamed the silent logger, short-marker test title, and system-prompt strip
+  docs from no-op wording to unchanged/skipped behavior.
 - Verified `CLAUDE.md` and `AGENTS.md` are identical after the package-local
   docs change.
 - Verified with:
-  - `bunx biome check plugins/plugin-anthropic-proxy/src/proxy/cc-tool-stubs.ts plugins/plugin-anthropic-proxy/src/proxy/constants.ts plugins/plugin-anthropic-proxy/src/proxy/process-body.ts`
+  - `diff -u plugins/plugin-anthropic-proxy/CLAUDE.md plugins/plugin-anthropic-proxy/AGENTS.md`
+  - `bun run --cwd plugins/plugin-anthropic-proxy typecheck`
+  - `bun run --cwd plugins/plugin-anthropic-proxy test`
+  - `bun run --cwd plugins/plugin-anthropic-proxy build`
   - marker scan and `git diff --check` on the touched Anthropic Proxy files
-- Remaining scan hits are the exported compatibility-stat names, the
-  `cc-tool-stubs.ts` path, and `sse-rewrite.ts` buffering incomplete UTF-8
-  sequences across TCP chunks.
+- Remaining scan hits are literal Claude Code `TodoRead` / `TodoWrite` /
+  `TodoComplete` tool names in fingerprint compatibility dictionaries and docs.
+
+### plugins/plugin-anthropic
+
+- No source edits were needed. Remaining marker hits are Vitest
+  `stubGlobal` / `unstubAllGlobals` APIs in provider-fetch shape tests, used to
+  inject a test `fetch` implementation.
+- Verified with:
+  - `diff -u plugins/plugin-anthropic/CLAUDE.md plugins/plugin-anthropic/AGENTS.md`
+  - marker scan on `plugins/plugin-anthropic`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-anthropic`
 
 ### plugins/plugin-app-control
 
@@ -1197,16 +1359,17 @@ platform no-ops are separated from actionable runtime gaps.
   the concrete health bridge.
 - Reworded the sleep-cycle recap null-score comment from placeholder scores to
   filler scores.
+- Renamed smoke-test runtime fixtures from `fakeRuntime` to `testRuntime`.
 - Verified with:
   - `bunx biome check plugins/plugin-health/src/sleep/sleep-wake-events.ts`
   - `bunx biome check` on the renamed Health contract type files, connector
     registry adapter, default-pack imports, smoke test, and sleep-cycle file
   - `bun run --cwd plugins/plugin-health build:types`
   - `bun run --cwd plugins/plugin-health test src/__tests__/smoke.test.ts`
+  - `bun run --cwd plugins/plugin-health test`
+  - `bun run --cwd plugins/plugin-health build`
   - marker scan and `git diff --check` on the touched Health file
-- Remaining Health source scan hits are screen-time status copy
-  (`Signal incomplete`) and test fixture wording about incomplete permissions;
-  neither is a runtime placeholder/stub.
+- Marker scan on the package is now clean.
 
 ### plugins/plugin-lifeops
 
@@ -1313,10 +1476,18 @@ platform no-ops are separated from actionable runtime gaps.
   terminology in `src/formatting.ts`. The conversion still protects bold and
   heading spans from italic matching, but no longer looks like unfinished
   formatter behavior.
+- Classified the remaining Slack marker hits:
+  - `vi.stubGlobal` / `vi.unstubAllGlobals` in
+    `src/connector-account-provider.test.ts` are Vitest APIs that install and
+    clear a fetch test double for OAuth callback coverage.
+  - `mockResolvedValue` / `.mock.calls` hits are ordinary Vitest mocks in
+    message connector tests.
+  - `throw new Error(...)` hits are explicit validation, missing-client, and
+    unexpected-fetch branches, not unfinished implementations.
 - Verified with:
   - `bun run --cwd plugins/plugin-slack test`
   - `bunx biome check plugins/plugin-slack/src/formatting.ts`
-  - marker scan and `git diff --check` on the touched Slack file
+  - marker scan and `git diff --check` on the touched Slack files/audit entry
 
 ### plugins/plugin-streaming
 
@@ -1426,11 +1597,16 @@ platform no-ops are separated from actionable runtime gaps.
   browser credential contract.
 - Added streaming-suite coverage that verifies browser proxy mode sends no
   synthetic API key and that missing browser proxy/API key fails early.
+- Renamed the streaming test runtime helper from `FakeRuntime` /
+  `createFakeRuntime` to `TestRuntime` / `createTestRuntime`; marker scan on
+  the package is now clean.
 - Verified with:
   - `bun run --cwd plugins/plugin-elevenlabs test __tests__/streaming.test.ts`
   - `bun run --cwd plugins/plugin-elevenlabs typecheck`
+  - `bun run --cwd plugins/plugin-elevenlabs build`
   - `bunx biome check plugins/plugin-elevenlabs/src/index.ts plugins/plugin-elevenlabs/__tests__/streaming.test.ts plugins/plugin-elevenlabs/CLAUDE.md plugins/plugin-elevenlabs/AGENTS.md`
   - marker scan on the touched ElevenLabs files
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-elevenlabs`
 
 ### packages/elizaos
 
@@ -1470,15 +1646,21 @@ platform no-ops are separated from actionable runtime gaps.
 - Reworded the mirrored guide's browser-export gotcha so the exported
   `farcasterPlugin` is described as an unsupported-browser plugin shape rather
   than no-op behavior.
+- Renamed the hardening-suite Farcaster client fixture from `fakeClient` to
+  `testClient`.
+- Simplified the webhook-hardening response helper so the `status` spy returns
+  the response object directly instead of using `mockReturnValue`; the package
+  marker scan is now clean again.
 - Verified `CLAUDE.md` and `AGENTS.md` are identical after the package-local
   docs change.
 - Verified with:
   - `bunx biome check plugins/plugin-farcaster/index.browser.ts`
   - `bun run --cwd plugins/plugin-farcaster typecheck`
   - `bun run --cwd plugins/plugin-farcaster test`
+  - `bun run --cwd plugins/plugin-farcaster test __tests__/webhook-hardening.test.ts`
   - `bun run --cwd plugins/plugin-farcaster build`
   - marker scan and `git diff --check` on the touched Farcaster files
-- Remaining Farcaster scan hits are test fakes/mocks only.
+- Marker scan on the package is now clean.
 
 ### plugins/plugin-instagram
 
@@ -1582,15 +1764,19 @@ platform no-ops are separated from actionable runtime gaps.
 
 ### packages/os-homepage
 
+- Reworded the visual regression mask comment so lazy-loaded product hero image
+  skeleton frames are not described as placeholders.
 - Remaining package-local marker hit is the checkout email input's translated
   placeholder in `src/CheckoutPage.tsx`, with English default
-  `you@example.com`. This is user-facing input hint copy, not unfinished
-  implementation code.
+  `you@example.com`, plus Playwright `getByPlaceholder` selectors for that
+  input. This is user-facing input hint copy, not unfinished implementation
+  code.
 - Verified `CLAUDE.md` and `AGENTS.md` are identical.
 - Verified with:
   - `bun run --cwd packages/os-homepage typecheck`
   - `bun run --cwd packages/os-homepage test`
-  - package marker scan excluding generated output
+  - marker scan on `packages/os-homepage`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md packages/os-homepage`
 
 ### packages/research
 
@@ -1817,9 +2003,14 @@ platform no-ops are separated from actionable runtime gaps.
 - Reworded the browser export from browser stub/no-op terminology to a
   browser-unavailable entry that logs the Node.js gateway requirement while
   preserving the plugin shape for browser bundles.
+- Renamed the reasoning-tag code-block sentinel from placeholder terminology
+  and renamed local interaction/message fixtures in the package test suite
+  from `fake*` to `test*`.
 - Verified with:
   - `diff -u plugins/plugin-discord/CLAUDE.md plugins/plugin-discord/AGENTS.md`
   - `bun run --cwd plugins/plugin-discord typecheck`
+  - `bun run --cwd plugins/plugin-discord test`
+  - `bun run --cwd plugins/plugin-discord build`
   - marker scan and `git diff --check` on the touched Discord files
 
 ### plugins/plugin-edge-tts
@@ -1831,6 +2022,9 @@ platform no-ops are separated from actionable runtime gaps.
   `index.node` and `index.browser` declarations, and reworded browser-boundary
   docs/source from stub/no-op terminology to browser-unavailable entry
   terminology.
+- Current package marker scan has one false positive:
+  `webm-24khz-16bit-mono-opus` contains the substring `no-op` across the audio
+  format name.
 - Verified with:
   - `diff -u plugins/plugin-edge-tts/CLAUDE.md plugins/plugin-edge-tts/AGENTS.md`
   - `bun run --cwd plugins/plugin-edge-tts typecheck`
@@ -1844,9 +2038,13 @@ platform no-ops are separated from actionable runtime gaps.
   resolved playback queue issue note as a missing active-queue path, and audio
   cache size/duration warnings as partial-file warnings rather than
   incomplete/stub language.
+- Current remaining marker hits are Vitest `stubGlobal` / `unstubAllGlobals`
+  APIs in the Spotify client test, used to install and clear a test `fetch`
+  implementation.
 - Verified with:
   - `bun run --cwd plugins/plugin-music typecheck`
   - marker scan and `git diff --check` on the touched Music files
+  - `diff -u plugins/plugin-music/CLAUDE.md plugins/plugin-music/AGENTS.md`
 
 ### plugins/plugin-openai
 
@@ -1897,8 +2095,9 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd plugins/plugin-web-search typecheck`
   - `bun run --cwd plugins/plugin-web-search lint`
   - marker scan and `git diff --check` on the touched web-search files
-- Remaining package hits are Vitest's `stubGlobal` / `unstubAllGlobals` test
-  APIs, not web-search implementation gaps.
+- Remaining package hits are Vitest's `vi.mock`, `mockResolvedValue`,
+  `mockRejectedValue`, `stubGlobal`, and `unstubAllGlobals` test APIs, not
+  web-search implementation gaps.
 
 ### plugins/plugin-training
 
@@ -2015,9 +2214,14 @@ platform no-ops are separated from actionable runtime gaps.
 - Reworded the connector-account provider comments so env/character-backed
   account deletion is described as an immutable configuration boundary rather
   than a scaffolding/no-op marker.
+- Added `vi.unstubAllGlobals()` to the media validation test cleanup so the
+  test-scoped fetch global installed by `vi.stubGlobal` cannot leak into later
+  cases. The remaining `stubGlobal` / `unstubAllGlobals` marker hits are Vitest
+  API names, not unfinished WhatsApp code.
 - Verified with:
   - `bun run --cwd plugins/plugin-whatsapp typecheck`
-  - marker scan and `git diff --check` on the touched WhatsApp provider file
+  - `bun run --cwd plugins/plugin-whatsapp test __tests__/media-validation.test.ts`
+  - marker scan and `git diff --check` on the touched WhatsApp files/audit entry
 
 ### plugins/plugin-x402
 
@@ -2035,8 +2239,9 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd plugins/plugin-x402 lint`
   - `bun run --cwd plugins/plugin-x402 test`
   - marker scan and `git diff --check` on the touched x402 files
-- Remaining package hits are Vitest's `stubGlobal` / `unstubAllGlobals` test
-  APIs, not x402 implementation gaps.
+- Remaining package hits are Vitest's `stubGlobal` / `unstubAllGlobals` and
+  `vi.mock` test APIs, plus the `core-test-mock.ts` setup filename, not x402
+  implementation gaps.
 
 ### plugins/plugin-x
 
@@ -2066,8 +2271,41 @@ platform no-ops are separated from actionable runtime gaps.
 - Fixed Birdeye market-cap placeholder behavior. Token market snapshots now
   carry `marketCapUsd`, the service reads common market-cap fields, and the
   provider renders the value.
-- Verified with focused service test and:
+- Reworded LP service lifecycle comments, unsupported LP-operation errors,
+  browser facades, browser-shim raw-byte handling, analytics fallback comments,
+  Steward Solana unavailable messages, and Meteora limitation notes so they no
+  longer present intentional unavailability/defaults as placeholder, no-op, or
+  not-implemented work.
+- Replaced the hardcoded SOL price placeholder in `YieldOptimizationService`
+  with an explicit configurable costing estimate: `LP_SOL_PRICE_USD`, falling
+  back to a named `DEFAULT_SOL_PRICE_USD`.
+- Remaining package marker hits are intentional:
+  - `auto-enable.ts` rejects sentinel secret values like `PLACEHOLDER`,
+    `TODO`, `CHANGEME`, and `EMPTY`.
+  - `browser-shim/shim.template.js` documents template placeholder
+    substitution for injected wallet icon/address values.
+- Verified with:
+  - focused service test from the earlier Birdeye fix
   - `bun run --cwd plugins/plugin-wallet check`
+  - `bun run --cwd plugins/plugin-wallet test`
+  - `bun run --cwd plugins/plugin-wallet build`
+  - `bunx @biomejs/biome check` on the touched wallet files
+  - marker scan on `plugins/plugin-wallet`
+
+### plugins/plugin-wallet-ui
+
+- Renamed the market-pulse loading-card loop key from `placeholderId` to
+  `loadingCardId`; it is an implemented loading state, not unfinished wallet
+  UI data.
+- Renamed wallet TUI test helpers from `mockWalletClient` / `appMock` to
+  response-seeding names and removed a duplicate `useAgentElement` key from the
+  `@elizaos/ui` module test double.
+- Remaining marker hits are Vitest `vi.mock`, `mockResolvedValue`, and
+  `mockReturnValue` APIs in `src/InventoryTuiView.test.ts`.
+- Verified with:
+  - `diff -u plugins/plugin-wallet-ui/CLAUDE.md plugins/plugin-wallet-ui/AGENTS.md`
+  - `bun run --cwd plugins/plugin-wallet-ui test`
+  - marker scan and `git diff --check` on the touched wallet UI files/audit entry
 
 ### packages/cloud-services
 
@@ -2143,12 +2381,16 @@ platform no-ops are separated from actionable runtime gaps.
   scheduler kinds are `"capacitor"` and `"interval"`.
 - Reworded cancel tests and runner-JS install guidance so empty cancel
   behavior and host-provided runner files are not labeled as no-op/stub code.
+- Reworded the runner-JS unit-test comment so injected `addEventListener`,
+  `fetch`, and `console` globals are described as test globals rather than
+  stubs. Marker scan on the package is now clean.
 - Verified with:
   - `diff -u plugins/plugin-background-runner/CLAUDE.md plugins/plugin-background-runner/AGENTS.md`
   - `bun run --cwd plugins/plugin-background-runner typecheck`
   - `bun run --cwd plugins/plugin-background-runner test`
   - `bun run --cwd plugins/plugin-background-runner build`
   - marker scan on `plugins/plugin-background-runner`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-background-runner`
 
 ### plugins/plugin-aosp-local-inference
 
@@ -2318,8 +2560,8 @@ platform no-ops are separated from actionable runtime gaps.
 - Remaining Robot markers are split across several classes:
   - report/audit scripts intentionally print incomplete statuses when expected
     training evidence or artifacts are absent;
-  - erobot subsystem "stub" terms mostly refer to physical stub shafts/mounting
-    geometry rather than code placeholders;
+  - source/docs hits are down to `DummyVecEnv` from stable-baselines3 and
+    erobot subsystem "stub" terms for physical stub shafts/mounting geometry;
   - checked-in evidence reports preserve incomplete/not-started status text for
     failed or partial Nebius/Alberta evidence runs.
 
@@ -2343,9 +2585,13 @@ platform no-ops are separated from actionable runtime gaps.
     milady monorepo; completing them requires the real pager, chat platform,
     status-page domain, and role-owner addresses;
   - connector/cloud examples that deliberately use placeholder URLs, tokens,
-    or `xxx` values to avoid publishing real credentials;
-  - historical changelog and gap-analysis pages preserving past placeholder,
-    stub, or not-wired language as release/history records.
+    `placeholder.invalid`, or `xxx` values to avoid publishing real
+    credentials before deployment-specific values exist;
+  - historical changelog, architecture, and gap-analysis pages preserving past
+    placeholder, stub, incomplete, or not-wired language as release/history
+    records;
+  - documentation uses of `todo` for the LifeOps/Todo feature names and
+    generated inventory caveats, not unfinished docs-package work.
 
 ### packages/security
 
@@ -2428,7 +2674,9 @@ platform no-ops are separated from actionable runtime gaps.
 - Reworded the Android-only side-effect registration path so non-elizaOS
   platforms are described as leaving the overlay catalog unchanged, not as
   no-op registration. The behavior remains intentionally platform-gated.
-- Remaining package-local marker hit is a normal password input placeholder.
+- Remaining package-local marker hits are a normal password input placeholder
+  and a Vitest `vi.mock("@elizaos/ui", ...)` module mock for overlay
+  registration coverage.
 - Verification: `bun run --cwd plugins/plugin-wifi typecheck`,
   `bun run --cwd plugins/plugin-wifi test`, mirrored guide diff, marker scan,
   and `git diff --check -- plugins/plugin-wifi` all pass.
@@ -2600,8 +2848,9 @@ platform no-ops are separated from actionable runtime gaps.
 - Reworded the short-marker fingerprint test and SSE UTF-8 buffering comment
   from no-op/incomplete wording to unchanged/partial-sequence wording.
 - Reworded the fingerprint docs table entry that described the `Agent`
-  compatibility mapping with stub terminology. The package marker scan is now
-  clean.
+  compatibility mapping with stub terminology.
+- Current marker scan is limited to literal Claude Code Todo tool names used by
+  the compatibility fingerprint dictionaries and docs.
 - Verified with:
   - `diff -u plugins/plugin-anthropic-proxy/CLAUDE.md plugins/plugin-anthropic-proxy/AGENTS.md`
   - `bun run --cwd plugins/plugin-anthropic-proxy typecheck`
@@ -2658,6 +2907,20 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd plugins/plugin-native-bun-runtime vitest run`
   - marker scan on `plugins/plugin-native-bun-runtime`
 
+### plugins/plugin-elizacloud
+
+- Reworded the browser facade's remaining helper exports so unavailable
+  browser-only shims no longer reference no-op helper terminology.
+- The package marker scan is now clean.
+- Verified with:
+  - `diff -u plugins/plugin-elizacloud/CLAUDE.md plugins/plugin-elizacloud/AGENTS.md`
+  - `bun run --cwd plugins/plugin-elizacloud test`
+  - `bun run --cwd plugins/plugin-elizacloud typecheck`
+  - marker scan on `plugins/plugin-elizacloud`
+- Build note: `bun run --cwd plugins/plugin-elizacloud build` currently fails
+  during declaration generation because `tsconfig.build.json` cannot resolve
+  `@elizaos/shared` imports; JS build stages complete before that failure.
+
 ### plugins/plugin-native-llama
 
 - Reworded feature-detected native bridge compatibility docs, source comments,
@@ -2708,6 +2971,8 @@ platform no-ops are separated from actionable runtime gaps.
 
 - Reworded websocket disconnect docs so closing an already-closed bridge is
   described as returning cleanly rather than no-op behavior.
+- Current package marker scan is clean after the service-action test runtime
+  fixture rename.
 - Verified with:
   - `bun run --cwd plugins/plugin-ainex typecheck`
   - `bun run --cwd plugins/plugin-ainex test`
@@ -2778,11 +3043,13 @@ platform no-ops are separated from actionable runtime gaps.
 
 - Reworded a Bun test-suite harness comment so `run()` delegates to `bun:test`
   without no-op terminology.
+- Renamed the test utility runtime from `placeholderRuntime` to `testRuntime`.
 - Verified with:
   - `bun run --cwd plugins/plugin-ngrok typecheck`
   - `bun run --cwd plugins/plugin-ngrok test:unit`
   - `bun run --cwd plugins/plugin-ngrok build`
   - marker scan on `plugins/plugin-ngrok`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-ngrok`
 
 ### plugins/plugin-hyperliquid-app
 
@@ -2872,9 +3139,10 @@ platform no-ops are separated from actionable runtime gaps.
   unsupported relaunch branches are described without placeholder/no-op
   terminology.
 - Remaining marker hits are Discord component `placeholder` fields/types used
-  for select-menu labels.
+  for select-menu labels plus Vitest `useFakeTimers` and `stubGlobal` test APIs.
 - Verified with:
   - `bun run --cwd plugins/plugin-discord typecheck`
+  - `bun run --cwd plugins/plugin-discord test`
   - `bun run --cwd plugins/plugin-discord build`
   - marker scan on `plugins/plugin-discord`
 
@@ -2884,10 +3152,55 @@ platform no-ops are separated from actionable runtime gaps.
   `skipped: true`, and reworded connector-degradation/test/screen-time status
   markers from no-op/stub/incomplete terminology to unavailable/partial
   wording.
+- Current package marker scan is clean after the smoke-test runtime fixture
+  rename.
 - Verified with:
   - `bun run --cwd plugins/plugin-health test`
   - `bun run --cwd plugins/plugin-health build`
   - marker scan on `plugins/plugin-health`
+
+### plugins/plugin-groq
+
+- No source edits were needed. Remaining marker hits are Vitest
+  `stubGlobal` / `unstubAllGlobals` APIs in fetch behavior tests, used to
+  install and clear a test `fetch` implementation.
+- Verified with:
+  - `diff -u plugins/plugin-groq/CLAUDE.md plugins/plugin-groq/AGENTS.md`
+  - marker scan on `plugins/plugin-groq`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-groq`
+
+### plugins/plugin-github
+
+- No source edits were needed. Remaining marker hits are Vitest
+  `stubGlobal` / `unstubAllGlobals` APIs in account-resolution tests, used to
+  inject and clear process-global state for test cases.
+- Verified with:
+  - `diff -u plugins/plugin-github/CLAUDE.md plugins/plugin-github/AGENTS.md`
+  - marker scan on `plugins/plugin-github`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-github`
+
+### plugins/plugin-gitpathologist
+
+- Renamed the cache report test fixture from `fakeReport()` to
+  `sampleReport()` and changed its fixture repo root from `/fake` to `/repo`.
+- Remaining package marker hit is the cache test title
+  `"does not leave temporary files after a successful write"`, which validates
+  the implemented atomic-write cleanup behavior.
+- Verified with:
+  - `diff -u plugins/plugin-gitpathologist/CLAUDE.md plugins/plugin-gitpathologist/AGENTS.md`
+  - `bun run --cwd plugins/plugin-gitpathologist test __tests__/cache.test.ts`
+  - marker scan on `plugins/plugin-gitpathologist`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-gitpathologist`
+
+### plugins/plugin-native-location
+
+- No source edits were needed. Remaining marker hits are Kotlin `toDouble()`
+  calls in the Android location bridge; the case-insensitive scan matches the
+  substring `todo` across the method name.
+- Verified with:
+  - `diff -u plugins/plugin-native-location/CLAUDE.md plugins/plugin-native-location/AGENTS.md`
+  - marker scan on `plugins/plugin-native-location`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-native-location`
 
 ## Intentional / False-Positive Marker Classes
 

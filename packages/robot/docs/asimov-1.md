@@ -193,7 +193,7 @@ before using it:
 python3 packages/robot/scripts/check_asimov1_real_prereqs.py
 ```
 
-Dry-run the real command path locally, without hardware, by injecting fake
+Dry-run the real command path locally, without hardware, by injecting dry-run
 LiveKit and protobuf objects. This verifies that `asimov-real` connects,
 publishes mode, velocity, and trajectory `CloudCommand` payloads to the
 `commands` topic, parses an `EdgeTelemetry` payload, and shuts down cleanly:

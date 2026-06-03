@@ -4,7 +4,7 @@ Loads the trained MuJoCo wave policy checkpoint and runs it through the
 ``CompositeSkill`` infrastructure, which combines ``BraxWalkSkill`` (legs)
 with ``UpperBodySkill`` (head + arms) to produce 24-dim joint targets.
 
-If the wave checkpoint is missing this skill returns zeros (a no-op pose)
+If the wave checkpoint is missing this skill returns zero joint targets
 and reports ``using_fallback``. The scripted fallback (keyframe-driven
 ``WaveSkill``) requires the AiNex bridge keyframe library, which is ported
 separately under ``eliza_robot.bridge``; when that module is unavailable

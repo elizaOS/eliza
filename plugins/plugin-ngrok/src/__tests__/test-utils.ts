@@ -78,9 +78,9 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
 
     // Ngrok-specific services
     getService: <T extends Service>(name: ServiceTypeName | string): T | null => {
-      const placeholderRuntime = { agentId: 'mock' } as IAgentRuntime;
+      const testRuntime = { agentId: 'mock' } as IAgentRuntime;
       const defaults: Record<string, Service> = {
-        'ngrok-tunnel': new MockNgrokService(placeholderRuntime),
+        'ngrok-tunnel': new MockNgrokService(testRuntime),
       };
       const merged: Record<string, Service | null | undefined> = {
         ...defaults,

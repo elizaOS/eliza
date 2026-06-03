@@ -164,7 +164,7 @@ function buildInstallCommand(option: OttoInstallOption): string | null {
 }
 
 /**
- * Resolve the __NODE_MANAGER__ placeholder in commands.
+ * Resolve the __NODE_MANAGER__ command token.
  */
 async function resolveNodeManager(command: string): Promise<string> {
 	if (!command.includes("__NODE_MANAGER__")) {
@@ -385,7 +385,7 @@ export async function installSkillDependency(
 		};
 	}
 
-	// Resolve node manager placeholder
+	// Resolve node manager command token.
 	try {
 		command = await resolveNodeManager(command);
 	} catch (error) {

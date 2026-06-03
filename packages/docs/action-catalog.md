@@ -970,7 +970,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 ### MANAGE_WINDOW
 
 - **File:** `eliza/plugins/plugin-computeruse/src/actions/manage-window.ts`
-- **Description:** Manage desktop windows through the local runtime. This includes listing visible windows, focusing or switching windows, minimizing, maximizing, restoring, closing, and parity no-op arrange/move comman
+- **Description:** Manage desktop windows through the local runtime. This includes listing visible windows, focusing or switching windows, minimizing, maximizing, restoring, closing, and parity arrange/move commands that report unsupported platform behavior clearly.
 - **Similes:** `LIST_WINDOWS`, `FOCUS_WINDOW`, `SWITCH_WINDOW`, `MINIMIZE_WINDOW`, `MAXIMIZE_WINDOW`, `CLOSE_WINDOW`, `WINDOW_MANAGEMENT`
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes

@@ -22,13 +22,13 @@ export function getCloudSecret(
 export function clearCloudSecrets(): void {}
 
 export const ensureCloudTtsApiKeyAlias = unavailableBrowserExport;
-export const handleCloudTtsPreviewRoute = _noop;
-export const mirrorCompatHeaders = _noop;
-export const normalizeCloudSiteUrl = _noop;
-export const scrubCloudSecretsFromEnv = _noop;
-export const __resetCloudBaseUrlCache = _noop;
-export const resolveCloudTtsBaseUrl = _noop;
-export const resolveElevenLabsApiKeyForCloudMode = _noop;
+export const handleCloudTtsPreviewRoute = unavailableBrowserExport;
+export const mirrorCompatHeaders = unavailableBrowserExport;
+export const normalizeCloudSiteUrl = unavailableBrowserExport;
+export const scrubCloudSecretsFromEnv = unavailableBrowserExport;
+export const __resetCloudBaseUrlCache = unavailableBrowserExport;
+export const resolveCloudTtsBaseUrl = unavailableBrowserExport;
+export const resolveElevenLabsApiKeyForCloudMode = unavailableBrowserExport;
 // `resolveCloudApiBaseUrl` is referenced statically by plugin-wallet's
 // browser bundle (the cloud-routing fallback path). The renderer doesn't
 // run the Node-side resolver; the consumer just needs the name to bind
