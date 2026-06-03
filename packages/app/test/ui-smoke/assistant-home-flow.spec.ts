@@ -360,6 +360,24 @@ function assistantComposer(page: Page) {
     .or(page.getByLabel("message"));
 }
 
+function assistantMicButton(page: Page) {
+  return page.getByRole("button", { name: /^(talk|voice input)$/i });
+}
+
+function conversationLog(page: Page) {
+  return page.getByRole("log", { name: /conversation history/i });
+}
+
+function conversationText(page: Page, text: string | RegExp) {
+  return page
+    .locator('[data-testid="chat-message"]')
+    .filter({ hasText: text })
+    .last()
+    .or(page.getByTestId("thread-line").filter({ hasText: text }).last())
+    .or(conversationLog(page).getByText(text).last())
+    .first();
+}
+
 async function openReadyWorkspaceChat(page: Page): Promise<void> {
   await openAppPath(page, "/");
   await expect(
@@ -372,7 +390,7 @@ async function openReadyWorkspaceChat(page: Page): Promise<void> {
   await expect(composer).toBeVisible({ timeout: 15_000 });
   await expect(composer).toBeEnabled({ timeout: 30_000 });
 
-  const mic = page.getByRole("button", { name: /voice input/i });
+  const mic = assistantMicButton(page);
   if ((await mic.count()) > 0) {
     await expect(mic).toBeEnabled({ timeout: 30_000 });
   }
@@ -676,9 +694,7 @@ test.describe("assistant home app flow", () => {
     await screenshot(page, "03-assistant-chat-typing");
 
     await openAppPath(page, "/chat");
-    await expect(
-      assistantComposer(page),
-    ).toBeVisible();
+    await expect(assistantComposer(page)).toBeVisible();
     await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
     await screenshot(page, "04-chat-pill-suppressed");
 
@@ -703,7 +719,7 @@ test.describe("assistant home app flow", () => {
 
     await openReadyWorkspaceChat(page);
 
-    const mic = page.getByRole("button", { name: /voice input/i });
+    const mic = assistantMicButton(page);
     await expect(mic).toBeEnabled({ timeout: 30_000 });
     await mic.click();
 
@@ -719,14 +735,12 @@ test.describe("assistant home app flow", () => {
       true,
     );
 
-    const composer = assistantComposer(page);
-    await expect(composer).toHaveValue("show me my pinned views");
-    await page.getByRole("button", { name: "Send" }).click();
-    await expect(
-      page
-        .getByTestId("chat-message")
-        .filter({ hasText: "show me my pinned views" }),
-    ).toBeVisible();
+    await expect
+      .poll(() => assistantApi.streamRequests, { timeout: 10_000 })
+      .toEqual(["show me my pinned views"]);
+    await expect(conversationText(page, "show me my pinned views")).toBeVisible(
+      { timeout: 10_000 },
+    );
     await expect(
       page.getByText("Opening the right view now and keeping voice ready."),
     ).toBeVisible();
@@ -752,9 +766,7 @@ test.describe("assistant home app flow", () => {
 
     // The trailing control defaults to the mic; there is no send button until
     // the user types into the composer.
-    const initialMic = page.getByRole("button", {
-      name: /voice input/i,
-    });
+    const initialMic = assistantMicButton(page);
     await expect(initialMic).toBeVisible();
     await expect(initialMic).toBeEnabled({ timeout: 15_000 });
     await expect(page.getByRole("button", { name: "Send" })).toHaveCount(0);
@@ -762,9 +774,7 @@ test.describe("assistant home app flow", () => {
     await assistantComposer(page).fill("open wallet by typing");
 
     // Typing morphs the single trailing control from mic into send.
-    await expect(
-      page.getByRole("button", { name: /voice input/i }),
-    ).toHaveCount(0);
+    await expect(assistantMicButton(page)).toHaveCount(0);
     const send = page.getByRole("button", { name: "Send" });
     await expect(send).toBeVisible();
     await expect(send).toBeEnabled({ timeout: 15_000 });
@@ -784,10 +794,8 @@ test.describe("assistant home app flow", () => {
     });
     console.log("COVER>", JSON.stringify(cover));
     await send.click();
-    await expect(
-      assistantComposer(page),
-    ).toHaveValue("");
-    await expect(page.getByText("open wallet by typing")).toBeVisible();
+    await expect(assistantComposer(page)).toHaveValue("");
+    await expect(conversationText(page, "open wallet by typing")).toBeVisible();
     await expect(
       page.getByText("Opening the right view now and keeping voice ready."),
     ).toBeVisible();
@@ -803,7 +811,7 @@ test.describe("assistant home app flow", () => {
 
     await openReadyWorkspaceChat(page);
 
-    const mic = page.getByRole("button", { name: /voice input/i });
+    const mic = assistantMicButton(page);
     await expect(mic).toBeEnabled({ timeout: 15_000 });
     await mic.dispatchEvent("pointerdown", {
       button: 0,
@@ -830,17 +838,19 @@ test.describe("assistant home app flow", () => {
     });
     expect(accepted, "home voice shim must receive the held turn").toBe(true);
 
-    // Activating the release state ends capture and submits the buffered
-    // transcript. This covers pointer release plus keyboard/click activation.
-    await releaseHandle.click();
+    // Releasing the held mic ends capture. The final transcript is submitted
+    // by the voice pipeline itself.
+    await releaseHandle.dispatchEvent("pointerup", {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
     await expect
       .poll(() => assistantApi.streamRequests, { timeout: 10_000 })
       .toEqual(["push to talk works"]);
-    await expect(
-      page
-        .getByTestId("chat-message")
-        .filter({ hasText: "push to talk works" }),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(conversationText(page, "push to talk works")).toBeVisible({
+      timeout: 10_000,
+    });
     await expect(
       page.getByText("Opening the right view now and keeping voice ready."),
     ).toBeVisible();
