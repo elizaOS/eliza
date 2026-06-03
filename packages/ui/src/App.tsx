@@ -3,6 +3,12 @@
  */
 
 import { Keyboard } from "@capacitor/keyboard";
+import {
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+} from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
   type ComponentType,
@@ -20,12 +26,14 @@ import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "./bridge/electrobun-rpc";
-import { isElectrobunRuntime } from "./bridge/electrobun-runtime";
 import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
 import { LoginView } from "./components/auth/LoginView";
 import { SaveCommandModal } from "./components/chat/SaveCommandModal";
+import { TasksEventsPanel } from "./components/chat/TasksEventsPanel";
+import { DeferredSetupChecklist } from "./components/cloud/FlaminaGuide";
+import { ConversationsSidebar } from "./components/conversations/ConversationsSidebar";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
@@ -37,6 +45,7 @@ import { BugReportModal } from "./components/shell/BugReportModal";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
+import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
 import { Header } from "./components/shell/Header";
 import { HomePill } from "./components/shell/HomePill";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
@@ -48,6 +57,7 @@ import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
 import { StartupScreen } from "./components/shell/StartupScreen";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
+import { MINIMAL_SHELL } from "./components/shell/shell-chrome";
 import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
 import { ErrorBoundary } from "./components/ui/error-boundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
@@ -57,12 +67,13 @@ import {
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
 } from "./events";
+import { CompactOnboarding } from "./first-run/CompactOnboarding";
 import { FirstRunScreen } from "./first-run/FirstRunScreen";
-import { OnboardingVoicePill } from "./first-run/OnboardingVoicePill";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
+import { useActivityEvents } from "./hooks/useActivityEvents";
 import { useAuthStatus } from "./hooks/useAuthStatus";
+import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
-import { Z_OVERLAY, Z_SHELL_OVERLAY } from "./lib/floating-layers";
 import {
   APPS_ENABLED,
   getAppSlugFromPath,
@@ -81,6 +92,12 @@ const MOBILE_NAV_PADDING_CLASS =
 type ExtractComponent<TValue> =
   TValue extends ComponentType<infer Props> ? ComponentType<Props> : never;
 
+// Single source of truth for the lazy route-view chunk loaders. Each
+// lazyNamedView() call registers its import() thunk here so prefetch (below)
+// warms exactly the chunks that are lazy-split — no hand-synced second list to
+// drift out of sync.
+const routeViewLoaders = new Set<() => Promise<unknown>>();
+
 function lazyNamedView<
   TModule extends Record<string, unknown>,
   TKey extends keyof TModule,
@@ -88,6 +105,7 @@ function lazyNamedView<
   load: () => Promise<TModule>,
   exportName: TKey,
 ): LazyExoticComponent<ExtractComponent<TModule[TKey]>> {
+  routeViewLoaders.add(load);
   return lazy(async () => {
     const module = await load();
     const component = module[exportName];
@@ -201,26 +219,11 @@ const TrajectoriesView = lazyNamedView(
 
 // Once the shell is interactive, warm the lazy route chunks during idle time so
 // the first navigation to each view is instant instead of waiting on a chunk
-// fetch. Paths must match the lazy() loaders above exactly so the bundler
-// reuses the same chunks. Failures are ignored — this is best-effort warming.
+// fetch. Iterates the loaders registered by lazyNamedView() above — the same
+// thunks the lazy() boundaries use, so the bundler reuses the same chunks and
+// the list can't drift. Failures are ignored — this is best-effort warming.
 function prefetchRouteViewChunks(): void {
-  const loaders: Array<() => Promise<unknown>> = [
-    () => import("./components/pages/DatabasePageView"),
-    () => import("./components/pages/LogsView"),
-    () => import("./components/pages/MemoryViewerView"),
-    () => import("./components/pages/PluginsPageView"),
-    () => import("./components/pages/RelationshipsView"),
-    () => import("./components/pages/RuntimeView"),
-    () => import("./components/pages/SkillsView"),
-    () => import("./components/pages/TasksPageView"),
-    () => import("./components/pages/TrajectoriesView"),
-    () => import("./components/pages/SettingsView"),
-    () => import("./components/pages/StreamView"),
-    () => import("./components/pages/AutomationsFeed"),
-    () => import("./components/pages/ViewManagerPage"),
-    () => import("./components/pages/BrowserWorkspaceView"),
-  ];
-  for (const load of loaders) void load().catch(() => {});
+  for (const load of routeViewLoaders) void load().catch(() => {});
 }
 
 function LazyViewBoundary({ children }: { children: ReactNode }) {
@@ -258,7 +261,12 @@ function useIsPopout(): boolean {
  * read from the URL (`?shellMode=` / `?shell-mode=`) or the
  * `ELIZAOS_SHELL_MODE` global the native shell may inject. Unset = full app.
  */
-type ShellMode = "chat-overlay" | "launcher" | "kiosk" | "full";
+type ShellMode =
+  | "chat-overlay"
+  | "onboarding-overlay"
+  | "launcher"
+  | "kiosk"
+  | "full";
 
 function readShellMode(): ShellMode {
   if (typeof window === "undefined") return "full";
@@ -271,6 +279,7 @@ function readShellMode(): ShellMode {
     (window as unknown as { ELIZAOS_SHELL_MODE?: string }).ELIZAOS_SHELL_MODE ??
     "";
   if (raw === "chat-overlay") return "chat-overlay";
+  if (raw === "onboarding-overlay") return "onboarding-overlay";
   if (raw === "launcher") return "launcher";
   if (raw === "kiosk") return "kiosk";
   return "full";
@@ -298,13 +307,11 @@ function ChatOverlayShell() {
 }
 
 /**
-<<<<<<< packages/ui/src/App.tsx
- * First-run onboarding overlay surface. Renders the floating
- * CompactOnboarding card (top-right) and the OnboardingVoicePill
- * (bottom-center) over a transparent, click-through background — no app
+ * First-run onboarding overlay surface. Renders ONLY the floating
+ * CompactOnboarding card over a transparent, click-through background — no app
  * chrome. The native overlay window is `transparent` + `passthrough`, so the
  * empty (pointer-events-none) region lets clicks fall through to the desktop
- * behind while the interactive elements stay clickable.
+ * behind while the card stays interactive.
  */
 function OnboardingOverlayShell() {
   return (
@@ -312,15 +319,12 @@ function OnboardingOverlayShell() {
       data-testid="onboarding-overlay-shell"
       className="pointer-events-none fixed inset-0 bg-transparent"
     >
-      <CompactOnboarding />
-      <OnboardingVoicePill />
+      <CompactOnboarding showVoicePill />
     </div>
   );
 }
 
 /**
-=======
->>>>>>> /tmp/claude-501/tmpdxwxeg4t
  * Locked appliance shell for the Linux OS kiosk window. The Electrobun bundle
  * runs as the entire GUI: a single fullscreen, frameless, non-closable
  * toplevel. This surface IS the view manager — agent-spawned dynamic views
@@ -482,22 +486,6 @@ function visibleDynamicPage(
   return Boolean(page && (developerModeEnabled || !page.developerOnly));
 }
 
-/**
- * Whether the active app-shell page wants to render edge-to-edge with no host
- * top-bar/chrome. Looks the active tab up in the runtime page registry and
- * reads its `fullBleed` flag — backward-compatible: pages that don't set it
- * keep the normal chrome.
- */
-function useTabIsFullBleed(tab: string): boolean {
-  return useMemo(
-    () =>
-      listAppShellPages().some(
-        (entry) => entry.id === tab && entry.fullBleed === true,
-      ),
-    [tab],
-  );
-}
-
 function trimmedNavigationPath(navigationPath: string): string {
   return navigationPath.length > 1 && navigationPath.endsWith("/")
     ? navigationPath.slice(0, -1)
@@ -531,7 +519,6 @@ function findRemoteViewForRoute(
   appSlug: string | null,
 ): ViewRegistryEntry | undefined {
   const normalizedPath = trimmedNavigationPath(navigationPath);
-  if (normalizedPath === "/views") return undefined;
   return (
     views.find(
       (view) => remoteViewAvailable(view) && view.path === normalizedPath,
@@ -558,9 +545,9 @@ function renderRemoteView(view: ViewRegistryEntry): ReactNode {
 }
 
 /**
- * Fallback shown when a view/tab is unavailable. Chat is the floating overlay
- * (GlobalChatOverlay on the chat tab) + the always-present pill — views never
- * embed an inline ChatView — so an unavailable view falls back to the app/view
+ * Fallback shown when a view/tab is unavailable. Chat is the always-present
+ * ContinuousChatOverlay that floats over every view — views never embed an
+ * inline ChatView — so an unavailable view falls back to the app/view
  * launcher, not a chat surface.
  */
 function ViewUnavailableFallback(): ReactNode {
@@ -851,7 +838,6 @@ type ShellContentProps = {
   isChat: boolean;
   isCompanionTab: boolean;
   isDesktopWorkspacePage: boolean;
-  isFullBleed: boolean;
   isHeartbeats: boolean;
   isSettingsPage: boolean;
   isWallets: boolean;
@@ -892,10 +878,170 @@ function StreamShellContent(): ReactNode {
   );
 }
 
-function ChatRouteShellContent(props: ShellContentProps): ReactNode {
+/** Narrow-screen breakpoint for the chat workspace — matches the Header's. */
+const CHAT_MOBILE_MEDIA_QUERY = "(max-width: 819px)";
+
+type MobileChatSurface = "left" | "center" | "right";
+
+/** A Header pane-toggle button shown only on mobile to swap the active chat surface. */
+function MobileChatSurfaceButton({
+  icon: Icon,
+  label,
+  onClick,
+  surface,
+}: {
+  icon: typeof PanelLeftOpen;
+  label: string;
+  onClick: () => void;
+  surface: MobileChatSurface;
+}): ReactNode {
   return (
-    <div key="chat-route-shell" className={APP_SHELL_CLASS}>
-      <div className="flex flex-1 min-h-0 relative">
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      data-testid={`chat-mobile-surface-${surface}`}
+      onClick={onClick}
+      className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted transition-colors hover:text-txt"
+    >
+      <Icon className="h-4 w-4" aria-hidden />
+    </button>
+  );
+}
+
+/** Time-of-day greeting for the minimal home's ambient backdrop (Her-style). */
+function minimalHomeGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 5) return "still up?";
+  if (h < 12) return "good morning";
+  if (h < 18) return "good afternoon";
+  return "good evening";
+}
+
+function ChatRouteShellContent(props: ShellContentProps): ReactNode {
+  // Minimal (conversational-OS) home: just ambient space under a chrome-light
+  // header — the always-present ContinuousChatOverlay (mounted at the shell
+  // root) is the whole experience. Ask it anything, or ask it to open a view
+  // ("show me the coding view") which surfaces over this base. No in-view chat
+  // panels, no primary nav. Toggle off via localStorage eliza:minimal-shell=0.
+  if (MINIMAL_SHELL) {
+    return (
+      <div key="chat-shell-minimal" className={APP_SHELL_CLASS}>
+        <Header />
+        <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
+          <p className="-translate-y-8 select-none text-center text-3xl font-light italic text-muted/35">
+            {minimalHomeGreeting()}
+          </p>
+          <CustomActionsPanel
+            open={props.customActionsPanelOpen}
+            onClose={() => props.setCustomActionsPanelOpen(false)}
+            onOpenEditor={(action) => {
+              props.setEditingAction(action ?? null);
+              props.setCustomActionsEditorOpen(true);
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return <FullChatWorkspaceShellContent {...props} />;
+}
+
+// Full chat workspace: ConversationsSidebar (left) | ChatView (center) |
+// TasksEventsPanel widgets (right), under the standard Header. Self-contained
+// (activity events, widget-collapse, and the mobile surface live here), so the
+// ShellContent contract stays unchanged. On narrow screens it collapses to a
+// single-pane switcher driven by the Header toggles. The ContinuousChatOverlay
+// stays mounted on this tab too (it floats over every view); the duplicate
+// composer is avoided by passing `hideComposer` to ChatView, so the overlay is
+// the single shared input (both read the same conversation via
+// useShellController). Rendered only when MINIMAL_SHELL is off; kept in its own
+// component so its hooks are never called conditionally.
+function FullChatWorkspaceShellContent(props: ShellContentProps): ReactNode {
+  const isMobile = useMediaQuery(CHAT_MOBILE_MEDIA_QUERY);
+  const { events: activityEvents, clearEvents } = useActivityEvents();
+  const [widgetsCollapsed, setWidgetsCollapsed] = useState(false);
+  const [mobileSurface, setMobileSurface] =
+    useState<MobileChatSurface>("center");
+  const leftOpen = mobileSurface === "left";
+  const rightOpen = mobileSurface === "right";
+
+  // Stable key so the chat column keeps its ChatView state (scroll, draft) when
+  // it moves between the desktop 3-panel and the mobile single-pane layouts.
+  const centerColumn = (
+    <div
+      key="chat-center-column"
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+    >
+      <DeferredSetupChecklist
+        className="mx-3 mb-3 mt-3 xl:mx-5"
+        onOpenTask={props.handleDeferredTaskOpen}
+      />
+      {/* The ContinuousChatOverlay provides the input on the chat tab, so the
+          in-view composer is hidden to avoid a duplicate (both share the same
+          conversation via useShellController). */}
+      <ChatView key="chat-view" hideComposer />
+    </div>
+  );
+
+  return (
+    <div key="chat-shell" className={APP_SHELL_CLASS}>
+      <Header
+        tasksEventsPanelOpen={!isMobile && !widgetsCollapsed}
+        onToggleTasksPanel={() => setWidgetsCollapsed((c) => !c)}
+        mobileLeft={
+          isMobile && !rightOpen ? (
+            <MobileChatSurfaceButton
+              icon={leftOpen ? PanelLeftClose : PanelLeftOpen}
+              label={leftOpen ? "Hide conversations" : "Show conversations"}
+              onClick={() => setMobileSurface(leftOpen ? "center" : "left")}
+              surface="left"
+            />
+          ) : undefined
+        }
+        pageRightExtras={
+          isMobile && !leftOpen ? (
+            <MobileChatSurfaceButton
+              icon={rightOpen ? PanelRightClose : PanelRightOpen}
+              label={rightOpen ? "Hide widgets" : "Show widgets"}
+              onClick={() => setMobileSurface(rightOpen ? "center" : "right")}
+              surface="right"
+            />
+          ) : undefined
+        }
+      />
+      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        {isMobile ? (
+          leftOpen ? (
+            <ConversationsSidebar
+              key="chat-sidebar-mobile"
+              mobile
+              onClose={() => setMobileSurface("center")}
+            />
+          ) : rightOpen ? (
+            <TasksEventsPanel
+              open
+              mobile
+              events={activityEvents}
+              clearEvents={clearEvents}
+            />
+          ) : (
+            centerColumn
+          )
+        ) : (
+          <>
+            <ConversationsSidebar key="chat-sidebar-desktop" />
+            {centerColumn}
+            <TasksEventsPanel
+              open
+              events={activityEvents}
+              clearEvents={clearEvents}
+              collapsed={widgetsCollapsed}
+              onToggleCollapsed={setWidgetsCollapsed}
+            />
+          </>
+        )}
         <CustomActionsPanel
           open={props.customActionsPanelOpen}
           onClose={() => props.setCustomActionsPanelOpen(false)}
@@ -977,7 +1123,9 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
     : null;
   return (
     <div key={`tab-shell-${props.tab}`} className={APP_SHELL_CLASS}>
-      <Header pageRightExtras={headerActions} />
+      {props.tab !== "orchestrator" ? (
+        <Header pageRightExtras={headerActions} />
+      ) : null}
       {props.desktopTabBar}
       <main className={routedShellMainClass(props.tab)}>
         <ViewRouter
@@ -1043,20 +1191,7 @@ function DesktopWorkspaceShellContent(props: ShellContentProps): ReactNode {
   );
 }
 
-function FullBleedShellContent(props: ShellContentProps): ReactNode {
-  // Edge-to-edge: no Header, no desktop tab bar, no surrounding padding — the
-  // page owns its full window (e.g. the odysseus orchestrator).
-  return (
-    <div key={`fullbleed-shell-${props.tab}`} className={APP_SHELL_CLASS}>
-      <main className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-        <ViewRouter />
-      </main>
-    </div>
-  );
-}
-
 function ShellContent(props: ShellContentProps): ReactNode {
-  if (props.isFullBleed) return <FullBleedShellContent {...props} />;
   if (props.isChat) return <ChatRouteShellContent {...props} />;
   const companionContent = CompanionShellContent(props);
   if (companionContent) return companionContent;
@@ -1098,39 +1233,17 @@ function ShellFoundationMount() {
 }
 
 /**
- * Web/mobile embedded floating pill. The persistent collapsible chat/voice pill
- * floats bottom-center on top of whichever view is active, so no view embeds its
- * own chat surface. On desktop (Electrobun) the pill instead lives in its own
- * always-on-top OS window (`pill-window.ts` → `chat-overlay` shell), so it is
- * never embedded here; on OS kiosk it is mounted in-canvas by `KioskShell`. The
- * wrapper is pointer-events-none so only the pill itself is interactive, and it
- * clears the mobile bottom nav.
+ * Reads the shared shell controller from context and renders the always-present
+ * continuous chat overlay — one ambient glass conversation (the app's single
+ * active conversation via useShellController) that floats over every view. It
+ * replaces the legacy HomePill in the main shell; the dedicated chat tab keeps
+ * its full in-view ChatView, so there is no duplicate composer. Returns null
+ * until a controller provider is present.
  */
-function EmbeddedShellPill(): ReactNode {
-  if (isElectrobunRuntime()) return null;
-  return (
-    <div
-      data-testid="embedded-shell-pill"
-      className={`pointer-events-none fixed inset-0 flex items-end justify-center ${MOBILE_NAV_PADDING_CLASS}`}
-      style={{ zIndex: Z_SHELL_OVERLAY }}
-    >
-      <ShellFoundationMount />
-    </div>
-  );
-}
-
-function GlobalChatOverlay(): ReactNode {
-  return (
-    <div
-      className="pointer-events-none fixed inset-0 flex justify-center"
-      data-testid="global-chat-overlay"
-      style={{ zIndex: Z_OVERLAY }}
-    >
-      <div className="pointer-events-auto flex h-full w-full min-w-0 max-w-[54rem] flex-col bg-bg">
-        <ChatView />
-      </div>
-    </div>
-  );
+function ContinuousChatOverlayMount(): ReactNode {
+  const controller = useShellControllerContext();
+  if (!controller) return null;
+  return <ContinuousChatOverlay controller={controller} />;
 }
 
 export function App() {
@@ -1287,7 +1400,6 @@ export function App() {
   const isSettingsPage = tab === "settings" || tab === "voice";
   const isAppsToolPage = isAppsToolTab(tab);
   const isDesktopWorkspacePage = tab === "desktop";
-  const isFullBleed = useTabIsFullBleed(tab);
 
   // Keep hook order stable across first-run/auth state transitions.
   // Otherwise React can throw when first-run setup completes and the main shell mounts.
@@ -1470,7 +1582,6 @@ export function App() {
         isChat={isChat}
         isCompanionTab={isCompanionTab}
         isDesktopWorkspacePage={isDesktopWorkspacePage}
-        isFullBleed={isFullBleed}
         isHeartbeats={isHeartbeats}
         isSettingsPage={isSettingsPage}
         isWallets={isWallets}
@@ -1496,7 +1607,6 @@ export function App() {
       isWallets,
       isAppsToolPage,
       isDesktopWorkspacePage,
-      isFullBleed,
       characterHeaderActions,
       handleDeferredTaskOpen,
       customActionsPanelOpen,
@@ -1524,6 +1634,20 @@ export function App() {
       <BugReportProvider value={bugReport}>
         <ShellControllerProvider>
           <ChatOverlayShell />
+        </ShellControllerProvider>
+        <BugReportModal />
+      </BugReportProvider>
+    );
+  }
+
+  // First-run onboarding overlay window — render JUST the floating onboarding
+  // card over a transparent, click-through background, no app chrome or
+  // startup gate.
+  if (shellMode === "onboarding-overlay") {
+    return (
+      <BugReportProvider value={bugReport}>
+        <ShellControllerProvider>
+          <OnboardingOverlayShell />
         </ShellControllerProvider>
         <BugReportModal />
       </BugReportProvider>
@@ -1625,7 +1749,16 @@ export function App() {
           gameOverlayEnabled &&
           tab !== "apps" &&
           tab !== "views" && <GameViewOverlay />}
-        {isChat ? <GlobalChatOverlay /> : <EmbeddedShellPill />}
+        {/*
+          Always-present continuous chat overlay (ContinuousChatOverlay) — one
+          ambient glass conversation (the app's single active conversation via
+          useShellController) that floats over EVERY view, including the chat tab
+          (there the in-view ChatView composer is hidden, so the overlay is the
+          single shared input). It survives tab/view changes because it renders
+          here in the persistent sibling region, and is pointer-events-none
+          except its own composer/messages, so the view behind stays live.
+        */}
+        <ContinuousChatOverlayMount />
         <ShellOverlays actionNotice={actionNotice} />
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}

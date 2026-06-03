@@ -83,6 +83,12 @@ interface ChatViewProps {
   variant?: ChatViewVariant;
   /** Override click handler for agent activity box sessions. */
   onPtySessionClick?: (sessionId: string) => void;
+  /**
+   * Hide the in-view composer. Used on the chat tab when the always-present
+   * ContinuousChatOverlay provides the (single, shared) input instead, so there
+   * is no duplicate composer. The transcript and side panels still render.
+   */
+  hideComposer?: boolean;
 }
 
 function normalizeInboxChatSelection(
@@ -127,6 +133,7 @@ function normalizeInboxChatSelection(
 export function ChatView({
   variant = "default",
   onPtySessionClick,
+  hideComposer = false,
 }: ChatViewProps) {
   const app = useApp();
   const isGameModal = variant === "game-modal";
@@ -709,7 +716,7 @@ export function ChatView({
       "calc(var(--safe-area-bottom, 0px) + var(--eliza-mobile-nav-offset, 0px) + 0.375rem)",
   } as const;
 
-  const composerNode = isGameModal ? (
+  const composerNode = hideComposer ? null : isGameModal ? (
     <ChatComposerShell
       variant="game-modal"
       shellRef={composerRef}

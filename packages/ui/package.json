@@ -41,6 +41,8 @@
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "stories:dev": "vite --config stories/vite.config.ts",
     "stories:build": "vite build --config stories/vite.config.ts",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build",
     "build:dist:unlocked": "bun run clean && bun run generate:css-strings && node ../scripts/ensure-tsc-nested-output-dir.mjs packages/ui && tsc --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.mjs packages/ui && node ../scripts/copy-package-assets.mjs packages/ui src/styles src/cloud-ui/index.css src/components/voice-pill/voice-pill.css && node ../scripts/prepare-package-dist.mjs packages/ui && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/ui && node ../scripts/verify-package-runtime-exports.mjs packages/ui"
   },
   "exports": {
@@ -308,6 +310,13 @@
     "@capacitor/keyboard": "8.0.3",
     "@capacitor/preferences": "^8.0.1",
     "@pixiv/three-vrm": "^3.5.3",
+    "@storybook/addon-a11y": "^10.0.0",
+    "@storybook/addon-docs": "^10.0.0",
+    "@storybook/addon-themes": "^10.0.0",
+    "@storybook/react": "^10.0.0",
+    "@storybook/react-vite": "^10.0.0",
+    "@tailwindcss/vite": "^4.1.18",
+    "storybook": "^10.0.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
