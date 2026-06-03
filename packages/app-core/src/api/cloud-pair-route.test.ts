@@ -191,7 +191,7 @@ describe("handleCloudPairRoute", () => {
     expect(headers.origin).toBe("https://203.0.113.10:21363");
   });
 
-  it("renders happy-path HTML with the apiKey pinned on window globals", async () => {
+  it("renders happy-path HTML with the apiKey stored for the SPA redirect", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({ apiKey: "agent_secret_value", agentName: "Nova" }),
@@ -205,6 +205,9 @@ describe("handleCloudPairRoute", () => {
     expect(harness.status()).toBe(200);
     const body = harness.body();
     expect(body).toContain('"agent_secret_value"');
+    expect(body).toContain(
+      'window.sessionStorage.setItem("eliza:cloud-pair:api-token", key)',
+    );
     expect(body).toMatch(/window\.__ELIZAOS_API_TOKEN__\s*=\s*key/);
     expect(body).toMatch(/window\.__ELIZA_API_TOKEN__\s*=\s*key/);
     expect(body).toContain('window.location.replace("/")');
