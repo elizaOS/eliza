@@ -135,9 +135,9 @@ import { buildCharacterFromConfig } from "../runtime/build-character-from-config
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
 import { handleAuthSessionRoutes } from "./auth-session-routes";
-import { handleCloudPairRoute } from "./cloud-pair-route";
 import { handleBackgroundTasksRoute } from "./background-tasks-routes";
 import { handleCatalogRoutes } from "./catalog-routes";
+import { handleCloudPairRoute } from "./cloud-pair-route";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleFirstRunRoute } from "./first-run-routes";

@@ -33,6 +33,6 @@ export const Config: Story = {
 };
 export const Compact: Story = { args: { density: "compact" } };
 export const ErrorState: Story = {
-  args: { hasError: true, value: "invalid value" },
+  args: { hasError: true, value: "invalid value", readOnly: true },
 };
 export const Disabled: Story = { args: { disabled: true } };

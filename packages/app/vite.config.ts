@@ -214,6 +214,24 @@ const markedEntry = path.join(
   elizaRoot,
   "plugins/plugin-task-coordinator/node_modules/marked/lib/marked.esm.js",
 );
+// yaml / uuid / adze are transitive deps (logger, core, plugin-documents) that
+// are listed in optimizeDeps.include but are not direct deps of packages/app,
+// so bun workspace hoisting leaves them unresolvable from the app's optimizer
+// root. Vite then logs "Failed to resolve dependency … present in optimizeDeps
+// .include", skips pre-bundling, and serves the bare specifiers raw — which 504s
+// in the browser and blanks the dev shell so the chat composer never mounts.
+// Resolve each browser entry from the app scope and alias the bare specifier so
+// the dep is resolvable and pre-bundlable. `default` is the browser condition
+// for yaml/uuid; adze is plain ESM via its `main` field.
+const yamlBrowserEntry = path.join(
+  path.dirname(_require.resolve("yaml/package.json")),
+  "browser/index.js",
+);
+const uuidBrowserEntry = path.join(
+  path.dirname(_require.resolve("uuid/package.json")),
+  "dist/index.js",
+);
+const adzeEntry = _require.resolve("adze");
 // @opentelemetry/api is a transitive runtime dep of @elizaos/core's browser
 // bundle (StackContextManager / streaming-context tracing) but is not hoisted
 // where packages/app can resolve the bare specifier, so Vite served its ~46
@@ -1817,6 +1835,9 @@ export const INVALID_TRACER_PROVIDER = {};
         replacement: path.resolve(here, "src/shims/use-sync-external-store.ts"),
       },
       { find: /^json5$/, replacement: json5EsmEntry },
+      { find: /^yaml$/, replacement: yamlBrowserEntry },
+      { find: /^uuid$/, replacement: uuidBrowserEntry },
+      { find: /^adze$/, replacement: adzeEntry },
       ...(fs.existsSync(markedEntry)
         ? [{ find: /^marked$/, replacement: markedEntry }]
         : []),

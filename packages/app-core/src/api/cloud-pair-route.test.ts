@@ -1,6 +1,14 @@
 import * as http from "node:http";
 import { Socket } from "node:net";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { _resetSensitiveLimiters } from "./auth/sensitive-rate-limit";
 
 vi.mock("@elizaos/core", () => ({
@@ -125,10 +133,13 @@ describe("handleCloudPairRoute", () => {
 
   it("renders 403 when cloud-api rejects the token (expired/used)", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ error: "Invalid or expired pairing code" }), {
-        status: 401,
-        headers: { "content-type": "application/json" },
-      }),
+      new Response(
+        JSON.stringify({ error: "Invalid or expired pairing code" }),
+        {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        },
+      ),
     ) as unknown as typeof globalThis.fetch;
 
     const harness = fakeRes();
@@ -141,7 +152,9 @@ describe("handleCloudPairRoute", () => {
   it("renders 503 when cloud-api is unreachable", async () => {
     globalThis.fetch = vi
       .fn()
-      .mockRejectedValue(new Error("ECONNREFUSED")) as unknown as typeof globalThis.fetch;
+      .mockRejectedValue(
+        new Error("ECONNREFUSED"),
+      ) as unknown as typeof globalThis.fetch;
 
     const harness = fakeRes();
     const req = fakeReq({ pathname: "/pair", search: "?token=abc" });
@@ -192,12 +205,14 @@ describe("handleCloudPairRoute", () => {
   });
 
   it("renders happy-path HTML with the apiKey stored in sessionStorage and pinned on window globals", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({ apiKey: "agent_secret_value", agentName: "Nova" }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      ),
-    ) as unknown as typeof globalThis.fetch;
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ apiKey: "agent_secret_value", agentName: "Nova" }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ) as unknown as typeof globalThis.fetch;
 
     const harness = fakeRes();
     const req = fakeReq({ pathname: "/pair", search: "?token=abc" });
@@ -244,26 +259,33 @@ describe("handleCloudPairRoute", () => {
     // Each invocation gets a fresh Response — a single shared Response
     // body would be consumed on the first .json() and subsequent calls
     // would 502 because the parsed body is null.
-    globalThis.fetch = vi.fn().mockImplementation(
-      () =>
-        Promise.resolve(
-          new Response(JSON.stringify({ apiKey: "agent_k", agentName: "n" }), {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          }),
-        ),
+    globalThis.fetch = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ apiKey: "agent_k", agentName: "n" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
     ) as unknown as typeof globalThis.fetch;
 
     // Bucket size is 5/min from sensitive-rate-limit.ts. Hit it 5 times +
     // assert the 6th call returns 429.
     for (let i = 0; i < 5; i++) {
       const h = fakeRes();
-      const r = fakeReq({ pathname: "/pair", search: "?token=abc", ip: "9.9.9.9" });
+      const r = fakeReq({
+        pathname: "/pair",
+        search: "?token=abc",
+        ip: "9.9.9.9",
+      });
       await handleCloudPairRoute(r, h.res);
       expect(h.status()).toBe(200);
     }
     const h6 = fakeRes();
-    const r6 = fakeReq({ pathname: "/pair", search: "?token=abc", ip: "9.9.9.9" });
+    const r6 = fakeReq({
+      pathname: "/pair",
+      search: "?token=abc",
+      ip: "9.9.9.9",
+    });
     await handleCloudPairRoute(r6, h6.res);
     expect(h6.status()).toBe(429);
     expect(h6.body()).toContain("Too many sign-in attempts");

@@ -10,8 +10,6 @@ type Redactor = ((value: unknown) => unknown) & {
 const noopRedactor: Redactor = (value: unknown) => value;
 noopRedactor.restore = (value: unknown) => value;
 
-export default function fastRedact(
-  _options: FastRedactOptions = {},
-): Redactor {
+export default function fastRedact(_options: FastRedactOptions = {}): Redactor {
   return noopRedactor;
 }
