@@ -119,6 +119,14 @@ const config: StorybookConfig = {
     // shim it so those modules import cleanly in the browser catalog.
     cfg.define = { ...(cfg.define ?? {}), "process.env": "({})" };
     cfg.optimizeDeps ??= {};
+    cfg.optimizeDeps.noDiscovery = true;
+    cfg.optimizeDeps.include = [
+      "react",
+      "react-dom",
+      "react-dom/client",
+      "react/jsx-dev-runtime",
+      "react/jsx-runtime",
+    ];
     cfg.optimizeDeps.exclude = [
       ...(cfg.optimizeDeps.exclude ?? []),
       "@napi-rs/keyring",

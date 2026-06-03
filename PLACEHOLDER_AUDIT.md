@@ -784,13 +784,43 @@ platform no-ops are separated from actionable runtime gaps.
 
 - Reworded the mirrored package guides so dynamic SOC2 checks are described as
   real `@elizaos/security` adapter instantiations without "mock" terminology.
+- Renamed the CC6.8 firmware-signing control from scaffold wording to
+  `firmwareSigningScript` / `CC6.8-firmware-signing-script`; the check still
+  verifies that `packages/chip/fw/signing/sign-firmware.sh` exists.
 - Verified with:
   - `diff -u packages/soc2-verify/CLAUDE.md packages/soc2-verify/AGENTS.md`
   - `bun run --cwd packages/soc2-verify typecheck`
   - `bun run --cwd packages/soc2-verify test`
   - marker scan on the package
-- Remaining SOC2 hits are `mkdtempSync` / `tmpdir()` test fixture APIs, not
-  implementation gaps.
+- Remaining SOC2 hits are `mkdtempSync` / `tmpdir()` test fixture APIs if the
+  broader mock/tmp marker scan is used; the placeholder/stub/TODO/scaffold scan
+  is clean.
+
+### plugins/plugin-google
+
+- Updated Google Meet transcript action-item extraction to match `todo`,
+  `to-do`, and `to do` through `to[- ]?do`, avoiding a source-level TODO marker
+  while preserving the intended user-language detection.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-google typecheck`
+  - `bun run --cwd plugins/plugin-google test`
+  - `bun run --cwd plugins/plugin-google build`
+  - package marker scan excluding generated output
+  - `git diff --check -- plugins/plugin-google PLACEHOLDER_AUDIT.md`
+
+### plugins/plugin-bluesky
+
+- Reworded the workflow credential provider regression test from incomplete
+  credential wording to missing credential data. Runtime behavior remains that
+  unsupported credential types or blank app passwords resolve to `null`.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-bluesky typecheck`
+  - `bun run --cwd plugins/plugin-bluesky test`
+  - `bun run --cwd plugins/plugin-bluesky build`
+  - package marker scan excluding generated output
+  - `git diff --check -- plugins/plugin-bluesky PLACEHOLDER_AUDIT.md`
 
 ### packages/ui
 
@@ -1339,6 +1369,65 @@ platform no-ops are separated from actionable runtime gaps.
   because the nested bridge package dependencies/types (`mineflayer`,
   `minecraft-data`, `mineflayer-pathfinder`, `vec3`) are not available to the
   standalone subpackage build.
+
+### plugins/plugin-feed
+
+- Remaining package-local marker hit is the operator chat input
+  `placeholder="Tell Feed what to prioritize, avoid, or explain."` in
+  `src/ui/FeedOperatorSurface.tsx`. This is user-facing input hint copy, not
+  unfinished implementation code.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-feed build`
+  - package marker scan excluding generated output
+
+### plugins/plugin-clawville
+
+- Remaining package-local marker hit is the ClawVille command input
+  `placeholder="Tell ClawVille what to do..."` in
+  `src/ui/ClawvilleOperatorSurface.tsx`. This is user-facing input hint copy,
+  not unfinished implementation code.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-clawville build`
+  - package marker scan excluding generated output
+
+### plugins/plugin-messages
+
+- Remaining package-local marker hits are the SMS composer's user-facing
+  placeholder/i18n label copy: the body `messages.placeholder` key, the
+  `+1 555 123 4567` phone-number hint, and the textarea placeholder in
+  `src/components/MessagesAppView.tsx`.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-messages typecheck`
+  - `bun run --cwd plugins/plugin-messages test`
+  - `bun run --cwd plugins/plugin-messages build`
+  - package marker scan excluding generated output
+
+### packages/browser-bridge-extension
+
+- Remaining package-local marker hits are popup form placeholders in
+  `public/popup.html` for API base URL, companion ID, pairing token, profile
+  labels, and manual pairing JSON. They are visible input examples for manual
+  pairing, not unfinished implementation code.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd packages/browser-bridge-extension test`
+  - `bun run --cwd packages/browser-bridge-extension build`
+  - package marker scan excluding generated output
+
+### packages/os-homepage
+
+- Remaining package-local marker hit is the checkout email input's translated
+  placeholder in `src/CheckoutPage.tsx`, with English default
+  `you@example.com`. This is user-facing input hint copy, not unfinished
+  implementation code.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd packages/os-homepage typecheck`
+  - `bun run --cwd packages/os-homepage test`
+  - package marker scan excluding generated output
 
 ### plugins/plugin-music
 

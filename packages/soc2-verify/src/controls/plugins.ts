@@ -23,7 +23,11 @@ export const pluginSignatureVerify: Check = {
       const src = readUtf8Safe(f);
       if (!src) continue;
       // Real signature-verify call — not merely a `signature` type field.
-      if (/(verifySignature|verifyManifestSignature|kms\.verify|crypto\.verify|nodeVerify|sodium_crypto_sign_verify)/.test(src)) {
+      if (
+        /(verifySignature|verifyManifestSignature|kms\.verify|crypto\.verify|nodeVerify|sodium_crypto_sign_verify)/.test(
+          src,
+        )
+      ) {
         matches.push(f);
       }
     }
@@ -73,9 +77,9 @@ export const subagentEnvAllowlist: Check = {
   },
 };
 
-export const firmwareSigningScaffold: Check = {
-  id: "CC6.8-firmware-signing-scaffold",
-  title: "Firmware signing scaffold present",
+export const firmwareSigningScript: Check = {
+  id: "CC6.8-firmware-signing-script",
+  title: "Firmware signing script present",
   tsc: ["CC6.8"],
   severity: "medium",
   async run(ctx): Promise<CheckResult> {
@@ -86,12 +90,12 @@ export const firmwareSigningScaffold: Check = {
     return readUtf8Safe(path)
       ? {
           status: "pass",
-          evidence: `Firmware signing scaffold present.`,
+          evidence: `Firmware signing script present.`,
           files: [path],
         }
       : {
           status: "fail",
-          evidence: `Expected firmware signing scaffold at ${path}.`,
+          evidence: `Expected firmware signing script at ${path}.`,
           files: [path],
         };
   },

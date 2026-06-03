@@ -677,7 +677,9 @@ test("STT capture path fires onTranscript with the recognized string", async ({
   );
 
   // The compact shell uses the shared hook-free voice capture path. Force the
-  // browser SpeechRecognition backend above, then click the current talk button.
+  // browser SpeechRecognition backend above, then click the current talk
+  // button, whose accessible name may be either "Talk" or the legacy
+  // "Voice input" label.
   const micButton = page
     .getByRole("button", { name: /talk|voice input/i })
     .first();
