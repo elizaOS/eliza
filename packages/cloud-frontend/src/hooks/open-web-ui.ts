@@ -8,7 +8,9 @@ import { toast } from "sonner";
  * 1. Opens a popup immediately (must be in click handler to avoid popup blockers)
  * 2. Fetches a one-time pairing token from the dashboard API
  * 3. Redirects the popup to the agent's /pair page with the token
- * 4. pair.html exchanges the token for an API key and stores it
+ * 4. The agent's `/pair` handler calls cloud-api `/api/auth/pair` server-side,
+ *    receives the agent's API key, and serves HTML that pins it on the SPA's
+ *    `window.__ELIZAOS_API_TOKEN__` global before redirecting to `/`.
  */
 export async function openWebUIWithPairing(agentId: string): Promise<void> {
   const popup = window.open("", "_blank");
