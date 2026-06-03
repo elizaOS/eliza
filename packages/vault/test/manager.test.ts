@@ -284,8 +284,8 @@ describe("manager — listAllSavedLogins", () => {
       vault: v,
       // The 1Password and Bitwarden CLIs may exist on the dev machine
       // (passing isCommandAvailable inside detectBackends), so detection
-      // can land on signedIn=true via desktop integration. The STUB
-      // drives the actual list call. To assert "in-house only, no
+      // can land on signedIn=true via desktop integration. The injected
+      // executor drives the actual list call. To assert "in-house only, no
       // failures," seed empty sessions so the list adapters succeed
       // with [] rather than throw BackendNotSignedInError.
       exec: execStub(() => "[]"),

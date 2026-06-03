@@ -1142,7 +1142,7 @@ public final class LlamaBridgeImpl {
         let abi = String(cString: abiPtr)
         guard let abiVersion = Int(abi), abiVersion >= 4 else {
             NSLog("[LlamaBridgeImpl] TTS attempt failed stage=abi backend=\(attemptBackend) abi=\(abi)")
-            return .failure("eliza_tts_synthesize: linked iOS inference slice is the stub ABI \(abi); rebuild with fused iOS local inference")
+            return .failure("eliza_tts_synthesize: linked iOS inference slice is the smoke-build ABI \(abi); rebuild with fused iOS local inference")
         }
         if Self.currentTtsBackendEnv() == "kokoro" && !Self.experimentalKokoroGgufTtsEnabled() {
             NSLog("[LlamaBridgeImpl] TTS attempt blocked stage=backend-gate backend=\(attemptBackend) ttsBackend=kokoro")

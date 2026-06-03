@@ -20,8 +20,8 @@
  *   - `tbq4_0`  → buun-llama-cpp fork's TurboQuant 4-bit key cache.
  *
  * Stock llama.cpp builds without the buun fork ignore tbq3_0/tbq4_0 because
- * the underlying Capacitor plugin's `setCacheType` is a no-op there
- * (warn-no-op surface in `capacitor-llama-adapter.ts`). The AOSP adapter
+ * the underlying Capacitor plugin has no `setCacheType` bridge there
+ * (warn-and-skip surface in `capacitor-llama-adapter.ts`). The AOSP adapter
  * routes the same names through the fork-specific shim setters.
  */
 

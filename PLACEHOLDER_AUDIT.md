@@ -466,9 +466,14 @@ platform no-ops are separated from actionable runtime gaps.
   labels Proton Pass or injected subprocess executors as scaffolds/stubs.
 - Added `test/password-managers.test.ts` for Proton Pass reference command
   construction, URI handling, missing CLI errors, and empty field errors.
+- Reworded the remaining manager test helper comment from STUB terminology to
+  injected-executor terminology. The package marker scan is now clean.
 - Verified with:
   - `diff -u packages/vault/CLAUDE.md packages/vault/AGENTS.md`
   - `bun run --cwd packages/vault typecheck`
+  - `bun run --cwd packages/vault test`
+  - `bun run --cwd packages/vault build`
+  - marker scan on `packages/vault`
   - `bun run --cwd packages/vault test test/password-managers.test.ts test/install.test.ts test/manager.test.ts test/inventory.test.ts`
   - marker scan and `git diff --check` on the Vault package
 
@@ -756,11 +761,13 @@ platform no-ops are separated from actionable runtime gaps.
 ### packages/logger
 
 - Removed the lone false-positive marker in `src/logger.ts` by rewording the
-  lazy file-log comment from "write attempt" to "write".
+  file-log skip-condition comment from "No-op" to explicit skip conditions.
 - Verified with:
   - `bun run --cwd packages/logger lint`
   - `bun run --cwd packages/logger typecheck`
   - marker scan on the package
+  - Local guide note: `packages/logger/CLAUDE.md` exists, but no sibling
+    `AGENTS.md` is present in this checkout.
 
 ### packages/registry
 
@@ -1584,6 +1591,16 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd packages/os-homepage typecheck`
   - `bun run --cwd packages/os-homepage test`
   - package marker scan excluding generated output
+
+### packages/research
+
+- Remaining package-local marker hits are captured stdout text in
+  `evidence/tee/local-stack-validation-2026-05-20.json`. The strings record
+  a passing TEE release validation run that rejected all-zero checksum
+  placeholders and reported Node's `todo 0` summary; this is historical
+  evidence, not unfinished implementation code.
+- Verification note: `packages/research` has no package-local `CLAUDE.md` or
+  `AGENTS.md` in this checkout, and no package-level `package.json` scripts.
 
 ### plugins/plugin-music
 
@@ -2430,8 +2447,8 @@ platform no-ops are separated from actionable runtime gaps.
 
 - Reworded the non-elizaOS side-effect import path so it says the apps catalog
   is left unchanged, rather than calling it a no-op.
-- Remaining package-local marker hits are UI input placeholders and Vitest /
-  test-stub wiring.
+- Remaining package-local marker hits are user-facing contact search, name,
+  phone, and email input placeholders.
 - Verification: `bun run --cwd plugins/plugin-contacts typecheck`,
   `bun run --cwd plugins/plugin-contacts test`, marker scan, and
   `git diff --check -- plugins/plugin-contacts` all pass.
@@ -2582,8 +2599,9 @@ platform no-ops are separated from actionable runtime gaps.
   running without a proxy in off mode, not as no-op/stub behavior.
 - Reworded the short-marker fingerprint test and SSE UTF-8 buffering comment
   from no-op/incomplete wording to unchanged/partial-sequence wording.
-- Remaining package marker hit is the docs table entry for the literal
-  `cc-tool-stubs.ts` compatibility file.
+- Reworded the fingerprint docs table entry that described the `Agent`
+  compatibility mapping with stub terminology. The package marker scan is now
+  clean.
 - Verified with:
   - `diff -u plugins/plugin-anthropic-proxy/CLAUDE.md plugins/plugin-anthropic-proxy/AGENTS.md`
   - `bun run --cwd plugins/plugin-anthropic-proxy typecheck`
@@ -2630,10 +2648,10 @@ platform no-ops are separated from actionable runtime gaps.
 - Reworded web fallback tests and guide text from no-op shapes to unavailable
   shapes, and reworded sqlite-vec and Kokoro phonemizer comments from no-op /
   placeholder marker language to skipped registration / tone marker language.
-- Remaining package marker hits are intentional:
-  - the Kokoro pronunciation dictionary contains the Spanish word `todo`;
-  - `LlamaBridgeImpl.swift` reports a linked iOS inference `stub ABI`, which is
-    a real ABI label for the wrong native slice.
+- Reworded the linked iOS inference failure message from stub ABI terminology
+  to smoke-build ABI terminology while preserving the rebuild guidance.
+- Remaining package marker hit is intentional: the Kokoro pronunciation
+  dictionary contains the Spanish word `todo`.
 - Verified with:
   - `diff -u plugins/plugin-native-bun-runtime/CLAUDE.md plugins/plugin-native-bun-runtime/AGENTS.md`
   - `bun run --cwd plugins/plugin-native-bun-runtime build`
@@ -2662,6 +2680,15 @@ platform no-ops are separated from actionable runtime gaps.
 - Verified with:
   - `bash -n scripts/build-riscv64-artifacts.sh`
   - marker scan on the script
+
+### scripts/e2e-recordings
+
+- Remaining marker hits are the generated recording viewer's search input
+  placeholder text and matching `::placeholder` CSS selector in
+  `generate-viewer.mjs`. These are user-facing search affordances in the
+  viewer, not unfinished recorder implementation.
+- Verification note: this directory has no package-local `CLAUDE.md` or
+  package-level `package.json` scripts.
 
 ### plugins/plugin-ainex
 
@@ -2773,6 +2800,9 @@ platform no-ops are separated from actionable runtime gaps.
   - `plugins/plugin-social-alpha` contains a Tailwind `placeholder:` utility.
   - `plugins/plugin-telegram` has a real validation error for incomplete login
     credentials.
+  - `scripts/eval-prompts.ts` contains literal `{{placeholder}}` prompt-contract
+    examples and optimizer instructions to preserve those placeholders
+    byte-identically.
 
 ### plugins/plugin-app-control
 

@@ -450,7 +450,7 @@ function ensureFileLog(): boolean {
 
 /**
  * Write a formatted log entry to the output file.
- * No-op in browser environments, when LOG_FILE is unset, or if file open failed.
+ * Skips browser environments, unset LOG_FILE, or a failed file open.
  */
 function writeLogEntryToFile(entry: LogEntry): void {
   if (!ensureFileLog()) return;
