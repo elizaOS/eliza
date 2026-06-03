@@ -16,10 +16,6 @@ export {
   isAgentSurfaceCapability,
 } from "./capabilities";
 export {
-  AgentSurfaceElementReporter,
-  useAgentSurfaceElementReporter,
-} from "./element-reporter";
-export {
   AgentButton,
   type AgentButtonProps,
   AgentInput,
@@ -27,6 +23,10 @@ export {
   IconTag,
   type IconTagProps,
 } from "./components";
+export {
+  AgentSurfaceElementReporter,
+  useAgentSurfaceElementReporter,
+} from "./element-reporter";
 export {
   getOrCreateViewRegistry,
   getViewRegistry,
