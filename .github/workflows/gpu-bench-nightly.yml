@@ -56,6 +56,8 @@ jobs:
         with:
           name: gpu-plan
           path: gpu-plan.json
+          if-no-files-found: error
+          retention-days: 7
 
   bench:
     name: voice-bench (cuda)
@@ -83,3 +85,5 @@ jobs:
         with:
           name: bench-${{ github.run_id }}
           path: bench.json
+          if-no-files-found: error
+          retention-days: 7

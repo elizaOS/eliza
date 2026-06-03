@@ -79,3 +79,5 @@ jobs:
             packages/chip/build/reports/formal_manifest.json
             packages/chip/verify/formal/*/status
             packages/chip/verify/formal/*/logfile.txt
+          if-no-files-found: warn
+          retention-days: 7

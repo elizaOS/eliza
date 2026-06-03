@@ -210,6 +210,7 @@ jobs:
           name: whisper-model-base-en
           path: .artifacts/whisper-model/ggml-base.en.bin
           if-no-files-found: error
+          retention-days: 14
 
       - name: Align version with release tag
         run: |

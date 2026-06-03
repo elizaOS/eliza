@@ -1,7 +1,7 @@
 import type * as React from "react";
 
 import { cn } from "../../../lib/utils";
-import { normalizeChatSourceKey } from "./chat-source";
+import { getChatSourceMeta, normalizeChatSourceKey } from "./chat-source";
 
 export type ChatBubbleTone = "assistant" | "user";
 
@@ -23,11 +23,18 @@ export function ChatBubble({
   ...props
 }: ChatBubbleProps) {
   const normalizedSource = normalizeChatSourceKey(source) ?? undefined;
+  const sourceBorderClassName = normalizedSource
+    ? getChatSourceMeta(normalizedSource).borderClassName
+    : "border-transparent";
+
   return (
     <div
       className={cn(
-        "relative whitespace-pre-wrap break-words",
-        tone === "user" ? "text-txt-strong" : "text-txt",
+        "relative inline-block max-w-full whitespace-pre-wrap break-words rounded-sm border px-3 py-2",
+        tone === "user"
+          ? "bg-[color:color-mix(in_srgb,var(--accent-subtle)_70%,var(--bg)_30%)] text-txt-strong"
+          : "bg-[color:color-mix(in_srgb,var(--card)_82%,var(--text)_12%)] text-txt",
+        sourceBorderClassName,
         className,
       )}
       data-chat-source={normalizedSource ?? undefined}

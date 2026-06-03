@@ -126,3 +126,5 @@ jobs:
             packages/os/linux/vm/output/ci-bundle-metadata/**
             packages/os-homepage/artifacts/screenshots/**
             packages/os-homepage/test-results/**
+          if-no-files-found: warn
+          retention-days: 14

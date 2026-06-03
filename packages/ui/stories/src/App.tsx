@@ -2,6 +2,7 @@ import { Story, type StoryGroup } from "./Story.tsx";
 import { analyticsStories } from "./stories/analytics.tsx";
 import { brandStories } from "./stories/brand.tsx";
 import { cloudDashboardStories } from "./stories/cloud-dashboard.tsx";
+import { featureSurfaceStories } from "./stories/feature-surfaces.tsx";
 import { primitiveStories } from "./stories/primitives.tsx";
 import { shellFoundationStories } from "./stories/shell-foundation.tsx";
 
@@ -30,6 +31,11 @@ const groups: StoryGroup[] = [
     id: "shell-foundation",
     title: "Shell Foundation — @elizaos/ui/components/shell",
     stories: shellFoundationStories,
+  },
+  {
+    id: "feature-surfaces",
+    title: "Feature Surfaces — apps, local inference, policy controls",
+    stories: featureSurfaceStories,
   },
 ];
 
