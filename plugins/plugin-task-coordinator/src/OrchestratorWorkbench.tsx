@@ -11,6 +11,8 @@ import {
   Button,
   type CodingAgentAddAgentInput,
   type CodingAgentOrchestratorStatus,
+  type CodingAgentRerunFromEventInput,
+  type CodingAgentRetryTurnInput,
   type CodingAgentTaskArtifactRecord,
   type CodingAgentTaskEventRecord,
   type CodingAgentTaskMessageRecord,
@@ -1814,6 +1816,46 @@ function ControlButton({
   );
 }
 
+function RecoveryActionButton({
+  agentId,
+  description,
+  icon,
+  label,
+  onClick,
+  disabled,
+  testId,
+}: {
+  agentId: string;
+  description: string;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled: boolean;
+  testId: string;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group: "orchestrator-operator-detail",
+    description,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border/50 px-2 text-2xs font-semibold text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt disabled:opacity-50"
+      data-testid={testId}
+      {...agentProps}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
 function TaskInspector({
   detail,
   className,
@@ -1827,6 +1869,7 @@ function TaskInspector({
   onReopen,
   onDelete,
   onFork,
+  onRestart,
   onValidate,
   onSetPriority,
   onToggleAddAgent,
@@ -1848,6 +1891,7 @@ function TaskInspector({
   onReopen: () => void;
   onDelete: () => void;
   onFork: () => void;
+  onRestart: () => void;
   onValidate: (passed: boolean) => void;
   onSetPriority: (priority: TaskPriority) => void;
   onToggleAddAgent: () => void;
@@ -2008,6 +2052,19 @@ function TaskInspector({
           disabled={busy}
           testId="orchestrator-fork"
         />
+        {archived ? null : (
+          <ControlButton
+            agentId="inspector-restart"
+            description="Restart this task with a fresh worker"
+            icon={<RotateCcw className="h-3 w-3" />}
+            label={t("orchestrator.action.restart", {
+              defaultValue: "Restart",
+            })}
+            onClick={onRestart}
+            disabled={busy}
+            testId="orchestrator-inspector-restart"
+          />
+        )}
         {archived ? null : (
           <ControlButton
             agentId="inspector-add-agent"
@@ -2585,9 +2642,12 @@ function OperatorDetailDrawer({
   events,
   messages,
   taskUsage,
+  busy,
   className,
   style,
   onClose,
+  onRetry,
+  onRerun,
   t,
   locale,
 }: {
@@ -2597,9 +2657,12 @@ function OperatorDetailDrawer({
   events: CodingAgentTaskEventRecord[];
   messages: CodingAgentTaskMessageRecord[];
   taskUsage: CodingAgentTaskUsageSummary;
+  busy: boolean;
   className?: string;
   style?: CSSProperties;
   onClose: () => void;
+  onRetry: (input: CodingAgentRetryTurnInput) => void;
+  onRerun: (input: CodingAgentRerunFromEventInput) => void;
   t: Translate;
   locale?: string;
 }) {
@@ -2679,6 +2742,72 @@ function OperatorDetailDrawer({
       : block
         ? blockError(block, events, t)
         : null;
+  const retryMessage = !isSession ? messages[0] : null;
+  const rerunEvent = !isSession ? events[0] : null;
+  const retryLabel = label("retry", "Retry");
+  const rerunLabel = label("rerun", "Rerun");
+  const recoveryActions: ReactNode[] = [];
+  if (isSession && session) {
+    recoveryActions.push(
+      <RecoveryActionButton
+        key="retry-session"
+        agentId="operator-retry-session"
+        description="Retry this session's work in a new worker"
+        icon={<RotateCcw className="h-3 w-3" />}
+        label={retryLabel}
+        onClick={() =>
+          onRetry({
+            sessionId: session.sessionId,
+            mode: "new-session",
+            instruction: `Retry work from session ${session.label ?? session.sessionId}.`,
+          })
+        }
+        disabled={busy}
+        testId="orchestrator-detail-retry"
+      />,
+    );
+  } else if (retryMessage) {
+    recoveryActions.push(
+      <RecoveryActionButton
+        key="retry-message"
+        agentId="operator-retry-message"
+        description="Retry this selected turn in a new worker"
+        icon={<RotateCcw className="h-3 w-3" />}
+        label={retryLabel}
+        onClick={() =>
+          onRetry({
+            messageId: retryMessage.id,
+            sessionId: retryMessage.sessionId ?? undefined,
+            mode: "new-session",
+            instruction: "Retry this selected turn.",
+          })
+        }
+        disabled={busy}
+        testId="orchestrator-detail-retry"
+      />,
+    );
+  }
+  if (rerunEvent) {
+    recoveryActions.push(
+      <RecoveryActionButton
+        key="rerun-event"
+        agentId="operator-rerun-event"
+        description="Rerun from this selected event without rewriting history"
+        icon={<ChevronsUp className="h-3 w-3" />}
+        label={rerunLabel}
+        onClick={() =>
+          onRerun({
+            eventId: rerunEvent.id,
+            instruction: `Rerun from ${rerunEvent.eventType.replace(/_/g, " ")}.`,
+            stopActive: false,
+            preserveHistory: true,
+          })
+        }
+        disabled={busy}
+        testId="orchestrator-detail-rerun"
+      />,
+    );
+  }
 
   let body: ReactNode;
   if (tab === "input") {
@@ -2891,6 +3020,17 @@ function OperatorDetailDrawer({
           </>
         ) : null}
       </div>
+      {recoveryActions.length > 0 ? (
+        <div
+          className="space-y-1.5 rounded-md border border-border/40 bg-bg/40 p-2"
+          data-testid="orchestrator-detail-recovery"
+        >
+          <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+            {label("recovery", "Recovery")}
+          </div>
+          <div className="flex flex-wrap gap-1.5">{recoveryActions}</div>
+        </div>
+      ) : null}
       <OperatorTabs active={tab} onSelect={setTab} t={t} />
       <div className="min-h-0">{body}</div>
     </OperatorDrawerShell>
@@ -3861,6 +4001,20 @@ export function OrchestratorWorkbench() {
                 if (forked) setSelectedId(forked.id);
               })
             }
+            onRestart={() => {
+              const confirmed =
+                typeof window === "undefined" ||
+                window.confirm(
+                  t("orchestrator.confirmRestart", {
+                    defaultValue:
+                      "Restart this task with a fresh worker? Active agents will be stopped first.",
+                  }),
+                );
+              if (!confirmed) return;
+              runMutation(() =>
+                client.restartOrchestratorTask(detail.id, { stopActive: true }),
+              );
+            }}
             onValidate={(passed) =>
               runMutation(() =>
                 client.validateOrchestratorTask(detail.id, {
@@ -3887,6 +4041,32 @@ export function OrchestratorWorkbench() {
               )
             }
             onCopyLink={handleCopyLink}
+            t={t}
+            locale={locale}
+          />
+        ) : detail && detailDrawer ? (
+          <OperatorDetailDrawer
+            key={blockSelectionKey(detailDrawer)}
+            selection={detailDrawer}
+            block={selectedBlock}
+            session={selectedSession}
+            events={selectedBlockEvents}
+            messages={selectedBlockMessages}
+            taskUsage={detail.usage}
+            busy={mutating}
+            className={isMobile ? "flex" : "flex w-80"}
+            style={isMobile ? INSPECTOR_DRAWER_STYLE : undefined}
+            onClose={() => setDetailDrawer(null)}
+            onRetry={(input) =>
+              runMutation(() =>
+                client.retryOrchestratorTaskTurn(detail.id, input),
+              )
+            }
+            onRerun={(input) =>
+              runMutation(() =>
+                client.rerunOrchestratorTaskFromEvent(detail.id, input),
+              )
+            }
             t={t}
             locale={locale}
           />

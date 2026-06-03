@@ -343,6 +343,40 @@ async function installOrchestratorWorkbenchRoutes(
 
     if (
       method === "POST" &&
+      pathname === "/api/orchestrator/tasks/smoke-task-1/retry-turn"
+    ) {
+      const body = JSON.parse(request.postData() ?? "{}") as JsonRecord;
+      actionLog.push(
+        `retry:${String(body.messageId ?? body.sessionId ?? body.mode ?? "")}`,
+      );
+      await fulfillJson(route, detail ?? taskDetail());
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      pathname === "/api/orchestrator/tasks/smoke-task-1/rerun-from-event"
+    ) {
+      const body = JSON.parse(request.postData() ?? "{}") as JsonRecord;
+      actionLog.push(`rerun:${String(body.eventId ?? "")}`);
+      await fulfillJson(route, detail ?? taskDetail());
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      pathname === "/api/orchestrator/tasks/smoke-task-1/restart"
+    ) {
+      const body = JSON.parse(request.postData() ?? "{}") as JsonRecord;
+      actionLog.push(
+        `restart:${body.stopActive === true ? "stop-active" : "keep-active"}`,
+      );
+      await fulfillJson(route, detail ?? taskDetail());
+      return;
+    }
+
+    if (
+      method === "POST" &&
       pathname ===
         "/api/orchestrator/tasks/smoke-task-1/agents/session-codex/stop"
     ) {
@@ -673,6 +707,46 @@ test.describe("orchestrator GUI workbench", () => {
     await expect(inspector).toContainText("cerebras · gpt-oss-120b");
     await expect(inspector).toContainText("codex · gpt-5.4");
 
+    await page.getByTestId("orchestrator-inspect-session").first().click();
+    const operatorDetail = page.getByTestId("orchestrator-operator-detail");
+    await expect(operatorDetail).toContainText("Session detail");
+    await expect(operatorDetail).toContainText("Codex Builder");
+    await expect(operatorDetail).toContainText("gpt-5.4");
+    await expect(operatorDetail).toContainText(
+      "Generate the planner shell and persist card movement locally.",
+    );
+    await operatorDetail.getByRole("tab", { name: "Output" }).click();
+    await expect(operatorDetail).toContainText("Active tool");
+    await expect(operatorDetail).toContainText("write");
+    await operatorDetail.getByRole("tab", { name: "Usage" }).click();
+    await expect(operatorDetail).toContainText("~2.1K");
+    await operatorDetail.getByTestId("orchestrator-detail-retry").click();
+    await expect
+      .poll(() => requests.actionLog)
+      .toContain("retry:session-codex");
+
+    await page
+      .getByTestId("orchestrator-tool-call")
+      .first()
+      .getByRole("button")
+      .click();
+    await expect(operatorDetail).toContainText("Timeline detail");
+    await expect(operatorDetail).toContainText("tool-write-index");
+    await expect(operatorDetail).toContainText("planner/index.html");
+    await expect(operatorDetail).not.toContainText("Original task");
+    await operatorDetail.getByRole("tab", { name: "Output" }).click();
+    await expect(operatorDetail).toContainText("Wrote planner/index.html");
+    await operatorDetail.getByRole("tab", { name: "Events" }).click();
+    await expect(operatorDetail).toContainText("tool running");
+    await expect(operatorDetail).toContainText("write planner files");
+    await operatorDetail.getByTestId("orchestrator-detail-rerun").click();
+    await expect
+      .poll(() => requests.actionLog)
+      .toContain("rerun:event-tool-write");
+
+    await page.getByTestId("orchestrator-open-inspector").click();
+    await expect(page.getByTestId("orchestrator-inspector")).toBeVisible();
+
     await page.getByTestId("orchestrator-priority-select").selectOption("high");
     await expect
       .poll(() => requests.patchBodies)
@@ -700,6 +774,12 @@ test.describe("orchestrator GUI workbench", () => {
         workdir: "/tmp/build-app",
         task: "Build a small notes app and report generated files.",
       });
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.getByTestId("orchestrator-inspector-restart").click();
+    await expect
+      .poll(() => requests.actionLog)
+      .toContain("restart:stop-active");
 
     await page.getByTestId("orchestrator-stop-agent").first().click();
     await expect.poll(() => requests.actionLog).toContain("stop:session-codex");
