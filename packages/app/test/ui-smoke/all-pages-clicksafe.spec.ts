@@ -1402,12 +1402,9 @@ async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
 }
 
 async function probeRoute(page: Page, route: RouteProbe): Promise<void> {
-  await openAppPath(page, route.path);
   const expectedUrl =
     route.expectedUrl ?? new RegExp(`${escapeRegExp(route.path)}$`);
-  await expect(page).toHaveURL(expectedUrl, {
-    timeout: route.timeoutMs,
-  });
+  await openRouteAndExpectUrl(page, route, expectedUrl);
   await assertReadyChecks(
     page,
     route.name,
@@ -1416,6 +1413,38 @@ async function probeRoute(page: Page, route: RouteProbe): Promise<void> {
     route.timeoutMs,
   );
   await expectMainShell(page, route);
+}
+
+async function openRouteAndExpectUrl(
+  page: Page,
+  route: RouteProbe,
+  expectedUrl: RegExp,
+): Promise<void> {
+  const timeoutMs = route.timeoutMs ?? 60_000;
+  const firstAttemptTimeoutMs = Math.min(timeoutMs, 15_000);
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await openAppPath(page, route.path);
+    await expect(page)
+      .toHaveURL(expectedUrl, {
+        timeout: attempt === 0 ? firstAttemptTimeoutMs : timeoutMs,
+      })
+      .then(
+        () => undefined,
+        async (error: unknown) => {
+          if (attempt > 0) throw error;
+          await page
+            .goto("about:blank", {
+              waitUntil: "domcontentloaded",
+              timeout: 5_000,
+            })
+            .catch(() => {
+              /* best-effort reset before retrying a missed navigation */
+            });
+        },
+      );
+    if (expectedUrl.test(page.url())) return;
+  }
 }
 
 async function clickIfVisible(locator: Locator): Promise<boolean> {

@@ -351,6 +351,29 @@ describe("ensureLocalInferenceHandler", () => {
 		});
 	});
 
+	it.each([
+		[ModelType.TEXT_SMALL, "TEXT_SMALL"],
+		[ModelType.TEXT_LARGE, "TEXT_LARGE"],
+		[ModelType.RESPONSE_HANDLER, "TEXT_SMALL"],
+	])("signals typed local unavailability for %s when the backend is unavailable", async (modelType, slot) => {
+		const { registrations, runtime } = makeRuntime();
+		engineState.available.mockResolvedValue(false);
+		engineState.hasLoadedModel.mockReturnValue(true);
+
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(registrations, modelType);
+
+		await expect(
+			handler(runtime, {
+				messages: [{ role: "user", content: "hello" }],
+			}),
+		).rejects.toMatchObject({
+			code: "LOCAL_INFERENCE_UNAVAILABLE",
+			modelType: slot,
+			reason: "backend_unavailable",
+		});
+	});
+
 	it("routes image description through the Eliza-1 vision arbiter", async () => {
 		const { registrations, runtime } = makeRuntime();
 
