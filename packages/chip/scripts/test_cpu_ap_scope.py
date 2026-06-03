@@ -54,25 +54,25 @@ def test_false_claim_flags_drift_fails() -> None:
 
 def test_completion_claim_flip_fails() -> None:
     report = check_cpu_ap_scope.build_report()
-    report["summary"]["completion_claimed"] = False
+    report["summary"]["completion_claimed"] = True
     expect_error(report, "completion_claimed")
-    print("PASS generated AP completion-claim removal rejected")
+    print("PASS generated AP completion-claim flip rejected")
 
 
 def test_missing_transcript_blocker_removal_fails() -> None:
     report = check_cpu_ap_scope.build_report()
     mutated = copy.deepcopy(report)
-    mutated["summary"]["missing_transcript_count"] = 1
+    mutated["summary"]["missing_transcript_count"] = 0
     expect_error(mutated, "missing_transcript_count")
     print("PASS missing-transcript regression rejected")
 
 
-def test_pass_report_has_no_structured_findings() -> None:
+def test_blocked_report_has_structured_findings() -> None:
     report = check_cpu_ap_scope.build_report()
     findings = report.get("findings", [])
-    if findings:
-        raise AssertionError(f"passing CPU/AP scope report should not expose blockers: {findings}")
-    print("PASS passing CPU/AP scope report has no structured blockers")
+    if not findings:
+        raise AssertionError("blocked CPU/AP scope report should expose transcript blockers")
+    print("PASS blocked CPU/AP scope report exposes structured blockers")
 
 
 def test_failed_structural_check_fails() -> None:
@@ -108,7 +108,7 @@ def main() -> None:
     test_false_claim_flags_drift_fails()
     test_completion_claim_flip_fails()
     test_missing_transcript_blocker_removal_fails()
-    test_pass_report_has_no_structured_findings()
+    test_blocked_report_has_structured_findings()
     test_failed_structural_check_fails()
     test_legacy_alias_source_order_is_checked()
     test_scaffold_removal_fails()
