@@ -33,14 +33,14 @@ export const VIEWPORT_SIZES: Record<
 };
 
 const READY_CHECKS_BY_PATH: Record<string, readonly ReadyCheck[]> = {
-  "/chat": [
-    { selector: '[data-testid="conversations-sidebar"]' },
-    { selector: '[data-testid="chat-composer-textarea"]' },
-  ],
+  "/chat": [{ selector: '[data-testid="chat-composer-textarea"]' }],
   "/connectors": [{ selector: "#root" }],
-  "/apps": [{ selector: '[data-testid="apps-shell"]' }],
+  "/apps": [{ text: "Views" }],
   "/views": [{ text: "Views" }],
-  "/apps/lifeops": [{ selector: '[data-testid="lifeops-shell"]' }],
+  "/apps/lifeops": [
+    { text: "LifeOps" },
+    { selector: '[data-testid="lifeops-nav-rail"]' },
+  ],
   "/apps/plugins": [{ text: "Browser Workspace" }, { text: "AI Providers" }],
   "/apps/skills": [{ selector: '[data-testid="skills-shell"]' }],
   "/apps/fine-tuning": [{ selector: '[data-testid="fine-tuning-view"]' }],
