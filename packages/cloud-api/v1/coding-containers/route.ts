@@ -185,6 +185,35 @@ async function createCodingContainer(
   // enqueueAgentProvisionOnce, so duplicate job creation is safe.
   // TODO: add a unique index on (organization_id, docker_image) filtered to
   // status IN ('pending','running') for a fully race-free guard.
+  const existingSandboxes = await elizaSandboxService.listAgents(
+    user.organization_id,
+  );
+  const ACTIVE_STATUSES = new Set([
+    "pending",
+    "provisioning",
+    "running",
+  ] as const);
+  const existing = existingSandboxes.find(
+    (s) =>
+      s.docker_image === payload.image &&
+      ACTIVE_STATUSES.has(s.status as "pending" | "provisioning" | "running"),
+  );
+  if (existing) {
+    logger.info("[CodingContainers API] returning existing active sandbox (idempotency)", {
+      orgId: user.organization_id,
+      sandboxId: existing.id,
+      status: existing.status,
+      image: payload.image,
+    });
+    return c.json(
+      {
+        success: true,
+        data: buildSessionFromSandbox(request, payload, existing),
+        idempotent: true,
+      },
+      200,
+    );
+  }
 
   // ── Create the sandbox row carrying the custom image + coding env vars ──
   const sandbox = await elizaSandboxService.createAgent({
