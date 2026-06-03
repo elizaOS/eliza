@@ -362,30 +362,30 @@ function splitTweetContent(content: string, maxLength: number): string[] {
 }
 
 /**
- * Extracts URLs from a given paragraph and replaces them with placeholders.
+ * Extracts URLs from a given paragraph and replaces them with fixed-width sentinels.
  *
  * @param {string} paragraph - The paragraph containing URLs that need to be replaced
- * @returns {Object} An object containing the updated text with placeholders and a map of placeholders to original URLs
+ * @returns {Object} An object containing the updated text with sentinels and a map of sentinels to original URLs
  */
 function extractUrls(paragraph: string): {
-  textWithPlaceholders: string;
-  placeholderMap: Map<string, string>;
+  textWithUrlSentinels: string;
+  urlSentinelMap: Map<string, string>;
 } {
-  // replace https urls with placeholder
+  // Replace HTTPS URLs with fixed-width sentinels for chunk sizing.
   const urlRegex = /https?:\/\/[^\s]+/g;
-  const placeholderMap = new Map<string, string>();
+  const urlSentinelMap = new Map<string, string>();
 
   let urlIndex = 0;
-  const textWithPlaceholders = paragraph.replace(urlRegex, (match) => {
+  const textWithUrlSentinels = paragraph.replace(urlRegex, (match) => {
     // twitter url would be considered as 23 characters
     // <<URL_CONSIDERER_23_1>> is also 23 characters
-    const placeholder = `<<URL_CONSIDERER_23_${urlIndex}>>`; // Placeholder without . ? ! etc
-    placeholderMap.set(placeholder, match);
+    const sentinel = `<<URL_CONSIDERER_23_${urlIndex}>>`; // Sentinel without . ? ! etc
+    urlSentinelMap.set(sentinel, match);
     urlIndex++;
-    return placeholder;
+    return sentinel;
   });
 
-  return { textWithPlaceholders, placeholderMap };
+  return { textWithUrlSentinels, urlSentinelMap };
 }
 
 /**
@@ -483,21 +483,21 @@ function _deduplicateMentions(paragraph: string) {
 }
 
 /**
- * Restores the original URLs in the chunks by replacing placeholder URLs.
+ * Restores the original URLs in the chunks by replacing URL sentinels.
  *
- * @param {string[]} chunks - Array of strings representing chunks of text containing placeholder URLs.
- * @param {Map<string, string>} placeholderMap - Map with placeholder URLs as keys and original URLs as values.
+ * @param {string[]} chunks - Array of strings representing chunks of text containing URL sentinels.
+ * @param {Map<string, string>} urlSentinelMap - Map with URL sentinels as keys and original URLs as values.
  * @returns {string[]} - Array of strings with original URLs restored in each chunk.
  */
 function restoreUrls(
   chunks: string[],
-  placeholderMap: Map<string, string>,
+  urlSentinelMap: Map<string, string>,
 ): string[] {
   return chunks.map((chunk) => {
     // Replace all <<URL_CONSIDERER_23_>> in chunk back to original URLs using regex
     return chunk.replace(/<<URL_CONSIDERER_23_(\d+)>>/g, (match) => {
-      const original = placeholderMap.get(match);
-      return original || match; // Return placeholder if not found (theoretically won't happen)
+      const original = urlSentinelMap.get(match);
+      return original || match; // Return sentinel if not found (theoretically won't happen)
     });
   });
 }
@@ -510,17 +510,17 @@ function restoreUrls(
  * @returns {string[]} An array of strings representing the splitted chunks of text.
  */
 function splitParagraph(paragraph: string, maxLength: number): string[] {
-  // 1) Extract URLs and replace with placeholders
-  const { textWithPlaceholders, placeholderMap } = extractUrls(paragraph);
+  // 1) Extract URLs and replace with fixed-width sentinels.
+  const { textWithUrlSentinels, urlSentinelMap } = extractUrls(paragraph);
 
   // 2) Use first section's logic to split by sentences first, then do secondary split
   const splittedChunks = splitSentencesAndWords(
-    textWithPlaceholders,
+    textWithUrlSentinels,
     maxLength,
   );
 
-  // 3) Replace placeholders back to original URLs
-  const restoredChunks = restoreUrls(splittedChunks, placeholderMap);
+  // 3) Replace sentinels back to original URLs
+  const restoredChunks = restoreUrls(splittedChunks, urlSentinelMap);
 
   return restoredChunks;
 }

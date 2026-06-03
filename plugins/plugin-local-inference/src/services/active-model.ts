@@ -210,8 +210,8 @@ export interface LocalInferenceLoader {
 	 * Optional generation surface. When a loader implements this, the runtime
 	 * handler (`ensure-local-inference-handler.ts`) routes TEXT_SMALL /
 	 * TEXT_LARGE requests through it instead of the standalone engine. Mobile
-	 * builds populate this via the Capacitor adapter; desktop leaves it
-	 * unimplemented and falls back to the `LocalInferenceEngine`.
+	 * builds populate this via the Capacitor adapter; desktop omits it and falls
+	 * back to the `LocalInferenceEngine`.
 	 */
 	generate?(args: {
 		prompt: string;

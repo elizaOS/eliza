@@ -4,6 +4,10 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { BirdeyeClient, DexscreenerClient } from "../clients.ts";
 import type { TokenAPIData } from "../types.ts";
 import { SupportedChain } from "../types.ts";
+import {
+	type HistoricalPriceData,
+	HistoricalPriceService,
+} from "./historicalPriceService.ts";
 
 export interface TradingCall {
 	callId: string;
@@ -63,10 +67,12 @@ export interface TrustScore {
 export class PriceEnrichmentService {
 	private birdeyeClient: BirdeyeClient;
 	private dexscreenerClient: DexscreenerClient;
+	private historicalPriceService: HistoricalPriceService;
 
 	constructor(runtime: IAgentRuntime) {
 		this.birdeyeClient = BirdeyeClient.createFromRuntime(runtime);
 		this.dexscreenerClient = DexscreenerClient.createFromRuntime(runtime);
+		this.historicalPriceService = new HistoricalPriceService(runtime);
 	}
 
 	/**
@@ -130,8 +136,6 @@ export class PriceEnrichmentService {
 
 			// If we have a token mention, try to resolve it
 			if (call.tokenMentioned) {
-				// For now, we'll need a mapping service or search functionality
-				// This is a simplified implementation
 				const resolved = await this.searchTokenBySymbol(
 					call.tokenMentioned,
 					this.chainStringToEnum(call.chain),
@@ -162,22 +166,51 @@ export class PriceEnrichmentService {
 		worstPriceTimestamp: number;
 	} | null> {
 		try {
-			// Get current price as baseline (this is a limitation - we'd need historical API)
-			const currentPrice = await this.getCurrentPrice(tokenAddress, chain);
-			if (!currentPrice) return null;
+			const windowEnd = callTimestamp + windowDays * 24 * 60 * 60 * 1000;
+			const historicalData =
+				chain === SupportedChain.SOLANA
+					? await this.historicalPriceService.fetchBirdeyeHistoricalPrices(
+							tokenAddress,
+							callTimestamp,
+							windowEnd,
+						)
+					: await this.historicalPriceService.fetchDexscreenerHistoricalPrices(
+							tokenAddress,
+							chain,
+							callTimestamp,
+							windowEnd,
+						);
 
-			// For now, simulate price windows based on current price
-			// In a real implementation, you'd use historical price APIs
-			const priceVariation = this.simulatePriceWindow(currentPrice, windowDays);
+			if (!historicalData) return null;
+
+			const calledPrice =
+				this.historicalPriceService.getPriceAtTimestamp(
+					historicalData,
+					callTimestamp,
+				) ??
+				historicalData.firstPrice ??
+				historicalData.lastPrice;
+			const bestPrice = this.historicalPriceService.getMaxPriceInWindow(
+				historicalData,
+				callTimestamp,
+				windowEnd,
+			);
+			const worstPrice = this.getMinPriceInWindow(
+				historicalData,
+				callTimestamp,
+				windowEnd,
+			);
+
+			if (calledPrice === undefined || !bestPrice || !worstPrice) {
+				return null;
+			}
 
 			return {
-				calledPrice: currentPrice,
-				bestPrice: priceVariation.maxPrice,
-				bestPriceTimestamp:
-					callTimestamp + priceVariation.maxPriceDay * 24 * 60 * 60 * 1000,
-				worstPrice: priceVariation.minPrice,
-				worstPriceTimestamp:
-					callTimestamp + priceVariation.minPriceDay * 24 * 60 * 60 * 1000,
+				calledPrice,
+				bestPrice: bestPrice.price,
+				bestPriceTimestamp: bestPrice.timestamp,
+				worstPrice: worstPrice.price,
+				worstPriceTimestamp: worstPrice.timestamp,
 			};
 		} catch (error) {
 			console.error(`Error getting price data for ${tokenAddress}:`, error);
@@ -534,59 +567,43 @@ export class PriceEnrichmentService {
 		}
 	}
 
-	private async getCurrentPrice(
-		address: string,
-		chain: SupportedChain,
-	): Promise<number | null> {
-		try {
-			if (chain === SupportedChain.SOLANA) {
-				return await this.birdeyeClient.fetchPrice(address);
+	private getMinPriceInWindow(
+		historicalData: HistoricalPriceData,
+		fromTimestamp: number,
+		toTimestamp: number,
+	): { price: number; timestamp: number } | null {
+		const pricesInWindow = historicalData.priceHistory.filter(
+			(point) =>
+				point.timestamp >= fromTimestamp && point.timestamp <= toTimestamp,
+		);
+
+		if (pricesInWindow.length === 0) {
+			const priceAtStart = this.historicalPriceService.getPriceAtTimestamp(
+				historicalData,
+				fromTimestamp,
+			);
+			const priceAtEnd = this.historicalPriceService.getPriceAtTimestamp(
+				historicalData,
+				toTimestamp,
+			);
+
+			if (priceAtStart !== null && priceAtEnd !== null) {
+				return priceAtStart <= priceAtEnd
+					? { price: priceAtStart, timestamp: fromTimestamp }
+					: { price: priceAtEnd, timestamp: toTimestamp };
 			}
 
-			const dexData =
-				await this.dexscreenerClient.searchForHighestLiquidityPair(address);
-			return dexData ? parseFloat(dexData.priceUsd) : null;
-		} catch (error) {
-			console.error(`Error getting current price for ${address}:`, error);
 			return null;
 		}
-	}
 
-	private simulatePriceWindow(
-		basePrice: number,
-		windowDays: number,
-	): {
-		maxPrice: number;
-		maxPriceDay: number;
-		minPrice: number;
-		minPriceDay: number;
-	} {
-		// This is a simulation - in reality you'd use historical price data
-		// Generate some realistic price movement
-		const volatility = 0.05; // 5% daily volatility base
-		const prices: { price: number; day: number }[] = [];
-
-		let currentPrice = basePrice;
-		for (let day = 0; day < windowDays; day++) {
-			// Random walk with some drift
-			const change = (Math.random() - 0.5) * volatility * 2;
-			currentPrice *= 1 + change;
-			prices.push({ price: currentPrice, day });
+		let minPrice = pricesInWindow[0];
+		for (const point of pricesInWindow) {
+			if (point.price < minPrice.price) {
+				minPrice = point;
+			}
 		}
 
-		const maxEntry = prices.reduce((max, current) =>
-			current.price > max.price ? current : max,
-		);
-		const minEntry = prices.reduce((min, current) =>
-			current.price < min.price ? current : min,
-		);
-
-		return {
-			maxPrice: maxEntry.price,
-			maxPriceDay: maxEntry.day,
-			minPrice: minEntry.price,
-			minPriceDay: minEntry.day,
-		};
+		return { price: minPrice.price, timestamp: minPrice.timestamp };
 	}
 
 	private calculateConvictionAccuracy(calls: EnrichedTradingCall[]): number {

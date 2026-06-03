@@ -1,9 +1,7 @@
-import {
-  type ActionNotice,
-  LoadingScreen,
-  type Tab,
-  useRenderGuard,
-} from "@elizaos/ui";
+import { LoadingScreen } from "@elizaos/ui/components";
+import { useRenderGuard } from "@elizaos/ui/hooks";
+import type { Tab } from "@elizaos/ui/navigation";
+import type { ActionNotice } from "@elizaos/ui/state";
 import { memo, useEffect, useState } from "react";
 import { getVrmCount, getVrmUrl, VRM_COUNT } from "../../vrm-assets";
 import { prefetchVrmToCache } from "../avatar/VrmEngine";

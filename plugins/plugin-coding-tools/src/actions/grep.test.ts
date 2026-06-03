@@ -49,14 +49,14 @@ async function buildRuntime(
     CODING_TOOLS_BLOCKED_PATHS: blockedPath,
     ...settings,
   };
-  const stub = {
+  const runtimeSeed = {
     getSetting: (key: string) => mergedSettings[key],
     getService: <T>(_type: string): T | null => null,
   } as IAgentRuntime;
 
-  const sandbox = await SandboxService.start(stub);
-  const session = await SessionCwdService.start(stub);
-  const rg = await RipgrepService.start(stub);
+  const sandbox = await SandboxService.start(runtimeSeed);
+  const session = await SessionCwdService.start(runtimeSeed);
+  const rg = await RipgrepService.start(runtimeSeed);
 
   // The bundled @vscode/ripgrep binary may be absent in dev installs; fall back
   // to a system rg if so. If neither works, skip the test.

@@ -608,6 +608,17 @@ platform no-ops are separated from actionable runtime gaps.
 - Remaining scan hit is the Tailwind `placeholder:` utility in
   `src/frontend/ui/input.tsx`.
 
+### plugins/plugin-steward-app
+
+- Reworded the wallet core route's disabled auto-provisioning hook so it
+  describes the explicit wallet-generate path without a stub marker.
+- Verified with:
+  - `bunx biome check plugins/plugin-steward-app/src/routes/wallet-core-routes.ts`
+  - marker scan and `git diff --check` on the touched Steward App file
+- Remaining scan hits are UI input `placeholder` props/classes and the
+  intentional sentinel regex that rejects env values such as `PLACEHOLDER` or
+  `TODO`.
+
 ### plugins/plugin-training
 
 - Replaced the generic training-orchestrator baseline fallback in

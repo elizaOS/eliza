@@ -503,28 +503,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async ensureEmbeddingDimension(dimension: number) {
     return this.withDatabase(async () => {
-      const existingMemory = await this.db
-        .select()
-        .from(memoryTable)
-        .innerJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
-        .where(eq(memoryTable.agentId, this.agentId))
-        .limit(1);
-
-      if (existingMemory.length > 0) {
-        // The join result includes both memoryTable and embeddingTable columns
-        // Access embedding columns directly from the joined result
-        interface JoinedMemoryResult {
-          memories: typeof memoryTable.$inferSelect;
-          embeddings: typeof embeddingTable.$inferSelect;
-        }
-        const joinedResult = existingMemory[0] as JoinedMemoryResult;
-        Object.entries(DIMENSION_MAP).find(([_, colName]) => {
-          const embeddingCol = colName as keyof typeof embeddingTable.$inferSelect;
-          return joinedResult.embeddings[embeddingCol] !== null;
-        });
-        // We don't actually need to use usedDimension for now, but it's good to know it's there.
-      }
-
       const resolvedDimension = DIMENSION_MAP[dimension as keyof typeof DIMENSION_MAP];
       if (!resolvedDimension) {
         logger.warn(
@@ -2370,7 +2348,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
     }
 
-    // Ensure we always pass a JSON string to the SQL placeholder – if we pass an
+    // Ensure we always pass a JSON string to the SQL bind parameter; if we pass an
     // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
     const contentToInsert =
       typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);

@@ -59,7 +59,7 @@ const READY_CHECKS_BY_PATH: Record<string, readonly ReadyCheck[]> = {
   "/character/documents": [{ selector: '[data-testid="documents-view"]' }],
   "/wallet": [{ selector: '[data-testid="wallet-shell"]' }],
   "/browser": [{ selector: '[data-testid="browser-workspace-address-input"]' }],
-  "/stream": [{ selector: "#root" }],
+  "/stream": [{ text: "Stream Ready" }],
   "/automations": [{ selector: '[data-testid="automations-shell"]' }],
   "/settings": [{ selector: '[data-testid="settings-shell"]' }],
   "/settings/voice": [{ selector: '[data-testid="settings-shell"]' }],

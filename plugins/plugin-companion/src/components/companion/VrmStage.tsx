@@ -1,13 +1,15 @@
+import type { TranslateFn } from "@elizaos/ui/components/pages/config-page-sections";
 import {
   APP_EMOTE_EVENT,
   type AppEmoteEventDetail,
-  type CompanionHalfFramerateMode,
-  type CompanionVrmPowerMode,
-  resolveAppAssetUrl,
   STOP_EMOTE_EVENT,
-  type TranslateFn,
-  useRenderGuard,
-} from "@elizaos/ui";
+} from "@elizaos/ui/events";
+import { useRenderGuard } from "@elizaos/ui/hooks";
+import type {
+  CompanionHalfFramerateMode,
+  CompanionVrmPowerMode,
+} from "@elizaos/ui/state";
+import { resolveAppAssetUrl } from "@elizaos/ui/utils";
 import {
   memo,
   type ReactElement,

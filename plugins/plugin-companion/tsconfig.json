@@ -28,6 +28,25 @@
       "@elizaos/plugin-steward-app": ["../plugin-steward-app/src/index.ts"],
       "@elizaos/plugin-wallet-ui": ["../plugin-wallet-ui/src/index.ts"],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
+      "@elizaos/agent": ["../../packages/agent/dist/index.d.ts"],
+      "@elizaos/agent/*": [
+        "../../packages/agent/src/*.d.ts",
+        "../../packages/agent/src/*.ts"
+      ],
+      "@elizaos/plugin-registry": [
+        "../plugin-registry/src/index.d.ts"
+      ],
+      "@elizaos/plugin-registry/*": [
+        "../plugin-registry/src/*.d.ts",
+        "../plugin-registry/src/*.ts"
+      ],
+      "@elizaos/plugin-elizacloud": [
+        "../plugin-elizacloud/src/index.node.d.ts"
+      ],
+      "@elizaos/plugin-elizacloud/*": [
+        "../plugin-elizacloud/src/*.d.ts",
+        "../plugin-elizacloud/src/*.ts"
+      ],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/ui/api/client-types-cloud": [

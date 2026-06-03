@@ -437,6 +437,27 @@
       ],
       "outputs": []
     },
+    "@elizaos/plugin-host-shim-android#typecheck": {
+      "dependsOn": [
+        "@elizaos/plugin-host-shim#build",
+        "@elizaos/plugin-remote-manifest#build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/plugin-host-shim-electrobun#typecheck": {
+      "dependsOn": [
+        "@elizaos/plugin-host-shim#build",
+        "@elizaos/plugin-remote-manifest#build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/plugin-host-shim-ios#typecheck": {
+      "dependsOn": [
+        "@elizaos/plugin-host-shim#build",
+        "@elizaos/plugin-remote-manifest#build"
+      ],
+      "outputs": []
+    },
     "@elizaos/example-farcaster#build": {
       "dependsOn": [
         "@elizaos/core#build",

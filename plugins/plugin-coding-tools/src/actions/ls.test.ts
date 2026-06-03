@@ -80,13 +80,13 @@ async function buildRuntime(
   const settings: Record<string, unknown> = {
     CODING_TOOLS_BLOCKED_PATHS: blockedPath,
   };
-  const stub = {
+  const runtimeSeed = {
     getSetting: (key: string) => settings[key],
     getService: <T>(): T | null => null,
   } as IAgentRuntime;
 
-  const sandbox = await SandboxService.start(stub);
-  const session = await SessionCwdService.start(stub);
+  const sandbox = await SandboxService.start(runtimeSeed);
+  const session = await SessionCwdService.start(runtimeSeed);
   session.setCwd("test-room", tmpRoot);
 
   const runtime = {

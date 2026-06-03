@@ -1,8 +1,9 @@
 import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
-} from "@elizaos/ui";
-import { EmptyWidgetState, useApp, WidgetSection } from "@elizaos/ui";
+} from "@elizaos/ui/components";
+import { EmptyWidgetState, WidgetSection } from "@elizaos/ui/components";
+import { useApp } from "@elizaos/ui/state";
 import { Check, Copy, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {

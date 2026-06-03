@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VerificationRoomBridgeService } from "../verification-room-bridge.ts";
 
 /**
- * Minimal SwarmCoordinator-shaped stub. Only `subscribe` is exercised
+ * Minimal SwarmCoordinator-shaped test double. Only `subscribe` is exercised
  * by the bridge.
  */
 function makeCoordinator() {
@@ -25,7 +25,7 @@ function makeRuntime(initialServices: Record<string, unknown>) {
 	return {
 		runtime: {
 			getService: vi.fn((name: string) => services[name] ?? null),
-			createMemory: vi.fn(async () => ({ id: "mem-stub" })),
+			createMemory: vi.fn(async () => ({ id: "mem-test" })),
 			agentId: "agent-1",
 			logger: {
 				debug: vi.fn(),

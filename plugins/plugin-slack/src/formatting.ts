@@ -82,18 +82,15 @@ export function escapeSlackMrkdwn(text: string): string {
     .join("\n");
 }
 
-// Placeholder used during conversion to prevent bold from being matched as italic
-const BOLD_PLACEHOLDER = "\u0000BOLD\u0000";
+// Sentinel used during conversion to prevent bold from being matched as italic.
+const BOLD_SENTINEL = "\u0000BOLD\u0000";
 
 /**
  * Converts markdown bold to Slack mrkdwn
- * Uses placeholder to prevent bold from being matched by italic converter
+ * Uses a sentinel to prevent bold from being matched by italic converter
  */
 function convertBold(text: string): string {
-  return text.replace(
-    /\*\*(.+?)\*\*/g,
-    `${BOLD_PLACEHOLDER}$1${BOLD_PLACEHOLDER}`,
-  );
+  return text.replace(/\*\*(.+?)\*\*/g, `${BOLD_SENTINEL}$1${BOLD_SENTINEL}`);
 }
 
 /**
@@ -101,12 +98,12 @@ function convertBold(text: string): string {
  */
 function convertItalic(text: string): string {
   // Markdown uses single * for italic, Slack uses _
-  // Then restore bold placeholders to actual asterisks
+  // Then restore bold sentinels to actual asterisks
   const converted = text.replace(
     /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g,
     "_$1_",
   );
-  return converted.replace(new RegExp(BOLD_PLACEHOLDER, "g"), "*");
+  return converted.replace(new RegExp(BOLD_SENTINEL, "g"), "*");
 }
 
 /**
@@ -144,12 +141,12 @@ function convertLinks(text: string): string {
 
 /**
  * Converts markdown headings to Slack mrkdwn (bold text)
- * Uses placeholder to prevent headings from being matched by italic converter
+ * Uses a sentinel to prevent headings from being matched by italic converter
  */
 function convertHeadings(text: string): string {
   return text.replace(
     /^#{1,6}\s+(.+)$/gm,
-    `${BOLD_PLACEHOLDER}$1${BOLD_PLACEHOLDER}`,
+    `${BOLD_SENTINEL}$1${BOLD_SENTINEL}`,
   );
 }
 

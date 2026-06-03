@@ -62,13 +62,13 @@ type RuntimeMemoryService = {
   } | null>;
 };
 
-class StubEntityResolutionService extends Service {
+class TestEntityResolutionService extends Service {
   static serviceType = "entity_resolution" as const;
   static links = new Map<UUID, UUID[]>();
-  capabilityDescription = "Stub entity-resolution service for advanced-memory tests";
+  capabilityDescription = "Entity-resolution test service for advanced-memory tests";
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
-    const service = new StubEntityResolutionService(runtime);
+    const service = new TestEntityResolutionService(runtime);
     await service.initialize(runtime);
     return service;
   }
@@ -82,7 +82,7 @@ class StubEntityResolutionService extends Service {
   async getConfirmedLinks(
     entityId: UUID
   ): Promise<Array<{ entityA: UUID; entityB: UUID; status: "confirmed" }>> {
-    return (StubEntityResolutionService.links.get(entityId) ?? []).map((other) => ({
+    return (TestEntityResolutionService.links.get(entityId) ?? []).map((other) => ({
       entityA: entityId,
       entityB: other,
       status: "confirmed" as const,
@@ -177,7 +177,7 @@ describe("plugin-sql advanced memory storage", () => {
   const runtimes: AgentRuntime[] = [];
 
   afterEach(async () => {
-    StubEntityResolutionService.links.clear();
+    TestEntityResolutionService.links.clear();
     await Promise.all(
       runtimes.splice(0).map(async (runtime) => {
         await runtime.stop();
@@ -205,7 +205,7 @@ describe("plugin-sql advanced memory storage", () => {
   });
 
   it("stores long-term memories in SQL and retrieves them across confirmed identity links", async () => {
-    const runtime = createRuntime([StubEntityResolutionService]);
+    const runtime = createRuntime([TestEntityResolutionService]);
     runtimes.push(runtime);
 
     const adapter = await createMigratedAdapter(runtime.agentId);
@@ -216,8 +216,8 @@ describe("plugin-sql advanced memory storage", () => {
     const entityB = uuidv4() as UUID;
     await createEntities(runtime, [entityA, entityB]);
 
-    StubEntityResolutionService.links.set(entityA, [entityB]);
-    StubEntityResolutionService.links.set(entityB, [entityA]);
+    TestEntityResolutionService.links.set(entityA, [entityB]);
+    TestEntityResolutionService.links.set(entityB, [entityA]);
 
     const memoryService = (await runtime.getServiceLoadPromise(
       "memory"

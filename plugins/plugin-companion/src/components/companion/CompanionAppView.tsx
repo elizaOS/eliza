@@ -2,12 +2,11 @@
 // browser entry, so the previous lazy() was eagerly merged back into the
 // main chunk. Drop the wrapper to silence the dynamic↔static collision
 // warning and remove the unnecessary Suspense boundary overhead.
-import {
-  CharacterEditor,
-  type OverlayAppContext,
-  useApp,
-  useRenderGuard,
-} from "@elizaos/ui";
+
+import { CharacterEditor } from "@elizaos/ui/components";
+import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
+import { useRenderGuard } from "@elizaos/ui/hooks";
+import { useApp } from "@elizaos/ui/state";
 import { memo, Suspense, useCallback, useMemo, useState } from "react";
 import { CompanionHeader, type CompanionShellView } from "./CompanionHeader";
 import { CompanionSceneHost } from "./CompanionSceneHost";

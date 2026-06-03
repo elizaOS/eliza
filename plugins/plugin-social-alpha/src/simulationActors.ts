@@ -171,7 +171,7 @@ function actorRecordsFromDiscordData(data: unknown): DiscordActorRecord[] {
 	return [];
 }
 
-// Placeholder strategies for benchmark tests
+// Deterministic strategy fixtures for benchmark tests
 export const goodActorStrategy: CallGenerationStrategy = (
 	_actor,
 	token,

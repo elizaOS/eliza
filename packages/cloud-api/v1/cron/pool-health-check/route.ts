@@ -1,13 +1,13 @@
 import { Hono } from "hono";
 import { verifyCronSecret } from "@/lib/auth/cron";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
-import { forwardCronToContainerControlPlane } from "../../_container-control-plane-forward";
+import { cronSupersededByDaemon } from "../../_container-control-plane-forward";
 
 /** Warm pool health-check cron. Probes each pool entry; reaps dead/stuck rows. */
 async function handle(c: AppContext, env?: AppEnv["Bindings"]) {
   const authError = verifyCronSecret(c.req.raw, "[Pool Health Check]", env);
   if (authError) return authError;
-  return forwardCronToContainerControlPlane(c);
+  return cronSupersededByDaemon(c, "processNodeHealthCheckCycle");
 }
 
 const __hono_app = new Hono<AppEnv>();

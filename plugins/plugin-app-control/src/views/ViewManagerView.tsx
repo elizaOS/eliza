@@ -91,7 +91,7 @@ function ViewCard({
 					background: viewManagerTheme.surfaceMuted,
 				}}
 				onError={(e) => {
-					// Hide broken image — the placeholder SVG served by the agent
+					// Hide broken image; the fallback SVG served by the agent
 					// renders via the src anyway; this guard handles network errors.
 					(e.target as HTMLImageElement).style.display = "none";
 				}}
