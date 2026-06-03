@@ -25,6 +25,9 @@
       "@elizaos/plugin-device-settings/register": [
         "../../plugins/plugin-device-settings/src/register.ts"
       ],
+      "@elizaos/plugin-vector-browser/register": [
+        "../../plugins/plugin-vector-browser/src/register.ts"
+      ],
       "@elizaos/plugin-phone": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/plugin-shopify-ui": [
         "../../plugins/plugin-shopify-ui/dist/index.d.ts"
