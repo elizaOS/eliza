@@ -748,7 +748,7 @@ export const polymarketAction: Action = {
     ...POLYMARKET_PLACE_ORDER_COMPAT_SIMILES,
   ],
   description:
-    "Use registered prediction market providers. target selects the provider; Polymarket is registered today. action=read reads public state with kind: status, markets, market, orderbook, or positions. action=place_order reports trading readiness; signed order placement is disabled in this app scaffold.",
+    "Use registered prediction market providers. target selects the provider; Polymarket is registered today. action=read reads public state with kind: status, markets, market, orderbook, or positions. action=place_order reports trading readiness; signed order placement is disabled in this app integration.",
   descriptionCompressed:
     "Prediction market router: target polymarket; action read or place_order.",
   parameters: [

@@ -458,6 +458,14 @@
       ],
       "outputs": []
     },
+    "@elizaos/plugin-local-inference#typecheck": {
+      "dependsOn": [
+        "@elizaos/agent#build",
+        "@elizaos/plugin-task-coordinator#build",
+        "^build"
+      ],
+      "outputs": []
+    },
     "@elizaos/example-farcaster#build": {
       "dependsOn": [
         "@elizaos/core#build",

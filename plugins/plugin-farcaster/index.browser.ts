@@ -13,14 +13,14 @@ export type {
 } from "./types";
 
 /**
- * Browser-safe stub.
+ * Browser-safe export boundary.
  *
  * The full Farcaster integration depends on server-side credentials and the Neynar SDK.
  * In browsers, import should succeed, but usage should be disabled (use a server proxy).
  */
 export const farcasterPlugin: Plugin = {
   name: "farcaster",
-  description: "Farcaster client plugin (browser: stub, use a server proxy)",
+  description: "Farcaster client plugin (browser: use a server proxy)",
   async init(_config, _runtime: IAgentRuntime): Promise<void> {
     logger.warn(
       "[plugin-farcaster] This plugin is not supported directly in browsers. Use a server proxy."

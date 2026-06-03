@@ -14,11 +14,11 @@
  *   - **gn reminder** — fires at 22:00 local daily; low priority.
  *   - **daily check-in** — `kind: "checkin"`, `priority: "medium"`, fires
  *     at 09:00 local; `completionCheck.kind = "user_replied_within"`.
- *   - **morning brief stub** — `kind: "watcher"` triggered on the
+ *   - **morning brief opt-in watcher** — `kind: "watcher"` triggered on the
  *     `wake.confirmed` anchor; `priority: "medium"`. The actual brief
- *     assembler lives in the morning-brief default pack — this entry is the
- *     shim that signals "the user opted into a morning brief" so the morning
- *     brief pack does not double-schedule.
+ *     assembler lives in the morning-brief default pack — this entry signals
+ *     "the user opted into a morning brief" so the morning brief pack does not
+ *     double-schedule.
  *
  * This module emits the spec; the action calls `ScheduledTaskRunner.schedule`
  * for each entry. When the runner is not wired in (e.g. during integration

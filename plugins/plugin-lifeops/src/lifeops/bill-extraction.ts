@@ -4,9 +4,8 @@
  *
  *   1. Regex pass first — covers the typical "Your $X is due on Y" /
  *      "USD 123.45" / sender-display-name patterns most receipts use.
- *   2. LLM fallback when the regex pass is incomplete (no amount, or no
- *      merchant identified). Same configurable model setting and cache as
- *      the email-classifier.
+ *   2. LLM fallback when the regex pass lacks an amount or merchant. Uses the
+ *      same configurable model setting and cache as the email-classifier.
  *
  * Returns null when the merged confidence is below 0.5 — Money should not
  * accumulate junk rows pretending to be bills.

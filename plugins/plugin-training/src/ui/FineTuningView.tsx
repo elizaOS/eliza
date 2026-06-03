@@ -3207,7 +3207,7 @@ export function FineTuningView({
                                               ? "model-backed"
                                               : comparison.useMocks
                                                 ? "mocked"
-                                                : "incomplete"
+                                                : "unverified"
                                         }`,
                                     )
                                     .join(" ")}`

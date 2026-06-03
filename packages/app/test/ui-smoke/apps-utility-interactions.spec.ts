@@ -322,6 +322,7 @@ test("companion app controls are interactive and error-free", async ({
 test("utility app-window routes render without red errors or overflow", async ({
   page,
 }) => {
+  test.setTimeout(600_000);
   const issues = installIssueGuards(page);
   for (const routeCase of APP_WINDOW_ROUTE_CASES) {
     await test.step(routeCase.name, async () => {

@@ -7,7 +7,7 @@
  *   3. Tool name renames                 (tool-rename.ts)
  *   6. Property name renames             (property-rename.ts)
  *   4. System prompt template strip      (system-prompt.ts)
- *   5. Tool description strip + stubs    (cc-tool-stubs.ts)
+ *   5. Tool description strip + synthetic CC tools (cc-tool-stubs.ts)
  *   1. Billing fingerprint injection     (billing-fingerprint.ts)
  *   metadata injection (device_id + session_id)
  *   8. Strip trailing assistant prefill
@@ -109,7 +109,7 @@ export function processBody(
     systemConfigStripped = r.stripped;
   }
 
-  // Layer 5: Tool description stripping + Layer 5b: CC stubs
+  // Layer 5: Tool description stripping + Layer 5b: synthetic CC tools
   const toolResult = processToolsSection(
     m,
     config.stripToolDescriptions !== false,

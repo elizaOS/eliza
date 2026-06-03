@@ -60,7 +60,7 @@ The plugin registers these HTTP routes on the agent's API server:
 
 Public reads (markets, orderbook, positions) require no credentials.
 
-Signed CLOB trading is not yet implemented. When credentials are present the status endpoint reports them as ready; the `place_order` action still returns a readiness report only.
+Signed CLOB trading is disabled in this app integration. When credentials are present the status endpoint reports readiness; the `place_order` action still returns a readiness report only.
 
 | Variable | Alias | Purpose |
 |----------|-------|---------|

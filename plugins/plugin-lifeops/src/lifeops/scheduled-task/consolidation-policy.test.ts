@@ -120,11 +120,11 @@ describe("AnchorRegistry", () => {
     ).toThrow(/duplicate/);
   });
 
-  it("allows override when explicitly opted in (real anchor replaces stub)", () => {
+  it("allows override when explicitly opted in (richer anchor replaces fallback)", () => {
     const reg = createAnchorRegistry();
     reg.register({
       anchorKey: "wake.confirmed",
-      describe: { label: "stub", provider: "tests" },
+      describe: { label: "fallback", provider: "tests" },
       resolve: () => ({ atIso: "2026-05-09T07:00:00.000Z" }),
     });
     reg.register(

@@ -1152,7 +1152,7 @@ test.describe("Android communications app interactions", () => {
     await expect(
       page.getByRole("heading", { name: "Pair with Eliza" }),
     ).toBeVisible();
-    await page.getByLabel("Or enter code").fill("123456");
+    await page.getByLabel("Or paste payload").fill("123456");
     await page.getByRole("button", { name: "Pair device" }).click();
     await expect(
       page.getByText("Manual code requires the pairing handshake"),

@@ -10,7 +10,7 @@
  * sleep-recap default `ScheduledTask` records consuming the W1-A schema.
  */
 
-import type { DefaultPack } from "./contract-stubs.js";
+import type { DefaultPack } from "./contract-types.js";
 
 export const bedtimeDefaultPack: DefaultPack = {
   key: "bedtime",

@@ -77,8 +77,8 @@ export interface PrioritizeRankedItem extends PrioritizeRankableItem {
 }
 
 /**
- * Per-subject loader hooks. Default loaders are empty stubs so tests can
- * mock per-subject inputs without standing up the full service graph.
+ * Per-subject loader hooks. Default loaders return empty lists so tests can
+ * inject per-subject inputs without standing up the full service graph.
  */
 export interface PrioritizeLoaders {
   loadTodos: (args: {

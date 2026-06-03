@@ -9,6 +9,8 @@ import {
 const SMOKE_NOW = "2030-01-01T09:00:00.000Z";
 const SMOKE_LATER = "2030-01-01T11:30:00.000Z";
 const SMOKE_ALARM = "2030-01-01T14:15:00.000Z";
+const CHAT_COMPOSER_SELECTOR =
+  '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -480,7 +482,7 @@ test("LifeOps assistant launches chat-first command prompts", async ({
   const assistant = page.getByTestId("lifeops-assistant-intents");
   await expect(assistant).toBeVisible();
 
-  const composer = page.getByTestId("chat-composer-textarea");
+  const composer = page.locator(CHAT_COMPOSER_SELECTOR).first();
   await page.getByTestId("lifeops-assistant-command-brief").click();
   await expect(composer).toBeFocused();
   await expect(composer).toHaveValue(/LifeOps command brief/);

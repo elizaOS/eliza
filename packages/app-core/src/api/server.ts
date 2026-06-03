@@ -925,7 +925,9 @@ async function handleCompatRouteInner(
     );
     const { buildPluginListResponse } = await getPluginRegistryApi();
     const pluginList = buildPluginListResponse(state.current);
-    const plugin = pluginList.plugins.find((p) => p.id === pluginId);
+    const plugin = pluginList.plugins.find(
+      (p: { id: string }) => p.id === pluginId,
+    );
     if (!plugin) {
       sendJsonResponse(res, 404, { error: `Plugin "${pluginId}" not found` });
       return true;

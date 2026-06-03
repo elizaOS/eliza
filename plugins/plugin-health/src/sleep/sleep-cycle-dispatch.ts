@@ -190,7 +190,7 @@ export function shouldRunNightCheckinFromSleepCycle(args: {
  * (or any object exposing the same `baseline` / `regularity` shape) so the
  * night-summary prompt can surface them. Returns null when neither a baseline
  * nor a regularity reading is available — the prompt drops the recap
- * section entirely in that case rather than printing "0/100" placeholders.
+ * section entirely in that case rather than printing "0/100" filler scores.
  *
  * Intentional design: `medianBedtimeLocalHour` and `medianSleepDurationMin`
  * land as null when the baseline is null (fewer than 5 episodes recorded);

@@ -2880,7 +2880,7 @@ export function OrchestratorWorkbench() {
 
         {/* Center timeline — hidden on mobile until a task is selected. */}
         <main
-          className={`min-w-0 flex-1 flex-col bg-bg-accent/10 ${
+          className={`min-w-0 flex-1 flex-col bg-bg-accent/10 pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+5rem)] ${
             isMobile ? (selectedId ? "flex" : "hidden") : "flex"
           }`}
           data-testid="orchestrator-timeline"

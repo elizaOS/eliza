@@ -10,7 +10,7 @@
  *     the same instant.
  */
 
-import type { AnchorConsolidationPolicy } from "./contract-stubs.js";
+import type { AnchorConsolidationPolicy } from "./contract-types.js";
 
 export const DEFAULT_CONSOLIDATION_POLICIES: ReadonlyArray<AnchorConsolidationPolicy> =
   [

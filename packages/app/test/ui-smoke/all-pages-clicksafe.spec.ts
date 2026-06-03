@@ -276,7 +276,12 @@ const DESKTOP_PROBE: ViewportProbe = {
 
 const MOBILE_CHAT_ROUTE_PROBE: RouteProbe = {
   ...coreRouteProbe("chat"),
-  readyChecks: [{ selector: '[data-testid="chat-composer-textarea"]' }],
+  readyChecks: [
+    {
+      selector:
+        '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]',
+    },
+  ],
   mode: "all",
 };
 

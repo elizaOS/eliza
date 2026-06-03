@@ -36,13 +36,28 @@ async function expectLoadedView(page: Page, view: ViewCase, phase: string) {
 
 async function expectViewManagerPage(page: Page) {
   const main = page.locator("main").first();
-  await expect(
-    main.getByRole("heading", { level: 1, name: "Views" }),
-  ).toBeVisible();
-  await expect(main.getByPlaceholder(/Search views/)).toBeVisible();
-  await expect(
-    main.getByRole("heading", { level: 2, name: "Plugins" }),
-  ).toBeVisible();
+  const smokeManager = main.getByText(/^View Manager \d+ views$/);
+  const realManager = main.getByRole("heading", { level: 1, name: "Views" });
+  await expect(smokeManager.or(realManager).first()).toBeVisible();
+
+  if ((await smokeManager.count()) > 0) {
+    await expect(
+      main.getByRole("button", { name: "Refresh views" }),
+    ).toBeVisible();
+    await expect(
+      main.getByRole("button", { name: "Open Companion" }),
+    ).toBeVisible();
+  } else {
+    await expect(main.getByPlaceholder(/Search views/)).toBeVisible();
+    await expect(
+      main.getByRole("heading", { level: 2, name: "Plugins" }),
+    ).toBeVisible();
+    await expect(
+      main.getByRole("button", {
+        name: /Companion\s+@elizaos\/plugin-companion/,
+      }),
+    ).toBeVisible();
+  }
   await expect(main.getByText("dynamic view smoke surface")).toHaveCount(0);
 }
 

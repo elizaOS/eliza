@@ -1,39 +1,41 @@
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { client, type QueryResult, type TableInfo } from "@elizaos/ui/api";
 import {
-  AppPageSidebar,
-  buildVectorGraph2DLayout,
-  Button,
-  client,
-  DIM_COLUMNS,
-  getBootConfig,
-  hasEmbedding,
-  Input,
-  ListSkeleton,
-  MAX_THREE_PIXEL_RATIO,
-  MemoryDetailPanel,
-  type MemoryRecord,
   MetaPill,
-  PAGE_SIZE,
-  PageLayout,
   PagePanel,
+} from "@elizaos/ui/components/composites/page-panel";
+import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
+import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
+import { MemoryDetailPanel } from "@elizaos/ui/components/pages/MemoryDetailPanel";
+import {
+  buildVectorGraph2DLayout,
+  DIM_COLUMNS,
+  hasEmbedding,
+  MAX_THREE_PIXEL_RATIO,
+  type MemoryRecord,
+  PAGE_SIZE,
   projectTo3D,
-  type QueryResult,
   rowToMemory,
+  toVectorGraph2DScreenX,
+  toVectorGraph2DScreenY,
+  type ViewMode,
+} from "@elizaos/ui/components/pages/vector-browser-utils";
+import { AppPageSidebar } from "@elizaos/ui/components/shared/AppPageSidebar";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-  type TableInfo,
-  toVectorGraph2DScreenX,
-  toVectorGraph2DScreenY,
-  useAgentElement,
-  useApp,
-  useRenderGuard,
-  type ViewMode,
-} from "@elizaos/ui";
+} from "@elizaos/ui/components/ui/select";
+import { ListSkeleton } from "@elizaos/ui/components/ui/skeleton-layouts";
+import { getBootConfig } from "@elizaos/ui/config";
+import { useRenderGuard } from "@elizaos/ui/hooks";
+import { PageLayout } from "@elizaos/ui/layouts";
+import { useApp } from "@elizaos/ui/state";
 import type { ReactNode } from "react";
 import {
   useCallback,
@@ -1293,7 +1295,9 @@ export function VectorBrowserView({
                 }}
               >
                 <SelectTrigger
-                  ref={tableSelect.ref}
+                  ref={(node) => {
+                    tableSelect.ref.current = node as HTMLButtonElement | null;
+                  }}
                   {...tableSelect.agentProps}
                   className="w-full h-9 rounded-sm border border-border bg-card px-2.5 py-1.5 text-xs transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent"
                 >

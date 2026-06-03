@@ -37,7 +37,7 @@ plugins/plugin-anthropic-proxy/
 │   │   ├── sanitize.ts             # Layer 2: string find/replace helpers
 │   │   ├── tool-rename.ts          # Layer 3/6: quoted token renames
 │   │   ├── system-prompt.ts        # Layer 4: system prompt strip + paraphrase
-│   │   ├── cc-tool-stubs.ts        # Layer 5: CC stub tool injection
+│   │   ├── cc-tool-stubs.ts        # Layer 5: synthetic CC tool injection
 │   │   ├── sse-rewrite.ts          # SSE stream line parser + reverse-map application
 │   │   ├── stainless-headers.ts    # Stainless SDK headers to emulate CC user-agent
 │   │   ├── process-body.ts         # Forward pipeline: layers 1-6 applied to request body

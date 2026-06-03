@@ -97,7 +97,7 @@ function logMissingOnce(key: string, message: string): void {
  * Format a `medianBedtimeLocalHour` (in [12, 36)) as a local HH:MM string.
  * Hours >= 24 wrap into the next day, e.g. 24.5 → "00:30". Returns null when
  * the input is null or non-finite — the prompt builder uses this to omit the
- * bedtime line entirely rather than print a placeholder.
+ * bedtime line entirely rather than print filler text.
  */
 function formatBedtimeHour(hour: number | null): string | null {
   if (hour === null || !Number.isFinite(hour)) {

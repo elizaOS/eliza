@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { MobileCameraSource } from "./capacitor-camera";
 import {
   CapacitorCameraSource,
-  CapacitorCameraStub,
   clearMobileCameraSource,
   getMobileCameraSource,
   registerMobileCameraSource,
+  UnavailableMobileCameraSource,
 } from "./capacitor-camera";
 
 interface TestCapacitorHost {
@@ -36,7 +36,7 @@ describe("MobileCameraSource registry", () => {
 
   it("retains the most recent registration", () => {
     clearMobileCameraSource();
-    const first = new CapacitorCameraStub();
+    const first = new UnavailableMobileCameraSource();
     const second: MobileCameraSource = {
       listCameras: async () => [
         { id: "back", name: "Back camera", connected: true },
@@ -82,12 +82,12 @@ describe("MobileCameraSource registry", () => {
     expect(getMobileCameraSource()).toBeNull();
   });
 
-  it("stub refuses captures cleanly", async () => {
-    const stub = new CapacitorCameraStub();
-    await expect(stub.listCameras()).resolves.toEqual([]);
-    await expect(stub.open()).rejects.toBeInstanceOf(Error);
-    await expect(stub.captureJpeg()).rejects.toBeInstanceOf(Error);
-    await expect(stub.close()).resolves.toBeUndefined();
+  it("unavailable source refuses captures cleanly", async () => {
+    const source = new UnavailableMobileCameraSource();
+    await expect(source.listCameras()).resolves.toEqual([]);
+    await expect(source.open()).rejects.toBeInstanceOf(Error);
+    await expect(source.captureJpeg()).rejects.toBeInstanceOf(Error);
+    await expect(source.close()).resolves.toBeUndefined();
   });
 
   it("auto-discovers a Capacitor ElizaVision bridge", async () => {

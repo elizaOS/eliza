@@ -249,8 +249,8 @@ export interface ScheduledTask {
    * persisted before this field landed. The DB column is **not** NOT NULL
    * yet; the next major version should backfill and tighten the schema.
    *
-   * TODO(scheduled-task-vNext): once backfilled, make this required and
-   * mark the column NOT NULL.
+   * Schema migration note: once rows are backfilled, make this required and
+   * mark the column NOT NULL in the next major scheduled-task schema update.
    */
   executionProfile?: TaskExecutionProfile;
 }

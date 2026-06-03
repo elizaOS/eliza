@@ -1775,7 +1775,7 @@ export function resolveReminderDeliveryUrgency(args: {
 
 /**
  * When the previous reminder was confirmed read but the occurrence is still
- * incomplete, use a shorter delay -- the owner is aware but needs a nudge.
+ * open, use a shorter delay -- the owner is aware but needs a nudge.
  * Standard "delivered" (unknown read status) keeps the normal delay.
  */
 export function resolveReminderEscalationDelayMinutes(

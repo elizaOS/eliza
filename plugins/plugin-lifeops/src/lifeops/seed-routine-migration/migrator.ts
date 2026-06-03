@@ -27,7 +27,7 @@
  */
 
 import type { LifeOpsTaskDefinition } from "../../contracts/index.js";
-import type { ScheduledTaskSeed } from "../../default-packs/contract-stubs.js";
+import type { ScheduledTaskSeed } from "../../default-packs/contract-types.js";
 import {
   HABIT_STARTER_KEYS,
   HABIT_STARTER_RECORDS,

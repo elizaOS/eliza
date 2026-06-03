@@ -82,7 +82,8 @@ function normalizeActiveViewElements(raw: unknown): ActiveViewElement[] {
     if (typeof r.id !== "string" || r.id.length === 0) continue;
     const el: ActiveViewElement = {
       id: r.id,
-      role: typeof r.role === "string" && r.role.length > 0 ? r.role : "element",
+      role:
+        typeof r.role === "string" && r.role.length > 0 ? r.role : "element",
       label: typeof r.label === "string" && r.label.length > 0 ? r.label : r.id,
     };
     if (typeof r.value === "string") el.value = r.value;

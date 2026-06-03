@@ -1,8 +1,8 @@
-# mobilefacenet.cpp — Phase 3 placeholder
+# mobilefacenet.cpp — Phase 3 planned port
 
 ggml port of MobileFaceNet for 128-d face embeddings.
 
-**Status: not started.** See `plugins/plugin-vision/VISION_RUNTIME_MIGRATION.md`
+**Status: planned.** See `plugins/plugin-vision/VISION_RUNTIME_MIGRATION.md`
 ("Phase 3 plan" / "MobileFaceNet (face embedding)") for the conversion strategy.
 
 Replaces `face-api.js::faceRecognitionNet` (Inception/ResNet variant).

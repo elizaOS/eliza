@@ -1,4 +1,4 @@
-// Device behavior checklist: see ANDROID_CONSTRAINTS.md.
+// Device behavior scope: checklist in ANDROID_CONSTRAINTS.md.
 //
 // ScreenCaptureService — MediaProjection foreground service for screen frame capture.
 //

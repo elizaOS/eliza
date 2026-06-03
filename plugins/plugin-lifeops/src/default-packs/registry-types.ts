@@ -12,7 +12,7 @@ import type {
   DefaultEscalationLadderKey,
   EscalationLadder,
   ScheduledTaskSeed,
-} from "./contract-stubs.js";
+} from "./contract-types.js";
 
 /**
  * A "default pack" is a curated set of compiled `ScheduledTask` records — and

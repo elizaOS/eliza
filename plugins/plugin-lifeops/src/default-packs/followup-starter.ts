@@ -12,7 +12,7 @@
  * Cadence lives on the relationship edge, not the entity.
  */
 
-import type { RelationshipStoreStub } from "./contract-stubs.js";
+import type { RelationshipStoreContract } from "./contract-types.js";
 import type { DefaultPack } from "./registry-types.js";
 import {
   type CompiledTaskDefinition,
@@ -133,7 +133,7 @@ export const followupStarterPack: DefaultPack = {
  * The runner calls this and persists the returned records.
  */
 export async function deriveOverdueFollowupTasks(
-  store: RelationshipStoreStub,
+  store: RelationshipStoreContract,
   options: { now?: Date } = {},
 ): Promise<CompiledTaskDefinition[]> {
   const now = options.now ?? new Date();

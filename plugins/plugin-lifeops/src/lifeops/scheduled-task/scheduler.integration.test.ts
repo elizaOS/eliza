@@ -256,7 +256,7 @@ describe("processDueScheduledTasks — production wiring", () => {
     expect(fired).toHaveLength(1);
   });
 
-  it("circadian_state_in gate falls through to allow and the task fires (warn-once honest stub)", async () => {
+  it("circadian_state_in gate falls through to allow and the task fires with a warn-once fallback", async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
 

@@ -1015,11 +1015,11 @@ export class CanvasWeb extends WebPlugin {
         }
       }
     } catch {
-      // Cross-origin or serialization failed — fall through to placeholder
+      // Cross-origin or serialization failed — fall through to an unavailable frame.
     }
 
     if (!captured) {
-      // Render a placeholder indicating cross-origin limitation
+      // Render an unavailable frame indicating the cross-origin limitation.
       ctx.fillStyle = "#f5f5f5";
       ctx.fillRect(0, 0, width, height);
       ctx.strokeStyle = "#ccc";

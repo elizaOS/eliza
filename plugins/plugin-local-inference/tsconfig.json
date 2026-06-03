@@ -34,6 +34,18 @@
 			"@elizaos/plugin-app-manager/*": ["../plugin-app-manager/src/*"],
 			"@elizaos/plugin-coding-tools": ["../plugin-coding-tools/src/index.ts"],
 			"@elizaos/plugin-coding-tools/*": ["../plugin-coding-tools/src/*"],
+			"@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
+			"@elizaos/plugin-browser/*": ["../plugin-browser/src/*"],
+			"@elizaos/plugin-agent-skills": ["../plugin-agent-skills/src/index.ts"],
+			"@elizaos/plugin-agent-skills/*": ["../plugin-agent-skills/src/*"],
+			"@elizaos/plugin-registry": ["../plugin-registry/src/index.ts"],
+			"@elizaos/plugin-registry/*": ["../plugin-registry/src/*"],
+			"@elizaos/plugin-task-coordinator": [
+				"../plugin-task-coordinator/src/index.ts"
+			],
+			"@elizaos/plugin-task-coordinator/*": [
+				"../plugin-task-coordinator/src/*"
+			],
 			"@elizaos/plugin-remote-manifest": [
 				"../../packages/plugin-remote-manifest/src/index.ts"
 			],

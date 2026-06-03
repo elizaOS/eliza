@@ -65,6 +65,19 @@ async function fulfillJson(
   });
 }
 
+function chatComposer(page: Page): Locator {
+  return page
+    .locator('[data-testid="chat-composer-textarea"]')
+    .or(page.getByLabel("message"));
+}
+
+function chatSendButton(page: Page): Locator {
+  return page
+    .getByTestId("chat-composer-action")
+    .or(page.getByRole("button", { name: "Send" }))
+    .or(page.getByRole("button", { name: "Send message" }));
+}
+
 async function clickIfVisible(
   locator: Locator,
   timeoutMs = 2_000,
@@ -611,11 +624,12 @@ for (const viewport of VIEWPORTS) {
       .toBe("cloud");
 
     await openAppPath(page, "/chat");
-    await expect(page.getByTestId("chat-composer-textarea")).toBeVisible();
+    const composer = chatComposer(page);
+    await expect(composer).toBeVisible();
 
     const cloudChatPrompt = `cloud provisioning smoke ${viewport.name}`;
-    await page.getByTestId("chat-composer-textarea").fill(cloudChatPrompt);
-    await page.getByTestId("chat-composer-action").click();
+    await composer.fill(cloudChatPrompt);
+    await chatSendButton(page).click();
 
     await expectDeterministicChatTurn(page, cloudChatPrompt);
   });
@@ -909,11 +923,10 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
     });
 
   await openAppPath(page, "/chat");
-  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible();
-  await page
-    .getByTestId("chat-composer-textarea")
-    .fill("my name is Shaw and I want Discord");
-  await page.getByTestId("chat-composer-action").click();
+  const composer = chatComposer(page);
+  await expect(composer).toBeVisible();
+  await composer.fill("my name is Shaw and I want Discord");
+  await chatSendButton(page).click();
 
   await expectDeterministicChatTurn(page, "my name is Shaw and I want Discord");
 });

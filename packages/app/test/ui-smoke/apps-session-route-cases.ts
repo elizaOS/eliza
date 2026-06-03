@@ -149,7 +149,8 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
     name: "elizamaker app window",
     path: "/apps/elizamaker",
-    selector: '[data-testid="chat-composer-textarea"]',
+    selector:
+      '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]',
     timeoutMs: 90_000,
   },
   {

@@ -6,7 +6,12 @@ describe("element-reporter buildPayload", () => {
   it("maps the registry snapshot to the report payload shape", () => {
     const registry = new ViewAgentRegistry("wallet", "gui");
     registry.register(
-      { id: "amount", label: "Amount", role: "text-input", getValue: () => "5" },
+      {
+        id: "amount",
+        label: "Amount",
+        role: "text-input",
+        getValue: () => "5",
+      },
       () => null,
     );
     registry.register(
@@ -23,7 +28,11 @@ describe("element-reporter buildPayload", () => {
       label: "Amount",
       value: "5",
     });
-    expect(byId.send).toMatchObject({ id: "send", role: "button", label: "Send" });
+    expect(byId.send).toMatchObject({
+      id: "send",
+      role: "button",
+      label: "Send",
+    });
     // No spurious value/focused keys when absent.
     expect("value" in byId.send).toBe(false);
     expect("focused" in byId.send).toBe(false);

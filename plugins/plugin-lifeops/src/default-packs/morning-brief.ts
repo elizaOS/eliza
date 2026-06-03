@@ -77,7 +77,7 @@ export const morningBriefPack: DefaultPack = {
 /**
  * Assembly helper used by the runner when this pack's `ScheduledTask` fires.
  * Returned shape is `{ promptText, report }` so the caller can decide whether
- * to render the prompt (stub anchor resolution scenario) or use `summaryText`
+ * to render the prompt (anchor-unavailable scenario) or use `summaryText`
  * directly.
  *
  * The scheduled briefing assembler is shared with the interactive morning

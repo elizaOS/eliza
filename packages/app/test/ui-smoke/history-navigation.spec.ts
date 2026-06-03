@@ -15,11 +15,14 @@ type HistoryRoute = {
   mode?: Parameters<typeof assertReadyChecks>[3];
 };
 
+const CHAT_COMPOSER_SELECTOR =
+  '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
+
 const HISTORY_ROUTES = [
   {
     name: "chat",
     path: "/chat",
-    readyChecks: [{ selector: '[data-testid="chat-composer-textarea"]' }],
+    readyChecks: [{ selector: CHAT_COMPOSER_SELECTOR }],
     mode: "all",
   },
   {

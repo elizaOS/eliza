@@ -29,12 +29,10 @@ export interface FrontendKpiSample {
 // The page-side global the init script populates and readFrontendKpis() drains.
 const KPI_GLOBAL = "__elizaLoadperfKpi__";
 
-// The composer testid marks "first interactive". We snapshot the JS-transfer
-// total the moment it appears so the payload KPI reflects the cost to reach a
-// usable chat shell — before the shell's idle requestIdleCallback warm-up
-// (prefetchRouteViewChunks in App.tsx) speculatively pulls every other route's
-// lazy chunk and inflates the chat-route number.
-const FIRST_INTERACTIVE_SELECTOR = '[data-testid="chat-composer-textarea"]';
+// The composer marks "first interactive". We support the legacy test id and
+// the current accessible compact composer so the KPI samples the real ready UI.
+const FIRST_INTERACTIVE_SELECTOR =
+  '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
 
 interface KpiCollectorState {
   lcpMs: number | null;

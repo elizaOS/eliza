@@ -6,7 +6,7 @@
  * Otherwise the pack is offered at customize time but its record is NOT seeded.
  */
 
-import type { ConnectorRegistryStub } from "./contract-stubs.js";
+import type { ConnectorRegistryContract } from "./contract-types.js";
 import type { DefaultPack } from "./registry-types.js";
 import {
   compileTaskDefinition,
@@ -74,7 +74,7 @@ export const inboxTriageStarterPack: DefaultPack = {
  * auto-seeded.
  */
 export function isInboxTriageEligible(
-  registry: ConnectorRegistryStub | undefined | null,
+  registry: ConnectorRegistryContract | undefined | null,
 ): boolean {
   if (!registry) return false;
   const candidates = registry.byCapability("google.gmail.read");

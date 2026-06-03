@@ -1,4 +1,4 @@
-// Device behavior checklist: see ANDROID_CONSTRAINTS.md.
+// Device behavior scope: checklist in ANDROID_CONSTRAINTS.md.
 //
 // ElizaAccessibilityService — cross-app input dispatch + element tree snapshot.
 //

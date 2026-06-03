@@ -93,9 +93,9 @@ The plugin registers a single `VISION` action that routes to one of these sub-op
 |-----------|-----------------|----------------------|
 | Scene description | VLM via `runtime.useModel(IMAGE_DESCRIPTION)` | Any registered IMAGE_DESCRIPTION provider |
 | Object detection | YOLOv8n ggml via `native/yolo.cpp` (`src/yolo-detector.ts`, no fallback — init throws if native lib/GGUF missing) | Legacy COCO-SSD via `@tensorflow/tfjs-node` (optional dep, `src/vision-models.ts`) |
-| Pose detection | MoveNet via `@tensorflow-models/pose-detection` (optional dep) | ggml port (not built yet) |
+| Pose detection | MoveNet via `@tensorflow-models/pose-detection` (optional dep) | Planned ggml port |
 | OCR | Apple Vision (darwin, when a provider is registered) → doCTR ggml (`native/doctr.cpp`) | No ONNX or Tesseract path |
-| Face recognition | face-api.js (`src/face-recognition.ts`) | Experimental ggml backends (`face-detector-ggml.ts`, `face-recognition-ggml.ts`; not wired). MediaPipe BlazeFace stub is deprecated. |
+| Face recognition | face-api.js (`src/face-recognition.ts`) | Experimental ggml backends (`face-detector-ggml.ts`, `face-recognition-ggml.ts`; gated until artifacts land). MediaPipe BlazeFace migration shim is deprecated. |
 
 ## Platform notes
 
@@ -109,4 +109,3 @@ The plugin registers a single `VISION` action that routes to one of these sub-op
 - No frames are written to disk by default.
 - All inference runs locally unless a remote IMAGE_DESCRIPTION provider is registered.
 - Consider access implications before enabling in shared or sensitive environments.
-

@@ -46,7 +46,7 @@ src/
   connectors/
     index.ts                    registerHealthConnectors / registerHealthAnchors / registerHealthBusFamilies;
                                   HEALTH_CONNECTOR_KINDS, HEALTH_ANCHORS, HEALTH_BUS_FAMILIES constants
-    contract-stubs.ts           Local structural types for ConnectorRegistry, AnchorRegistry, BusFamilyRegistry,
+    contract-types.ts           Local structural types for ConnectorRegistry, AnchorRegistry, BusFamilyRegistry,
                                   ConnectorContribution, etc. (until W1-F registry interfaces are published)
   contracts/
     health.ts                   Re-exports all LifeOps health/sleep/screen-time types from lifeops.js;
@@ -64,7 +64,7 @@ src/
     bedtime.ts                  bedtimeDefaultPack definition
     wake-up.ts                  wakeUpDefaultPack definition
     sleep-recap.ts              sleepRecapDefaultPack definition
-    contract-stubs.ts           DefaultPack / DefaultPackRegistry structural types
+    contract-types.ts           DefaultPack / DefaultPackRegistry structural types
   health-bridge/
     index.ts                    Barrel: re-exports all health-bridge modules
     health-bridge.ts            detectHealthBackend — HealthKit (darwin) or Google Fit REST fallback

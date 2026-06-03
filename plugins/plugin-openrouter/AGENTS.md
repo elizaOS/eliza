@@ -22,6 +22,7 @@ No actions, services, evaluators, providers, or routes. This plugin registers **
 | `IMAGE_DESCRIPTION` | `handleImageDescription` | `x-ai/grok-2-vision-1212` |
 | `IMAGE` | `handleImageGeneration` | `google/gemini-2.5-flash-image-preview` |
 | `TEXT_EMBEDDING` | `handleTextEmbedding` | `openai/text-embedding-3-small` (1536 dims) |
+| `TRANSCRIPTION` | `handleTranscription` | `openai/whisper-large-v3` |
 
 All text handlers support streaming (`params.stream = true`), `tools`/`toolChoice`, and `responseSchema` for structured JSON output. Sampling parameters (temperature, frequencyPenalty, presencePenalty) are suppressed for `openai/*`, `anthropic/*`, and reasoning models (o1/o3/o4, gpt-5, gpt-5-mini) to avoid API errors. Every handler emits a `MODEL_USED` event via `utils/events.ts` after each call.
 
@@ -34,6 +35,7 @@ plugins/plugin-openrouter/
   init.ts                   initializeOpenRouter() — validates API key at boot (node only)
   auto-enable.ts            shouldEnable() — checked by elizaOS plugin loader at boot
   models/
+    audio.ts                TRANSCRIPTION handler (direct fetch to /audio/transcriptions)
     text.ts                 All text model handlers (nano/small/medium/large/mega/response-handler/action-planner)
     image.ts                IMAGE_DESCRIPTION and IMAGE generation handlers
     embedding.ts            TEXT_EMBEDDING handler (direct fetch to /embeddings endpoint)
@@ -86,7 +88,8 @@ Settings are read via `runtime.getSetting(key)` first, then `process.env[key]`. 
 | `OPENROUTER_IMAGE_MODEL` | no | `x-ai/grok-2-vision-1212` | Override for IMAGE_DESCRIPTION. |
 | `OPENROUTER_IMAGE_GENERATION_MODEL` | no | `google/gemini-2.5-flash-image-preview` | Override for IMAGE generation. |
 | `OPENROUTER_EMBEDDING_MODEL` | no | `openai/text-embedding-3-small` | Override for TEXT_EMBEDDING. |
-| `OPENROUTER_EMBEDDING_DIMENSIONS` | no | `1536` | Embedding vector size. Valid: 384, 512, 768, 1024, 1536, 2048, 3072. |
+| `OPENROUTER_TRANSCRIPTION_MODEL` | no | `openai/whisper-large-v3` | Override for TRANSCRIPTION. |
+| `OPENROUTER_EMBEDDING_DIMENSIONS` | no | `1536` | Embedding vector size. Valid: 256, 384, 512, 768, 1024, 1536, 2048, 3072. |
 | `OPENROUTER_AUTO_CLEANUP_IMAGES` | no | `false` | Flag read by `shouldAutoCleanupImages()` in `utils/config.ts`. |
 | `SMALL_MODEL`, `LARGE_MODEL`, etc. | no | — | Generic fallbacks when OPENROUTER_* variants are unset. |
 
@@ -113,5 +116,5 @@ Settings are read via `runtime.getSetting(key)` first, then `process.env[key]`. 
 - **Embedding input truncation:** Inputs over ~32 000 characters (~8 000 tokens) are truncated with a warning rather than failing.
 - **Structured output:** Pass `responseSchema` (JSON Schema object) to any text handler to get parsed JSON back. The handler wraps it into the AI SDK `output` field and calls `JSON.parse` on the response.
 - **Prompt caching:** Pass `providerOptions: { openrouter: { promptCacheKey: "<key>" } }` to text handlers; it is forwarded to OpenRouter's `prompt_cache_key` for prefix caching on supported backends.
-- **No native audio:** Audio transcription is not implemented. Do not add a stub — omit the handler entirely until real support is built.
+- **Audio transcription:** `ModelType.TRANSCRIPTION` posts base64 audio to OpenRouter's `/audio/transcriptions` endpoint. Supported inputs are URL strings, `Buffer`, `Blob` / `File`, core `{ audioUrl, prompt? }`, and local `{ audio, model?, language?, temperature?, format?, mimeType? }` objects.
 - **`@openrouter/ai-sdk-provider` + `ai` SDK:** The plugin wraps `@openrouter/ai-sdk-provider ^2.0.0` and uses `ai ^6.0.30`. Both are runtime dependencies, not peer deps.

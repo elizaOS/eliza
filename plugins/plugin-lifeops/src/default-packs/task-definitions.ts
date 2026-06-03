@@ -4,7 +4,7 @@ import type {
   ScheduledTaskSeed,
   ScheduledTaskSubjectKind,
   ScheduledTaskTrigger,
-} from "./contract-stubs.js";
+} from "./contract-types.js";
 
 type ScheduledTaskSeedBase = Omit<ScheduledTaskSeed, "kind">;
 

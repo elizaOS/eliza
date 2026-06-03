@@ -10,7 +10,7 @@
  * Per `wave1-interfaces.md` §5.4 / `GAP_ASSESSMENT.md` §4.4.
  */
 
-import type { DefaultPack } from "./contract-stubs.js";
+import type { DefaultPack } from "./contract-types.js";
 
 export const sleepRecapDefaultPack: DefaultPack = {
   key: "sleep-recap",

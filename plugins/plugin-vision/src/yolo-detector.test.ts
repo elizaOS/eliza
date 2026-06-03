@@ -40,7 +40,7 @@ describe("PersonDetector", () => {
   });
 });
 
-describe("MediaPipeFaceDetector (deprecated stub)", () => {
+describe("MediaPipeFaceDetector (deprecated migration shim)", () => {
   it("constructs and reports unavailable until RetinaFace ggml port lands", async () => {
     const det = new MediaPipeFaceDetector();
     expect(det).toBeInstanceOf(MediaPipeFaceDetector);

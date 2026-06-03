@@ -28,7 +28,7 @@ plugins/plugin-native-appblocker/
     index.ts               JS entry — registerPlugin("ElizaAppBlocker") + lazy web fallback
     definitions.ts         All TypeScript types: AppBlockerPlugin, AppBlockerStatus,
                            BlockAppsOptions, InstalledApp, SelectAppsResult, etc.
-    web.ts                 Web stub — all methods return not-applicable/unavailable
+    web.ts                 Web fallback — all methods return not-applicable/unavailable
   android/src/main/
     AndroidManifest.xml    Declares permissions (PACKAGE_USAGE_STATS, SYSTEM_ALERT_WINDOW,
                            FOREGROUND_SERVICE, POST_NOTIFICATIONS) and ForegroundService

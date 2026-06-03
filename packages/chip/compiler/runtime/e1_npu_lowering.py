@@ -5079,6 +5079,8 @@ def lower_stablehlo_module_smoke(
         "lower_mlp_smoke": lower_mlp_smoke,
         "lower_attention_qk_smoke": lower_attention_qk_smoke,
         "lower_attention_av_smoke": lower_attention_av_smoke,
+        "lower_transformer_block_smoke": lower_transformer_block_smoke,
+        "lower_modern_decoder_block_smoke": lower_modern_decoder_block_smoke,
     }
     lowered_ops: list[Any] = []
     for plan, graph in zip(plans, lowering_graphs, strict=True):

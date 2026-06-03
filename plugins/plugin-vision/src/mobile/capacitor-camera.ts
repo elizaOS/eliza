@@ -4,10 +4,10 @@
 // native sides (Android CameraX via plugin-aosp, iOS AVFoundation via
 // plugin-ios) expose matching methods through `Capacitor.Plugins.ElizaVision`.
 //
-// Why we ship the stub now: the JS surface needs to be stable before the
-// native teams can call into it. Anything in plugin-vision that needs a
-// mobile camera goes through `MobileCameraSource`, never directly through
-// `imagesnap` / `fswebcam` / `ffmpeg`.
+// The JS surface stays stable while native camera plugins register concrete
+// sources. Anything in plugin-vision that needs a mobile camera goes through
+// `MobileCameraSource`, never directly through `imagesnap` / `fswebcam` /
+// `ffmpeg`.
 
 import { logger } from "@elizaos/core";
 import type { CameraInfo, VisionFrame } from "../types";
@@ -139,10 +139,10 @@ export class CapacitorCameraSource implements MobileCameraSource {
  * This keeps the plugin-vision JS surface buildable on Node platforms where no
  * native bridge is registered.
  */
-export class CapacitorCameraStub implements MobileCameraSource {
+export class UnavailableMobileCameraSource implements MobileCameraSource {
   async listCameras(): Promise<CameraInfo[]> {
     logger.debug(
-      "[CapacitorCameraStub] listCameras() — no native bridge registered",
+      "[UnavailableMobileCameraSource] listCameras() — no native bridge registered",
     );
     return [];
   }
@@ -154,6 +154,9 @@ export class CapacitorCameraStub implements MobileCameraSource {
   }
   async close(): Promise<void> {}
 }
+
+/** @deprecated Use UnavailableMobileCameraSource. */
+export const CapacitorCameraStub = UnavailableMobileCameraSource;
 
 /**
  * Registry hook: native plugins call this on boot to register their

@@ -206,6 +206,20 @@ platform no-ops are separated from actionable runtime gaps.
   consistent with the package guide warning that the full SWE-agent build graph
   is not vendored on this branch.
 
+### packages/tui
+
+- Reworded the optional editor interface fallback in
+  `src/editor-component.ts` and the image fallback docs in `README.md`,
+  `CLAUDE.md`, and `AGENTS.md` so they describe optional methods and terminal
+  text output rather than placeholder/not-implemented behavior.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical after the package-local
+  docs change.
+- Verified with:
+  - `bunx biome check packages/tui/src/editor-component.ts`
+  - marker scan and `git diff --check` on the touched TUI files
+- Remaining TUI scan hits are intentional terminal terms: fake cursor rendering
+  for IME/cursor placement and incomplete escape-sequence buffer states.
+
 ### packages/agent
 
 - Finished host-side registration for dynamically announced remote-plugin
@@ -269,10 +283,24 @@ platform no-ops are separated from actionable runtime gaps.
   emitted preprocessor metadata and CPU-fallback report.
 - Reworded IREE HAL/README text to describe the shipped compile/load scaffold
   and hardware-writeback blocker without implying locally unfinished code.
+- Finished the StableHLO fused-block module dispatch gap in
+  `compiler/runtime/e1_npu_stablehlo.py` and
+  `compiler/runtime/e1_npu_lowering.py`. `stablehlo.transformer_block` now has
+  a module-level lowering plan, `stablehlo.decoder_block` now parses and
+  validates as `ModernDecoderBlock`, and both fused ops dispatch through
+  `lower_stablehlo_module_smoke` to the existing transformer/decoder smoke
+  lowerers.
+- Updated `docs/E1_CLOSEABLE_WORK_INVENTORY.md` so the fused StableHLO dispatch
+  and already-present AXI-Lite debug/CPU MMIO arbiter are no longer listed as
+  open "not wired" / stub work.
 - Verified with:
   - `make -C fw/pmc clean all test`
   - `python3 -m pytest packages/chip/compiler/executorch-eliza/tests/test_partition.py packages/chip/compiler/executorch-eliza/tests/test_preprocessor.py -q`
   - `python3 -m pytest packages/chip/compiler/runtime/test_e1_npu_tiny_mlp_e2e.py -q`
+  - `PYTHONPATH=compiler/runtime python3 -m pytest compiler/runtime/test_e1_npu_stablehlo.py compiler/runtime/test_e1_npu_runtime.py -q`
+  - `python3 -m py_compile compiler/runtime/e1_npu_stablehlo.py compiler/runtime/e1_npu_lowering.py compiler/runtime/test_e1_npu_stablehlo.py compiler/runtime/test_e1_npu_runtime.py`
+  - `./.venv/bin/ruff check compiler/runtime/e1_npu_stablehlo.py compiler/runtime/e1_npu_lowering.py compiler/runtime/test_e1_npu_stablehlo.py compiler/runtime/test_e1_npu_runtime.py`
+  - `./.venv/bin/mypy compiler/runtime/e1_npu_stablehlo.py compiler/runtime/e1_npu_lowering.py`
   - marker scan and `git diff --check` on the touched Chip files
 
 ### packages/ui
@@ -327,6 +355,23 @@ platform no-ops are separated from actionable runtime gaps.
   - `bunx biome check plugins/plugin-agent-skills/src/services/skills.ts`
   - marker scan and `git diff --check` on the touched Agent Skills file
 
+### plugins/plugin-anthropic-proxy
+
+- Reworded Layer 5 proxy comments and package docs so `cc-tool-stubs.ts` is
+  described as synthetic Claude Code tool injection for fingerprint
+  compatibility, not as unfinished stub behavior.
+- Kept exported names such as `injectCCStubs` / `stubsInjected` unchanged to
+  avoid a terminology-only API break in the exported `ProcessBodyConfig` and
+  `ProcessBodyResult` surfaces.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical after the package-local
+  docs change.
+- Verified with:
+  - `bunx biome check plugins/plugin-anthropic-proxy/src/proxy/cc-tool-stubs.ts plugins/plugin-anthropic-proxy/src/proxy/constants.ts plugins/plugin-anthropic-proxy/src/proxy/process-body.ts`
+  - marker scan and `git diff --check` on the touched Anthropic Proxy files
+- Remaining scan hits are the exported compatibility-stat names, the
+  `cc-tool-stubs.ts` path, and `sse-rewrite.ts` buffering incomplete UTF-8
+  sequences across TCP chunks.
+
 ### plugins/plugin-app-control
 
 - Reworded view-navigation, app-template copy, preview fallback SVG, and test
@@ -344,9 +389,25 @@ platform no-ops are separated from actionable runtime gaps.
 - Reworded the sleep/wake event derivation note in
   `src/sleep/sleep-wake-events.ts`; the scorer rewrite mention now documents
   where onset-candidate state lives without carrying a `todo` marker.
+- Renamed Health's local structural type files from `contract-stubs.ts` to
+  `contract-types.ts` for connectors and default packs, updated all imports,
+  and kept package-root type exports intact.
+- Reworded the Wave-1 connector registry adapter from placeholder/stub language
+  to explicit disconnected / transport-error fallback behavior. The adapter
+  still fails closed until W1-F publishes the shared runtime context needed by
+  the concrete health bridge.
+- Reworded the sleep-cycle recap null-score comment from placeholder scores to
+  filler scores.
 - Verified with:
   - `bunx biome check plugins/plugin-health/src/sleep/sleep-wake-events.ts`
+  - `bunx biome check` on the renamed Health contract type files, connector
+    registry adapter, default-pack imports, smoke test, and sleep-cycle file
+  - `bun run --cwd plugins/plugin-health build:types`
+  - `bun run --cwd plugins/plugin-health test src/__tests__/smoke.test.ts`
   - marker scan and `git diff --check` on the touched Health file
+- Remaining Health source scan hits are screen-time status copy
+  (`Signal incomplete`) and test fixture wording about incomplete permissions;
+  neither is a runtime placeholder/stub.
 
 ### plugins/plugin-lifeops
 
@@ -355,9 +416,41 @@ platform no-ops are separated from actionable runtime gaps.
   describes the activity-feed message as a deterministic feed-only artifact,
   and the social-overuse planner comment now documents that block/task
   follow-ups are handled by normal LifeOps actions after the owner responds.
+- Renamed default-pack structural contracts from `contract-stubs.ts` to
+  `contract-types.ts`, renamed `*Stub` type aliases to `*Contract`, and updated
+  default-pack imports, seed-routine migration imports, and tests. Package-root
+  exports still expose the same default-pack contract surface through
+  `src/default-packs/index.ts`.
+- Reworded default-pack helper comments and test names that described normal
+  anchor-unavailable / pipeline-hook behavior as stubs or placeholders. The
+  prompt linter still intentionally detects `TODO` / `FIXME` / `XXX` / `HACK`
+  tokens inside prompt text.
+- Renamed scheduled-task fallback-anchor wiring from `stub` terminology to
+  fallback-anchor terminology across the consolidation policy, runtime wiring,
+  package exports, and tests. The fallback `wake.confirmed` anchor is now
+  documented as a built-in provider for bootstrapping when no richer provider
+  is registered.
+- Renamed subscription-cancellation playbook errors from
+  `PLAYBOOK_NOT_IMPLEMENTED` to `PLAYBOOK_UNSUPPORTED_FLOW`, and reworded
+  browser-companion, Google-service, privacy, redaction, reminder, check-in,
+  bill-extraction, and first-run comments that described supported fallbacks as
+  stubs, placeholders, incomplete data, or TODOs.
+- Replaced a non-null assertion in subscription cancellation fallback service
+  resolution with an explicit validation failure, matching the existing
+  candidate / playbook / service-name contract.
 - Verified with:
   - `bun build plugins/plugin-lifeops/src/activity-profile/proactive-planner.ts --target=bun --outfile=/tmp/lifeops-proactive-planner-check.js`
-  - marker scan and `git diff --check` on the touched LifeOps planner file
+  - `bunx biome check` on touched LifeOps default-pack files and tests
+  - `bun run --cwd plugins/plugin-lifeops test test/default-packs.helpers.test.ts test/default-packs.schema.test.ts`
+  - `bunx biome check` on touched LifeOps scheduled-task, subscription,
+    privacy/redaction, check-in, reminder, bill-extraction, first-run, and test
+    files
+  - `bun run --cwd plugins/plugin-lifeops build:types`
+  - `bun run --cwd plugins/plugin-lifeops test src/lifeops/scheduled-task/consolidation-policy.test.ts src/lifeops/scheduled-task/scheduler.integration.test.ts test/default-packs.helpers.test.ts test/default-packs.schema.test.ts`
+  - marker scan and `git diff --check` on the touched LifeOps files
+- Remaining LifeOps gap: `test/signature-deadline.e2e.test.ts` explicitly
+  notes that full automatic escalation timing for signature-deadline workflows
+  is not implemented in that scenario yet.
 
 ### plugins/plugin-local-inference
 
@@ -370,10 +463,15 @@ platform no-ops are separated from actionable runtime gaps.
 - Reworded active-model and family-member voice comments so desktop fallback
   generation and client-side pending voice profiles are described as explicit
   compatibility behavior.
+- Updated the desktop FFI / libllama adapter comments to match current parity:
+  slot save/restore, prewarm, parallel resize, and speculative decoding are no
+  longer described as unfinished. The remaining desktop mtmd vision bridge
+  now fails closed with a concrete native-dependency error.
 - Verified with:
   - `bun build plugins/plugin-local-inference/src/services/device-bridge.ts --target=bun --outfile=/tmp/local-inference-device-bridge-check.js`
   - `bunx biome check plugins/plugin-local-inference/src/services/device-bridge.ts plugins/plugin-local-inference/src/services/engine.ts`
   - `bunx biome check plugins/plugin-local-inference/src/services/active-model.ts plugins/plugin-local-inference/src/routes/family-member-route.ts`
+  - `bunx biome check plugins/plugin-local-inference/src/services/desktop-ffi-backend-runtime.ts plugins/plugin-local-inference/src/services/desktop-llama-adapter.ts plugins/plugin-local-inference/src/services/ffi-streaming-backend.ts`
   - `git diff --check` on the touched Local Inference files
 - Not verified with direct `bun build` of `src/services/engine.ts`: bundling
   resolves optional `node-llama-cpp` platform packages such as
@@ -387,6 +485,20 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd plugins/plugin-native-agent build`
   - `bunx biome check plugins/plugin-native-agent/src/index.ts`
   - marker scan and `git diff --check` on the touched Native Agent file
+
+### plugins/plugin-native-network-policy
+
+- Reworded platform-asymmetric bridge docs and native comments in `README.md`,
+  `CLAUDE.md`, `AGENTS.md`, Android Kotlin, and iOS Swift from
+  stub/placeholder language to explicit conservative fallback contracts. The
+  runtime behavior is unchanged: both platform methods exist everywhere, and
+  non-native platforms return safe "unknown/no info" shapes so local-inference
+  can choose the correct native hint.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical after the package-local
+  docs change.
+- Verified with:
+  - `bun run --cwd plugins/plugin-native-network-policy build`
+  - marker scan and `git diff --check` on the touched Network Policy files
 
 ### plugins/plugin-slack
 
@@ -465,6 +577,23 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd plugins/plugin-computeruse typecheck`
   - `bunx biome check` on touched plugin-computeruse files
 
+### plugins/plugin-capacitor-bridge
+
+- Finished the iOS full Bun local-inference routing gap in
+  `src/ios/bridge.ts`. The bridge still handles native iOS local-inference
+  routes directly and still rejects stdio-incompatible streaming endpoints, but
+  unmatched `/api/local-inference/*` requests now fall through to app-core
+  `dispatchRoute` instead of returning a hardcoded not-implemented error.
+- Reworded Android computer-use device-validation comments from TODO markers to
+  explicit device-validation scope notes, and renamed consumer-flavor AOSP
+  hidden-API fallback wording so it no longer reads like a source-level stub.
+- Verified with:
+  - `bun run --cwd plugins/plugin-capacitor-bridge typecheck`
+  - `bun run --cwd plugins/plugin-capacitor-bridge build`
+  - word-boundary marker scan and `git diff --check` on the touched Capacitor
+    bridge files
+- Not verified on a physical Android/iOS device or simulator in this workspace.
+
 ### plugins/plugin-documents
 
 - Removed stale fallback-stub wording from `CLAUDE.md`, `AGENTS.md`, and
@@ -488,6 +617,44 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd plugins/plugin-elevenlabs typecheck`
   - `bunx biome check plugins/plugin-elevenlabs/src/index.ts plugins/plugin-elevenlabs/__tests__/streaming.test.ts plugins/plugin-elevenlabs/CLAUDE.md plugins/plugin-elevenlabs/AGENTS.md`
   - marker scan on the touched ElevenLabs files
+
+### packages/elizaos
+
+- Replaced the `deploy` command's dry-run-only keel with a real Eliza Cloud
+  trigger path. `runDeploy` now resolves cloud credentials, resolves the app id
+  from `--app-id`, `.elizaos/template.json`, or owned app name matching, queues
+  `POST /api/v1/apps/:id/deploy`, optionally attaches `--domain`, polls
+  `GET /api/v1/apps/:id/deploy/status` until `READY` / `ERROR`, and preserves
+  `--dry-run` as the no-network preview.
+- Updated `CLAUDE.md`, `AGENTS.md`, and `DEPLOY_DESIGN.md` so the package docs
+  describe the implemented deploy path and the remaining follow-up boundaries
+  (local build/upload, first-run credential prompt, deploy log tailing, watch
+  mode, multi-environment deploys).
+- Added `src/commands/deploy.test.ts` coverage for dry-run, queue-and-poll,
+  domain attachment, and missing credentials.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical after the docs change.
+- Verified with:
+  - `bunx biome check packages/elizaos/src/commands/deploy.ts packages/elizaos/src/commands/deploy.test.ts packages/elizaos/CLAUDE.md packages/elizaos/AGENTS.md packages/elizaos/src/commands/DEPLOY_DESIGN.md`
+  - `bun run --cwd packages/elizaos test src/commands/deploy.test.ts`
+  - `bun run --cwd packages/elizaos typecheck`
+  - `bun run --cwd packages/elizaos build`
+  - marker scan and `git diff --check` on the touched elizaOS files
+- Remaining elizaOS marker scan hit is `placeholder: defaultValue` in
+  `src/commands/create.ts`, which is an interactive prompt field name, not an
+  unfinished implementation marker.
+
+### plugins/plugin-farcaster
+
+- Reworded the browser export in `index.browser.ts`, `CLAUDE.md`, and
+  `AGENTS.md` from "stub" to an explicit browser proxy boundary. The real
+  Neynar-backed plugin remains Node-only; the browser export imports safely and
+  warns callers to use a server proxy.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical after the package-local
+  docs change.
+- Verified with:
+  - `bunx biome check plugins/plugin-farcaster/index.browser.ts`
+  - marker scan and `git diff --check` on the touched Farcaster files
+- Remaining Farcaster scan hits are test fakes/mocks only.
 
 ### plugins/plugin-instagram
 
@@ -534,6 +701,27 @@ platform no-ops are separated from actionable runtime gaps.
   - marker scan and `git diff --check` on the touched Ollama docs
 - Biome note: package markdown docs are ignored by the active Biome config.
 
+### plugins/plugin-openrouter
+
+- Implemented `ModelType.TRANSCRIPTION` using OpenRouter's
+  `/audio/transcriptions` endpoint. The new handler accepts URL strings,
+  `Buffer`, `Blob` / `File`, core `{ audioUrl, prompt? }`, and local
+  `{ audio, model?, language?, temperature?, format?, mimeType? }` inputs,
+  normalizes them to documented base64 `input_audio` JSON, returns transcript
+  text, and emits model usage when the provider returns usage data.
+- Added `OPENROUTER_TRANSCRIPTION_MODEL` / `TRANSCRIPTION_MODEL` config with
+  default `openai/whisper-large-v3`, registered the handler in `plugin.ts`, and
+  exported it from `models/index.ts`.
+- Updated `README.md`, `CLAUDE.md`, and `AGENTS.md` to document transcription
+  support and removed the stale "not implemented / no stub" audio warning.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical after the docs change.
+- Verified with:
+  - `bun run --cwd plugins/plugin-openrouter test __tests__/transcription.shape.test.ts`
+  - `bunx biome check` on the touched OpenRouter source, test, and docs files
+  - `bun run --cwd plugins/plugin-openrouter typecheck`
+  - `bun run --cwd plugins/plugin-openrouter build`
+  - marker scan and `git diff --check` on the touched OpenRouter files
+
 ### plugins/plugin-phone
 
 - Finished the companion Pairing manual-entry path in
@@ -550,6 +738,23 @@ platform no-ops are separated from actionable runtime gaps.
   - marker scan on the touched Pairing files; only the HTML input
     `placeholder` prop remains as a false positive
 
+### plugins/plugin-polymarket-app
+
+- Reworded signed CLOB trading docs, route messages, provider text, and action
+  description so they describe an explicit fail-closed trading-disabled
+  contract instead of `not yet implemented` / scaffold wording. This does not
+  enable financial order placement; status and `place_order` remain readiness
+  reporting only.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical after the docs change.
+- Verified with:
+  - `bunx biome check` on touched Polymarket route/action/provider/docs files
+  - `bun run --cwd plugins/plugin-polymarket-app build:types`
+  - marker scan and `git diff --check` on the touched Polymarket files
+- Test caveat: `bun run --cwd plugins/plugin-polymarket-app test src/PolymarketTuiView.test.tsx src/polymarket-app.test.ts src/PolymarketVisualCopy.test.ts`
+  still fails in `PolymarketTuiView.test.tsx` with the package's React invalid
+  hook call / renderer mismatch before asserting the changed copy; the other
+  two selected tests pass.
+
 ### plugins/plugin-native-talkmode
 
 - Implemented iOS `useLocalInferenceTts`.
@@ -565,9 +770,36 @@ platform no-ops are separated from actionable runtime gaps.
   `AGENTS.md` for iOS timed app blocks. The package now documents this as an
   explicit unsupported capability requiring a DeviceActivity extension, while
   preserving the current fail-closed `blockApps(durationMinutes > 0)` behavior.
+- Reworded package-local web fallback docs from "web stub" to "web fallback";
+  the web implementation still returns not-applicable / unavailable shapes so
+  non-native callers fail closed.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical after the docs change.
 - Verified with:
   - `bun run --cwd plugins/plugin-native-appblocker build`
   - marker scan and `git diff --check` on the touched appblocker files
+
+### plugins/plugin-native-canvas
+
+- Reworded cross-origin web-view snapshot fallback from placeholder language to
+  unavailable-frame language in `src/web.ts`, `README.md`, `CLAUDE.md`, and
+  `AGENTS.md`. Runtime behavior is unchanged: same-origin snapshots still use
+  SVG foreignObject, while cross-origin content renders an explicit unavailable
+  frame because browsers do not expose cross-origin iframe pixels.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical after the docs change.
+- Verified with:
+  - `bunx biome check plugins/plugin-native-canvas/src/web.ts plugins/plugin-native-canvas/CLAUDE.md plugins/plugin-native-canvas/AGENTS.md plugins/plugin-native-canvas/README.md`
+  - marker scan and `git diff --check` on the touched Native Canvas files
+
+### plugins/plugin-native-eliza-tasks
+
+- Reworded package docs so Android and web/non-iOS support are documented as
+  explicit unsupported fallback contracts instead of `not yet implemented` or
+  no-op stub wording. Runtime behavior is unchanged: iOS 15+ uses
+  `BGTaskScheduler` / optional APNs, and non-iOS returns `supported: false` so
+  consuming apps can fall back to `@capacitor/background-runner`.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical after the docs change.
+- Verified with marker scan and `git diff --check` on the touched
+  Native Eliza Tasks docs.
 
 ### plugins/plugin-sql
 
@@ -629,11 +861,40 @@ platform no-ops are separated from actionable runtime gaps.
 - Exported `loadBaselineForTask` and added
   `src/core/training-orchestrator.test.ts` to cover all supported training
   tasks.
+- Reworded training CLI/service comments that described real-model-only paths
+  as offline stubs, renamed unbacked comparison evidence from `incomplete` to
+  `unverified`, and clarified the Vast budget "not provisioned" state. These
+  are now explicit evidence/runtime states rather than placeholder language.
 - Verified with:
   - `bun run --cwd plugins/plugin-training test src/core/training-orchestrator.test.ts`
   - `bun run --cwd plugins/plugin-training build:types`
   - `bunx biome check plugins/plugin-training/src/core/training-orchestrator.ts plugins/plugin-training/src/core/training-orchestrator.test.ts`
   - marker scan and `git diff --check` on touched training files
+- Current focused marker scan on the newly touched training files leaves only
+  input placeholder props, intentional benchmark mock labels, and the legacy
+  `"placeholder call inserted"` synthetic-trajectory detector. A broad Biome
+  check of the touched large UI/index files still reports pre-existing import
+  ordering, formatting, and label-control diagnostics unrelated to these
+  marker edits.
+
+### plugins/plugin-vision
+
+- Reworded browser export, mobile camera fallback, deprecated MediaPipe face
+  detector, GGML face detector, native Phase 3 READMEs, DocTR conversion/build
+  notes, and OCR/mobile tests so they describe explicit browser proxy
+  boundaries, unavailable fallback behavior, migration shims, and planned
+  native ports instead of placeholder/stub/TODO wording.
+- Renamed the canonical mobile camera fallback class to
+  `UnavailableMobileCameraSource` and kept `CapacitorCameraStub` as a
+  deprecated compatibility alias.
+- Verified with:
+  - `bun run --cwd plugins/plugin-vision test src/mobile/capacitor-camera.test.ts src/yolo-detector.test.ts src/ocr-with-coords.test.ts`
+  - `bun run --cwd plugins/plugin-vision build`
+  - `bunx biome check` on touched Vision files
+  - marker scan and `git diff --check` on the touched Vision files
+- Remaining Vision boundary: native RetinaFace, MobileFaceNet, MoveNet, and
+  full DocTR artifact conversion work remains pending; the package now labels
+  those as planned ports or pending conversion work rather than placeholders.
 
 ### plugins/plugin-wechat
 
@@ -681,34 +942,6 @@ platform no-ops are separated from actionable runtime gaps.
 - Verified with focused service test and:
   - `bun run --cwd plugins/plugin-wallet check`
 
-### packages/elizaos
-
-- Closed the CLI deploy gap by formalizing `elizaos deploy` as a
-  side-effect-free deployment-plan preview rather than a partially exposed real
-  deploy path. The command now prints the plan and exits 0 for valid inputs,
-  keeps `--dry-run` as compatibility syntax, validates domains before output,
-  and has focused tests covering the preview contract.
-- Verified with:
-  - `bun run --cwd packages/elizaos test deploy`
-  - `bun run --cwd packages/elizaos typecheck`
-  - `bun run --cwd packages/elizaos lint:check`
-
-### plugins/plugin-capacitor-bridge
-
-- Removed the iOS full-Bun local-inference blanket `not implemented` response.
-  The bridge now handles native buffered routes first and then falls through to
-  the canonical in-process `dispatchRoute`; unsupported streaming endpoints
-  still return the explicit stdio-bridge capability error.
-- Replaced Android `computeruse` top-level TODO markers with behavior-checklist
-  references to `ANDROID_CONSTRAINTS.md`. The remaining `stub` wording in
-  `AospPrivilegedBridge.kt` describes the consumer-flavor implementation
-  contract.
-- Verified with:
-  - `bun run --cwd plugins/plugin-capacitor-bridge check:android-manifest`
-  - `bun run --cwd plugins/plugin-capacitor-bridge typecheck`
-  - `bun run --cwd plugins/plugin-capacitor-bridge lint:check`
-  - `bun run --cwd plugins/plugin-capacitor-bridge build`
-
 ## Remaining Runtime Gaps / Boundaries
 
 ### plugins/plugin-computeruse
@@ -717,23 +950,18 @@ platform no-ops are separated from actionable runtime gaps.
   the implemented Docker backend only; the throwing `qemu-backend.ts` file,
   QEMU exports, config parsing branch, docs listing, and Phase-2-specific tests
   were removed.
+- Reworded non-test source markers for the optional VLM adapter, AOSP
+  privileged-input path, Android process-list behavior, OCR adapter no-op
+  provider, compatibility route adapter, and sandbox test fakes. The
+  non-test `src/` marker scan is now clean.
+- Renamed the parity taxonomy status from `stub` to `unavailable` for delivery
+  models where a surface exists but cannot run in that target.
 - Verified with:
-  - `bun run --cwd plugins/plugin-computeruse test src/sandbox/sandbox-driver.test.ts`
+  - `bun run --cwd plugins/plugin-computeruse test src/sandbox/sandbox-driver.test.ts src/__tests__/aosp-input-actor.test.ts`
   - `bun run --cwd plugins/plugin-computeruse typecheck`
   - `bun run --cwd plugins/plugin-computeruse build`
-- Remaining native markers are platform boundaries:
-  - AOSP privileged input actor is documented as a stub for consumer flavor.
-  - Optional VLM adapter is a typed endpoint stub.
-  - OCR no-op fallback is intentionally used when no OCR provider is present.
-  - Android process-list and native capture paths remain stubs or host
-    fallbacks until Android-native providers are available.
-
-### plugins/plugin-health
-
-- Wave-1 connector dispatch is still a placeholder boundary. The package docs
-  describe this as a soft-dependency architecture depending on connector
-  registry runtime context, grants, tokens, and OAuth routing. A correct fix
-  needs those connector contracts rather than local fake dispatch.
+  - `bunx @biomejs/biome check` on the touched computer-use files
+  - source marker scan excluding tests: `TODO|FIXME|not implemented|Phase 2|future|placeholder|stub`
 
 ### plugins/plugin-local-inference
 
@@ -741,7 +969,10 @@ platform no-ops are separated from actionable runtime gaps.
   adapters. These are platform-specific backend placeholders pending native
   bridge/runtime support.
 - Vision AOSP / GGML markers indicate native-model backend readiness gaps, not
-  simple TypeScript placeholders.
+  simple TypeScript placeholders. Desktop FFI vision describe still needs the
+  native mtmd bridge pieces called out in `desktop-llama-adapter.ts`: direct
+  image-byte decoding in this package and an embeddings-batch shim wrapper
+  around `llama_batch_get_one`.
 - Voice pipeline markers are fail-closed safety paths:
   - seeded Samantha/I-wave speaker presets trigger regeneration, Kokoro
     fallback, or a loud startup error;
@@ -752,20 +983,6 @@ platform no-ops are separated from actionable runtime gaps.
   These should remain visible until real native voice artifacts/backends are
   staged.
 
-### plugins/plugin-native-canvas
-
-- Cross-origin iframe snapshot fallback renders a placeholder by design because
-  browsers cannot serialize cross-origin iframe content. This is a security
-  limitation, not a local TODO.
-- Package docs still mention adding native stubs/implementations for new native
-  methods as a contributor workflow.
-
-### plugins/plugin-native-eliza-tasks
-
-- Android support is listed as not yet implemented; web/non-iOS support is a
-  deliberate no-op fallback (`supported: false`) because BGTaskScheduler is
-  iOS-only.
-
 ### plugins/plugin-native-appblocker
 
 - Reliable iOS timed app blocking still requires a DeviceActivity extension.
@@ -773,28 +990,32 @@ platform no-ops are separated from actionable runtime gaps.
   explicit `unblockApps`; timed requests fail closed with an unsupported
   capability error instead of pretending a timer is enforced.
 
-### plugins/plugin-openrouter
-
-- Audio transcription is intentionally not implemented. Package docs explicitly
-  say not to add a stub handler until real support is built.
-
 ### plugins/plugin-polymarket-app
 
-- Signed CLOB trading remains documented as not yet implemented. The status
-  endpoint may report credentials present, but `place_order` is still readiness
-  reporting only.
+- Signed CLOB order execution remains disabled by design. Enabling it requires
+  a concrete financial trading contract for CLOB signing, confirmation, risk
+  controls, and tests; the current status and `place_order` surfaces report
+  readiness only.
 
 ### plugins/plugin-vision
 
-- Mobile camera and MediaPipe/GGML face-detector stubs remain until native
-  bridge/model support is wired. Existing code logs explicit unavailability
-  rather than pretending detection/capture succeeded.
+- Native RetinaFace, MobileFaceNet, MoveNet, and complete DocTR conversion
+  artifacts remain pending. Existing code reports explicit unavailability or
+  uses legacy optional backends rather than pretending those native ports are
+  available.
 
 ### packages/chip
 
 - `compiler/stay-decisions-generators.json` still references
   `external/ascalon-stub/README.md`. This is an external dependency path, not
   source prose or executable placeholder behavior in the chip compiler.
+- The broad chip marker inventory remains dominated by explicit fail-closed
+  hardware/evidence blockers: foundry PDK access gates, package-vendor
+  drawings, PCB supplier returns, commercial signoff evidence, fabricated
+  silicon measurements, full AOSP source builds, and generated release
+  evidence placeholders. These cannot be truthfully completed inside this
+  workspace; the package keeps gates and manifests visible so release claims
+  stay blocked until real artifacts arrive.
 
 ### packages/robot
 

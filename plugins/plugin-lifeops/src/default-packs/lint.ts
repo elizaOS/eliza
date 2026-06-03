@@ -21,7 +21,7 @@
  *                           `else if`, `case … when`, `when X = Y`.
  *   - `hardcoded_url`       concrete `http(s)://…` URLs.
  *   - `wave_narrative`      internal milestone refs (`Wave-1`, `W3-B`, …).
- *   - `prompt_slop`         AI-generated leftover markers (`TODO`, `FIXME`,
+ *   - `prompt_slop`         AI-generated leftover tokens (`TODO`, `FIXME`,
  *                           `XXX`, `HACK`).
  *
  * This module exposes the same rule set at runtime so any code path that
@@ -29,7 +29,7 @@
  * via `lintPack` / `lintPacks`.
  */
 
-import type { ScheduledTaskSeed } from "./contract-stubs.js";
+import type { ScheduledTaskSeed } from "./contract-types.js";
 import type { DefaultPack } from "./registry-types.js";
 
 export type PromptLintRuleKind =
@@ -81,7 +81,7 @@ const ABSOLUTE_PATH_REGEX =
 
 /**
  * Hardcoded times. We allow:
- *   - the literal placeholder `HH:MM`
+ *   - the literal time token `HH:MM`
  *   - `morningWindow` / `eveningWindow` references (owner-fact references)
  *
  * Match: standalone `HH:MM`, `HH:MM:SS`, full ISO datetimes.
@@ -125,8 +125,8 @@ const URL_REGEX = /\bhttps?:\/\/[^\s'"`)<>]+/g;
 const WAVE_NARRATIVE_REGEX = /\b(?:Wave[\s-]?\d+|W[1-9]\d*-[A-Z])\b/g;
 
 /**
- * AI-generated leftover markers. `TODO`/`FIXME`/`XXX`/`HACK` in a prompt is
- * always a slip — finish the prompt or remove the placeholder.
+ * AI-generated leftover tokens. `TODO`/`FIXME`/`XXX`/`HACK` in a prompt is
+ * always a slip — finish the prompt or replace the token.
  */
 const SLOP_REGEX = /\b(TODO|FIXME|XXX|HACK)\b/g;
 
@@ -244,7 +244,7 @@ export function lintPromptText(args: {
       packKey,
       recordKey,
       rule: "prompt_slop",
-      message: `Leftover marker "${match[0]}" in prompt; finish the prompt or remove the placeholder.`,
+      message: `Leftover marker "${match[0]}" in prompt; finish the prompt or replace the token.`,
       match: match[0],
     });
   }

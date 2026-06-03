@@ -212,7 +212,9 @@ export function renderActiveViewContextBlock(view: ActiveViewContext): string {
           ? ` = ${JSON.stringify(el.value)}`
           : "";
       const focused = el.focused ? " (focused)" : "";
-      lines.push(`- ${el.id} [${el.role}] ${JSON.stringify(el.label)}${value}${focused}`);
+      lines.push(
+        `- ${el.id} [${el.role}] ${JSON.stringify(el.label)}${value}${focused}`,
+      );
     }
     if (elements.length > shown.length) {
       lines.push(

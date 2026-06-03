@@ -33,7 +33,7 @@ import type {
   ConnectorContribution,
   ConnectorRegistry,
   RuntimeWithHealthRegistries,
-} from "../connectors/contract-stubs.js";
+} from "../connectors/contract-types.js";
 import {
   HEALTH_ANCHORS,
   HEALTH_BUS_FAMILIES,
@@ -288,7 +288,7 @@ describe("plugin-health smoke (W1-B)", () => {
     expect(busList).toHaveLength(8);
   });
 
-  it("connector dispatcher returns disconnected status (Wave-1 stub posture)", async () => {
+  it("connector dispatcher returns disconnected status (Wave-1 unavailable posture)", async () => {
     const connectorList: ConnectorContribution[] = [];
     const connectorRegistry: ConnectorRegistry = {
       register: (c) => {
