@@ -2445,7 +2445,9 @@ export function OrchestratorWorkbench() {
       setMessageCursor(null);
       return;
     }
-    void fetchDetail(selectedId, true).catch(() => {});
+    void fetchDetail(selectedId, true).catch((err: unknown) => {
+      console.error("[OrchestratorWorkbench] fetchDetail (initial)", { err });
+    });
   }, [selectedId, fetchDetail]);
 
   useEffect(() => {
@@ -2453,7 +2455,10 @@ export function OrchestratorWorkbench() {
     // updates; this only covers a dropped/absent stream (reconnect fallback).
     if (!selectedId) return;
     const timer = window.setInterval(
-      () => void fetchDetail(selectedId, false).catch(() => {}),
+      () =>
+        void fetchDetail(selectedId, false).catch((err: unknown) => {
+          console.error("[OrchestratorWorkbench] fetchDetail (poll)", { err });
+        }),
       detailPollMs,
     );
     return () => window.clearInterval(timer);
@@ -2467,7 +2472,12 @@ export function OrchestratorWorkbench() {
     refetchTimerRef.current = window.setTimeout(() => {
       refetchTimerRef.current = null;
       const current = selectedIdRef.current;
-      if (current) void fetchDetail(current, false).catch(() => {});
+      if (current)
+        void fetchDetail(current, false).catch((err: unknown) => {
+          console.error("[OrchestratorWorkbench] fetchDetail (debounced)", {
+            err,
+          });
+        });
     }, 150);
   }, [fetchDetail]);
 
@@ -2497,7 +2507,12 @@ export function OrchestratorWorkbench() {
         await fn();
         await fetchTasksAndStatus(true);
         const current = selectedIdRef.current;
-        if (current) await fetchDetail(current, false).catch(() => {});
+        if (current)
+          await fetchDetail(current, false).catch((err: unknown) => {
+            console.error("[OrchestratorWorkbench] fetchDetail (mutation)", {
+              err,
+            });
+          });
       } catch (error) {
         setActionError(
           getClientErrorMessage(

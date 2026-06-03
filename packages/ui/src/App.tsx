@@ -486,6 +486,22 @@ function visibleDynamicPage(
   return Boolean(page && (developerModeEnabled || !page.developerOnly));
 }
 
+/**
+ * Whether the active app-shell page wants to render edge-to-edge with no host
+ * top-bar/chrome. Looks the active tab up in the runtime page registry and
+ * reads its `fullBleed` flag — backward-compatible: pages that don't set it
+ * keep the normal chrome.
+ */
+function useTabIsFullBleed(tab: string): boolean {
+  return useMemo(
+    () =>
+      listAppShellPages().some(
+        (entry) => entry.id === tab && entry.fullBleed === true,
+      ),
+    [tab],
+  );
+}
+
 function trimmedNavigationPath(navigationPath: string): string {
   return navigationPath.length > 1 && navigationPath.endsWith("/")
     ? navigationPath.slice(0, -1)
@@ -843,6 +859,7 @@ type ShellContentProps = {
   isChat: boolean;
   isCompanionTab: boolean;
   isDesktopWorkspacePage: boolean;
+  isFullBleed: boolean;
   isHeartbeats: boolean;
   isSettingsPage: boolean;
   isWallets: boolean;
@@ -1128,9 +1145,7 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
     : null;
   return (
     <div key={`tab-shell-${props.tab}`} className={APP_SHELL_CLASS}>
-      {props.tab !== "orchestrator" ? (
-        <Header pageRightExtras={headerActions} />
-      ) : null}
+      <Header pageRightExtras={headerActions} />
       {props.desktopTabBar}
       <main className={routedShellMainClass(props.tab)}>
         <ViewRouter
@@ -1196,7 +1211,20 @@ function DesktopWorkspaceShellContent(props: ShellContentProps): ReactNode {
   );
 }
 
+function FullBleedShellContent(props: ShellContentProps): ReactNode {
+  // Edge-to-edge: no Header, no desktop tab bar, no surrounding padding — the
+  // page owns its full window (e.g. the odysseus orchestrator).
+  return (
+    <div key={`fullbleed-shell-${props.tab}`} className={APP_SHELL_CLASS}>
+      <main className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
+        <ViewRouter />
+      </main>
+    </div>
+  );
+}
+
 function ShellContent(props: ShellContentProps): ReactNode {
+  if (props.isFullBleed) return <FullBleedShellContent {...props} />;
   if (props.isChat) return <ChatRouteShellContent {...props} />;
   const companionContent = CompanionShellContent(props);
   if (companionContent) return companionContent;
@@ -1405,6 +1433,7 @@ export function App() {
   const isSettingsPage = tab === "settings" || tab === "voice";
   const isAppsToolPage = isAppsToolTab(tab);
   const isDesktopWorkspacePage = tab === "desktop";
+  const isFullBleed = useTabIsFullBleed(tab);
 
   // Keep hook order stable across first-run/auth state transitions.
   // Otherwise React can throw when first-run setup completes and the main shell mounts.
@@ -1587,6 +1616,7 @@ export function App() {
         isChat={isChat}
         isCompanionTab={isCompanionTab}
         isDesktopWorkspacePage={isDesktopWorkspacePage}
+        isFullBleed={isFullBleed}
         isHeartbeats={isHeartbeats}
         isSettingsPage={isSettingsPage}
         isWallets={isWallets}
@@ -1612,6 +1642,7 @@ export function App() {
       isWallets,
       isAppsToolPage,
       isDesktopWorkspacePage,
+      isFullBleed,
       characterHeaderActions,
       handleDeferredTaskOpen,
       customActionsPanelOpen,
