@@ -104,6 +104,10 @@ export function OdysseusShell(): ReactNode {
   );
   const widthRef = useRef(sidebarWidth);
   widthRef.current = sidebarWidth;
+  // Detach fn for an in-flight sidebar drag (startResize). Held in a ref so an
+  // unmount mid-drag can tear down the window pointer listeners, which would
+  // otherwise leak because they only self-remove on pointerup/pointercancel.
+  const resizeDetachRef = useRef<(() => void) | null>(null);
   // Mobile flag (odysseus sidebar-layout.js): below MOBILE_BREAKPOINT the
   // sidebar becomes an overlay drawer. Initialised from the current viewport so
   // a first paint at a narrow width starts collapsed.
@@ -408,14 +412,28 @@ export function OdysseusShell(): ReactNode {
         Math.max(180, Math.min(440, startW + (ev.clientX - startX))),
       );
     };
-    const onUp = () => {
+    // Single teardown for all drag ends (pointerup, pointercancel, and an
+    // unmount-mid-drag via resizeDetachRef) so the window listeners can never
+    // outlive the gesture.
+    const detach = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      resizeDetachRef.current = null;
+    };
+    const onUp = () => {
+      detach();
       writePref(PREF_KEYS.sidebarWidth, widthRef.current);
     };
+    resizeDetachRef.current = detach;
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   }, []);
+
+  // Unmount safety net: if the shell unmounts while a sidebar drag is still in
+  // flight, tear down the window pointer listeners that startResize attached.
+  useEffect(() => () => resizeDetachRef.current?.(), []);
 
   const pickTheme = useCallback((name: ThemeName) => {
     writePref(PREF_KEYS.themeMode, name);

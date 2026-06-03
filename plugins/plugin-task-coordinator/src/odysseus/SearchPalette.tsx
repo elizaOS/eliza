@@ -183,8 +183,10 @@ export function SearchPalette({
       setSelectedIndex((i) => Math.max(i - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const target = results[selectedIndex] ?? results[0];
-      if (target) openThread(target.id);
+      if (selectedIndex >= 0) {
+        const target = results[selectedIndex];
+        if (target) openThread(target.id);
+      }
     }
   };
 

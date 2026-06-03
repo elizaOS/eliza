@@ -72,6 +72,13 @@ export function useTaskRoom(selectedId: string | null): TaskRoom {
   const refetchTimer = useRef<number | null>(null);
   selectedRef.current = selectedId;
 
+  // Read detail without making it a fetchDetail dependency: setDetail stores a
+  // fresh object every poll/SSE tick, so a [detail] dep would recreate
+  // fetchDetail on every update and tear down + recreate the reconcile poll and
+  // the SSE EventSource (reconnect churn that drops live events).
+  const detailRef = useRef(detail);
+  detailRef.current = detail;
+
   const fetchDetail = useCallback(
     async (id: string, reset: boolean): Promise<boolean> => {
       const token = ++reqRef.current;
@@ -100,12 +107,12 @@ export function useTaskRoom(selectedId: string | null): TaskRoom {
       } catch (err) {
         if (token === reqRef.current && id === selectedRef.current) {
           setError(err instanceof Error ? err.message : "Failed to load task");
-          setStale(!reset && detail != null);
+          setStale(!reset && detailRef.current != null);
         }
         return false;
       }
     },
-    [detail],
+    [],
   );
 
   // Selection change → reset room + initial fetch.
@@ -119,10 +126,9 @@ export function useTaskRoom(selectedId: string | null): TaskRoom {
       return;
     }
     setLoading(true);
-    void fetchDetail(selectedId, true)
-      .finally(() => {
-        if (selectedRef.current === selectedId) setLoading(false);
-      });
+    void fetchDetail(selectedId, true).finally(() => {
+      if (selectedRef.current === selectedId) setLoading(false);
+    });
   }, [selectedId, fetchDetail]);
 
   const isActive =
@@ -200,10 +206,12 @@ export function useTaskRoom(selectedId: string | null): TaskRoom {
   const retry = useCallback(() => {
     if (!selectedRef.current) return;
     setLoading(true);
-    void fetchDetail(selectedRef.current, detail == null).finally(() => {
-      if (selectedRef.current) setLoading(false);
-    });
-  }, [detail, fetchDetail]);
+    void fetchDetail(selectedRef.current, detailRef.current == null).finally(
+      () => {
+        if (selectedRef.current) setLoading(false);
+      },
+    );
+  }, [fetchDetail]);
 
   return { detail, conversation, isActive, loading, error, stale, retry };
 }
