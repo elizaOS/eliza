@@ -104,7 +104,7 @@ for (const id of ids) {
       !/\[vite\] connect(ing|ed)/i.test(e) &&
       !/Error loading story index/i.test(e) &&
       !/Failed to fetch.*PreviewWeb\.getStoryIndexFromServer/is.test(e) &&
-      !/Preview\.onStoriesChanged\(\) before initialization/i.test(e) &&
+      !/Preview\.onStoriesChanged\(\)`? before initialization/i.test(e) &&
       // ErrorBoundary stories deliberately throw to demonstrate the fallback.
       !/Simulated render failure/i.test(e) &&
       !/The above error occurred in the <Boom>/i.test(e),

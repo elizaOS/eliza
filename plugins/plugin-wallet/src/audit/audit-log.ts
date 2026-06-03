@@ -81,9 +81,7 @@ export function verifyAuditLogRow(row: AuditLogRow): boolean {
   return row.rowHash === computeAuditLogRowHash(row);
 }
 
-function computeAuditLogRowHash(
-  row: Omit<AuditLogRow, "rowHash">,
-): string {
+function computeAuditLogRowHash(row: Omit<AuditLogRow, "rowHash">): string {
   const canonical = JSON.stringify({
     id: row.id.toString(),
     ts: row.ts,
