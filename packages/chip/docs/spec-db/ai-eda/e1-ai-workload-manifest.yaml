@@ -150,10 +150,10 @@ workloads:
     license_status: local_project_fixture
     artifacts:
       - path: compiler/runtime/test_e1_npu_tiny_mlp_e2e.py
-        sha256: ab4ef28f289ec6bd64c892f7e5faf336fbd8d291bce75e408669c989c0654c31
+        sha256: 05415431b3541b3450385c48dd4881ed6e4839ea86b52fef18a1b65be5499f0e
         role: e2e_test
       - path: compiler/runtime/e1_npu_stablehlo.py
-        sha256: e3d9b3c9cbdc7adef4c3b1bdeca4dc886b3a90e65c43a906168b541dcd261633
+        sha256: 8fc1ee27537c1947dfdb7d56cfda00a1292f205d7e4f129f1444f96a53349467
         role: lowering
       - path: compiler/runtime/e1_npu_runtime.py
         sha256: 6ae121292252e26217ccaecee615a1ab53140c6a65925fa120d4022153e14562
