@@ -92,6 +92,7 @@ const BENIGN_CONSOLE_PATTERNS = [
   /\[Eliza\] StatusBar plugin not available/i,
   /\[eliza\]\[startup:init\] Device bridge unavailable/i,
   /\[eliza\]\[startup:init\] Mobile agent tunnel/i,
+  /WebSocket connection to 'ws:\/\/127\.0\.0\.1:\d+\/api\/local-inference\/device-bridge\?token=[^']+' failed/i,
   /Web Bluetooth is not available/i,
 ];
 const BENIGN_PAGEERROR_PATTERNS = [
@@ -1269,18 +1270,21 @@ test.describe("Facewear and smartglasses GUI interactions", () => {
         (await readFixture(page))?.smartglasses.wifiCredentials.at(-1),
       )
       .toEqual({ ssid: "LabNet", password: "correct horse" });
-    await page.getByRole("button", { name: "Native Setup" }).click();
+    await expect(
+      page.getByRole("button", { name: /Native (Wi-Fi )?Setup/ }),
+    ).toBeEnabled();
+    await page.getByRole("button", { name: /Native (Wi-Fi )?Setup/ }).click();
     await expect(page.getByText("Native Wi-Fi setup requested")).toBeVisible();
 
     await page.getByRole("button", { name: "Android" }).click();
     await expect(
-      page.getByText("native bridge for headset pairing"),
+      page.getByText(/native bridge (for headset pairing|preferred)/i),
     ).toBeVisible();
     await page.getByRole("button", { name: "Guided Validation" }).click();
     await expect(
       page.getByText("Tap and microphone validation requires").last(),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Copy" }).click();
+    await page.getByRole("button", { name: /Copy( Report)?/ }).click();
     await expect
       .poll(async () =>
         page.evaluate(

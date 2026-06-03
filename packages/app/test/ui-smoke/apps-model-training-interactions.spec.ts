@@ -958,18 +958,14 @@ test("fine-tuning route selects trajectories, builds a dataset, and starts a job
 
   await page
     .getByRole("textbox", {
-      name: uiLabelPattern(
-        "Base model (optional)",
-        "finetuningview.BaseModelOptional",
-      ),
+      name: "Base model",
+      exact: true,
     })
     .fill("base-model-from-ui-smoke");
   await page
     .getByRole("textbox", {
-      name: uiLabelPattern(
-        "Iterations (optional)",
-        "finetuningview.IterationsOptional",
-      ),
+      name: "Iterations",
+      exact: true,
     })
     .fill("3");
   await clickRequired(

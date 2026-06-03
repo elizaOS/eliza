@@ -415,17 +415,21 @@ async function evaluateReadyChecks(
   const results: EvaluatedReadyCheck[] = [];
 
   for (const check of checks) {
+    let passed: boolean;
     if ("selector" in check) {
-      results.push({
-        check,
-        passed: await locatorVisible(page.locator(check.selector), timeoutMs),
-      });
-      continue;
+      passed = await locatorVisible(page.locator(check.selector), timeoutMs);
+    } else {
+      passed = await locatorVisible(page.getByText(check.text), timeoutMs);
     }
+
     results.push({
       check,
-      passed: await locatorVisible(page.getByText(check.text), timeoutMs),
+      passed,
     });
+
+    if (mode === "any" && passed) {
+      break;
+    }
   }
 
   return {

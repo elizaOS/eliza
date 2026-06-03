@@ -1617,9 +1617,9 @@ function smokeTuiViewBundleSource(view, exportName) {
     view.id === "feed"
       ? [
           "refresh-agent-status",
+          "send-team-message",
           "refresh-feed",
           "list-agents",
-          "summarize-feed",
         ]
       : ["status", "refresh", "inspect", "help"];
   return `import React from "react";
@@ -1682,6 +1682,7 @@ function SmokeView() {
             key: command,
             type: "button",
             "data-terminal-command": command,
+            "aria-label": "Run " + command,
             onClick: () => void runCommand(command),
             style: {
               border: "1px solid #38bdf8",

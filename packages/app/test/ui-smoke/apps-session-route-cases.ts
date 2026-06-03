@@ -41,8 +41,8 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     name: "companion",
     path: "/apps/companion",
     readyChecks: [
-      { selector: '[data-testid="companion-root"]' },
       { text: "Companion" },
+      { selector: '[data-testid="companion-root"]' },
     ],
     timeoutMs: 90_000,
   },
@@ -50,8 +50,8 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     name: "lifeops app window",
     path: "/apps/lifeops",
     readyChecks: [
-      { selector: '[data-testid="lifeops-shell"]' },
       { text: "LifeOps" },
+      { selector: '[data-testid="lifeops-nav-rail"]' },
     ],
     timeoutMs: 90_000,
   },
@@ -117,8 +117,8 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     name: "hyperliquid",
     path: "/hyperliquid",
     readyChecks: [
-      { selector: '[data-testid="hyperliquid-shell"]' },
       { text: "Hyperliquid" },
+      { selector: '[data-testid="hyperliquid-shell"]' },
     ],
     timeoutMs: 90_000,
   },
@@ -126,8 +126,8 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     name: "polymarket",
     path: "/polymarket",
     readyChecks: [
-      { selector: '[data-testid="polymarket-shell"]' },
       { text: "Polymarket" },
+      { selector: '[data-testid="polymarket-shell"]' },
     ],
     timeoutMs: 90_000,
   },
@@ -135,8 +135,8 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     name: "shopify",
     path: "/shopify",
     readyChecks: [
-      { selector: '[data-testid="shopify-shell"]' },
       { text: "Shopify" },
+      { selector: '[data-testid="shopify-shell"]' },
     ],
     timeoutMs: 90_000,
   },
@@ -144,8 +144,8 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     name: "vincent",
     path: "/vincent",
     readyChecks: [
-      { selector: '[data-testid="vincent-shell"]' },
       { text: "Vincent" },
+      { selector: '[data-testid="vincent-shell"]' },
     ],
     timeoutMs: 90_000,
   },
