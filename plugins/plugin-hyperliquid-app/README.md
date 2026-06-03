@@ -1,11 +1,10 @@
 # @elizaos/plugin-hyperliquid-app
 
-Adds native [Hyperliquid](https://hyperliquid.xyz) perpetual-market integration to elizaOS agents. Eliza agents can query market listings, funding rates, credential readiness, account positions, and open orders through both conversational actions and HTTP routes. Order placement is outside this app's read-only contract.
+Adds native [Hyperliquid](https://hyperliquid.xyz) perpetual-market integration to elizaOS agents. Eliza agents can query market listings, credential readiness, account positions, and open orders through both conversational actions and HTTP routes. Order placement is disabled by design — the plugin is read-only.
 
 ## Capabilities
 
 - **Market discovery** — list all Hyperliquid perpetual markets with max leverage, size decimals, and active/delisted status.
-- **Funding rates** — read current funding, premium, mark price, oracle price, and open interest from Hyperliquid asset contexts.
 - **Account positions** — read open perp positions for a configured EVM address (size, entry price, unrealized PnL, leverage, liquidation price).
 - **Open orders** — read working limit orders for a configured account.
 - **Credential status** — inspect which credential mode is active (`managed_vault`, `local_key`, or `none`) and whether account reads are available.
@@ -23,13 +22,12 @@ Conversational action that routes to the Hyperliquid provider. Recognized when t
 |---|---|---|
 | `action` | `read`, `place_order` | Operation type. `place_order` returns a disabled-execution notice. |
 | `kind` | `status`, `markets`, `market`, `positions`, `funding` | Sub-kind for `action=read`. |
-| `coin` | e.g. `BTC`, `ETH` | Asset symbol for `kind=market` or optional filter for `kind=funding`. |
+| `coin` | e.g. `BTC`, `ETH` | Asset symbol for `kind=market`. |
 | `target` | `hyperliquid` (default) | Provider selector; only Hyperliquid is registered today. |
 
 **Examples:**
 - "What is the Hyperliquid trading status?" → `action=read kind=status`
 - "Show me Hyperliquid perp markets" → `action=read kind=markets`
-- "Show me current Hyperliquid funding" → `action=read kind=funding`
 - "What are my Hyperliquid positions?" → `action=read kind=positions`
 - "Tell me about the BTC perp on Hyperliquid" → `action=read kind=market coin=BTC`
 
@@ -41,7 +39,6 @@ All routes are mounted under `/api/hyperliquid/`. Public market reads require no
 |---|---|---|
 | GET | `/api/hyperliquid/status` | Credential and readiness status |
 | GET | `/api/hyperliquid/markets` | All perpetual markets |
-| GET | `/api/hyperliquid/funding` | Current funding rates and asset context fields |
 | GET | `/api/hyperliquid/positions` | Account perp positions |
 | GET | `/api/hyperliquid/orders` | Open orders |
 | POST | `/api/hyperliquid/*` | All write routes — returns 501 (execution disabled) |
@@ -55,7 +52,7 @@ No env vars are required for public market reads. To enable account-specific rea
 | `HYPERLIQUID_ACCOUNT_ADDRESS` or `HL_ACCOUNT_ADDRESS` | EVM address for positions/orders reads. Must be `0x`-prefixed 40-char hex. |
 | `STEWARD_EVM_ADDRESS` or `ELIZA_MANAGED_EVM_ADDRESS` | Managed-vault EVM address (takes priority over the explicit env account). |
 
-Optional signing credentials (not needed for reads; order execution remains disabled in this app):
+Optional signing credentials (not needed for reads; order execution is not yet implemented):
 
 | Env var | Description |
 |---|---|
@@ -88,4 +85,5 @@ The plugin also self-registers as an elizaOS overlay app and route-plugin loader
 ## Notes
 
 - Order placement (POST routes) is intentionally disabled in this version. The `place_order` action op reports the blocked-execution reason rather than submitting any transaction.
+- Funding-rate reads (`kind=funding`) are not wired to a live endpoint; the action returns a static explanation.
 - Market data is fetched from `https://api.hyperliquid.xyz/info` (the public Hyperliquid Info API). No API key is required.

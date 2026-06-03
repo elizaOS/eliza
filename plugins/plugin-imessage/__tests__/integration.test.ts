@@ -431,7 +431,7 @@ describe("parseChatsFromAppleScript", () => {
   });
 
   it("skips lines with fewer than 4 fields", () => {
-    const input = "incomplete\tdata\n" + "chat1\tTest\t3\t1700000000000";
+    const input = "short\tdata\n" + "chat1\tTest\t3\t1700000000000";
     const result = parseChatsFromAppleScript(input);
     expect(result).toHaveLength(1);
     expect(result[0].chatId).toBe("chat1");

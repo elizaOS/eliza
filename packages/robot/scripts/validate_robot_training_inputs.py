@@ -339,8 +339,8 @@ def _dataset_report() -> dict[str, Any]:
         "imitation_training_ready": bool(dataset_files),
         "offline_datasets_block_current_plan": False,
         "training_source": (
-            "RL-from-simulation; trajectory_db tooling is not wired into the "
-            "Alberta/PPO text-conditioned policy trainers."
+            "RL-from-simulation; trajectory_db tooling is separate from the "
+            "Alberta/PPO text-conditioned policy trainer inputs."
         ),
     }
 

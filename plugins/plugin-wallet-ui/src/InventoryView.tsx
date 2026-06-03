@@ -1269,9 +1269,9 @@ function MarketPulseHero({
         </div>
       ) : loading ? (
         <div className="mt-6 grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-3">
-          {["btc", "eth", "sol"].map((placeholderId) => (
+          {["btc", "eth", "sol"].map((loadingCardId) => (
             <div
-              key={placeholderId}
+              key={loadingCardId}
               className="h-28 animate-pulse rounded-[26px] border border-border/30 bg-bg/35"
             />
           ))}

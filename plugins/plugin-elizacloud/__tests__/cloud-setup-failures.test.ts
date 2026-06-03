@@ -127,7 +127,7 @@ describe("setup source constants are still the documented values", () => {
  * is a `vi.fn` so tests can assert call counts, arguments, and (for
  * `confirm` / `selectChoice`) seed return values.
  *
- * The previous Clack observer shape stringified spinner messages through
+ * The previous `ClackStub` shape stringified spinner messages through
  * `_lastSpinner.stop.mock.calls`. The new observer model exposes the same
  * messages via the dedicated event methods (`onAuthFailure`,
  * `onProvisionTimeout`, `onProvisionFailure`, `onProvisionSuccess`), so
@@ -214,20 +214,20 @@ function resetBridgeBehavior(): void {
  * scope and rely on its own `mockImplementation` typing. The shim signature
  * matches the timer-callback overload used by `cloud-setup.ts` (no args, no
  * AbortSignal); the unused-overload return value is satisfied with a real
- * `setTimeout(noop, 0)` handle so we never hand back a fake number.
+ * `setTimeout(emptyTimerCallback, 0)` handle so we never hand back a fake number.
  */
 function installSyncSetTimeout(
   opts: { advanceVirtualTime?: (ms: number) => void } = {}
 ): () => void {
   const realSetTimeout = globalThis.setTimeout;
-  const noop = (): void => undefined;
+  const emptyTimerCallback = (): void => undefined;
   const spy = vi.spyOn(globalThis, "setTimeout");
   spy.mockImplementation(((fn: () => void, ms?: number) => {
     if (opts.advanceVirtualTime && typeof ms === "number") {
       opts.advanceVirtualTime(ms);
     }
     fn();
-    return realSetTimeout(noop, 0);
+    return realSetTimeout(emptyTimerCallback, 0);
   }) as typeof setTimeout);
   return () => spy.mockRestore();
 }
@@ -237,7 +237,7 @@ const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   vi.useRealTimers();
-  // Install a typed fetch mock so per-test setAvailability() can queue
+  // Install a typed fetch mock so per-test setAvailability() can define
   // responses while any unintended call surfaces a loud failure.
   const fetchMock: typeof fetch = vi.fn<typeof fetch>(async (input) => {
     throw new Error(`Unexpected fetch in test: ${String(input)}`);
@@ -893,12 +893,12 @@ describe("C7 — saved-key validation against /models", () => {
     const setApiKeySpy = vi
       .spyOn(CloudApiClient.prototype, "setApiKey")
       .mockImplementation(function (this: unknown, _key: unknown) {
-        // no-op — avoid touching internal SDK state
+        // Avoid touching internal SDK state.
       });
     const setBaseUrlSpy = vi
       .spyOn(CloudApiClient.prototype, "setBaseUrl")
       .mockImplementation(function (this: unknown, _url: unknown) {
-        // no-op
+        // Avoid touching internal SDK state.
       });
 
     try {

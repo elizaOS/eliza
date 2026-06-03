@@ -12,7 +12,7 @@ This connector is **not included** in the bundled plugin registry (`plugins.json
 The `@elizaos/plugin-wechat` package is not included in the bundled plugin registry (`plugins.json`). It may be available as an upstream elizaOS plugin. Install it manually from npm if available.
 </Warning>
 
-> **Availability:** `@elizaos/plugin-wechat` is a Eliza-local plugin that is **not** included in the bundled `plugins.json` registry. It ships as a CI stub and requires the full plugin package to be available locally or via npm.
+> **Availability:** `@elizaos/plugin-wechat` is a Eliza-local plugin that is **not** included in the bundled `plugins.json` registry. It ships with a CI compatibility package and requires the full plugin package to be available locally or via npm.
 
 ## Overview
 

@@ -47,11 +47,13 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useEscapeClose } from "./hooks/useEscapeClose";
 import { useWindowControls } from "./hooks/useWindowControls";
 import { ResizeHandles } from "./ResizeHandles";
+import { PREF_KEYS, readPref, writePref } from "./util/storage";
 
 // cookbook.js tab row (lines 1427-1432). data-backend "Search" is the Download
 // tab in odysseus's internal naming; we use the visible labels.
@@ -90,6 +92,7 @@ const QUANT_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: "AWQ-4bit", label: "AWQ" },
   { value: "FP8", label: "FP8" },
   { value: "FP4", label: "FP4" },
+  { value: "NVFP4", label: "NVFP4" },
   { value: "", label: "Native" },
 ];
 
@@ -101,6 +104,21 @@ const ENGINE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: "vllm", label: "vLLM" },
   { value: "sglang", label: "SGLang" },
 ];
+
+// hwfit context-length range slider (cookbook-hwfit.js _CTX_PRESETS). The
+// slider indexes into these presets; 0 = the model's own max ("Max"). Default
+// index is 3 (50k). On change odysseus persists the chosen ctx, forces the sort
+// to fit-descending, and re-runs the scan.
+const CTX_PRESETS: ReadonlyArray<number> = [
+  8192, 16384, 32768, 50000, 131072, 0,
+];
+const CTX_DEFAULT_INDEX = 3;
+
+// cookbook-hwfit.js _ctxLabel: 0 → "Max"; ≥1000 → "<n>k"; else the raw value.
+function ctxLabel(value: number): string {
+  if (!value) return "Max";
+  return value >= 1000 ? `${Math.round(value / 1000)}k` : String(value);
+}
 
 // Serve-tab sort select (cookbook.js serve-sort).
 const SERVE_SORT_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
@@ -127,8 +145,11 @@ const FIT_COLUMNS: ReadonlyArray<FitColumn> = [
   { sortKey: null, label: "Quant", cls: "od-cb-fit-quant" },
   { sortKey: "vram", label: "VRAM", cls: "od-cb-fit-vram" },
   { sortKey: "context", label: "Ctx", cls: "od-cb-fit-ctx" },
-  { sortKey: "speed", label: "Speed", cls: "od-cb-fit-speed" },
-  { sortKey: "score", label: "Score", cls: "od-cb-fit-score" },
+  // Speed (t/s) and Score have no eliza benchmark — the columns always render
+  // "—" and compareFitRows has no case for them, so the headers are not
+  // sortable (sortKey: null, like Model/Quant/Mode).
+  { sortKey: null, label: "Speed", cls: "od-cb-fit-speed" },
+  { sortKey: null, label: "Score", cls: "od-cb-fit-score" },
   { sortKey: null, label: "Mode", cls: "od-cb-fit-mode" },
 ];
 
@@ -169,8 +190,24 @@ interface FitRow {
   vramGb: number;
   contextK: number | null;
   mode: string;
+  modeTitle: string;
   fit: HardwareFit;
   fitRank: number;
+}
+
+// cookbook-hwfit.js _requiresAcceleratorBackend: accelerator-only safetensors
+// quants (AWQ / GPTQ / FP8 / NVFP4) can't run under llama.cpp/Ollama (which need
+// GGUF) — they require vLLM or SGLang with a visible CUDA/ROCm accelerator. We
+// match the same set against the model's compact quant tag and display name,
+// the eliza analogues of upstream's quant/name/repo fields.
+const ACCEL_MODE_TITLE =
+  "Requires vLLM or SGLang with a visible CUDA/ROCm accelerator. " +
+  "llama.cpp and Ollama need GGUF files.";
+
+function requiresAcceleratorBackend(name: string, quant: string): boolean {
+  const q = quant.toUpperCase();
+  if (/^(AWQ|GPTQ|NVFP4)/.test(q) || q === "FP8") return true;
+  return /\b(awq|gptq|fp8|nvfp4)\b/i.test(name);
 }
 
 // Compact tabular quant tag for the scan table's fixed-width QUANT column. The
@@ -190,16 +227,20 @@ function compactQuant(model: CatalogModel): string {
 
 function toFitRow(model: CatalogModel, probe: HardwareProbe): FitRow {
   const fit = classifyFit(probe, model);
+  const name = model.displayName || model.id;
+  const quant = compactQuant(model);
+  const accel = requiresAcceleratorBackend(name, quant);
   return {
     id: model.id,
-    name: model.displayName || model.id,
+    name,
     params: model.parameterLabel || model.params,
-    quant: compactQuant(model),
+    quant,
     vramGb: model.sizeGb,
     contextK: model.contextLength
       ? Math.round(model.contextLength / 1024)
       : null,
-    mode: probe.gpu ? probe.gpu.backend : "cpu only",
+    mode: accel ? "vLLM/SGLang" : probe.gpu ? probe.gpu.backend : "cpu only",
+    modeTitle: accel ? ACCEL_MODE_TITLE : "",
     fit,
     fitRank: FIT_LEVEL_META[fit].rank,
   };
@@ -261,11 +302,19 @@ export function CookbookView({
   const [downloading, setDownloading] = useState(false);
   const [usecase, setUsecase] = useState("");
   const [scanQuery, setScanQuery] = useState("");
-  const [quant, setQuant] = useState("Q4_K_M");
   const [engine, setEngine] = useState("");
   // FIT is the default-active sorted column upstream.
   const [fitSort, setFitSort] = useState("fit");
   const [fitReverse, setFitReverse] = useState(false);
+  // Ctx target-context slider (cookbook-hwfit.js). Persisted as the preset value;
+  // we map it back to a slider index, falling back to the default (50k) when no
+  // saved value or an unknown one is stored.
+  const [ctxIndex, setCtxIndex] = useState(() => {
+    const saved = readPref<number | null>(PREF_KEYS.hwfitContext, null);
+    if (saved == null) return CTX_DEFAULT_INDEX;
+    const idx = CTX_PRESETS.indexOf(saved);
+    return idx >= 0 ? idx : CTX_DEFAULT_INDEX;
+  });
 
   // Serve tab toolbar state.
   const [serveSort, setServeSort] = useState("name");
@@ -296,17 +345,33 @@ export function CookbookView({
     data: [],
   });
 
+  // Monotonic request token so a rapid RESCAN can't let a slower earlier probe
+  // resolve after a newer one and clobber fresher hardware/catalog data.
+  const hwReqToken = useRef(0);
   const loadHardware = useCallback(() => {
+    const token = ++hwReqToken.current;
     setHardware((p) => ({ status: "loading", data: p.data }));
     setCatalog((p) => ({ status: "loading", data: p.data }));
     void client
       .getLocalInferenceHardware()
-      .then((probe) => setHardware({ status: "ready", data: probe }))
-      .catch(() => setHardware({ status: "error", data: null }));
+      .then((probe) => {
+        if (token !== hwReqToken.current) return;
+        setHardware({ status: "ready", data: probe });
+      })
+      .catch(() => {
+        if (token !== hwReqToken.current) return;
+        setHardware({ status: "error", data: null });
+      });
     void client
       .getLocalInferenceCatalog()
-      .then((r) => setCatalog({ status: "ready", data: r.models }))
-      .catch(() => setCatalog({ status: "error", data: [] }));
+      .then((r) => {
+        if (token !== hwReqToken.current) return;
+        setCatalog({ status: "ready", data: r.models });
+      })
+      .catch(() => {
+        if (token !== hwReqToken.current) return;
+        setCatalog({ status: "error", data: [] });
+      });
   }, []);
 
   const loadInstalled = useCallback(() => {
@@ -368,6 +433,18 @@ export function CookbookView({
       .finally(() => setDownloading(false));
   };
 
+  // cookbook-hwfit.js context slider change: persist the chosen preset and force
+  // the sort to fit-descending (best-fit first). Upstream also re-runs the scan
+  // against the new context budget, but eliza's classifyFit is not context-aware
+  // (the runtime contract has no per-context fit probe), so re-probing would
+  // change nothing — we persist + sort only and disable the slider below.
+  const onCtxChange = (index: number) => {
+    setCtxIndex(index);
+    writePref(PREF_KEYS.hwfitContext, CTX_PRESETS[index]);
+    setFitSort("fit");
+    setFitReverse(false);
+  };
+
   // cookbook-hwfit.js header click: clicking the active column flips direction,
   // clicking a new column resets to highest-first.
   const onSortColumn = (key: string | null) => {
@@ -396,11 +473,30 @@ export function CookbookView({
             m.hfRepo.toLowerCase().includes(q)
           : true,
       )
-      .map((m) => toFitRow(m, probe));
+      .map((m) => toFitRow(m, probe))
+      // Engine filter (cookbook-hwfit.js _applyEngineFilter). FitRow.mode already
+      // classifies the backend: accelerator-only quants → "vLLM/SGLang", the
+      // rest run under llama.cpp/Ollama. vLLM/SGLang select the accel rows;
+      // llama.cpp selects the GGUF rows.
+      .filter((row) =>
+        engine === "vllm" || engine === "sglang"
+          ? row.mode === "vLLM/SGLang"
+          : engine === "llamacpp"
+            ? row.mode !== "vLLM/SGLang"
+            : true,
+      );
     const dir = fitReverse ? -1 : 1;
     rows.sort((a, b) => dir * compareFitRows(a, b, fitSort));
     return rows;
-  }, [hardware.data, catalog.data, scanQuery, usecase, fitSort, fitReverse]);
+  }, [
+    hardware.data,
+    catalog.data,
+    scanQuery,
+    usecase,
+    engine,
+    fitSort,
+    fitReverse,
+  ]);
 
   const installedRows = useMemo(() => {
     const q = serveQuery.trim().toLowerCase();
@@ -658,9 +754,10 @@ export function CookbookView({
                   />
                   <select
                     className="od-cb-field-input od-cb-quant"
-                    value={quant}
-                    onChange={(e) => setQuant(e.target.value)}
+                    value="Q4_K_M"
                     aria-label="Quantization"
+                    title="eliza's catalog ships one GGUF variant per tier, so quant can't narrow the scan here."
+                    disabled
                   >
                     {QUANT_OPTIONS.map((o) => (
                       <option key={o.label} value={o.value}>
@@ -681,6 +778,39 @@ export function CookbookView({
                       </option>
                     ))}
                   </select>
+                  <span
+                    className="od-cb-help-chip"
+                    title="Higher numbers usually mean better quality, but they need more memory. Lower numbers fit on more hardware."
+                  >
+                    ?
+                  </span>
+                  {/* Ctx target-context slider (cookbook-hwfit.js #hwfit-context).
+                      Disabled: eliza's fit estimate isn't context-aware, so the
+                      chosen context can't change which models fit. */}
+                  <label
+                    className="od-cb-ctx-control"
+                    title="Context length. eliza's fit estimate isn't context-aware in this runtime, so the chosen context doesn't change which models fit."
+                  >
+                    <span>Ctx</span>
+                    <span
+                      className="od-cb-help-chip od-cb-help-chip-inline"
+                      title="Context length. eliza's fit estimate isn't context-aware in this runtime, so the chosen context doesn't change which models fit."
+                    >
+                      ?
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={CTX_PRESETS.length - 1}
+                      step={1}
+                      value={ctxIndex}
+                      onChange={(e) => onCtxChange(Number(e.target.value))}
+                      aria-label="Target context length"
+                      title="eliza's fit estimate isn't context-aware in this runtime, so the chosen context doesn't change which models fit."
+                      disabled
+                    />
+                    <output>{ctxLabel(CTX_PRESETS[ctxIndex])}</output>
+                  </label>
                 </div>
 
                 {/* Toolbar row 2: server / RESCAN / EDIT */}
@@ -804,7 +934,10 @@ export function CookbookView({
                         </span>
                         <span className="od-cb-fit-col od-cb-fit-speed">—</span>
                         <span className="od-cb-fit-col od-cb-fit-score">—</span>
-                        <span className="od-cb-fit-col od-cb-fit-mode">
+                        <span
+                          className="od-cb-fit-col od-cb-fit-mode"
+                          title={row.modeTitle || undefined}
+                        >
                           {row.mode}
                         </span>
                       </div>

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Apply elizaOS patches on top of the pinned Electrobun submodule.
-# Idempotent: re-running after a successful apply is a no-op (git apply --check
+# Idempotent: re-running after a successful apply skips cleanly (git apply --check
 # will reject already-applied patches; we detect that and skip).
 set -euo pipefail
 

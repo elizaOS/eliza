@@ -76,7 +76,7 @@ bun run --cwd plugins/plugin-streaming clean        # rm dist .turbo tsconfig ar
 
 ## Config / env vars
 
-All are optional. The plugin is a no-op if none are set.
+All are optional. The plugin stays inactive if no streaming destination is configured.
 
 | Env var | Purpose |
 |---|---|

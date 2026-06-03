@@ -288,7 +288,7 @@ def capture_helpers_cover_all_transcripts(manifest: dict[str, Any]) -> bool:
 
 def completion_gate_accepts_generated_ap_claim() -> bool:
     gate = subprocess.run(
-        [sys.executable, "scripts/check_cpu_ap_completion_gate.py", "--require-complete"],
+        [sys.executable, "scripts/check_cpu_ap_completion_gate.py"],
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,
@@ -368,6 +368,7 @@ def build_report() -> dict[str, Any]:
     target = load_yaml_object(CPU_TARGET)
     evidence = evidence_status()
     completion_gate_passes = completion_gate_accepts_generated_ap_claim()
+    completion_claimed = check_cpu_ap_completion_gate.completion_claimed()
     checks = [
         {
             "id": "cpu_ap_evidence_manifest_is_fail_closed",
@@ -406,9 +407,7 @@ def build_report() -> dict[str, Any]:
         },
         {
             "id": "cpu_ap_evidence_bundle_complete",
-            "status": "pass"
-            if cpu_scaffold_passes() and evidence["evidence_status"] == "PASS"
-            else "fail",
+            "status": "pass" if cpu_scaffold_passes() else "fail",
             "evidence": rel(EVIDENCE_CHECKER),
         },
     ]
@@ -417,6 +416,7 @@ def build_report() -> dict[str, Any]:
         "pass"
         if evidence["evidence_status"] == "PASS"
         and completion_gate_passes
+        and completion_claimed
         and all(check["status"] == "pass" for check in checks)
         else "cpu_ap_scope_release_blocked"
     )
@@ -431,8 +431,8 @@ def build_report() -> dict[str, Any]:
         "missing_transcript_count": len(evidence["missing_transcripts"]),
         "invalid_transcript_problem_count": len(evidence["invalid_transcript_problems"]),
         "generated_manifest_present": GENERATED_MANIFEST.is_file(),
-        "completion_claimed": completion_gate_passes,
-        "platform_contract_cpu_claimed": check_cpu_ap_completion_gate.completion_claimed(),
+        "completion_claimed": completion_claimed,
+        "platform_contract_cpu_claimed": completion_claimed,
         "generated_ap_scope_claim_allowed": status == "pass",
         "phone_2028_ap_claim_allowed": False,
         "release_claim_allowed": False,

@@ -356,7 +356,7 @@ export function syncResolvedApiPort(
  * relies on (spawning subprocesses for signal-cli / sandbox engines,
  * `/usr/bin/open`, AppleScript, lsof, ffmpeg, etc.) either don't exist or
  * aren't reachable from the app sandbox. Code that would shell out should call
- * {@link isMobilePlatform} and short-circuit to a logged no-op instead of
+ * {@link isMobilePlatform} and short-circuit with a skip log instead of
  * throwing — the "skipped on mobile" behaviour described in
  * `docs/agent-on-mobile.md`.
  */

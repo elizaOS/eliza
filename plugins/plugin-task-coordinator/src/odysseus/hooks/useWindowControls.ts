@@ -82,6 +82,10 @@ const MIN_H = 220;
 // triggers maximize; the side/bottom edges trigger the half snaps.
 const EDGE_THRESHOLD_PX = 24;
 const TOP_FULL_STRIP_PX = 8;
+// Mirror of tileManager.js `Math.hypot(dx, dy) < 6` guard: a snapped window
+// only peels back to its pre-snap geometry once the drag passes this distance,
+// so a sub-pixel nudge on a snapped panel doesn't teleport it back to size.
+const UNSNAP_MOVE_PX = 6;
 // Desktop only — the odysseus source excludes tiling at <=768px (swipe UX).
 const DESKTOP_MIN_W = 768;
 // Left navigation width (icon rail). The odysseus safe-rect carves the nav out
@@ -192,7 +196,15 @@ export function useWindowControls(
   const minimized = hasMinimize && manager.isMinimized(storageKey);
 
   const minimize = useCallback(() => {
-    if (manager && hasMinimize) manager.setMinimized(storageKey, true);
+    if (manager && hasMinimize) {
+      // Detach any in-flight drag/resize first — otherwise the window-level
+      // listeners keep mutating rect on the now-hidden panel. detach() also
+      // clears activeGestureRef; clear the snap preview too so an in-flight
+      // drag doesn't leave a ghost floating over the dock.
+      activeGestureRef.current?.();
+      setSnapGhost(null);
+      manager.setMinimized(storageKey, true);
+    }
   }, [manager, hasMinimize, storageKey]);
 
   const restore = useCallback(() => {
@@ -255,20 +267,31 @@ export function useWindowControls(
       const desktop = window.innerWidth > DESKTOP_MIN_W;
       const sx = e.clientX;
       const sy = e.clientY;
-      // If the drag begins on an already-snapped window, peel back to the
-      // pre-snap geometry as the anchor so the move feels like un-snapping
-      // (tileManager.js `_unsnap` on first significant move).
-      const anchor = preSnapRef.current ?? start;
-      preSnapRef.current = null;
+      // Anchor the drag on the window's CURRENT (possibly snapped) geometry.
+      // If it began snapped we don't peel back to the pre-snap rect yet — that
+      // only happens once the pointer travels past UNSNAP_MOVE_PX, so a tiny
+      // nudge on a snapped window doesn't teleport it (tileManager.js defers
+      // `_unsnap` behind its `Math.hypot(dx, dy) < 6` guard).
+      let anchor = start;
+      const pendingUnsnap = preSnapRef.current;
       setSnapGhost(null);
       let activeTarget: SnapTarget | null = null;
       const onMove = (ev: PointerEvent) => {
+        const dx = ev.clientX - sx;
+        const dy = ev.clientY - sy;
+        // First significant move on a snapped window: swap the anchor to the
+        // stashed pre-snap rect and clear it, so from here the drag follows the
+        // pointer at the restored size (tileManager.js `_unsnap`).
+        if (pendingUnsnap && Math.hypot(dx, dy) > UNSNAP_MOVE_PX) {
+          anchor = pendingUnsnap;
+          preSnapRef.current = null;
+        }
         const vw = window.innerWidth;
         const vh = window.innerHeight;
         const next: Rect = {
           ...anchor,
-          x: Math.min(Math.max(0, anchor.x + (ev.clientX - sx)), vw - 80),
-          y: Math.min(Math.max(0, anchor.y + (ev.clientY - sy)), vh - 40),
+          x: Math.min(Math.max(0, anchor.x + dx), vw - 80),
+          y: Math.min(Math.max(0, anchor.y + dy), vh - 40),
         };
         rectRef.current = next;
         setRect(next);
@@ -281,6 +304,11 @@ export function useWindowControls(
       const detach = () => {
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
+        // An OS pointercancel (touch interrupt, context menu, scroll takeover)
+        // ends the gesture without a pointerup, so it must run onUp too — and
+        // be torn down here — or the listeners leak and the panel keeps
+        // following a dead pointer (windowDrag.js pairs touchcancel/touchend).
+        window.removeEventListener("pointercancel", onUp);
         activeGestureRef.current = null;
       };
       const onUp = () => {
@@ -299,6 +327,7 @@ export function useWindowControls(
       activeGestureRef.current = detach;
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
     },
     [ensureRect, persist],
   );
@@ -333,6 +362,10 @@ export function useWindowControls(
       const detach = () => {
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
+        // pointercancel ends the resize without a pointerup; tear down here too
+        // so we persist the final rect and don't leak listeners onto the window
+        // (windowResize.js pairs touchcancel/touchend for the same reason).
+        window.removeEventListener("pointercancel", onUp);
         activeGestureRef.current = null;
       };
       const onUp = () => {
@@ -342,6 +375,7 @@ export function useWindowControls(
       activeGestureRef.current = detach;
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
     },
     [ensureRect, persist],
   );

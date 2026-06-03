@@ -13,7 +13,6 @@ import { sendTransaction } from "../utils/sendTransaction.ts";
 
 const { BN } = anchor;
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
-const DEFAULT_METEORA_RANGE_INTERVAL = 10;
 
 /** Response shape from Meteora DLMM API */
 interface MeteoraPoolResponse {
@@ -118,9 +117,11 @@ export class MeteoraLpService extends Service {
       const dlmmPool = await DLMM.create(this.connection, new PublicKey(params.poolId));
       const activeBin = await dlmmPool.getActiveBin();
 
-      const rangeInterval = resolveMeteoraRangeInterval(this.runtime);
-      const minBinId = activeBin.binId - rangeInterval;
-      const maxBinId = activeBin.binId + rangeInterval;
+      // For now, we'll use a simple strategy of 10 bins on each side of the active bin.
+      // This should be made more configurable in the future.
+      const TOTAL_RANGE_INTERVAL = 10;
+      const minBinId = activeBin.binId - TOTAL_RANGE_INTERVAL;
+      const maxBinId = activeBin.binId + TOTAL_RANGE_INTERVAL;
 
       const totalXAmount = new BN(params.tokenAAmountLamports);
       // If tokenBAmount is not provided, we can auto-fill it.
@@ -221,8 +222,8 @@ export class MeteoraLpService extends Service {
 
       const binIdsToRemove = position.positionData.positionBinData.map((bin) => bin.binId);
 
-      // Core ILpService removeLiquidity has no DLMM bin-range amount field, so
-      // Meteora maps this operation to a full position close.
+      // ILpService has no DLMM percentage/bin selection fields yet, so this
+      // adapter removes 100% of the selected position.
       const removeLiquidityTx = await dlmmPool.removeLiquidity({
         position: position.publicKey,
         user: params.userVault.publicKey,
@@ -354,9 +355,7 @@ export class MeteoraLpService extends Service {
           symbol: "METEORA-POS",
         },
         underlyingTokens,
-        // Core LP details require a number. Meteora reports 0 when no price
-        // source is configured; callers render it as N/A.
-        valueUsd: 0,
+        valueUsd: 0, // USD valuation is unavailable until a price oracle is wired.
         accruedFees: [],
         rewards: [],
       };
@@ -418,18 +417,4 @@ function getRuntimeStringSetting(
 ): string | undefined {
   const value = runtime?.getSetting(key);
   return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function resolveMeteoraRangeInterval(runtime: IAgentRuntime | undefined): number {
-  const raw = getRuntimeStringSetting(runtime, "METEORA_RANGE_INTERVAL_BINS");
-  if (!raw) {
-    return DEFAULT_METEORA_RANGE_INTERVAL;
-  }
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(
-      `METEORA_RANGE_INTERVAL_BINS must be a positive integer, received ${raw}`
-    );
-  }
-  return parsed;
 }

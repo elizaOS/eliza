@@ -18,8 +18,8 @@ export class ClientBaseTestSuite implements TestSuite {
   private mockConfig: TwitterConfig;
 
   constructor() {
-    // Create a mock runtime for tests. The runtime interface is broad;
-    // this fixture implements only the surface the base client touches.
+    // Create a test runtime. The runtime interface is broad;
+    // we provide only the surface the base client touches.
     this.mockRuntime = asRuntime({
       agentId: "test-agent-id" as IAgentRuntime["agentId"],
       getSetting: (key: string) => {
@@ -147,7 +147,7 @@ export class ClientBaseTestSuite implements TestSuite {
         };
         const client = new ClientBase(this.mockRuntime, state);
 
-        // Check interval settings.
+        // Verify intervals are set correctly
         if (client.state.TWITTER_POST_INTERVAL !== "180") {
           throw new Error("Client state TWITTER_POST_INTERVAL mismatch.");
         }

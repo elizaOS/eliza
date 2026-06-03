@@ -115,7 +115,7 @@ substrates — only the quote producer differs.
    (Unique Device Secret, fused) is combined with the first measured stage to
    derive **CDI** (Compound Device Identifier). *(Cloud lane: skip to step 4 —
    TDX hardware is the root.)* **BLOCKED** (silicon RoT; today `secure_boot.c`
-   returns 0, `e1_lifecycle.sv` uses placeholder keys).
+   returns 0, `e1_lifecycle.sv` uses development test keys).
 2. **Measured boot chain (device).** Each stage measures the next before
    releasing it: ROM → BL1/BL2 → OpenSBI → **M-mode TSM** → guest. Each
    measurement extends a measurement register (RoT-held), forming the boot/os

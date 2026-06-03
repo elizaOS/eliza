@@ -4,11 +4,6 @@ import type { PasswordManagerReference } from "./types.js";
 
 const exec = promisify(execFile);
 
-export type PasswordManagerCommandRunner = (
-  command: string,
-  args: readonly string[],
-) => Promise<{ readonly stdout: string }>;
-
 /**
  * Resolve a password-manager reference at use time.
  *
@@ -31,31 +26,19 @@ export class PasswordManagerError extends Error {
 
 export async function resolveReference(
   ref: PasswordManagerReference,
-  runner: PasswordManagerCommandRunner = defaultCommandRunner,
 ): Promise<string> {
-  if (ref.source === "1password") return resolve1Password(ref.path, runner);
-  if (ref.source === "protonpass") return resolveProtonPass(ref.path, runner);
+  if (ref.source === "1password") return resolve1Password(ref.path);
+  if (ref.source === "protonpass") return resolveProtonPass(ref.path);
   throw new PasswordManagerError(ref.source, "unsupported source");
 }
 
-async function defaultCommandRunner(
-  command: string,
-  args: readonly string[],
-): Promise<{ readonly stdout: string }> {
-  const { stdout } = await exec(command, [...args], {
-    encoding: "utf8",
-    timeout: 5000,
-  });
-  return { stdout };
-}
-
-async function resolve1Password(
-  path: string,
-  runner: PasswordManagerCommandRunner,
-): Promise<string> {
+async function resolve1Password(path: string): Promise<string> {
   const uri = path.startsWith("op://") ? path : `op://${path}`;
   try {
-    const { stdout } = await runner("op", ["read", uri]);
+    const { stdout } = await exec("op", ["read", uri], {
+      encoding: "utf8",
+      timeout: 5000,
+    });
     const value = stdout.trim();
     if (value.length === 0) {
       throw new PasswordManagerError("1password", `${uri} is empty`);
@@ -81,13 +64,13 @@ async function resolve1Password(
   }
 }
 
-async function resolveProtonPass(
-  path: string,
-  runner: PasswordManagerCommandRunner,
-): Promise<string> {
+async function resolveProtonPass(path: string): Promise<string> {
   const uri = path.startsWith("pass://") ? path : `pass://${path}`;
   try {
-    const { stdout } = await runner("pass-cli", ["item", "view", uri]);
+    const { stdout } = await exec("pass-cli", ["item", "view", uri], {
+      encoding: "utf8",
+      timeout: 5000,
+    });
     const value = stdout.trim();
     if (value.length === 0) {
       throw new PasswordManagerError("protonpass", `${uri} is empty`);
@@ -98,15 +81,15 @@ async function resolveProtonPass(
     if (e.code === "ENOENT") {
       throw new PasswordManagerError(
         "protonpass",
-        "`pass-cli` CLI not found. Install from https://protonpass.github.io/pass-cli/get-started/installation/, then sign in (`pass-cli login`).",
+        "`pass-cli` not found. Install Proton Pass CLI from https://protonpass.github.io/pass-cli/.",
       );
     }
     if (err instanceof PasswordManagerError) throw err;
     const msg = err instanceof Error ? err.message : String(err);
-    if (/authenticated client|not authenticated|login/i.test(msg)) {
+    if (/not signed in|not authenticated|not logged in|login required/i.test(msg)) {
       throw new PasswordManagerError(
         "protonpass",
-        "`pass-cli` is not signed in. Run `pass-cli login`, then verify with `pass-cli test`.",
+        "`pass-cli` is not signed in. Authenticate with Proton Pass CLI before resolving vault references.",
       );
     }
     throw new PasswordManagerError("protonpass", msg);

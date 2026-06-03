@@ -2,6 +2,54 @@ import { Brain, ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { MarkdownText } from "./orchestrator-markdown";
 
+// Luminance-sweep shimmer keyframes for the streaming reasoning cell. This is
+// the canonical copy of the rule that also lives in ODYSSEUS_CSS
+// (odysseus/odysseus-theme.ts) for the /odysseus shell. The cell renders in two
+// surfaces — the standalone OrchestratorWorkbench timeline (/orchestrator),
+// which does NOT inject ODYSSEUS_CSS, and the odysseus shell, which does — so
+// the cell carries the rule itself rather than assuming the shell stylesheet is
+// present. It is emitted via a React-hoistable <style href precedence> (below):
+// React lifts it to <head> and DEDUPLICATES every identical href to a single
+// DOM node, so N cells across any number of renders inject the rule exactly
+// once (the per-instance <style> this replaces injected one tag per cell). The
+// reduced-motion guard drops the animation and the mask entirely.
+const REASONING_SHIMMER_CSS = `
+.orchestrator-reasoning-shimmer {
+  -webkit-mask-image: linear-gradient(
+    100deg,
+    rgba(0, 0, 0, 0.45) 30%,
+    rgba(0, 0, 0, 1) 50%,
+    rgba(0, 0, 0, 0.45) 70%
+  );
+  mask-image: linear-gradient(
+    100deg,
+    rgba(0, 0, 0, 0.45) 30%,
+    rgba(0, 0, 0, 1) 50%,
+    rgba(0, 0, 0, 0.45) 70%
+  );
+  -webkit-mask-size: 220% 100%;
+  mask-size: 220% 100%;
+  animation: orchestrator-reasoning-sweep 1.8s linear infinite;
+}
+@keyframes orchestrator-reasoning-sweep {
+  from {
+    -webkit-mask-position: 180% 0;
+    mask-position: 180% 0;
+  }
+  to {
+    -webkit-mask-position: -80% 0;
+    mask-position: -80% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .orchestrator-reasoning-shimmer {
+    -webkit-mask-image: none;
+    mask-image: none;
+    animation: none;
+  }
+}
+`;
+
 // A collapsible "reasoning / thinking" cell, matching the Codex / opencode
 // shape: a dim one-line header you can expand into the model's raw chain of
 // thought. The cloud-ui ai-elements `Reasoning` primitive
@@ -95,47 +143,12 @@ export function ReasoningCell({
           </div>
         </div>
       ) : null}
-      {/* Luminance-sweep shimmer: a moving mask-image window briefly lifts the
-          alpha of the masked glyphs, reading as a highlight traveling across
-          the muted text — no second color is introduced. Scoped class so the
-          keyframes live with the only component that uses them; the
-          reduced-motion guard drops the animation (and the mask) entirely. */}
-      <style>{`
-        .orchestrator-reasoning-shimmer {
-          -webkit-mask-image: linear-gradient(
-            100deg,
-            rgba(0, 0, 0, 0.45) 30%,
-            rgba(0, 0, 0, 1) 50%,
-            rgba(0, 0, 0, 0.45) 70%
-          );
-          mask-image: linear-gradient(
-            100deg,
-            rgba(0, 0, 0, 0.45) 30%,
-            rgba(0, 0, 0, 1) 50%,
-            rgba(0, 0, 0, 0.45) 70%
-          );
-          -webkit-mask-size: 220% 100%;
-          mask-size: 220% 100%;
-          animation: orchestrator-reasoning-sweep 1.8s linear infinite;
-        }
-        @keyframes orchestrator-reasoning-sweep {
-          from {
-            -webkit-mask-position: 180% 0;
-            mask-position: 180% 0;
-          }
-          to {
-            -webkit-mask-position: -80% 0;
-            mask-position: -80% 0;
-          }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .orchestrator-reasoning-shimmer {
-            -webkit-mask-image: none;
-            mask-image: none;
-            animation: none;
-          }
-        }
-      `}</style>
+      {/* React-hoistable, deduplicated stylesheet: the shared `href` collapses
+          every ReasoningCell's copy of this rule to a single <head> node, so it
+          is emitted once regardless of how many cells mount or re-render. */}
+      <style href="orchestrator-reasoning-shimmer" precedence="default">
+        {REASONING_SHIMMER_CSS}
+      </style>
     </div>
   );
 }

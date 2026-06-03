@@ -64,5 +64,5 @@ class BaseSkill(ABC):
         ...
 
     def load_checkpoint(self, path: str) -> None:
-        """Load a trained checkpoint. No-op for scripted skills."""
+        """Load a trained checkpoint; scripted skills ignore this hook."""
         return None

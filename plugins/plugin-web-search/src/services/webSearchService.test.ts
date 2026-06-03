@@ -156,6 +156,7 @@ describe("WebSearchService", () => {
 
         await service.searchNews("funding", { freshness: "week", limit: 2 });
         await service.searchImages("diagram", { limit: 4 });
+        await service.searchVideos("demo", { limit: 3 });
 
         expect(searchMock).toHaveBeenNthCalledWith(
             1,
@@ -172,6 +173,62 @@ describe("WebSearchService", () => {
             expect.objectContaining({
                 includeImages: true,
                 maxResults: 4,
+            })
+        );
+        expect(searchMock).toHaveBeenNthCalledWith(
+            3,
+            "demo video",
+            expect.objectContaining({
+                includeImages: true,
+                maxResults: 3,
+            })
+        );
+    });
+
+    it("derives suggestions and trending searches from Tavily result titles", async () => {
+        searchMock
+            .mockResolvedValueOnce({
+                results: [
+                    { title: "Eliza agents", content: "" },
+                    { title: "eliza agents", content: "" },
+                    { title: "Untitled", content: "" },
+                    { title: "Remote plugin docs", content: "" },
+                ],
+            })
+            .mockResolvedValueOnce({
+                results: [
+                    { title: "Market update", content: "" },
+                    { title: "Policy update", content: "" },
+                ],
+            });
+        const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
+
+        await expect(service.getSuggestions(" eliza ")).resolves.toEqual([
+            "Eliza agents",
+            "Remote plugin docs",
+        ]);
+        await expect(service.getTrendingSearches("US")).resolves.toEqual([
+            "Market update",
+            "Policy update",
+        ]);
+
+        expect(searchMock).toHaveBeenNthCalledWith(
+            1,
+            "eliza",
+            expect.objectContaining({
+                includeAnswer: false,
+                maxResults: 5,
+                searchDepth: "basic",
+                topic: "general",
+            })
+        );
+        expect(searchMock).toHaveBeenNthCalledWith(
+            2,
+            "trending news in US",
+            expect.objectContaining({
+                topic: "news",
+                days: 1,
+                maxResults: 5,
             })
         );
     });

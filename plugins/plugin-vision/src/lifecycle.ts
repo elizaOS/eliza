@@ -276,7 +276,7 @@ function adaptWS1ArbiterToIModelArbiter(ws1: WS1ArbiterLike): IModelArbiter {
       return true;
     },
     release(): void {
-      // No-op; WS1 manages per-capability lifecycles.
+      // WS1 manages per-capability lifecycles.
     },
     onPressure(cb: (holders: string[]) => void): () => void {
       return ws1.onEvent((event) => {

@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/capacitor-system",
-  "version": "2.0.3-beta.0",
-  "description": "Android system-role status bridge for elizaOS.",
+  "version": "2.0.3-beta.1",
+  "description": "Android system-role status bridge for ElizaOS.",
   "main": "./dist/plugin.cjs.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/esm/index.d.ts",

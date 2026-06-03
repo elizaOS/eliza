@@ -2,20 +2,20 @@ import { afterEach, describe, expect, it, mock } from "bun:test";
 import { getHostShim, resetHostShim } from "@elizaos/plugin-host-shim";
 import { installAndroidShim, resetAndroidShimForTests } from "./index";
 
-interface FakeWindow {
+interface TestWindow {
   ElizaosAndroidBridge?: { postMessage: ReturnType<typeof mock> };
   __elizaosAndroidDeliver?: (json: string) => void;
 }
 
-function installFakeWindow(postMessage = mock(() => {})): FakeWindow {
-  const fakeWindow: FakeWindow = {
+function installTestWindow(postMessage = mock(() => {})): TestWindow {
+  const testWindow: TestWindow = {
     ElizaosAndroidBridge: { postMessage },
   };
   Object.defineProperty(globalThis, "window", {
     configurable: true,
-    value: fakeWindow,
+    value: testWindow,
   });
-  return fakeWindow;
+  return testWindow;
 }
 
 describe("installAndroidShim", () => {
@@ -37,12 +37,12 @@ describe("installAndroidShim", () => {
   });
 
   it("posts request JSON and resolves matching delivered responses", async () => {
-    const fakeWindow = installFakeWindow();
+    const testWindow = installTestWindow();
     const shim = installAndroidShim();
 
     const request = shim.request("provider.foo", { ok: true });
     const posted = JSON.parse(
-      String(fakeWindow.ElizaosAndroidBridge?.postMessage.mock.calls[0]?.[0]),
+      String(testWindow.ElizaosAndroidBridge?.postMessage.mock.calls[0]?.[0]),
     );
 
     expect(posted).toEqual({
@@ -52,7 +52,7 @@ describe("installAndroidShim", () => {
       params: { ok: true },
     });
 
-    fakeWindow.__elizaosAndroidDeliver?.(
+    testWindow.__elizaosAndroidDeliver?.(
       JSON.stringify({
         kind: "response",
         id: 1,
@@ -65,13 +65,13 @@ describe("installAndroidShim", () => {
   });
 
   it("rejects delivered error responses and ignores malformed or unknown deliveries", async () => {
-    const fakeWindow = installFakeWindow();
+    const testWindow = installTestWindow();
     const shim = installAndroidShim();
     const request = shim.request("provider.fail", null);
 
-    fakeWindow.__elizaosAndroidDeliver?.("not json");
-    fakeWindow.__elizaosAndroidDeliver?.(JSON.stringify(null));
-    fakeWindow.__elizaosAndroidDeliver?.(
+    testWindow.__elizaosAndroidDeliver?.("not json");
+    testWindow.__elizaosAndroidDeliver?.(JSON.stringify(null));
+    testWindow.__elizaosAndroidDeliver?.(
       JSON.stringify({
         kind: "response",
         id: "1",
@@ -79,10 +79,10 @@ describe("installAndroidShim", () => {
         payload: "ignored",
       }),
     );
-    fakeWindow.__elizaosAndroidDeliver?.(
+    testWindow.__elizaosAndroidDeliver?.(
       JSON.stringify({ kind: "response", id: 1, payload: "missing-ok" }),
     );
-    fakeWindow.__elizaosAndroidDeliver?.(
+    testWindow.__elizaosAndroidDeliver?.(
       JSON.stringify({
         kind: "response",
         id: 999,
@@ -90,10 +90,10 @@ describe("installAndroidShim", () => {
         payload: "ignored",
       }),
     );
-    fakeWindow.__elizaosAndroidDeliver?.(
+    testWindow.__elizaosAndroidDeliver?.(
       JSON.stringify({ kind: "event", event: 12, data: "ignored" }),
     );
-    fakeWindow.__elizaosAndroidDeliver?.(
+    testWindow.__elizaosAndroidDeliver?.(
       JSON.stringify({ kind: "response", id: 1, ok: false, error: "denied" }),
     );
 
@@ -101,7 +101,7 @@ describe("installAndroidShim", () => {
   });
 
   it("ignores malformed matching responses without settling pending requests", async () => {
-    const fakeWindow = installFakeWindow();
+    const testWindow = installTestWindow();
     const shim = installAndroidShim();
     const request = shim.request("provider.wait", null);
 
@@ -111,9 +111,9 @@ describe("installAndroidShim", () => {
       { kind: "response", id: Number.NaN, ok: true },
       { kind: "response", id: 1, ok: false, error: { message: "bad" } },
     ]) {
-      fakeWindow.__elizaosAndroidDeliver?.(JSON.stringify(delivery));
+      testWindow.__elizaosAndroidDeliver?.(JSON.stringify(delivery));
     }
-    fakeWindow.__elizaosAndroidDeliver?.(
+    testWindow.__elizaosAndroidDeliver?.(
       JSON.stringify({
         kind: "response",
         id: 1,
@@ -126,12 +126,12 @@ describe("installAndroidShim", () => {
   });
 
   it("keeps concurrent requests correlated when responses arrive out of order", async () => {
-    const fakeWindow = installFakeWindow();
+    const testWindow = installTestWindow();
     const shim = installAndroidShim();
 
     const first = shim.request("provider.first", null);
     const second = shim.request("provider.second", null);
-    const postMessage = fakeWindow.ElizaosAndroidBridge?.postMessage;
+    const postMessage = testWindow.ElizaosAndroidBridge?.postMessage;
 
     expect(JSON.parse(String(postMessage?.mock.calls[0]?.[0]))).toEqual({
       kind: "request",
@@ -146,7 +146,7 @@ describe("installAndroidShim", () => {
       params: null,
     });
 
-    fakeWindow.__elizaosAndroidDeliver?.(
+    testWindow.__elizaosAndroidDeliver?.(
       JSON.stringify({
         kind: "response",
         id: 2,
@@ -154,7 +154,7 @@ describe("installAndroidShim", () => {
         payload: "second",
       }),
     );
-    fakeWindow.__elizaosAndroidDeliver?.(
+    testWindow.__elizaosAndroidDeliver?.(
       JSON.stringify({
         kind: "response",
         id: 1,
@@ -168,11 +168,11 @@ describe("installAndroidShim", () => {
   });
 
   it("uses default success and error payload semantics", async () => {
-    const fakeWindow = installFakeWindow();
+    const testWindow = installTestWindow();
     const shim = installAndroidShim();
 
     const success = shim.request("provider.empty", null);
-    fakeWindow.__elizaosAndroidDeliver?.(
+    testWindow.__elizaosAndroidDeliver?.(
       JSON.stringify({
         kind: "response",
         id: 1,
@@ -182,7 +182,7 @@ describe("installAndroidShim", () => {
     await expect(success).resolves.toBeNull();
 
     const failure = shim.request("provider.error", null);
-    fakeWindow.__elizaosAndroidDeliver?.(
+    testWindow.__elizaosAndroidDeliver?.(
       JSON.stringify({
         kind: "response",
         id: 2,
@@ -197,7 +197,7 @@ describe("installAndroidShim", () => {
     postMessage.mockImplementationOnce(() => {
       throw new Error("bridge down");
     });
-    installFakeWindow(postMessage);
+    installTestWindow(postMessage);
     const shim = installAndroidShim();
 
     await expect(shim.request("provider.foo", null)).rejects.toThrow(
@@ -228,7 +228,7 @@ describe("installAndroidShim", () => {
   });
 
   it("rejects requests that never receive an Android bridge response", async () => {
-    installFakeWindow();
+    installTestWindow();
     const shim = installAndroidShim({ requestTimeoutMs: 1 });
 
     await expect(shim.request("provider.never", null)).rejects.toThrow(
@@ -237,28 +237,28 @@ describe("installAndroidShim", () => {
   });
 
   it("delivers events to subscribers and stops after unsubscribe", () => {
-    const fakeWindow = installFakeWindow();
+    const testWindow = installTestWindow();
     const shim = installAndroidShim();
     const handler = mock(() => {});
     const secondHandler = mock(() => {});
 
     const unsubscribe = shim.on("plugin.event", handler);
     shim.on("plugin.event", secondHandler);
-    fakeWindow.__elizaosAndroidDeliver?.(
+    testWindow.__elizaosAndroidDeliver?.(
       JSON.stringify({
         kind: "event",
         event: "plugin.event",
         data: { count: 1 },
       }),
     );
-    fakeWindow.__elizaosAndroidDeliver?.(
+    testWindow.__elizaosAndroidDeliver?.(
       JSON.stringify({
         kind: "event",
         event: "plugin.event",
       }),
     );
     unsubscribe();
-    fakeWindow.__elizaosAndroidDeliver?.(
+    testWindow.__elizaosAndroidDeliver?.(
       JSON.stringify({
         kind: "event",
         event: "plugin.event",
@@ -273,7 +273,7 @@ describe("installAndroidShim", () => {
   });
 
   it("is idempotent and installs the same host shim once", () => {
-    installFakeWindow();
+    installTestWindow();
     const first = installAndroidShim();
     const firstDeliver = window.__elizaosAndroidDeliver;
     const second = installAndroidShim();
@@ -284,7 +284,7 @@ describe("installAndroidShim", () => {
   });
 
   it("encodes plugin and asset path segments and rejects unsafe relative paths", () => {
-    installFakeWindow();
+    installTestWindow();
     const shim = installAndroidShim();
 
     expect(

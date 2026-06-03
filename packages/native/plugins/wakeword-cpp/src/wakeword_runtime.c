@@ -1,7 +1,8 @@
 /*
  * wakeword_runtime.c — real openWakeWord runtime, three-GGUF edition.
  *
- * Loads three GGUFs produced by `scripts/wakeword_to_gguf.py`:
+ * Implements the public ABI with three GGUFs
+ * produced by `scripts/wakeword_to_gguf.py`:
  *
  *   1. melspec.gguf    — fp16 STFT real/imag bases (257, 1, 512) and
  *                        mel filter matrix (257, 32). The C runtime
@@ -449,7 +450,7 @@ struct wakeword_session {
     /* Latest classifier probability (0 until enough context warmed up). */
     float    last_score;
 
-    /* Advisory threshold for callers that expose a boolean gate. */
+    /* Advisory threshold (read by future `wakeword_get_threshold`). */
     float    threshold;
 };
 

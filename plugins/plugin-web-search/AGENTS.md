@@ -42,9 +42,10 @@ bun run --cwd plugins/plugin-web-search lint:fix    # biome check --write src/
 bun run --cwd plugins/plugin-web-search format      # biome format src/
 bun run --cwd plugins/plugin-web-search format:fix  # biome format --write src/
 bun run --cwd plugins/plugin-web-search typecheck   # tsgo --noEmit
+bun run --cwd plugins/plugin-web-search test        # vitest run --config ./vitest.config.ts
 ```
 
-No `test` script is defined in `package.json`; this package ships no tests.
+Tests live next to the service code and run through Vitest.
 
 ## Config / env vars
 
@@ -73,8 +74,8 @@ Edit `WEB_SEARCH_CATEGORY.filters` in `src/index.ts`. Filter names must match ke
 ## Conventions / gotchas
 
 - **Graceful degradation.** The service does not throw during `init`; it sets `this.configured = false` and logs a warning. Callers that invoke `search()` without a key get an `Error` with a clear message.
-- **Tavily client is stateless.** `stop()` is a no-op — there is nothing to tear down.
-- **`searchVideos` and `getSuggestions`/`getTrendingSearches` are stubs.** `searchVideos` delegates to plain `search()` (Tavily has no dedicated video endpoint). `getSuggestions` and `getTrendingSearches` always return `[]`.
+- **Tavily client is stateless.** `stop()` returns immediately because there is nothing to tear down.
+- **Tavily is the only search provider.** `searchVideos` uses Tavily web search with a video-oriented query and image inclusion because Tavily has no dedicated video endpoint. `getSuggestions` and `getTrendingSearches` derive distinct result titles from Tavily general/news searches.
 - **`getPageInfo` uses a raw `fetch` + regex.** It is not Tavily-backed — it downloads the HTML directly and extracts `<title>` and `<meta name="description">`. `metadata`, `images`, and `links` fields are always empty.
 - **`@tavily/core` is the only external runtime dep** (`^0.7.0`). Keep it pinned close to avoid API contract drift.
 - For repo-wide conventions (logger-only, ESM modules, naming, architecture rules) see the root `AGENTS.md`.

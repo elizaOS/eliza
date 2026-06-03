@@ -6,9 +6,16 @@
 // feature navigation; the shell renders this rail only in the collapsed state.
 
 import {
+  BookOpen,
   Boxes,
   Brain,
+  CalendarDays,
+  FileText,
+  FlaskConical,
+  GitCompare,
+  Images,
   ListChecks,
+  Mail,
   Palette,
   PanelLeft,
   Plus,
@@ -30,6 +37,13 @@ export function IconRail({
   onOpenModels,
   onOpenTasks,
   onOpenPresets,
+  onOpenCalendar,
+  onOpenCompare,
+  onOpenCookbook,
+  onOpenResearch,
+  onOpenEmail,
+  onOpenGallery,
+  onOpenDocs,
 }: {
   onToggleSidebar: () => void;
   onNewChat: () => void;
@@ -126,6 +140,74 @@ export function IconRail({
         aria-label="Presets"
       >
         <SlidersHorizontal size={18} />
+      </button>
+      {/* Tool launchers (odysseus index.html #icon-rail "always visible,
+        alphabetical" group). The collapsed rail is the only nav surface, so
+        these glyphs make the tool windows reachable without expanding the
+        sidebar. Order mirrors odysseus: Calendar, Compare, Cookbook,
+        Research, Email, Gallery, Library. */}
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenCalendar}
+        title="Calendar"
+        aria-label="Calendar"
+      >
+        <CalendarDays size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenCompare}
+        title="Compare"
+        aria-label="Compare"
+      >
+        <GitCompare size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenCookbook}
+        title="Cookbook"
+        aria-label="Cookbook"
+      >
+        <BookOpen size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenResearch}
+        title="Deep Research"
+        aria-label="Deep Research"
+      >
+        <FlaskConical size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenEmail}
+        title="Email"
+        aria-label="Email"
+      >
+        <Mail size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenGallery}
+        title="Gallery"
+        aria-label="Gallery"
+      >
+        <Images size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenDocs}
+        title="Library"
+        aria-label="Library"
+      >
+        <FileText size={18} />
       </button>
       <div className="od-rail-spacer" />
       <button

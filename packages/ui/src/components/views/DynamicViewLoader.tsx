@@ -19,6 +19,7 @@
  * module has no interact export.
  */
 
+import { resolveAppBranding } from "@elizaos/shared";
 import { AlertTriangle, Ban, LoaderCircle } from "lucide-react";
 import {
   type ComponentType,
@@ -38,9 +39,31 @@ import {
   isAgentSurfaceCapability,
   type ViewAgentRegistry,
 } from "../../agent-surface";
+import { client } from "../../api/index.ts";
 import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
 import { useTranslation } from "../../state/TranslationContext";
+import { useApp } from "../../state/useApp.ts";
+import { registerDetailExtension } from "../apps/extensions/registry.ts";
+import {
+  formatDetailTimestamp,
+  SurfaceBadge,
+  SurfaceCard,
+  SurfaceEmptyState,
+  SurfaceGrid,
+  SurfaceSection,
+  selectLatestRunForApp,
+  toneForHealthState,
+  toneForStatusText,
+  toneForViewerAttachment,
+} from "../apps/extensions/surface.tsx";
+import { registerOverlayApp } from "../apps/overlay-app-registry.ts";
+import { GameOperatorShell } from "../apps/surfaces/GameOperatorShell.tsx";
+import { registerOperatorSurface } from "../apps/surfaces/registry.ts";
+import { PagePanel } from "../composites/page-panel/index.ts";
+import { Button } from "../ui/button.tsx";
 import { ErrorBoundary } from "../ui/error-boundary";
+import { Input } from "../ui/input.tsx";
+import { Spinner } from "../ui/spinner.tsx";
 import { registerViewInteractHandler } from "./view-interact-registry";
 
 interface ViewBundleModule {
@@ -67,10 +90,38 @@ function isReactComponentExport(
 
 type HostExternalImporter = () => Promise<Record<string, unknown>>;
 
+const APP_CORE_VIEW_COMPAT: Record<string, unknown> = {
+  client,
+  resolveAppBranding,
+  Button,
+  Input,
+  Spinner,
+  PagePanel,
+  GameOperatorShell,
+  registerDetailExtension,
+  registerOverlayApp,
+  registerOperatorSurface,
+  useApp,
+  SurfaceBadge,
+  SurfaceCard,
+  SurfaceEmptyState,
+  SurfaceGrid,
+  SurfaceSection,
+  formatDetailTimestamp,
+  selectLatestRunForApp,
+  toneForHealthState,
+  toneForStatusText,
+  toneForViewerAttachment,
+};
+
+async function importAppCoreViewCompat(): Promise<Record<string, unknown>> {
+  return APP_CORE_VIEW_COMPAT;
+}
+
 const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
-  "@elizaos/app-core": () => import("@elizaos/app-core"),
-  "@elizaos/app-core/browser": () => import("@elizaos/app-core"),
-  "@elizaos/app-core/ui-compat": () => import("@elizaos/app-core/ui-compat"),
+  "@elizaos/app-core": importAppCoreViewCompat,
+  "@elizaos/app-core/browser": importAppCoreViewCompat,
+  "@elizaos/app-core/ui-compat": importAppCoreViewCompat,
   "@elizaos/capacitor-contacts": () => import("@elizaos/capacitor-contacts"),
   "@elizaos/capacitor-messages": () => import("@elizaos/capacitor-messages"),
   "@elizaos/capacitor-mobile-signals": () =>

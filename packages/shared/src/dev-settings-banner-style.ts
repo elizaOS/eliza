@@ -31,7 +31,7 @@ function colorizeDevSettingsBannerLine(line: string): string {
   return line;
 }
 
-/** Add cyan emphasis to Unicode box lines; no-op when not a TTY or when `NO_COLOR` is set. */
+/** Add cyan emphasis to Unicode box lines; returns input unchanged when color is disabled. */
 export function colorizeDevSettingsBanner(text: string): string {
   if (shouldSkipBannerColor()) return text;
   return text.split("\n").map(colorizeDevSettingsBannerLine).join("\n");

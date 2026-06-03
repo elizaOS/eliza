@@ -16,8 +16,8 @@
 // the odysseus slash rows for those toggles — but the ones with no orchestrator
 // backend are rendered INERT/disabled with an honest title rather than wired to
 // a no-op (no fabricated behaviour, no dead-but-clickable rows). Controls that DO
-// map to a real handler (new chat / clear / search / open Brain·Notes·Theme·
-// Settings / open Models) are fully active. The Agent|Chat toggle is a faithful
+// map to a real handler (new chat / search / open Brain·Notes·Theme·Settings /
+// open Models) are fully active. The Agent|Chat toggle is a faithful
 // local visual control (the orchestrator has a single message path), defaulting
 // to "Chat" to match the captured odysseus frame.
 
@@ -55,7 +55,7 @@ interface SlashCommand {
 const MAX_VISIBLE = 12;
 
 // Honest reason shown on slash rows that odysseus exposes but the orchestrator
-// backend does not handle (web/document/bash quick-toggles, todos, tours, fork).
+// backend has no path for (web/document/bash quick-toggles, todos, tours, fork).
 // They render for 1:1 chrome but stay inert rather than no-op or fabricate.
 const NO_BACKEND = "Not available in the Orchestrator";
 
@@ -135,10 +135,11 @@ export function Composer({
   // slashCommands.js COMMANDS — the same set/order the real frame renders:
   // /new, /web, /doc, /todo, /demo, /note, /fork, /bash (then /clear, /memory,
   // /settings below the fold). Rows whose target surface exists in the clone are
-  // wired to a real Composer prop (onNewChat / onInput / onSearch / onOpenPanel
-  // / onOpenModels); odysseus's quick-toggle / todo / tour / fork rows are
-  // outside the orchestrator backend, so they render faithfully but DISABLED
-  // with an honest title. Memoized on the wired handlers.
+  // wired to a real Composer prop (onNewChat / onSearch / onOpenPanel /
+  // onOpenModels); odysseus's quick-toggle / todo / tour / fork / clear rows have
+  // no orchestrator backend, so they render faithfully but DISABLED with an
+  // honest title — not omitted (1:1 chrome), not faked. Memoized on the wired
+  // handlers.
   const commands = useMemo<SlashCommand[]>(
     () => [
       {
@@ -212,14 +213,21 @@ export function Composer({
         disabled: true,
         note: NO_BACKEND,
       },
-      // ── below-the-fold rows (MAX_VISIBLE cap) — wired to real surfaces ──
+      // ── below-the-fold rows (MAX_VISIBLE cap) — mostly wired to real surfaces
+      //    (/clear has no orchestrator backend, so it stays disabled) ──
       {
+        // Odysseus's /clear wipes the chat display surface; the orchestrator
+        // room is read-only (no clear-display path), so this renders faithfully
+        // but inert. Wiring it to onInput("") only clears the composer (which
+        // runCommand already does pre-run), making it a silent no-op — disabled
+        // is the honest treatment, matching the other no-backend rows.
         token: "/clear",
         aliases: ["/chats clear"],
         category: "Chats",
         help: "Clear chat display",
         usage: "/clear",
-        run: () => onInput(""),
+        disabled: true,
+        note: NO_BACKEND,
       },
       {
         token: "/memory",
@@ -283,7 +291,7 @@ export function Composer({
         run: () => onOpenPanel("settings"),
       },
     ],
-    [onNewChat, onInput, onSearch, onOpenPanel, onOpenModels],
+    [onNewChat, onSearch, onOpenPanel, onOpenModels],
   );
 
   // Trigger only when the message starts with "/" (no leading space) and has no
@@ -319,6 +327,9 @@ export function Composer({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    const isPlainEnter = event.key === "Enter" && !event.shiftKey;
+    const isComposing = event.nativeEvent.isComposing;
+
     if (slashOpen) {
       if (event.key === "ArrowDown") {
         event.preventDefault();
@@ -330,25 +341,41 @@ export function Composer({
         setSel((s) => (s - 1 + visible.length) % visible.length);
         return;
       }
-      // Tab always runs the selected row. Enter runs it too, EXCEPT when the
-      // typed text already exactly matches a command token/alias — then the
-      // popup is in "ready to submit a typed-out command" mode and Enter falls
-      // through to the normal submit path (slashAutocomplete.js exactHit).
+      // Tab always inserts/runs the highlighted row. Enter runs the highlighted
+      // row while still completing; once the typed text exactly matches a
+      // command token/alias (slashAutocomplete.js exactHit), Enter runs THAT
+      // command if it's wired, and only falls through to onSubmit() for a
+      // disabled / non-command row.
       if (event.key === "Tab") {
         event.preventDefault();
         runCommand(visible[selClamped]);
         return;
       }
-      if (event.key === "Enter" && !event.shiftKey) {
+      if (isPlainEnter && isComposing) {
+        return;
+      }
+      if (isPlainEnter) {
         const typed = query;
-        const exactHit =
-          typed !== null &&
-          visible.some(
-            (entry) => entry.token === typed || entry.aliases.includes(typed),
-          );
-        if (!exactHit) {
+        const matchedEntry =
+          typed === null
+            ? undefined
+            : visible.find(
+                (entry) =>
+                  entry.token === typed || entry.aliases.includes(typed),
+              );
+        if (!matchedEntry) {
+          // Still in completion mode — Enter runs the highlighted row.
           event.preventDefault();
           runCommand(visible[selClamped]);
+          return;
+        }
+        // The typed text exactly matches a command. If it's a wired row, run it
+        // (odysseus's submit path parses and executes the slash — here our
+        // onSubmit() would post the literal "/new" as a chat message instead).
+        // Only a disabled / non-command row falls through to onSubmit().
+        if (!matchedEntry.disabled && matchedEntry.run) {
+          event.preventDefault();
+          runCommand(matchedEntry);
           return;
         }
       }
@@ -358,7 +385,9 @@ export function Composer({
         return;
       }
     }
-    if (event.key === "Enter" && !event.shiftKey) {
+    // Enter confirming an IME composition must not submit (chat.js keydown
+    // guards submit with !e.isComposing).
+    if (isPlainEnter && !isComposing) {
       event.preventDefault();
       onSubmit();
     }

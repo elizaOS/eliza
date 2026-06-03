@@ -1,6 +1,6 @@
 // Opt-in app smoke against the real UI stack and a real LLM-backed agent.
 //
-// Default UI smoke runs force the lightweight stub API for speed. Enable this
+// Default UI smoke runs force the lightweight harness API for speed. Enable this
 // test with ELIZA_UI_SMOKE_LIVE_STACK=1 plus a provider key accepted by
 // selectLiveProvider() to verify the app shell can send a real chat message to
 // a live runtime.
@@ -98,6 +98,39 @@ function chatSendButton(page: Page) {
   return page.locator(CHAT_SEND_SELECTOR).first();
 }
 
+function conversationLog(page: Page) {
+  return page.getByRole("log", { name: /conversation history/i });
+}
+
+function userMessage(page: Page, text: string) {
+  return page
+    .locator('[data-testid="chat-message"][data-role="user"]')
+    .filter({ hasText: text })
+    .last()
+    .or(
+      conversationLog(page)
+        .locator('[data-role="user"]')
+        .filter({ hasText: text })
+        .last(),
+    )
+    .or(conversationLog(page).getByText(text).last())
+    .first();
+}
+
+function assistantMessage(page: Page, text: string | RegExp) {
+  return page
+    .locator('[data-testid="chat-message"][data-role="assistant"]')
+    .filter({ hasText: text })
+    .last()
+    .or(
+      conversationLog(page)
+        .locator('[data-role="assistant"]')
+        .filter({ hasText: text })
+        .last(),
+    )
+    .first();
+}
+
 test("app chat sends a message to the deterministic keyless agent and renders parseable JSON", async ({
   page,
 }) => {
@@ -114,18 +147,11 @@ test("app chat sends a message to the deterministic keyless agent and renders pa
   await expect(chatSendButton(page)).toBeEnabled();
   await chatSendButton(page).click();
 
-  await expect(
-    page
-      .locator('[data-testid="chat-message"][data-role="user"]')
-      .filter({ hasText: prompt })
-      .last(),
-  ).toBeVisible({ timeout: 30_000 });
+  await expect(userMessage(page, prompt)).toBeVisible({ timeout: 30_000 });
 
-  const assistantMessage = page
-    .locator('[data-testid="chat-message"][data-role="assistant"]')
-    .last();
-  await expect(assistantMessage).toBeVisible({ timeout: 60_000 });
-  const assistantText = (await assistantMessage.textContent())?.trim() ?? "";
+  const message = assistantMessage(page, /ui-smoke-assistant-v1/);
+  await expect(message).toBeVisible({ timeout: 60_000 });
+  const assistantText = (await message.textContent())?.trim() ?? "";
   const parsed = parseAssistantFixtureText(assistantText);
   expect(parsed).toMatchObject({
     fixture: "ui-smoke-assistant-v1",
@@ -157,18 +183,11 @@ test("app chat rejects intentionally broken deterministic mock LLM output", asyn
   await expect(chatSendButton(page)).toBeEnabled();
   await chatSendButton(page).click();
 
-  await expect(
-    page
-      .locator('[data-testid="chat-message"][data-role="user"]')
-      .filter({ hasText: prompt })
-      .last(),
-  ).toBeVisible({ timeout: 30_000 });
+  await expect(userMessage(page, prompt)).toBeVisible({ timeout: 30_000 });
 
-  const assistantMessage = page
-    .locator('[data-testid="chat-message"][data-role="assistant"]')
-    .last();
-  await expect(assistantMessage).toBeVisible({ timeout: 60_000 });
-  const assistantText = (await assistantMessage.textContent())?.trim() ?? "";
+  const message = assistantMessage(page, /BROKEN_MOCK_LLM_RESPONSE/);
+  await expect(message).toBeVisible({ timeout: 60_000 });
+  const assistantText = (await message.textContent())?.trim() ?? "";
 
   expect(assistantText).toContain("BROKEN_MOCK_LLM_RESPONSE");
   expect(() => parseAssistantFixtureText(assistantText)).toThrow();
@@ -201,18 +220,10 @@ test.describe("live agent chat", () => {
     await expect(chatSendButton(page)).toBeEnabled();
     await chatSendButton(page).click();
 
-    await expect(
-      page
-        .locator('[data-testid="chat-message"][data-role="user"]')
-        .filter({ hasText: prompt })
-        .last(),
-    ).toBeVisible({ timeout: 30_000 });
+    await expect(userMessage(page, prompt)).toBeVisible({ timeout: 30_000 });
 
     await expect(
-      page
-        .locator('[data-testid="chat-message"][data-role="assistant"]')
-        .filter({ hasText: new RegExp(LIVE_AGENT_RESPONSE_MARKER, "i") })
-        .last(),
+      assistantMessage(page, new RegExp(LIVE_AGENT_RESPONSE_MARKER, "i")),
     ).toBeVisible({ timeout: 120_000 });
 
     expect(failures, "live agent chat browser/runtime failures").toEqual([]);

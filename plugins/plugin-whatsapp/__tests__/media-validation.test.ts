@@ -5,6 +5,7 @@ import { WhatsAppClient } from "../src/client";
 describe("WhatsApp media URL validation", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it.each(["file:///etc/passwd", "data:text/plain,hello", "javascript:alert(1)", "notaurl"])(

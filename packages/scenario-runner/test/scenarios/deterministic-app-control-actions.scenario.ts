@@ -9,8 +9,8 @@ import {
   jsonResponse,
   readAppControlHttpRequests,
   registerAppControlHttpHandler,
-  resetAppControlHttpStub,
-} from "./_helpers/app-control-http-stub";
+  resetAppControlHttpLoopback,
+} from "./_helpers/app-control-http-loopback";
 
 function toRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -223,11 +223,11 @@ export default scenario({
   seed: [
     {
       type: "custom",
-      name: "stub app-control loopback APIs for deterministic APP and VIEWS actions",
+      name: "register app-control loopback APIs for deterministic APP and VIEWS actions",
       apply: () => {
         process.env.ELIZA_REPO_ROOT = repoRoot;
         process.env.ELIZA_WORKSPACE_DIR = repoRoot;
-        resetAppControlHttpStub();
+        resetAppControlHttpLoopback();
         let launchCount = 0;
 
         registerAppControlHttpHandler((request) => {

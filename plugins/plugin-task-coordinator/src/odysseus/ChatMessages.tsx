@@ -93,9 +93,14 @@ function AgentFooter({ content }: { content: string }): ReactNode {
 export function ChatMessages({
   conversation,
   locale,
+  sending,
 }: {
   conversation: ConversationBlock[];
   locale?: string;
+  // Reply-in-flight flag (the React analogue of odysseus chat.js `isStreaming`).
+  // While true the history is marked aria-busy so screen readers wait for the
+  // settled response instead of announcing every streamed token.
+  sending?: boolean;
 }): ReactNode {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -109,24 +114,34 @@ export function ChatMessages({
 
   // While a reply streams, deltas coalesce into the same trailing block (stable
   // key, unchanged length), so length+key alone never re-fire the stick-to-
-  // bottom effect and a pinned reader stops following. Track the trailing
-  // block's text length too so the effect re-runs as its content grows.
+  // bottom effect and a pinned reader stops following. Track a per-kind growth
+  // signal so the effect re-runs as the trailing block's content grows: user/
+  // agent carry `content`, reasoning/notice carry `text`, and a trailing tool
+  // card grows under a stable key via its output + status (neither content nor
+  // text), so derive its signal from output length and the latest status.
   const lastBlock = conversation[conversation.length - 1];
-  const lastContentLen =
+  const lastContentSignal =
     lastBlock && "content" in lastBlock
       ? lastBlock.content.length
       : lastBlock && "text" in lastBlock
         ? lastBlock.text.length
-        : 0;
+        : lastBlock && lastBlock.kind === "tool"
+          ? `${lastBlock.tool.output?.length ?? 0}:${lastBlock.tool.status}`
+          : 0;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: the derived signals below are the intended triggers
   useEffect(() => {
     const el = scrollRef.current;
     if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
-  }, [conversation.length, lastBlock?.key, lastContentLen]);
+  }, [conversation.length, lastBlock?.key, lastContentSignal]);
 
   return (
-    <div className="od-chat-history" ref={scrollRef} onScroll={onScroll}>
+    <div
+      className="od-chat-history"
+      ref={scrollRef}
+      onScroll={onScroll}
+      aria-busy={sending ? "true" : "false"}
+    >
       {conversation.map((block) => {
         if (block.kind === "user")
           return <UserBubble key={block.key} block={block} locale={locale} />;

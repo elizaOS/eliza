@@ -14,13 +14,13 @@ export type AppControlHttpHandler = (
   request: AppControlHttpRequest,
 ) => Response | undefined | Promise<Response | undefined>;
 
-type AppControlHttpStubState = {
+type AppControlHttpLoopbackState = {
   handlers: AppControlHttpHandler[];
   originalFetch: typeof fetch;
   requests: AppControlHttpRequest[];
 };
 
-const STUB_STATE = Symbol.for("scenario-runner.app-control-http-stub");
+const LOOPBACK_STATE = Symbol.for("scenario-runner.app-control-http-loopback");
 
 function parseUrl(input: string | URL | Request): URL | null {
   try {
@@ -76,14 +76,14 @@ function shouldHandle(url: URL | null): url is URL {
   );
 }
 
-function getState(): AppControlHttpStubState {
-  const globalWithStub = globalThis as typeof globalThis & {
-    [STUB_STATE]?: AppControlHttpStubState;
+function getState(): AppControlHttpLoopbackState {
+  const globalWithLoopback = globalThis as typeof globalThis & {
+    [LOOPBACK_STATE]?: AppControlHttpLoopbackState;
   };
-  const existing = globalWithStub[STUB_STATE];
+  const existing = globalWithLoopback[LOOPBACK_STATE];
   if (existing) return existing;
 
-  const state: AppControlHttpStubState = {
+  const state: AppControlHttpLoopbackState = {
     handlers: [],
     originalFetch: globalThis.fetch.bind(globalThis) as typeof fetch,
     requests: [],
@@ -132,11 +132,11 @@ function getState(): AppControlHttpStubState {
     return response;
   }) as typeof fetch;
 
-  globalWithStub[STUB_STATE] = state;
+  globalWithLoopback[LOOPBACK_STATE] = state;
   return state;
 }
 
-export function resetAppControlHttpStub(): void {
+export function resetAppControlHttpLoopback(): void {
   const state = getState();
   state.handlers.length = 0;
   state.requests.length = 0;

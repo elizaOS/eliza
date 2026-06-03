@@ -14,7 +14,7 @@ On **Android**, the plugin lets TypeScript code:
 - Read and set per-stream audio volume (music, ring, alarm, notification, system, voice call).
 - Open standard Android settings screens (main settings, Wi-Fi, display, sound, WRITE_SETTINGS permission grant).
 
-On **web/browser**, `getStatus()` and `getDeviceSettings()` return fixed non-Android fallback values. All other methods throw a descriptive error.
+On **web/browser**, `getStatus()` and `getDeviceSettings()` return safe fallback values. All other methods throw a descriptive error.
 
 ## Installation
 

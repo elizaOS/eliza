@@ -135,6 +135,7 @@ import { buildCharacterFromConfig } from "../runtime/build-character-from-config
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
 import { handleAuthSessionRoutes } from "./auth-session-routes";
+import { handleCloudPairRoute } from "./cloud-pair-route";
 import { handleBackgroundTasksRoute } from "./background-tasks-routes";
 import { handleCatalogRoutes } from "./catalog-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
@@ -733,6 +734,11 @@ async function handleCompatRouteInner(
 
   // Dev observability routes — extracted to dev-compat-routes.ts
   if (await handleDevCompatRoutes(req, res, state)) return true;
+
+  // Cloud SSO popup landing — `/pair?token=X` calls cloud-api server-side,
+  // serves HTML that pins the API token on the SPA's window global. Mounted
+  // before any other auth handler so it owns the root `/pair` URL.
+  if (await handleCloudPairRoute(req, res)) return true;
 
   // Must precede the auth-pairing handler so the rate-limited route owns /api/auth/bootstrap/exchange.
   if (await handleAuthBootstrapRoutes(req, res, state)) return true;

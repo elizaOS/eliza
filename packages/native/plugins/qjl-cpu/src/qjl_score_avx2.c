@@ -126,4 +126,4 @@ void qjl_score_qk_avx2(const float *q_sketch,
 #endif /* __AVX2__ */
 
 /* Avoid ISO C "empty translation unit" pedantic diagnostics when __AVX2__ is undefined. */
-typedef int qjl_score_avx2_iso_c_empty_tu_marker;
+typedef int qjl_score_avx2_iso_c_translation_unit_anchor;

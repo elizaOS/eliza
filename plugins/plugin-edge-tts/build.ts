@@ -31,9 +31,9 @@ async function build() {
   }
   console.log(`✅ Node build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`);
 
-  // Browser build (stub - Edge TTS is Node-only)
+  // Browser build (unavailable entry - Edge TTS is Node-only)
   const browserStart = Date.now();
-  console.log("🌐 Building @elizaos/plugin-edge-tts for Browser (stub)...");
+  console.log("🌐 Building @elizaos/plugin-edge-tts for Browser (unavailable entry)...");
   const browserResult = await Bun.build({
     entrypoints: ["src/index.browser.ts"],
     outdir: "dist/browser",
@@ -83,25 +83,19 @@ async function build() {
   console.log("📝 Generating TypeScript declarations...");
   const { mkdir, writeFile } = await import("node:fs/promises");
   const { $ } = await import("bun");
-  try {
-    await $`tsc --project tsconfig.build.json`;
-  } catch (_e) {
-    console.warn("⚠️ tsc failed, creating stub declarations instead");
-  }
+  await $`tsc --project tsconfig.build.json`;
   await mkdir("dist/node", { recursive: true });
-  await mkdir("dist/browser", { recursive: true }); // Create stub d.ts files if tsc failed
-  const stubContent = `export * from "@elizaos/core";\n`;
-  await writeFile("dist/index.d.ts", stubContent);
+  await mkdir("dist/browser", { recursive: true });
   await writeFile(
     "dist/node/index.d.ts",
-    `export * from '../index';
-export { default } from '../index';
+    `export * from '../index.node';
+export { default } from '../index.node';
 `
   );
   await writeFile(
     "dist/browser/index.d.ts",
-    `export * from '../index';
-export { default } from '../index';
+    `export * from '../index.browser';
+export { default } from '../index.browser';
 `
   );
   await writeFile(

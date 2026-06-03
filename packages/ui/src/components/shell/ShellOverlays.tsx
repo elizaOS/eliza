@@ -2,8 +2,6 @@ import { useEffect } from "react";
 import { SHARE_TARGET_EVENT } from "../../events";
 import type { ShareTargetPayload } from "../../platform/init";
 
-// z-[10000] mirrors Z_SHELL_OVERLAY in ../../lib/floating-layers.ts.
-// Kept as a literal so Tailwind v4's source scanner emits the utility.
 import type { ActionNotice } from "../../state/types";
 import { useApp } from "../../state/useApp";
 import { CompanionGlobalOverlay as GlobalEmoteOverlay } from "../companion/injected";

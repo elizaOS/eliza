@@ -1079,12 +1079,12 @@ export class MessageManager {
     const reaction = ctx.update.message_reaction;
     const reactedToMessageId = reaction.message_id;
 
-    const reactionMessageSnapshot: Partial<Message> = {
+    const syntheticReactionMessage = {
       message_id: reactedToMessageId,
       chat: reaction.chat,
       from: ctx.from,
       date: Math.floor(Date.now() / 1000),
-    };
+    } as Message;
 
     const firstReaction = reaction.new_reaction[0];
     if (!firstReaction) {
@@ -1190,7 +1190,7 @@ export class MessageManager {
         accountId: this.accountId,
         metadata: { accountId: this.accountId },
         ctx,
-        originalMessage: reactionMessageSnapshot as Message,
+        originalMessage: syntheticReactionMessage,
         reactionString: reactionType === "emoji" ? reactionEmoji : reactionType,
         originalReaction: firstReaction as ReactionType,
       } as TelegramReactionReceivedPayload);
@@ -1204,7 +1204,7 @@ export class MessageManager {
         accountId: this.accountId,
         metadata: { accountId: this.accountId },
         ctx,
-        originalMessage: reactionMessageSnapshot as Message,
+        originalMessage: syntheticReactionMessage,
         reactionString: reactionType === "emoji" ? reactionEmoji : reactionType,
         originalReaction: firstReaction as ReactionType,
       } as TelegramReactionReceivedPayload);

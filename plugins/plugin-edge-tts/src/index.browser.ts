@@ -10,7 +10,7 @@ import { logger, type Plugin } from "@elizaos/core";
 
 export const edgeTTSPlugin: Plugin = {
   name: "edge-tts",
-  description: "Edge TTS plugin (browser stub - not available in browser environments)",
+  description: "Edge TTS plugin (browser entry unavailable; use a browser TTS provider)",
   models: {},
   tests: [],
 };

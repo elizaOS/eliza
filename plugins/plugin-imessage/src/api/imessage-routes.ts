@@ -2,8 +2,8 @@
  * iMessage connector HTTP routes.
  *
  * Exposes the @elizaos/plugin-imessage service state through Eliza's
- * HTTP API so downstream UI layers (the dashboard, CLI clients, third-party
- * integrations) can read and write against the macOS Messages.app
+ * HTTP API so downstream UI layers (the dashboard, a future CLI, third-
+ * party integrations) can read and write against the macOS Messages.app
  * world without each client having to go straight to chat.db or native
  * macOS bridges.
  *
@@ -123,7 +123,7 @@ interface IMessageServiceLike {
 
 export interface IMessageRouteState {
   /**
-   * The running AgentRuntime (or a test double). Typed loosely as
+   * The running AgentRuntime (or a test runtime). Typed loosely as
    * `unknown` so this route file doesn't re-declare core's stricter
    * generic getService signature — we narrow the result inside
    * resolveService via an unknown cast. Optional so route files
@@ -387,6 +387,6 @@ export async function handleIMessageRoute(
   }
 
   // Path starts with /api/imessage but none of the above matched.
-  void meta; // kept available for route telemetry spans
+  void meta; // reserved for future telemetry spans
   return false;
 }

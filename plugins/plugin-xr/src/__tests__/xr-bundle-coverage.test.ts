@@ -9,7 +9,7 @@
  *
  * What is tested:
  *   - bundle.js exists for all 23 source-buildable plugins
- *   - bundle.js is non-empty (not a build stub)
+ *   - bundle.js is non-empty and contains built view content
  *   - bundle.js contains the componentExport name from the manifest
  *   - bundle.js is valid JavaScript (no JSON or HTML accidentally written there)
  *   - The plugin manifest and bundle agree on componentExport
@@ -285,8 +285,8 @@ describe("XR view bundle coverage — all 24 plugin bundles built and valid", ()
     ).toEqual([]);
   });
 
-  it("bundle.js size is consistent with real plugin content (not a stub)", () => {
-    // A real built view bundle should be at least 5 KB. Stubs or empty files are typically < 1 KB.
+  it("bundle.js size is consistent with real plugin content", () => {
+    // A real built view bundle should be at least 5 KB. Empty or skeletal files are typically < 1 KB.
     const tooSmall: string[] = [];
     for (const { pluginDir } of PLUGIN_BUNDLES) {
       const bundlePath = `${pluginDir}/dist/views/bundle.js`;

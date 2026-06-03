@@ -1,6 +1,6 @@
 // Test hook to clear env cache in logger tests (kept internal)
 export const __loggerTestHooks = {
-  __noop: () => {},
+  clearEnvCacheForTests: () => {},
 };
 
 import adze, {
@@ -367,7 +367,7 @@ function stripAnsi(str: string): string {
 }
 
 /**
- * Lazily open the log files on the first write attempt.
+ * Lazily open the log files on the first write.
  * Returns true if the files are ready for writing.
  */
 function ensureFileLog(): boolean {
@@ -450,7 +450,7 @@ function ensureFileLog(): boolean {
 
 /**
  * Write a formatted log entry to the output file.
- * No-op in browser environments, when LOG_FILE is unset, or if file open failed.
+ * Skips browser environments, unset LOG_FILE, or a failed file open.
  */
 function writeLogEntryToFile(entry: LogEntry): void {
   if (!ensureFileLog()) return;

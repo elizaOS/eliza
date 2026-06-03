@@ -206,6 +206,52 @@ describe("runStartingRuntime", () => {
     expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
   });
 
+  it("does not replace ready progress with stale non-running status", async () => {
+    clientMock.getStatus.mockResolvedValue({
+      state: "starting",
+      agentName: "Eliza",
+      model: undefined,
+      uptime: 0,
+      startedAt: null,
+    });
+    clientMock.getBootProgress.mockResolvedValue({
+      state: "running",
+      phase: "running",
+      lastError: null,
+      pluginsLoaded: 22,
+      pluginsFailed: 0,
+      database: "ok",
+      agentName: "Eliza",
+      port: 31337,
+      startedAt: Date.now() - 1_000,
+      updatedAt: new Date().toISOString(),
+    });
+
+    const dispatch = vi.fn();
+    const deps = createDeps();
+
+    await runStartingRuntime(
+      deps,
+      dispatch,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clientMock.getStatus).toHaveBeenCalled();
+    expect(deps.setAgentStatus).toHaveBeenCalledTimes(1);
+    expect(deps.setAgentStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: "running",
+        agentName: "Eliza",
+        model: undefined,
+      }),
+    );
+    expect(deps.setConnected).toHaveBeenCalledWith(true);
+    expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
+  });
+
   it("routes tokenless 401s to pairing instead of retrying until timeout", async () => {
     clientMock.getStatus.mockRejectedValue({ status: 401 });
     clientMock.getAuthStatus.mockResolvedValue({

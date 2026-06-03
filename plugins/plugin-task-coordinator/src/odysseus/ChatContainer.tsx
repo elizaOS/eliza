@@ -91,7 +91,11 @@ export function ChatContainer({
           </div>
         </div>
       ) : (
-        <ChatMessages conversation={conversation} locale={locale} />
+        <ChatMessages
+          conversation={conversation}
+          locale={locale}
+          sending={sending}
+        />
       )}
       <Composer
         input={input}

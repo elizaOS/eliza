@@ -132,7 +132,7 @@ def render_pose_multiview(
 def _add_text_overlay(frame: np.ndarray, text: str) -> np.ndarray:
     """Add simple text overlay (top-left) using pixel manipulation.
 
-    Falls back to no-op if the frame is too small.
+    Returns the unchanged frame when OpenCV is unavailable.
     """
     try:
         import cv2

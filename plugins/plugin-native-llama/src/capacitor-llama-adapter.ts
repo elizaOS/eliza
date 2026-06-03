@@ -623,7 +623,7 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
 
     // Fork builds expose a separate `setSpecType` bridge that configures
     // the MTP drafter after the main context is up. Stock builds lack
-    // the method and the setter is a warn-no-op. We auto-call here so
+    // the method and the setter warns and skips it. We auto-call here so
     // callers only need to pass `draftModelPath` once via load() — the
     // adapter then handles both the params-bag path (stock fallback) and
     // the explicit setSpecType path (fork build) in one shot.
@@ -759,16 +759,17 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
   }
 
   /**
-   * Native bridges accept sampler stages at load/spec setup time, not as a
-   * per-generation override. Log once per stage and otherwise pass through.
-   * The stages remain in the options object so downstream observers
-   * (telemetry, tests) can still see them.
+   * Native bridges currently don't honour per-generation sampler-stage
+   * injection — the Swift / Kotlin side needs separate wiring. Until that
+   * lands we log once per stage and otherwise pass through. The stages
+   * remain in the options object so downstream observers (telemetry,
+   * tests) can still see them.
    */
   private logUnwiredSamplerStages(stages: SamplerStage[] | undefined): void {
     if (!stages || stages.length === 0) return;
     for (const stage of stages) {
       console.debug(
-        `[capacitor-llama] sampler stage "${stage.kind}" received as a per-generation override; native bridge uses load/spec-time sampler configuration`,
+        `[capacitor-llama] sampler stage "${stage.kind}" received but not yet wired in native bridge`,
       );
     }
   }
@@ -827,8 +828,8 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
    * terminal `error`) once the native call resolves.
    *
    * Sampler-stage injection (`samplerStages`) and the per-generation
-   * spec-decode toggle (`specDecode`) are accepted but currently a no-op
-   * on the JS side — the Swift / Kotlin bridge wiring is tracked
+   * spec-decode toggle (`specDecode`) are accepted but currently pass
+   * through unchanged on the JS side — the Swift / Kotlin bridge wiring is tracked
    * separately. They flow through as part of the options bag so the
    * native side can pick them up without an interface change.
    */
@@ -961,22 +962,22 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
   }
 
   async setDrafter(drafterPath: string | null): Promise<void> {
-    // The native bridge binds the drafter at `load()` time via
-    // `LoadOptions.draftModelPath`; live swap is not part of this adapter
-    // contract. Log so the call-site is observable, and warn-and-no-op.
+    // The native bridge has no live-swap entry point yet; the drafter is
+    // bound at `load()` time via `LoadOptions.draftModelPath`. Log so the
+    // call-site is observable, and leave the loaded context unchanged.
     console.warn(
-      `[capacitor-llama] setDrafter(${drafterPath ?? "null"}) is unsupported by the native bridge; pass draftModelPath to load() instead`,
+      `[capacitor-llama] setDrafter(${drafterPath ?? "null"}) not yet supported by native bridge; pass draftModelPath to load() instead`,
     );
   }
 
   async trimMemory(level: "minor" | "major"): Promise<void> {
-    // The native bridge has no memory-trim hook; log so the runtime's pressure
-    // plumbing can see the adapter received the signal. Major pressure also
-    // clears the token-listener bookkeeping to drop any orphaned callbacks.
+    // No native hook yet — log so the runtime's pressure plumbing can see
+    // the adapter received the signal. Major pressure also clears the
+    // token-listener bookkeeping to drop any orphaned callbacks.
     if (level === "major") {
       this.tokenListeners.clear();
     }
-    console.debug(`[capacitor-llama] trimMemory(${level}) — bridge no-op`);
+    console.debug(`[capacitor-llama] trimMemory(${level}) — bridge hook unavailable`);
   }
 
   async cancelGenerate(): Promise<void> {
@@ -1119,7 +1120,7 @@ export function registerCapacitorLlamaLoader(runtime: {
       await adapterFor(args.modelPath).load(args);
     },
     async unloadModel(): Promise<void> {
-      // No-op: each adapter manages its own context lifecycle inside
+      // Each adapter manages its own context lifecycle inside
       // `load()` (releasing the prior context before reinitializing on the
       // same id). Tearing down both adapters here would defeat the
       // per-instance routing — `ensureAssignedModelLoaded` calls

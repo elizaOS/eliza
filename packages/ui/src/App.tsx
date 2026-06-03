@@ -3,12 +3,6 @@
  */
 
 import { Keyboard } from "@capacitor/keyboard";
-import {
-  PanelLeftClose,
-  PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
-} from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
   type ComponentType,
@@ -31,13 +25,9 @@ import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
 import { LoginView } from "./components/auth/LoginView";
 import { SaveCommandModal } from "./components/chat/SaveCommandModal";
-import { TasksEventsPanel } from "./components/chat/TasksEventsPanel";
-import { DeferredSetupChecklist } from "./components/cloud/FlaminaGuide";
-import { ConversationsSidebar } from "./components/conversations/ConversationsSidebar";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
-import { ChatView } from "./components/pages/ChatView";
 import type { PageScope } from "./components/pages/page-scoped-conversations";
 import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSection";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
@@ -57,7 +47,6 @@ import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
 import { StartupScreen } from "./components/shell/StartupScreen";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
-import { MINIMAL_SHELL } from "./components/shell/shell-chrome";
 import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
 import { ErrorBoundary } from "./components/ui/error-boundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
@@ -70,9 +59,7 @@ import {
 import { CompactOnboarding } from "./first-run/CompactOnboarding";
 import { FirstRunScreen } from "./first-run/FirstRunScreen";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
-import { useActivityEvents } from "./hooks/useActivityEvents";
 import { useAuthStatus } from "./hooks/useAuthStatus";
-import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
 import {
   APPS_ENABLED,
@@ -900,38 +887,7 @@ function StreamShellContent(): ReactNode {
   );
 }
 
-/** Narrow-screen breakpoint for the chat workspace — matches the Header's. */
-const CHAT_MOBILE_MEDIA_QUERY = "(max-width: 819px)";
-
-type MobileChatSurface = "left" | "center" | "right";
-
-/** A Header pane-toggle button shown only on mobile to swap the active chat surface. */
-function MobileChatSurfaceButton({
-  icon: Icon,
-  label,
-  onClick,
-  surface,
-}: {
-  icon: typeof PanelLeftOpen;
-  label: string;
-  onClick: () => void;
-  surface: MobileChatSurface;
-}): ReactNode {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      data-testid={`chat-mobile-surface-${surface}`}
-      onClick={onClick}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted transition-colors hover:text-txt"
-    >
-      <Icon className="h-4 w-4" aria-hidden />
-    </button>
-  );
-}
-
-/** Time-of-day greeting for the minimal home's ambient backdrop (Her-style). */
+/** Time-of-day greeting for the ambient chat home's backdrop (Her-style). */
 function minimalHomeGreeting(): string {
   const h = new Date().getHours();
   if (h < 5) return "still up?";
@@ -941,129 +897,17 @@ function minimalHomeGreeting(): string {
 }
 
 function ChatRouteShellContent(props: ShellContentProps): ReactNode {
-  // Minimal (conversational-OS) home: just ambient space under a chrome-light
-  // header — the always-present ContinuousChatOverlay (mounted at the shell
-  // root) is the whole experience. Ask it anything, or ask it to open a view
-  // ("show me the coding view") which surfaces over this base. No in-view chat
-  // panels, no primary nav. Toggle off via localStorage eliza:minimal-shell=0.
-  if (MINIMAL_SHELL) {
-    return (
-      <div key="chat-shell-minimal" className={APP_SHELL_CLASS}>
-        <Header />
-        <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
-          <p className="-translate-y-8 select-none text-center text-3xl font-light italic text-muted/35">
-            {minimalHomeGreeting()}
-          </p>
-          <CustomActionsPanel
-            open={props.customActionsPanelOpen}
-            onClose={() => props.setCustomActionsPanelOpen(false)}
-            onOpenEditor={(action) => {
-              props.setEditingAction(action ?? null);
-              props.setCustomActionsEditorOpen(true);
-            }}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  return <FullChatWorkspaceShellContent {...props} />;
-}
-
-// Full chat workspace: ConversationsSidebar (left) | ChatView (center) |
-// TasksEventsPanel widgets (right), under the standard Header. Self-contained
-// (activity events, widget-collapse, and the mobile surface live here), so the
-// ShellContent contract stays unchanged. On narrow screens it collapses to a
-// single-pane switcher driven by the Header toggles. The ContinuousChatOverlay
-// stays mounted on this tab too (it floats over every view); the duplicate
-// composer is avoided by passing `hideComposer` to ChatView, so the overlay is
-// the single shared input (both read the same conversation via
-// useShellController). Rendered only when MINIMAL_SHELL is off; kept in its own
-// component so its hooks are never called conditionally.
-function FullChatWorkspaceShellContent(props: ShellContentProps): ReactNode {
-  const isMobile = useMediaQuery(CHAT_MOBILE_MEDIA_QUERY);
-  const { events: activityEvents, clearEvents } = useActivityEvents();
-  const [widgetsCollapsed, setWidgetsCollapsed] = useState(false);
-  const [mobileSurface, setMobileSurface] =
-    useState<MobileChatSurface>("center");
-  const leftOpen = mobileSurface === "left";
-  const rightOpen = mobileSurface === "right";
-
-  // Stable key so the chat column keeps its ChatView state (scroll, draft) when
-  // it moves between the desktop 3-panel and the mobile single-pane layouts.
-  const centerColumn = (
-    <div
-      key="chat-center-column"
-      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-    >
-      <DeferredSetupChecklist
-        className="mx-3 mb-3 mt-3 xl:mx-5"
-        onOpenTask={props.handleDeferredTaskOpen}
-      />
-      {/* The ContinuousChatOverlay provides the input on the chat tab, so the
-          in-view composer is hidden to avoid a duplicate (both share the same
-          conversation via useShellController). */}
-      <ChatView key="chat-view" hideComposer />
-    </div>
-  );
-
+  // The /chat route is the ambient conversational home: just open space under
+  // the header, with the always-present ContinuousChatOverlay (mounted at the
+  // shell root) as the whole chat experience. Ask it anything, or ask it to
+  // open a view ("show me the coding view") which surfaces over this base.
   return (
     <div key="chat-shell" className={APP_SHELL_CLASS}>
-      <Header
-        tasksEventsPanelOpen={!isMobile && !widgetsCollapsed}
-        onToggleTasksPanel={() => setWidgetsCollapsed((c) => !c)}
-        mobileLeft={
-          isMobile && !rightOpen ? (
-            <MobileChatSurfaceButton
-              icon={leftOpen ? PanelLeftClose : PanelLeftOpen}
-              label={leftOpen ? "Hide conversations" : "Show conversations"}
-              onClick={() => setMobileSurface(leftOpen ? "center" : "left")}
-              surface="left"
-            />
-          ) : undefined
-        }
-        pageRightExtras={
-          isMobile && !leftOpen ? (
-            <MobileChatSurfaceButton
-              icon={rightOpen ? PanelRightClose : PanelRightOpen}
-              label={rightOpen ? "Hide widgets" : "Show widgets"}
-              onClick={() => setMobileSurface(rightOpen ? "center" : "right")}
-              surface="right"
-            />
-          ) : undefined
-        }
-      />
-      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        {isMobile ? (
-          leftOpen ? (
-            <ConversationsSidebar
-              key="chat-sidebar-mobile"
-              mobile
-              onClose={() => setMobileSurface("center")}
-            />
-          ) : rightOpen ? (
-            <TasksEventsPanel
-              open
-              mobile
-              events={activityEvents}
-              clearEvents={clearEvents}
-            />
-          ) : (
-            centerColumn
-          )
-        ) : (
-          <>
-            <ConversationsSidebar key="chat-sidebar-desktop" />
-            {centerColumn}
-            <TasksEventsPanel
-              open
-              events={activityEvents}
-              clearEvents={clearEvents}
-              collapsed={widgetsCollapsed}
-              onToggleCollapsed={setWidgetsCollapsed}
-            />
-          </>
-        )}
+      <Header />
+      <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
+        <p className="-translate-y-8 select-none text-center text-3xl font-light italic text-muted/35">
+          {minimalHomeGreeting()}
+        </p>
         <CustomActionsPanel
           open={props.customActionsPanelOpen}
           onClose={() => props.setCustomActionsPanelOpen(false)}
@@ -1268,10 +1112,9 @@ function ShellFoundationMount() {
 /**
  * Reads the shared shell controller from context and renders the always-present
  * continuous chat overlay — one ambient glass conversation (the app's single
- * active conversation via useShellController) that floats over every view. It
- * replaces the legacy HomePill in the main shell; the dedicated chat tab keeps
- * its full in-view ChatView, so there is no duplicate composer. Returns null
- * until a controller provider is present.
+ * active conversation via useShellController) that floats over every view,
+ * including the /chat route's ambient home. Returns null until a controller
+ * provider is present.
  */
 function ContinuousChatOverlayMount(): ReactNode {
   const controller = useShellControllerContext();
@@ -1786,13 +1629,13 @@ export function App() {
           tab !== "apps" &&
           tab !== "views" && <GameViewOverlay />}
         {/*
-          Always-present continuous chat overlay (ContinuousChatOverlay) — one
-          ambient glass conversation (the app's single active conversation via
-          useShellController) that floats over EVERY view, including the chat tab
-          (there the in-view ChatView composer is hidden, so the overlay is the
-          single shared input). It survives tab/view changes because it renders
-          here in the persistent sibling region, and is pointer-events-none
-          except its own composer/messages, so the view behind stays live.
+          Continuous chat overlay (ContinuousChatOverlay) — one ambient glass
+          conversation (the app's single active conversation via
+          useShellController) that floats over EVERY view, including the /chat
+          route (whose base is now just ambient space). It survives tab/view
+          changes because it renders here in the persistent sibling region, and
+          is pointer-events-none except its own composer/messages, so the view
+          behind stays live.
         */}
         <ContinuousChatOverlayMount />
         <ShellOverlays actionNotice={actionNotice} />

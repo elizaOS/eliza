@@ -363,6 +363,7 @@ const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 300_000;
 const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
 const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
   "In one short sentence, confirm the iOS full Bun local backend is running.";
+const CLOUD_PAIR_SESSION_TOKEN_KEY = "eliza:cloud-pair:api-token";
 
 let mobileDeviceBridgeClient: DeviceBridgeClient | null = null;
 let mobileDeviceBridgeStartPromise: Promise<void> | null = null;
@@ -396,6 +397,19 @@ function getWindowUrlSearchParams(): URLSearchParams {
   return new URLSearchParams(search || hashSearch);
 }
 
+function applyCloudPairSessionToken(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const token = window.sessionStorage
+      .getItem(CLOUD_PAIR_SESSION_TOKEN_KEY)
+      ?.trim();
+    if (!token) return;
+    client.setToken(token);
+  } catch {
+    // sessionStorage can be unavailable in hardened browser contexts.
+  }
+}
+
 /**
  * Adds `eliza-electrobun-frameless` for CSS `-webkit-app-region` (Chromium/CEF).
  * macOS WKWebView move/resize are still driven by native overlays in
@@ -424,6 +438,7 @@ if (shouldInstallMainWindowFirstRunPatches(windowShellRoute)) {
 }
 installLocalProviderCloudPreferencePatch(client);
 installDesktopPermissionsClientPatch(client);
+applyCloudPairSessionToken();
 
 if (isElizaOS() && !hasFirstRunRuntimeOverride()) {
   preSeedAndroidLocalRuntimeIfFresh();
@@ -1351,9 +1366,9 @@ function initializeAppLifecycle(): void {
  * the WebSocket reconnect scheduler in `client-base.ts`) can stop burning
  * backoff attempts during airplane mode.
  *
- * Idempotent: HMR or repeated `initializePlatform()` invocations no-op past
- * the first call (each Capacitor listener fires its handler N times if added
- * N times).
+ * Idempotent: HMR or repeated `initializePlatform()` invocations return after
+ * the first registration (each Capacitor listener fires its handler N times if
+ * added N times).
  */
 async function initializeNetworkListener(): Promise<void> {
   if (networkStatusListenerRegistered) return;

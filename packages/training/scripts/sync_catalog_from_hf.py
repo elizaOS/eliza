@@ -181,8 +181,7 @@ def _gguf_sibling(
 ) -> tuple[str, str, int] | None:
     """Return (gguf_file, sha256, size_bytes) for the single GGUF in repo_id.
 
-    Returns None if no GGUF is present (placeholder repo) or the LFS
-    metadata is missing.
+    Returns None if no GGUF is present yet or the LFS metadata is missing.
     """
     ggufs = [name for name in file_index if name.endswith(".gguf")]
     if not ggufs:
@@ -351,7 +350,7 @@ def collect_entries(
             gguf_info = _gguf_sibling(file_index, repo_id)
         if gguf_info is None:
             log.info(
-                "repo %s has no published GGUF yet (placeholder); skipping",
+                "repo %s has no published GGUF yet; skipping",
                 repo_id,
             )
             continue

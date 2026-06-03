@@ -390,7 +390,7 @@ Electrobun-only plugin for desktop integration. All methods are no-ops on iOS an
 
 ## @capacitor/haptics
 
-Standard Capacitor haptics plugin. Provides impact, notification, and selection feedback patterns on iOS and Android. No-op on web and desktop.
+Standard Capacitor haptics plugin. Provides impact, notification, and selection feedback patterns on iOS and Android. Inactive on web and desktop.
 
 ```typescript
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";

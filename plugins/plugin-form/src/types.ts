@@ -20,7 +20,7 @@
  * 1. **Agent-Native**: Designed for conversational, asynchronous interactions.
  *    No form UI - the agent extracts data and guides the conversation.
  *
- * 2. **Extension-Compatible**: Many fields are optional with sensible defaults.
+ * 2. **Future-Compatible**: Many fields are optional with sensible defaults.
  *    The `meta` field on most interfaces allows arbitrary extension.
  *
  * 3. **Scoped Sessions**: Sessions are keyed by (entityId + roomId) because
@@ -44,7 +44,7 @@ import type { JsonValue, UUID } from "@elizaos/core";
  *
  * WHY separate from simple string[]:
  * - Labels can differ from values (display "United States", submit "US")
- * - Optional description gives rich select UIs supporting copy
+ * - Optional description enables rich select UIs in future
  * - Allows localization of labels without changing values
  */
 export interface FormControlOption {
@@ -88,10 +88,10 @@ export interface FormControlDependency {
 }
 
 /**
- * UI hints for chat and GUI frontends.
+ * UI hints for future frontends.
  *
  * WHY include UI hints in an agent-native form:
- * - Forms can render in GUI surfaces as well as conversation
+ * - Forms may eventually render in GUI
  * - Provides grouping hints to the agent for logical conversation flow
  * - Widget hints allow custom input components
  */
@@ -254,7 +254,7 @@ export interface FormControl {
   example?: string;
 
   // ═══ UI HINTS ═══
-  /** Hints for GUI rendering */
+  /** Hints for future GUI rendering */
   ui?: FormControlUI;
 
   // ═══ I18N ═══
@@ -419,7 +419,7 @@ export interface FormDefinition {
    * Form status. Draft forms aren't startable.
    *
    * WHY status:
-   * - Forms can be prepared before activation
+   * - Forms can be prepared but not yet active
    * - Deprecated forms shouldn't start new sessions
    * - Existing sessions on deprecated forms continue
    */
@@ -519,7 +519,7 @@ export interface FieldState {
    * Current status of this field.
    *
    * WHY multiple statuses:
-   * - 'empty': No value provided
+   * - 'empty': Not yet provided
    * - 'filled': Value accepted
    * - 'uncertain': LLM not confident, needs confirmation
    * - 'invalid': Value failed validation
@@ -731,7 +731,7 @@ export interface FormSession {
    * WHY parent reference:
    * - Complex forms might have nested sections
    * - Subform completion triggers parent update
-   * - Reserved for consuming plugins that model nested sections
+   * - Reserved for consumers that model nested form sessions
    */
   parentSessionId?: string;
 

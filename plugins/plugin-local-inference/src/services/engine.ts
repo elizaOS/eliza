@@ -22,7 +22,6 @@ import {
 	type ResponseSkeleton,
 	ResponseSkeletonStreamExtractor,
 } from "@elizaos/core";
-import { resolveKokoroEngineConfig } from "@elizaos/shared";
 import type { LocalInferenceLoadArgs } from "./active-model";
 import { readEffectiveAssignments } from "./assignments";
 import type {
@@ -62,6 +61,7 @@ import {
 	isOmniVoiceBundleAvailable,
 	VoiceStartupError,
 } from "./voice/engine-bridge";
+import { resolveKokoroEngineConfig } from "./voice/kokoro/kokoro-engine-discovery";
 import {
 	readVoiceBackendModeFromEnv,
 	selectVoiceBackend,

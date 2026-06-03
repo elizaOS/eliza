@@ -199,7 +199,7 @@ describe("inventory — listVaultInventory", () => {
 
   it("groups every stored key by inferred category, never reveals values", async () => {
     // Use distinctive value markers that don't collide with key names.
-    await vault.set("OPENROUTER_API_KEY", "sk-or-XXXX-NEVERLEAK-1", {
+    await vault.set("OPENROUTER_API_KEY", "sk-or-TEST-NEVERLEAK-1", {
       sensitive: true,
     });
     await vault.set("EVM_PRIVATE_KEY", "0xNEVERLEAK2", { sensitive: true });

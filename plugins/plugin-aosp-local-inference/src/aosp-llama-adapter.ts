@@ -681,7 +681,7 @@ export function firstSentenceEndIndex(text: string, minChars = 12): number {
     if (/\d/.test(prev) && /\d/.test(next)) continue;
     // Streaming chunks can end between a decimal point and the next digit
     // ("0." now, "8B" in the next callback). Wait for more text instead
-    // of ending the sentence on an incomplete decimal.
+    // of ending the sentence on a partial decimal token.
     if (ch === "." && /\d/.test(prev) && next === "") continue;
     return i + 1;
   }
@@ -1276,10 +1276,7 @@ class AospLlamaAdapter implements AospLoader {
             Math.min(2048, args.targetContextSize),
           ));
       const draftBatch = readEnvInt("ELIZA_MTP_DRAFT_N_BATCH", args.nBatch);
-      const draftUBatch = readEnvInt(
-        "ELIZA_MTP_DRAFT_N_UBATCH",
-        args.nUBatch,
-      );
+      const draftUBatch = readEnvInt("ELIZA_MTP_DRAFT_N_UBATCH", args.nUBatch);
       const draftMax =
         args.loadArgs.draftMax ?? readEnvInt("ELIZA_MTP_DRAFT_MAX", 8);
       // Mobile chat turns are short. The fork's MTP draft-simple path clears
@@ -1908,10 +1905,7 @@ class AospLlamaAdapter implements AospLoader {
       Number.isFinite(args.maxTokens) && args.maxTokens != null
         ? Math.max(1, Math.floor(args.maxTokens))
         : readEnvInt("ELIZA_LLAMA_DEFAULT_MAX_TOKENS", 512);
-    const mtpMinTokens = Math.max(
-      1,
-      readEnvInt("ELIZA_MTP_MIN_TOKENS", 64),
-    );
+    const mtpMinTokens = Math.max(1, readEnvInt("ELIZA_MTP_MIN_TOKENS", 64));
     const mtpForced = envFlagEnabled("ELIZA_MTP_FORCE");
     const mtpShortTurn = requestedMaxTokens < mtpMinTokens;
     const useMtp =
@@ -2659,8 +2653,8 @@ async function buildAdapter(): Promise<AospLlamaAdapter | null> {
 }
 
 /**
- * Register the AOSP llama.cpp FFI loader on the runtime. No-op on non-AOSP
- * builds (when `ELIZA_LOCAL_LLAMA !== "1"`). Returns true on successful
+ * Register the AOSP llama.cpp FFI loader on the runtime. Returns false on
+ * non-AOSP builds (when `ELIZA_LOCAL_LLAMA !== "1"`). Returns true on successful
  * registration so the caller can confirm precedence.
  *
  * When an in-process speculative shim and `draftModelPath` are available,

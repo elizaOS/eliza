@@ -552,7 +552,7 @@ export async function resolveLaunchSession(
  * app-manager lifecycle path stays uniform across all game apps.
  */
 export async function stopRun(): Promise<void> {
-  // Intentional no-op — no server-side state to clean up.
+  // No server-side state is created by this plugin, so teardown returns cleanly.
 }
 
 export async function refreshRunSession(

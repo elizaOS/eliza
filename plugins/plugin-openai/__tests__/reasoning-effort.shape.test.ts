@@ -185,7 +185,7 @@ describe("strip reasoning-content from outbound assistant messages", () => {
     expect((normalized?.[0] as { content: string }).content).toBe("plain text reply");
   });
 
-  it("preserves text + tool-call parts when no reasoning is present (no-op safety)", () => {
+  it("preserves text + tool-call parts when no reasoning is present", () => {
     const before = [
       { type: "text", text: "hi" },
       { type: "tool-call", toolCallId: "t1", toolName: "x", input: {} },

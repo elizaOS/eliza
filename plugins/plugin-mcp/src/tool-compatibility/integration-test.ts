@@ -71,7 +71,7 @@ function createMockRuntime(modelProvider: string, model: string): MockRuntime {
     getAllServices: () => new Map(),
     registerService: async () => {},
     getServiceLoadPromise: async () => {
-      throw new Error("Mock runtime does not expose service load promises");
+      throw new Error("test runtime does not load services");
     },
     getRegisteredServiceTypes: () => [],
     hasService: () => false,

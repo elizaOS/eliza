@@ -24,7 +24,9 @@ import {
 import { type ReactNode, useMemo, useState } from "react";
 import { countDiff, DiffStat, DiffView, lineDiff } from "./orchestrator-diff";
 import { MarkdownText } from "./orchestrator-markdown";
+
 export { sanitizeMarkdownUrl } from "./orchestrator-markdown";
+
 import { ReasoningCell } from "./orchestrator-reasoning";
 import { formatClockTime, formatDuration, stripAnsi } from "./view-format";
 
@@ -97,7 +99,18 @@ export type ConversationBlock =
       sessionId: string | null;
     }
   | { kind: "tool"; key: string; at: number; tool: ToolView }
-  | { kind: "reasoning"; key: string; at: number; text: string }
+  | {
+      kind: "reasoning";
+      key: string;
+      at: number;
+      text: string;
+      /** Wall-clock span from the first to the last reasoning delta in the
+       * coalesced burst; drives the "Thought for Ns" header. */
+      durationMs?: number;
+      /** True while the owning session is still running, so reasoning may still
+       * be arriving — drives the "Thinking…" header and shimmer. */
+      streaming?: boolean;
+    }
   | {
       kind: "notice";
       key: string;
@@ -338,12 +351,24 @@ function toToolView(
     status,
     filePath: pickString(rawInput, "filePath", "file_path", "path"),
     command: pickString(rawInput, "command", "cmd", "script"),
+    // A pure insertion (`old_string:""`), deletion-only edit (`new_string:""`),
+    // or empty-file write (`content:""`) is a real change whose "" must survive
+    // — pickString drops empty strings, so check the content keys directly and
+    // only fall back to it (then the output diff) for the rest.
     newText:
-      pickString(rawInput, "content", "newString", "new_string", "newText") ??
-      outputDiff?.newText,
+      typeof rawInput?.content === "string"
+        ? rawInput.content
+        : typeof rawInput?.new_string === "string"
+          ? rawInput.new_string
+          : typeof rawInput?.newString === "string"
+            ? rawInput.newString
+            : (pickString(rawInput, "newText") ?? outputDiff?.newText),
     oldText:
-      pickString(rawInput, "oldString", "old_string", "oldText") ??
-      outputDiff?.oldText,
+      typeof rawInput?.old_string === "string"
+        ? rawInput.old_string
+        : typeof rawInput?.oldString === "string"
+          ? rawInput.oldString
+          : (pickString(rawInput, "oldText") ?? outputDiff?.oldText),
     query: pickString(rawInput, "pattern", "query", "regex", "glob"),
     output,
     exitCode,
@@ -359,7 +384,13 @@ type Atom =
       message: CodingAgentTaskMessageRecord;
     }
   | { at: number; order: number; type: "tool"; tool: ToolView }
-  | { at: number; order: number; type: "reasoning"; text: string }
+  | {
+      at: number;
+      order: number;
+      type: "reasoning";
+      text: string;
+      sessionId: string | null;
+    }
   | {
       at: number;
       order: number;
@@ -448,6 +479,7 @@ export function buildConversation(
           order: order++,
           type: "reasoning",
           text,
+          sessionId: event.sessionId,
         });
       continue;
     }
@@ -536,14 +568,28 @@ export function buildConversation(
     }
     openLane = null;
     if (atom.type === "reasoning") {
+      // Reasoning is still arriving as long as its owning session has not
+      // finished; a session-less burst can never be marked finished, so it is
+      // treated as settled (its last delta is its end).
+      const streaming = atom.sessionId
+        ? !finishedSessionIds.has(atom.sessionId)
+        : false;
       if (openReasoning) {
         openReasoning.text += atom.text;
+        // Span = last delta's time − the burst's first; recomputed as deltas
+        // append so it always reflects the full burst.
+        openReasoning.durationMs = atom.at - openReasoning.at;
+        openReasoning.streaming = streaming;
       } else {
         const block = {
           kind: "reasoning" as const,
           key: `reason-${atom.order}`,
           at: atom.at,
           text: atom.text,
+          // A single-delta burst has no span yet; left undefined so the header
+          // reads "Thought" rather than "Thought for 0s".
+          durationMs: undefined,
+          streaming,
         };
         blocks.push(block);
         openReasoning = block;
@@ -895,7 +941,13 @@ export function ConversationBlockView({
   }
 
   if (block.kind === "reasoning") {
-    return <ReasoningCell text={block.text} />;
+    return (
+      <ReasoningCell
+        text={block.text}
+        durationMs={block.durationMs}
+        streaming={block.streaming}
+      />
+    );
   }
 
   const Icon = block.icon;

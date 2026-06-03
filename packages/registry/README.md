@@ -96,4 +96,4 @@ requirement to run a plugin. To get listed:
 [`packages/examples/plugin-echo`](../examples/plugin-echo) is a real, buildable
 third-party plugin (a single `ECHO` action) listed via
 [`entries/third-party/elizaos-plugin-echo.json`](entries/third-party/elizaos-plugin-echo.json).
-Use it as the template for your own listing.
+Use it as the reference example for your own listing.

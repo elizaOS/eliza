@@ -6,7 +6,7 @@ Run with Blender, not Python:
     .tools/blender/blender --background --python scripts/generate_eliza_human_donor_blender.py
 
 The output is a robot-frame OBJ/GLB/STL donor asset, not final tooling geometry.
-It replaces the primitive face placeholder with a real parametric human face
+It replaces the primitive face mesh with a real parametric human face
 source that can be reworked into hard plastic shell panels.
 """
 

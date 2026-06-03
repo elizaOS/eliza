@@ -11,10 +11,10 @@ export interface WalletResult {
 }
 
 /**
- * Gets either a keypair or public key from runtime settings.
+ * Gets either a keypair or public key based on TEE mode and runtime settings
  * @param runtime The agent runtime
  * @param requirePrivateKey Whether to return a full keypair (true) or just public key (false)
- * @returns WalletResult containing either keypair or public key plus the RPC connection
+ * @returns KeypairResult containing either keypair or public key
  */
 export async function loadWallet(
   runtime: IAgentRuntime,
@@ -23,6 +23,28 @@ export async function loadWallet(
   const rpcUrl = getRuntimeStringSetting(runtime, "SOLANA_RPC_URL") ?? DEFAULT_SOLANA_RPC_URL;
   const connection = new Connection(rpcUrl, "confirmed");
 
+  // TEE mode remains disabled until DeriveKeyProvider is available.
+  // const teeMode = runtime.getSetting('TEE_MODE') || TEEMode.OFF;
+
+  // if (teeMode !== TEEMode.OFF) {
+  //   const walletSecretSalt = runtime.getSetting('WALLET_SECRET_SALT');
+  //   if (!walletSecretSalt) {
+  //     throw new Error('WALLET_SECRET_SALT required when TEE_MODE is enabled');
+  //   }
+
+  //   const deriveKeyProvider = new DeriveKeyProvider(teeMode);
+  //   const deriveKeyResult = await deriveKeyProvider.deriveEd25519Keypair(
+  //     '/',
+  //     walletSecretSalt,
+  //     runtime.agentId
+  //   );
+
+  //   return requirePrivateKey
+  //     ? { signer: deriveKeyResult.keypair }
+  //     : { address: deriveKeyResult.keypair.publicKey };
+  // }
+
+  // TEE mode is OFF
   if (requirePrivateKey) {
     const privateKeyString =
       getRuntimeStringSetting(runtime, "SOLANA_PRIVATE_KEY") ??

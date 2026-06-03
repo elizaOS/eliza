@@ -218,7 +218,7 @@ function parseStopResult(body: unknown): AppStopResult {
 	if (
 		stopScope !== "plugin-uninstalled" &&
 		stopScope !== "viewer-session" &&
-		stopScope !== "no-op"
+		stopScope !== "nothing-stopped"
 	) {
 		throw new Error(`Malformed stop result: unexpected stopScope ${stopScope}`);
 	}

@@ -8,7 +8,7 @@
 # step is skipped (so callers can re-run cheaply).
 #
 # Gated on ELIZA_RISCV64_SMOKE=1 by default (same posture as the smoke
-# harness). Unset = no-op.
+# harness). Unset = skip all builds.
 #
 # Tooling requirements (caller's job to install):
 #   - zig 0.14+        (Zig toolchain; provides riscv64-linux-musl — every

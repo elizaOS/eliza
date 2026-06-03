@@ -139,7 +139,7 @@ export class DiscordTestSuite implements TestSuite {
 				deferReply: () => Promise<void>;
 				editReply: (message: string) => Promise<void>;
 			}
-			const fakeJoinInteraction: MockJoinInteraction = {
+			const testJoinInteraction: MockJoinInteraction = {
 				isCommand: () => true,
 				commandName: "joinchannel",
 				options: {
@@ -157,7 +157,7 @@ export class DiscordTestSuite implements TestSuite {
 				throw new Error("VoiceManager is not available on the Discord client.");
 			}
 			await this.discordClient.voiceManager.handleJoinChannelCommand(
-				fakeJoinInteraction,
+				testJoinInteraction,
 			);
 
 			logger.success("Join voice slash command test completed successfully.");
@@ -189,7 +189,7 @@ export class DiscordTestSuite implements TestSuite {
 				guildId: string | null;
 				reply: (message: string) => Promise<void>;
 			}
-			const fakeLeaveInteraction: LeaveChannelInteraction = {
+			const testLeaveInteraction: LeaveChannelInteraction = {
 				guildId: (channel as TextChannel).guildId,
 				reply: async (message: string) => {
 					logger.info(`LeaveChannel Slash Command Response: ${message}`);
@@ -200,7 +200,7 @@ export class DiscordTestSuite implements TestSuite {
 				throw new Error("VoiceManager is not available on the Discord client.");
 			}
 			await this.discordClient.voiceManager.handleLeaveChannelCommand(
-				fakeLeaveInteraction,
+				testLeaveInteraction,
 			);
 
 			logger.success("Leave voice slash command test completed successfully.");
@@ -334,7 +334,7 @@ export class DiscordTestSuite implements TestSuite {
 				attachments: unknown[];
 				interaction?: unknown;
 			}
-			const fakeMessageFields = {
+			const testMessageFields = {
 				_cacheType: true,
 				_patch: () => undefined,
 				content: `Hello, ${runtime.character.name}! How are you?`,
@@ -352,16 +352,16 @@ export class DiscordTestSuite implements TestSuite {
 				reference: null,
 				attachments: [],
 			} satisfies MockMessage;
-			const fakeMessage = Object.assign(
+			const testMessage = Object.assign(
 				Object.create(Message.prototype),
-				fakeMessageFields,
+				testMessageFields,
 			) as Message<boolean>;
 			if (!this.discordClient.messageManager) {
 				throw new Error(
 					"MessageManager is not available on the Discord client.",
 				);
 			}
-			await this.discordClient.messageManager.handleMessage(fakeMessage);
+			await this.discordClient.messageManager.handleMessage(testMessage);
 		} catch (error) {
 			throw new Error(`Error in handling message test: ${error}`);
 		}

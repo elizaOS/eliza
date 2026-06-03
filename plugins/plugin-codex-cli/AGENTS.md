@@ -28,7 +28,7 @@ All model types delegate to `generateTextWithCodex()` in `index.ts`, which calls
 plugins/plugin-codex-cli/
   index.ts                  Plugin entry point — registers model handlers, exports Plugin object
   index.node.ts             Node build re-export (re-exports index.ts default)
-  index.browser.ts          Browser stub (no-op; plugin is node-only)
+  index.browser.ts          Unsupported browser export; plugin is node-only
   auto-enable.ts            Auto-enable module (shouldEnable + shouldForce); referenced by package.json elizaos.plugin.autoEnableModule
   src/
     codex-backend.ts        CodexBackend class — HTTP client for ChatGPT Codex /responses SSE endpoint; FIFO queue + jitter

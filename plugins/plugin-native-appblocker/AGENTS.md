@@ -69,7 +69,7 @@ This plugin reads no environment variables. It requires OS-level permissions gra
 **Add a new method (JS → native):**
 
 1. Add the method signature to `AppBlockerPlugin` interface in `src/definitions.ts`.
-2. Add a no-op/error implementation in `src/web.ts` (`AppBlockerWeb`).
+2. Add an unavailable/error implementation in `src/web.ts` (`AppBlockerWeb`).
 3. Add `@PluginMethod fun myMethod(call: PluginCall)` to `android/.../AppBlockerPlugin.kt`.
 4. Add `@objc func myMethod(_ call: CAPPluginCall)` to `ios/.../AppBlockerPlugin.swift` and register it in `pluginMethods`.
 5. Run `bun run --cwd plugins/plugin-native-appblocker build` to rebuild `dist/`.

@@ -94,7 +94,7 @@ export interface TokenSequence {
  * whose `leafName` is the lexicographically-smallest input — the leaf-name
  * tag is informational; the constraint is the path.
  *
- * Empty `sequences` returns a root with no children (a no-op trie — every
+ * Empty `sequences` returns a root with no children (an unconstrained trie — every
  * step is unconstrained from the trie's perspective). The caller should
  * either skip the trie path entirely in that case or fall back to grammar.
  */

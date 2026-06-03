@@ -11,7 +11,6 @@ import pytest
 from eliza_robot.policy import ActionChunk, PolicyBackend, get_policy_backend
 from eliza_robot.policy.openpi.client import OpenPIPolicyClient
 
-
 # ---------------------------------------------------------------------------
 # Lazy-import error surface
 # ---------------------------------------------------------------------------
@@ -79,8 +78,8 @@ def test_dispatch_openpi_returns_client_type() -> None:
 
 def test_openpi_endpoint_must_include_port(monkeypatch: pytest.MonkeyPatch) -> None:
     """Endpoint format is validated at `start()`, not in the constructor."""
-    # Stub a fake openpi_client so the import path inside start() succeeds and
-    # we hit the endpoint parser instead.
+    # Install a fake openpi_client so the import path inside start() succeeds
+    # and we hit the endpoint parser instead.
     import types
 
     fake_ws_mod = types.ModuleType("openpi_client.websocket_client_policy")

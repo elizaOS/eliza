@@ -117,7 +117,7 @@ describe('WorkflowCredentialStore event-driven eviction', () => {
     }
   });
 
-  test('empty credTypes payload is a no-op', async () => {
+  test('empty credTypes payload skips deletion', async () => {
     const { runtime, bus } = createEventBusRuntime('agent-evict-2');
     const deleteSpy = mock<DeleteMethod>(() => Promise.resolve());
     const originalDelete = WorkflowCredentialStore.prototype.delete;

@@ -215,7 +215,7 @@ interface BotConnection {
   organizationId: string;
   applicationId: string;
   characterId: string | null;
-  /** Discord.js client instance. Undefined for placeholder connections reserving capacity. */
+  /** Discord.js client instance. Undefined while a connection reservation is being established. */
   client?: Client;
   status: "connecting" | "connected" | "disconnected" | "error";
   guildCount: number;
@@ -541,7 +541,7 @@ export class GatewayManager {
     for (const [connectionId, conn] of this.connections) {
       await this.saveSessionState(connectionId, conn);
       this.removeAllListeners(conn);
-      // Guard against placeholder connections with null client
+      // Reservations have no client until connectBot finishes.
       if (conn.client) {
         conn.client.destroy();
       }
@@ -646,7 +646,7 @@ export class GatewayManager {
   }
 
   private removeAllListeners(conn: BotConnection): void {
-    // Guard against placeholder connections with null client
+    // Reservations have no client until connectBot finishes.
     if (!conn.client) {
       conn.listeners.clear();
       return;
@@ -726,9 +726,9 @@ export class GatewayManager {
           break;
         }
 
-        // Reserve the slot immediately with a placeholder to prevent concurrent operations
+        // Reserve the slot immediately to prevent concurrent operations
         // from exceeding capacity. connectBot will overwrite with the real connection.
-        const placeholder: BotConnection = {
+        const reservation: BotConnection = {
           connectionId: assignment.connectionId,
           organizationId: assignment.organizationId,
           applicationId: assignment.applicationId,
@@ -743,12 +743,12 @@ export class GatewayManager {
           lastHeartbeat: new Date(),
           listeners: new Map(),
         };
-        this.connections.set(assignment.connectionId, placeholder);
+        this.connections.set(assignment.connectionId, reservation);
 
         try {
           await this.connectBot(assignment);
         } catch (error) {
-          // Clean up placeholder if connectBot throws before setting real connection
+          // Clean up the reservation if connectBot throws before setting the real connection.
           this.connections.delete(assignment.connectionId);
           logger.error("Failed to connect bot during assignment", {
             connectionId: assignment.connectionId,
@@ -1107,7 +1107,7 @@ export class GatewayManager {
     logger.info("Disconnecting bot", { connectionId });
     await this.saveSessionState(connectionId, conn);
     this.removeAllListeners(conn);
-    // Guard against placeholder connections with null client
+    // Reservations have no client until connectBot finishes.
     if (conn.client) {
       conn.client.destroy();
     }

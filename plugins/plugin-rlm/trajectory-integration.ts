@@ -290,7 +290,7 @@ export class RLMTrajectoryIntegration {
     step.result = result;
 
     // Auto-estimate cost from result
-    if (!result.metadata.stub) {
+    if (!result.metadata.synthetic) {
       const outputTokens = estimateTokenCount(result.text);
       const costEstimate = estimateCost(step.model ?? "default", 0, outputTokens);
       step.costs.push(costEstimate);

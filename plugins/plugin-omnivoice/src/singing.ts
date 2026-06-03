@@ -68,10 +68,10 @@ export async function runSingingSynthesis(
 }
 
 /**
- * Free the cached singing context, if any. Idempotent — calling it
- * with no cached context is a no-op. Used by the plugin shutdown hook
- * (and by tests via `_resetSingingCache`) to release the underlying
- * GGML context held by libomnivoice.
+ * Free the cached singing context, if any. Idempotent: when no context is
+ * cached, the function simply returns. Used by the plugin shutdown hook
+ * (and by tests via `_resetSingingCache`) to release the underlying GGML
+ * context held by libomnivoice.
  */
 export function closeSingingContext(): void {
   if (cached) {

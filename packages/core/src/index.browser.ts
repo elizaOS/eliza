@@ -1,8 +1,8 @@
 /**
  * Browser-specific entry point for @elizaos/core
  *
- * This file exports only browser-compatible modules and provides
- * compatibility shims or alternatives for Node.js-specific functionality.
+ * This file exports only browser-compatible modules and provides explicit
+ * browser alternatives for Node.js-specific functionality.
  * Streaming context manager is auto-detected at runtime.
  */
 
@@ -199,7 +199,7 @@ export function resolveStateDir(
 	return `${xdgStateHome ?? "/.local/state"}/${namespace}`;
 }
 
-// Browser shims for Node-only path helpers. These exist on the Node entry
+// Browser alternatives for Node-only path helpers. These exist on the Node entry
 // (see utils/state-dir.ts) and are imported by server-side runtime modules
 // (e.g. @elizaos/agent/src/config/paths.ts) that may be statically reached
 // by the renderer bundle's dep graph. The values returned are unused in the
@@ -208,15 +208,17 @@ export function resolveOAuthDir(): string {
 	return "/.local/state/eliza/credentials";
 }
 
-export async function runPluginMigrations(): Promise<void> {}
+export async function runPluginMigrations(): Promise<void> {
+	// Browser bundles do not own plugin migration state.
+}
 
-// Browser-specific exports and shims for Node-only features.
+// Browser-specific exports for Node-only feature probes.
 export const isBrowser = true;
 export const isNode = false;
 
 /**
- * Browser health contract for server-only checks.
- * In browser environment, this reports not-applicable.
+ * Browser health-check export. Server health is not applicable in browser
+ * bundles, so callers get a stable positive probe result with browser context.
  */
 export const serverHealth = {
 	check: async () => ({ status: "not-applicable", environment: "browser" }),
@@ -226,6 +228,6 @@ export const serverHealth = {
 // Cloud-routing helpers (`toRuntimeSettings`, etc.) are pure functions
 // used by app-core's sensitive-requests/cloud-link-adapter at static
 // import time. Browser-safe — no Node deps — so include them here so
-// Rollup can satisfy the named import without falling back to a compatibility
-// plugin.
+// Rollup can satisfy the named import without falling back to the
+// virtual module replacement plugin.
 export * from "./cloud-routing";

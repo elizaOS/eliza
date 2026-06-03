@@ -3,7 +3,7 @@ import type { RemotePluginWorkerMessage } from "@elizaos/plugin-remote-manifest"
 import type { WorkerChannel } from "./envelope.js";
 import { buildRuntimeProxyApi, RuntimeProxy } from "./runtime-proxy.js";
 
-class FakeChannel implements WorkerChannel {
+class TestChannel implements WorkerChannel {
   readonly sent: RemotePluginWorkerMessage[] = [];
   private readonly subscribers = new Set<
     (message: RemotePluginWorkerMessage) => void
@@ -31,7 +31,7 @@ class FakeChannel implements WorkerChannel {
 
 describe("RuntimeProxy", () => {
   it("sends host-rpc envelopes and resolves the matching host result", async () => {
-    const channel = new FakeChannel();
+    const channel = new TestChannel();
     const proxy = new RuntimeProxy({
       channel,
       allocRequestId: () => 7,
@@ -61,7 +61,7 @@ describe("RuntimeProxy", () => {
   });
 
   it("keeps concurrent host-rpc calls correlated and ignores unrelated messages", async () => {
-    const channel = new FakeChannel();
+    const channel = new TestChannel();
     let nextId = 0;
     const proxy = new RuntimeProxy({
       channel,
@@ -100,7 +100,7 @@ describe("RuntimeProxy", () => {
   });
 
   it("rejects failed host-rpc results as wire errors", async () => {
-    const channel = new FakeChannel();
+    const channel = new TestChannel();
     const proxy = new RuntimeProxy({
       channel,
       allocRequestId: () => 11,
@@ -130,7 +130,7 @@ describe("RuntimeProxy", () => {
   });
 
   it("rejects pending calls when detached", async () => {
-    const channel = new FakeChannel();
+    const channel = new TestChannel();
     const proxy = new RuntimeProxy({
       channel,
       allocRequestId: () => 12,
@@ -148,7 +148,7 @@ describe("RuntimeProxy", () => {
 
 describe("buildRuntimeProxyApi", () => {
   it("serializes facade calls with stable method-specific argument shapes", async () => {
-    const channel = new FakeChannel();
+    const channel = new TestChannel();
     let nextId = 0;
     const proxy = new RuntimeProxy({
       channel,
@@ -212,14 +212,14 @@ describe("buildRuntimeProxyApi", () => {
     await expect(compose).resolves.toEqual({ composed: true });
   });
 
-  it("fails fast for in-worker registerEvent calls", async () => {
-    const channel = new FakeChannel();
+  it("fails fast for unsupported in-worker registerEvent calls", async () => {
+    const channel = new TestChannel();
     const runtime = buildRuntimeProxyApi(
       new RuntimeProxy({ channel, allocRequestId: () => 1 }),
     );
 
     await expect(runtime.registerEvent("event", () => {})).rejects.toThrow(
-      "runtime.registerEvent inside a remote-mode plugin cannot serialize callbacks",
+      "runtime.registerEvent inside a remote-mode plugin is not yet supported",
     );
     expect(channel.sent).toEqual([]);
   });

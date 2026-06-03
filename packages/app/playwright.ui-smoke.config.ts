@@ -70,8 +70,8 @@ export default defineConfig({
     cwd: repoRoot,
     port: uiSmokePort,
     reuseExistingServer,
-    // A cold renderer build transforms ~3000 modules (~12 min) before the stub
-    // stack can bind the port; the live stack caps the build at 18 min, so the
+    // A cold renderer build transforms ~3000 modules (~12 min) before the smoke
+    // harness can bind the port; the live stack caps the build at 18 min, so the
     // outer wait must exceed that (was 7 min, which killed every cold build).
     timeout: 1_200_000,
   },

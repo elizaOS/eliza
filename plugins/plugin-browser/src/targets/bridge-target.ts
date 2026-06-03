@@ -53,7 +53,7 @@ function bridgeTabToWorkspaceTab(
   tab: BrowserBridgeTabSummary,
 ): BrowserWorkspaceTab {
   // The bridge speaks BrowserBridgeTabSummary; the BROWSER action expects
-  // BrowserWorkspaceTab. Map the overlapping fields and stub the rest.
+  // BrowserWorkspaceTab. Map the overlapping fields and use defaults for the rest.
   return {
     id: tab.id,
     title: tab.title,

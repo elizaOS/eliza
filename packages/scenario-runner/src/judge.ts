@@ -122,7 +122,7 @@ export async function judgeTextWithLlm(
   // Standing direction: scenario judging runs on Cerebras gpt-oss-120b so
   // the agent under test is never used to grade itself. Falls back to the
   // runtime's TEXT_LARGE provider when Cerebras isn't configured (unit
-  // tests pass a stub runtime; CI without the key keeps working).
+  // tests pass a test runtime; CI without the key keeps working).
   const cerebrasJudge = (await isCerebrasJudgeEnabled())
     ? new CerebrasJudge()
     : null;

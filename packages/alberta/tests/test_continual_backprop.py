@@ -292,14 +292,14 @@ class TestReplacement:
 
 
 # =============================================================================
-# enabled=False = noop
+# enabled=False returns unchanged state
 # =============================================================================
 
 
-class TestDisabledIsNoop:
+class TestDisabledReturnsUnchanged:
     """With enabled=False, the wrapper must match plain MultiHeadMLPLearner."""
 
-    def test_disabled_means_noop(self):
+    def test_disabled_matches_base_learner(self):
         feature_dim = 5
         n_heads = 2
         cbp_config = ContinualBackpropConfig(enabled=False)

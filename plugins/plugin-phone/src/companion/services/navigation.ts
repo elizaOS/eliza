@@ -10,7 +10,7 @@ import { logger } from "./logger";
  * We intentionally avoid react-router / react-native-navigation: the companion
  * has three screens and a linear push/pop model. This hook handles state,
  * persists the current view across launches, and fires a Capacitor haptic on
- * each transition (a no-op on web).
+ * each transition when native haptics are available.
  */
 
 export type ViewName = "chat" | "pairing" | "remote-session";

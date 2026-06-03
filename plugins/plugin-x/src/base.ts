@@ -249,12 +249,11 @@ export class ClientBase {
   callback: ((self: ClientBase) => void | Promise<void>) | null = null;
 
   /**
-   * Lifecycle hook for concrete clients that need startup readiness work.
+   * This method is called when the application is ready.
+   * It throws an error indicating that subclasses must override it.
    */
   onReady() {
-    throw new Error(
-      "ClientBase.onReady must be overridden by concrete clients",
-    );
+    throw new Error("ClientBase.onReady must be implemented by a subclass");
   }
 
   /**

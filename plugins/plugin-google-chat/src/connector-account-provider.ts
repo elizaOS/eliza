@@ -105,7 +105,7 @@ export function createGoogleChatConnectorAccountProvider(
       return { ...patch, provider: GOOGLE_CHAT_PROVIDER_ID };
     },
     deleteAccount: async (_accountId: string, _manager: ConnectorAccountManager) => {
-      // No-op at provider layer — service-account credentials live in
+      // Provider-layer account deletion returns cleanly; service-account credentials live in
       // character settings; deletion of those is out of band.
     },
   };

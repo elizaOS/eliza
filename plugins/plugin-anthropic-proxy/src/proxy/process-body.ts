@@ -7,7 +7,7 @@
  *   3. Tool name renames                 (tool-rename.ts)
  *   6. Property name renames             (property-rename.ts)
  *   4. System prompt template strip      (system-prompt.ts)
- *   5. Tool description strip + synthetic CC tools (cc-tool-stubs.ts)
+ *   5. Tool description strip + synthetic CC tools (cc-tool-injection.ts)
  *   1. Billing fingerprint injection     (billing-fingerprint.ts)
  *   metadata injection (device_id + session_id)
  *   8. Strip trailing assistant prefill
@@ -16,7 +16,7 @@
 
 import { randomBytes, randomUUID } from "node:crypto";
 import { buildBillingBlock } from "./billing-fingerprint.js";
-import { processToolsSection } from "./cc-tool-stubs.js";
+import { processToolsSection } from "./cc-tool-injection.js";
 import type { Pair } from "./sanitize.js";
 import { applyReplacements } from "./sanitize.js";
 import type { SystemPromptStripConfig } from "./system-prompt.js";
@@ -30,7 +30,7 @@ export interface ProcessBodyConfig {
   systemPromptStrip?: SystemPromptStripConfig;
   stripSystemConfig?: boolean;
   stripToolDescriptions?: boolean;
-  injectCCStubs?: boolean;
+  injectCCSyntheticTools?: boolean;
   stripTrailingAssistantPrefill?: boolean;
   stripThinkingBlocks?: boolean;
   deviceId?: string;
@@ -46,7 +46,7 @@ export interface ProcessBodyResult {
   stats: {
     systemConfigStripped: number;
     descriptionsStripped: number;
-    stubsInjected: number;
+    syntheticToolsInjected: number;
     assistantPrefillStripped: number;
     thinkingBlocksStripped: number;
     thinkingParamsStripped: number;
@@ -115,7 +115,7 @@ export function processBody(
   const toolResult = processToolsSection(
     m,
     config.stripToolDescriptions !== false,
-    config.injectCCStubs !== false,
+    config.injectCCSyntheticTools !== false,
   );
   m = toolResult.body;
 
@@ -293,7 +293,7 @@ export function processBody(
     stats: {
       systemConfigStripped,
       descriptionsStripped: toolResult.descriptionsStripped,
-      stubsInjected: toolResult.stubsInjected,
+      syntheticToolsInjected: toolResult.syntheticToolsInjected,
       assistantPrefillStripped,
       thinkingBlocksStripped,
       thinkingParamsStripped,

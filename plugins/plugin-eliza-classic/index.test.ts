@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { ModelType } from "@elizaos/core";
 import {
   elizaClassicPlugin,
-  generateElizaEmbedding,
   generateElizaResponse,
   getElizaGreeting,
 } from "./index.js";
@@ -40,17 +39,6 @@ describe("eliza-classic deterministic responses", () => {
     );
   });
 
-  it("generates normalized deterministic lexical embeddings", () => {
-    const familyEmbedding = generateElizaEmbedding("mother father family");
-    const workEmbedding = generateElizaEmbedding("deadline project work");
-    const repeatEmbedding = generateElizaEmbedding("mother father family");
-
-    expect(familyEmbedding).toHaveLength(1536);
-    expect(Math.hypot(...familyEmbedding)).toBeCloseTo(1, 8);
-    expect(repeatEmbedding).toEqual(familyEmbedding);
-    expect(workEmbedding).not.toEqual(familyEmbedding);
-  });
-
   it("registers deterministic handlers for text, planning, and embedding models", async () => {
     expect(elizaClassicPlugin.models?.[ModelType.TEXT_NANO]).toBeTypeOf(
       "function",
@@ -64,9 +52,27 @@ describe("eliza-classic deterministic responses", () => {
     ] as ((runtime: unknown, params: unknown) => Promise<number[]>) | undefined;
 
     const embedding = await embeddingHandler?.({} as never, {
-      text: "I feel sad today",
-    } as never);
+      text: "hello world",
+    });
     expect(embedding).toHaveLength(1536);
-    expect(Math.hypot(...(embedding ?? []))).toBeCloseTo(1, 8);
+    expect(
+      Math.sqrt(
+        embedding?.reduce((sum, value) => sum + value * value, 0) ?? 0,
+      ),
+    ).toBeCloseTo(1, 8);
+
+    const same = await embeddingHandler?.({} as never, "hello world");
+    const related = await embeddingHandler?.({} as never, {
+      text: "hello there",
+    });
+    const different = await embeddingHandler?.({} as never, {
+      text: "banana orange",
+    });
+    expect(same).toEqual(embedding);
+    const dot = (left: number[], right: number[]) =>
+      left.reduce((sum, value, index) => sum + value * right[index], 0);
+    expect(dot(embedding ?? [], related ?? [])).toBeGreaterThan(
+      dot(embedding ?? [], different ?? []),
+    );
   });
 });

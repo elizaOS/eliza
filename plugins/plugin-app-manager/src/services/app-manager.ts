@@ -2216,7 +2216,7 @@ export class AppManager {
           stoppedAt,
           pluginUninstalled: false,
           needsRestart: false,
-          stopScope: "no-op",
+          stopScope: "nothing-stopped",
           message: `App run "${runId}" was not found.`,
         };
       }
@@ -2256,7 +2256,7 @@ export class AppManager {
         stoppedAt,
         pluginUninstalled: false,
         needsRestart: false,
-        stopScope: "no-op",
+        stopScope: "nothing-stopped",
         message: `No active app run found for "${name}".`,
       };
     }

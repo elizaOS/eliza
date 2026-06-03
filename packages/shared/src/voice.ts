@@ -30,7 +30,7 @@ export function sanitizeApiKey(apiKey: string | undefined): string | undefined {
 
 /**
  * Treat only non-redacted, non-masked values as usable API keys. Persisted
- * placeholder values like "[REDACTED]" or "abcd...wxyz" are display-only.
+ * redacted or masked values like "[REDACTED]" or "abcd...wxyz" are display-only.
  */
 export function hasConfiguredApiKey(
   apiKey: string | null | undefined,

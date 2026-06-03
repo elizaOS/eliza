@@ -33,10 +33,14 @@ platform no-ops are separated from actionable runtime gaps.
   storage proxy when `BLOB_READ_WRITE_TOKEN` and a cloud base URL are available,
   fall back to Discord CDN URLs only when storage is unconfigured, and clean up
   expired `voice/` objects.
+- Reworded gateway connection-reservation paths in `src/gateway-manager.ts` and
+  direct-server wake handling in `src/server-router.ts`; startup capacity
+  reservations are no longer labeled as placeholders/no-ops.
 - Added coverage in `tests/voice-message-handler.test.ts`.
 - Verified with:
   - `bun run --cwd packages/cloud-services/gateway-discord test`
   - `bun run --cwd packages/cloud-services/gateway-discord typecheck`
+  - marker scan and `git diff --check` on the touched gateway files
 
 ### packages/cloud-api
 
@@ -53,6 +57,57 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd packages/cloud-api typecheck`
   - `bunx biome check` on the touched Worker shim and sidecar-route files
   - marker scan and `git diff --check` on the touched Cloud API files
+
+### packages/cloud-sdk
+
+- Renamed the public-routes unit-test transport from `FakeTransport` to
+  `TestTransport`. The fixture still records calls for path-building
+  assertions; it is not an unfinished SDK transport.
+- Marker scan on the package is now clean.
+- Verified with:
+  - `diff -u packages/cloud-sdk/CLAUDE.md packages/cloud-sdk/AGENTS.md`
+  - `bun run --cwd packages/cloud-sdk typecheck`
+  - `bun run --cwd packages/cloud-sdk test`
+  - `bun run --cwd packages/cloud-sdk build`
+  - marker scan on `packages/cloud-sdk`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md packages/cloud-sdk`
+
+### packages/app-core
+
+- Added concrete ambient-audio primitives under
+  `src/services/ambient-audio/`: consent enforcement, bounded replay buffer,
+  pure response gating, service contracts, and an in-memory service for tests
+  and local wiring.
+- Replaced stale ambient-audio implementation notes that claimed the directory
+  was scaffold-only with an accurate status of implemented host-independent
+  primitives and remaining native capture/VAD/ASR/persistence adapter
+  boundaries.
+- Reworded `src/services/voice-profiles/IMPL_NOTES.md` so the existing tested
+  store, diarization interface, owner-confidence scoring, challenge service,
+  and nickname evaluator are not labeled as scaffold code.
+- Added `src/services/ambient-audio/__tests__/ambient-audio.test.ts` covering
+  consent enforcement, replay retention, response-gate thresholds, and service
+  lifecycle/retention clearing.
+- Verified with:
+  - `bun run --cwd packages/app-core test src/services/ambient-audio/__tests__/ambient-audio.test.ts`
+  - `bun run --cwd packages/app-core typecheck`
+  - marker scan on `src/services/ambient-audio` and
+    `src/services/voice-profiles`
+  - `git diff --check` on the touched service files
+
+### packages/tui
+
+- Reworded identity-theme and editor delete test wording so unchanged styling
+  and empty delete operations are not described as no-op behavior.
+- Reworded image-test and virtual-terminal helper comments so cacheless
+  invalidation and absent stdin are described directly.
+- Remaining `incomplete` / `unfinished paste` hits in `src/stdin-buffer.ts`,
+  `src/tui.ts`, and stdin/paste tests are terminal protocol parser states for
+  partial escape or bracketed-paste sequences, not unfinished implementation.
+- Verified with:
+  - `bun run --cwd packages/tui test`
+  - `bun run --cwd packages/tui build`
+  - marker scan and `git diff --check` on the touched TUI files
 
 ### packages/core
 
@@ -82,65 +137,38 @@ platform no-ops are separated from actionable runtime gaps.
   - `bunx biome check packages/core/src/services/pairing-migration.ts packages/core/src/__tests__/pairing-migration.test.ts`
   - `bunx biome check packages/core/src/features/advanced-planning/actions/plan.ts packages/core/src/features/advanced-planning/actions/plan.test.ts`
   - `bunx biome check packages/core/src/connectors/account-manager.ts`
-- Finished the secrets `custom` validation strategy in
-  `src/features/secrets/validation.ts`. It now dispatches to a validator
-  registered under the secret key, falls back to a shared `custom` validator,
-  and fails closed when no custom validator is registered instead of returning
-  success with "not implemented" details.
-- Added `src/features/secrets/validation.test.ts` for unregistered,
-  key-specific, and shared custom validators.
-- Verified with:
-  - `bun run --cwd packages/core test src/features/secrets/validation.test.ts`
-  - `bun run --cwd packages/core typecheck`
-  - `bunx biome check packages/core/src/features/secrets/validation.ts packages/core/src/features/secrets/validation.test.ts`
-  - focused incomplete-marker scan and `git diff --check` on the touched
-    secrets validation files
-- Replaced the autonomy `ESCALATE` owner/third-party `not_implemented`
-  fallback with an explicit unsupported-target result. The core action keeps
-  the working admin route and now documents plugin-owned routes as the place
-  for non-admin delivery contracts.
-- Added `src/features/autonomy/action.test.ts` coverage for owner and
-  third-party unsupported-target results.
-- Verified with:
-  - `bun run --cwd packages/core test src/features/autonomy/action.test.ts src/features/secrets/validation.test.ts`
-  - `bun run --cwd packages/core typecheck`
-  - `bunx biome check packages/core/src/features/autonomy/action.ts packages/core/src/features/autonomy/action.test.ts packages/core/src/features/secrets/validation.ts packages/core/src/features/secrets/validation.test.ts`
-  - focused incomplete-marker scan and `git diff --check` on the touched core
-    autonomy/secrets files
-- Reworded trajectory reward/service comments in
-  `src/features/trajectories/game-rewards.ts` and
-  `src/features/trajectories/TrajectoriesService.ts` so environment-specific
-  reward hooks, fallback trajectory services, and delayed legacy step-map
-  resolution are described without stub/placeholder/not-yet wording.
-- Verified with:
-  - focused incomplete-marker scan on the two touched trajectory files
-  - `bunx biome check packages/core/src/features/trajectories/game-rewards.ts packages/core/src/features/trajectories/TrajectoriesService.ts`
-  - `git diff --check -- packages/core/src/features/trajectories/game-rewards.ts packages/core/src/features/trajectories/TrajectoriesService.ts`
-- Reworded `src/index.browser.ts` browser compatibility comments from stub
-  language to browser shims / not-applicable health contracts.
-- Verified with:
-  - focused incomplete-marker scan on `packages/core/src/index.browser.ts`
-  - `bunx biome check packages/core/src/index.browser.ts`
-  - `bun run --cwd packages/core typecheck`
-- Renamed the older `index.json` fallback converter in
-  `src/features/plugin-manager/services/pluginRegistryService.ts` from
-  `stubPlugin` to `indexEntryToPlugin`. It builds a real lightweight
-  `RegistryPlugin` record from the legacy registry format, not a placeholder
-  plugin implementation.
-- Verified with:
-  - focused incomplete-marker scan on
-    `packages/core/src/features/plugin-manager/services/pluginRegistryService.ts`
-  - `bunx biome check packages/core/src/features/plugin-manager/services/pluginRegistryService.ts`
-  - `bun run --cwd packages/core typecheck`
-- Reworded `src/sandbox/dlopen-gate.ts` cache-state and platform-scope
-  comments so `undefined` is documented as an empty cache and the gate is
-  scoped to current macOS App Sandbox library validation rather than
-  speculative Linux/Windows store enforcement.
-- Verified with:
-  - `bun run --cwd packages/core test src/sandbox/dlopen-gate.test.ts`
-  - focused incomplete-marker scan on `packages/core/src/sandbox/dlopen-gate.ts`
-  - `bunx biome check packages/core/src/sandbox/dlopen-gate.ts`
-  - `bun run --cwd packages/core typecheck`
+
+### packages/alberta
+
+- Reworded implemented fast/slow learner and continual-backprop documentation
+  that used scaffold/no-op/stub language for concrete code paths. Disabled
+  branches now describe returned-unchanged behavior, and deterministic test
+  environments are no longer labeled as stubs.
+- Remaining `TODO` markers in `tests/test_alberta_plan_remaining_todo_gate.py`
+  and `tests/test_rlsecd_external_acceptance_spec.py` are intentional fixture
+  reads/writes for the Alberta Plan TODO completion gate, not unfinished
+  implementation.
+- Verified with marker scan on `packages/alberta` excluding the intentional
+  TODO-gate tests, `python -m py_compile` on the touched Python files, and
+  `git diff --check` on the touched files.
+- Pytest note: focused `python -m pytest packages/alberta/tests/test_fast_slow.py
+  packages/alberta/tests/test_continual_backprop.py -q` could not run in this
+  environment because `jax` is not installed.
+
+### packages/app
+
+- Reworded `src/shims/phonemizer.ts` and the mirrored package guide entries:
+  the browser-only phonemizer module and app bundler module are now described
+  as browser replacements instead of unfinished stubs.
+- Reworded `src/main.tsx` network-listener idempotency and renamed local
+  OpenTelemetry fallback virtual modules in `vite.config.ts` from stub
+  terminology to browser telemetry fallback terminology.
+- Remaining `native-module-stub-plugin.ts` hits in `CLAUDE.md` / `AGENTS.md`
+  are the existing Vite plugin filename, not a placeholder implementation.
+- Verified with `bun build packages/app/src/shims/phonemizer.ts --target=browser
+  --outfile=/tmp/app-phonemizer-shim-check.js`, mirrored guide comparison,
+  `bun run --cwd packages/app typecheck`, marker scan on the touched app files,
+  and `git diff --check`.
 
 ### packages/feed
 
@@ -177,12 +205,16 @@ platform no-ops are separated from actionable runtime gaps.
 - Replaced the plugin-experience "simple for now" content match with a
   normalized token scorer that filters punctuation and common stop words before
   combining Jaccard and overlap scores.
+- Reworded the mobile haptics wrapper in `apps/mobile/src/lib/haptics.ts`:
+  web execution is now described as returning without vibration, not as a
+  generic no-op fallback.
 - Verified with:
   - `bun test /Users/shawwalters/eliza-workspace/milady/eliza/packages/feed/packages/agents/src/autonomous/__tests__/direct-send-money.test.ts --preload /Users/shawwalters/eliza-workspace/milady/eliza/packages/feed/packages/testing/unit/preload.ts`
   - `bun build packages/feed/packages/engine/src/npc/npc-investment-manager.ts --target=bun --outfile=/tmp/npc-investment-manager-check.js`
   - `bun build packages/feed/packages/engine/src/services/trade-execution-service.ts --target=bun --outfile=/tmp/trade-execution-service-check.js`
   - `bun build packages/feed/packages/mcp/src/handlers/tool-handlers.ts --target=bun --outfile=/tmp/feed-mcp-tool-handlers-check.js`
   - `bun build packages/feed/packages/agents/src/plugins/plugin-experience/src/utils/experienceRelationships.ts --target=bun --outfile=/tmp/feed-experience-relationships-check.js`
+  - `bun build packages/feed/apps/mobile/src/lib/haptics.ts --target=bun --outfile=/tmp/feed-mobile-haptics-check.js`
   - `git diff --check -- packages/feed/packages/agents/src/autonomous/DirectExecutors.ts packages/feed/packages/agents/src/autonomous/intel-payment-executors.ts packages/feed/packages/agents/src/autonomous/__tests__/direct-send-money.test.ts`
   - `git diff --check -- packages/feed/packages/mcp/src/handlers/tool-handlers.ts packages/feed/packages/mcp/src/types/mcp.ts packages/feed/packages/mcp/src/server/mcp-server.ts packages/feed/packages/agents/src/plugins/plugin-experience/src/utils/experienceRelationships.ts`
   - Marker scan on the touched Feed files
@@ -199,7 +231,69 @@ platform no-ops are separated from actionable runtime gaps.
   snapshots static plugin surfaces, runs `init()`, and announces appended
   actions/providers/evaluators/models/events/services before `init-complete`.
 - Added worker-runtime tests for dynamic announcements.
-- Verified with package focused tests and typecheck.
+- Renamed test harness helpers from fake/mock terminology to neutral
+  `Test*` / `createTestChannel` names in dispatcher, runtime-proxy, and
+  envelope tests. The package marker scan is now clean.
+- Verified with package focused tests and typecheck, plus:
+  - `bun run --cwd packages/plugin-worker-runtime typecheck`
+  - `bun run --cwd packages/plugin-worker-runtime test`
+  - marker scan and `git diff --check` on the touched worker-runtime files
+
+### packages/ui
+
+- Reworded browser fallback and local-inference documentation in
+  `src/platform/empty-node-module.ts`, `src/bridge/plugin-bridge.ts`,
+  `src/services/local-inference/tokenizer-client.ts`,
+  `src/services/local-inference/token-tree.ts`, and
+  `src/services/local-inference/bundled-models.ts` so inert browser exports,
+  degraded capabilities, test fetches, unconstrained tries, and unchanged model
+  metadata are described by behavior rather than stub/no-op wording.
+- Renamed tokenizer test fetch helpers in
+  `src/services/local-inference/token-tree.test.ts` from stub terminology to
+  `testFetch` / `makeTestFetch`.
+- Verified with:
+  - `bun run --cwd packages/ui test src/services/local-inference/token-tree.test.ts`
+  - `bun run --cwd packages/ui typecheck`
+  - marker scan and `git diff --check` on the touched UI files
+
+### packages/native/plugins/wakeword-cpp
+
+- Updated stale Phase 1 documentation in `README.md`,
+  `include/wakeword/wakeword.h`, `src/wakeword_runtime.c`, `CMakeLists.txt`,
+  `test/wakeword_stub_smoke.c`, `test/wakeword_runtime_test.c`, and the
+  mirrored package guide. The public ABI is now documented as backed by the
+  real `native-cpu` runtime, not an ENOSYS placeholder, and the temporary
+  wake-head caveat is described without placeholder/stub language.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical after the docs change.
+- Verified with marker scan and `git diff --check` on the package plus:
+  - `cmake -B /tmp/wakeword-cpp-build -S packages/native/plugins/wakeword-cpp`
+  - `cmake --build /tmp/wakeword-cpp-build -j`
+  - `ctest --test-dir /tmp/wakeword-cpp-build --output-on-failure -R 'wakeword_(stub_smoke|melspec_test|window_test)'`
+- GGUF note: `wakeword_runtime_test` still requires the three wakeword GGUF
+  fixtures under the CMake build directory and was not included in the focused
+  no-fixture verification.
+
+### packages/plugin-host-shim*
+
+- Renamed host-shim test harness helpers from fake terminology to neutral
+  `Test*` / `installTest*` names across the web, Android, iOS, and Electrobun
+  shim packages. The placeholder/stub/TODO/fake marker scan is now clean for
+  the host-shim source and package guides.
+- Reworded `installWebShim()` idempotency from no-op wording to an explicit
+  single-install operation.
+- Remaining `mock` hits are Bun's test double API (`mock`, `mock.calls`,
+  `mockImplementationOnce`) and are not package implementation gaps.
+- Verified with:
+  - `bun run --cwd packages/plugin-host-shim typecheck`
+  - `bun run --cwd packages/plugin-host-shim test`
+  - `bun run --cwd packages/plugin-host-shim build`
+  - `bun run --cwd packages/plugin-host-shim-android typecheck`
+  - `bun run --cwd packages/plugin-host-shim-android test`
+  - `bun run --cwd packages/plugin-host-shim-ios typecheck`
+  - `bun run --cwd packages/plugin-host-shim-ios test`
+  - `bun run --cwd packages/plugin-host-shim-electrobun typecheck`
+  - `bun run --cwd packages/plugin-host-shim-electrobun test`
+  - marker scan and `git diff --check` on the touched host-shim files
 
 ### packages/plugin-remote-manifest
 
@@ -210,6 +304,76 @@ platform no-ops are separated from actionable runtime gaps.
 - Verified with:
   - `bunx biome check packages/plugin-remote-manifest/scripts/sign-manifest.ts`
   - `bun run --cwd packages/plugin-remote-manifest typecheck`
+
+### packages/prompts
+
+- Reworded the package-local guide `typecheck` note from no-op wording to the
+  actual status-printing script behavior, keeping `CLAUDE.md` and `AGENTS.md`
+  identical.
+- Reworded the plugin-action spec generator warning for
+  `${VALID_EMOTE_IDS.join(...)}` from placeholder terminology to a template
+  expression, and renamed safety-deferral test labels/sample secret-scanner
+  data to avoid marker noise.
+- Classified remaining prompt hits:
+  - `src/index.ts` intentionally tells models not to emit placeholder text and
+    contains a user-intent example with "todo".
+  - `README.md` documents the literal `{{providers}}` template placeholder.
+  - `specs/actions/plugins.generated.json` is generated output; its hits are
+    the real `TODO` action spec and a generated plugin description containing
+    "app scaffold".
+- Verified with:
+  - `bun run --cwd packages/prompts test`
+  - `bun run --cwd packages/prompts check:secrets` (exits 0; existing review
+    warning remains for `plugins/plugin-wallet/src/chains/evm/prompts.ts:147`)
+  - `bun run --cwd packages/prompts typecheck`
+  - mirrored guide comparison
+  - marker scan on `packages/prompts`
+  - `git diff --check -- packages/prompts`
+
+### packages/skills
+
+- Reworded the coding-agent bundled skill so the store-build `TASKS` gate is
+  described as a blocked action rather than a stub action.
+- Remaining marker hits are intentional bundled-skill instructional content:
+  Notion/Things task examples use `Todo`/`todo`, skill-creator examples
+  intentionally generate TODO/template placeholder scaffolds for brand-new
+  skills, and monetized-app skills use the canonical reserved
+  `https://placeholder.invalid` registration URL before patching in the real
+  container URL.
+- Verified with:
+  - `diff -u packages/skills/CLAUDE.md packages/skills/AGENTS.md`
+  - `bun run --cwd packages/skills test`
+  - `bun run --cwd packages/skills build`
+  - marker scan on `packages/skills`
+
+### packages/scripts
+
+- Reworded maintenance-script comments in `plugin-submodules-dev.mjs`,
+  `patch-nested-core-dist.mjs`, `sweeper/_not-yet-implemented.mjs`,
+  `distro-android/validate.mjs`, and
+  `cloud/admin/daemons/provisioning-worker.ts` so they describe skip behavior,
+  partial dist repair, explicit yellow sweeper status, product-overlay
+  requirements, and the Node sidecar boundary without no-op/stub wording.
+- Classified remaining script hits:
+  - HTML report builders use real search-input `placeholder` attributes.
+  - Benchmark/review builders intentionally report incomplete matrix/evidence
+    states and placeholder rerun-command counts.
+  - `benchmark/stub-agent-server.mjs`, `launch-qa/run-ui-smoke-stub.mjs`, and
+    the generated MTP JNI smoke stub are deterministic smoke harnesses.
+  - `cloud/admin/migrate-database.ts` generates SQL parameter placeholders.
+  - `cloud/admin/daemons/provisioning-worker.ts` uses `"noop"` as an internal
+    daemon decision state.
+  - `generate-action-search-keywords.mjs` and `i18n-dynamic-keys.json` contain
+    real localized "todo" keywords.
+- Verified with:
+  - `node --check` on the touched `.mjs` scripts
+  - `bunx @biomejs/biome format --write` on touched script files
+  - marker scan on `packages/scripts`
+  - `git diff --check -- packages/scripts`
+- Standalone `tsc --ignoreConfig` on
+  `cloud/admin/daemons/provisioning-worker.ts` is not a useful verification
+  because the script depends on repo tsconfig path aliases and Node types; the
+  touched change there was comment-only.
 
 ### packages/os/usb-installer
 
@@ -225,12 +389,29 @@ platform no-ops are separated from actionable runtime gaps.
 
 ### packages/scenario-runner
 
+- Renamed the deterministic app-control HTTP helper from `stub` to `loopback`
+  across the scenario catalog and local package guide. The helper is a real
+  request wrapper for local `/api/views` and app-control contracts, not an
+  unfinished implementation.
+- Reworded deterministic embedding/media labels from "stub" to
+  "fallback" / "handler" where they are package-level zero-cost model doubles.
 - Reworded the cleanup error for cancelled agent-skills lazy service startup
   from "unfinished" to "pending" in `src/runtime-factory.ts`. This is an
   in-flight cleanup path, not incomplete scenario-runner behavior.
+- Updated the PR workflow contract to assert the current app TTS/STT smoke
+  strings after the app test removed the old `Voice input` title and
+  `chat-view-continuous-chat-toggle` id.
+- Classified remaining scan hits:
+  - `TODO` / `todo` are the plugin-todos action name, fixture domain, and seed
+    type under test.
+  - `src/reporter.ts` keeps an HTML search input `placeholder` attribute.
+  - `data?.noop` is the Gmail cancellation result field emitted by the action
+    contract.
 - Verified with:
   - `bun run --cwd packages/scenario-runner typecheck`
-  - `bunx biome check packages/scenario-runner/src/runtime-factory.ts`
+  - `bun run --cwd packages/scenario-runner test`
+  - `bunx @biomejs/biome format --write` on touched scenario-runner files
+  - marker scan on `packages/scenario-runner`
 
 ### packages/security
 
@@ -249,6 +430,30 @@ platform no-ops are separated from actionable runtime gaps.
   - `bunx biome check packages/security/src/kms/steward-adapter.ts packages/security/src/kms/index.ts packages/security/src/kms/types.ts packages/security/src/__tests__/steward-adapter.test.ts packages/security/src/__tests__/factory.test.ts`
   - marker scan and `git diff --check` on the touched Security files
 
+### packages/security
+
+- Removed the deprecated `HttpSinkStub` compatibility alias from the audit sink
+  source and checked-in declaration mirror; `HttpSink` is the real production
+  HTTP audit sink.
+- Reworded mirrored package-guide test guidance from "fake fetch" to injected
+  `fetch`, keeping `CLAUDE.md` and `AGENTS.md` identical.
+- Verified with:
+  - `diff -u packages/security/CLAUDE.md packages/security/AGENTS.md`
+  - `bun run --cwd packages/security typecheck`
+  - `bun run --cwd packages/security test`
+  - marker scan on the package
+
+### packages/plugin-remote-manifest
+
+- Reworded the worker announce protocol comment in `src/types.ts` and the
+  checked-in declaration mirror from local "stubs" to local RPC proxies.
+- Reworded the legacy bare `bun` permission compatibility test so it describes
+  the token as ignored for compatibility instead of as a no-op.
+- Verified with:
+  - `bun run --cwd packages/plugin-remote-manifest typecheck`
+  - `bun run --cwd packages/plugin-remote-manifest test`
+  - marker scan on the package
+
 ### packages/sweagent
 
 - Replaced the inspector "Problem Statement placeholder" messages in both
@@ -256,16 +461,9 @@ platform no-ops are separated from actionable runtime gaps.
   `python/sweagent/inspector/server.py`. The prepended trajectory item now
   carries the actual first user problem statement in both `observation` and
   `messages`.
-- Reworded the package-local guide entry for
-  `typescript/src/utils/log.ts` from "stub" to "minimal logger shim"; this is a
-  private vendored snapshot and the file wraps `console.log/error` by contract,
-  not as an unfinished repo logger migration.
 - Verified with:
   - `python3 -m py_compile packages/sweagent/python/sweagent/inspector/server.py`
   - `bun run --cwd packages/sweagent test`
-  - focused incomplete-marker scan on `packages/sweagent/CLAUDE.md` and
-    `packages/sweagent/AGENTS.md`
-  - `cmp -s packages/sweagent/CLAUDE.md packages/sweagent/AGENTS.md`
   - marker scan and `git diff --check` on the touched inspector files
 - Not verified with direct `bun build` of the TypeScript inspector: this
   partial vendored SWE-agent tree cannot resolve `packages/node_modules/js-yaml`,
@@ -278,18 +476,38 @@ platform no-ops are separated from actionable runtime gaps.
   `src/editor-component.ts` and the image fallback docs in `README.md`,
   `CLAUDE.md`, and `AGENTS.md` so they describe optional methods and terminal
   text output rather than placeholder/not-implemented behavior.
-- Reworded the broad emoji-range comment in `src/utils.ts` so it describes
-  Unicode-version tolerance without speculative "future" wording.
 - Verified `CLAUDE.md` and `AGENTS.md` are identical after the package-local
   docs change.
 - Verified with:
   - `bunx biome check packages/tui/src/editor-component.ts`
-  - `bun run --cwd packages/tui test`
-  - `bun run --cwd packages/tui build`
-  - focused incomplete-marker scan on `packages/tui/src/utils.ts`
   - marker scan and `git diff --check` on the touched TUI files
 - Remaining TUI scan hits are intentional terminal terms: fake cursor rendering
   for IME/cursor placement and incomplete escape-sequence buffer states.
+
+### packages/vault
+
+- Finished Proton Pass reference resolution. `resolveReference()` now resolves
+  `protonpass` references through `pass-cli item view pass://...`, preserves
+  fully qualified `pass://` URIs, reports missing CLI and signed-out states
+  with actionable `PasswordManagerError`s, and rejects empty fields.
+- Updated Proton Pass backend detection to look for `pass-cli` and probe
+  `pass-cli vault list --output json` for sign-in state instead of treating the
+  backend as future-only.
+- Updated install guidance to point at Proton Pass CLI's official docs, and
+  reworded Vault source/docs/test-double comments so the package no longer
+  labels Proton Pass or injected subprocess executors as scaffolds/stubs.
+- Added `test/password-managers.test.ts` for Proton Pass reference command
+  construction, URI handling, missing CLI errors, and empty field errors.
+- Reworded the remaining manager test helper comment from STUB terminology to
+  injected-executor terminology. The package marker scan is now clean.
+- Verified with:
+  - `diff -u packages/vault/CLAUDE.md packages/vault/AGENTS.md`
+  - `bun run --cwd packages/vault typecheck`
+  - `bun run --cwd packages/vault test`
+  - `bun run --cwd packages/vault build`
+  - marker scan on `packages/vault`
+  - `bun run --cwd packages/vault test test/password-managers.test.ts test/install.test.ts test/manager.test.ts test/inventory.test.ts`
+  - marker scan and `git diff --check` on the Vault package
 
 ### packages/agent
 
@@ -312,87 +530,6 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd packages/agent typecheck`
   - `bunx biome check packages/agent/src/services/shell-execution-router.ts packages/agent/src/services/shell-execution-router.test.ts`
   - marker scan on the touched shell-router files
-- Loaded the package-local guide again before the widget/comment cleanup.
-- Completed the legacy plugin-widget map migration. `@elizaos/plugin-lifeops`
-  now declares its `lifeops.overview` and `lifeops.google` chat-sidebar
-  widgets on the plugin object, and `@elizaos/plugin-agent-orchestrator`
-  declares its `agent-orchestrator.apps` and `agent-orchestrator.activity`
-  widgets on the plugin object. The host-side compatibility map in
-  `src/config/plugin-widgets.ts` is now an explicit empty fallback.
-- Updated plugin-registry widget-source commentary to describe plugin-instance
-  `widgets` declarations as the normal source, with the empty agent map as a
-  final compatibility fallback.
-- Reworded agent service comments that described current contracts as
-  "not yet" or phase work: cloud wallet signing is now documented as
-  view-only in the local process, extracted route/service comments are
-  consolidated surface notes, and default disabled plugins are described as
-  opt-in.
-- Verified with:
-  - focused incomplete-marker scan on all touched agent, LifeOps,
-    agent-orchestrator, and plugin-registry files
-  - `bun run --cwd packages/agent typecheck`
-  - `bun run --cwd plugins/plugin-lifeops build:types`
-  - `bun run --cwd plugins/plugin-agent-orchestrator typecheck`
-  - `bun run --cwd plugins/plugin-agent-orchestrator test:unit`
-  - `bun run --cwd plugins/plugin-lifeops test -- src/plugin.test.ts`
-  - `bun run --cwd plugins/plugin-registry build`
-  - guide-pair `cmp -s` checks for packages/agent, plugin-lifeops,
-    plugin-agent-orchestrator, and plugin-registry
-- Reworded additional `packages/agent` stale rollout comments without
-  changing behavior:
-  - shell permission prober docs now describe the current app-internal shell
-    gate and registry replacement contract.
-  - runtime operation manager strategy docs now describe cold as the
-    conservative baseline and warm/hot as host-registered reload paths.
-  - plugin role gating now describes direct-provider legacy redaction instead
-    of a pending context-catalog migration.
-  - plugin resolver workspace and install-record comments now describe current
-    cwd/default and source-tree fallback behavior.
-  - PGlite error helpers are documented as an agent compatibility shim for
-    plugin-sql releases without the error export.
-- Verified with:
-  - focused incomplete-marker scan on the touched agent permission/runtime files
-  - `bun run --cwd packages/agent typecheck`
-  - `cmp -s packages/agent/CLAUDE.md packages/agent/AGENTS.md`
-- Reworded a broader set of stale agent comments and one unreachable OAuth
-  guard message:
-  - first-run cloud-wallet, connector disconnect, TEE boot gate, trajectory
-    persistence, JS runtime bridge, tool-call cache, account storage, config
-    route, research-task abort, and remote-signing comments now describe
-    current behavior without deferred-work wording.
-  - OAuth refresh fallback now reports an unsupported provider rather than an
-    unimplemented refresh path. The current OAuth provider union has explicit
-    handlers for both members.
-- Verified with:
-  - no tests referenced the old OAuth refresh message
-  - focused incomplete-marker scan on all touched agent files
-  - `bun run --cwd packages/agent typecheck`
-  - `cmp -s packages/agent/CLAUDE.md packages/agent/AGENTS.md`
-- Remaining `packages/agent` scan hits are:
-  - `WORKBENCH_TODO_*` domain tags and bootstrap task names.
-  - user-facing compact-conversation wording about future prompt context.
-  - regression-test comments that intentionally use future-time/future-edit
-    wording.
-  - `remote-plugin-adapter.test.ts` fixture text asserting a remote
-    "not implemented" error.
-  - `view-agent-surface-coverage.test.ts`, a real ratchet for unconverted
-    views.
-  - `scripts/build-mobile-bundle.mjs`, an Android `node:sqlite` bundling
-    boundary that still needs separate inspection.
-- Inspected the mobile-bundle `node:sqlite` boundary. It is an intentional
-  Android bundle shim: Bun 1.3.x on arm64-Android lacks the Node `node:sqlite`
-  resolver, while local-inference voice caches already degrade when
-  `DatabaseSync` is absent. Reworded the comment as a current platform
-  boundary.
-- Verified with:
-  - `bun build packages/agent/scripts/build-mobile-bundle.mjs --target=bun --outfile=/tmp/build-mobile-bundle-check.js`
-  - focused incomplete-marker scan on `scripts/build-mobile-bundle.mjs`
-  - `bun run --cwd packages/agent typecheck`
-- Remaining `packages/agent` hits after this pass are domain/test markers:
-  workbench todo tags, user-facing compact-conversation wording, regression
-  test comments about future edits/time, the remote-plugin-adapter fixture
-  message `"not implemented"`, and the real
-  `view-agent-surface-coverage.test.ts` conversion ratchet.
 
 ### packages/alberta
 
@@ -455,6 +592,488 @@ platform no-ops are separated from actionable runtime gaps.
   - `./.venv/bin/mypy compiler/runtime/e1_npu_stablehlo.py compiler/runtime/e1_npu_lowering.py`
   - marker scan and `git diff --check` on the touched Chip files
 
+### packages/robot
+
+- Finished the OpenPI local server launcher in
+  `eliza_robot/policy/openpi/server.py`. The CLI now builds a validated Docker
+  command, prints a shell-safe dry-run command by default, supports
+  `--execute`, checks Docker availability before launching, propagates Docker
+  exit codes, and exposes image, port, policy, name, env, volume, detach, and
+  GPU options.
+- Updated `docs/openpi.md` so the runbook describes the real launcher contract
+  and configurable image source instead of calling it a placeholder.
+- Added `tests/policy/openpi/test_server.py` coverage for command construction,
+  invalid ports, dry-run output, Docker-missing failure, and successful
+  `--execute` dispatch through the resolved Docker binary.
+- Finished the MuJoCo Bezier gait controller's stale profile-schema TODOs in
+  `eliza_robot/sim/mujoco/gait/controller.py`. Real `RobotProfile` instances
+  now seed reset/base joint targets from `profile.kinematics.joints[*].home_rad`
+  after reading gait fields from `profile.gait`, while mapping-based test
+  fixtures still use their explicit neutral pose fallback.
+- Added `tests/sim/mujoco/gait/test_bezier.py` coverage for real-profile home
+  pose seeding and mapping-fixture neutral pose compatibility.
+- Replaced the compositional MuJoCo environment's two-step action-rate
+  placeholder in `eliza_robot/sim/mujoco/compositional_env.py`. The frozen
+  walking reward now passes the current walking action, previous walking
+  action, and stored two-step walking action into `cost_action_rate`.
+- Added `tests/sim/mujoco/test_compositional_env.py` coverage for the walking
+  action-history argument order without requiring a walking-policy checkpoint.
+- Reworded perception optional-model fallbacks in
+  `perception/detectors/object_detector.py` and
+  `perception/detectors/skeleton_estimator.py` from stub language to explicit
+  empty-result contracts when YOLO/RTMW dependencies are unavailable.
+- Renamed visual no-signal fallback wording in `perception/evidence_capture.py`
+  and `perception/tracking_visualizer/dashboard.py` from placeholder frames to
+  missing-frame/no-signal behavior. While touching those files, Ruff's safe
+  import/annotation fixes and two `contextlib.suppress` cleanups were applied.
+- Reworded Unitree profile-generator contracts in
+  `scripts/generate_unitree_profile.py`. R1's upstream inertial-only axes and
+  MuJoCo-only asset path are now described as source-model/schema contracts
+  instead of placeholder motors or URDF placeholders; a Ruff-flagged
+  `contextlib.suppress` cleanup was also applied.
+- Reworded additional Robot source/docs/test markers so fixture, seed, and
+  calibration contracts do not look like unfinished runtime paths:
+  `profiles/hiwonder-ainex/profile.yaml` now labels action keyframes as seed
+  poses awaiting real-robot/simulator calibration; `docs/SSD_PORT_ASSESSMENT.md`
+  now calls out external labeling-tool and plugin-port notes without TODO/stub
+  terms; `scripts/generate_eliza_human_donor_blender.py`,
+  `eliza_robot/erobot/mjcf.py`, `tests/policy/openpi/test_client.py`,
+  `tests/rl/test_text_conditioned_pipeline.py`, and
+  `scripts/validate_robot_training_inputs.py` now use explicit mesh,
+  calibration fallback, fixture, and trainer-input wording.
+- Reworded the multi-robot profile guide, SSD port assessment, scripted skill
+  checkpoint hook, RL wave fallback, arm-test overlay helper, MuJoCo backend
+  idle-walk path, tracking dashboard no-signal frames, ASIMOV-1 dry-run docs,
+  locomotion metrics prose, and MuJoCo inference RNG locals so implemented
+  fallback/dry-run behavior is not labeled as placeholder/no-op/fake/dummy
+  work.
+- Renamed ASIMOV LiveKit dry-run helper classes from `Fake*` to `DryRun*` and
+  updated focused command-probe tests.
+- Verified with:
+  - `python3 -m py_compile packages/robot/eliza_robot/policy/openpi/server.py packages/robot/tests/policy/openpi/test_server.py`
+  - `./.venv/bin/python -m pytest tests/policy/openpi/test_client.py tests/policy/openpi/test_server.py -q`
+  - `./.venv/bin/ruff check eliza_robot/policy/openpi/server.py tests/policy/openpi/test_server.py`
+  - `python3 -m py_compile packages/robot/eliza_robot/sim/mujoco/gait/controller.py packages/robot/tests/sim/mujoco/gait/test_bezier.py`
+  - `./.venv/bin/python -m pytest tests/sim/mujoco/gait/test_bezier.py -q`
+  - `./.venv/bin/ruff check eliza_robot/sim/mujoco/gait/controller.py tests/sim/mujoco/gait/test_bezier.py`
+  - `python3 -m py_compile packages/robot/eliza_robot/sim/mujoco/compositional_env.py packages/robot/tests/sim/mujoco/test_compositional_env.py`
+  - `./.venv/bin/python -m pytest tests/sim/mujoco/test_compositional_env.py -q`
+  - `./.venv/bin/ruff check eliza_robot/sim/mujoco/compositional_env.py tests/sim/mujoco/test_compositional_env.py`
+  - combined focused Robot suite: `./.venv/bin/python -m pytest tests/sim/mujoco/test_compositional_env.py tests/sim/mujoco/gait/test_bezier.py tests/policy/openpi/test_client.py tests/policy/openpi/test_server.py -q`
+  - `python3 -m py_compile packages/robot/eliza_robot/perception/detectors/object_detector.py packages/robot/eliza_robot/perception/detectors/skeleton_estimator.py packages/robot/eliza_robot/perception/evidence_capture.py packages/robot/eliza_robot/perception/tracking_visualizer/dashboard.py`
+  - `./.venv/bin/ruff check eliza_robot/perception/detectors/object_detector.py eliza_robot/perception/detectors/skeleton_estimator.py eliza_robot/perception/evidence_capture.py eliza_robot/perception/tracking_visualizer/dashboard.py`
+  - `python3 -m py_compile packages/robot/scripts/generate_unitree_profile.py`
+  - `./.venv/bin/ruff check scripts/generate_unitree_profile.py`
+  - `./.venv/bin/python -m pytest tests/test_profiles.py -q`
+  - `python3 -m py_compile packages/robot/scripts/generate_eliza_human_donor_blender.py packages/robot/eliza_robot/erobot/mjcf.py packages/robot/scripts/validate_robot_training_inputs.py packages/robot/tests/policy/openpi/test_client.py packages/robot/tests/rl/test_text_conditioned_pipeline.py`
+  - `./.venv/bin/ruff check scripts/generate_eliza_human_donor_blender.py eliza_robot/erobot/mjcf.py scripts/validate_robot_training_inputs.py tests/policy/openpi/test_client.py tests/rl/test_text_conditioned_pipeline.py`
+  - `./.venv/bin/python -m pytest tests/test_profiles.py tests/policy/openpi/test_client.py tests/rl/test_text_conditioned_pipeline.py -q`
+  - `python3 -m py_compile packages/robot/eliza_robot/rl/skills/base.py packages/robot/eliza_robot/rl/skills/rl_wave_skill.py packages/robot/eliza_robot/sim/mujoco/arm_test.py packages/robot/eliza_robot/bridge/backends/mujoco_backend.py packages/robot/eliza_robot/perception/tracking_visualizer/dashboard.py packages/robot/eliza_robot/asimov_1/livekit_dry_run.py packages/robot/tests/asimov_1/test_real_command_probe.py`
+  - `uv run pytest tests/asimov_1/test_real_command_probe.py -q` from
+    `packages/robot`
+  - `python3 -m py_compile packages/robot/eliza_robot/rl/locomotion_metrics.py packages/robot/eliza_robot/sim/mujoco/inference.py`
+  - marker scan on the touched OpenPI files
+  - marker scan on the touched MuJoCo gait files
+  - marker scan on the touched compositional MuJoCo files
+  - marker scan on the touched perception files
+  - marker scan on `scripts/generate_unitree_profile.py`
+  - marker scan on the additional touched Robot source/docs/test files
+  - source/docs marker scan on `packages/robot/docs`,
+    `packages/robot/eliza_robot`, and `packages/robot/src`
+  - `git diff --check` on the touched Robot files
+
+### packages/app
+
+- Reworded app smoke-harness markers so minimal configs and test harnesses are
+  not reported as unfinished product work:
+  `playwright.ui-smoke.config.ts` now describes the smoke harness port bind
+  instead of a stub stack; `vitest.e2e.config.ts` is a minimal workspace
+  resolution config; `test/ui-smoke/live-agent-chat.spec.ts` refers to the
+  lightweight harness API; and `test/ui-smoke-coverage.test.ts` describes
+  fixture-capable specs instead of stub-capable specs.
+- Reworded app script status markers in
+  `scripts/mobile-local-chat-smoke.mjs` and
+  `scripts/ensure-capacitor-platform.mjs`: the Android background smoke path
+  now returns `wake-field-absent` while Wave 3D is pending, and the Capacitor
+  platform guard reports missing required files after template/capacitor setup
+  instead of an incomplete project.
+- Verified with:
+  - `bunx biome check packages/app/playwright.ui-smoke.config.ts packages/app/vitest.e2e.config.ts packages/app/scripts/mobile-local-chat-smoke.mjs packages/app/scripts/ensure-capacitor-platform.mjs packages/app/test/ui-smoke/live-agent-chat.spec.ts packages/app/test/ui-smoke-coverage.test.ts`
+  - marker scan on the touched app files
+
+### packages/docs
+
+- Replaced the `audio` config placeholder wording in
+  `config-schema.mdx` and `configuration.mdx` with the current shared config
+  contract: `AudioConfig` is intentionally open-ended and accepts arbitrary
+  audio subsystem keys until stable typed fields are promoted into the schema.
+- Reworded docs-only platform/roadmap/status markers so concrete behavior is
+  described without implying unfinished implementation:
+  - Capacitor haptics is now described as inactive on unsupported platforms;
+  - packaged-app NODE_PATH branches are described as skipped by the
+    `existsSync` guard;
+  - the Claude refresh helper is documented as exiting without refresh when
+    credentials are still fresh;
+  - rate-limit throttling is named as future hardening rather than a missing
+    implementation;
+  - generated action catalog and connector docs describe unsupported parity
+    commands and CI compatibility packages directly;
+  - chip, stability, and voice-gap docs now distinguish development hardware,
+    remaining provider-specific gaps, and test doubles from runtime stubs.
+- Verified with:
+  - `bun run --cwd packages/docs test`
+  - marker scan on `packages/docs`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md packages/docs`
+
+### packages/homepage
+
+- Reworded homepage launch-planning docs so repo-owned launch work and release
+  fallback URL checks are not labeled as TODOs or placeholder links inside the
+  homepage package. The remaining launch blockers are still visible as
+  repo-owned or external-blocker rows.
+- Remaining scan hits are runtime UI affordances: input `placeholder` props,
+  Tailwind `placeholder:*` classes, i18n keys whose names include
+  `placeholder`, phone-number format examples, and a `noopener` false positive.
+- Verified with:
+  - `diff -u packages/homepage/CLAUDE.md packages/homepage/AGENTS.md`
+  - `bun run --cwd packages/homepage test`
+  - marker scan on `packages/homepage`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md packages/homepage`
+
+### packages/training
+
+- Reworded training credential-broker docs and comments to match the actual
+  implementation. `scripts/_creds.py` and `SECURITY.md` now document the
+  concrete Steward proxy contract (`GET /v1/creds/:name`, plaintext `200`
+  body, env fallback on failure) instead of stale TBD/TODO/placeholder
+  wording, while still leaving production Steward rollout as an open item.
+- Reworded Wav2Small emotion-distillation fixture and release-seed markers in
+  `scripts/emotion/distill_wav2small.py`,
+  `scripts/emotion/test_distill_wav2small.py`,
+  `scripts/emotion/publish_wav2small.py`,
+  `scripts/sync_catalog_from_hf.py`, and
+  `scripts/append_voice_model_version.py`. Existing tests now refer to
+  minimal tensor/module fixtures, the existing tag-order lock test, missing
+  GGUFs, and unpublished release seeds without placeholder/stub/TODO markers.
+- Verified with:
+  - `python3 -m py_compile packages/training/scripts/_creds.py packages/training/scripts/emotion/distill_wav2small.py packages/training/scripts/emotion/test_distill_wav2small.py packages/training/scripts/emotion/publish_wav2small.py packages/training/scripts/sync_catalog_from_hf.py packages/training/scripts/append_voice_model_version.py`
+  - `python3 -m unittest packages.training.scripts.emotion.test_distill_wav2small.BudgetTests packages.training.scripts.emotion.test_distill_wav2small.TagSyncTests`
+  - marker scan on the touched training files
+  - `git diff --check` on the touched training files
+- The full `python3 -m unittest packages/training/scripts/emotion/test_distill_wav2small.py`
+  did not complete in this environment because `torch` is not installed; the
+  failure occurred in an ONNX-export test before these comment/fixture changes
+  were relevant.
+
+### packages/native/plugins/voice-classifier-cpp
+
+- Replaced stale package-guide and README claims that the native heads were
+  still generic stubs. The mirrored `CLAUDE.md` / `AGENTS.md`, README, and
+  public header now document the actual state: emotion, speaker, and diarizer
+  have scalar C forward paths; audio EOT validates GGUF metadata but fails
+  closed with `-ENOSYS` until a real audio-turn graph is pinned.
+- Renamed the old `voice_classifier_stub_smoke` ctest target to
+  `voice_classifier_abi_smoke`, because it now verifies ABI failure behavior
+  rather than a stub implementation.
+- Fixed the GGUF loader smoke test to exercise the metadata-only
+  `voice_eot_open` path instead of expecting a no-tensor emotion GGUF to open
+  after the emotion head started requiring real tensors.
+- Cleaned a real C warning in `voice_emotion.c` and reworded false-positive
+  marker comments in the GGUF tensor loader and emotion class-name test.
+- Verified with:
+  - `cmake -B packages/native/plugins/voice-classifier-cpp/build -S packages/native/plugins/voice-classifier-cpp`
+  - `cmake --build packages/native/plugins/voice-classifier-cpp/build -j`
+  - `ctest --test-dir packages/native/plugins/voice-classifier-cpp/build --output-on-failure` (7/7 passed; `voice_speaker_parity_test` skipped because optional large fixtures were absent)
+  - marker scan on the package
+
+### packages/native/plugins/turboquant-cpu
+
+- Reworded the x86/ARM SIMD-lane comments in `CMakeLists.txt` so AVX2 and NEON
+  are documented as future sibling source additions while the current build
+  deliberately links the scalar reference through the dispatcher.
+- Verified with:
+  - `cmake -B packages/native/plugins/turboquant-cpu/build -S packages/native/plugins/turboquant-cpu`
+  - `cmake --build packages/native/plugins/turboquant-cpu/build -j`
+  - `ctest --test-dir packages/native/plugins/turboquant-cpu/build --output-on-failure`
+  - marker scan on the package
+
+### packages/native/plugins/qjl-cpu
+
+- Replaced architecture-gated empty-translation-unit typedef names ending in
+  `_stub` with `_translation_unit_anchor`, since those TUs are real SIMD lanes
+  when compiled on their target architecture and otherwise just need an ISO-C
+  anchor.
+- Reworded the RVV int8 Zvqdot marker from a `TODO` to a concrete future
+  hardware-probe/dispatcher note for `RISCV_HWPROBE_EXT_ZVQDOTQ`.
+- Verified with:
+  - `cmake -B packages/native/plugins/qjl-cpu/build -S packages/native/plugins/qjl-cpu`
+  - `cmake --build packages/native/plugins/qjl-cpu/build -j`
+  - `./packages/native/plugins/qjl-cpu/build/qjl_int8_smoke`
+  - `./packages/native/plugins/qjl-cpu/build/qjl_avxvnni_smoke`
+  - `./packages/native/plugins/qjl-cpu/build/qjl_bench --throughput`
+  - marker scan on the package
+- `ctest` reported no registered tests for this package; `qjl_fork_parity`
+  and `qjl_bench --parity` still require an external fork lib/fixture path.
+
+### packages/native/plugins/polarquant-cpu
+
+- Replaced architecture-gated empty-translation-unit typedef names ending in
+  `_stub` with `_translation_unit_anchor`, matching the actual role of the
+  AVX2/NEON/RVV guarded source files.
+- Reworded the GGUF converter raw dtype comment so the fp16 value is described
+  as the writer default while `raw_dtype` carries Q4_POLAR, not as a
+  placeholder.
+- Reworded the converter test's synthetic base-model fixture wording.
+- Verified with:
+  - `cmake -B packages/native/plugins/polarquant-cpu/build -S packages/native/plugins/polarquant-cpu`
+  - `cmake --build packages/native/plugins/polarquant-cpu/build -j`
+  - `ctest --test-dir packages/native/plugins/polarquant-cpu/build --output-on-failure`
+  - marker scan on the package
+  - `git diff --check` on the package
+- `python3 packages/native/plugins/polarquant-cpu/scripts/test_converter.py`
+  did not run in this environment because `torch` is not installed.
+
+### packages/logger
+
+- Removed the lone false-positive marker in `src/logger.ts` by rewording the
+  file-log skip-condition comment from "No-op" to explicit skip conditions.
+- Renamed the internal logger test-hook member from `__noop` to
+  `clearEnvCacheForTests`, matching the hook's compatibility purpose without
+  marker terminology.
+- Verified with:
+  - `bun run --cwd packages/logger lint`
+  - `bun run --cwd packages/logger typecheck`
+  - `bun run --cwd packages/logger build`
+  - marker scan on the package
+  - `git diff --check -- PLACEHOLDER_AUDIT.md packages/logger`
+  - Local guide note: `packages/logger/CLAUDE.md` exists, but no sibling
+    `AGENTS.md` is present in this checkout.
+- Verification note: `bun run --cwd packages/logger test` currently fails
+  before running tests because `packages/logger/vitest.config.ts` is missing
+  while the package script references it.
+
+### packages/plugin-sub-agent-claude-code
+
+- Renamed the disallowed-binary test fixture in `src/sandbox.test.ts` from
+  `fake` to `blockedBinary`. The test still verifies that absolute binaries
+  outside the allowlist are rejected with `SubAgentBinaryError`.
+- Marker scan on the package is now clean.
+- Verified with:
+  - `diff -u packages/plugin-sub-agent-claude-code/CLAUDE.md packages/plugin-sub-agent-claude-code/AGENTS.md`
+  - `bun run --cwd packages/plugin-sub-agent-claude-code typecheck`
+  - `bun run --cwd packages/plugin-sub-agent-claude-code test`
+  - `bun run --cwd packages/plugin-sub-agent-claude-code build`
+  - marker scan on `packages/plugin-sub-agent-claude-code`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md packages/plugin-sub-agent-claude-code`
+
+### packages/registry
+
+- Removed the lone false-positive marker in `README.md` by describing the echo
+  registry entry as a reference example instead of a template.
+- Verified with:
+  - `bun run --cwd packages/registry validate`
+  - `bun run --cwd packages/registry typecheck`
+  - marker scan on the package
+
+### packages/contracts
+
+- Removed the lone false-positive marker in `src/wallet.ts`; the local EVM
+  signing capability now says it requires a real `EVM_PRIVATE_KEY` env var.
+- Verified with:
+  - `bun run --cwd packages/contracts lint:check`
+  - `bun run --cwd packages/contracts typecheck`
+  - marker scan on the package
+
+### packages/soc2-verify
+
+- Reworded the mirrored package guides so dynamic SOC2 checks are described as
+  real `@elizaos/security` adapter instantiations without "mock" terminology.
+- Renamed the CC6.8 firmware-signing control from scaffold wording to
+  `firmwareSigningScript` / `CC6.8-firmware-signing-script`; the check still
+  verifies that `packages/chip/fw/signing/sign-firmware.sh` exists.
+- Verified with:
+  - `diff -u packages/soc2-verify/CLAUDE.md packages/soc2-verify/AGENTS.md`
+  - `bun run --cwd packages/soc2-verify typecheck`
+  - `bun run --cwd packages/soc2-verify test`
+  - marker scan on the package
+- Remaining SOC2 hits are `mkdtempSync` / `tmpdir()` test fixture APIs if the
+  broader mock/tmp marker scan is used; the placeholder/stub/TODO/scaffold scan
+  is clean.
+
+### plugins/plugin-google
+
+- Updated Google Meet transcript action-item extraction to match `todo`,
+  `to-do`, and `to do` through `to[- ]?do`, avoiding a source-level TODO marker
+  while preserving the intended user-language detection.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-google typecheck`
+  - `bun run --cwd plugins/plugin-google test`
+  - `bun run --cwd plugins/plugin-google build`
+  - package marker scan excluding generated output
+  - `git diff --check -- plugins/plugin-google PLACEHOLDER_AUDIT.md`
+
+### plugins/plugin-bluesky
+
+- Reworded the workflow credential provider regression test from incomplete
+  credential wording to missing credential data. Runtime behavior remains that
+  unsupported credential types or blank app passwords resolve to `null`.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-bluesky typecheck`
+  - `bun run --cwd plugins/plugin-bluesky test`
+  - `bun run --cwd plugins/plugin-bluesky build`
+  - package marker scan excluding generated output
+  - `git diff --check -- plugins/plugin-bluesky PLACEHOLDER_AUDIT.md`
+
+### plugins/plugin-codex-cli
+
+- Current package-local marker scan is clean after the browser export is
+  documented as an unsupported node-only export rather than stub/no-op wording.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-codex-cli typecheck`
+  - `bun run --cwd plugins/plugin-codex-cli test`
+  - `bun run --cwd plugins/plugin-codex-cli build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-google-chat
+
+- Reworded empty action/provider guide text as intentionally empty modules, and
+  reworded connector-account deletion comments so provider-layer deletion
+  returns cleanly while service-account credentials stay in character settings.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-google-chat typecheck`
+  - `bun run --cwd plugins/plugin-google-chat test`
+  - `bun run --cwd plugins/plugin-google-chat build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-cli
+
+- Reworded the plugin lifecycle guide table and gotcha so `dispose` is
+  described as returning immediately instead of no-op behavior.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-cli typecheck`
+  - `bun run --cwd plugins/plugin-cli test`
+  - `bun run --cwd plugins/plugin-cli build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-nostr
+
+- Reworded NIP-44 guide text as outside the current protocol surface, and
+  reworded connector-account deletion comments so provider-layer deletion
+  returns cleanly while runtime credentials remain in character settings.
+- Current remaining marker hit is Vitest `useFakeTimers` in the service
+  hardening test.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-nostr typecheck`
+  - `bun run --cwd plugins/plugin-nostr test`
+  - `bun run --cwd plugins/plugin-nostr build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-linear
+
+- Reworded the browser export description from stub wording to an unsupported
+  browser export, and changed prompt examples from `todo` to `to-do` while
+  preserving the intended Linear status concept.
+- Current remaining marker hits are Vitest spy APIs in
+  `src/actions/routers.test.ts` (`mockResolvedValue`, `mockRestore`, and
+  `.mock.calls`) used to verify Linear router delegation and callback wrapping.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-linear typecheck`
+  - `bun run --cwd plugins/plugin-linear test`
+  - `bun run --cwd plugins/plugin-linear build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-signal
+
+- Reworded connector-account deletion comments and the RPC test method name so
+  provider deletion and empty-result RPC behavior are described concretely
+  without no-op marker terms.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-signal typecheck` (script reports skipped for release)
+  - `bun run --cwd plugins/plugin-signal test`
+  - `bun run --cwd plugins/plugin-signal build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-xr
+
+- Reworded audio-pipeline and XR bundle coverage test comments so cleared
+  buffers and built view bundles are described by actual behavior instead of
+  no-op/stub wording.
+- Reworded the simulator raw-camera note so IWER's missing rawCameraAccess path
+  is described as outside its current emulation surface.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-xr typecheck`
+  - `bun run --cwd plugins/plugin-xr test`
+  - `bun run --cwd plugins/plugin-xr build`
+  - `bun run --cwd plugins/plugin-xr simulator:build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-device-filesystem
+
+- Reworded the mirrored package-guide example path from `notes/todo.md` to
+  `notes/checklist.md`; no runtime behavior changed.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-device-filesystem typecheck`
+  - `bun run --cwd plugins/plugin-device-filesystem test`
+  - `bun run --cwd plugins/plugin-device-filesystem build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-defense-of-the-agents
+
+- Reworded `stopRun` idempotency docs so teardown steps return cleanly when
+  resources are already gone.
+- Remaining package-local marker hit is the operator command input
+  `placeholder="Command the hero..."`, which is user-facing input hint copy.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-defense-of-the-agents test` (no test files)
+  - `bun run --cwd plugins/plugin-defense-of-the-agents build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-screenshare
+
+- Remaining package-local marker hits are UI placeholders for session/token,
+  remote server URL, and viewer text input fields in the React surface and
+  inline viewer HTML. These are user-facing input hints, not unfinished
+  implementation code.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-screenshare test`
+  - `bun run --cwd plugins/plugin-screenshare build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-shopify-ui
+
+- Remaining package-local marker hits are Shopify dashboard form/search
+  placeholders for customers, products, vendor/type examples, and price input.
+  These are user-facing input hints, not unfinished implementation code.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-shopify-ui test`
+  - `bun run --cwd plugins/plugin-shopify-ui build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-companion
+
+- Reworded the ChatAvatar Storybook story from placeholder terminology to
+  `StaticInterface`; the remaining package-local marker hit is the emote-picker
+  search input placeholder i18n key, which is user-facing input hint copy.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-companion typecheck`
+  - `bun run --cwd plugins/plugin-companion test`
+  - `bun run --cwd plugins/plugin-companion build`
+  - case-insensitive marker scan excluding generated output
+
 ### packages/ui
 
 - Fixed `WidgetHost` declarative `uiSpec` fallback. It now renders via
@@ -481,18 +1100,166 @@ platform no-ops are separated from actionable runtime gaps.
   `BrowserBridgeRouteService`, maps the current bridge page to `MessageRef`,
   and supports filtered list/get behavior.
 - Added focused adapter tests.
-- Verified with focused test, typecheck, and diff check.
+- Reworded target-extension docs and bridge target comments so unsupported
+  subactions and defaulted tab fields are described without no-op/stub
+  terminology.
+- Remaining marker hits are intentional DOM selector support for finding
+  inputs by HTML `placeholder` text and the `BrowserWorkspaceFindBy`
+  `"placeholder"` discriminator.
+- Verified with:
+  - `diff -u plugins/plugin-browser/CLAUDE.md plugins/plugin-browser/AGENTS.md`
+  - `bun run --cwd plugins/plugin-browser typecheck`
+  - `bun run --cwd plugins/plugin-browser test`
+  - marker scan on `plugins/plugin-browser`
+
+### plugins/plugin-phone
+
+- Reworded Phone Companion comments in
+  `src/companion/components/Chat.tsx` and `src/register-companion-page.ts`
+  so the chat empty state and direct page registration are described as
+  concrete UI/fallback behavior rather than placeholder implementation.
+- Verified with:
+  - `bunx @biomejs/biome check plugins/plugin-phone/src/companion/components/Chat.tsx plugins/plugin-phone/src/register-companion-page.ts`
+  - marker scan on the touched Phone files
+
+### plugins/plugin-native-contacts
+
+- Reworded the mirrored package guides (`CLAUDE.md` and `AGENTS.md`) and
+  `README.md` so `ContactsWeb` is documented as the intentional web fallback
+  contract (`listContacts=[]`, writes throw) instead of no-op behavior.
+- Verified with:
+  - `diff -u plugins/plugin-native-contacts/CLAUDE.md plugins/plugin-native-contacts/AGENTS.md`
+  - `bun run --cwd plugins/plugin-native-contacts build`
+  - marker scan on `plugins/plugin-native-contacts`
+
+### plugins/plugin-native-wifi
+
+- Reworded mirrored package guides so `WiFiWeb` is documented as the explicit
+  browser/Node fallback contract (empty/false results plus one warning) instead
+  of a no-op stub.
+- Verified with:
+  - `diff -u plugins/plugin-native-wifi/CLAUDE.md plugins/plugin-native-wifi/AGENTS.md`
+  - `bun run --cwd plugins/plugin-native-wifi build`
+  - marker scan on `plugins/plugin-native-wifi`
+  - `git diff --check -- plugins/plugin-native-wifi`
+
+### plugins/plugin-native-calendar
+
+- Reworded mirrored package guides so new methods add a browser web fallback
+  returning `{ ...unsupported }`, not a stub.
+- Verified with:
+  - `diff -u plugins/plugin-native-calendar/CLAUDE.md plugins/plugin-native-calendar/AGENTS.md`
+  - `bun run --cwd plugins/plugin-native-calendar build`
+  - marker scan on `plugins/plugin-native-calendar`
+  - `git diff --check -- plugins/plugin-native-calendar`
+
+### plugins/plugin-native-phone
+
+- Reworded mirrored package guides so `PhoneWeb` is documented as a web
+  fallback (`getStatus` all-false, mutating methods throw, `listRecentCalls=[]`)
+  instead of a stub.
+- Verified with:
+  - `diff -u plugins/plugin-native-phone/CLAUDE.md plugins/plugin-native-phone/AGENTS.md`
+  - `bun run --cwd plugins/plugin-native-phone build`
+  - marker scan on `plugins/plugin-native-phone`
+  - `git diff --check -- plugins/plugin-native-phone`
+
+### plugins/plugin-native-messages
+
+- Reworded mirrored package guides so new Android SMS bridge methods add a web
+  fallback in `src/web.ts`, not a stub.
+- Verified with:
+  - `diff -u plugins/plugin-native-messages/CLAUDE.md plugins/plugin-native-messages/AGENTS.md`
+  - `bun run --cwd plugins/plugin-native-messages build`
+  - marker scan on `plugins/plugin-native-messages`
+  - `git diff --check -- plugins/plugin-native-messages`
+
+### plugins/plugin-native-activity-tracker
+
+- Reworded the Swift helper's non-Darwin branch from stub wording to an
+  unsupported-platform entrypoint that keeps Linux CI compilation clean.
+- Verified with:
+  - `bun run --cwd plugins/plugin-native-activity-tracker test`
+  - `bun run --cwd plugins/plugin-native-activity-tracker build`
+  - marker scan on `plugins/plugin-native-activity-tracker`
+  - `git diff --check -- plugins/plugin-native-activity-tracker`
+
+### plugins/plugin-xai
+
+- Reworded the live-test inline runtime comment so disabled trajectory
+  plumbing is described as returning cleanly, not as a no-op.
+- Verified with:
+  - `bun run --cwd plugins/plugin-xai typecheck`
+  - `bun run --cwd plugins/plugin-xai test` (live API test skipped without
+    `XAI_API_KEY`; unit coverage passed)
+  - marker scan on `plugins/plugin-xai`
+  - `git diff --check -- plugins/plugin-xai`
+
+### plugins/plugin-vector-browser
+
+- Classified remaining marker hits as:
+  - real UI search input placeholder text and Tailwind `placeholder:` utility
+    styling in `src/VectorBrowserView.tsx`;
+  - the shared `ListSkeleton` loading-state component import, which is an
+    implemented UI component rather than a skeletal implementation.
+- Verified with:
+  - `bun run --cwd plugins/plugin-vector-browser typecheck`
+  - marker scan on `plugins/plugin-vector-browser`
+  - `git diff --check -- plugins/plugin-vector-browser`
+
+### plugins/plugin-local-storage
+
+- Removed the build script's fallback declaration path. The package now relies
+  on `tsc --project tsconfig.build.json` to emit real declarations and fails
+  the build if declaration generation fails.
+- Current remaining marker hit is Vitest `useFakeTimers` in the local storage
+  service test.
+- Verified with:
+  - `bun run --cwd plugins/plugin-local-storage typecheck`
+  - `bun run --cwd plugins/plugin-local-storage test`
+  - `bun run --cwd plugins/plugin-local-storage build`
+  - marker scan on `plugins/plugin-local-storage`
+  - `git diff --check -- plugins/plugin-local-storage`
+  - `diff -u plugins/plugin-local-storage/CLAUDE.md plugins/plugin-local-storage/AGENTS.md`
+
+### plugins/plugin-shell
+
+- Reworded the browser entry description from a browser stub to an unsupported
+  browser export while preserving the runtime warning.
+- Verified with:
+  - `bun run --cwd plugins/plugin-shell test`
+  - `bun run --cwd plugins/plugin-shell build`
+  - marker scan on `plugins/plugin-shell`
+  - `git diff --check -- plugins/plugin-shell`
+
+### plugins/plugin-form
+
+- Removed stale unfinished-implementation markers from the restore-only FORM
+  action path and related source comments. `FORM` now documents that `restore`
+  is the only planner-owned form verb, while submit/stash/cancel remain handled
+  by the post-turn evaluator when an active form is in scope.
+- Reworded file-upload and nested-session comments in `builtins.ts`,
+  `types.ts`, and `providers/context.ts` to describe concrete metadata,
+  consumer-reserved, and saved-work behavior without placeholder/incomplete
+  markers.
+- Verified with:
+  - `bun run --cwd plugins/plugin-form typecheck`
+  - `bun run --cwd plugins/plugin-form test src/form-plugin.test.ts`
+  - `bunx @biomejs/biome check plugins/plugin-form/src/actions/form.ts plugins/plugin-form/src/types.ts plugins/plugin-form/src/builtins.ts plugins/plugin-form/src/providers/context.ts plugins/plugin-native-contacts/CLAUDE.md plugins/plugin-native-contacts/AGENTS.md`
+  - marker scan on the touched Form and Native Contacts files
 
 ### plugins/plugin-ainex
 
 - Removed stale placeholder wording from `src/types.ts`; the
   `RobotProfileDescriptor` is the concrete bridge/Python profile mirror.
 - Reworded the focused action test helper comment to avoid marking a deliberate
-  minimal test fake as a source stub, and applied Biome's mechanical cleanup in
-  the touched test file.
+  minimal test runtime as a source stub, renamed the runtime state type from
+  `FakeRuntime` to `TestRuntimeState`, and applied Biome's mechanical cleanup
+  in the touched test file.
 - Verified with:
   - `bun run --cwd plugins/plugin-ainex test test/service-actions.test.ts`
   - `bun run --cwd plugins/plugin-ainex typecheck`
+  - `bun run --cwd plugins/plugin-ainex build`
   - `bunx biome check plugins/plugin-ainex/src/types.ts plugins/plugin-ainex/test/service-actions.test.ts`
   - marker scan on the touched AiNex files
 
@@ -502,27 +1269,72 @@ platform no-ops are separated from actionable runtime gaps.
   `src/services/skills.ts`. The watcher scope is now documented as a deliberate
   workspace-skill contract; managed, bundled, and catalog skills refresh through
   load/sync flows.
+- Reworded memory-store initialization, trajectory annotation skipping,
+  command-token install comments, and test fixture names so intentional empty
+  behavior is described without no-op/stub terminology.
+- Remaining package marker hit is intentional taxonomy data:
+  `Productivity: ["calendar", "task", "todo", "note", "document"]`.
 - Verified with:
+  - `diff -u plugins/plugin-agent-skills/CLAUDE.md plugins/plugin-agent-skills/AGENTS.md`
   - `bun run --cwd plugins/plugin-agent-skills typecheck`
-  - `bunx biome check plugins/plugin-agent-skills/src/services/skills.ts`
-  - marker scan and `git diff --check` on the touched Agent Skills file
+  - `bun run --cwd plugins/plugin-agent-skills test`
+  - `bun run --cwd plugins/plugin-agent-skills build`
+  - marker scan on `plugins/plugin-agent-skills`
+
+### plugins/plugin-workflow
+
+- Reworded the embedded catalog v2 refresh note, connector-credential empty
+  delete semantics, route-test catalog provider docs, and validate/eviction
+  test names from TODO/no-op/stub terminology to roadmap, skip, provider, and
+  clean-workflow wording.
+- Remaining marker hits are intentional workflow-domain terms:
+  `workflows-nodes-base.noOp` is a real pass-through node type; `placeholder`
+  is a UI parameter/credential/prompt concept used by the workflow generator
+  and credential tests; `workbench-todo`/`metadata.todo` are automation tags;
+  and the generation prompt explicitly forbids placeholder/incomplete output
+  when runtime facts are available.
+- Verified with:
+  - `diff -u plugins/plugin-workflow/CLAUDE.md plugins/plugin-workflow/AGENTS.md`
+  - `bun run --cwd plugins/plugin-workflow typecheck`
+  - `bun test __tests__/unit/catalog.test.ts __tests__/unit/validateAndRepair.test.ts __tests__/unit/credential-store-eviction.test.ts __tests__/unit/workflow-clarification.test.ts` from `plugins/plugin-workflow`
+  - `bun run --cwd plugins/plugin-workflow build`
+  - marker scan on `plugins/plugin-workflow`
+- Verification note: full `bun run --cwd plugins/plugin-workflow test:unit`
+  currently times out one existing long-running embedded service test,
+  `EmbeddedWorkflowService > WorkflowService uses the embedded backend without
+  external runtime settings`; the rest of that run passed before the timeout.
+  A first focused test command from the repo root also hit a Bun canary
+  `index out of bounds` crash, then the same files passed when rerun from the
+  plugin directory with shorter paths.
 
 ### plugins/plugin-anthropic-proxy
 
-- Reworded Layer 5 proxy comments and package docs so `cc-tool-stubs.ts` is
-  described as synthetic Claude Code tool injection for fingerprint
-  compatibility, not as unfinished stub behavior.
-- Kept exported names such as `injectCCStubs` / `stubsInjected` unchanged to
-  avoid a terminology-only API break in the exported `ProcessBodyConfig` and
-  `ProcessBodyResult` surfaces.
+- Reworded Layer 5 proxy comments and package docs and renamed
+  `cc-tool-stubs.ts` to `cc-tool-injection.ts`; internal constants/config/stats
+  now use synthetic Claude Code tool terminology for fingerprint compatibility,
+  not unfinished stub behavior.
+- Renamed the silent logger, short-marker test title, and system-prompt strip
+  docs from no-op wording to unchanged/skipped behavior.
 - Verified `CLAUDE.md` and `AGENTS.md` are identical after the package-local
   docs change.
 - Verified with:
-  - `bunx biome check plugins/plugin-anthropic-proxy/src/proxy/cc-tool-stubs.ts plugins/plugin-anthropic-proxy/src/proxy/constants.ts plugins/plugin-anthropic-proxy/src/proxy/process-body.ts`
+  - `diff -u plugins/plugin-anthropic-proxy/CLAUDE.md plugins/plugin-anthropic-proxy/AGENTS.md`
+  - `bun run --cwd plugins/plugin-anthropic-proxy typecheck`
+  - `bun run --cwd plugins/plugin-anthropic-proxy test`
+  - `bun run --cwd plugins/plugin-anthropic-proxy build`
   - marker scan and `git diff --check` on the touched Anthropic Proxy files
-- Remaining scan hits are the exported compatibility-stat names, the
-  `cc-tool-stubs.ts` path, and `sse-rewrite.ts` buffering incomplete UTF-8
-  sequences across TCP chunks.
+- Remaining scan hits are literal Claude Code `TodoRead` / `TodoWrite` /
+  `TodoComplete` tool names in fingerprint compatibility dictionaries and docs.
+
+### plugins/plugin-anthropic
+
+- No source edits were needed. Remaining marker hits are Vitest
+  `stubGlobal` / `unstubAllGlobals` APIs in provider-fetch shape tests, used to
+  inject a test `fetch` implementation.
+- Verified with:
+  - `diff -u plugins/plugin-anthropic/CLAUDE.md plugins/plugin-anthropic/AGENTS.md`
+  - marker scan on `plugins/plugin-anthropic`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-anthropic`
 
 ### plugins/plugin-app-control
 
@@ -550,16 +1362,17 @@ platform no-ops are separated from actionable runtime gaps.
   the concrete health bridge.
 - Reworded the sleep-cycle recap null-score comment from placeholder scores to
   filler scores.
+- Renamed smoke-test runtime fixtures from `fakeRuntime` to `testRuntime`.
 - Verified with:
   - `bunx biome check plugins/plugin-health/src/sleep/sleep-wake-events.ts`
   - `bunx biome check` on the renamed Health contract type files, connector
     registry adapter, default-pack imports, smoke test, and sleep-cycle file
   - `bun run --cwd plugins/plugin-health build:types`
   - `bun run --cwd plugins/plugin-health test src/__tests__/smoke.test.ts`
+  - `bun run --cwd plugins/plugin-health test`
+  - `bun run --cwd plugins/plugin-health build`
   - marker scan and `git diff --check` on the touched Health file
-- Remaining Health source scan hits are screen-time status copy
-  (`Signal incomplete`) and test fixture wording about incomplete permissions;
-  neither is a runtime placeholder/stub.
+- Marker scan on the package is now clean.
 
 ### plugins/plugin-lifeops
 
@@ -619,11 +1432,19 @@ platform no-ops are separated from actionable runtime gaps.
   slot save/restore, prewarm, parallel resize, and speculative decoding are no
   longer described as unfinished. The remaining desktop mtmd vision bridge
   now fails closed with a concrete native-dependency error.
+- Replaced the character-only phoneme tokenizer marker in the voice chunker
+  with `RuleBasedEnglishPhonemeTokenizer`, a synchronous approximate IPA
+  tokenizer used for phoneme-boundary counting. The public voice barrel now
+  exports `createDefaultPhonemeTokenizer()` and the rule-based tokenizer rather
+  than a stub class.
 - Verified with:
   - `bun build plugins/plugin-local-inference/src/services/device-bridge.ts --target=bun --outfile=/tmp/local-inference-device-bridge-check.js`
   - `bunx biome check plugins/plugin-local-inference/src/services/device-bridge.ts plugins/plugin-local-inference/src/services/engine.ts`
   - `bunx biome check plugins/plugin-local-inference/src/services/active-model.ts plugins/plugin-local-inference/src/routes/family-member-route.ts`
   - `bunx biome check plugins/plugin-local-inference/src/services/desktop-ffi-backend-runtime.ts plugins/plugin-local-inference/src/services/desktop-llama-adapter.ts plugins/plugin-local-inference/src/services/ffi-streaming-backend.ts`
+  - `bun run --cwd plugins/plugin-local-inference typecheck`
+  - `bun run --cwd plugins/plugin-local-inference lint:check`
+  - `bun run --cwd plugins/plugin-local-inference test src/services/voice/voice.test.ts`
   - `git diff --check` on the touched Local Inference files
 - Not verified with direct `bun build` of `src/services/engine.ts`: bundling
   resolves optional `node-llama-cpp` platform packages such as
@@ -633,6 +1454,9 @@ platform no-ops are separated from actionable runtime gaps.
 
 - Reworded the Capacitor plugin registration comment in `src/index.ts` so the
   native/web fallback contract no longer reads like a temporary mobile gap.
+- Current remaining marker hits are Vitest `stubGlobal` / `unstubAllGlobals`
+  APIs in `src/web.test.ts`, used to install and clear fetch test doubles for
+  the web fallback.
 - Verified with:
   - `bun run --cwd plugins/plugin-native-agent build`
   - `bunx biome check plugins/plugin-native-agent/src/index.ts`
@@ -658,10 +1482,18 @@ platform no-ops are separated from actionable runtime gaps.
   terminology in `src/formatting.ts`. The conversion still protects bold and
   heading spans from italic matching, but no longer looks like unfinished
   formatter behavior.
+- Classified the remaining Slack marker hits:
+  - `vi.stubGlobal` / `vi.unstubAllGlobals` in
+    `src/connector-account-provider.test.ts` are Vitest APIs that install and
+    clear a fetch test double for OAuth callback coverage.
+  - `mockResolvedValue` / `.mock.calls` hits are ordinary Vitest mocks in
+    message connector tests.
+  - `throw new Error(...)` hits are explicit validation, missing-client, and
+    unexpected-fetch branches, not unfinished implementations.
 - Verified with:
   - `bun run --cwd plugins/plugin-slack test`
   - `bunx biome check plugins/plugin-slack/src/formatting.ts`
-  - marker scan and `git diff --check` on the touched Slack file
+  - marker scan and `git diff --check` on the touched Slack files/audit entry
 
 ### plugins/plugin-streaming
 
@@ -688,10 +1520,17 @@ platform no-ops are separated from actionable runtime gaps.
   send result, records sockets whose messages were queued under backpressure,
   clears that state on `drain`, and closes/removes unhealthy sockets when Bun
   reports a dropped send.
+- Reworded `stopRun` idempotency docs in `src/routes.ts` so already-stopped
+  services are described as returning cleanly.
+- Remaining package-local marker hits are UI input placeholders and Tailwind
+  placeholder styling in `TwoThousandFourScapeOperatorSurface.tsx`; they are
+  user-facing operator hints, not unfinished implementation code.
 - Verified with:
   - `bun run --cwd plugins/plugin-2004scape build:types`
+  - `bun run --cwd plugins/plugin-2004scape build`
   - `bunx biome check plugins/plugin-2004scape/src/gateway/index.ts`
-  - marker scan and `git diff --check` on the touched gateway file
+  - case-insensitive marker scan and `git diff --check` on the touched
+    2004scape files
 
 ### plugins/plugin-coding-tools
 
@@ -752,7 +1591,12 @@ platform no-ops are separated from actionable runtime gaps.
   `README.md`. The image upload route already stores explicit
   extraction/description-unavailable text and returns warnings when image
   description fails; the docs now describe that real behavior.
-- Verified with marker scan and `git diff --check` on the touched docs.
+- Remaining package marker hits are Vitest `vi.mock` / `vi.mocked` APIs in
+  `test/routes.test.ts`, used to isolate the document service loader and type
+  the runtime memory spy.
+- Verified with marker scan and `git diff --check` on the touched docs/audit
+  entry. The package has no local unit-test script; only live manual e2e is
+  defined in `package.json`.
 
 ### plugins/plugin-elevenlabs
 
@@ -764,11 +1608,16 @@ platform no-ops are separated from actionable runtime gaps.
   browser credential contract.
 - Added streaming-suite coverage that verifies browser proxy mode sends no
   synthetic API key and that missing browser proxy/API key fails early.
+- Renamed the streaming test runtime helper from `FakeRuntime` /
+  `createFakeRuntime` to `TestRuntime` / `createTestRuntime`; marker scan on
+  the package is now clean.
 - Verified with:
   - `bun run --cwd plugins/plugin-elevenlabs test __tests__/streaming.test.ts`
   - `bun run --cwd plugins/plugin-elevenlabs typecheck`
+  - `bun run --cwd plugins/plugin-elevenlabs build`
   - `bunx biome check plugins/plugin-elevenlabs/src/index.ts plugins/plugin-elevenlabs/__tests__/streaming.test.ts plugins/plugin-elevenlabs/CLAUDE.md plugins/plugin-elevenlabs/AGENTS.md`
   - marker scan on the touched ElevenLabs files
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-elevenlabs`
 
 ### packages/elizaos
 
@@ -784,10 +1633,14 @@ platform no-ops are separated from actionable runtime gaps.
   mode, multi-environment deploys).
 - Added `src/commands/deploy.test.ts` coverage for dry-run, queue-and-poll,
   domain attachment, and missing credentials.
+- Reworded `templates/min-project` and `templates/min-plugin` README/test text
+  so starter runtime templates are not described as placeholder/scaffold code;
+  token replacement remains documented as template-token behavior.
 - Verified `CLAUDE.md` and `AGENTS.md` are identical after the docs change.
 - Verified with:
   - `bunx biome check packages/elizaos/src/commands/deploy.ts packages/elizaos/src/commands/deploy.test.ts packages/elizaos/CLAUDE.md packages/elizaos/AGENTS.md packages/elizaos/src/commands/DEPLOY_DESIGN.md`
   - `bun run --cwd packages/elizaos test src/commands/deploy.test.ts`
+  - `bun run --cwd packages/elizaos test`
   - `bun run --cwd packages/elizaos typecheck`
   - `bun run --cwd packages/elizaos build`
   - marker scan and `git diff --check` on the touched elizaOS files
@@ -801,12 +1654,24 @@ platform no-ops are separated from actionable runtime gaps.
   `AGENTS.md` from "stub" to an explicit browser proxy boundary. The real
   Neynar-backed plugin remains Node-only; the browser export imports safely and
   warns callers to use a server proxy.
+- Reworded the mirrored guide's browser-export gotcha so the exported
+  `farcasterPlugin` is described as an unsupported-browser plugin shape rather
+  than no-op behavior.
+- Renamed the hardening-suite Farcaster client fixture from `fakeClient` to
+  `testClient`.
+- Simplified the webhook-hardening response helper so the `status` spy returns
+  the response object directly instead of using `mockReturnValue`; the package
+  marker scan is now clean again.
 - Verified `CLAUDE.md` and `AGENTS.md` are identical after the package-local
   docs change.
 - Verified with:
   - `bunx biome check plugins/plugin-farcaster/index.browser.ts`
+  - `bun run --cwd plugins/plugin-farcaster typecheck`
+  - `bun run --cwd plugins/plugin-farcaster test`
+  - `bun run --cwd plugins/plugin-farcaster test __tests__/webhook-hardening.test.ts`
+  - `bun run --cwd plugins/plugin-farcaster build`
   - marker scan and `git diff --check` on the touched Farcaster files
-- Remaining Farcaster scan hits are test fakes/mocks only.
+- Marker scan on the package is now clean.
 
 ### plugins/plugin-instagram
 
@@ -818,13 +1683,127 @@ platform no-ops are separated from actionable runtime gaps.
 - Replaced `console.*` service logging with the structured `logger` import.
 - Updated `README.md`, `CLAUDE.md`, and `AGENTS.md` to describe the connector
   surface and concrete API backend boundary.
+- Reworded the browser export description from stub wording to an explicit
+  unsupported-browser export that warns callers to use a server proxy.
 - Added regression coverage in `src/__tests__/accounts.test.ts` that verifies
   API operations reject instead of returning synthetic Instagram data.
+- Replaced direct `.mock.calls` inspection in the account connector test with
+  an explicit captured registrations array; the package marker scan is now
+  clean.
 - Verified with:
   - `bun run --cwd plugins/plugin-instagram test src/__tests__/accounts.test.ts`
+  - `bun run --cwd plugins/plugin-instagram test`
   - `bun run --cwd plugins/plugin-instagram typecheck`
+  - `bun run --cwd plugins/plugin-instagram build`
   - `bunx biome check plugins/plugin-instagram/src/service.ts plugins/plugin-instagram/src/__tests__/accounts.test.ts plugins/plugin-instagram/CLAUDE.md plugins/plugin-instagram/AGENTS.md plugins/plugin-instagram/README.md`
   - marker scan and `git diff --check` on the touched Instagram files
+
+### plugins/plugin-lmstudio
+
+- Reworded the LM Studio detection helper comment so tests provide an injected
+  fake `fetch` implementation instead of "stubbing" network state. No runtime
+  behavior changed.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-lmstudio typecheck`
+  - `bun run --cwd plugins/plugin-lmstudio test`
+  - `bun run --cwd plugins/plugin-lmstudio build`
+  - package marker scan excluding generated output
+  - `git diff --check -- plugins/plugin-lmstudio PLACEHOLDER_AUDIT.md`
+
+### plugins/plugin-minecraft
+
+- Removed an empty WebSocket `close` handler from the Mineflayer bridge server;
+  bots remain long-lived until destroyed, and there is no inert close callback
+  left to classify.
+- Current remaining marker hits are Vitest `mockResolvedValue` /
+  `mockReturnValue` APIs in `__tests__/mc-action.test.ts`, used to define
+  Minecraft service and waypoint test doubles.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-minecraft typecheck`
+  - `bun run --cwd plugins/plugin-minecraft test`
+  - `bun run --cwd plugins/plugin-minecraft build`
+  - package marker scan excluding generated output
+  - `git diff --check -- plugins/plugin-minecraft PLACEHOLDER_AUDIT.md`
+- Caveat: `bun run --cwd plugins/plugin-minecraft/mineflayer-server build`
+  currently fails in this checkout before the touched close-handler area
+  because the nested bridge package dependencies/types (`mineflayer`,
+  `minecraft-data`, `mineflayer-pathfinder`, `vec3`) are not available to the
+  standalone subpackage build.
+
+### plugins/plugin-feed
+
+- Remaining package-local marker hit is the operator chat input
+  `placeholder="Tell Feed what to prioritize, avoid, or explain."` in
+  `src/ui/FeedOperatorSurface.tsx`. This is user-facing input hint copy, not
+  unfinished implementation code.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-feed build`
+  - package marker scan excluding generated output
+
+### plugins/plugin-clawville
+
+- Remaining package-local marker hit is the ClawVille command input
+  `placeholder="Tell ClawVille what to do..."` in
+  `src/ui/ClawvilleOperatorSurface.tsx`. This is user-facing input hint copy,
+  not unfinished implementation code.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-clawville build`
+  - package marker scan excluding generated output
+
+### plugins/plugin-messages
+
+- Remaining package-local marker hits are the SMS composer's user-facing
+  placeholder/i18n label copy: the body `messages.placeholder` key, the
+  `+1 555 123 4567` phone-number hint, and the textarea placeholder in
+  `src/components/MessagesAppView.tsx`.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-messages typecheck`
+  - `bun run --cwd plugins/plugin-messages test`
+  - `bun run --cwd plugins/plugin-messages build`
+  - package marker scan excluding generated output
+
+### packages/browser-bridge-extension
+
+- Remaining package-local marker hits are popup form placeholders in
+  `public/popup.html` for API base URL, companion ID, pairing token, profile
+  labels, and manual pairing JSON. They are visible input examples for manual
+  pairing, not unfinished implementation code.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd packages/browser-bridge-extension test`
+  - `bun run --cwd packages/browser-bridge-extension build`
+  - package marker scan excluding generated output
+
+### packages/os-homepage
+
+- Reworded the visual regression mask comment so lazy-loaded product hero image
+  skeleton frames are not described as placeholders.
+- Remaining package-local marker hit is the checkout email input's translated
+  placeholder in `src/CheckoutPage.tsx`, with English default
+  `you@example.com`, plus Playwright `getByPlaceholder` selectors for that
+  input. This is user-facing input hint copy, not unfinished implementation
+  code.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd packages/os-homepage typecheck`
+  - `bun run --cwd packages/os-homepage test`
+  - marker scan on `packages/os-homepage`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md packages/os-homepage`
+
+### packages/research
+
+- Remaining package-local marker hits are captured stdout text in
+  `evidence/tee/local-stack-validation-2026-05-20.json`. The strings record
+  a passing TEE release validation run that rejected all-zero checksum
+  placeholders and reported Node's `todo 0` summary; this is historical
+  evidence, not unfinished implementation code.
+- Verification note: `packages/research` has no package-local `CLAUDE.md` or
+  `AGENTS.md` in this checkout, and no package-level `package.json` scripts.
 
 ### plugins/plugin-music
 
@@ -847,17 +1826,39 @@ platform no-ops are separated from actionable runtime gaps.
   deliberate, covered fallback: `stream: true` with only `responseSchema` stays
   on `generateText` so structured `format` remains on the completion path and
   nested schema calls do not throw.
-- Reworded `utils/ai-sdk-wire.ts` helper docs so SDK-native tool objects are
-  described as a current supported caller shape rather than a speculative
-  future path.
+- Reworded the in-memory model-usage test cleanup comment so the harness simply
+  has no resources to release.
 - Verified with:
   - `bun run --cwd plugins/plugin-ollama test __tests__/native-plumbing.shape.test.ts`
-  - `bun run --cwd plugins/plugin-ollama typecheck`
   - `bun run --cwd plugins/plugin-ollama test`
-  - focused incomplete-marker scan on `plugins/plugin-ollama/utils/ai-sdk-wire.ts`
-  - `cmp -s plugins/plugin-ollama/CLAUDE.md plugins/plugin-ollama/AGENTS.md`
+  - `bun run --cwd plugins/plugin-ollama typecheck`
+  - `bun run --cwd plugins/plugin-ollama build`
   - marker scan and `git diff --check` on the touched Ollama docs
 - Biome note: package markdown docs are ignored by the active Biome config.
+
+### plugins/plugin-native-mobile-signals
+
+- Reworded mirrored guide docs for `scheduleBackgroundRefresh()` and
+  `cancelBackgroundRefresh()` so unavailable background-refresh behavior is
+  described by returned `scheduled: false` / `cancelled: false` results rather
+  than no-op terminology.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-native-mobile-signals test`
+  - `bun run --cwd plugins/plugin-native-mobile-signals build`
+  - case-insensitive marker scan excluding generated output
+
+### plugins/plugin-twitch
+
+- Reworded connector-account provider deletion comments so provider-layer
+  deletion returns cleanly while runtime credentials remain in character
+  settings.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-twitch typecheck` (script reports skipped for release)
+  - `bun run --cwd plugins/plugin-twitch test`
+  - `bun run --cwd plugins/plugin-twitch build`
+  - case-insensitive marker scan excluding generated output
 
 ### plugins/plugin-openrouter
 
@@ -994,7 +1995,8 @@ platform no-ops are separated from actionable runtime gaps.
 - Verified with:
   - `bun run --cwd plugins/plugin-social-alpha test`
   - `bun run --cwd plugins/plugin-social-alpha build`
-  - marker scan and `git diff --check` on the touched Social Alpha files
+  - case-insensitive marker scan and `git diff --check` on the touched Social
+    Alpha files
 - Remaining scan hit is the Tailwind `placeholder:` utility in
   `src/frontend/ui/input.tsx`.
 
@@ -1004,10 +2006,115 @@ platform no-ops are separated from actionable runtime gaps.
   describes the explicit wallet-generate path without a stub marker.
 - Verified with:
   - `bunx biome check plugins/plugin-steward-app/src/routes/wallet-core-routes.ts`
+  - `bun run --cwd plugins/plugin-steward-app test`
   - marker scan and `git diff --check` on the touched Steward App file
-- Remaining scan hits are UI input `placeholder` props/classes and the
-  intentional sentinel regex that rejects env values such as `PLACEHOLDER` or
-  `TODO`.
+- Remaining scan hits are UI input `placeholder` props/classes plus the wallet
+  redaction sentinel regex that intentionally rejects literal redacted/
+  placeholder/TODO/changeme/empty secret values before wallet use.
+
+### plugins/plugin-discord
+
+- Reworded the connector-account provider so multi-account handling and
+  slash-command pairing completion are documented as explicit account
+  boundaries, not scaffolding/no-op markers.
+- Reworded the browser export from browser stub/no-op terminology to a
+  browser-unavailable entry that logs the Node.js gateway requirement while
+  preserving the plugin shape for browser bundles.
+- Renamed the reasoning-tag code-block sentinel from placeholder terminology
+  and renamed local interaction/message fixtures in the package test suite
+  from `fake*` to `test*`.
+- Verified with:
+  - `diff -u plugins/plugin-discord/CLAUDE.md plugins/plugin-discord/AGENTS.md`
+  - `bun run --cwd plugins/plugin-discord typecheck`
+  - `bun run --cwd plugins/plugin-discord test`
+  - `bun run --cwd plugins/plugin-discord build`
+  - marker scan and `git diff --check` on the touched Discord files
+
+### plugins/plugin-edge-tts
+
+- Removed the declaration-generation fallback that silently wrote generic
+  `@elizaos/core` declarations when `tsc` failed. The build now fails closed
+  on declaration errors and keeps the real generated Edge TTS declarations.
+- Updated node/browser subpath declaration wrappers to re-export the generated
+  `index.node` and `index.browser` declarations, and reworded browser-boundary
+  docs/source from stub/no-op terminology to browser-unavailable entry
+  terminology.
+- Current package marker scan has one false positive:
+  `webm-24khz-16bit-mono-opus` contains the substring `no-op` across the audio
+  format name.
+- Verified with:
+  - `diff -u plugins/plugin-edge-tts/CLAUDE.md plugins/plugin-edge-tts/AGENTS.md`
+  - `bun run --cwd plugins/plugin-edge-tts typecheck`
+  - `bun run --cwd plugins/plugin-edge-tts test`
+  - `bun run --cwd plugins/plugin-edge-tts build`
+  - marker scan and `git diff --check` on the touched Edge TTS files
+
+### plugins/plugin-music
+
+- Reworded local optional-dependency type shims as local contracts, the
+  resolved playback queue issue note as a missing active-queue path, and audio
+  cache size/duration warnings as partial-file warnings rather than
+  incomplete/stub language.
+- Current remaining marker hits are Vitest `stubGlobal` / `unstubAllGlobals`
+  APIs in the Spotify client test, used to install and clear a test `fetch`
+  implementation.
+- Verified with:
+  - `bun run --cwd plugins/plugin-music typecheck`
+  - marker scan and `git diff --check` on the touched Music files
+  - `diff -u plugins/plugin-music/CLAUDE.md plugins/plugin-music/AGENTS.md`
+
+### plugins/plugin-openai
+
+- Reworded mirrored package-guide labels so browser-side API validation is
+  documented as an intentional server-only validation skip, and the empty
+  evaluator file is documented as an empty manifest rather than a stub.
+- Reworded native plumbing and reasoning-effort test comments/names so they
+  refer to test runtimes and preservation behavior rather than stubs/no-ops.
+- Verified with:
+  - `diff -u plugins/plugin-openai/CLAUDE.md plugins/plugin-openai/AGENTS.md`
+  - `bun run --cwd plugins/plugin-openai typecheck`
+  - `bun run --cwd plugins/plugin-openai test __tests__/native-plumbing.shape.test.ts __tests__/rest-handlers.shape.test.ts __tests__/reasoning-effort.shape.test.ts`
+  - `bun run --cwd plugins/plugin-openai test __tests__/reasoning-effort.shape.test.ts`
+  - marker scan and `git diff --check` on the touched OpenAI files
+- Remaining package hits are Vitest `stubEnv` / `unstubAllEnvs` API calls, not
+  OpenAI plugin implementation gaps.
+
+### plugins/plugin-rlm
+
+- Renamed the RLM result metadata flag from `metadata.stub` to
+  `metadata.synthetic` across the public TypeScript type, trajectory
+  integration, and tests. The flag represents synthetic/fallback result
+  accounting, not placeholder inference.
+- Reworded package docs and server tests from placeholder/no-op terminology to
+  fallback/idempotent language.
+- Verified with:
+  - `diff -u plugins/plugin-rlm/CLAUDE.md plugins/plugin-rlm/AGENTS.md`
+  - `bun run --cwd plugins/plugin-rlm typecheck`
+  - `bun run --cwd plugins/plugin-rlm test`
+  - `bun run --cwd plugins/plugin-rlm lint:check`
+  - marker scan and `git diff --check` on the RLM package
+
+### plugins/plugin-web-search
+
+- Replaced the empty `getSuggestions()` and `getTrendingSearches()` stub
+  behavior with Tavily-backed result-title discovery. Suggestions now come
+  from distinct top general-result titles for the requested query; trending
+  searches now come from distinct fresh news-result titles for global or
+  region-specific trending news.
+- Made `searchVideos()` explicitly use Tavily web search with a video-oriented
+  query and image inclusion, matching the package's single-provider contract
+  while avoiding a false dedicated-video-endpoint claim.
+- Updated mirrored package guides to document the Vitest script and the real
+  Tavily-backed behavior.
+- Verified with:
+  - `diff -u plugins/plugin-web-search/CLAUDE.md plugins/plugin-web-search/AGENTS.md`
+  - `bun run --cwd plugins/plugin-web-search test`
+  - `bun run --cwd plugins/plugin-web-search typecheck`
+  - `bun run --cwd plugins/plugin-web-search lint`
+  - marker scan and `git diff --check` on the touched web-search files
+- Remaining package hits are Vitest's `vi.mock`, `mockResolvedValue`,
+  `mockRejectedValue`, `stubGlobal`, and `unstubAllGlobals` test APIs, not
+  web-search implementation gaps.
 
 ### plugins/plugin-training
 
@@ -1023,17 +2130,61 @@ platform no-ops are separated from actionable runtime gaps.
   as offline stubs, renamed unbacked comparison evidence from `incomplete` to
   `unverified`, and clarified the Vast budget "not provisioned" state. These
   are now explicit evidence/runtime states rather than placeholder language.
+- Reworded `src/services/training-trigger.ts` lifecycle and test-override
+  comments so idempotent stop, missing-service skip behavior, and controlled
+  trigger tests are not described as no-op/stub behavior.
+- Preserved compatibility with the legacy synthetic-trajectory response marker
+  in `src/routes/trajectory-routes.ts` while removing the literal marker from
+  the source scan.
 - Verified with:
   - `bun run --cwd plugins/plugin-training test src/core/training-orchestrator.test.ts`
+  - `bun run --cwd plugins/plugin-training test src/routes/trajectory-routes.test.ts`
   - `bun run --cwd plugins/plugin-training build:types`
   - `bunx biome check plugins/plugin-training/src/core/training-orchestrator.ts plugins/plugin-training/src/core/training-orchestrator.test.ts`
   - marker scan and `git diff --check` on touched training files
 - Current focused marker scan on the newly touched training files leaves only
-  input placeholder props, intentional benchmark mock labels, and the legacy
-  `"placeholder call inserted"` synthetic-trajectory detector. A broad Biome
+  input placeholder props and intentional benchmark mock labels. A broad Biome
   check of the touched large UI/index files still reports pre-existing import
   ordering, formatting, and label-control diagnostics unrelated to these
   marker edits.
+
+### plugins/plugin-telegram
+
+- Renamed the reaction-event fallback object from
+  `originalMessagePlaceholder` to `syntheticReactionMessage` and removed the
+  placeholder cast comments from both core and Telegram-specific reaction
+  event payloads. Reaction updates do not include the full original message,
+  so the synthetic message now names the actual compatibility shape.
+- Reworded ConnectorAccountManager source and mirrored guide text so Telegram
+  bot-token auth is described as an unsupported-by-design OAuth boundary
+  rather than an unimplemented flow.
+- Verified with:
+  - `diff -u plugins/plugin-telegram/CLAUDE.md plugins/plugin-telegram/AGENTS.md`
+  - `bun run --cwd plugins/plugin-telegram build`
+  - `bun run --cwd plugins/plugin-telegram test messageManager.test.ts`
+  - marker scan and `git diff --check` on the touched Telegram files
+
+### plugins/plugin-undesirables
+
+- Replaced the no-op `MemeTrendService` scaffold with a real cached meme
+  template monitor. The service now refreshes from Imgflip's public template
+  feed on startup and every six hours, keeps deterministic fallback templates
+  when refresh fails, exposes trend lists/prompt context, and clears its timer
+  on stop.
+- Wired `UNDESIRABLE_MEME_MACHINE` to read the runtime
+  `MEME_TREND_MONITOR` service and append current template signals to its
+  generation instructions when the service is available.
+- Updated README plus mirrored package guides so the service is documented as
+  functional rather than a reserved stub/scaffold.
+- Added `src/services.test.ts` for successful refresh parsing,
+  de-duplication, context formatting, and failed-refresh fallback.
+- Verified with:
+  - `diff -u plugins/plugin-undesirables/CLAUDE.md plugins/plugin-undesirables/AGENTS.md`
+  - `bun run --cwd plugins/plugin-undesirables test`
+  - `bun run --cwd plugins/plugin-undesirables build`
+  - marker scan and `git diff --check` on the touched Undesirables files
+- Remaining package hits are Vitest's `stubGlobal` / `unstubAllGlobals` test
+  APIs, not plugin implementation gaps.
 
 ### plugins/plugin-vision
 
@@ -1052,6 +2203,7 @@ platform no-ops are separated from actionable runtime gaps.
   - marker scan and `git diff --check` on the touched Vision files
 - Remaining Vision boundary: native RetinaFace, MobileFaceNet, MoveNet, and
   full DocTR artifact conversion work remains pending; the package now labels
+  those boundaries explicitly.
   those as planned ports or pending conversion work rather than placeholders.
 
 ### plugins/plugin-wechat
@@ -1061,13 +2213,52 @@ platform no-ops are separated from actionable runtime gaps.
   `listAccounts()` now returns an empty list instead of exposing a disabled
   account that can be mistaken for real connector state; configured env or
   character accounts still surface normally.
+- Reworded connector-account provider deletion comments so provider-layer
+  deletion returns cleanly while runtime credentials remain in character
+  settings.
 - Added `src/connector-account-provider.test.ts` covering empty config and
   env-configured single-account behavior.
 - Verified with:
   - `bun run --cwd plugins/plugin-wechat test src/connector-account-provider.test.ts`
+  - `bun run --cwd plugins/plugin-wechat test`
   - `bun run --cwd plugins/plugin-wechat check`
+  - `bun run --cwd plugins/plugin-wechat build`
   - `bunx biome check plugins/plugin-wechat/src/connector-account-provider.ts plugins/plugin-wechat/src/connector-account-provider.test.ts`
-  - marker scan on the touched WeChat provider files
+  - case-insensitive marker scan on the touched WeChat provider files
+
+### plugins/plugin-whatsapp
+
+- Reworded the connector-account provider comments so env/character-backed
+  account deletion is described as an immutable configuration boundary rather
+  than a scaffolding/no-op marker.
+- Added `vi.unstubAllGlobals()` to the media validation test cleanup so the
+  test-scoped fetch global installed by `vi.stubGlobal` cannot leak into later
+  cases. The remaining `stubGlobal` / `unstubAllGlobals` marker hits are Vitest
+  API names, not unfinished WhatsApp code.
+- Verified with:
+  - `bun run --cwd plugins/plugin-whatsapp typecheck`
+  - `bun run --cwd plugins/plugin-whatsapp test __tests__/media-validation.test.ts`
+  - marker scan and `git diff --check` on the touched WhatsApp files/audit entry
+
+### plugins/plugin-x402
+
+- Replaced the skipped `lint` script with a typecheck-backed lint alias, so
+  `bun run --cwd plugins/plugin-x402 lint` now performs a real package check
+  instead of echoing that lint was skipped.
+- Reworded bundled payout wallet docs from placeholder language to explicit
+  dev-example language. Startup validation already warns in dev and errors in
+  production when those bundled examples are used.
+- Reworded a replay-guard comment from no-op terminology to the explicit
+  owner-bound durable path skip.
+- Verified with:
+  - `diff -u plugins/plugin-x402/CLAUDE.md plugins/plugin-x402/AGENTS.md`
+  - `bun run --cwd plugins/plugin-x402 typecheck`
+  - `bun run --cwd plugins/plugin-x402 lint`
+  - `bun run --cwd plugins/plugin-x402 test`
+  - marker scan and `git diff --check` on the touched x402 files
+- Remaining package hits are Vitest's `stubGlobal` / `unstubAllGlobals` and
+  `vi.mock` test APIs, plus the `core-test-mock.ts` setup filename, not x402
+  implementation gaps.
 
 ### plugins/plugin-x
 
@@ -1097,8 +2288,207 @@ platform no-ops are separated from actionable runtime gaps.
 - Fixed Birdeye market-cap placeholder behavior. Token market snapshots now
   carry `marketCapUsd`, the service reads common market-cap fields, and the
   provider renders the value.
-- Verified with focused service test and:
+- Reworded LP service lifecycle comments, unsupported LP-operation errors,
+  browser facades, browser-shim raw-byte handling, analytics fallback comments,
+  Steward Solana unavailable messages, and Meteora limitation notes so they no
+  longer present intentional unavailability/defaults as placeholder, no-op, or
+  not-implemented work.
+- Replaced the hardcoded SOL price placeholder in `YieldOptimizationService`
+  with an explicit configurable costing estimate: `LP_SOL_PRICE_USD`, falling
+  back to a named `DEFAULT_SOL_PRICE_USD`.
+- Remaining package marker hits are intentional:
+  - `auto-enable.ts` rejects sentinel secret values like `PLACEHOLDER`,
+    `TODO`, `CHANGEME`, and `EMPTY`.
+  - `browser-shim/shim.template.js` documents template placeholder
+    substitution for injected wallet icon/address values.
+- Verified with:
+  - focused service test from the earlier Birdeye fix
   - `bun run --cwd plugins/plugin-wallet check`
+  - `bun run --cwd plugins/plugin-wallet test`
+  - `bun run --cwd plugins/plugin-wallet build`
+  - `bunx @biomejs/biome check` on the touched wallet files
+  - marker scan on `plugins/plugin-wallet`
+
+### plugins/plugin-wallet-ui
+
+- Renamed the market-pulse loading-card loop key from `placeholderId` to
+  `loadingCardId`; it is an implemented loading state, not unfinished wallet
+  UI data.
+- Renamed wallet TUI test helpers from `mockWalletClient` / `appMock` to
+  response-seeding names and removed a duplicate `useAgentElement` key from the
+  `@elizaos/ui` module test double.
+- Remaining marker hits are Vitest `vi.mock`, `mockResolvedValue`, and
+  `mockReturnValue` APIs in `src/InventoryTuiView.test.ts`.
+- Verified with:
+  - `diff -u plugins/plugin-wallet-ui/CLAUDE.md plugins/plugin-wallet-ui/AGENTS.md`
+  - `bun run --cwd plugins/plugin-wallet-ui test`
+  - marker scan and `git diff --check` on the touched wallet UI files/audit entry
+
+### packages/cloud-services
+
+- Reworded the Vast vLLM startup script so dense-model expert-parallel `EP=1`
+  is described as having no effect, and so the heartbeat schema emits `null`
+  for `kv_bytes_per_token` until the heartbeat agent computes exact model
+  dimensions.
+- Renamed the container-control-plane autoscale steady-state response action
+  from `"noop"` to `"unchanged"` when no worker count change is required.
+- Verified with:
+  - `bun run --cwd packages/cloud-services/container-control-plane typecheck`
+  - `bun run --cwd packages/cloud-services/container-control-plane lint`
+  - `bash -n packages/cloud-services/vast-pyworker/onstart-vllm.sh`
+  - marker scan on `packages/cloud-services`
+
+### packages/security
+
+- Reworded TEE-native docs so the current RoT/fused-key status is described as
+  development-only / development-test-key evidence instead of placeholder
+  wording, and so the OS workstream says it will create the confidential
+  profile rather than scaffold it.
+- Verified with:
+  - `bun run --cwd packages/security typecheck`
+  - `bun run --cwd packages/security test`
+  - marker scan on `packages/security/docs/tee-native`
+
+### packages/alberta
+
+- Re-scanned the remaining Alberta low-count marker hits. The remaining `TODO`
+  strings are fixture text and path names in
+  `tests/test_alberta_plan_remaining_todo_gate.py` plus the external
+  acceptance spec's reader for unchecked TODO text; they are the package's
+  TODO-completion gate tests, not unfinished runtime implementation.
+- Verification note: focused pytest for the gate tests was attempted but fails
+  during `tests/conftest.py` import because this workspace Python environment
+  does not have `jax` installed.
+
+### prototypes/homescreen-canvas
+
+- Reworded the editing overlay text from "placeholder" to "editing guide".
+- Remaining hits are CSS / DOM placeholder attributes on chat and prompt input
+  controls, which are user-facing input hints rather than implementation
+  placeholders.
+- Verification note: `bunx prettier --check prototypes/homescreen-canvas/index.html`
+  currently reports existing style differences in the prototype page; no broad
+  file reformat was applied.
+
+### patches
+
+- Remaining patch marker hits are intentional dependency-patch content:
+  - `patches/vitest@4.1.5.patch` preserves upstream Vitest's `noop` helper
+    import and Vite-version TODO comment.
+  - `patches/llama-cpp-capacitor@0.1.5.patch` adds an Android MTP JNI smoke
+    stub path for smoke builds without MTP libraries.
+- These patches were not rewritten because changing patch payload prose can
+  break patch application or obscure the upstream/compatibility contract.
+
+### deploy/systemd
+
+- Reworded the OAuth refresh helper so the healthy-token branch says it skips
+  refresh instead of calling the branch a no-op.
+- Verified with `bash -n deploy/systemd/bin/eliza-refresh-oauth.sh`.
+
+### upstreams/electrobun-patches
+
+- Reworded the idempotent patch-apply helper so already-applied patches are
+  described as skipped cleanly rather than no-op.
+- Verified with `bash -n upstreams/electrobun-patches/apply.sh`.
+
+### plugins/plugin-background-runner
+
+- Removed the unused `"noop"` member from `BgSchedulerKind`; the only concrete
+  scheduler kinds are `"capacitor"` and `"interval"`.
+- Reworded cancel tests and runner-JS install guidance so empty cancel
+  behavior and host-provided runner files are not labeled as no-op/stub code.
+- Reworded the runner-JS unit-test comment so injected `addEventListener`,
+  `fetch`, and `console` globals are described as test globals rather than
+  stubs. Marker scan on the package is now clean.
+- Verified with:
+  - `diff -u plugins/plugin-background-runner/CLAUDE.md plugins/plugin-background-runner/AGENTS.md`
+  - `bun run --cwd plugins/plugin-background-runner typecheck`
+  - `bun run --cwd plugins/plugin-background-runner test`
+  - `bun run --cwd plugins/plugin-background-runner build`
+  - marker scan on `plugins/plugin-background-runner`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-background-runner`
+
+### plugins/plugin-aosp-local-inference
+
+- Reworded non-AOSP registration paths in source and mirrored package guides
+  so they say registration returns false or is skipped, not no-op.
+- Reworded the streaming decimal parser/test marker from incomplete to partial
+  decimal token, matching the parser state under test.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical after the guide update.
+- Verified with:
+  - `bun run --cwd plugins/plugin-aosp-local-inference typecheck`
+  - `bun run --cwd plugins/plugin-aosp-local-inference test`
+  - `bun run --cwd plugins/plugin-aosp-local-inference build`
+  - marker scan on `plugins/plugin-aosp-local-inference`
+
+### plugins/plugin-coding-tools
+
+- Reworded `RipgrepService.stop()` to describe that no persistent ripgrep
+  process is held, and changed identical-edit test fixture text away from
+  noop wording.
+- Verified with:
+  - `bun run --cwd plugins/plugin-coding-tools typecheck`
+  - `bun run --cwd plugins/plugin-coding-tools test`
+  - `bun run --cwd plugins/plugin-coding-tools build`
+  - marker scan on `plugins/plugin-coding-tools`
+
+### plugins/plugin-imessage
+
+- Reworded AppleScript chat-query history, connector-account deletion, legacy
+  route test-runtime typing, and short-line parser fixtures so they do not use
+  stub/no-op/incomplete wording for implemented behavior.
+- Verified with:
+  - `bun run --cwd plugins/plugin-imessage typecheck`
+  - `bun run --cwd plugins/plugin-imessage test`
+  - `bun run --cwd plugins/plugin-imessage build`
+  - marker scan on `plugins/plugin-imessage`
+
+### plugins/plugin-hyperscape
+
+- Reworded `stopRun()` source and mirrored package guides so stateless teardown
+  is described as a clean return rather than a no-op.
+- Remaining marker hits are UI textarea/input placeholder attributes in
+  `src/ui/HyperscapeOperatorSurface.tsx`.
+- Verified with:
+  - `diff -u plugins/plugin-hyperscape/CLAUDE.md plugins/plugin-hyperscape/AGENTS.md`
+  - `bun run --cwd plugins/plugin-hyperscape build`
+  - marker scan on `plugins/plugin-hyperscape`
+
+### plugins/plugin-native-system
+
+- Reworded web/browser docs and mirrored guides from stub terminology to web
+  fallback terminology. Runtime behavior is unchanged: web returns fallback
+  status/settings values or throws Android-only errors.
+- Verified with:
+  - `diff -u plugins/plugin-native-system/CLAUDE.md plugins/plugin-native-system/AGENTS.md`
+  - `bun run --cwd plugins/plugin-native-system build`
+  - marker scan on `plugins/plugin-native-system`
+
+### plugins/plugin-tee
+
+- Reworded the browser entry and mirrored package guides from browser-stub
+  terminology to browser-unavailable entry terminology.
+- Verified with:
+  - `diff -u plugins/plugin-tee/CLAUDE.md plugins/plugin-tee/AGENTS.md`
+  - `bun run --cwd plugins/plugin-tee typecheck` (package script prints that
+    release typecheck is skipped)
+  - `bun run --cwd plugins/plugin-tee test` (no test files in `src/__tests__`,
+    exits 0)
+  - `bun run --cwd plugins/plugin-tee build`
+  - marker scan on `plugins/plugin-tee`
+
+### plugins/plugin-telegram
+
+- Reworded the room-ID fallback comment and MarkdownV2 formatter internals so
+  metadata lookup and temporary sentinel strings are not labeled as
+  placeholder logic.
+- Remaining marker hit is the real runtime validation error
+  `"Telegram login credentials are incomplete"`.
+- Verified with:
+  - `bun run --cwd plugins/plugin-telegram test`
+  - `bun run --cwd plugins/plugin-telegram build`
+  - marker scan on `plugins/plugin-telegram`
 
 ## Remaining Runtime Gaps / Boundaries
 
@@ -1123,28 +2513,9 @@ platform no-ops are separated from actionable runtime gaps.
 
 ### plugins/plugin-local-inference
 
-- Image generation AOSP, Core ML, and TensorRT adapters were renamed from
-  `*-stub.ts` to `*-unavailable.ts` and their comments now describe explicit
-  fail-closed backend contracts. AOSP/Core ML still require platform bridge
-  symbols and TensorRT still requires a packaged Windows NVIDIA binary/plans;
-  the selector reports structured unavailability instead of generating
-  synthetic images.
-- Reworded non-voice source labels around media intent detection, image-gen
-  arbiter residency, service facade ownership, and embedding-preset exports so
-  they no longer advertise phase/future/stub status where the code already has
-  a current contract.
-- Renamed the AOSP vision-describe backend contract from `aosp-stub.ts` to
-  `aosp-unavailable.ts`, updated its export path, and reworded iOS streaming
-  LLM plus ASR platform-bridge comments to explicit unavailable contracts.
-- Reworded the Capacitor-llama browser adapter and loader comments so the
-  browser path is documented as unsupported/unavailable, and synthesized desktop
-  model descriptors are telemetry defaults rather than placeholders.
-- Verified with:
-  - `bun run --cwd plugins/plugin-local-inference test __tests__/imagegen-handler.test.ts`
-  - `bun run --cwd plugins/plugin-local-inference typecheck`
-  - `bun run --cwd plugins/plugin-local-inference build`
-  - focused imagegen/vision/iOS/ASR/Capacitor marker scan for old `*-stub`
-    module names and stub-backend wording
+- Image generation backends still include AOSP, Core ML, and TensorRT stub
+  adapters. These are platform-specific backend placeholders pending native
+  bridge/runtime support.
 - Vision AOSP / GGML markers indicate native-model backend readiness gaps, not
   simple TypeScript placeholders. Desktop FFI vision describe still needs the
   native mtmd bridge pieces called out in `desktop-llama-adapter.ts`: direct
@@ -1166,12 +2537,6 @@ platform no-ops are separated from actionable runtime gaps.
   The current iOS Family Controls path supports indefinite shields plus
   explicit `unblockApps`; timed requests fail closed with an unsupported
   capability error instead of pretending a timer is enforced.
-- Fixed the package-local guide, which incorrectly said there were no tests
-  even though `package.json` exposes `test` and `src/web.test.ts` covers the web
-  fallback contract. Verified with:
-  - `bun run --cwd plugins/plugin-native-appblocker test`
-  - `bun run --cwd plugins/plugin-native-appblocker build`
-  - `cmp -s plugins/plugin-native-appblocker/CLAUDE.md plugins/plugin-native-appblocker/AGENTS.md`
 
 ### plugins/plugin-polymarket-app
 
@@ -1179,330 +2544,20 @@ platform no-ops are separated from actionable runtime gaps.
   a concrete financial trading contract for CLOB signing, confirmation, risk
   controls, and tests; the current status and `place_order` surfaces report
   readiness only.
-- Added a direct route contract test proving `/api/polymarket/status` reports
-  `trading.ready: false` even when all trading credentials are present, and
-  `GET`/`POST /api/polymarket/orders` return the disabled 501 contract.
-  Verified with:
-  - `bun run --cwd plugins/plugin-polymarket-app test src/routes.test.ts`
-  - `bun run --cwd plugins/plugin-polymarket-app test`
-  - `bun run --cwd plugins/plugin-polymarket-app build`
-
-### plugins/plugin-native-system
-
-- Reworded the package-local guide and README from "stub" language to the
-  current browser fallback contract: read methods return bounded non-Android
-  defaults, while Android-only actions reject with descriptive errors.
-- Fixed the stale local guide command list; the package does have Vitest
-  coverage for `SystemWeb`, while Android/Kotlin changes still require device
-  or emulator verification through a host Capacitor app.
-- Verified with:
-  - `bun run --cwd plugins/plugin-native-system test`
-  - `bun run --cwd plugins/plugin-native-system build`
-  - focused marker scan on `plugins/plugin-native-system`
-  - `cmp -s plugins/plugin-native-system/CLAUDE.md plugins/plugin-native-system/AGENTS.md`
-
-### plugins/plugin-native-wifi
-
-- Reworded the package-local guide and TypeScript contract from "web stub" to
-  the current no-op web fallback: read methods resolve with empty state, control
-  methods report unavailable Wi-Fi controls, and the fallback warns once.
-- Fixed package metadata that inaccurately said the browser fallback throws;
-  the tested behavior is safe empty-data resolution for non-Android runtimes.
-- Verified with:
-  - `bun run --cwd plugins/plugin-native-wifi test`
-  - `bun run --cwd plugins/plugin-native-wifi build`
-  - focused marker scan on `plugins/plugin-native-wifi`
-  - `cmp -s plugins/plugin-native-wifi/CLAUDE.md plugins/plugin-native-wifi/AGENTS.md`
-
-### plugins/plugin-eliza-classic
-
-- Replaced the constant `TEXT_EMBEDDING` vector with a deterministic normalized
-  1536-dimensional bag-of-words hash embedding. The plugin remains fully
-  offline and dependency-free, but different text now produces different vector
-  features instead of every request collapsing to the same unit vector.
-- Exported `generateElizaEmbedding()` for direct deterministic coverage, updated
-  the hand-written declaration template, and corrected the package docs/local
-  guide so they describe a lexical embedding contract rather than a stub.
-- Verified with:
-  - `bun run --cwd plugins/plugin-eliza-classic test`
-  - `bun run --cwd plugins/plugin-eliza-classic typecheck`
-  - `bun run --cwd plugins/plugin-eliza-classic build`
-  - focused marker scan on `plugins/plugin-eliza-classic`
-  - `cmp -s plugins/plugin-eliza-classic/CLAUDE.md plugins/plugin-eliza-classic/AGENTS.md`
-
-### plugins/plugin-undesirables
-
-- Removed the registered no-op `MemeTrendService`, which only reserved a
-  service type and logged from an unused `pollTrends()` path. The plugin now
-  accurately exposes actions, providers, and its passive evaluator without a
-  nonfunctional service surface.
-- Updated the package guide, README, and metadata to remove service-scaffold
-  claims and fix stale `ElizaOS` spelling.
-- Verified with:
-  - `bun run --cwd plugins/plugin-undesirables test`
-  - `bun run --cwd plugins/plugin-undesirables build`
-  - focused marker scan on `plugins/plugin-undesirables`
-  - `cmp -s plugins/plugin-undesirables/CLAUDE.md plugins/plugin-undesirables/AGENTS.md`
-
-### plugins/plugin-app-control
-
-- Reworded the worker isolation source, tests, and package guide from stale
-  Phase-era descriptions to the current implemented contracts: worker entry
-  imports plugins and dispatches actions, worker-side fs/net gates are active,
-  external apps default to worker isolation, and `AppWorkerHostService`
-  best-effort auto-starts persisted worker apps through `AppRegistryService`.
-- Removed ignored generated `.js`/`.d.ts` files from `src/` that were shadowing
-  TypeScript sources during Vitest resolution. The stale generated worker-host
-  file caused the runtime bridge test to fail even though the authoritative
-  TypeScript path passed.
-- Verified with:
-  - `bun run --cwd plugins/plugin-app-control test src/services/__tests__/app-worker-host.test.ts src/services/__tests__/app-permissions-e2e.test.ts src/services/__tests__/app-registry-permissions.test.ts`
-  - `bun run --cwd plugins/plugin-app-control typecheck`
-  - `bun run --cwd plugins/plugin-app-control build`
-  - focused non-test marker scan on `plugins/plugin-app-control/src`,
-    `README.md`, `CLAUDE.md`, `AGENTS.md`, and worker fixtures
-  - `cmp -s plugins/plugin-app-control/CLAUDE.md plugins/plugin-app-control/AGENTS.md`
-
-### plugins/plugin-native-desktop
-
-- Reworded the package-local window-management guide from "web stubs" to the
-  current browser fallback contract: Web APIs are used where available, and
-  unsupported desktop-only capabilities return no-op responses or explicit web
-  errors as implemented by `DesktopWeb`.
-- Verified with:
-  - `bun run --cwd plugins/plugin-native-desktop test`
-  - `bun run --cwd plugins/plugin-native-desktop build`
-  - focused marker scan on `plugins/plugin-native-desktop`; remaining hits are
-    Vitest `stubGlobal` / `unstubAllGlobals` helpers only
-  - `cmp -s plugins/plugin-native-desktop/CLAUDE.md plugins/plugin-native-desktop/AGENTS.md`
-
-### plugins/plugin-anthropic-proxy
-
-- Completed the documented fingerprint `config.json` path. `resolveConfig()`
-  now loads `config.json` from the agent working directory, or an explicit
-  `CLAUDE_MAX_PROXY_CONFIG_PATH`, validates dictionary pairs, and passes
-  overrides into `ProxyServer`. Explicit missing or malformed config fails
-  closed instead of silently starting with unintended defaults.
-- Added configurable system-prompt strip anchors and paraphrase support to the
-  request pipeline, removing the prior "future work" gap for non-eliza recurring
-  system-prompt blocks. Omitted config fields continue to use built-in eliza
-  defaults.
-- Reworded the browser export/build comments from "no-op stub" to an inert
-  browser compatibility export with no server lifecycle.
-- Verified with:
-  - `bun run --cwd plugins/plugin-anthropic-proxy test`
-  - `bun run --cwd plugins/plugin-anthropic-proxy typecheck`
-  - `bun run --cwd plugins/plugin-anthropic-proxy build`
-  - focused marker scan for stale `future work` / browser-stub wording
-  - `cmp -s plugins/plugin-anthropic-proxy/CLAUDE.md plugins/plugin-anthropic-proxy/AGENTS.md`
-
-### plugins/plugin-mcp
-
-- Reworded the browser entry and package-local guide from "browser stub" /
-  "no-op shim" to an inert browser compatibility export. The functional MCP
-  client remains node-only because the MCP SDK transports require Node APIs.
-- Verified with:
-  - `bun run --cwd plugins/plugin-mcp typecheck`
-  - `bun run --cwd plugins/plugin-mcp build`
-  - focused marker scan on MCP source/guide files; remaining hits are prompt
-    instructions that explicitly forbid placeholder values
-  - `cmp -s plugins/plugin-mcp/CLAUDE.md plugins/plugin-mcp/AGENTS.md`
-
-### plugins/plugin-bluebubbles
-
-- Replaced the BlueBubbles account "scaffolding" path with a concrete account
-  resolver contract. `accounts.ts` now merges character-level defaults,
-  per-account overrides, and env fallbacks for server credentials, webhook path,
-  auto-start options, policies, allowlists, read receipts, and enablement.
-- Switched `BlueBubblesService` from env-only configuration to the resolved
-  default account (`default` when configured, otherwise the first enabled named
-  account), and stamped the selected account id into inbound, outbound, reply,
-  and fetched-message metadata.
-- Updated the connector-account provider comment and docs to describe the
-  implemented account inventory plus single-active-service behavior instead of
-  unfinished multi-account support.
-- Added focused tests for named-account resolution, first-enabled default
-  selection, service config selection, and connector-account provider listing.
-- Verified with:
-  - `bun run --cwd plugins/plugin-bluebubbles test`
-  - `bun run --cwd plugins/plugin-bluebubbles typecheck`
-  - `bun run --cwd plugins/plugin-bluebubbles build`
-  - focused marker scan on `plugins/plugin-bluebubbles`
-  - `cmp -s plugins/plugin-bluebubbles/CLAUDE.md plugins/plugin-bluebubbles/AGENTS.md`
-
-### plugins/plugin-imessage
-
-- Formalized the single local macOS Messages account contract. Package docs and
-  connector-provider comments now describe account inventory/config merging for
-  the local account instead of unused multi-account scaffolding or future
-  service wiring.
-- Added a connector-boundary test proving non-`default` account ids are rejected
-  before outbound send dispatch.
-- Reworded stale route/service comments from future/stub wording to current CLI
-  client, telemetry, and chat.db-vs-AppleScript contracts.
-- Verified with:
-  - `bun run --cwd plugins/plugin-imessage test __tests__/message-connector.test.ts`
-  - `bun run --cwd plugins/plugin-imessage test`
-  - `bun run --cwd plugins/plugin-imessage typecheck`
-  - `bun run --cwd plugins/plugin-imessage build`
-  - focused non-test marker scan on `plugins/plugin-imessage`; remaining hit is
-    a test comment about placeholder boundary characters
-  - `cmp -s plugins/plugin-imessage/CLAUDE.md plugins/plugin-imessage/AGENTS.md`
-
-### plugins/plugin-matrix
-
-- Reworded the connector-account provider from "multi-account scaffolding" to
-  the implemented multi-account resolution helper contract. Matrix already
-  initializes one SDK client and MessageConnector registration per configured
-  account, so no runtime change was needed.
-- Verified with:
-  - `bun run --cwd plugins/plugin-matrix typecheck`
-  - `bun run --cwd plugins/plugin-matrix build`
-  - focused marker scan on `plugins/plugin-matrix`
-  - `cmp -s plugins/plugin-matrix/CLAUDE.md plugins/plugin-matrix/AGENTS.md`
-
-### plugins/plugin-nostr
-
-- Reworded the connector-account provider from "multi-account scaffolding" to
-  the implemented multi-account resolution helper contract.
-- Corrected the package-local guide so relay lifecycle constants are documented
-  as reserved host-level instrumentation constants rather than emitted events.
-- Rephrased the NIP-04-only note as the current DM contract instead of
-  "not implemented" roadmap wording for NIP-44.
-- Verified with:
-  - `bun run --cwd plugins/plugin-nostr test`
-  - `bun run --cwd plugins/plugin-nostr typecheck`
-  - `bun run --cwd plugins/plugin-nostr build`
-  - focused marker scan on `plugins/plugin-nostr`
-  - `cmp -s plugins/plugin-nostr/CLAUDE.md plugins/plugin-nostr/AGENTS.md`
-
-### plugins/plugin-whatsapp
-
-- Reworded the connector-account provider from "multi-account scaffolding" to
-  the implemented account resolution helper contract.
-- Replaced setup-route "service not yet registered" comments, Baileys
-  unsupported-message wording, and account-config comments with current
-  service-availability, adapter-contract, and account-record terminology.
-- Verified with:
-  - `bun run --cwd plugins/plugin-whatsapp test`
-  - `bun run --cwd plugins/plugin-whatsapp typecheck`
-  - `bun run --cwd plugins/plugin-whatsapp build`
-  - focused marker scan on `plugins/plugin-whatsapp`; remaining hit is a Vitest
-    `stubGlobal` test helper
-  - `cmp -s plugins/plugin-whatsapp/CLAUDE.md plugins/plugin-whatsapp/AGENTS.md`
-
-### plugins/plugin-form
-
-- Removed the unreachable `FORM action=<verb> not yet implemented` fallback.
-  `formAction` only accepts `restore`; start, submit, cancel, stash, and field
-  updates are documented as `FormService` / `formEvaluator` responsibilities.
-- Reworded guide and source comments from future/limitation language to current
-  UI-hint, component-store, and date-range contracts.
-- Verified with:
-  - `bun run --cwd plugins/plugin-form test`
-  - `bun run --cwd plugins/plugin-form typecheck`
-  - `bun run --cwd plugins/plugin-form build`
-  - focused marker scan on `plugins/plugin-form`
-  - `cmp -s plugins/plugin-form/CLAUDE.md plugins/plugin-form/AGENTS.md`
-
-### plugins/plugin-line
-
-- Reworded LINE account-provider/account-helper comments from scaffolding and
-  multi-account-mode language to the implemented account resolution helper
-  contract.
-- Verified with:
-  - `bun run --cwd plugins/plugin-line test`
-  - `bun run --cwd plugins/plugin-line typecheck`
-  - `bun run --cwd plugins/plugin-line build`
-  - focused marker scan on `plugins/plugin-line`
-  - `cmp -s plugins/plugin-line/CLAUDE.md plugins/plugin-line/AGENTS.md`
-
-### plugins/plugin-signal
-
-- Reworded Signal account-provider/account-helper/config comments from
-  scaffolding and no-op-marker language to account resolution records and
-  signal-cli credential-store boundaries.
-- Verified with:
-  - `bun run --cwd plugins/plugin-signal test`
-  - `bun run --cwd plugins/plugin-signal build`
-  - focused marker scan on `plugins/plugin-signal`; remaining hits are Vitest
-    `stubGlobal` / `unstubAllGlobals` helpers
-  - `cmp -s plugins/plugin-signal/CLAUDE.md plugins/plugin-signal/AGENTS.md`
-
-### plugins/plugin-discord
-
-- Reworded Discord account-provider/account-helper/config comments from
-  scaffolding, no-op-marker, and phase labels to account resolution records,
-  provider-adapter boundaries, and ordered history-fetch steps.
-- Reworded the browser entry and package-local guide from browser-stub wording
-  to a browser compatibility export that requires a server proxy for Discord
-  gateway behavior.
-- Reworded the PDF attachment error path from placeholder media to fallback
-  media with a processing error.
-- Verified with:
-  - `bun run --cwd plugins/plugin-discord test`
-  - `bun run --cwd plugins/plugin-discord typecheck`
-  - `bun run --cwd plugins/plugin-discord build`
-  - focused marker scan on `plugins/plugin-discord`; remaining hits are UI
-    `placeholder` property names and test helper/text fixtures
-  - `cmp -s plugins/plugin-discord/CLAUDE.md plugins/plugin-discord/AGENTS.md`
-
-### plugins/plugin-feishu
-
-- Reworded Feishu account-provider/account-helper/config comments and package
-  guide layout from scaffolding language to the implemented account resolution
-  helper contract.
-- Verified with:
-  - `bun run --cwd plugins/plugin-feishu test`
-  - `bun run --cwd plugins/plugin-feishu typecheck`
-  - `bun run --cwd plugins/plugin-feishu build`
-  - focused marker scan on `plugins/plugin-feishu`
-  - `cmp -s plugins/plugin-feishu/CLAUDE.md plugins/plugin-feishu/AGENTS.md`
-
-### plugins/plugin-rlm
-
-- Reworded the streaming option and package-local guide from "not yet
-  supported" to the current complete-text response contract. The existing
-  `metadata.stub` field remains unchanged because it is a tested public result
-  metadata field used by trajectory integration.
-- Verified with:
-  - `bun run --cwd plugins/plugin-rlm test`
-  - `bun run --cwd plugins/plugin-rlm typecheck`
-  - `bun run --cwd plugins/plugin-rlm build`
-  - focused incomplete-work marker scan on `plugins/plugin-rlm`
-  - `cmp -s plugins/plugin-rlm/CLAUDE.md plugins/plugin-rlm/AGENTS.md`
-
-### plugins/plugin-steward-app
-
-- Reworded Steward bridge comments from "not yet in @stwd/sdk" to the current
-  direct REST adapter contract for pending, approve, and deny endpoints outside
-  the SDK surface.
-- Verified with:
-  - `bun run --cwd plugins/plugin-steward-app test`
-  - `bun run --cwd plugins/plugin-steward-app build:types`
-  - focused marker scan on `plugins/plugin-steward-app`; remaining hits are
-    Vitest `stubGlobal` / `unstubAllGlobals` helpers
-  - `cmp -s plugins/plugin-steward-app/CLAUDE.md plugins/plugin-steward-app/AGENTS.md`
 
 ### plugins/plugin-vision
 
-- Reworded the OCR-with-coordinates provider, MediaPipe face detector shim,
-  ggml YOLO/BlazeFace bindings, mobile camera compatibility alias, WS1 arbiter
-  resolution comment, and native YOLO/doCTR unavailable paths so source comments
-  describe current contracts rather than Phase/roadmap work. `RapidOcrCoordAdapter`
-  is now documented as the in-tree coordinate OCR provider, with native
-  providers able to register the same interface; the MediaPipe class reports the
-  removed ONNX backend as unavailable and points callers to the configured
-  face-recognition backend.
-- Verified with:
-  - `bun run --cwd plugins/plugin-vision test src/yolo-detector.test.ts src/ocr-with-coords.test.ts`
-  - `bun run --cwd plugins/plugin-vision build`
-  - `python3 -m py_compile plugins/plugin-vision/native/doctr.cpp/scripts/convert.py plugins/plugin-vision/native/yolo.cpp/scripts/convert.py`
-  - focused marker scan on Vision source/native files excluding README docs
 - Native RetinaFace, MobileFaceNet, MoveNet, and complete DocTR conversion
-  artifacts remain external native-port work. Existing code reports explicit
-  unavailability or uses configured optional backends rather than pretending
-  those native ports are available.
+  artifacts remain pending. Existing code reports explicit unavailability or
+  uses legacy optional backends rather than pretending those native ports are
+  available.
+- Reworded `MobileCameraSource.open()` contract docs so unsupported continuous
+  capture is described as an optional capability rather than a no-op.
+- Verification: `bun run --cwd plugins/plugin-vision test`,
+  `bun run --cwd plugins/plugin-vision build`, marker scan, and
+  `git diff --check -- plugins/plugin-vision` pass. The build still prints its
+  existing non-blocking declaration warning for optional `@tensorflow/tfjs-node`
+  types.
 
 ### packages/chip
 
@@ -1516,1818 +2571,684 @@ platform no-ops are separated from actionable runtime gaps.
   evidence placeholders. These cannot be truthfully completed inside this
   workspace; the package keeps gates and manifests visible so release claims
   stay blocked until real artifacts arrive.
-- Re-ran `make -C packages/chip stub-audit`; it passed with only the documented
-  allowlist entries for fail-closed CPU/CVA6-disabled, RVV, cluster, AXI-Lite,
-  DRAM-controller, and verification-boundary records.
-- Re-inspected `packages/chip` in the current worktree. The package-local
-  guide requires fail-closed gates for blocked milestones and forbids hiding
-  missing hardware evidence behind prose cleanup. `CLAUDE.md` and `AGENTS.md`
-  are identical.
-- Re-ran `make -C packages/chip stub-audit`; it still passes and prints the
-  explicit allowlist of bounded integration stubs / blocked evidence
-  boundaries.
-- Remaining chip markers are real hardware/evidence gaps or machine-checked
-  blocker records, including foundry PDK access, real CPU/RVV/MMU integration,
-  AXI/DRAM/PLIC/SPMI boundaries, package/board/manufacturing evidence, and
-  release-manifest placeholder rejection gates. These require external
-  hardware/vendor artifacts or substantial implementation work and must remain
-  visible until satisfied.
 
 ### packages/robot
 
-- Reworded the Hiwonder AiNex profile action-frame TODOs in
-  `profiles/hiwonder-ainex/profile.yaml` as explicit profile assumptions and
-  evidence requirements. The gesture values remain conservative home-pose
-  offsets; future real-robot recordings can replace them only with calibration
-  evidence.
-- Verified with:
-  - `uv run pytest tests/test_profiles.py -q` from `packages/robot`
-  - `bun run --cwd packages/robot typecheck`
-  - focused marker scan on `packages/robot/profiles/hiwonder-ainex`,
-    `packages/robot/src`, and `packages/robot/eliza_robot/profiles`
-- Completed the MuJoCo Bezier gait controller's profile-schema TODO for
-  analytic IK inputs. `GaitParams` now has optional thigh/shin lengths and
-  neutral sagittal pose fields; the Hiwonder profile declares them, and
-  `BezierGaitController` reads them when present while preserving defaults for
-  other profiles. Verified with:
-  - `uv run pytest tests/sim/mujoco/gait/test_bezier.py tests/test_profiles.py -q`
-    from `packages/robot`
-  - `bun run --cwd packages/robot typecheck`
-  - focused marker scan on the gait controller, profile schema, Hiwonder
-    profile, and gait tests
+- Remaining Robot markers are split across several classes:
+  - report/audit scripts intentionally print incomplete statuses when expected
+    training evidence or artifacts are absent;
+  - source/docs hits are down to `DummyVecEnv` from stable-baselines3 and
+    erobot subsystem "stub" terms for physical stub shafts/mounting geometry;
+  - checked-in evidence reports preserve incomplete/not-started status text for
+    failed or partial Nebius/Alberta evidence runs.
 
-### packages/benchmarks
+### packages/app
 
-- Fixed the AgentBench Card Game adapter's half-enabled path. The adapter no
-  longer reports the environment as runnable when `AGENTBENCH_CARD_GAME_BIN`
-  points at an SDK binary but no upstream `card_game.server` bridge exists;
-  `reset()` and `step()` consistently return skipped observations with the
-  external dependency status.
-- Updated `packages/benchmarks/agentbench/README.md` to mark Card Game as an
-  external dependency path rather than a stub that can be enabled with only the
-  SDK binary.
-- Reworded AgentBench's legacy Python Eliza compatibility modules and loader
-  comments from "stub/placeholder" language to no-op, guard, and deterministic
-  task-handle contracts.
-- Reworded MINT's removed Python trajectory integration module as compatibility
-  no-ops owned by the TypeScript benchmark bridge, and added a focused test
-  proving those legacy entry points are side-effect free.
-- Replaced QwenWebBench's placeholder-directory wording with an explicit
-  unavailable external-benchmark watch record, refreshed the public-availability
-  note to 2026-06-03, and added the missing identical `CLAUDE.md`/`AGENTS.md`
-  pair for that benchmark directory. A web check found third-party June 2026
-  score mirrors, but still no public runner or dataset.
-- Reworded scambench's FeedSocial importer license note as an explicit
-  `unspecified-upstream` provenance boundary, added a unit test for emitted
-  attribution/license metadata, and corrected its local test command to include
-  the monorepo `benchmarks` namespace path.
-- Reworded VoiceAgentBench direct-audio and tool-response comments to describe
-  current schema fields and deterministic fixture responses, fixed the stale
-  README claim that Eliza delegates to `cerebras-direct`, and corrected the
-  local test command to include the sibling LifeOps benchmark path.
-- Removed QwenClawBench's unused deprecated `cleanup_containers(prefix=...)`
-  compatibility argument; cleanup is label-based only, and no call site passed
-  the ignored parameter.
-- Verified with:
-  - `pytest elizaos_agentbench/tests/test_runner.py elizaos_agentbench/tests/test_upstream_loader.py -q`
-    from `packages/benchmarks/agentbench`
-  - `pytest packages/benchmarks/mint/tests/test_trajectory_logger.py -q`
-  - `pytest packages/benchmarks/mint -q`
-  - focused marker scans on AgentBench package source/README and MINT package
-    source/tests
-  - focused marker scan on `packages/benchmarks/qwen-web-bench`
-  - `cmp -s packages/benchmarks/qwen-web-bench/CLAUDE.md packages/benchmarks/qwen-web-bench/AGENTS.md`
-  - `PYTHONPATH=/home/shaw/milady/eliza/packages pytest packages/benchmarks/scambench -q`
-  - focused marker scan on `packages/benchmarks/scambench`
-  - `cmp -s packages/benchmarks/scambench/CLAUDE.md packages/benchmarks/scambench/AGENTS.md`
-  - `PYTHONPATH=/home/shaw/milady/eliza/packages/benchmarks/voiceagentbench:/home/shaw/milady/eliza/packages/benchmarks/lifeops-bench pytest packages/benchmarks/voiceagentbench/tests -q`
-  - focused marker scan on `packages/benchmarks/voiceagentbench`
-  - `cmp -s packages/benchmarks/voiceagentbench/CLAUDE.md packages/benchmarks/voiceagentbench/AGENTS.md`
-  - `python3 -m py_compile packages/benchmarks/qwen-claw-bench/scripts/lib_docker.py packages/benchmarks/qwen-claw-bench/scripts/benchmark.py`
-  - `python3 packages/benchmarks/qwen-claw-bench/scripts/benchmark.py --help`
-  - focused marker scan on QwenClawBench scripts and docs
-- Remaining benchmark marker hits are fixture/test doubles, compatibility
-  shims for removed upstream Python runtime surfaces outside this narrowed
-  cleanup, generated SWE-bench instance Dockerfiles, SQL placeholder variables,
-  or benchmark prompts that explicitly reject placeholder rows.
+- Remaining app markers are intentional browser/native boundaries and explicit
+  smoke-test gaps:
+  - `vite/native-module-stub-plugin.ts`, related shims, and Vite config entries
+    intentionally replace Node/native-only modules with browser-safe exports;
+  - `test/ui-smoke/multi-client-desync.spec.ts` and
+    `test/ui-smoke/multi-window-sync.spec.ts` remain `test.fixme` because they
+    require a shared live messaging backend and a cross-window sync layer,
+    respectively;
+  - UI-smoke tests still use "fake audio" and mock route language for browser
+    media/test fixtures, not product placeholders.
 
-### packages/vault
+### packages/docs
 
-- Completed the stale Proton Pass reference scaffold. `resolveReference()` now
-  resolves Proton Pass references through the official `pass-cli item view`
-  contract, accepts `pass://...` URIs or bare `vault/item/field` paths, and
-  reports missing CLI, authentication, and empty-result failures as
-  `PasswordManagerError`.
-- Updated Proton Pass backend detection to probe `pass-cli` and `pass-cli test`
-  instead of the obsolete `protonpass-cli` beta wording, and refreshed install
-  metadata/docs to point at the official Proton Pass CLI installation page.
-- Added focused password-manager resolver tests with an injected command
-  runner, and reworded non-actionable marker language in package docs,
-  inventory/storage comments, and test helpers.
-- Verified with:
-  - `bun run --cwd packages/vault test test/password-managers.test.ts`
-  - `bun run --cwd packages/vault test`
-  - `bun run --cwd packages/vault typecheck`
-  - `bun run --cwd packages/vault build`
-  - focused incomplete-marker scan on `packages/vault`
-  - `cmp -s packages/vault/CLAUDE.md packages/vault/AGENTS.md`
+- Remaining docs markers include:
+  - security incident-runbook contact placeholders mirrored from the outer
+    milady monorepo; completing them requires the real pager, chat platform,
+    status-page domain, and role-owner addresses;
+  - connector/cloud examples that deliberately use placeholder URLs, tokens,
+    `placeholder.invalid`, or `xxx` values to avoid publishing real
+    credentials before deployment-specific values exist;
+  - historical changelog, architecture, and gap-analysis pages preserving past
+    placeholder, stub, incomplete, or not-wired language as release/history
+    records;
+  - documentation uses of `todo` for the LifeOps/Todo feature names and
+    generated inventory caveats, not unfinished docs-package work.
 
-### plugins/plugin-hyperliquid-app
+### packages/security
 
-- Implemented the advertised `kind=funding` read path instead of returning a
-  static not-wired explanation. The plugin now exposes
-  `GET /api/hyperliquid/funding`, fetches `metaAndAssetCtxs` from the
-  Hyperliquid Info API, parses current funding/premium/mark/oracle/open-interest
-  fields, and lets the action optionally filter by `coin` / `asset` / `symbol`.
-- Preserved the package's explicit read-only execution contract: POST routes and
-  `place_order` still return disabled-execution responses. Reworded docs/tests
-  from scaffold language to read-only app language.
-- Verified with:
-  - `bun run --cwd plugins/plugin-hyperliquid-app test`
-  - `bun run --cwd plugins/plugin-hyperliquid-app build:types`
-  - `bun run --cwd plugins/plugin-hyperliquid-app build`
-  - focused incomplete-marker scan on `plugins/plugin-hyperliquid-app`
-    (remaining hits are `futures` market keyword, Vitest global helpers, and
-    a `plugin-todos` test alias)
-  - `cmp -s plugins/plugin-hyperliquid-app/CLAUDE.md plugins/plugin-hyperliquid-app/AGENTS.md`
-
-### plugins/plugin-twitch
-
-- Reworded the connector-account provider from stale multi-account
-  "scaffolding" language to the implemented account-resolution helper contract.
-- Verified with:
-  - `bun run --cwd plugins/plugin-twitch test`
-  - `bun run --cwd plugins/plugin-twitch build`
-  - focused incomplete-marker scan on `plugins/plugin-twitch`
-  - `cmp -s plugins/plugin-twitch/CLAUDE.md plugins/plugin-twitch/AGENTS.md`
-
-### plugins/plugin-openai
-
-- Reworded the package guide's `prompts/evaluators.json` entry from an
-  "empty evaluator stub" to the shipped empty evaluator list contract. The
-  plugin intentionally registers model handlers only.
-- Reworded `__tests__/native-plumbing.shape.test.ts` comments so the test
-  runtime and dotenv-pinned values are described without implying an unfinished
-  runtime stub. Vitest's `vi.stubEnv` / `vi.unstubAllEnvs` names remain as
-  framework API names.
-- Verified with:
-  - `bun run --cwd plugins/plugin-openai test`
-  - `bun run --cwd plugins/plugin-openai typecheck`
-  - `bun run --cwd plugins/plugin-openai build`
-  - `bunx vitest run plugins/plugin-openai/__tests__/native-plumbing.shape.test.ts`
-  - focused incomplete-marker scan on `plugins/plugin-openai` (remaining hits
-    are `OPENAI_EXPERIMENTAL_TELEMETRY` / `experimental_telemetry` API names and
-    Vitest env helper calls)
-  - `cmp -s plugins/plugin-openai/CLAUDE.md plugins/plugin-openai/AGENTS.md`
-
-### packages/shared
-
-- Reworded the macOS permission deep-link helper's Win32/Linux behavior from
-  "stubbed" language to its explicit warning-only fallback contract. No behavior
-  changed; the utility remains macOS privacy-pane deep links plus unsupported
-  platform guidance.
-- Verified with:
-  - `bun run --cwd packages/shared typecheck`
-  - `bun run --cwd packages/shared build:dist`
-  - focused incomplete-marker scan on `src/utils/permission-deep-links.ts` and
-    `.d.ts`
-  - `cmp -s packages/shared/CLAUDE.md packages/shared/AGENTS.md`
-- Reworded local-inference network-policy, Kokoro, voice-model, GPU-profile,
-  and context-scaling markers from stale scaffold/placeholder/future language
-  to current contracts: platform shims live in plugin-local-inference, Kokoro
-  ONNX is an unavailable shared adapter with platform-specific implementations,
-  voice-model hashes are pinned audit data, and 131k+ context is
-  validation-gated.
-- Verified the local-inference cleanup with:
-  - `bun run --cwd packages/shared test -- src/local-inference/voice-models.test.ts`
-  - `bun run --cwd packages/shared typecheck`
-  - `bun run --cwd packages/shared build:dist`
-  - focused incomplete-marker scan on `packages/shared/src/local-inference` and
-    `packages/shared/src/local-inference-gpu`
-- Reworded the browser tab kit's `isTrusted` limitation from deferred future
-  work to the current contract: pages that gate on trusted browser events
-  require a CDP-backed automation path.
-- Verified the browser-tab-kit cleanup with:
-  - `bun run --cwd packages/shared typecheck`
-  - focused marker scan on `packages/shared/src/utils/browser-tab-kit-types.ts`
-  - `cmp -s packages/shared/CLAUDE.md packages/shared/AGENTS.md`
-- Reworded the package-local cycle-guard note for `src/config/env-vars.ts` from
-  an "empty stub" to an empty compatibility module, and described
-  `src/config/config.ts` as the real compatibility surface.
-- Verified the cycle-guard docs cleanup with:
-  - focused incomplete-marker scan on `packages/shared/CLAUDE.md` and
-    `packages/shared/AGENTS.md`
-  - `bun run --cwd packages/shared typecheck`
-  - `bun run --cwd packages/shared build:dist`
-  - `cmp -s packages/shared/CLAUDE.md packages/shared/AGENTS.md`
-
-### packages/app-core
-
-- Loaded the package-local guide before working in `packages/app-core`. The
-  guide pair is currently divergent before this pass, so no guide edits were
-  made.
-- Reworded source comments in `src/styles/electrobun-mac-window-drag.css`,
-  `src/services/vault-mirror.ts`, `src/runtime/tts-cache-wiring.ts`,
-  `src/api/cloud-voice-routes.ts`, `src/api/internal-routes.ts`, and
-  `src/api/training-benchmarks.ts` so engine compatibility, cycle guards,
-  TTS cache revisioning, cloud-voice fail-closed behavior, task deadlines, and
-  benchmark schema migrations are described as current contracts rather than
-  speculative future work.
-- Verified with:
-  - focused incomplete-marker scan on the touched app-core source files
-  - `bunx biome check packages/app-core/src/styles/electrobun-mac-window-drag.css packages/app-core/src/services/vault-mirror.ts packages/app-core/src/runtime/tts-cache-wiring.ts packages/app-core/src/api/cloud-voice-routes.ts packages/app-core/src/api/internal-routes.ts packages/app-core/src/api/training-benchmarks.ts`
-- The app-core typecheck blocker surfaced by this pass was fixed in
-  `packages/agent/src/services/remote-plugin-bridge.ts`: the staged
-  `worker-action-callback` envelope is now source-typed locally and dispatched
-  before the generated manifest message-union switch, so workspace typecheck no
-  longer depends on ignored `plugin-remote-manifest/dist` declarations being
-  regenerated first.
-- Verified the bridge/typecheck fix with:
-  - `bun run --cwd packages/plugin-remote-manifest typecheck`
-  - `bun run --cwd packages/plugin-remote-manifest test`
-  - `bun run --cwd packages/plugin-remote-manifest build`
-  - `bun run --cwd packages/agent test src/services/remote-plugin-bridge.test.ts`
-  - `bun run --cwd packages/agent typecheck`
-  - `bun run --cwd packages/app-core typecheck`
-  - `bunx biome check packages/agent/src/services/remote-plugin-bridge.ts packages/app-core/src/styles/electrobun-mac-window-drag.css packages/app-core/src/services/vault-mirror.ts packages/app-core/src/runtime/tts-cache-wiring.ts packages/app-core/src/api/cloud-voice-routes.ts packages/app-core/src/api/internal-routes.ts packages/app-core/src/api/training-benchmarks.ts`
-- Reworded another source-only app-core pass:
-  `src/api/secrets-manager-routes.ts` now describes external password-manager
-  creates as a vendor-specific UI contract and calls the test injection a fake
-  exec; `src/api/auth.ts`, `src/api/server.ts`,
-  `src/services/connector-target-catalog.ts`, and
-  `src/services/inference-abort.ts` now describe early-boot, later-read,
-  connector-slot, and local-model behavior without placeholder/future wording.
-  Generated declaration files were left untouched.
-- Verified with:
-  - focused incomplete-marker scan on those five touched app-core source files
-  - `bunx biome check packages/app-core/src/api/secrets-manager-routes.ts packages/app-core/src/api/auth.ts packages/app-core/src/api/server.ts packages/app-core/src/services/connector-target-catalog.ts packages/app-core/src/services/inference-abort.ts`
-  - `bun run --cwd packages/app-core typecheck`
-
-### plugins/plugin-telegram
-
-- Reworded Telegram connector-account and owner-pairing markers to reflect
-  provider contracts: bot-token accounts do not use OAuth, absent backend
-  verifier services fail closed, and Markdown conversion uses temporary
-  sentinel tokens rather than unfinished placeholders.
-- Renamed the reaction event's partial original-message value to
-  `reactionMessageSnapshot` and removed placeholder cast comments.
-- Verified with:
-  - `bun run --cwd plugins/plugin-telegram test`
-  - `bun run --cwd plugins/plugin-telegram build`
-  - focused incomplete-marker scan on `plugins/plugin-telegram` (remaining
-    hits are Vitest `stubGlobal` calls)
-  - `cmp -s plugins/plugin-telegram/CLAUDE.md plugins/plugin-telegram/AGENTS.md`
-
-### plugins/plugin-github
-
-- Reworded the connector account provider's env-account synthesis comment from
-  stale "not yet materialized" wording to the current fallback behavior when no
-  GitHub connector rows are persisted.
-- Verified with:
-  - `bun run --cwd plugins/plugin-github test`
-  - `bun run --cwd plugins/plugin-github typecheck`
-  - `bun run --cwd plugins/plugin-github build`
-  - focused incomplete-marker scan on `plugins/plugin-github` (remaining hits
-    are Vitest `stubGlobal` calls)
-  - `cmp -s plugins/plugin-github/CLAUDE.md plugins/plugin-github/AGENTS.md`
-
-### plugins/plugin-background-runner
-
-- Updated native setup docs from stale cross-wave runner-JS scaffold guidance
-  to the current canonical checked-in runner files under
-  `packages/app-core/platforms/{ios,android}/.../runners/eliza-tasks.js`.
-  The plugin's unit tests verify the runner body and assert iOS/Android copies
-  remain byte-identical.
-- Reworded source/test comments from future/stub wording to current service
-  and test-fake contracts.
-- Verified with:
-  - `bun run --cwd plugins/plugin-background-runner test`
-  - `bun run --cwd plugins/plugin-background-runner typecheck`
-  - `bun run --cwd plugins/plugin-background-runner build`
-  - focused incomplete-marker scan on `plugins/plugin-background-runner`
-  - `cmp -s plugins/plugin-background-runner/CLAUDE.md plugins/plugin-background-runner/AGENTS.md`
-
-### plugins/plugin-wallet
-
-- Loaded the package-local guide before working in `plugins/plugin-wallet`.
-- Removed stale Meteora DLMM TODOs by making the default bin range configurable
-  via `METEORA_RANGE_INTERVAL_BINS`, validating configured pool addresses for
-  the Meteora position provider, and documenting the DLMM full-close behavior
-  for core LP removal.
-- Replaced the concentrated-liquidity placeholder service with deterministic
-  in-memory range-plan records, position lookup, and rebalance updates. The
-  service now reports protocol submission ownership through metadata instead
-  of throwing "coming soon" errors.
-- Replaced Steer LP token-price placeholder behavior with DexScreener token
-  price reads on supported EVM chains, preserving `null` when no indexed pair
-  has a usable USD price.
-- Made yield-cost SOL pricing runtime-configurable via `LP_SOL_PRICE_USD` /
-  `SOL_PRICE_USD`, added audit-log hash-chain row creation/verification
-  helpers, changed payment rail status wording from roadmap to planned, and
-  reworded Steward Solana signing as an explicit unavailable backend capability.
-- Reworded remaining wallet source/doc markers that described reserved APIs,
-  browser proxy entries, compatibility hooks, extracted route ownership, and
-  unsupported LP protocol operations.
-- Verified with:
-  - `bun run --cwd plugins/plugin-wallet test`
-  - `bun run --cwd plugins/plugin-wallet check`
-  - `bun run --cwd plugins/plugin-wallet build`
-  - focused incomplete-marker scan on `plugins/plugin-wallet` excluding
-    `dist`, `node_modules`, `coverage`, and vendor `contracts`
-  - `cmp -s plugins/plugin-wallet/CLAUDE.md plugins/plugin-wallet/AGENTS.md`
-
-### packages/examples/code
-
-- No package-local `CLAUDE.md` / `AGENTS.md` exists, so root guidance applied.
-- Replaced the `/task` slash-command placeholder with real command handling
-  against the existing `CodeTaskService`: `list`, `current`, `switch`,
-  `pause`, `resume`, `cancel`, and `pane show|hide|auto|toggle`.
-- The handler refreshes task state into the UI store after service reads and
-  mutations, supports number/id/name lookup, and preserves `/tasks` shortcut
-  behavior.
-- Verified with:
-  - `bun run --cwd packages/examples/code typecheck`
-  - `bun run --cwd packages/examples/code test` (passes; no matching test files)
-  - `bun run --cwd packages/examples/code build`
-  - focused incomplete-marker scan on `packages/examples/code` (remaining hits
-    are README search text, a streaming-response variable named `placeholder`,
-    and the `todos` metadata field)
-
-### packages/scripts
-
-- No package-local `CLAUDE.md` / `AGENTS.md` exists, so root guidance applied.
-- Reworded the capability-router plugin-surface audit failure from "not
-  implemented" to a precise missing fixture-server case.
-- Renamed the sweeper unavailable helper from `_not-yet-implemented.mjs` to
-  `_unavailable.mjs`, updated all sweeper imports, and changed the orchestrator
-  yellow status from `not-yet-implemented` to `unavailable`.
-- Renamed the llama-cpp-capacitor Android MTP smoke-build CMake injection from
-  `*_STUB_*` / `eliza-mtp-stub.cpp` terminology to `*_SMOKE_*` /
-  `eliza-mtp-smoke.cpp`, preserving the no-op smoke-library behavior used when
-  `ELIZA_SKIP_MTP_ANDROID_LIB` is enabled, and aligned the checked-in
-  dependency patch with the script.
-- Renamed procedural phase labels in repo scripts to neutral step labels where
-  they were orchestration headings rather than roadmap stages.
-- Reworded the benchmark version remediation matrix action text so missing
-  history is described as the selected current row needing a previous row,
-  without speculative future-comparison wording.
-- Reworded benchmark objective evidence-map copy so secret-safe rerun command
-  templates are described as redacted rerun commands rather than
-  placeholder-only commands.
-- Reworded benchmark review-readiness ledger copy so external-gate rerun
-  command affordances are described as redacted rerun commands, not placeholder
-  commands.
-- Reworded benchmark analysis script descriptions so manual-review outputs are
-  durable review notes rather than note stubs, and model-artifact reruns are
-  described as artifact-wrapper reruns instead of future runs.
-- Reworded the provisioning-worker KMS preflight fixture error from
-  "Steward endpoint not yet available" to "Steward endpoint unavailable".
-- Renamed `packages/scripts/benchmark/stub-agent-server.mjs` to
-  `synthetic-agent-server.mjs` and updated its header, usage text, synthetic
-  reply metadata, model paths, job ids, bot name, 404 message, and log prefix
-  to describe the deterministic benchmark harness instead of a stub.
-- Verified the benchmark server rename with:
-  - focused incomplete-marker scan on
-    `packages/scripts/benchmark/synthetic-agent-server.mjs`
-  - `rg -n "stub-agent-server|benchmark/stub-agent-server" . -g '!**/node_modules/**' -g '!**/dist/**' -g '!**/.git/**' -g '!packages/benchmarks/**' -g '!packages/training/out/**'`
-  - `bun build packages/scripts/benchmark/synthetic-agent-server.mjs --target=bun --outfile=/tmp/synthetic-agent-server-check.js`
-- Reworded the provisioning-worker daemon header from a Worker-runtime stub to
-  a Worker-runtime shim: the Cloudflare cron boundary delegates to the Node
-  sidecar because provisioning uses Node-only SSH/Docker modules.
-- Renamed `packages/scripts/launch-qa/run-ui-smoke-stub.mjs` to
-  `run-ui-smoke-offline.mjs`, updated launch-QA task references, and reworded
-  the task description from a stub stack to a deterministic offline Playwright
-  UI smoke suite. While verifying the rename, fixed the harness root/import
-  paths so it resolves `packages/app` and `packages/app-core` from the real
-  repository root rather than `packages/packages`.
-- Verified with:
-  - `bun packages/scripts/audit-capability-router-plugin-surface.ts`
-  - `bun packages/scripts/sweeper/run.mjs --service gmail --dry-run`
-  - `node --check packages/scripts/patch-llama-cpp-capacitor.mjs`
-  - `node packages/scripts/patch-llama-cpp-capacitor.mjs`
-  - `node --check scripts/consolidate-packages.mjs`
-  - `bash -n scripts/build-riscv64-artifacts.sh`
-  - `node --check packages/scripts/lint-no-vi-mocks.mjs`
-  - `node --check packages/scripts/triage-tests.mjs`
-  - focused incomplete-marker scan on `packages/scripts/sweeper` and
-    `packages/scripts/audit-capability-router-plugin-surface.ts`
-  - focused marker scan on the touched script and patch files
-  - focused incomplete-marker scan on
-    `packages/scripts/build-benchmark-version-remediation-matrix.mjs`
-  - `bun build packages/scripts/build-benchmark-version-remediation-matrix.mjs --target=bun --outfile=/tmp/build-benchmark-version-remediation-matrix-check.js`
-  - focused incomplete-marker scan on
-    `packages/scripts/build-benchmark-objective-evidence-map.mjs`
-  - `bun build packages/scripts/build-benchmark-objective-evidence-map.mjs --target=bun --outfile=/tmp/build-benchmark-objective-evidence-map-check.js`
-  - focused incomplete-marker scan on
-    `packages/scripts/build-benchmark-review-readiness-ledger.mjs`
-  - `bun build packages/scripts/build-benchmark-review-readiness-ledger.mjs --target=bun --outfile=/tmp/build-benchmark-review-readiness-ledger-check.js`
-  - focused incomplete-marker scan on
-    `packages/scripts/build-benchmark-analysis-reports.mjs` and
-    `packages/scripts/build-live-test-agent-review.mjs`
-  - `bun build packages/scripts/build-benchmark-analysis-reports.mjs --target=bun --outfile=/tmp/build-benchmark-analysis-reports-check.js`
-  - `bun build packages/scripts/build-live-test-agent-review.mjs --target=bun --outfile=/tmp/build-live-test-agent-review-check.js`
-  - focused incomplete-marker scan on
-    `packages/scripts/cloud/admin/daemons/provisioning-worker.test.ts`
-  - focused incomplete-marker scan on
-    `packages/scripts/cloud/admin/daemons/provisioning-worker.ts`
-  - `bun build packages/scripts/cloud/admin/daemons/provisioning-worker.ts --target=bun --external cloudflare:sockets --external cpu-features --outfile=/tmp/provisioning-worker-check.js`
-  - `bun build packages/scripts/cloud/admin/daemons/provisioning-worker.test.ts --target=bun --external cloudflare:sockets --external cpu-features --outfile=/tmp/provisioning-worker-test-check.js`
-  - focused incomplete-marker scan on
-    `packages/scripts/launch-qa/run-ui-smoke-offline.mjs` and
-    `packages/scripts/launch-qa/run.mjs`
-  - `node packages/scripts/launch-qa/run.mjs --list --suite all`
-  - `bun build packages/scripts/launch-qa/run-ui-smoke-offline.mjs --target=node --outfile=/tmp/run-ui-smoke-offline-check.js`
-  - `node packages/scripts/launch-qa/run-ui-smoke-offline.mjs --grep '__nonexistent_launch_qa_probe__'`
-    reached the offline stack and failed at Playwright's expected "No tests
-    found" selection error; no matching smoke-stack processes remained after
-    shutdown.
-- Verification blocker: direct `bun test
-  packages/scripts/cloud/admin/daemons/provisioning-worker.test.ts` crashed in
-  Bun canary before assertions with `panic: index out of bounds`; the
-  externalized transpile check passed for the edited test module.
-
-### packages/cloud-api
-
-- Loaded the package-local guide before working in `packages/cloud-api`.
-- Reworded node-only Worker 501 routes from TODO/stub wording to explicit
-  Worker-boundary contracts for Vertex tuning (`node:fs`) and Docker/SSH admin
-  routes (`ssh2` / `DockerSSHClient`). Runtime behavior remains the tested
-  `501 not_yet_migrated` response.
-- Verified with:
-  - `bun run --cwd packages/cloud-api typecheck`
-  - focused marker scan on the touched route files
-  - `cmp -s packages/cloud-api/CLAUDE.md packages/cloud-api/AGENTS.md`
-
-### packages/shared
-
-- Loaded the package-local guide before working in `packages/shared`.
-- Reworded the browser tab-kit `isTrusted` note from deferred future work to
-  the explicit CDP-backed browser automation requirement.
-- Verified with:
-  - `bun run --cwd packages/shared typecheck`
-  - focused marker scan on `src/utils/browser-tab-kit-types.ts`
-  - `cmp -s packages/shared/CLAUDE.md packages/shared/AGENTS.md`
-
-### packages/native/plugins/silero-vad-cpp
-
-- Loaded the package-local guide before working in
-  `packages/native/plugins/silero-vad-cpp`.
-- Replaced stale stub/phase documentation with the current native CPU runtime
-  status: `src/silero_vad_runtime.c` implements the public ABI, the converter
-  emits the pinned v5 16 kHz GGUF, and SIMD/ggml remain backend upgrades behind
-  the same ABI.
-- Renamed the build-only ABI test from `silero_vad_stub_smoke` to
-  `silero_vad_abi_smoke`, updated CMake and RISC-V verification scripts, and
-  corrected state/runtime comments to match the shipped 128-dimensional model
-  state.
-- Verified with:
-  - `cmake -B build -S .`
-  - `cmake --build build -j`
-  - `python3 scripts/silero_vad_to_gguf.py --output build/silero-vad-v5.gguf`
-  - `ctest --test-dir build --output-on-failure`
-  - focused incomplete-marker scan on the package excluding `build`
-  - `cmp -s CLAUDE.md AGENTS.md`
-
-### packages/native/plugins/wakeword-cpp
-
-- Loaded the package-local guide before working in
-  `packages/native/plugins/wakeword-cpp`.
-- Replaced stale README/header comments that still described a public-ABI
-  `-ENOSYS` stub with the current native CPU runtime contract.
-- Renamed the build-only ABI smoke from `wakeword_stub_smoke` to
-  `wakeword_abi_smoke`, updated CMake, test log labels, package guides, and
-  the RISC-V artifact checker.
-- Verified with:
-  - `cmake -B build -S .`
-  - `cmake --build build -j`
-  - `ctest --test-dir build -R 'wakeword_(abi_smoke|melspec_test|window_test|parity_test)' --output-on-failure`
-  - `bash -n scripts/check-riscv64-artifacts.sh`
-  - focused incomplete-marker scan on the package excluding `build`
-  - `cmp -s CLAUDE.md AGENTS.md`
-- Runtime fixture note: `wakeword_runtime_test` correctly refuses to run
-  without `build/wakeword/hey-eliza.{melspec,embedding,classifier}.gguf`.
-  `rg --files` found no matching ONNX bundle in this checkout, so the GGUFs
-  could not be generated locally.
-
-### packages/native/plugins/face-cpp
-
-- Loaded the package-local guide before working in
-  `packages/native/plugins/face-cpp`.
-- Replaced stale stub/phase documentation with the current pure-C scalar
-  BlazeFace + face-embed runtime contract, including concrete converter pins
-  and remaining rollout work.
-- Renamed the build-only ABI smoke from `face_stub_smoke` to
-  `face_abi_smoke`, updated CMake, test log labels, package guides, and the
-  RISC-V artifact checker.
-- Fixed two C warning sources exposed during verification: misleading
-  `if`/`goto` indentation in the GGUF reader and an undersized embedder tensor
-  name buffer.
-- Verified with:
-  - `cmake -B build -S .`
-  - `cmake --build build -j`
-  - `ctest --test-dir build --output-on-failure`
-  - `bash -n scripts/check-riscv64-artifacts.sh`
-  - focused incomplete-marker scan on the package excluding `build`
-  - `cmp -s CLAUDE.md AGENTS.md`
-
-### packages/native/plugins/doctr-cpp
-
-- Loaded the package-local guide before working in
-  `packages/native/plugins/doctr-cpp`.
-- Replaced the `-ENOSYS` public ABI stub with `src/doctr_runtime.c`,
-  which opens and validates docTR GGUF metadata, stores the CTC vocab,
-  dispatches detection/recognition to the existing pure-C reference
-  forwards, and reports `cpu-ref`.
-- Switched CMake from the stub-only source list to the GGUF reader,
-  image helpers, kernels, DBNet postprocess, CTC decoder, detector
-  forward, recognizer forward, and runtime glue.
-- Renamed `doctr_stub_smoke` to `doctr_abi_smoke`, updated test
-  expectations from `-ENOSYS` to real-backend error contracts, and
-  updated the RISC-V artifact checker.
-- Replaced stale guide/README/header/converter comments with the current
-  native-runtime contract and remaining rollout work.
-- Verified with:
-  - `cmake -B build -S .`
-  - `cmake --build build -j`
-  - `ctest --test-dir build --output-on-failure`
-  - `bash -n scripts/check-riscv64-artifacts.sh`
-  - focused incomplete-marker scan on the package excluding `build`
-  - `cmp -s CLAUDE.md AGENTS.md`
-- Rollout note: parity fixtures and plugin-vision production wiring remain
-  explicit follow-up work; the package no longer exposes an `ENOSYS` ABI.
-
-### plugins/plugin-gitpathologist
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-gitpathologist`.
-- Renamed procedural pipeline "Phase 1..5" labels to neutral "Step 1..5"
-  labels in the package guide and pipeline file headers.
-- Reworded the classifier comment about optional LLM refinement so it no
-  longer reads like deferred roadmap work.
-- Verified with:
-  - `bun run --cwd plugins/plugin-gitpathologist typecheck`
-  - `bun run --cwd plugins/plugin-gitpathologist test`
-  - focused incomplete-marker scan on the package
-  - `cmp -s CLAUDE.md AGENTS.md`
-
-### packages/shared + packages/tui + plugins/plugin-form + plugins/plugin-shopify-ui
-
-- Loaded the relevant package-local guides before working in
-  `packages/tui`, `plugins/plugin-form`, and `plugins/plugin-shopify-ui`;
-  reused the already-loaded `packages/shared` guide context.
-- Synchronized the browser tab kit declaration wording with the source
-  contract: sites that gate on `isTrusted` require host-controlled CDP
-  automation.
-- Renamed procedural TUI viewport repro comments from "Phase" to "Step".
-- Reworded form type comments that described extension metadata and empty
-  field state without changing the public `placeholder` field name.
-- Reworded the Shopify dashboard 404 comment as a disconnected-route state,
-  not unfinished service startup work.
-- Verified with:
-  - `bun run --cwd packages/shared typecheck`
-  - `bun run --cwd packages/tui build`
-  - `bun run --cwd packages/tui test`
-  - `bun run --cwd plugins/plugin-form typecheck`
-  - `bun run --cwd plugins/plugin-form test`
-  - focused incomplete-marker scans on the touched files
-  - guide-pair `cmp -s` checks for the packages with local guides
-
-### packages/plugin-worker-runtime
-
-- Loaded the package-local guide before working in
-  `packages/plugin-worker-runtime`.
-- Tightened the remote runtime contract around event registration:
-  `Plugin.events` remains the supported worker-boundary mechanism because
-  bootstrap announces stable RPC handler ids, while live
-  `runtime.registerEvent` callbacks cannot be serialized over host-RPC.
-- Removed `registerEvent` from the advertised host-RPC supported-method list,
-  updated the thrown error and unit expectation, and synchronized README plus
-  CLAUDE/AGENTS wording.
-- Verified with:
-  - `bun run --cwd packages/plugin-worker-runtime typecheck`
-  - `bun run --cwd packages/plugin-worker-runtime test`
-  - focused incomplete-marker scan on source/docs
-  - `cmp -s packages/plugin-worker-runtime/CLAUDE.md packages/plugin-worker-runtime/AGENTS.md`
-
-### deploy/systemd
-
-- Confirmed there is no deploy-local guide for `deploy/systemd`.
-- Added `deploy/systemd/smoke-test.sh`, a non-mutating static smoke test that
-  renders unit templates, verifies substitution tokens are resolved,
-  syntax-checks helper scripts plus the installer, and runs
-  `systemd-analyze verify` against a temporary parser copy when available.
-- Updated the README layout and smoke-test section so the bundle has a
-  concrete verification command instead of a stale untested-host warning.
-- Verified with:
-  - `deploy/systemd/smoke-test.sh`
-  - focused incomplete-marker scan on `deploy/systemd`
-
-### plugins/plugin-app-control
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-app-control`.
-- Reworded view navigation and edit-handler comments to describe shell 501
-  fallback behavior and the coding-agent scope boundary without implying
-  unfinished handler work.
-- Reworded compatibility comments in protected-app and app-registry code from
-  generic future work to newer-version/back-compat behavior.
-- Renamed the worker action-handler runtime helper from `makeRuntimeStub` to
-  `makeSandboxRuntimeFacade`; it exposes the gated worker runtime surface and
-  is not a test double.
-- Verified with:
-  - `bun run --cwd plugins/plugin-app-control typecheck`
-  - `bun run --cwd plugins/plugin-app-control test`
-  - focused incomplete-marker scan on package source/docs
-  - focused incomplete-marker scan on
-    `src/workers/app-worker-entry.ts` after the runtime-facade rename
-  - `cmp -s plugins/plugin-app-control/CLAUDE.md plugins/plugin-app-control/AGENTS.md`
-- Tooling note: a direct `bun test
-  plugins/plugin-app-control/src/services/__tests__/app-registry-permissions.test.ts`
-  invocation crashed in Bun canary before assertions; the package's configured
-  Vitest suite passed after the same comment-only change.
-
-### plugins/plugin-task-coordinator
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-task-coordinator`.
-- Reworded slot-fill docs from placeholder terminology to empty-slot defaults.
-- Clarified Odysseus port comments around local-storage notes, task add states,
-  search settings, research, disabled slash rows, and disabled cookbook controls
-  as explicit frontend/runtime boundaries instead of deferred implementation
-  notes.
-- Renamed Odysseus phase/roadmap comments to current shell and reuse-existing
-  ACP wording.
-- Verified with:
-  - `bun run --cwd plugins/plugin-task-coordinator build:types`
-  - `bun run --cwd plugins/plugin-task-coordinator test`
-  - focused incomplete-marker scan on package source/docs
-  - `cmp -s plugins/plugin-task-coordinator/CLAUDE.md plugins/plugin-task-coordinator/AGENTS.md`
-- Remaining broad-scan hits in this package are UI `placeholder=` attributes,
-  CSS `::placeholder` selectors, and domain vocabulary such as todo/status
-  fields.
+- Remaining Security markers are in TEE-native planning/threat-model docs and
+  test assertions:
+  - `docs/tee-native/*` intentionally records unresolved silicon/attestation
+    gaps: development-only RoT state, mock evidence bridges, secure-boot/debug
+    claims requiring fused keys, and lab-blocked side-channel/fault-injection
+    proof. These require real hardware/TEE evidence and should stay visible.
+  - `src/__tests__/dispatcher.test.ts` inspects Vitest `mock.calls` for injected
+    sink error handling; this is test API terminology, not a product mock.
 
 ### packages/training
 
-- Loaded the package-local guide before working in `packages/training`.
-- Reworded the prompt-builder merge-policy comment so it describes the current
-  v1-preferred fallback behavior without "not yet" wording.
-- Verified with:
-  - `python3 -m py_compile packages/training/scripts/build_prompts.py`
-  - focused incomplete-marker scan on the script and package docs
-  - `cmp -s packages/training/CLAUDE.md packages/training/AGENTS.md`
-- Remaining focused hit is Python's `from __future__ import annotations`.
-
-### packages/native/ios-deps
-
-- Confirmed there is no package-local CLAUDE/AGENTS guide for
-  `packages/native/ios-deps`.
-- Added `sqlite-vec/build-ios.sh`, a host-gated iOS xcframework build harness
-  for the pinned sqlite-vec release with `all`, `device`, `simulator`, and
-  `clean` commands.
-- Wired package scripts for sqlite-vec build/clean commands and included
-  sqlite-vec in the package `build` script; both llama.cpp and sqlite-vec skip
-  cleanly on non-macOS hosts unless the local iOS build env vars are set.
-- Replaced excluded native dependency pins in `VERSIONS` with explicit
-  `excluded-from-ios-build` values, updated the llama.cpp pin guard, and
-  refreshed sqlite-vec docs from manual-only status to the new build command.
-- Verified with:
-  - `bash -n packages/native/ios-deps/llama.cpp/build-ios.sh`
-  - `bash -n packages/native/ios-deps/sqlite-vec/build-ios.sh`
-  - `bun run --cwd packages/native/ios-deps build:sqlite-vec`
-  - `bun run --cwd packages/native/ios-deps build`
-  - focused incomplete-marker scan on `packages/native/ios-deps` excluding
-    build/dist outputs
-
-### packages/native/plugins/qjl-cpu
-
-- Loaded the package-local guide before working in
-  `packages/native/plugins/qjl-cpu`.
-- Reworded the RVV int8 Zvqdot note as extension-readiness guidance; current
-  RVV silicon uses the implemented widening multiply/add path.
-- Renamed empty-translation-unit typedef markers from `*_stub` to
-  `*_empty_tu_marker` across architecture-gated C files.
-- Reworded README source-of-truth language now that the llama.cpp quant type
-  exists in the fork.
-- Verified with:
-  - `cmake -B build -S .`
-  - `cmake --build build -j`
-  - `./build/qjl_int8_smoke`
-  - `./build/qjl_avxvnni_smoke`
-  - focused incomplete-marker scan on the package excluding `build`
-  - `cmp -s packages/native/plugins/qjl-cpu/CLAUDE.md packages/native/plugins/qjl-cpu/AGENTS.md`
-- Remaining focused hit is Python's `from __future__ import annotations`.
-
-### packages/native/plugins/polarquant-cpu + packages/native/plugins/turboquant-cpu
-
-- Loaded package-local guides before working in both native quant packages.
-- Corrected PolarQuant GGUF type drift from stale `Q4_POLAR=45` references to
-  the current elizaOS fork value `GGML_TYPE_Q4_POLAR=47`, including converter
-  constants, converter tests, README, and fork-integration patch docs.
-- Fixed `scripts/test_converter.py` repo-root calculation so it can import the
-  training PolarQuant reference from the current checkout.
-- Reworded PolarQuant residual/fork integration comments and renamed
-  empty-translation-unit typedef markers from `*_stub` to
-  `*_empty_tu_marker`.
-- Reworded TurboQuant docs/CMake comments so the current scalar + RVV lane
-  matrix is explicit and x86/arm64 scalar fallback is not described as
-  placeholder work.
-- Verified with:
-  - `cmake -B build -S .`
-  - `cmake --build build -j`
-  - `ctest --test-dir build --output-on-failure`
-  - `python3 scripts/test_converter.py` for PolarQuant
-  - the same CMake build + `ctest` sequence for TurboQuant
-  - focused incomplete-marker scan on both packages excluding `build`
-  - guide-pair `cmp -s` checks for both packages
-- Remaining focused hits are Python's `from __future__ import annotations`.
-
-### plugins/plugin-registry
-
-- Loaded the package-local guide before working in `plugins/plugin-registry`.
-- Reworded stale "Phase 4F" extraction banners in the public barrel, route
-  files, and source declaration file as consolidated plugin-registry surface
-  notes.
-- Reworded the route-extension guide step so adding a new
-  `PluginRouteContext` helper is described directly.
-- Verified with:
-  - `bun run --cwd plugins/plugin-registry build`
-  - focused incomplete-marker scan on the package excluding `dist`
-  - `cmp -s plugins/plugin-registry/CLAUDE.md plugins/plugin-registry/AGENTS.md`
-- Previous verification blocker was cleared by the source-level
-  `packages/agent/src/services/remote-plugin-bridge.ts` callback-envelope
-  typing fix recorded under `packages/app-core`.
-- `plugins/plugin-registry typecheck` then exposed a separate source-config
-  gap: it imports `@elizaos/ui` source, whose dynamic view loader imports
-  `@elizaos/plugin-training`, but the registry tsconfig did not include UI's
-  host-external declaration for that package. Added the same path/include used
-  by `packages/ui` so typecheck no longer depends on ignored
-  `plugins/plugin-training/dist/*.d.ts` output. `bun run --cwd
-  plugins/plugin-training build:types` was also run to refresh the local
-  ignored dist state during diagnosis.
-- Verified the cleared blockers with:
-  - `bun run --cwd plugins/plugin-registry typecheck`
-  - `bun run --cwd packages/app-core typecheck`
-  - `bunx biome check plugins/plugin-registry/tsconfig.json packages/agent/src/services/remote-plugin-bridge.ts`
-
-### plugins/plugin-agent-skills
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-agent-skills`.
-- Reworded consolidated-code phase comments in the barrel, tsup config, and
-  service configuration sections.
-- Reworded `__NODE_MANAGER__` install-command placeholder comments as command
-  token resolution.
-- Verified with:
-  - `bun run --cwd plugins/plugin-agent-skills typecheck`
-  - `bun run --cwd plugins/plugin-agent-skills test`
-  - focused incomplete-marker scan on the package excluding `dist`
-  - `cmp -s plugins/plugin-agent-skills/CLAUDE.md plugins/plugin-agent-skills/AGENTS.md`
-- Remaining focused hit is the literal skill taxonomy term `todo`.
-
-### plugins/plugin-training
-
-- Loaded the package-local guide before working in `plugins/plugin-training`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Corrected stale training-config docs: `backends` now documents the current
-  default `["native"]` in-process optimizer backend instead of a deferred
-  native-backend wiring phase.
-- Reworded the auto-training route section banner and DSPy/training-trigger
-  test-double comments without changing route or optimizer behavior.
-- Verified with:
-  - focused incomplete-marker scan on `src/` excluding UI placeholder props and
-    tests; remaining hits are the literal action name `OWNER_TODOS`.
-  - `bun run --cwd plugins/plugin-training build:types`
-  - `bun run --cwd plugins/plugin-training build:js`
-  - `cmp -s plugins/plugin-training/CLAUDE.md plugins/plugin-training/AGENTS.md`
-- Remaining broad package hits are UI `placeholder` props, prompt/dataset text
-  that instructs models to preserve placeholders, test fakes, and the synthetic
-  trajectory marker string `"placeholder call inserted"` used by
-  `isSyntheticTrajectory`.
-
-### plugins/plugin-native-phone
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-native-phone`.
-- Reworded Android-only platform docs so iOS is described as unsupported by
-  this Telecom bridge rather than "not implemented".
-- Reworded web `PhoneWeb` docs from stub terminology to safe web fallback, and
-  clarified declared Android permissions as capability declarations.
-- Verified with:
-  - `bun run --cwd plugins/plugin-native-phone build`
-  - focused incomplete-marker scan on the package excluding `dist`
-  - `cmp -s plugins/plugin-native-phone/CLAUDE.md plugins/plugin-native-phone/AGENTS.md`
-
-### plugins/plugin-native-screencapture
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-native-screencapture`; `CLAUDE.md` and `AGENTS.md` are
-  identical.
-- Reworded the web `ImageCapture` declaration comment as a TypeScript lib-set
-  compatibility declaration rather than a deferred browser API gap.
-- Verified with:
-  - focused incomplete-marker scan on `src/web.ts`
-  - `bun run --cwd plugins/plugin-native-screencapture test`
-  - `bun run --cwd plugins/plugin-native-screencapture build`
-  - `cmp -s plugins/plugin-native-screencapture/CLAUDE.md plugins/plugin-native-screencapture/AGENTS.md`
-- Remaining broad package hits are Vitest `stubGlobal` / `unstubAllGlobals`
-  API calls in `src/web.test.ts`.
-
-### plugins/plugin-native-eliza-tasks
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-native-eliza-tasks`.
-- Reworded the Android support note in `CLAUDE.md` / `AGENTS.md` so the
-  `capacitor.android` key is documented as package metadata retained for
-  Capacitor shape, not a future Android implementation marker.
-- Copied `CLAUDE.md` to `AGENTS.md` to keep the guide pair identical.
-- Verified with:
-  - focused incomplete-marker scan on both guide files
-  - `bun run --cwd plugins/plugin-native-eliza-tasks build`
-  - `bun run --cwd plugins/plugin-native-eliza-tasks test`
-  - `cmp -s plugins/plugin-native-eliza-tasks/CLAUDE.md plugins/plugin-native-eliza-tasks/AGENTS.md`
-
-### plugins/plugin-native-contacts
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-native-contacts`.
-- Reworded the `ContactsWeb` guide entries in `CLAUDE.md` / `AGENTS.md` from
-  no-op stub terminology to the intended web fallback contract:
-  `listContacts=[]`, writes throw.
-- Copied `CLAUDE.md` to `AGENTS.md` to keep the guide pair identical.
-- Verified with:
-  - focused incomplete-marker scan on both guide files
-  - `bun run --cwd plugins/plugin-native-contacts build`
-  - `cmp -s plugins/plugin-native-contacts/CLAUDE.md plugins/plugin-native-contacts/AGENTS.md`
-
-### plugins/plugin-native-calendar
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-native-calendar`.
-- Reworded the web/browser fallback docs in `CLAUDE.md` / `AGENTS.md` from
-  stub terminology to the intended `not_supported` fallback contract for
-  native-only calendar methods.
-- Copied `CLAUDE.md` to `AGENTS.md` to keep the guide pair identical.
-- Verified with:
-  - focused incomplete-marker scan on both guide files
-  - `bun run --cwd plugins/plugin-native-calendar build`
-  - `cmp -s plugins/plugin-native-calendar/CLAUDE.md plugins/plugin-native-calendar/AGENTS.md`
-
-### plugins/plugin-native-canvas
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-native-canvas`.
-- Reworded the method-extension guide in `CLAUDE.md` / `AGENTS.md` from
-  "native stubs/implementations" to "native handlers/implementations".
-- Copied `CLAUDE.md` to `AGENTS.md` to keep the guide pair identical.
-- Verified with:
-  - focused incomplete-marker scan on both guide files
-  - `bun run --cwd plugins/plugin-native-canvas build`
-  - `cmp -s plugins/plugin-native-canvas/CLAUDE.md plugins/plugin-native-canvas/AGENTS.md`
-- Remaining broad package hit is `createContextStub` in `src/web.test.ts`,
-  a test helper name.
-
-### plugins/plugin-native-mobile-agent-bridge
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-native-mobile-agent-bridge`.
-- Reworded web runtime docs and metadata in `CLAUDE.md`, `AGENTS.md`,
-  `README.md`, `package.json`, and `src/definitions.ts` from stub
-  terminology to the intended error-state web fallback contract.
-- Copied `CLAUDE.md` to `AGENTS.md` to keep the guide pair identical.
-- Verified with:
-  - focused incomplete-marker scan on all touched bridge files
-  - `bun run --cwd plugins/plugin-native-mobile-agent-bridge build`
-  - `bun run --cwd plugins/plugin-native-mobile-agent-bridge test`
-  - `cmp -s plugins/plugin-native-mobile-agent-bridge/CLAUDE.md plugins/plugin-native-mobile-agent-bridge/AGENTS.md`
-
-### plugins/plugin-native-macosalarm
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-native-macosalarm`; `CLAUDE.md` and `AGENTS.md` are
-  identical.
-- Renamed the helper test's fake process factory from `createSpawnStub` to
-  `createFakeSpawn`.
-- Verified with:
-  - focused incomplete-marker scan on `__tests__/helper.test.ts`
-  - `bun run --cwd plugins/plugin-native-macosalarm typecheck`
-  - `bun run --cwd plugins/plugin-native-macosalarm test`
-  - `bun run --cwd plugins/plugin-native-macosalarm build:ts`
-  - `cmp -s plugins/plugin-native-macosalarm/CLAUDE.md plugins/plugin-native-macosalarm/AGENTS.md`
-
-### plugins/plugin-facewear
-
-- Loaded the package-local guide before working in `plugins/plugin-facewear`.
-- Reworded the `MockSmartglassesTransport` guide entry in `CLAUDE.md` /
-  `AGENTS.md` from testing-stub wording to test-transport wording.
-- Copied `CLAUDE.md` to `AGENTS.md` to keep the guide pair identical.
-- Verified with:
-  - focused incomplete-marker scan on both guide files
-  - `bun run --cwd plugins/plugin-facewear typecheck`
-  - `bun run --cwd plugins/plugin-facewear build:types`
-  - `cmp -s plugins/plugin-facewear/CLAUDE.md plugins/plugin-facewear/AGENTS.md`
-- Remaining broad package hits are intentional ratchet tests that assert built
-  native/view artifacts are not placeholders or stubs, plus UI input
-  `placeholder` props.
-
-### plugins/plugin-device-filesystem
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-device-filesystem`; `CLAUDE.md` and `AGENTS.md` are
-  identical.
-- Reworded the Android README note so cross-app `MediaStore.Downloads`
-  sharing is documented as a host-app manifest boundary, not a deferred
-  feature.
-- Verified with:
-  - focused incomplete-marker scan on `README.md`
-  - `bun run --cwd plugins/plugin-device-filesystem check`
-  - `cmp -s plugins/plugin-device-filesystem/CLAUDE.md plugins/plugin-device-filesystem/AGENTS.md`
-
-### plugins/plugin-device-settings
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-device-settings`; `CLAUDE.md` and `AGENTS.md` are
-  identical.
-- Reworded the Android `WRITE_SETTINGS` README note as a normal missing
-  permission state, not a deferred grant state.
-- Verified with:
-  - focused incomplete-marker scan on `README.md`
-  - `bun run --cwd plugins/plugin-device-settings typecheck`
-  - `bun run --cwd plugins/plugin-device-settings test`
-  - `bun run --cwd plugins/plugin-device-settings build`
-  - `cmp -s plugins/plugin-device-settings/CLAUDE.md plugins/plugin-device-settings/AGENTS.md`
-
-### plugins/plugin-elizacloud
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-elizacloud`.
-- Reworded browser exports as inert browser shims, the cloud-login restart hook
-  as the current provisioning rebind contract, x402 auto-pay as outside the
-  route boundary, and waifu metering fallback text as current bridge behavior.
-- Updated matching source declaration comments in `src/*.d.ts` files.
-- Reworded test comments in cloud setup, Cloud TTS roundtrip, and Duffel
-  adapter tests so observer migrations, test-client replacement, queued fetch
-  responses, and offline HTTP fixtures are described without stale stub or
-  follow-up language. Vitest `vi.stubGlobal` / `vi.unstub*` calls remain as
-  framework API names.
-- Verified with:
-  - `bun run --cwd plugins/plugin-elizacloud typecheck`
-  - `bun run --cwd plugins/plugin-elizacloud test:unit`
-  - `bunx vitest run plugins/plugin-elizacloud/__tests__/cloud-setup-failures.test.ts plugins/plugin-elizacloud/__tests__/cloud-tts-roundtrip.test.ts plugins/plugin-elizacloud/__tests__/unit/duffel-client.test.ts`
-  - focused incomplete-marker scan on source/docs
-  - `cmp -s plugins/plugin-elizacloud/CLAUDE.md plugins/plugin-elizacloud/AGENTS.md`
-
-### plugins/plugin-anthropic-proxy
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-anthropic-proxy`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded the eliza-fingerprint identity replacement comments in source and
-  docs. Identity replacements are documented as current presence detectors,
-  with custom dictionaries as the supported override path for neutral
-  synonyms.
-- Verified with:
-  - focused incomplete-marker scan on the touched source/doc files
-  - `bun run --cwd plugins/plugin-anthropic-proxy typecheck`
-  - `bun run --cwd plugins/plugin-anthropic-proxy test`
-  - `bun run --cwd plugins/plugin-anthropic-proxy build`
-  - `cmp -s plugins/plugin-anthropic-proxy/CLAUDE.md plugins/plugin-anthropic-proxy/AGENTS.md`
-- Remaining broad hits are `cc-tool-stubs` identifiers and `injectCCStubs`
-  options. Those are the package's term for synthetic Claude Code tool
-  definitions injected into the proxy request body, not unfinished stubs.
-
-### plugins/plugin-roblox
-
-- Loaded the package-local guide before working in `plugins/plugin-roblox`.
-- Reworded `ROBLOX_WEBHOOK_SECRET` docs in `CLAUDE.md`, `AGENTS.md`, and
-  `README.md`. The value is documented as config exposed for external inbound
-  bridges while the built-in plugin remains outbound-only.
-- Copied `CLAUDE.md` to `AGENTS.md` to keep the guide pair identical.
-- Verified with:
-  - focused incomplete-marker scan on the touched docs
-  - `bun run --cwd plugins/plugin-roblox typecheck`
-  - `bun run --cwd plugins/plugin-roblox test`
-  - `bun run --cwd plugins/plugin-roblox build`
-  - `cmp -s plugins/plugin-roblox/CLAUDE.md plugins/plugin-roblox/AGENTS.md`
-
-### plugins/plugin-video
-
-- Loaded the package-local guide before working in `plugins/plugin-video`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded the transcription cache comment so MP3 retention is documented as
-  current content-cache ownership by callers, not speculative reuse.
-- Verified with:
-  - focused incomplete-marker scan on `src/services/video.ts`
-  - `bun run --cwd plugins/plugin-video typecheck`
-  - `bun run --cwd plugins/plugin-video test`
-  - `bun run --cwd plugins/plugin-video build`
-  - `cmp -s plugins/plugin-video/CLAUDE.md plugins/plugin-video/AGENTS.md`
-
-### plugins/plugin-ngrok
-
-- No package-local `CLAUDE.md` / `AGENTS.md` exists, so root guidance applied.
-- Renamed the test utility runtime variable from `placeholderRuntime` to
-  `mockRuntime`; it constructs a mock runtime for `MockNgrokService`, not a
-  placeholder implementation.
-- Verified with:
-  - focused incomplete-marker scan on `src/__tests__/test-utils.ts`
-  - `bun run --cwd plugins/plugin-ngrok typecheck`
-  - `bun run --cwd plugins/plugin-ngrok test:unit`
-  - `bun run --cwd plugins/plugin-ngrok build`
-
-### plugins/plugin-music
-
-- Loaded the package-local guide before working in `plugins/plugin-music`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded local interface comments in `src/actions/playAudio.ts` and
-  `src/services/smartMusicFetch.ts` from stub language to type-shim language
-  for optional cross-plugin/native dependencies that lack declarations.
-- Reworded music-library persistence and Discord connection comments in
-  `src/actions/playAudio.ts` and `src/service.ts` so later lookup and pending
-  connection states are described without future/not-yet wording.
-- Verified with:
-  - focused incomplete-marker scan on the three touched plugin-music files
-  - `bun run --cwd plugins/plugin-music typecheck`
-  - `bunx biome check plugins/plugin-music/src/actions/playAudio.ts plugins/plugin-music/src/services/smartMusicFetch.ts plugins/plugin-music/src/service.ts`
-  - `cmp -s plugins/plugin-music/CLAUDE.md plugins/plugin-music/AGENTS.md`
-
-### plugins/plugin-local-storage
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-local-storage`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Removed the build-script fallback that swallowed `tsc --project
-  tsconfig.build.json` failures and wrote a bogus `dist/index.d.ts` re-export
-  to `./src/index.js`. The build now emits real declarations and fails closed
-  if declaration generation fails.
-- Verified with:
-  - `bun run --cwd plugins/plugin-local-storage build`
-  - `bun run --cwd plugins/plugin-local-storage typecheck`
-  - focused incomplete-marker scan on the build script and local docs
-  - inspected `dist/index.d.ts` and confirmed it imports
-    `./services/local-storage` and re-exports `./types`
-  - `cmp -s plugins/plugin-local-storage/CLAUDE.md plugins/plugin-local-storage/AGENTS.md`
-  - `git diff --check -- plugins/plugin-local-storage/build.ts`
-
-### plugins/plugin-native-llama
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-native-llama`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded native bridge boundary comments/messages in
-  `src/capacitor-llama-adapter.ts`: per-generation sampler stages are logged
-  as load/spec-time configuration boundaries, `setDrafter()` reports the
-  unsupported live-swap contract and points callers to `LoadOptions.draftModelPath`,
-  and `trimMemory()` describes the current absence of a native trim hook.
-- Reworded `src/index.ts` and the local guide pair from unavailable/stub or
-  native-stub wording to unavailable adapter/native source wording.
-- Verified with:
-  - focused incomplete-marker scan on touched native-llama source/docs
-  - `bun run --cwd plugins/plugin-native-llama build`
-  - `bunx biome check plugins/plugin-native-llama/src/capacitor-llama-adapter.ts plugins/plugin-native-llama/src/index.ts plugins/plugin-native-llama/CLAUDE.md plugins/plugin-native-llama/AGENTS.md`
-  - `cmp -s plugins/plugin-native-llama/CLAUDE.md plugins/plugin-native-llama/AGENTS.md`
-
-### plugins/plugin-mcp
-
-- Loaded the package-local guide before working in `plugins/plugin-mcp`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded mock-runtime helper errors in `src/tool-compatibility/` from
-  "Not implemented in mock" to the exact unsupported mock surface:
-  service-load promises are not exposed.
-- Verified with:
-  - focused incomplete-marker scan on the touched tool-compatibility files
-  - `bun run --cwd plugins/plugin-mcp typecheck`
-  - `bun run --cwd plugins/plugin-mcp test`
-  - `bun run --cwd plugins/plugin-mcp build`
-  - `cmp -s plugins/plugin-mcp/CLAUDE.md plugins/plugin-mcp/AGENTS.md`
-- Remaining broad package hits are prompt instructions that explicitly tell
-  the model not to invent placeholders.
-
-### plugins/plugin-rlm
-
-- Loaded the package-local guide before working in `plugins/plugin-rlm`.
-- Reworded docs in `CLAUDE.md`, `AGENTS.md`, and `README.md` so missing
-  Python-backend behavior is described as explicit failure instead of
-  returning fallback text/responses, without placeholder terminology.
-- Copied `CLAUDE.md` to `AGENTS.md` to keep the guide pair identical.
-- Verified with:
-  - focused incomplete-marker scan on the touched docs
-  - `bun run --cwd plugins/plugin-rlm typecheck`
-  - `bun run --cwd plugins/plugin-rlm test`
-  - `bun run --cwd plugins/plugin-rlm build`
-  - `cmp -s plugins/plugin-rlm/CLAUDE.md plugins/plugin-rlm/AGENTS.md`
-- Remaining broad package hits are the `metadata.stub` API field and tests
-  asserting it; that is a tracked RLM result metadata property.
-
-### plugins/plugin-computeruse
-
-- Loaded the package-local guide before inspecting
-  `plugins/plugin-computeruse`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Replaced the loose iOS device-validation TODO wording with a structured
-  evidence manifest at `docs/ios-device-validation.json` and a validator script
-  at `scripts/validate-ios-device-evidence.mjs`.
-- Added `validate:ios-device-evidence` to `package.json`. The default command
-  validates that all required iOS bridge methods and evidence fields are
-  tracked. The release gate `--require-complete` fails until a physical device
-  run records device/build/validator metadata, artifacts, and passed or
-  platform-blocked per-method results.
-- Updated `docs/IOS_CONSTRAINTS.md` and
-  `docs/MOBILE_ASSISTANT_ROUTING.md` to point at the manifest and release gate
-  instead of stale source TODO wording.
-- Verified with:
-  - `bun run --cwd plugins/plugin-computeruse validate:ios-device-evidence`
-  - `bun run --cwd plugins/plugin-computeruse typecheck`
-  - `bunx biome check plugins/plugin-computeruse/package.json plugins/plugin-computeruse/docs/ios-device-validation.json plugins/plugin-computeruse/scripts/validate-ios-device-evidence.mjs`
-  - focused incomplete-marker scan on the touched iOS validation docs/scripts
-  - `git diff --check -- plugins/plugin-computeruse/package.json plugins/plugin-computeruse/docs/IOS_CONSTRAINTS.md plugins/plugin-computeruse/docs/MOBILE_ASSISTANT_ROUTING.md plugins/plugin-computeruse/docs/ios-device-validation.json plugins/plugin-computeruse/scripts/validate-ios-device-evidence.mjs`
-  - `cmp -s plugins/plugin-computeruse/CLAUDE.md plugins/plugin-computeruse/AGENTS.md`
-- Current release-gate status: `node scripts/validate-ios-device-evidence.mjs
-  --require-complete docs/ios-device-validation.json` fails as expected because
-  no physical-device evidence is recorded yet. Remaining broad package hits are
-  mostly deterministic test fakes/stubs and golden-test contracts.
-
-### plugins/plugin-aosp-local-inference
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-aosp-local-inference`; `CLAUDE.md` and `AGENTS.md` are
-  identical.
-- Reworded defensive comments in `src/aosp-llama-adapter.ts` and
-  `src/aosp-local-inference-bootstrap.ts` so shim binding limits, exhaustive
-  KV-cache mapping, embedding pooling guards, and manifest-driven model bundle
-  swaps are described as current contracts instead of speculative future work.
-- Verified with:
-  - focused incomplete-marker scan on the touched AOSP source files
-  - `bun run --cwd plugins/plugin-aosp-local-inference typecheck`
-  - `bun run --cwd plugins/plugin-aosp-local-inference test`
-  - `cmp -s plugins/plugin-aosp-local-inference/CLAUDE.md plugins/plugin-aosp-local-inference/AGENTS.md`
-
-### plugins/plugin-native-camera
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-native-camera`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded `src/web.ts` and the package-local guide so browser camera
-  enumeration is documented as unlabeled device records before permission, and
-  `startPreview()` permission behavior is documented as the current web
-  fallback contract rather than a migration/future-probe TODO.
-- Verified with:
-  - focused incomplete-marker scan on `src/web.ts`, `CLAUDE.md`, and `AGENTS.md`
-  - `bun run --cwd plugins/plugin-native-camera build`
-  - `cmp -s plugins/plugin-native-camera/CLAUDE.md plugins/plugin-native-camera/AGENTS.md`
+- Remaining training markers include:
+  - benchmark and publish gates that are intentionally provisional until real
+    drafter, GGUF, hardware, and end-to-end eval artifacts are produced;
+  - open human-in-loop items in `SECURITY.md`, including production
+    trajectory-consent UI, archive-grade consent-proof URIs, production
+    Steward credential-proxy rollout, and hardware-backed firmware signing;
+  - dataset JSONL records containing synthetic safety, todo, placeholder-number,
+    or voice-emotion training examples that are corpus content rather than
+    executable source placeholders;
+  - native wakeword / voice bundle markers that preserve the explicit
+    upstream "hey jarvis" placeholder-head warning until an Eliza wake phrase
+    artifact is staged.
 
 ### packages/native/plugins/voice-classifier-cpp
 
-- Loaded the package-local guide before inspecting
-  `packages/native/plugins/voice-classifier-cpp`; `CLAUDE.md` and
-  `AGENTS.md` are identical.
-- No cleanup applied in this pass. The guide, README, C headers, and smoke
-  tests intentionally describe a real port gap: the voice emotion,
-  audio-end-of-turn, speaker, and diarizer model entry points still return
-  `-ENOSYS` behind the frozen ABI while shared utilities such as mel features,
-  class labels, and speaker distance are real.
-- `scripts/voice_eot_to_gguf.py` still contains TODO/`NotImplementedError`
-  conversion blocks and placeholder upstream identifiers. That is unfinished
-  converter work, not stale wording.
-- `scripts/check-riscv64-artifacts.sh` therefore still includes
-  `voice_classifier_stub_smoke` as a RISC-V ABI smoke target. Completing this
-  package requires pinned upstream recipes, real GGUF converters, ggml-backed
-  model translation units, and parity fixtures.
+- Remaining markers are intentional and should stay visible:
+  - `scripts/voice_eot_to_gguf.py` is still a fail-closed skeleton because no
+    audio-side EOT upstream/model graph has been pinned. Its `TODO` strings and
+    `NotImplementedError` branches prevent accidental conversion claims.
+  - the `voice_classifier_active_backend()` compatibility surface still
+    recognizes the legacy `"stub"` backend string and TS error label
+    `native-stub`.
+  - `mkstemp` fixture names in `voice_gguf_loader_test.c` contain `XXXXXX` as
+    the POSIX template marker, not an implementation placeholder.
 
-### packages/native/plugins/yolo-cpp
+### packages/native/ios-deps
 
-- Loaded the package-local guide before inspecting
-  `packages/native/plugins/yolo-cpp`; `CLAUDE.md` and `AGENTS.md` are
-  identical.
-- No cleanup applied in this pass. The package is real for class lookup, NMS,
-  postprocess helpers, GGUF reading, letterbox preprocessing, scalar kernels,
-  and runtime open/close, but `yolo_detect` still returns `-ENOSYS` after the
-  preprocessing path because the YOLO forward op schedule is not wired.
-- `scripts/check-riscv64-artifacts.sh` therefore still includes
-  `yolo_stub_smoke` as a RISC-V ABI smoke target. Completing this package
-  requires the scalar-C or ggml-dispatched v8n/v11n forward pass plus parity
-  fixtures and production backend wiring.
+- `VERSIONS` still has six `PLACEHOLDER-FILL-IN-AT-M02` rows for
+  `boringssl`, `c-ares`, `lol-html`, `mimalloc`, `zstd`, and `brotli`.
+  These are real missing full-Bun-iOS dependency pins, but they cannot be
+  truthfully filled from this repo: the full Bun engine package explicitly
+  expects a fork checkout at `packages/native/bun-runtime/vendor/bun` or
+  `ELIZA_BUN_IOS_SOURCE_DIR`, and the public elizaOS Bun fork was not
+  available when that package was added. Leave these visible until the M02
+  full-Bun iOS source fork and its dependency manifest are staged.
+- Existing llama.cpp and sqlite-vec iOS pins are concrete and build-script
+  validated; the missing rows do not affect the current llama/sqlite iOS
+  dependency build path.
 
-### plugins/plugin-x
+### plugins/plugin-omnivoice
 
-- Loaded the package-local guide before working in `plugins/plugin-x`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded the `ClientBase.onReady()` lifecycle hook and error message in
-  `src/base.ts` so it states the concrete-client override contract without
-  using incomplete-implementation wording. Reworded the test fixture comments
-  in `src/tests.ts` away from stale stub/verify markers.
-- Verified with:
-  - focused incomplete-marker scan on `src/base.ts`, `src/tests.ts`,
-    `CLAUDE.md`, and `AGENTS.md`
-  - `bunx @biomejs/biome check plugins/plugin-x/src/base.ts plugins/plugin-x/src/tests.ts`
-  - `bun run --cwd plugins/plugin-x test`
-  - `cmp -s plugins/plugin-x/CLAUDE.md plugins/plugin-x/AGENTS.md`
+- Replaced the build-time declaration fallback with a fail-closed
+  `tsc --project tsconfig.build.json` step. The build now preserves the real
+  root `dist/index.d.ts` API and writes node/browser type wrappers to the
+  generated entry declarations.
+- Reworded the browser and transcription paths as explicit unavailable /
+  unsupported handlers rather than stubs or no-ops. Remaining package-local
+  marker hits are Vitest mock APIs and test fixture comments only.
+- Verification: `bun run --cwd plugins/plugin-omnivoice typecheck`,
+  `bun run --cwd plugins/plugin-omnivoice test`,
+  `bun run --cwd plugins/plugin-omnivoice build`, marker scan, and
+  `git diff --check -- plugins/plugin-omnivoice` all pass.
+
+### plugins/plugin-native-gateway
+
+- Clarified the browser `stopDiscovery()` path: web platforms never start
+  Bonjour/mDNS discovery, so there is no active discovery session to stop.
+  Remaining marker hits are Vitest `stubGlobal` / `unstubAllGlobals` test APIs.
+- Verification: `bun run --cwd plugins/plugin-native-gateway test`,
+  `bun run --cwd plugins/plugin-native-gateway build`, marker scan excluding
+  generated output, and `git diff --check -- plugins/plugin-native-gateway`
+  all pass.
+
+### plugins/plugin-wifi
+
+- Reworded the Android-only side-effect registration path so non-elizaOS
+  platforms are described as leaving the overlay catalog unchanged, not as
+  no-op registration. The behavior remains intentionally platform-gated.
+- Remaining package-local marker hits are a normal password input placeholder
+  and a Vitest `vi.mock("@elizaos/ui", ...)` module mock for overlay
+  registration coverage.
+- Verification: `bun run --cwd plugins/plugin-wifi typecheck`,
+  `bun run --cwd plugins/plugin-wifi test`, mirrored guide diff, marker scan,
+  and `git diff --check -- plugins/plugin-wifi` all pass.
+
+### plugins/plugin-capacitor-bridge
+
+- Reworded disabled bridge registration and idempotent fs-shim installation so
+  they describe the concrete return behavior instead of using no-op wording.
+- Remaining marker hits are false positives from `AutoDownload` identifiers and
+  unrelated Kotlin variable text.
+- Verification: `bun run --cwd plugins/plugin-capacitor-bridge typecheck`,
+  mirrored guide diff, marker scan, and
+  `git diff --check -- plugins/plugin-capacitor-bridge` all pass.
+
+### plugins/plugin-contacts
+
+- Reworded the non-elizaOS side-effect import path so it says the apps catalog
+  is left unchanged, rather than calling it a no-op.
+- Remaining package-local marker hits are user-facing contact search, name,
+  phone, and email input placeholders.
+- Verification: `bun run --cwd plugins/plugin-contacts typecheck`,
+  `bun run --cwd plugins/plugin-contacts test`, marker scan, and
+  `git diff --check -- plugins/plugin-contacts` all pass.
 
 ### plugins/plugin-streaming
 
-- Loaded the package-local guide before working in
-  `plugins/plugin-streaming`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded the first-frame polling comment in
-  `src/api/stream-routes.ts` so the frame-file stat race is documented as the
-  current retry behavior rather than a not-ready marker.
+- Reworded optional streaming config so the plugin is described as inactive
+  when no destination is configured.
+- Renamed the streaming text update kind from `"noop"` to `"unchanged"`; the
+  utility now reports an explicit unchanged state for duplicate snapshots.
+- Verification: `bun run --cwd plugins/plugin-streaming typecheck`,
+  `bun run --cwd plugins/plugin-streaming test`, mirrored guide diff, marker
+  scan, and `git diff --check -- plugins/plugin-streaming` all pass.
+
+### packages/shared
+
+- Renamed the shared `resolveStreamingUpdate()` unchanged-state discriminant
+  from `"noop"` to `"unchanged"` and updated the `packages/agent` chat-route
+  caller. This matches the concrete duplicate-snapshot behavior without using
+  placeholder/no-op wording.
+- Reworded browser-safe defaults, mobile skips, macOS-only permission links,
+  Steward refresh-token deprecation, Kokoro compatibility/provider notes, voice
+  cancellation, TTS debug sinks, and tokenization idempotence so they describe
+  their concrete behavior instead of stubs or no-ops.
+- Classified remaining shared marker hits as intentional API/config terms:
+  app creation `scaffold` request/test values and `SCAFFOLD.md`, UI/config
+  `placeholder` fields, the `--no-op-offload` CLI flag name, and the asset-hash
+  regression test that ensures shipped voice model hashes are not placeholders.
 - Verified with:
-  - focused incomplete-marker scan on `src/api/stream-routes.ts`, `CLAUDE.md`,
-    and `AGENTS.md`
-  - `bunx @biomejs/biome check plugins/plugin-streaming/src/api/stream-routes.ts`
-  - `bun run --cwd plugins/plugin-streaming typecheck`
-  - `cmp -s plugins/plugin-streaming/CLAUDE.md plugins/plugin-streaming/AGENTS.md`
-
-### plugins/plugin-workflow
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-workflow`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Removed the stale `@todo` marker from `src/utils/catalog.ts` and reworded
-  source comments in `workflow-service.ts`, `automations-builder.ts`,
-  `workflow-clarification.ts`, and `workflow-dispatch.ts` so embedded-catalog
-  lookup, route-test doubles, and later duplicate checks are described as
-  current behavior rather than unfinished work.
-- Verified with:
-  - focused incomplete-marker scan on touched workflow source files,
-    `CLAUDE.md`, and `AGENTS.md` (remaining hit is the documented
-    `test:e2e` script name)
-  - `bunx @biomejs/biome check plugins/plugin-workflow/src/services/workflow-service.ts plugins/plugin-workflow/src/utils/catalog.ts plugins/plugin-workflow/src/lib/automations-builder.ts plugins/plugin-workflow/src/lib/workflow-clarification.ts plugins/plugin-workflow/src/services/workflow-dispatch.ts`
-  - `bun run --cwd plugins/plugin-workflow typecheck`
-  - `cmp -s plugins/plugin-workflow/CLAUDE.md plugins/plugin-workflow/AGENTS.md`
-
-### plugins/plugin-lmstudio
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-lmstudio`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded LM Studio config/detection comments and the package guide so
-  health-probe URL helpers and deterministic fetch injection are described as
-  current test/diagnostic behavior instead of future/stub work.
-- Verified with:
-  - focused incomplete-marker scan on `utils/config.ts`, `utils/detect.ts`,
-    `CLAUDE.md`, and `AGENTS.md`
-  - `bunx @biomejs/biome check plugins/plugin-lmstudio/utils/config.ts plugins/plugin-lmstudio/utils/detect.ts plugins/plugin-lmstudio/CLAUDE.md plugins/plugin-lmstudio/AGENTS.md`
-  - `bun run --cwd plugins/plugin-lmstudio typecheck`
-  - `cmp -s plugins/plugin-lmstudio/CLAUDE.md plugins/plugin-lmstudio/AGENTS.md`
-
-### packages/app-core
-
-- Loaded the package-local guide before working in `packages/app-core`.
-- Reworded source comments and messages in
-  `src/security/platform-secure-store-node.ts`,
-  `src/services/secrets-manager-installer.ts`, and
-  `src/services/phrase-chunked-tts.ts` so unavailable platform secure-store
-  backends, injected process-spawn fixtures, and PhraseChunker load
-  preconditions are described as current contracts rather than placeholder,
-  stub, or not-yet-loaded markers.
-- Verified with:
-  - focused incomplete-marker scan on the touched app-core source files
-  - `bunx @biomejs/biome check packages/app-core/src/security/platform-secure-store-node.ts packages/app-core/src/services/secrets-manager-installer.ts packages/app-core/src/services/phrase-chunked-tts.ts`
-  - `bun run --cwd packages/app-core typecheck`
-
-### plugins/plugin-elizamaker
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-elizamaker`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded `src/og-tracker.ts` and the deferred-init note in the package guide
-  so OG-code eligibility and route readiness are described as current external
-  script/service-initialization contracts rather than future/not-ready markers.
-- Verified with:
-  - focused incomplete-marker scan on `src/og-tracker.ts`, `CLAUDE.md`, and
-    `AGENTS.md` (remaining hits are domain terms: Merkle proofs and
-    Twitter/NFT verification routes)
-  - `bunx @biomejs/biome check plugins/plugin-elizamaker/src/og-tracker.ts plugins/plugin-elizamaker/CLAUDE.md plugins/plugin-elizamaker/AGENTS.md`
-  - `bun run --cwd plugins/plugin-elizamaker build`
-  - `cmp -s plugins/plugin-elizamaker/CLAUDE.md plugins/plugin-elizamaker/AGENTS.md`
-
-### plugins/plugin-social-alpha
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-social-alpha`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded the trust-leaderboard world seed comment, simulation actor scenario
-  check comment, and package-guide release-skip wording so deterministic
-  migrations, scenario checks, and intentionally skipped package scripts do not
-  read as future/stub work.
-- Verified with:
-  - focused incomplete-marker scan on touched social-alpha files (remaining
-    hits are simulated social-message copy containing the word `roadmap`)
-  - `bunx @biomejs/biome check plugins/plugin-social-alpha/src/config.ts plugins/plugin-social-alpha/src/services/simulationActorsV2.ts plugins/plugin-social-alpha/CLAUDE.md plugins/plugin-social-alpha/AGENTS.md`
-  - `bun run --cwd plugins/plugin-social-alpha test`
-  - `cmp -s plugins/plugin-social-alpha/CLAUDE.md plugins/plugin-social-alpha/AGENTS.md`
-
-### packages/shared and packages/ui
-
-- Loaded the package-local guides before working in `packages/shared` and
-  `packages/ui`; both `CLAUDE.md` / `AGENTS.md` pairs are identical.
-- Reworded comments in `packages/shared/src/local-inference/catalog.ts` and
-  UI local-inference/widget/startup/browser-workspace helpers so pending model
-  bundles, registered widget visibility, service orchestration callers,
-  retry-on-next-boot behavior, startup fetch races, and credential selection are
-  described as current contracts rather than future/not-yet/incomplete markers.
-- Verified with:
-  - focused incomplete-marker scan on touched shared/ui files (remaining hits
-    are domain/API names such as `verifyModel`, placeholder props, and
-    local-inference placeholder-id policy constants)
-  - `bunx @biomejs/biome check packages/shared/src/local-inference/catalog.ts packages/ui/src/widgets/visibility.ts packages/ui/src/services/local-inference/service.ts packages/ui/src/first-run/auto-download-recommended.ts packages/ui/src/utils/transient-fetch.ts packages/ui/src/components/pages/BrowserWorkspaceView.tsx`
   - `bun run --cwd packages/shared typecheck`
-  - `bun run --cwd packages/ui typecheck`
-  - `cmp -s packages/shared/CLAUDE.md packages/shared/AGENTS.md`
-  - `cmp -s packages/ui/CLAUDE.md packages/ui/AGENTS.md`
+  - `bun run --cwd packages/shared test`
+  - `bun run --cwd packages/agent typecheck`
+  - mirrored guide comparison for shared and agent
+  - marker scan on `packages/shared/src` excluding generated i18n data
+  - `git diff --check -- packages/shared packages/agent/src/api/chat-routes.ts`
+
+### packages/shared + plugins/plugin-app-manager + plugins/plugin-app-control
+
+- Renamed the app stop-result scope wire value from `"no-op"` to
+  `"nothing-stopped"` in the shared app contract, app-manager producer, and
+  app-control consumer. This keeps the API state explicit when a stop request
+  finds no matching run.
+- Verification:
+  - `bun run --cwd packages/shared typecheck`
+  - `bun run --cwd packages/shared test src/contracts/apps.test.ts`
+  - `bun run --cwd plugins/plugin-app-manager typecheck`
+  - `bun run --cwd plugins/plugin-app-manager test`
+  - `bun run --cwd plugins/plugin-app-control typecheck`
+  - `bun run --cwd plugins/plugin-app-control test`
+  - marker scan and `git diff --check` on the touched contract / app-control /
+    app-manager files
+
+### packages/sweagent
+
+- Reworded the vendored SWE-agent logger guide entry from stub to minimal
+  vendor logger shim, and updated `getLogger()` to prefix console output with
+  `[sweagent:<name>]`.
+- Verification: `bun run --cwd packages/sweagent test`, mirrored guide diff,
+  package marker scan, and `git diff --check -- packages/sweagent` all pass.
+
+### plugins/plugin-eliza-classic
+
+- Replaced the fixed 1536-dimensional embedding vector with a deterministic
+  normalized lexical hashing embedding over words and bigrams. The plugin
+  remains fully offline and dependency-free, but repeated/shared lexical
+  features now affect similarity instead of every input producing the same
+  vector.
+- Updated docs to describe the embedding as lexical rather than neural, and
+  corrected the package guide so `test` is no longer described as skipped.
+- Verification: `bun run --cwd plugins/plugin-eliza-classic typecheck`,
+  `bun run --cwd plugins/plugin-eliza-classic test`,
+  `bun run --cwd plugins/plugin-eliza-classic build`, mirrored guide diff,
+  package marker scan excluding generated output, and
+  `git diff --check -- plugins/plugin-eliza-classic` all pass.
+
+### plugins/plugin-native-eliza-tasks
+
+- Reworded the web/non-iOS fallback from no-op to explicit unsupported
+  `supported: false` behavior. `cancelAll()` is documented and tested as
+  reporting that no web wake requests were cancelled.
+- Verification: `bun run --cwd plugins/plugin-native-eliza-tasks test`,
+  `bun run --cwd plugins/plugin-native-eliza-tasks build`, mirrored guide diff,
+  package marker scan excluding generated output, and
+  `git diff --check -- plugins/plugin-native-eliza-tasks` all pass.
+
+### packages/test
+
+- Reworded helper compatibility files from "re-export stub" to compatibility
+  re-exports and fixed their relative paths from `../app-core/...` to the
+  existing canonical `../../app-core/...` helpers.
+- Verification: `bun build packages/test/helpers/http.ts
+  packages/test/helpers/live-child-env.ts packages/test/helpers/live-provider.ts
+  --outdir /tmp/eliza-test-helper-reexport-check --target bun`, marker scan on
+  the touched files, and `git diff --check` all pass.
 
 ### packages/core
 
-- Loaded the package-local guide before working in `packages/core`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded runtime/type comments across service registration, sandbox policy,
-  action model routing, plugin-manager extensions, pipeline hooks, plugin
-  schema versioning, messaging metadata, and streaming callbacks so lazy
-  startup, compatibility, and additive fields are described without
-  future/not-yet markers.
-- Verified with:
-  - focused incomplete-marker scan on touched core files (remaining hits are
-    validation/domain terms and guide script names)
-  - `bunx @biomejs/biome check packages/core/src/runtime.ts packages/core/src/sandbox-policy.ts packages/core/src/runtime/action-model-routing.ts packages/core/src/features/plugin-manager/coreExtensions.ts packages/core/src/types/pipeline-hooks.ts packages/core/src/types/plugin-store.ts packages/core/src/types/messaging.ts packages/core/src/types/components.ts`
-  - `bun run --cwd packages/core typecheck`
-  - `cmp -s packages/core/CLAUDE.md packages/core/AGENTS.md`
-
-### packages/agent
-
-- Loaded the package-local guide before working in `packages/agent`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Renamed private remote-plugin bridge helper methods from `*Stub` to `*Proxy`
-  and reworded the bridge header to reflect the currently wired proxy
-  contributions. Reworded optional-dependency ambient declarations in
-  `external-modules.d.ts` from loose stubs to ambient shims.
-- Verified with:
-  - focused stub/future marker scan on `src/services/remote-plugin-bridge.ts`
-    and `src/external-modules.d.ts`
-  - `bunx @biomejs/biome check packages/agent/src/services/remote-plugin-bridge.ts packages/agent/src/external-modules.d.ts`
-  - `bun run --cwd packages/agent typecheck`
-  - `cmp -s packages/agent/CLAUDE.md packages/agent/AGENTS.md`
-
-### plugins/plugin-wallet
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-wallet`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded stale FIXME/placeholder/verify comments in Birdeye market and LP
-  analytics files so static market addresses, API-limited Kamino fields,
-  preview-only receiver sentinels, and runtime method checks are described as
-  current behavior.
-- Verified with:
-  - focused incomplete-marker scan on touched wallet source files, `CLAUDE.md`,
-    and `AGENTS.md` (remaining hits are guide route names such as
-    `sign/verify`)
-  - `bunx @biomejs/biome check plugins/plugin-wallet/src/analytics/birdeye/providers/market.ts plugins/plugin-wallet/src/analytics/lpinfo/kamino/services/kaminoService.ts plugins/plugin-wallet/src/analytics/lpinfo/steer/services/steerLiquidityService.ts`
-  - `bun run --cwd plugins/plugin-wallet check`
-  - `cmp -s plugins/plugin-wallet/CLAUDE.md plugins/plugin-wallet/AGENTS.md`
-
-### plugins/plugin-local-inference
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-local-inference`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded `GENERATE_MEDIA` video refusal text and related comments so video
-  generation is described as an unavailable local-backend capability rather
-  than a "coming soon" / not-yet marker. Reworded local assignment,
-  vision-cache, router-latency, and TTS-registration comments away from
-  future/not-yet phrasing, and updated the action test assertion to the new
-  refusal copy.
-- Verified with:
-  - focused incomplete-marker scan on touched local-inference files, tests,
-    `CLAUDE.md`, and `AGENTS.md` (remaining hits are guide terms for manifest
-    validation and the `NODE_OPTIONS=--experimental-sqlite` test command)
-  - `bunx @biomejs/biome check plugins/plugin-local-inference/src/actions/generate-media.ts plugins/plugin-local-inference/src/services/assignments.ts plugins/plugin-local-inference/src/services/vision-embedding-cache.ts plugins/plugin-local-inference/src/services/router-handler.ts plugins/plugin-local-inference/src/services/tts/index.ts plugins/plugin-local-inference/__tests__/generate-media-action.test.ts`
-  - `bun run --cwd plugins/plugin-local-inference typecheck`
-  - `NODE_OPTIONS='--experimental-sqlite' bunx vitest run --config ./vitest.config.ts __tests__/generate-media-action.test.ts` from `plugins/plugin-local-inference`
-  - `bun run --cwd plugins/plugin-local-inference test`
-  - `cmp -s plugins/plugin-local-inference/CLAUDE.md plugins/plugin-local-inference/AGENTS.md`
-
-### plugins/plugin-contacts and plugins/plugin-sql
-
-- Loaded the package-local guides before working in `plugins/plugin-contacts`
-  and `plugins/plugin-sql`; both `CLAUDE.md` / `AGENTS.md` pairs are
-  identical.
-- Reworded the contacts detail-panel read-only note so unsupported contact
-  editing is presented as the current device capability boundary. Reworded SQL
-  migration RLS/snapshot-cache messages so schema readiness is described
-  without not-yet wording.
-- Verified with:
-  - focused incomplete-marker scan on touched contacts/SQL files and guides
-    (remaining contacts hits are input `placeholder=` props)
-  - `bunx @biomejs/biome check plugins/plugin-contacts/src/components/ContactsAppView.tsx plugins/plugin-sql/src/migration-service.ts plugins/plugin-sql/src/migrations.ts`
-  - `bun run --cwd plugins/plugin-contacts typecheck`
-  - `bun run --cwd plugins/plugin-sql typecheck`
-  - `cmp -s plugins/plugin-contacts/CLAUDE.md plugins/plugin-contacts/AGENTS.md`
-  - `cmp -s plugins/plugin-sql/CLAUDE.md plugins/plugin-sql/AGENTS.md`
-
-### packages/shared and packages/ui follow-up
-
-- Loaded the package-local guides before working in `packages/shared` and
-  `packages/ui`; both `CLAUDE.md` / `AGENTS.md` pairs are identical.
-- Reworded additional shared app-permissions/API-key-prefix comments and UI
-  local-inference/widget comments so forward-compatibility, manifest schema
-  rejection, model activation, bundled-model replacement, assignment safety,
-  and widget default propagation are described without future/not-yet markers.
-- Verified with:
-  - focused incomplete-marker scan on touched shared/ui files
-  - `bunx @biomejs/biome check packages/ui/src/widgets/useChatSidebarVisibility.ts packages/ui/src/services/local-inference/assignments.ts packages/ui/src/services/local-inference/downloader.ts packages/ui/src/services/local-inference/home-model-status.ts packages/ui/src/services/local-inference/bundled-models.ts packages/shared/src/contracts/app-permissions.ts packages/shared/src/contracts/app-permissions-routes.ts packages/shared/src/contracts/health.ts packages/shared/src/config/api-key-prefix-hints.ts`
-  - `bun run --cwd packages/shared typecheck`
-  - `bun run --cwd packages/ui typecheck`
-  - `cmp -s packages/shared/CLAUDE.md packages/shared/AGENTS.md`
-  - `cmp -s packages/ui/CLAUDE.md packages/ui/AGENTS.md`
-
-### packages/core follow-up
-
-- Loaded the package-local guide before working in `packages/core`; `CLAUDE.md`
-  and `AGENTS.md` are identical.
-- Reworded analysis-mode sidecar comments, relationship-cache/sentiment
-  comments, unavailable messaging-adapter contract notes, and ballot/plugin
-  action callback text so current behavior is described without roadmap,
-  placeholder, PUNT, or not-yet phrasing.
-- Verified with:
-  - focused incomplete-marker scan on touched core files
-  - `bunx @biomejs/biome check packages/core/src/services/analysis-mode-handler.ts packages/core/src/services/relationships.ts packages/core/src/features/messaging/triage/adapters/base.ts packages/core/src/features/plugin-config/actions/activate-plugin-if-ready.ts packages/core/src/features/ballots/actions/tally-ballot-if-threshold-met.ts`
-  - `bun run --cwd packages/core typecheck`
-  - `bun run --cwd packages/core test -- features/ballots/actions/tally-ballot-if-threshold-met.test.ts features/plugin-config/actions/activate-plugin-if-ready.test.ts`
-  - `git diff --check -- packages/core/src/services/analysis-mode-handler.ts packages/core/src/services/relationships.ts packages/core/src/features/messaging/triage/adapters/base.ts packages/core/src/features/plugin-config/actions/activate-plugin-if-ready.ts packages/core/src/features/ballots/actions/tally-ballot-if-threshold-met.ts PLACEHOLDER_AUDIT.md`
-
-### packages/app-core follow-up
-
-- Loaded the package-local guide before working in `packages/app-core`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded WebGPU ambient-type, compat Drizzle lookup, sensitive-request
-  adapter coverage, and bootstrap-token expiry comments so current behavior is
-  described without not-yet or future markers.
-- Verified with:
-  - focused incomplete-marker scan on touched app-core files
-  - `bunx @biomejs/biome check packages/app-core/src/ambient-modules.d.ts packages/app-core/src/api/compat-route-shared.ts packages/app-core/src/services/sensitive-requests/index.ts packages/app-core/src/api/auth/bootstrap-token.ts`
-  - `bun run --cwd packages/app-core typecheck`
-  - `git diff --check -- packages/app-core/src/ambient-modules.d.ts packages/app-core/src/api/compat-route-shared.ts packages/app-core/src/services/sensitive-requests/index.ts packages/app-core/src/api/auth/bootstrap-token.ts PLACEHOLDER_AUDIT.md`
-
-### packages/agent prompt-compaction follow-up
-
-- Loaded the package-local guide before working in `packages/agent`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded prompt-compaction comments from "stub" terminology to
-  summary-entry terminology, matching the actual behavior of preserving action
-  names/descriptions while omitting parameter details for context economy.
-- Verified with:
-  - focused incomplete-marker scan on `packages/agent/src/runtime/prompt-compaction.ts`
-  - `bunx @biomejs/biome check packages/agent/src/runtime/prompt-compaction.ts`
-  - `bun run --cwd packages/agent typecheck`
-  - `bun run --cwd packages/agent test -- src/runtime/view-action-affinity.test.ts`
-  - `git diff --check -- packages/agent/src/runtime/prompt-compaction.ts PLACEHOLDER_AUDIT.md`
-
-### packages/core type-contract follow-up
-
-- Loaded the package-local guide before working in `packages/core`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded remote-plugin surface comments from "stubs" to proxy terminology,
-  changed auto-enable fallback wording, and updated form type documentation
-  from future-frontends wording to forward-compatible GUI hints.
-- Verified with:
-  - focused incomplete-marker scan on touched core type files (remaining hits
-    are the intentional `placeholder?: string` form UI field and its label)
-  - `bunx @biomejs/biome check packages/core/src/types/plugin.ts packages/core/src/features/advanced-capabilities/form/types.ts`
-  - `bun run --cwd packages/core typecheck`
-  - `git diff --check -- packages/core/src/types/plugin.ts packages/core/src/features/advanced-capabilities/form/types.ts PLACEHOLDER_AUDIT.md`
-
-### plugins/plugin-health follow-up
-
-- Loaded the package-local guide before working in `plugins/plugin-health`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded registry-unavailable log messages, public-surface and smoke-test
-  comments, and the package guide's screen-time ownership note so they describe
-  current soft-dependency and ownership boundaries without not-yet/future
-  roadmap phrasing.
-- Verified with:
-  - focused incomplete-marker scan on touched health source, test, and guide
-    files (remaining hit is the concrete OAuth `pending-session state` label)
-  - `bunx @biomejs/biome check plugins/plugin-health/CLAUDE.md plugins/plugin-health/AGENTS.md plugins/plugin-health/src/connectors/index.ts plugins/plugin-health/src/default-packs/index.ts plugins/plugin-health/src/index.ts plugins/plugin-health/src/__tests__/smoke.test.ts`
-  - `bun run --cwd plugins/plugin-health build:types`
-  - `bun run --cwd plugins/plugin-health test -- src/__tests__/smoke.test.ts`
-  - `cmp -s plugins/plugin-health/CLAUDE.md plugins/plugin-health/AGENTS.md`
-  - `git diff --check -- plugins/plugin-health/CLAUDE.md plugins/plugin-health/AGENTS.md plugins/plugin-health/src/connectors/index.ts plugins/plugin-health/src/default-packs/index.ts plugins/plugin-health/src/index.ts plugins/plugin-health/src/__tests__/smoke.test.ts PLACEHOLDER_AUDIT.md`
-
-### plugins/plugin-lifeops widget follow-up
-
-- Loaded the package-local guide before working in `plugins/plugin-lifeops`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded the widgets entry comment so exported overview reuse is described
-  without future-entry-point wording.
-- Verified with:
-  - focused incomplete-marker scan on `plugins/plugin-lifeops/src/widgets/index.ts`
-  - `bunx @biomejs/biome check plugins/plugin-lifeops/src/widgets/index.ts`
-  - `bun run --cwd plugins/plugin-lifeops build:types`
-  - `cmp -s plugins/plugin-lifeops/CLAUDE.md plugins/plugin-lifeops/AGENTS.md`
-  - `git diff --check -- plugins/plugin-lifeops/src/widgets/index.ts PLACEHOLDER_AUDIT.md`
-
-### packages/agent extract-params follow-up
-
-- Loaded the package-local guide before working in `packages/agent`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded the extraction helper comment so missing required parameters are
-  described without "incomplete" marker wording.
-- Verified with:
-  - focused incomplete-marker scan on `packages/agent/src/actions/extract-params.ts`
-  - `bunx @biomejs/biome check packages/agent/src/actions/extract-params.ts`
-  - `bun run --cwd packages/agent typecheck`
-  - `git diff --check -- packages/agent/src/actions/extract-params.ts PLACEHOLDER_AUDIT.md`
-
-### plugins/plugin-local-inference route follow-up
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-local-inference`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded the cloud-routing chat result from future-call wording to
-  subsequent-call wording.
-- Verified with:
-  - focused incomplete-marker scan on `plugins/plugin-local-inference/src/local-inference-routes.ts`
-  - `bunx @biomejs/biome check plugins/plugin-local-inference/src/local-inference-routes.ts`
-  - `bun run --cwd plugins/plugin-local-inference typecheck`
-  - `git diff --check -- plugins/plugin-local-inference/src/local-inference-routes.ts PLACEHOLDER_AUDIT.md`
-
-### packages/ui first-run probe follow-up
-
-- Loaded the package-local guide before working in `packages/ui`; `CLAUDE.md`
-  and `AGENTS.md` are identical.
-- Reworded local-agent health compatibility comments from spike-stub wording
-  to legacy-probe-shape wording and fixed the adjacent sentence typo.
-- Verified with:
-  - focused incomplete-marker scan on `packages/ui/src/first-run/probe-local-agent.ts`
-  - `bunx @biomejs/biome check packages/ui/src/first-run/probe-local-agent.ts`
-  - `bun run --cwd packages/ui typecheck`
-  - `bun run --cwd packages/ui test -- src/first-run/probe-local-agent.test.ts`
-  - `git diff --check -- packages/ui/src/first-run/probe-local-agent.ts PLACEHOLDER_AUDIT.md`
-
-### plugins/plugin-local-inference download/FFI follow-up
-
-- Loaded the package-local guide before working in
-  `plugins/plugin-local-inference`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded downloader schema-version, voice-model route injection hooks,
-  single-asset download policy, and FFI streaming adapter comments so they
-  describe current compatibility boundaries without future/stub marker
+- Reworded the browser entry compatibility exports in `src/index.browser.ts`:
+  Node-only path helpers and `serverHealth` are now described as explicit
+  browser alternatives / not-applicable probes rather than stubs or no-ops.
+- Finished relationship storage in `src/database/inMemoryAdapter.ts`. Batch
+  relationship create/get/update/delete now uses process-local Map storage,
+  returns cloned records, filters by entity and tag overlap, and preserves
+  created timestamps on update instead of returning placeholder IDs or empty
+  results.
+- Added `src/database/inMemoryRelationships.test.ts` covering pair lookup,
+  entity/tag pagination, ID ordering, mutation isolation, update, and delete.
+- Reworded intentional inert-path documentation in `src/runtime-env.ts`,
+  `src/services/task.ts`, `src/types/database.ts`,
+  `src/sandbox/dlopen-gate.ts`, `src/services/analysis-mode-handler.ts`, and
+  `src/features/plugin-config/index.ts` so mobile skips, stopped task ticks,
+  in-memory schema records, direct-build dlopen bypasses, and plugin assembly
+  are described by their actual behavior instead of generic no-op/scaffold
   wording.
+- Verification: `bun run --cwd packages/core typecheck`,
+  `bun run --cwd packages/core test src/database/inMemoryRelationships.test.ts`,
+  `bun run --cwd packages/core build`, marker scans on the touched files, and
+  `git diff --check` on the touched files all pass.
+
+### plugins/plugin-phone
+
+- Remaining Phone markers are UI input placeholder props and i18n keys:
+  pairing-payload entry text in `Pairing.tsx` and dialer copy in
+  `PhoneAppView.tsx`. These are user-facing input hints, not implementation
+  placeholders.
+
+### plugins/plugin-native-contacts
+
+- No source/docs marker hits remain after excluding generated `dist/`.
+
+### plugins/plugin-form
+
+- Remaining Form source markers are the public `placeholder` UI property and
+  builder method used to set input placeholder text. Template placeholder
+  terminology in the mirrored package guides refers to `{{placeholder}}`
+  resolution and masked sensitive-field display, not unfinished behavior.
+
+### packages/benchmarks
+
+- Several TODOs are in benchmark fixture code and research harnesses. They were
+  not treated as product runtime gaps unless they affect exported package
+  behavior.
+
+### plugins/plugin-anthropic-proxy
+
+- Reworded off-mode service behavior and browser entry docs/source so the
+  Node-only proxy fallback is described as unavailable in browsers and as
+  running without a proxy in off mode, not as no-op/stub behavior.
+- Reworded the short-marker fingerprint test and SSE UTF-8 buffering comment
+  from no-op/incomplete wording to unchanged/partial-sequence wording.
+- Reworded the fingerprint docs table entry that described the `Agent`
+  compatibility mapping with stub terminology.
+- Current marker scan is limited to literal Claude Code Todo tool names used by
+  the compatibility fingerprint dictionaries and docs.
 - Verified with:
-  - focused incomplete-marker scan on touched local-inference files
-  - `bunx @biomejs/biome check plugins/plugin-local-inference/src/services/downloader.ts plugins/plugin-local-inference/src/routes/voice-models-routes.ts plugins/plugin-local-inference/src/services/ffi-streaming-runner.ts`
-  - `bun run --cwd plugins/plugin-local-inference typecheck`
-  - `git diff --check -- plugins/plugin-local-inference/src/services/downloader.ts plugins/plugin-local-inference/src/routes/voice-models-routes.ts plugins/plugin-local-inference/src/services/ffi-streaming-runner.ts PLACEHOLDER_AUDIT.md`
+  - `diff -u plugins/plugin-anthropic-proxy/CLAUDE.md plugins/plugin-anthropic-proxy/AGENTS.md`
+  - `bun run --cwd plugins/plugin-anthropic-proxy typecheck`
+  - `bun run --cwd plugins/plugin-anthropic-proxy test`
+  - `bun run --cwd plugins/plugin-anthropic-proxy build`
+  - marker scan on `plugins/plugin-anthropic-proxy`
 
-### packages/ui onboarding follow-up
+### plugins/plugin-mcp
 
-- Loaded the package-local guide before working in `packages/ui`; `CLAUDE.md`
-  and `AGENTS.md` are identical.
-- Reworded onboarding tray-contract and Electrobun drag-region comments so
-  current tray handling and browser-engine compatibility are described without
-  Stage-B/incomplete/future marker wording.
+- Reworded the Node-only browser entry from browser no-op/stub terminology to
+  browser-unavailable entry terminology in source, README, and mirrored package
+  guides.
+- Reworded tool-compatibility test-runtime errors so they do not claim a mock
+  implementation is unfinished.
 - Verified with:
-  - focused incomplete-marker scan on touched UI files
-  - `bunx @biomejs/biome check packages/ui/src/first-run/onboarding-intent.ts packages/ui/src/styles/electrobun-mac-window-drag.css`
-  - `bun run --cwd packages/ui typecheck`
-  - `bun run --cwd packages/ui test -- src/first-run/onboarding-intent.test.ts`
-  - `git diff --check -- packages/ui/src/first-run/onboarding-intent.ts packages/ui/src/styles/electrobun-mac-window-drag.css PLACEHOLDER_AUDIT.md`
+  - `diff -u plugins/plugin-mcp/CLAUDE.md plugins/plugin-mcp/AGENTS.md`
+  - `bun run --cwd plugins/plugin-mcp typecheck`
+  - `bun run --cwd plugins/plugin-mcp test`
+  - `bun run --cwd plugins/plugin-mcp build`
+  - marker scan on `plugins/plugin-mcp`
 
-### plugins/plugin-lifeops proactive/platform follow-up
+### plugins/plugin-native-mobile-agent-bridge
 
-- Loaded the package-local guide before working in `plugins/plugin-lifeops`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded platform-guard test comments/helper names and proactive-planner
-  cooldown/design comments so platform overrides, clock skew, and GN routing
-  boundaries are described without stub/future/punt marker wording.
+- Reworded web fallback docs/source/package metadata so non-native tunnel
+  behavior is described as an explicit unavailable/error fallback rather than a
+  stub/no-op tunnel.
 - Verified with:
-  - focused incomplete-marker scan on touched LifeOps files (remaining hit is
-    the literal product word `todos` in user-facing proactive copy)
-  - `bunx @biomejs/biome check plugins/plugin-lifeops/src/__tests__/platform-guards.test.ts plugins/plugin-lifeops/src/activity-profile/proactive-planner.ts`
-  - `bun run --cwd plugins/plugin-lifeops build:types`
-  - `bun run --cwd plugins/plugin-lifeops test -- src/__tests__/platform-guards.test.ts`
-  - `git diff --check -- plugins/plugin-lifeops/src/__tests__/platform-guards.test.ts plugins/plugin-lifeops/src/activity-profile/proactive-planner.ts PLACEHOLDER_AUDIT.md`
+  - `diff -u plugins/plugin-native-mobile-agent-bridge/CLAUDE.md plugins/plugin-native-mobile-agent-bridge/AGENTS.md`
+  - `bun run --cwd plugins/plugin-native-mobile-agent-bridge build`
+  - marker scan on `plugins/plugin-native-mobile-agent-bridge`
 
-### packages/agent compact-conversation follow-up
+### plugins/plugin-native-desktop
 
-- Loaded the package-local guide before working in `packages/agent`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded the compact-conversation action description from future prompt
-  context to subsequent prompt context.
+- Reworded web fallback docs and mirrored package guides so browser execution
+  is described as Web API fallback or unavailable return values instead of
+  no-op/stub behavior.
 - Verified with:
-  - focused incomplete-marker scan on `packages/agent/src/actions/compact-conversation.ts`
-  - `bunx @biomejs/biome check packages/agent/src/actions/compact-conversation.ts`
-  - `bun run --cwd packages/agent typecheck`
-  - `bun run --cwd packages/agent test -- src/actions/compact-conversation.test.ts`
-  - `git diff --check -- packages/agent/src/actions/compact-conversation.ts PLACEHOLDER_AUDIT.md`
+  - `diff -u plugins/plugin-native-desktop/CLAUDE.md plugins/plugin-native-desktop/AGENTS.md`
+  - `bun run --cwd plugins/plugin-native-desktop build`
+  - marker scan on `plugins/plugin-native-desktop`
 
-### packages/app-core credential-tunnel follow-up
+### plugins/plugin-native-bun-runtime
 
-- Loaded the package-local guide before working in `packages/app-core`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded the credential tunnel test title from future-expiry wording to
-  unexpired-expiry wording.
+- Reworded web fallback tests and guide text from no-op shapes to unavailable
+  shapes, and reworded sqlite-vec and Kokoro phonemizer comments from no-op /
+  placeholder marker language to skipped registration / tone marker language.
+- Reworded the linked iOS inference failure message from stub ABI terminology
+  to smoke-build ABI terminology while preserving the rebuild guidance.
+- Remaining package marker hit is intentional: the Kokoro pronunciation
+  dictionary contains the Spanish word `todo`.
 - Verified with:
-  - focused incomplete-marker scan on `packages/app-core/src/services/credential-tunnel-service.test.ts`
-  - `bunx @biomejs/biome check packages/app-core/src/services/credential-tunnel-service.test.ts`
-  - `bun run --cwd packages/app-core typecheck`
-  - `bun run --cwd packages/app-core test -- src/services/credential-tunnel-service.test.ts`
-  - `git diff --check -- packages/app-core/src/services/credential-tunnel-service.test.ts PLACEHOLDER_AUDIT.md`
+  - `diff -u plugins/plugin-native-bun-runtime/CLAUDE.md plugins/plugin-native-bun-runtime/AGENTS.md`
+  - `bun run --cwd plugins/plugin-native-bun-runtime build`
+  - `bun run --cwd plugins/plugin-native-bun-runtime vitest run`
+  - marker scan on `plugins/plugin-native-bun-runtime`
 
-### plugins/plugin-local-inference apple-foundation follow-up
+### plugins/plugin-elizacloud
 
-- Loaded the package-local guide before working in
-  `plugins/plugin-local-inference`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded Apple Foundation backend availability-probe comments from not-yet
-  wording to unavailable-state wording.
+- Reworded the browser facade's remaining helper exports so unavailable
+  browser-only shims no longer reference no-op helper terminology.
+- The package marker scan is now clean.
 - Verified with:
-  - focused incomplete-marker scan on `plugins/plugin-local-inference/src/backends/apple-foundation.ts`
-  - `bunx @biomejs/biome check plugins/plugin-local-inference/src/backends/apple-foundation.ts`
-  - `bun run --cwd plugins/plugin-local-inference typecheck`
-  - `git diff --check -- plugins/plugin-local-inference/src/backends/apple-foundation.ts PLACEHOLDER_AUDIT.md`
+  - `diff -u plugins/plugin-elizacloud/CLAUDE.md plugins/plugin-elizacloud/AGENTS.md`
+  - `bun run --cwd plugins/plugin-elizacloud test`
+  - `bun run --cwd plugins/plugin-elizacloud typecheck`
+  - marker scan on `plugins/plugin-elizacloud`
+- Build note: `bun run --cwd plugins/plugin-elizacloud build` currently fails
+  during declaration generation because `tsconfig.build.json` cannot resolve
+  `@elizaos/shared` imports; JS build stages complete before that failure.
 
-### plugins/plugin-computeruse test-double follow-up
+### plugins/plugin-native-llama
 
-- Loaded the package-local guide before working in `plugins/plugin-computeruse`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded sandbox/mobile/cascade test-double comments and helper names from
-  stub terminology to fake/mock/unavailable terminology, and fixed a Biome
-  non-null assertion warning in the touched cascade test.
+- Reworded feature-detected native bridge compatibility docs, source comments,
+  debug logging, and test names from stub/no-op terminology to explicit
+  warn-and-skip, unavailable adapter, or unchanged pass-through behavior.
+- Updated mirrored package guides so stock bridge behavior is described as
+  warning and skipping unsupported operations.
+- The package marker scan is now clean.
 - Verified with:
-  - focused incomplete-marker scan on touched computeruse test files
-  - `bunx @biomejs/biome check plugins/plugin-computeruse/src/sandbox/sandbox-driver.test.ts plugins/plugin-computeruse/src/__tests__/mobile-computer-interface.test.ts plugins/plugin-computeruse/src/__tests__/cascade.test.ts`
-  - `bun run --cwd plugins/plugin-computeruse typecheck`
-  - `bun run --cwd plugins/plugin-computeruse test -- src/sandbox/sandbox-driver.test.ts src/__tests__/mobile-computer-interface.test.ts src/__tests__/cascade.test.ts`
-  - `git diff --check -- plugins/plugin-computeruse/src/sandbox/sandbox-driver.test.ts plugins/plugin-computeruse/src/__tests__/mobile-computer-interface.test.ts plugins/plugin-computeruse/src/__tests__/cascade.test.ts PLACEHOLDER_AUDIT.md`
+  - `diff -u plugins/plugin-native-llama/CLAUDE.md plugins/plugin-native-llama/AGENTS.md`
+  - `bun run --cwd plugins/plugin-native-llama test`
+  - `bun run --cwd plugins/plugin-native-llama build`
+  - marker scan on `plugins/plugin-native-llama`
 
-### plugins/plugin-health sleep/wake follow-up
+### plugins/plugin-facewear
 
-- Loaded the package-local guide before working in `plugins/plugin-health`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded bedtime-imminent event documentation from future-target wording to
-  target-after-current-time wording.
+- Reworded Facewear guide/test/emulator marker language so deterministic test
+  transports, real bundle-size coverage, and the IWER raw-camera limitation are
+  described without stub/not-implemented wording.
+- Remaining package marker hits are intentional:
+  - Wi-Fi SSID/password UI input placeholder attributes in `SmartglassesView`;
+  - a feature-parity assertion that the native agent bridge source must not
+    contain the literal string `stub`.
 - Verified with:
-  - focused incomplete-marker scan on `plugins/plugin-health/src/sleep/sleep-wake-events.ts`
-  - `bunx @biomejs/biome check plugins/plugin-health/src/sleep/sleep-wake-events.ts`
-  - `bun run --cwd plugins/plugin-health build:types`
-  - `bun run --cwd plugins/plugin-health test -- src/__tests__/smoke.test.ts`
-  - `git diff --check -- plugins/plugin-health/src/sleep/sleep-wake-events.ts PLACEHOLDER_AUDIT.md`
+  - `diff -u plugins/plugin-facewear/CLAUDE.md plugins/plugin-facewear/AGENTS.md`
+  - `bun run --cwd plugins/plugin-facewear typecheck`
+  - `bun run --cwd plugins/plugin-facewear build`
+  - marker scan on `plugins/plugin-facewear`
 
-### plugins/plugin-local-inference checkpoint-manager follow-up
+### scripts/build-riscv64-artifacts.sh
 
-- Loaded the package-local guide before working in
-  `plugins/plugin-local-inference`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded voice checkpoint manager upstream-migration TODO comments into
-  current backend-reference abstraction notes. The implementation remains on
-  the supported filename-based llama.cpp fork API while callers keep an opaque
-  checkpoint handle.
+- Reworded the `ELIZA_RISCV64_SMOKE` gate comment so unset means the build
+  driver skips all builds instead of calling the branch a no-op.
 - Verified with:
-  - focused incomplete-marker scan on `plugins/plugin-local-inference/src/services/voice/checkpoint-manager.ts`
-  - `bunx @biomejs/biome check plugins/plugin-local-inference/src/services/voice/checkpoint-manager.ts`
-  - `bun run --cwd plugins/plugin-local-inference typecheck`
-  - `bunx vitest run --config ./vitest.config.ts src/services/voice/__tests__/checkpoint-manager.test.ts src/services/__tests__/checkpoint-manager.test.ts` from `plugins/plugin-local-inference`
-  - `git diff --check -- plugins/plugin-local-inference/src/services/voice/checkpoint-manager.ts PLACEHOLDER_AUDIT.md`
+  - `bash -n scripts/build-riscv64-artifacts.sh`
+  - marker scan on the script
 
-### plugins/plugin-local-inference voice first-run route follow-up
+### scripts/e2e-recordings
 
-- Loaded the package-local guide before working in
-  `plugins/plugin-local-inference`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded the voice first-run encoder injection hook comment from stub to fake
-  encoder terminology.
+- Remaining marker hits are the generated recording viewer's search input
+  placeholder text and matching `::placeholder` CSS selector in
+  `generate-viewer.mjs`. These are user-facing search affordances in the
+  viewer, not unfinished recorder implementation.
+- Verification note: this directory has no package-local `CLAUDE.md` or
+  package-level `package.json` scripts.
+
+### plugins/plugin-ainex
+
+- Reworded websocket disconnect docs so closing an already-closed bridge is
+  described as returning cleanly rather than no-op behavior.
+- Current package marker scan is clean after the service-action test runtime
+  fixture rename.
 - Verified with:
-  - focused incomplete-marker scan on `plugins/plugin-local-inference/src/routes/voice-first-run-routes.ts`
-  - `bunx @biomejs/biome check plugins/plugin-local-inference/src/routes/voice-first-run-routes.ts`
-  - `bun run --cwd plugins/plugin-local-inference typecheck`
-  - `bunx vitest run --config ./vitest.config.ts __tests__/voice-first-run-routes.test.ts` from `plugins/plugin-local-inference`
-  - `git diff --check -- plugins/plugin-local-inference/src/routes/voice-first-run-routes.ts PLACEHOLDER_AUDIT.md`
+  - `bun run --cwd plugins/plugin-ainex typecheck`
+  - `bun run --cwd plugins/plugin-ainex test`
+  - `bun run --cwd plugins/plugin-ainex build`
+  - marker scan on `plugins/plugin-ainex`
 
-### plugins/plugin-lifeops calendar metadata follow-up
+### plugins/plugin-bluebubbles
 
-- Loaded the package-local guide before working in `plugins/plugin-lifeops`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded the calendar bulk-reschedule subaction metadata from future-window
-  wording to later-window wording.
+- Reworded connector-account deletion comments so character/env-backed
+  credentials are described as an out-of-band configuration boundary rather
+  than no-op provider behavior.
 - Verified with:
-  - focused incomplete-marker scan on `plugins/plugin-lifeops/src/actions/calendar.ts`
-  - `bunx @biomejs/biome check plugins/plugin-lifeops/src/actions/calendar.ts`
-  - `bun run --cwd plugins/plugin-lifeops build:types`
-  - `git diff --check -- plugins/plugin-lifeops/src/actions/calendar.ts PLACEHOLDER_AUDIT.md`
+  - `bun run --cwd plugins/plugin-bluebubbles typecheck`
+  - `bun run --cwd plugins/plugin-bluebubbles test`
+  - `bun run --cwd plugins/plugin-bluebubbles build`
+  - marker scan on `plugins/plugin-bluebubbles`
 
-### plugins/plugin-computeruse bridge test-double follow-up
+### plugins/plugin-feishu
 
-- Loaded the package-local guide before working in `plugins/plugin-computeruse`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded iOS/Android bridge test double helpers and fallback messages from
-  stub terminology to fake/unavailable terminology, formatted the touched
-  files, and removed Biome non-null assertions surfaced in the touched tests.
+- Reworded connector-account provider deletion comments so provider-layer
+  deletion returns cleanly while runtime credentials remain in character
+  settings.
 - Verified with:
-  - focused incomplete-marker scan on touched computeruse bridge test files
-  - `bunx @biomejs/biome check plugins/plugin-computeruse/src/__tests__/ios-computer-interface.test.ts plugins/plugin-computeruse/src/__tests__/android-bridge.test.ts plugins/plugin-computeruse/src/__tests__/ios-bridge.test.ts`
-  - `bun run --cwd plugins/plugin-computeruse typecheck`
-  - `bun run --cwd plugins/plugin-computeruse test -- src/__tests__/ios-computer-interface.test.ts src/__tests__/android-bridge.test.ts src/__tests__/ios-bridge.test.ts`
-  - `git diff --check -- plugins/plugin-computeruse/src/__tests__/ios-computer-interface.test.ts plugins/plugin-computeruse/src/__tests__/android-bridge.test.ts plugins/plugin-computeruse/src/__tests__/ios-bridge.test.ts PLACEHOLDER_AUDIT.md`
+  - `bun run --cwd plugins/plugin-feishu typecheck`
+  - `bun run --cwd plugins/plugin-feishu test`
+  - `bun run --cwd plugins/plugin-feishu build`
+  - marker scan on `plugins/plugin-feishu`
 
-### plugins/plugin-local-inference capacitor-llama loader follow-up
+### plugins/plugin-line
 
-- Loaded the package-local guide before working in
-  `plugins/plugin-local-inference`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded the desktop FFI model-descriptor comment from not-yet metadata
-  getter wording to current shim capability wording.
+- Reworded connector-account provider deletion comments so provider-layer
+  deletion returns cleanly while runtime credentials remain in character
+  settings.
 - Verified with:
-  - focused incomplete-marker scan on `plugins/plugin-local-inference/src/adapters/capacitor-llama/loader.ts`
-  - `bunx @biomejs/biome check plugins/plugin-local-inference/src/adapters/capacitor-llama/loader.ts`
-  - `bun run --cwd plugins/plugin-local-inference typecheck`
-  - `git diff --check -- plugins/plugin-local-inference/src/adapters/capacitor-llama/loader.ts PLACEHOLDER_AUDIT.md`
+  - `bun run --cwd plugins/plugin-line typecheck`
+  - `bun run --cwd plugins/plugin-line test`
+  - `bun run --cwd plugins/plugin-line build`
+  - marker scan on `plugins/plugin-line`
 
-### plugins/plugin-local-inference bundled-models follow-up
+### plugins/plugin-matrix
 
-- Loaded the package-local guide before working in
-  `plugins/plugin-local-inference`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded bundled-model idempotence comments from future re-bundle wording to
-  later re-bundle wording.
+- Reworded connector-account provider deletion comments so provider-layer
+  deletion returns cleanly while runtime credentials remain in character
+  settings.
 - Verified with:
-  - focused incomplete-marker scan on `plugins/plugin-local-inference/src/services/bundled-models.ts`
-  - `bunx @biomejs/biome check plugins/plugin-local-inference/src/services/bundled-models.ts`
-  - `bun run --cwd plugins/plugin-local-inference typecheck`
-  - `git diff --check -- plugins/plugin-local-inference/src/services/bundled-models.ts PLACEHOLDER_AUDIT.md`
+  - `bun run --cwd plugins/plugin-matrix typecheck`
+  - `bun run --cwd plugins/plugin-matrix test`
+  - `bun run --cwd plugins/plugin-matrix build`
+  - marker scan on `plugins/plugin-matrix`
 
-### plugins/plugin-local-inference ASR index follow-up
+### plugins/plugin-native-wifi
 
-- Loaded the package-local guide before working in
-  `plugins/plugin-local-inference`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded the ASR public entry comment from future-consumer wording to
-  additional-consumer wording.
+- Reworded the Android `requestNetwork` callback comment from no-op to empty
+  callback; connection state is still queried separately.
 - Verified with:
-  - focused incomplete-marker scan on `plugins/plugin-local-inference/src/services/asr/index.ts`
-  - `bunx @biomejs/biome check plugins/plugin-local-inference/src/services/asr/index.ts`
-  - `bun run --cwd plugins/plugin-local-inference typecheck`
-  - `git diff --check -- plugins/plugin-local-inference/src/services/asr/index.ts PLACEHOLDER_AUDIT.md`
+  - `bun run --cwd plugins/plugin-native-wifi build`
+  - marker scan on `plugins/plugin-native-wifi`
 
-### plugins/plugin-local-inference planner skeleton follow-up
+### plugins/plugin-native-phone
 
-- Loaded the package-local guide before working in
-  `plugins/plugin-local-inference`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded the planner skeleton structural-type comment from stubbing wording
-  to test-double wording.
+- Reworded README platform support so iOS is explicitly unsupported rather
+  than listed as not implemented.
 - Verified with:
-  - focused incomplete-marker scan on `plugins/plugin-local-inference/src/services/planner-skeleton.ts`
-  - `bunx @biomejs/biome check plugins/plugin-local-inference/src/services/planner-skeleton.ts`
-  - `bun run --cwd plugins/plugin-local-inference typecheck`
-  - `bunx vitest run --config ./vitest.config.ts src/services/__tests__/planner-grammar.test.ts` from `plugins/plugin-local-inference`
-  - `git diff --check -- plugins/plugin-local-inference/src/services/planner-skeleton.ts PLACEHOLDER_AUDIT.md`
+  - `bun run --cwd plugins/plugin-native-phone build`
+  - marker scan on `plugins/plugin-native-phone`
 
-### plugins/plugin-local-inference trace/manifest comments follow-up
+### plugins/plugin-ngrok
 
-- Loaded the package-local guide before working in
-  `plugins/plugin-local-inference`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded latency trace missing-checkpoint comments, conversation-registry
-  high-water restart notes, and manifest schema comments so they describe
-  current behavior without incomplete/future marker wording.
+- Reworded a Bun test-suite harness comment so `run()` delegates to `bun:test`
+  without no-op terminology.
+- Renamed the test utility runtime from `placeholderRuntime` to `testRuntime`.
 - Verified with:
-  - focused incomplete-marker scan on touched local-inference trace/registry/manifest files
-  - `bunx @biomejs/biome check plugins/plugin-local-inference/src/services/latency-trace.ts plugins/plugin-local-inference/src/services/conversation-registry.ts plugins/plugin-local-inference/src/services/manifest/schema.ts`
-  - `bun run --cwd plugins/plugin-local-inference typecheck`
-  - `bunx vitest run --config ./vitest.config.ts src/services/latency-trace.test.ts src/services/manifest/schema.test.ts` from `plugins/plugin-local-inference` (matched existing latency trace test)
-  - `bunx vitest run --config ./vitest.config.ts src/services/manifest/manifest.test.ts` from `plugins/plugin-local-inference`
-  - `git diff --check -- plugins/plugin-local-inference/src/services/latency-trace.ts plugins/plugin-local-inference/src/services/conversation-registry.ts plugins/plugin-local-inference/src/services/manifest/schema.ts PLACEHOLDER_AUDIT.md`
+  - `bun run --cwd plugins/plugin-ngrok typecheck`
+  - `bun run --cwd plugins/plugin-ngrok test:unit`
+  - `bun run --cwd plugins/plugin-ngrok build`
+  - marker scan on `plugins/plugin-ngrok`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-ngrok`
 
-### plugins/plugin-local-inference gated checkpoint follow-up
+### plugins/plugin-hyperliquid-app
 
-- Loaded the package-local guide before working in
-  `plugins/plugin-local-inference`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded gated checkpoint manager lifecycle comments and test intro wording
-  so server-start and fetch-mock behavior are described without not-yet/stub
-  markers.
+- Reworded the README's execution boundary so order placement is disabled by
+  design and the plugin is read-only, rather than saying placement is not
+  implemented.
 - Verified with:
-  - focused incomplete-marker scan on touched checkpoint wrapper files
-  - `bunx @biomejs/biome check plugins/plugin-local-inference/src/services/checkpoint-manager.ts plugins/plugin-local-inference/src/services/__tests__/checkpoint-manager.test.ts`
-  - `bun run --cwd plugins/plugin-local-inference typecheck`
-  - `bunx vitest run --config ./vitest.config.ts src/services/__tests__/checkpoint-manager.test.ts` from `plugins/plugin-local-inference`
-  - `git diff --check -- plugins/plugin-local-inference/src/services/checkpoint-manager.ts plugins/plugin-local-inference/src/services/__tests__/checkpoint-manager.test.ts PLACEHOLDER_AUDIT.md`
+  - `bun run --cwd plugins/plugin-hyperliquid-app test`
+  - `bun run --cwd plugins/plugin-hyperliquid-app build`
+  - marker scan on `plugins/plugin-hyperliquid-app`
 
-### plugins/plugin-lifeops owner todos surface follow-up
+### plugins/plugin-vision
 
-- Loaded the package-local guide before working in `plugins/plugin-lifeops`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded a stale uppercase TODO comment in the owner todos action to point at
-  the currently implemented general-purpose `plugin-todos` surface while
-  preserving the distinction between the two backing stores.
+- Reworded the WS1 arbiter adapter's `release()` comment so WS1 lifecycle
+  ownership is described without no-op terminology.
 - Verified with:
-  - focused incomplete-marker scan on `plugins/plugin-lifeops/src/actions/owner-surfaces.ts` (remaining hits are legitimate `todos` domain/action names)
-  - `bunx @biomejs/biome check plugins/plugin-lifeops/src/actions/owner-surfaces.ts`
-  - `bun run --cwd plugins/plugin-lifeops build:types`
-  - `bun run --cwd plugins/plugin-lifeops test -- src/plugin.test.ts`
-  - `git diff --check -- plugins/plugin-lifeops/src/actions/owner-surfaces.ts PLACEHOLDER_AUDIT.md`
+  - `bun run --cwd plugins/plugin-vision build`
+  - marker scan on `plugins/plugin-vision`
+- Build note: the Vision build completed successfully while preserving the
+  existing non-blocking declaration warnings for optional
+  `@tensorflow/tfjs-node` types.
 
-### plugins/plugin-lifeops goal extraction follow-up
+### one-hit UI / validation marker classifications
 
-- Loaded the package-local guide before working in `plugins/plugin-lifeops`;
-  `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded the goal creation extraction prompt from future-progress wording to
-  later-progress wording.
+- Remaining hits in this low-count scan are intentional:
+  - `plugins/plugin-feed`, `plugins/plugin-defense-of-the-agents`,
+    `plugins/plugin-clawville`, `plugins/plugin-companion`, and
+    `plugins/plugin-wifi` contain user-facing input placeholder attributes.
+  - `plugins/plugin-social-alpha` contains a Tailwind `placeholder:` utility.
+  - `plugins/plugin-telegram` has a real validation error for incomplete login
+    credentials.
+  - `scripts/eval-prompts.ts` contains literal `{{placeholder}}` prompt-contract
+    examples and optimizer instructions to preserve those placeholders
+    byte-identically.
+
+### plugins/plugin-app-control
+
+- Reworded app-registry shutdown, app-worker isolation, and app-worker test
+  comments so synchronous persistence and in-process app entries are described
+  directly rather than as no-op behavior. Updated the checked-in declaration
+  mirror and JS mirror comments for the worker-host service as well.
 - Verified with:
-  - focused incomplete-marker scan on `plugins/plugin-lifeops/src/actions/lib/extract-goal-plan.ts`
-  - `bunx @biomejs/biome check plugins/plugin-lifeops/src/actions/lib/extract-goal-plan.ts`
-  - `bun run --cwd plugins/plugin-lifeops build:types`
-  - `git diff --check -- plugins/plugin-lifeops/src/actions/lib/extract-goal-plan.ts PLACEHOLDER_AUDIT.md`
+  - `bun run --cwd plugins/plugin-app-control typecheck`
+  - `bun run --cwd plugins/plugin-app-control test`
+  - `bun run --cwd plugins/plugin-app-control build`
+  - marker scan on `plugins/plugin-app-control`
 
-### plugins/plugin-local-inference desktop llama adapter follow-up
+### plugins/plugin-phone
 
-- Loaded the package-local guide before working in
-  `plugins/plugin-local-inference`; `CLAUDE.md` and `AGENTS.md` are identical.
-- Reworded desktop llama adapter lifecycle comments from future-call wording
-  to later/subsequent call wording.
+- Reworded Phone Companion web fallback logs/docs so pairing status, haptics,
+  and APNs are described as unavailable on web rather than no-op behavior.
+- Remaining marker hits are user-facing input placeholder attributes in the
+  dialer and pairing payload UI.
 - Verified with:
-  - focused incomplete-marker scan on `plugins/plugin-local-inference/src/services/desktop-llama-adapter.ts`
-  - `bunx @biomejs/biome check plugins/plugin-local-inference/src/services/desktop-llama-adapter.ts`
-  - `bun run --cwd plugins/plugin-local-inference typecheck`
-  - `bunx vitest run --config ./vitest.config.ts src/services/desktop-llama-adapter.test.ts src/services/desktop-llama-piece-decode.test.ts` from `plugins/plugin-local-inference`
-  - `git diff --check -- plugins/plugin-local-inference/src/services/desktop-llama-adapter.ts PLACEHOLDER_AUDIT.md`
+  - `bun run --cwd plugins/plugin-phone typecheck`
+  - `bun run --cwd plugins/plugin-phone test`
+  - `bun run --cwd plugins/plugin-phone build`
+  - marker scan on `plugins/plugin-phone`
+
+### plugins/plugin-scape
+
+- Reworded Scape loop lifecycle and stop-run comments so already-running or
+  already-stopped paths are described as clean returns / current-loop retention
+  rather than no-ops, and provider context setup now calls the object minimal
+  rather than a stub.
+- Remaining marker hits are operator UI input placeholder attributes.
+- Verified with:
+  - `bun run --cwd plugins/plugin-scape build`
+  - marker scan on `plugins/plugin-scape`
+
+### plugins/plugin-x
+
+- Reworded Twitter read-state and base-client override errors so unsupported
+  mark-as-read behavior and abstract hook requirements are explicit instead of
+  no-op/not-implemented wording.
+- Reworded the base-client test runtime comment from stub terminology to
+  provided test surface terminology.
+- Verified with:
+  - `bun run --cwd plugins/plugin-x test`
+  - `bun run --cwd plugins/plugin-x build`
+  - marker scan on `plugins/plugin-x`
+
+### plugins/plugin-discord
+
+- Reworded PDF attachment fallback, connector-account deletion, and desktop
+  relaunch comments so error media, provider-layer credential boundaries, and
+  unsupported relaunch branches are described without placeholder/no-op
+  terminology.
+- Remaining marker hits are Discord component `placeholder` fields/types used
+  for select-menu labels plus Vitest `useFakeTimers` and `stubGlobal` test APIs.
+- Verified with:
+  - `bun run --cwd plugins/plugin-discord typecheck`
+  - `bun run --cwd plugins/plugin-discord test`
+  - `bun run --cwd plugins/plugin-discord build`
+  - marker scan on `plugins/plugin-discord`
+
+### plugins/plugin-health
+
+- Replaced planner-clarification response `noop: true` fields with
+  `skipped: true`, and reworded connector-degradation/test/screen-time status
+  markers from no-op/stub/incomplete terminology to unavailable/partial
+  wording.
+- Current package marker scan is clean after the smoke-test runtime fixture
+  rename.
+- Verified with:
+  - `bun run --cwd plugins/plugin-health test`
+  - `bun run --cwd plugins/plugin-health build`
+  - marker scan on `plugins/plugin-health`
+
+### plugins/plugin-groq
+
+- No source edits were needed. Remaining marker hits are Vitest
+  `stubGlobal` / `unstubAllGlobals` APIs in fetch behavior tests, used to
+  install and clear a test `fetch` implementation.
+- Verified with:
+  - `diff -u plugins/plugin-groq/CLAUDE.md plugins/plugin-groq/AGENTS.md`
+  - marker scan on `plugins/plugin-groq`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-groq`
+
+### plugins/plugin-github
+
+- No source edits were needed. Remaining marker hits are Vitest
+  `stubGlobal` / `unstubAllGlobals` APIs in account-resolution tests, used to
+  inject and clear process-global state for test cases.
+- Verified with:
+  - `diff -u plugins/plugin-github/CLAUDE.md plugins/plugin-github/AGENTS.md`
+  - marker scan on `plugins/plugin-github`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-github`
+
+### plugins/plugin-gitpathologist
+
+- Renamed the cache report test fixture from `fakeReport()` to
+  `sampleReport()` and changed its fixture repo root from `/fake` to `/repo`.
+- Remaining package marker hit is the cache test title
+  `"does not leave temporary files after a successful write"`, which validates
+  the implemented atomic-write cleanup behavior.
+- Verified with:
+  - `diff -u plugins/plugin-gitpathologist/CLAUDE.md plugins/plugin-gitpathologist/AGENTS.md`
+  - `bun run --cwd plugins/plugin-gitpathologist test __tests__/cache.test.ts`
+  - marker scan on `plugins/plugin-gitpathologist`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-gitpathologist`
+
+### plugins/plugin-native-location
+
+- No source edits were needed. Remaining marker hits are Kotlin `toDouble()`
+  calls in the Android location bridge; the case-insensitive scan matches the
+  substring `todo` across the method name.
+- Verified with:
+  - `diff -u plugins/plugin-native-location/CLAUDE.md plugins/plugin-native-location/AGENTS.md`
+  - marker scan on `plugins/plugin-native-location`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-native-location`
+
+### plugins/app-model-tester
+
+- No source edits were needed. Remaining marker hits are Vitest `vi.mock`
+  module mocks in `src/model-tester-app.test.ts`, used to isolate overlay and
+  shell page registration side effects while importing the app module.
+- Verified with:
+  - `diff -u plugins/app-model-tester/CLAUDE.md plugins/app-model-tester/AGENTS.md`
+  - `bun run --cwd plugins/app-model-tester test src/model-tester-app.test.ts`
+  - marker scan on `plugins/app-model-tester`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/app-model-tester`
+
+### plugins/plugin-google-meet-cute
+
+- No source edits were needed. The package-local marker scan only matches the
+  generated `bun.lock` entries for `@vitest/mocker`; there are no source files,
+  package manifest, or package-local `CLAUDE.md` / `AGENTS.md` files in this
+  directory.
+- Verified with:
+  - marker scan on `plugins/plugin-google-meet-cute`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-google-meet-cute`
+
+### plugins/plugin-mysticism
+
+- No source edits were needed. Remaining marker hits are generated
+  package-local `bun.lock` entries for `@vitest/mocker`; the source tree has no
+  placeholder/stub/todo markers under the current scan.
+- Verified with:
+  - `diff -u plugins/plugin-mysticism/CLAUDE.md plugins/plugin-mysticism/AGENTS.md`
+  - marker scan on `plugins/plugin-mysticism`
+  - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-mysticism`
 
 ## Intentional / False-Positive Marker Classes
 

@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -107,6 +107,27 @@ if (
     const uiPort = await getDistinctFreePort(reservedPorts);
     env.ELIZA_UI_SMOKE_PORT = String(uiPort);
     env.ELIZA_PORT = env.ELIZA_PORT || String(uiPort);
+  }
+}
+
+if (
+  playwrightArgs.includes("--config") &&
+  playwrightArgs.some((value) =>
+    value.includes("playwright.ui-smoke.config.ts"),
+  ) &&
+  env.ELIZA_UI_SMOKE_SKIP_VIEW_BUILD !== "1"
+) {
+  const result = spawnSync(
+    process.execPath,
+    [path.join(repoRoot, "packages", "scripts", "build-views.mjs")],
+    {
+      cwd: repoRoot,
+      env,
+      stdio: "inherit",
+    },
+  );
+  if ((result.status ?? 1) !== 0) {
+    process.exit(result.status ?? 1);
   }
 }
 

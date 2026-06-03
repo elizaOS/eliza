@@ -312,7 +312,7 @@ describe("scenario PR workflow contract", () => {
       "Open the remote ledger view in a separate always on top window",
     );
     expect(deterministicPrScenario).toContain(
-      "stub local view API for deterministic shell actions",
+      "local view loopback API for deterministic shell actions",
     );
     expect(deterministicPrScenario).toContain(
       'Interacted with view "remote-ledger"',
@@ -700,13 +700,12 @@ describe("scenario PR workflow contract", () => {
       "STT capture path fires onTranscript with the recognized string",
       "always-on chat mode starts passive browser STT and keeps capture open after a final turn",
       "chat SSE stream emits token + done events for assistant message",
-      "Voice input",
+      'getByRole("button", { name: /talk|voice input/i })',
       "VOICE_DM",
       "hello world from the STT shim",
       "always on browser turn",
       "Always-on assistant heard the browser turn",
       "eliza:voice:continuous-chat-mode",
-      "chat-view-continuous-chat-toggle",
       'voiceSource: "browser"',
       "audio/mpeg",
       'types).toEqual(["token", "done"])',
@@ -714,6 +713,7 @@ describe("scenario PR workflow contract", () => {
       "similarity_boost: 0.75",
       "installPageDiagnosticsGuard",
       "expectNoPageDiagnostics",
+      'localStorage.setItem("eliza:voice:continuous-chat-mode", "always-on")',
     ]) {
       expect(appTtsSttFlow).toContain(required);
     }

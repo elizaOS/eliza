@@ -1,111 +1,105 @@
-import { describe, expect, it } from "vitest";
-import {
-  PasswordManagerError,
-  resolveReference,
-  type PasswordManagerCommandRunner,
-} from "../src/password-managers.js";
+import { execFile } from "node:child_process";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveReference } from "../src/password-managers.js";
 
-describe("password-manager reference resolution", () => {
-  it("resolves 1Password references through op read", async () => {
-    const calls: Array<{ command: string; args: readonly string[] }> = [];
-    const runner: PasswordManagerCommandRunner = async (command, args) => {
-      calls.push({ command, args });
-      return { stdout: "sk-op\n" };
-    };
+vi.mock("node:child_process", () => ({
+  execFile: vi.fn(),
+}));
 
-    const value = await resolveReference(
-      { source: "1password", path: "Personal/OpenRouter/api-key" },
-      runner,
+const execFileMock = vi.mocked(execFile);
+type ExecFileCallback = (
+  error: NodeJS.ErrnoException | null,
+  stdout: unknown,
+  stderr: string,
+) => void;
+
+function resolveExec(stdout: string): void {
+  execFileMock.mockImplementation((((
+    _cmd: string,
+    _args: readonly string[],
+    _opts: Record<string, unknown>,
+    callback: ExecFileCallback,
+  ) => {
+    callback(null, { stdout, stderr: "" }, "");
+  }) as unknown) as typeof execFile);
+}
+
+function rejectExec(error: NodeJS.ErrnoException): void {
+  execFileMock.mockImplementation((((
+    _cmd: string,
+    _args: readonly string[],
+    _opts: Record<string, unknown>,
+    callback: ExecFileCallback,
+  ) => {
+    callback(error, "", "");
+  }) as unknown) as typeof execFile);
+}
+
+describe("resolveReference", () => {
+  beforeEach(() => {
+    execFileMock.mockReset();
+  });
+
+  it("resolves Proton Pass references with pass-cli item view", async () => {
+    resolveExec("secret-value\n");
+
+    await expect(
+      resolveReference({
+        source: "protonpass",
+        path: "Personal/OpenAI/password",
+      }),
+    ).resolves.toBe("secret-value");
+
+    expect(execFileMock).toHaveBeenCalledWith(
+      "pass-cli",
+      ["item", "view", "pass://Personal/OpenAI/password"],
+      expect.objectContaining({
+        encoding: "utf8",
+        timeout: 5000,
+      }),
+      expect.any(Function),
     );
-
-    expect(value).toBe("sk-op");
-    expect(calls).toEqual([
-      {
-        command: "op",
-        args: ["read", "op://Personal/OpenRouter/api-key"],
-      },
-    ]);
   });
 
-  it("resolves Proton Pass references through pass-cli item view", async () => {
-    const calls: Array<{ command: string; args: readonly string[] }> = [];
-    const runner: PasswordManagerCommandRunner = async (command, args) => {
-      calls.push({ command, args });
-      return { stdout: "sk-proton\n" };
-    };
+  it("preserves fully qualified Proton Pass reference URIs", async () => {
+    resolveExec("already-qualified\n");
 
-    const value = await resolveReference(
-      { source: "protonpass", path: "Work/GitHub/password" },
-      runner,
+    await expect(
+      resolveReference({
+        source: "protonpass",
+        path: "pass://Vault/Item/api-key",
+      }),
+    ).resolves.toBe("already-qualified");
+
+    expect(execFileMock).toHaveBeenCalledWith(
+      "pass-cli",
+      ["item", "view", "pass://Vault/Item/api-key"],
+      expect.any(Object),
+      expect.any(Function),
     );
-
-    expect(value).toBe("sk-proton");
-    expect(calls).toEqual([
-      {
-        command: "pass-cli",
-        args: ["item", "view", "pass://Work/GitHub/password"],
-      },
-    ]);
   });
 
-  it("preserves an explicit Proton Pass URI", async () => {
-    const runner: PasswordManagerCommandRunner = async (command, args) => {
-      expect(command).toBe("pass-cli");
-      expect(args).toEqual([
-        "item",
-        "view",
-        "pass://Personal/API Keys/openrouter",
-      ]);
-      return { stdout: "value" };
-    };
+  it("reports missing Proton Pass CLI with install guidance", async () => {
+    const error = new Error("not found") as NodeJS.ErrnoException;
+    error.code = "ENOENT";
+    rejectExec(error);
 
     await expect(
-      resolveReference(
-        { source: "protonpass", path: "pass://Personal/API Keys/openrouter" },
-        runner,
-      ),
-    ).resolves.toBe("value");
+      resolveReference({
+        source: "protonpass",
+        path: "Vault/Item/password",
+      }),
+    ).rejects.toThrow("`pass-cli` not found");
   });
 
-  it("rejects empty Proton Pass output", async () => {
-    const runner: PasswordManagerCommandRunner = async () => ({ stdout: "\n" });
+  it("reports empty Proton Pass fields", async () => {
+    resolveExec("\n");
 
     await expect(
-      resolveReference(
-        { source: "protonpass", path: "Personal/Empty/password" },
-        runner,
-      ),
-    ).rejects.toThrow(/is empty/);
-  });
-
-  it("turns missing Proton Pass CLI failures into PasswordManagerError", async () => {
-    const runner: PasswordManagerCommandRunner = async () => {
-      const err = new Error("spawn pass-cli ENOENT") as NodeJS.ErrnoException;
-      err.code = "ENOENT";
-      throw err;
-    };
-
-    await expect(
-      resolveReference(
-        { source: "protonpass", path: "Personal/API/password" },
-        runner,
-      ),
-    ).rejects.toMatchObject({
-      name: "PasswordManagerError",
-      source: "protonpass",
-    } satisfies Partial<PasswordManagerError>);
-  });
-
-  it("explains Proton Pass authentication failures", async () => {
-    const runner: PasswordManagerCommandRunner = async () => {
-      throw new Error("This operation requires an authenticated client");
-    };
-
-    await expect(
-      resolveReference(
-        { source: "protonpass", path: "Personal/API/password" },
-        runner,
-      ),
-    ).rejects.toThrow(/pass-cli` is not signed in/);
+      resolveReference({
+        source: "protonpass",
+        path: "Vault/Item/password",
+      }),
+    ).rejects.toThrow("pass://Vault/Item/password is empty");
   });
 });

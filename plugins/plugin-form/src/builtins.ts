@@ -439,8 +439,8 @@ const dateType: ControlType = {
 /**
  * File control type
  *
- * Placeholder for file uploads. Actual file handling is done
- * by the file upload pipeline, not the form system.
+ * Metadata-only control for file uploads. Actual file handling is done by the
+ * file upload pipeline, not the form system.
  *
  * Validation here is basic; real validation happens during upload.
  *

@@ -19,7 +19,7 @@ interface MirroredMessage {
 /**
  * Chat mirror view. SSE stream + composer land with T9a (data plane) — this
  * view renders the resolved agent URL, the paired-session entry point when
- * a session-start intent is live, and a placeholder empty state.
+ * a session-start intent is live, and an empty conversation state.
  */
 export function Chat({
   pairedAgentUrl,

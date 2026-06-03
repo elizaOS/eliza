@@ -5,13 +5,12 @@
  * `include/voice_classifier/voice_classifier.h` links, that every
  * `*_open` against a non-existent GGUF returns `-ENOENT` (the real
  * loader's behavior, not the legacy `-ENOSYS` from the old single-TU
- * stub), and that every `*_classify/embed/score/segment` forward
- * entry returns `-ENOSYS` from the placeholder graph while still
- * clearing its out-parameters.
+ * build), and that unavailable forward entries still fail closed while
+ * clearing their out-parameters.
  *
  * The previous version of this test (before the J1 infrastructure
  * refactor) expected `*_open` itself to return `-ENOSYS`. That was a
- * single shared `voice_classifier_stub.c` TU; the new per-head TUs
+ * single shared compatibility TU; the new per-head TUs
  * (`voice_emotion.c`, `voice_speaker.c`, `voice_eot.c`,
  * `voice_diarizer.c`) load + validate the GGUF metadata block before
  * declining the forward pass. This test pins the new contract.

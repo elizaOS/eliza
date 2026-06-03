@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
  *   2. live-only — it genuinely cannot run keyless (needs a live agent runtime,
  *      a cloud sandbox, provider keys, or a running fixture endpoint), with the
  *      hard dependency named, OR
- *   3. tracked keyless debt — stub-capable and *should* run keyless but is not
+ *   3. tracked keyless debt — fixture-capable and *should* run keyless but is not
  *      yet wired. This bucket is a ratchet: it may only shrink.
  *
  * A new spec that is wired nowhere and classified nowhere fails test #1. Growing
@@ -55,7 +55,7 @@ const LIVE_ONLY: Readonly<Record<string, string>> = {
 };
 
 /**
- * Stub-capable specs that SHOULD run in keyless CI but are not yet wired into
+ * Fixture-capable specs that SHOULD run in keyless CI but are not yet wired into
  * scenario-pr.yml. RATCHET: this list may only shrink. To wire one, add a
  * Playwright step for it in scenario-pr.yml, delete it here, and decrement
  * MAX_KEYLESS_DEBT. Never add a new spec here without also lowering the ceiling

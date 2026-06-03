@@ -149,3 +149,5 @@ jobs:
           path: |
             reports/scenarios/pr-deterministic/
             reports/scenarios/catalog-inventory/
+          if-no-files-found: ignore
+          retention-days: 3

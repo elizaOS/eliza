@@ -175,7 +175,18 @@ export const FONT_MAP: Record<ThemeFont, string> = {
 // HSL helpers + syntax-highlight derivation, ported verbatim from the odysseus
 // index.html theme bootstrap — so every preset gets faithful --hl-* colours.
 function h2hsl(hex: string): [number, number, number] {
-  const s = hex.replace("#", "");
+  // Mirror upstream hexToRgb: trim, drop leading '#', expand #rgb shorthand to
+  // #rrggbb, and fall back to black on invalid/malformed hex — otherwise a
+  // shorthand or bad palette colour would parse to NaN and break --hl-*.
+  let s = String(hex || "")
+    .trim()
+    .replace(/^#/, "");
+  if (s.length === 3)
+    s = s
+      .split("")
+      .map((ch) => ch + ch)
+      .join("");
+  if (!/^[0-9a-fA-F]{6}$/.test(s)) s = "000000";
   const r = Number.parseInt(s.substring(0, 2), 16) / 255;
   const g = Number.parseInt(s.substring(2, 4), 16) / 255;
   const b = Number.parseInt(s.substring(4, 6), 16) / 255;
@@ -357,6 +368,10 @@ export const ODYSSEUS_CSS = `
   padding:6px 10px; border:none; background:none; color:var(--fg); font-size:12px; border-radius:4px; cursor:pointer; }
 .odysseus-root .od-thread-menu button:hover { background:color-mix(in srgb, var(--fg) 8%, transparent); }
 .odysseus-root .od-thread-menu button.od-danger { color:var(--red); }
+.odysseus-root .od-thread-menu-confirm { padding:6px 8px 2px; border-top:1px solid color-mix(in srgb, var(--border) 30%, transparent); margin-top:4px; }
+.odysseus-root .od-thread-menu-confirm > span { display:block; font-size:11px; color:var(--fg); margin-bottom:6px; }
+.odysseus-root .od-thread-menu-confirm-actions { display:flex; gap:6px; }
+.odysseus-root .od-thread-menu-confirm-actions button { flex:1; justify-content:center; }
 .odysseus-root .od-thread-pin-dot { flex-shrink:0; margin-right:5px; color:var(--accent, var(--red)); opacity:.85; }
 .odysseus-root .od-thread-rename { width:100%; box-sizing:border-box; padding:3px 8px; margin:1px 0; font-size:13px;
   background:var(--bg); color:var(--fg); border:1px solid var(--red); border-radius:4px; outline:none; font-family:inherit; }
@@ -364,7 +379,7 @@ export const ODYSSEUS_CSS = `
 .odysseus-root .od-section-header-flex { display:flex; align-items:center; gap:6px; padding:8px;
   margin:1px 0; border-radius:4px; height:29px; box-sizing:border-box; }
 .odysseus-root .od-section-title { flex:1; display:flex; align-items:center; gap:6px; margin:0;
-  font-size:10px; font-weight:400; line-height:1; color:var(--fg); user-select:none;
+  font-size:10px; font-weight:400; line-height:1.3; color:var(--fg); user-select:none;
   text-transform:none; letter-spacing:0; }
 .odysseus-root .od-sidebar-user-bar { display:flex; align-items:center; justify-content:space-between;
   padding:12px; flex-shrink:0; gap:4px; min-height:48px; border-top:1px solid color-mix(in srgb, var(--fg) 8%, transparent); }
@@ -443,7 +458,7 @@ export const ODYSSEUS_CSS = `
 .odysseus-root .od-slash-label { opacity:.65; }
 .odysseus-root .od-input-top { width:100%; position:relative; display:flex; align-items:flex-start; gap:8px; }
 .odysseus-root .od-input-top textarea { flex:1; width:100%; background:transparent; border:none; outline:none;
-  resize:none; font-size:14px; line-height:1.5; color:var(--fg); min-height:24px; max-height:200px;
+  resize:vertical; font-size:14px; line-height:1.5; color:var(--fg); min-height:24px; max-height:min(60vh,600px);
   padding:0; font-family:inherit; }
 .odysseus-root .od-input-top textarea::placeholder { color:color-mix(in srgb, var(--fg) 35%, transparent); }
 .odysseus-root .od-model-picker-btn { display:inline-flex; align-items:center; gap:4px; height:21px; padding:0 6px;
@@ -1735,6 +1750,12 @@ export const ODYSSEUS_CSS = `
   color: var(--accent, var(--red)); cursor: pointer;
 }
 .odysseus-root .od-email-stats { font-size: 11px; opacity: 0.55; font-weight: 400; color: var(--fg); }
+/* Transient "Email copied" status from the recipient-chip copy button
+   (emailLibrary.js showToast('Email copied')). */
+.odysseus-root .od-email-feedback {
+  font-size: 11px; font-weight: 600; color: var(--accent, var(--red));
+  white-space: nowrap; animation: od-models-feedback-in 0.16s ease-out;
+}
 .odysseus-root .od-email-close {
   background: none; border: none; color: var(--fg); opacity: 0.55; cursor: pointer;
   padding: 4px; line-height: 0; border-radius: 6px; display: inline-flex; transition: opacity 0.15s, background 0.15s;
@@ -1843,10 +1864,25 @@ export const ODYSSEUS_CSS = `
 .odysseus-root .od-email-reader-meta-row strong { opacity: 0.5; font-weight: 600; flex-shrink: 0; min-width: 36px; }
 .odysseus-root .od-email-recipient-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .odysseus-root .od-email-recipient-chip {
-  display: inline-flex; align-items: center; padding: 1px 8px; font-size: 10px;
+  display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px; font-size: 10px;
   background: color-mix(in srgb, var(--fg) 6%, transparent); border: 1px solid var(--border);
-  border-radius: 10px; color: var(--fg); white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis;
+  border-radius: 10px; color: var(--fg); white-space: nowrap; max-width: 220px; overflow: hidden;
 }
+.odysseus-root .od-email-recipient-chip.expanded { max-width: 320px; }
+/* emailLibrary.js recipient-chip-label — the clickable name/address toggle. */
+.odysseus-root .od-email-recipient-chip-label {
+  background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit;
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* emailLibrary.js recipient-chip-copy — revealed when the chip is expanded;
+   flips to a check (copied state) for ~900ms after a successful copy. */
+.odysseus-root .od-email-recipient-chip-copy {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 16px; height: 16px; padding: 0; border: 0; border-radius: 4px; background: none;
+  color: var(--fg); opacity: 0.6; cursor: pointer; transition: opacity 0.15s, color 0.15s;
+}
+.odysseus-root .od-email-recipient-chip-copy:hover { opacity: 1; }
+.odysseus-root .od-email-recipient-chip-copy.copied { opacity: 1; color: var(--accent, var(--red)); }
 .odysseus-root .od-email-reader-actions {
   display: flex; gap: 4px; flex-wrap: wrap; align-items: center; flex-shrink: 0; justify-content: flex-end; margin-top: -2px;
 }
@@ -10546,6 +10582,41 @@ export const ODYSSEUS_CSS = `
 .odysseus-root .od-cb-server-select { flex: 0 0 auto; }
 .odysseus-root .od-cb-scan-search { flex: 1 1 auto; min-width: 120px; }
 
+/* Toolbar help "?" chips (odysseus .hwfit-help-chip). */
+.odysseus-root .od-cb-help-chip {
+  width: 14px; height: 14px; flex: 0 0 14px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--fg) 22%, transparent);
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  font-size: 9px; font-weight: 700; line-height: 1;
+  cursor: help; position: relative; top: -1px; margin-left: -1px;
+}
+.odysseus-root .od-cb-help-chip:hover {
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--fg) 45%, transparent);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+.odysseus-root .od-cb-help-chip-inline { margin-left: -2px; margin-right: 0; }
+
+/* Ctx target-context slider (odysseus .hwfit-ctx-control). */
+.odysseus-root .od-cb-ctx-control {
+  height: 28px; min-width: 134px; flex-shrink: 0; box-sizing: border-box;
+  display: inline-flex; align-items: center; gap: 5px; padding: 0 7px;
+  border: 1px solid var(--border); border-radius: 4px;
+  color: var(--muted); background: var(--bg); font-size: 10px;
+}
+.odysseus-root .od-cb-ctx-control span {
+  text-transform: uppercase; letter-spacing: 0.3px; opacity: 0.75;
+}
+.odysseus-root .od-cb-ctx-control input[type="range"] {
+  width: 54px; min-width: 54px; height: 16px; padding: 0; border: 0;
+  background: transparent; accent-color: var(--accent, var(--red));
+}
+.odysseus-root .od-cb-ctx-control output {
+  min-width: 28px; text-align: right; color: var(--fg); font-weight: 600;
+}
+
 /* RESCAN / EDIT buttons (odysseus .hwfit-gpu-btn). */
 .odysseus-root .od-cb-gpu-btn {
   appearance: none; -webkit-appearance: none;
@@ -12170,4 +12241,48 @@ export const ODYSSEUS_CSS = `
    leaving the JSX label prop semantic. The Added Models sub-heads already
    uppercase via .od-set-ep-list-head in the base theme. */
 .odysseus-root .od-set-ep-head { text-transform: uppercase; letter-spacing: 0.03em; }
+/* ===== fix-wave: ReasoningCell shimmer ===== */
+/* Luminance-sweep shimmer for the streaming reasoning cell
+   (orchestrator-reasoning.tsx). A moving mask-image window briefly lifts the
+   alpha of the masked glyphs, reading as a highlight traveling across the muted
+   text -- no second color is introduced. Hoisted here out of a per-instance
+   inline style tag so it is emitted once for the whole shell instead of once
+   per ReasoningCell. The selector is intentionally NOT scoped under
+   .odysseus-root: the cell also renders in the standalone OrchestratorWorkbench
+   timeline (which uses these same eliza tokens), so the class must resolve in
+   both contexts. The reduced-motion guard drops the animation and the mask. */
+.orchestrator-reasoning-shimmer {
+  -webkit-mask-image: linear-gradient(
+    100deg,
+    rgba(0, 0, 0, 0.45) 30%,
+    rgba(0, 0, 0, 1) 50%,
+    rgba(0, 0, 0, 0.45) 70%
+  );
+  mask-image: linear-gradient(
+    100deg,
+    rgba(0, 0, 0, 0.45) 30%,
+    rgba(0, 0, 0, 1) 50%,
+    rgba(0, 0, 0, 0.45) 70%
+  );
+  -webkit-mask-size: 220% 100%;
+  mask-size: 220% 100%;
+  animation: orchestrator-reasoning-sweep 1.8s linear infinite;
+}
+@keyframes orchestrator-reasoning-sweep {
+  from {
+    -webkit-mask-position: 180% 0;
+    mask-position: 180% 0;
+  }
+  to {
+    -webkit-mask-position: -80% 0;
+    mask-position: -80% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .orchestrator-reasoning-shimmer {
+    -webkit-mask-image: none;
+    mask-image: none;
+    animation: none;
+  }
+}
 `;

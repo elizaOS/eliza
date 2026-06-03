@@ -19,6 +19,7 @@ type ReadyCheck =
 type RouteProbe = {
   name: string;
   path: string;
+  expectedUrl?: RegExp;
   readyChecks: readonly ReadyCheck[];
   mode?: "any" | "all";
   timeoutMs?: number;
@@ -89,6 +90,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "assistant home",
     path: "/",
+    expectedUrl: /\/(?:chat)?$/,
     readyChecks: [
       {
         selector:
@@ -1372,7 +1374,9 @@ async function expectNoPageIssues(
 
 async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
   await expect(page.locator("#root")).toBeVisible();
-  await expect(page.locator("body")).not.toContainText(/404|not found/i);
+  await expect(page.locator("body")).not.toContainText(
+    /(?:404\s+not\s+found|page not found|route not found)/i,
+  );
   if (
     route.path === "/" ||
     route.path === "/chat" ||
@@ -1398,11 +1402,9 @@ async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
 }
 
 async function probeRoute(page: Page, route: RouteProbe): Promise<void> {
-  await openAppPath(page, route.path);
-  await expect(page).toHaveURL(new RegExp(`${escapeRegExp(route.path)}$`), {
-    timeout: route.timeoutMs,
-  });
-  await expectMainShell(page, route);
+  const expectedUrl =
+    route.expectedUrl ?? new RegExp(`${escapeRegExp(route.path)}$`);
+  await openRouteAndExpectUrl(page, route, expectedUrl);
   await assertReadyChecks(
     page,
     route.name,
@@ -1410,6 +1412,39 @@ async function probeRoute(page: Page, route: RouteProbe): Promise<void> {
     route.mode ?? "any",
     route.timeoutMs,
   );
+  await expectMainShell(page, route);
+}
+
+async function openRouteAndExpectUrl(
+  page: Page,
+  route: RouteProbe,
+  expectedUrl: RegExp,
+): Promise<void> {
+  const timeoutMs = route.timeoutMs ?? 60_000;
+  const firstAttemptTimeoutMs = Math.min(timeoutMs, 15_000);
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await openAppPath(page, route.path);
+    await expect(page)
+      .toHaveURL(expectedUrl, {
+        timeout: attempt === 0 ? firstAttemptTimeoutMs : timeoutMs,
+      })
+      .then(
+        () => undefined,
+        async (error: unknown) => {
+          if (attempt > 0) throw error;
+          await page
+            .goto("about:blank", {
+              waitUntil: "domcontentloaded",
+              timeout: 5_000,
+            })
+            .catch(() => {
+              /* best-effort reset before retrying a missed navigation */
+            });
+        },
+      );
+    if (expectedUrl.test(page.url())) return;
+  }
 }
 
 async function clickIfVisible(locator: Locator): Promise<boolean> {
@@ -1462,6 +1497,15 @@ test.beforeEach(async ({ page }) => {
   await seedAppStorage(page);
   await installSupplementalSafeRoutes(page);
   await installDefaultAppRoutes(page);
+});
+
+test.afterEach(async ({ page }) => {
+  if (page.isClosed()) return;
+  await page
+    .goto("about:blank", { waitUntil: "domcontentloaded", timeout: 5_000 })
+    .catch(() => {
+      /* best-effort cleanup before Playwright closes the context */
+    });
 });
 
 for (const viewport of [DESKTOP_PROBE, MOBILE_PROBE]) {

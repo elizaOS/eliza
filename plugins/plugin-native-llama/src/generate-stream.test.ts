@@ -171,7 +171,7 @@ describe("CapacitorLlamaAdapter.generateStream", () => {
     expect(result.durationMs).toBe(30);
   });
 
-  it("accepts samplerStages without throwing (native bridge is no-op for now)", async () => {
+  it("accepts samplerStages without throwing while native bridge support is pending", async () => {
     vi.resetModules();
     const state = installMockPlugin();
     const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");

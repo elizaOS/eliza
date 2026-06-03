@@ -11,8 +11,9 @@ import logging
 import math
 import threading
 import time
+from collections.abc import Generator
+from contextlib import suppress
 from pathlib import Path
-from typing import Generator
 
 import numpy as np
 
@@ -32,10 +33,9 @@ except ImportError:
     _HAS_FLASK = False
 
 from eliza_robot.perception.calibration import CameraIntrinsics
-from eliza_robot.perception.config import PipelineConfig, load_config
+from eliza_robot.perception.config import load_config
 from eliza_robot.perception.detectors.aruco_detector import ArucoDetector
 from eliza_robot.perception.frame_source import OpenCVSource
-
 from eliza_robot.perception.tracking_visualizer.calibrator import RuntimeCalibrator
 from eliza_robot.perception.tracking_visualizer.overlay import draw_all_overlays
 from eliza_robot.perception.tracking_visualizer.scene_view import SceneRenderer
@@ -553,7 +553,7 @@ setInterval(async()=>{
 # ---------------------------------------------------------------------------
 
 def _no_signal_frame(w: int, h: int, text: str = "NO SIGNAL") -> np.ndarray:
-    """Render a dark placeholder frame."""
+    """Render a dark frame for a missing camera signal."""
     frame = np.zeros((h, w, 3), dtype=np.uint8)
     frame[::2, :] = 20
     if _HAS_CV2:
@@ -763,7 +763,7 @@ class TrackingDashboard:
             "objects": True,
         }
 
-        # No-signal placeholders
+        # Pre-rendered no-signal frames
         self._ns_robot = _no_signal_frame(
             self._cfg.camera.width, self._cfg.camera.height,
             "ROBOT CAMERA - NO SIGNAL",
@@ -1245,10 +1245,8 @@ class TrackingDashboard:
             # Inverse homography: world XY → pixel coords for AR overlay
             H_inv = None
             if dashboard._homography is not None:
-                try:
+                with suppress(np.linalg.LinAlgError):
                     H_inv = np.linalg.inv(dashboard._homography).tolist()
-                except np.linalg.LinAlgError:
-                    pass
 
             # Get actual frame size from latest frame (not config)
             act_w = dashboard._cfg.external_camera.width

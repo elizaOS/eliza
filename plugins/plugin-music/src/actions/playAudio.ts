@@ -20,7 +20,7 @@ import { ProgressiveMessage } from "../utils/progressiveMessage";
 import { mergedOptions, requireMusicConfirmation } from "./confirmation";
 import { MUSIC_PLAYER_ACTION_DOCS } from "./music-player-action-docs";
 
-// Local interface shims for cross-plugin / native deps that ship without d.ts files.
+// Local contracts for cross-plugin / native deps that ship without d.ts files.
 // `@elizaos/plugin-music` builds with `dts: false`, and `discord.js`
 // is an optional peer dep we don't want to take a hard type dependency on.
 interface DetectedMusicEntity {
@@ -1219,7 +1219,7 @@ export const playAudio: Action = {
         logger.warn(`Failed to track request: ${error}`);
       }
 
-      // Save to global music library for later lookup (background).
+      // Save to global music library for future reference (background)
       try {
         const musicLibrary = runtime.getService(
           "musicLibrary",

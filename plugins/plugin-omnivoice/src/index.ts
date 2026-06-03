@@ -4,10 +4,10 @@
  * Registers ModelType.TEXT_TO_SPEECH backed by the libomnivoice shared
  * library. Handles voice design (gender / age / pitch / style / volume /
  * emotion), voice cloning (reference WAV + transcript), and a singing
- * codepath (separate model). Surfaces ModelType.TRANSCRIPTION as a
- * stub that throws OmnivoiceTranscriptionNotSupported — omnivoice has
- * no ASR head; users should pair this plugin with plugin-elevenlabs,
- * plugin-deepgram, or Whisper for STT.
+ * codepath (separate model). Surfaces ModelType.TRANSCRIPTION as an
+ * unsupported handler that throws OmnivoiceTranscriptionNotSupported —
+ * omnivoice has no ASR head; users should pair this plugin with
+ * plugin-elevenlabs, plugin-deepgram, or Whisper for STT.
  *
  * Auto-enables only when the user has provided OMNIVOICE_MODEL_PATH +
  * OMNIVOICE_CODEC_PATH or explicitly opted into local TTS via

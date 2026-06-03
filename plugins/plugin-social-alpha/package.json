@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-social-alpha",
-	"version": "2.0.3-beta.0",
+	"version": "2.0.3-beta.1",
 	"description": "Social Alpha Plugin — Tracks token recommendations (shills/FUD), builds trust scores based on P&L outcomes, and exposes a Social Alpha Provider with win rate, rank, and recommender analytics.",
 	"type": "module",
 	"main": "dist/index.js",
@@ -9,9 +9,9 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"eliza-source": {
-			  "types": "./src/index.ts",
-			  "import": "./src/index.ts",
-			  "default": "./src/index.ts"
+				"types": "./src/index.ts",
+				"import": "./src/index.ts",
+				"default": "./src/index.ts"
 			},
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"

@@ -6,7 +6,7 @@
  * 2. The auto-enable predicate: turn the plugin on when the local server responds.
  *
  * Detection is kept side-effect free and accepts an injected `fetch` so unit tests
- * can provide deterministic fetch behavior without touching network state.
+ * can provide a fake implementation without touching network state.
  */
 
 import type { LMStudioModelInfo, LMStudioModelsResponse } from "../types";

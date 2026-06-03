@@ -4,7 +4,7 @@ elizaOS plugin that connects an Eliza agent to external [Model Context Protocol]
 
 The plugin starts `McpService`, which connects to one or more MCP servers (stdio, SSE, or streamable-HTTP), discovers their tools and resources, and surfaces them through a single `MCP` action and an `MCP` provider. It is consumed by an elizaOS agent: add it to the character `plugins` array and configure servers under `settings.mcp.servers`.
 
-Node-only. `index.browser.ts` is a no-op shim because the MCP SDK's stdio/SSE transports require Node APIs (`eliza.platforms` is `["node"]`).
+Node-only. `index.browser.ts` is a browser-unavailable entry because the MCP SDK's stdio/SSE transports require Node APIs (`eliza.platforms` is `["node"]`).
 
 ## Install
 

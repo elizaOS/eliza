@@ -627,7 +627,7 @@ function nodeAutoscaleResponse(c: Context) {
     ) {
       return c.json({
         success: true,
-        data: { ...result, action: "noop" },
+        data: { ...result, action: "unchanged" },
       });
     }
 

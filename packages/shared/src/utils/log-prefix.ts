@@ -1,49 +1,57 @@
-import { existsSync, readFileSync } from "node:fs";
-import * as path from "node:path";
-
 let cachedPrefix: string | null = null;
+
+type RuntimeProcess = {
+  argv?: string[];
+  cwd?: () => string;
+  env?: Record<string, string | undefined>;
+};
+
+function getRuntimeProcess(): RuntimeProcess | undefined {
+  const candidate = (globalThis as { process?: RuntimeProcess }).process;
+  return candidate && typeof candidate === "object" ? candidate : undefined;
+}
+
+function prefixFromPackageName(name: string): string {
+  let packageName = name;
+  if (packageName.startsWith("@"))
+    packageName = packageName.split("/")[1] ?? packageName;
+  if (packageName === "elizaos" || packageName.includes("eliza")) {
+    return "[eliza]";
+  }
+  return `[${packageName}]`;
+}
 
 export function getLogPrefix(): string {
   if (cachedPrefix !== null) {
     return cachedPrefix;
   }
 
-  const appCliName = process.env.APP_CLI_NAME?.trim();
+  const runtimeProcess = getRuntimeProcess();
+
+  const appCliName = runtimeProcess?.env?.APP_CLI_NAME?.trim();
   if (appCliName) {
     cachedPrefix = `[${appCliName}]`;
     return cachedPrefix;
   }
 
-  const nameArgMatch = process.argv.find((a) => a.startsWith("--name="));
+  const packageName = runtimeProcess?.env?.npm_package_name?.trim();
+  if (packageName) {
+    cachedPrefix = prefixFromPackageName(packageName);
+    return cachedPrefix;
+  }
+
+  const nameArgMatch = runtimeProcess?.argv?.find((a) =>
+    a.startsWith("--name="),
+  );
   if (nameArgMatch) {
     const name = nameArgMatch.split("=")[1];
     cachedPrefix = `[${name}]`;
     return cachedPrefix;
   }
 
-  try {
-    const pkgPath = path.join(process.cwd(), "package.json");
-    if (existsSync(pkgPath)) {
-      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-      if (pkg.name) {
-        let name = pkg.name;
-        if (name.startsWith("@")) name = name.split("/")[1];
-        if (name === "elizaos" || name.includes("eliza")) {
-          cachedPrefix = "[eliza]";
-          return cachedPrefix;
-        }
-        cachedPrefix = `[${name}]`;
-        return cachedPrefix;
-      }
-    }
-  } catch {
-    // package.json missing or malformed — continue to fallbacks
-  }
-
-  if (
-    process.cwd().includes("eliza-workspace") ||
-    process.cwd().includes("eliza")
-  ) {
+  const cwd =
+    typeof runtimeProcess?.cwd === "function" ? runtimeProcess.cwd() : "";
+  if (cwd.includes("eliza-workspace") || cwd.includes("eliza")) {
     cachedPrefix = "[eliza]";
     return cachedPrefix;
   }

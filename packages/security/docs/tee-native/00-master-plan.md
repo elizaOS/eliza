@@ -36,7 +36,7 @@ The contracts are real; the silicon and the confidential runtime are not yet.
 - **Hardware (verified against the tree).** PMP/ePMP/Smmtt/H-ext are absent (CVA6 is
   `cv64a6_imafdc_sv39`, only a PMA comment at `e1_soc_integrated.sv:796`). The
   IOMMU is identity-passthrough with a 6-entry allowlist, no page-table walk
-  (`e1_riscv_iommu.sv:359`); the NPU and DMA bypass it. The RoT is placeholder
+  (`e1_riscv_iommu.sv:359`); the NPU and DMA bypass it. The RoT is development-only
   (`e1_lifecycle.sv:68` XORs `0xA5A5_5A5A`; `fw/pmc/src/secure_boot.c` returns 0;
   `fw/boot-rom/reset.S` is an unconditional jump to `0x8000_0000`). **The job is
   to make the existing contract true in hardware, not to invent a TEE.**
@@ -263,7 +263,7 @@ Establish the executable contract and the fail-closed gate floor.
   boot (consume `resolveTeeRuntimePolicy`, gate secrets, wrap the signer); add fresh
   nonce + epk binding to the key-release client; negative/revocation test vectors;
   plumb the `model-key` unseal path against mock evidence.
-- **OS (~3.25 PM):** add the `tee` block to the release manifest; scaffold the
+- **OS (~3.25 PM):** add the `tee` block to the release manifest; create the
   `meta-elizaos` confidential profile; build the evidence bridge with mock fixtures;
   ship policy + dstack-pin data; add `compose`/`gpuFirmware`/`npuFirmware`/
   `modelWeights` to the measurement contract + fixtures.

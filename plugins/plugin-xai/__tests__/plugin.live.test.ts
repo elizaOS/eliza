@@ -9,7 +9,7 @@
  * supported provider in the shared `describeLive` helper, so this suite
  * uses an inline minimal runtime that satisfies the bits the model handler
  * actually touches (`getSetting`, `emitEvent`, `character`, plus enough of
- * the trajectory plumbing for `recordLlmCall` to no-op cleanly).
+ * the trajectory plumbing for `recordLlmCall` to return cleanly).
  */
 import {
   type EventPayload,

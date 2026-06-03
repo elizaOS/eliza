@@ -72,7 +72,7 @@ function dynamicMask(page: Page) {
     page.locator(".animate-pulse"),
     page.locator(".animate-spin"),
     page.locator("[data-marquee]"),
-    // Product hero images that can still show grey placeholders after the scroll
+    // Product hero images can still show grey loading frames after the scroll
     // loop due to lazy-loading timing on mini-pc and chibi-usb detail pages.
     page.locator(".product-hero img"),
   ];

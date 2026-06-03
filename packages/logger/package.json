@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/logger",
-  "version": "2.0.3-beta.0",
+  "version": "2.0.3-beta.1",
   "description": "Standalone structured logger for elizaOS (extracted from @elizaos/core).",
   "type": "module",
   "sideEffects": false,
@@ -12,8 +12,14 @@
     "url": "git+https://github.com/elizaOS/eliza.git",
     "directory": "packages/logger"
   },
-  "keywords": ["elizaos", "logger", "logging"],
-  "files": ["dist"],
+  "keywords": [
+    "elizaos",
+    "logger",
+    "logging"
+  ],
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=24.0.0"
   },
@@ -48,6 +54,7 @@
     "fast-redact": "^3.5.0"
   },
   "devDependencies": {
+    "@types/fast-redact": "^3.0.4",
     "@types/node": "^24.0.0"
   }
 }

@@ -150,7 +150,7 @@ export interface CreateManagerOptions {
   /** Provide your own Vault. Default: `createVault()`. */
   readonly vault?: Vault;
   /**
-   * Subprocess executor for password-manager CLIs. Tests inject a fake runner.
+   * Subprocess executor for password-manager CLIs. Tests inject a test executor.
    * Defaults to a real `child_process.execFile`-based runner.
    */
   readonly exec?: ExecFn;
@@ -632,28 +632,41 @@ async function detectProtonPass(): Promise<BackendStatus> {
       available: false,
       signedIn: false,
       authMode: null,
-      detail:
-        "`pass-cli` CLI not installed. Install from https://protonpass.github.io/pass-cli/get-started/installation/.",
+      detail: "`pass-cli` not installed. https://protonpass.github.io/pass-cli/",
     };
   }
 
   try {
-    await exec("pass-cli", ["test"], { timeout: 5000 });
+    await exec("pass-cli", ["vault", "list", "--output", "json"], {
+      timeout: 3000,
+    });
     return {
       id: "protonpass",
       label: "Proton Pass",
       available: true,
       signedIn: true,
-      authMode: null,
+      authMode: "desktop-app",
+      detail: "Detected and signed in via Proton Pass CLI.",
     };
-  } catch {
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/not signed in|not authenticated|not logged in|login required/i.test(msg)) {
+      return {
+        id: "protonpass",
+        label: "Proton Pass",
+        available: true,
+        signedIn: false,
+        authMode: null,
+        detail: "`pass-cli` is installed but not signed in.",
+      };
+    }
     return {
       id: "protonpass",
       label: "Proton Pass",
       available: true,
       signedIn: false,
       authMode: null,
-      detail: "`pass-cli` is installed but not signed in. Run `pass-cli login`.",
+      detail: msg,
     };
   }
 }

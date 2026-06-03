@@ -34,7 +34,7 @@ plugins/plugin-native-eliza-tasks/
   src/
     definitions.ts          TypeScript interface (ElizaTasksPlugin, all types/enums)
     index.ts                Capacitor registerPlugin call — exports ElizaTasks singleton
-    web.ts                  Web/browser no-op fallback (supported: false)
+    web.ts                  Web/browser unsupported fallback (supported: false)
   ios/Sources/ElizaTasksPlugin/
     ElizaTasksPlugin.swift  Native Swift — BGTaskScheduler registration, handlers,
                             remote-push observer, JS event emission
@@ -67,7 +67,7 @@ The `scheduleNext` method accepts `earliestBeginSec` (default 900s / 15 min, flo
 
 **Add a new JS-callable method:**
 1. Add the method signature to `src/definitions.ts` (`ElizaTasksPlugin` interface).
-2. Implement it in `src/web.ts` (`ElizaTasksWeb` class, return a no-op promise).
+2. Implement it in `src/web.ts` (`ElizaTasksWeb` class, return a `supported: false` result or a clearly unsupported promise).
 3. Add the Swift `@objc func` to `ios/Sources/ElizaTasksPlugin/ElizaTasksPlugin.swift`.
 4. Register the method in `pluginMethods` array in the same Swift file.
 

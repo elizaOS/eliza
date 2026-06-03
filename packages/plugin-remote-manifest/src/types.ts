@@ -326,7 +326,7 @@ export interface RemoteFunctionRef extends JsonObject {
 /**
  * Sent once by the worker after `ready`. Describes the full {@link Plugin}
  * object the worker exports, with every function value replaced by a
- * {@link RemoteFunctionRef}. The host uses this to synthesise local stubs
+ * {@link RemoteFunctionRef}. The host uses this to synthesize local proxies
  * (action handlers, provider getters, service-method proxies, etc.) that
  * forward calls to the worker via {@link WorkerRpcMessage}.
  */

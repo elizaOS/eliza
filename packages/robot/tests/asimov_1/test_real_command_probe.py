@@ -4,23 +4,23 @@ import asyncio
 
 import pytest
 
-from eliza_robot.asimov_1.livekit_dry_run import FakeAsimovEdgePb2, FakeLiveKitRoom
+from eliza_robot.asimov_1.livekit_dry_run import DryRunAsimovEdgePb2, DryRunLiveKitRoom
 from eliza_robot.asimov_1.livekit_transport import LiveKitAsimovTransport
 from eliza_robot.asimov_1.real_command_probe import probe_real_command_sequence
 
 
 def test_staged_real_command_probe_defaults_to_telemetry_then_damp_only() -> None:
     async def run() -> None:
-        room = FakeLiveKitRoom()
+        room = DryRunLiveKitRoom()
         transport = LiveKitAsimovTransport(
             url="wss://asimov.probe.invalid",
             token="token",
             room=room,
-            edge_pb2=FakeAsimovEdgePb2,
+            edge_pb2=DryRunAsimovEdgePb2,
         )
 
         async def connect_and_emit(url: str, token: str) -> None:
-            await FakeLiveKitRoom.connect(room, url, token)
+            await DryRunLiveKitRoom.connect(room, url, token)
             room.handlers["data_received"](type("Packet", (), {"topic": "telemetry", "data": b"telemetry"})())
 
         room.connect = connect_and_emit
@@ -35,12 +35,12 @@ def test_staged_real_command_probe_defaults_to_telemetry_then_damp_only() -> Non
 
 def test_staged_real_command_probe_rejects_velocity_without_stand_flag() -> None:
     async def run() -> None:
-        room = FakeLiveKitRoom()
+        room = DryRunLiveKitRoom()
         transport = LiveKitAsimovTransport(
             url="wss://asimov.probe.invalid",
             token="token",
             room=room,
-            edge_pb2=FakeAsimovEdgePb2,
+            edge_pb2=DryRunAsimovEdgePb2,
         )
 
         with pytest.raises(ValueError, match="requires --allow-stand"):
@@ -56,16 +56,16 @@ def test_staged_real_command_probe_rejects_velocity_without_stand_flag() -> None
 
 def test_staged_real_command_probe_requires_flags_for_stand_and_zero_velocity() -> None:
     async def run() -> None:
-        room = FakeLiveKitRoom()
+        room = DryRunLiveKitRoom()
         transport = LiveKitAsimovTransport(
             url="wss://asimov.probe.invalid",
             token="token",
             room=room,
-            edge_pb2=FakeAsimovEdgePb2,
+            edge_pb2=DryRunAsimovEdgePb2,
         )
 
         async def connect_and_emit(url: str, token: str) -> None:
-            await FakeLiveKitRoom.connect(room, url, token)
+            await DryRunLiveKitRoom.connect(room, url, token)
             room.handlers["data_received"](type("Packet", (), {"topic": "telemetry", "data": b"telemetry"})())
 
         room.connect = connect_and_emit

@@ -146,4 +146,4 @@ void qjl_dequantize_row_rvv(const qjl_block_qjl1_256 *blk, const float *prj,
 #endif /* __riscv && __riscv_v_intrinsic */
 
 /* Avoid ISO C "empty translation unit" pedantic diagnostics when RVV is undefined. */
-typedef int qjl_quantize_rvv_iso_c_empty_tu_marker;
+typedef int qjl_quantize_rvv_iso_c_translation_unit_anchor;

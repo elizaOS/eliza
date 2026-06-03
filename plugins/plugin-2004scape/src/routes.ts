@@ -1810,8 +1810,8 @@ export async function refreshRunSession(
  * and the autonomous-loop timer so the game actually stops server-side
  * instead of just unmounting the viewer iframe.
  *
- * Idempotent: if the service isn't running or already stopped this is a
- * no-op.
+ * Idempotent: returns cleanly if the service isn't running or was already
+ * stopped.
  */
 export async function stopRun(ctx: { runtime: unknown | null }): Promise<void> {
   const runtime = ctx.runtime as {

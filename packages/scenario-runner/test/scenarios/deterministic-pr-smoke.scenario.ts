@@ -8,8 +8,8 @@ import {
   jsonResponse,
   readAppControlHttpRequests,
   registerAppControlHttpHandler,
-  resetAppControlHttpStub,
-} from "./_helpers/app-control-http-stub";
+  resetAppControlHttpLoopback,
+} from "./_helpers/app-control-http-loopback";
 import { matchesScenarioInput } from "./_helpers/strict-llm-action-fixtures";
 
 type RuntimeWithScenarioLlmFixtures = {
@@ -132,9 +132,9 @@ export default scenario({
   seed: [
     {
       type: "custom",
-      name: "stub local view API for deterministic shell actions",
+      name: "local view loopback API for deterministic shell actions",
       apply: (ctx) => {
-        resetAppControlHttpStub();
+        resetAppControlHttpLoopback();
         const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
         runtime.scenarioLlmFixtures?.register({
           name: "pr-smoke-deterministic-reply",

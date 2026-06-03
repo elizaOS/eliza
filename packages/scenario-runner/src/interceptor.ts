@@ -5,7 +5,7 @@
  * to populate `memoryWrites` on the scenario context.
  *
  * The wrapping is idempotent and per-runtime: re-attaching the interceptor
- * to the same runtime is a no-op.
+ * to the same runtime returns the existing wrapper.
  */
 
 import type {

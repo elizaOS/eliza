@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Convert a PolarQuant safetensors sidecar into a GGUF file whose
-linear-weight tensors are typed Q4_POLAR=47.
+linear-weight tensors are typed Q4_POLAR=45.
 
 Inputs
 ------
@@ -21,9 +21,11 @@ codes + 16 bytes of optional 1-bit QJL residual).  Per-tensor the
 *element* shape is preserved exactly; only the on-disk byte width
 changes.
 
-Type number 47 is registered in the elizaOS llama.cpp fork. Decoders must
-interpret the raw bytes as ``block_q4_polar``; that integration is documented
-in README.md.
+Type number 45 is claimed but not yet registered in upstream
+ggml-common.h -- the first decoder that hits this file must know to
+interpret the raw bytes as ``block_q4_polar``.  The integration step
+that registers Q4_POLAR=45 in the apothic/llama.cpp-1bit-turboquant
+fork is documented in README.md.
 
 Metadata stored in the GGUF header:
 - ``polarquant.block_size``      = QK_POLAR (128, locked).
@@ -72,12 +74,13 @@ POLARQUANT_QJL_CORRECTION = 0.5
 
 
 class _Q4PolarType(IntEnum):
-    """Custom GGUF type tag.  Value 47 is the on-disk type number in the
-    elizaOS llama.cpp fork.  GGUFWriter just packs this through ``struct.pack
+    """Custom GGUF type tag.  Value 45 is the on-disk type number we
+    will register in ggml-common.h when integrating into the apothic
+    llama.cpp fork.  GGUFWriter just packs this through ``struct.pack
     ("I", ...)``, so any IntEnum with the right value works.
     """
 
-    Q4_POLAR = 47
+    Q4_POLAR = 45
 
 
 def _fp32_to_fp16_bits(x: np.ndarray) -> np.ndarray:
@@ -285,7 +288,7 @@ def convert(
         writer.add_tensor_info(
             name=name,
             tensor_shape=shape,
-            tensor_dtype=np.dtype(np.float16),  # ignored when raw_dtype is set
+            tensor_dtype=np.dtype(np.float16),  # writer default; raw_dtype carries Q4_POLAR
             tensor_nbytes=len(packed),
             raw_dtype=_Q4PolarType.Q4_POLAR,
         )

@@ -39,7 +39,8 @@ export function useChatSubmit({
     void (async () => {
       try {
         if (selectedId) {
-          await client.postOrchestratorTaskMessage(selectedId, text);
+          const ok = await client.postOrchestratorTaskMessage(selectedId, text);
+          if (!ok) throw new Error("Message not delivered");
         } else {
           const created = await client.createOrchestratorTask({
             title: deriveTitle(text),

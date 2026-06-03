@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, mock } from "bun:test";
 import { getHostShim, resetHostShim } from "@elizaos/plugin-host-shim";
 import { installIosShim, resetIosShimForTests } from "./index";
 
-interface FakeWindow {
+interface TestWindow {
   webkit?: {
     messageHandlers?: {
       elizaosBridge?: { postMessage?: ReturnType<typeof mock> | string };
@@ -11,8 +11,8 @@ interface FakeWindow {
   __elizaosIosDeliver?: (data: unknown) => void;
 }
 
-function installFakeWindow(postMessage = mock(() => {})): FakeWindow {
-  const fakeWindow: FakeWindow = {
+function installTestWindow(postMessage = mock(() => {})): TestWindow {
+  const testWindow: TestWindow = {
     webkit: {
       messageHandlers: {
         elizaosBridge: { postMessage },
@@ -21,9 +21,9 @@ function installFakeWindow(postMessage = mock(() => {})): FakeWindow {
   };
   Object.defineProperty(globalThis, "window", {
     configurable: true,
-    value: fakeWindow,
+    value: testWindow,
   });
-  return fakeWindow;
+  return testWindow;
 }
 
 describe("installIosShim", () => {
@@ -59,13 +59,13 @@ describe("installIosShim", () => {
   });
 
   it("posts request envelopes and resolves matching delivered responses", async () => {
-    const fakeWindow = installFakeWindow();
+    const testWindow = installTestWindow();
     const shim = installIosShim();
 
     const request = shim.request("provider.foo", { ok: true });
 
     const postMessage =
-      fakeWindow.webkit?.messageHandlers?.elizaosBridge?.postMessage;
+      testWindow.webkit?.messageHandlers?.elizaosBridge?.postMessage;
     if (typeof postMessage !== "function") {
       throw new Error("expected test bridge postMessage to be callable");
     }
@@ -76,7 +76,7 @@ describe("installIosShim", () => {
       params: { ok: true },
     });
 
-    fakeWindow.__elizaosIosDeliver?.({
+    testWindow.__elizaosIosDeliver?.({
       kind: "response",
       id: 1,
       ok: true,
@@ -87,7 +87,7 @@ describe("installIosShim", () => {
   });
 
   it("rejects error responses and ignores malformed or unknown deliveries", async () => {
-    const fakeWindow = installFakeWindow();
+    const testWindow = installTestWindow();
     const shim = installIosShim();
     const request = shim.request("provider.fail", null);
 
@@ -98,9 +98,9 @@ describe("installIosShim", () => {
       { kind: "response", id: 999, ok: true, payload: "ignored" },
       { kind: "event", event: 12, data: "ignored" },
     ]) {
-      fakeWindow.__elizaosIosDeliver?.(delivery);
+      testWindow.__elizaosIosDeliver?.(delivery);
     }
-    fakeWindow.__elizaosIosDeliver?.({
+    testWindow.__elizaosIosDeliver?.({
       kind: "response",
       id: 1,
       ok: false,
@@ -111,7 +111,7 @@ describe("installIosShim", () => {
   });
 
   it("ignores malformed matching responses without settling pending requests", async () => {
-    const fakeWindow = installFakeWindow();
+    const testWindow = installTestWindow();
     const shim = installIosShim();
     const request = shim.request("provider.wait", null);
 
@@ -121,9 +121,9 @@ describe("installIosShim", () => {
       { kind: "response", id: Number.NaN, ok: true },
       { kind: "response", id: 1, ok: false, error: { message: "bad" } },
     ]) {
-      fakeWindow.__elizaosIosDeliver?.(delivery);
+      testWindow.__elizaosIosDeliver?.(delivery);
     }
-    fakeWindow.__elizaosIosDeliver?.({
+    testWindow.__elizaosIosDeliver?.({
       kind: "response",
       id: 1,
       ok: true,
@@ -134,14 +134,14 @@ describe("installIosShim", () => {
   });
 
   it("keeps concurrent requests correlated when responses arrive out of order", async () => {
-    const fakeWindow = installFakeWindow();
+    const testWindow = installTestWindow();
     const shim = installIosShim();
 
     const first = shim.request("provider.first", null);
     const second = shim.request("provider.second", null);
 
     const postMessage =
-      fakeWindow.webkit?.messageHandlers?.elizaosBridge?.postMessage;
+      testWindow.webkit?.messageHandlers?.elizaosBridge?.postMessage;
     if (typeof postMessage !== "function") {
       throw new Error("expected test bridge postMessage to be callable");
     }
@@ -158,13 +158,13 @@ describe("installIosShim", () => {
       params: null,
     });
 
-    fakeWindow.__elizaosIosDeliver?.({
+    testWindow.__elizaosIosDeliver?.({
       kind: "response",
       id: 2,
       ok: true,
       payload: "second",
     });
-    fakeWindow.__elizaosIosDeliver?.({
+    testWindow.__elizaosIosDeliver?.({
       kind: "response",
       id: 1,
       ok: true,
@@ -176,11 +176,11 @@ describe("installIosShim", () => {
   });
 
   it("uses default success and error payload semantics", async () => {
-    const fakeWindow = installFakeWindow();
+    const testWindow = installTestWindow();
     const shim = installIosShim();
 
     const success = shim.request("provider.empty", null);
-    fakeWindow.__elizaosIosDeliver?.({
+    testWindow.__elizaosIosDeliver?.({
       kind: "response",
       id: 1,
       ok: true,
@@ -188,7 +188,7 @@ describe("installIosShim", () => {
     await expect(success).resolves.toBeNull();
 
     const failure = shim.request("provider.error", null);
-    fakeWindow.__elizaosIosDeliver?.({
+    testWindow.__elizaosIosDeliver?.({
       kind: "response",
       id: 2,
       ok: false,
@@ -201,7 +201,7 @@ describe("installIosShim", () => {
     postMessage.mockImplementationOnce(() => {
       throw new Error("bridge down");
     });
-    installFakeWindow(postMessage);
+    installTestWindow(postMessage);
     const shim = installIosShim();
 
     await expect(shim.request("provider.foo", null)).rejects.toThrow(
@@ -225,14 +225,14 @@ describe("installIosShim", () => {
   });
 
   it("rejects timed-out requests, ignores late delivery, and keeps later requests usable", async () => {
-    const fakeWindow = installFakeWindow();
+    const testWindow = installTestWindow();
     const shim = installIosShim({ requestTimeoutMs: 1 });
 
     await expect(shim.request("provider.never", null)).rejects.toThrow(
       "iOS bridge request timed out: provider.never",
     );
 
-    fakeWindow.__elizaosIosDeliver?.({
+    testWindow.__elizaosIosDeliver?.({
       kind: "response",
       id: 1,
       ok: true,
@@ -240,7 +240,7 @@ describe("installIosShim", () => {
     });
 
     const later = shim.request("provider.later", null);
-    fakeWindow.__elizaosIosDeliver?.({
+    testWindow.__elizaosIosDeliver?.({
       kind: "response",
       id: 2,
       ok: true,
@@ -251,7 +251,7 @@ describe("installIosShim", () => {
   });
 
   it("delivers events only to matching subscribers and stops after unsubscribe", () => {
-    const fakeWindow = installFakeWindow();
+    const testWindow = installTestWindow();
     const shim = installIosShim();
     const handler = mock(() => {});
     const secondHandler = mock(() => {});
@@ -260,22 +260,22 @@ describe("installIosShim", () => {
     const unsubscribe = shim.on("plugin.event", handler);
     shim.on("plugin.event", secondHandler);
     shim.on("plugin.other", otherEventHandler);
-    fakeWindow.__elizaosIosDeliver?.({
+    testWindow.__elizaosIosDeliver?.({
       kind: "event",
       event: "plugin.other",
       data: { ignored: true },
     });
-    fakeWindow.__elizaosIosDeliver?.({
+    testWindow.__elizaosIosDeliver?.({
       kind: "event",
       event: "plugin.event",
       data: { count: 1 },
     });
-    fakeWindow.__elizaosIosDeliver?.({
+    testWindow.__elizaosIosDeliver?.({
       kind: "event",
       event: "plugin.event",
     });
     unsubscribe();
-    fakeWindow.__elizaosIosDeliver?.({
+    testWindow.__elizaosIosDeliver?.({
       kind: "event",
       event: "plugin.event",
       data: { count: 2 },
@@ -291,11 +291,11 @@ describe("installIosShim", () => {
 
   it("is idempotent and keeps using the initially captured bridge", async () => {
     const firstPostMessage = mock(() => {});
-    const fakeWindow = installFakeWindow(firstPostMessage);
+    const testWindow = installTestWindow(firstPostMessage);
     const first = installIosShim({ requestTimeoutMs: 1000 });
     const firstDeliver = window.__elizaosIosDeliver;
     const secondPostMessage = mock(() => {});
-    fakeWindow.webkit = {
+    testWindow.webkit = {
       messageHandlers: {
         elizaosBridge: { postMessage: secondPostMessage },
       },
@@ -325,7 +325,7 @@ describe("installIosShim", () => {
   });
 
   it("encodes plugin and asset path segments and rejects unsafe relative paths", () => {
-    installFakeWindow();
+    installTestWindow();
     const shim = installIosShim();
 
     expect(

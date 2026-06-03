@@ -29,7 +29,6 @@ import {
 import { type ProcessBodyConfig, processBody } from "./process-body.js";
 import { reverseMap } from "./reverse-map.js";
 import type { Pair } from "./sanitize.js";
-import type { SystemPromptStripConfig } from "./system-prompt.js";
 import { createSseStream } from "./sse-rewrite.js";
 import { getStainlessHeaders } from "./stainless-headers.js";
 
@@ -44,7 +43,6 @@ export interface ProxyServerOptions {
   toolRenames?: ReadonlyArray<Pair>;
   propRenames?: ReadonlyArray<Pair>;
   reverseMap?: ReadonlyArray<Pair>;
-  systemPromptStrip?: SystemPromptStripConfig;
   logger?: {
     info: (msg: string) => void;
     warn: (msg: string) => void;
@@ -74,7 +72,7 @@ export interface ProxyStats {
 
 const DEFAULT_BIND = "127.0.0.1";
 
-const noopLogger: NonNullable<ProxyServerOptions["logger"]> = {
+const silentLogger: NonNullable<ProxyServerOptions["logger"]> = {
   info: (_msg: string) => undefined,
   warn: (_msg: string) => undefined,
   error: (_msg: string) => undefined,
@@ -96,7 +94,6 @@ export class ProxyServer {
   private readonly toolRenames: ReadonlyArray<Pair>;
   private readonly propRenames: ReadonlyArray<Pair>;
   private readonly reverseMapPairs: ReadonlyArray<Pair>;
-  private readonly systemPromptStrip?: SystemPromptStripConfig;
   private readonly logger: NonNullable<ProxyServerOptions["logger"]>;
 
   private cachedCreds: OAuthCreds | null = null;
@@ -113,8 +110,7 @@ export class ProxyServer {
     this.toolRenames = opts.toolRenames ?? DEFAULT_TOOL_RENAMES;
     this.propRenames = opts.propRenames ?? DEFAULT_PROP_RENAMES;
     this.reverseMapPairs = opts.reverseMap ?? DEFAULT_REVERSE_MAP;
-    this.systemPromptStrip = opts.systemPromptStrip;
-    this.logger = opts.logger ?? noopLogger;
+    this.logger = opts.logger ?? silentLogger;
   }
 
   private getCreds(): LoadResult {
@@ -207,9 +203,6 @@ export class ProxyServer {
       replacements: this.replacements,
       toolRenames: this.toolRenames,
       propRenames: this.propRenames,
-      ...(this.systemPromptStrip
-        ? { systemPromptStrip: this.systemPromptStrip }
-        : {}),
     };
   }
 

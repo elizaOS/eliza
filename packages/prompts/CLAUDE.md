@@ -47,7 +47,7 @@ bun run --cwd packages/prompts format:check             # biome format check
 bun run --cwd packages/prompts clean                    # rm -rf dist
 ```
 
-`typecheck` is a no-op (no standalone `.ts` files beyond the string module).
+`typecheck` only prints its status because this package has no standalone TypeScript program beyond the prompt string module.
 
 ## Config / env vars
 

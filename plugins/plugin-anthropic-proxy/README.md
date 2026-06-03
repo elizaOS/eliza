@@ -99,7 +99,7 @@ The plugin re-reads the credentials file on every request, so a fresh login is p
 plugins/plugin-anthropic-proxy/
 ├── index.ts                           # Plugin export + init
 ├── index.node.ts                      # Node entry
-├── index.browser.ts                   # Browser noop
+├── index.browser.ts                   # Browser-unavailable entry
 ├── auto-enable.ts                      # shouldEnable() opt-in check
 ├── config.json.example                # Custom fingerprint dictionary shape
 ├── build.ts                           # Bun build script
@@ -115,7 +115,7 @@ plugins/plugin-anthropic-proxy/
 │   │   ├── sanitize.ts                # Layer 2: string sanitize
 │   │   ├── tool-rename.ts             # Layer 3/6: quoted name renames
 │   │   ├── system-prompt.ts           # Layer 4: system strip + paraphrase
-│   │   ├── cc-tool-stubs.ts           # Layer 5: description strip + synthetic CC tools
+│   │   ├── cc-tool-injection.ts       # Layer 5: description strip + synthetic CC tools
 │   │   ├── sse-rewrite.ts             # Tail-buffer SSE reverse map
 │   │   ├── stainless-headers.ts       # CC-emulating SDK headers
 │   │   ├── process-body.ts            # Forward request pipeline

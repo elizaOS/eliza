@@ -84,13 +84,16 @@ if(TURBOQUANT_RISCV)
     )
 endif()
 
-# x86 / arm host builds intentionally link the scalar reference and dispatcher
-# only; there are no tbq_*_neon.c or tbq_*_avx2.c source files in this package.
+# x86 / arm host builds intentionally do not yet list NEON or AVX2 TUs:
+# only the scalar reference and the dispatcher get linked. Sister tasks
+# add tbq_*_neon.c / tbq_*_avx2.c here.
 if(TURBOQUANT_X86)
-    # Scalar reference path.
+    # x86 currently links the scalar reference through the dispatcher.
+    # Add tbq_*_avx2.c here when the AVX2 lane is added.
 endif()
 if(TURBOQUANT_ARM)
-    # Scalar reference path.
+    # ARM currently links the scalar reference through the dispatcher.
+    # Add tbq_*_neon.c here when the NEON lane is added.
 endif()
 
 # turboquant_smoke: block-encode/decode round-trip for TBQ3/TBQ4. Asserts

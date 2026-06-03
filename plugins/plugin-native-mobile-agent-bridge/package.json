@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-mobile-agent-bridge",
-  "version": "2.0.3-beta.0",
+  "version": "2.0.3-beta.1",
   "description": "Outbound tunnel from a phone-hosted Eliza agent so a remote Mac client can reach it. See docs/reverse-direction-tunneling.md.",
   "keywords": [
     "agent",
@@ -79,7 +79,7 @@
     ],
     "runtime": "both",
     "platformDetails": {
-      "browser": "Error-state fallback for non-native runtimes. Real transport lives on iOS/Android only.",
+      "browser": "Fallback for non-native runtimes. Real transport lives on iOS/Android only.",
       "ios": true,
       "android": true
     }

@@ -77,38 +77,64 @@ describe("ContinuousChatOverlay", () => {
     const input = screen.getByLabelText("message") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "ping" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(controller.send).toHaveBeenCalledWith("ping");
+    expect(vi.mocked(controller.send).mock.calls[0]?.[0]).toBe("ping");
     expect(input.value).toBe("");
   });
 
-  it("expands the thread and exposes aria-expanded / a log region", () => {
+  it("expands the thread from the chat icon and exposes aria-expanded / a log region", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    const toggle = screen.getByLabelText("expand conversation");
+    const toggle = screen.getByLabelText("show conversation");
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(toggle);
     expect(
-      screen
-        .getByLabelText("collapse conversation")
-        .getAttribute("aria-expanded"),
+      screen.getByLabelText("hide conversation").getAttribute("aria-expanded"),
     ).toBe("true");
+    expect(document.getElementById("continuous-thread")).toBeTruthy();
+  });
+
+  it("reveals the thread when the composer input is focused", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    expect(document.getElementById("continuous-thread")).toBeNull();
+    fireEvent.focus(screen.getByLabelText("message"));
     expect(document.getElementById("continuous-thread")).toBeTruthy();
   });
 
   it("filters whitespace-only messages from the expanded thread", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    fireEvent.click(screen.getByLabelText("expand conversation"));
+    fireEvent.click(screen.getByLabelText("show conversation"));
     const log = document.getElementById("continuous-thread");
     expect(log?.textContent).toContain("hi there");
-    // one real message → exactly one transcript paragraph
-    expect(log?.querySelectorAll("p").length).toBe(1);
+    // one real message → exactly one transcript bubble
+    expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(1);
+  });
+
+  it("aligns the assistant bubble left and the user bubble right", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: [
+            { id: "a", role: "assistant", content: "hi there", createdAt: 1 },
+            { id: "b", role: "user", content: "hello back", createdAt: 2 },
+          ],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("show conversation"));
+    const log = document.getElementById("continuous-thread");
+    const lines = log?.querySelectorAll('[data-testid="thread-line"]');
+    expect(lines?.length).toBe(2);
+    const assistant = log?.querySelector('[data-role="assistant"]');
+    const user = log?.querySelector('[data-role="user"]');
+    expect(assistant?.className).toContain("justify-start");
+    expect(user?.className).toContain("justify-end");
   });
 
   it("collapses the expanded thread on Escape", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    fireEvent.click(screen.getByLabelText("expand conversation"));
+    fireEvent.click(screen.getByLabelText("show conversation"));
     const input = screen.getByLabelText("message");
     fireEvent.keyDown(input, { key: "Escape" });
-    expect(screen.getByLabelText("expand conversation")).toBeTruthy();
+    expect(screen.getByLabelText("show conversation")).toBeTruthy();
   });
 
   it("toggles recording when the mic is pressed", () => {
@@ -140,5 +166,25 @@ describe("ContinuousChatOverlay", () => {
       />,
     );
     expect(screen.getByText(/tell me about the coast/)).toBeTruthy();
+  });
+
+  it("keeps the ambient layer non-blocking for controls behind it", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+
+    const root = screen.getByTestId("continuous-chat-overlay");
+    expect(root.className).toContain("pointer-events-none");
+
+    const interactiveRegions = root.querySelectorAll(".pointer-events-auto");
+    expect(interactiveRegions.length).toBeGreaterThan(0);
+    expect(Array.from(interactiveRegions)).not.toContain(root);
+  });
+
+  it("exposes the canonical chat composer test id on the overlay input only", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+
+    expect(screen.getByTestId("chat-composer-textarea")).toBe(
+      screen.getByLabelText("message"),
+    );
+    expect(screen.getAllByTestId("chat-composer-textarea")).toHaveLength(1);
   });
 });

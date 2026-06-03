@@ -31,7 +31,7 @@ plugins/plugin-native-phone/
   src/
     definitions.ts      TypeScript interfaces and types (PhonePlugin, PhoneStatus, CallLogEntry, etc.)
     index.ts            registerPlugin call — exports Phone + re-exports definitions
-    web.ts              PhoneWeb: safe web fallback — getStatus returns all-false; call/transcript methods throw
+    web.ts              PhoneWeb: WebPlugin fallback — getStatus returns all-false; call/transcript methods throw
   android/
     src/main/
       AndroidManifest.xml         Declares permissions: CALL_PHONE, READ_PHONE_STATE, ANSWER_PHONE_CALLS,
@@ -58,14 +58,14 @@ No environment variables. No runtime config keys. Android permissions are declar
 
 - `android.permission.CALL_PHONE` — required for `placeCall`
 - `android.permission.READ_CALL_LOG` — required for `listRecentCalls`
-- `android.permission.READ_PHONE_STATE`, `ANSWER_PHONE_CALLS`, `MANAGE_OWN_CALLS`, `WRITE_CALL_LOG` — declared for Telecom status / connection service capabilities
+- `android.permission.READ_PHONE_STATE`, `ANSWER_PHONE_CALLS`, `MANAGE_OWN_CALLS`, `WRITE_CALL_LOG` — declared for future Telecom connection service use
 
 ## How to extend
 
 **Add a new method:**
 
 1. Define the method signature in `src/definitions.ts` on `PhonePlugin`, adding any new option/return interfaces alongside it.
-2. Add a safe web fallback in `src/web.ts` on `PhoneWeb` (throw or return a safe default).
+2. Add a web fallback implementation in `src/web.ts` on `PhoneWeb` (throw or return a safe default).
 3. Implement the method in `android/src/main/java/ai/eliza/plugins/phone/PhonePlugin.kt` with `@PluginMethod`.
 4. If new Android permissions are needed, declare them in `android/src/main/AndroidManifest.xml`.
 5. Run `bun run --cwd plugins/plugin-native-phone build` to verify the TypeScript compiles.

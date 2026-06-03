@@ -165,30 +165,33 @@ describe("buildTokenTreeDescriptor", () => {
 });
 
 describe("TokenizerClient", () => {
-  function makeStubFetch(
+  function makeTestFetch(
     responses: Record<string, number[]>,
     calls: { count: number; texts: string[] } = { count: 0, texts: [] },
   ): typeof fetch {
-    const stub = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
-      calls.count += 1;
-      const body = JSON.parse(String(init?.body ?? "{}")) as {
-        content: string;
-      };
-      calls.texts.push(body.content);
-      const tokens = responses[body.content];
-      if (!tokens) throw new Error(`stub: no response for ${body.content}`);
-      return new Response(JSON.stringify({ tokens }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    });
-    return stub as unknown as typeof fetch;
+    const testFetch = vi.fn(
+      async (_url: RequestInfo | URL, init?: RequestInit) => {
+        calls.count += 1;
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          content: string;
+        };
+        calls.texts.push(body.content);
+        const tokens = responses[body.content];
+        if (!tokens)
+          throw new Error(`testFetch: no response for ${body.content}`);
+        return new Response(JSON.stringify({ tokens }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    );
+    return testFetch as unknown as typeof fetch;
   }
 
   it("calls /tokenize on a cold miss and caches the result", async () => {
     const calls = { count: 0, texts: [] as string[] };
-    const stub = makeStubFetch({ REPLY: [1, 2, 3] }, calls);
-    const client = new TokenizerClient({ fetch: stub });
+    const testFetch = makeTestFetch({ REPLY: [1, 2, 3] }, calls);
+    const client = new TokenizerClient({ fetch: testFetch });
     const a = await client.tokenize("model-a", "http://localhost", "REPLY");
     const b = await client.tokenize("model-a", "http://localhost", "REPLY");
     expect(a).toEqual([1, 2, 3]);
@@ -199,8 +202,8 @@ describe("TokenizerClient", () => {
 
   it("tokenizeMany batches requests and respects the cache", async () => {
     const calls = { count: 0, texts: [] as string[] };
-    const stub = makeStubFetch({ A: [1], B: [2], C: [3] }, calls);
-    const client = new TokenizerClient({ fetch: stub });
+    const testFetch = makeTestFetch({ A: [1], B: [2], C: [3] }, calls);
+    const client = new TokenizerClient({ fetch: testFetch });
     // Prime the cache for A.
     await client.tokenize("model-a", "http://localhost", "A");
     expect(calls.count).toBe(1);
@@ -219,8 +222,8 @@ describe("TokenizerClient", () => {
 
   it("namespaces caches per modelId", async () => {
     const calls = { count: 0, texts: [] as string[] };
-    const stub = makeStubFetch({ FOO: [42] }, calls);
-    const client = new TokenizerClient({ fetch: stub });
+    const testFetch = makeTestFetch({ FOO: [42] }, calls);
+    const client = new TokenizerClient({ fetch: testFetch });
     await client.tokenize("model-a", "http://x", "FOO");
     await client.tokenize("model-b", "http://x", "FOO");
     expect(calls.count).toBe(2); // each model required its own fetch
@@ -230,8 +233,8 @@ describe("TokenizerClient", () => {
 
   it("forgetModel evicts the per-model cache", async () => {
     const calls = { count: 0, texts: [] as string[] };
-    const stub = makeStubFetch({ FOO: [1] }, calls);
-    const client = new TokenizerClient({ fetch: stub });
+    const testFetch = makeTestFetch({ FOO: [1] }, calls);
+    const client = new TokenizerClient({ fetch: testFetch });
     await client.tokenize("model-a", "http://x", "FOO");
     expect(client.cachedSize("model-a")).toBe(1);
     client.forgetModel("model-a");
@@ -241,7 +244,7 @@ describe("TokenizerClient", () => {
   });
 
   it("evicts when the per-model cap is exceeded", async () => {
-    const stub = vi.fn(async (_url, init?: RequestInit) => {
+    const testFetch = vi.fn(async (_url, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body ?? "{}")) as {
         content: string;
       };
@@ -251,7 +254,7 @@ describe("TokenizerClient", () => {
       );
     }) as unknown as typeof fetch;
     const client = new TokenizerClient({
-      fetch: stub,
+      fetch: testFetch,
       maxEntriesPerModel: 2,
     });
     await client.tokenize("model-a", "http://x", "A");
@@ -263,24 +266,24 @@ describe("TokenizerClient", () => {
   });
 
   it("throws a useful error when /tokenize returns a non-2xx", async () => {
-    const stub = vi.fn(
+    const testFetch = vi.fn(
       async () => new Response("nope", { status: 500 }),
     ) as unknown as typeof fetch;
-    const client = new TokenizerClient({ fetch: stub });
+    const client = new TokenizerClient({ fetch: testFetch });
     await expect(client.tokenize("model-a", "http://x", "FOO")).rejects.toThrow(
       /HTTP 500/,
     );
   });
 
   it("throws when /tokenize body is missing the tokens array", async () => {
-    const stub = vi.fn(
+    const testFetch = vi.fn(
       async () =>
         new Response(JSON.stringify({}), {
           status: 200,
           headers: { "content-type": "application/json" },
         }),
     ) as unknown as typeof fetch;
-    const client = new TokenizerClient({ fetch: stub });
+    const client = new TokenizerClient({ fetch: testFetch });
     await expect(client.tokenize("model-a", "http://x", "FOO")).rejects.toThrow(
       /tokens\[\]/,
     );
@@ -289,7 +292,7 @@ describe("TokenizerClient", () => {
 
 describe("end-to-end: TokenizerClient → buildTokenTrie", () => {
   it("assembles a turn-scoped trie from a mock /tokenize backend", async () => {
-    const stub = vi.fn(async (_url, init?: RequestInit) => {
+    const testFetch = vi.fn(async (_url, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body ?? "{}")) as {
         content: string;
       };
@@ -304,7 +307,7 @@ describe("end-to-end: TokenizerClient → buildTokenTrie", () => {
         { status: 200, headers: { "content-type": "application/json" } },
       );
     }) as unknown as typeof fetch;
-    const client = new TokenizerClient({ fetch: stub });
+    const client = new TokenizerClient({ fetch: testFetch });
 
     // Turn 1: only REPLY + STOP exposed.
     const tokens1 = await client.tokenizeMany("eliza-1-4b", "http://x", [

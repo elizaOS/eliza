@@ -92,7 +92,7 @@ This document catalogs known failure modes across the Eliza system, organized by
 | **Symptoms** | The user receives an empty response or a generic error message when the model provider returns a credit/quota exhaustion error. |
 | **Root cause** | Provider-specific credit exhaustion errors are not fully mapped in the error handling pipeline. Some providers return non-standard error shapes that are not caught. |
 | **Current mitigation** | Expanded credit exhaustion detection covers HTTP 402, 429+billing, and structured error shapes. |
-| **Gap / Risk** | Incomplete error mapping means the user gets no actionable feedback. They cannot distinguish between a system bug and a billing issue. |
+| **Gap / Risk** | Any remaining provider-specific error-shape gaps mean the user gets less actionable feedback. They may not distinguish between a system bug and a billing issue. |
 
 ---
 

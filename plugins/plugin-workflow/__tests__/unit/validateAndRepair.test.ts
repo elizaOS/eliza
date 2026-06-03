@@ -73,7 +73,7 @@ describe('validateAndRepair — typeVersion clamp', () => {
     expect(wf.nodes[0].typeVersion).toBe(1);
   });
 
-  test('no-op when typeVersion is already valid', () => {
+  test('leaves typeVersion unchanged when already valid', () => {
     const def = makeNodeDef({ version: [1, 2, 2.1] });
     const wf = makeWorkflow({
       nodes: [
@@ -562,9 +562,9 @@ describe('validateAndRepair — connection sanity', () => {
   });
 });
 
-// ─── End-to-end no-op ──────────────────────────────────────────────────────
+// ─── End-to-end clean workflow ─────────────────────────────────────────────
 
-describe('validateAndRepair — no-op on clean workflow', () => {
+describe('validateAndRepair — clean workflow unchanged', () => {
   test('clean workflow → empty repairs and errors', () => {
     const def = makeNodeDef({ name: 'workflows-nodes-base.test', version: [1, 2] });
     const wf = makeWorkflow({

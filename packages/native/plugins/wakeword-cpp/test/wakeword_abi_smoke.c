@@ -8,7 +8,7 @@
  *   - wakeword_active_backend() returns "native-cpu".
  *   - wakeword_open with NULL paths returns -EINVAL.
  *   - wakeword_open with a missing GGUF path returns -ENOENT.
- *   - wakeword_close(NULL) is a no-op (returns 0).
+ *   - wakeword_close(NULL) returns 0.
  *   - wakeword_set_threshold(NULL, ...) returns -EINVAL.
  *   - wakeword_process(NULL, ...) returns -EINVAL.
  *

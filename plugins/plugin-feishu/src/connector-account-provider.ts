@@ -1,7 +1,7 @@
 /**
  * Feishu ConnectorAccountManager provider.
  *
- * Adapts the account resolution helpers in `accounts.ts` to the
+ * Adapts the multi-account scaffolding in `accounts.ts` to the
  * `ConnectorAccountProvider` contract from
  * `@elizaos/core/connectors/account-manager`.
  *
@@ -101,8 +101,8 @@ export function createFeishuConnectorAccountProvider(
 			_accountId: string,
 			_manager: ConnectorAccountManager,
 		) => {
-			// Runtime credentials live in character settings; deletion of those is
-			// out of band for this provider adapter.
+			// Provider-layer deletion returns cleanly; runtime credentials live in character
+			// settings; deletion of those is out of band.
 		},
 	};
 }

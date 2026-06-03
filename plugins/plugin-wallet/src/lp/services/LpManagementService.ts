@@ -204,7 +204,7 @@ function unsupported(
 ): TransactionResult {
   return {
     success: false,
-    error: `${operation} is unsupported for ${protocol.dex} on ${protocol.chain}`,
+    error: `${operation} is unavailable for ${protocol.dex} on ${protocol.chain}`,
   };
 }
 

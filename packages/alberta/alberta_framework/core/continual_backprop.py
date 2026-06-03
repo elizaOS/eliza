@@ -350,7 +350,7 @@ def _replace_one_unit(
         layer_idx: Hidden layer index (Python int, used in indexing
             tuples but not traced).
         unit_idx: Unit index inside the layer (traced int32 scalar).
-        has_candidate: Boolean scalar; when False, this is a no-op.
+        has_candidate: Boolean scalar; when False, the current unit is retained.
         sparsity: Sparsity fraction for the new incoming weights.
         mlp_state: Current learner state.
         cbp_state: Current CBP state.
@@ -441,7 +441,8 @@ def maybe_replace_units(
 
     Uses ``replacement_accumulators`` to convert a fractional
     per-step replacement budget into an integer "replace this step?"
-    decision. When ``config.enabled`` is False, this is a no-op.
+    decision. When ``config.enabled`` is False, the learner state is returned
+    unchanged.
 
     Args:
         mlp_state: Current learner state.
@@ -597,9 +598,8 @@ class CBPMultiHeadMLPLearner:
     4. If ``config.enabled``, possibly replaces one low-utility
        mature unit per hidden layer.
 
-    Steps 2-4 are skipped (and become no-ops) when ``config.enabled``
-    is ``False``, so the wrapper degenerates to plain
-    :class:`MultiHeadMLPLearner` behavior.
+    Steps 2-4 are skipped when ``config.enabled`` is ``False``; the wrapper
+    then matches plain :class:`MultiHeadMLPLearner` behavior.
 
     The learner is fully JIT-compatible: all branching is inside
     ``jnp.where``, no Python-level conditional compilation is needed.

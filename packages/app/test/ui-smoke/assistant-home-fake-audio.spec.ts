@@ -234,6 +234,19 @@ async function installScriptedMicrophoneStream(page: Page): Promise<void> {
   });
 }
 
+function conversationLog(page: Page) {
+  return page.getByRole("log", { name: /conversation history/i });
+}
+
+function conversationText(page: Page, text: string | RegExp) {
+  return page
+    .locator('[data-testid="chat-message"]')
+    .filter({ hasText: text })
+    .last()
+    .or(conversationLog(page).getByText(text).last())
+    .first();
+}
+
 test("assistant chat captures fake microphone audio through local ASR and replies", async ({
   page,
 }) => {
@@ -258,24 +271,27 @@ test("assistant chat captures fake microphone audio through local ASR and replie
   await expect(stopMic).toBeVisible();
   await page.waitForTimeout(900);
   await stopMic.click();
-  await expect(composer).toHaveValue(
-    "show me my views from fake audio",
-  );
-  await page.locator(CHAT_SEND_SELECTOR).first().click();
 
+  await expect
+    .poll(() => calls.streamedPrompts(), {
+      message: "local ASR transcript should be submitted as a voice turn",
+      timeout: 30_000,
+    })
+    .toContain("show me my views from fake audio");
+  const expandConversation = page.getByRole("button", {
+    name: /expand conversation/i,
+  });
+  await expect(expandConversation).toBeVisible();
+  await expandConversation.click();
+  await expect(conversationLog(page)).toBeVisible();
+  await expect(conversationText(page, "show me my views from fake audio")).toBeVisible();
   await expect(
-    page
-      .locator('[data-testid="chat-message"][data-role="user"]')
-      .filter({ hasText: "show me my views from fake audio" })
-      .last(),
-  ).toBeVisible();
-  await expect(
-    page
-      .locator('[data-testid="chat-message"][data-role="assistant"]')
-      .filter({ hasText: "local microphone capture and can open your views" })
-      .last(),
+    conversationText(page, "local microphone capture and can open your views"),
   ).toBeVisible();
   await expect(composer).toHaveValue("");
-  expect(calls.asrCalls()[0]).toBeGreaterThan(44);
-  expect(calls.streamedPrompts()).toContain("show me my views from fake audio");
+  await expect
+    .poll(() => calls.asrCalls()[0] ?? 0, {
+      message: "local ASR endpoint should receive captured WAV audio",
+    })
+    .toBeGreaterThan(44);
 });

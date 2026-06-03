@@ -310,7 +310,7 @@
           // Try to populate signatures back into the original tx object so
           // dApp code that does `tx.signatures` keeps working.
           if (tx && Array.isArray(tx.signatures)) {
-            // No-op; we return raw bytes the dApp can re-deserialize.
+            // Return raw bytes so the dApp can re-deserialize.
           }
           // Most dApps either re-deserialize or call signAndSend; expose bytes
           // via `serialize()` on the returned object.

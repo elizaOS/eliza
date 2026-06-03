@@ -1,7 +1,7 @@
 /**
  * Browser Entry Point for Discord Plugin
  *
- * IMPORTANT: This file provides a browser-compatible export for the Discord plugin.
+ * IMPORTANT: This file provides the browser-unavailable Discord plugin entry.
  * The Discord.js library requires Node.js APIs (WebSocket, Buffer, etc.) that are
  * not available in browser environments.
  *
@@ -28,16 +28,15 @@ import { logger } from "@elizaos/core";
 const pluginName = "discord";
 
 /**
- * Browser compatibility export for the Discord plugin.
+ * Browser-unavailable entry for the Discord plugin.
  *
- * This export provides the same plugin interface but no Discord gateway
- * lifecycle. It prevents build errors when the package is bundled for browser
- * targets.
+ * This entry provides the same interface as the full plugin, logs that direct
+ * Discord gateway functionality requires Node.js, and prevents build errors
+ * when the plugin is bundled for browser targets.
  */
 export const discordPlugin: Plugin = {
 	name: pluginName,
-	description:
-		"Discord plugin (browser compatibility export; use a server proxy)",
+	description: "Discord plugin (browser entry unavailable; use a server proxy)",
 	async init(_config, _runtime: IAgentRuntime): Promise<void> {
 		logger.warn(
 			`[plugin-${pluginName}] Browser environment detected. Discord plugin requires Node.js. ` +

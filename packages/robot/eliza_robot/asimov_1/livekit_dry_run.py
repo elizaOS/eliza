@@ -75,7 +75,7 @@ class _Telemetry(_Message):
         )
 
 
-class FakeAsimovEdgePb2:
+class DryRunAsimovEdgePb2:
     CloudCommand = _CloudCommand
     VelocityCommand = _Message
     TrajectoryRequest = _Message
@@ -88,23 +88,23 @@ class FakeAsimovEdgePb2:
 
 
 @dataclass
-class FakePublishedData:
+class DryRunPublishedData:
     payload: bytes
     topic: str
     reliable: bool
 
 
-class FakeLiveKitParticipant:
+class DryRunLiveKitParticipant:
     def __init__(self) -> None:
-        self.published: list[FakePublishedData] = []
+        self.published: list[DryRunPublishedData] = []
 
     async def publish_data(self, payload: bytes, *, topic: str, reliable: bool) -> None:
-        self.published.append(FakePublishedData(payload=payload, topic=topic, reliable=reliable))
+        self.published.append(DryRunPublishedData(payload=payload, topic=topic, reliable=reliable))
 
 
-class FakeLiveKitRoom:
+class DryRunLiveKitRoom:
     def __init__(self) -> None:
-        self.local_participant = FakeLiveKitParticipant()
+        self.local_participant = DryRunLiveKitParticipant()
         self.connected = False
         self.url = ""
         self.token = ""
@@ -136,13 +136,13 @@ def _cmd(command: str, payload: dict[str, Any]) -> CommandEnvelope:
 
 
 async def validate_asimov_livekit_dry_run_async() -> dict[str, Any]:
-    """Exercise the real ASIMOV backend path with fake LiveKit/protobuf objects."""
-    room = FakeLiveKitRoom()
+    """Exercise the real ASIMOV backend path with dry-run LiveKit/protobuf objects."""
+    room = DryRunLiveKitRoom()
     transport = LiveKitAsimovTransport(
         url="wss://asimov.dry-run.invalid",
         token="dry-run-token",
         room=room,
-        edge_pb2=FakeAsimovEdgePb2,
+        edge_pb2=DryRunAsimovEdgePb2,
     )
     backend = AsimovRemoteBackend(mock=False, transport=transport)
     await backend.connect()

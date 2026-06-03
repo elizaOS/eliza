@@ -218,6 +218,20 @@ jobs:
         timeout-minutes: 85
         run: bun run test:plugins
 
+      - name: Prune cargo cache payload
+        if: always()
+        run: |
+          rm -rf \
+            "${CARGO_TARGET_DIR}/debug/incremental" \
+            "${CARGO_TARGET_DIR}/debug/.fingerprint" \
+            "${CARGO_TARGET_DIR}/debug/build" \
+            "${CARGO_TARGET_DIR}/debug/examples" \
+            "${CARGO_TARGET_DIR}/release/incremental" \
+            "${CARGO_TARGET_DIR}/release/.fingerprint" \
+            "${CARGO_TARGET_DIR}/release/build" \
+            "${CARGO_TARGET_DIR}/release/examples"
+          find "${CARGO_TARGET_DIR}" -type f \( -name '*.d' -o -name '*.rlib' -o -name '*.rmeta' \) -delete 2>/dev/null || true
+
   desktop-contract:
     name: Electrobun Desktop Contract
     runs-on: ubuntu-24.04
@@ -363,6 +377,12 @@ jobs:
           path: |
             reports/scenarios/pr-deterministic/
             reports/scenarios/catalog-inventory/
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Prune deterministic E2E scratch output
+        if: always()
+        run: rm -rf reports/scenarios/pr-deterministic reports/scenarios/catalog-inventory packages/app/playwright-report packages/app/test-results
 
   cloud-live-e2e:
     name: Cloud Live E2E (Eliza Cloud)
@@ -473,7 +493,11 @@ jobs:
           name: remote-capability-cloud-live-report
           path: reports/remote-capabilities/cloud/*.json
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
+
+      - name: Prune remote capability cloud report
+        if: always()
+        run: rm -rf reports/remote-capabilities/cloud
 
       - name: Note remote capability cloud live smoke not observed
         if: steps.cloud.outputs.skip != 'true' && github.event_name != 'workflow_dispatch' && github.event_name != 'schedule'
@@ -592,7 +616,11 @@ jobs:
           name: remote-capability-provider-live-report
           path: reports/remote-capabilities/providers/*.json
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
+
+      - name: Prune remote capability provider reports
+        if: always()
+        run: rm -rf reports/remote-capabilities/providers
 
       - name: Note provider live smoke not observed
         if: steps.providers.outputs.skip != 'true' && github.event_name != 'workflow_dispatch' && github.event_name != 'schedule'

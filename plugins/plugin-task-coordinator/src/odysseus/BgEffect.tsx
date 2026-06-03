@@ -715,11 +715,11 @@ export function BgEffect({ pattern }: { pattern: string }): ReactNode {
 
   useEffect(() => {
     const canvas = ref.current;
-    if (!canvas || !(pattern in ANIMATIONS)) return;
+    if (!canvas || !Object.hasOwn(ANIMATIONS, pattern)) return;
     return ANIMATIONS[pattern as CanvasPattern](canvas);
   }, [pattern]);
 
-  if (!(pattern in ANIMATIONS)) return null;
+  if (!Object.hasOwn(ANIMATIONS, pattern)) return null;
   // Decorative, pointer-events:none layer. tabIndex={-1} keeps it out of the
   // tab order so aria-hidden is valid (odysseus hides it from assistive tech
   // so screen readers don't announce an empty canvas).

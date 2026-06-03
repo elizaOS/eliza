@@ -77,7 +77,7 @@ function parseNamespaceFromUrl(serverUrl: string): string | null {
  * Hetzner-provisioned container model) rather than a K8s headless Service
  * (`{name}.{namespace}.svc`). Direct targets are already up — the
  * provisioning daemon manages their lifecycle — so there is no Deployment to
- * scale and `wakeServer` must be a no-op for them.
+ * scale and `wakeServer` should return without issuing a scale request.
  */
 function isDirectServerUrl(serverUrl: string): boolean {
   try {

@@ -1441,8 +1441,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 *
 	 * MIGRATIONS: If a plugin updates its schema (adds columns, indexes), the
 	 * adapter should diff against the current schema and apply changes. For SQL
-	 * adapters, this uses ALTER TABLE. For in-memory, it's a no-op (just stores
-	 * the schema definition).
+	 * adapters, this uses ALTER TABLE. For in-memory, this records
+	 * the schema definition.
 	 *
 	 * @param schema Complete schema definition for the plugin
 	 * @throws Error if schema is invalid or migration fails

@@ -489,11 +489,13 @@ const memeMachineAction: Action = {
     }
 
     const skill = workspace.skills["meme_machine"] || "";
+    const trendService = runtime.getService<MemeTrendService>(MemeTrendService.serviceType);
+    const trendContext = trendService ? `\n\n${trendService.getTrendContext(5)}` : "";
     const context = buildSkillContext(
       skill,
       workspace,
       message.content.text || "",
-      "Create 3 meme concepts with template, text, caption, and export size."
+      `Create 3 meme concepts with template, text, caption, and export size.${trendContext}`
     );
 
     return generateResponse(runtime, context, callback, "UNDESIRABLE_MEME_MACHINE");

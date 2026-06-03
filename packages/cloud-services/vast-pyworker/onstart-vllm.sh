@@ -269,7 +269,7 @@ VLLM_ARGS=(
 )
 # Manifest-driven expert-parallel for the 27B EP=2 path. vLLM only honors
 # --expert-parallel-size when the model has MoE layers; for the dense
-# eliza-1 sizes setting EP=1 is a no-op so we always emit it explicitly.
+# eliza-1 sizes setting EP=1 has no effect, so we always emit it explicitly.
 if [ "$EXPERT_PARALLEL_SIZE" -gt 1 ] 2>/dev/null; then
   VLLM_ARGS+=(--expert-parallel-size "$EXPERT_PARALLEL_SIZE")
 fi
@@ -410,7 +410,7 @@ except Exception as e:
     out["error"] = str(e)
 # kv_bytes_per_token = (block_size * num_layers * 2 (k,v) * head_dim * num_kv_heads * dtype_bytes) / block_size
 # We do not have model dims here; the heartbeat agent computes the precise
-# value. Surface a placeholder so the schema is stable for the consumer.
+# value. Surface null so the schema is stable for the consumer.
 out["kv_bytes_per_token"] = None
 print(json.dumps(out))
 PY

@@ -59,7 +59,7 @@ export class TaskService extends Service {
 	private executingTaskPromises = new Set<Promise<void>>();
 	/** When false, checkTasks skips the DB query. Set true by markDirty(); start true so first tick always queries. WHY: avoid redundant getTasks every second when nothing changed. */
 	private tasksDirty = true;
-	/** Set true in stop(). runTick is a no-op when true (daemon may call runTick after unregister). */
+	/** Set true in stop(). runTick returns immediately when true (daemon may call runTick after unregister). */
 	private stopped = false;
 	static serviceType = ServiceType.TASK;
 	capabilityDescription = "The agent is able to schedule and execute tasks";

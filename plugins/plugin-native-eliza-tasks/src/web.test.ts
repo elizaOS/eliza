@@ -30,7 +30,7 @@ describe("ElizaTasksWeb fallback", () => {
     });
   });
 
-  it("cancelAll is a no-op on web", async () => {
+  it("cancelAll reports that no web wake requests were cancelled", async () => {
     await expect(new ElizaTasksWeb().cancelAll()).resolves.toEqual({
       cancelled: false,
     });

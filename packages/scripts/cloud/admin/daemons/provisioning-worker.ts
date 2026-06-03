@@ -2,11 +2,10 @@
 /**
  * Standalone provisioning worker.
  *
- * The Cloudflare cron route is a Worker-runtime shim because provisioning
- * pulls in Node-only SSH/Docker modules. This daemon runs on the Node sidecar
- * and delegates to the same ProvisioningJobService used by the API, so
- * enqueue, claim, retry, sandbox status, webhooks, and health checks share one
- * codepath.
+ * The Cloudflare cron route only triggers the Node sidecar because provisioning
+ * pulls in Node-only SSH/Docker modules. This daemon runs on that sidecar and
+ * delegates to the same ProvisioningJobService used by the API, so enqueue,
+ * claim, retry, sandbox status, webhooks, and health checks share one codepath.
  *
  * Usage:
  *   npx tsx packages/scripts/daemons/provisioning-worker.ts

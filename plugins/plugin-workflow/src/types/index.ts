@@ -426,7 +426,7 @@ export interface ConnectorDisconnectedPayload extends EventPayload {
   userId: string;
   /**
    * Workflow credential type ids tied to the disconnected connector
-   * (e.g. `['gmailOAuth2', 'gmailOAuth2Api']`). Empty list ⇒ no-op.
+   * (e.g. `['gmailOAuth2', 'gmailOAuth2Api']`). Empty list skips deletion.
    */
   credTypes: readonly string[];
   /** Connector name (e.g. `'gmail'`). Informational. */

@@ -258,7 +258,7 @@ describe("postInferenceSpent", () => {
 describe("createWaifuMeteringHandler", () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it("is a no-op when metering env is absent", async () => {
+  it("stays inactive when metering env is absent", async () => {
     const fakeFetch = vi.fn() as unknown as typeof fetch;
     const handler = createWaifuMeteringHandler(fakeFetch);
     await handler(makePayload({ prompt: 100, completion: 50 }));

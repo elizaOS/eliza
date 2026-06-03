@@ -7,7 +7,7 @@
  * apps.
  *
  * - `start(slug)` spawns the worker if the registered entry declares
- *   `isolation: "worker"`. No-op for `"none"`.
+ *   `isolation: "worker"`. Entries with `"none"` stay in-process.
  * - `invoke(slug, method, params)` sends a typed message and awaits
  *   the worker's response. The wire format is documented in
  *   `../workers/app-worker-entry.ts`.
@@ -239,7 +239,7 @@ export class AppWorkerHostService extends Service {
 	/**
 	 * Look up the registered entry and spawn a worker if the entry
 	 * declares isolation:"worker". Returns the spawn snapshot or a
-	 * structured reason if the spawn was a no-op.
+	 * structured reason if no worker was spawned.
 	 */
 	async startForRegisteredApp(
 		slug: string,

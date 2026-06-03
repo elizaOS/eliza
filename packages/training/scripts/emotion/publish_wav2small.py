@@ -17,8 +17,8 @@ Files published per release:
   - `wav2small-msp-dim-int8.onnx` — the ONNX artifact.
   - `wav2small-msp-dim-int8.json` — provenance sidecar (V-A-D MSE,
     macro-F1, ONNX sha256, param count, teacher revision).
-  - `README.md` — model card (overwrites the existing placeholder).
-  - `manifest.json` — release manifest (overwrites placeholder).
+  - `README.md` — model card (replaces the release seed file).
+  - `manifest.json` — release manifest (replaces the release seed file).
 
 Apache-2.0 license on the student weights; the teacher (audeering
 CC-BY-NC-SA-4.0) is **never redistributed** — we only ship pseudo-label-

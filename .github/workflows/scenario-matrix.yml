@@ -242,6 +242,8 @@ jobs:
         with:
           name: scenario-report-${{ matrix.shard.name }}
           path: reports/scenarios/${{ github.run_id }}-${{ matrix.shard.name }}/
+          if-no-files-found: ignore
+          retention-days: 3
 
   summary:
     name: Matrix summary

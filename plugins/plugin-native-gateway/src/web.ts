@@ -144,10 +144,11 @@ export class GatewayWeb extends WebPlugin {
   }
 
   /**
-   * Stop gateway discovery (no-op on web)
+   * Stop gateway discovery. Web discovery is unsupported, so there is no
+   * active browser discovery session to stop.
    */
   async stopDiscovery(): Promise<void> {
-    // No-op on web
+    // Web platforms never start Bonjour/mDNS discovery.
   }
 
   /**

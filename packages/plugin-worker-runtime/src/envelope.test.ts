@@ -6,7 +6,7 @@ import {
 
 type DataHandler = (chunk: string) => void;
 
-class FakeReadable {
+class TestReadable {
   encoding: string | null = null;
   handlers = new Set<DataHandler>();
 
@@ -31,7 +31,7 @@ class FakeReadable {
   }
 }
 
-class FakeWritable {
+class TestWritable {
   writes: string[] = [];
 
   write(data: string): void {
@@ -41,9 +41,9 @@ class FakeWritable {
 
 const originalProcess = globalThis.process;
 
-function installFakeProcess(): { stdin: FakeReadable; stdout: FakeWritable } {
-  const stdin = new FakeReadable();
-  const stdout = new FakeWritable();
+function installTestProcess(): { stdin: TestReadable; stdout: TestWritable } {
+  const stdin = new TestReadable();
+  const stdout = new TestWritable();
   Object.defineProperty(globalThis, "process", {
     configurable: true,
     value: { stdin, stdout, env: {} },
@@ -60,7 +60,7 @@ describe("createSubprocessChannel", () => {
   });
 
   it("frames outbound messages as newline-delimited JSON", () => {
-    const { stdout } = installFakeProcess();
+    const { stdout } = installTestProcess();
     const channel = createSubprocessChannel();
 
     channel.send({
@@ -71,7 +71,7 @@ describe("createSubprocessChannel", () => {
   });
 
   it("buffers chunked inbound messages and ignores malformed lines", () => {
-    const { stdin } = installFakeProcess();
+    const { stdin } = installTestProcess();
     const channel = createSubprocessChannel();
     const received: unknown[] = [];
     channel.onMessage((message) => received.push(message));
@@ -88,7 +88,7 @@ describe("createSubprocessChannel", () => {
   });
 
   it("unsubscribes handlers and stops sending or receiving after close", () => {
-    const { stdin, stdout } = installFakeProcess();
+    const { stdin, stdout } = installTestProcess();
     const channel = createSubprocessChannel();
     const received: unknown[] = [];
     const unsubscribe = channel.onMessage((message) => received.push(message));

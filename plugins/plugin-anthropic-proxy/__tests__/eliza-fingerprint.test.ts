@@ -139,16 +139,16 @@ describe("eliza fingerprint — system prompt strip", () => {
     expect(result.body).toContain("More content here.");
   });
 
-  it("no-ops when the eliza marker is not present", () => {
+  it("leaves the payload unchanged when the eliza marker is not present", () => {
     const wirePayload = `{"system":[{"type":"text","text":"You are some other bot."}]}`;
     const result = stripSystemConfig(wirePayload);
     expect(result.stripped).toBe(0);
     expect(result.body).toBe(wirePayload);
   });
 
-  it("no-ops on a too-short marker run (defensive against partial matches)", () => {
+  it("leaves a too-short marker run unchanged (defensive against partial matches)", () => {
     const wirePayload = `{"system":[{"type":"text","text":"${ELIZA_IDENTITY_MARKER} ${ELIZA_BOUNDARY_END}"}]}`;
-    // This is shorter than MIN_STRIP_LEN, should no-op.
+    // This is shorter than MIN_STRIP_LEN, so it should remain unchanged.
     const result = stripSystemConfig(wirePayload);
     expect(result.stripped).toBe(0);
   });

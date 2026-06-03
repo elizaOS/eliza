@@ -385,7 +385,7 @@ export async function installSkillDependency(
 		};
 	}
 
-	// Resolve node manager command token
+	// Resolve node manager command token.
 	try {
 		command = await resolveNodeManager(command);
 	} catch (error) {

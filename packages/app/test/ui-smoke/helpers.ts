@@ -269,8 +269,11 @@ async function expectNoFirstRunRedirect(page: Page): Promise<void> {
 
 async function expectStartupSettled(page: Page): Promise<void> {
   await page
-    .getByText("Initializing agent")
+    .getByText(/Initializing agent|Connecting to backend/i)
     .waitFor({ state: "hidden", timeout: STARTUP_SETTLED_TIMEOUT_MS });
+  await expect(page.getByTestId("startup-shell-loading")).toHaveCount(0, {
+    timeout: STARTUP_SETTLED_TIMEOUT_MS,
+  });
 }
 
 function isRootTargetPath(targetPath: string): boolean {
@@ -336,6 +339,8 @@ export async function openAppPath(
   await expectNoFirstRunRedirect(page);
   await expectMainShellReadyForRoute(page, targetPath);
   await replayNavigationAfterStartup(page);
+  await expectStartupSettled(page);
+  await expectMainShellReadyForRoute(page, targetPath);
   await expectNoRenderTelemetryErrors(page, targetPath);
 }
 
@@ -436,16 +441,30 @@ async function evaluateReadyChecks(
 
   for (const check of checks) {
     if ("selector" in check) {
-      results.push({
+      const result = {
         check,
         passed: await locatorVisible(page.locator(check.selector), timeoutMs),
-      });
+      };
+      results.push(result);
+      if (mode === "any" && result.passed) {
+        return {
+          passed: true,
+          results,
+        };
+      }
       continue;
     }
-    results.push({
+    const result = {
       check,
       passed: await locatorVisible(page.getByText(check.text), timeoutMs),
-    });
+    };
+    results.push(result);
+    if (mode === "any" && result.passed) {
+      return {
+        passed: true,
+        results,
+      };
+    }
   }
 
   return {

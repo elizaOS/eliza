@@ -81,6 +81,3 @@ export class HttpSink implements AuditSink {
     }
   }
 }
-
-/** @deprecated Use HttpSink. */
-export class HttpSinkStub extends HttpSink {}

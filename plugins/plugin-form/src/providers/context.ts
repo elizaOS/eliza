@@ -41,7 +41,7 @@
  * ## Stashed Forms
  *
  * If the user has stashed forms, the provider appends a reminder so the
- * agent can tell the user they have unfinished work and can say "resume".
+ * agent can tell the user they have saved form work and can say "resume".
  */
 
 import type {

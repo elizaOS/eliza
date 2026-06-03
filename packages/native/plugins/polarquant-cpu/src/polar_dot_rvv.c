@@ -46,8 +46,8 @@
 /* Materialise 128 dequantized fp32 weights for one Q4_POLAR block,
  * with the inverse Hadamard + (1/QK_POLAR)*l2 scale applied.  This is
  * the loop body of polar_dequant_rvv.c lifted inline so the dot path
- * can keep the buffer hot in cache. A fused H-block kernel can reuse
- * this materialization without re-entering the dispatcher.
+ * can keep the buffer hot in cache (and so a future kernel can fuse
+ * across the H block without re-entering the dispatcher).
  *
  * Kept private to this TU; the public entry point lives in
  * polar_dequant_rvv.c. */
@@ -215,4 +215,4 @@ void ggml_vec_dot_q4_polar_q8_0_rvv(
 
 #endif /* __riscv && __riscv_v_intrinsic */
 
-typedef int polar_dot_rvv_iso_c_empty_tu_marker;
+typedef int polar_dot_rvv_iso_c_translation_unit_anchor;

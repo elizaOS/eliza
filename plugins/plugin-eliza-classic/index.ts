@@ -1,8 +1,6 @@
 import type { GenerateTextParams, IAgentRuntime, Plugin } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 
-const EMBEDDING_DIMENSIONS = 1536;
-
 const responses = [
   { pattern: /\bmother\b/i, response: "Tell me more about your family." },
   {
@@ -68,57 +66,70 @@ async function handleText(
   });
 }
 
-function fnv1a32(input: string): number {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < input.length; index += 1) {
-    hash ^= input.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return hash;
-}
+const EMBEDDING_DIMS = 1536;
 
-function embeddingTextFromParams(params: unknown): string {
+function extractEmbeddingText(params: unknown): string {
   if (typeof params === "string") return params;
-  if (params && typeof params === "object") {
-    const record = params as Record<string, unknown>;
-    if (typeof record.text === "string") return record.text;
-    if (typeof record.prompt === "string") return record.prompt;
-    if (typeof record.input === "string") return record.input;
+  if (!params || typeof params !== "object") return "";
+  const record = params as Record<string, unknown>;
+  for (const key of ["text", "input", "prompt", "query"]) {
+    const value = record[key];
+    if (typeof value === "string") return value;
   }
   return "";
 }
 
-export function generateElizaEmbedding(input: string): number[] {
-  const embedding = Array.from({ length: EMBEDDING_DIMENSIONS }, () => 0);
-  const tokens = input.toLowerCase().match(/[a-z0-9']+/g) ?? [];
-  const features = tokens.length > 0 ? tokens : [""];
+function hashToken(token: string): number {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < token.length; index += 1) {
+    hash ^= token.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
 
-  for (const token of features) {
-    const tokenHash = fnv1a32(token);
-    const index = tokenHash % EMBEDDING_DIMENSIONS;
-    const sign = tokenHash & 1 ? 1 : -1;
-    embedding[index] += sign;
+function tokenizeForEmbedding(text: string): string[] {
+  return text.toLowerCase().match(/[\p{L}\p{N}']+/gu) ?? [];
+}
 
-    if (token.length > 3) {
-      const prefixHash = fnv1a32(token.slice(0, 4));
-      embedding[prefixHash % EMBEDDING_DIMENSIONS] += prefixHash & 1 ? 0.5 : -0.5;
+function deterministicLexicalEmbedding(text: string): number[] {
+  const vector = Array.from({ length: EMBEDDING_DIMS }, () => 0);
+  const tokens = tokenizeForEmbedding(text);
+
+  if (tokens.length === 0) {
+    vector[0] = 1;
+    return vector;
+  }
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const tokenHash = hashToken(token);
+    const slot = tokenHash % EMBEDDING_DIMS;
+    const sign = tokenHash & 0x80000000 ? -1 : 1;
+    vector[slot] += sign;
+
+    const next = tokens[index + 1];
+    if (next) {
+      const bigramHash = hashToken(`${token}\u0000${next}`);
+      const bigramSlot = bigramHash % EMBEDDING_DIMS;
+      const bigramSign = bigramHash & 0x80000000 ? -1 : 1;
+      vector[bigramSlot] += bigramSign * 0.5;
     }
   }
 
-  const magnitude = Math.hypot(...embedding);
-  if (magnitude === 0) {
-    embedding[0] = 1;
-    return embedding;
+  const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
+  if (norm === 0) {
+    vector[0] = 1;
+    return vector;
   }
-
-  return embedding.map((value) => value / magnitude);
+  return vector.map((value) => value / norm);
 }
 
 async function handleEmbedding(
   _runtime: IAgentRuntime,
   params: unknown,
 ): Promise<number[]> {
-  return generateElizaEmbedding(embeddingTextFromParams(params));
+  return deterministicLexicalEmbedding(extractEmbeddingText(params));
 }
 
 export const elizaClassicPlugin: Plugin = {

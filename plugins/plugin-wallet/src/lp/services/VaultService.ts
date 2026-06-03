@@ -34,7 +34,7 @@ export class VaultService extends Service implements IVaultService {
   }
 
   async stop(): Promise<void> {
-    // No-op
+    // Connection lifecycle is managed by the Solana client helper.
   }
 
   public async createVault(

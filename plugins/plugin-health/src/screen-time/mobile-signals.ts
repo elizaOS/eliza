@@ -146,7 +146,7 @@ export function mobileScreenTimeDataSourceFromSignals(
 
   return {
     state: "partial",
-    statusLabel: "Signal incomplete",
+    statusLabel: "Signal partial",
     detail: "Recent mobile signals did not include screen-time metadata.",
   };
 }

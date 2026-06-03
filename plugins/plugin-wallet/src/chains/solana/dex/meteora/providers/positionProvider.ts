@@ -94,11 +94,7 @@ export const meteoraPositionProvider: Provider = {
         };
       }
 
-      const positions = await fetchPositions(
-        connection,
-        ownerAddress,
-        resolveMeteoraPoolAddresses(runtime)
-      );
+      const positions = await fetchPositions(connection, ownerAddress);
       const positionCount = positions.length;
       const inRangeCount = positions.filter((p) => p.inRange).length;
 
@@ -155,13 +151,17 @@ function formatUnknownError(error: unknown): string {
 
 const fetchPositions = async (
   connection: Connection,
-  ownerAddress: PublicKey,
-  poolAddresses: readonly string[]
+  ownerAddress: PublicKey
 ): Promise<MeteoraPositionStatistics[]> => {
   try {
+    // Static seed pool list; a Meteora API source can replace this when wired.
+    const POOL_ADDRESSES = [
+      "ARwi1S4DaiTG5DX7S4M4ZsrXqpMD1MrTmbu9ue2tpmEq", // USDC/USDT
+    ];
+
     const positions: MeteoraPositionStatistics[] = [];
 
-    for (const poolAddress of poolAddresses) {
+    for (const poolAddress of POOL_ADDRESSES) {
       // Connection type compatibility - DLMM may expect a different Connection version
       const dlmmPool = await DLMM.create(
         connection as Parameters<typeof DLMM.create>[0],
@@ -196,31 +196,3 @@ const fetchPositions = async (
     throw new Error(`Error fetching Meteora positions: ${error}`);
   }
 };
-
-const DEFAULT_METEORA_POOL_ADDRESSES = [
-  "ARwi1S4DaiTG5DX7S4M4ZsrXqpMD1MrTmbu9ue2tpmEq", // USDC/USDT
-] as const;
-
-function resolveMeteoraPoolAddresses(runtime: IAgentRuntime): readonly string[] {
-  const configured = runtime.getSetting("METEORA_POOL_ADDRESSES");
-  if (typeof configured !== "string" || configured.trim().length === 0) {
-    return DEFAULT_METEORA_POOL_ADDRESSES;
-  }
-
-  const addresses = configured
-    .split(",")
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
-
-  if (addresses.length === 0) {
-    return DEFAULT_METEORA_POOL_ADDRESSES;
-  }
-
-  return addresses.map((address) => {
-    try {
-      return new PublicKey(address).toBase58();
-    } catch {
-      throw new Error(`Invalid METEORA_POOL_ADDRESSES entry: ${address}`);
-    }
-  });
-}

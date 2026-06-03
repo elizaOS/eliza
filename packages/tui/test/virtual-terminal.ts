@@ -37,7 +37,7 @@ export class VirtualTerminal implements Terminal {
   }
 
   async drainInput(_maxMs?: number, _idleMs?: number): Promise<void> {
-    // No-op for virtual terminal - no stdin to drain
+    // Virtual terminal has no stdin to drain.
   }
 
   stop(): void {

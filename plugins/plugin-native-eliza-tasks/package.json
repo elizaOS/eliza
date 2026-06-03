@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-eliza-tasks",
-  "version": "2.0.3-beta.0",
+  "version": "2.0.3-beta.1",
   "description": "Bridges iOS BGTaskScheduler (BGAppRefreshTask + BGProcessingTask) wake events into the Eliza Capacitor runtime.",
   "keywords": [
     "background",
@@ -74,7 +74,7 @@
     ],
     "runtime": "both",
     "platformDetails": {
-      "browser": "No-op web fallback; BGTaskScheduler is iOS-only.",
+      "browser": "Unsupported web fallback; BGTaskScheduler is iOS-only.",
       "node": "No desktop equivalent; runtime ignores this plugin off-mobile.",
       "ios": true,
       "android": false

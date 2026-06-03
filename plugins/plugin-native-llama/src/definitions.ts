@@ -94,7 +94,7 @@ export interface PrefillPlan {
 /**
  * Per-generation sampler-stage injection. Each variant carries the payload
  * one fork-side sampler hook understands. New variants must be additive — old
- * native bridges feature-detect `kind` and warn-and-no-op on unknowns.
+ * native bridges feature-detect `kind`, warn on unknowns, and skip them.
  */
 export type SamplerStage =
   | { kind: "token_tree"; descriptor: TokenTreeDescriptor }
@@ -244,7 +244,7 @@ export interface LlamaAdapter {
   /**
    * Swap the speculative-decode drafter without tearing down the main
    * context. Passing `null` clears the active drafter. Stock builds that
-   * have no drafter bridge warn-and-no-op.
+   * have no drafter bridge warn and leave the loaded context unchanged.
    */
   setDrafter?(drafterPath: string | null): Promise<void>;
   /**
@@ -262,13 +262,13 @@ export interface LlamaAdapter {
   /**
    * Configure the KV cache types used by the next loaded context. Only
    * the buun-llama-cpp fork honours TurboQuant cache types like
-   * `q4_tq3` / `q4_tq4`. Stock builds will warn-and-no-op when the
-   * underlying plugin doesn't expose the bridge method.
+   * `q4_tq3` / `q4_tq4`. Stock builds warn and keep the default cache
+   * type when the underlying plugin doesn't expose the bridge method.
    */
   setCacheType?(typeK: string, typeV: string): Promise<void>;
   /**
    * Configure MTP speculative decoding for the next loaded context.
-   * Stock builds without speculative bridge methods warn-and-no-op.
+   * Stock builds without speculative bridge methods warn and skip it.
    */
   setSpecType?(args: SetSpecTypeArgs): Promise<void>;
   /**

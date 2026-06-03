@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { BargeInController } from "./barge-in";
-import {
-	_resetStubWarnLatchForTests,
-	CharacterPhonemeStub,
-} from "./phoneme-tokenizer";
+import { RuleBasedEnglishPhonemeTokenizer } from "./phoneme-tokenizer";
 import { canonicalizePhraseText, PhraseCache } from "./phrase-cache";
 import { chunkTokens, PhraseChunker } from "./phrase-chunker";
 import { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
@@ -385,7 +382,7 @@ describe("PhraseCache", () => {
 });
 
 describe("VoiceScheduler end-to-end", () => {
-	it("synthesizes phrases via stubbed backend and emits PCM", async () => {
+	it("synthesizes phrases via test backend and emits PCM", async () => {
 		const backend = new StubBackend();
 		const sink = new InMemoryAudioSink();
 		const phraseEvents: Phrase[] = [];
@@ -578,7 +575,7 @@ describe("VoiceScheduler end-to-end", () => {
 		const backend = new StubBackend();
 		backend.delay = 20;
 		const sink = new InMemoryAudioSink();
-		const tokenizer = new CharacterPhonemeStub();
+		const tokenizer = new RuleBasedEnglishPhonemeTokenizer();
 		const rollbacks: number[] = [];
 		const sched = new VoiceScheduler(
 			{
@@ -1005,12 +1002,11 @@ describe("PhraseChunker IPA mode", () => {
 	});
 
 	it("phoneme-stream mode emits sub-phrase chunks at phoneme boundaries", () => {
-		_resetStubWarnLatchForTests();
-		const tokenizer = new CharacterPhonemeStub();
-		// 'abcde' = 5 phonemes, 'fgh' = 3 phonemes, 'ij' = 2 phonemes.
+		const tokenizer = new RuleBasedEnglishPhonemeTokenizer();
+		// 'abcde' = 5 approximate phonemes, 'fgh' = 3, 'ij' = 2.
 		// Cumulative phoneme count after each: 5, 8, 10.
-		// With phonemesPerChunk=4: token 0 alone => 5 ≥ 4 => chunk #0 (token 0).
-		// Then token 1 (3) + token 2 (2) = 5 ≥ 4 after token 2 => chunk #1.
+		// With phonemesPerChunk=4: token 0 alone => 5 >= 4 => chunk #0.
+		// Then token 1 (3) + token 2 (2) = 5 >= 4 after token 2 => chunk #1.
 		const tokens: TextToken[] = [tok(0, "abcde"), tok(1, "fgh"), tok(2, "ij")];
 		const phrases = chunkTokens(
 			tokens,
@@ -1033,7 +1029,7 @@ describe("PhraseChunker IPA mode", () => {
 	});
 
 	it("phoneme-stream mode still respects punctuation as a hard boundary", () => {
-		const tokenizer = new CharacterPhonemeStub();
+		const tokenizer = new RuleBasedEnglishPhonemeTokenizer();
 		const tokens: TextToken[] = [tok(0, "hi"), tok(1, ".")];
 		const phrases = chunkTokens(
 			tokens,
@@ -1060,9 +1056,15 @@ describe("PhraseChunker IPA mode", () => {
 		).toThrow();
 	});
 
-	it("CharacterPhonemeStub flags itself as a stub", () => {
-		const t = new CharacterPhonemeStub();
-		expect(t.isStub).toBe(true);
-		expect(t.name).toBe("CharacterPhonemeStub");
+	it("RuleBasedEnglishPhonemeTokenizer emits approximate IPA", () => {
+		const t = new RuleBasedEnglishPhonemeTokenizer();
+		expect(t.quality).toBe("approximate");
+		expect(t.name).toBe("RuleBasedEnglishPhonemeTokenizer");
+		expect(t.tokenize("hello", 7)).toEqual([
+			{ ipa: "h", sourceTokenIndex: 7 },
+			{ ipa: "ə", sourceTokenIndex: 7 },
+			{ ipa: "l", sourceTokenIndex: 7 },
+			{ ipa: "oʊ", sourceTokenIndex: 7 },
+		]);
 	});
 });

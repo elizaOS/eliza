@@ -149,5 +149,5 @@ Designed to make eliza's tool surface look like a Claude Code session:
 | `close_thread`   | `TodoComplete`   | CC-adjacent                        |
 | `update_project` | `ProjectUpdate`  | neutral                            |
 | `spawn_codex`    | `Task`           | CC has Task (subagent)             |
-| `spawn_agent`    | `Agent`          | CC stub uses Agent                 |
+| `spawn_agent`    | `Agent`          | CC metadata uses Agent             |
 | `sessions_spawn`    | `TaskCreate`     | distinct from Task                 |

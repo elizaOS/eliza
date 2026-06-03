@@ -39,7 +39,6 @@ export {
   matchGpuProfile,
   reservedHeadroomGb,
 } from "./gpu-profiles.js";
-export * from "./kokoro/index.js";
 export {
   buildKokoroOrtSessionOptions,
   DEFAULT_KOKORO_EXECUTION_PROVIDER,
@@ -67,27 +66,15 @@ export {
   type NetworkPolicyReason,
   type RawNetworkState,
 } from "./network-policy.js";
-export {
-  downloadsStagingDir,
-  elizaModelsDir,
-  isWithinElizaRoot,
-  localInferenceRoot,
-  registryPath,
-} from "./paths.js";
 export type {
   ProviderEnableState,
   ProviderId,
   ProviderMeta,
   ProviderStatus,
 } from "./providers-types.js";
-export {
-  DEFAULT_ROUTING_POLICY,
-  type RoutingPolicy,
-  type RoutingPreferences,
-  readRoutingPreferences,
-  setPolicy,
-  setPreferredProvider,
-  writeRoutingPreferences,
+export type {
+  RoutingPolicy,
+  RoutingPreferences,
 } from "./routing-preferences.js";
 export {
   type ActiveModelState,
@@ -122,13 +109,7 @@ export {
   type TextGenerationSlot,
   type TokenizerFamily,
 } from "./types.js";
-export {
-  __registryPathForTests,
-  hashFile,
-  type VerifyResult,
-  type VerifyState,
-  verifyInstalledModel,
-} from "./verify.js";
+export type { VerifyResult, VerifyState } from "./verify.js";
 export {
   compareVoiceModelSemver,
   findVoiceModelVersion,

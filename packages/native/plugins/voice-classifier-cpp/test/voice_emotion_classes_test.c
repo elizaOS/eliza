@@ -43,7 +43,7 @@ int main(void) {
         }
     }
 
-    /* Out-of-bounds returns NULL — never a placeholder string. */
+    /* Out-of-bounds returns NULL, never a fallback label. */
     if (voice_emotion_class_name(-1) != NULL) {
         fprintf(stderr, "[voice-emotion-classes] index -1 should return NULL\n");
         ++failures;

@@ -7,7 +7,7 @@ The E1 SoC is documented under `packages/chip/docs/arch/`. This page is the entr
 
 ## Top-level
 
-- **Application processor (AP)** — RISC-V stub at this stage; final design slots in a production-grade core. The pipeline, ISA extensions, and supervisor support are pinned in `docs/arch/`.
+- **Application processor (AP)** — development RISC-V AP at this stage; final design slots in a production-grade core. The pipeline, ISA extensions, and supervisor support are pinned in `docs/arch/`.
 - **NPU** — purpose-built neural accelerator with contracts pinned in `compiler/runtime/` and verified by `verify/`.
 - **DMA, interconnect, interrupts, memory** — independent RTL blocks in `rtl/` with cocotb tests in `verify/`.
 - **Display** — block in `rtl/display/`; phone-class display path.

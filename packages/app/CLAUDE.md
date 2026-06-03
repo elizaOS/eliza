@@ -39,7 +39,7 @@ packages/app/
     types/                   Type declaration files for module shims
     shims/                   Browser shims for Node built-ins
   vite/
-    native-module-stub-plugin.ts  Stubs Node/native modules for browser bundle
+    native-module-stub-plugin.ts  Browser replacements for Node/native modules
   scripts/
     build.mjs                Main app build script
     plugin-build.mjs         Plugin-only build
@@ -176,7 +176,7 @@ bun run --cwd packages/app test:e2e
 - **Capacitor `ios/` and `android/` dirs are generated.** Run `bun run --cwd packages/app cap:sync` after any `capacitor.config.ts` change. Do not hand-edit the native project settings that Capacitor generates.
 - **Vite config aliases.** `vite.config.ts` builds workspace package aliases dynamically from `packages/` and `plugins/` directories. Native Capacitor plugins (`@elizaos/capacitor-*`) are aliased from `plugins/plugin-native-*/src/index.ts`. Plugins with `elizaos.app` in their `package.json` are included; others are excluded from the browser bundle.
 - **Lucide tree-shaking.** The Vite config includes a custom plugin that rewrites `import { X } from "lucide-react"` to per-icon deep imports, reducing the icon bundle from ~600KB to only used icons (~130).
-- **`AsyncLocalStorage` patch.** A `renderChunk` plugin patches the `AsyncLocalStorage` stub in mobile WebView bundles so `new undefined` never happens. Do not remove this plugin.
+- **`AsyncLocalStorage` patch.** A `renderChunk` plugin patches the `AsyncLocalStorage` browser replacement in mobile WebView bundles so `new undefined` never happens. Do not remove this plugin.
 - **iOS full-Bun smoke.** When `localStorage["eliza:ios-full-bun-smoke:request"] === "1"`, `main.tsx` runs a headless backend smoke test and writes results to `Preferences`. This is a QA/CI gate; do not remove the `runIosFullBunSmokeIfRequested()` call.
 - **`predev` / `prebuild` hooks.** Both run `sync-to-public.mjs` to copy shared brand assets (logos, favicons, concepts, banners, backgrounds) into `public/` before Vite starts. Do not delete assets from `public/` manually; re-run the hook instead.
 - See root `AGENTS.md` for architecture rules, naming conventions, and commit workflow.

@@ -45,17 +45,6 @@ interface SteerPoolNode {
   liquidity?: number;
 }
 
-interface DexScreenerPair {
-  baseToken?: { address?: string };
-  quoteToken?: { address?: string };
-  priceUsd?: string | null;
-  liquidity?: { usd?: number };
-}
-
-interface DexScreenerTokenResponse {
-  pairs?: DexScreenerPair[];
-}
-
 /** Raw vault node shape returned by `@steerprotocol/sdk` before enrichment */
 interface RawSteerVault {
   vaultAddress?: string;
@@ -92,7 +81,6 @@ const SUPPORTED_CHAIN_IDS = [1, 137, 42161, 10, 8453]; // mainnet, polygon, arbi
 // GraphQL endpoint for Steer Protocol
 const STEER_GRAPHQL_ENDPOINT =
   "https://api.subgraph.ormilabs.com/api/public/803c8c8c-be12-4188-8523-b9853e23051d/subgraphs/steer-protocol-base/prod/gn";
-const DEXSCREENER_API_BASE = "https://api.dexscreener.com";
 
 // Interfaces for type safety
 interface TokenLiquidityStats {
@@ -238,23 +226,6 @@ function getResponseDebug(response: unknown): Record<string, unknown> {
   };
 }
 
-function getDexScreenerChainSlug(chainId: number): string | null {
-  switch (chainId) {
-    case 1:
-      return "ethereum";
-    case 10:
-      return "optimism";
-    case 137:
-      return "polygon";
-    case 42161:
-      return "arbitrum";
-    case 8453:
-      return "base";
-    default:
-      return null;
-  }
-}
-
 function isGraphQLTokenRef(
   value: unknown,
 ): value is GraphQLVaultData["strategyToken"] {
@@ -373,7 +344,7 @@ export class SteerLiquidityService extends Service {
       "SteerLiquidityService ready to handle requests using official SDK",
     );
 
-    // Check runtime has required methods.
+    // Verify runtime has required methods
     if (!runtime?.getService) {
       logger.warn("Runtime missing getService method");
     }
@@ -1104,63 +1075,13 @@ export class SteerLiquidityService extends Service {
    * Get token prices for TVL calculation
    */
   async getTokenPrices(
-    tokenAddresses: string[],
+    _tokenAddresses: string[],
     chainId: number,
   ): Promise<{ [address: string]: number } | null> {
     try {
-      const chainSlug = getDexScreenerChainSlug(chainId);
-      if (!chainSlug) {
-        logger.warn(`No DexScreener chain slug for chain ${chainId}`);
-        return null;
-      }
-
-      const uniqueAddresses = [
-        ...new Set(
-          tokenAddresses
-            .map((address) => address.trim())
-            .filter((address) => address.length > 0),
-        ),
-      ];
-      if (uniqueAddresses.length === 0) {
-        return null;
-      }
-
-      const prices: Record<string, number> = {};
-      for (let i = 0; i < uniqueAddresses.length; i += 30) {
-        const chunk = uniqueAddresses.slice(i, i + 30);
-        const response = await fetch(
-          `${DEXSCREENER_API_BASE}/tokens/v1/${chainSlug}/${chunk.join(",")}`,
-        );
-        if (!response.ok) {
-          logger.warn(
-            `DexScreener price fetch failed for chain ${chainId}: HTTP ${response.status}`,
-          );
-          continue;
-        }
-
-        const payload = (await response.json()) as
-          | DexScreenerPair[]
-          | DexScreenerTokenResponse;
-        const pairs = Array.isArray(payload) ? payload : (payload.pairs ?? []);
-        for (const address of chunk) {
-          const normalizedAddress = address.toLowerCase();
-          const matchingPair = pairs
-            .filter((pair) => {
-              const base = pair.baseToken?.address?.toLowerCase();
-              const quote = pair.quoteToken?.address?.toLowerCase();
-              return base === normalizedAddress || quote === normalizedAddress;
-            })
-            .sort(
-              (a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0),
-            )[0];
-          const price = Number(matchingPair?.priceUsd);
-          if (Number.isFinite(price) && price > 0) {
-            prices[address] = price;
-          }
-        }
-      }
-
-      return Object.keys(prices).length > 0 ? prices : null;
+      // No price API is wired for this analytics path; null indicates no price data.
+      logger.log(`Price fetching not yet implemented for chain ${chainId}`);
+      return null;
     } catch (error) {
       logger.error(
         `Error getting token prices for chain ${chainId}:`,
@@ -1610,7 +1531,7 @@ export class SteerLiquidityService extends Service {
         {
           assets,
           receiver:
-            "0x0000000000000000000000000000000000000000" as `0x${string}`, // Preview-only receiver sentinel
+            "0x0000000000000000000000000000000000000000" as `0x${string}`,
           vault: vaultAddress as `0x${string}`,
           isToken0,
           depositSlippagePercent,

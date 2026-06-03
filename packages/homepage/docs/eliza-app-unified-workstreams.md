@@ -76,7 +76,7 @@ Acceptance criteria:
 
 - `/` renders current desktop artifact links from
   `releaseData.release.downloads` when release metadata is present.
-- Store entries never point to placeholder URLs.
+- Store entries never point to fallback URLs.
 - Missing release metadata degrades to the existing GitHub latest-download
   fallback and visibly avoids claiming a fresh release.
 - `bun run --cwd packages/homepage typecheck` and
@@ -256,7 +256,7 @@ handoff, messaging, or update.
 Required gates:
 
 - Homepage download gate: Playwright verifies primary downloads, store states,
-  no placeholder links, and generated release labels.
+  no fallback release links, and generated release labels.
 - iOS sideload gate: install/update smoke verifies runtime selection,
   persisted mode, background runner configuration, and a local chat turn where
   supported.

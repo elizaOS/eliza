@@ -1,1 +1,0 @@
-export { isPlainObject, isPlainObject as default } from "./es-toolkit-compat";

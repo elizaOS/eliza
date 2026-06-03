@@ -108,7 +108,7 @@ int wakeword_process(wakeword_handle h,
  * Set the detection threshold used by higher-level callers that want a
  * boolean fired/not-fired view. The score returned by `wakeword_process`
  * is unaffected — this is purely advisory state stored on the session
- * for callers that expose a boolean gate.
+ * for callers that read it back via a future `wakeword_get_threshold`.
  *
  * `threshold` must be in [0, 1]. Default on `wakeword_open` is
  * `WAKEWORD_DEFAULT_THRESHOLD` (0.5).
@@ -118,10 +118,8 @@ int wakeword_set_threshold(wakeword_handle h, float threshold);
 /* ---------------- diagnostics ---------------- */
 
 /*
- * Capability string of the active backend. The native CPU implementation
- * returns `"native-cpu"`; dispatcher-backed implementations can return
- * names such as `"ggml-cpu"` or `"ggml-metal"`. Must not be freed by
- * the caller.
+ * Capability string of the active backend. The current implementation returns
+ * `"native-cpu"`. Must not be freed by the caller.
  */
 const char *wakeword_active_backend(void);
 

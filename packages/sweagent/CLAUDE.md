@@ -74,7 +74,7 @@ See `SECURITY.md` for full CVE details. Two advisories are addressed:
 ## Conventions / gotchas
 
 - The `typescript/tools/src/edit-anthropic/str-replace-editor.ts` imports `../registry` which is not present in this tree — that module resolves only in the upstream SWE-agent tool bundle. Do not run it in isolation without the registry shim.
-- `typescript/src/utils/log.ts` is a minimal logger shim (wraps `console.log/error`). It is not the elizaOS structured logger.
+- `typescript/src/utils/log.ts` is a minimal vendor logger shim that prefixes `console.log/error`. It is not the elizaOS structured logger.
 - The Python inspector server (`server.py`) and TypeScript inspector server (`server.ts`) are parallel ports of the same upstream SWE-agent inspector; they are not called by each other.
 - Tests cover only `security/safe-path.ts` and `security/safe-url.ts`. The inspector and tool sources have no unit tests in this package.
 - For architecture rules, naming conventions, and global logging standards, see the root `AGENTS.md`.

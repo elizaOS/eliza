@@ -367,13 +367,13 @@ describe("CapacitorLlamaAdapter MTP + cache type wiring", () => {
     expect(state.initContextCalls).toHaveLength(1);
   });
 
-  it("setSpecType TS method warns and no-ops when underlying plugin lacks the method (stock build)", async () => {
+  it("setSpecType TS method warns and skips when underlying plugin lacks the method (stock build)", async () => {
     vi.resetModules();
     installMockPlugin({ forkBuild: false });
     const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
     const adapter = new CapacitorLlamaAdapter();
     await adapter.load({ modelPath: "/tmp/target.gguf" });
-    // Direct call should not throw — falls through to the warn-no-op.
+    // Direct call should not throw — falls through to the warn-and-skip path.
     await expect(
       adapter.setSpecType({
         target: "/tmp/target.gguf",

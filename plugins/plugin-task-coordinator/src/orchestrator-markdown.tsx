@@ -1,6 +1,6 @@
 import { Check, Copy } from "lucide-react";
-import { marked, type Token, type Tokens } from "marked";
-import { type ReactNode, useState } from "react";
+import { marked, type Token, type Tokens, type TokensList } from "marked";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 // The coding agent writes markdown prose. We parse it with `marked` — a real
 // lexer, not a hand-rolled regex — then render its token AST directly to React
@@ -192,9 +192,7 @@ function renderToken(token: Token, key: string): ReactNode {
       const href = sanitizeMarkdownUrl(token.href);
       // Only open external (http/https/mailto) links in a new tab.
       // Relative paths should navigate in the same context.
-      const isExternal =
-        href !== null &&
-        /^https?:/i.test(href);
+      const isExternal = href !== null && /^https?:/i.test(href);
       return (
         <a
           key={key}
@@ -240,6 +238,16 @@ function renderToken(token: Token, key: string): ReactNode {
 
 function CodeBlock({ code, lang }: { code: string; lang?: string }): ReactNode {
   const [copied, setCopied] = useState(false);
+  // Hold the revert timer so we can cancel it on unmount; firing setCopied
+  // after unmount (within the 1200ms window) would be a stale-state update.
+  const revertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (revertTimer.current) clearTimeout(revertTimer.current);
+    },
+    [],
+  );
 
   const copy = () => {
     // Guard for non-secure-context / older webviews where clipboard is absent.
@@ -250,7 +258,8 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }): ReactNode {
       () => {
         setCopied(true);
         // Brief confirmation, then revert to the resting copy icon.
-        setTimeout(() => setCopied(false), 1200);
+        if (revertTimer.current) clearTimeout(revertTimer.current);
+        revertTimer.current = setTimeout(() => setCopied(false), 1200);
       },
       () => undefined,
     );
@@ -287,7 +296,19 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }): ReactNode {
 }
 
 export function MarkdownText({ text }: { text: string }): ReactNode {
-  const tokens = marked.lexer(text);
+  // marked.lexer runs synchronously here. It can throw — a stack overflow on
+  // pathologically nested input, or a TypeError on a non-string. A throw in
+  // this render would unmount the whole conversation, so degrade to plain text.
+  let tokens: TokensList;
+  try {
+    tokens = marked.lexer(text);
+  } catch {
+    return (
+      <div className="whitespace-pre-wrap break-words text-xs text-txt">
+        {text}
+      </div>
+    );
+  }
   return (
     <div className="break-words text-xs text-txt">
       {tokens.map((token, index) => renderToken(token, `t${index}`))}

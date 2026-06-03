@@ -29,11 +29,10 @@
  * `sum_j q_j` is precomputed once per head against an all-ones u8
  * vector, same as the AVX-VNNI / dotprod variants.
  *
- * Zvqdot readiness: once the extension lands in shipping silicon, gate a
- * single `vqdot.vv` path behind a `has_zvqdot` bitfield in
- * qjl_cpu_features_t. The dispatcher should probe
- * RISCV_HWPROBE_EXT_ZVQDOTQ from riscv_hwprobe before selecting a
- * qjl_score_qk_i8_rvv_zvqdot variant.
+ * Future: when Zvqdot lands and silicon ships, add a
+ * RISCV_HWPROBE_EXT_ZVQDOTQ probe via riscv_hwprobe, gate a single
+ * `vqdot.vv` path behind a `has_zvqdot` bitfield in qjl_cpu_features_t,
+ * and branch the dispatcher to a qjl_score_qk_i8_rvv_zvqdot variant.
  *
  * Reference: rvv-intrinsic-doc widening multiply-accumulate idioms,
  * https://github.com/riscv-non-isa/rvv-intrinsic-doc.
@@ -137,4 +136,4 @@ void qjl_score_qk_i8_rvv(const qjl_i8_sketch_256 *q_sketch_i8,
 #endif /* __riscv && __riscv_v_intrinsic */
 
 /* Avoid ISO C "empty translation unit" pedantic diagnostics when RVV is undefined. */
-typedef int qjl_score_i8_rvv_iso_c_empty_tu_marker;
+typedef int qjl_score_i8_rvv_iso_c_translation_unit_anchor;

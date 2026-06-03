@@ -11,7 +11,7 @@ Wi-Fi overlay app for the elizaOS Android agent. Scan, inspect, and connect to n
 
 ## Android-only
 
-This plugin is only functional on Android. The overlay app is registered in the elizaOS app catalog exclusively when running inside the elizaOS Android host. On other platforms (iOS, desktop, web) the registration is a no-op. `@elizaos/capacitor-wifi` uses Android's `WifiManager` API directly.
+This plugin is only functional on Android. The overlay app is registered in the elizaOS app catalog exclusively when running inside the elizaOS Android host. On other platforms (iOS, desktop, web) the side-effect registration leaves the app catalog unchanged. `@elizaos/capacitor-wifi` uses Android's `WifiManager` API directly.
 
 ## Capabilities added to an Eliza agent
 

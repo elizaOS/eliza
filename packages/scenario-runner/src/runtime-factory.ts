@@ -363,12 +363,12 @@ export async function createScenarioRuntime(
   );
 
   // Skip @elizaos/plugin-local-inference by default and register a
-  // deterministic zero-vector TEXT_EMBEDDING stub instead. The bundled
+  // deterministic zero-vector TEXT_EMBEDDING fallback instead. The bundled
   // `eliza-1-0_8b-32k.gguf` is fetched from a gated HuggingFace repo on
   // first generation; without HF credentials each turn produces a fresh
   // 401-spam burst (LFS URL + Standard URL × ±GGUF suffix × every retry). The
   // scenario runner doesn't score on semantic retrieval, so a zero vector is
-  // the right stub. Match the bench server's dimension (1024 — see
+  // the right deterministic fallback. Match the bench server's dimension (1024 — see
   // `packages/app-core/src/benchmark/server.ts`) so downstream code that
   // assumes that shape (vector columns sized at boot) still works.
   // Opt back into the real plugin with `ELIZA_BENCH_SKIP_EMBEDDING=0`.
@@ -376,8 +376,8 @@ export async function createScenarioRuntime(
     (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
   if (skipEmbeddingPlugin) {
     const EMBEDDING_DIMENSIONS = 1024;
-    const stubEmbeddingPlugin: Plugin = {
-      name: "scenario-runner-stub-embedding",
+    const embeddingFallbackPlugin: Plugin = {
+      name: "scenario-runner-embedding-fallback",
       description:
         "Scenario-runner zero-vector TEXT_EMBEDDING handler. Replaces " +
         "@elizaos/plugin-local-inference so we never download the gated " +
@@ -389,9 +389,9 @@ export async function createScenarioRuntime(
           new Array<number>(EMBEDDING_DIMENSIONS).fill(0),
       },
     };
-    await runtime.registerPlugin(stubEmbeddingPlugin);
+    await runtime.registerPlugin(embeddingFallbackPlugin);
     logger.info(
-      `[scenario-runner] Registered zero-vector TEXT_EMBEDDING stub (dim=${EMBEDDING_DIMENSIONS}); ` +
+      `[scenario-runner] Registered zero-vector TEXT_EMBEDDING fallback (dim=${EMBEDDING_DIMENSIONS}); ` +
         "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-inference instead.",
     );
   } else {

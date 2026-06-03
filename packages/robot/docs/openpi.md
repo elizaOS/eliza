@@ -68,7 +68,7 @@ directly outside tests.
 1. **Robot/sim up.** Bring up the websocket bridge backend (`mock`,
    `ros_real`, `isaac`, ...).
 2. **openpi server up.** Either point at a remote endpoint or launch one
-   locally. The placeholder launcher prints the docker command:
+   locally. The launcher prints the Docker command by default:
 
    ```bash
    python3 -m eliza_robot.policy.openpi.server --port 9200 --policy pi0_ainex
@@ -77,10 +77,20 @@ directly outside tests.
    #     physical-intelligence/openpi-server:latest --policy pi0_ainex
    ```
 
-   The image reference is a TODO until Physical Intelligence publishes a
-   registry-hosted build; for now, build locally from
-   <https://github.com/Physical-Intelligence/openpi> following their
-   server instructions and tag the result `physical-intelligence/openpi-server:latest`.
+   To run it directly after verifying the image exists locally or in your
+   registry, pass `--execute`:
+
+   ```bash
+   python3 -m eliza_robot.policy.openpi.server \
+     --image physical-intelligence/openpi-server:latest \
+     --port 9200 \
+     --policy pi0_ainex \
+     --execute
+   ```
+
+   The image reference is configurable: use a locally built image from
+   <https://github.com/Physical-Intelligence/openpi>, an internal registry
+   mirror, or an upstream registry image when one is available.
 
 3. **Bridge policy start.** From the agent or a test harness, send:
 

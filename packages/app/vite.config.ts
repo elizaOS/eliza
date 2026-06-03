@@ -1484,86 +1484,6 @@ function workspaceJsxInJsPlugin(): Plugin {
   };
 }
 
-const DEV_CJS_INTEROP_SHIM_ALIASES: Array<[RegExp, string]> = [
-  [/^cookie$/, "src/shims/cookie.ts"],
-  [
-    /^set-cookie-parser(?:\/lib\/set-cookie(?:\.js)?)?$/,
-    "src/shims/set-cookie-parser.ts",
-  ],
-  [
-    /^use-sync-external-store\/(?:shim\/)?with-selector(?:\.js)?$/,
-    "src/shims/use-sync-external-store-with-selector.ts",
-  ],
-  [/^style-to-js(?:\/cjs\/index(?:\.js)?)?$/, "src/shims/style-to-js.ts"],
-  [/^debug(?:\/src\/browser(?:\.js)?)?$/, "src/shims/debug.ts"],
-  [/^extend(?:\/index(?:\.js)?)?$/, "src/shims/extend.ts"],
-  [/^es-toolkit\/compat\/get(?:\.js)?$/, "src/shims/es-toolkit-compat-get.ts"],
-  [
-    /^es-toolkit\/compat\/uniqBy(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-uniqBy.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/sortBy(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-sortBy.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/throttle(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-throttle.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/last(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-last.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/maxBy(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-maxBy.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/minBy(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-minBy.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/range(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-range.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/omit(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-omit.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/sumBy(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-sumBy.ts",
-  ],
-  [
-    /^es-toolkit\/compat\/isPlainObject(?:\.js)?$/,
-    "src/shims/es-toolkit-compat-isPlainObject.ts",
-  ],
-  [
-    /^decimal\.js-light(?:\/decimal(?:\.(?:js|mjs))?)?$/,
-    "src/shims/decimal-js-light.ts",
-  ],
-  [/^eventemitter3$/, "src/shims/eventemitter3.ts"],
-  [/^react-is$/, "src/shims/react-is.ts"],
-  [/^nprogress(?:\/nprogress(?:\.js)?)?$/, "src/shims/nprogress.ts"],
-];
-
-function devCjsInteropShimAliasesPlugin(): Plugin {
-  return {
-    name: "dev-cjs-interop-shim-aliases",
-    apply: "serve",
-    enforce: "pre",
-    resolveId(source) {
-      const sourceWithoutQuery = source.split("?")[0] ?? source;
-      for (const [find, replacement] of DEV_CJS_INTEROP_SHIM_ALIASES) {
-        if (find.test(sourceWithoutQuery)) {
-          return path.resolve(here, replacement);
-        }
-      }
-      return null;
-    },
-  };
-}
-
 // Builds a Vite/Rolldown plugin that resolves `es-toolkit/compat/<name>` to
 // its ESM `dist/compat/**/<name>.mjs` and re-exports the named binding as
 // default, bypassing the CJS-only export map. Must be registered in both
@@ -1783,18 +1703,18 @@ export default defineConfig({
     // and Vite emits a hard "Rollup failed to resolve" error for node_modules
     // imports before the rolldownOptions plugin layer can intercept them.
     // This top-level Vite plugin intercepts the specifier unconditionally so
-    // the alias (when present) or the no-op stub (when absent) always wins.
+    // the alias (when present) or the browser telemetry fallback (when absent) always wins.
     {
       name: "otel-api-resolver",
       enforce: "pre" as const,
       resolveId(id: string) {
         if (id !== "@opentelemetry/api") return null;
         if (otelApiEntry) return otelApiEntry;
-        return "\0otel-api-stub";
+        return "\0otel-api-fallback";
       },
       load(id: string) {
-        if (id !== "\0otel-api-stub") return null;
-        // Minimal no-op stub satisfying the named exports that `ai` reads at
+        if (id !== "\0otel-api-fallback") return null;
+        // Minimal browser telemetry fallback satisfying the named exports that `ai` reads at
         // import time: trace, context, propagation, metrics, diag,
         // SpanStatusCode, SpanKind, ROOT_CONTEXT, createContextKey,
         // defaultTextMapPropagator, isSpanContextValid, INVALID_SPAN_CONTEXT,
@@ -1819,7 +1739,6 @@ export const INVALID_TRACER_PROVIDER = {};
     iosLocalAgentKernelEsbuildPlugin(),
     watchWorkspacePackagesPlugin(),
     workspaceJsxInJsPlugin(),
-    devCjsInteropShimAliasesPlugin(),
     tailwindcss(),
     react(),
     desktopCorsPlugin(),
@@ -1867,26 +1786,6 @@ export const INVALID_TRACER_PROVIDER = {};
         replacement: path.resolve(here, "src/shims/picocolors.ts"),
       },
       {
-        find: /^cookie$/,
-        replacement: path.resolve(here, "src/shims/cookie.ts"),
-      },
-      {
-        find: /^set-cookie-parser$/,
-        replacement: path.resolve(here, "src/shims/set-cookie-parser.ts"),
-      },
-      {
-        find: /^style-to-js(?:\/cjs\/index\.js)?$/,
-        replacement: path.resolve(here, "src/shims/style-to-js.ts"),
-      },
-      {
-        find: /^debug(?:\/src\/browser\.js)?$/,
-        replacement: path.resolve(here, "src/shims/debug.ts"),
-      },
-      {
-        find: /^extend$/,
-        replacement: path.resolve(here, "src/shims/extend.ts"),
-      },
-      {
         find: /^mammoth$/,
         replacement: path.resolve(here, "src/shims/mammoth.ts"),
       },
@@ -1916,13 +1815,6 @@ export const INVALID_TRACER_PROVIDER = {};
       {
         find: /^use-sync-external-store\/shim$/,
         replacement: path.resolve(here, "src/shims/use-sync-external-store.ts"),
-      },
-      {
-        find: /^use-sync-external-store\/shim\/with-selector(?:\.js)?$/,
-        replacement: path.resolve(
-          here,
-          "src/shims/use-sync-external-store-with-selector.ts",
-        ),
       },
       { find: /^json5$/, replacement: json5EsmEntry },
       ...(fs.existsSync(markedEntry)
@@ -2276,7 +2168,7 @@ export const INVALID_TRACER_PROVIDER = {};
           // `clearCloudSecrets`, `resolveCloudTtsBaseUrl`, etc.) from the
           // plugin; without an alias Rolldown errors with MISSING_EXPORT
           // when bundling that re-export chain for the renderer. Route the
-          // import to the local browser stub, which already provides all of
+          // import to the local browser replacement, which already provides all of
           // those names as no-ops (see `platform/empty-node-module.ts`).
           {
             find: /^@elizaos\/plugin-elizacloud$/,
@@ -2460,7 +2352,7 @@ export const INVALID_TRACER_PROVIDER = {};
         // resolve.alias above covers the case when otelApiEntry is resolved, but
         // when the bun store layout differs in CI the alias may be absent.
         // This plugin is a safety net: it resolves the bare specifier to the
-        // same entry the alias would use, falling back to a no-op stub.
+        // same entry the alias would use, falling back to a browser telemetry module.
         ...(otelApiEntry
           ? [
               {
@@ -2473,14 +2365,14 @@ export const INVALID_TRACER_PROVIDER = {};
             ]
           : [
               {
-                name: "otel-api-build-stub",
+                name: "otel-api-build-fallback",
                 resolveId(id: string) {
-                  if (id === "@opentelemetry/api") return "\0otel-api-stub";
+                  if (id === "@opentelemetry/api") return "\0otel-api-fallback";
                   return null;
                 },
                 load(id: string) {
-                  if (id === "\0otel-api-stub") {
-                    // Minimal no-op that satisfies the `trace`, `context`,
+                  if (id === "\0otel-api-fallback") {
+                    // Minimal browser telemetry module that satisfies the `trace`, `context`,
                     // `propagation`, `metrics`, `diag`, `SpanStatusCode` and
                     // `SpanKind` named exports that `ai` reads at import time.
                     return `
@@ -2523,7 +2415,7 @@ export const INVALID_TRACER_PROVIDER = {};
       // Native-only deps that must not be resolved during the browser build.
       // Node built-ins (node:fs, fs, path, etc.) are NOT externalized here —
       // they are intercepted by nativeModuleStubPlugin which replaces them
-      // with no-op Proxy stubs. Externalizing them causes Rollup to emit
+      // with browser fallback Proxy modules. Externalizing them causes Rollup to emit
       // bare `import "node:fs"` in output chunks, which the browser rejects
       // with a CSP violation.
       external: (id) => {
@@ -2553,7 +2445,7 @@ export const INVALID_TRACER_PROVIDER = {};
         manualChunks: resolveManualChunk,
       },
     },
-    // rollupOptions mirrors the otel stub from rolldownOptions above.
+    // rollupOptions mirrors the otel fallback from rolldownOptions above.
     // Vite reads rolldownOptions only when using experimental Rolldown; when
     // running with the classic Rollup bundler (@rollup/wasm-node, as in CI),
     // rolldownOptions is silently ignored and the otel-api-build-* plugin
@@ -2573,13 +2465,13 @@ export const INVALID_TRACER_PROVIDER = {};
             ]
           : [
               {
-                name: "otel-api-build-stub",
+                name: "otel-api-build-fallback",
                 resolveId(id: string) {
-                  if (id === "@opentelemetry/api") return "\0otel-api-stub";
+                  if (id === "@opentelemetry/api") return "\0otel-api-fallback";
                   return null;
                 },
                 load(id: string) {
-                  if (id !== "\0otel-api-stub") return null;
+                  if (id !== "\0otel-api-fallback") return null;
                   return `
 export const trace = { getTracer: () => ({ startSpan: () => ({end(){},setAttribute(){},setStatus(){},recordException(){},isRecording:()=>false}), startActiveSpan: (_n, _o, _ctx, fn) => { const f = typeof _ctx === 'function' ? _ctx : fn; return f && f({end(){},setAttribute(){},setStatus(){},recordException(){},isRecording:()=>false}); } }) };
 export const context = { active: () => ({}), with: (_c, fn) => fn(), bind: (_c, fn) => fn };

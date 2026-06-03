@@ -148,7 +148,7 @@ describe("RLMServer", () => {
       await server.start(0);
       const port = server.port;
 
-      // Calling start again should be a no-op
+      // Calling start again should be idempotent
       await server.start(0);
       expect(server.port).toBe(port);
     });

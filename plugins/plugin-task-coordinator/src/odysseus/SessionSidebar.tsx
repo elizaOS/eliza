@@ -161,6 +161,7 @@ function ThreadRow({
   active,
   editing,
   menuOpen,
+  confirmingDelete,
   pinned,
   selectMode,
   selected,
@@ -177,7 +178,9 @@ function ThreadRow({
   onStartRename,
   onCommitRename,
   onCancelRename,
-  onDelete,
+  onRequestDelete,
+  onConfirmDelete,
+  onCancelDelete,
   onTogglePin,
   onMoveToFolder,
   onNewFolderWith,
@@ -188,6 +191,7 @@ function ThreadRow({
   active: boolean;
   editing: boolean;
   menuOpen: boolean;
+  confirmingDelete: boolean;
   pinned: boolean;
   selectMode: boolean;
   selected: boolean;
@@ -204,7 +208,9 @@ function ThreadRow({
   onStartRename: () => void;
   onCommitRename: (title: string) => void;
   onCancelRename: () => void;
-  onDelete: () => void;
+  onRequestDelete: () => void;
+  onConfirmDelete: () => void;
+  onCancelDelete: () => void;
   onTogglePin: () => void;
   onMoveToFolder: (folder: string | null) => void;
   onNewFolderWith: () => void;
@@ -216,8 +222,11 @@ function ThreadRow({
   const renameRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (editing) renameRef.current?.focus();
-  }, [editing]);
+    if (editing) {
+      setDraft(thread.title);
+      renameRef.current?.focus();
+    }
+  }, [editing, thread.title]);
   useEffect(() => {
     if (!menuOpen) setFolderSubOpen(false);
   }, [menuOpen]);
@@ -391,9 +400,33 @@ function ThreadRow({
               </div>
             ) : null}
           </div>
-          <button type="button" className="od-danger" onClick={onDelete}>
-            Delete
-          </button>
+          {pinned ? null : confirmingDelete ? (
+            <div className="od-thread-menu-confirm">
+              <span>Delete this conversation?</span>
+              <div className="od-thread-menu-confirm-actions">
+                <button type="button" onClick={onCancelDelete}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="od-danger"
+                  onClick={onConfirmDelete}
+                >
+                  <Trash2 size={12} />
+                  Delete
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="od-danger"
+              onClick={onRequestDelete}
+            >
+              <Trash2 size={13} />
+              Delete
+            </button>
+          )}
         </div>
       ) : null}
     </div>
@@ -525,6 +558,9 @@ export function SessionSidebar({
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingFolder, setEditingFolder] = useState<string | null>(null);
+  // Per-row delete confirmation (odysseus styledConfirm 'Delete this session?').
+  // The id of the thread awaiting a Cancel/Delete confirm in its ⋯ menu.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // Client-side folder state (see header comment for why it isn't on the
   // server). assignments: threadId → folderName. collapse: folderName → true
@@ -802,18 +838,45 @@ export function SessionSidebar({
     else setSelectedIds(new Set(flatOrder));
   }, [selectedIds, flatOrder]);
 
+  // Actually delete a thread: fire the host callback and prune the id from the
+  // persisted manual-order array so a stale id doesn't linger (odysseus
+  // _removeSessionFromLocalState's session-order cleanup).
+  const performDelete = useCallback(
+    (id: string) => {
+      onDelete(id);
+      if (manualOrder.includes(id)) {
+        persistManualOrder(manualOrder.filter((x) => x !== id));
+      }
+    },
+    [onDelete, manualOrder, persistManualOrder],
+  );
+
+  // Gate a per-row / keyboard delete behind an inline confirm (odysseus
+  // styledConfirm 'Delete this session?'), reusing the same confirm UX as the
+  // SkillsPanel. The pinned guard mirrors odysseus's "Unfavorite before
+  // deleting". The confirm itself renders in the row's ⋯ menu.
+  const requestDelete = useCallback(
+    (id: string) => {
+      if (pinned.has(id)) return;
+      setMenuOpenId(id);
+      setConfirmDeleteId(id);
+    },
+    [pinned],
+  );
+
   const runBulkDelete = useCallback(() => {
     // Pinned threads are protected from bulk delete, mirroring odysseus's
     // "Unfavorite before deleting" guard for starred sessions.
     for (const id of selectedIds) {
-      if (!pinned.has(id)) onDelete(id);
+      if (!pinned.has(id)) performDelete(id);
     }
     exitSelectMode();
-  }, [selectedIds, pinned, onDelete, exitSelectMode]);
+  }, [selectedIds, pinned, performDelete, exitSelectMode]);
 
   // Keyboard navigation of the session list (odysseus _onSessionListKeydown):
   // ArrowUp/Down move + select the adjacent row, Enter opens, Delete/Backspace
-  // deletes the focused row with the pinned guard. Roving focus follows.
+  // asks to delete the focused row (inline confirm) with the pinned guard.
+  // Roving focus follows.
   const onRowKeyDown = useCallback(
     (id: string) => (e: KeyboardEvent<HTMLButtonElement>) => {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -831,13 +894,12 @@ export function SessionSidebar({
       } else if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
         if (pinned.has(id)) return; // odysseus "Unfavorite before deleting"
-        const idx = flatOrder.indexOf(id);
-        const fallbackId = flatOrder[idx + 1] ?? flatOrder[idx - 1] ?? null;
-        onDelete(id);
-        if (fallbackId) rowRefs.current.get(fallbackId)?.focus();
+        // Route through the same inline confirm as the ⋯ menu Delete rather
+        // than deleting outright (odysseus styledConfirm 'Delete this session?').
+        requestDelete(id);
       }
     },
-    [flatOrder, onSelect, onDelete, pinned],
+    [flatOrder, onSelect, pinned, requestDelete],
   );
 
   // ── Drag reorder (odysseus dragSort.js). Pointer-based vertical reorder of
@@ -1050,6 +1112,7 @@ export function SessionSidebar({
       active={thread.id === selectedId}
       editing={editingId === thread.id}
       menuOpen={menuOpenId === thread.id}
+      confirmingDelete={confirmDeleteId === thread.id}
       pinned={pinned.has(thread.id)}
       selectMode={selectMode}
       selected={selectedIds.has(thread.id)}
@@ -1071,7 +1134,10 @@ export function SessionSidebar({
       onOpenMenu={() =>
         setMenuOpenId((prev) => (prev === thread.id ? null : thread.id))
       }
-      onCloseMenu={() => setMenuOpenId(null)}
+      onCloseMenu={() => {
+        setMenuOpenId(null);
+        setConfirmDeleteId(null);
+      }}
       onStartRename={() => {
         setEditingId(thread.id);
         setMenuOpenId(null);
@@ -1081,10 +1147,13 @@ export function SessionSidebar({
         onRename(thread.id, title);
       }}
       onCancelRename={() => setEditingId(null)}
-      onDelete={() => {
+      onRequestDelete={() => requestDelete(thread.id)}
+      onConfirmDelete={() => {
         setMenuOpenId(null);
-        onDelete(thread.id);
+        setConfirmDeleteId(null);
+        performDelete(thread.id);
       }}
+      onCancelDelete={() => setConfirmDeleteId(null)}
       onMoveToFolder={(folder) => moveToFolder(thread.id, folder)}
       onNewFolderWith={() => {
         setNewFolderDraft("");

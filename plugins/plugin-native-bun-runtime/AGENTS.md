@@ -125,7 +125,7 @@ Runtime options passed to `start()`:
 
 **Add a method to the public TS API:**
 1. Add the interface to `src/definitions.ts`.
-2. Add a no-op/throw implementation to `ElizaBunRuntimeWeb` in `src/web.ts`.
+2. Add an unavailable/throw implementation to `ElizaBunRuntimeWeb` in `src/web.ts`.
 3. Add the native implementations to `ElizaBunRuntimePlugin.swift` (iOS) and `ElizaBunRuntimePlugin.kt` (Android).
 4. Run `bun run --cwd plugins/plugin-native-bun-runtime build` to rebuild JS.
 

@@ -107,8 +107,8 @@ PARAM_COUNT_TOLERANCE = 0.05
 
 # These match `EXPRESSIVE_EMOTION_TAGS` exported by the TS runtime — keep in
 # sync. The order is the order the 7-class auxiliary head emits; the V-A-D
-# head is independent. A `test_expressive_tags_sync.py` would fail loudly if
-# the lists ever diverge (TODO when the test corpus is staged).
+# head is independent. `TagSyncTests` in `test_distill_wav2small.py` locks the
+# tuple order.
 EXPRESSIVE_EMOTION_TAGS = (
     "happy",
     "sad",
@@ -592,8 +592,8 @@ def teacher_pseudo_labels(
     (or JSONL fallback when pyarrow isn't importable). Returns the in-memory
     rows regardless so callers can pipe directly into ``train_student``.
 
-    Empty ``clips`` returns ``[]`` so the operator-friendly "no-op when
-    staging incomplete" path through the CLI still works.
+    Empty ``clips`` returns ``[]`` so the operator-friendly staging path through
+    the CLI still works when no clips are available yet.
     """
     clips_list = list(clips)
     if not clips_list:
@@ -834,8 +834,8 @@ def train_student(
             student, lr=learning_rate, weight_decay=weight_decay,
         )
     except ValueError:
-        # No 2-D weights found — happens only with the stub Student in
-        # tests. Fall back to APOLLO at the smaller rank.
+        # No 2-D weights found — happens only with the minimal Student fixture
+        # in tests. Fall back to APOLLO at the smaller rank.
         optimizer = build_apollo_optimizer(
             student, lr=learning_rate, weight_decay=weight_decay, rank=8,
         )

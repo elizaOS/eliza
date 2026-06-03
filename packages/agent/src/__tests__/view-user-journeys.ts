@@ -61,6 +61,7 @@ export const PLUGIN_VIEW_LLM_MOCK_CASES: PluginViewMockCase[] = [
   { id: "vincent", viewType: "tui", path: "/vincent/tui" },
   { id: "wallet", viewType: "gui", path: "/wallet" },
   { id: "wallet", viewType: "tui", path: "/wallet/tui" },
+  { id: "vector-browser", viewType: "gui", path: "/vector-browser" },
   { id: "2004scape", viewType: "gui", path: "/2004scape" },
   { id: "2004scape", viewType: "tui", path: "/2004scape/tui" },
   { id: "feed", viewType: "gui", path: "/feed" },

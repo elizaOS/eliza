@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/capacitor-wifi",
-  "version": "2.0.3-beta.0",
-  "description": "Android Wi-Fi (WifiManager) bridge for elizaOS.",
+  "version": "2.0.3-beta.1",
+  "description": "Android Wi-Fi (WifiManager) bridge for ElizaOS.",
   "main": "./dist/plugin.cjs.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/esm/index.d.ts",
@@ -50,7 +50,7 @@
     ],
     "runtime": "both",
     "platformDetails": {
-      "browser": "Web fallback resolves with empty data and a one-time warning.",
+      "browser": "Web fallback throws — Wi-Fi is only available on Android.",
       "android": true
     }
   },

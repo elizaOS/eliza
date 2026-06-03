@@ -1,6 +1,6 @@
 # @elizaos/capacitor-contacts
 
-Capacitor plugin that exposes Android's `ContactsContract` to an Eliza agent's JavaScript/TypeScript runtime, with a no-op web fallback.
+Capacitor plugin that exposes Android's `ContactsContract` to an Eliza agent's JavaScript/TypeScript runtime, with an explicit web fallback.
 
 ## Purpose / role
 
@@ -39,7 +39,7 @@ plugins/plugin-native-contacts/
   src/
     index.ts          — registerPlugin("ElizaContacts") + re-exports everything from definitions
     definitions.ts    — all TypeScript interfaces (ContactSummary, ContactsPlugin, …)
-    web.ts            — ContactsWeb fallback: listContacts=[], writes throw
+    web.ts            — ContactsWeb (web fallback: listContacts=[], writes throw)
   android/
     src/main/
       AndroidManifest.xml                         — READ_CONTACTS + WRITE_CONTACTS permissions

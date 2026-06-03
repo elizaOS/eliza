@@ -17,7 +17,7 @@ export function replaceNameTokens(text: string, name: string): string {
  * - Case-sensitive, whole-word match (word boundaries on both sides).
  * - Names under 2 characters are ignored; the tokenizer is not
  *   meaningful for single-letter names and risks destroying prose.
- * - Idempotent: re-running on already-tokenized text is a no-op because
+ * - Idempotent: re-running on already-tokenized text leaves it unchanged because
  *   `{{name}}` does not contain the literal name.
  * - Non-destructive on empty input or empty name.
  *
