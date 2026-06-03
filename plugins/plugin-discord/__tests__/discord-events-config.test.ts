@@ -136,7 +136,9 @@ describe("setupDiscordEventListeners — response-cooldown gating", () => {
 
 		onFlush?.([flushMsg(`<@${BOT_ID}> ^^`)]);
 
-		expect(debouncerState.channelMarkResponded).toHaveBeenCalledWith("channel-1");
+		expect(debouncerState.channelMarkResponded).toHaveBeenCalledWith(
+			"channel-1",
+		);
 	});
 
 	it("arms the cooldown for any batch in respond-to-all mode", () => {
@@ -145,6 +147,8 @@ describe("setupDiscordEventListeners — response-cooldown gating", () => {
 
 		onFlush?.([flushMsg("just some channel chatter")]);
 
-		expect(debouncerState.channelMarkResponded).toHaveBeenCalledWith("channel-1");
+		expect(debouncerState.channelMarkResponded).toHaveBeenCalledWith(
+			"channel-1",
+		);
 	});
 });
