@@ -1,12 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { createChannelDebouncer } from "../debouncer";
 
-function mockMessage(id: string, content: string, authorId = "user-1") {
+function mockMessage(
+	id: string,
+	content: string,
+	authorId = "user-1",
+	channelId = "channel-1",
+) {
 	return {
 		id,
 		content,
 		createdTimestamp: Number(id.replace(/\D/g, "")) || Date.now(),
-		channel: { id: "channel-1" },
+		channel: { id: channelId },
 		author: {
 			id: authorId,
 			username: `user-${authorId}`,
@@ -195,20 +200,32 @@ describe("Discord channel debouncer — recent unaddressed context buffer", () =
 		}
 	});
 
-	// Pin the pointer-classification boundary: a message that, after its mentions
-	// are stripped, has no letters/digits in any script is a pointer (fold the
-	// buffer); anything with a word stands on its own (do not fold). Guards the
-	// \p{L}\p{N} check against being narrowed to ASCII \w, which would silently
-	// break non-English text.
+	// Pin the pointer-classification boundary: a message that, after its Discord
+	// markup tokens are stripped, has no letters/digits in any script is a pointer
+	// (fold the buffer); anything with a word stands on its own (do not fold).
+	// Guards the \p{L}\p{N} check against being narrowed to ASCII \w (which would
+	// silently break non-English text) and the markup strip against being narrowed
+	// to user mentions only (which would misclassify channel/role/emoji pointers).
 	it.each([
 		{ kind: "caret pointer", content: "<@123> ^^", folds: true },
 		{ kind: "emoji pointer", content: "<@123> 👆", folds: true },
 		{ kind: "punctuation pointer", content: "<@123> ?", folds: true },
 		{ kind: "bare mention", content: "<@123>", folds: true },
+		{ kind: "nickname mention", content: "<@!123>", folds: true },
+		{ kind: "channel pointer", content: "<@123> <#456>", folds: true },
+		{ kind: "role pointer", content: "<@123> <@&456>", folds: true },
+		{ kind: "custom emoji pointer", content: "<@123> <:this:456>", folds: true },
+		{
+			kind: "animated emoji pointer",
+			content: "<@123> <a:spin:456>",
+			folds: true,
+		},
+		{ kind: "timestamp pointer", content: "<@123> <t:1700000000:R>", folds: true },
 		{ kind: "english question", content: "<@123> what is up?", folds: false },
 		{ kind: "single word", content: "<@123> this", folds: false },
 		{ kind: "unicode word", content: "<@123> ¿qué tal?", folds: false },
 		{ kind: "digits", content: "<@123> 2+2", folds: false },
+		{ kind: "channel + word", content: "<@123> <#456> details?", folds: false },
 	])("folds=$folds for a $kind", ({ content, folds }) => {
 		vi.useFakeTimers();
 		try {
@@ -223,6 +240,31 @@ describe("Discord channel debouncer — recent unaddressed context buffer", () =
 			debouncer.enqueue(mockMessage("2", content));
 
 			expect(flushed[flushed.length - 1]).toEqual(folds ? ["1", "2"] : ["2"]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("keeps the recent buffer per-channel: a pointer only folds its own channel's chatter", () => {
+		vi.useFakeTimers();
+		try {
+			const { flushed, debouncer } = setup({
+				shouldRespondOnlyToMentions: true,
+				bufferTtlMs: 10_000,
+			});
+
+			// Unaddressed chatter in channel A flushes record-only.
+			debouncer.enqueue(mockMessage("1", "chatter in A", "user-1", "channel-A"));
+			vi.advanceTimersByTime(3000);
+
+			// A pointer in channel B must NOT fold channel A's chatter — only its
+			// own channel's buffer is eligible.
+			vi.advanceTimersByTime(1000);
+			debouncer.enqueue(
+				mockMessage("2", "<@123> ^^", "user-1", "channel-B"),
+			);
+
+			expect(flushed[flushed.length - 1]).toEqual(["2"]);
 		} finally {
 			vi.useRealTimers();
 		}
