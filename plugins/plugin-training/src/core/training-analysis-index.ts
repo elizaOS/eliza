@@ -3703,7 +3703,7 @@ function buildIndexHtml(manifest: TrainingAnalysisIndexManifest): string {
           (row, item) => appendTextCell(row, item.referenceScore),
           (row, item) => appendTextCell(row, item.improvementPercent === null || item.improvementPercent === undefined ? "n/a" : String(item.improvementPercent) + "%"),
           (row, item) => appendTextCell(row, item.trainedVsReferencePercent === null || item.trainedVsReferencePercent === undefined ? "n/a" : String(item.trainedVsReferencePercent) + "%"),
-          (row, item) => appendTextCell(row, item.dryRun === true ? "dry-run" : item.modelBacked === true ? "model-backed" : item.useMocks === true ? "mocked" : "incomplete"),
+          (row, item) => appendTextCell(row, item.dryRun === true ? "dry-run" : item.modelBacked === true ? "model-backed" : item.useMocks === true ? "mocked" : "unverified"),
         ],
       );
     }

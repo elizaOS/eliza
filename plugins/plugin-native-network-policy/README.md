@@ -18,7 +18,7 @@ Bridge name: `ElizaNetworkPolicy`
 
 ### `getMeteredHint(): Promise<MeteredHint>`
 
-**Android (stub on iOS/web).** Returns `{ metered: boolean | null, source: "android-os" }`.
+**Android (safe fallback on iOS/web).** Returns `{ metered: boolean | null, source: "android-os" }`.
 
 | `metered` value | Meaning |
 |-----------------|---------|
@@ -30,7 +30,7 @@ Bridge name: `ElizaNetworkPolicy`
 
 ### `getPathHints(): Promise<PathHints>`
 
-**iOS (stub on Android/web).** Returns `{ isExpensive: boolean, isConstrained: boolean, source: "nw-path-monitor" }`.
+**iOS (safe fallback on Android/web).** Returns `{ isExpensive: boolean, isConstrained: boolean, source: "nw-path-monitor" }`.
 
 | Field | Meaning |
 |-------|---------|

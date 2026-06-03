@@ -31,7 +31,7 @@
  *   close to the baseline.
  *
  * No new model abstractions are introduced. Reuses:
- *   - `parseJsonlDataset()` from backends/native.ts (private — re-implemented inline here for now)
+ *   - `parseJsonlDataset()` from backends/native.ts (private — mirrored inline here to avoid exporting the training-backend parser)
  *   - `createRuntimeAdapter()` from optimizers/scoring.ts
  *   - `createPromptScorer()` from optimizers/scoring.ts
  *   - `scoreAgreement()` / `scorePlannerAction()` from optimizers/scoring.ts

@@ -37,11 +37,10 @@ const FCP_BUDGET_MS = 4000;
 const LCP_BUDGET_MS = 6000;
 const JS_RAW_TRANSFER_CEILING_BYTES = 16 * 1024 * 1024;
 
-// The chat shell renders a stable, well-known ready signal that the existing
-// ui-smoke specs (ui-smoke.spec.ts, live-agent-chat.spec.ts) rely on. We reuse
-// it as the "app is interactive" marker so KPI sampling happens after a real
-// first meaningful render rather than on a blank page.
-const READY_SELECTOR = '[data-testid="chat-composer-textarea"]';
+// The chat shell renders a stable ready composer once the app is interactive.
+// Support the legacy test id and the current accessible compact composer.
+const READY_SELECTOR =
+  '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
 
 test.describe("frontend load KPIs", () => {
   test.beforeEach(async ({ page }) => {

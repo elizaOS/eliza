@@ -30,9 +30,9 @@ import type {
   ConnectorStatus,
   DispatchResult,
   RuntimeWithHealthRegistries,
-} from "./contract-stubs.js";
+} from "./contract-types.js";
 
-export * from "./contract-stubs.js";
+export * from "./contract-types.js";
 
 type RuntimeHealthRegistryHost = object & RuntimeWithHealthRegistries;
 
@@ -118,7 +118,7 @@ const CONNECTOR_LABELS: Record<
 };
 
 /**
- * Wave-1 placeholder dispatcher. The actual `start` / `verify` / `status` /
+ * Wave-1 registry adapter. The actual `start` / `verify` / `status` /
  * `read` implementations live in `health-bridge.ts` + `health-connectors.ts`
  * and require a fully-wired runtime context (credentials store, OAuth
  * sessions, repository factory) that the W1-F generic ConnectorRegistry
@@ -132,18 +132,18 @@ const CONNECTOR_LABELS: Record<
 function buildConnectorContribution(
   kind: (typeof HEALTH_CONNECTOR_KINDS)[number],
 ): ConnectorContribution {
-  const stubStatus = async (): Promise<ConnectorStatus> => ({
+  const unavailableStatus = async (): Promise<ConnectorStatus> => ({
     state: "disconnected",
     message:
-      "plugin-health Wave-1 stub: full dispatcher wiring lands when W1-F's runtime context shape is finalised.",
+      "plugin-health Wave-1 connector is unavailable until W1-F's runtime context shape is finalised.",
     observedAt: new Date().toISOString(),
   });
-  const stubSend = async (): Promise<DispatchResult> => ({
+  const unavailableSend = async (): Promise<DispatchResult> => ({
     ok: false,
     reason: "transport_error",
     userActionable: true,
     message:
-      "plugin-health Wave-1 stub: connector send is not yet wired; configure via the legacy lifeops health-connectors path.",
+      "plugin-health Wave-1 connector send is unavailable; configure via the legacy lifeops health-connectors path.",
   });
   // URL provided by the connector contribution; the dispatcher does not
   // hardcode. The OAuth-bridged providers (strava / fitbit / withings / oura)
@@ -172,16 +172,16 @@ function buildConnectorContribution(
     oauth,
     apiBaseUrl,
     start: async () => {
-      // Wave-1 stub — concrete start lives in `health-bridge.ts` /
+      // Wave-1 registry adapter — concrete start lives in `health-bridge.ts` /
       // `health-connectors.ts` and is invoked through the legacy
       // app-lifeops mixin path until W1-F's generic dispatcher lands.
     },
     disconnect: async () => {
-      // Wave-1 stub — concrete disconnect lives in `health-oauth.ts`.
+      // Wave-1 registry adapter — concrete disconnect lives in `health-oauth.ts`.
     },
     verify: async () => false,
-    status: stubStatus,
-    send: stubSend,
+    status: unavailableStatus,
+    send: unavailableSend,
     read: async () => null,
   };
 }

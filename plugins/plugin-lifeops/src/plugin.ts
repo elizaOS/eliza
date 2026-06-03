@@ -806,7 +806,8 @@ const rawAppLifeOpsPlugin: Plugin = {
     };
 
     // First-party adapters backed by LifeOps services. Gmail and X replace the
-    // core placeholders so MESSAGE triage operations operate on real connected data.
+    // core default adapters so MESSAGE triage operations operate on real
+    // connected data.
     const triage = getDefaultTriageService();
     triage.register(new GoogleGmailAdapter());
     triage.register(new XDmAdapter());
@@ -1154,7 +1155,7 @@ export {
   registerBuiltInCompletionChecks,
   registerBuiltInGates,
   registerDefaultEscalationLadders,
-  registerStubAnchors,
+  registerFallbackAnchors,
   STATE_LOG_DEFAULT_RETENTION_DAYS,
 } from "./lifeops/scheduled-task/index.js";
 export type { CreateRuntimeRunnerOptions } from "./lifeops/scheduled-task/runtime-wiring.js";

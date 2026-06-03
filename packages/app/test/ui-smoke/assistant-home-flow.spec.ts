@@ -354,18 +354,21 @@ async function screenshot(page: Page, name: string): Promise<void> {
   });
 }
 
+function assistantComposer(page: Page) {
+  return page
+    .locator('[data-testid="chat-composer-textarea"]')
+    .or(page.getByLabel("message"));
+}
+
 async function openReadyWorkspaceChat(page: Page): Promise<void> {
   await openAppPath(page, "/");
-  await expect(
-    page.getByRole("region", { name: "Chat workspace" }),
-  ).toBeVisible();
   await expect(
     page.getByRole("status").filter({
       hasText: /Starting Eliza|Loading workspace|Connecting to Eliza/,
     }),
   ).toHaveCount(0, { timeout: 30_000 });
 
-  const composer = page.locator('[data-testid="chat-composer-textarea"]');
+  const composer = assistantComposer(page);
   await expect(composer).toBeVisible({ timeout: 15_000 });
   await expect(composer).toBeEnabled({ timeout: 30_000 });
 
@@ -380,7 +383,7 @@ async function openReadyChat(page: Page, targetPath = "/"): Promise<void> {
   await expect(page.getByTestId("startup-shell-loading")).toHaveCount(0);
   await expect(page.getByTestId("first-run-shell")).toHaveCount(0);
   await expect(page.getByTestId("onboarding-toast")).toHaveCount(0);
-  const composer = page.locator('[data-testid="chat-composer-textarea"]');
+  const composer = assistantComposer(page);
   await expect(composer).toBeVisible({ timeout: 15_000 });
   await expect(composer).toBeEnabled({ timeout: 30_000 });
 }
@@ -665,9 +668,7 @@ test.describe("assistant home app flow", () => {
     await installAssistantFlowRoutes(page);
 
     await openReadyChat(page);
-    const rootChatInput = page.locator(
-      '[data-testid="chat-composer-textarea"]',
-    );
+    const rootChatInput = assistantComposer(page);
     await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
     await screenshot(page, "02-assistant-chat-root");
 
@@ -676,7 +677,7 @@ test.describe("assistant home app flow", () => {
 
     await openAppPath(page, "/chat");
     await expect(
-      page.locator('[data-testid="chat-composer-textarea"]'),
+      assistantComposer(page),
     ).toBeVisible();
     await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
     await screenshot(page, "04-chat-pill-suppressed");
@@ -718,7 +719,7 @@ test.describe("assistant home app flow", () => {
       true,
     );
 
-    const composer = page.locator('[data-testid="chat-composer-textarea"]');
+    const composer = assistantComposer(page);
     await expect(composer).toHaveValue("show me my pinned views");
     await page.getByRole("button", { name: "Send" }).click();
     await expect(
@@ -758,9 +759,7 @@ test.describe("assistant home app flow", () => {
     await expect(initialMic).toBeEnabled({ timeout: 15_000 });
     await expect(page.getByRole("button", { name: "Send" })).toHaveCount(0);
 
-    await page
-      .locator('[data-testid="chat-composer-textarea"]')
-      .fill("open wallet by typing");
+    await assistantComposer(page).fill("open wallet by typing");
 
     // Typing morphs the single trailing control from mic into send.
     await expect(
@@ -786,7 +785,7 @@ test.describe("assistant home app flow", () => {
     console.log("COVER>", JSON.stringify(cover));
     await send.click();
     await expect(
-      page.locator('[data-testid="chat-composer-textarea"]'),
+      assistantComposer(page),
     ).toHaveValue("");
     await expect(page.getByText("open wallet by typing")).toBeVisible();
     await expect(

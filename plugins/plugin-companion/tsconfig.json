@@ -47,10 +47,19 @@
         "../plugin-elizacloud/src/*.d.ts",
         "../plugin-elizacloud/src/*.ts"
       ],
-      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
+      "@elizaos/ui/agent-surface": [
+        "../../packages/ui/dist/agent-surface/index.d.ts"
+      ],
+      "@elizaos/ui/components": [
+        "../../packages/ui/dist/components/index.d.ts"
+      ],
+      "@elizaos/ui/i18n": ["../../packages/ui/dist/i18n/index.d.ts"],
+      "@elizaos/ui/state": ["../../packages/ui/dist/state/index.d.ts"],
+      "@elizaos/ui/utils": ["../../packages/ui/dist/utils/index.d.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/dist/*"],
       "@elizaos/ui/api/client-types-cloud": [
-        "../../packages/ui/src/api/client-types-cloud.ts"
+        "../../packages/ui/dist/api/client-types-cloud.d.ts"
       ],
       "@elizaos/plugin-companion": ["./src/index.ts"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],

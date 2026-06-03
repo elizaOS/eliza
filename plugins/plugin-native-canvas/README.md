@@ -133,7 +133,7 @@ await Canvas.destroy({ canvasId });
 
 ## Notes
 
-- `snapshot()` only works with `placement: "inline"` or `"fullscreen"`. Cross-origin iframes render a placeholder.
+- `snapshot()` only works with `placement: "inline"` or `"fullscreen"`. Cross-origin iframes render an unavailable frame.
 - `eval()` requires the loaded page to handle `eliza:eval` postMessages and reply with `eliza:evalResult`; times out after 5 seconds.
 - `a2uiPush` and `a2uiReset` prefer the `window.elizaA2UI` bridge when present; otherwise fall back to `postMessage`.
 - Call `attach()` before calling `setTouchEnabled()` — touch handlers are wired on attach.

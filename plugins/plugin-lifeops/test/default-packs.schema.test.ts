@@ -6,7 +6,7 @@
  *    pack."
  *
  * Asserts every shipped record satisfies the Wave-1 `ScheduledTaskSeed`
- * contract (see `src/default-packs/contract-stubs.ts`) — required fields
+ * contract (see `src/default-packs/contract-types.ts`) — required fields
  * present, enums valid, multi-gate composition well-formed.
  */
 
@@ -424,7 +424,7 @@ describe("W1-D habit-starters pack", () => {
     ]);
   });
 
-  it("workout has high priority and a workout-blocker pipeline placeholder", () => {
+  it("workout has high priority and a workout-blocker pipeline hook", () => {
     const workout = habitStartersPack.records.find(
       (r) => r.metadata?.recordKey === HABIT_STARTER_KEYS.workout,
     );

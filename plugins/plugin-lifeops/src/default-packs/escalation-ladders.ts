@@ -17,7 +17,7 @@
 import type {
   DefaultEscalationLadderKey,
   EscalationLadder,
-} from "./contract-stubs.js";
+} from "./contract-types.js";
 
 export const DEFAULT_ESCALATION_LADDERS: Readonly<
   Record<DefaultEscalationLadderKey, EscalationLadder>

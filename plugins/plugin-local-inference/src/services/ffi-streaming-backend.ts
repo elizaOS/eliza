@@ -5,12 +5,10 @@
  * llama.cpp path used by Eliza-1 on desktop and mobile.
  *
  * What this class deliberately does NOT do:
- *   - Own the FFI context. The `ElizaInferenceFfi` handle is created by the
- *     voice lifecycle service today; the runtime provider passed to this
- *     class is the seam where ownership gets resolved.
- *   - Route vision describe, slot save/restore, and parallel-slot resize
- *     through the dispatcher. These still live on `mtpLlamaServer` and are
- *     called from `engine.ts` directly until the FFI runner gains parity.
+ *   - Own the FFI context. The runtime provider passed to this class owns
+ *     native load/unload and hands back the binding, context, and tokenizer.
+ *   - Decode image bytes or call mtmd directly. Vision requests are validated
+ *     here, then forwarded to runtimes that expose `describeImage`.
  */
 
 import type {
@@ -38,11 +36,11 @@ import type {
  *      `generate()` against the requested model, plus a tokenizer that
  *      matches that model's vocab. `release()` tears everything down.
  *
- * Two production implementations are expected:
+ * Production runtime implementations:
  *   - libelizainference path → wraps `ElizaInferenceFfi` via
  *     `wrapElizaInferenceFfi()` from `services/llm-streaming-binding.ts`.
- *   - desktop libllama+shim path → mirrors the AOSP adapter pattern.
- *     Pending — see `FFI_BACKEND_WIREUP_PLAN.md` Step B.
+ *   - desktop libllama+shim path → mirrors the AOSP adapter pattern and is
+ *     provided by `desktop-ffi-backend-runtime.ts`.
  */
 export interface FfiBackendRuntime {
 	supported(): boolean;
@@ -215,7 +213,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		// llmStreamSaveSlot is per-stream in the binding API; the desktop
 		// adapter currently saves the ctx-wide seq=0 state, so the stream
 		// handle is informational. We pass the runner's most recent
-		// stream id when available — empty-bigint placeholder otherwise.
+		// stream id when available; 0n is the binding-level sentinel.
 		binding.llmStreamSaveSlot({ stream: 0n, filename });
 	}
 
@@ -330,7 +328,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		};
 		if (!runtime.describeImage) {
 			throw new Error(
-				"[ffi-streaming-backend] runtime does not implement describeImage",
+				"[ffi-streaming-backend] runtime lacks describeImage support",
 			);
 		}
 		return runtime.describeImage({

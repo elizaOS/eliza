@@ -4,7 +4,7 @@ Capacitor plugin that bridges iOS `BGTaskScheduler` background-wake events into 
 
 ## Purpose / role
 
-This is a **Capacitor native plugin** — not an elizaOS action/provider plugin. It gives the elizaOS iOS app access to two iOS background-execution modes (`BGAppRefreshTask` and `BGProcessingTask`) and silent APNs push wakes, surfacing all three as a single uniform `wake` event on the JS side. On web and non-iOS platforms the plugin resolves to a no-op stub (`supported: false`) so the runtime falls back to the `@capacitor/background-runner` repeat poll.
+This is a **Capacitor native plugin** — not an elizaOS action/provider plugin. It gives the elizaOS iOS app access to two iOS background-execution modes (`BGAppRefreshTask` and `BGProcessingTask`) and silent APNs push wakes, surfacing all three as a single uniform `wake` event on the JS side. On web and non-iOS platforms the plugin resolves to an unsupported fallback (`supported: false`) so the runtime falls back to the `@capacitor/background-runner` repeat poll.
 
 The plugin is **opt-in** — the consuming Capacitor app must declare the two task identifiers in `Info.plist`'s `BGTaskSchedulerPermittedIdentifiers` array and call `ElizaTasks.scheduleNext()` to arm the first wake. Silent-push (`remote-push` kind) is additionally gated on `ELIZA_APNS_ENABLED=1` in `Info.plist`.
 

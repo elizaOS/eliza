@@ -6,6 +6,7 @@
     "target": "ES2022",
     "types": ["node"],
     "strict": true,
+    "skipLibCheck": true,
     "noEmit": true,
     "paths": {
       "@elizaos/core": ["./../../../../../packages/core/dist/index.d.ts"],

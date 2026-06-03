@@ -180,6 +180,8 @@ let releaseKnownVrmWebGpuWarningFilterGlobal: (() => void) | null = null;
 let sharedDracoLoader: DRACOLoader | null = null;
 type CompatibleDracoLoader = Parameters<GLTFLoader["setDRACOLoader"]>[0];
 type CompatibleMeshoptDecoder = Parameters<GLTFLoader["setMeshoptDecoder"]>[0];
+type MeshoptFilter = "NONE" | "OCTAHEDRAL" | "QUATERNION" | "EXPONENTIAL";
+type MeshoptMode = "ATTRIBUTES" | "TRIANGLES" | "INDICES";
 let teleportSparkleTexture: THREE.CanvasTexture | null = null;
 let _cachedDracoDecoderPath: string | null = null;
 /** Lazy + cached: module-load resolution can be wrong in bundled/desktop init order. */
@@ -275,10 +277,16 @@ function callMeshoptFunction(name: string, ...args: unknown[]): unknown {
 const compatibleMeshoptDecoder: NonNullable<CompatibleMeshoptDecoder> = {
   supported: MeshoptDecoder.supported,
   ready: MeshoptDecoder.ready,
-  useWorkers(count) {
+  useWorkers(count: number) {
     callMeshoptFunction("useWorkers", count);
   },
-  decodeVertexBuffer(target, count, size, source, filter) {
+  decodeVertexBuffer(
+    target: Uint8Array,
+    count: number,
+    size: number,
+    source: Uint8Array,
+    filter?: MeshoptFilter,
+  ) {
     callMeshoptFunction(
       "decodeVertexBuffer",
       target,
@@ -288,13 +296,30 @@ const compatibleMeshoptDecoder: NonNullable<CompatibleMeshoptDecoder> = {
       filter,
     );
   },
-  decodeIndexBuffer(target, count, size, source) {
+  decodeIndexBuffer(
+    target: Uint8Array,
+    count: number,
+    size: number,
+    source: Uint8Array,
+  ) {
     callMeshoptFunction("decodeIndexBuffer", target, count, size, source);
   },
-  decodeIndexSequence(target, count, size, source) {
+  decodeIndexSequence(
+    target: Uint8Array,
+    count: number,
+    size: number,
+    source: Uint8Array,
+  ) {
     callMeshoptFunction("decodeIndexSequence", target, count, size, source);
   },
-  decodeGltfBuffer(target, count, size, source, mode, filter) {
+  decodeGltfBuffer(
+    target: Uint8Array,
+    count: number,
+    size: number,
+    source: Uint8Array,
+    mode: MeshoptMode,
+    filter?: MeshoptFilter,
+  ) {
     callMeshoptFunction(
       "decodeGltfBuffer",
       target,
@@ -305,7 +330,13 @@ const compatibleMeshoptDecoder: NonNullable<CompatibleMeshoptDecoder> = {
       filter,
     );
   },
-  async decodeGltfBufferAsync(count, size, source, mode, filter) {
+  async decodeGltfBufferAsync(
+    count: number,
+    size: number,
+    source: Uint8Array,
+    mode: MeshoptMode,
+    filter?: MeshoptFilter,
+  ) {
     const decoded = await callMeshoptFunction(
       "decodeGltfBufferAsync",
       count,

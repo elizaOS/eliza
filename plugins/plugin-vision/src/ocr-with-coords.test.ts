@@ -11,7 +11,7 @@
  *   4. Empty input returns `{blocks: []}` with no calls to the underlying
  *      RapidOCR worker.
  *
- * The adapter is fed a stub that mimics the public surface of
+ * The adapter is fed a test double that mimics the public surface of
  * `RapidOCRService.extractText` so we don't need onnxruntime-node or any
  * network access.
  */
@@ -69,7 +69,7 @@ function chunk(type: string, data: Uint8Array): Uint8Array {
 /**
  * Build a minimal valid PNG of the requested width/height. Pixel content is
  * irrelevant — the adapter only reads dimensions and forwards the bytes to a
- * stubbed RapidOCR.
+ * RapidOCR test double.
  */
 function makePng(width: number, height: number): Uint8Array {
   const ihdrData = new Uint8Array(13);
@@ -174,19 +174,19 @@ describe("readPngDimensions", () => {
 
 // ── RapidOcrCoordAdapter.describe ───────────────────────────────────────────
 
-function stubRapid(result: OCRResult): Pick<OCRService, "extractText"> {
-  // Cast through `unknown` because we deliberately stub only the surface the
+function rapidOcrDouble(result: OCRResult): Pick<OCRService, "extractText"> {
+  // Cast through `unknown` because we deliberately implement only the surface the
   // adapter touches; `RapidOCRService` carries onnxruntime-node session
   // members that have no role here.
-  const stub = {
+  const double = {
     extractText: vi.fn(async () => result),
   };
-  return stub as unknown as Pick<OCRService, "extractText">;
+  return double as unknown as Pick<OCRService, "extractText">;
 }
 
 describe("RapidOcrCoordAdapter.describe", () => {
   it("returns an empty result for empty input without invoking the worker", async () => {
-    const inner = stubRapid({ text: "", blocks: [], fullText: "" });
+    const inner = rapidOcrDouble({ text: "", blocks: [], fullText: "" });
     const adapter = new RapidOcrCoordAdapter(inner);
     const result = await adapter.describe({
       displayId: "display-0",
@@ -241,7 +241,7 @@ describe("RapidOcrCoordAdapter.describe", () => {
       ],
     };
 
-    const adapter = new RapidOcrCoordAdapter(stubRapid(fakeOcr));
+    const adapter = new RapidOcrCoordAdapter(rapidOcrDouble(fakeOcr));
     const result = await adapter.describe({
       displayId: "display-0",
       sourceX,
@@ -292,7 +292,7 @@ describe("RapidOcrCoordAdapter.describe", () => {
         },
       ],
     };
-    const adapter = new RapidOcrCoordAdapter(stubRapid(fakeOcr));
+    const adapter = new RapidOcrCoordAdapter(rapidOcrDouble(fakeOcr));
     const result = await adapter.describe({
       displayId: "display-0",
       sourceX: 0,

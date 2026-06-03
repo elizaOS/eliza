@@ -78,7 +78,7 @@ Everything is re-exported from `src/index.ts`. Key symbols:
 | `Loader` / `CancellableLoader` | Spinner; `CancellableLoader.signal` is an `AbortSignal` |
 | `Toast` | Transient overlay notification |
 | `ProgressBar` | Horizontal progress bar |
-| `Image` | Inline image (Kitty or iTerm2 protocol; falls back to text placeholder) |
+| `Image` | Inline image (Kitty or iTerm2 protocol; falls back to text output) |
 | `CombinedAutocompleteProvider` | Slash command + file path autocomplete for `Editor` |
 | `matchesKey(data, key)` | Test raw terminal input against a `KeyId` |
 | `Key` | Builder: `Key.enter`, `Key.ctrl("c")`, `Key.shift("tab")`, `Key.alt("left")` etc. |
@@ -132,7 +132,7 @@ Use `setEditorKeybindings(manager)` at startup to remap `EditorAction` values to
 - **Every `render()` line must be ≤ `width`.** The TUI throws if a line is wider. Always call `truncateToWidth()` or `wrapTextWithAnsi()` before returning lines.
 - **ANSI codes do not carry across lines.** The TUI appends `SGR reset` after each line. Reapply styles per line or use `wrapTextWithAnsi()` which preserves them.
 - **`VirtualTerminal` is test-only.** It wraps `@xterm/headless` and lives in `test/virtual-terminal.ts` — not exported from `dist/`.
-- **Image rendering is capability-gated.** `detectCapabilities()` inspects the terminal env vars; `getCapabilities()` caches that result. The `Image` component calls `getCapabilities()` automatically and falls back to a text placeholder when Kitty/iTerm2 is absent.
+- **Image rendering is capability-gated.** `detectCapabilities()` inspects the terminal env vars; `getCapabilities()` caches that result. The `Image` component calls `getCapabilities()` automatically and falls back to text output when Kitty/iTerm2 is absent.
 - **Kitty keyboard protocol.** `ProcessTerminal` enables the Kitty protocol on start. `matchesKey` handles both legacy and Kitty sequences. `isKittyProtocolActive()` reflects current state.
 - **Focus and IME.** Only one component holds focus at a time. When a container wraps an `Input`/`Editor`, it must propagate `focused` to the child or IME candidate windows appear at the wrong position (see README for the pattern).
 - **`StdinBuffer`** coalesces rapid stdin bursts before dispatching to components — prevents partial multi-byte sequence splits over slow connections.

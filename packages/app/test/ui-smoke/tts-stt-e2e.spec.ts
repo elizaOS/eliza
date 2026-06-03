@@ -69,6 +69,8 @@ const TINY_MP3 = Buffer.from(
   "SUQzAwAAAAAAFlRTU0UAAAAMAAADTGF2ZjU4LjI5LjEwMAAA//tQAAAAAAAA",
   "base64",
 );
+const CHAT_COMPOSER_SELECTOR =
+  '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
 
 interface TtsCloudCall {
   url: string;
@@ -463,7 +465,7 @@ test("chat SSE stream emits token + done events for assistant message", async ({
   await assertReadyChecks(
     page,
     "chat shell ready",
-    [{ selector: '[data-testid="chat-composer-textarea"]' }],
+    [{ selector: CHAT_COMPOSER_SELECTOR }],
     "all",
   );
 
@@ -659,7 +661,7 @@ test("STT capture path fires onTranscript with the recognized string", async ({
   await assertReadyChecks(
     page,
     "chat shell ready",
-    [{ selector: '[data-testid="chat-composer-textarea"]' }],
+    [{ selector: CHAT_COMPOSER_SELECTOR }],
     "all",
   );
 
@@ -732,7 +734,7 @@ test("always-on chat mode starts passive browser STT and keeps capture open afte
   await assertReadyChecks(
     page,
     "chat shell ready",
-    [{ selector: '[data-testid="chat-composer-textarea"]' }],
+    [{ selector: CHAT_COMPOSER_SELECTOR }],
     "all",
   );
 

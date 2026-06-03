@@ -1,10 +1,10 @@
 /**
  * AnchorContribution + AnchorConsolidationPolicy registry.
  *
- * Ships a stub `wake.confirmed` anchor that resolves to
- * `ownerFact.morningWindow.start`. `plugin-health` registers the real
+ * Ships a fallback `wake.confirmed` anchor that resolves to
+ * `ownerFact.morningWindow.start`. `plugin-health` registers the richer
  * `wake.observed` / `wake.confirmed` / `bedtime.target` / `nap.start`
- * anchors and may overwrite the stub at boot — so the stub is only
+ * anchors and may overwrite the fallback at boot — so the fallback is only
  * registered when the real one is absent.
  *
  * Consolidation policies are referenced by anchor key. The runner uses
@@ -65,7 +65,7 @@ export function createAnchorRegistry(): AnchorRegistry {
 }
 
 // ---------------------------------------------------------------------------
-// Stub anchor resolver — Wave 1
+// Fallback anchor resolver — Wave 1
 // ---------------------------------------------------------------------------
 
 function todayIsoWithLocalHHMM(
@@ -133,11 +133,11 @@ function todayIsoWithLocalHHMM(
   }
 }
 
-const stubWakeConfirmedAnchor: AnchorContribution = {
+const fallbackWakeConfirmedAnchor: AnchorContribution = {
   anchorKey: "wake.confirmed",
   describe: {
-    label: "Wake confirmed (stub: ownerFact.morningWindow.start)",
-    provider: "@elizaos/plugin-lifeops:scheduled-task:stub",
+    label: "Wake confirmed (ownerFact.morningWindow.start fallback)",
+    provider: "@elizaos/plugin-lifeops:scheduled-task:fallback",
   },
   resolve(context) {
     const tz = context.ownerFacts.timezone ?? "UTC";
@@ -147,9 +147,9 @@ const stubWakeConfirmedAnchor: AnchorContribution = {
   },
 };
 
-export function registerStubAnchors(reg: AnchorRegistry): void {
+export function registerFallbackAnchors(reg: AnchorRegistry): void {
   if (!reg.get("wake.confirmed")) {
-    reg.register(stubWakeConfirmedAnchor);
+    reg.register(fallbackWakeConfirmedAnchor);
   }
 }
 

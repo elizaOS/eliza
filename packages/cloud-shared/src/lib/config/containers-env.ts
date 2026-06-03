@@ -132,11 +132,7 @@ export const containersEnv = {
     );
     if (raw === undefined) {
       // Secure-by-default starter set. Operators override via env.
-      return [
-        "ghcr.io/dexploarer/*",
-        "ghcr.io/elizaos/*",
-        "ghcr.io/waifufun/*",
-      ];
+      return ["ghcr.io/dexploarer/*", "ghcr.io/elizaos/*", "ghcr.io/waifufun/*"];
     }
     return raw
       .split(",")

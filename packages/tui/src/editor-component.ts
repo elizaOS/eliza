@@ -45,7 +45,7 @@ export interface EditorComponent extends Component {
 
   /**
    * Get text with any markers expanded (e.g., paste markers).
-   * Falls back to getText() if not implemented.
+   * Consumers use getText() when this optional method is absent.
    */
   getExpandedText?(): string;
 

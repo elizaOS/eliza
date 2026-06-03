@@ -1982,6 +1982,93 @@ def test_transformer_block_smoke_composes_attention_mlp_and_residuals_without_cp
     ]
 
 
+def test_stablehlo_module_smoke_dispatches_fused_blocks_without_cpu_fallback():
+    runtime, mmio = make_completing_runtime()
+    module = {
+        "schema": "eliza.e1_npu_stablehlo_subset.v1",
+        "name": "fused_blocks_import_smoke",
+        "ops": [
+            {
+                "op": "stablehlo.transformer_block",
+                "name": "tx0",
+                "input_type": {"shape": [2, 2], "dtype": "int8"},
+                "attention_weights_type": {"shape": [1, 1, 2, 2], "dtype": "int8"},
+                "value_type": {"shape": [1, 1, 2, 2], "dtype": "int8"},
+                "output_proj_type": {"shape": [2, 2], "dtype": "int8"},
+                "bias_type": {"shape": [2], "dtype": "int8"},
+                "mlp_up_type": {"shape": [2, 3], "dtype": "int8"},
+                "mlp_down_type": {"shape": [3, 2], "dtype": "int8"},
+                "result_type": {"shape": [2, 2], "dtype": "int8"},
+                "activation": "relu",
+                "precision": "int8",
+            },
+            {
+                "op": "stablehlo.decoder_block",
+                "name": "decoder0",
+                "input_type": {"shape": [2, 2], "dtype": "int8"},
+                "norm1_type": {"shape": [2], "dtype": "int8"},
+                "norm2_type": {"shape": [2], "dtype": "int8"},
+                "q_weight_type": {"shape": [2, 2], "dtype": "int8"},
+                "k_weight_type": {"shape": [2, 2], "dtype": "int8"},
+                "v_weight_type": {"shape": [2, 2], "dtype": "int8"},
+                "attention_bias_type": {"shape": [2], "dtype": "int8"},
+                "cos_type": {"shape": [1], "dtype": "int8"},
+                "sin_type": {"shape": [1], "dtype": "int8"},
+                "swiglu_up_type": {"shape": [2, 2], "dtype": "int8"},
+                "swiglu_gate_type": {"shape": [2, 2], "dtype": "int8"},
+                "swiglu_down_type": {"shape": [2, 2], "dtype": "int8"},
+                "result_type": {"shape": [2, 2], "dtype": "int8"},
+                "swiglu_activation": "linear_gate",
+                "precision": "int8",
+            },
+        ],
+    }
+
+    lowered = lower_stablehlo_module_smoke(
+        runtime,
+        module,
+        {
+            "tx0": {
+                "input": [[1, -2], [3, 4]],
+                "attention": [[[[1, 0], [0, 1]]]],
+                "value": [[[[2, -1], [-3, 5]]]],
+                "attention_bias": [1, -2],
+                "mlp_up_weight": [[2, -1, 3], [-2, 1, 0]],
+                "mlp_down_weight": [[1, -2], [-3, 4], [2, 1]],
+            },
+            "decoder0": {
+                "input": [[3, 4], [5, 12]],
+                "norm1_weight": [64, 64],
+                "norm2_weight": [64, 64],
+                "q_weight": [[1, 0], [0, 1]],
+                "k_weight": [[1, 0], [0, 1]],
+                "v_weight": [[1, 0], [0, 1]],
+                "attention_bias": [0, 0],
+                "cos": [127],
+                "sin": [0],
+                "swiglu_up_weight": [[1, 0], [0, 1]],
+                "swiglu_gate_weight": [[1, 0], [0, 1]],
+                "swiglu_down_weight": [[1, 0], [0, 1]],
+            },
+        },
+    )
+
+    transformer_lowered, decoder_lowered = lowered.lowered_ops
+    assert lowered.dispatch_order == ("tx0", "decoder0")
+    assert lowered.runtime_apis == (
+        "lower_transformer_block_smoke",
+        "lower_modern_decoder_block_smoke",
+    )
+    assert lowered.all_npu_dispatch is True
+    assert transformer_lowered.schema == "eliza.e1_npu_lowered_transformer_block_result.v1"
+    assert decoder_lowered.schema == "eliza.e1_npu_lowered_modern_decoder_block_result.v1"
+    assert transformer_lowered.output == [[46, -29], [-11, 34]]
+    assert len(decoder_lowered.output) == 2
+    assert all(len(row) == 2 for row in decoder_lowered.output)
+    assert mmio.commands.count(runtime.OP_GEMM_S8) >= 9
+    assert "stablehlo_smoke_module_dispatch_only" in lowered.claim_boundary
+
+
 def test_modern_decoder_block_smoke_composes_norm_qkv_rope_attention_swiglu_without_cpu_fallback():
     runtime, mmio = make_completing_runtime()
     graph = {

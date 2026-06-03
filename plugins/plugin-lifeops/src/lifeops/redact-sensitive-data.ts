@@ -3,7 +3,7 @@
  * audit-event payloads or error logs.
  *
  * The redactor walks the value depth-first and replaces any string assigned
- * to a sensitive key with a placeholder. Email-looking substrings are also
+ * to a sensitive key with a redaction token. Email-looking substrings are also
  * redacted in otherwise non-sensitive strings so audit context remains useful
  * without leaking arbitrary addresses. Long subjects / bodies are truncated to
  * a fixed prefix after PII redaction so an audit trail still has enough context
@@ -138,7 +138,7 @@ function redactValue(
 /**
  * Redact a value (object, array, or primitive) for safe inclusion in audit
  * events or log lines. Strings under sensitive keys are replaced with a
- * placeholder; subjects/bodies are truncated.
+ * redaction token; subjects/bodies are truncated.
  *
  * The function is non-mutating — callers receive a fresh structure and the
  * input value is left intact.

@@ -208,20 +208,20 @@ export interface RecentTaskStatesProvider {
 
 // -- §2.3 RelationshipStore --
 
-export interface RelationshipStateStub {
+export interface RelationshipStateContract {
   lastObservedAt?: string;
   lastInteractionAt?: string;
   interactionCount?: number;
   sentimentTrend?: "positive" | "neutral" | "negative";
 }
 
-export interface RelationshipStub {
+export interface RelationshipContract {
   relationshipId: string;
   fromEntityId: string;
   toEntityId: string;
   type: string;
   metadata?: Record<string, unknown>;
-  state: RelationshipStateStub;
+  state: RelationshipStateContract;
   evidence: string[];
   confidence: number;
   source:
@@ -234,7 +234,7 @@ export interface RelationshipStub {
   updatedAt: string;
 }
 
-export interface RelationshipFilterStub {
+export interface RelationshipFilterContract {
   fromEntityId?: string;
   toEntityId?: string;
   type?: string | string[];
@@ -242,18 +242,18 @@ export interface RelationshipFilterStub {
   cadenceOverdueAsOf?: string;
 }
 
-export interface RelationshipStoreStub {
-  list(filter?: RelationshipFilterStub): Promise<RelationshipStub[]>;
+export interface RelationshipStoreContract {
+  list(filter?: RelationshipFilterContract): Promise<RelationshipContract[]>;
 }
 
 // -- §3.1 ConnectorRegistry --
 
-export interface ConnectorContributionStub {
+export interface ConnectorContributionContract {
   kind: string;
   capabilities: string[];
 }
 
-export interface ConnectorRegistryStub {
-  byCapability(capability: string): ConnectorContributionStub[];
-  get(kind: string): ConnectorContributionStub | null;
+export interface ConnectorRegistryContract {
+  byCapability(capability: string): ConnectorContributionContract[];
+  get(kind: string): ConnectorContributionContract | null;
 }

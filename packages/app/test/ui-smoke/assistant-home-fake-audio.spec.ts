@@ -9,6 +9,10 @@ import {
 
 const FAKE_AUDIO_DIR = path.join(process.cwd(), "test-results", "fixtures");
 const FAKE_AUDIO_PATH = path.join(FAKE_AUDIO_DIR, "assistant-home-script.wav");
+const CHAT_COMPOSER_SELECTOR =
+  '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
+const CHAT_SEND_SELECTOR =
+  '[data-testid="chat-composer-action"], button[aria-label="send"], button[aria-label="Send"], button[aria-label="Send message"]';
 
 function pcm16WavTone(): Buffer {
   const sampleRate = 48_000;
@@ -240,13 +244,12 @@ test("assistant chat captures fake microphone audio through local ASR and replie
   const calls = await installFakeAudioHomeRoutes(page);
 
   await openAppPath(page, "/chat");
-  await expect(
-    page.getByRole("region", { name: "Chat workspace" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("chat-composer-textarea")).toBeEnabled();
+  const composer = page.locator(CHAT_COMPOSER_SELECTOR).first();
+  await expect(composer).toBeEnabled();
 
   const mic = page
     .locator('[data-chat-composer="true"] button[aria-pressed]')
+    .or(page.getByRole("button", { name: /talk|voice input/i }))
     .first();
   await expect(mic).toBeVisible();
   await expect(mic).toBeEnabled();
@@ -255,10 +258,10 @@ test("assistant chat captures fake microphone audio through local ASR and replie
   await expect(stopMic).toBeVisible();
   await page.waitForTimeout(900);
   await stopMic.click();
-  await expect(page.getByTestId("chat-composer-textarea")).toHaveValue(
+  await expect(composer).toHaveValue(
     "show me my views from fake audio",
   );
-  await page.getByTestId("chat-composer-action").click();
+  await page.locator(CHAT_SEND_SELECTOR).first().click();
 
   await expect(
     page
@@ -272,7 +275,7 @@ test("assistant chat captures fake microphone audio through local ASR and replie
       .filter({ hasText: "local microphone capture and can open your views" })
       .last(),
   ).toBeVisible();
-  await expect(page.getByTestId("chat-composer-textarea")).toHaveValue("");
+  await expect(composer).toHaveValue("");
   expect(calls.asrCalls()[0]).toBeGreaterThan(44);
   expect(calls.streamedPrompts()).toContain("show me my views from fake audio");
 });

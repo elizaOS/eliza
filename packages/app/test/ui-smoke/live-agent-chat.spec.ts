@@ -16,6 +16,10 @@ import {
 const LIVE_AGENT_CHAT_ENABLED = process.env.ELIZA_UI_SMOKE_LIVE_STACK === "1";
 const LIVE_PROVIDER = selectLiveProvider();
 const LIVE_AGENT_RESPONSE_MARKER = "APP_LIVE_AGENT_OK";
+const CHAT_COMPOSER_SELECTOR =
+  '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
+const CHAT_SEND_SELECTOR =
+  '[data-testid="chat-composer-action"], button[aria-label="Send"], button[aria-label="Send message"]';
 const OPTIONAL_LIVE_ENDPOINTS = [
   /\/api\/coding-agents(?:\?|$)/,
   /\/api\/lifeops\/activity-signals(?:\?|$)/,
@@ -86,6 +90,14 @@ function installFailureCollectors(page: Page): string[] {
   return failures;
 }
 
+function chatComposer(page: Page) {
+  return page.locator(CHAT_COMPOSER_SELECTOR).first();
+}
+
+function chatSendButton(page: Page) {
+  return page.locator(CHAT_SEND_SELECTOR).first();
+}
+
 test("app chat sends a message to the deterministic keyless agent and renders parseable JSON", async ({
   page,
 }) => {
@@ -93,14 +105,14 @@ test("app chat sends a message to the deterministic keyless agent and renders pa
   await installDefaultAppRoutes(page);
 
   await openAppPath(page, "/chat");
-  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
+  await expect(chatComposer(page)).toBeVisible({
     timeout: 60_000,
   });
 
   const prompt = "Open the wallet inventory view from this keyless smoke test.";
-  await page.getByTestId("chat-composer-textarea").fill(prompt);
-  await expect(page.getByTestId("chat-composer-action")).toBeEnabled();
-  await page.getByTestId("chat-composer-action").click();
+  await chatComposer(page).fill(prompt);
+  await expect(chatSendButton(page)).toBeEnabled();
+  await chatSendButton(page).click();
 
   await expect(
     page
@@ -135,15 +147,15 @@ test("app chat rejects intentionally broken deterministic mock LLM output", asyn
   await installDefaultAppRoutes(page);
 
   await openAppPath(page, "/chat");
-  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
+  await expect(chatComposer(page)).toBeVisible({
     timeout: 60_000,
   });
 
   const prompt =
     "BROKEN_LLM_RESPONSE Open the wallet inventory view from this smoke test.";
-  await page.getByTestId("chat-composer-textarea").fill(prompt);
-  await expect(page.getByTestId("chat-composer-action")).toBeEnabled();
-  await page.getByTestId("chat-composer-action").click();
+  await chatComposer(page).fill(prompt);
+  await expect(chatSendButton(page)).toBeEnabled();
+  await chatSendButton(page).click();
 
   await expect(
     page
@@ -180,14 +192,14 @@ test.describe("live agent chat", () => {
     await seedAppStorage(page);
 
     await openAppPath(page, "/chat");
-    await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
+    await expect(chatComposer(page)).toBeVisible({
       timeout: 60_000,
     });
 
     const prompt = `For a Playwright end-to-end smoke test, reply with exactly ${LIVE_AGENT_RESPONSE_MARKER} and no other words.`;
-    await page.getByTestId("chat-composer-textarea").fill(prompt);
-    await expect(page.getByTestId("chat-composer-action")).toBeEnabled();
-    await page.getByTestId("chat-composer-action").click();
+    await chatComposer(page).fill(prompt);
+    await expect(chatSendButton(page)).toBeEnabled();
+    await chatSendButton(page).click();
 
     await expect(
       page

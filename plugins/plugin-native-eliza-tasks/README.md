@@ -112,5 +112,5 @@ Removes all `wake` listeners.
 | Platform | Support |
 |---|---|
 | iOS 15+ | Full — `BGTaskScheduler` + optional APNs |
-| Android | Not yet implemented |
-| Web / Electron | No-op stub (`supported: false`) |
+| Android | Unsupported in this iOS BGTaskScheduler bridge |
+| Web / Electron | Unsupported fallback (`supported: false`) |

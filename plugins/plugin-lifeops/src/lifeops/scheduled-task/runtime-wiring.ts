@@ -34,7 +34,7 @@ import {
 } from "./completion-check-registry.js";
 import {
   createConsolidationRegistry,
-  registerStubAnchors,
+  registerFallbackAnchors,
 } from "./consolidation-policy.js";
 import {
   createEscalationLadderRegistry,
@@ -334,12 +334,12 @@ export function createProductionScheduledTaskDispatcher(opts: {
 function resolveRuntimeAnchorRegistry(runtime: IAgentRuntime) {
   const existing = getAnchorRegistry(runtime);
   if (existing) {
-    registerStubAnchors(existing);
+    registerFallbackAnchors(existing);
     return existing;
   }
   const registry = createAnchorRegistry();
   registerAppLifeOpsAnchors(registry);
-  registerStubAnchors(registry);
+  registerFallbackAnchors(registry);
   registerAnchorRegistry(runtime, registry);
   return registry;
 }
@@ -347,7 +347,7 @@ function resolveRuntimeAnchorRegistry(runtime: IAgentRuntime) {
 export interface CreateRuntimeRunnerOptions {
   runtime: IAgentRuntime;
   agentId: string;
-  /** Override the stub providers as agents wire up. */
+  /** Override the default runtime providers as agents wire up. */
   ownerFacts?: () => OwnerFactsView | Promise<OwnerFactsView>;
   globalPause?: GlobalPauseView;
   activity?: ActivitySignalBusView;

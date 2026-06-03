@@ -53,8 +53,9 @@ export const REQUIRED_BETAS: readonly string[] = [
 ];
 
 /**
- * CC tool stubs — injected into tools array to make the tool set look more
- * like a Claude Code session. The model won't call these (schemas are minimal).
+ * Synthetic Claude Code tools injected into the tools array to make the tool
+ * set look more like a Claude Code session. The model won't call these
+ * compatibility entries because their schemas are minimal.
  *
  * NOTE: Stored as raw JSON strings (NOT objects) to match proxy.js exactly
  * which inserts these by string concatenation into the tools array.

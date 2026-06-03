@@ -199,12 +199,15 @@ async function createCodingContainer(
       ACTIVE_STATUSES.has(s.status as "pending" | "provisioning" | "running"),
   );
   if (existing) {
-    logger.info("[CodingContainers API] returning existing active sandbox (idempotency)", {
-      orgId: user.organization_id,
-      sandboxId: existing.id,
-      status: existing.status,
-      image: payload.image,
-    });
+    logger.info(
+      "[CodingContainers API] returning existing active sandbox (idempotency)",
+      {
+        orgId: user.organization_id,
+        sandboxId: existing.id,
+        status: existing.status,
+        image: payload.image,
+      },
+    );
     return c.json(
       {
         success: true,
@@ -233,8 +236,8 @@ async function createCodingContainer(
   // PUBLIC_BASE_URL the caller pinned explicitly.
   let provisionRow = sandbox;
   const publicWebUrl = resolveAgentPublicUrl(sandbox);
-  if (publicWebUrl && !payload.environment_vars["PUBLIC_BASE_URL"]) {
-    payload.environment_vars["PUBLIC_BASE_URL"] = publicWebUrl;
+  if (publicWebUrl && !payload.environment_vars.PUBLIC_BASE_URL) {
+    payload.environment_vars.PUBLIC_BASE_URL = publicWebUrl;
     const updated = await elizaSandboxService.updateAgentEnvironment(
       sandbox.id,
       user.organization_id,
@@ -271,11 +274,17 @@ async function createCodingContainer(
     try {
       await elizaSandboxService.deleteAgent(sandbox.id, user.organization_id);
     } catch (deleteError) {
-      logger.warn("[CodingContainers API] orphan cleanup failed after enqueue error", {
-        sandboxId: sandbox.id,
-        orgId: user.organization_id,
-        error: deleteError instanceof Error ? deleteError.message : String(deleteError),
-      });
+      logger.warn(
+        "[CodingContainers API] orphan cleanup failed after enqueue error",
+        {
+          sandboxId: sandbox.id,
+          orgId: user.organization_id,
+          error:
+            deleteError instanceof Error
+              ? deleteError.message
+              : String(deleteError),
+        },
+      );
     }
     return c.json(
       {

@@ -79,8 +79,8 @@ class NetworkPolicyPlugin : Plugin() {
     }
 
     /**
-     * iOS-only stub on Android. Always resolves with a placeholder shape so
-     * the TS bridge can call `getPathHints()` uniformly across platforms;
+     * iOS-only safe fallback on Android. Always resolves with the shared
+     * response shape so the TS bridge can call `getPathHints()` uniformly;
      * the TS layer treats a never-expensive / never-constrained Android
      * response as "no info" and falls back to `getMeteredHint`.
      */

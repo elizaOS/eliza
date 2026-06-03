@@ -46,7 +46,7 @@ This is a Capacitor plugin, not an elizaOS action/provider/service plugin. It re
 **Web view methods:**
 - `navigate({ url, placement? })` — load URL in `"inline"` iframe, `"fullscreen"` overlay, or `"popup"` window; intercepts `eliza://` deep links immediately
 - `eval({ script })` — evaluate JS in the active web view via postMessage; 5 s timeout
-- `snapshot(options?)` — capture inline web view to base64 PNG/JPEG/WEBP; same-origin via SVG foreignObject, placeholder on cross-origin
+- `snapshot(options?)` — capture inline web view to base64 PNG/JPEG/WEBP; same-origin via SVG foreignObject, unavailable frame on cross-origin
 - `a2uiPush({ messages?, jsonl?, payload? })` — push A2UI messages to the web view (tries `window.elizaA2UI` bridge first, then postMessage)
 - `a2uiReset()` — reset A2UI state in the web view
 
@@ -112,7 +112,7 @@ This plugin reads no environment variables. Configuration is entirely call-time 
 - **This is a Capacitor plugin, not an elizaOS runtime plugin.** It does not export an elizaOS `Plugin` object and is not loaded via `AgentRuntime`. Import `Canvas` from `@elizaos/capacitor-canvas` in UI code.
 - **Web implementation is the reference.** `CanvasWeb` in `src/web.ts` is the fully implemented reference. iOS Swift and Android Kotlin implementations must match its behaviour.
 - **Layer canvases are absolute-positioned siblings.** When `createLayer` appends a layer canvas, it goes into `managed.canvas.parentElement`, not inside the canvas itself. The host container must be `position: relative` for z-ordering to work.
-- **`snapshot()` requires inline or fullscreen placement.** It throws on popup placement because there is no accessible iframe. Cross-origin iframes render a placeholder instead of the real content.
+- **`snapshot()` requires inline or fullscreen placement.** It throws on popup placement because there is no accessible iframe. Cross-origin iframes render an unavailable frame instead of the real content.
 - **`eval()` uses postMessage with a 5 s timeout.** The web view must handle `eliza:eval` messages and reply with `eliza:evalResult`. If the page does not implement this, `eval()` rejects.
 - **`a2uiPush` prefers `window.elizaA2UI`.** The A2UI runtime sets `window.elizaA2UI = { push, reset }`. Only if that bridge is absent does it fall back to postMessage.
 - **Touch handlers are set up on `attach()`.** `setTouchEnabled` gates event emission but does not add/remove DOM listeners; always call `attach()` before enabling touch.

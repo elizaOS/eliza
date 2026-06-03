@@ -1,17 +1,16 @@
 /**
- * Wave-1 contract stubs for the W1-A `ScheduledTask` schema and the W1-D
- * `DefaultPack` envelope. Mirrors `wave1-interfaces.md` §1.1 / §6 byte-
- * identically. Once W1-A / W1-D land, every `import` from this file should
- * be replaced with the real path; nothing else needs to change because the
- * shapes here are the frozen contract.
+ * Wave-1 contract types for the W1-A `ScheduledTask` schema and the W1-D
+ * `DefaultPack` envelope. Mirrors `wave1-interfaces.md` §1.1 / §6
+ * byte-identically so Health default packs can be validated independently
+ * while the shared runtime registry stays structurally typed.
  *
  * Cross-references:
- *  - `eliza/plugins/plugin-lifeops/src/lifeops/wave1-types.ts` — W1-A's stub
- *    of the same `ScheduledTask` shape, kept in sync with this one.
- *  - `eliza/plugins/plugin-lifeops/src/default-packs/contract-stubs.ts` —
- *    W1-D's stub of the same shape, kept in sync with this one.
+ *  - `eliza/plugins/plugin-lifeops/src/lifeops/wave1-types.ts` — W1-A's
+ *    `ScheduledTask` shape, kept in sync with this one.
+ *  - `eliza/plugins/plugin-lifeops/src/default-packs/contract-types.ts` —
+ *    W1-D's copy of the same shape, kept in sync with this one.
  *
- * No runtime behaviour lives here — types only.
+ * No runtime behavior lives here — types only.
  */
 
 export type TerminalState =

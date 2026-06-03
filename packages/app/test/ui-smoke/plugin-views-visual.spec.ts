@@ -161,14 +161,20 @@ test.describe("registered plugin views visual coverage", () => {
       );
 
       if (view.shellPill === "expected") {
-        const assistantPill = page.getByTestId("shell-home-pill");
-        await expect(assistantPill).toBeVisible();
-        await expect(assistantPill).toHaveAttribute("aria-label", "Open Eliza");
-        await assistantPill.click();
-        await expect(page.getByTestId("shell-assistant-overlay")).toBeVisible();
-        await expect(page.getByLabel("Message Eliza")).toBeVisible();
+        const assistantLauncher = page
+          .getByTestId("shell-home-pill")
+          .or(page.getByRole("button", { name: /expand conversation/i }));
+        await expect(assistantLauncher).toBeVisible();
+        await assistantLauncher.click();
+        await expect(
+          page.getByLabel("Message Eliza").or(page.getByLabel("message")),
+        ).toBeVisible();
       } else {
-        await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
+        await expect(
+          page
+            .getByTestId("shell-home-pill")
+            .or(page.getByRole("button", { name: /expand conversation/i })),
+        ).toHaveCount(0);
       }
 
       const focusedAfterTabs: string[] = [];

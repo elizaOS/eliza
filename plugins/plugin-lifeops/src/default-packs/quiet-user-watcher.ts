@@ -16,7 +16,7 @@
 import type {
   RecentTaskStatesProvider,
   RecentTaskStatesSummary,
-} from "./contract-stubs.js";
+} from "./contract-types.js";
 import type { DefaultPack } from "./registry-types.js";
 import {
   compileTaskDefinition,

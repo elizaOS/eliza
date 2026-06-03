@@ -10,7 +10,7 @@
 //
 // EXPERIMENTAL: the C ABI is frozen but the model entries
 // (`face_detect_open`, `face_detect`) currently return `-ENOSYS` from the
-// stub. `BlazeFaceGgmlDetector.isAvailable()` returns false until both the
+// native face-cpp library. `BlazeFaceGgmlDetector.isAvailable()` returns false until both the
 // compiled `libface.<so|dylib|dll>` AND the BlazeFace GGUF artifact exist.
 // Until those land, every public method falls through to a clear error —
 // there is no silent fallback to a different backend.
@@ -157,7 +157,7 @@ async function loadBindings(): Promise<FaceDetectBindings | null> {
 
     const { dlopen, FFIType, ptr } = bunFFI;
 
-    let lib;
+    let lib: ReturnType<typeof dlopen>;
     try {
       lib = dlopen(libPath, {
         face_detect_open: {
@@ -197,7 +197,7 @@ async function loadBindings(): Promise<FaceDetectBindings | null> {
 
     const bindings: FaceDetectBindings = {
       open(ggufPath) {
-        const cstr = Buffer.from(ggufPath + "\0", "utf-8");
+        const cstr = Buffer.from(`${ggufPath}\0`, "utf-8");
         const handleSlot = new BigUint64Array(1);
         const rc = lib.symbols.face_detect_open(
           ptr(cstr) as never,
@@ -263,8 +263,8 @@ async function loadBindings(): Promise<FaceDetectBindings | null> {
  * `setFaceBackend("ggml")` toggle is a one-line swap at the call site.
  *
  * Currently disabled (`isAvailable()` returns `false`) until the
- * face-cpp model entries graduate from the ENOSYS stub and a
- * BlazeFace GGUF artifact lands.
+ * face-cpp model entries gain runtime implementations and a BlazeFace GGUF
+ * artifact lands.
  */
 export class BlazeFaceGgmlDetector {
   private readonly cfg: MediaPipeFaceConfig & {

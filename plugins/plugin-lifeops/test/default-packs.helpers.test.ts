@@ -12,9 +12,9 @@ import { describe, expect, it } from "vitest";
 import type {
   RecentTaskStatesProvider,
   RecentTaskStatesSummary,
-  RelationshipFilterStub,
-  RelationshipStoreStub,
-  RelationshipStub,
+  RelationshipContract,
+  RelationshipFilterContract,
+  RelationshipStoreContract,
 } from "../src/default-packs/index.js";
 import {
   buildFollowupTaskForRelationship,
@@ -115,7 +115,7 @@ describe("deriveOverdueFollowupTasks", () => {
   function makeOverdueRelationship(args: {
     id: string;
     cadenceDays?: number;
-  }): RelationshipStub {
+  }): RelationshipContract {
     return {
       relationshipId: args.id,
       fromEntityId: `ent-${args.id}-from`,
@@ -133,8 +133,8 @@ describe("deriveOverdueFollowupTasks", () => {
   }
 
   it("emits one task per overdue relationship", async () => {
-    const captured: RelationshipFilterStub[] = [];
-    const store: RelationshipStoreStub = {
+    const captured: RelationshipFilterContract[] = [];
+    const store: RelationshipStoreContract = {
       list: async (filter) => {
         captured.push(filter ?? {});
         return [
@@ -152,11 +152,11 @@ describe("deriveOverdueFollowupTasks", () => {
   });
 
   it("treats missing cadenceDays as 0", async () => {
-    const store: RelationshipStoreStub = {
+    const store: RelationshipStoreContract = {
       list: async () => [makeOverdueRelationship({ id: "r-no-cadence" })],
     };
     const seeds = await deriveOverdueFollowupTasks(store);
-    expect(seeds[0]!.metadata?.cadenceDays).toBe(0);
+    expect(seeds[0]?.metadata?.cadenceDays).toBe(0);
   });
 });
 

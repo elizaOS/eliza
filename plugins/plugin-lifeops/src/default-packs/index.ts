@@ -9,17 +9,17 @@
 
 export type {
   AnchorConsolidationPolicy,
-  ConnectorContributionStub,
-  ConnectorRegistryStub,
+  ConnectorContributionContract,
+  ConnectorRegistryContract,
   DefaultEscalationLadderKey,
   EscalationLadder,
   EscalationStep,
   RecentTaskStatesProvider,
   RecentTaskStatesSummary,
-  RelationshipFilterStub,
-  RelationshipStateStub,
-  RelationshipStoreStub,
-  RelationshipStub,
+  RelationshipContract,
+  RelationshipFilterContract,
+  RelationshipStateContract,
+  RelationshipStoreContract,
   ScheduledTask,
   ScheduledTaskContextRequest,
   ScheduledTaskKind,
@@ -30,7 +30,7 @@ export type {
   ScheduledTaskSubjectKind,
   ScheduledTaskTrigger,
   TerminalState,
-} from "./contract-stubs.js";
+} from "./contract-types.js";
 export type { DefaultPack, DefaultPackRegistry } from "./registry-types.js";
 export type {
   ApprovalTaskDefinition,
@@ -46,7 +46,7 @@ export type {
 } from "./task-definitions.js";
 
 import { DEFAULT_CONSOLIDATION_POLICIES } from "./consolidation-policies.js";
-import type { ConnectorRegistryStub } from "./contract-stubs.js";
+import type { ConnectorRegistryContract } from "./contract-types.js";
 import {
   DAILY_RHYTHM_PACK_KEY,
   DAILY_RHYTHM_RECORD_IDS,
@@ -138,7 +138,7 @@ export function getAllDefaultPacks(): DefaultPack[] {
  * aren't registered.
  */
 export function getDefaultEnabledPacks(
-  options: { connectorRegistry?: ConnectorRegistryStub | null } = {},
+  options: { connectorRegistry?: ConnectorRegistryContract | null } = {},
 ): DefaultPack[] {
   const connectorRegistry = options.connectorRegistry;
   return DEFAULT_PACKS.filter((pack) => pack.defaultEnabled).filter((pack) => {
@@ -186,14 +186,14 @@ export {
   DAILY_RHYTHM_RECORD_IDS,
   DEFAULT_CONSOLIDATION_POLICIES,
   DEFAULT_ESCALATION_LADDERS,
-  EXECUTIVE_ASSISTANT_PACK_KEY,
-  EXECUTIVE_ASSISTANT_RECORD_IDS,
   DEFAULT_FOLLOWUP_CADENCE_DAYS,
-  executiveAssistantPack,
   dailyRhythmPack,
   defaultTaskCompiler,
   deriveOverdueFollowupTasks,
   deriveQuietObservations,
+  EXECUTIVE_ASSISTANT_PACK_KEY,
+  EXECUTIVE_ASSISTANT_RECORD_IDS,
+  executiveAssistantPack,
   FOLLOWUP_STARTER_PACK_KEY,
   FOLLOWUP_STARTER_RECORD_IDS,
   followupStarterPack,

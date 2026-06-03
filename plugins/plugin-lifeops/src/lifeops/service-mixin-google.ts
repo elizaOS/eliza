@@ -258,8 +258,9 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
     public async deleteCalendarReminderPlansForEvents(
       _eventIds: string[],
     ): Promise<void> {
-      // Implemented by withCalendar; this stub keeps withGoogle independently
-      // usable in unit tests that compose only connector status methods.
+      // Implemented by withCalendar; this no-op fallback keeps withGoogle
+      // independently usable in unit tests that compose only connector status
+      // methods.
     }
 
     public async setPreferredGoogleConnectorMode(

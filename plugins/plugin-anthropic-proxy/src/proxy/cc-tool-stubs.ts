@@ -1,5 +1,6 @@
 /**
- * Layer 5: Tool description stripping + Layer 5b: CC tool stub injection.
+ * Layer 5: Tool description stripping + Layer 5b: synthetic Claude Code tool
+ * injection for fingerprint compatibility.
  *
  * String-aware bracket matching (skips [ and ] inside JSON string values) so
  * description text can't corrupt depth.

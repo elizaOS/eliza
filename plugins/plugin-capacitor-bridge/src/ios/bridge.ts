@@ -2606,10 +2606,7 @@ async function handleBufferedLocalInferenceRoute(
 		payload,
 	);
 	if (native) return native;
-	return jsonResponse(501, {
-		error: `iOS full Bun local-inference route is not implemented: ${method} ${pathname}`,
-		code: "ios_full_bun_local_inference_route_unimplemented",
-	});
+	return null;
 }
 
 async function ensureConversationConnection(

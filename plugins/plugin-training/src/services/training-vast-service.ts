@@ -525,7 +525,7 @@ export class VastTrainingService {
   /**
    * Read a per-job budget snapshot via `scripts.lib.vast_budget snapshot
    * --json`. Returns `null` when the job has no provisioned instance
-   * yet (the UI shows a "not provisioned" placeholder in that case).
+   * yet (the UI shows a "not provisioned" state in that case).
    *
    * The python module is the single source of truth — it both renders
    * the watcher's status line and answers this endpoint, so the UI and

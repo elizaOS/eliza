@@ -85,10 +85,10 @@ const FIXTURE_BASE_URL_ENV = "ELIZA_SUBSCRIPTION_FIXTURE_BASE_URL";
 /**
  * Error-code prefix used by the subscriptions mixin and action when a
  * playbook is registered (we know the management URL) but no concrete
- * click-flow has been implemented yet. Shared with the action so callers
+ * click-flow is available yet. Shared with the action so callers
  * can pattern-match structured failures instead of parsing free text.
  */
-export const PLAYBOOK_NOT_IMPLEMENTED_ERROR = "PLAYBOOK_NOT_IMPLEMENTED";
+export const PLAYBOOK_UNSUPPORTED_FLOW_ERROR = "PLAYBOOK_UNSUPPORTED_FLOW";
 
 function configuredFixtureBaseUrl(): string | null {
   const value = process.env[FIXTURE_BASE_URL_ENV]?.trim();

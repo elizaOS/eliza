@@ -58,7 +58,7 @@ export type PromptScorer = (
 /**
  * Minimal LLM interface the optimizers depend on. Implementations route to
  * `runtime.useModel(ModelType.TEXT_LARGE, …)` in production and to a
- * deterministic stub in tests.
+ * deterministic adapter in tests.
  */
 export interface LlmAdapter {
   /**

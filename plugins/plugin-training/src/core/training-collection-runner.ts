@@ -2617,7 +2617,7 @@ function buildCollectionIndexHtml(index: TrainingCollectionIndex): string {
                       ? "model-backed"
                       : comparison.useMocks
                         ? "mocked"
-                        : "incomplete",
+                        : "unverified",
                 ].join(" "),
               )
               .join(" | ")
@@ -2857,7 +2857,7 @@ function buildCollectionReadme(
           ? "model-backed"
           : comparison.useMocks
             ? "mocked"
-            : "incomplete",
+            : "unverified",
     ]);
   const evalComparisonRows = evidence.evals.comparisonInventory
     .slice(0, 12)

@@ -4,7 +4,7 @@
  * Defines the frozen `ConnectorRegistry`, `AnchorRegistry`, and
  * `ActivitySignalBus` shapes. Reference: `docs/audit/wave1-interfaces.md` §3.
  *
- * No runtime behaviour lives here — types only.
+ * No runtime behavior lives here — types only.
  */
 
 export type ConnectorMode = "local" | "cloud";

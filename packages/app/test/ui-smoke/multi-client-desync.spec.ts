@@ -26,9 +26,11 @@ import {
 //      mutate (see installDefaultAppRoutes in ./helpers.ts).
 //   2. Replace `test.fixme` with `test`.
 
-const READY_SELECTOR = '[data-testid="chat-composer-textarea"]';
-const COMPOSER = '[data-testid="chat-composer-textarea"]';
-const ACTION = '[data-testid="chat-composer-action"]';
+const READY_SELECTOR =
+  '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
+const COMPOSER = READY_SELECTOR;
+const ACTION =
+  '[data-testid="chat-composer-action"], button[aria-label="send"], button[aria-label="Send"], button[aria-label="Send message"]';
 // useMessaging polls the shared channel; give convergence comfortable headroom.
 const CONVERGE_TIMEOUT_MS = 15_000;
 

@@ -57,9 +57,7 @@ describe("coding container session response url", () => {
       },
     });
 
-    expect(session.url).toBe(
-      "https://abc123de-0000-0000-0000-000000000000.waifu.fun",
-    );
+    expect(session.url).toBe("https://abc123de-0000-0000-0000-000000000000.waifu.fun");
   });
 
   it("falls back to the internal url when no public url is present", () => {
@@ -80,50 +78,29 @@ describe("coding container session response url", () => {
 });
 
 describe("coding container image allowlist", () => {
-  const DEFAULT = [
-    "ghcr.io/dexploarer/*",
-    "ghcr.io/elizaos/*",
-    "ghcr.io/waifufun/*",
-  ];
+  const DEFAULT = ["ghcr.io/dexploarer/*", "ghcr.io/elizaos/*", "ghcr.io/waifufun/*"];
 
   it("allows images under an allowed prefix", () => {
-    expect(
-      isCodingContainerImageAllowed("ghcr.io/dexploarer/bnancy:latest", DEFAULT),
-    ).toBe(true);
-    expect(
-      isCodingContainerImageAllowed("ghcr.io/elizaos/eliza:stable", DEFAULT),
-    ).toBe(true);
-    expect(
-      isCodingContainerImageAllowed("ghcr.io/waifufun/runner:v2", DEFAULT),
-    ).toBe(true);
+    expect(isCodingContainerImageAllowed("ghcr.io/dexploarer/bnancy:latest", DEFAULT)).toBe(true);
+    expect(isCodingContainerImageAllowed("ghcr.io/elizaos/eliza:stable", DEFAULT)).toBe(true);
+    expect(isCodingContainerImageAllowed("ghcr.io/waifufun/runner:v2", DEFAULT)).toBe(true);
   });
 
   it("rejects images outside the allowlist", () => {
-    expect(
-      isCodingContainerImageAllowed("docker.io/library/nginx:latest", DEFAULT),
-    ).toBe(false);
-    expect(
-      isCodingContainerImageAllowed("ghcr.io/attacker/evil:latest", DEFAULT),
-    ).toBe(false);
+    expect(isCodingContainerImageAllowed("docker.io/library/nginx:latest", DEFAULT)).toBe(false);
+    expect(isCodingContainerImageAllowed("ghcr.io/attacker/evil:latest", DEFAULT)).toBe(false);
     // No bare-substring bypass: prefix must match from the start.
-    expect(
-      isCodingContainerImageAllowed(
-        "evil.io/ghcr.io/elizaos/eliza:stable",
-        DEFAULT,
-      ),
-    ).toBe(false);
+    expect(isCodingContainerImageAllowed("evil.io/ghcr.io/elizaos/eliza:stable", DEFAULT)).toBe(
+      false,
+    );
   });
 
   it("is case-insensitive and trims whitespace", () => {
-    expect(
-      isCodingContainerImageAllowed("  GHCR.IO/Elizaos/Eliza:Stable  ", DEFAULT),
-    ).toBe(true);
+    expect(isCodingContainerImageAllowed("  GHCR.IO/Elizaos/Eliza:Stable  ", DEFAULT)).toBe(true);
   });
 
   it("fails closed on an empty allowlist", () => {
-    expect(isCodingContainerImageAllowed("ghcr.io/elizaos/eliza", [])).toBe(
-      false,
-    );
+    expect(isCodingContainerImageAllowed("ghcr.io/elizaos/eliza", [])).toBe(false);
   });
 
   it("supports an explicit wildcard opt-out", () => {
@@ -137,16 +114,12 @@ describe("coding container image allowlist", () => {
       ]),
     ).toBe(true);
     expect(
-      isCodingContainerImageAllowed("ghcr.io/elizaos/eliza:dev", [
-        "ghcr.io/elizaos/eliza:stable",
-      ]),
+      isCodingContainerImageAllowed("ghcr.io/elizaos/eliza:dev", ["ghcr.io/elizaos/eliza:stable"]),
     ).toBe(false);
   });
 
   it("env getter returns the secure default when unset", () => {
-    const allowlist = runWithCloudBindings({}, () =>
-      containersEnv.codingContainerImageAllowlist(),
-    );
+    const allowlist = runWithCloudBindings({}, () => containersEnv.codingContainerImageAllowlist());
     expect(allowlist).toEqual(DEFAULT);
   });
 

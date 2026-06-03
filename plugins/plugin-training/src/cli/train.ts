@@ -130,7 +130,7 @@ export async function runTrainCli(argv: string[]): Promise<number> {
       if (trainProvider !== "cerebras") {
         console.error(
           "[train] TRAIN_MODEL_PROVIDER=cerebras (or TRAINING_PROVIDER=cerebras) is required. " +
-            "The native backend has no offline stub; set the env var and rerun.",
+            "The native backend requires the real evaluation adapter; set the env var and rerun.",
         );
         return 1;
       }

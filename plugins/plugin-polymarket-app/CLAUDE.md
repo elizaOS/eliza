@@ -4,7 +4,7 @@ Adds Polymarket prediction-market discovery, orderbook reading, position viewing
 
 ## Purpose / role
 
-Opt-in elizaOS plugin. Load it by adding `@elizaos/plugin-polymarket-app` to the agent's plugin list. It registers one action, one provider, one service, seven REST routes, and three UI views (desktop, XR, TUI). Public market reads are always available; signed CLOB order placement is scaffolded but disabled pending credential configuration.
+Opt-in elizaOS plugin. Load it by adding `@elizaos/plugin-polymarket-app` to the agent's plugin list. It registers one action, one provider, one service, seven REST routes, and three UI views (desktop, XR, TUI). Public market reads are always available; signed CLOB order placement is disabled in this app integration and exposed only as readiness reporting.
 
 ## Plugin surface
 
@@ -77,7 +77,7 @@ bun run --cwd plugins/plugin-polymarket-app test        # vitest run
 
 | Var | Required | Notes |
 |-----|----------|-------|
-| `POLYMARKET_PRIVATE_KEY` | Trading only | Wallet private key for signed CLOB orders (not yet implemented) |
+| `POLYMARKET_PRIVATE_KEY` | Trading readiness only | Wallet private key presence check for signed CLOB order readiness |
 | `CLOB_API_KEY` | Trading only | Alias: `POLYMARKET_CLOB_API_KEY` |
 | `CLOB_API_SECRET` | Trading only | Alias: `POLYMARKET_CLOB_SECRET` |
 | `CLOB_API_PASSPHRASE` | Trading only | Alias: `POLYMARKET_CLOB_PASSPHRASE` |

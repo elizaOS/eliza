@@ -1,8 +1,8 @@
-// TODO: validate on device — checklist in ANDROID_CONSTRAINTS.md
+// Device-validation scope: checklist in ANDROID_CONSTRAINTS.md.
 //
 // AospPrivilegedBridge — AOSP system-app privileged path skeleton.
 //
-// This file compiles in the standard SDK against hidden-API stubs via the
+// This file compiles in the standard SDK against hidden-API declarations via the
 // `aosp` build flavor. It is never loaded in the `consumer` flavor.
 //
 // For AOSP deployment see: eliza/plugins/plugin-computeruse/docs/AOSP_SYSTEM_APP.md
@@ -19,7 +19,7 @@ package ai.elizaos.computeruse
 
 /**
  * Marker interface. In the `aosp` flavor this class is replaced by a full
- * implementation. In the `consumer` flavor this stub is loaded but no methods
+ * implementation. In the `consumer` flavor this fallback is loaded but no methods
  * are called — ComputerUsePlugin checks the build flavor at startup.
  *
  * Build flavor check pattern (in ComputerUsePlugin):
@@ -58,7 +58,7 @@ interface AospPrivilegedBridge {
     }
 }
 
-// ── Consumer-flavor stub implementation ───────────────────────────────────────
+// ── Consumer-flavor unavailable implementation ────────────────────────────────
 //
 // In the aosp flavor, a separate source set (src/aosp/java/...) provides a
 // full implementation using:

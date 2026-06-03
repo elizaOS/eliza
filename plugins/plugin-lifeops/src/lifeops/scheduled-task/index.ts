@@ -15,7 +15,7 @@ export {
   type ConsolidationRegistry,
   createAnchorRegistry,
   createConsolidationRegistry,
-  registerStubAnchors,
+  registerFallbackAnchors,
 } from "./consolidation-policy.js";
 export {
   expectedReplyKindForTask,

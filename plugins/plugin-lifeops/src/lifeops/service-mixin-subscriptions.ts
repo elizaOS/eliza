@@ -24,7 +24,7 @@ import {
   findLifeOpsSubscriptionPlaybook,
   type LifeOpsSubscriptionPlaybook,
   listLifeOpsSubscriptionPlaybooks,
-  PLAYBOOK_NOT_IMPLEMENTED_ERROR,
+  PLAYBOOK_UNSUPPORTED_FLOW_ERROR,
   type SubscriptionAutomationStep,
 } from "./subscriptions-playbooks.js";
 import type {
@@ -368,7 +368,7 @@ function summarizeCancellationStatus(
     case "unsupported_surface":
       if (
         typeof cancellation.error === "string" &&
-        cancellation.error.startsWith(PLAYBOOK_NOT_IMPLEMENTED_ERROR)
+        cancellation.error.startsWith(PLAYBOOK_UNSUPPORTED_FLOW_ERROR)
       ) {
         return (
           cancellation.evidenceSummary ??
@@ -774,9 +774,13 @@ export function withSubscriptions<
       }
 
       const serviceName =
-        candidate?.serviceName ??
-        playbook?.serviceName ??
-        requestedServiceName!;
+        candidate?.serviceName ?? playbook?.serviceName ?? requestedServiceName;
+      if (!serviceName) {
+        fail(
+          400,
+          "cancelSubscription requires a known candidateId or recognizable serviceName/serviceSlug",
+        );
+      }
       const serviceSlug =
         candidate?.serviceSlug ??
         playbook?.key ??
@@ -832,19 +836,19 @@ export function withSubscriptions<
       }
 
       if (!playbook.steps || playbook.steps.length === 0) {
-        // We know where the management page lives, but we don't have a
-        // real click-flow implemented. Do NOT pretend to cancel by
+        // We know where the management page lives, but this playbook has no
+        // automated click-flow. Do NOT pretend to cancel by
         // opening the URL and taking a screenshot — surface the truthful
-        // "not yet implemented" state so the owner can finish it manually.
+        // unsupported-surface state so the owner can finish it manually.
         cancellation = {
           ...cancellation,
           status: "unsupported_surface",
-          error: `${PLAYBOOK_NOT_IMPLEMENTED_ERROR}:${playbook.key}`,
+          error: `${PLAYBOOK_UNSUPPORTED_FLOW_ERROR}:${playbook.key}`,
           evidenceSummary: `I can open the ${playbook.serviceName} cancel page for you, but I haven't learned the exact click-flow yet. Want me to open the page and you finish the cancel? Management URL: ${playbook.managementUrl}`,
           managementUrl: playbook.managementUrl,
           metadata: {
             ...cancellation.metadata,
-            playbookNotImplemented: true,
+            playbookUnsupportedFlow: true,
             managementUrl: playbook.managementUrl,
           },
           updatedAt: new Date().toISOString(),

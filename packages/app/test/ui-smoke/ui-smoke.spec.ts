@@ -26,7 +26,10 @@ test("chat, apps, and settings routes render through the real shell", async ({
     "chat shell",
     [
       { selector: '[data-testid="global-chat-overlay"]' },
-      { selector: '[data-testid="chat-composer-textarea"]' },
+      {
+        selector:
+          '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]',
+      },
     ],
     "all",
   );

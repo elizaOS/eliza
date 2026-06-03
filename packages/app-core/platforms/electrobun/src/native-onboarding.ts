@@ -69,7 +69,12 @@ export async function waitForOnboardingNotificationChoice(
 
   return new Promise<ResolvedOnboardingChoice | null>((resolve) => {
     let settled = false;
-    const settle = (value: ResolvedOnboardingChoice | null | PromiseLike<ResolvedOnboardingChoice | null>): void => {
+    const settle = (
+      value:
+        | ResolvedOnboardingChoice
+        | null
+        | PromiseLike<ResolvedOnboardingChoice | null>,
+    ): void => {
       if (settled) return;
       settled = true;
       clearInterval(timer);
@@ -109,9 +114,7 @@ export async function waitForOnboardingNotificationChoice(
             logger.info(
               `[native-onboarding] Notification dismissed (retry ${dismissRetryCount + 1}/${MAX_DISMISS_RETRIES}) — re-posting`,
             );
-            settle(
-              waitForOnboardingNotificationChoice(dismissRetryCount + 1),
-            );
+            settle(waitForOnboardingNotificationChoice(dismissRetryCount + 1));
           }
           break;
         default:

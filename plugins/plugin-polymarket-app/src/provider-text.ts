@@ -38,7 +38,7 @@ export function derivePolymarketStatusText(
     `- Data API: ${POLYMARKET_DATA_API_BASE}`,
     `- CLOB API: ${POLYMARKET_CLOB_API_BASE}`,
     `- Trading credentials: ${credentialsReady ? "present" : "missing"}`,
-    "- Signed trading: disabled in this native app scaffold",
+    "- Signed trading: disabled in this app integration",
     missing.length ? `- Missing: ${missing.join(", ")}` : null,
   ]
     .filter(Boolean)

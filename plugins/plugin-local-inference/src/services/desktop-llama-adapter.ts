@@ -15,11 +15,12 @@
  *      open/prefill/next/cancel/close sessions, one sampler chain per
  *      session, single-flight serialised at the runner layer.
  *
- * Scope of this first cut:
- *   - Text generation only. Embeddings, vision (mmproj), slot save/restore,
- *     prewarm, parallel resize all stay on the native FFI runtime
- *     fallback. Each needs a separate native extension to the shim and is
- *     tracked in `FFI_BACKEND_WIREUP_PLAN.md`.
+ * Implemented surface:
+ *   - Text generation, embeddings, slot save/restore, prewarm via the runner,
+ *     parallel resize, same-file MTP, and separate-drafter MTP.
+ *   - Vision describe validates the mtmd build and mmproj state, but the full
+ *     image-bytes-to-embedding path still needs the native embedding-batch shim
+ *     wrapper and a direct image decoder dependency.
  *   - Same-file MTP speculative decoding: when `LlmStreamConfig` sets
  *     `draftMin/draftMax > 0` with no `draftModelPath`, the session routes
  *     through a native MTP engine (`eliza_llama_mtp_engine_*`) that owns the
@@ -979,8 +980,9 @@ export class DesktopLlamaAdapter {
 		// attached by a previous text session on the same pooled ctx.
 		this.detachDrafterFromCtx(0);
 
-		// Reference args explicitly so unused-warnings stay quiet on the
-		// stub. Once the JS-side RGB decode + embedding-batch shim wrapper
+		// Reference args explicitly so unused-warnings stay quiet while the
+		// native mtmd bridge is partial. Once the JS-side RGB decode +
+		// embedding-batch shim wrapper
 		// land, this method should consume `imageBytes`, `prompt`,
 		// `maxTokens`, `temperature`, and `signal` end-to-end.
 		void args.imageBytes;
@@ -989,7 +991,7 @@ export class DesktopLlamaAdapter {
 		void args.temperature;
 		void args.signal;
 
-		// TODO(vision/mtmd): full describe path. Two missing pieces:
+		// Remaining vision/mtmd bridge work. Two missing pieces:
 		//   1. JS-side image-bytes → RGB decode. `sharp` exists in
 		//      `packages/app-core/package.json` but NOT in
 		//      `plugins/plugin-local-inference/package.json`. Add it as
@@ -1000,12 +1002,12 @@ export class DesktopLlamaAdapter {
 		//      Add e.g. `eliza_llama_batch_get_one_embd(float*, n, n_embd)`
 		//      to `eliza_llama_shim.{c,h}` and bind it in `ShimSymbols`.
 		throw new Error(
-			"[desktop-llama] describeImage (mtmd path) not yet implemented. " +
+			"[desktop-llama] describeImage (mtmd path) requires native bridge work. " +
 				"Required: (a) image bytes → RGB decode (add `sharp` to " +
 				"plugin-local-inference deps; it is already in app-core) and " +
 				"(b) an embeddings-batch shim wrapper around llama_batch_get_one. " +
-				"Until both land, callers fall through to the subprocess " +
-				"the native vision path.",
+				"Until both land, callers should use the subprocess native " +
+				"vision path.",
 		);
 	}
 

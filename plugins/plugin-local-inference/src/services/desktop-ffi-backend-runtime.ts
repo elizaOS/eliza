@@ -21,15 +21,13 @@
  *   - The backend slot in the dispatcher is single-model — switching
  *     models calls `unload()` then `load()` on the active backend.
  *
- * Feature gaps documented in `FFI_BACKEND_WIREUP_PLAN.md`:
- *   - vision describe (mmproj) — not implemented; `dispatcher.describeImage`
- *     throws the actionable "does not implement" error when this runtime
- *     is active.
- *   - slot save/restore — same.
- *   - prewarm — same.
- *   - parallel resize — same.
- *   - speculative decoding — native MTP requires the bundled drafter GGUF
- *     resolved by the active-model coordinator.
+ * Implemented dispatcher parity:
+ *   - vision describe routes through the desktop adapter when the shim was
+ *     built with mtmd symbols and the active plan includes an mmproj GGUF.
+ *   - slot save/restore routes through the binding's KV persistence hooks.
+ *   - prewarm and parallel resize route through `FfiStreamingBackend`.
+ *   - speculative decoding uses the bundled drafter GGUF resolved by the
+ *     active-model coordinator.
  */
 
 import type { BackendPlan } from "./backend";

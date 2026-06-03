@@ -6,14 +6,14 @@ import type {
   State,
 } from "@elizaos/core";
 import {
-	ModelType,
-	requireConfirmation,
-	runWithTrajectoryContext,
+  ModelType,
+  requireConfirmation,
+  runWithTrajectoryContext,
 } from "@elizaos/core";
 import { INTERNAL_URL } from "../lifeops/access.js";
 import { messageText } from "../lifeops/google/format-helpers.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import { PLAYBOOK_NOT_IMPLEMENTED_ERROR } from "../lifeops/subscriptions-playbooks.js";
+import { PLAYBOOK_UNSUPPORTED_FLOW_ERROR } from "../lifeops/subscriptions-playbooks.js";
 import type { LifeOpsSubscriptionExecutor } from "../lifeops/subscriptions-types.js";
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { formatPromptSection } from "./lib/prompt-format.js";
@@ -337,17 +337,17 @@ async function runSubscriptionsActionInner(
         executor,
         confirmed: true,
       });
-      const playbookNotImplemented =
+      const playbookUnsupported =
         summary.cancellation.status === "unsupported_surface" &&
         typeof summary.cancellation.error === "string" &&
-        summary.cancellation.error.startsWith(PLAYBOOK_NOT_IMPLEMENTED_ERROR);
+        summary.cancellation.error.startsWith(PLAYBOOK_UNSUPPORTED_FLOW_ERROR);
       // Cancellation flows that legitimately stop at a "needs human" handoff
       // (awaiting confirmation, MFA, retention offer, sign-in, no automated
       // playbook yet, etc.) are NOT execution failures: the action correctly
       // reached its terminal pending-confirmation state. Surface that to the
       // runtime + benchmark scorer via `requiresConfirmation`.
       const needsHumanHandoff =
-        browserTaskData(summary).needsHuman === true || playbookNotImplemented;
+        browserTaskData(summary).needsHuman === true || playbookUnsupported;
       return {
         success:
           summary.cancellation.status !== "failed" &&
@@ -361,9 +361,9 @@ async function runSubscriptionsActionInner(
           candidate: summary.candidate,
           browserTask: browserTaskData(summary),
           ...(needsHumanHandoff ? { requiresConfirmation: true } : {}),
-          ...(playbookNotImplemented
+          ...(playbookUnsupported
             ? {
-                error: PLAYBOOK_NOT_IMPLEMENTED_ERROR,
+                error: PLAYBOOK_UNSUPPORTED_FLOW_ERROR,
                 serviceSlug: summary.cancellation.serviceSlug,
                 managementUrl: summary.cancellation.managementUrl,
               }

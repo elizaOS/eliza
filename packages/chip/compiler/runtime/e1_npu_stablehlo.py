@@ -16,6 +16,7 @@ The subset covers the ops we already claim end-to-end smoke coverage for:
 * ``stablehlo.attention_qk``  -> Q*K^T score matmul smoke (eliza extension)
 * ``stablehlo.attention_av``  -> attention*V context matmul smoke (eliza extension)
 * ``stablehlo.transformer_block`` -> fused single-head transformer block smoke
+* ``stablehlo.decoder_block`` -> fused single-head decoder block smoke
 
 Production codegen lives elsewhere (see ``compiler/iree-eliza-npu/``); this
 module is the source-of-truth entry IR for the Python lowering/partitioner.
@@ -53,6 +54,7 @@ OP_MLP = "stablehlo.mlp"
 OP_ATTENTION_QK = "stablehlo.attention_qk"
 OP_ATTENTION_AV = "stablehlo.attention_av"
 OP_TRANSFORMER_BLOCK = "stablehlo.transformer_block"
+OP_DECODER_BLOCK = "stablehlo.decoder_block"
 OP_BIAS_ADD = "stablehlo.bias_add"
 OP_RESIDUAL_ADD = "stablehlo.residual_add"
 
@@ -67,6 +69,7 @@ SUPPORTED_OPS: frozenset[str] = frozenset(
         OP_ATTENTION_QK,
         OP_ATTENTION_AV,
         OP_TRANSFORMER_BLOCK,
+        OP_DECODER_BLOCK,
         OP_BIAS_ADD,
         OP_RESIDUAL_ADD,
     }
@@ -370,6 +373,49 @@ class TransformerBlock(StableHloOp):
 
 
 @dataclass(frozen=True)
+class ModernDecoderBlock(StableHloOp):
+    """Single-head batch-1 decoder block smoke with RoPE, RMSNorm, and SwiGLU."""
+
+    input_type: TensorType
+    norm1_type: TensorType
+    norm2_type: TensorType
+    q_weight_type: TensorType
+    k_weight_type: TensorType
+    v_weight_type: TensorType
+    attention_bias_type: TensorType
+    cos_type: TensorType
+    sin_type: TensorType
+    swiglu_up_type: TensorType
+    swiglu_gate_type: TensorType
+    swiglu_down_type: TensorType
+    swiglu_activation: str = "linear_gate"
+    precision: str = "int8"
+    op: str = field(default=OP_DECODER_BLOCK, init=False)
+
+    def as_dict(self) -> dict[str, Any]:
+        base = super().as_dict()
+        base.update(
+            {
+                "input_type": self.input_type.as_dict(),
+                "norm1_type": self.norm1_type.as_dict(),
+                "norm2_type": self.norm2_type.as_dict(),
+                "q_weight_type": self.q_weight_type.as_dict(),
+                "k_weight_type": self.k_weight_type.as_dict(),
+                "v_weight_type": self.v_weight_type.as_dict(),
+                "attention_bias_type": self.attention_bias_type.as_dict(),
+                "cos_type": self.cos_type.as_dict(),
+                "sin_type": self.sin_type.as_dict(),
+                "swiglu_up_type": self.swiglu_up_type.as_dict(),
+                "swiglu_gate_type": self.swiglu_gate_type.as_dict(),
+                "swiglu_down_type": self.swiglu_down_type.as_dict(),
+                "swiglu_activation": self.swiglu_activation,
+                "precision": self.precision,
+            }
+        )
+        return base
+
+
+@dataclass(frozen=True)
 class StableHloModule:
     """A linear list of subset ops; ordering matters for partitioner walks."""
 
@@ -530,6 +576,10 @@ def plan_op_lowering(op: StableHloOp) -> LoweringPlan:
         return _plan_attention_qk_lowering(op)
     if isinstance(op, AttentionAv):
         return _plan_attention_av_lowering(op)
+    if isinstance(op, TransformerBlock):
+        return _plan_transformer_block_lowering(op)
+    if isinstance(op, ModernDecoderBlock):
+        return _plan_modern_decoder_block_lowering(op)
     raise StableHloValidationError(f"no lowering plan for op {op.op!r}")
 
 
@@ -737,6 +787,42 @@ def _parse_op(entry: Any) -> StableHloOp:
                 entry.get("mlp_down_type"), context=f"{kind} mlp_down_type"
             ),
             activation=_parse_str(entry.get("activation"), context=f"{kind} activation"),
+            precision=_parse_str(entry.get("precision", "int8"), context=f"{kind} precision"),
+        )
+    if kind == OP_DECODER_BLOCK:
+        return ModernDecoderBlock(
+            name=name,
+            result_type=result_type,
+            input_type=_parse_tensor_type(entry.get("input_type"), context=f"{kind} input_type"),
+            norm1_type=_parse_tensor_type(entry.get("norm1_type"), context=f"{kind} norm1_type"),
+            norm2_type=_parse_tensor_type(entry.get("norm2_type"), context=f"{kind} norm2_type"),
+            q_weight_type=_parse_tensor_type(
+                entry.get("q_weight_type"), context=f"{kind} q_weight_type"
+            ),
+            k_weight_type=_parse_tensor_type(
+                entry.get("k_weight_type"), context=f"{kind} k_weight_type"
+            ),
+            v_weight_type=_parse_tensor_type(
+                entry.get("v_weight_type"), context=f"{kind} v_weight_type"
+            ),
+            attention_bias_type=_parse_tensor_type(
+                entry.get("attention_bias_type"), context=f"{kind} attention_bias_type"
+            ),
+            cos_type=_parse_tensor_type(entry.get("cos_type"), context=f"{kind} cos_type"),
+            sin_type=_parse_tensor_type(entry.get("sin_type"), context=f"{kind} sin_type"),
+            swiglu_up_type=_parse_tensor_type(
+                entry.get("swiglu_up_type"), context=f"{kind} swiglu_up_type"
+            ),
+            swiglu_gate_type=_parse_tensor_type(
+                entry.get("swiglu_gate_type"), context=f"{kind} swiglu_gate_type"
+            ),
+            swiglu_down_type=_parse_tensor_type(
+                entry.get("swiglu_down_type"), context=f"{kind} swiglu_down_type"
+            ),
+            swiglu_activation=_parse_str(
+                entry.get("swiglu_activation", "linear_gate"),
+                context=f"{kind} swiglu_activation",
+            ),
             precision=_parse_str(entry.get("precision", "int8"), context=f"{kind} precision"),
         )
     raise StableHloParseError(f"unsupported op {kind!r}")
@@ -1004,6 +1090,54 @@ _ATTENTION_AV_LOWERING_TARGETS: dict[str, dict[str, Any]] = {
 }
 
 
+_TRANSFORMER_BLOCK_LOWERING_TARGETS: dict[str, dict[str, Any]] = {
+    "int8": {
+        "runtime_api": "lower_transformer_block_smoke",
+        "schema": "eliza.e1_npu_transformer_block_smoke.v1",
+        "lowering_precision": "int8",
+        "required_graph_fields": (
+            "input",
+            "attention",
+            "value",
+            "attention_bias",
+            "mlp_up_weight",
+            "mlp_down_weight",
+        ),
+        "claim_boundary": (
+            "single_head_transformer_block_smoke_only_not_softmax_norm_multihead_or_"
+            "production_compiler_backend"
+        ),
+    },
+}
+
+
+_MODERN_DECODER_BLOCK_LOWERING_TARGETS: dict[str, dict[str, Any]] = {
+    "int8": {
+        "runtime_api": "lower_modern_decoder_block_smoke",
+        "schema": "eliza.e1_npu_modern_decoder_block_smoke.v1",
+        "lowering_precision": "int8",
+        "required_graph_fields": (
+            "input",
+            "norm1_weight",
+            "norm2_weight",
+            "q_weight",
+            "k_weight",
+            "v_weight",
+            "attention_bias",
+            "cos",
+            "sin",
+            "swiglu_up_weight",
+            "swiglu_gate_weight",
+            "swiglu_down_weight",
+        ),
+        "claim_boundary": (
+            "modern_decoder_block_single_head_exp2_softmax_smoke_only_not_multihead_kv_cache_"
+            "or_production_compiler_backend"
+        ),
+    },
+}
+
+
 def _plan_dot_lowering(op: DotGeneral) -> LoweringPlan:
     target = _DOT_LOWERING_TARGETS.get(op.precision)
     if target is None:
@@ -1165,6 +1299,58 @@ def _plan_attention_av_lowering(op: AttentionAv) -> LoweringPlan:
         output_shape=op.result_type.shape,
         required_graph_fields=tuple(target["required_graph_fields"]),
         claim_boundary=str(target["claim_boundary"]),
+    )
+
+
+def _plan_transformer_block_lowering(op: TransformerBlock) -> LoweringPlan:
+    target = _TRANSFORMER_BLOCK_LOWERING_TARGETS.get(op.precision)
+    if target is None:
+        raise StableHloValidationError(
+            f"no transformer_block lowering target for precision {op.precision!r}"
+        )
+    return LoweringPlan(
+        op_name=op.name,
+        source_op=op.op,
+        source_precision=op.precision,
+        runtime_api=str(target["runtime_api"]),
+        schema=str(target["schema"]),
+        lowering_precision=str(target["lowering_precision"]),
+        input_shape=op.input_type.shape,
+        output_shape=op.result_type.shape,
+        required_graph_fields=tuple(target["required_graph_fields"]),
+        claim_boundary=str(target["claim_boundary"]),
+        static_graph_fields={"requant_shift": 0},
+    )
+
+
+def _plan_modern_decoder_block_lowering(op: ModernDecoderBlock) -> LoweringPlan:
+    target = _MODERN_DECODER_BLOCK_LOWERING_TARGETS.get(op.precision)
+    if target is None:
+        raise StableHloValidationError(
+            f"no decoder_block lowering target for precision {op.precision!r}"
+        )
+    return LoweringPlan(
+        op_name=op.name,
+        source_op=op.op,
+        source_precision=op.precision,
+        runtime_api=str(target["runtime_api"]),
+        schema=str(target["schema"]),
+        lowering_precision=str(target["lowering_precision"]),
+        input_shape=op.input_type.shape,
+        output_shape=op.result_type.shape,
+        required_graph_fields=tuple(target["required_graph_fields"]),
+        claim_boundary=str(target["claim_boundary"]),
+        static_graph_fields={
+            "attention_mask_mode": "full",
+            "projection_shift": 0,
+            "rms_epsilon": 1,
+            "rms_inv_shift": 8,
+            "rms_output_shift": 8,
+            "rope_scale_shift": 7,
+            "swiglu_activation": op.swiglu_activation,
+            "swiglu_requant_shift": 0,
+            "swiglu_gate_shift": 0,
+        },
     )
 
 
@@ -1447,6 +1633,121 @@ def _validate_transformer_block(op: TransformerBlock) -> list[ValidationIssue]:
         return issues
     m, d = inp
     issues.extend(_check_tile_bounds(op, m, d, d))
+    if op.result_type.shape != inp:
+        issues.append(
+            _issue(
+                op,
+                "RESULT_SHAPE_MISMATCH",
+                f"expected result shape {list(inp)}, got {list(op.result_type.shape)}",
+            )
+        )
+    return issues
+
+
+def _validate_modern_decoder_block(op: ModernDecoderBlock) -> list[ValidationIssue]:
+    issues = _check_precision(op, op.precision, {"int8"})
+    if op.swiglu_activation not in {"linear_gate", "swiglu", "silu", "swiglu_silu"}:
+        issues.append(
+            _issue(
+                op,
+                "ACTIVATION_UNSUPPORTED",
+                f"swiglu_activation {op.swiglu_activation!r} not in "
+                "{linear_gate, silu, swiglu, swiglu_silu}",
+            )
+        )
+    inp = op.input_type.shape
+    if len(inp) != 2:
+        issues.append(_issue(op, "RANK_UNSUPPORTED", "decoder_block requires rank-2 input"))
+        return issues
+    tokens, model_dim = inp
+    if model_dim % 2 != 0:
+        issues.append(_issue(op, "ROPE_DIM_UNSUPPORTED", "model dimension must be even"))
+    issues.extend(_check_tile_bounds(op, tokens, model_dim, model_dim))
+
+    for name, tensor in (
+        ("norm1_type", op.norm1_type),
+        ("norm2_type", op.norm2_type),
+        ("attention_bias_type", op.attention_bias_type),
+    ):
+        if tensor.shape != (model_dim,):
+            issues.append(
+                _issue(
+                    op,
+                    "SHAPE_MISMATCH",
+                    f"{name} shape {list(tensor.shape)} != [{model_dim}]",
+                )
+            )
+
+    rope_shape = (model_dim // 2,)
+    for name, tensor in (("cos_type", op.cos_type), ("sin_type", op.sin_type)):
+        if tensor.shape != rope_shape:
+            issues.append(
+                _issue(
+                    op,
+                    "SHAPE_MISMATCH",
+                    f"{name} shape {list(tensor.shape)} != {list(rope_shape)}",
+                )
+            )
+
+    for name, tensor in (
+        ("q_weight_type", op.q_weight_type),
+        ("k_weight_type", op.k_weight_type),
+        ("v_weight_type", op.v_weight_type),
+    ):
+        if tensor.shape != (model_dim, model_dim):
+            issues.append(
+                _issue(
+                    op,
+                    "SHAPE_MISMATCH",
+                    f"{name} shape {list(tensor.shape)} != [{model_dim}, {model_dim}]",
+                )
+            )
+
+    hidden_dims: set[int] = set()
+    for name, tensor in (
+        ("swiglu_up_type", op.swiglu_up_type),
+        ("swiglu_gate_type", op.swiglu_gate_type),
+    ):
+        if len(tensor.shape) != 2 or tensor.shape[0] != model_dim:
+            issues.append(
+                _issue(
+                    op,
+                    "SHAPE_MISMATCH",
+                    f"{name} must be [model_dim, hidden], got {list(tensor.shape)}",
+                )
+            )
+        elif not 1 <= tensor.shape[1] <= MAX_TILE_N:
+            issues.append(
+                _issue(
+                    op,
+                    "TILE_N_OUT_OF_RANGE",
+                    f"{name} hidden={tensor.shape[1]} outside 1..{MAX_TILE_N}",
+                )
+            )
+        else:
+            hidden_dims.add(tensor.shape[1])
+
+    if len(op.swiglu_down_type.shape) != 2 or op.swiglu_down_type.shape[1] != model_dim:
+        issues.append(
+            _issue(
+                op,
+                "SHAPE_MISMATCH",
+                f"swiglu_down_type must be [hidden, model_dim], "
+                f"got {list(op.swiglu_down_type.shape)}",
+            )
+        )
+    else:
+        hidden_dims.add(op.swiglu_down_type.shape[0])
+    if len(hidden_dims) > 1:
+        issues.append(_issue(op, "SHAPE_MISMATCH", "SwiGLU hidden dimensions must match"))
+    if op.result_type.shape != inp:
+        issues.append(
+            _issue(
+                op,
+                "RESULT_SHAPE_MISMATCH",
+                f"expected result shape {list(inp)}, got {list(op.result_type.shape)}",
+            )
+        )
     return issues
 
 
@@ -1462,6 +1763,7 @@ _VALIDATORS: dict[type[StableHloOp], Any] = {
     AttentionQk: _validate_attention_qk,
     AttentionAv: _validate_attention_av,
     TransformerBlock: _validate_transformer_block,
+    ModernDecoderBlock: _validate_modern_decoder_block,
 }
 
 

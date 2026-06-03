@@ -23,7 +23,8 @@ import {
 //   2. Replace `test.fixme` with `test`.
 
 const SYNC_TIMEOUT_MS = 10_000;
-const READY_SELECTOR = '[data-testid="chat-composer-textarea"]';
+const READY_SELECTOR =
+  '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
 
 async function openSyncedWindow(context: BrowserContext): Promise<Page> {
   const page = await context.newPage();

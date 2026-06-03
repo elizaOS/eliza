@@ -115,7 +115,7 @@ plugins/plugin-anthropic-proxy/
 │   │   ├── sanitize.ts                # Layer 2: string sanitize
 │   │   ├── tool-rename.ts             # Layer 3/6: quoted name renames
 │   │   ├── system-prompt.ts           # Layer 4: system strip + paraphrase
-│   │   ├── cc-tool-stubs.ts           # Layer 5: description strip + stubs
+│   │   ├── cc-tool-stubs.ts           # Layer 5: description strip + synthetic CC tools
 │   │   ├── sse-rewrite.ts             # Tail-buffer SSE reverse map
 │   │   ├── stainless-headers.ts       # CC-emulating SDK headers
 │   │   ├── process-body.ts            # Forward request pipeline
@@ -135,4 +135,3 @@ plugins/plugin-anthropic-proxy/
     ├── eliza-fingerprint.test.ts
     └── manifest-engine.integration.test.ts
 ```
-

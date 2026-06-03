@@ -18,10 +18,10 @@ Six connector contributions registered against the LifeOps
 - `withings`
 - `oura`
 
-`src/connectors/index.ts` registers the `ConnectorContribution`s (Wave-1
-stub dispatchers whose `send`/`read` return typed `DispatchResult`, not
-booleans). The concrete OAuth pair/disconnect, credential storage, and
-provider readers live under `src/health-bridge/`.
+`src/connectors/index.ts` registers the `ConnectorContribution`s. The Wave-1
+registry adapter returns typed disconnected / transport-error results while
+the concrete OAuth pair/disconnect, credential storage, and provider readers
+live under `src/health-bridge/`.
 
 ### Anchors
 
@@ -102,7 +102,7 @@ consume the plugin by registering their own implementations of:
 - `DefaultPackRegistry` (with `register` / `list` / `get`)
 
 The structural contracts the plugin builds against live in
-`src/connectors/contract-stubs.ts`, `src/default-packs/contract-stubs.ts`,
+`src/connectors/contract-types.ts`, `src/default-packs/contract-types.ts`,
 and `src/contracts/health.ts`.
 
 ## Where to look next

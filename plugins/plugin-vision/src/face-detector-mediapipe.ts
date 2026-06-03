@@ -7,9 +7,9 @@
 // runtime falls through to the legacy `face-api.js` face library (also
 // scheduled for removal in Phase 3).
 //
-// Kept as a stub so existing imports (test fixtures) continue to compile
-// without touching the test layout. The class is internal and not wired
-// into the production `VisionService`.
+// Kept as a migration shim so existing imports (test fixtures) continue to
+// compile without touching the test layout. The class is internal and not
+// wired into the production `VisionService`.
 
 import { logger } from "@elizaos/core";
 import type { BoundingBox } from "./types";
@@ -45,7 +45,7 @@ export class MediaPipeFaceDetector {
 
   async initialize(): Promise<void> {
     throw new Error(
-      "[MediaPipeFace] ONNX backend removed in ggml migration; RetinaFace ggml port not yet built — see VISION_RUNTIME_MIGRATION.md Phase 3.",
+      "[MediaPipeFace] ONNX backend removed in ggml migration; RetinaFace ggml port remains pending — see VISION_RUNTIME_MIGRATION.md Phase 3.",
     );
   }
 
@@ -56,6 +56,6 @@ export class MediaPipeFaceDetector {
   }
 
   async dispose(): Promise<void> {
-    logger.debug("[MediaPipeFace] dispose (no-op stub)");
+    logger.debug("[MediaPipeFace] dispose (unavailable migration shim)");
   }
 }

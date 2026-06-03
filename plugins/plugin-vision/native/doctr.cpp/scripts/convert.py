@@ -6,10 +6,10 @@ Usage:
     python scripts/convert.py --variant db_mobilenet_v3_large --out vision/doctr-det.gguf
     python scripts/convert.py --variant crnn_mobilenet_v3_small --out vision/doctr-rec.gguf
 
-This script is a SCAFFOLD. The actual tensor-name mapping table is intentionally
-left as a TODO until a build-host with `python-doctr` and `gguf` installed runs
-the conversion end-to-end. The structure below is the contract the C++ loader
-will read against (see src/doctr_det.cpp / src/doctr_rec.cpp).
+This script defines the conversion entrypoint and expected GGUF contract. The
+actual tensor-name mapping table must be completed on a build host with
+`python-doctr` and `gguf` installed, then validated end-to-end against
+src/doctr_det.cpp / src/doctr_rec.cpp.
 
 Requirements (install before running):
     pip install python-doctr[torch] gguf numpy

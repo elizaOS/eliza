@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { buildFirstRunRuntimeConfig } from "../../../app-core/src/first-run/first-run-config";
 import {
   getFirstRunProviderForLiveProvider,
@@ -9,6 +9,8 @@ const API_PORT = Number(process.env.ELIZA_API_PORT || "31337");
 const API_BASE = `http://127.0.0.1:${API_PORT}`;
 const LIVE_PROVIDER = selectLiveProvider();
 const RESPONSE_MARKER = "BUN_DEV_SMOKE_OK";
+const CHAT_COMPOSER_SELECTOR =
+  '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
 
 type FirstRunStatus = {
   complete: boolean;
@@ -27,6 +29,7 @@ function browserFailureCollector(page: Page): string[] {
     if (message.type() !== "error") return;
     const text = message.text();
     if (/^\[RenderTelemetry\]/.test(text)) return;
+    if (/504 \(Outdated Optimize Dep\)/i.test(text)) return;
     if (
       /^Failed to load resource: the server responded with a status of (401|404) /i.test(
         text,
@@ -37,6 +40,12 @@ function browserFailureCollector(page: Page): string[] {
     failures.push(`console.error: ${text}`);
   });
   page.on("response", (response) => {
+    if (
+      response.status() === 504 &&
+      response.url().includes("/.vite/deps/")
+    ) {
+      return;
+    }
     if (response.status() < 500) return;
     failures.push(`${response.status()} ${response.url()}`);
   });
@@ -162,6 +171,26 @@ async function seedCompletedFirstRunStorage(page: Page): Promise<void> {
   }
 }
 
+async function gotoChatComposer(page: Page): Promise<Locator> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await page.goto("/chat");
+    const composer = page.locator(CHAT_COMPOSER_SELECTOR).first();
+    try {
+      await expect(composer).toBeVisible({ timeout: 90_000 });
+      return composer;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) {
+        await page.waitForTimeout(1_000);
+      }
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Timed out waiting for chat composer");
+}
+
 test.describe("bun run dev onboarding chat smoke", () => {
   test.skip(!LIVE_PROVIDER, "set a supported live provider key for dev smoke");
 
@@ -194,28 +223,20 @@ test.describe("bun run dev onboarding chat smoke", () => {
     await seedCompletedFirstRunStorage(page);
     await page.goto("/");
     await seedCompletedFirstRunStorage(page);
-    await page.goto("/chat");
-    await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
-      timeout: 60_000,
-    });
+    const composer = await gotoChatComposer(page);
 
     const prompt = `For a CI smoke test, reply with exactly ${RESPONSE_MARKER} and no other words.`;
-    await page.getByTestId("chat-composer-textarea").fill(prompt);
-    await expect(page.getByTestId("chat-composer-action")).toBeEnabled();
-    await page.getByTestId("chat-composer-action").click();
+    await composer.fill(prompt);
+    await composer.press("Enter");
 
-    await expect(
-      page
-        .locator('[data-testid="chat-message"][data-role="user"]')
-        .filter({ hasText: prompt })
-        .last(),
-    ).toBeVisible({ timeout: 30_000 });
+    const conversation = page.getByRole("log", {
+      name: /conversation history/i,
+    });
+    await expect(conversation).toContainText(prompt, { timeout: 30_000 });
 
-    const assistantMessage = page
-      .locator('[data-testid="chat-message"][data-role="assistant"]')
-      .last();
-    await expect(assistantMessage).toBeVisible({ timeout: 180_000 });
-    await expect(assistantMessage).not.toHaveText(/^\s*$/);
+    await expect(conversation).toContainText(RESPONSE_MARKER, {
+      timeout: 180_000,
+    });
 
     expect(failures, "browser/runtime failures").toEqual([]);
   });

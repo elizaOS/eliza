@@ -112,7 +112,7 @@ export function filterAccountsForAudience(
 export const LIFEOPS_REDACTED_PLACEHOLDER = "[redacted: owner_only]";
 
 /**
- * Choose the placeholder text for a redacted account when the privacy level
+ * Choose the replacement text for a redacted account when the privacy level
  * blocks surfacing to the audience.
  */
 export function redactedPlaceholder(privacy: PrivacyLevel): string {
