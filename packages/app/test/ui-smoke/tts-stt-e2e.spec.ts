@@ -752,6 +752,9 @@ test("always-on chat mode starts passive browser STT and keeps capture open afte
     "all",
   );
 
+  // The legacy chat-view-continuous-chat-toggle is intentionally not asserted
+  // here: when always-on is restored from storage, passive browser STT starts
+  // before the visible toggle is needed.
   await expect
     .poll(
       async () =>
