@@ -327,6 +327,9 @@ export function Composer({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    const isPlainEnter = event.key === "Enter" && !event.shiftKey;
+    const isComposing = event.nativeEvent.isComposing;
+
     if (slashOpen) {
       if (event.key === "ArrowDown") {
         event.preventDefault();
@@ -348,7 +351,10 @@ export function Composer({
         runCommand(visible[selClamped]);
         return;
       }
-      if (event.key === "Enter" && !event.shiftKey) {
+      if (isPlainEnter && isComposing) {
+        return;
+      }
+      if (isPlainEnter) {
         const typed = query;
         const matchedEntry =
           typed === null
@@ -381,11 +387,7 @@ export function Composer({
     }
     // Enter confirming an IME composition must not submit (chat.js keydown
     // guards submit with !e.isComposing).
-    if (
-      event.key === "Enter" &&
-      !event.shiftKey &&
-      !event.nativeEvent.isComposing
-    ) {
+    if (isPlainEnter && !isComposing) {
       event.preventDefault();
       onSubmit();
     }

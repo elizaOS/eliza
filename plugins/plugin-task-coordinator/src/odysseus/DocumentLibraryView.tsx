@@ -171,6 +171,7 @@ export function DocumentLibraryView({
   const [bulkRunning, setBulkRunning] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const listRequestIdRef = useRef(0);
   // The currently-open per-card menu and the bulk-actions dropdown each mount a
   // single wrapper at a time; refs let the outside-click effect tell an inside
   // pointerdown from an outside one.
@@ -184,6 +185,7 @@ export function DocumentLibraryView({
   // docs a term matching an unloaded doc would wrongly read "No documents
   // match". So load() forwards the trimmed query and resets the page.
   const load = useCallback((searchQuery: string) => {
+    const requestId = ++listRequestIdRef.current;
     const trimmed = searchQuery.trim();
     setLoading(true);
     setFailed(false);
@@ -194,11 +196,13 @@ export function DocumentLibraryView({
         offset: 0,
       })
       .then((r) => {
+        if (requestId !== listRequestIdRef.current) return;
         setDocs(r.documents);
         setTotal(r.total);
         setLoading(false);
       })
       .catch(() => {
+        if (requestId !== listRequestIdRef.current) return;
         setDocs([]);
         setTotal(0);
         setLoading(false);
@@ -255,6 +259,7 @@ export function DocumentLibraryView({
 
   const loadMore = () => {
     if (loading || docs.length >= total) return;
+    const requestId = ++listRequestIdRef.current;
     setLoading(true);
     const trimmed = query.trim();
     void client
@@ -264,11 +269,15 @@ export function DocumentLibraryView({
         offset: docs.length,
       })
       .then((r) => {
+        if (requestId !== listRequestIdRef.current) return;
         setDocs((prev) => [...prev, ...r.documents]);
         setTotal(r.total);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        if (requestId !== listRequestIdRef.current) return;
+        setLoading(false);
+      });
   };
 
   const toggleExpand = (doc: DocumentRecord) => {
