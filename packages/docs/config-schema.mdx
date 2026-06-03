@@ -45,7 +45,7 @@ The `ElizaConfig` type defines every section available in `eliza.json`. Below is
 | [`tools`](#tools) | `ToolsConfig` | Tool profiles, exec, web, media, links, sandbox policies |
 | [`bindings`](#bindings) | `AgentBinding[]` | Agent-to-channel routing bindings |
 | [`broadcast`](#broadcast) | `BroadcastConfig` | Broadcast peer routing strategy |
-| [`audio`](#audio) | `AudioConfig` | Audio settings (placeholder for future use) |
+| [`audio`](#audio) | `AudioConfig` | Open-ended audio settings for subsystem-specific options |
 | [`messages`](#messages) | `MessagesConfig` | Message queue, TTS, response prefix, ack reactions |
 | [`commands`](#commands) | `CommandsConfig` | Command registration and access control |
 | [`approvals`](#approvals) | `ApprovalsConfig` | Exec approval forwarding to chat channels |
@@ -765,7 +765,7 @@ Broadcast peer routing strategy.
 
 ## `audio`
 
-Audio configuration. Currently a placeholder for future audio-specific settings. Accepts arbitrary key-value pairs.
+Audio configuration. Accepts arbitrary key-value pairs for audio subsystem options; typed fields will be added as stable audio settings are promoted into the shared config schema.
 
 ---
 

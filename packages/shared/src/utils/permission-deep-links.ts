@@ -6,7 +6,7 @@
  * `openPermissionSettings(id)` when a permission is denied and the user
  * clicks "Open System Settings".
  *
- * Win32 / Linux: stubbed with a console warning. Native equivalents (Windows
+ * Win32 / Linux: returns with a console warning. Native equivalents (Windows
  * `ms-settings:privacy-*`, GNOME `gnome-control-center privacy`, etc.) can
  * be wired in when those platforms gain real support — until then the chat
  * surface advertises the limitation up-front.
@@ -83,7 +83,8 @@ export interface OpenPermissionSettingsDeps {
 /**
  * Open the system settings pane for the given permission. Resolves once the
  * opener has been invoked (it doesn't wait for the user). Win32 / Linux:
- * no-op (no system settings deep links implemented for those platforms yet).
+ * warns and returns because this table only defines macOS system settings deep
+ * links today.
  */
 export async function openPermissionSettings(
   id: PermissionId,

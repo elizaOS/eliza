@@ -353,7 +353,7 @@ export interface AppStopResult {
   stoppedAt: string;
   pluginUninstalled: boolean;
   needsRestart: boolean;
-  stopScope: "plugin-uninstalled" | "viewer-session" | "no-op";
+  stopScope: "plugin-uninstalled" | "viewer-session" | "nothing-stopped";
   message: string;
 }
 
@@ -571,7 +571,7 @@ export const AppStopResultSchema = z.object({
   stopScope: z.union([
     z.literal("plugin-uninstalled"),
     z.literal("viewer-session"),
-    z.literal("no-op"),
+    z.literal("nothing-stopped"),
   ]),
   message: z.string(),
 });

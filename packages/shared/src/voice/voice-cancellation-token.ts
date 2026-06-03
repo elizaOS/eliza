@@ -225,7 +225,7 @@ export class VoiceCancellationRegistry {
 
   /**
    * Abort the active token for `roomId`. Returns true if a live token was
-   * aborted. No-op when there is no active token or it's already aborted.
+   * aborted. Returns false when there is no active token or it's already aborted.
    */
   abort(roomId: string, reason: VoiceCancellationReason): boolean {
     const token = this.byRoom.get(roomId);

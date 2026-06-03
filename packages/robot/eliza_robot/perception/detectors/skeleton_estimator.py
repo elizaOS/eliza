@@ -10,7 +10,6 @@ from typing import Any
 
 import numpy as np
 
-
 # Standard body keypoint indices (COCO-WholeBody 133 keypoints)
 NOSE = 0
 LEFT_SHOULDER = 5
@@ -51,7 +50,7 @@ class Skeleton:
 class SkeletonEstimator:
     """Pose estimation using rtmlib RTMW model.
 
-    Falls back to stub if rtmlib is unavailable.
+    Returns no skeletons when rtmlib is unavailable.
     """
 
     def __init__(

@@ -1477,11 +1477,10 @@ async function verifyAndroidBackgroundApi(context, baseUrl, authToken) {
   }
 
   if (!advanced) {
-    // /api/health does not yet emit `lastWakeFiredAt` until Wave 3D lands;
-    // emit a warning but don't fail the run when the field is simply absent
+    // /api/health omits `lastWakeFiredAt` until Wave 3D lands; emit a warning
+    // but don't fail the run when the field is simply absent
     // (baselineWakeMs === null AND every poll observed null too). Treat that
-    // as "wake field not implemented yet" so this script is usable before
-    // Wave 3D merges.
+    // as a missing wake field so this script is usable before Wave 3D merges.
     const fieldImplemented = baselineWakeMs !== null;
     if (fieldImplemented) {
       throw new Error(
@@ -1495,7 +1494,7 @@ async function verifyAndroidBackgroundApi(context, baseUrl, authToken) {
     );
     return {
       ok: true,
-      reason: "wake-field-not-implemented",
+      reason: "wake-field-absent",
       forceFireMethod,
       beforeAt: baselineWakeMs,
       afterAt: null,

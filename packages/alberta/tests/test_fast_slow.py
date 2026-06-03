@@ -1,5 +1,5 @@
 # mypy: disable-error-code="call-arg"
-"""Tests for the Step 2 fast/slow core scaffold."""
+"""Tests for the Step 2 fast/slow core learner."""
 
 import chex
 import jax.numpy as jnp

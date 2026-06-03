@@ -10,8 +10,8 @@ import {
   jsonResponse,
   readAppControlHttpRequests,
   registerAppControlHttpHandler,
-  resetAppControlHttpStub,
-} from "./_helpers/app-control-http-stub";
+  resetAppControlHttpLoopback,
+} from "./_helpers/app-control-http-loopback";
 import { matchesScenarioInput } from "./_helpers/strict-llm-action-fixtures";
 
 type RuntimeWithScenarioLlmFixtures = {
@@ -286,7 +286,7 @@ export default scenario({
       apply: async (ctx) => {
         process.env.ELIZA_REPO_ROOT = repoRoot;
         process.env.ELIZA_WORKSPACE_DIR = repoRoot;
-        resetAppControlHttpStub();
+        resetAppControlHttpLoopback();
         const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
 
         await fs.rm(path.dirname(appLoadDirectory), {

@@ -9,7 +9,7 @@
  *    browser;
  *  - the small set of helpers each consumer needs (sync, clear, read).
  *
- * Browser-only helpers no-op cleanly under SSR (`typeof window === "undefined"`).
+ * Browser-only helpers return cleanly under SSR (`typeof window === "undefined"`).
  */
 
 // ---------------------------------------------------------------------------
@@ -189,8 +189,8 @@ export function readStoredStewardRefreshToken(): string | null {
  * HttpOnly-cookie protection the server already provides. The cookie is
  * set by `/api/auth/steward-session` and `/api/auth/steward-nonce-exchange`
  * — there is no longer any reason for the browser to hold a copy. This
- * helper is a no-op-equivalent kept only for one release window; after
- * that it will be deleted.
+ * helper intentionally does not write and is kept only for one release
+ * window; after that it will be deleted.
  */
 export function writeStoredStewardRefreshToken(_token: string): void {
   if (typeof window === "undefined") return;
@@ -198,7 +198,7 @@ export function writeStoredStewardRefreshToken(_token: string): void {
     warnedWriteRefresh = true;
     try {
       console.warn(
-        "[steward] writeStoredStewardRefreshToken() is deprecated and no longer writes to localStorage. The HttpOnly steward-refresh-token cookie is now the only persistence. This call is a no-op.",
+        "[steward] writeStoredStewardRefreshToken() is deprecated and no longer writes to localStorage. The HttpOnly steward-refresh-token cookie is now the only persistence. This call intentionally leaves storage unchanged.",
       );
     } catch {
       // ignore

@@ -1789,7 +1789,7 @@ describe("Editor component", () => {
       assert.strictEqual(editor.getText(), "hello |world");
     });
 
-    it("no-op delete operations do not push undo snapshots", () => {
+    it("empty delete operations do not push undo snapshots", () => {
       const editor = new Editor(createTestTUI(), defaultEditorTheme);
 
       editor.handleInput("h");
@@ -1799,11 +1799,11 @@ describe("Editor component", () => {
       editor.handleInput("o");
       assert.strictEqual(editor.getText(), "hello");
 
-      // Delete word on empty - multiple times (should be no-ops)
+      // Delete word on empty - multiple times after the first deletion.
       editor.handleInput("\x17"); // Ctrl+W - deletes "hello"
       assert.strictEqual(editor.getText(), "");
-      editor.handleInput("\x17"); // Ctrl+W - no-op (nothing to delete)
-      editor.handleInput("\x17"); // Ctrl+W - no-op
+      editor.handleInput("\x17"); // Ctrl+W - nothing left to delete
+      editor.handleInput("\x17"); // Ctrl+W - nothing left to delete
 
       // Single undo should restore "hello"
       editor.handleInput("\x1b[45;5u"); // Ctrl+- (undo)

@@ -41,7 +41,7 @@ All actions validate that a workspace is loaded (`getWorkspace(runtime) !== null
 
 | Name | Type | Role |
 |---|---|---|
-| `MemeTrendService` | `MEME_TREND_MONITOR` | Scaffold — currently a no-op registered to reserve the service type. Planned: poll trending meme templates and inject into Meme Machine context. |
+| `MemeTrendService` | `MEME_TREND_MONITOR` | Polls Imgflip's public meme-template feed, caches fallback templates when refresh fails, and injects current template signals into Meme Machine context. |
 
 ## Layout
 
@@ -52,7 +52,7 @@ src/
                     built-in DEMO_SOUL constant, oracleFetch helper
   environment.ts    validateUndesirableConfig() — checks UNDESIRABLES_WORKSPACE
                     exists and contains SOUL.md
-  services.ts       MemeTrendService (no-op scaffold)
+  services.ts       MemeTrendService (cached Imgflip template monitor)
 ```
 
 ## Commands
@@ -102,5 +102,5 @@ The workspace directory is expected to contain:
 - **Demo soul:** the `DEMO_SOUL` constant in `index.ts` is the fallback personality. It ships with all 26 skill descriptions inline (no files). This is the path taken when `UNDESIRABLES_WORKSPACE` is unset or invalid.
 - **No npm scope:** this package is published as `plugin-undesirables` (not `@elizaos/plugin-undesirables`). It is a community plugin, not a first-party elizaOS package.
 - **License:** BUSL-1.1 — not MIT/Apache. Review before redistributing.
-- **`MemeTrendService`** is a declared stub. Its `pollTrends()` method is never called. Do not treat it as functional until it is wired to a real polling loop.
+- **`MemeTrendService`** starts with cached fallback templates, refreshes from Imgflip's public template feed on startup and every six hours, and is read by `UNDESIRABLE_MEME_MACHINE` for current template hints.
 - The root `AGENTS.md` covers repo-wide logger, ESM, and architecture rules — they apply here too.

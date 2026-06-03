@@ -64,7 +64,7 @@ export function ttsDebugTextPreview(
 
 /**
  * Sink for TTS debug output. Set by the host app (e.g. pino on the server,
- * Web Inspector in the renderer). No-op when null.
+ * Web Inspector in the renderer). Null disables debug output.
  */
 let _ttsSink:
   | ((phase: string, detail?: Record<string, unknown>) => void)

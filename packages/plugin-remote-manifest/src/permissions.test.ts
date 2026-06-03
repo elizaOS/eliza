@@ -30,7 +30,7 @@ describe("remote plugin permissions", () => {
     });
   });
 
-  it("treats legacy bare bun permission as a no-op compatibility token", () => {
+  it("ignores legacy bare bun permission as a compatibility token", () => {
     expect(normalizeRemotePluginPermissions(["bun"])).toEqual({
       host: {},
       bun: {},

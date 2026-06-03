@@ -1,8 +1,8 @@
 /**
- * Empty stub for Node built-in subpaths that don't exist in browser polyfills.
+ * Empty browser module for Node built-in subpaths that don't exist in browser polyfills.
  * Server-only code imports these but they're never executed in the browser.
  *
- * Each named export is a no-op so esbuild's dep scanner doesn't choke.
+ * Each named export is an inert function so esbuild's dep scanner doesn't choke.
  */
 
 // util/types

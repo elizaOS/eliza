@@ -60,7 +60,7 @@ Both permissions are declared in `android/src/main/AndroidManifest.xml`. The hos
 **Add a new Capacitor method (e.g., `deleteSms`):**
 
 1. Add the method signature to `MessagesPlugin` in `src/definitions.ts`.
-2. Add a stub in `src/web.ts` that throws `"deleteSms is only available on Android."`.
+2. Add a web fallback in `src/web.ts` that throws `"deleteSms is only available on Android."`.
 3. Implement `@PluginMethod fun deleteSms(call: PluginCall)` in `android/src/main/java/ai/eliza/plugins/messages/MessagesPlugin.kt` using the ContentResolver.
 4. If the new method needs an Android permission, declare it in `AndroidManifest.xml` and check it with `hasPermission(Manifest.permission.*)` before proceeding.
 5. Run `bun run --cwd plugins/plugin-native-messages build` to regenerate `dist/`.

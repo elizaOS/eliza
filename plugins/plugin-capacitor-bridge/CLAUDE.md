@@ -91,7 +91,7 @@ bun run --cwd plugins/plugin-capacitor-bridge clean           # rm -rf dist .tur
 ### Bridge enable/auth (Android path)
 | Var | Required | Description |
 |---|---|---|
-| `ELIZA_DEVICE_BRIDGE_ENABLED` | Yes (must be `1`) | Enables the WebSocket device bridge. Without this, `ensureMobileDeviceBridgeInferenceHandlers` is a no-op. |
+| `ELIZA_DEVICE_BRIDGE_ENABLED` | Yes (must be `1`) | Enables the WebSocket device bridge. Without this, `ensureMobileDeviceBridgeInferenceHandlers` returns without registering bridge handlers. |
 | `ELIZA_DEVICE_PAIRING_TOKEN` | Yes when bridge enabled | Token required in both WebSocket query string (`?token=`) and device `register` frame. Rejects connections without it. |
 | `ELIZA_DEVICE_BRIDGE_TOKEN` | Alias | Fallback for `ELIZA_DEVICE_PAIRING_TOKEN`. |
 | `ELIZA_LOCAL_LLAMA` | Optional | Set to `1` to disable the bridge (AOSP builds running llama.cpp inline). |

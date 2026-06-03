@@ -149,9 +149,10 @@ export {
 	resolvePowerSourceState,
 } from "./optimistic-policy";
 export {
-	CharacterPhonemeStub,
+	createDefaultPhonemeTokenizer,
 	type Phoneme,
 	type PhonemeTokenizer,
+	RuleBasedEnglishPhonemeTokenizer,
 } from "./phoneme-tokenizer";
 export {
 	type CachedPhraseAudio,

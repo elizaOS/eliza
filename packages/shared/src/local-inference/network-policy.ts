@@ -18,7 +18,7 @@
  *
  * The actual platform shims are wired in `plugin-local-inference`'s
  * `services/network-policy.ts`. This module defines the platform-agnostic
- * decision contract and ships a stub `evaluateNetworkPolicy` that lets
+ * decision contract and ships a pure `evaluateNetworkPolicy` that lets
  * higher-level code unit-test the decision rule without a runtime.
  */
 

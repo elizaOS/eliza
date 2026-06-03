@@ -135,7 +135,7 @@ export async function replayGuardCommit(
   const exp = Date.now() + replayWindowMs();
   // Require all keys to map to the same owner. If owners diverge, the
   // in-process map raced with another request — drop the owner so the durable
-  // layer can no-op the owner-bound path instead of recording wrong lineage.
+  // layer skips the owner-bound path instead of recording wrong lineage.
   let owner: string | undefined;
   let ownerConsistent = true;
   for (const k of keys) {

@@ -1351,9 +1351,9 @@ function initializeAppLifecycle(): void {
  * the WebSocket reconnect scheduler in `client-base.ts`) can stop burning
  * backoff attempts during airplane mode.
  *
- * Idempotent: HMR or repeated `initializePlatform()` invocations no-op past
- * the first call (each Capacitor listener fires its handler N times if added
- * N times).
+ * Idempotent: HMR or repeated `initializePlatform()` invocations return after
+ * the first registration (each Capacitor listener fires its handler N times if
+ * added N times).
  */
 async function initializeNetworkListener(): Promise<void> {
   if (networkStatusListenerRegistered) return;

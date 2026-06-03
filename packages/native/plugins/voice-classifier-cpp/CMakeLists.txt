@@ -78,10 +78,10 @@ target_link_libraries(voice_classifier PUBLIC m)
 
 enable_testing()
 
-add_executable(voice_classifier_stub_smoke test/voice_classifier_stub_smoke.c)
-target_link_libraries(voice_classifier_stub_smoke PRIVATE voice_classifier)
-target_compile_options(voice_classifier_stub_smoke PRIVATE -O2 -Wall -Wextra)
-add_test(NAME voice_classifier_stub_smoke COMMAND voice_classifier_stub_smoke)
+add_executable(voice_classifier_abi_smoke test/voice_classifier_abi_smoke.c)
+target_link_libraries(voice_classifier_abi_smoke PRIVATE voice_classifier)
+target_compile_options(voice_classifier_abi_smoke PRIVATE -O2 -Wall -Wextra)
+add_test(NAME voice_classifier_abi_smoke COMMAND voice_classifier_abi_smoke)
 
 add_executable(voice_emotion_classes_test test/voice_emotion_classes_test.c)
 target_link_libraries(voice_emotion_classes_test PRIVATE voice_classifier)

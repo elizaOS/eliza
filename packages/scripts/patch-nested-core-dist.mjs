@@ -66,7 +66,7 @@ for (const entry of readdirSync(bunCacheDir)) {
   }
 
   console.log(`[patch-nested-core-dist] Replacing dist/ in ${nestedCore}`);
-  // Remove the incomplete dist and replace with the full local build
+  // Remove the partial dist and replace with the full local build
   if (existsSync(nestedDist)) {
     rmSync(nestedDist, { recursive: true, force: true });
   }

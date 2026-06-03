@@ -119,5 +119,5 @@ Account resolution order (for the `default` account): `character.settings.telegr
 - **Forum topics**: each thread becomes a separate `Room` with `channelId` of the form `<chatId>-<threadId>`. Room metadata includes `isForumTopic: true`.
 - **Buttons**: send `TelegramContent` with a `buttons` array (`Button[]`). Supported `kind` values: `"login"`, `"url"`.
 - **GramJS (user-account)**: `account-auth-service.ts` uses the `telegram` npm package (GramJS/MTProto) for user-account login, distinct from the bot-API `telegraf` package used for bot accounts.
-- **ConnectorAccountManager**: registered in `init()`. Telegram has no OAuth; `startOAuth`/`completeOAuth` are not implemented. Single-account env configs are surfaced as a synthetic `"default"` account.
+- **ConnectorAccountManager**: registered in `init()`. Telegram bot accounts use long-lived bot tokens rather than OAuth, so start/complete OAuth flows are unsupported by design. Single-account env configs are surfaced as a synthetic `"default"` account.
 - See repo root `AGENTS.md` for architecture rules, logging standards, and git workflow.

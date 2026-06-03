@@ -367,7 +367,7 @@ function stripAnsi(str: string): string {
 }
 
 /**
- * Lazily open the log files on the first write attempt.
+ * Lazily open the log files on the first write.
  * Returns true if the files are ready for writing.
  */
 function ensureFileLog(): boolean {

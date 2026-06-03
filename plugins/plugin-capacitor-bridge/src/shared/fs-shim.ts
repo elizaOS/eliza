@@ -56,8 +56,8 @@
  *   final resolved path fed to an fs operation needs guarding. We export
  *   `sandboxedPath()` for callers that assemble absolute paths externally.
  * - The shim is idempotent: calling `installMobileFsShim` a second time with
- *   the same root is a no-op. Calling it with a different root after install
- *   throws to prevent accidental escalation.
+ *   the same root returns the already-installed shim state. Calling it with a
+ *   different root after install throws to prevent accidental escalation.
  * - All blocked operations throw `EACCES`-coded errors so callers that check
  *   `err.code` behave the same as if the OS rejected the call.
  */

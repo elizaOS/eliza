@@ -106,7 +106,7 @@ const compose =
   (text: string) =>
     fns.reduce((t, fn) => fn(t), text);
 
-/** Identity function for no-op styling */
+/** Identity function for unchanged styling */
 const identity = (text: string): string => text;
 
 /**

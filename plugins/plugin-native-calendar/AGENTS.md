@@ -65,7 +65,7 @@ None. This package reads no environment variables and has no runtime configurati
 ### Add a new method to the Capacitor bridge
 
 1. Define the method signature in `src/definitions.ts` on `AppleCalendarPlugin` and add any input/output interfaces.
-2. Add a stub returning `{ ...unsupported }` in `src/web.ts` so browser targets keep compiling.
+2. Add a web fallback returning `{ ...unsupported }` in `src/web.ts` so browser targets keep compiling.
 3. Add the native implementation in `ios/Sources/CalendarPlugin/CalendarPlugin.swift`:
    - Register it in `pluginMethods` with `CAPPluginMethod(name: "myMethod", returnType: CAPPluginReturnPromise)`.
    - Implement `@objc func myMethod(_ call: CAPPluginCall)`.

@@ -78,6 +78,28 @@ function chatSendButton(page: Page): Locator {
     .or(page.getByRole("button", { name: "Send message" }));
 }
 
+function conversationLog(page: Page): Locator {
+  return page.getByRole("log", { name: /conversation history/i });
+}
+
+function userMessage(page: Page, text: string): Locator {
+  return page
+    .locator('[data-testid="chat-message"][data-role="user"]')
+    .filter({ hasText: text })
+    .last()
+    .or(conversationLog(page).locator('[data-role="user"]').filter({ hasText: text }).last())
+    .or(conversationLog(page).getByText(text).last())
+    .first();
+}
+
+function assistantMessage(page: Page): Locator {
+  return page
+    .locator('[data-testid="chat-message"][data-role="assistant"]')
+    .last()
+    .or(conversationLog(page).locator('[data-role="assistant"]').last())
+    .first();
+}
+
 async function clickIfVisible(
   locator: Locator,
   timeoutMs = 2_000,
@@ -302,17 +324,10 @@ async function expectDeterministicChatTurn(
   page: Page,
   prompt: string,
 ): Promise<void> {
-  await expect(
-    page
-      .locator('[data-testid="chat-message"][data-role="user"]')
-      .filter({ hasText: prompt })
-      .last(),
-  ).toBeVisible();
-  const assistantMessage = page
-    .locator('[data-testid="chat-message"][data-role="assistant"]')
-    .last();
-  await expect(assistantMessage).toBeVisible();
-  const assistantText = (await assistantMessage.textContent())?.trim() ?? "";
+  await expect(userMessage(page, prompt)).toBeVisible();
+  const assistant = assistantMessage(page);
+  await expect(assistant).toBeVisible();
+  const assistantText = (await assistant.textContent())?.trim() ?? "";
   const parsed = parseAssistantFixtureText(assistantText);
   expect(parsed).toMatchObject({
     fixture: "ui-smoke-assistant-v1",

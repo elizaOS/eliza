@@ -34,7 +34,7 @@ interface MobileCameraOpenOptions {
 export interface MobileCameraSource {
   /** Discover cameras visible to the OS. */
   listCameras(): Promise<CameraInfo[]>;
-  /** Open a session — may be a no-op if continuous capture isn't supported. */
+  /** Open a session when the native source supports continuous capture. */
   open(opts?: MobileCameraOpenOptions): Promise<void>;
   /** Capture a single frame as a JPEG buffer. */
   captureJpeg(): Promise<Buffer>;

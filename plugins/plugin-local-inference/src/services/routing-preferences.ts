@@ -12,4 +12,4 @@ export {
 	setPolicy,
 	setPreferredProvider,
 	writeRoutingPreferences,
-} from "@elizaos/shared";
+} from "@elizaos/shared/local-inference/routing-preferences";

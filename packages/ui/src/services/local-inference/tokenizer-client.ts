@@ -13,7 +13,7 @@
  * `mtpLlamaServer["baseUrl"]` or the `LocalInferenceEngine`'s
  * `currentBaseUrl()` once that landing is finalised). Production callers
  * should wire it through whatever service holds the live llama-server
- * reference; tests instantiate with a stub `fetch`.
+ * reference; tests instantiate with a test `fetch`.
  *
  * Caching strategy
  * ----------------

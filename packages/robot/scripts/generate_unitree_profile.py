@@ -17,6 +17,7 @@ import shutil
 import sys
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable
+from contextlib import suppress
 from pathlib import Path
 
 import yaml
@@ -112,10 +113,10 @@ def _parse_actuated_joints(mjcf_path: Path) -> list[dict]:
         lower = float(rng[0]) if len(rng) == 2 else -3.14
         upper = float(rng[1]) if len(rng) == 2 else 3.14
         if upper <= lower:
-            # Unitree R1's public MuJoCo bundle includes placeholder motors
-            # for unmodeled waist/wrist axes on inertial-only bodies parked
-            # away from the robot. Keep the actuator inventory intact while
-            # giving the profile schema a narrow valid range.
+            # Unitree R1's public MuJoCo bundle declares motors for
+            # inertial-only waist/wrist axes parked away from the robot.
+            # Keep the actuator inventory intact while giving the profile
+            # schema a narrow valid range.
             lower, upper = -0.01, 0.01
         afrng = j.attrib.get("actuatorfrcrange", "")
         torque = 50.0
@@ -138,10 +139,8 @@ def _parse_actuated_joints(mjcf_path: Path) -> list[dict]:
                 continue
             ctrl = act.attrib.get("ctrlrange", "").split()
             if len(ctrl) == 2:
-                try:
+                with suppress(ValueError):
                     joints[jname]["torque_nm"] = max(abs(float(ctrl[0])), abs(float(ctrl[1])))
-                except ValueError:
-                    pass
     ordered: list[dict] = []
     seen: set[str] = set()
     for jname in actuated:
@@ -248,7 +247,9 @@ def _build_profile_yaml(spec: dict, joints: list[dict], home: dict[str, float]) 
         "assets": {
             "mjcf_xml": f"mjcf/{spec['mjcf']}",
             "mjx_xml": f"mjcf/{spec['mjcf']}",
-            "urdf": f"mjcf/{spec['mjcf']}",  # menagerie ships MJCF only; URDF == MJCF placeholder
+            # The upstream bundles ship MJCF only; reuse that path for schema
+            # consumers that require an asset path in the URDF slot.
+            "urdf": f"mjcf/{spec['mjcf']}",
             "mesh_dir": "mjcf/assets",
             "scene_xml": f"mjcf/{spec['scene']}",
         },

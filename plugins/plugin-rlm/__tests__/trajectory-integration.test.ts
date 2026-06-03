@@ -25,7 +25,7 @@ class SuccessfulRLMClient extends RLMClient {
   ): Promise<RLMResult> {
     return {
       text: "recursive answer",
-      metadata: { stub: false, iterations: 1, depth: 1 },
+      metadata: { synthetic: false, iterations: 1, depth: 1 },
     };
   }
 }
@@ -146,7 +146,7 @@ describe("RLMTrajectoryIntegration", () => {
 
       const mockResult = {
         text: "Test response",
-        metadata: { stub: true },
+        metadata: { synthetic: true },
       };
       integration.completeInferenceStep(stepId, mockResult);
 
@@ -161,7 +161,7 @@ describe("RLMTrajectoryIntegration", () => {
       expect(() => {
         integration.completeInferenceStep("nonexistent", {
           text: "",
-          metadata: { stub: true },
+          metadata: { synthetic: true },
         });
       }).toThrow("Unknown step");
     });
@@ -270,7 +270,7 @@ describe("RLMTrajectoryIntegration", () => {
 
       integration.completeInferenceStep(stepId, {
         text: "done",
-        metadata: { stub: true },
+        metadata: { synthetic: true },
       });
 
       const exported = integration.exportTrajectoryWithCosts("traj-complete");
@@ -283,7 +283,7 @@ describe("RLMTrajectoryIntegration", () => {
 
       integration.completeInferenceStep(stepId, {
         text: "",
-        metadata: { stub: false, error: "test error" },
+        metadata: { synthetic: false, error: "test error" },
       });
 
       const exported = integration.exportTrajectoryWithCosts("traj-error");
@@ -321,7 +321,7 @@ describe("RLMTrajectoryIntegration", () => {
 
       expect(result).toBeDefined();
       expect(result.text).toBeDefined();
-      expect(result.metadata.stub).toBe(false);
+      expect(result.metadata.synthetic).toBe(false);
 
       // Should have created a trajectory
       const trajectoryIds = integration.getTrajectoryIds();
@@ -356,7 +356,7 @@ describe("RLMTrajectoryIntegration", () => {
       });
 
       expect(result).toBeDefined();
-      expect(result.metadata.stub).toBe(false);
+      expect(result.metadata.synthetic).toBe(false);
     });
   });
 
@@ -399,7 +399,7 @@ describe("inferWithLogging", () => {
 
     expect(result).toBeDefined();
     expect(result.text).toBeDefined();
-    expect(result.metadata.stub).toBe(false);
+    expect(result.metadata.synthetic).toBe(false);
   });
 
   it("should accept custom agent ID", async () => {

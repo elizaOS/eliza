@@ -28,8 +28,8 @@ import numpy as np
 import pytest
 
 from eliza_robot.rl.meta.command_parser import (
-    CommandParser,
     SKILL_DESCRIPTIONS,
+    CommandParser,
     parse_command_regex,
 )
 from eliza_robot.rl.skills.base import BaseSkill, SkillParams, SkillStatus
@@ -41,7 +41,7 @@ class _StubSkill(BaseSkill):
 
     Real walk/turn skills (`walk_skill.py`, `turn_skill.py`) live alongside
     in eliza_robot.rl.skills/ — they are not loaded here because their
-    initialization pulls in JAX/Brax and a trained checkpoint. The stub
+    initialization pulls in JAX/Brax and a trained checkpoint. This fixture
     is intentionally simple: it just confirms the registry/parser glue is
     correct, which is what would fail in production end-to-end.
     """

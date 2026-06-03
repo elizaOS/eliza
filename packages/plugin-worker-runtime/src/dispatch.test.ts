@@ -31,7 +31,7 @@ function makeRegistry(entry?: HandlerEntry): HandlerRegistry {
   };
 }
 
-function mockChannel(): {
+function createTestChannel(): {
   send: (m: RemotePluginWorkerMessage) => void;
   outbox: RemotePluginWorkerMessage[];
 } {
@@ -52,7 +52,7 @@ describe("dispatcher HMAC enforcement", () => {
     const kms = new MemoryKmsAdapter();
     const keyId = systemKey("plugin-rpc-test");
     await kms.getOrCreateKey(keyId);
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const registry = makeRegistry({
       id: "a",
       surface: "provider",
@@ -81,7 +81,7 @@ describe("dispatcher HMAC enforcement", () => {
     const kms = new MemoryKmsAdapter();
     const keyId = systemKey("plugin-rpc-test");
     await kms.getOrCreateKey(keyId);
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const registry = makeRegistry({
       id: "a",
       surface: "provider",
@@ -126,7 +126,7 @@ describe("dispatcher HMAC enforcement", () => {
       fc.asyncProperty(fc.string({ maxLength: 128 }), async (mac) => {
         fc.pre(mac.length === 0 || !/^[a-fA-F0-9]{64}$/.test(mac));
         let invoked = false;
-        const channel = mockChannel();
+        const channel = createTestChannel();
         const registry = makeRegistry({
           id: "a",
           surface: "provider",
@@ -167,7 +167,7 @@ describe("dispatcher permission gating", () => {
   it("denies action surface when no host or bun:run permission granted", async () => {
     const sink = new InMemorySink();
     const auditDispatcher = new AuditDispatcher({ sinks: [sink] });
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const registry = makeRegistry({
       id: "a",
       surface: "action",
@@ -200,7 +200,7 @@ describe("dispatcher permission gating", () => {
   it("allows action surface when bun:run is granted", async () => {
     const sink = new InMemorySink();
     const auditDispatcher = new AuditDispatcher({ sinks: [sink] });
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const registry = makeRegistry({
       id: "a",
       surface: "action",
@@ -231,7 +231,7 @@ describe("dispatcher permission gating", () => {
 
 describe("dispatcher action callbacks", () => {
   it("sends callback payloads back to the host callback channel", async () => {
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const registry = makeRegistry({
       id: "a",
       surface: "action",
@@ -276,7 +276,7 @@ describe("dispatcher action callbacks", () => {
   });
 
   it("allows provider surface with bun:read and passes runtime/message/state to the handler", async () => {
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const runtime = { marker: "runtime-proxy" };
     const calls: unknown[][] = [];
     const registry = makeRegistry({
@@ -322,7 +322,7 @@ describe("dispatcher action callbacks", () => {
   it("denies provider surface when grants exist but no read/run/host grant is present", async () => {
     const sink = new InMemorySink();
     const auditDispatcher = new AuditDispatcher({ sinks: [sink] });
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const registry = makeRegistry({
       id: "provider-1",
       surface: "provider",
@@ -362,7 +362,7 @@ describe("dispatcher action callbacks", () => {
 
   it("rejects a message whose declared surface does not match the registered target", async () => {
     let invoked = false;
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const registry = makeRegistry({
       id: "action-1",
       surface: "action",
@@ -404,7 +404,7 @@ describe("dispatcher action callbacks", () => {
 
 describe("dispatcher target and handler errors", () => {
   it("returns UNKNOWN_TARGET when no handler is registered for the rpc target", async () => {
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const dispatch = createWorkerRpcDispatcher(makeRegistry(), {
       runtime: {} as never,
       channel: { send: channel.send } as never,
@@ -430,7 +430,7 @@ describe("dispatcher target and handler errors", () => {
   });
 
   it("serializes handler exceptions into failed worker-rpc results", async () => {
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const registry = makeRegistry({
       id: "route-1",
       surface: "route",

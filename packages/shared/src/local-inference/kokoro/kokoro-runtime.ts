@@ -320,8 +320,8 @@ export class KokoroMockRuntime implements KokoroRuntime {
 }
 
 // ---------------------------------------------------------------------------
-// KokoroOnnxRuntime — legacy ONNX path stub. Real implementation lives in
-// the AOSP build pipeline; this stub keeps the symbol exported so callers
+// KokoroOnnxRuntime — legacy ONNX compatibility path. Real implementation
+// lives in the AOSP build pipeline; this class keeps the symbol exported so callers
 // that conditionally reference it (plugin-aosp-local-inference) compile.
 // ---------------------------------------------------------------------------
 

@@ -18,7 +18,7 @@ Registered in the `elizaClassicPlugin` / `plugin` export. No actions, providers,
 | `RESPONSE_HANDLER` | `handleText` |
 | `ACTION_PLANNER` | `handleText` |
 | `TEXT_COMPLETION` | `handleText` |
-| `TEXT_EMBEDDING` | `handleEmbedding` — returns a 1536-dimensional unit vector (index 0 = 1, rest = 0) |
+| `TEXT_EMBEDDING` | `handleEmbedding` — returns a deterministic 1536-dimensional lexical hashing vector |
 
 `handleText` extracts the last user turn from the prompt using a `User:|Human:|You:` regex, runs it through `generateElizaResponse`, and returns a structured JSON string with `thought`, `actions: ["REPLY"]`, `providers: []`, `text`, and `useKnowledgeProviders: false`.
 
@@ -47,7 +47,7 @@ bun run --cwd plugins/plugin-eliza-classic clean        # rm -rf dist .turbo
 bun run --cwd plugins/plugin-eliza-classic typecheck    # tsgo --noEmit
 ```
 
-`lint` and `test` are no-ops in this package.
+`lint` is skipped in this package. `test` runs the package Vitest suite.
 
 ## Config / env vars
 
@@ -82,5 +82,5 @@ bun run --cwd plugins/plugin-eliza-classic build
 - **`dev` script uses tsup**, not the custom build script. The two outputs are equivalent for the compiled JS but the `dev` watcher regenerates `.d.ts` via tsup's own dts pipeline.
 - **Browser entry is a thin re-export.** `index.browser.ts` just re-exports `index.ts`; no browser-specific divergence exists today. Keep it that way unless a genuine browser/Node difference arises.
 - **Priority 200 wins.** If this plugin is registered alongside a real LLM plugin with a lower priority, all inference will be handled by ELIZA pattern matching. Confirm load order when debugging unexpected offline behaviour.
-- **Embedding is a stub.** The 1536-dim unit vector returned by `handleEmbedding` is not semantically meaningful. It satisfies the type contract and prevents crashes but will produce nonsense similarity scores.
+- **Embeddings are lexical, not neural.** `handleEmbedding` uses deterministic bag-of-words and bigram feature hashing into a normalized 1536-dimensional vector. It is useful for offline smoke tests and rough lexical similarity, but not a substitute for a semantic embedding model.
 - **No src/ subdirectory.** Source files live directly at the package root, not under `src/`.

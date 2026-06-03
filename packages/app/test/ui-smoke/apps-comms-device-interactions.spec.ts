@@ -1152,10 +1152,30 @@ test.describe("Android communications app interactions", () => {
     await expect(
       page.getByRole("heading", { name: "Pair with Eliza" }),
     ).toBeVisible();
-    await page.getByLabel("Or paste payload").fill("123456");
+    const manualPairingPayload = Buffer.from(
+      JSON.stringify({
+        agentId: "agent-ui-smoke-manual",
+        pairingCode: "manual-ui-smoke",
+        ingressUrl: "ws://127.0.0.1:31337/input",
+        sessionToken: "session-ui-smoke-manual",
+      }),
+    ).toString("base64");
+    await page.getByLabel("Or paste payload").fill(manualPairingPayload);
     await page.getByRole("button", { name: "Pair device" }).click();
+    await expect(page.getByRole("button", { name: "Exit" })).toBeVisible();
+    await expect(page.getByTitle("Remote desktop")).toHaveAttribute(
+      "src",
+      /session-ui-smoke-manual/,
+    );
+    await expect
+      .poll(
+        async () =>
+          (await readFixture(page))?.remoteSession.openedUrls.at(-1) ?? "",
+      )
+      .toContain("session-ui-smoke-manual");
+    await page.getByRole("button", { name: "Exit" }).click();
     await expect(
-      page.getByText("Manual code requires the pairing handshake"),
+      page.getByRole("heading", { name: "Pair with Eliza" }),
     ).toBeVisible();
     await page.getByRole("button", { name: "Scan QR code" }).click();
     await expect(page.getByRole("button", { name: "Exit" })).toBeVisible();
@@ -1170,7 +1190,9 @@ test.describe("Android communications app interactions", () => {
       )
       .toContain("session-ui-smoke");
     await page.getByRole("button", { name: "Exit" }).click();
-    await expect(page.getByRole("heading", { name: "Eliza" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /^(Eliza|Pair with Eliza)$/ }),
+    ).toBeVisible();
 
     await expectNoIssues(page, issues.splice(0), "phone companion pairing");
   });

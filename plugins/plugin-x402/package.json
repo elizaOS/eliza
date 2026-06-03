@@ -63,8 +63,8 @@
     "clean": "rm -rf dist",
     "test": "vitest run",
     "typecheck": "tsgo --noEmit",
-    "lint": "echo \"Lint skipped\"",
-    "lint:check": "bun run lint"
+    "lint": "bun run typecheck",
+    "lint:check": "bun run typecheck"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

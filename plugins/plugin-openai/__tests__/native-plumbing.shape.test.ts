@@ -6,13 +6,13 @@ const aiMocks = vi.hoisted(() => ({
   streamText: vi.fn(),
 }));
 
-// `getSetting` in utils/config falls back to `process.env` when the runtime
-// stub returns undefined. The repo-root `.env` is auto-loaded by bun (and
+// `getSetting` in utils/config falls back to `process.env` when the test
+// runtime returns undefined. The repo-root `.env` is auto-loaded by bun (and
 // re-injected on dynamic import), so a developer or CI environment with
 // `OPENAI_BASE_URL=https://api.cerebras.ai/v1` or `OPENAI_SMALL_MODEL=...`
 // flips the Cerebras codepath / overrides the model default. We use
 // `vi.stubEnv` to pin env vars deterministically — vitest restores them
-// in `vi.unstubAllEnvs`, and the stubs survive bun's dotenv re-injection.
+// in `vi.unstubAllEnvs`, and the pinned values survive bun's dotenv re-injection.
 //
 // `OPENAI_BASE_URL` is pinned to a non-Cerebras URL (rather than empty)
 // because empty strings short-circuit `getSetting` to `""`, which is not

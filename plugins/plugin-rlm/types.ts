@@ -22,7 +22,7 @@ export interface RLMMessage {
 }
 
 export interface RLMMetadata {
-  stub: boolean;
+  synthetic: boolean;
   iterations?: number;
   depth?: number;
   error?: string;

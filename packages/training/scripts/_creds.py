@@ -58,9 +58,9 @@ KNOWN_CREDS: Final[frozenset[str]] = frozenset(
     }
 )
 
-# The Steward credential-proxy URL. When set, the broker first asks Steward;
-# falls back to env on any failure. The exact contract is TODO; the open
-# question is tracked in STEWARD-KMS-SPEC.md.
+# The Steward credential-proxy URL. When set, the broker first asks
+# GET /v1/creds/:name and treats a 200 plaintext body as the credential;
+# failures fall back to env.
 STEWARD_URL_ENV: Final[str] = "ELIZA_STEWARD_CREDS_URL"
 STEWARD_TIMEOUT_SEC: Final[float] = 2.0
 

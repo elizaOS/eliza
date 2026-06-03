@@ -7,7 +7,7 @@ import type { StoredEntry } from "./types.js";
  * On-disk representation of the vault.
  *
  * One file: `<workDir>/vault.json` mode 0600. Atomic writes via temp +
- * rename. No nested structures, no migration scaffolding, no version
+ * rename. No nested structures, no migration framework, no version
  * gates beyond a single integer.
  */
 

@@ -4,7 +4,7 @@ RLM (Recursive Language Model) adapter — enables Eliza agents to process arbit
 
 ## Purpose / role
 
-This plugin integrates the Recursive Language Model technique (arXiv:2512.24601) into elizaOS. It registers model handlers so that any call to `runtime.useModel(ModelType.TEXT_LARGE, ...)` (and related model types) is routed through an RLM backend, which processes long inputs by spawning a Python subprocess and communicating over JSON-RPC IPC. When the Python backend is absent, model calls fail explicitly instead of returning placeholder text. The plugin is opt-in: add `@elizaos/plugin-rlm` to your character's plugin list to enable it.
+This plugin integrates the Recursive Language Model technique (arXiv:2512.24601) into elizaOS. It registers model handlers so that any call to `runtime.useModel(ModelType.TEXT_LARGE, ...)` (and related model types) is routed through an RLM backend, which processes long inputs by spawning a Python subprocess and communicating over JSON-RPC IPC. When the Python backend is absent, model calls fail explicitly instead of returning fallback text. The plugin is opt-in: add `@elizaos/plugin-rlm` to your character's plugin list to enable it.
 
 ## Plugin surface
 
@@ -102,7 +102,7 @@ Use `RLMTrajectoryIntegration` from `trajectory-integration.ts`. It accepts an o
 ## Conventions / gotchas
 
 - **Singleton client:** `index.ts` keeps a module-level singleton `clientState`. Config changes (detected by hash) trigger a shutdown + recreation. Call `resetClient()` (exported) to force teardown in tests.
-- **No placeholder inference:** When the Python subprocess fails to start, `RLMClient.infer()` throws. Use `getStatus()` for diagnostics before routing traffic through RLM.
+- **No fallback inference:** When the Python subprocess fails to start, `RLMClient.infer()` throws. Use `getStatus()` for diagnostics before routing traffic through RLM.
 - **Python subprocess path:** The subprocess is spawned relative to `__dirname/../python`. The Python package must be installed as `elizaos_plugin_rlm` (i.e. `pip install git+https://github.com/alexzhang13/rlm.git` followed by packaging it under that module name, or use the provided server shim).
 - **`assertRecordedLlmCall` enforcement:** `RLMClient.infer()` calls `assertRecordedLlmCall` from `@elizaos/core` at entry, requiring that all calls go through `recordLlmCall()`. The plugin's `handleTextGeneration` satisfies this by wrapping the client call in `recordLlmCall`. If you call `RLMClient.infer()` directly outside a `recordLlmCall` context it will throw.
 - **No streaming:** Streaming is not supported; all model type handlers return `Promise<string>`.

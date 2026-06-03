@@ -903,7 +903,7 @@ class PrototypeAgent:
         key: Array,
         available_feature_indices: list[int] | None = None,
     ) -> tuple[PrototypeAgent, PrototypeAgentState]:
-        """Curate if ``auto_curate_every`` steps have elapsed, otherwise no-op.
+        """Curate if ``auto_curate_every`` steps have elapsed.
 
         Intended for use in the outer Python loop alongside :meth:`update`::
 
@@ -911,7 +911,7 @@ class PrototypeAgent:
                 state, result = agent.update(state, obs, reward, key)
                 agent, state = agent.maybe_curate(state, key)
 
-        When ``auto_curate_every == 0`` (default), this is always a no-op.
+        When ``auto_curate_every == 0`` (default), this returns ``(self, state)``.
 
         Args:
             state: Current agent state.

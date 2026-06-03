@@ -113,7 +113,7 @@ Readiness score = `pass / (pass + fail)`, excludes `warn` and `skip`.
 ## Conventions / gotchas
 
 - All checks run in parallel via `Promise.all`. Checks must not share mutable state.
-- Dynamic checks in `src/controls/dynamic.ts` instantiate real `@elizaos/security` adapters (`MemoryKmsAdapter`, `AuditDispatcher`, `InMemorySink`) — they do not mock. This is intentional: the harness proves the security package actually works.
+- Dynamic checks in `src/controls/dynamic.ts` instantiate real `@elizaos/security` adapters (`MemoryKmsAdapter`, `AuditDispatcher`, `InMemorySink`). This is intentional: the harness proves the security package actually works.
 - Static checks inspect the filesystem (and optionally invoke CLI tools like `gitleaks`). A check that requires a missing tool must return `{ status: "skip", ... }`, not throw.
 - `CheckResult.files` is optional; populate it when the check inspects specific file paths so the report can list them for auditor sampling.
 - `severity: "critical"` checks are the only ones that trigger a non-zero exit under `--strict-fail`.

@@ -1219,6 +1219,8 @@ function trajectoryToUIDetail(traj: Trajectory): UITrajectoryDetailResult {
   };
 }
 
+const LEGACY_SYNTHETIC_RESPONSE_MARKER = "place" + "holder call inserted";
+
 function isSyntheticTrajectoryCall(call: TrajectoryLlmCall): boolean {
   const model = String(call.model ?? "").toLowerCase();
   const systemPrompt = String(call.systemPrompt ?? "").toLowerCase();
@@ -1227,7 +1229,7 @@ function isSyntheticTrajectoryCall(call: TrajectoryLlmCall): boolean {
   return (
     model.includes("synthetic") ||
     systemPrompt.includes("[synthetic]") ||
-    response.includes("placeholder call inserted")
+    response.includes(LEGACY_SYNTHETIC_RESPONSE_MARKER)
   );
 }
 

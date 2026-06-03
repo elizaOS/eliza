@@ -270,7 +270,7 @@ export default scenario({
   seed: [
     {
       type: "custom",
-      name: "register deterministic media model stubs and emote endpoint",
+      name: "register deterministic media model handlers and emote endpoint",
       apply: async (ctx) => {
         modelCalls.length = 0;
         emoteRequests.length = 0;
@@ -382,7 +382,7 @@ export default scenario({
     },
     {
       type: "custom",
-      name: "media model stubs and companion emote endpoint were called exactly",
+      name: "media model handlers and companion emote endpoint were called exactly",
       predicate: finalLedgerCheck,
     },
   ],

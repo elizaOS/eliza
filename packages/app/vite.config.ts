@@ -1783,18 +1783,18 @@ export default defineConfig({
     // and Vite emits a hard "Rollup failed to resolve" error for node_modules
     // imports before the rolldownOptions plugin layer can intercept them.
     // This top-level Vite plugin intercepts the specifier unconditionally so
-    // the alias (when present) or the no-op stub (when absent) always wins.
+    // the alias (when present) or the browser telemetry fallback (when absent) always wins.
     {
       name: "otel-api-resolver",
       enforce: "pre" as const,
       resolveId(id: string) {
         if (id !== "@opentelemetry/api") return null;
         if (otelApiEntry) return otelApiEntry;
-        return "\0otel-api-stub";
+        return "\0otel-api-fallback";
       },
       load(id: string) {
-        if (id !== "\0otel-api-stub") return null;
-        // Minimal no-op stub satisfying the named exports that `ai` reads at
+        if (id !== "\0otel-api-fallback") return null;
+        // Minimal browser telemetry fallback satisfying the named exports that `ai` reads at
         // import time: trace, context, propagation, metrics, diag,
         // SpanStatusCode, SpanKind, ROOT_CONTEXT, createContextKey,
         // defaultTextMapPropagator, isSpanContextValid, INVALID_SPAN_CONTEXT,
@@ -2276,7 +2276,7 @@ export const INVALID_TRACER_PROVIDER = {};
           // `clearCloudSecrets`, `resolveCloudTtsBaseUrl`, etc.) from the
           // plugin; without an alias Rolldown errors with MISSING_EXPORT
           // when bundling that re-export chain for the renderer. Route the
-          // import to the local browser stub, which already provides all of
+          // import to the local browser replacement, which already provides all of
           // those names as no-ops (see `platform/empty-node-module.ts`).
           {
             find: /^@elizaos\/plugin-elizacloud$/,
@@ -2460,7 +2460,7 @@ export const INVALID_TRACER_PROVIDER = {};
         // resolve.alias above covers the case when otelApiEntry is resolved, but
         // when the bun store layout differs in CI the alias may be absent.
         // This plugin is a safety net: it resolves the bare specifier to the
-        // same entry the alias would use, falling back to a no-op stub.
+        // same entry the alias would use, falling back to a browser telemetry module.
         ...(otelApiEntry
           ? [
               {
@@ -2473,14 +2473,14 @@ export const INVALID_TRACER_PROVIDER = {};
             ]
           : [
               {
-                name: "otel-api-build-stub",
+                name: "otel-api-build-fallback",
                 resolveId(id: string) {
-                  if (id === "@opentelemetry/api") return "\0otel-api-stub";
+                  if (id === "@opentelemetry/api") return "\0otel-api-fallback";
                   return null;
                 },
                 load(id: string) {
-                  if (id === "\0otel-api-stub") {
-                    // Minimal no-op that satisfies the `trace`, `context`,
+                  if (id === "\0otel-api-fallback") {
+                    // Minimal browser telemetry module that satisfies the `trace`, `context`,
                     // `propagation`, `metrics`, `diag`, `SpanStatusCode` and
                     // `SpanKind` named exports that `ai` reads at import time.
                     return `
@@ -2523,7 +2523,7 @@ export const INVALID_TRACER_PROVIDER = {};
       // Native-only deps that must not be resolved during the browser build.
       // Node built-ins (node:fs, fs, path, etc.) are NOT externalized here —
       // they are intercepted by nativeModuleStubPlugin which replaces them
-      // with no-op Proxy stubs. Externalizing them causes Rollup to emit
+      // with browser fallback Proxy modules. Externalizing them causes Rollup to emit
       // bare `import "node:fs"` in output chunks, which the browser rejects
       // with a CSP violation.
       external: (id) => {
@@ -2553,7 +2553,7 @@ export const INVALID_TRACER_PROVIDER = {};
         manualChunks: resolveManualChunk,
       },
     },
-    // rollupOptions mirrors the otel stub from rolldownOptions above.
+    // rollupOptions mirrors the otel fallback from rolldownOptions above.
     // Vite reads rolldownOptions only when using experimental Rolldown; when
     // running with the classic Rollup bundler (@rollup/wasm-node, as in CI),
     // rolldownOptions is silently ignored and the otel-api-build-* plugin
@@ -2573,13 +2573,13 @@ export const INVALID_TRACER_PROVIDER = {};
             ]
           : [
               {
-                name: "otel-api-build-stub",
+                name: "otel-api-build-fallback",
                 resolveId(id: string) {
-                  if (id === "@opentelemetry/api") return "\0otel-api-stub";
+                  if (id === "@opentelemetry/api") return "\0otel-api-fallback";
                   return null;
                 },
                 load(id: string) {
-                  if (id !== "\0otel-api-stub") return null;
+                  if (id !== "\0otel-api-fallback") return null;
                   return `
 export const trace = { getTracer: () => ({ startSpan: () => ({end(){},setAttribute(){},setStatus(){},recordException(){},isRecording:()=>false}), startActiveSpan: (_n, _o, _ctx, fn) => { const f = typeof _ctx === 'function' ? _ctx : fn; return f && f({end(){},setAttribute(){},setStatus(){},recordException(){},isRecording:()=>false}); } }) };
 export const context = { active: () => ({}), with: (_c, fn) => fn(), bind: (_c, fn) => fn };

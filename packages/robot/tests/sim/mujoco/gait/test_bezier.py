@@ -165,6 +165,35 @@ def test_controller_reads_real_profile_gait_fields() -> None:
     assert ctl.foot_offset == pytest.approx(profile.gait.foot_offset_m)
 
 
+def test_controller_reads_real_profile_home_pose() -> None:
+    """Real profiles seed reset/base pose from kinematics joint home values."""
+    from eliza_robot.profiles import load_profile
+
+    profile = load_profile("hiwonder-ainex")
+    ctl = BezierGaitController(profile=profile)
+
+    expected = np.zeros(24, dtype=np.float64)
+    for joint in profile.kinematics.joints:
+        expected[joint.index] = joint.home_rad
+
+    np.testing.assert_allclose(ctl.reset(), expected)
+    np.testing.assert_allclose(ctl.neutral_pose, expected)
+
+
+def test_controller_reads_mapping_fixture_neutral_pose() -> None:
+    """Mapping fixtures can still provide a neutral pose without kinematics."""
+
+    neutral = np.linspace(-0.12, 0.12, 24, dtype=np.float64)
+
+    class _StubProfile:
+        gait = {"swing_height": 0.08, "cycle_hz": 1.25, "stance_width": 0.10}
+        neutral_pose = neutral
+
+    ctl = BezierGaitController(profile=_StubProfile())
+
+    np.testing.assert_allclose(ctl.reset(), neutral)
+
+
 def test_profile_foot_offset_does_not_saturate_leg_ik() -> None:
     """Large body-to-foot profile offsets are bounded before the leg IK trim."""
     from eliza_robot.sim.mujoco.gait.controller import L_KNEE, R_KNEE

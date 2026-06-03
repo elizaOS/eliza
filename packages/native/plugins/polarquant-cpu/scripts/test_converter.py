@@ -84,7 +84,7 @@ def build_synthetic_sidecar(
     workdir: Path, *, layer_name: str = "model.layers.0.mlp.gate_proj.weight"
 ) -> tuple[Path, Path, np.ndarray]:
     """Synthesize a 128x128 weight, encode via PolarQuant, save sidecar +
-    fake base model dir.  Returns (sidecar_path, base_model_dir, weight).
+    synthetic base model dir.  Returns (sidecar_path, base_model_dir, weight).
     """
     rng = np.random.default_rng(2026_05_09)
     weight_np = rng.standard_normal((128, 128)).astype(np.float32)

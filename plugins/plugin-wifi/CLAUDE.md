@@ -4,7 +4,7 @@ Android-only overlay app that lets an Eliza agent scan, inspect, and connect to 
 
 ## Purpose / role
 
-Adds a Wi-Fi management surface to the elizaOS mobile agent on Android. It registers a `wifiNetworks` provider that injects nearby network context into the agent's planner, and a full-screen overlay UI (`WifiAppView`) that the user can open from the app catalog. The plugin is opt-in: it is only registered in the overlay app catalog when `isElizaOS()` returns true (i.e., running inside the elizaOS Android host). On all other platforms (iOS, desktop, web) the side-effect entry is a no-op.
+Adds a Wi-Fi management surface to the elizaOS mobile agent on Android. It registers a `wifiNetworks` provider that injects nearby network context into the agent's planner, and a full-screen overlay UI (`WifiAppView`) that the user can open from the app catalog. The plugin is opt-in: it is only registered in the overlay app catalog when `isElizaOS()` returns true (i.e., running inside the elizaOS Android host). On all other platforms (iOS, desktop, web) the side-effect entry leaves the overlay app catalog unchanged.
 
 ## Plugin surface
 

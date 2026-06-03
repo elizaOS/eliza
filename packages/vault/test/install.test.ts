@@ -56,13 +56,14 @@ describe("install spec — table coverage", () => {
     });
   });
 
-  it("Proton Pass is manual everywhere (vendor CLI is in beta)", () => {
+  it("Proton Pass points to the official pass-cli install docs", () => {
     for (const p of ["darwin", "linux", "win32"] as const) {
       const methods = BACKEND_INSTALL_SPECS.protonpass.methods[p];
       expect(methods?.every((m) => m.kind === "manual")).toBe(true);
       const manual = methods?.[0];
       if (manual && manual.kind === "manual") {
-        expect(manual.url).toMatch(/^https:\/\/proton\.me\//);
+        expect(manual.instructions).toContain("pass-cli");
+        expect(manual.url).toBe("https://protonpass.github.io/pass-cli/");
       }
     }
   });

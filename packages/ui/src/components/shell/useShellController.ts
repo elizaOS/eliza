@@ -26,7 +26,13 @@ export interface ShellController {
   /** True while the one global chat/voice session is open. The hook other views
    *  (e.g. the homescreen apps + buttons) read to react to it. */
   isOpen: boolean;
-  send: (text: string) => void;
+  send: (
+    text: string,
+    options?: {
+      channelType?: "DM" | "VOICE_DM";
+      metadata?: Record<string, unknown>;
+    },
+  ) => void;
   /** Toggle continuous ("open voice") capture. Used by a quick tap on the mic. */
   toggleRecording: () => void;
   /** Begin capture unconditionally. Used by push-to-talk press. */
@@ -83,18 +89,32 @@ export function useShellController(): ShellController {
     }));
   }, [conversationMessages]);
 
-  const pendingSendsRef = React.useRef<string[]>([]);
+  const pendingSendsRef = React.useRef<
+    Array<{
+      text: string;
+      options?: {
+        channelType?: "DM" | "VOICE_DM";
+        metadata?: Record<string, unknown>;
+      };
+    }>
+  >([]);
 
   const send = React.useCallback(
-    (text: string) => {
+    (
+      text: string,
+      options?: {
+        channelType?: "DM" | "VOICE_DM";
+        metadata?: Record<string, unknown>;
+      },
+    ) => {
       const trimmed = text.trim();
       if (!trimmed) return;
       if (!ready) {
         // Agent still booting — queue and flush on ready instead of dropping.
-        pendingSendsRef.current.push(trimmed);
+        pendingSendsRef.current.push({ text: trimmed, options });
         return;
       }
-      void sendChatText(trimmed);
+      void sendChatText(trimmed, options);
     },
     [ready, sendChatText],
   );
@@ -105,8 +125,8 @@ export function useShellController(): ShellController {
     const queued = pendingSendsRef.current;
     if (queued.length === 0) return;
     pendingSendsRef.current = [];
-    for (const text of queued) {
-      void sendChatText(text);
+    for (const { text, options } of queued) {
+      void sendChatText(text, options);
     }
   }, [ready, sendChatText]);
 
@@ -134,7 +154,14 @@ export function useShellController(): ShellController {
           return;
         }
         setTranscript("");
-        if (text) send(text);
+        if (text) {
+          send(text, {
+            channelType: "VOICE_DM",
+            metadata: {
+              voiceSource: segment.backend,
+            },
+          });
+        }
       },
       onStateChange: (state: VoiceCaptureState) => {
         if (state === "error" || state === "stopped" || state === "idle") {
@@ -174,6 +201,19 @@ export function useShellController(): ShellController {
   }, [muted, startCapture, stopCapture]);
 
   React.useEffect(() => stopCapture, [stopCapture]);
+
+  React.useEffect(() => {
+    if (!ready || recording || captureRef.current) return;
+    let mode: string | null = null;
+    try {
+      mode = window.localStorage.getItem("eliza:voice:continuous-chat-mode");
+    } catch {
+      mode = null;
+    }
+    if (mode !== "always-on") return;
+    setIsOpen(true);
+    startCapture();
+  }, [ready, recording, startCapture]);
 
   const open = React.useCallback(() => {
     setIsOpen(true);

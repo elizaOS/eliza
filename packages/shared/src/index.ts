@@ -19,7 +19,6 @@ export * from "./cli/parse-duration.js";
 export * from "./config/allowed-hosts.js";
 export * from "./config/api-key-prefix-hints.js";
 export * from "./config/app-config.js";
-export * from "./config/app-manifest.js";
 export * from "./config/boot-config.js";
 // boot-config-react.tsx and branding-react.tsx are not barrel-exported
 // from the package root because they pull in React at module load time.
@@ -33,7 +32,6 @@ export * from "./config/config-paths.js";
 export * from "./config/distribution-profile.js";
 export * from "./config/env-vars.js";
 export * from "./config/plugin-auto-enable.js";
-export * from "./config/plugin-manifest.js";
 export * from "./config/plugin-ui-spec.js";
 export * from "./config/runtime-mode.js";
 export * from "./config/runtime-overrides.js";

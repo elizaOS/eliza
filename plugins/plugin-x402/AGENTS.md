@@ -61,7 +61,7 @@ Only scripts that exist in this package's `package.json`:
 bun run --cwd plugins/plugin-x402 build        # compile via build.ts (bun build)
 bun run --cwd plugins/plugin-x402 clean        # rm -rf dist
 bun run --cwd plugins/plugin-x402 typecheck    # tsgo --noEmit
-bun run --cwd plugins/plugin-x402 lint         # no-op (lint skipped)
+bun run --cwd plugins/plugin-x402 lint         # currently aliases typecheck
 ```
 
 ## Config / env vars
@@ -155,7 +155,7 @@ Edit `verifyPayment` in `src/payment-wrapper.ts`. Each strategy must call `repla
 - **`x402: true` requires character defaults.** Without `character.settings.x402.defaultPriceInCents` and `defaultPaymentConfigs`, `resolveEffectiveX402` returns `null` and the route responds 500.
 - **Replay protection is durable by default.** Consumed credentials are stored via `runtime.setCache`/`getCache` and survive restarts. Set `X402_REPLAY_DURABLE=0` only in tests or dev.
 - **EIP-712 proofs are disabled by default.** EIP-712 authorization signatures prove intent but not on-chain settlement; set `X402_ALLOW_EIP712_SIGNATURE_VERIFICATION=1` only if you accept that risk.
-- **Bundled example addresses are placeholders.** If payout env vars are unset, startup validation warns in dev and errors in production (`NODE_ENV=production`).
+- **Bundled example addresses are dev examples only.** If payout env vars are unset, startup validation warns in dev and errors in production (`NODE_ENV=production`).
 - **Standard X-Payment payloads (x402-fetch / CDP style) take priority** in `verifyPayment`. A decoded standard payload that fails facilitator verification is rejected outright — it does not fall through to legacy paths.
 - **Double-wrap guard.** HTTP dispatch checks `isRoutePaymentWrapped` before calling `createPaymentAwareHandler`; the `X402_ROUTE_PAYMENT_WRAPPED` symbol prevents double-wrapping if routes are processed more than once.
 - **Token price math is rational, not float.** `atomicAmountForPriceInCents` uses `BigInt` arithmetic; env price overrides are parsed as exact decimal strings.

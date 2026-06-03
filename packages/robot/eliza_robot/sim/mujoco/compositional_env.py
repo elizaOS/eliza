@@ -20,17 +20,16 @@ Usage:
     env = CompositionalEnv(walking_checkpoint="checkpoints/mujoco_locomotion_v13_flat_feet")
 """
 
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 import jax
 import jax.numpy as jp
 from ml_collections import config_dict
 from mujoco import mjx
-
 from mujoco_playground._src import mjx_env
+
 from eliza_robot.sim.mujoco import ainex_constants as consts
 from eliza_robot.sim.mujoco import base_env as ainex_base
-
 
 # Walking policy obs layout (from joystick.py):
 # gyro(3) + gravity(3) + command(3) + leg_pos(12) + leg_vel(12) + last_act(12) = 45
@@ -100,9 +99,11 @@ class CompositionalEnv(ainex_base.AiNexEnv):
     def __init__(
         self,
         walking_checkpoint: str = "checkpoints/mujoco_locomotion_v13_flat_feet",
-        config: config_dict.ConfigDict = default_config(),
-        config_overrides: Optional[Dict[str, Union[str, int, list[Any]]]] = None,
+        config: config_dict.ConfigDict | None = None,
+        config_overrides: dict[str, str | int | list[Any]] | None = None,
     ):
+        if config is None:
+            config = default_config()
         super().__init__(config=config, config_overrides=config_overrides)
         self._init_robot()
 
@@ -168,7 +169,7 @@ class CompositionalEnv(ainex_base.AiNexEnv):
         info = self._reset_task_info(info, rng, data)
 
         metrics = {}
-        for k in self._config.reward_config.scales.keys():
+        for k in self._config.reward_config.scales:
             metrics[f"reward/{k}"] = jp.zeros(())
 
         obs_history = jp.zeros(self._config.obs_history_size * self._single_obs_size)
@@ -215,7 +216,7 @@ class CompositionalEnv(ainex_base.AiNexEnv):
         done = self.get_termination(data)
 
         # Rewards: stability + task-specific
-        rewards = self._get_reward(data, action, state.info, done)
+        rewards = self._get_reward(data, action, walk_action, state.info, done)
         rewards = {
             k: v * self._config.reward_config.scales[k] for k, v in rewards.items()
         }
@@ -295,6 +296,7 @@ class CompositionalEnv(ainex_base.AiNexEnv):
         self,
         data: mjx.Data,
         action: jax.Array,
+        walk_action: jax.Array,
         info: dict[str, Any],
         done: jax.Array,
     ) -> dict[str, jax.Array]:
@@ -307,9 +309,9 @@ class CompositionalEnv(ainex_base.AiNexEnv):
             "orientation": self.cost_orientation(data),
             "torques": self.cost_torques(data),
             "action_rate": self.cost_action_rate(
+                walk_action[:NUM_LEG_JOINTS],
                 info["walk_last_act"],
                 info["walk_last_last_act"],
-                jp.zeros(NUM_LEG_JOINTS),  # placeholder for 2-step-ago
             ),
             "termination": self.cost_termination(done, info["step"]),
             "feet_slip": self.cost_feet_slip(data),

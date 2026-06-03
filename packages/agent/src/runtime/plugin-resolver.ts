@@ -17,17 +17,18 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { logger, type Plugin } from "@elizaos/core";
+import { formatError, isMobilePlatform } from "@elizaos/shared";
 import {
   applyAppManifestDefaults,
+  filterCandidatesByAppManifest,
+  readAppManifest,
+} from "@elizaos/shared/config/app-manifest";
+import {
   applyPluginManifestVerdicts,
   evaluatePluginManifests,
-  filterCandidatesByAppManifest,
-  formatError,
-  isMobilePlatform,
   type PluginManifestCandidate,
   type PluginManifestVerdict,
-  readAppManifest,
-} from "@elizaos/shared";
+} from "@elizaos/shared/config/plugin-manifest";
 
 import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";

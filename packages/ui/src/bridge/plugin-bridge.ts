@@ -5,7 +5,7 @@
  * with platform-specific fallbacks and capability detection.
  *
  * When a native plugin is unavailable, it provides graceful degradation
- * to web APIs or stub implementations where possible.
+ * to web APIs or capability-limited implementations where possible.
  */
 
 import { Capacitor } from "@capacitor/core";

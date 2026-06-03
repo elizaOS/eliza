@@ -81,34 +81,60 @@ describe("ContinuousChatOverlay", () => {
     expect(input.value).toBe("");
   });
 
-  it("expands the thread and exposes aria-expanded / a log region", () => {
+  it("expands the thread from the chat icon and exposes aria-expanded / a log region", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    const toggle = screen.getByLabelText("expand conversation");
+    const toggle = screen.getByLabelText("show conversation");
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(toggle);
     expect(
-      screen
-        .getByLabelText("collapse conversation")
-        .getAttribute("aria-expanded"),
+      screen.getByLabelText("hide conversation").getAttribute("aria-expanded"),
     ).toBe("true");
+    expect(document.getElementById("continuous-thread")).toBeTruthy();
+  });
+
+  it("reveals the thread when the composer input is focused", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    expect(document.getElementById("continuous-thread")).toBeNull();
+    fireEvent.focus(screen.getByLabelText("message"));
     expect(document.getElementById("continuous-thread")).toBeTruthy();
   });
 
   it("filters whitespace-only messages from the expanded thread", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    fireEvent.click(screen.getByLabelText("expand conversation"));
+    fireEvent.click(screen.getByLabelText("show conversation"));
     const log = document.getElementById("continuous-thread");
     expect(log?.textContent).toContain("hi there");
-    // one real message → exactly one transcript paragraph
-    expect(log?.querySelectorAll("p").length).toBe(1);
+    // one real message → exactly one transcript bubble
+    expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(1);
+  });
+
+  it("aligns the assistant bubble left and the user bubble right", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: [
+            { id: "a", role: "assistant", content: "hi there", createdAt: 1 },
+            { id: "b", role: "user", content: "hello back", createdAt: 2 },
+          ],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("show conversation"));
+    const log = document.getElementById("continuous-thread");
+    const lines = log?.querySelectorAll('[data-testid="thread-line"]');
+    expect(lines?.length).toBe(2);
+    const assistant = log?.querySelector('[data-role="assistant"]');
+    const user = log?.querySelector('[data-role="user"]');
+    expect(assistant?.className).toContain("justify-start");
+    expect(user?.className).toContain("justify-end");
   });
 
   it("collapses the expanded thread on Escape", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    fireEvent.click(screen.getByLabelText("expand conversation"));
+    fireEvent.click(screen.getByLabelText("show conversation"));
     const input = screen.getByLabelText("message");
     fireEvent.keyDown(input, { key: "Escape" });
-    expect(screen.getByLabelText("expand conversation")).toBeTruthy();
+    expect(screen.getByLabelText("show conversation")).toBeTruthy();
   });
 
   it("toggles recording when the mic is pressed", () => {

@@ -172,6 +172,14 @@ const GUI_INTERACTION_OWNERS: Readonly<
       ],
     },
   ],
+  "vector-browser": [
+    {
+      spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
+      proves:
+        "Exercises vector memory search, list/detail state, and 2D/3D projection mode controls.",
+      signals: ["vector browser controls", "vector 2D projection"],
+    },
+  ],
   feed: [
     {
       spec: "packages/app/test/ui-smoke/apps-lifeops-feed-interactions.spec.ts",
@@ -351,7 +359,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(52);
+    expect(visualCases.length).toBe(53);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

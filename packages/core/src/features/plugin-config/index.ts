@@ -1,7 +1,7 @@
 /**
  * Plugin-config — action slice.
  *
- * Re-exports the four atomic actions, the plugin scaffold, and the runtime
+ * Re-exports the four atomic actions, the plugin assembly, and the runtime
  * contract types (`PluginConfigClient`, requirements / status / delivery
  * shapes, service + event name constants).
  */

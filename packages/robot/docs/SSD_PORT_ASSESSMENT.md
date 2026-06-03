@@ -470,8 +470,9 @@ Scattered DEBUG logging pragmas:
 - `run_visualizer.py`: `logging.DEBUG if args.verbose else logging.INFO`
 - `training/finetune/*.py`: Same logging guard (not a blocker)
 
-**Labeling tool TODO**:
-- `software/labelImg/libs/canvas.py` line ~800: `# go outside of the shape's area for some reason. XXX` (not robot-critical)
+**External labeling-tool note**:
+- `software/labelImg/libs/canvas.py` line ~800 comments on shape-boundary
+  behavior in the upstream labeling UI; it is not robot-critical.
 
 ### Potential Risk Areas
 
@@ -483,7 +484,8 @@ Scattered DEBUG logging pragmas:
 
 ### Missing Roadmap Items
 
-No explicit `[NOT STARTED]` sections found. Code appears actively maintained (latest checkpoint is `v20`, March 26).
+No explicit unstarted sections found. Code appears actively maintained (latest
+checkpoint is `v20`, March 26).
 
 ---
 
@@ -565,7 +567,7 @@ type GroundedIntent = {
    - Dependency: MuJoCo envs, Brax
 
 ### Phase 3: Plugin (Weeks 3–4)
-6. **TypeScript plugin stub** → `plugins/plugin-ainex/`
+6. **TypeScript plugin port** → `plugins/plugin-ainex/`
    - Actions: walk_command, walk_set, policy_start/stop, head_set, action_play
    - Providers: robot_state, environment_state
    - Bridge client wrapper
@@ -693,4 +695,3 @@ plugin-ainex/ ← (execution_service.ts, bridge_client.py)
 ---
 
 **End of Assessment**
-

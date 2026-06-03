@@ -4,7 +4,7 @@ Deterministic ELIZA-style pattern-matching model handlers for [elizaOS](https://
 
 ## What it does
 
-This plugin registers model handlers that intercept every text-inference call an Eliza agent makes and replies with keyword-pattern responses modelled after the 1966 ELIZA chatbot. It also provides a stub embedding handler that returns a 1536-dimensional unit vector.
+This plugin registers model handlers that intercept every text-inference call an Eliza agent makes and replies with keyword-pattern responses modelled after the 1966 ELIZA chatbot. It also provides a deterministic lexical embedding handler that returns a normalized 1536-dimensional hashing vector.
 
 Use cases:
 
@@ -17,7 +17,7 @@ Use cases:
 | Capability | Detail |
 |---|---|
 | Text generation | Pattern-matches the user turn using ~16 keyword regexes (mother, feel, think, want, I am, …) and returns a reflective question. Falls back to "Please go on." |
-| Embeddings | Returns a fixed 1536-dim unit vector (index 0 = 1, rest = 0). Satisfies the type contract; not semantically meaningful. |
+| Embeddings | Returns a deterministic normalized 1536-dim lexical hashing vector. Useful for offline smoke tests and rough lexical similarity; not a neural semantic embedding. |
 
 Exported helpers:
 - `generateElizaResponse(input: string): string` — run the pattern matcher directly.
@@ -55,4 +55,3 @@ bun run --cwd plugins/plugin-eliza-classic build
 ```
 
 Output goes to `dist/`. Browser and Node ESM bundles are produced separately (`index.js` / `index.browser.js`).
-

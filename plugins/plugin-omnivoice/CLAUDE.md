@@ -4,7 +4,7 @@ Local text-to-speech for Eliza agents via omnivoice.cpp (k2-fsa OmniVoice) — v
 
 ## Purpose / role
 
-Registers `ModelType.TEXT_TO_SPEECH` backed by the `libomnivoice` shared library (a Bun FFI binding to the omnivoice.cpp C ABI). Gives an Eliza agent fully local, offline TTS with zero cloud round-trip: voice design by attribute keywords, voice cloning from a reference WAV, and an optional singing codepath using a separate model GGUF. Not enabled by default — auto-enables only when model GGUFs are present at a known path, `OMNIVOICE_MODEL_PATH`+`OMNIVOICE_CODEC_PATH` are set, or `features.localTts` is true in agent config. Browser bundles export an inert stub (no native FFI in browsers).
+Registers `ModelType.TEXT_TO_SPEECH` backed by the `libomnivoice` shared library (a Bun FFI binding to the omnivoice.cpp C ABI). Gives an Eliza agent fully local, offline TTS with zero cloud round-trip: voice design by attribute keywords, voice cloning from a reference WAV, and an optional singing codepath using a separate model GGUF. Not enabled by default — auto-enables only when model GGUFs are present at a known path, `OMNIVOICE_MODEL_PATH`+`OMNIVOICE_CODEC_PATH` are set, or `features.localTts` is true in agent config. Browser bundles expose an unavailable entry because native FFI is not present in browsers.
 
 ## Plugin surface
 
@@ -13,7 +13,7 @@ This plugin registers model handlers only — no actions, providers, evaluators,
 | Model type | Handler |
 |---|---|
 | `ModelType.TEXT_TO_SPEECH` | Synthesizes speech or singing from text; returns a WAV `Buffer`. Accepts a plain string or an `OmnivoiceTtsInput` object. |
-| `ModelType.TRANSCRIPTION` | Stub that always throws `OmnivoiceTranscriptionNotSupported`. omnivoice.cpp has no ASR head; pair with plugin-elevenlabs, plugin-deepgram, or Whisper for STT. |
+| `ModelType.TRANSCRIPTION` | Unsupported handler that always throws `OmnivoiceTranscriptionNotSupported`. omnivoice.cpp has no ASR head; pair with plugin-elevenlabs, plugin-deepgram, or Whisper for STT. |
 
 ## Layout
 
@@ -22,7 +22,7 @@ plugins/plugin-omnivoice/
   src/
     index.ts            Plugin definition (omnivoicePlugin), model handler wiring, settings loader
     index.node.ts       Node/Bun entry re-export (no functional delta)
-    index.browser.ts    Browser stub — throws OmnivoiceNotInstalled for any TTS call
+    index.browser.ts    Browser unavailable entry — throws OmnivoiceNotInstalled for any TTS call
     ffi.ts              bun:ffi binding: OmnivoiceContext class, C ABI struct layouts, dlopen loader
     synth.ts            High-level synthesis: marshals OmnivoiceSynthesizeOptions to C params, pcmFloatToWavBuffer
     singing.ts          Singing model codepath: separate lazy OmnivoiceContext, runSingingSynthesis
@@ -83,7 +83,7 @@ Auto-enable also responds to agent config `features.localTts: true` or `features
 
 ## Conventions / gotchas
 
-- **Bun-only runtime.** The FFI layer uses `bun:ffi` (`dlopen`, `JSCallback`, `ptr`, `toArrayBuffer`). The plugin will throw `OmnivoiceNotInstalled` in Node.js without Bun's native FFI. The browser build exports a no-op stub.
+- **Bun-only runtime.** The FFI layer uses `bun:ffi` (`dlopen`, `JSCallback`, `ptr`, `toArrayBuffer`). The plugin will throw `OmnivoiceNotInstalled` in Node.js without Bun's native FFI. The browser build exports an unavailable entry that throws on TTS calls.
 - **libomnivoice must be built separately.** The shared library is not bundled. Build it with `node plugins/plugin-local-inference/native/build-omnivoice.mjs` from the repo root; it produces `libomnivoice.{so,dylib,dll}` in `plugins/plugin-local-inference/native/omnivoice.cpp/build/`. Set `OMNIVOICE_LIB_PATH` to that file (the C source and ABI header live at `plugins/plugin-local-inference/native/omnivoice.cpp/src/`).
 - **GGUFs from HuggingFace.** Download from `https://huggingface.co/Serveurperso/OmniVoice-GGUF`. The speech and codec GGUFs are required independently.
 - **C ABI versioning.** `OV_ABI_VERSION = 2` in `ffi.ts` must match the version the shared library was built with. A mismatch causes `ov_init` to return NULL.
@@ -91,6 +91,6 @@ Auto-enable also responds to agent config `features.localTts: true` or `features
 - **Context caching.** Both the speech context (`src/index.ts`) and the singing context (`src/singing.ts`) are cached at module scope for the process lifetime. Shutdown hooks (`src/shutdown.ts`) release them on `beforeExit`/`SIGTERM`/`SIGINT`. Tests use `_resetSingingCache()` and `_clearOmnivoiceClosers()` to reset state between runs.
 - **Streaming.** `OmnivoiceContext.synthesize()` accepts an `onChunk` callback (mapped to `ov_audio_chunk_cb` via `bun:ffi` `JSCallback`). The callback returns `false` to cancel. The `JSCallback` handle is closed immediately after `ov_synthesize` returns — do not retain it.
 - **Output format.** The model handler returns a 16-bit PCM WAV `Buffer` (44-byte RIFF header + int16 samples), not raw Float32 PCM. `pcmFloatToWavBuffer` in `src/synth.ts` performs the conversion.
-- **TRANSCRIPTION stub.** The plugin registers `ModelType.TRANSCRIPTION` only to surface a clear error. If your agent needs STT, load a separate plugin.
+- **Unsupported transcription.** The plugin registers `ModelType.TRANSCRIPTION` only to surface a clear error. If your agent needs STT, load a separate plugin.
 
 See root `AGENTS.md` for repo-wide architecture rules, logger conventions, and ESM standards.

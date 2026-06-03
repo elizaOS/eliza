@@ -16,7 +16,7 @@ import z from "zod";
 /**
  * Reserved object keys we never want to allow as connector names —
  * the server clones config objects defensively, so a `__proto__`
- * connector name would silently no-op or pollute the object's
+ * connector name would be ignored or pollute the object's
  * prototype chain. The wire-level schema rejects upfront.
  */
 const RESERVED_OBJECT_KEYS = new Set(["__proto__", "constructor", "prototype"]);

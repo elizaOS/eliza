@@ -85,8 +85,8 @@ export interface SchedulerDeps {
 	sink?: AudioSink;
 	phraseCache?: PhraseCache;
 	/** Optional. Required only when `config.chunkerConfig.chunkOn ===
-	 *  'phoneme-stream'`. Pass a real tokenizer in production; tests may
-	 *  pass `CharacterPhonemeStub`. */
+	 *  'phoneme-stream'`. Defaults are available from
+	 *  `createDefaultPhonemeTokenizer()`. */
 	phonemeTokenizer?: PhonemeTokenizer;
 }
 

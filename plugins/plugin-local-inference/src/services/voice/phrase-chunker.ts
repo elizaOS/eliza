@@ -94,7 +94,7 @@ export class PhraseChunker {
 		this.tokenizer = tokenizer;
 		if (this.chunkOn === "phoneme-stream" && this.tokenizer === null) {
 			throw new Error(
-				"PhraseChunker: chunkOn='phoneme-stream' requires a PhonemeTokenizer (pass CharacterPhonemeStub for testing or a real tokenizer for production)",
+				"PhraseChunker: chunkOn='phoneme-stream' requires a PhonemeTokenizer",
 			);
 		}
 	}

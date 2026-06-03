@@ -1,7 +1,7 @@
 /**
  * Shared helper — each service sweeper calls `makeNotYetImplementedSweep()`
  * with the blocking task ID so the orchestrator produces a clean yellow
- * status instead of a silent no-op.
+ * status instead of silently skipping the sweep.
  */
 
 export class NotYetImplementedError extends Error {

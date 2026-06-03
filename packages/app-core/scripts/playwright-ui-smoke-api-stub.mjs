@@ -194,6 +194,13 @@ const smokeViewDeclarations = [
     "tui",
   ],
   [
+    "vector-browser",
+    "Vector Browser",
+    "plugin-vector-browser",
+    "/vector-browser",
+    "VectorBrowserView",
+  ],
+  [
     "2004scape",
     "2004Scape",
     "plugin-2004scape",

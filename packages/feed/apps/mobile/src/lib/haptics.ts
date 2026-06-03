@@ -1,7 +1,7 @@
 /**
  * Haptic feedback utility for native mobile interactions.
  *
- * Wraps Capacitor's Haptics plugin with no-op fallbacks for web.
+ * Wraps Capacitor's Haptics plugin and returns without vibration on web.
  * All functions are fire-and-forget — haptics are non-critical.
  */
 

@@ -88,10 +88,12 @@ endif()
 # only the scalar reference and the dispatcher get linked. Sister tasks
 # add tbq_*_neon.c / tbq_*_avx2.c here.
 if(TURBOQUANT_X86)
-    # placeholder: AVX2 sister kernels will land in a follow-up task.
+    # x86 currently links the scalar reference through the dispatcher.
+    # Add tbq_*_avx2.c here when the AVX2 lane is added.
 endif()
 if(TURBOQUANT_ARM)
-    # placeholder: NEON sister kernels will land in a follow-up task.
+    # ARM currently links the scalar reference through the dispatcher.
+    # Add tbq_*_neon.c here when the NEON lane is added.
 endif()
 
 # turboquant_smoke: block-encode/decode round-trip for TBQ3/TBQ4. Asserts

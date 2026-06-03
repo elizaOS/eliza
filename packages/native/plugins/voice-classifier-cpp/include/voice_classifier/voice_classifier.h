@@ -40,8 +40,8 @@
  *     weights.
  *
  *   - **Error handling.** All entry points return `int`: zero on
- *     success, negative `errno`-style codes on failure (`-ENOSYS` from
- *     the stub TUs, `-ENOENT` for missing GGUF, `-EINVAL` for shape /
+ *     success, negative `errno`-style codes on failure (`-ENOSYS` for
+ *     unavailable forward graphs, `-ENOENT` for missing GGUF, `-EINVAL` for shape /
  *     argument mismatch, `-ENOMEM` for allocation failures). On any
  *     non-zero return the function clears its out-parameters so the
  *     caller cannot accidentally read uninitialized memory.
@@ -49,12 +49,12 @@
  *   - **Threading.** Reentrant against distinct handles. Sharing one
  *     handle across threads is the caller's mutex problem.
  *
- * The companion stub TUs in `src/voice_classifier_stub.c` return
- * `-ENOSYS` for every model entry point so callers can compile and link
- * against this library while the real ggml-backed port lands. The class
- * names, the cosine-distance helper, and the mel extractor are NOT
- * stubbed — they are real implementations and are used by the test
- * suite today.
+ * The emotion, speaker, and diarizer heads now have scalar C forward
+ * implementations behind the same ABI. The audio EOT head intentionally
+ * returns `-ENOSYS` from `voice_eot_score` until an upstream audio-turn
+ * model is pinned and converted. The class names, the cosine-distance
+ * helper, and the mel extractor are real implementations and are used by
+ * the test suite today.
  */
 
 #ifndef VOICE_CLASSIFIER_VOICE_CLASSIFIER_H
@@ -106,7 +106,6 @@ typedef void *voice_emotion_handle;
  * `scripts/voice_emotion_to_gguf.py`. Writes the new handle into `*out`.
  *
  * Returns 0 on success.
- * Returns `-ENOSYS` from the stub.
  * Returns `-ENOENT` if `gguf` does not name a readable file.
  * Returns `-EINVAL` if `out` is NULL or the GGUF's
  *   `voice_emotion.variant` metadata key does not match this header's
@@ -123,7 +122,6 @@ VOICE_CLASSIFIER_API int voice_emotion_open(const char *gguf, voice_emotion_hand
  * Returns 0 on success and writes a probability vector that sums to ~1.
  * Returns `-EINVAL` on NULL handle, NULL `pcm_16khz`, NULL `probs`, or
  *   zero `n`.
- * Returns `-ENOSYS` from the stub.
  * On failure the `probs` array (when non-NULL) is zeroed.
  */
 VOICE_CLASSIFIER_API int voice_emotion_classify(voice_emotion_handle h,
@@ -134,9 +132,7 @@ VOICE_CLASSIFIER_API int voice_emotion_classify(voice_emotion_handle h,
 /*
  * Release an emotion-classifier session. NULL-safe.
  *
- * Returns 0 on success, `-ENOSYS` from the stub when called with a
- * non-NULL handle (the stub never produces a real handle, so a non-NULL
- * argument is a misuse the stub surfaces explicitly).
+ * Returns 0 on success.
  */
 VOICE_CLASSIFIER_API int voice_emotion_close(voice_emotion_handle h);
 
@@ -168,7 +164,9 @@ typedef void *voice_eot_handle;
 /*
  * Open an EOT detector session against a GGUF file produced by
  * `scripts/voice_eot_to_gguf.py`. Same contract as the other `*_open`
- * entry points. Returns `-ENOSYS` from the stub.
+ * entry points. The current implementation validates metadata and can
+ * return 0 for a readable compatible GGUF even though `voice_eot_score`
+ * remains unavailable.
  */
 VOICE_CLASSIFIER_API int voice_eot_open(const char *gguf, voice_eot_handle *out);
 
@@ -179,7 +177,7 @@ VOICE_CLASSIFIER_API int voice_eot_open(const char *gguf, voice_eot_handle *out)
  * Returns 0 on success.
  * Returns `-EINVAL` on NULL handle, NULL `pcm_16khz`, NULL `eot_prob`,
  *   or zero `n`.
- * Returns `-ENOSYS` from the stub.
+ * Returns `-ENOSYS` while the audio EOT forward graph is unavailable.
  * On failure `*eot_prob` (when non-NULL) is set to 0.
  */
 VOICE_CLASSIFIER_API int voice_eot_score(voice_eot_handle h,
@@ -198,7 +196,7 @@ typedef void *voice_speaker_handle;
 /*
  * Open a speaker-encoder session against a GGUF file produced by
  * `scripts/voice_speaker_to_gguf.py`. Same contract as the other
- * `*_open` entry points. Returns `-ENOSYS` from the stub.
+ * `*_open` entry points.
  */
 VOICE_CLASSIFIER_API int voice_speaker_open(const char *gguf, voice_speaker_handle *out);
 
@@ -209,7 +207,6 @@ VOICE_CLASSIFIER_API int voice_speaker_open(const char *gguf, voice_speaker_hand
  * Returns 0 on success.
  * Returns `-EINVAL` on NULL handle, NULL `pcm_16khz`, NULL `embedding`,
  *   or zero `n`.
- * Returns `-ENOSYS` from the stub.
  * On failure `embedding` (when non-NULL) is zeroed.
  */
 VOICE_CLASSIFIER_API int voice_speaker_embed(voice_speaker_handle h,
@@ -272,7 +269,7 @@ typedef void *voice_diarizer_handle;
 /*
  * Open a diarizer session against a GGUF file produced by
  * `scripts/voice_diarizer_to_gguf.py`. Same contract as the other
- * `*_open` entry points. Returns `-ENOSYS` from the stub.
+ * `*_open` entry points.
  */
 VOICE_CLASSIFIER_API int voice_diarizer_open(const char *gguf, voice_diarizer_handle *out);
 
@@ -291,7 +288,6 @@ VOICE_CLASSIFIER_API int voice_diarizer_open(const char *gguf, voice_diarizer_ha
  * Returns 0 on success.
  * Returns `-EINVAL` on NULL handle / pcm / labels_out, or zero `n`.
  * Returns `-ENOSPC` when `*frames_capacity_inout < frames_per_window`.
- * Returns `-ENOSYS` from the stub.
  * On any failure `labels_out` (when non-NULL and the size was
  * adequate) is zeroed.
  */

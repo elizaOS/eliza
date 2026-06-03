@@ -1,7 +1,7 @@
 /**
  * WhatsApp ConnectorAccountManager provider.
  *
- * Adapts the existing multi-account scaffolding in `accounts.ts` to the
+ * Adapts the existing multi-account resolution in `accounts.ts` to the
  * `ConnectorAccountProvider` contract from
  * `@elizaos/core/connectors/account-manager`.
  *
@@ -103,8 +103,8 @@ export function createWhatsAppConnectorAccountProvider(
       return { ...patch, provider: WHATSAPP_PROVIDER_ID };
     },
     deleteAccount: async (_accountId: string, _manager: ConnectorAccountManager) => {
-      // Persistent credentials live in character settings / env; deletion at
-      // the manager layer is a no-op marker.
+      // Persistent credentials live in character settings / env, so this
+      // provider cannot delete them through ConnectorAccountManager state.
     },
     // WhatsApp Cloud API: provisioning is via Meta Business Manager. Baileys
     // uses QR pairing handled separately in `pairing-service.ts`. No OAuth.

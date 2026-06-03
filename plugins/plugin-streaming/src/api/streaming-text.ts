@@ -1,4 +1,4 @@
-export type StreamingUpdateKind = "noop" | "append" | "replace";
+export type StreamingUpdateKind = "unchanged" | "append" | "replace";
 
 export interface StreamingUpdate {
   kind: StreamingUpdateKind;
@@ -110,7 +110,7 @@ export function resolveStreamingUpdate(
 ): StreamingUpdate {
   const nextText = mergeStreamingText(existing, incoming);
   if (nextText === existing) {
-    return { kind: "noop", nextText: existing, emittedText: "" };
+    return { kind: "unchanged", nextText: existing, emittedText: "" };
   }
 
   if (nextText.startsWith(existing)) {

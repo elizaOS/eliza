@@ -62,6 +62,9 @@ function SoftButton({
   glyph,
   label,
   onClick,
+  onPointerDown,
+  onPointerUp,
+  onPointerCancel,
   disabled,
   active,
   testId,
@@ -69,6 +72,9 @@ function SoftButton({
   glyph: string;
   label: string;
   onClick?: () => void;
+  onPointerDown?: React.PointerEventHandler<HTMLButtonElement>;
+  onPointerUp?: React.PointerEventHandler<HTMLButtonElement>;
+  onPointerCancel?: React.PointerEventHandler<HTMLButtonElement>;
   disabled?: boolean;
   active?: boolean;
   testId?: string;
@@ -83,6 +89,9 @@ function SoftButton({
       // label/reason is announceable; the click is guarded instead.
       aria-disabled={disabled}
       onClick={disabled ? undefined : onClick}
+      onPointerDown={disabled ? undefined : onPointerDown}
+      onPointerUp={disabled ? undefined : onPointerUp}
+      onPointerCancel={disabled ? undefined : onPointerCancel}
       className={cn(
         "grid h-8 w-8 shrink-0 place-items-center rounded-full border transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
@@ -119,26 +128,26 @@ function TypingDots(): React.JSX.Element {
   );
 }
 
-function Chevron({ up }: { up: boolean }): React.JSX.Element {
+/** Speech-bubble glyph for the expand/collapse affordance at the top of the stack. */
+function ChatIcon(): React.JSX.Element {
   return (
     <svg
-      width="16"
-      height="16"
+      width="18"
+      height="18"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      style={{ transform: up ? "rotate(180deg)" : undefined }}
       aria-hidden="true"
     >
-      <path d="m18 15-6-6-6 6" />
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
     </svg>
   );
 }
 
-/** One line of the flowing transcript — speaker is conveyed by weight/opacity, not a box. */
+/** One turn of the transcript as a chat bubble — assistant on the left, user on the right. */
 function ThreadLine({
   message,
   floating,
@@ -148,20 +157,38 @@ function ThreadLine({
 }): React.JSX.Element {
   const isUser = message.role === "user";
   return (
-    <p
+    <div
+      data-testid="thread-line"
+      data-role={message.role}
       className={cn(
-        "text-[14px] leading-relaxed",
-        floating ? "mb-1.5" : "mb-3",
-        // User turns: quieter + italic, but a touch of top space so a short user
-        // line reads as its own turn, not a caption for the reply beneath it.
-        isUser ? "italic text-white/70" : "text-white/90",
-        !floating && isUser && "mt-1",
-        floating && FLOAT_SHADOW,
-        floating && !isUser && "text-white/80",
+        "flex w-full",
+        floating ? "mb-1.5" : "mb-2.5",
+        isUser ? "justify-end" : "justify-start",
       )}
     >
-      {message.content}
-    </p>
+      <div
+        className={cn(
+          "max-w-[80%] rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed",
+          // Inside the expanded glass sheet, light bubbles read against the dark
+          // scrim; floating (whisper) bubbles carry their own dark glass so they
+          // stay legible over whatever view is behind.
+          isUser ? "rounded-br-md" : "rounded-bl-md",
+          floating
+            ? cn(
+                "border backdrop-blur-md",
+                isUser
+                  ? "border-white/15 bg-black/55 text-white"
+                  : "border-white/10 bg-black/45 text-white/90",
+                FLOAT_SHADOW,
+              )
+            : isUser
+              ? "bg-white/20 text-white"
+              : "bg-white/10 text-white/90",
+        )}
+      >
+        {message.content}
+      </div>
+    </div>
   );
 }
 
@@ -177,16 +204,24 @@ export function ContinuousChatOverlay({
     canSend,
     recording,
     toggleRecording,
+    startRecording,
+    stopRecording,
     transcript,
   } = controller;
 
   const [draft, setDraft] = React.useState("");
   const [expanded, setExpanded] = React.useState(false);
   const [whisperVisible, setWhisperVisible] = React.useState(false);
+  const [pushToTalkActive, setPushToTalkActive] = React.useState(false);
   const endRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const threadRef = React.useRef<HTMLDivElement>(null);
+  const composerRef = React.useRef<HTMLDivElement>(null);
+  const topBarRef = React.useRef<HTMLDivElement>(null);
   const focusThreadRef = React.useRef(false);
+  const pushToTalkTimerRef = React.useRef<number | null>(null);
+  const pushToTalkActiveRef = React.useRef(false);
+  const suppressMicClickRef = React.useRef(false);
 
   const visibleMessages = messages.filter((m) => m.content.trim());
   const recent = visibleMessages.slice(-3);
@@ -196,6 +231,7 @@ export function ContinuousChatOverlay({
   const booting = phase === "booting";
   const listening = phase === "listening";
   const responding = phase === "responding";
+  const hasDraft = draft.trim().length > 0;
 
   // Whisper: when a genuinely NEW line arrives while collapsed, surface the
   // recent lines for 12s. Keyed on the last message id (not length, and the
@@ -212,6 +248,15 @@ export function ContinuousChatOverlay({
   React.useEffect(() => {
     if (expanded) setWhisperVisible(false);
   }, [expanded]);
+
+  React.useEffect(
+    () => () => {
+      if (pushToTalkTimerRef.current !== null) {
+        window.clearTimeout(pushToTalkTimerRef.current);
+      }
+    },
+    [],
+  );
 
   // messages.length and expanded are intentional triggers: re-scroll to the
   // latest line whenever the thread grows or the panel expands (body reads refs).
@@ -233,6 +278,50 @@ export function ContinuousChatOverlay({
     inputRef.current?.focus();
   }, [draft, canSend, send]);
 
+  const clearPushToTalkTimer = React.useCallback(() => {
+    if (pushToTalkTimerRef.current === null) return;
+    window.clearTimeout(pushToTalkTimerRef.current);
+    pushToTalkTimerRef.current = null;
+  }, []);
+
+  const beginPushToTalkPress = React.useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      if (hasDraft || recording || booting || event.button !== 0) return;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      clearPushToTalkTimer();
+      pushToTalkTimerRef.current = window.setTimeout(() => {
+        pushToTalkTimerRef.current = null;
+        pushToTalkActiveRef.current = true;
+        setPushToTalkActive(true);
+        startRecording();
+      }, 200);
+    },
+    [booting, clearPushToTalkTimer, hasDraft, recording, startRecording],
+  );
+
+  const endPushToTalkPress = React.useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      clearPushToTalkTimer();
+      if (!pushToTalkActiveRef.current) return;
+      suppressMicClickRef.current = true;
+      pushToTalkActiveRef.current = false;
+      setPushToTalkActive(false);
+      stopRecording();
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    },
+    [clearPushToTalkTimer, stopRecording],
+  );
+
+  const handleMicClick = React.useCallback(() => {
+    if (suppressMicClickRef.current) {
+      suppressMicClickRef.current = false;
+      return;
+    }
+    toggleRecording();
+  }, [toggleRecording]);
+
   const hasThread = visibleMessages.length > 0;
 
   const toggleExpand = React.useCallback(() => {
@@ -248,7 +337,34 @@ export function ContinuousChatOverlay({
     inputRef.current?.focus();
   }, []);
 
-  const hasDraft = draft.trim().length > 0;
+  // Click into the composer → reveal the thread, but keep keyboard focus in the
+  // input (don't arm the thread-focus move) so the user can type immediately.
+  const expand = React.useCallback(() => {
+    if (!hasThread) return;
+    setExpanded(true);
+  }, [hasThread]);
+
+  // Click anywhere outside the chat surface (composer, thread, or the top
+  // chat-icon) → hide the thread. The overlay root is pointer-events-none, so a
+  // document-level listener catches clicks that land on the live view behind.
+  React.useEffect(() => {
+    if (!expanded) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (
+        threadRef.current?.contains(target) ||
+        composerRef.current?.contains(target) ||
+        topBarRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setExpanded(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () =>
+      document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [expanded]);
 
   return (
     <div
@@ -262,6 +378,30 @@ export function ContinuousChatOverlay({
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 bottom-0 h-72 bg-gradient-to-t from-black/45 via-black/15 to-transparent"
       />
+
+      {/* Chat icon — the single affordance to expand/collapse the thread. */}
+      {hasThread ? (
+        <div ref={topBarRef} className="pointer-events-auto relative mb-2">
+          <button
+            type="button"
+            aria-label={expanded ? "hide conversation" : "show conversation"}
+            aria-expanded={expanded}
+            aria-controls={
+              expanded && hasThread ? "continuous-thread" : undefined
+            }
+            onClick={toggleExpand}
+            className={cn(
+              "grid h-9 w-9 place-items-center rounded-full border transition-colors",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
+              expanded
+                ? "border-white/40 bg-white/85 text-black"
+                : "border-white/15 bg-black/45 text-white/80 backdrop-blur-xl hover:bg-white/15 hover:text-white",
+            )}
+          >
+            <ChatIcon />
+          </button>
+        </div>
+      ) : null}
 
       {/* Expanded — the one continuous thread, as a single flowing transcript */}
       {expanded && hasThread ? (
@@ -282,6 +422,8 @@ export function ContinuousChatOverlay({
           className={cn(
             GLASS_SHEET,
             "pointer-events-auto relative mb-3 max-h-[58vh] w-full max-w-xl overflow-y-auto px-5 py-4",
+            // No visible scrollbar — the thread still scrolls, the chrome just hides.
+            "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
           )}
         >
@@ -337,7 +479,10 @@ export function ContinuousChatOverlay({
       ) : null}
 
       {/* The always-present ambient composer (the heart of the layer) */}
-      <div className="pointer-events-auto relative w-full max-w-xl">
+      <div
+        ref={composerRef}
+        className="pointer-events-auto relative w-full max-w-xl"
+      >
         {/* Soft breath of light for live states — not a brand-colored alert ring.
             Always mounted; only opacity changes so it swells in/out over 700ms. */}
         <div
@@ -351,27 +496,11 @@ export function ContinuousChatOverlay({
           )}
         />
         <div className={cn(GLASS_BAR, "relative")}>
-          <button
-            type="button"
-            aria-label={
-              expanded ? "collapse conversation" : "expand conversation"
-            }
-            aria-expanded={expanded}
-            aria-controls={
-              expanded && hasThread ? "continuous-thread" : undefined
-            }
-            onClick={toggleExpand}
-            className={cn(
-              "grid h-8 w-7 shrink-0 place-items-center rounded-full text-white/70 transition-colors hover:text-white",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
-            )}
-          >
-            <Chevron up={expanded} />
-          </button>
           <input
             ref={inputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            onFocus={expand}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -406,10 +535,19 @@ export function ContinuousChatOverlay({
           ) : (
             <SoftButton
               glyph={MIC_GLYPH}
-              label={recording ? "stop listening" : "talk"}
+              label={
+                pushToTalkActive
+                  ? "release to send"
+                  : recording
+                    ? "stop listening"
+                    : "talk"
+              }
               active={recording}
               disabled={booting}
-              onClick={toggleRecording}
+              onClick={handleMicClick}
+              onPointerDown={beginPushToTalkPress}
+              onPointerUp={endPushToTalkPress}
+              onPointerCancel={endPushToTalkPress}
             />
           )}
         </div>

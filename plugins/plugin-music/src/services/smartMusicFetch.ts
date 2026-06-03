@@ -1,6 +1,6 @@
 import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
 
-// Local stubs for the optional torrent peer plugins. They aren't always
+// Local contracts for the optional torrent peer plugins. They aren't always
 // installed in the host workspace; we resolve them at runtime via
 // runtime.getService(...) and only need a minimal contract here for tsc.
 interface TorrentSearchResult {

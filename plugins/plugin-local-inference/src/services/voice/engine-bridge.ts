@@ -31,12 +31,7 @@ import os from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import {
-	type KokoroEngineDiscoveryResult,
-	KokoroTtsBackend,
-	pickKokoroRuntimeBackend,
-	type VoiceCancellationReason,
-} from "@elizaos/shared";
+import type { VoiceCancellationReason } from "@elizaos/shared";
 import { localInferenceRoot } from "../paths";
 import {
 	type CoordinatorRuntime,
@@ -49,6 +44,9 @@ import type {
 	NativeVerifierEvent,
 } from "./ffi-bindings";
 import { loadElizaInferenceFfi } from "./ffi-bindings";
+import { KokoroTtsBackend } from "./kokoro/kokoro-backend";
+import type { KokoroEngineDiscoveryResult } from "./kokoro/kokoro-engine-discovery";
+import { pickKokoroRuntimeBackend } from "./kokoro/pick-runtime";
 import {
 	VoiceLifecycle,
 	VoiceLifecycleError,

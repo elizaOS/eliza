@@ -4,7 +4,7 @@
  *
  * The plugin manifest's `app.navTabs` declaration carries a `componentExport`
  * specifier as a fallback for hosts that don't side-effect-import this file,
- * but bundling the component directly avoids the lazy-load placeholder.
+ * but bundling the component directly avoids the lazy-load fallback path.
  *
  * Load this module once during app startup to register the page.
  */

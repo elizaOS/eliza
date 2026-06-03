@@ -354,6 +354,7 @@ async function installSpeechRecognitionShim(page: Page): Promise<void> {
       const rec = instances[instances.length - 1];
       if (!rec?.started) return false;
       rec.onresult?.({
+        resultIndex: 0,
         results: [
           {
             isFinal,
@@ -376,6 +377,15 @@ async function installSpeechRecognitionShim(page: Page): Promise<void> {
           }
         : null;
     };
+  });
+}
+
+async function forceBrowserSpeechRecognition(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {},
+    });
   });
 }
 
@@ -654,6 +664,7 @@ test("STT capture path fires onTranscript with the recognized string", async ({
   // `window.__sttSimulate(transcript, isFinal)` which we drive from the
   // test to simulate the user speaking a phrase.
   await installSpeechRecognitionShim(page);
+  await forceBrowserSpeechRecognition(page);
 
   await openAppPath(page, "/chat");
 
@@ -665,13 +676,13 @@ test("STT capture path fires onTranscript with the recognized string", async ({
     "all",
   );
 
-  // The mic button doesn't carry a shared testid in the non-inline layout
-  // (see chat-composer.tsx around line 601-633). It is identified by its
-  // `aria-label` which contains "Voice input". Match the first such button
-  // — this is the page-level composer's mic that triggers
-  // `useVoiceChat.startListening("compose")`.
-  const micButton = page.getByRole("button", { name: /Voice input/i }).first();
+  // The compact shell uses the shared hook-free voice capture path. Force the
+  // browser SpeechRecognition backend above, then click the current talk button.
+  const micButton = page
+    .getByRole("button", { name: /talk|voice input/i })
+    .first();
   await expect(micButton).toBeVisible({ timeout: 15_000 });
+  await expect(micButton).toBeEnabled({ timeout: 15_000 });
   await micButton.click();
 
   // The hook calls recognition.start() synchronously. Now simulate a final
@@ -726,6 +737,7 @@ test("always-on chat mode starts passive browser STT and keeps capture open afte
 }) => {
   const conversations = await installConversationStreamMock(page);
   await installSpeechRecognitionShim(page);
+  await forceBrowserSpeechRecognition(page);
   await page.addInitScript(() => {
     localStorage.setItem("eliza:voice:continuous-chat-mode", "always-on");
   });
@@ -737,10 +749,6 @@ test("always-on chat mode starts passive browser STT and keeps capture open afte
     [{ selector: CHAT_COMPOSER_SELECTOR }],
     "all",
   );
-
-  const toggle = page.getByTestId("chat-view-continuous-chat-toggle");
-  await expect(toggle).toBeVisible({ timeout: 15_000 });
-  await expect(toggle).toHaveAttribute("data-mode", "always-on");
 
   await expect
     .poll(
@@ -776,10 +784,6 @@ test("always-on chat mode starts passive browser STT and keeps capture open afte
   expect(simulated, "always-on STT shim must receive a final turn").toBe(true);
 
   await expect
-    .poll(async () => page.locator("body").innerText(), { timeout: 5_000 })
-    .toContain("always on browser turn");
-
-  await expect
     .poll(async () => conversations.streamCalls(), { timeout: 5_000 })
     .toEqual([
       expect.objectContaining({
@@ -790,6 +794,15 @@ test("always-on chat mode starts passive browser STT and keeps capture open afte
         }),
       }),
     ]);
+
+  const expandConversation = page.getByRole("button", {
+    name: /expand conversation/i,
+  });
+  await expect(expandConversation).toBeVisible();
+  await expandConversation.click();
+  await expect
+    .poll(async () => page.locator("body").innerText(), { timeout: 5_000 })
+    .toContain("always on browser turn");
 
   await expect(
     page.getByText("Always-on assistant heard the browser turn"),

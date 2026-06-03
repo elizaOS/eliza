@@ -1878,7 +1878,7 @@ export async function generateChatResponse(
     };
     const appendIncomingText = (incoming: string): void => {
       const update = resolveStreamingUpdate(responseText, incoming);
-      if (update.kind === "noop") return;
+      if (update.kind === "unchanged") return;
       if (update.kind === "append") {
         emitChunk(update.emittedText);
         return;

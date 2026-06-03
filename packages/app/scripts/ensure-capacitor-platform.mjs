@@ -69,7 +69,7 @@ if (!fs.existsSync(platformDir)) {
 
 if (!isCapacitorPlatformReady(platform, { appDirValue: appDirForTemplates })) {
   console.error(
-    `[ensure-capacitor-platform] ${platform} project is incomplete after template sync / cap add.`,
+    `[ensure-capacitor-platform] ${platform} project is missing required files after template sync / cap add.`,
   );
   process.exit(1);
 }

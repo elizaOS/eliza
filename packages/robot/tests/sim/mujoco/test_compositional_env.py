@@ -1,18 +1,20 @@
 """Tests for the compositional environment (frozen walking + trainable upper body)."""
 
+from pathlib import Path
+
 import jax
 import jax.numpy as jp
 import numpy as np
 import pytest
-from pathlib import Path
 
 from eliza_robot.sim.mujoco.compositional_env import (
-    CompositionalEnv,
-    default_config,
     NUM_LEG_JOINTS,
     NUM_UPPER_JOINTS,
     WALK_TOTAL_OBS_DIM,
+    CompositionalEnv,
+    default_config,
 )
+
 # NOTE: the standalone WaveEnv MJX training env was removed; waving is now
 # handled by the composite skill (eliza_robot/rl/skills/composite_skill.py).
 # Only the CompositionalEnv (frozen legs + trainable upper body) survives here.
@@ -24,6 +26,67 @@ requires_checkpoint = pytest.mark.skipif(
     not Path(WALKING_CHECKPOINT).exists(),
     reason=f"Walking checkpoint not found at {WALKING_CHECKPOINT}",
 )
+
+
+class _RewardProbeEnv(CompositionalEnv):
+    def __init__(self) -> None:
+        self._config = default_config()
+        self.action_rate_args = None
+
+    def cost_lin_vel_z(self, data):
+        return jp.float32(0.0)
+
+    def cost_ang_vel_xy(self, data):
+        return jp.float32(0.0)
+
+    def cost_orientation(self, data):
+        return jp.float32(0.0)
+
+    def cost_torques(self, data):
+        return jp.float32(0.0)
+
+    def cost_action_rate(self, act, last_act, last_last_act):
+        self.action_rate_args = (act, last_act, last_last_act)
+        return jp.float32(0.0)
+
+    def cost_termination(self, done, step):
+        return jp.float32(0.0)
+
+    def cost_feet_slip(self, data):
+        return jp.float32(0.0)
+
+    def cost_feet_orientation(self, data):
+        return jp.float32(0.0)
+
+    def cost_energy(self, data):
+        return jp.float32(0.0)
+
+
+def test_reward_uses_current_and_two_previous_walking_actions() -> None:
+    env = _RewardProbeEnv()
+    current_walk = jp.arange(NUM_LEG_JOINTS, dtype=jp.float32) + 10.0
+    last_walk = jp.arange(NUM_LEG_JOINTS, dtype=jp.float32) + 20.0
+    two_steps_ago = jp.arange(NUM_LEG_JOINTS, dtype=jp.float32) + 30.0
+    info = {
+        "walk_last_act": last_walk,
+        "walk_last_last_act": two_steps_ago,
+        "last_upper_act": jp.zeros(NUM_UPPER_JOINTS),
+        "step": jp.array(3, dtype=jp.int32),
+    }
+
+    env._get_reward(
+        data=None,
+        action=jp.zeros(NUM_UPPER_JOINTS),
+        walk_action=current_walk,
+        info=info,
+        done=jp.float32(0.0),
+    )
+
+    assert env.action_rate_args is not None
+    act, last_act, last_last_act = env.action_rate_args
+    np.testing.assert_allclose(act, current_walk)
+    np.testing.assert_allclose(last_act, last_walk)
+    np.testing.assert_allclose(last_last_act, two_steps_ago)
 
 
 @pytest.fixture(scope="module")
@@ -120,7 +183,6 @@ class TestCompositionalStep:
         for _ in range(20):
             action = jp.zeros(comp_env.action_size)
             state = step_fn(state, action)
-        gravity = state.data.site_xmat[0]  # Some site orientation
         torso_z = float(state.data.xpos[comp_env._torso_body_id, 2])
         assert torso_z > 0.15, f"Robot fell: torso_z={torso_z}"
 

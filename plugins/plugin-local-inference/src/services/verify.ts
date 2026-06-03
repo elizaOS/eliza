@@ -10,4 +10,4 @@ export {
 	type VerifyResult,
 	type VerifyState,
 	verifyInstalledModel,
-} from "@elizaos/shared";
+} from "@elizaos/shared/local-inference/verify";

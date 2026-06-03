@@ -45,7 +45,7 @@ The `./plugin` export is the runtime adapter entry point. The full package entry
 To register the overlay app (done automatically via the side-effect import on elizaOS):
 
 ```ts
-import "@elizaos/plugin-contacts/register"; // safe no-op on non-elizaOS
+import "@elizaos/plugin-contacts/register"; // leaves the catalog unchanged on non-elizaOS
 ```
 
 ## Required permissions

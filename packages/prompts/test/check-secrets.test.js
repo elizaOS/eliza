@@ -31,7 +31,7 @@ describe("prompt secret scanner", () => {
       "prompts/config.ts",
       [
         "const api = 'example only';",
-        "const SERVICE_TOKEN = 'placeholder-token';",
+        "const SERVICE_TOKEN = 'example-token';",
       ].join("\n"),
     );
 

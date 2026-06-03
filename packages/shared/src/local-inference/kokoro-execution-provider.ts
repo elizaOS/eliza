@@ -1,7 +1,7 @@
 /**
  * Kokoro TTS ORT execution-provider configuration.
  *
- * Tracks elizaOS/eliza#7667 — readiness scaffold for a Tensor TPU / NNAPI
+ * Tracks elizaOS/eliza#7667 — readiness contract for a Tensor TPU / NNAPI
  * delegate on Android. This module is intentionally side-effect free; Android
  * callers still must gate any non-CPU provider through the AOSP NNAPI probe
  * before constructing the Kokoro runtime.

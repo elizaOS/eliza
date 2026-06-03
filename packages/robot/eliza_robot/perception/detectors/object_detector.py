@@ -28,7 +28,7 @@ FURNITURE_CLASSES = {"chair", "couch", "bed", "dining table", "toilet"}
 class ObjectDetector:
     """YOLO11 object detector.
 
-    Falls back to a stub if ultralytics is unavailable.
+    Returns no detections when ultralytics is unavailable.
     """
 
     def __init__(

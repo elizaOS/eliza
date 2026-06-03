@@ -316,7 +316,8 @@ def _ctrl_defaults(spec: RobotSpec, toe_home: dict[str, float] | None = None) ->
     """Default ctrl vector in actuator order (joint position acts, then winches).
 
     Toe winch defaults are tendon lengths (target spool length at the home pose),
-    filled from ``toe_home`` once calibrated, else a placeholder.
+    filled from ``toe_home`` once calibrated, otherwise from neutral tendon
+    lengths.
     """
     ctrl = [j.home_rad for j in sorted(spec.joints, key=lambda j: j.index)
             if not j.tendon_driven]

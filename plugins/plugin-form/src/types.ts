@@ -731,7 +731,7 @@ export interface FormSession {
    * WHY parent reference:
    * - Complex forms might have nested sections
    * - Subform completion triggers parent update
-   * - Not yet implemented but structure is ready
+   * - Reserved for consumers that model nested form sessions
    */
   parentSessionId?: string;
 

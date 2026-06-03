@@ -38,7 +38,7 @@ plugins/plugin-openai/
   index.node.ts          # Node entrypoint
   index.browser.ts       # Browser entrypoint
   auto-enable.ts         # shouldEnable(): true when OPENAI_API_KEY or CEREBRAS_API_KEY set
-  init.ts                # initializeOpenAI(): validates API key on startup (no-op in browser)
+  init.ts                # initializeOpenAI(): validates API key on startup; browser skips server-only validation
   build.ts               # Bun.build config (node ESM + browser ESM) + tsc declarations
   models/
     index.ts             # Re-exports all handlers
@@ -60,7 +60,7 @@ plugins/plugin-openai/
   types/
     index.ts             # Plugin-local types: TTSVoice, ImageSize, TokenUsage, TextStreamResult,
                          #   OpenAIPluginConfig, API response shapes, etc.
-  prompts/               # evaluators.json (empty evaluators stub — plugin ships no evaluators)
+  prompts/               # evaluators.json (empty manifest — plugin ships no evaluators)
   __tests__/             # Vitest unit tests
 ```
 

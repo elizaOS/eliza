@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -29,6 +29,21 @@ type ViewAudit = {
   focusedAfterTabs: string[];
 };
 
+async function expectNoFailedView(
+  page: Page,
+  pageErrors: string[],
+  label: string,
+) {
+  await expect(
+    page.getByText("Failed to load view"),
+    `${label} should not render the dynamic view fallback; page errors=${JSON.stringify(
+      pageErrors,
+      null,
+      2,
+    )}`,
+  ).toHaveCount(0);
+}
+
 test.describe("registered plugin views visual coverage", () => {
   for (const view of VIEW_CASES) {
     const assistantExpectation =
@@ -55,7 +70,11 @@ test.describe("registered plugin views visual coverage", () => {
       await installDefaultAppRoutes(page);
       await openAppPath(page, view.path);
 
-      await expect(page.getByText("Failed to load view")).toHaveCount(0);
+      await expectNoFailedView(
+        page,
+        pageErrors,
+        `${view.id} ${view.viewType} initial load`,
+      );
 
       const viewRoot = page.locator("main").first();
       await expect(viewRoot).toBeVisible({ timeout: 60_000 });
@@ -74,7 +93,11 @@ test.describe("registered plugin views visual coverage", () => {
         )
         .toBe(true);
       await expect(page.getByText(/Loading view/)).toHaveCount(0);
-      await expect(page.getByText("Failed to load view")).toHaveCount(0);
+      await expectNoFailedView(
+        page,
+        pageErrors,
+        `${view.id} ${view.viewType} settled load`,
+      );
       const preOverlayAudit = await viewRoot.evaluate(
         (root, { id, viewType, viewPath }) => {
           const normalize = (value: string | null | undefined) =>
@@ -163,17 +186,29 @@ test.describe("registered plugin views visual coverage", () => {
       if (view.shellPill === "expected") {
         const assistantLauncher = page
           .getByTestId("shell-home-pill")
-          .or(page.getByRole("button", { name: /expand conversation/i }));
-        await expect(assistantLauncher).toBeVisible();
-        await assistantLauncher.click();
-        await expect(
-          page.getByLabel("Message Eliza").or(page.getByLabel("message")),
-        ).toBeVisible();
+          .or(
+            page.getByRole("button", {
+              name: /show conversation|hide conversation/i,
+            }),
+          );
+        const assistantComposer = page
+          .getByTestId("chat-composer-textarea")
+          .or(page.getByLabel("message"))
+          .or(page.getByLabel("Message Eliza"))
+          .first();
+        if ((await assistantLauncher.count()) > 0) {
+          await assistantLauncher.first().click();
+        }
+        await expect(assistantComposer).toBeVisible();
       } else {
         await expect(
           page
             .getByTestId("shell-home-pill")
-            .or(page.getByRole("button", { name: /expand conversation/i })),
+            .or(
+              page.getByRole("button", {
+                name: /show conversation|hide conversation/i,
+              }),
+            ),
         ).toHaveCount(0);
       }
 
