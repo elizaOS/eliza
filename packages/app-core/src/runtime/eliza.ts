@@ -1509,7 +1509,10 @@ export async function startEliza(
               return null;
             }
 
-            await upstreamShutdownRuntime(currentRuntime, "server-only restart");
+            await upstreamShutdownRuntime(
+              currentRuntime,
+              "server-only restart",
+            );
 
             const restarted =
               (await upstreamStartElizaWithPgliteCompat({

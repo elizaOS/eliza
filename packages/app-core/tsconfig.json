@@ -27,6 +27,7 @@
       "@elizaos/plugin-registry": [
         "../../plugins/plugin-registry/src/index.ts"
       ],
+      "@elizaos/logger": ["../logger/src/index.ts"],
       "@elizaos/app-core": ["./src/index.ts"],
       "@elizaos/app-core/*": ["./src/*"],
       "@elizaos/plugin-wallet-ui": [

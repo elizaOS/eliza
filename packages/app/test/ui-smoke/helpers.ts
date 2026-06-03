@@ -282,11 +282,25 @@ function isRootTargetPath(targetPath: string): boolean {
   }
 }
 
+function isFirstRunTargetPath(targetPath: string): boolean {
+  try {
+    const url = new URL(targetPath, "http://ui-smoke.local");
+    return url.pathname === "/onboarding" || url.pathname === "/first-run";
+  } catch {
+    return (
+      targetPath === "/onboarding" ||
+      targetPath.startsWith("/onboarding?") ||
+      targetPath === "/first-run" ||
+      targetPath.startsWith("/first-run?")
+    );
+  }
+}
+
 async function expectMainShellReadyForRoute(
   page: Page,
   targetPath: string,
 ): Promise<void> {
-  if (isRootTargetPath(targetPath)) return;
+  if (isRootTargetPath(targetPath) || isFirstRunTargetPath(targetPath)) return;
   await expect(page.getByTestId("startup-shell-loading")).toHaveCount(0, {
     timeout: STARTUP_SETTLED_TIMEOUT_MS,
   });

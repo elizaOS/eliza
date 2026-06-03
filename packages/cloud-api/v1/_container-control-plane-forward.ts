@@ -98,8 +98,40 @@ export async function forwardToContainerControlPlane(
   });
 }
 
-export async function forwardCronToContainerControlPlane(
+/**
+ * No-op response for CF cron routes whose work has been folded into the
+ * `eliza-provisioning-worker` daemon's own poll/maintenance cycles.
+ *
+ * These routes used to `forwardCronToContainerControlPlane`, but that origin
+ * (the standalone container-control-plane sidecar) was retired in the cloud
+ * migration and now 521s on every scheduled trigger. The actual work
+ * (job processing, node autoscale, warm-pool replenish/drain, fleet upgrade,
+ * node health) is driven by the daemon's `pollCycle` /
+ * `runInfraMaintenanceCycle` (see
+ * packages/scripts/cloud/admin/daemons/provisioning-worker.ts). The CF cron
+ * here only needs to validate auth and acknowledge — returning 200 instead of
+ * a dead-forward 5xx so the scheduled invocation stops erroring.
+ *
+ * (The former `forwardCronToContainerControlPlane` helper was removed when its
+ * last caller migrated to this no-op; `forwardToContainerControlPlane` remains
+ * for the still-live authed admin docker-node health-check forward.)
+ *
+ * Pass the daemon cycle name for observability.
+ */
+export function cronSupersededByDaemon(
   c: AppContext,
-): Promise<Response> {
-  return forwardControlPlaneRequest(c, () => {});
+  daemonCycle: string,
+): Response {
+  logger.debug("[ContainerControlPlane] cron superseded by daemon", {
+    cycle: daemonCycle,
+    path: new URL(c.req.url).pathname,
+  });
+  return c.json({
+    success: true,
+    superseded: true,
+    handledBy: "eliza-provisioning-worker",
+    cycle: daemonCycle,
+    message:
+      "This work is handled by the provisioning-worker daemon; the CF cron forward is retired.",
+  });
 }

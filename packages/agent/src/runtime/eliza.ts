@@ -3189,7 +3189,7 @@ export const logToChatListener = (entry: LogEntry) => {
 
           isLog: "true",
         })
-        .catch((err) => {
+        .catch((err: unknown) => {
           logger.debug(
             `[runtime] failed to send log message to target: ${err}`,
           );

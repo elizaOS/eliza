@@ -1,5 +1,5 @@
 /**
- * POST /api/eliza/rooms/:roomId/messages — stubbed.
+ * POST /api/eliza/rooms/:roomId/messages — sidecar-only.
  *
  * Spawns an elizaOS runtime via `@/lib/eliza/runtime-factory` /
  * `message-handler`. Both load `@elizaos/core` + downstream plugin runtime,

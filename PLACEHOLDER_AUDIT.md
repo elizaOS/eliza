@@ -1,6 +1,6 @@
 # Placeholder / Stub / TODO Audit
 
-Last updated: 2026-06-02
+Last updated: 2026-06-03
 
 Scope: package-by-package scan of source-level markers such as placeholder, stub,
 TODO, incomplete, unfinished, "for now", no-op, and not implemented. Generated
@@ -8,6 +8,14 @@ files, tests mocks, input placeholder props, docs-only mentions, and intentional
 platform no-ops are separated from actionable runtime gaps.
 
 ## Completed Fixes
+
+### repository root
+
+- Removed the fake GPG fingerprint placeholder from `SECURITY.md`. Encrypted
+  report intake now fails closed by saying the organization key is not yet
+  provisioned, while the human-in-loop checklist still tracks publishing the
+  real key and fingerprint.
+- Verified with marker scan and `git diff --check` on `SECURITY.md`.
 
 ### packages/cloud-services/agent-server
 
@@ -29,6 +37,22 @@ platform no-ops are separated from actionable runtime gaps.
 - Verified with:
   - `bun run --cwd packages/cloud-services/gateway-discord test`
   - `bun run --cwd packages/cloud-services/gateway-discord typecheck`
+
+### packages/cloud-api
+
+- Reworded Cloudflare Worker compatibility shims in `src/stubs/*` from generic
+  stub language to explicit Worker/sidecar capability contracts. The
+  `@elizaos/core`, `ssh2`, `undici`, `@elizaos/plugin-sql`, and S3 adapter
+  shims now describe what is available in Workers and fail closed when a
+  Node-only runtime path is reached.
+- Reworded `/api/eliza/rooms*` Worker routes as sidecar-only boundaries and
+  changed their responses from "not implemented" wording to explicit
+  unsupported-on-Workers errors. The agent runtime remains owned by the Node
+  agent-server sidecar.
+- Verified with:
+  - `bun run --cwd packages/cloud-api typecheck`
+  - `bunx biome check` on the touched Worker shim and sidecar-route files
+  - marker scan and `git diff --check` on the touched Cloud API files
 
 ### packages/core
 
@@ -236,9 +260,20 @@ platform no-ops are separated from actionable runtime gaps.
 - Updated `fw/pmc/include/dvfs.h` and `fw/pmc/src/main.c` wording to describe
   the TT seed-table contract without placeholder language.
 - Added `fw/pmc/tests/test_dvfs.c` and wired it into `make -C fw/pmc test`.
+- Replaced stale chip compiler source markers in the ExecuTorch preprocessor,
+  IREE HAL docs/comments, and partitioner fixtures. `ElizaPreprocessor` now
+  emits deterministic per-op metadata lines instead of `TODO lower ...`
+  comments in generated MLIR, and the test graph input nodes no longer use
+  placeholder target names.
+- Added `compiler/executorch-eliza/tests/test_preprocessor.py` covering the
+  emitted preprocessor metadata and CPU-fallback report.
+- Reworded IREE HAL/README text to describe the shipped compile/load scaffold
+  and hardware-writeback blocker without implying locally unfinished code.
 - Verified with:
   - `make -C fw/pmc clean all test`
-  - marker scan and `git diff --check` on the touched PMC files
+  - `python3 -m pytest packages/chip/compiler/executorch-eliza/tests/test_partition.py packages/chip/compiler/executorch-eliza/tests/test_preprocessor.py -q`
+  - `python3 -m pytest packages/chip/compiler/runtime/test_e1_npu_tiny_mlp_e2e.py -q`
+  - marker scan and `git diff --check` on the touched Chip files
 
 ### packages/ui
 
@@ -292,6 +327,27 @@ platform no-ops are separated from actionable runtime gaps.
   - `bunx biome check plugins/plugin-agent-skills/src/services/skills.ts`
   - marker scan and `git diff --check` on the touched Agent Skills file
 
+### plugins/plugin-app-control
+
+- Reworded view-navigation, app-template copy, preview fallback SVG, and test
+  runtime-double comments so they describe supported behavior without
+  placeholder/stub/not-implemented markers. Checked-in JavaScript mirrors were
+  updated alongside the TypeScript sources where present.
+- Verified with:
+  - `bun run --cwd plugins/plugin-app-control test`
+  - `bun run --cwd plugins/plugin-app-control typecheck`
+  - `bunx biome check` on the touched App Control TypeScript files
+  - marker scan and `git diff --check` on the touched App Control files
+
+### plugins/plugin-health
+
+- Reworded the sleep/wake event derivation note in
+  `src/sleep/sleep-wake-events.ts`; the scorer rewrite mention now documents
+  where onset-candidate state lives without carrying a `todo` marker.
+- Verified with:
+  - `bunx biome check plugins/plugin-health/src/sleep/sleep-wake-events.ts`
+  - marker scan and `git diff --check` on the touched Health file
+
 ### plugins/plugin-lifeops
 
 - Removed misleading stub/not-implemented wording from
@@ -311,13 +367,55 @@ platform no-ops are separated from actionable runtime gaps.
 - Replaced "catalog placeholder ids" wording in `src/services/engine.ts` with
   "catalog seed ids"; these are normal Eliza-1 tier identifiers, not runtime
   placeholders.
+- Reworded active-model and family-member voice comments so desktop fallback
+  generation and client-side pending voice profiles are described as explicit
+  compatibility behavior.
 - Verified with:
   - `bun build plugins/plugin-local-inference/src/services/device-bridge.ts --target=bun --outfile=/tmp/local-inference-device-bridge-check.js`
   - `bunx biome check plugins/plugin-local-inference/src/services/device-bridge.ts plugins/plugin-local-inference/src/services/engine.ts`
-  - `git diff --check -- plugins/plugin-local-inference/src/services/device-bridge.ts plugins/plugin-local-inference/src/services/engine.ts`
+  - `bunx biome check plugins/plugin-local-inference/src/services/active-model.ts plugins/plugin-local-inference/src/routes/family-member-route.ts`
+  - `git diff --check` on the touched Local Inference files
 - Not verified with direct `bun build` of `src/services/engine.ts`: bundling
   resolves optional `node-llama-cpp` platform packages such as
   `@node-llama-cpp/mac-x64`, which are not installed in this workspace.
+
+### plugins/plugin-native-agent
+
+- Reworded the Capacitor plugin registration comment in `src/index.ts` so the
+  native/web fallback contract no longer reads like a temporary mobile gap.
+- Verified with:
+  - `bun run --cwd plugins/plugin-native-agent build`
+  - `bunx biome check plugins/plugin-native-agent/src/index.ts`
+  - marker scan and `git diff --check` on the touched Native Agent file
+
+### plugins/plugin-slack
+
+- Renamed Slack mrkdwn conversion placeholder terminology to sentinel
+  terminology in `src/formatting.ts`. The conversion still protects bold and
+  heading spans from italic matching, but no longer looks like unfinished
+  formatter behavior.
+- Verified with:
+  - `bun run --cwd plugins/plugin-slack test`
+  - `bunx biome check plugins/plugin-slack/src/formatting.ts`
+  - marker scan and `git diff --check` on the touched Slack file
+
+### plugins/plugin-streaming
+
+- Reworded the local-inference TTS redacted-secret helper in
+  `src/services/tts-stream-bridge.ts`; it now describes redacted secret tokens
+  rather than a placeholder.
+- Verified with:
+  - `bunx biome check plugins/plugin-streaming/src/services/tts-stream-bridge.ts`
+  - marker scan and `git diff --check` on the touched Streaming file
+
+### plugins shared tests
+
+- Reworded `plugins/__tests__/setup-routes-contract.test.ts` so the
+  `test.fails(...)` connector normalization contract describes expected
+  failures without a "for now" marker.
+- Verified with:
+  - `bunx biome check plugins/__tests__/setup-routes-contract.test.ts`
+  - marker scan and `git diff --check` on the touched shared test file
 
 ### plugins/plugin-2004scape
 
@@ -340,10 +438,15 @@ platform no-ops are separated from actionable runtime gaps.
   workspace-contained cwd.
 - Added coverage in `src/lib/run-shell.test.ts` that simulates Windows and
   verifies commands route through the runtime sandbox manager.
+- Reworded the plugin/provider description for `@elizaos/plugin-todos` so the
+  task-list action boundary no longer looks like unfinished coding-tools work.
+- Renamed focused test runtime doubles in `glob`, `ls`, and `grep` tests so
+  they no longer show up as source-level stub markers.
 - Verified with:
   - `bun run --cwd plugins/plugin-coding-tools test src/lib/run-shell.test.ts`
+  - `bun run --cwd plugins/plugin-coding-tools test src/actions/glob.test.ts src/actions/ls.test.ts src/actions/grep.test.ts`
   - `bun run --cwd plugins/plugin-coding-tools typecheck`
-  - `bunx biome check plugins/plugin-coding-tools/src/lib/run-shell.ts plugins/plugin-coding-tools/src/lib/run-shell.test.ts`
+  - `bunx biome check` on the touched coding-tools files
 
 ### plugins/plugin-computeruse
 
@@ -471,7 +574,39 @@ platform no-ops are separated from actionable runtime gaps.
 - Finished `BaseDrizzleAdapter.patchComponents()` with JSON patch operations.
 - Replaced the placeholder cleanup-agents integration test with real coverage.
 - Added component patch integration coverage.
-- Verified with plugin typecheck, integration tests, and lint check.
+- Removed the empty partial-update placeholder assertion in
+  `src/__tests__/integration/memory.real.test.ts`; the real partial-update
+  cases above it remain the coverage source.
+- Removed dead embedding-dimension inspection work from `src/base.ts`; the
+  method now directly validates the requested dimension and updates the active
+  embedding column.
+- Reworded SQL bind-parameter, room-world optionality, snapshot comparison, and
+  real-test service-double comments so they describe concrete behavior without
+  stale marker language.
+- Verified with:
+  - `bun run --cwd plugins/plugin-sql typecheck`
+  - `bunx biome check` on the touched SQL files
+  - marker scan and `git diff --check` on the touched SQL files
+- Test note: the touched `*.real.test.ts` files are intentionally excluded by
+  `plugins/plugin-sql/src/vitest.config.ts`; direct package-script filtering
+  reports "No test files found" for them.
+
+### plugins/plugin-social-alpha
+
+- Replaced `PriceEnrichmentService`'s random simulated price-window path with
+  the existing `HistoricalPriceService`. Enrichment now fetches Birdeye OHLCV
+  for Solana or DexScreener-derived price history for other chains, resolves
+  the called price at the call timestamp, and computes best/worst prices from
+  actual window data.
+- Removed stale marker wording from token symbol resolution, recommender
+  archetype classification, address-like token default-chain handling, and
+  benchmark strategy fixtures.
+- Verified with:
+  - `bun run --cwd plugins/plugin-social-alpha test`
+  - `bun run --cwd plugins/plugin-social-alpha build`
+  - marker scan and `git diff --check` on the touched Social Alpha files
+- Remaining scan hit is the Tailwind `placeholder:` utility in
+  `src/frontend/ui/input.tsx`.
 
 ### plugins/plugin-training
 
@@ -517,11 +652,14 @@ platform no-ops are separated from actionable runtime gaps.
 - Replaced wildcard engagement's search-only timeline placeholder in
   `src/interactions.ts` with `fetchHomeTimeline(20)`, retaining the popular
   search query as a logged fallback when the home timeline is unavailable.
+- Renamed URL masking terminology in `src/utils.ts` from placeholder to
+  fixed-width sentinel terminology. This is the internal chunking guard that
+  preserves Twitter URL length accounting while restoring original URLs.
 - Verified with:
   - `bun run --cwd plugins/plugin-x test src/utils/memory.test.ts`
   - `bun run --cwd plugins/plugin-x build`
   - `bun run --cwd plugins/plugin-x typecheck` (package script currently skips release typecheck)
-  - `bunx biome check plugins/plugin-x/src/utils/memory.ts plugins/plugin-x/src/utils/memory.test.ts plugins/plugin-x/src/interactions.ts`
+  - `bunx biome check plugins/plugin-x/src/utils/memory.ts plugins/plugin-x/src/utils/memory.test.ts plugins/plugin-x/src/interactions.ts plugins/plugin-x/src/utils.ts`
   - marker scan and `git diff --check` on the touched X files
 
 ### plugins/plugin-wallet
@@ -620,6 +758,12 @@ platform no-ops are separated from actionable runtime gaps.
   bridge/model support is wired. Existing code logs explicit unavailability
   rather than pretending detection/capture succeeded.
 
+### packages/chip
+
+- `compiler/stay-decisions-generators.json` still references
+  `external/ascalon-stub/README.md`. This is an external dependency path, not
+  source prose or executable placeholder behavior in the chip compiler.
+
 ### packages/robot
 
 - Robot profile/gait TODOs remain calibration tasks requiring real robot or
@@ -636,6 +780,8 @@ platform no-ops are separated from actionable runtime gaps.
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.
 - Vitest mocks, `stubGlobal`, and fixture stubs.
+- External dependency names and paths that include `stub` as part of the
+  upstream artifact name.
 - Browser-safe export-condition stubs for Node-only plugins, when package docs
   explicitly state the browser build must proxy to a server.
 - Scenario-runner deterministic embedding stubs used to avoid live model

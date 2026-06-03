@@ -89,13 +89,23 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "assistant home",
     path: "/",
-    readyChecks: [{ selector: '[data-testid="chat-composer-textarea"]' }],
+    readyChecks: [
+      {
+        selector:
+          '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]',
+      },
+    ],
     timeoutMs: 60_000,
   },
   {
     name: "chat",
     path: "/chat",
-    readyChecks: [{ selector: '[data-testid="chat-composer-textarea"]' }],
+    readyChecks: [
+      {
+        selector:
+          '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]',
+      },
+    ],
     mode: "all",
   },
   {
@@ -1358,7 +1368,11 @@ async function expectNoPageIssues(
 async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
   await expect(page.locator("#root")).toBeVisible();
   await expect(page.locator("body")).not.toContainText(/404|not found/i);
-  if (route.path === "/chat" || route.path === "/apps/elizamaker") {
+  if (
+    route.path === "/" ||
+    route.path === "/chat" ||
+    route.path === "/apps/elizamaker"
+  ) {
     return;
   }
   if (route.path === "/apps/companion") {

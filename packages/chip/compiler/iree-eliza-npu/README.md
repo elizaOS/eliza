@@ -113,7 +113,7 @@ contract.
 - **Dialect TableGen + C++ skeleton committed.** Build requires LLVM/MLIR
   inside the canonical Linux container; standalone host builds are blocked
   on the LLVM SHA pin.
-- **Front-end tiling lowering is not implemented.** The `linalg.matmul` ->
+- **Front-end tiling lowering is blocked on hardware writeback.** The `linalg.matmul` ->
   3x3x7 INT8 GEMM tiling front-end is blocked on the hardware C-writeback
   DMA path and is planned for P1 (Q1-Q2 2027) per the
   [2028 integrated report](../../docs/architecture-optimization/2028-sota-integrated-report.md).

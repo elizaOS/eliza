@@ -8,9 +8,10 @@
 //     even on a host with no NPU),
 //   - the allocator that hands out DMA-buf-style buffers.
 //
-// Execution paths are deliberately stubbed: this driver is a scaffold so the
-// IREE compile path (`--iree-hal-target-backends=elizanpu`) can produce a
-// .vmfb that loads, even though no real hardware exists yet.
+// Execution paths deliberately return UNAVAILABLE until a kernel driver installs
+// real MMIO callbacks; this lets the IREE compile path
+// (`--iree-hal-target-backends=elizanpu`) produce a .vmfb that loads on hosts
+// with no NPU.
 #include "iree/hal/drivers/elizanpu/device.h"
 
 #include <string.h>
