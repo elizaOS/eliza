@@ -529,12 +529,16 @@ def finding_command_batches(
 ) -> list[dict[str, object]]:
     if ":" in finding.code:
         _, component = finding.code.split(":", 1)
-        return [
-            batch
-            for batch in command_plan
-            if batch.get("id") == "capture_android_simulated_peripheral_evidence"
-            and component in batch.get("components", [])
-        ]
+
+        def has_component(batch: dict[str, object]) -> bool:
+            components = batch.get("components")
+            return (
+                batch.get("id") == "capture_android_simulated_peripheral_evidence"
+                and isinstance(components, list)
+                and component in components
+            )
+
+        return [batch for batch in command_plan if has_component(batch)]
     if finding.code in {
         "peripheral_capture_probe_wifi_disabled",
         "aosp_chip_product_declares_no_audio_hal",

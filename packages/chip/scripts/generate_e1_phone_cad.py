@@ -47,6 +47,17 @@ FLASH_BURIAL_CLEARANCE_MM = 0.20
 CONNECTION_TERMINAL_MARKER_Z_MM = 5.55
 
 
+def numeric_bbox_span(part_bbox: dict[str, Any]) -> list[float]:
+    span = part_bbox.get("span")
+    if not isinstance(span, list | tuple):
+        return []
+    return [
+        round(float(value), 3)
+        for value in span
+        if isinstance(value, int | float) or str(value).replace(".", "", 1).isdigit()
+    ]
+
+
 def cad_connection_mechanical_detail_summary(
     connection_rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
@@ -177,12 +188,7 @@ def cad_connection_mechanical_envelope(
     endpoint_center_distance_mm: float | None,
     represented_route_records: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    span = part_bbox.get("span") if isinstance(part_bbox, dict) else []
-    numeric_span = [
-        round(float(value), 3)
-        for value in span
-        if isinstance(value, int | float) or str(value).replace(".", "", 1).isdigit()
-    ]
+    numeric_span = numeric_bbox_span(part_bbox)
     sorted_span = sorted(numeric_span)
     nominal_thickness_mm = sorted_span[0] if sorted_span else None
     nominal_width_mm = sorted_span[1] if len(sorted_span) >= 2 else None
@@ -2974,12 +2980,7 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
         endpoint_center_distance_mm: float | None,
         represented_route_records: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        span = part_bbox.get("span") if isinstance(part_bbox, dict) else []
-        numeric_span = [
-            round(float(value), 3)
-            for value in span
-            if isinstance(value, int | float) or str(value).replace(".", "", 1).isdigit()
-        ]
+        numeric_span = numeric_bbox_span(part_bbox)
         sorted_span = sorted(numeric_span)
         nominal_thickness_mm = sorted_span[0] if sorted_span else None
         nominal_width_mm = sorted_span[1] if len(sorted_span) >= 2 else None
@@ -3020,8 +3021,11 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
     connection_rows = []
     for contract in contracts:
         part = part_rows_by_name.get(str(contract["cad_part"]), {})
-        part_bbox = part.get("bbox_mm") if isinstance(part.get("bbox_mm"), dict) else {}
-        part_span = part_bbox.get("span") if isinstance(part_bbox, dict) else []
+        part_bbox_value = part.get("bbox_mm")
+        part_bbox: dict[str, Any] = (
+            cast(dict[str, Any], part_bbox_value) if isinstance(part_bbox_value, dict) else {}
+        )
+        part_span = numeric_bbox_span(part_bbox)
         from_terminal = f"{contract['id']}_from_terminal"
         to_terminal = f"{contract['id']}_to_terminal"
         terminal_rows = [
@@ -3096,10 +3100,7 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
             "cad_step_bytes": int(part.get("bytes", 0) or 0),
             "cad_part_bbox_mm": part_bbox,
             "visual_route_span_mm": round(
-                max(
-                    [float(value) for value in (part_span if part_span is not None else [])]
-                    or [0.0]
-                ),
+                max([float(value) for value in part_span] or [0.0]),
                 3,
             ),
             "represented_nets": represented_nets,
@@ -3243,6 +3244,14 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
             or "split_interconnect" in row["id"]
         ),
     }
+    supplier_required_deliverables = [
+        "approved FPC/flex drawings with stackup, bend radius, adhesive, stiffener, and connector detail",
+        "approved RF feed, matching-network, antenna, and tuner layout with impedance evidence",
+        "approved board-to-board connector, ground-spring, wire-lead, and harness drawings",
+        "clean production DRC/ERC plus signed waivers for every remaining violation",
+        "supplier-approved component STEP/B-rep models and mechanical drawings",
+        "measured routed-board clearance and first-article signoff",
+    ]
     release_boundary_summary = {
         "evidence_class": "local_cad_connection_marker_coverage_not_release",
         "critical_interface_connection_ids": critical_interface_connection_ids,
@@ -3266,14 +3275,7 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
         "all_connections_release_credit_false": all(
             row["release_credit"] is False for row in connection_rows
         ),
-        "supplier_required_deliverables": [
-            "approved FPC/flex drawings with stackup, bend radius, adhesive, stiffener, and connector detail",
-            "approved RF feed, matching-network, antenna, and tuner layout with impedance evidence",
-            "approved board-to-board connector, ground-spring, wire-lead, and harness drawings",
-            "clean production DRC/ERC plus signed waivers for every remaining violation",
-            "supplier-approved component STEP/B-rep models and mechanical drawings",
-            "measured routed-board clearance and first-article signoff",
-        ],
+        "supplier_required_deliverables": supplier_required_deliverables,
         "release_credit": False,
     }
     connection_detail_summary = cad_connection_mechanical_detail_summary(connection_rows)
@@ -3390,7 +3392,7 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
         "## Release Boundary",
         "",
     ]
-    for deliverable in release_boundary_summary["supplier_required_deliverables"]:
+    for deliverable in supplier_required_deliverables:
         coverage_lines.append(f"- {deliverable}")
     coverage_lines.extend(
         [
@@ -6253,8 +6255,11 @@ def write_solid_cad_handoff_artifacts(
             "from": part_rows_by_name.get(contract["from"], {}),
             "to": part_rows_by_name.get(contract["to"], {}),
         }
-        part_bbox = part_row.get("bbox_mm") if isinstance(part_row.get("bbox_mm"), dict) else {}
-        part_span = part_bbox.get("span") if isinstance(part_bbox, dict) else []
+        part_bbox_value = part_row.get("bbox_mm")
+        part_bbox: dict[str, Any] = (
+            cast(dict[str, Any], part_bbox_value) if isinstance(part_bbox_value, dict) else {}
+        )
+        part_span = numeric_bbox_span(part_bbox)
         from_terminal = f"{contract['id']}_from_terminal"
         to_terminal = f"{contract['id']}_to_terminal"
         terminal_part_names = [from_terminal, to_terminal]
@@ -6498,6 +6503,14 @@ def write_solid_cad_handoff_artifacts(
             or "split_interconnect" in row["id"]
         ),
     }
+    supplier_required_deliverables = [
+        "approved FPC/flex drawings with stackup, bend radius, adhesive, stiffener, and connector detail",
+        "approved RF feed, matching-network, antenna, and tuner layout with impedance evidence",
+        "approved board-to-board connector, ground-spring, wire-lead, and harness drawings",
+        "clean production DRC/ERC plus signed waivers for every remaining violation",
+        "supplier-approved component STEP/B-rep models and mechanical drawings",
+        "measured routed-board clearance and first-article signoff",
+    ]
     release_boundary_summary = {
         "evidence_class": "local_cad_connection_marker_coverage_not_release",
         "critical_interface_connection_ids": critical_interface_connection_ids,
@@ -6521,14 +6534,7 @@ def write_solid_cad_handoff_artifacts(
         "all_connections_release_credit_false": all(
             row["release_credit"] is False for row in connection_rows
         ),
-        "supplier_required_deliverables": [
-            "approved FPC/flex drawings with stackup, bend radius, adhesive, stiffener, and connector detail",
-            "approved RF feed, matching-network, antenna, and tuner layout with impedance evidence",
-            "approved board-to-board connector, ground-spring, wire-lead, and harness drawings",
-            "clean production DRC/ERC plus signed waivers for every remaining violation",
-            "supplier-approved component STEP/B-rep models and mechanical drawings",
-            "measured routed-board clearance and first-article signoff",
-        ],
+        "supplier_required_deliverables": supplier_required_deliverables,
         "release_credit": False,
     }
     connection_detail_summary = cad_connection_mechanical_detail_summary(connection_rows)
@@ -6650,7 +6656,7 @@ def write_solid_cad_handoff_artifacts(
         "## Release Boundary",
         "",
     ]
-    for deliverable in release_boundary_summary["supplier_required_deliverables"]:
+    for deliverable in supplier_required_deliverables:
         coverage_lines.append(f"- {deliverable}")
     coverage_lines.extend(
         [
@@ -16628,7 +16634,16 @@ def write_board_step_readiness_artifacts(
 
     local_drc_rows = local_kicad_report_rows(local_drc_report_path, "drc")
     local_erc_rows = local_kicad_report_rows(local_erc_report_path, "erc")
-    local_kicad_triage = {
+    local_drc_summary = summarize_kicad_rows(local_drc_rows)
+    local_erc_summary = summarize_kicad_rows(local_erc_rows)
+    local_drc_by_type = cast(dict[str, int], local_drc_summary.get("by_type", {}))
+    local_erc_by_type = cast(dict[str, int], local_erc_summary.get("by_type", {}))
+    local_kicad_next_actions = [
+        "Fix high-count DRC classes first: clearance, unconnected items, solder mask bridges, copper-edge clearance, forbidden items, shorts, and tracks crossing.",
+        "Fix high-count ERC classes first: dangling labels, unconnected pins, not-driven power pins, off-grid endpoints, symbol issues, and footprint links.",
+        "After cleanup, regenerate local KiCad reports and only promote production reports after reviewer-approved clean results or explicit signed waivers.",
+    ]
+    local_kicad_triage: dict[str, Any] = {
         "schema": "eliza.e1_phone_local_kicad_cli_drc_erc_triage.v1",
         "claim_boundary": (
             "Engineering triage derived from local KiCad JSON DRC/ERC reports. "
@@ -16654,14 +16669,10 @@ def write_board_step_readiness_artifacts(
             if local_drc_rows or local_erc_rows
             else "blocked_local_kicad_drc_erc_not_run"
         ),
-        "drc": summarize_kicad_rows(local_drc_rows),
-        "erc": summarize_kicad_rows(local_erc_rows),
+        "drc": local_drc_summary,
+        "erc": local_erc_summary,
         "release_credit": False,
-        "next_actions": [
-            "Fix high-count DRC classes first: clearance, unconnected items, solder mask bridges, copper-edge clearance, forbidden items, shorts, and tracks crossing.",
-            "Fix high-count ERC classes first: dangling labels, unconnected pins, not-driven power pins, off-grid endpoints, symbol issues, and footprint links.",
-            "After cleanup, regenerate local KiCad reports and only promote production reports after reviewer-approved clean results or explicit signed waivers.",
-        ],
+        "next_actions": local_kicad_next_actions,
     }
     local_kicad_triage_path = local_kicad_report_dir / "drc-erc-triage.json"
     local_kicad_triage_path.write_text(json.dumps(local_kicad_triage, indent=2) + "\n")
@@ -16675,20 +16686,20 @@ def write_board_step_readiness_artifacts(
         "## DRC Types",
         "",
     ]
-    for violation_type, count in local_kicad_triage["drc"]["by_type"].items():
+    for violation_type, count in local_drc_by_type.items():
         triage_lines.append(f"- `{violation_type}`: {count}")
     triage_lines.extend(["", "## ERC Types", ""])
-    for violation_type, count in local_kicad_triage["erc"]["by_type"].items():
+    for violation_type, count in local_erc_by_type.items():
         triage_lines.append(f"- `{violation_type}`: {count}")
     triage_lines.extend(["", "## Next Actions", ""])
-    for action in local_kicad_triage["next_actions"]:
+    for action in local_kicad_next_actions:
         triage_lines.append(f"- {action}")
     (local_kicad_report_dir / "drc-erc-triage.md").write_text("\n".join(triage_lines) + "\n")
     local_drc_total_count = int(local_drc_probe.get("violation_count") or 0) + int(
         local_drc_probe.get("unconnected_item_count") or 0
     )
     local_erc_total_count = int(local_erc_probe.get("violation_count") or 0)
-    drc_erc_evidence_lineage = {
+    drc_erc_evidence_lineage: dict[str, Any] = {
         "claim_boundary": (
             "Raw local KiCad reports, local triage, and preflight evidence are "
             "engineering evidence only. Production DRC/ERC report paths remain "
@@ -16716,8 +16727,8 @@ def write_board_step_readiness_artifacts(
         "local_drc_unconnected_item_count": int(local_drc_probe.get("unconnected_item_count") or 0),
         "local_drc_total_count": local_drc_total_count,
         "local_erc_total_count": local_erc_total_count,
-        "local_drc_top_types": local_kicad_triage["drc"].get("by_type", {}),
-        "local_erc_top_types": local_kicad_triage["erc"].get("by_type", {}),
+        "local_drc_top_types": local_drc_by_type,
+        "local_erc_top_types": local_erc_by_type,
         "release_credit": False,
     }
     kicad_cli_preflight = {

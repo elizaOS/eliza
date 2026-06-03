@@ -9,6 +9,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any, cast
 from unittest import mock
 
 import check_chip_os_gap_keyword_inventory as inv
@@ -23,7 +24,7 @@ def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, obje
 def assert_actionable_findings(testcase: unittest.TestCase, report: dict[str, object]) -> None:
     findings = report.get("findings")
     testcase.assertIsInstance(findings, list)
-    for finding in findings:
+    for finding in cast(list[dict[str, Any]], findings):
         testcase.assertIsInstance(finding, dict)
         testcase.assertIsInstance(finding.get("next_command"), str)
         testcase.assertTrue(finding["next_command"])
@@ -31,12 +32,14 @@ def assert_actionable_findings(testcase: unittest.TestCase, report: dict[str, ob
         testcase.assertIn(finding["next_command"], finding["next_commands"])
     summary = report.get("summary")
     testcase.assertIsInstance(summary, dict)
+    summary = cast(dict[str, Any], summary)
+    next_command_plan = cast(list[dict[str, Any]], report.get("next_command_plan", []))
     testcase.assertGreaterEqual(summary.get("next_command_batch_count", 0), 1)
     testcase.assertEqual(
         summary.get("next_command_batch_count"),
-        len(report.get("next_command_plan", [])),
+        len(next_command_plan),
     )
-    for batch in report.get("next_command_plan", []):
+    for batch in next_command_plan:
         testcase.assertIsInstance(batch.get("commands"), list)
         testcase.assertTrue(batch["commands"])
         testcase.assertEqual(

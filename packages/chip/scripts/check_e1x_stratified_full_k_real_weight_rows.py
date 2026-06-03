@@ -5,6 +5,7 @@ import json
 from datetime import UTC, datetime
 from hashlib import blake2s, sha256
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_stratified_full_k_real_weight_rows.json"
@@ -246,7 +247,7 @@ def main() -> int:
         "sampled_layer_results": layer_results,
         "residual_blocker": "full_output_real_weight_checksum_missing",
     }
-    report = {
+    report: dict[str, Any] = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x-stratified-full-k-real-weight-rows",
         "status": "PASS" if not failures else "BLOCKED",

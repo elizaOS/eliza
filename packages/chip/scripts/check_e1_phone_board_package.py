@@ -5,6 +5,7 @@ import json
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 from xml.etree import ElementTree as ET
 
 import yaml
@@ -16145,7 +16146,7 @@ def check_development_pattern_pinout_step_coverage() -> None:
         raise SystemExit("instance pin/STEP disposition references diverge from component models")
     pending_footprints = {record["footprint"] for record in pending_pad_records}
     conflict_footprints = {record["footprint"] for record in package_conflict_records}
-    expected_instance_summary = {
+    expected_instance_summary: dict[str, int] = {
         "component_instance_count": len(models),
         "routed_board_footprint_count": len(routed_footprint_refs),
         "pinout_bound_instance_count": pinout_bound_model_count,
@@ -16167,8 +16168,8 @@ def check_development_pattern_pinout_step_coverage() -> None:
     instance_summary = instance_disposition.get("summary", {})
     if not isinstance(instance_summary, dict):
         raise SystemExit("instance pin/STEP disposition summary missing")
-    for key, expected in expected_instance_summary.items():
-        if instance_summary.get(key) != expected:
+    for key, expected_count in expected_instance_summary.items():
+        if instance_summary.get(key) != expected_count:
             raise SystemExit(f"instance pin/STEP disposition summary stale: {key}")
     if instance_disposition.get("local_failures") != []:
         raise SystemExit("instance pin/STEP disposition reports local failures")
@@ -16842,7 +16843,7 @@ def check_routed_board_step_intake_template() -> None:
     local_reports = kicad_preflight.get("local_non_release_reports")
     if not isinstance(local_reports, dict):
         raise SystemExit("routed-board KiCad CLI preflight missing local report evidence")
-    expected_local_report_counts = {
+    expected_local_report_counts: dict[str, dict[str, Any]] = {
         "drc": {
             "output": ROOT / "mechanical/e1-phone/review/local-kicad-cli/routed-drc.json",
             "violations_key": "violations",
@@ -16857,7 +16858,7 @@ def check_routed_board_step_intake_template() -> None:
         report = local_reports.get(report_id)
         if not isinstance(report, dict):
             raise SystemExit(f"routed-board KiCad CLI preflight missing {report_id} report")
-        output_path = expected_report["output"]
+        output_path = cast(Path, expected_report["output"])
         require_path(output_path)
         if report.get("output") != str(output_path.relative_to(ROOT)):
             raise SystemExit(f"routed-board KiCad CLI {report_id} output path stale")
@@ -18002,13 +18003,21 @@ def check_routed_layout_si_drc_burndown() -> None:
 
     preflight = load_json_file(preflight_path)
     triage = load_json_file(triage_path)
+    if not isinstance(preflight, dict) or not isinstance(triage, dict):
+        raise SystemExit("routed layout SI/DRC JSON reports must be objects")
+    preflight = cast(dict[str, Any], preflight)
+    triage = cast(dict[str, Any], triage)
     if preflight.get("drc_status") != candidate.get("local_kicad_drc_status"):
         raise SystemExit("routed layout SI/DRC DRC status stale")
     if preflight.get("erc_status") != candidate.get("local_kicad_erc_status"):
         raise SystemExit("routed layout SI/DRC ERC status stale")
     local_reports = preflight.get("local_non_release_reports", {})
+    if not isinstance(local_reports, dict):
+        raise SystemExit("routed layout SI/DRC preflight missing local reports")
     drc_report = local_reports.get("drc", {})
     erc_report = local_reports.get("erc", {})
+    if not isinstance(drc_report, dict) or not isinstance(erc_report, dict):
+        raise SystemExit("routed layout SI/DRC local reports must be objects")
     expected_drc_total = int(drc_report.get("violation_count") or 0) + int(
         drc_report.get("unconnected_item_count") or 0
     )

@@ -5,6 +5,7 @@ import json
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
+from typing import Any, TypedDict
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_clustered_repair_stress.json"
@@ -25,7 +26,15 @@ FALSE_CLAIM_FLAGS = {
     "yield_characterization_claim_allowed": False,
 }
 
-STRESS_CASES = [
+
+class StressCase(TypedDict):
+    name: str
+    failed_rows: int
+    failed_cols: int
+    expect_repairable: bool
+
+
+STRESS_CASES: list[StressCase] = [
     {"name": "row_stripe_16", "failed_rows": 16, "failed_cols": 0, "expect_repairable": True},
     {"name": "col_stripe_16", "failed_rows": 0, "failed_cols": 16, "expect_repairable": True},
     {"name": "cross_stripe_16x16", "failed_rows": 16, "failed_cols": 16, "expect_repairable": True},
@@ -48,7 +57,7 @@ def utc_now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def load_json(path: Path) -> dict:
+def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -71,7 +80,7 @@ def analyze_case(
     spare_cols: int,
     spare_cores: int,
     expect_repairable: bool,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     row_remaps = failed_rows * logical_cols
     col_remaps = failed_cols * logical_rows
     overlap_remaps = failed_rows * failed_cols

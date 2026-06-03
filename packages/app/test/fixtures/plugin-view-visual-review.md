@@ -33,6 +33,7 @@ Review rubric:
 | `vincent` | `tui` | `/vincent/tui` | TUI covers state/login/disconnect/update-strategy. | Needs compact command-output proof. | Verify login and strategy commands render useful output. |
 | `wallet` | `gui` | `/wallet` | Inventory/market/trading profile can be highly visual. | Needs asset/token imagery and balance/table review. | Verify balances, market overview, token rows, and trading profile indicators. |
 | `wallet` | `tui` | `/wallet/tui` | TUI exposes wallet state, market, and profile commands. | Needs output review for asset names and warnings. | Verify all wallet commands emit structured state. |
+| `vector-browser` | `gui` | `/vector-browser` | Memory/vector exploration has clear list, projection, and graph affordances. | Needs WebGL/canvas screenshot proof and fallback review on constrained devices. | Verify list mode, 2D projection, 3D graph, and manager launch path render without blank states. |
 | `2004scape` | `gui` | `/2004scape` | Game operator surface supports visual session/run state. | Needs canvas/game-state screenshot proof. | Verify primary game surface is nonblank and controls are reachable. |
 | `2004scape` | `tui` | `/2004scape/tui` | TUI exposes state/command/pause/resume. | Needs command output and suggested prompt proof. | Verify command buttons and output contracts. |
 | `feed` | `gui` | `/feed` | Feed/operator layout gives live status and communication affordances. | Needs visual hierarchy review for dashboard/message areas. | Verify refresh, live dashboard, and team-message controls. |

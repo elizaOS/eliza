@@ -76,6 +76,7 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-steward-app/src/plugin.ts",
   "plugins/plugin-vincent/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
+  "plugins/plugin-vector-browser/src/plugin.ts",
   "plugins/plugin-2004scape/src/index.ts",
   "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
@@ -134,6 +135,8 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-training": "plugins/plugin-training/src/setup-routes.ts",
   "@elizaos/plugin-trajectory-logger":
     "plugins/plugin-trajectory-logger/src/index.ts",
+  "@elizaos/plugin-vector-browser/register":
+    "plugins/plugin-vector-browser/src/plugin.ts",
   "@elizaos/plugin-vincent": "plugins/plugin-vincent/src/plugin.ts",
   "@elizaos/plugin-wallet-ui": "plugins/plugin-wallet-ui/src/plugin.ts",
   "@elizaos/plugin-wifi/register": null,

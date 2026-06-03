@@ -1151,7 +1151,8 @@ def write_json_report(path: Path, artifact_id: str, source_requirement_id: str) 
             raw_path,
         )
         raw_payload = raw["payload"] if isinstance(raw["payload"], dict) else {}
-        sheets = raw_payload.get("sheets") if isinstance(raw_payload, dict) else []
+        sheets_value = raw_payload.get("sheets")
+        sheets: list[Any] = sheets_value if isinstance(sheets_value, list) else []
         erc_count = sum(
             len(sheet.get("violations") or [])
             for sheet in sheets

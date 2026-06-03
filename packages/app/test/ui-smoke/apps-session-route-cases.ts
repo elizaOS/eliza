@@ -251,6 +251,7 @@ const managerVisibleViewTileCases = [
   { viewId: "views-manager", path: "/views" },
   { viewId: "vincent", path: "/vincent" },
   { viewId: "wallet", path: "/wallet" },
+  { viewId: "vector-browser", path: "/vector-browser" },
 ];
 
 /**

@@ -5,6 +5,7 @@ import json
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_real_weight_coverage_ladder.json"
@@ -34,7 +35,7 @@ def utc_now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def load_json(path: Path) -> dict:
+def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -75,7 +76,7 @@ def main() -> int:
     full_rows = int(workplan.get("full_output_row_count", 0))
     full_macs = int(workplan.get("full_mac_count", 0))
 
-    components = [
+    components: list[dict[str, Any]] = [
         {
             "name": "full_norm",
             "layer_kind": "norm",
@@ -371,7 +372,7 @@ def main() -> int:
         "components": components,
         "residual_blocker": "full_output_real_weight_checksum_missing",
     }
-    report = {
+    report: dict[str, Any] = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x-real-weight-coverage-ladder",
         "status": "PASS" if not failures else "BLOCKED",
