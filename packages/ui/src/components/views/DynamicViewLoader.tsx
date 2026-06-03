@@ -85,7 +85,9 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/plugin-training": () => import("@elizaos/plugin-training"),
   "@elizaos/ui/agent-surface": () => import("../../agent-surface/index.ts"),
   "@elizaos/ui/api": () => import("../../api/index.ts"),
+  "@elizaos/ui/bridge": () => import("../../bridge/index.ts"),
   "@elizaos/ui/components": () => import("../index.ts"),
+  "@elizaos/ui/config": () => import("../../config/index.ts"),
   "@elizaos/ui/events": () => import("../../events/index.ts"),
   "@elizaos/ui/hooks": () => import("../../hooks/index.ts"),
   "@elizaos/ui/layouts": () => import("../../layouts/index.ts"),
@@ -95,6 +97,20 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/ui/state": () => import("../../state/index.ts"),
   "@elizaos/ui/state/useApp": () => import("../../state/useApp.ts"),
   "@elizaos/ui/utils": () => import("../../utils/index.ts"),
+  "@elizaos/ui/components/composites/page-panel": () =>
+    import("../composites/page-panel/index.ts"),
+  "@elizaos/ui/components/composites/sidebar/sidebar-content": () =>
+    import("../composites/sidebar/sidebar-content.tsx"),
+  "@elizaos/ui/components/composites/sidebar/sidebar-panel": () =>
+    import("../composites/sidebar/sidebar-panel.tsx"),
+  "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region": () =>
+    import("../composites/sidebar/sidebar-scroll-region.tsx"),
+  "@elizaos/ui/components/pages/MemoryDetailPanel": () =>
+    import("../pages/MemoryDetailPanel.tsx"),
+  "@elizaos/ui/components/pages/vector-browser-utils": () =>
+    import("../pages/vector-browser-utils.ts"),
+  "@elizaos/ui/components/shared/AppPageSidebar": () =>
+    import("../shared/AppPageSidebar.tsx"),
   "@elizaos/ui/components/views/TerminalPluginView": () =>
     import("./TerminalPluginView.tsx"),
   "@elizaos/ui/components/ui/button": () => import("../ui/button.tsx"),
@@ -103,12 +119,17 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/ui/components/ui/settings-controls": () =>
     import("../ui/settings-controls.tsx"),
   "@elizaos/ui/components/ui/spinner": () => import("../ui/spinner.tsx"),
+  "@elizaos/ui/components/ui/skeleton-layouts": () =>
+    import("../ui/skeleton-layouts.tsx"),
   "@elizaos/ui/components/ui/tabs": () => import("../ui/tabs.tsx"),
   "@elizaos/ui/components/ui/textarea": () => import("../ui/textarea.tsx"),
+  "@elizaos/ui/components/ui/tooltip-extended": () =>
+    import("../ui/tooltip-extended.tsx"),
   "@elizaos/ui/components/apps/surfaces/GameOperatorShell": () =>
     import("../apps/surfaces/GameOperatorShell.tsx"),
   "lucide-react": () => import("lucide-react"),
   "@pixiv/three-vrm": () => import("@pixiv/three-vrm"),
+  "@pixiv/three-vrm/nodes": () => import("@pixiv/three-vrm/nodes"),
   react: () => import("react"),
   "react-plaid-link": () => import("react-plaid-link"),
   "react/jsx-dev-runtime": async () => {
@@ -121,6 +142,8 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   },
   "react/jsx-runtime": () => import("react/jsx-runtime"),
   three: () => import("three"),
+  "three/tsl": () => import("three/tsl"),
+  "three/webgpu": () => import("three/webgpu"),
   "three/examples/jsm/controls/OrbitControls.js": () =>
     import("three/examples/jsm/controls/OrbitControls.js"),
   "three/examples/jsm/libs/meshopt_decoder.module.js": () =>
