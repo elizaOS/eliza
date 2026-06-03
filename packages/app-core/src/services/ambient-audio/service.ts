@@ -1,4 +1,4 @@
-import { AmbientAudioConsentState } from "./consent.ts";
+import type { AmbientAudioConsentState } from "./consent.ts";
 import { ReplayBuffer } from "./replay-buffer.ts";
 import type {
   AmbientAudioMode,
