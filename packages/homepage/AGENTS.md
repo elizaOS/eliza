@@ -124,7 +124,7 @@ Use `elizacloudFetch` (public) or `elizacloudAuthFetch` (sends Bearer token) fro
 ## Conventions / gotchas
 
 - **`src/generated/release-data.ts` is auto-generated.** Never edit it by hand; it is overwritten on every `dev`/`build`. Run the generator script if you need fresh data.
-- **Vite aliases override `@elizaos/ui` barrel imports.** The `@elizaos/ui` alias in `vite.config.ts` resolves to `CloudVideoBackground.tsx` only (not the full barrel). Use explicit sub-path imports like `@elizaos/ui/button`, `@elizaos/ui/cloud-ui`, etc. Adding new sub-paths requires a new alias entry in `vite.config.ts`.
+- **Vite aliases resolve `@elizaos/ui` sub-paths to source.** There is no bare `@elizaos/ui` alias; only explicit sub-path aliases (`@elizaos/ui/cloud-ui`, `@elizaos/ui/button`, `@elizaos/ui/input`, `@elizaos/ui/dropdown-menu`, `@elizaos/ui/i18n/region`, `@elizaos/ui/product-switcher`) map to `packages/ui/src/`. Use those sub-path imports; adding a new sub-path requires a new alias entry in `vite.config.ts`.
 - **ShaderBackground and VideoCall are lazy-loaded** in `leaderboard.tsx` (`React.lazy()` + `Suspense`) so the route shell becomes interactive without waiting for the WebGL/canvas code. `ModelB` is imported eagerly because it drives the messaging surface on first paint — but it pulls in `three`/`@react-three/fiber`, so don't add more eager `three` imports elsewhere.
 - **GitHub Pages deep-link fallback:** The `gh404Fallback` Vite plugin copies `index.html` → `404.html` at build time. `public/_redirects` and `public/_headers` serve the same purpose on Cloudflare Pages.
 - **`CF_PAGES=1` disables the 404.html copy** — set this env var when building for Cloudflare Pages.
