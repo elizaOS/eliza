@@ -214,13 +214,21 @@ describe("Discord channel debouncer — recent unaddressed context buffer", () =
 		{ kind: "nickname mention", content: "<@!123>", folds: true },
 		{ kind: "channel pointer", content: "<@123> <#456>", folds: true },
 		{ kind: "role pointer", content: "<@123> <@&456>", folds: true },
-		{ kind: "custom emoji pointer", content: "<@123> <:this:456>", folds: true },
+		{
+			kind: "custom emoji pointer",
+			content: "<@123> <:this:456>",
+			folds: true,
+		},
 		{
 			kind: "animated emoji pointer",
 			content: "<@123> <a:spin:456>",
 			folds: true,
 		},
-		{ kind: "timestamp pointer", content: "<@123> <t:1700000000:R>", folds: true },
+		{
+			kind: "timestamp pointer",
+			content: "<@123> <t:1700000000:R>",
+			folds: true,
+		},
 		{ kind: "english question", content: "<@123> what is up?", folds: false },
 		{ kind: "single word", content: "<@123> this", folds: false },
 		{ kind: "unicode word", content: "<@123> ¿qué tal?", folds: false },
@@ -254,15 +262,15 @@ describe("Discord channel debouncer — recent unaddressed context buffer", () =
 			});
 
 			// Unaddressed chatter in channel A flushes record-only.
-			debouncer.enqueue(mockMessage("1", "chatter in A", "user-1", "channel-A"));
+			debouncer.enqueue(
+				mockMessage("1", "chatter in A", "user-1", "channel-A"),
+			);
 			vi.advanceTimersByTime(3000);
 
 			// A pointer in channel B must NOT fold channel A's chatter — only its
 			// own channel's buffer is eligible.
 			vi.advanceTimersByTime(1000);
-			debouncer.enqueue(
-				mockMessage("2", "<@123> ^^", "user-1", "channel-B"),
-			);
+			debouncer.enqueue(mockMessage("2", "<@123> ^^", "user-1", "channel-B"));
 
 			expect(flushed[flushed.length - 1]).toEqual(["2"]);
 		} finally {
