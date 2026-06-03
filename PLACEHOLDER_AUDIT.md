@@ -283,10 +283,24 @@ platform no-ops are separated from actionable runtime gaps.
   emitted preprocessor metadata and CPU-fallback report.
 - Reworded IREE HAL/README text to describe the shipped compile/load scaffold
   and hardware-writeback blocker without implying locally unfinished code.
+- Finished the StableHLO fused-block module dispatch gap in
+  `compiler/runtime/e1_npu_stablehlo.py` and
+  `compiler/runtime/e1_npu_lowering.py`. `stablehlo.transformer_block` now has
+  a module-level lowering plan, `stablehlo.decoder_block` now parses and
+  validates as `ModernDecoderBlock`, and both fused ops dispatch through
+  `lower_stablehlo_module_smoke` to the existing transformer/decoder smoke
+  lowerers.
+- Updated `docs/E1_CLOSEABLE_WORK_INVENTORY.md` so the fused StableHLO dispatch
+  and already-present AXI-Lite debug/CPU MMIO arbiter are no longer listed as
+  open "not wired" / stub work.
 - Verified with:
   - `make -C fw/pmc clean all test`
   - `python3 -m pytest packages/chip/compiler/executorch-eliza/tests/test_partition.py packages/chip/compiler/executorch-eliza/tests/test_preprocessor.py -q`
   - `python3 -m pytest packages/chip/compiler/runtime/test_e1_npu_tiny_mlp_e2e.py -q`
+  - `PYTHONPATH=compiler/runtime python3 -m pytest compiler/runtime/test_e1_npu_stablehlo.py compiler/runtime/test_e1_npu_runtime.py -q`
+  - `python3 -m py_compile compiler/runtime/e1_npu_stablehlo.py compiler/runtime/e1_npu_lowering.py compiler/runtime/test_e1_npu_stablehlo.py compiler/runtime/test_e1_npu_runtime.py`
+  - `./.venv/bin/ruff check compiler/runtime/e1_npu_stablehlo.py compiler/runtime/e1_npu_lowering.py compiler/runtime/test_e1_npu_stablehlo.py compiler/runtime/test_e1_npu_runtime.py`
+  - `./.venv/bin/mypy compiler/runtime/e1_npu_stablehlo.py compiler/runtime/e1_npu_lowering.py`
   - marker scan and `git diff --check` on the touched Chip files
 
 ### packages/ui
@@ -986,6 +1000,13 @@ platform no-ops are separated from actionable runtime gaps.
 - `compiler/stay-decisions-generators.json` still references
   `external/ascalon-stub/README.md`. This is an external dependency path, not
   source prose or executable placeholder behavior in the chip compiler.
+- The broad chip marker inventory remains dominated by explicit fail-closed
+  hardware/evidence blockers: foundry PDK access gates, package-vendor
+  drawings, PCB supplier returns, commercial signoff evidence, fabricated
+  silicon measurements, full AOSP source builds, and generated release
+  evidence placeholders. These cannot be truthfully completed inside this
+  workspace; the package keeps gates and manifests visible so release claims
+  stay blocked until real artifacts arrive.
 
 ### packages/robot
 
