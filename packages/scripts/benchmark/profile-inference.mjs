@@ -448,6 +448,14 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function retryableDownloadError(message) {
+  return /\bHTTP\s+(?:408|425|429|5\d\d)\b/i.test(String(message ?? ""));
+}
+
+function downloadRetryDelayMs(attempt) {
+  return Math.min(60_000, 10_000 * 2 ** Math.max(0, attempt - 1));
+}
+
 function uniqueConfiguredModels(config) {
   return Array.from(new Set(config.models));
 }
@@ -483,14 +491,20 @@ async function ensureModelInstalled(client, modelId, { downloadTimeoutMs }) {
   process.stdout.write(
     `[profile-inference] model ${modelId} missing; starting download\n`,
   );
-  await client.json(
-    "POST",
-    "/api/local-inference/downloads",
-    { modelId },
-    { timeoutMs: 30_000 },
-  );
-
   const startedAt = Date.now();
+  let attempt = 0;
+  const startDownload = async () => {
+    attempt += 1;
+    await client.json(
+      "POST",
+      "/api/local-inference/downloads",
+      { modelId },
+      { timeoutMs: 30_000 },
+    );
+  };
+
+  await startDownload();
+
   while (Date.now() - startedAt < downloadTimeoutMs) {
     if ((await installedModelIds(client)).has(modelId)) {
       process.stdout.write(`[profile-inference] model ${modelId} installed\n`);
@@ -499,6 +513,19 @@ async function ensureModelInstalled(client, modelId, { downloadTimeoutMs }) {
     const job = await downloadJobForModel(client, modelId);
     if (job?.state === "failed" || job?.state === "cancelled") {
       const reason = job.error ? `: ${job.error}` : "";
+      if (
+        job.state === "failed" &&
+        retryableDownloadError(job.error) &&
+        Date.now() - startedAt < downloadTimeoutMs
+      ) {
+        const delayMs = downloadRetryDelayMs(attempt);
+        process.stdout.write(
+          `[profile-inference] model ${modelId} download failed with retryable error${reason}; retrying in ${delayMs}ms\n`,
+        );
+        await sleep(delayMs);
+        await startDownload();
+        continue;
+      }
       throw new Error(
         `Download for ${modelId} ended with state ${job.state}${reason}`,
       );
