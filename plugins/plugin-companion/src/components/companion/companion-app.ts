@@ -1,5 +1,4 @@
-import type { OverlayApp } from "@elizaos/ui/components/apps/overlay-app-api";
-import { registerOverlayApp } from "@elizaos/ui/components/apps/overlay-app-registry";
+import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
 
 export const COMPANION_APP_NAME = "@elizaos/plugin-companion";
 
