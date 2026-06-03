@@ -274,7 +274,7 @@ export default function BscPromoPage() {
             </div>
           </section>
         </main>
-      </CloudVideoBackground>
+      </div>
     </>
   );
 }

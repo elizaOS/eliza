@@ -58,8 +58,9 @@ src/
   services/                   Client-side services: local-inference (model catalog,
                               downloader, engine, assignments), app-updates
   homescreen/                 Homescreen canvas + scene apply/history + face-rig
-  backgrounds/                Static solid background host (BackgroundHost). CloudVideoBackground
-                              is retained for marketing/landing pages only, not the agent shell.
+  backgrounds/                Static solid background host (BackgroundHost) for the
+                              agent shell. Marketing/landing/login pages use a solid theme
+                              background directly — no animated/video background.
   companion/                  Companion bar (desktop) — CompanionBar, push-to-talk
   views/                      View event bus + interact protocol (STANDARD_CAPABILITIES)
   hooks/                      ~35 hooks (useMediaQuery, useActivityEvents, useRenderGuard, ...);

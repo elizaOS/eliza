@@ -3,10 +3,6 @@
  * Exports all reusable brand components
  */
 
-export {
-  CloudVideoBackground,
-  type CloudVideoBackgroundProps,
-} from "../../../backgrounds/CloudVideoBackground";
 export type { BrandButtonProps } from "./brand-button";
 export { BrandButton, brandButtonVariants } from "./brand-button";
 export { AgentCard, BrandCard } from "./brand-card";
