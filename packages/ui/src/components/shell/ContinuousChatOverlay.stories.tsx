@@ -86,6 +86,11 @@ type Story = StoryObj<typeof meta>;
 /** Resting ambient bar over the warm "good evening" backdrop. */
 export const Ambient: Story = { args: { controller: makeController() } };
 
+/** Five tailored prompt suggestions on the empty resting overlay (keyboard-strip style). */
+export const PromptSuggestions: Story = {
+  args: { controller: makeController({ messages: [] }) },
+};
+
 /** Listening — live interim transcript + the warm breath glow. */
 export const Listening: Story = {
   args: {
