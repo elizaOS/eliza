@@ -2384,6 +2384,7 @@
         "fast-redact": "^3.5.0",
       },
       "devDependencies": {
+        "@types/fast-redact": "^3.0.4",
         "@types/node": "^24.0.0",
       },
     },
