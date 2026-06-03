@@ -99,7 +99,7 @@ describe("runShell", () => {
     const fakeManager = {
       run,
       // engineType is read by the router to label the sandbox backend.
-      engine: { engineType: "docker" },
+      engineType: "docker",
     };
 
     const result = await runShell(
@@ -142,7 +142,7 @@ describe("runShell", () => {
     });
     const fakeManager = {
       run,
-      engine: { engineType: "docker" },
+      engineType: "docker",
     };
 
     try {
@@ -237,7 +237,7 @@ describe("runShell", () => {
       getWorkspaceRoot: () => sandboxRoot,
       getContainerWorkspacePath: (hostPath: string) =>
         `/workspace/${path.relative(sandboxRoot, hostPath).replace(/\\/g, "/")}`,
-      engine: { engineType: "docker" },
+      engineType: "docker",
     };
 
     const result = await runShell(
@@ -290,7 +290,7 @@ describe("runShell", () => {
       getWorkspaceRoot: () => sandboxRoot,
       getContainerWorkspacePath: (hostPath: string) =>
         `/workspace/${path.relative(sandboxRoot, hostPath).replace(/\\/g, "/")}`,
-      engine: { engineType: "docker" },
+      engineType: "docker",
     };
 
     await runShell(

@@ -9,7 +9,6 @@
 import { logger } from "../../../logger.ts";
 import type {
 	Action,
-	EventPayload,
 	HandlerCallback,
 	HandlerOptions,
 	IAgentRuntime,
@@ -144,13 +143,11 @@ export const activatePluginIfReadyAction: Action = {
 		}
 
 		const payload: PluginActivatedEventPayload = {
+			runtime,
 			pluginName,
 			at: Date.now(),
 		};
-		await runtime.emitEvent(
-			PLUGIN_ACTIVATED_EVENT,
-			payload as unknown as EventPayload,
-		);
+		await runtime.emitEvent(PLUGIN_ACTIVATED_EVENT, payload);
 
 		logger.info(`[ActivatePluginIfReady] plugin=${pluginName} activated`);
 

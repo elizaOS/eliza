@@ -159,6 +159,11 @@ export class SandboxManager {
     return this.state;
   }
 
+  /** The active container engine's type, for diagnostics/labeling. */
+  get engineType(): SandboxEngineType {
+    return this.engine.engineType;
+  }
+
   getMode(): SandboxMode {
     return this.config.mode;
   }

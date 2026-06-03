@@ -1158,18 +1158,21 @@ function getRecentMessagesProvider(
   return provider as RecentMessagesProviderRecord;
 }
 
+function isMemoryShaped(value: unknown): value is Memory {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    "content" in value &&
+    "roomId" in value
+  );
+}
+
 function readRecentMessageMemories(state: State): Memory[] {
   const provider = getRecentMessagesProvider(state);
   const recentMessages = provider?.data?.recentMessages;
   if (!Array.isArray(recentMessages)) return [];
-  return recentMessages.filter(
-    (memory) =>
-      memory !== null &&
-      typeof memory === "object" &&
-      !Array.isArray(memory) &&
-      "content" in memory &&
-      "roomId" in memory,
-  ) as unknown as Memory[];
+  return recentMessages.filter(isMemoryShaped);
 }
 
 function rewriteStateRecentMessages(args: {
