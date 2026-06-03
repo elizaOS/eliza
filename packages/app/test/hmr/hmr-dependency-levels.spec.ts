@@ -70,6 +70,10 @@ const LEVELS = [
     file: "plugins/plugin-wallet-ui/src/InventoryView.tsx",
   },
   {
+    name: "plugin view vector-browser",
+    file: "plugins/plugin-vector-browser/src/VectorBrowserView.tsx",
+  },
+  {
     name: "plugin view 2004scape",
     file: "plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.tsx",
   },
