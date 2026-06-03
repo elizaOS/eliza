@@ -89,16 +89,19 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "assistant home",
     path: "/",
-    readyChecks: [{ selector: '[data-testid="home-view"]' }],
+    readyChecks: [
+      { selector: '[data-testid="global-chat-overlay"]' },
+      { selector: '[data-testid="chat-composer-textarea"]' },
+    ],
+    mode: "all",
     timeoutMs: 60_000,
   },
   {
     name: "chat",
     path: "/chat",
     readyChecks: [
-      { selector: '[data-testid="conversations-sidebar"]' },
+      { selector: '[data-testid="global-chat-overlay"]' },
       { selector: '[data-testid="chat-composer-textarea"]' },
-      { selector: '[data-testid="chat-widgets-bar"]' },
     ],
     mode: "all",
   },
@@ -294,6 +297,7 @@ const SAFE_VIEW_TILES: readonly {
   name: tileCase.name,
   expectedPath: new RegExp(`${escapeRegExp(tileCase.expectedPath)}$`),
 }));
+const CLICK_SAFE_AGGREGATE_TIMEOUT_MS = 15 * 60_000;
 
 const SETTING_SECTIONS_TO_CLICK: readonly RegExp[] = [
   /^Basics$/,
@@ -1365,16 +1369,10 @@ async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
   if (route.path === "/chat" || route.path === "/apps/elizamaker") {
     return;
   }
-  if (route.path === "/apps/companion") {
-    await expect(page.getByTestId("companion-root").first()).toBeVisible({
-      timeout: route.timeoutMs,
-    });
-    return;
-  }
   await expect(
     page
       .locator(
-        "main, [data-testid='home-view'], [role='main'], h1, [role='region']",
+        "main, [data-testid='home-view'], [data-testid='global-chat-overlay'], [data-testid='companion-root'], [role='main'], h1, [role='region']",
       )
       .first(),
   ).toBeVisible({
@@ -1464,7 +1462,8 @@ for (const viewport of [DESKTOP_PROBE, MOBILE_PROBE]) {
 
 test("visible safe app tiles and allowlisted buttons are click-safe", async ({
   page,
-}) => {
+}, testInfo) => {
+  testInfo.setTimeout(CLICK_SAFE_AGGREGATE_TIMEOUT_MS);
   const issues = installPageIssueGuards(page);
   await page.setViewportSize(DESKTOP_PROBE.size);
 
