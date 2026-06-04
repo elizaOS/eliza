@@ -266,16 +266,20 @@ export function getLanguageModel(model: string) {
     return client.languageModel(apiModelId);
   }
 
+  // Cerebras-native default IDs (gpt-oss-120b, zai-glm-4.7) are bare and are NOT
+  // in BitRouter's catalog, so they must route to Cerebras BEFORE the BitRouter
+  // catch-all — otherwise toBitRouterModelId passes them through unchanged and
+  // BitRouter rejects them. Mirrors the Groq/Vast native checks above.
+  if (isCerebrasNativeModel(model) && getProviderKey("CEREBRAS_API_KEY")) {
+    return getCerebrasClient().chat(normalizeCerebrasModelId(model));
+  }
+
   if (getBitRouterApiKey()) {
     return getBitRouterClient().languageModel(toBitRouterModelId(model));
   }
 
   if (requiresBitRouterRouting(model)) {
     throw new Error("BITROUTER_API_KEY environment variable is required for this model");
-  }
-
-  if (isCerebrasNativeModel(model) && getProviderKey("CEREBRAS_API_KEY")) {
-    return getCerebrasClient().chat(normalizeCerebrasModelId(model));
   }
 
   if (getVercelAIGatewayApiKey()) {
@@ -339,16 +343,18 @@ export function resolveAiProviderSource(
     return resolveVastEndpointConfig(model) ? "vast" : null;
   }
 
+  // Match getLanguageModel: Cerebras-native defaults are served by Cerebras
+  // before the BitRouter catch-all, so bill them to cerebras (not bitrouter).
+  if (isCerebrasNativeModel(model) && getProviderKey("CEREBRAS_API_KEY")) {
+    return "cerebras";
+  }
+
   if (getBitRouterApiKey()) {
     return "bitrouter";
   }
 
   if (requiresBitRouterRouting(model)) {
     return null;
-  }
-
-  if (isCerebrasNativeModel(model)) {
-    return getProviderKey("CEREBRAS_API_KEY") ? "cerebras" : null;
   }
 
   if (getVercelAIGatewayApiKey()) {
