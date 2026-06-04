@@ -1,5 +1,9 @@
 import { resolveBrowserStewardApiUrl } from "@elizaos/cloud-shared/lib/steward-url";
-import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import {
+  hasStewardAuthedCookie,
+  readStoredStewardToken,
+  writeStoredStewardToken,
+} from "@elizaos/shared/steward-session-client";
 import { Alert, AlertDescription, DiscordIcon } from "@elizaos/ui";
 import type { StewardProviders } from "@stwd/sdk";
 import { StewardAuth } from "@stwd/sdk";
@@ -271,6 +275,8 @@ export default function StewardLoginSection() {
           if (!cancelled) setRedirectTo(resolveLoginReturnTo(searchParams));
           return;
         }
+
+        if (!readStoredStewardToken() && !hasStewardAuthedCookie()) return;
 
         const refreshed = await auth.refreshSession();
         if (cancelled) return;
