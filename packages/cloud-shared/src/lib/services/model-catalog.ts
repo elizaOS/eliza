@@ -10,8 +10,8 @@ import {
 } from "../models";
 import {
   getBitRouterProvider,
-  hasGroqProviderConfigured,
   hasBitRouterProviderConfigured,
+  hasGroqProviderConfigured,
 } from "../providers";
 import { expandOpenRouterModelIdCandidates } from "../providers/model-id-translation";
 import type { OpenAIModelsResponse } from "../providers/types";

@@ -5,8 +5,8 @@ import { getCachedExternalEntries } from "../cache";
 import { inferProviderFromCanonicalModel, parseNumericPrice } from "../dimensions";
 import { stripVersionedSnapshotSuffix } from "../suffix-stripping";
 import {
-  EXTERNAL_CACHE_TTL_MS,
   type BitRouterCatalogModel,
+  EXTERNAL_CACHE_TTL_MS,
   type PreparedPricingEntry,
 } from "../types";
 
