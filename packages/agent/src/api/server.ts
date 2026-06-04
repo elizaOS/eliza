@@ -72,18 +72,20 @@ let x402PluginModulePromise: Promise<X402PluginModule> | null = null;
 
 async function getBrowserPlugin(): Promise<BrowserPluginModule> {
   if (browserPluginModule) return browserPluginModule;
-  browserPluginModulePromise ??= import("@elizaos/plugin-browser").then(
-    (browser) => {
-      browserPluginModule = browser;
-      return browser;
-    },
-  );
+  browserPluginModulePromise ??= import(
+    /* @vite-ignore */ "@elizaos/plugin-browser"
+  ).then((browser) => {
+    browserPluginModule = browser;
+    return browser;
+  });
   return browserPluginModulePromise;
 }
 
 async function getX402Plugin(): Promise<X402PluginModule> {
   if (x402PluginModule) return x402PluginModule;
-  x402PluginModulePromise ??= import("@elizaos/plugin-x402").then((x402) => {
+  x402PluginModulePromise ??= import(
+    /* @vite-ignore */ "@elizaos/plugin-x402"
+  ).then((x402) => {
     x402PluginModule = x402;
     return x402;
   });
@@ -91,15 +93,16 @@ async function getX402Plugin(): Promise<X402PluginModule> {
 }
 
 const optionalPluginImports = {
-  capacitor: () => import("@elizaos/plugin-capacitor-bridge"),
-  computerUse: () => import("@elizaos/plugin-computeruse"),
-  cloud: () => import("@elizaos/plugin-elizacloud"),
-  imessage: () => import("@elizaos/plugin-imessage"),
-  mcp: () => import("@elizaos/plugin-mcp"),
-  signal: () => import("@elizaos/plugin-signal"),
-  streaming: () => import("@elizaos/plugin-streaming"),
-  whatsapp: () => import("@elizaos/plugin-whatsapp"),
-  workflow: () => import("@elizaos/plugin-workflow"),
+  capacitor: () =>
+    import(/* @vite-ignore */ "@elizaos/plugin-capacitor-bridge"),
+  computerUse: () => import(/* @vite-ignore */ "@elizaos/plugin-computeruse"),
+  cloud: () => import(/* @vite-ignore */ "@elizaos/plugin-elizacloud"),
+  imessage: () => import(/* @vite-ignore */ "@elizaos/plugin-imessage"),
+  mcp: () => import(/* @vite-ignore */ "@elizaos/plugin-mcp"),
+  signal: () => import(/* @vite-ignore */ "@elizaos/plugin-signal"),
+  streaming: () => import(/* @vite-ignore */ "@elizaos/plugin-streaming"),
+  whatsapp: () => import(/* @vite-ignore */ "@elizaos/plugin-whatsapp"),
+  workflow: () => import(/* @vite-ignore */ "@elizaos/plugin-workflow"),
 };
 
 type LocalInferenceServerApi = {
@@ -120,7 +123,7 @@ let localInferenceServerApiPromise: Promise<LocalInferenceServerApi> | null =
 
 function getLocalInferenceServerApi(): Promise<LocalInferenceServerApi> {
   localInferenceServerApiPromise ??= import(
-    "@elizaos/plugin-local-inference"
+    /* @vite-ignore */ "@elizaos/plugin-local-inference"
   ) as Promise<LocalInferenceServerApi>;
   return localInferenceServerApiPromise;
 }
@@ -146,7 +149,9 @@ let agentSkillsApiPromise:
 function getAgentSkillsApi(): Promise<
   typeof import("@elizaos/plugin-agent-skills")
 > {
-  agentSkillsApiPromise ??= import("@elizaos/plugin-agent-skills");
+  agentSkillsApiPromise ??= import(
+    /* @vite-ignore */ "@elizaos/plugin-agent-skills"
+  );
   return agentSkillsApiPromise;
 }
 
@@ -156,7 +161,9 @@ let appManagerApiPromise:
 function getAppManagerApi(): Promise<
   typeof import("@elizaos/plugin-app-manager")
 > {
-  appManagerApiPromise ??= import("@elizaos/plugin-app-manager");
+  appManagerApiPromise ??= import(
+    /* @vite-ignore */ "@elizaos/plugin-app-manager"
+  );
   return appManagerApiPromise;
 }
 
@@ -164,7 +171,7 @@ let walletApiPromise:
   | Promise<typeof import("@elizaos/plugin-wallet")>
   | undefined;
 function getWalletApi(): Promise<typeof import("@elizaos/plugin-wallet")> {
-  walletApiPromise ??= import("@elizaos/plugin-wallet");
+  walletApiPromise ??= import(/* @vite-ignore */ "@elizaos/plugin-wallet");
   return walletApiPromise;
 }
 
@@ -181,7 +188,9 @@ let pluginRegistryApiPromise:
 function getPluginRegistryApi(): Promise<
   typeof import("@elizaos/plugin-registry")
 > {
-  pluginRegistryApiPromise ??= import("@elizaos/plugin-registry");
+  pluginRegistryApiPromise ??= import(
+    /* @vite-ignore */ "@elizaos/plugin-registry"
+  );
   return pluginRegistryApiPromise;
 }
 
@@ -3715,7 +3724,9 @@ export async function startApiServer(opts?: {
         return;
       }
       try {
-        const streamRoutes = await import("@elizaos/plugin-streaming");
+        const streamRoutes = await import(
+          /* @vite-ignore */ "@elizaos/plugin-streaming"
+        );
         const handleStreamRoute =
           typeof streamRoutes.handleStreamRoute === "function"
             ? streamRoutes.handleStreamRoute
