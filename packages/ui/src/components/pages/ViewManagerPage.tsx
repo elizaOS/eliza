@@ -11,11 +11,15 @@
 
 import {
   ArrowUpRight,
+  Box,
+  ChevronDown,
   Pencil,
   Pin,
   Plus,
   RefreshCw,
   Search,
+  SlidersHorizontal,
+  Star,
   Trash2,
   X,
 } from "lucide-react";
@@ -51,6 +55,12 @@ const VIEW_LOADING_SKELETON_KEYS = [
   "view-skeleton-5",
   "view-skeleton-6",
 ];
+
+const SOURCE_FILTERS = ["all", "core", "plugins"] as const;
+const VIEW_TYPE_FILTERS = ["all", "gui", "xr", "tui"] as const;
+
+type SourceFilter = (typeof SOURCE_FILTERS)[number];
+type ViewTypeFilter = (typeof VIEW_TYPE_FILTERS)[number];
 
 function isViewManagerEntry(view: Pick<ViewRegistryEntry, "id">) {
   return view.id === "views-manager";
@@ -241,7 +251,7 @@ function ViewModeButton({
       aria-label={`Open ${baseLabel} ${label}`}
       onClick={() => onClick(view)}
       disabled={!view.available}
-      className="inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-border/45 bg-bg/30 px-2 text-[0.68rem] font-semibold uppercase tracking-wider text-accent transition-colors hover:border-accent/45 hover:bg-accent/10 disabled:cursor-not-allowed disabled:text-muted"
+      className="inline-flex h-7 shrink-0 items-center justify-center rounded-md border border-accent/25 bg-accent/8 px-2 text-[0.66rem] font-semibold uppercase tracking-wider text-accent shadow-[0_0_18px_rgba(255,115,0,0.08)] transition-colors hover:border-accent/55 hover:bg-accent/15 disabled:cursor-not-allowed disabled:text-muted"
       data-view-context={JSON.stringify(context)}
       {...agentProps}
     >
@@ -351,17 +361,40 @@ function ViewStatusBadge({ available }: { available: boolean }) {
 
 function ViewBadge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-md border border-border/45 bg-bg/35 px-1.5 py-0.5 text-[0.68rem] font-medium text-muted">
+    <span className="inline-flex min-w-0 items-center rounded-md border border-border/45 bg-bg/45 px-1.5 py-0.5 text-[0.68rem] font-medium text-muted">
       {children}
     </span>
   );
 }
 
-function ViewIdentityTile({ view }: { view: ViewRegistryEntry }) {
+function ViewIdentityTile({
+  view,
+  size = "regular",
+}: {
+  view: ViewRegistryEntry;
+  size?: "compact" | "regular" | "featured";
+}) {
+  const tileClass =
+    size === "featured"
+      ? "h-16 w-16"
+      : size === "compact"
+        ? "h-10 w-10"
+        : "h-14 w-14";
+  const iconClass =
+    size === "featured"
+      ? "h-8 w-8"
+      : size === "compact"
+        ? "h-5 w-5"
+        : "h-7 w-7";
   return (
-    <div className="flex h-12 w-14 shrink-0 flex-col items-center justify-center rounded-md border border-border/45 bg-muted/25 text-accent">
-      <ViewIcon icon={view.icon} label={view.label} className="h-5 w-5" />
-      <span className="mt-1 h-1 w-6 rounded-full bg-accent/45" aria-hidden />
+    <div
+      className={`relative flex ${tileClass} shrink-0 items-center justify-center overflow-hidden rounded-lg border border-accent/22 bg-[radial-gradient(circle_at_35%_20%,rgba(255,115,0,0.32),rgba(255,115,0,0.12)_34%,rgba(255,255,255,0.04)_70%)] text-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_30px_rgba(255,115,0,0.10)]`}
+    >
+      <span
+        className="absolute inset-x-3 bottom-2 h-px bg-accent/45"
+        aria-hidden
+      />
+      <ViewIcon icon={view.icon} label={view.label} className={iconClass} />
     </div>
   );
 }
@@ -372,26 +405,34 @@ function ViewCard({
   onPin,
   onEdit,
   onDelete,
-  compact = false,
+  variant = "standard",
 }: {
   group: ViewGroup;
   onClick: (view: ViewRegistryEntry) => void;
   onPin?: (view: ViewRegistryEntry) => void;
   onEdit?: (view: ViewRegistryEntry) => void;
   onDelete?: (view: ViewRegistryEntry) => void;
-  compact?: boolean;
+  variant?: "featured" | "compact" | "standard";
 }) {
   const isDesktop = isElectrobunRuntime();
   const view = group.primary;
   const showPinButton = isDesktop && view.desktopTabEnabled !== false && onPin;
   const showManagementButtons = Boolean(onEdit || onDelete);
   const sourceLabel = group.builtin ? "Core" : "Plugin";
+  const isFeatured = variant === "featured";
+  const isCompact = variant === "compact";
+  const cardClass = isFeatured
+    ? "group relative min-h-[10.25rem] overflow-hidden rounded-lg border border-border/55 bg-[linear-gradient(135deg,rgba(255,115,0,0.16),rgba(255,255,255,0.045)_42%,rgba(20,20,24,0.86))] p-3.5 text-left shadow-[0_18px_44px_rgba(0,0,0,0.26)] transition-colors hover:border-accent/65 focus-within:ring-2 focus-within:ring-ring/50"
+    : isCompact
+      ? "group relative overflow-hidden rounded-lg border border-border/45 bg-[linear-gradient(135deg,rgba(255,115,0,0.10),rgba(255,255,255,0.035)_48%,rgba(20,20,24,0.78))] p-2.5 text-left transition-colors hover:border-accent/45 hover:bg-card focus-within:ring-2 focus-within:ring-ring/50"
+      : "group relative overflow-hidden rounded-lg border border-border/45 bg-[linear-gradient(135deg,rgba(255,115,0,0.08),rgba(255,255,255,0.035)_45%,rgba(20,20,24,0.78))] p-3 text-left transition-colors hover:border-accent/45 hover:bg-card focus-within:ring-2 focus-within:ring-ring/50";
 
   return (
-    <div
-      className="group relative rounded-md border border-border/45 bg-card/72 p-2.5 text-left transition-colors hover:border-accent/45 hover:bg-card focus-within:ring-2 focus-within:ring-ring/50"
-      data-testid={`view-card-${group.id}`}
-    >
+    <div className={cardClass} data-testid={`view-card-${group.id}`}>
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_84%_18%,rgba(255,115,0,0.13),transparent_32%),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[length:auto,24px_24px,24px_24px] opacity-70"
+        aria-hidden
+      />
       {(showPinButton || showManagementButtons) && (
         <div className="absolute right-2 top-2 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           {showPinButton && <ViewCardPinButton view={view} onPin={onPin} />}
@@ -400,17 +441,28 @@ function ViewCard({
         </div>
       )}
 
-      <div className="flex min-w-0 items-center gap-3">
+      <div
+        className={`relative z-[1] flex min-w-0 ${isFeatured ? "h-full flex-col items-start gap-3" : "items-center gap-3"}`}
+      >
         <ViewCardOpenButton view={view} onClick={onClick}>
-          <div className="flex min-w-0 items-center gap-3">
-            <ViewIdentityTile view={view} />
+          <div
+            className={`flex min-w-0 ${isFeatured ? "h-full flex-col items-start gap-3" : "items-center gap-3"}`}
+          >
+            <ViewIdentityTile
+              view={view}
+              size={isFeatured ? "featured" : isCompact ? "compact" : "regular"}
+            />
 
             <div className="min-w-0 flex-1">
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-txt transition-colors group-hover:text-accent">
+                <p
+                  className={`${isFeatured ? "text-base" : "text-sm"} truncate font-semibold text-txt transition-colors group-hover:text-accent`}
+                >
                   {group.label}
                 </p>
-                <p className="mt-0.5 line-clamp-1 text-xs text-muted">
+                <p
+                  className={`${isFeatured ? "line-clamp-2" : "line-clamp-1"} mt-0.5 text-xs leading-5 text-muted`}
+                >
                   {group.description ?? `Open the ${group.label} view.`}
                 </p>
               </div>
@@ -418,7 +470,7 @@ function ViewCard({
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 <ViewBadge>{sourceLabel}</ViewBadge>
                 {group.pluginName && <ViewBadge>{group.pluginName}</ViewBadge>}
-                {!compact && (
+                {!isCompact && !isFeatured && (
                   <ViewBadge>{view.path ?? `/apps/${view.id}`}</ViewBadge>
                 )}
               </div>
@@ -426,7 +478,9 @@ function ViewCard({
           </div>
         </ViewCardOpenButton>
 
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        <div
+          className={`${isFeatured ? "mt-auto w-full justify-end" : "ml-auto"} flex shrink-0 items-center gap-2`}
+        >
           {group.modes.length > 1 ? (
             group.modes.map((mode) => (
               <ViewModeButton
@@ -495,6 +549,8 @@ function ViewsLoadingSkeleton() {
 
 function ViewSection({
   title,
+  icon,
+  layout = "grid",
   views,
   onViewClick,
   onViewPin,
@@ -502,6 +558,8 @@ function ViewSection({
   onViewDelete,
 }: {
   title: string;
+  icon: React.ReactNode;
+  layout?: "grid" | "wide";
   views: ViewGroup[];
   onViewClick: (view: ViewRegistryEntry) => void;
   onViewPin: (view: ViewRegistryEntry) => void;
@@ -510,14 +568,21 @@ function ViewSection({
 }) {
   if (views.length === 0) return null;
   return (
-    <section className="mb-6">
+    <section className="mb-5 rounded-lg border border-border/30 bg-black/18 p-3 shadow-[0_18px_44px_rgba(0,0,0,0.18)]">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted/70">
+        <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted/80">
+          <span className="text-accent">{icon}</span>
           {title}
         </h2>
         <span className="text-xs text-muted">{views.length}</span>
       </div>
-      <div className="grid gap-2">
+      <div
+        className={
+          layout === "wide"
+            ? "grid gap-2"
+            : "grid gap-2 md:grid-cols-2 xl:grid-cols-3"
+        }
+      >
         {views.map((view) => (
           <ViewCard
             key={view.key}
@@ -542,30 +607,55 @@ function TopViewsSection({
   onViewClick: (view: ViewRegistryEntry) => void;
   onViewPin: (view: ViewRegistryEntry) => void;
 }) {
-  const { t } = useTranslation();
   if (views.length === 0) return null;
   return (
-    <section className="mb-6" data-testid="views-top-section">
+    <section
+      className="mb-5 rounded-lg border border-border/30 bg-black/18 p-3 shadow-[0_18px_44px_rgba(0,0,0,0.18)]"
+      data-testid="views-top-section"
+    >
       <div className="mb-2 flex items-center justify-between gap-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted/70">
-          {t("viewmanager.section.pinnedRecent", {
-            defaultValue: "Pinned & recent",
-          })}
+        <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted/80">
+          <Star className="h-3.5 w-3.5 text-accent" aria-hidden />
+          Featured views
         </h2>
         <span className="text-xs text-muted">{views.length}</span>
       </div>
-      <div className="grid gap-2">
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
         {views.map((view) => (
           <ViewCard
             key={view.key}
             group={view}
             onClick={onViewClick}
             onPin={onViewPin}
-            compact
+            variant="compact"
           />
         ))}
       </div>
     </section>
+  );
+}
+
+function ToolbarSegmentButton({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex h-9 items-center justify-center rounded-md px-3 text-xs font-semibold transition-colors ${
+        active
+          ? "border border-accent/75 bg-accent/12 text-txt shadow-[0_0_22px_rgba(255,115,0,0.18)]"
+          : "border border-transparent text-muted hover:border-border/50 hover:bg-card/70 hover:text-txt"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -607,6 +697,8 @@ export function ViewManagerPage() {
     ViewRegistryEntry[] | null
   >(null);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
+  const [viewTypeFilter, setViewTypeFilter] = useState<ViewTypeFilter>("all");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const searchInput = useAgentElement<HTMLInputElement>({
@@ -712,6 +804,14 @@ export function ViewManagerPage() {
         if (isViewManagerEntry(v)) return false;
         if (v.developerOnly && !isDeveloperMode) return false;
         if (v.visibleInManager === false) return false;
+        if (sourceFilter === "core" && !v.builtin) return false;
+        if (sourceFilter === "plugins" && v.builtin) return false;
+        if (
+          viewTypeFilter !== "all" &&
+          (v.viewType ?? "gui") !== viewTypeFilter
+        ) {
+          return false;
+        }
         return true;
       });
       return {
@@ -725,6 +825,14 @@ export function ViewManagerPage() {
       if (isViewManagerEntry(v)) return false;
       if (v.developerOnly && !isDeveloperMode) return false;
       if (v.visibleInManager === false) return false;
+      if (sourceFilter === "core" && !v.builtin) return false;
+      if (sourceFilter === "plugins" && v.builtin) return false;
+      if (
+        viewTypeFilter !== "all" &&
+        (v.viewType ?? "gui") !== viewTypeFilter
+      ) {
+        return false;
+      }
       if (!q) return true;
       return (
         v.label.toLowerCase().includes(q) ||
@@ -737,7 +845,14 @@ export function ViewManagerPage() {
       builtinViews: visible.filter((v) => v.builtin),
       pluginViews: visible.filter((v) => !v.builtin),
     };
-  }, [views, isDeveloperMode, query, searchResults]);
+  }, [
+    views,
+    isDeveloperMode,
+    query,
+    searchResults,
+    sourceFilter,
+    viewTypeFilter,
+  ]);
   const visibleViews = useMemo(
     () => [...builtinViews, ...pluginViews],
     [builtinViews, pluginViews],
@@ -930,16 +1045,19 @@ export function ViewManagerPage() {
 
   return (
     <ShellViewAgentSurface viewId="views">
-      <div className="flex flex-1 min-h-0 flex-col">
+      <div className="flex flex-1 min-h-0 flex-col bg-[radial-gradient(circle_at_18%_0%,rgba(255,115,0,0.13),transparent_34%),radial-gradient(circle_at_86%_10%,rgba(255,115,0,0.08),transparent_28%)]">
         {/* Header */}
-        <div className="shrink-0 border-b border-border/50 px-4 py-3">
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <h1 className="shrink-0 text-lg font-semibold text-txt">
+        <div className="shrink-0 border-b border-border/45 px-6 pb-4 pt-5">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h1 className="shrink-0 text-3xl font-semibold text-txt">
                   {t("viewmanager.title", { defaultValue: "Views" })}
                 </h1>
-                <div className="flex min-w-0 flex-wrap gap-1.5">
+                <p className="mt-1 text-sm text-muted">
+                  Apps and interfaces for your ElizaOS system.
+                </p>
+                <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
                   <ViewBadge>{totalVisible} views</ViewBadge>
                   <ViewBadge>{availableCount} ready</ViewBadge>
                   <ViewBadge>{pluginCount} plugin</ViewBadge>
@@ -950,14 +1068,17 @@ export function ViewManagerPage() {
                   )}
                 </div>
               </div>
-              {isSearching && (
-                <span className="rounded-md border border-border/45 bg-bg/35 px-1.5 py-0.5 text-[0.68rem] text-muted">
-                  Searching
-                </span>
-              )}
+              <button
+                type="button"
+                className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-border/45 bg-card/72 px-3 text-xs font-semibold text-muted"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />
+                Popular
+                <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+              </button>
             </div>
 
-            <div className="flex w-full min-w-0 flex-row gap-2">
+            <div className="grid w-full min-w-0 gap-3 xl:grid-cols-[minmax(22rem,1fr)_auto_auto] xl:items-center">
               <div className="relative min-w-0 flex-1">
                 <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted pointer-events-none" />
                 <input
@@ -968,7 +1089,7 @@ export function ViewManagerPage() {
                   })}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  className="h-10 w-full rounded-md border border-border bg-card/72 py-2 pl-9 pr-9 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="h-11 w-full rounded-lg border border-border/65 bg-card/76 py-2 pl-9 pr-9 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
                   {...searchInput.agentProps}
                 />
                 {query && (
@@ -984,12 +1105,40 @@ export function ViewManagerPage() {
                   </button>
                 )}
               </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-3">
+                <div className="inline-flex rounded-lg border border-border/45 bg-card/60 p-1">
+                  {SOURCE_FILTERS.map((filter) => (
+                    <ToolbarSegmentButton
+                      key={filter}
+                      active={sourceFilter === filter}
+                      onClick={() => setSourceFilter(filter)}
+                    >
+                      {filter === "all"
+                        ? "All"
+                        : filter === "core"
+                          ? "Core"
+                          : "Plugins"}
+                    </ToolbarSegmentButton>
+                  ))}
+                </div>
+                <div className="inline-flex rounded-lg border border-border/45 bg-card/60 p-1">
+                  {VIEW_TYPE_FILTERS.map((filter) => (
+                    <ToolbarSegmentButton
+                      key={filter}
+                      active={viewTypeFilter === filter}
+                      onClick={() => setViewTypeFilter(filter)}
+                    >
+                      {filter.toUpperCase()}
+                    </ToolbarSegmentButton>
+                  ))}
+                </div>
+              </div>
               <button
                 ref={refreshButton.ref}
                 type="button"
                 disabled={loading}
                 onClick={() => void refresh()}
-                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-card/72 px-3 text-sm font-medium text-txt transition-colors hover:border-accent/45 hover:bg-card disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-border/55 bg-card/72 px-3 text-sm font-medium text-txt transition-colors hover:border-accent/45 hover:bg-card disabled:cursor-not-allowed disabled:opacity-60"
                 {...refreshButton.agentProps}
               >
                 <RefreshCw
@@ -998,6 +1147,11 @@ export function ViewManagerPage() {
                 />
                 {t("viewmanager.refreshShort", { defaultValue: "Refresh" })}
               </button>
+              {isSearching && (
+                <span className="rounded-md border border-border/45 bg-bg/35 px-2 py-1 text-[0.68rem] text-muted xl:col-start-3">
+                  Searching
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -1091,7 +1245,7 @@ export function ViewManagerPage() {
         )}
 
         {/* Content */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
           {error && (
             <div className="mb-3 rounded-sm border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
               {t("viewmanager.loadError", {
@@ -1116,6 +1270,7 @@ export function ViewManagerPage() {
               )}
               <ViewSection
                 title={t("viewmanager.section.core", { defaultValue: "Core" })}
+                icon={<Box className="h-3.5 w-3.5" aria-hidden />}
                 views={sectionBuiltinViews}
                 onViewClick={handleViewClick}
                 onViewPin={handleViewPin}
@@ -1124,6 +1279,8 @@ export function ViewManagerPage() {
                 title={t("viewmanager.section.plugins", {
                   defaultValue: "Plugins",
                 })}
+                icon={<SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />}
+                layout="wide"
                 views={sectionPluginViews}
                 onViewClick={handleViewClick}
                 onViewPin={handleViewPin}
