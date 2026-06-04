@@ -3,12 +3,12 @@ import { type AuthLoginResult, authLoginPassword } from "../../api/auth-client";
 import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import {
-  SetupStepDivider,
   setupBodyTextShadowStyle,
   setupDescriptionClass,
   setupEyebrowClass,
   setupTitleClass,
-} from "../setup/setup-step-chrome";
+} from "../setup/setup-classes";
+import { SetupStepDivider } from "../setup/setup-step-chrome";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Input } from "../ui/input";
