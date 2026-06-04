@@ -3,6 +3,7 @@ import * as React from "react";
 import type { ImageAttachment } from "../../api/client-types-chat";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import { useApp } from "../../state";
+import { loadVadAutoStop } from "../../state/persistence";
 import {
   createVoiceCapture,
   type VoiceCaptureHandle,
@@ -159,7 +160,11 @@ export function useShellController(): ShellController {
   const startCapture = React.useCallback(() => {
     if (!ready) return;
     if (captureRef.current) return;
+    // Read the user's VAD thresholds synchronously (local mirror of the
+    // `messages.voice` setting) so end-of-turn silence detection honors the
+    // configured sensitivity. Only consumed by the local-inference backend.
     const handle = createVoiceCapture({
+      localAsrAutoStop: loadVadAutoStop(),
       onTranscript: (segment) => {
         const text = segment.text.trim();
         if (!segment.final) {

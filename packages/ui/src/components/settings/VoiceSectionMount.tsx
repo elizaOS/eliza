@@ -15,6 +15,7 @@
 import * as React from "react";
 import { client } from "../../api/client";
 import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
+import { saveVadAutoStop } from "../../state/persistence";
 import {
   VOICE_CONTINUOUS_MODES,
   type VoiceContinuousMode,
@@ -97,7 +98,11 @@ export function VoiceSectionMount(): React.ReactElement {
     let cancelled = false;
     void (async () => {
       const config = await client.getConfig();
-      if (!cancelled) setPrefs(readStoredVoicePrefs(config));
+      if (cancelled) return;
+      const loaded = readStoredVoicePrefs(config);
+      setPrefs(loaded);
+      // Seed the local mirror so the capture hot path reads the server value.
+      if (loaded.vadAutoStop) saveVadAutoStop(loaded.vadAutoStop);
     })();
     return () => {
       cancelled = true;
@@ -108,6 +113,9 @@ export function VoiceSectionMount(): React.ReactElement {
     async (next: VoiceSectionPrefs) => {
       setPrefs(next);
       setPersistError(null);
+      // Mirror to localStorage immediately so the capture path picks up the new
+      // VAD thresholds without waiting on the config round-trip.
+      if (next.vadAutoStop) saveVadAutoStop(next.vadAutoStop);
       try {
         const config = await client.getConfig();
         const messages = (config.messages ?? {}) as Record<string, unknown>;
