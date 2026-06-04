@@ -421,6 +421,8 @@ jobs:
                 -e 's#(postgres(ql)?://)[^[:space:]]+#\1[REDACTED]#g' \
                 -e 's#(Bearer )[A-Za-z0-9._~+/-]+=*#\1[REDACTED]#g' \
                 -e 's#eliza_[A-Za-z0-9._-]+#eliza_[REDACTED]#g' \
+                -e 's#(/telegram/)[A-Za-z0-9._~+/-]+=*#\1[REDACTED]#g' \
+                -e 's#([?&]token=)[A-Za-z0-9._~+/-]+=*#\1[REDACTED]#g' \
                 -e 's#[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}#[JWT_REDACTED]#g'
             }
 
@@ -435,6 +437,20 @@ jobs:
               | grep -F "agent-${safe_agent_id}" -A 60 -B 20 \
               | tail -n 320 \
               | redact_stream || true
+
+            container_name="agent-${safe_agent_id}"
+            if sudo docker inspect "$container_name" >/dev/null 2>&1; then
+              echo "=== Docker port diagnostics for ${container_name} ==="
+              sudo docker ps --filter "name=^/${container_name}$" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' \
+                | redact_stream || true
+              sudo docker inspect "$container_name" \
+                --format 'name={{.Name}} status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} ports={{json .NetworkSettings.Ports}}' \
+                | redact_stream || true
+              sudo docker exec "$container_name" sh -lc 'printf "PORT=%s HTTP_PORT=%s ELIZA_PORT=%s\n" "${PORT:-}" "${HTTP_PORT:-}" "${ELIZA_PORT:-}"; for port in "${PORT:-}" "${HTTP_PORT:-}" "${ELIZA_PORT:-}"; do case "$port" in ""|*[!0-9]*) continue ;; esac; for path in /health /api/health /; do status=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${port}${path}" 2>/dev/null || true); printf "container_check port=%s path=%s status=%s\n" "$port" "$path" "$status"; done; done' \
+                | redact_stream || true
+            else
+              echo "No Docker container named ${container_name} found."
+            fi
 
       - name: Notify Discord (Success)
         if: success() && steps.deploy_config.outputs.configured == 'true'
