@@ -10,6 +10,7 @@ import {
 } from "../../src/services/orchestrator-task-store.js";
 import type {
   CreateTaskInput,
+  OrchestratorTaskPlanRevision,
   OrchestratorTaskSession,
 } from "../../src/services/orchestrator-task-types.js";
 
@@ -65,6 +66,23 @@ function sessionFor(
     metadata: {},
     createdAt: now,
     updatedAt: now,
+    ...overrides,
+  };
+}
+
+function planRevisionFor(
+  taskId: string,
+  overrides: Partial<OrchestratorTaskPlanRevision> = {},
+): OrchestratorTaskPlanRevision {
+  const now = new Date("2026-05-20T12:00:00.000Z").toISOString();
+  return {
+    id: "plan-1",
+    taskId,
+    plan: { summary: "first plan", steps: ["one"] },
+    createdBy: "operator",
+    metadata: {},
+    timestamp: 1,
+    createdAt: now,
     ...overrides,
   };
 }
@@ -190,6 +208,7 @@ describe("InMemoryTaskStore", () => {
     expect(doc.task.originalRequest).toBe("Build the widget");
     expect(doc.task.acceptanceCriteria).toEqual([]);
     expect(doc.sessions).toEqual([]);
+    expect(doc.planRevisions).toEqual([]);
   });
 
   it("returns cloned documents so callers cannot mutate stored state", async () => {
@@ -318,6 +337,66 @@ describe("InMemoryTaskStore", () => {
     expect(doc?.usage).toHaveLength(1);
   });
 
+  it("adds and replaces plan revisions without leaking caller mutations", async () => {
+    const store = new InMemoryTaskStore();
+    const { task } = await store.createTask(createInput());
+    const revision = planRevisionFor(task.id);
+
+    await store.addPlanRevision(revision);
+    revision.plan.steps = ["mutated outside"];
+    await store.addPlanRevision(
+      planRevisionFor(task.id, {
+        plan: { summary: "replacement", steps: ["two"] },
+        editSummary: "replace draft",
+      }),
+    );
+
+    const doc = await store.getTask(task.id);
+    expect(doc?.planRevisions).toHaveLength(1);
+    expect(doc?.planRevisions[0]).toMatchObject({
+      id: "plan-1",
+      plan: { summary: "replacement", steps: ["two"] },
+      editSummary: "replace draft",
+    });
+  });
+
+  it("retains the full inspectable message and event timeline", async () => {
+    const store = new InMemoryTaskStore();
+    const { task } = await store.createTask(createInput());
+    const createdAt = new Date("2026-05-20T12:00:00.000Z").toISOString();
+    for (let i = 0; i < 501; i += 1) {
+      await store.addEvent({
+        id: `event-${i}`,
+        taskId: task.id,
+        eventType: "tool_running",
+        summary: `event ${i}`,
+        data: {},
+        timestamp: i,
+        createdAt,
+      });
+    }
+    for (let i = 0; i < 1001; i += 1) {
+      await store.addMessage({
+        id: `message-${i}`,
+        taskId: task.id,
+        senderKind: "sub_agent",
+        direction: "stdout",
+        content: `message ${i}`,
+        searchableText: `message ${i}`,
+        timestamp: i,
+        metadata: {},
+        createdAt,
+      });
+    }
+
+    const doc = await store.getTask(task.id);
+
+    expect(doc?.events).toHaveLength(501);
+    expect(doc?.events[0]?.id).toBe("event-0");
+    expect(doc?.messages).toHaveLength(1001);
+    expect(doc?.messages[0]?.id).toBe("message-0");
+  });
+
   it("ignores child appends and sessions for unknown tasks", async () => {
     const store = new InMemoryTaskStore();
     await expect(
@@ -380,6 +459,21 @@ describe("FileTaskStore", () => {
     const tasks = await reopened.listTasks();
     expect(tasks).toHaveLength(1);
     expect(tasks[0]?.id).toBe(task.id);
+  });
+
+  it("loads older documents without planRevisions as an empty revision list", async () => {
+    const file = await tempFile();
+    const seed = new FileTaskStore(file);
+    const { task } = await seed.createTask(createInput({ title: "old doc" }));
+    const oldDocs = JSON.parse(await readFile(file, "utf8")) as Array<
+      Record<string, unknown>
+    >;
+    delete oldDocs[0]?.planRevisions;
+    await writeFile(file, JSON.stringify(oldDocs), "utf8");
+
+    const reopened = new FileTaskStore(file);
+    const loaded = await reopened.getTask(task.id);
+    expect(loaded?.planRevisions).toEqual([]);
   });
 });
 

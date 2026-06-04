@@ -13,7 +13,9 @@ export {
   requestRestart,
   setRestartHandler,
 } from "@elizaos/shared";
-export { App } from "./App.tsx";
+// Keep the full app shell on the explicit `@elizaos/ui/App` entry. Exporting it
+// from this broad browser facade creates a second bundled shell copy for plugin
+// host imports, which can fold lazy route modules back into the entry chunk.
 export * from "./agent-surface/index.ts";
 export {
   type AgentElementHandle,

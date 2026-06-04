@@ -298,8 +298,8 @@ export function SettingsView({
 
       const rootRect = root.getBoundingClientRect();
       const activeAnchorOffset = Math.min(
-        320,
-        Math.max(180, root.clientHeight * 0.35),
+        120,
+        Math.max(72, root.clientHeight * 0.12),
       );
       let currentSection = sections[0].id;
 

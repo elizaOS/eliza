@@ -17,7 +17,10 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
-import type { CreateTaskInput } from "../../src/services/orchestrator-task-types.js";
+import type {
+  CreateTaskInput,
+  OrchestratorTaskSession,
+} from "../../src/services/orchestrator-task-types.js";
 
 interface SpawnResult {
   sessionId: string;
@@ -91,10 +94,19 @@ function runtime(acp?: FakeAcp): IAgentRuntime {
   } as never;
 }
 
+function makeServiceWithStore(acp?: FakeAcp): {
+  service: OrchestratorTaskService;
+  store: OrchestratorTaskStore;
+} {
+  const store = new OrchestratorTaskStore({ backend: "memory" });
+  return {
+    service: new OrchestratorTaskService(runtime(acp), { store }),
+    store,
+  };
+}
+
 function makeService(acp?: FakeAcp): OrchestratorTaskService {
-  return new OrchestratorTaskService(runtime(acp), {
-    store: new OrchestratorTaskStore({ backend: "memory" }),
-  });
+  return makeServiceWithStore(acp).service;
 }
 
 function createInput(
@@ -162,6 +174,47 @@ async function withSpawnedSessionLabel(label: string): Promise<{
   );
   const sessionId = must(detail.sessions[0], "expected session").sessionId;
   return { service, acp, taskId: task.id, sessionId };
+}
+
+async function addStoredSession(
+  store: OrchestratorTaskStore,
+  taskId: string,
+  sessionId = "stored-session",
+): Promise<string> {
+  const ts = new Date().toISOString();
+  const now = Date.now();
+  const session: OrchestratorTaskSession = {
+    id: `${sessionId}-row`,
+    taskId,
+    sessionId,
+    framework: "codex",
+    label: "Stored Agent",
+    originalTask: "Implement and verify",
+    goalPrompt: "Implement and verify",
+    workdir: "/repo",
+    status: "ready",
+    decisionCount: 0,
+    autoResolvedCount: 0,
+    registeredAt: now,
+    lastActivityAt: now,
+    idleCheckCount: 0,
+    taskDelivered: false,
+    lastSeenDecisionIndex: 0,
+    spawnedAt: now,
+    retryCount: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    cacheTokens: 0,
+    costUsd: 0,
+    usageState: "unavailable",
+    metadata: {},
+    createdAt: ts,
+    updatedAt: ts,
+  };
+  await store.addSession(session);
+  await store.updateTask(taskId, { status: "active" });
+  return sessionId;
 }
 
 describe("OrchestratorTaskService — sub-agent naming", () => {
@@ -286,6 +339,21 @@ describe("OrchestratorTaskService — lifecycle", () => {
     expect(resumed.paused).toBe(false);
     expect(await service.pauseTask("missing")).toBeNull();
     expect(await service.resumeTask("missing")).toBeNull();
+  });
+
+  it("pause fails loudly when live sessions exist but ACP is unavailable", async () => {
+    const { service, store } = makeServiceWithStore();
+    const task = await service.createTask(createInput());
+    await addStoredSession(store, task.id);
+
+    await expect(service.pauseTask(task.id)).rejects.toThrow(
+      /ACP service unavailable/,
+    );
+
+    const detail = must(await service.getTask(task.id), "detail");
+    expect(detail.paused).toBe(false);
+    expect(detail.status).toBe("interrupted");
+    expect(must(detail.sessions[0], "session").status).toBe("stop_failed");
   });
 
   it("archives a task (stopping sessions) and reopens it to active when sessions remain", async () => {
@@ -446,6 +514,28 @@ describe("OrchestratorTaskService — lifecycle", () => {
     );
   });
 
+  it("reports ACP-unavailable delivery failures for live sessions", async () => {
+    const { service, store } = makeServiceWithStore();
+    const task = await service.createTask(createInput());
+    const sessionId = await addStoredSession(store, task.id);
+
+    const result = must(
+      await service.postUserMessage(task.id, "please continue"),
+      "result",
+    );
+
+    expect(result).toMatchObject({
+      recorded: true,
+      forwardedTo: [],
+      failedTo: [{ sessionId, error: "ACP service unavailable" }],
+    });
+    const detail = must(await service.getTask(task.id), "detail");
+    expect(must(detail.sessions[0], "session").status).toBe("send_failed");
+    expect(detail.messages.map((message) => message.content)).toContain(
+      "please continue",
+    );
+  });
+
   it("relays a posted user message to every live session as a goal-wrapped follow-up", async () => {
     const { service, acp, taskId, sessionId } = await withSpawnedSession();
     const result = must(
@@ -473,18 +563,370 @@ describe("OrchestratorTaskService — lifecycle", () => {
     expect(acp.sent).toHaveLength(0);
   });
 
+  it("reports ACP-unavailable auto-spawn failure when no session is live", async () => {
+    const service = makeService();
+    const { id } = await service.createTask(createInput());
+
+    const result = must(await service.postUserMessage(id, "hello"), "post");
+
+    expect(result).toMatchObject({
+      recorded: true,
+      forwardedTo: [],
+      failedTo: [
+        { sessionId: "(auto-spawn)", error: "ACP service unavailable" },
+      ],
+    });
+    const detail = must(await service.getTask(id), "detail");
+    expect(detail.sessions).toHaveLength(0);
+    expect(detail.messages.map((message) => message.content)).toContain(
+      "hello",
+    );
+  });
+
   it("paginates messages with a limit and cursor", async () => {
     const service = makeService();
     const { id } = await service.createTask(createInput());
     await service.addMessage(id, { content: "one", senderKind: "user" });
     await service.addMessage(id, { content: "two", senderKind: "user" });
-    const all = await service.listMessages(id);
+    const all = must(await service.listMessages(id), "all");
     expect(all.items).toHaveLength(2);
     expect(all.nextCursor).toBeNull();
-    const firstPage = await service.listMessages(id, { limit: 1 });
+    expect(all.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          threadId: id,
+          sessionId: null,
+          content: "one",
+        }),
+        expect.objectContaining({
+          threadId: id,
+          sessionId: null,
+          content: "two",
+        }),
+      ]),
+    );
+    for (const item of all.items) expect(item).not.toHaveProperty("taskId");
+    const firstPage = must(
+      await service.listMessages(id, { limit: 1 }),
+      "firstPage",
+    );
     expect(firstPage.items).toHaveLength(1);
     expect(firstPage.nextCursor).toBe("1");
-    expect((await service.listMessages("missing")).items).toEqual([]);
+    expect(await service.listMessages("missing")).toBeNull();
+  });
+
+  it("paginates events with the public DTO shape", async () => {
+    const service = makeService();
+    const { id } = await service.createTask(createInput());
+    await service.validateTask(id, {
+      passed: false,
+      summary: "needs another pass",
+      humanOverride: true,
+    });
+
+    const page = must(await service.listEvents(id), "events");
+
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]).toMatchObject({
+      threadId: id,
+      sessionId: null,
+      eventType: "validation_failed",
+      summary: "needs another pass",
+    });
+    expect(page.items[0]).not.toHaveProperty("taskId");
+    expect(await service.listEvents("missing")).toBeNull();
+  });
+
+  it("paginates a normalized mixed message/event timeline", async () => {
+    const { service, store } = makeServiceWithStore();
+    const { id } = await service.createTask(createInput());
+    const createdAt = new Date().toISOString();
+    await store.addMessage({
+      id: "message-1",
+      taskId: id,
+      senderKind: "user",
+      direction: "stdin",
+      content: "start here",
+      searchableText: "start here",
+      timestamp: 10,
+      metadata: {},
+      createdAt,
+    });
+    await store.addEvent({
+      id: "event-1",
+      taskId: id,
+      sessionId: "session-1",
+      eventType: "tool_running",
+      summary: "Ran tests",
+      data: { toolCall: { id: "tool-1" } },
+      timestamp: 20,
+      createdAt,
+    });
+
+    const firstPage = must(
+      await service.listTimeline(id, { limit: 1 }),
+      "timeline",
+    );
+    expect(firstPage.items).toEqual([
+      expect.objectContaining({
+        id: "event:event-1",
+        kind: "event",
+        threadId: id,
+        sessionId: "session-1",
+        event: expect.objectContaining({
+          id: "event-1",
+          threadId: id,
+          eventType: "tool_running",
+        }),
+      }),
+    ]);
+    expect(firstPage.nextCursor).toBe("1");
+
+    const secondPage = must(
+      await service.listTimeline(id, { cursor: "1", limit: 1 }),
+      "timeline page 2",
+    );
+    expect(secondPage.items).toEqual([
+      expect.objectContaining({
+        id: "message:message-1",
+        kind: "message",
+        threadId: id,
+        sessionId: null,
+        message: expect.objectContaining({
+          id: "message-1",
+          threadId: id,
+          content: "start here",
+        }),
+      }),
+    ]);
+    expect(secondPage.nextCursor).toBeNull();
+    expect(await service.listTimeline("missing")).toBeNull();
+  });
+});
+
+describe("OrchestratorTaskService — plan revisions", () => {
+  it("creates, lists, and applies immutable plan revisions", async () => {
+    const service = makeService();
+    const task = await service.createTask(createInput());
+    const plan: Record<string, unknown> = {
+      summary: "operator edit",
+      steps: ["one"],
+    };
+
+    const revision = must(
+      await service.createPlanRevision(task.id, {
+        plan,
+        editSummary: "focus the implementation",
+        metadata: { source: "test" },
+      }),
+      "revision",
+    );
+    plan.summary = "mutated after create";
+
+    expect(revision.threadId).toBe(task.id);
+    expect(revision.plan).toEqual({ summary: "operator edit", steps: ["one"] });
+    expect(revision.editSummary).toBe("focus the implementation");
+    expect(revision.metadata).toEqual({ source: "test" });
+
+    const detail = must(await service.getTask(task.id), "detail");
+    expect(detail.currentPlan).toEqual({
+      summary: "operator edit",
+      steps: ["one"],
+    });
+    expect(detail.planRevisions).toHaveLength(1);
+    expect(detail.events.at(-1)).toMatchObject({
+      eventType: "plan_revision_created",
+      data: { planRevisionId: revision.id },
+    });
+
+    const page = must(
+      await service.listPlanRevisions(task.id, { limit: 1 }),
+      "page",
+    );
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]?.id).toBe(revision.id);
+    expect(page.nextCursor).toBeNull();
+    expect(
+      await service.createPlanRevision("missing", { plan: {} }),
+    ).toBeNull();
+    expect(await service.listPlanRevisions("missing")).toBeNull();
+    await expect(
+      service.createPlanRevision(task.id, {
+        plan: {},
+        basePlanRevisionId: "missing-plan",
+      }),
+    ).rejects.toThrow(/Base plan revision not found/);
+  });
+});
+
+describe("OrchestratorTaskService — recovery controls", () => {
+  it("retries a turn in the same live session as an orchestrator follow-up", async () => {
+    const { service, acp, taskId, sessionId } = await withSpawnedSession();
+
+    const detail = must(
+      await service.retryTaskTurn(taskId, {
+        sessionId,
+        instruction: "try the edit again",
+      }),
+      "detail",
+    );
+
+    expect(acp.sent).toHaveLength(1);
+    expect(must(acp.sent[0], "sent").message).toContain("try the edit again");
+    expect(detail.status).toBe("active");
+    expect(detail.messages.at(-1)).toMatchObject({
+      senderKind: "orchestrator",
+      sessionId,
+      content: "try the edit again",
+    });
+    expect(
+      detail.events.some((event) => event.eventType === "retry_turn_requested"),
+    ).toBe(true);
+  });
+
+  it("retries a turn by spawning a new session when requested", async () => {
+    const acp = new FakeAcp();
+    const service = makeService(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+
+    const detail = must(
+      await service.retryTaskTurn(task.id, {
+        mode: "new-session",
+        instruction: "retry with a clean worker",
+      }),
+      "detail",
+    );
+
+    expect(acp.spawnArgs).toHaveLength(1);
+    expect(String(acp.spawnArgs[0]?.initialTask)).toContain(
+      "retry with a clean worker",
+    );
+    expect(detail.sessions).toHaveLength(1);
+  });
+
+  it("reruns from a source event without rewriting history", async () => {
+    const acp = new FakeAcp();
+    const service = makeService(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+    await service.validateTask(task.id, {
+      passed: false,
+      summary: "needs another pass",
+      humanOverride: true,
+    });
+    const sourceEvent = must(
+      (await service.getTask(task.id))?.events.find(
+        (event) => event.eventType === "validation_failed",
+      ),
+      "source event",
+    );
+
+    const detail = must(
+      await service.rerunFromEvent(task.id, {
+        eventId: sourceEvent.id,
+        instruction: "rerun this branch",
+      }),
+      "detail",
+    );
+
+    expect(acp.spawnArgs).toHaveLength(1);
+    expect(String(acp.spawnArgs[0]?.initialTask)).toContain(
+      "rerun this branch",
+    );
+    expect(detail.events.map((event) => event.eventType)).toContain(
+      "rerun_from_event_requested",
+    );
+    expect(detail.events.map((event) => event.id)).toContain(sourceEvent.id);
+  });
+
+  it("restarts by stopping active sessions and spawning a fresh worker", async () => {
+    const { service, acp, taskId, sessionId } = await withSpawnedSession();
+
+    const detail = must(
+      await service.restartTask(taskId, { instruction: "restart cleanly" }),
+      "detail",
+    );
+
+    expect(acp.stopped).toContain(sessionId);
+    expect(acp.spawnArgs).toHaveLength(2);
+    expect(String(acp.spawnArgs[1]?.initialTask)).toContain("restart cleanly");
+    expect(detail.sessions).toHaveLength(2);
+    expect(detail.events.map((event) => event.eventType)).toContain(
+      "restart_requested",
+    );
+  });
+
+  it("rejects unknown plan revision recovery inputs instead of ignoring them", async () => {
+    const { service, taskId } = await withSpawnedSession();
+
+    await expect(
+      service.retryTaskTurn(taskId, {
+        instruction: "retry",
+        planRevisionId: "plan-1",
+      }),
+    ).rejects.toThrow(/Plan revision not found/);
+  });
+
+  it("applies a selected plan revision to retry prompts and task state", async () => {
+    const { service, acp, taskId, sessionId } = await withSpawnedSession();
+    const revision = must(
+      await service.createPlanRevision(taskId, {
+        plan: { summary: "recover with plan", steps: ["retry"] },
+        editSummary: "recover safely",
+      }),
+      "revision",
+    );
+
+    const detail = must(
+      await service.retryTaskTurn(taskId, {
+        sessionId,
+        instruction: "retry with the edited plan",
+        planRevisionId: revision.id,
+      }),
+      "detail",
+    );
+
+    expect(acp.sent.at(-1)?.message).toContain(`Revision: ${revision.id}`);
+    expect(acp.sent.at(-1)?.message).toContain("recover safely");
+    expect(detail.currentPlan).toEqual({
+      summary: "recover with plan",
+      steps: ["retry"],
+    });
+    expect(detail.events.at(-1)).toMatchObject({
+      eventType: "retry_turn_requested",
+      data: { planRevisionId: revision.id },
+    });
+  });
+
+  it("creates a plan revision and restarts with it in one operation", async () => {
+    const { service, acp, taskId } = await withSpawnedSession();
+
+    const detail = must(
+      await service.restartWithEditedPlan(taskId, {
+        plan: { summary: "restart plan", steps: ["fresh"] },
+        editSummary: "restart from edited plan",
+        stopActive: false,
+      }),
+      "detail",
+    );
+    const revision = must(detail.planRevisions.at(-1), "revision");
+
+    expect(detail.currentPlan).toEqual({
+      summary: "restart plan",
+      steps: ["fresh"],
+    });
+    expect(acp.spawnArgs).toHaveLength(2);
+    expect(String(acp.spawnArgs.at(-1)?.initialTask)).toContain(
+      `Revision: ${revision.id}`,
+    );
+    expect(detail.events.map((event) => event.eventType)).toEqual(
+      expect.arrayContaining(["plan_revision_created", "restart_requested"]),
+    );
+    expect(detail.events.at(-1)).toMatchObject({
+      eventType: "restart_requested",
+      data: { planRevisionId: revision.id },
+    });
   });
 });
 
@@ -657,6 +1099,20 @@ describe("OrchestratorTaskService — task status guards", () => {
     expect((await service.getTask(task.id))?.sessions[0]?.status).toBe(
       "stop_failed",
     );
+  });
+
+  it("does not mark a direct stop successful when ACP is unavailable", async () => {
+    const { service, store } = makeServiceWithStore();
+    const task = await service.createTask(createInput());
+    const sessionId = await addStoredSession(store, task.id);
+
+    await expect(service.stopTaskAgent(task.id, sessionId)).rejects.toThrow(
+      /ACP service unavailable/,
+    );
+
+    const detail = must(await service.getTask(task.id), "detail");
+    expect(detail.status).toBe("interrupted");
+    expect(must(detail.sessions[0], "session").status).toBe("stop_failed");
   });
 });
 
