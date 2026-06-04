@@ -34,9 +34,7 @@ type PairingSandbox = NonNullable<
 function resolveManagedWebUiUrl(sandbox: PairingSandbox): string | null {
   if (sandbox.execution_tier === "shared") return null;
   const baseDomain = containersEnv.publicBaseDomain();
-  return getElizaAgentPublicWebUiUrl(sandbox, {
-    baseDomain: baseDomain ?? null,
-  });
+  return getElizaAgentPublicWebUiUrl(sandbox, baseDomain ? { baseDomain } : {});
 }
 
 /**

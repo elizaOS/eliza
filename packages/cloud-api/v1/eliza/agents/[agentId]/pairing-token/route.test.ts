@@ -30,8 +30,7 @@ mock.module("@/lib/eliza-agent-web-ui", () => ({
   getElizaAgentPublicWebUiUrl: (
     sandbox: { id: string },
     options?: { baseDomain?: string | null },
-  ) =>
-    options?.baseDomain ? `https://${sandbox.id}.${options.baseDomain}` : null,
+  ) => `https://${sandbox.id}.${options?.baseDomain ?? "elizacloud.ai"}`,
 }));
 
 mock.module("@/lib/services/pairing-token", () => ({
@@ -136,18 +135,22 @@ describe("eliza agent pairing token route", () => {
     });
   });
 
-  test("does not mint fallback public URLs without a configured base domain", async () => {
+  test("uses the default web UI base domain when no runtime override is configured", async () => {
     publicBaseDomain = undefined;
     findByIdAndOrg.mockResolvedValue(runningSandbox("dedicated-lazy"));
 
     const response = await postPairingToken();
 
-    expect(response.status).toBe(503);
-    expect(await response.json()).toMatchObject({
-      success: false,
-      code: "AGENT_WEB_UI_NOT_READY",
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      data: {
+        token: "pair-token",
+        redirectUrl:
+          "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai/pair?token=pair-token",
+        expiresIn: 60,
+      },
     });
-    expect(generateToken).not.toHaveBeenCalled();
   });
 
   test("does not issue web UI redirects for shared-runtime agents", async () => {

@@ -78,7 +78,7 @@ function toAdminDetailsDto(
 function resolvePublicWebUiUrl(agent: Agent): string | null {
   if (agent.execution_tier === "shared") return null;
   const baseDomain = containersEnv.publicBaseDomain();
-  return getElizaAgentPublicWebUiUrl(agent, { baseDomain: baseDomain ?? null });
+  return getElizaAgentPublicWebUiUrl(agent, baseDomain ? { baseDomain } : {});
 }
 
 app.get("/", async (c) => {
