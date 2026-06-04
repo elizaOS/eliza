@@ -24,6 +24,8 @@ import {
   type ViewRegistryEntry,
 } from "../../hooks/useAvailableViews";
 import { useDesktopTabs } from "../../hooks/useDesktopTabs";
+import { useViewCatalog } from "../../hooks/useViewCatalog";
+import type { ViewEntry } from "../../hooks/view-catalog";
 import {
   getActiveViewModality,
   type ViewModality,
@@ -304,6 +306,103 @@ function ViewsLoadingSkeleton() {
   );
 }
 
+/**
+ * Card for a not-loaded catalog entry: hero/icon + label + a Get action that
+ * installs/loads the app (its view appears once the plugin registers).
+ */
+function CatalogGetCard({
+  entry,
+  onGet,
+}: {
+  entry: ViewEntry;
+  onGet: (entry: ViewEntry) => void;
+}) {
+  const { t } = useTranslation();
+  const showHero = Boolean(entry.hasHero && entry.heroUrl);
+  const busy = entry.state === "installing";
+  const errored = entry.state === "error";
+  const actionLabel = busy
+    ? t("viewmanager.catalog.getting", { defaultValue: "Getting…" })
+    : errored
+      ? t("viewmanager.catalog.retry", { defaultValue: "Retry" })
+      : t("viewmanager.catalog.get", { defaultValue: "Get" });
+  return (
+    <div
+      className="group relative flex flex-col overflow-hidden rounded-md border border-border/50 bg-card text-left transition-colors hover:border-accent/60"
+      data-testid={`view-card-${entry.id}`}
+    >
+      <button
+        type="button"
+        onClick={() => onGet(entry)}
+        disabled={busy}
+        aria-label={t("viewmanager.catalog.getAria", {
+          label: entry.label,
+          defaultValue: "Get {{label}}",
+        })}
+        className="flex flex-col text-left focus:outline-none disabled:cursor-not-allowed"
+      >
+        <div className="aspect-video w-full overflow-hidden">
+          {showHero ? (
+            <img
+              src={entry.heroUrl}
+              alt=""
+              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-accent/25 via-accent/10 to-card text-accent transition-colors group-hover:from-accent/35">
+              <ViewIcon
+                icon={entry.icon}
+                label={entry.label}
+                className="h-12 w-12"
+              />
+            </div>
+          )}
+        </div>
+        <div className="flex items-center justify-between gap-2 px-3 py-2">
+          <span className="truncate text-sm font-semibold text-txt transition-colors group-hover:text-accent">
+            {entry.label}
+          </span>
+          <span
+            data-testid={`view-get-${entry.id}`}
+            className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+              errored
+                ? "bg-destructive/15 text-destructive"
+                : "bg-accent text-accent-foreground"
+            } ${busy ? "opacity-70" : ""}`}
+          >
+            {actionLabel}
+          </span>
+        </div>
+      </button>
+    </div>
+  );
+}
+
+function CatalogSection({
+  title,
+  entries,
+  onGet,
+}: {
+  title: string;
+  entries: ViewEntry[];
+  onGet: (entry: ViewEntry) => void;
+}) {
+  if (entries.length === 0) return null;
+  return (
+    <div className="mb-5" data-testid="views-catalog-section">
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted/70">
+        {title}
+      </h2>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {entries.map((entry) => (
+          <CatalogGetCard key={entry.key} entry={entry} onGet={onGet} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ViewSection({
   title,
   views,
@@ -402,6 +501,9 @@ export function ViewManagerPage() {
   // Views are scoped to the surface modality: a GUI surface lists only GUI
   // views (TUI/XR hidden entirely); an XR surface lists only XR views.
   const activeModality = useMemo(() => getActiveViewModality(), []);
+  // Installable catalog (apps/games not loaded yet) — surfaced as "Get" cards
+  // alongside the loaded views, decoupled from plugin loading.
+  const { entries: catalogAllEntries, get: getCatalogEntry } = useViewCatalog();
   const [query, setQuery] = useState("");
   const [formViewId, setFormViewId] = useState("agent.quick-view");
   const [formTitle, setFormTitle] = useState("Quick View");
@@ -570,6 +672,22 @@ export function ViewManagerPage() {
 
   const totalVisible = builtinViews.length + pluginViews.length;
   const isSearching = searchLoading && query.trim().length > 0;
+  const availableEntries = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return catalogAllEntries
+      .filter((e) => e.state !== "loaded")
+      .filter(
+        (e) =>
+          !q ||
+          e.label.toLowerCase().includes(q) ||
+          (e.description?.toLowerCase().includes(q) ?? false) ||
+          (e.category?.toLowerCase().includes(q) ?? false),
+      );
+  }, [catalogAllEntries, query]);
+
+  function handleGet(entry: ViewEntry) {
+    void getCatalogEntry(entry);
+  }
 
   function handleViewClick(view: ViewRegistryEntry) {
     setRecentViewIds(recordRecentViewId(view.id));
@@ -828,7 +946,7 @@ export function ViewManagerPage() {
 
           {(loading && views.length === 0) || isSearching ? (
             <ViewsLoadingSkeleton />
-          ) : totalVisible === 0 ? (
+          ) : totalVisible === 0 && availableEntries.length === 0 ? (
             <ViewsEmptyState hasQuery={query.trim().length > 0} />
           ) : (
             <>
@@ -856,6 +974,13 @@ export function ViewManagerPage() {
                 onViewDelete={
                   canManageDynamicViews ? handleDeleteView : undefined
                 }
+              />
+              <CatalogSection
+                title={t("viewmanager.section.getMore", {
+                  defaultValue: "Get more",
+                })}
+                entries={availableEntries}
+                onGet={handleGet}
               />
             </>
           )}
