@@ -36,7 +36,7 @@ let x402RoutesModulePromise: Promise<X402RoutesModule> | null = null;
 
 function getX402RoutesModule(): Promise<X402RoutesModule> {
   x402RoutesModulePromise ??= import(
-    "@elizaos/plugin-x402"
+    /* @vite-ignore */ "@elizaos/plugin-x402"
   ) as unknown as Promise<X402RoutesModule>;
   return x402RoutesModulePromise;
 }
