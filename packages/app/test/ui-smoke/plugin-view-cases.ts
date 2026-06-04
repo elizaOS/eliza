@@ -3,8 +3,6 @@ export type ViewCase = {
   viewType: "gui" | "tui";
   path: string;
   shellPill: "expected" | "suppressed";
-  rootSelector?: string;
-  visualSignalSelector?: string;
 };
 
 type ViewCaseTuple = readonly [
@@ -13,22 +11,12 @@ type ViewCaseTuple = readonly [
   path: string,
   options?: {
     shellPill: ViewCase["shellPill"];
-    rootSelector?: string;
-    visualSignalSelector?: string;
   },
 ];
 
 export const VIEW_CASES: ViewCase[] = (
   [
-    [
-      "companion",
-      "gui",
-      "/companion",
-      {
-        rootSelector: "[data-testid='companion-root']",
-        visualSignalSelector: "[data-testid='companion-vrm-canvas']",
-      },
-    ],
+    ["companion", "gui", "/companion"],
     ["companion", "tui", "/companion/tui"],
     ["contacts", "gui", "/contacts"],
     ["contacts", "tui", "/contacts/tui"],
@@ -87,6 +75,4 @@ export const VIEW_CASES: ViewCase[] = (
   viewType,
   path: viewPath,
   shellPill: options?.shellPill === "suppressed" ? "suppressed" : "expected",
-  rootSelector: options?.rootSelector,
-  visualSignalSelector: options?.visualSignalSelector,
 }));

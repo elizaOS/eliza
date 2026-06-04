@@ -29,6 +29,21 @@ type ViewAudit = {
   focusedAfterTabs: string[];
 };
 
+type VisualSignalCase = {
+  rootSelector: string;
+  visualSignalSelector: string;
+};
+
+const VISUAL_SIGNAL_CASES = new Map<string, VisualSignalCase>([
+  [
+    "companion:gui:/companion",
+    {
+      rootSelector: "[data-testid='companion-root']",
+      visualSignalSelector: "[data-testid='companion-vrm-canvas']",
+    },
+  ],
+]);
+
 async function expectNoFailedView(
   page: Page,
   pageErrors: string[],
@@ -76,9 +91,14 @@ test.describe("registered plugin views visual coverage", () => {
         `${view.id} ${view.viewType} initial load`,
       );
 
-      const viewRoot = page.locator(view.rootSelector ?? "main").first();
-      const visualSignal = view.visualSignalSelector
-        ? page.locator(view.visualSignalSelector).first()
+      const visualSignalCase = VISUAL_SIGNAL_CASES.get(
+        `${view.id}:${view.viewType}:${view.path}`,
+      );
+      const viewRoot = page
+        .locator(visualSignalCase?.rootSelector ?? "main")
+        .first();
+      const visualSignal = visualSignalCase
+        ? page.locator(visualSignalCase.visualSignalSelector).first()
         : null;
       await expect(viewRoot).toBeVisible({ timeout: 60_000 });
       await expect
@@ -297,7 +317,7 @@ test.describe("registered plugin views visual coverage", () => {
           viewType: view.viewType,
           viewPath: view.path,
           focused: focusedAfterTabs,
-          rootSelector: view.rootSelector ?? null,
+          rootSelector: visualSignalCase?.rootSelector ?? null,
         },
       );
 
