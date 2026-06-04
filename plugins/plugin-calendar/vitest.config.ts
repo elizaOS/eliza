@@ -17,5 +17,14 @@ export default defineConfig({
       "**/*.live.test.{ts,tsx}",
     ],
     passWithNoTests: true,
+    server: {
+      deps: {
+        // @elizaos/agent's built dist dynamically imports every optional
+        // connector plugin. Vite 7 import-analysis throws for plugins that
+        // aren't built in CI even when @vite-ignore is present. Load @elizaos/agent
+        // via Node's native resolver to bypass Vite's transform pipeline.
+        external: [/@elizaos\/agent/],
+      },
+    },
   },
 });
