@@ -128,7 +128,7 @@ describe("screen-time mobile signals", () => {
       state: "partial",
       statusLabel: "Snapshot only",
       detail:
-        "Android currently provides rolling Usage Stats snapshots; multi-day totals exclude Android until daily exports are wired.",
+        "Android currently provides rolling Usage Stats snapshots; multi-day totals exclude Android until daily exports are available.",
     });
 
     expect(
@@ -167,7 +167,7 @@ describe("screen-time mobile signals", () => {
       state: "partial",
       statusLabel: "Export pending",
       detail:
-        "iOS Screen Time authorization is present, but usage export is not wired yet.",
+        "iOS Screen Time authorization is present, but usage export is pending.",
     });
 
     expect(
