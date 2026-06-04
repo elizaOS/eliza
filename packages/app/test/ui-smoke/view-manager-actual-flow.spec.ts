@@ -85,6 +85,13 @@ async function openViewManager(page: Page): Promise<void> {
   );
 }
 
+function viewCardOpenButton(page: Page, viewId: string) {
+  return page
+    .getByTestId(`view-card-${viewId}`)
+    .first()
+    .locator(`[data-agent-id="view-card-open-${viewId}"]`);
+}
+
 async function installElectrobunDynamicViewBridge(
   page: Page,
   options: {
@@ -248,10 +255,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
   await expect(page.getByTestId("view-card-actual-local-ledger")).toBeVisible();
   await screenshot(page, "01-local-created");
 
-  await page
-    .getByTestId("view-card-actual-local-ledger")
-    .getByRole("button", { name: /^Actual Local Ledger Actual/ })
-    .click();
+  await viewCardOpenButton(page, "actual-local-ledger").click();
   await expect(page).toHaveURL(/\/apps\/actual-local-ledger$/);
   await openViewManager(page);
 
@@ -272,13 +276,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     entrypoint: "/apps/actual-local-ledger",
     update: true,
   });
-  await expect(
-    page
-      .getByRole("button", {
-        name: /^Actual Local Ledger Updated Actual local managed view/,
-      })
-      .first(),
-  ).toBeVisible();
+  await expect(viewCardOpenButton(page, "actual-local-ledger")).toBeVisible();
   await expect(page.getByText(/^Actual Local Ledger$/)).toHaveCount(0);
 
   await page.getByLabel("Dynamic view ID").fill("actual-remote-ledger");
@@ -305,11 +303,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
   ).toBeVisible();
   await screenshot(page, "02-remote-created");
 
-  await page
-    .getByTestId("view-card-actual-local-ledger")
-    .first()
-    .getByRole("button", { name: /^Actual Local Ledger Updated Actual/ })
-    .click();
+  await viewCardOpenButton(page, "actual-local-ledger").click();
   await expect(page).toHaveURL(/\/apps\/actual-local-ledger$/);
   expect(
     remoteBundleRequests,
@@ -319,10 +313,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
 
   await openViewManager(page);
 
-  await page
-    .getByTestId("view-card-actual-remote-ledger")
-    .getByRole("button", { name: /^Actual Remote Ledger Actual/ })
-    .click();
+  await viewCardOpenButton(page, "actual-remote-ledger").click();
   await expect(page).toHaveURL(/\/apps\/actual-remote-ledger$/);
   await expect(
     page.getByText("Actual remote ledger module loaded"),
@@ -345,21 +336,11 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     entrypoint: "/dynamic-views/actual-remote-ledger.js",
     update: true,
   });
-  await expect(
-    page
-      .getByRole("button", {
-        name: /^Actual Remote Ledger Updated Actual remote managed view/,
-      })
-      .first(),
-  ).toBeVisible();
+  await expect(viewCardOpenButton(page, "actual-remote-ledger")).toBeVisible();
   await expect(page.getByText(/^Actual Remote Ledger$/)).toHaveCount(0);
 
   const remoteRequestsAfterFirstOpen = remoteBundleRequests;
-  await page
-    .getByTestId("view-card-actual-remote-ledger")
-    .getByRole("button", { name: /^Actual Remote Ledger Updated Actual/ })
-    .first()
-    .click();
+  await viewCardOpenButton(page, "actual-remote-ledger").click();
   await expect(page).toHaveURL(/\/apps\/actual-remote-ledger$/);
   await expect(
     page.getByText("Actual remote ledger module loaded"),
