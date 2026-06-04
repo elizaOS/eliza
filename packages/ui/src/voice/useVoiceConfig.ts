@@ -31,14 +31,20 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
     null,
   );
   const [voiceBootstrapTick, setVoiceBootstrapTick] = React.useState(0);
+  const mountedRef = React.useRef(false);
+  const loadIdRef = React.useRef(0);
 
   const loadVoiceConfig = React.useCallback(async () => {
+    loadIdRef.current += 1;
+    const loadId = loadIdRef.current;
+    const canApply = () => mountedRef.current && loadId === loadIdRef.current;
     try {
       const cfg = await client.getConfig();
       const resolved = resolveCharacterVoiceConfigFromAppConfig({
         config: cfg,
         uiLanguage,
       });
+      if (!canApply()) return;
       setVoiceConfig(resolved.voiceConfig);
       if (resolved.shouldPersist && resolved.voiceConfig) {
         void client
@@ -46,12 +52,23 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
           .catch(() => {});
       }
     } catch {
+      if (!canApply()) return;
       // No config endpoint / parse failure — fall back to provider defaults.
       setVoiceConfig(null);
     } finally {
-      setVoiceBootstrapTick((tick) => tick + 1);
+      if (canApply()) {
+        setVoiceBootstrapTick((tick) => tick + 1);
+      }
     }
   }, [uiLanguage]);
+
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      loadIdRef.current += 1;
+    };
+  }, []);
 
   React.useEffect(() => {
     void loadVoiceConfig();
