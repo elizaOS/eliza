@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it } from "vitest";
 import { JSDOM } from "jsdom";
+import { beforeEach, describe, expect, it } from "vitest";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { injectPopoutApiBase } from "./init";
 
@@ -33,7 +33,9 @@ describe("platform init waifu chat access bootstrap", () => {
     injectPopoutApiBase();
 
     expect(getBootConfig().apiToken).toBe("jwt-token");
-    expect(window.location.href).toBe(`${window.location.origin}/chat?tab=chat`);
+    expect(window.location.href).toBe(
+      `${window.location.origin}/chat?tab=chat`,
+    );
   });
 
   it("preserves existing boot config while replacing only the API token", () => {

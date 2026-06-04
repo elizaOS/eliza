@@ -15,15 +15,17 @@ const BLOB_STRIDE = 6;
 // Warm palette: deep crimson → blood orange → amber (one entry per blob).
 const BLOB_COLORS: readonly [number, number, number][] = [
   [0.72, 0.04, 0.01], // deep crimson
-  [0.82, 0.10, 0.01], // dark red
-  [0.90, 0.20, 0.01], // red-orange
-  [0.95, 0.30, 0.02], // orange-red
+  [0.82, 0.1, 0.01], // dark red
+  [0.9, 0.2, 0.01], // red-orange
+  [0.95, 0.3, 0.02], // orange-red
   [0.98, 0.42, 0.02], // orange
   [0.72, 0.06, 0.02], // crimson (slightly different)
   [0.88, 0.16, 0.01], // warm red
 ] as const;
 
-const BLOB_RADII: readonly number[] = [0.42, 0.38, 0.45, 0.36, 0.40, 0.43, 0.37] as const;
+const BLOB_RADII: readonly number[] = [
+  0.42, 0.38, 0.45, 0.36, 0.4, 0.43, 0.37,
+] as const;
 
 function build(
   THREE: WebGPUModule,
@@ -177,7 +179,9 @@ function build(
         const bSpeed: number = bubbleData[i * 4 + 3];
 
         // Sine of the accumulated angle maps [0, 2π] → [-0.85, 0.85] smoothly.
-        const by = Math.sin((f.time * bSpeed * riseBoost + bPhase) % (Math.PI * 2)) * 0.85;
+        const by =
+          Math.sin((f.time * bSpeed * riseBoost + bPhase) % (Math.PI * 2)) *
+          0.85;
         const rXZ = Math.sqrt(bx * bx + bz * bz);
         const maxBR = 0.82;
         const nbx = rXZ > maxBR ? (bx / rXZ) * maxBR : bx;

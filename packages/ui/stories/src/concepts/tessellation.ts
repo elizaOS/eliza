@@ -50,8 +50,8 @@ function build(
   // emissiveIntensity tweaked each frame — no per-vertex color needed.
   const mat: any = new THREE.MeshStandardNodeMaterial();
   mat.flatShading = true;
-  mat.color = new THREE.Color(0.18, 0.38, 0.52);   // cool slate-teal
-  mat.emissive = new THREE.Color(0.3, 0.72, 0.9);  // icy cyan glow on ridges
+  mat.color = new THREE.Color(0.18, 0.38, 0.52); // cool slate-teal
+  mat.emissive = new THREE.Color(0.3, 0.72, 0.9); // icy cyan glow on ridges
   mat.emissiveIntensity = 0.08;
   mat.roughness = 0.55;
   mat.metalness = 0.25;
@@ -116,7 +116,9 @@ function build(
       const a1x: number = axis1x * c1 + axis1z * s1;
       const a1y: number = axis1y;
       const a1z: number = -axis1x * s1 + axis1z * c1;
-      axis1x = a1x; axis1y = a1y; axis1z = a1z;
+      axis1x = a1x;
+      axis1y = a1y;
+      axis1z = a1z;
 
       // Rotate axis2 around X.
       const c2: number = Math.cos(driftAngle2);
@@ -124,7 +126,9 @@ function build(
       const a2x: number = axis2x;
       const a2y: number = axis2y * c2 - axis2z * s2;
       const a2z: number = axis2y * s2 + axis2z * c2;
-      axis2x = a2x; axis2y = a2y; axis2z = a2z;
+      axis2x = a2x;
+      axis2y = a2y;
+      axis2z = a2z;
 
       // Displace each vertex outward by the sum of two traveling sine waves.
       for (let i = 0; i < count; i++) {
@@ -142,7 +146,7 @@ function build(
         const w2: number = amp2 * Math.sin(dot2 * freq2 - t * speed2);
         const disp: number = w1 + w2;
 
-        posArray[di]     = basePos[di]     + dx * disp;
+        posArray[di] = basePos[di] + dx * disp;
         posArray[di + 1] = basePos[di + 1] + dy * disp;
         posArray[di + 2] = basePos[di + 2] + dz * disp;
       }

@@ -38,7 +38,9 @@ if (limit) ids = ids.slice(0, limit);
 console.log(`Checking ${ids.length} stories at ${base}`);
 
 const browser = await chromium.launch();
-const ctx = await browser.newContext({ viewport: { width: 1024, height: 768 } });
+const ctx = await browser.newContext({
+  viewport: { width: 1024, height: 768 },
+});
 const page = await ctx.newPage();
 
 const bad = [];
@@ -64,7 +66,10 @@ for (const id of ids) {
       let lastGotoError;
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          await page.goto(url.toString(), { waitUntil: "load", timeout: 30000 });
+          await page.goto(url.toString(), {
+            waitUntil: "load",
+            timeout: 30000,
+          });
           lastGotoError = undefined;
           break;
         } catch (e) {
@@ -129,7 +134,9 @@ for (const b of bad) {
   if (b.overlay) console.log("  OVERLAY: " + b.overlay.replace(/\n/g, " ⏎ "));
   for (const e of b.errs) console.log("  " + e.replace(/\n/g, " ⏎ "));
 }
+
 import fs from "node:fs";
+
 fs.writeFileSync(
   new URL("./check-stories-report.json", import.meta.url),
   JSON.stringify(bad, null, 2),

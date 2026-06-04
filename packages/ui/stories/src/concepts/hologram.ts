@@ -125,7 +125,10 @@ function build(
       Math.sin(time * 31.1) * 0.03;
     // Energy raises brightness; respond adds an extra kick.
     const energyBoost = energy * 0.4 + respond * 0.25;
-    const wireOpacity = Math.max(0.1, Math.min(0.95, 0.52 + shimmer + energyBoost));
+    const wireOpacity = Math.max(
+      0.1,
+      Math.min(0.95, 0.52 + shimmer + energyBoost),
+    );
     wireMat.opacity = wireOpacity;
 
     // ── Colour pulse: briefly shift toward white-blue on respond ─────────────
@@ -163,7 +166,7 @@ function build(
       // Advance the ring's Y position.
       const elapsed = time * sweepSpeed;
       // Each ring's current position within the sweep range, phase-offset.
-      const t01 = ((ring.phase + elapsed / SCAN_RANGE) % 1 + 1) % 1;
+      const t01 = (((ring.phase + elapsed / SCAN_RANGE) % 1) + 1) % 1;
       const y = SCAN_YMIN + t01 * SCAN_RANGE;
       ring.mesh.position.y = y;
 
@@ -177,7 +180,10 @@ function build(
       const poleAttenuation = Math.sqrt(Math.max(0, 1 - clampedY * clampedY));
       const respondPulse = respond * (1 - Math.abs(y) / 1.15) * 0.7;
       const baseOpacity = 0.18 + energy * 0.22 + respondPulse;
-      ring.mat.opacity = Math.max(0.04, Math.min(0.85, baseOpacity * poleAttenuation));
+      ring.mat.opacity = Math.max(
+        0.04,
+        Math.min(0.85, baseOpacity * poleAttenuation),
+      );
 
       // Scanline colour shift: tint slightly brighter on respond.
       const sg = CYAN_G * (0.9 + respond * 0.1);

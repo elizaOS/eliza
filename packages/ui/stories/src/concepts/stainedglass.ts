@@ -10,13 +10,13 @@ import type {
 // Each triple is [r, g, b] in linear (0–1). Kept slightly desaturated so
 // emissive swells read without blowing out.
 const JEWEL_PALETTE: [number, number, number][] = [
-  [0.82, 0.06, 0.10], // ruby
+  [0.82, 0.06, 0.1], // ruby
   [0.06, 0.18, 0.82], // sapphire
-  [0.05, 0.70, 0.22], // emerald
-  [0.90, 0.52, 0.04], // amber
-  [0.55, 0.10, 0.80], // amethyst
-  [0.04, 0.40, 0.82], // cobalt
-  [0.80, 0.08, 0.35], // crimson
+  [0.05, 0.7, 0.22], // emerald
+  [0.9, 0.52, 0.04], // amber
+  [0.55, 0.1, 0.8], // amethyst
+  [0.04, 0.4, 0.82], // cobalt
+  [0.8, 0.08, 0.35], // crimson
 ];
 
 function build(
@@ -42,11 +42,9 @@ function build(
   const faceColors: [number, number, number][] = [];
   const colorData = new Float32Array(vertCount * 3);
   for (let fi = 0; fi < faceCount; fi += 1) {
-    const pick = JEWEL_PALETTE[Math.floor(Math.random() * JEWEL_PALETTE.length)] as [
-      number,
-      number,
-      number,
-    ];
+    const pick = JEWEL_PALETTE[
+      Math.floor(Math.random() * JEWEL_PALETTE.length)
+    ] as [number, number, number];
     faceColors.push(pick);
     // Assign identical color to all 3 verts of each face for flat look.
     for (let k = 0; k < 3; k += 1) {
@@ -71,7 +69,9 @@ function build(
   parent.add(panes);
 
   // ---- lead cames: wireframe slightly larger than the pane sphere ----
-  const leadGeo = new THREE.WireframeGeometry(new THREE.IcosahedronGeometry(1.005, 1));
+  const leadGeo = new THREE.WireframeGeometry(
+    new THREE.IcosahedronGeometry(1.005, 1),
+  );
   const leadMat = new THREE.LineBasicNodeMaterial();
   leadMat.color = new THREE.Color(0.04, 0.03, 0.04);
   const leads = new THREE.LineSegments(leadGeo, leadMat);
@@ -81,7 +81,7 @@ function build(
   const coreGeo = new THREE.IcosahedronGeometry(0.22, 1);
   const coreMat = new THREE.MeshStandardNodeMaterial();
   coreMat.color = new THREE.Color(1.0, 0.96, 0.88);
-  coreMat.emissive = new THREE.Color(1.0, 0.94, 0.80);
+  coreMat.emissive = new THREE.Color(1.0, 0.94, 0.8);
   coreMat.emissiveIntensity = 2.8;
   coreMat.roughness = 0.0;
   coreMat.metalness = 0.0;
@@ -106,7 +106,7 @@ function build(
       // Warm flush: core color shifts toward amber/orange when responding.
       const warmR = 1.0;
       const warmG = 0.94 - f.respond * 0.18;
-      const warmB = 0.80 - f.respond * 0.50;
+      const warmB = 0.8 - f.respond * 0.5;
       coreMat.emissive.setRGB(warmR, warmG, warmB);
       core.scale.setScalar(1.0 + f.energy * 0.28 + f.respond * 0.12);
       core.rotation.y = -f.time * 0.11;
@@ -118,8 +118,8 @@ function build(
       paneMat.emissiveIntensity = energySwell;
       // Emissive tint: cool white base → warm amber-ish on respond.
       const er = 0.12 + respondLerp * (0.9 - 0.12);
-      const eg = 0.12 + respondLerp * (0.50 - 0.12);
-      const eb = 0.12 - respondLerp * 0.10;
+      const eg = 0.12 + respondLerp * (0.5 - 0.12);
+      const eb = 0.12 - respondLerp * 0.1;
       paneMat.emissive.setRGB(er, eg, eb);
 
       // Listen: subtle brightness dip (holding breath).

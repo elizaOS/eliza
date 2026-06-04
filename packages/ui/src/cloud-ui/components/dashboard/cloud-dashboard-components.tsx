@@ -17,10 +17,10 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { Skeleton } from "../../../components/ui/skeleton";
 import { cn } from "../../lib/utils";
 import { BrandButton } from "../brand/brand-button";
 import { DashboardTableSkeleton } from "../data-list/dashboard-table-skeleton";
-import { Skeleton } from "../../../components/ui/skeleton";
 import { EmptyState } from "../empty-state";
 import { DashboardRoutePage } from "../layout/dashboard-route-page";
 import { ListSkeleton } from "../list-skeleton";

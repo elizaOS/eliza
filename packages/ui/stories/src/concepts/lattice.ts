@@ -16,7 +16,11 @@ import type {
 } from "../orb-kit.ts";
 
 /** Deduplicate an IcosahedronGeometry's vertices by rounded key. */
-function uniqueVertices(THREE: WebGPUModule, radius: number, detail: number): number[][] {
+function uniqueVertices(
+  THREE: WebGPUModule,
+  radius: number,
+  detail: number,
+): number[][] {
   const geo: any = new THREE.IcosahedronGeometry(radius, detail);
   const pos: any = geo.attributes.position;
   const seen = new Map<string, number[]>();
@@ -132,7 +136,11 @@ function build(
       const sr: number = 0.55 + respond * (1.0 - 0.55);
       const sg: number = 0.88 - respond * (0.88 - 0.34);
       const sb: number = 1.0 - respond * 1.0;
-      strutMat.color.setRGB(sr * strutBright, sg * strutBright, sb * strutBright);
+      strutMat.color.setRGB(
+        sr * strutBright,
+        sg * strutBright,
+        sb * strutBright,
+      );
       strutMat.opacity = Math.min(1, 0.4 + energy * 0.45 + respond * 0.25);
 
       // Pulse wave: phase each node by nodePhase, runs faster on respond.
@@ -152,7 +160,8 @@ function build(
       // We encode brightness purely in emissiveIntensity (uniform), and
       // encode per-node oscillation by varying the node sphere size in the matrix.
       for (let i = 0; i < nodeCount; i++) {
-        const wave: number = 0.5 + 0.5 * Math.sin(pulseT + nodePhase[i] * Math.PI * 2.2);
+        const wave: number =
+          0.5 + 0.5 * Math.sin(pulseT + nodePhase[i] * Math.PI * 2.2);
         // Node size scales 0.7–1.3 with the wave.
         const nodeScale: number = 0.7 + wave * 0.6;
 

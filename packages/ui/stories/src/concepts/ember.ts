@@ -81,7 +81,10 @@ function build(
       }
       flareDecay = Math.max(0.0, flareDecay - 0.016 * 0.85);
 
-      const totalHeat: number = Math.min(1.0, heatBase + energyBoost + flareDecay * 0.8);
+      const totalHeat: number = Math.min(
+        1.0,
+        heatBase + energyBoost + flareDecay * 0.8,
+      );
 
       // Cracks: cool = deep red-orange, hot = bright yellow-orange
       // Interpolate hue by totalHeat: r stays 1.0, g shifts 0.18→0.65
