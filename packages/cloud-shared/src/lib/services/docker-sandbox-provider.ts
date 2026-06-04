@@ -383,11 +383,12 @@ export function resolveContainerPort(config: SandboxCreateConfig): string {
   const requested =
     typeof config.environmentVars.PORT === "string" && config.environmentVars.PORT.trim()
       ? config.environmentVars.PORT.trim()
-      : typeof config.environmentVars.HTTP_PORT === "string" && config.environmentVars.HTTP_PORT.trim()
+      : typeof config.environmentVars.HTTP_PORT === "string" &&
+          config.environmentVars.HTTP_PORT.trim()
         ? config.environmentVars.HTTP_PORT.trim()
-      : typeof config.container?.port === "number"
-        ? String(config.container.port)
-        : DEFAULT_AGENT_PORT;
+        : typeof config.container?.port === "number"
+          ? String(config.container.port)
+          : DEFAULT_AGENT_PORT;
   if (!/^\d+$/.test(requested)) {
     throw new Error(`[docker-sandbox] Invalid container port "${requested}".`);
   }

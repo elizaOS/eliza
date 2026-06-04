@@ -3,7 +3,7 @@
  * Determines API URL based on environment
  */
 
-import { FALLBACK_TEXT_SELECTOR_MODELS, BITROUTER_DEFAULT_TEXT_MODEL } from "../models";
+import { BITROUTER_DEFAULT_TEXT_MODEL, FALLBACK_TEXT_SELECTOR_MODELS } from "../models";
 import { expandBitRouterModelIdCandidates } from "../providers/model-id-translation";
 
 /**
