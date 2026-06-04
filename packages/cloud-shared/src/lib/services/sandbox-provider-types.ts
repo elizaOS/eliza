@@ -50,4 +50,9 @@ export interface SandboxCreateConfig {
   timeout?: number;
   dockerImage?: string;
   container?: SandboxContainerLaunchConfig;
+  /**
+   * When set, the provider will not place the new sandbox on this Docker node.
+   * Used for retry-on-failure to avoid re-selecting a node that just failed.
+   */
+  excludeNodeId?: string;
 }
