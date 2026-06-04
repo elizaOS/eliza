@@ -101,7 +101,7 @@ jobs:
       HEADSCALE_API_URL: ${{ needs.determine-env.outputs.environment == 'production' && 'https://headscale.elizacloud.ai' || 'https://headscale-staging.elizacloud.ai' }}
       HEADSCALE_PUBLIC_URL: ${{ needs.determine-env.outputs.environment == 'production' && 'https://headscale.elizacloud.ai' || 'https://headscale-staging.elizacloud.ai' }}
       HEADSCALE_USER: agent
-      ELIZA_CLOUD_AGENT_BASE_DOMAIN: waifu.fun
+      ELIZA_CLOUD_AGENT_BASE_DOMAIN: elizacloud.ai
       AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_bridge_host_fallback && '1' || '0' }}
       DIAGNOSTIC_AGENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_agent_id || '' }}
     steps:
@@ -322,7 +322,7 @@ jobs:
               sudo apt-get install -y nginx openssl
             fi
 
-            agent_domain="${ELIZA_CLOUD_AGENT_BASE_DOMAIN:-waifu.fun}"
+            agent_domain="${ELIZA_CLOUD_AGENT_BASE_DOMAIN:-elizacloud.ai}"
             sudo install -d -m 0755 /etc/nginx/ssl
             if [ ! -f /etc/nginx/ssl/eliza-agent-router.crt ] || [ ! -f /etc/nginx/ssl/eliza-agent-router.key ]; then
               sudo openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
@@ -515,7 +515,7 @@ jobs:
             router_port="$(systemctl show eliza-agent-router.service --property=Environment --value | tr ' ' '\n' | awk -F= '$1=="AGENT_ROUTER_PORT" {print $2}')"
             : "${router_port:=3458}"
             agent_domain="$(systemctl show eliza-agent-router.service --property=Environment --value | tr ' ' '\n' | awk -F= '$1=="ELIZA_CLOUD_AGENT_BASE_DOMAIN" {print $2}')"
-            : "${agent_domain:=waifu.fun}"
+            : "${agent_domain:=elizacloud.ai}"
             router_pid="$(systemctl show eliza-agent-router.service --property=MainPID --value || true)"
             if [ -n "$router_pid" ] && [ "$router_pid" != "0" ]; then
               sudo tr '\0' '\n' <"/proc/${router_pid}/environ" \

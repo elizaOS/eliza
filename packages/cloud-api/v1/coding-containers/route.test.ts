@@ -30,9 +30,9 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
 }));
 
 mock.module("@/lib/eliza-agent-web-ui", () => ({
-  getAgentBaseDomain: () => "waifu.fun",
+  getAgentBaseDomain: () => "elizacloud.ai",
   getElizaAgentPublicWebUiUrl: (sandbox: { id: string }) =>
-    `https://${sandbox.id}.waifu.fun`,
+    `https://${sandbox.id}.elizacloud.ai`,
 }));
 
 mock.module("@/lib/services/eliza-sandbox", () => ({

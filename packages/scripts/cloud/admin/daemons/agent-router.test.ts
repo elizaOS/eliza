@@ -146,19 +146,19 @@ describe("extractAgentIdFromHost", () => {
   const agentId = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
 
   it("extracts generated agent subdomains for the configured base domain", () => {
-    expect(extractAgentIdFromHost(`${agentId}.waifu.fun`, "waifu.fun")).toBe(
-      agentId,
-    );
     expect(
-      extractAgentIdFromHost(`${agentId}.waifu.fun:443`, "waifu.fun"),
+      extractAgentIdFromHost(`${agentId}.elizacloud.ai`, "elizacloud.ai"),
+    ).toBe(agentId);
+    expect(
+      extractAgentIdFromHost(`${agentId}.elizacloud.ai:443`, "elizacloud.ai"),
     ).toBe(agentId);
   });
 
   it("rejects root, unrelated, and malformed hosts", () => {
-    expect(extractAgentIdFromHost("waifu.fun", "waifu.fun")).toBeNull();
-    expect(extractAgentIdFromHost("example.com", "waifu.fun")).toBeNull();
+    expect(extractAgentIdFromHost("elizacloud.ai", "elizacloud.ai")).toBeNull();
+    expect(extractAgentIdFromHost("example.com", "elizacloud.ai")).toBeNull();
     expect(
-      extractAgentIdFromHost("not-an-agent.waifu.fun", "waifu.fun"),
+      extractAgentIdFromHost("not-an-agent.elizacloud.ai", "elizacloud.ai"),
     ).toBeNull();
   });
 });

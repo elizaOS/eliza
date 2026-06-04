@@ -17,7 +17,7 @@ describe("managed Eliza environment", () => {
   });
 
   test("sets public base url to the managed agent subdomain when missing", async () => {
-    process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN = "waifu.fun";
+    process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai";
     const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
 
     const result = await prepareManagedElizaBaseEnvironment({
@@ -26,11 +26,11 @@ describe("managed Eliza environment", () => {
       agentSandboxId: "cloud-agent-1",
     });
 
-    expect(result.environmentVars.PUBLIC_BASE_URL).toBe("https://cloud-agent-1.waifu.fun");
+    expect(result.environmentVars.PUBLIC_BASE_URL).toBe("https://cloud-agent-1.elizacloud.ai");
   });
 
   test("replaces local and tunnel public base urls before provisioning", async () => {
-    process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN = "waifu.fun";
+    process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai";
     const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
 
     const localResult = await prepareManagedElizaBaseEnvironment({
@@ -50,12 +50,14 @@ describe("managed Eliza environment", () => {
       },
     });
 
-    expect(localResult.environmentVars.PUBLIC_BASE_URL).toBe("https://cloud-agent-1.waifu.fun");
-    expect(tunnelResult.environmentVars.PUBLIC_BASE_URL).toBe("https://cloud-agent-1.waifu.fun");
+    expect(localResult.environmentVars.PUBLIC_BASE_URL).toBe("https://cloud-agent-1.elizacloud.ai");
+    expect(tunnelResult.environmentVars.PUBLIC_BASE_URL).toBe(
+      "https://cloud-agent-1.elizacloud.ai",
+    );
   });
 
   test("preserves a caller-pinned custom public base url", async () => {
-    process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN = "waifu.fun";
+    process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai";
     const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
 
     const result = await prepareManagedElizaBaseEnvironment({
@@ -71,7 +73,7 @@ describe("managed Eliza environment", () => {
   });
 
   test("replaces unresolved public base url placeholders", async () => {
-    process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN = "waifu.fun";
+    process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai";
     const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
 
     const result = await prepareManagedElizaBaseEnvironment({
@@ -83,7 +85,7 @@ describe("managed Eliza environment", () => {
       },
     });
 
-    expect(result.environmentVars.PUBLIC_BASE_URL).toBe("https://cloud-agent-1.waifu.fun");
+    expect(result.environmentVars.PUBLIC_BASE_URL).toBe("https://cloud-agent-1.elizacloud.ai");
   });
 
   test("pins managed containers to their cloud agent id for waifu chat JWT scope", async () => {

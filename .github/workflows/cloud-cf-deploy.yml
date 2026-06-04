@@ -134,7 +134,7 @@ jobs:
         if: steps.cf.outputs.configured == 'true' && steps.env.outputs.deploy_environment == 'production'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          AGENT_BASE_DOMAIN: waifu.fun
+          AGENT_BASE_DOMAIN: elizacloud.ai
           AGENT_ROUTER_ORIGIN_HOST: eliza-production-1.elizacloud.ai
         run: |
           node --input-type=module <<'NODE'

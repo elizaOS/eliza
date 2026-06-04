@@ -39,7 +39,7 @@ interface AgentRouterConfig {
 
 const DEFAULT_PORT = 3458;
 const DEFAULT_BIND_HOST = "127.0.0.1";
-const DEFAULT_AGENT_BASE_DOMAIN = "waifu.fun";
+const DEFAULT_AGENT_BASE_DOMAIN = "elizacloud.ai";
 const AGENT_ID_RE =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const HOP_BY_HOP_HEADERS = new Set([
