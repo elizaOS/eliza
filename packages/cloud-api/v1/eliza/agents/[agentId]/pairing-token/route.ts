@@ -32,8 +32,11 @@ type PairingSandbox = NonNullable<
 >;
 
 function resolveManagedWebUiUrl(sandbox: PairingSandbox): string | null {
+  if (sandbox.execution_tier === "shared") return null;
   const baseDomain = containersEnv.publicBaseDomain();
-  return getElizaAgentPublicWebUiUrl(sandbox, baseDomain ? { baseDomain } : {});
+  return getElizaAgentPublicWebUiUrl(sandbox, {
+    baseDomain: baseDomain ?? null,
+  });
 }
 
 /**
@@ -194,9 +197,7 @@ async function __hono_POST(
 
     const tokenService = getPairingTokenService();
     const envVars = (sandbox.environment_vars ?? {}) as Record<string, string>;
-    const supportsUiTokenPairing =
-      sandbox.execution_tier !== "custom" &&
-      Boolean(envVars.ELIZA_API_TOKEN?.trim());
+    const supportsUiTokenPairing = Boolean(envVars.ELIZA_API_TOKEN?.trim());
     const pairingToken = await tokenService.generateToken(
       user.id,
       user.organization_id,

@@ -123,7 +123,7 @@ export default function AgentDetailPage() {
   const isIdle = agent.status === "stopped" || agent.status === "disconnected";
   const adminDetails = agent.adminDetails;
   const isDockerBacked = adminDetails?.isDockerBacked ?? false;
-  const showConnect = !!adminDetails?.webUiUrl && agent.status === "running";
+  const showConnect = !!agent.webUiUrl && agent.status === "running";
 
   return (
     <>
@@ -315,6 +315,33 @@ export default function AgentDetailPage() {
             </div>
           )}
 
+          {agent.webUiUrl && (
+            <section className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="inline-block size-2 bg-[var(--brand-orange)]" />
+                <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-white/60">
+                  {t("cloud.agents.detail.webUi", { defaultValue: "Web UI" })}
+                </p>
+              </div>
+
+              <div className="border border-white/10 bg-black/40 px-4 py-3 flex items-start gap-3 text-sm">
+                <span className="text-[11px] uppercase tracking-widest text-white/35 shrink-0 pt-0.5">
+                  {t("cloud.agents.detail.publicUrl", {
+                    defaultValue: "Public URL",
+                  })}
+                </span>
+                <a
+                  href={agent.webUiUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-white/74 hover:text-white font-mono text-xs break-all transition-colors"
+                >
+                  {agent.webUiUrl}
+                </a>
+              </div>
+            </section>
+          )}
+
           {adminDetails && isDockerBacked && (
             <section className="space-y-3">
               <div className="flex items-center gap-2">
@@ -377,17 +404,6 @@ export default function AgentDetailPage() {
                   />
                 )}
               </div>
-
-              {adminDetails.webUiUrl && (
-                <div className="border border-white/10 bg-black/40 px-4 py-3 flex items-center gap-3 text-sm">
-                  <span className="text-[11px] uppercase tracking-widest text-white/35 shrink-0">
-                    {t("cloud.agents.detail.webUi", { defaultValue: "Web UI" })}
-                  </span>
-                  <span className="text-white/74 font-mono text-xs break-all">
-                    {adminDetails.webUiUrl}
-                  </span>
-                </div>
-              )}
             </section>
           )}
 
@@ -462,6 +478,7 @@ export default function AgentDetailPage() {
             agentId={agent.id}
             executionTier={agent.executionTier}
             status={agent.status}
+            webUiUrl={agent.webUiUrl}
           />
 
           <ElizaAgentBackupsPanel

@@ -1707,7 +1707,7 @@ export class ElizaSandboxService {
         ready: true,
         agentId: rec.id,
         runtime: "web",
-        chat: false,
+        chat: true,
       },
     };
   }

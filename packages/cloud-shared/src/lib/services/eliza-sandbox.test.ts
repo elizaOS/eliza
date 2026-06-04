@@ -194,7 +194,7 @@ describe("ElizaSandboxService bridge status", () => {
           ready: true,
           agentId: sandbox.id,
           runtime: "web",
-          chat: false,
+          chat: true,
         },
       });
       expect(requests).toHaveLength(2);

@@ -20,7 +20,7 @@ function toAgentRow(a: AgentListItem): ElizaAgentRow {
     id: a.id,
     agent_name: a.agentName,
     status: a.status,
-    canonical_web_ui_url: null,
+    canonical_web_ui_url: a.webUiUrl,
     node_id: null,
     container_name: null,
     bridge_port: null,

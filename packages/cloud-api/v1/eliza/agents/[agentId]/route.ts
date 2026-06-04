@@ -14,7 +14,8 @@ import { userCharactersRepository } from "@/db/repositories/characters";
 import { agentServerWallets } from "@/db/schemas/agent-server-wallets";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { getPreferredElizaAgentWebUiUrl } from "@/lib/eliza-agent-web-ui";
+import { containersEnv } from "@/lib/config/containers-env";
+import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { adminService } from "@/lib/services/admin";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
@@ -59,6 +60,7 @@ function stringConfigValue(
 function toAdminDetailsDto(
   agent: Agent,
   isDockerAgent: boolean,
+  webUiUrl: string | null,
 ): AgentAdminDetailsDto {
   return {
     nodeId: agent.node_id,
@@ -68,9 +70,15 @@ function toAdminDetailsDto(
     webUiPort: agent.web_ui_port,
     dockerImage: agent.docker_image,
     isDockerBacked: isDockerAgent,
-    webUiUrl: getPreferredElizaAgentWebUiUrl(agent),
+    webUiUrl,
     sshCommand: agent.headscale_ip ? `ssh root@${agent.headscale_ip}` : null,
   };
+}
+
+function resolvePublicWebUiUrl(agent: Agent): string | null {
+  if (agent.execution_tier === "shared") return null;
+  const baseDomain = containersEnv.publicBaseDomain();
+  return getElizaAgentPublicWebUiUrl(agent, { baseDomain: baseDomain ?? null });
 }
 
 app.get("/", async (c) => {
@@ -152,9 +160,10 @@ app.get("/", async (c) => {
     }
 
     const { isAdmin } = await adminService.getAdminStatusForUser(user);
+    const webUiUrl = resolvePublicWebUiUrl(agent);
 
     const adminDetails = isAdmin
-      ? toAdminDetailsDto(agent, isDockerAgent)
+      ? toAdminDetailsDto(agent, isDockerAgent, webUiUrl)
       : null;
 
     const data: AgentDetailDto = {
@@ -175,6 +184,7 @@ app.get("/", async (c) => {
       token_ticker: tokenTicker,
       dockerImage: agent.docker_image,
       executionTier: agent.execution_tier,
+      webUiUrl,
       walletAddress,
       walletProvider,
       walletStatus,

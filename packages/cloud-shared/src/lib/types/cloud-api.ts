@@ -402,6 +402,7 @@ export interface AgentListItemDto {
   token_ticker: string | null;
   dockerImage: string | null;
   executionTier: AgentExecutionTier;
+  webUiUrl: string | null;
 }
 
 export interface AgentAdminDetailsDto {

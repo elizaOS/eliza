@@ -272,9 +272,16 @@ export function ElizaAgentsTable({
           web_ui_port: existing?.web_ui_port ?? null,
           headscale_ip: existing?.headscale_ip ?? null,
           docker_image: agent.dockerImage ?? existing?.docker_image ?? null,
+          execution_tier:
+            agent.executionTier === undefined
+              ? existing?.execution_tier
+              : agent.executionTier,
           sandbox_id: existing?.sandbox_id ?? null,
           bridge_url: existing?.bridge_url ?? null,
-          canonical_web_ui_url: existing?.canonical_web_ui_url ?? null,
+          canonical_web_ui_url:
+            agent.webUiUrl === undefined
+              ? (existing?.canonical_web_ui_url ?? null)
+              : agent.webUiUrl,
         } as ElizaAgentRow;
       });
 
@@ -824,10 +831,9 @@ export function ElizaAgentsTable({
                   const canStop = displayStatus === "running" && !busy;
                   const hasStandaloneWebUi =
                     displayStatus === "running" &&
-                    sb.execution_tier !== "shared";
-                  const hasDashboardChat =
-                    displayStatus === "running" &&
-                    sb.execution_tier === "shared";
+                    sb.execution_tier !== "shared" &&
+                    Boolean(sb.canonical_web_ui_url);
+                  const hasDashboardChat = displayStatus === "running";
 
                   return (
                     <TableRow
@@ -919,7 +925,8 @@ export function ElizaAgentsTable({
                               defaultValue: "Open",
                             })}
                           </button>
-                        ) : hasDashboardChat ? (
+                        ) : hasDashboardChat &&
+                          sb.execution_tier === "shared" ? (
                           <a
                             href={`/dashboard/agents/${sb.id}/chat`}
                             className="inline-flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors"
@@ -1107,9 +1114,10 @@ export function ElizaAgentsTable({
                 ) && !busy;
               const canStop = displayStatus === "running" && !busy;
               const hasStandaloneWebUi =
-                displayStatus === "running" && sb.execution_tier !== "shared";
-              const hasDashboardChat =
-                displayStatus === "running" && sb.execution_tier === "shared";
+                displayStatus === "running" &&
+                sb.execution_tier !== "shared" &&
+                Boolean(sb.canonical_web_ui_url);
+              const hasDashboardChat = displayStatus === "running";
 
               return (
                 <div

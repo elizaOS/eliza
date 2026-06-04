@@ -17,6 +17,7 @@ import {
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { containersEnv } from "@/lib/config/containers-env";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
+import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import {
   stripReservedElizaConfigKeys,
@@ -167,6 +168,12 @@ function deriveModelTooLargeForShared(
   );
 }
 
+function resolvePublicWebUiUrl(agent: Agent): string | null {
+  if (agent.execution_tier === "shared") return null;
+  const baseDomain = containersEnv.publicBaseDomain();
+  return getElizaAgentPublicWebUiUrl(agent, { baseDomain: baseDomain ?? null });
+}
+
 function toAgentListItemDto(
   agent: Agent,
   character: UserCharacter | undefined,
@@ -194,6 +201,7 @@ function toAgentListItemDto(
       stringConfigValue(agent.agent_config, "tokenTicker"),
     dockerImage: agent.docker_image,
     executionTier: agent.execution_tier,
+    webUiUrl: resolvePublicWebUiUrl(agent),
   };
 }
 

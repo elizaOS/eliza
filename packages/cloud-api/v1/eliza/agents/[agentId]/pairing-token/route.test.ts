@@ -8,6 +8,7 @@ const findByIdAndOrg = mock();
 const generateToken = mock(async () => "pair-token");
 const enqueueAgentProvisionOnce = mock();
 const checkProvisioningWorkerHealth = mock(async () => ({ ok: true }));
+let publicBaseDomain: string | undefined = "elizacloud.ai";
 
 mock.module("@/lib/auth", () => ({
   requireAuthOrApiKeyWithOrg,
@@ -21,15 +22,16 @@ mock.module("@/db/repositories/agent-sandboxes", () => ({
 
 mock.module("@/lib/config/containers-env", () => ({
   containersEnv: {
-    publicBaseDomain: () => "elizacloud.ai",
+    publicBaseDomain: () => publicBaseDomain,
   },
 }));
 
 mock.module("@/lib/eliza-agent-web-ui", () => ({
   getElizaAgentPublicWebUiUrl: (
     sandbox: { id: string },
-    options?: { baseDomain?: string },
-  ) => `https://${sandbox.id}.${options?.baseDomain ?? "elizacloud.ai"}`,
+    options?: { baseDomain?: string | null },
+  ) =>
+    options?.baseDomain ? `https://${sandbox.id}.${options.baseDomain}` : null,
 }));
 
 mock.module("@/lib/services/pairing-token", () => ({
@@ -68,7 +70,7 @@ const { default: pairingRoute } = await import("./route");
 const app = new Hono();
 app.route("/api/v1/eliza/agents/:agentId/pairing-token", pairingRoute);
 
-function runningSandbox(executionTier: "custom" | "dedicated-lazy") {
+function runningSandbox(executionTier: "custom" | "dedicated-lazy" | "shared") {
   return {
     id: "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
     organization_id: "org-1",
@@ -97,9 +99,10 @@ describe("eliza agent pairing token route", () => {
     generateToken.mockClear();
     enqueueAgentProvisionOnce.mockClear();
     checkProvisioningWorkerHealth.mockClear();
+    publicBaseDomain = "elizacloud.ai";
   });
 
-  test("redirects custom-image agents to the managed web root", async () => {
+  test("redirects custom-image agents with managed tokens through the pairing page", async () => {
     findByIdAndOrg.mockResolvedValue(runningSandbox("custom"));
 
     const response = await postPairingToken();
@@ -110,7 +113,7 @@ describe("eliza agent pairing token route", () => {
       data: {
         token: "pair-token",
         redirectUrl:
-          "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai",
+          "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai/pair?token=pair-token",
         expiresIn: 60,
       },
     });
@@ -131,5 +134,32 @@ describe("eliza agent pairing token route", () => {
         expiresIn: 60,
       },
     });
+  });
+
+  test("does not mint fallback public URLs without a configured base domain", async () => {
+    publicBaseDomain = undefined;
+    findByIdAndOrg.mockResolvedValue(runningSandbox("dedicated-lazy"));
+
+    const response = await postPairingToken();
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "AGENT_WEB_UI_NOT_READY",
+    });
+    expect(generateToken).not.toHaveBeenCalled();
+  });
+
+  test("does not issue web UI redirects for shared-runtime agents", async () => {
+    findByIdAndOrg.mockResolvedValue(runningSandbox("shared"));
+
+    const response = await postPairingToken();
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "AGENT_WEB_UI_NOT_READY",
+    });
+    expect(generateToken).not.toHaveBeenCalled();
   });
 });

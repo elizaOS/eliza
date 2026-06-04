@@ -26,12 +26,14 @@ interface ElizaAgentActionsProps {
   agentId: string;
   executionTier: AgentExecutionTier;
   status: string;
+  webUiUrl: string | null;
 }
 
 export function ElizaAgentActions({
   agentId,
   executionTier,
   status,
+  webUiUrl,
 }: ElizaAgentActionsProps) {
   const t = useT();
   const navigate = useNavigate();
@@ -79,8 +81,9 @@ export function ElizaAgentActions({
   const effectiveStatus = poller.isActive(agentId) ? "provisioning" : status;
 
   const isRunning = effectiveStatus === "running";
-  const hasStandaloneWebUi = isRunning && executionTier !== "shared";
-  const hasDashboardChat = isRunning && executionTier === "shared";
+  const hasStandaloneWebUi =
+    isRunning && executionTier !== "shared" && Boolean(webUiUrl);
+  const hasDashboardChat = isRunning;
   const isStopped = ["stopped", "error", "pending", "disconnected"].includes(
     effectiveStatus,
   );

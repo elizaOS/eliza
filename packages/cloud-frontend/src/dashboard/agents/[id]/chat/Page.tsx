@@ -96,7 +96,7 @@ function AgentBridgeChat({ agent }: { agent: AgentDetailDto }) {
   const [chatAvailable, setChatAvailable] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const isRunning = agent.status === "running";
-  const hasWebUi = Boolean(agent.adminDetails?.webUiUrl);
+  const hasWebUi = Boolean(agent.webUiUrl);
   const canUseBridgeChat = isRunning && chatAvailable;
 
   useEffect(() => {
