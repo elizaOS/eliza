@@ -190,25 +190,42 @@ describe("VIEW_ACTION_MAP names resolve to declared actions in source", () => {
     ...new Set(Object.values(VIEW_ACTION_MAP).flatMap((a) => [...a])),
   ];
 
-  it.each(names)("action %s is declared somewhere in source", (name) => {
-    let found = "";
+  // One `git grep` pass for every name (tracked files only, so node_modules /
+  // dist are never crawled — a per-name recursive grep took minutes per run).
+  const declaredNames = (() => {
+    const escaped = names.map((n) =>
+      n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    );
+    let out = "";
     try {
-      found = execFileSync(
-        "grep",
-        ["-rlF", `name: "${name}"`, "plugins", "packages/agent/src"],
+      out = execFileSync(
+        "git",
+        [
+          "grep",
+          "-hoE",
+          `name: "(${escaped.join("|")})"`,
+          "--",
+          "plugins",
+          "packages/agent/src",
+        ],
         {
           cwd: repoRoot,
           encoding: "utf8",
           stdio: ["ignore", "pipe", "ignore"],
         },
-      ).trim();
+      );
     } catch {
-      // grep exits 1 (no match) → found stays empty → assertion fails below.
+      // git grep exits 1 (no match) → declaredNames stays empty → each
+      // assertion below fails with its per-name message.
     }
+    return new Set([...out.matchAll(/name: "([^"]+)"/g)].map((m) => m[1]));
+  })();
+
+  it.each(names)("action %s is declared somewhere in source", (name) => {
     expect(
-      found,
+      declaredNames.has(name),
       `no \`name: "${name}"\` found under plugins/ or packages/agent/src`,
-    ).not.toBe("");
+    ).toBe(true);
   });
 });
 
