@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   applyCors,
   CORS_ALLOWED_HEADERS,
+  isAuthorized,
+  isServerTokenAuthorized,
   isWaifuChatAuthorized,
   resolveWaifuChatAccessToken,
   waifuChatRoleToWorldRole,

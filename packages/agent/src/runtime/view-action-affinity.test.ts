@@ -193,9 +193,7 @@ describe("VIEW_ACTION_MAP names resolve to declared actions in source", () => {
   // One `git grep` pass for every name (tracked files only, so node_modules /
   // dist are never crawled — a per-name recursive grep took minutes per run).
   const declaredNames = (() => {
-    const escaped = names.map((n) =>
-      n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-    );
+    const escaped = names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     let out = "";
     try {
       out = execFileSync(

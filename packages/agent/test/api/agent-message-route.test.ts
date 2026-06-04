@@ -188,7 +188,12 @@ function createCtx(opts: {
   headers?: Record<string, string>;
   state?: Record<string, unknown>;
 }) {
-  const req = createMockReq(opts.method, opts.pathname, opts.body, opts.headers);
+  const req = createMockReq(
+    opts.method,
+    opts.pathname,
+    opts.body,
+    opts.headers,
+  );
   const { res, record } = createMockRes();
   const json = (
     response: http.ServerResponse,
