@@ -16,7 +16,7 @@ jobs:
     if: github.event_name == 'pull_request_target'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9
+      - uses: actions/labeler@f27b608878404679385c85cfa523b85ccb86e213
         with:
           repo-token: "${{ secrets.GITHUB_TOKEN }}"
           pr-number: "${{ github.event.pull_request.number }}"
