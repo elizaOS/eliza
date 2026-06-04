@@ -116,6 +116,13 @@ function resolveStewardContainerEnvUrl(): string {
 
 const STEWARD_JWT_FILE = "/app/data/steward.jwt";
 
+export function resolveDockerSandboxImage(
+  dockerImage?: string,
+  operatorOverride = DOCKER_IMAGE_OVERRIDE,
+): string {
+  return dockerImage || operatorOverride || "ghcr.io/elizaos/eliza:latest";
+}
+
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
@@ -587,11 +594,10 @@ export class DockerSandboxProvider implements SandboxProvider {
     const { agentId, agentName, environmentVars, organizationId, agentConfig, routeAgentId } =
       config;
 
-    // Resolve Docker image: operator env override > per-agent DB override > hardcoded default.
+    // Resolve Docker image: per-agent DB override > operator env override > hardcoded default.
     // Keep the fallback out of DOCKER_IMAGE_OVERRIDE so per-agent flavor/image
     // overrides are not accidentally shadowed by the generic Eliza default.
-    const resolvedImage =
-      DOCKER_IMAGE_OVERRIDE || config.dockerImage || "ghcr.io/elizaos/eliza:latest";
+    const resolvedImage = resolveDockerSandboxImage(config.dockerImage);
     const imagePlatform = containersEnv.defaultAgentImagePlatform();
     const platformFlags = dockerPlatformFlag(imagePlatform);
     const containerPort = resolveContainerPort(config);

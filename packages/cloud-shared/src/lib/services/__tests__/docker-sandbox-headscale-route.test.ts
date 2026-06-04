@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { DockerSandboxProvider, requiresHeadscaleRoute } from "../docker-sandbox-provider";
+import {
+  DockerSandboxProvider,
+  requiresHeadscaleRoute,
+  resolveDockerSandboxImage,
+} from "../docker-sandbox-provider";
 
 const savedEnv = { ...process.env };
 
@@ -70,6 +74,20 @@ describe("requiresHeadscaleRoute", () => {
         AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: "1",
       }),
     ).toBe(false);
+  });
+});
+
+describe("resolveDockerSandboxImage", () => {
+  test("prefers a per-agent image over the operator default image", () => {
+    expect(
+      resolveDockerSandboxImage("ghcr.io/dexploarer/bnancy:latest", "ghcr.io/elizaos/eliza:stable"),
+    ).toBe("ghcr.io/dexploarer/bnancy:latest");
+  });
+
+  test("uses the operator default when no per-agent image is set", () => {
+    expect(resolveDockerSandboxImage(undefined, "ghcr.io/elizaos/eliza:stable")).toBe(
+      "ghcr.io/elizaos/eliza:stable",
+    );
   });
 });
 
