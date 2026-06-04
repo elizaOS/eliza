@@ -95,13 +95,13 @@ describe("Android Assistant and App Actions routing source", () => {
     expect(shortcuts).toContain("source=android-app-actions");
     expect(shortcuts).toContain("source=android-static-shortcut");
     expect(shortcuts).toContain(
-      "milady://feature/open?source=android-app-actions",
+      "elizaos://feature/open?source=android-app-actions",
     );
     expect(shortcuts).toContain(
-      "milady://chat?source=android-app-actions&amp;action=chat",
+      "elizaos://chat?source=android-app-actions&amp;action=chat",
     );
     expect(shortcuts).toContain(
-      "milady://lifeops/task/new?source=android-static-shortcut",
+      "elizaos://lifeops/task/new?source=android-static-shortcut",
     );
     expect(shortcuts.toLowerCase()).not.toContain("notification");
     expect(shortcuts).not.toContain("assistant/open");
