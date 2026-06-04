@@ -26,6 +26,7 @@ import {
   buildStewardOAuthRedirectUri,
   type StewardOAuthProvider,
 } from "./steward-oauth-url";
+import { StewardWalletProviders } from "./steward-wallet-providers";
 import { WalletButtons } from "./wallet-buttons";
 
 // lucide-react v1.x dropped brand icons (Github included). Inline a small
@@ -560,27 +561,29 @@ export default function StewardLoginSection() {
             <div className="h-px flex-1 bg-white/14" />
           </div>
 
-          <WalletButtons
-            auth={auth}
-            disabled={isLoading}
-            loadingProvider={
-              loading === "ethereum" || loading === "solana"
-                ? (loading as WalletKind)
-                : null
-            }
-            onLoadingChange={(kind) => setLoading(kind)}
-            onSuccess={(result) =>
-              handleSuccess(result.token, result.refreshToken)
-            }
-            onError={(walletError) => {
-              setError(
-                walletError.message ||
-                  t("cloud.login.error.walletFailed", {
-                    defaultValue: "Wallet sign-in failed",
-                  }),
-              );
-            }}
-          />
+          <StewardWalletProviders>
+            <WalletButtons
+              auth={auth}
+              disabled={isLoading}
+              loadingProvider={
+                loading === "ethereum" || loading === "solana"
+                  ? (loading as WalletKind)
+                  : null
+              }
+              onLoadingChange={(kind) => setLoading(kind)}
+              onSuccess={(result) =>
+                handleSuccess(result.token, result.refreshToken)
+              }
+              onError={(walletError) => {
+                setError(
+                  walletError.message ||
+                    t("cloud.login.error.walletFailed", {
+                      defaultValue: "Wallet sign-in failed",
+                    }),
+                );
+              }}
+            />
+          </StewardWalletProviders>
         </>
       )}
 
