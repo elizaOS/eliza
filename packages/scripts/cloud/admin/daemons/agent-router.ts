@@ -205,6 +205,15 @@ export function extractAgentIdFromHost(
   return subdomain;
 }
 
+function headerValue(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
+
+function getEffectiveHost(req: IncomingMessage): string | undefined {
+  return headerValue(req.headers["x-forwarded-host"]) ?? req.headers.host;
+}
+
 async function readIncomingBody(
   req: IncomingMessage,
 ): Promise<Uint8Array | undefined> {
@@ -295,7 +304,7 @@ async function handleRequest(
     /^\/agents\/([^/]+)\/(headscale-ip|routing)$/,
   );
   if (!match) {
-    const agentId = extractAgentIdFromHost(req?.headers.host);
+    const agentId = req ? extractAgentIdFromHost(getEffectiveHost(req)) : null;
     if (agentId && req) return proxyAgentRequest(agentId, url, req);
     return Response.json({ error: "not found" }, { status: 404 });
   }

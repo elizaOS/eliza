@@ -86,7 +86,9 @@ export interface Bindings {
   // ---- App config ----
   NEXT_PUBLIC_APP_URL?: string;
   NEXT_PUBLIC_API_URL?: string;
+  AGENT_ROUTER_ORIGIN_HOST?: string;
   ELIZA_APP_WEBHOOK_GATEWAY_URL?: string;
+  ELIZA_CLOUD_AGENT_BASE_DOMAIN?: string;
   WEBHOOK_GATEWAY_URL?: string;
   GATEWAY_WEBHOOK_URL?: string;
   ELIZA_APP_WEBHOOK_PROJECT?: string;
