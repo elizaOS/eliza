@@ -1283,10 +1283,11 @@ if (uiOnly) {
     : cwd;
 
   const childEnv = createDevChildEnv(process.env);
-  // V8 bytecode cache for the Node API runtime. The runtime is deliberately
-  // Node (not Bun) for node: built-ins, so this persists compiled module
-  // bytecode across boots and --watch restarts, trimming plugin-import cost.
-  // Node 22.8+ honors it; older node and Bun ignore the var (safe no-op).
+  // V8 bytecode cache for the API runtime: when the runtime resolves to Node
+  // it persists compiled module bytecode across boots and --watch restarts,
+  // trimming plugin-import cost.
+  // Node 22.8+ honors it; older node and Bun ignore the var (safe no-op), so
+  // it's harmless when the runtime defaults to Bun.
   // Pinned under the state dir (not os.tmpdir()) so an OS temp reap doesn't
   // wipe the warm ~100MB cache and force a multi-second cold recompile on the
   // next boot. Content-hash-keyed, so a stale entry self-invalidates.
