@@ -7,15 +7,11 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function positiveNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? value
-    : undefined;
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 function positiveInteger(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isInteger(value) && value > 0
-    ? value
-    : undefined;
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
 export function resolveSandboxContainerLaunchConfig(
@@ -27,8 +23,7 @@ export function resolveSandboxContainerLaunchConfig(
       ? container.projectName.trim()
       : undefined;
   const healthCheckPath =
-    typeof container.healthCheckPath === "string" &&
-    container.healthCheckPath.trim()
+    typeof container.healthCheckPath === "string" && container.healthCheckPath.trim()
       ? container.healthCheckPath.trim()
       : undefined;
   const architecture =

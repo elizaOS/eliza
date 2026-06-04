@@ -291,7 +291,7 @@ export function toCompatStatus(sandbox: AgentSandbox): CompatStatusShape {
       ? {
           ...(launchConfig ?? {}),
           ...(sandbox.docker_image ? { image: sandbox.docker_image } : {}),
-          ...(sandbox.container_name ?? sandbox.sandbox_id
+          ...((sandbox.container_name ?? sandbox.sandbox_id)
             ? { id: sandbox.container_name ?? sandbox.sandbox_id }
             : {}),
           ...(sandbox.node_id ? { nodeId: sandbox.node_id } : {}),
