@@ -11,13 +11,13 @@
  */
 
 import {
-  expandOpenRouterModelIdCandidates,
+  expandBitRouterModelIdCandidates,
   normalizeProviderKey,
 } from "../providers/model-id-translation";
 import {
-  OPENROUTER_DEFAULT_FREE_MODEL,
-  OPENROUTER_DEFAULT_TEXT_MODEL,
-  OPENROUTER_RECOMMENDED_TEXT_MODEL,
+  BITROUTER_DEFAULT_FREE_MODEL,
+  BITROUTER_DEFAULT_TEXT_MODEL,
+  BITROUTER_RECOMMENDED_TEXT_MODEL,
 } from "./catalog";
 
 export type ModelTier = "fast" | "pro" | "ultra";
@@ -65,7 +65,7 @@ function extractProvider(modelId: string): string {
 }
 
 const FAST_MODEL_ID = getEnvModelId("fast", "minimax/minimax-m2.7");
-const PRO_MODEL_ID = getEnvModelId("pro", OPENROUTER_DEFAULT_TEXT_MODEL);
+const PRO_MODEL_ID = getEnvModelId("pro", BITROUTER_DEFAULT_TEXT_MODEL);
 const ULTRA_MODEL_ID = getEnvModelId("ultra", "anthropic/claude-opus-4.7");
 
 export const MODEL_TIERS: Record<ModelTier, ModelTierConfig> = {
@@ -240,16 +240,16 @@ export const ADDITIONAL_MODELS: AdditionalModel[] = [
   {
     id: "gpt-oss-120b-nitro",
     name: "GPT OSS 120B Nitro",
-    description: "Recommended OpenRouter high-throughput reasoning model",
-    modelId: OPENROUTER_RECOMMENDED_TEXT_MODEL,
+    description: "Recommended BitRouter high-throughput reasoning model",
+    modelId: BITROUTER_RECOMMENDED_TEXT_MODEL,
     provider: "openai",
     recommended: true,
   },
   {
     id: "gpt-oss-120b-free",
     name: "GPT OSS 120B Free",
-    description: "Free OpenRouter reasoning model",
-    modelId: OPENROUTER_DEFAULT_FREE_MODEL,
+    description: "Free BitRouter reasoning model",
+    modelId: BITROUTER_DEFAULT_FREE_MODEL,
     provider: "openai",
     free: true,
   },
@@ -539,9 +539,9 @@ export function getModelIdFromTier(tier: ModelTier): string {
  * @returns Model tier or null if not found.
  */
 export function getTierFromModelId(modelId: string): ModelTier | null {
-  const candidates = expandOpenRouterModelIdCandidates(modelId);
+  const candidates = expandBitRouterModelIdCandidates(modelId);
   for (const [tier, config] of Object.entries(MODEL_TIERS)) {
-    const tierCandidates = expandOpenRouterModelIdCandidates(config.modelId);
+    const tierCandidates = expandBitRouterModelIdCandidates(config.modelId);
     if (candidates.some((id) => tierCandidates.includes(id))) {
       return tier as ModelTier;
     }
