@@ -1056,9 +1056,20 @@ export class ElizaSandboxService {
   private getConfiguredAgentBaseDomain(): string | null {
     const configured = getCloudAwareEnv().ELIZA_CLOUD_AGENT_BASE_DOMAIN?.trim();
     if (!configured) return null;
-    const normalized = configured
+    return this.normalizeConfiguredHostname(configured);
+  }
+
+  private getConfiguredAgentRouterOriginHost(): string | null {
+    const configured = getCloudAwareEnv().AGENT_ROUTER_ORIGIN_HOST?.trim();
+    if (!configured) return null;
+    return this.normalizeConfiguredHostname(configured);
+  }
+
+  private normalizeConfiguredHostname(hostname: string): string | null {
+    const normalized = hostname
       .replace(/^https?:\/\//, "")
       .replace(/\/.*$/, "")
+      .toLowerCase()
       .replace(/\.+$/, "");
     return normalized || null;
   }
@@ -1101,6 +1112,39 @@ export class ElizaSandboxService {
     }
 
     return this.getSafeBridgeEndpoint(rec, path);
+  }
+
+  private async getAgentWebFetchTarget(
+    rec: Pick<
+      AgentSandbox,
+      | "id"
+      | "bridge_url"
+      | "health_url"
+      | "node_id"
+      | "bridge_port"
+      | "web_ui_port"
+      | "headscale_ip"
+      | "sandbox_id"
+    >,
+    path: string,
+  ): Promise<{ url: string; forwardedHost?: string }> {
+    const originHost = this.isCloudflareWorkerRuntime()
+      ? this.getConfiguredAgentRouterOriginHost()
+      : null;
+    if (originHost) {
+      const baseDomain = this.getConfiguredAgentBaseDomain();
+      const publicEndpoint = getElizaAgentPublicWebUiUrl(
+        rec,
+        baseDomain ? { baseDomain, path } : { path },
+      );
+      if (publicEndpoint) {
+        const agentHost = new URL(publicEndpoint).host;
+        const url = new URL(path, `https://${originHost}`).toString();
+        return { url, forwardedHost: agentHost };
+      }
+    }
+
+    return { url: await this.getAgentWebEndpoint(rec, path) };
   }
 
   private async getAgentWebEndpoint(
@@ -1485,10 +1529,15 @@ export class ElizaSandboxService {
       };
     }
 
-    const rootEndpoint = await this.getAgentWebEndpoint(rec, "/");
-    const rootRes = await fetch(rootEndpoint, {
+    const rootTarget = await this.getAgentWebFetchTarget(rec, "/");
+    const headers = this.getAgentJsonHeaders(rec);
+    if (rootTarget.forwardedHost) {
+      headers["x-forwarded-host"] = rootTarget.forwardedHost;
+      headers["x-forwarded-proto"] = "https";
+    }
+    const rootRes = await fetch(rootTarget.url, {
       method: "GET",
-      headers: this.getAgentJsonHeaders(rec),
+      headers,
       signal: AbortSignal.timeout(10_000),
     });
     if (!rootRes.ok) {
