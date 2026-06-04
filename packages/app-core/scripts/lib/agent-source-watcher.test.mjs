@@ -56,25 +56,39 @@ describe("collectAgentSourceDirs", () => {
 });
 
 describe("isReloadableChangePath", () => {
-  it("reloads for backend code files the agent loads", () => {
+  it("reloads for hand-written TS source + json the agent loads", () => {
     for (const p of [
       "/r/plugins/plugin-app-control/src/actions/views.ts",
       "/r/packages/agent/src/api/server.ts",
       "/r/packages/core/src/runtime/x.tsx",
+      "/r/packages/core/src/runtime/y.mts",
       "/r/plugins/p/src/registry.json",
-      "/r/packages/shared/src/util.mjs",
     ]) {
       expect(isReloadableChangePath(p)).toBe(true);
     }
   });
 
-  it("ignores build output, deps, and test/coverage dirs", () => {
+  it("does NOT react to compiled .js / .d.ts shadows next to source", () => {
+    // This monorepo emits .js/.d.ts into src/; reacting would bounce the agent
+    // on every build.
     for (const p of [
-      "/r/packages/core/dist/index.js",
-      "/r/packages/core/src/node_modules/x/y.js",
+      "/r/packages/core/src/runtime/views.js",
+      "/r/packages/core/src/runtime/views.mjs",
+      "/r/packages/core/src/runtime/views.d.ts",
+      "/r/packages/core/src/runtime/views.d.mts",
+    ]) {
+      expect(isReloadableChangePath(p)).toBe(false);
+    }
+  });
+
+  it("ignores build output, deps, generated, and test/coverage dirs", () => {
+    for (const p of [
+      "/r/packages/core/dist/index.ts",
+      "/r/packages/core/src/node_modules/x/y.ts",
       "/r/packages/core/src/__tests__/a.ts",
+      "/r/packages/core/src/generated/data.ts",
       "/r/packages/core/.turbo/log.json",
-      "/r/packages/core/coverage/lcov.js",
+      "/r/packages/core/coverage/lcov.ts",
     ]) {
       expect(isReloadableChangePath(p)).toBe(false);
     }

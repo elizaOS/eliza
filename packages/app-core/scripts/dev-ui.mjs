@@ -15,13 +15,7 @@
  *   node …/dev-ui.mjs --ui-only                                # Vite only (API assumed running)
  */
 import { execSync, spawn } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { createConnection } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -764,6 +758,23 @@ async function waitForAgentReady(
   );
 }
 
+// Single quick health probe — true only when the agent reports ready. Used to
+// gate hot-reload restarts so the watcher only ever bounces a HEALTHY agent,
+// never one that is still booting (a booting agent already picks up the latest
+// source, and killing it mid-boot would loop).
+async function isAgentReadyNow(port) {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${port}/api/health`, {
+      signal: AbortSignal.timeout(1500),
+    });
+    if (!resp.ok) return false;
+    const body = await resp.json().catch(() => null);
+    return body?.ready === true;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Orphan cleanup (startup only) — never kills arbitrary Bun; PID/name-wide pkill is avoided.
 // Only processes whose command line ties them to this repo or Eliza workspace dirs.
@@ -1298,15 +1309,20 @@ if (uiOnly) {
   apiSupervisor.start();
 
   // Agent hot-reload: bounce the API child when backend source changes. The
-  // watcher only sees `*/src`, so concurrent `dist/` builds never trigger it.
+  // watcher only sees `*/src` (never `dist/`), and a restart fires only when the
+  // agent is currently healthy — so a build, or a change during boot, can never
+  // kill an in-progress boot. A booting agent already loads the latest source.
   if (useWatch) {
     sourceWatcher = startAgentSourceWatcher({
       root: apiSpawnCwd,
       onChange: (relPath) => {
-        console.log(
-          `\n  ${green(logPrefix)} ${dim(`Source change (${relPath}) — reloading agent…`)}`,
-        );
-        apiSupervisor.restart();
+        void (async () => {
+          if (!(await isAgentReadyNow(API_PORT))) return;
+          console.log(
+            `\n  ${green(logPrefix)} ${dim(`Source change (${relPath}) — reloading agent…`)}`,
+          );
+          apiSupervisor.restart();
+        })();
       },
       onError: (dir, err) => {
         console.log(

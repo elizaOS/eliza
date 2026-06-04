@@ -30,10 +30,16 @@ export const HOT_RELOAD_FRONTEND_PACKAGES = new Set([
   "os",
 ]);
 
-export const HOT_RELOAD_CODE_FILE = /\.(?:[cm]?tsx?|[cm]?js|json)$/;
+// Only hand-written agent source: .ts/.tsx/.mts/.cts + .json. Compiled `.js`
+// is deliberately NOT matched — this monorepo emits compiled `.js`/`.d.ts`
+// shadows next to `.ts` source, and reacting to those would bounce the agent on
+// every build. `.d.ts` (declaration emit) is excluded explicitly since it ends
+// in `.ts`.
+export const HOT_RELOAD_CODE_FILE = /\.(?:tsx?|mts|cts|json)$/;
+export const HOT_RELOAD_DECLARATION = /\.d\.[cm]?ts$/;
 export const HOT_RELOAD_TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
 export const HOT_RELOAD_IGNORED_SEGMENT =
-  /(?:^|[/\\])(?:dist|node_modules|\.turbo|\.git|coverage|__tests__|\.vite|build)(?:[/\\]|$)/;
+  /(?:^|[/\\])(?:dist|node_modules|\.turbo|\.git|coverage|__tests__|\.vite|build|generated)(?:[/\\]|$)/;
 export const HOT_RELOAD_DEBOUNCE_MS = 350;
 
 /**
@@ -72,8 +78,9 @@ export function collectAgentSourceDirs(root) {
 /**
  * Whether a watch event for `absPath` should trigger a reload. A null/empty
  * path (some platforms omit the filename) is treated as reloadable so we never
- * miss a real change. Build output, deps, and test/coverage dirs are ignored,
- * and only code files (ts/tsx/js/mjs/cjs/json) qualify.
+ * miss a real change. Build output, deps, generated, and test/coverage dirs are
+ * ignored, as are declaration (`.d.ts`) and test/spec files; only hand-written
+ * source (ts/tsx/mts/cts/json) qualifies.
  *
  * @param {string | null | undefined} absPath
  * @returns {boolean}
@@ -81,6 +88,7 @@ export function collectAgentSourceDirs(root) {
 export function isReloadableChangePath(absPath) {
   if (!absPath) return true;
   if (HOT_RELOAD_IGNORED_SEGMENT.test(absPath)) return false;
+  if (HOT_RELOAD_DECLARATION.test(absPath)) return false;
   if (HOT_RELOAD_TEST_FILE.test(absPath)) return false;
   return HOT_RELOAD_CODE_FILE.test(absPath);
 }
