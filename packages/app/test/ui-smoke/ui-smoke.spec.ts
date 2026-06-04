@@ -24,7 +24,7 @@ test("chat, apps, and settings routes render through the real shell", async ({
     [
       {
         selector:
-          'button[aria-label="show conversation"], button[aria-label="hide conversation"]',
+          'button[aria-label="expand conversation"], button[aria-label="collapse conversation"]',
       },
       {
         selector:
