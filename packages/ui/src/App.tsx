@@ -37,10 +37,8 @@ import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay"
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
 import { HomePill } from "./components/shell/HomePill";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
-import {
-  ShellControllerProvider,
-  useShellControllerContext,
-} from "./components/shell/ShellControllerContext";
+import { ShellControllerProvider } from "./components/shell/ShellControllerContext";
+import { useShellControllerContext } from "./components/shell/ShellControllerContext.hooks";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
 import { StartupScreen } from "./components/shell/StartupScreen";

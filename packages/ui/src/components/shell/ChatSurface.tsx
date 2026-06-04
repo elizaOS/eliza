@@ -2,7 +2,8 @@ import * as React from "react";
 
 import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
-import { GLASS_COMPOSER_CLASS, GlassIconButton } from "./glass-composer";
+import { GlassIconButton } from "./glass-composer";
+import { GLASS_COMPOSER_CLASS } from "./glass-composer.helpers";
 import type { ShellMessage } from "./shell-state";
 
 export interface ChatSurfaceProps {

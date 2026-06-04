@@ -1,8 +1,7 @@
 /**
- * React-bound branding context object + hook. Kept out of branding-react.tsx
- * so that file exports only the component surface and stays React Fast
- * Refresh-compatible. Imports the non-React base surface directly so this file
- * does not form a cycle with the compatibility barrel.
+ * React-bound branding context object + hook. Split from the non-React
+ * `branding-base` surface so Node-side consumers can import branding values
+ * without pulling `react` into their runtime closure.
  */
 import { createContext, useContext } from "react";
 import type { BrandingConfig } from "./branding-base.ts";

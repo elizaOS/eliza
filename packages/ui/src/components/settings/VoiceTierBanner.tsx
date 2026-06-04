@@ -18,15 +18,6 @@ import { cn } from "../../lib/utils";
 
 export type VoiceDeviceTier = "MAX" | "GOOD" | "OKAY" | "POOR";
 
-export const VOICE_DEVICE_TIERS: readonly VoiceDeviceTier[] = [
-  "MAX",
-  "GOOD",
-  "OKAY",
-  "POOR",
-] as const;
-
-export const DEFAULT_VOICE_DEVICE_TIER: VoiceDeviceTier = "GOOD";
-
 export interface VoiceTierBannerProps {
   tier: VoiceDeviceTier;
   /** Optional summary line (R9: "16 GB RAM · 8 cores · Apple Silicon"). */

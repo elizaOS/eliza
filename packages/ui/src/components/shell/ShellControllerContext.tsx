@@ -1,10 +1,7 @@
-import * as React from "react";
+import type * as React from "react";
 
-import { type ShellController, useShellController } from "./useShellController";
-
-const ShellControllerContext = React.createContext<ShellController | null>(
-  null,
-);
+import { ShellControllerContext } from "./ShellControllerContext.hooks";
+import { useShellController } from "./useShellController";
 
 /**
  * Provides a single {@link useShellController} instance to the shell pill /
@@ -22,9 +19,4 @@ export function ShellControllerProvider({
       {children}
     </ShellControllerContext.Provider>
   );
-}
-
-/** Returns the shared controller, or `null` outside the provider. */
-export function useShellControllerContext(): ShellController | null {
-  return React.useContext(ShellControllerContext);
 }

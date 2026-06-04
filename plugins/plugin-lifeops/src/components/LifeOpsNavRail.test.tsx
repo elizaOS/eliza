@@ -3,12 +3,10 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NAV_GROUPS } from "./LifeOpsNavRail.js";
+import { NAV_GROUPS } from "./LifeOpsNavRail.helpers.js";
 
 vi.mock("@elizaos/ui", () => ({
-  Sidebar: ({ children }: { children: ReactNode }) => (
-    <nav>{children}</nav>
-  ),
+  Sidebar: ({ children }: { children: ReactNode }) => <nav>{children}</nav>,
   SidebarContent: {
     RailItem: ({ children }: { children: ReactNode }) => (
       <button type="button">{children}</button>
@@ -20,12 +18,8 @@ vi.mock("@elizaos/ui", () => ({
   SidebarScrollRegion: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),
-  TooltipHint: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
-  TooltipProvider: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
+  TooltipHint: ({ children }: { children: ReactNode }) => <>{children}</>,
+  TooltipProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
   useAgentElement: () => ({ ref: vi.fn(), agentProps: {} }),
 }));
 

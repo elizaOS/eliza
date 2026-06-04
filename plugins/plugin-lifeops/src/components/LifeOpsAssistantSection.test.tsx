@@ -6,6 +6,8 @@ import {
   ASSISTANT_INTENTS,
   LIFEOPS_ASSISTANT_INTENTS,
   LIFEOPS_VOICE_COMMAND_PROMPT,
+} from "./LifeOpsAssistantSection.helpers.js";
+import {
   LifeOpsAssistantIntentGrid,
   LifeOpsAssistantSection,
 } from "./LifeOpsAssistantSection.js";

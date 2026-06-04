@@ -165,6 +165,7 @@ export {
   maybeCompressDocumentUploadImage,
 } from "./components";
 export * from "./components/apps/AppWindowRenderer";
+export * from "./components/apps/AppWindowRenderer.helpers";
 export * from "./components/apps/extensions/registry";
 export * from "./components/apps/extensions/surface";
 export * from "./components/apps/extensions/surface.helpers";
@@ -431,6 +432,7 @@ export * from "./platform/index";
 export * from "./providers/index";
 export * from "./shell-params";
 export * from "./slots/task-coordinator-slots";
+export * from "./slots/task-coordinator-slots.helpers";
 export type {
   ActionNotice,
   CompanionHalfFramerateMode,

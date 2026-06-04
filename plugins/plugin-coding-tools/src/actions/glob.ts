@@ -105,7 +105,7 @@ async function walkFallback(root: string, pattern: string): Promise<string[]> {
           }
         }
       } catch {
-        // skip unreadable entries
+        // Ignore unreadable entries.
       }
     }
   }

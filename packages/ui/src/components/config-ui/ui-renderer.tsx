@@ -37,13 +37,6 @@ import {
   sanitizeLinkHref,
 } from "./ui-renderer.helpers";
 
-export {
-  evaluateUiVisibility,
-  getSupportedComponents,
-  runValidation,
-  sanitizeLinkHref,
-} from "./ui-renderer.helpers";
-
 const UiContext = createContext<UiRenderContext | null>(null);
 
 function useUiCtx(): UiRenderContext {

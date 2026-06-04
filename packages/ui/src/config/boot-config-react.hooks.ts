@@ -1,6 +1,7 @@
 /**
- * Boot config context object + hook. Kept out of boot-config-react.tsx so that
- * file stays a thin re-export and React Fast Refresh stays happy for consumers.
+ * Boot config context object + hook. Split from the non-React `boot-config-store`
+ * surface so Node-side consumers (bench server, agent boot) can import the store
+ * without pulling `react` into their runtime closure.
  */
 import { createContext, useContext } from "react";
 import {

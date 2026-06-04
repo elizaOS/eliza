@@ -34,7 +34,7 @@ export async function maybeCreateStagehandTarget(
   const mobile = isMobileRuntime(env);
   if (mobile && !isEnabled(env[STAGEHAND_ALLOW_MOBILE_ENV])) {
     logger.debug(
-      "[BrowserService] stagehand target skipped on mobile; using the app browser surface instead",
+      "[BrowserService] stagehand target not registered on mobile; using the app browser surface instead",
     );
     return null;
   }
@@ -46,7 +46,7 @@ export async function maybeCreateStagehandTarget(
   const commandUrl = resolveStagehandCommandUrl(env);
   if (!commandUrl) {
     logger.debug(
-      "[BrowserService] stagehand target skipped; set ELIZA_BROWSER_STAGEHAND_COMMAND_URL or STAGEHAND_SERVER_URL to enable it",
+      "[BrowserService] stagehand target not registered; set ELIZA_BROWSER_STAGEHAND_COMMAND_URL or STAGEHAND_SERVER_URL to enable it",
     );
     return null;
   }
@@ -77,7 +77,7 @@ function resolveStagehandCommandUrl(env: NodeJS.ProcessEnv): string | null {
 }
 
 async function probeStagehand(
-  commandUrl: string,
+  _commandUrl: string,
   env: NodeJS.ProcessEnv,
 ): Promise<boolean> {
   const healthUrl = normalizeUrl(env.ELIZA_BROWSER_STAGEHAND_HEALTH_URL);

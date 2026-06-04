@@ -52,12 +52,12 @@ import { BrowserBridgeStatusChip } from "./BrowserBridgeStatusChip.js";
 import {
   ASSISTANT_INTENTS,
   LIFEOPS_VOICE_COMMAND_PROMPT,
-} from "./LifeOpsAssistantSection.js";
+} from "./LifeOpsAssistantSection.helpers.js";
 import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.helpers.js";
 import {
   LIFEOPS_MAIL_CHANNELS,
   LIFEOPS_MESSAGE_CHANNELS,
-} from "./LifeOpsInboxSection.js";
+} from "./LifeOpsInboxSection.helpers.js";
 import { useLifeOpsSelection } from "./LifeOpsSelectionContext.helpers.js";
 import { MissingSourceCard } from "./MissingSourceCard.js";
 

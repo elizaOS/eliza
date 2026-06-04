@@ -21,6 +21,7 @@ export function registerLifeOpsApp(): void {
 
 export * from "./components/AppBlockerSettingsCard.js";
 export { LifeOpsActivitySignalsEffect } from "./components/LifeOpsActivitySignalsEffect.js";
+export * from "./components/LifeOpsAssistantSection.helpers.ts";
 export * from "./components/LifeOpsAssistantSection.js";
 export * from "./components/LifeOpsPageSections.helpers.js";
 export * from "./components/LifeOpsPageSections.js";

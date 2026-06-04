@@ -152,10 +152,6 @@ const ALL_CHANNEL_STYLE: ChannelStyle = {
   icon: <MessageSquare className="h-3.5 w-3.5" aria-hidden />,
 };
 
-export const LIFEOPS_MESSAGE_CHANNELS: LifeOpsInboxChannel[] =
-  LIFEOPS_INBOX_CHANNELS.filter((channel) => channel !== "gmail");
-export const LIFEOPS_MAIL_CHANNELS: LifeOpsInboxChannel[] = ["gmail"];
-
 const IMPORTANT_PRIORITY_SCORE_THRESHOLD = 70;
 const MISSED_REPLY_GAP_MS = 24 * 60 * 60 * 1000;
 const MISSED_MIN_PRIORITY = 50;

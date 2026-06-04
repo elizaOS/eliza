@@ -9,5 +9,6 @@ export * from "./register-runtime.js";
 export * from "./routes/index.js";
 export * from "./services/index.js";
 export * from "./setup-routes.js";
+export * from "./ui/FineTuningView.helpers.ts";
 export * from "./ui/FineTuningView.js";
 export * from "./ui/index.js";

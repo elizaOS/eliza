@@ -1,18 +1,18 @@
-import { Sidebar, SidebarContent, SidebarPanel, SidebarScrollRegion, TooltipHint, TooltipProvider } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
-  BriefcaseBusiness,
-  CalendarDays,
-  CreditCard,
-  FileText,
-  LayoutDashboard,
-  Mail,
-  MessageSquare,
-  MessageSquareText,
-  Settings2,
-} from "lucide-react";
-import type { ReactNode } from "react";
+  Sidebar,
+  SidebarContent,
+  SidebarPanel,
+  SidebarScrollRegion,
+  TooltipHint,
+  TooltipProvider,
+} from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
+import {
+  NAV_GROUPS,
+  type NavGroup,
+  type NavItem,
+} from "./LifeOpsNavRail.helpers.js";
 
 interface LifeOpsNavRailProps {
   activeSection: LifeOpsSection;
@@ -21,89 +21,7 @@ interface LifeOpsNavRailProps {
   labelMode?: "all" | "active";
 }
 
-interface NavGroup {
-  key: string;
-  label: string;
-  items: NavItem[];
-}
-
-interface NavItem {
-  id: LifeOpsSection;
-  label: string;
-  icon: ReactNode;
-  dotColor: string;
-}
-
-export const NAV_GROUPS: NavGroup[] = [
-  {
-    key: "today",
-    label: "Assistant",
-    items: [
-      {
-        id: "assistant",
-        label: "Assistant",
-        icon: <MessageSquareText className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-amber-300",
-      },
-      {
-        id: "overview",
-        label: "Overview",
-        icon: <LayoutDashboard className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-violet-400",
-      },
-      {
-        id: "messages",
-        label: "Messages",
-        icon: <MessageSquare className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-emerald-400",
-      },
-      {
-        id: "mail",
-        label: "Mail",
-        icon: <Mail className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-rose-400",
-      },
-      {
-        id: "calendar",
-        label: "Calendar",
-        icon: <CalendarDays className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-blue-400",
-      },
-      {
-        id: "reminders",
-        label: "Reminders",
-        icon: <BriefcaseBusiness className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-amber-400",
-      },
-      {
-        id: "money",
-        label: "Money",
-        icon: <CreditCard className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-green-400",
-      },
-      {
-        id: "documents",
-        label: "Documents",
-        icon: <FileText className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-cyan-400",
-      },
-    ],
-  },
-  {
-    key: "config",
-    label: "Configure",
-    items: [
-      {
-        id: "setup",
-        label: "Settings",
-        icon: <Settings2 className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-rose-400",
-      },
-    ],
-  },
-];
-
-const NAV_ITEMS = NAV_GROUPS.flatMap((group) => group.items);
+const NAV_ITEMS = NAV_GROUPS.flatMap((group: NavGroup) => group.items);
 
 function LifeOpsNavRailItem({
   item,
