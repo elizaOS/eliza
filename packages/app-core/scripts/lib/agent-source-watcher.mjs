@@ -99,8 +99,11 @@ export function isReloadableChangePath(absPath) {
  *
  * @param {Object} params
  * @param {string} params.root Repo root.
- * @param {(relPath: string) => void} params.onChange Debounced; receives the
- *   changed path relative to `root` (or "source" when the filename is unknown).
+ * @param {(relPath: string, changedCount: number) => void} params.onChange
+ *   Debounced; receives one sample path (relative to `root`, or "source" when
+ *   the filename is unknown) and the number of DISTINCT files that changed in
+ *   the window — so the caller can ignore bulk rewrites (a git reset / checkout
+ *   / build touches many files at once; a human edit touches one or a few).
  * @param {(dir: string, err: Error) => void} [params.onError] Per-dir watch
  *   setup failure (e.g. a platform without recursive watch).
  * @param {number} [params.debounceMs]
@@ -117,17 +120,24 @@ export function startAgentSourceWatcher({
   const watchers = [];
   /** @type {ReturnType<typeof setTimeout> | null} */
   let debounce = null;
-  let pendingFile = null;
+  /** Distinct changed paths accumulated in the current debounce window. */
+  const pendingFiles = new Set();
+  let pendingSample = null;
 
   const fire = (absPath) => {
     if (absPath && !isReloadableChangePath(absPath)) return;
-    if (absPath) pendingFile = absPath;
+    if (absPath) {
+      pendingFiles.add(absPath);
+      pendingSample = absPath;
+    }
     if (debounce) clearTimeout(debounce);
     debounce = setTimeout(() => {
-      const changed = pendingFile;
-      pendingFile = null;
+      const count = pendingFiles.size;
+      const sample = pendingSample;
+      pendingFiles.clear();
+      pendingSample = null;
       debounce = null;
-      onChange(changed ? path.relative(root, changed) : "source");
+      onChange(sample ? path.relative(root, sample) : "source", count);
     }, debounceMs);
     debounce.unref?.();
   };

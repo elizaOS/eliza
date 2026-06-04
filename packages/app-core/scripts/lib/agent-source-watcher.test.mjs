@@ -131,7 +131,7 @@ describe("startAgentSourceWatcher (integration)", () => {
     handle = startAgentSourceWatcher({
       root,
       debounceMs: 60,
-      onChange: (rel) => calls.push(rel),
+      onChange: (rel, count) => calls.push({ rel, count }),
     });
     // Only the plugin src is watched; the frontend package is excluded.
     expect(handle.count).toBe(1);
@@ -144,6 +144,36 @@ describe("startAgentSourceWatcher (integration)", () => {
 
     const fired = await waitUntil(() => calls.length > 0, 4000);
     expect(fired).toBe(true);
-    expect(calls.some((c) => c.includes("views.ts"))).toBe(true);
+    expect(calls.some((c) => c.rel.includes("views.ts"))).toBe(true);
+    // A single edit reports a small changed-count (the bulk guard keys on this).
+    expect(calls.every((c) => c.count <= 2)).toBe(true);
+  });
+
+  it("reports a high changed-count for a bulk rewrite (so callers can skip it)", async () => {
+    root = mkdtempSync(path.join(tmpdir(), "agent-watch-bulk-"));
+    const srcDir = path.join(root, "plugins", "plugin-x", "src");
+    mkdirSync(srcDir, { recursive: true });
+
+    const calls = [];
+    handle = startAgentSourceWatcher({
+      root,
+      debounceMs: 120,
+      onChange: (rel, count) => calls.push({ rel, count }),
+    });
+    expect(handle.count).toBe(1);
+
+    await delay(200);
+    // Simulate a reset/checkout: many files rewritten in one burst.
+    for (let i = 0; i < 20; i++) {
+      writeFileSync(
+        path.join(srcDir, `mod-${i}.ts`),
+        `export const v${i}=1;\n`,
+      );
+    }
+
+    const fired = await waitUntil(() => calls.length > 0, 4000);
+    expect(fired).toBe(true);
+    // Coalesced into one window with a count well above the bulk threshold.
+    expect(Math.max(...calls.map((c) => c.count))).toBeGreaterThan(8);
   });
 });

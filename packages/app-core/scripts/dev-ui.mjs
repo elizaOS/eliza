@@ -225,6 +225,11 @@ const verboseApiLogs = process.env.ELIZA_DEV_VERBOSE_LOGS !== "0";
 // why this no longer needs the opt-in / concurrent-build auto-disable dance.
 // Opt out with ELIZA_DEV_NO_WATCH=1.
 const skipSourceWatch = process.env.ELIZA_DEV_NO_WATCH === "1";
+// More distinct source files than this changing in one debounce window is a
+// git reset / checkout / build (churn), not a hand edit — skip the reload.
+// Override with ELIZA_DEV_HOT_RELOAD_BULK_LIMIT.
+const HOT_RELOAD_BULK_CHANGE_LIMIT =
+  Number(process.env.ELIZA_DEV_HOT_RELOAD_BULK_LIMIT) || 8;
 const DEV_TEST_MOCK_ENV_KEYS = [
   "ELIZA_MOCK_GOOGLE_BASE",
   "ELIZA_MOCK_TWILIO_BASE",
@@ -1315,7 +1320,17 @@ if (uiOnly) {
   if (useWatch) {
     sourceWatcher = startAgentSourceWatcher({
       root: apiSpawnCwd,
-      onChange: (relPath) => {
+      onChange: (relPath, changedCount) => {
+        // A git reset/checkout/branch-switch or a build rewrites many files at
+        // once — that is churn, not a developer edit. Don't bounce the agent
+        // for it (the boots/502s would storm); a single restart can't track a
+        // moving tree anyway. A real edit touches one or a few files.
+        if (changedCount > HOT_RELOAD_BULK_CHANGE_LIMIT) {
+          console.log(
+            `\n  ${green(logPrefix)} ${dim(`Bulk change (${changedCount} files, e.g. ${relPath}) — skipping agent reload (looks like a reset/build).`)}`,
+          );
+          return;
+        }
         void (async () => {
           if (!(await isAgentReadyNow(API_PORT))) return;
           console.log(
