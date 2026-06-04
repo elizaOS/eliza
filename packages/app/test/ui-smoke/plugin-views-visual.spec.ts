@@ -39,7 +39,7 @@ const VISUAL_SIGNAL_CASES = new Map<string, VisualSignalCase>([
     "companion:gui:/companion",
     {
       rootSelector: "[data-testid='companion-root']",
-      visualSignalSelector: "[data-testid='companion-vrm-canvas']",
+      visualSignalSelector: "[data-testid='companion-vrm-stage']",
     },
   ],
 ]);

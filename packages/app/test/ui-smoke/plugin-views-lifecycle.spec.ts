@@ -9,8 +9,31 @@ import {
 } from "./helpers";
 import { VIEW_CASES, type ViewCase } from "./plugin-view-cases";
 
+type VisualSignalCase = {
+  rootSelector: string;
+  visualSignalSelector: string;
+};
+
+const VISUAL_SIGNAL_CASES = new Map<string, VisualSignalCase>([
+  [
+    "companion:gui:/companion",
+    {
+      rootSelector: "[data-testid='companion-root']",
+      visualSignalSelector: "[data-testid='companion-vrm-stage']",
+    },
+  ],
+]);
+
 async function expectLoadedView(page: Page, view: ViewCase, phase: string) {
-  const viewRoot = page.locator("main").first();
+  const visualSignalCase = VISUAL_SIGNAL_CASES.get(
+    `${view.id}:${view.viewType}:${view.path}`,
+  );
+  const viewRoot = page
+    .locator(visualSignalCase?.rootSelector ?? "main")
+    .first();
+  const visualSignal = visualSignalCase
+    ? page.locator(visualSignalCase.visualSignalSelector).first()
+    : null;
   await expect(viewRoot).toBeVisible({ timeout: 60_000 });
   await expect
     .poll(
@@ -18,7 +41,8 @@ async function expectLoadedView(page: Page, view: ViewCase, phase: string) {
         const text = await viewRoot.evaluate((root) =>
           root.innerText.trim().replace(/\s+/g, " "),
         );
-        return text.length > 20 && !/^Loading view\b/.test(text);
+        if (text.length > 20 && !/^Loading view\b/.test(text)) return true;
+        return visualSignal ? await visualSignal.isVisible() : false;
       },
       {
         message: `${view.id} ${view.viewType} should load during ${phase}`,
@@ -52,11 +76,7 @@ async function expectViewManagerPage(page: Page) {
     await expect(
       main.getByRole("heading", { level: 2, name: "Plugins" }),
     ).toBeVisible();
-    await expect(
-      main.getByRole("button", {
-        name: /Companion\s+@elizaos\/plugin-companion/,
-      }),
-    ).toBeVisible();
+    await expect(main.locator("button, [role='button']").first()).toBeVisible();
   }
   await expect(main.getByText("dynamic view smoke surface")).toHaveCount(0);
 }

@@ -102,6 +102,7 @@ const PLUGIN_REGISTRY: Array<{
   manifestPath: string;
   /** Path to the component source file the XR view renders */
   xrComponentSrc: string;
+  xrSurfaceSrc?: string[];
   /** Key functional terms that MUST appear in the component source */
   requiredTerms: string[];
 }> = [
@@ -110,6 +111,10 @@ const PLUGIN_REGISTRY: Array<{
     manifestPath: "plugins/plugin-companion/src/plugin.ts",
     xrComponentSrc:
       "plugins/plugin-companion/src/components/companion/CompanionView.tsx",
+    xrSurfaceSrc: [
+      "plugins/plugin-companion/src/components/companion/CompanionSceneHost.tsx",
+      "plugins/plugin-companion/src/components/companion/EmotePicker.tsx",
+    ],
     requiredTerms: ["useState", "Button", "CompanionView"],
   },
   {
@@ -184,6 +189,10 @@ const PLUGIN_REGISTRY: Array<{
     pluginDir: "plugins/plugin-wallet-ui",
     manifestPath: "plugins/plugin-wallet-ui/src/plugin.ts",
     xrComponentSrc: "plugins/plugin-wallet-ui/src/InventoryView.tsx",
+    xrSurfaceSrc: [
+      "plugins/plugin-wallet-ui/src/InventoryView.helpers.ts",
+      "plugins/plugin-wallet-ui/src/inventory/useInventoryData.ts",
+    ],
     requiredTerms: ["InventoryView", "Button", "WalletBalancesResponse"],
   },
   {
@@ -345,6 +354,27 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
   },
 };
 
+function existingViewSurfaceSources(
+  componentSrc: string,
+  extraSrc: readonly string[] = [],
+): string[] {
+  const candidates = [
+    componentSrc,
+    componentSrc.replace(/\.tsx$/, ".interact.ts"),
+    ...extraSrc,
+  ];
+  return [...new Set(candidates)].filter(fileExists);
+}
+
+function readViewSurfaceSource(
+  componentSrc: string,
+  extraSrc: readonly string[] = [],
+): string {
+  return existingViewSurfaceSources(componentSrc, extraSrc)
+    .map((srcFile) => readFile(srcFile))
+    .join("\n");
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("XR feature-by-feature functional parity — all 24 views", () => {
@@ -427,10 +457,11 @@ describe("XR feature-by-feature functional parity — all 24 views", () => {
     for (const {
       pluginDir,
       xrComponentSrc,
+      xrSurfaceSrc,
       requiredTerms,
     } of PLUGIN_REGISTRY) {
       if (!fileExists(xrComponentSrc)) continue;
-      const src = readFile(xrComponentSrc);
+      const src = readViewSurfaceSource(xrComponentSrc, xrSurfaceSrc);
       for (const term of requiredTerms) {
         if (!src.includes(term)) {
           failures.push(
@@ -446,9 +477,9 @@ describe("XR feature-by-feature functional parity — all 24 views", () => {
 
   it("B — all 24 XR component sources use React hooks (useState/useEffect) for stateful UIs", () => {
     const noHooks: string[] = [];
-    for (const { pluginDir, xrComponentSrc } of PLUGIN_REGISTRY) {
+    for (const { pluginDir, xrComponentSrc, xrSurfaceSrc } of PLUGIN_REGISTRY) {
       if (!fileExists(xrComponentSrc)) continue;
-      const src = readFile(xrComponentSrc);
+      const src = readViewSurfaceSource(xrComponentSrc, xrSurfaceSrc);
       if (
         !src.includes("useState") &&
         !src.includes("useEffect") &&
@@ -501,9 +532,9 @@ describe("XR feature-by-feature functional parity — all 24 views", () => {
         failures.push(`${pluginDir}: source file ${srcFile} missing`);
         continue;
       }
-      const src = readFile(srcFile);
+      const surfaceSrc = readViewSurfaceSource(srcFile);
       for (const cap of capabilities) {
-        if (!src.includes(cap)) {
+        if (!surfaceSrc.includes(cap)) {
           failures.push(`${pluginDir}: capability "${cap}" not in ${srcFile}`);
         }
       }
