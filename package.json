@@ -246,7 +246,7 @@
   ],
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
-    "@capacitor/core": "8.3.1",
+    "@capacitor/core": "8.4.0",
     "@elizaos-benchmarks/lib": "workspace:*",
     "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",

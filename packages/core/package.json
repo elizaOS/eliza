@@ -1,5 +1,4 @@
-{
-  "name": "@elizaos/core",
+"name": "@elizaos/core",
   "version": "2.0.3-beta.1",
   "description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS — actions, providers, evaluators, services, models, and types.",
   "homepage": "https://github.com/elizaOS/eliza",
@@ -146,7 +145,7 @@
     "@noble/ciphers": "2.2.0",
     "@noble/hashes": "2.2.0",
     "@openrouter/ai-sdk-provider": "^2.0.0",
-    "@opentelemetry/api": "1.9.0",
+    "@opentelemetry/api": "1.9.1",
     "adze": "^2.2.5",
     "ai": "^6.0.30",
     "dedent": "^1.7.1",

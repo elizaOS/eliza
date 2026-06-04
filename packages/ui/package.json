@@ -305,7 +305,7 @@
     "ws": "^8.19.0"
   },
   "devDependencies": {
-    "@capacitor/core": "8.3.1",
+    "@capacitor/core": "8.4.0",
     "@capacitor/haptics": "8.0.2",
     "@capacitor/keyboard": "8.0.3",
     "@capacitor/preferences": "^8.0.1",
