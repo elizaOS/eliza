@@ -199,6 +199,17 @@ export default defineConfig({
         find: "@elizaos/ui",
         replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
       },
+      // `@elizaos/plugin-calendar`'s built dist pulls `renderGroundedActionReply`
+      // from the `@elizaos/agent/actions/grounded-action-reply` subpath (to dodge
+      // the full agent barrel in the Plugin Tests lane). The bare-specifier alias
+      // below prefix-matches that subpath and rewrites it to `agent.ts/actions/...`,
+      // which is unresolvable — so anchor the subpath to the stub explicitly first.
+      // Other agent subpaths (e.g. services/app-session-gate) must keep resolving
+      // to the real source, so this stays narrow rather than a `/(.+)` catch-all.
+      {
+        find: /^@elizaos\/agent\/actions\/grounded-action-reply$/,
+        replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
+      },
       {
         find: "@elizaos/agent",
         replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
