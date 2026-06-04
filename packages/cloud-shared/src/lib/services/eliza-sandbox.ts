@@ -18,12 +18,14 @@ import { userCharactersRepository } from "../../db/repositories/characters";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import {
   type AgentBackupStateData,
+  type AgentExecutionTier,
   agentSandboxBackups,
   agentSandboxes,
   type NewAgentSandbox,
   type NewAgentSandboxBackup,
 } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
+import { cache } from "../cache/client";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
@@ -50,6 +52,11 @@ import { getNeonClient, NeonClientError } from "./neon-client";
 import { JOB_TYPES } from "./provisioning-job-types";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
 import { createSandboxProvider, type SandboxProvider } from "./sandbox-provider";
+import {
+  runSharedAgentTurn,
+  type SharedAgentCharacter,
+  type SharedTurnMessage,
+} from "./shared-runtime/run-shared-agent-turn";
 
 /** Shared Neon project used as branch parent for per-agent databases. */
 const NEON_PARENT_PROJECT_ID: string = process.env.NEON_PARENT_PROJECT_ID ?? "";
@@ -60,10 +67,9 @@ export interface CreateAgentParams {
   agentName: string;
   agentConfig?: Record<string, unknown>;
   environmentVars?: Record<string, string>;
-  /** Link to a user_characters record (canonical character with token linkage). */
   characterId?: string;
-  /** Override the default Docker image (e.g. for different agent flavors). */
   dockerImage?: string;
+  executionTier?: AgentExecutionTier;
 }
 
 export type ProvisionResult =
@@ -100,6 +106,8 @@ export interface SnapshotResult {
 }
 
 const MAX_BACKUPS = 10;
+const SHARED_RUNTIME_HISTORY_TTL_SECONDS = 60 * 60 * 24 * 30;
+const SHARED_RUNTIME_HISTORY_MAX_MESSAGES = 40;
 type LifecycleTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 function digestPinnedImageRef(imageRef: string, digest: string): string {
@@ -493,13 +501,17 @@ export class ElizaSandboxService {
       ? withReusedElizaCharacterOwnership(sanitizedConfig)
       : sanitizedConfig;
 
+    const executionTier: AgentExecutionTier = params.executionTier ?? "shared";
+    const status = executionTier === "shared" ? "running" : "pending";
+
     return {
       organization_id: params.organizationId,
       user_id: params.userId,
       agent_name: params.agentName,
       agent_config: agentConfig,
       environment_vars: params.environmentVars ?? {},
-      status: "pending",
+      status,
+      execution_tier: executionTier,
       database_status: "none",
       ...(params.characterId && { character_id: params.characterId }),
       ...(params.dockerImage && { docker_image: params.dockerImage }),
@@ -1203,11 +1215,158 @@ export class ElizaSandboxService {
     return typeof globalThis !== "undefined" && "WebSocketPair" in globalThis;
   }
 
+  private sharedRuntimeStringValue(value: unknown): string | undefined {
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  }
+
+  private sharedRuntimeStringList(value: unknown): string[] {
+    if (typeof value === "string" && value.trim()) return [value.trim()];
+    if (!Array.isArray(value)) return [];
+    return value.filter(
+      (item): item is string => typeof item === "string" && item.trim().length > 0,
+    );
+  }
+
+  private sharedRuntimeHistoryCacheKey(agentId: string, channelId: string): string {
+    return `shared-runtime:${agentId}:${channelId}:history:v1`;
+  }
+
+  private isSharedTurnMessage(value: unknown): value is SharedTurnMessage {
+    const message = this.nestedBridgeRecord(value);
+    return (
+      (message?.role === "user" || message?.role === "assistant") &&
+      typeof message.content === "string" &&
+      message.content.trim().length > 0
+    );
+  }
+
+  private async loadSharedRuntimeHistory(
+    agentId: string,
+    channelId: string,
+  ): Promise<SharedTurnMessage[]> {
+    const cached = await cache.get<SharedTurnMessage[]>(
+      this.sharedRuntimeHistoryCacheKey(agentId, channelId),
+    );
+    if (!Array.isArray(cached)) return [];
+    return cached.filter((message): message is SharedTurnMessage =>
+      this.isSharedTurnMessage(message),
+    );
+  }
+
+  private async saveSharedRuntimeHistory(
+    agentId: string,
+    channelId: string,
+    history: SharedTurnMessage[],
+  ): Promise<void> {
+    const capped =
+      history.length > SHARED_RUNTIME_HISTORY_MAX_MESSAGES
+        ? history.slice(history.length - SHARED_RUNTIME_HISTORY_MAX_MESSAGES)
+        : history;
+    await cache.set(
+      this.sharedRuntimeHistoryCacheKey(agentId, channelId),
+      capped,
+      SHARED_RUNTIME_HISTORY_TTL_SECONDS,
+    );
+  }
+
+  private async buildSharedRuntimeCharacter(rec: AgentSandbox): Promise<SharedAgentCharacter> {
+    const config = this.nestedBridgeRecord(rec.agent_config) ?? {};
+    const configCharacter = this.nestedBridgeRecord(config.character) ?? config;
+    const linkedCharacter = rec.character_id
+      ? await userCharactersRepository.findByIdInOrganization(rec.character_id, rec.organization_id)
+      : undefined;
+    const linkedSettings = this.nestedBridgeRecord(linkedCharacter?.settings);
+
+    const name =
+      this.sharedRuntimeStringValue(linkedCharacter?.name) ??
+      this.sharedRuntimeStringValue(configCharacter.name) ??
+      this.sharedRuntimeStringValue(config.name) ??
+      rec.agent_name ??
+      "Eliza agent";
+    const system =
+      this.sharedRuntimeStringValue(linkedCharacter?.system) ??
+      this.sharedRuntimeStringValue(configCharacter.system) ??
+      this.sharedRuntimeStringValue(config.system) ??
+      this.sharedRuntimeStringValue(configCharacter.prompt) ??
+      this.sharedRuntimeStringValue(config.prompt) ??
+      `You are ${name}, a helpful assistant.`;
+    const bio = [
+      ...this.sharedRuntimeStringList(linkedCharacter?.bio),
+      ...this.sharedRuntimeStringList(configCharacter.bio),
+      ...this.sharedRuntimeStringList(config.bio),
+    ];
+    const model =
+      this.sharedRuntimeStringValue(linkedSettings?.model) ??
+      this.sharedRuntimeStringValue(configCharacter.model) ??
+      this.sharedRuntimeStringValue(config.model);
+
+    return {
+      name,
+      system,
+      ...(bio.length > 0 ? { bio } : {}),
+      ...(model ? { model } : {}),
+    };
+  }
+
+  private async bridgeSharedStatus(rec: AgentSandbox, rpc: BridgeRequest): Promise<BridgeResponse> {
+    return {
+      jsonrpc: "2.0",
+      id: rpc.id,
+      result: {
+        status: "running",
+        ready: true,
+        agentId: rec.id,
+        agentName: rec.agent_name ?? undefined,
+        runtime: "shared",
+      },
+    };
+  }
+
+  private async bridgeSharedMessageSend(
+    rec: AgentSandbox,
+    rpc: BridgeRequest,
+  ): Promise<BridgeResponse> {
+    const params = rpc.params && typeof rpc.params === "object" ? rpc.params : {};
+    const text = typeof params.text === "string" ? params.text : "";
+    if (!text.trim()) {
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        error: { code: -32602, message: "message.send requires params.text" },
+      };
+    }
+
+    const channelId = this.stableBridgeChannelId(rec.id, params);
+    const [character, history] = await Promise.all([
+      this.buildSharedRuntimeCharacter(rec),
+      this.loadSharedRuntimeHistory(rec.id, channelId),
+    ]);
+    const turn = await runSharedAgentTurn({
+      character,
+      history,
+      message: text,
+    });
+    await this.saveSharedRuntimeHistory(rec.id, channelId, turn.history);
+
+    return {
+      jsonrpc: "2.0",
+      id: rpc.id,
+      result: {
+        text: turn.reply,
+        agentName: character.name,
+        channelId,
+        model: turn.model,
+        degraded: turn.degraded,
+        runtime: "shared",
+      },
+    };
+  }
+
   // Bridge
 
   async bridge(agentId: string, orgId: string, rpc: BridgeRequest): Promise<BridgeResponse> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
-    if (!rec?.bridge_url) {
+    if (!rec) {
       logger.warn("[agent-sandbox] Bridge call to non-running sandbox", {
         agentId,
         method: rpc.method,
@@ -1220,6 +1379,32 @@ export class ElizaSandboxService {
     }
 
     try {
+      if (rec.execution_tier === "shared") {
+        if (rpc.method === "status.get" || rpc.method === "heartbeat") {
+          return await this.bridgeSharedStatus(rec, rpc);
+        }
+        if (rpc.method === "message.send") {
+          return await this.bridgeSharedMessageSend(rec, rpc);
+        }
+        return {
+          jsonrpc: "2.0",
+          id: rpc.id,
+          error: { code: -32601, message: `Method not found: ${rpc.method}` },
+        };
+      }
+
+      if (!rec.bridge_url) {
+        logger.warn("[agent-sandbox] Bridge call to running sandbox without bridge URL", {
+          agentId,
+          method: rpc.method,
+        });
+        return {
+          jsonrpc: "2.0",
+          id: rpc.id,
+          error: { code: -32000, message: "Sandbox is not running" },
+        };
+      }
+
       if (rpc.method === "status.get" || rpc.method === "heartbeat") {
         return await this.bridgeStatus(rec, rpc);
       }
@@ -2440,7 +2625,7 @@ export class ElizaSandboxService {
 
   async bridgeStream(agentId: string, orgId: string, rpc: BridgeRequest): Promise<Response | null> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
-    if (!rec?.bridge_url) {
+    if (!rec) {
       logger.warn("[agent-sandbox] Bridge stream to non-running sandbox", {
         agentId,
         method: rpc.method,
@@ -2451,6 +2636,26 @@ export class ElizaSandboxService {
     const params =
       rpc.params && typeof rpc.params === "object" ? (rpc.params as Record<string, unknown>) : {};
     const fallbackText = this.buildBridgeNoReplyFallbackText(params);
+
+    if (rec.execution_tier === "shared") {
+      const sharedResponse = await this.bridgeSharedMessageSend(rec, rpc);
+      const text = sharedResponse.result?.text;
+      if (typeof text === "string" && text.trim()) {
+        return this.createBridgeSseTextResponse(text);
+      }
+      if (sharedResponse.error) {
+        return this.createBridgeSseErrorResponse(sharedResponse.error.message);
+      }
+      return fallbackText ? this.createBridgeSseTextResponse(fallbackText) : null;
+    }
+
+    if (!rec.bridge_url) {
+      logger.warn("[agent-sandbox] Bridge stream to running sandbox without bridge URL", {
+        agentId,
+        method: rpc.method,
+      });
+      return null;
+    }
 
     try {
       const conversationId = await this.createBridgeConversation(rec, params);

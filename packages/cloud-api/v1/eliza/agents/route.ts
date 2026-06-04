@@ -29,6 +29,10 @@ import {
   checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
 } from "@/lib/services/provisioning-worker-health";
+import {
+  getAgentTier,
+  tierProvisionsEagerly,
+} from "@/lib/services/shared-runtime/agent-tier";
 import type { AgentListItemDto, AgentsResponse } from "@/lib/types/cloud-api";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -48,6 +52,9 @@ const createAgentSchema = z.object({
   agentConfig: z.record(z.string(), z.unknown()).optional(),
   environmentVars: z.record(z.string(), z.string()).optional(),
   dockerImage: dockerImageSchema.optional(),
+  alwaysOn: z.boolean().optional(),
+  statefulRuntime: z.boolean().optional(),
+  modelTooLargeForShared: z.boolean().optional(),
   // Provisioning is started automatically by default so a single round-trip
   // returns a running session (warm pool) or a provisioning job to poll.
   // S2S callers that want to create the record without spending can opt out
@@ -59,6 +66,7 @@ type Agent = Awaited<ReturnType<typeof elizaSandboxService.listAgents>>[number];
 type UserCharacter = Awaited<
   ReturnType<typeof userCharactersRepository.findByIdsInOrganization>
 >[number];
+type CreateAgentBody = z.infer<typeof createAgentSchema>;
 
 function toIsoString(value: Date | string): string {
   return value instanceof Date
@@ -76,6 +84,87 @@ function stringConfigValue(
 ): string | null {
   const value = config?.[key];
   return typeof value === "string" ? value : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function booleanConfigValue(
+  config: Record<string, unknown> | undefined,
+  key: string,
+): boolean {
+  return config?.[key] === true;
+}
+
+function stringArrayValue(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (item): item is string =>
+      typeof item === "string" && item.trim().length > 0,
+  );
+}
+
+function nestedCharacterConfig(
+  config: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  return isRecord(config?.character) ? config.character : undefined;
+}
+
+function deriveAgentPlugins(
+  config: Record<string, unknown> | undefined,
+  character: UserCharacter | undefined,
+): string[] {
+  const characterConfig = nestedCharacterConfig(config);
+  return Array.from(
+    new Set([
+      ...stringArrayValue(config?.plugins),
+      ...stringArrayValue(characterConfig?.plugins),
+      ...(character?.plugins ?? []),
+    ]),
+  );
+}
+
+function deriveAlwaysOn(
+  data: CreateAgentBody,
+  config: Record<string, unknown> | undefined,
+): boolean {
+  const characterConfig = nestedCharacterConfig(config);
+  return (
+    data.alwaysOn === true ||
+    booleanConfigValue(config, "alwaysOn") ||
+    booleanConfigValue(config, "always_on") ||
+    booleanConfigValue(characterConfig, "alwaysOn") ||
+    booleanConfigValue(characterConfig, "always_on")
+  );
+}
+
+function deriveStatefulRuntime(
+  data: CreateAgentBody,
+  config: Record<string, unknown> | undefined,
+): boolean {
+  const characterConfig = nestedCharacterConfig(config);
+  return (
+    data.statefulRuntime === true ||
+    booleanConfigValue(config, "statefulRuntime") ||
+    booleanConfigValue(config, "stateful_runtime") ||
+    booleanConfigValue(characterConfig, "statefulRuntime") ||
+    booleanConfigValue(characterConfig, "stateful_runtime")
+  );
+}
+
+function deriveModelTooLargeForShared(
+  data: CreateAgentBody,
+  config: Record<string, unknown> | undefined,
+): boolean {
+  const characterConfig = nestedCharacterConfig(config);
+  return (
+    data.modelTooLargeForShared === true ||
+    booleanConfigValue(config, "modelTooLargeForShared") ||
+    booleanConfigValue(config, "model_too_large_for_shared") ||
+    booleanConfigValue(characterConfig, "modelTooLargeForShared") ||
+    booleanConfigValue(characterConfig, "model_too_large_for_shared")
+  );
 }
 
 function toAgentListItemDto(
@@ -104,6 +193,7 @@ function toAgentListItemDto(
       character?.token_ticker ??
       stringConfigValue(agent.agent_config, "tokenTicker"),
     dockerImage: agent.docker_image,
+    executionTier: agent.execution_tier,
   };
 }
 
@@ -153,37 +243,54 @@ app.post("/", async (c) => {
     });
   }
 
-  // Auto-provision is the default: a single POST returns a running session
-  // (warm pool) or a provisioning job to poll, eliminating the mandatory
-  // second /provision call and the orphaned-pending-agent failure mode.
-  // Opt out via `?autoProvision=false` or `autoProvision: false` in the body.
   const autoProvision =
     c.req.query("autoProvision") !== "false" &&
     parsed.data.autoProvision !== false;
 
-  const creditCheck = await checkAgentCreditGate(user.organization_id);
-  if (!creditCheck.allowed) {
-    logger.warn("[agent-api] Agent creation blocked: insufficient credits", {
-      orgId: user.organization_id,
-      balance: creditCheck.balance,
-      required: AGENT_PRICING.MINIMUM_DEPOSIT,
-    });
-    throw new ApiError(
-      402,
-      "insufficient_credits",
-      creditCheck.error ?? "Insufficient credits",
-      {
-        requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
-        currentBalance: creditCheck.balance,
-      },
-    );
+  const sanitizedConfig = stripReservedElizaConfigKeys(parsed.data.agentConfig);
+  let linkedCharacter: UserCharacter | undefined;
+  if (parsed.data.characterId) {
+    linkedCharacter =
+      await userCharactersRepository.findByIdInOrganizationForWrite(
+        parsed.data.characterId,
+        user.organization_id,
+      );
+
+    if (!linkedCharacter) throw NotFoundError("Character not found");
   }
 
-  // Worker-health pre-check happens BEFORE createAgent so that, when the
-  // provisioning worker is down, we never create an agent row that can't be
-  // provisioned (no orphaned pending agent, nothing to roll back). Skipped
-  // when the caller opted out of auto-provisioning.
-  if (autoProvision) {
+  const executionTier = getAgentTier({
+    dockerImage: parsed.data.dockerImage,
+    plugins: deriveAgentPlugins(sanitizedConfig, linkedCharacter),
+    alwaysOn: deriveAlwaysOn(parsed.data, sanitizedConfig),
+    statefulRuntime: deriveStatefulRuntime(parsed.data, sanitizedConfig),
+    modelTooLargeForShared: deriveModelTooLargeForShared(
+      parsed.data,
+      sanitizedConfig,
+    ),
+  });
+  const shouldProvisionEagerly =
+    autoProvision && tierProvisionsEagerly(executionTier);
+
+  if (shouldProvisionEagerly) {
+    const creditCheck = await checkAgentCreditGate(user.organization_id);
+    if (!creditCheck.allowed) {
+      logger.warn("[agent-api] Agent creation blocked: insufficient credits", {
+        orgId: user.organization_id,
+        balance: creditCheck.balance,
+        required: AGENT_PRICING.MINIMUM_DEPOSIT,
+      });
+      throw new ApiError(
+        402,
+        "insufficient_credits",
+        creditCheck.error ?? "Insufficient credits",
+        {
+          requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
+          currentBalance: creditCheck.balance,
+        },
+      );
+    }
+
     const workerHealth = await checkProvisioningWorkerHealth();
     if (!workerHealth.ok) {
       logger.warn("[agent-api] Agent creation blocked: worker unavailable", {
@@ -197,18 +304,6 @@ app.post("/", async (c) => {
     }
   }
 
-  if (parsed.data.characterId) {
-    const character =
-      await userCharactersRepository.findByIdInOrganizationForWrite(
-        parsed.data.characterId,
-        user.organization_id,
-      );
-
-    if (!character) throw NotFoundError("Character not found");
-  }
-
-  const sanitizedConfig = stripReservedElizaConfigKeys(parsed.data.agentConfig);
-
   const agent = await elizaSandboxService.createAgent({
     organizationId: user.organization_id,
     userId: user.id,
@@ -219,6 +314,7 @@ app.post("/", async (c) => {
       ? withReusedElizaCharacterOwnership(sanitizedConfig)
       : sanitizedConfig,
     environmentVars: parsed.data.environmentVars,
+    executionTier,
   });
 
   const managedEnvironment = await prepareManagedElizaEnvironment({
@@ -240,29 +336,47 @@ app.post("/", async (c) => {
     agentId: agent.id,
     orgId: user.organization_id,
     autoProvision,
+    executionTier,
   });
 
-  // Opt-out path: create the record only (legacy two-step flow). The caller
-  // is responsible for a follow-up POST /eliza/agents/:id/provision.
-  if (!autoProvision) {
+  if (executionTier === "shared") {
     return c.json(
       {
         success: true,
+        created: true,
+        source: "shared_runtime",
         data: {
           id: agent.id,
+          agentId: agent.id,
           agentName: agent.agent_name,
           status: agent.status,
           createdAt: agent.created_at,
+          executionTier: agent.execution_tier,
         },
       },
       201,
     );
   }
 
-  // ── Warm pool fast path ─────────────────────────────────────────────────
-  // Atomically claim a pre-warmed container; on success the agent is already
-  // running and we return its connection info in the same round-trip.
-  if (containersEnv.warmPoolEnabled()) {
+  if (!shouldProvisionEagerly) {
+    return c.json(
+      {
+        success: true,
+        created: true,
+        data: {
+          id: agent.id,
+          agentId: agent.id,
+          agentName: agent.agent_name,
+          status: agent.status,
+          createdAt: agent.created_at,
+          executionTier: agent.execution_tier,
+        },
+      },
+      201,
+    );
+  }
+
+  if (executionTier !== "custom" && containersEnv.warmPoolEnabled()) {
     try {
       const claimed = await agentSandboxesRepository.claimWarmContainer({
         userAgentId: agent.id,
@@ -290,6 +404,7 @@ app.post("/", async (c) => {
               status: claimed.status,
               bridgeUrl: claimed.bridge_url,
               healthUrl: claimed.health_url,
+              executionTier: claimed.execution_tier,
             },
           },
           201,
@@ -310,7 +425,9 @@ app.post("/", async (c) => {
   // (and possibly touched by the managed-env update above), so there is no
   // concurrent handle to guard against — passing the stale create timestamp
   // would spuriously trip the race check after a managed-env write.
-  let job: Awaited<ReturnType<typeof provisioningJobService.enqueueAgentProvision>>;
+  let job: Awaited<
+    ReturnType<typeof provisioningJobService.enqueueAgentProvision>
+  >;
   try {
     job = await provisioningJobService.enqueueAgentProvision({
       agentId: agent.id,
@@ -329,12 +446,17 @@ app.post("/", async (c) => {
         orgId: user.organization_id,
       });
     } catch (cleanupErr) {
-      logger.error("[agent-api] Failed to clean up agent after enqueue failure", {
-        agentId: agent.id,
-        orgId: user.organization_id,
-        error:
-          cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
-      });
+      logger.error(
+        "[agent-api] Failed to clean up agent after enqueue failure",
+        {
+          agentId: agent.id,
+          orgId: user.organization_id,
+          error:
+            cleanupErr instanceof Error
+              ? cleanupErr.message
+              : String(cleanupErr),
+        },
+      );
     }
     throw enqueueErr;
   }
@@ -363,6 +485,7 @@ app.post("/", async (c) => {
         status: job.status,
         jobId: job.id,
         estimatedCompletionAt: job.estimated_completion_at,
+        executionTier: agent.execution_tier,
       },
       polling: {
         endpoint: `/api/v1/jobs/${job.id}`,
