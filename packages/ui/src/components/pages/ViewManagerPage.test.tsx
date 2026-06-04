@@ -169,6 +169,47 @@ describe("ViewManagerPage", () => {
     expect(context.agentDescription).toContain("Purpose:");
   });
 
+  it("groups GUI, XR, and TUI variants into one launcher row with mode buttons", () => {
+    useAvailableViewsMock.mockReturnValue({
+      views: [
+        ...views,
+        view("remote.ledger", {
+          label: "Remote Ledger XR",
+          description: "Remote module loaded from a plugin bundle",
+          path: "/apps/remote-ledger",
+          viewType: "xr",
+          pluginName: "ledger-plugin",
+          tags: ["remote", "finance"],
+        }),
+        view("remote.ledger", {
+          label: "Remote Ledger TUI",
+          description: "Terminal ledger controls",
+          path: "/apps/remote-ledger/tui",
+          viewType: "tui",
+          pluginName: "ledger-plugin",
+          tags: ["remote", "finance", "terminal"],
+        }),
+      ],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    render(<ViewManagerPage />);
+
+    expect(screen.getAllByTestId("view-card-remote.ledger")).toHaveLength(1);
+    const card = screen.getByTestId("view-card-remote.ledger");
+    expect(card.textContent).toContain("Remote Ledger");
+    expect(card.textContent).not.toContain("Remote Ledger XR");
+    expect(card.textContent).not.toContain("Remote Ledger TUI");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open Remote Ledger TUI" }),
+    );
+
+    expect(window.location.pathname).toBe("/apps/remote-ledger/tui");
+  });
+
   it("pins a remote view through the actual pin button without navigating", () => {
     const events: CustomEvent[] = [];
     const listener = (event: Event) => {

@@ -209,6 +209,42 @@ function ViewCardOpenButton({
   );
 }
 
+function ViewModeButton({
+  view,
+  onClick,
+}: {
+  view: ViewRegistryEntry;
+  onClick: (view: ViewRegistryEntry) => void;
+}) {
+  const viewType = view.viewType ?? "gui";
+  const context = buildViewContext(view);
+  const label = viewType.toUpperCase();
+  const baseLabel = cleanViewLabel(view.label);
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `view-mode-open-${viewInstanceKey(view)}`,
+    role: "button",
+    label: `Open ${baseLabel} ${label}`,
+    group: "view-mode-buttons",
+    description: context.agentDescription,
+    status: view.available ? "active" : "inactive",
+    onActivate: () => onClick(view),
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-label={`Open ${baseLabel} ${label}`}
+      onClick={() => onClick(view)}
+      disabled={!view.available}
+      className="inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-border/45 bg-bg/30 px-2 text-[0.68rem] font-semibold uppercase tracking-wider text-accent transition-colors hover:border-accent/45 hover:bg-accent/10 disabled:cursor-not-allowed disabled:text-muted"
+      data-view-context={JSON.stringify(context)}
+      {...agentProps}
+    >
+      {label}
+    </button>
+  );
+}
+
 function buildViewContext(view: ViewRegistryEntry) {
   const viewType = view.viewType ?? "gui";
   const route = view.path ?? `/apps/${view.id}`;
@@ -242,6 +278,57 @@ function viewInstanceKey(view: Pick<ViewRegistryEntry, "id" | "viewType">) {
   return `${view.viewType ?? "gui"}:${view.id}`;
 }
 
+function viewGroupKey(view: Pick<ViewRegistryEntry, "id" | "pluginName">) {
+  return `${view.pluginName}:${view.id}`;
+}
+
+function viewTypeRank(view: Pick<ViewRegistryEntry, "viewType">) {
+  const viewType = view.viewType ?? "gui";
+  if (viewType === "gui") return 0;
+  if (viewType === "xr") return 1;
+  return 2;
+}
+
+function cleanViewLabel(label: string) {
+  return label.replace(/\s+(GUI|XR|TUI)$/i, "").trim();
+}
+
+interface ViewGroup {
+  key: string;
+  id: string;
+  label: string;
+  description?: string;
+  pluginName: string;
+  builtin: boolean;
+  modes: ViewRegistryEntry[];
+  primary: ViewRegistryEntry;
+}
+
+function groupViewModes(views: ViewRegistryEntry[]): ViewGroup[] {
+  const groups = new Map<string, ViewRegistryEntry[]>();
+  for (const view of views) {
+    const key = viewGroupKey(view);
+    groups.set(key, [...(groups.get(key) ?? []), view]);
+  }
+
+  return [...groups.entries()].map(([key, modes]) => {
+    const sortedModes = [...modes].sort(
+      (a, b) => viewTypeRank(a) - viewTypeRank(b),
+    );
+    const primary = sortedModes[0];
+    return {
+      key,
+      id: primary.id,
+      label: cleanViewLabel(primary.label),
+      description: primary.description,
+      pluginName: primary.pluginName,
+      builtin: Boolean(primary.builtin),
+      modes: sortedModes,
+      primary,
+    };
+  });
+}
+
 function ViewStatusBadge({ available }: { available: boolean }) {
   return (
     <span
@@ -265,8 +352,8 @@ function ViewBadge({ children }: { children: React.ReactNode }) {
   );
 }
 
-function buildViewCode(view: ViewRegistryEntry): string {
-  const source = view.label || view.id;
+function buildViewCode(view: Pick<ViewRegistryEntry, "id" | "label">): string {
+  const source = cleanViewLabel(view.label || view.id);
   const words = source
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .split(/[^a-z0-9]+/i)
@@ -286,7 +373,11 @@ function buildViewCode(view: ViewRegistryEntry): string {
   return `${word.slice(0, 2)}${word.at(-1)}`.toUpperCase();
 }
 
-function ViewIdentityTile({ view }: { view: ViewRegistryEntry }) {
+function ViewIdentityTile({
+  view,
+}: {
+  view: Pick<ViewRegistryEntry, "id" | "label">;
+}) {
   return (
     <div className="flex h-12 w-14 shrink-0 flex-col items-center justify-center rounded-md border border-border/45 bg-muted/25 text-accent">
       <span className="text-xs font-semibold leading-none tracking-wide">
@@ -298,14 +389,14 @@ function ViewIdentityTile({ view }: { view: ViewRegistryEntry }) {
 }
 
 function ViewCard({
-  view,
+  group,
   onClick,
   onPin,
   onEdit,
   onDelete,
   compact = false,
 }: {
-  view: ViewRegistryEntry;
+  group: ViewGroup;
   onClick: (view: ViewRegistryEntry) => void;
   onPin?: (view: ViewRegistryEntry) => void;
   onEdit?: (view: ViewRegistryEntry) => void;
@@ -313,16 +404,15 @@ function ViewCard({
   compact?: boolean;
 }) {
   const isDesktop = isElectrobunRuntime();
+  const view = group.primary;
   const showPinButton = isDesktop && view.desktopTabEnabled !== false && onPin;
   const showManagementButtons = Boolean(onEdit || onDelete);
-  const route = view.path ?? `/apps/${view.id}`;
-  const viewType = view.viewType ?? "gui";
-  const sourceLabel = view.builtin ? "Core" : "Plugin";
+  const sourceLabel = group.builtin ? "Core" : "Plugin";
 
   return (
     <div
       className="group relative rounded-md border border-border/45 bg-card/72 p-2.5 text-left transition-colors hover:border-accent/45 hover:bg-card focus-within:ring-2 focus-within:ring-ring/50"
-      data-testid={`view-card-${view.id}`}
+      data-testid={`view-card-${group.id}`}
     >
       {(showPinButton || showManagementButtons) && (
         <div className="absolute right-2 top-2 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
@@ -332,37 +422,56 @@ function ViewCard({
         </div>
       )}
 
-      <ViewCardOpenButton view={view} onClick={onClick}>
-        <div className="flex min-w-0 items-center gap-3">
-          <ViewIdentityTile view={view} />
+      <div className="flex min-w-0 items-center gap-3">
+        <ViewCardOpenButton view={view} onClick={onClick}>
+          <div className="flex min-w-0 items-center gap-3">
+            <ViewIdentityTile view={{ id: group.id, label: group.label }} />
 
-          <div className="min-w-0 flex-1 pr-20">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-txt transition-colors group-hover:text-accent">
-                {view.label}
-              </p>
-              <p className="mt-0.5 line-clamp-1 text-xs text-muted">
-                {view.description ??
-                  `Open the ${view.label} ${viewType.toUpperCase()} view.`}
-              </p>
-            </div>
+            <div className="min-w-0 flex-1">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-txt transition-colors group-hover:text-accent">
+                  {group.label}
+                </p>
+                <p className="mt-0.5 line-clamp-1 text-xs text-muted">
+                  {group.description ?? `Open the ${group.label} view.`}
+                </p>
+              </div>
 
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <ViewBadge>{viewType.toUpperCase()}</ViewBadge>
-              <ViewBadge>{sourceLabel}</ViewBadge>
-              {view.pluginName && <ViewBadge>{view.pluginName}</ViewBadge>}
-              {!compact && <ViewBadge>{route}</ViewBadge>}
-            </div>
-
-            <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-2">
-              <ViewStatusBadge available={view.available} />
-              <span className="flex h-8 min-w-8 items-center justify-center rounded-md border border-border/45 bg-bg/30 px-2 text-accent transition-colors group-hover:border-accent/45 group-hover:bg-accent/10">
-                <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
-              </span>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <ViewBadge>{sourceLabel}</ViewBadge>
+                {group.pluginName && <ViewBadge>{group.pluginName}</ViewBadge>}
+                {!compact && (
+                  <ViewBadge>{view.path ?? `/apps/${view.id}`}</ViewBadge>
+                )}
+              </div>
             </div>
           </div>
+        </ViewCardOpenButton>
+
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {group.modes.length > 1 ? (
+            group.modes.map((mode) => (
+              <ViewModeButton
+                key={viewInstanceKey(mode)}
+                view={mode}
+                onClick={onClick}
+              />
+            ))
+          ) : (
+            <>
+              <ViewStatusBadge available={view.available} />
+              <button
+                type="button"
+                onClick={() => onClick(view)}
+                className="flex h-8 min-w-8 items-center justify-center rounded-md border border-border/45 bg-bg/30 px-2 text-accent transition-colors hover:border-accent/45 hover:bg-accent/10"
+                aria-label={`Open ${group.label}`}
+              >
+                <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
+              </button>
+            </>
+          )}
         </div>
-      </ViewCardOpenButton>
+      </div>
     </div>
   );
 }
@@ -415,7 +524,7 @@ function ViewSection({
   onViewDelete,
 }: {
   title: string;
-  views: ViewRegistryEntry[];
+  views: ViewGroup[];
   onViewClick: (view: ViewRegistryEntry) => void;
   onViewPin: (view: ViewRegistryEntry) => void;
   onViewEdit?: (view: ViewRegistryEntry) => void;
@@ -433,8 +542,8 @@ function ViewSection({
       <div className="grid gap-2">
         {views.map((view) => (
           <ViewCard
-            key={viewInstanceKey(view)}
-            view={view}
+            key={view.key}
+            group={view}
             onClick={onViewClick}
             onPin={onViewPin}
             onEdit={onViewEdit}
@@ -451,7 +560,7 @@ function TopViewsSection({
   onViewClick,
   onViewPin,
 }: {
-  views: ViewRegistryEntry[];
+  views: ViewGroup[];
   onViewClick: (view: ViewRegistryEntry) => void;
   onViewPin: (view: ViewRegistryEntry) => void;
 }) {
@@ -470,8 +579,8 @@ function TopViewsSection({
       <div className="grid gap-2">
         {views.map((view) => (
           <ViewCard
-            key={viewInstanceKey(view)}
-            view={view}
+            key={view.key}
+            group={view}
             onClick={onViewClick}
             onPin={onViewPin}
             compact
@@ -653,47 +762,55 @@ export function ViewManagerPage() {
     () => [...builtinViews, ...pluginViews],
     [builtinViews, pluginViews],
   );
+  const visibleViewGroups = useMemo(
+    () => groupViewModes(visibleViews),
+    [visibleViews],
+  );
+  const builtinViewGroups = useMemo(
+    () => groupViewModes(builtinViews),
+    [builtinViews],
+  );
+  const pluginViewGroups = useMemo(
+    () => groupViewModes(pluginViews),
+    [pluginViews],
+  );
   const topViews = useMemo(() => {
-    const byId = new Map(visibleViews.map((view) => [view.id, view]));
-    const ordered: ViewRegistryEntry[] = [];
+    const byId = new Map(visibleViewGroups.map((group) => [group.id, group]));
+    const ordered: ViewGroup[] = [];
     for (const tab of desktopTabs) {
       if (!tab.pinned) continue;
-      const view = byId.get(tab.viewId);
-      if (view && !ordered.some((existing) => existing.id === view.id)) {
-        ordered.push(view);
+      const group = byId.get(tab.viewId);
+      if (group && !ordered.some((existing) => existing.key === group.key)) {
+        ordered.push(group);
       }
     }
     for (const id of recentViewIds) {
-      const view = byId.get(id);
-      if (view && !ordered.some((existing) => existing.id === view.id)) {
-        ordered.push(view);
+      const group = byId.get(id);
+      if (group && !ordered.some((existing) => existing.key === group.key)) {
+        ordered.push(group);
       }
       if (ordered.length >= TOP_VIEW_LIMIT) break;
     }
     return ordered.slice(0, TOP_VIEW_LIMIT);
-  }, [desktopTabs, recentViewIds, visibleViews]);
+  }, [desktopTabs, recentViewIds, visibleViewGroups]);
   const topViewKeys = useMemo(
-    () => new Set(topViews.map((view) => viewInstanceKey(view))),
+    () => new Set(topViews.map((group) => group.key)),
     [topViews],
   );
   const hasQuery = query.trim().length > 0;
   const sectionBuiltinViews = useMemo(() => {
-    if (hasQuery) return builtinViews;
-    return builtinViews.filter(
-      (view) => !topViewKeys.has(viewInstanceKey(view)),
-    );
-  }, [builtinViews, hasQuery, topViewKeys]);
+    if (hasQuery) return builtinViewGroups;
+    return builtinViewGroups.filter((group) => !topViewKeys.has(group.key));
+  }, [builtinViewGroups, hasQuery, topViewKeys]);
   const sectionPluginViews = useMemo(() => {
-    if (hasQuery) return pluginViews;
-    return pluginViews.filter(
-      (view) => !topViewKeys.has(viewInstanceKey(view)),
-    );
-  }, [hasQuery, pluginViews, topViewKeys]);
+    if (hasQuery) return pluginViewGroups;
+    return pluginViewGroups.filter((group) => !topViewKeys.has(group.key));
+  }, [hasQuery, pluginViewGroups, topViewKeys]);
 
-  const totalVisible = builtinViews.length + pluginViews.length;
+  const totalVisible = visibleViewGroups.length;
   const isSearching = searchLoading && hasQuery;
   const availableCount = visibleViews.filter((view) => view.available).length;
-  const pluginCount = pluginViews.length;
+  const pluginCount = pluginViewGroups.length;
   const typeCounts = visibleViews.reduce(
     (counts, view) => {
       const viewType = view.viewType ?? "gui";
@@ -843,7 +960,7 @@ export function ViewManagerPage() {
                   {t("viewmanager.title", { defaultValue: "Views" })}
                 </h1>
                 <div className="flex min-w-0 flex-wrap gap-1.5">
-                  <ViewBadge>{visibleViews.length} views</ViewBadge>
+                  <ViewBadge>{totalVisible} views</ViewBadge>
                   <ViewBadge>{availableCount} ready</ViewBadge>
                   <ViewBadge>{pluginCount} plugin</ViewBadge>
                   <ViewBadge>{typeCounts.gui} GUI</ViewBadge>
