@@ -1,0 +1,1 @@
+export { minBy, minBy as default } from "./es-toolkit-compat";
