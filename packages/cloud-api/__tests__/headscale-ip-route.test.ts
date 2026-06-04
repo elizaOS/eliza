@@ -1,13 +1,21 @@
 import { describe, expect, mock, test } from "bun:test";
+// Spread the real modules into the partial mocks below — `mock.module` is
+// process-global in bun test, so dropping the other real exports breaks every
+// later test file that imports them.
+import * as agentSandboxesActual from "@/db/repositories/agent-sandboxes";
+import * as loggerActual from "@/lib/utils/logger";
 
 mock.module("@/db/repositories/agent-sandboxes", () => ({
+  ...agentSandboxesActual,
   agentSandboxesRepository: {
     findById: mock(),
   },
 }));
 
 mock.module("@/lib/utils/logger", () => ({
+  ...loggerActual,
   logger: {
+    ...loggerActual.logger,
     error: mock(),
     warn: mock(),
   },

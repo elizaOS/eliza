@@ -20,6 +20,7 @@ import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 // (e.g. a cron route importing `requireCronSecret`). Spread the real module so
 // only the exports this file actually shadows are replaced.
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
+import * as loggerActual from "@/lib/utils/logger";
 
 const validateAndConsumeSIWE =
   mock<
@@ -97,7 +98,9 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
 }));
 
 mock.module("@/lib/utils/logger", () => ({
+  ...loggerActual,
   logger: {
+    ...loggerActual.logger,
     info: () => undefined,
     warn: () => undefined,
     error: () => undefined,

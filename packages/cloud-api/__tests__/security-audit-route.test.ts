@@ -15,17 +15,25 @@ import {
   test,
 } from "bun:test";
 import { AuditDispatcher, InMemorySink } from "@elizaos/security/audit";
+import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
+import * as loggerActual from "@/lib/utils/logger";
 import { setAuditDispatcher } from "../src/services/audit-dispatcher-singleton";
 
 const requireUserWithOrg =
   mock<(c: unknown) => Promise<{ id: string; organization_id: string }>>();
 
+// Spread the real module: bun's mock.module replaces the registry entry for
+// the whole process, so a partial mock here breaks every later test file that
+// imports any other export from workers-hono-auth.
 mock.module("@/lib/auth/workers-hono-auth", () => ({
+  ...workersHonoAuthActual,
   requireUserWithOrg,
 }));
 
 mock.module("@/lib/utils/logger", () => ({
+  ...loggerActual,
   logger: {
+    ...loggerActual.logger,
     info: () => undefined,
     warn: () => undefined,
     error: () => undefined,

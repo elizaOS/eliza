@@ -7,6 +7,9 @@ import {
   initAuditDispatcher,
   setAuditDispatcher,
 } from "@/api-app/services/audit-dispatcher-singleton";
+// Spread into the partial logger mock below — mock.module is process-global,
+// so dropping the real `redact` export breaks later suites that import it.
+import * as loggerActual from "@/lib/utils/logger";
 
 const constructEventAsync = mock();
 const emitAudit = mock(async () => undefined);
@@ -57,7 +60,9 @@ mock.module("@/lib/stripe", () => ({
 }));
 
 mock.module("@/lib/utils/logger", () => ({
+  ...loggerActual,
   logger: {
+    ...loggerActual.logger,
     debug: mock(),
     error: mock(),
     info: mock(),
