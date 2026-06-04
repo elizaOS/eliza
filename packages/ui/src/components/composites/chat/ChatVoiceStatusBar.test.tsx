@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ChatVoiceStatusBar } from "./ChatVoiceStatusBar";
 
@@ -123,5 +123,38 @@ describe("ChatVoiceStatusBar", () => {
     );
     const badge = screen.getByTestId("chat-voice-latency-badge");
     expect(badge.textContent?.toLowerCase()).toContain("cached");
+  });
+
+  it("renders the mic-reconnected indicator only when micReconnected is set", () => {
+    const { rerender } = render(<ChatVoiceStatusBar status="listening" />);
+    expect(screen.queryByTestId("chat-voice-mic-reconnected")).toBeNull();
+    rerender(<ChatVoiceStatusBar status="listening" micReconnected />);
+    expect(screen.getByTestId("chat-voice-mic-reconnected")).toBeTruthy();
+  });
+
+  it("renders the audio-unlock hint as a button that calls onUnlockAudio", () => {
+    const onUnlockAudio = vi.fn();
+    render(
+      <ChatVoiceStatusBar
+        status="speaking"
+        needsAudioUnlock
+        onUnlockAudio={onUnlockAudio}
+      />,
+    );
+    const unlock = screen.getByTestId("chat-voice-audio-unlock");
+    expect(unlock.tagName).toBe("BUTTON");
+    fireEvent.click(unlock);
+    expect(onUnlockAudio).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the audio-unlock hint as static text when no handler is given", () => {
+    render(<ChatVoiceStatusBar status="speaking" needsAudioUnlock />);
+    const unlock = screen.getByTestId("chat-voice-audio-unlock");
+    expect(unlock.tagName).not.toBe("BUTTON");
+  });
+
+  it("hides the audio-unlock hint when needsAudioUnlock is false", () => {
+    render(<ChatVoiceStatusBar status="speaking" />);
+    expect(screen.queryByTestId("chat-voice-audio-unlock")).toBeNull();
   });
 });

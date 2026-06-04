@@ -10,7 +10,7 @@
  * - latency badge (speechEnd → voiceStart) with traffic-light colouring
  */
 
-import { Crown } from "lucide-react";
+import { Crown, RefreshCw, VolumeX } from "lucide-react";
 import type * as React from "react";
 import type { ContinuousChatLatency } from "../../../hooks/useContinuousChat";
 import { cn } from "../../../lib/utils";
@@ -26,6 +26,15 @@ export interface ChatVoiceStatusBarProps {
   /** Owner entity id from runtime config; speakers matching get a Crown. */
   ownerEntityId?: string | null;
   latency?: ContinuousChatLatency;
+  /**
+   * Assistant audio is blocked by the browser autoplay policy. Shows a "tap to
+   * enable sound" hint; if `onUnlockAudio` is set the hint is a button.
+   */
+  needsAudioUnlock?: boolean;
+  /** Click handler for the audio-unlock hint (e.g. resume the AudioContext). */
+  onUnlockAudio?: () => void;
+  /** Transient pulse: browser speech recognition silently auto-reconnected. */
+  micReconnected?: boolean;
   /** Visible only when continuous mode is on AND we have something to show. */
   visible?: boolean;
   className?: string;
@@ -76,6 +85,9 @@ export function ChatVoiceStatusBar({
   speaker,
   ownerEntityId,
   latency,
+  needsAudioUnlock = false,
+  onUnlockAudio,
+  micReconnected = false,
   visible = true,
   className,
   "data-testid": dataTestId,
@@ -132,6 +144,42 @@ export function ChatVoiceStatusBar({
           ) : null}
           <span className="text-txt">{speakerName}</span>
         </span>
+      ) : null}
+
+      {micReconnected ? (
+        <span
+          className="inline-flex items-center gap-1 rounded-sm border border-border/40 bg-card/50 px-2 py-0.5 text-muted"
+          data-testid="chat-voice-mic-reconnected"
+        >
+          <RefreshCw className="h-3 w-3" aria-hidden="true" />
+          <span>Mic reconnected</span>
+        </span>
+      ) : null}
+
+      {needsAudioUnlock ? (
+        onUnlockAudio ? (
+          <button
+            type="button"
+            onClick={onUnlockAudio}
+            data-testid="chat-voice-audio-unlock"
+            className={cn(
+              "inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 font-medium transition-colors",
+              "border-warn/40 bg-warn/10 text-warn hover:bg-warn/20",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-bg",
+            )}
+          >
+            <VolumeX className="h-3 w-3" aria-hidden="true" />
+            <span>Tap to enable sound</span>
+          </button>
+        ) : (
+          <span
+            className="inline-flex items-center gap-1 rounded-sm border border-warn/40 bg-warn/10 px-2 py-0.5 font-medium text-warn"
+            data-testid="chat-voice-audio-unlock"
+          >
+            <VolumeX className="h-3 w-3" aria-hidden="true" />
+            <span>Tap anywhere to enable sound</span>
+          </span>
+        )
       ) : null}
 
       {interimTranscript && interimTranscript.trim().length > 0 ? (

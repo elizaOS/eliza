@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render,
+  renderHook,
+  screen,
+} from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -34,6 +40,8 @@ function makeVoiceState(
     queueAssistantSpeech: vi.fn(),
     stopSpeaking: vi.fn(),
     voiceUnlockedGeneration: 0,
+    needsAudioUnlock: false,
+    micReconnected: false,
     assistantTtsQuality: "standard",
     ...overrides,
   };
@@ -143,5 +151,79 @@ describe("ContinuousChatToggle + useContinuousChat integration", () => {
     );
 
     expect(completedTurnVoice.startListening).toHaveBeenCalledWith("passive");
+  });
+});
+
+describe("useContinuousChat thinking-timeout", () => {
+  it("reports thinking while generating, then falls back after the timeout", () => {
+    vi.useFakeTimers();
+    try {
+      const voice = makeVoiceState({
+        isListening: true,
+        captureMode: "passive",
+      });
+      const { result, rerender } = renderHook(
+        ({ generating }: { generating: boolean }) =>
+          useContinuousChat({
+            voice,
+            mode: "always-on",
+            assistantGenerating: generating,
+          }),
+        { initialProps: { generating: false } },
+      );
+
+      // Generation starts → thinking.
+      act(() => {
+        rerender({ generating: true });
+      });
+      expect(result.current.status).toBe("thinking");
+
+      // Generation never resolves; after the safety window the bar must not
+      // stay pinned to thinking — it falls back to listening (passive mic open).
+      act(() => {
+        vi.advanceTimersByTime(30_000);
+      });
+      expect(result.current.status).toBe("listening");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears the timeout latch when generation completes normally", () => {
+    vi.useFakeTimers();
+    try {
+      const voice = makeVoiceState({
+        isListening: true,
+        captureMode: "passive",
+      });
+      const { result, rerender } = renderHook(
+        ({ generating }: { generating: boolean }) =>
+          useContinuousChat({
+            voice,
+            mode: "always-on",
+            assistantGenerating: generating,
+          }),
+        { initialProps: { generating: true } },
+      );
+      expect(result.current.status).toBe("thinking");
+
+      // Times out once.
+      act(() => {
+        vi.advanceTimersByTime(30_000);
+      });
+      expect(result.current.status).toBe("listening");
+
+      // Generation ends, then a fresh generation begins — thinking shows again
+      // (the latch reset on the false transition).
+      act(() => {
+        rerender({ generating: false });
+      });
+      act(() => {
+        rerender({ generating: true });
+      });
+      expect(result.current.status).toBe("thinking");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

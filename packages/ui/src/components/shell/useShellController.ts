@@ -179,7 +179,13 @@ export function useShellController(): ShellController {
       },
       onStateChange: (state: VoiceCaptureState) => {
         if (state === "error" || state === "stopped" || state === "idle") {
+          // Capture ended (clean stop, dispose, or error). Drop the handle and
+          // analyser so the shell phase returns to idle/summoned and a later
+          // startCapture is not blocked by a stale ref.
+          if (captureRef.current === handle) captureRef.current = null;
+          setAnalyser(null);
           setRecording(false);
+          setTranscript("");
         }
       },
     });
@@ -238,6 +244,11 @@ export function useShellController(): ShellController {
     if (captureRef.current) stopCapture();
   }, [stopCapture]);
 
+  // `recording` (push-to-talk press or continuous capture) wins over an
+  // in-flight response so the pill shows the red "listening" pulse the instant
+  // the mic opens, even while the previous turn is still streaming (barge-in).
+  // Stop/error clears `recording` (see startCapture/stopCapture), dropping the
+  // phase back to responding → summoned → idle.
   const phase: ShellPhase = !ready
     ? "booting"
     : recording

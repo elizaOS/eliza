@@ -55,6 +55,10 @@ const SEND_GLYPH = "M18 10L25 18H21V27H15V18H11Z";
 const MIC_GLYPH =
   "M6 14H9V22H6Z M11.5 10H14.5V26H11.5Z M16.5 7H19.5V29H16.5Z M22 10H25V26H22Z M27 14H30V22H27Z";
 const PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
+// Two diagonal expand arrows (top-right + bottom-left) — "open in full page".
+const MAXIMIZE_GLYPH =
+  "M20 8H28V16H25V13.1L18.5 19.6L16.4 17.5L22.9 11H20Z " +
+  "M16 28H8V20H11V22.9L17.5 16.4L19.6 18.5L13.1 25H16Z";
 
 function Glyph({ d }: { d: string }): React.JSX.Element {
   return (
@@ -396,6 +400,17 @@ export function ContinuousChatOverlay({
     inputRef.current?.focus();
   }, []);
 
+  // Open the full-page chat view. The overlay reflects the app's single active
+  // conversation, and /chat renders that same thread, so a plain navigate keeps
+  // the user on the same conversation — no id to carry through the controller.
+  const openFullChat = React.useCallback(() => {
+    window.dispatchEvent(
+      new CustomEvent("eliza:navigate:view", {
+        detail: { viewId: "chat", viewPath: "/chat" },
+      }),
+    );
+  }, []);
+
   // Click into the composer → reveal the thread, but keep keyboard focus in the
   // input (don't arm the thread-focus move) so the user can type immediately.
   const expand = React.useCallback(() => {
@@ -632,6 +647,12 @@ export function ContinuousChatOverlay({
           >
             <Chevron up={expanded} />
           </button>
+          <SoftButton
+            glyph={MAXIMIZE_GLYPH}
+            label="open full chat"
+            onClick={openFullChat}
+            testId="chat-composer-open-full"
+          />
           <SoftButton
             glyph={PLUS_GLYPH}
             label="attach image"

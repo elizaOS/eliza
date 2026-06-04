@@ -20,7 +20,9 @@ import {
   type VoiceContinuousMode,
 } from "../../voice/voice-chat-types";
 import {
+  DEFAULT_VAD_AUTO_STOP_PREFS,
   DEFAULT_VOICE_SECTION_PREFS,
+  type VadAutoStopPrefs,
   type VoiceLocalCloudStrategy,
   VoiceSection,
   type VoiceSectionPrefs,
@@ -41,6 +43,21 @@ function isLocalCloudStrategy(
   value: unknown,
 ): value is VoiceLocalCloudStrategy {
   return value === "auto" || value === "force-local" || value === "force-cloud";
+}
+
+function readVadAutoStop(value: unknown): VadAutoStopPrefs {
+  const stored = (value ?? {}) as Record<string, unknown>;
+  return {
+    silenceMs:
+      typeof stored.silenceMs === "number" && Number.isFinite(stored.silenceMs)
+        ? stored.silenceMs
+        : DEFAULT_VAD_AUTO_STOP_PREFS.silenceMs,
+    speechRmsThreshold:
+      typeof stored.speechRmsThreshold === "number" &&
+      Number.isFinite(stored.speechRmsThreshold)
+        ? stored.speechRmsThreshold
+        : DEFAULT_VAD_AUTO_STOP_PREFS.speechRmsThreshold,
+  };
 }
 
 function readStoredVoicePrefs(
@@ -66,6 +83,7 @@ function readStoredVoicePrefs(
       typeof stored.autoLearnVoices === "boolean"
         ? stored.autoLearnVoices
         : DEFAULT_VOICE_SECTION_PREFS.autoLearnVoices,
+    vadAutoStop: readVadAutoStop(stored.vadAutoStop),
   };
 }
 
