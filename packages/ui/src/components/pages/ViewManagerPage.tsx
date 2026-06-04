@@ -251,7 +251,7 @@ function ViewModeButton({
       aria-label={`Open ${baseLabel} ${label}`}
       onClick={() => onClick(view)}
       disabled={!view.available}
-      className="inline-flex h-7 shrink-0 items-center justify-center rounded-md border border-accent/25 bg-accent/8 px-2 text-[0.66rem] font-semibold uppercase tracking-wider text-accent shadow-[0_0_18px_rgba(255,115,0,0.08)] transition-colors hover:border-accent/55 hover:bg-accent/15 disabled:cursor-not-allowed disabled:text-muted"
+      className="inline-flex h-7 shrink-0 items-center justify-center rounded-md border border-accent/25 bg-accent/8 px-2 text-[0.66rem] font-semibold uppercase tracking-wider text-accent transition-colors hover:border-accent/55 hover:bg-accent/15 disabled:cursor-not-allowed disabled:text-muted"
       data-view-context={JSON.stringify(context)}
       {...agentProps}
     >
@@ -388,13 +388,48 @@ function ViewIdentityTile({
         : "h-7 w-7";
   return (
     <div
-      className={`relative flex ${tileClass} shrink-0 items-center justify-center overflow-hidden rounded-lg border border-accent/22 bg-[radial-gradient(circle_at_35%_20%,rgba(255,115,0,0.32),rgba(255,115,0,0.12)_34%,rgba(255,255,255,0.04)_70%)] text-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_30px_rgba(255,115,0,0.10)]`}
+      className={`relative flex ${tileClass} shrink-0 items-center justify-center overflow-hidden rounded-md border border-accent/20 bg-accent/10 text-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]`}
     >
       <span
-        className="absolute inset-x-3 bottom-2 h-px bg-accent/45"
+        className="absolute inset-x-3 bottom-2 h-px bg-accent/30"
         aria-hidden
       />
       <ViewIcon icon={view.icon} label={view.label} className={iconClass} />
+    </div>
+  );
+}
+
+function isChatViewGroup(group: ViewGroup) {
+  return group.id === "chat" || group.primary.path === "/chat";
+}
+
+function ChatSuggestionsPopover({ open }: { open: boolean }) {
+  const suggestions = [
+    "Resume my latest thread",
+    "Summarize recent messages",
+    "Find the right view for this task",
+  ];
+  return (
+    <div
+      className={`pointer-events-none absolute bottom-2 left-2 right-2 z-20 rounded-md border border-border/55 bg-card/95 p-2 shadow-lg shadow-black/20 backdrop-blur transition-all duration-150 ${
+        open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
+      }`}
+      data-state={open ? "open" : "closed"}
+      data-testid="chat-view-suggestions"
+    >
+      <p className="mb-1.5 text-[0.66rem] font-semibold uppercase tracking-wider text-muted">
+        Chat suggestions
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {suggestions.map((suggestion) => (
+          <span
+            key={suggestion}
+            className="rounded-md border border-border/45 bg-bg/45 px-2 py-1 text-[0.68rem] font-medium text-txt"
+          >
+            {suggestion}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -419,20 +454,41 @@ function ViewCard({
   const showPinButton = isDesktop && view.desktopTabEnabled !== false && onPin;
   const showManagementButtons = Boolean(onEdit || onDelete);
   const sourceLabel = group.builtin ? "Core" : "Plugin";
+  const showChatSuggestions = isChatViewGroup(group);
+  const [chatSuggestionsOpen, setChatSuggestionsOpen] = useState(false);
   const isFeatured = variant === "featured";
   const isCompact = variant === "compact";
   const cardClass = isFeatured
-    ? "group relative min-h-[10.25rem] overflow-hidden rounded-lg border border-border/55 bg-[linear-gradient(135deg,rgba(255,115,0,0.16),rgba(255,255,255,0.045)_42%,rgba(20,20,24,0.86))] p-3.5 text-left shadow-[0_18px_44px_rgba(0,0,0,0.26)] transition-colors hover:border-accent/65 focus-within:ring-2 focus-within:ring-ring/50"
+    ? "group relative min-h-[10.25rem] overflow-hidden rounded-md border border-border/50 bg-card/78 p-3.5 text-left transition-colors hover:border-accent/45 hover:bg-card/88 focus-within:ring-2 focus-within:ring-ring/50"
     : isCompact
-      ? "group relative overflow-hidden rounded-lg border border-border/45 bg-[linear-gradient(135deg,rgba(255,115,0,0.10),rgba(255,255,255,0.035)_48%,rgba(20,20,24,0.78))] p-2.5 text-left transition-colors hover:border-accent/45 hover:bg-card focus-within:ring-2 focus-within:ring-ring/50"
-      : "group relative overflow-hidden rounded-lg border border-border/45 bg-[linear-gradient(135deg,rgba(255,115,0,0.08),rgba(255,255,255,0.035)_45%,rgba(20,20,24,0.78))] p-3 text-left transition-colors hover:border-accent/45 hover:bg-card focus-within:ring-2 focus-within:ring-ring/50";
+      ? "group relative overflow-hidden rounded-md border border-border/45 bg-card/72 p-2.5 text-left transition-colors hover:border-accent/40 hover:bg-card/86 focus-within:ring-2 focus-within:ring-ring/50"
+      : "group relative overflow-hidden rounded-md border border-border/45 bg-card/72 p-3 text-left transition-colors hover:border-accent/40 hover:bg-card/86 focus-within:ring-2 focus-within:ring-ring/50";
 
   return (
-    <div className={cardClass} data-testid={`view-card-${group.id}`}>
+    <fieldset
+      aria-label={`${group.label} view`}
+      className={cardClass}
+      data-testid={`view-card-${group.id}`}
+      onBlurCapture={() => {
+        if (showChatSuggestions) setChatSuggestionsOpen(false);
+      }}
+      onFocusCapture={() => {
+        if (showChatSuggestions) setChatSuggestionsOpen(true);
+      }}
+      onMouseEnter={() => {
+        if (showChatSuggestions) setChatSuggestionsOpen(true);
+      }}
+      onMouseLeave={() => {
+        if (showChatSuggestions) setChatSuggestionsOpen(false);
+      }}
+    >
       <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_84%_18%,rgba(255,115,0,0.13),transparent_32%),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[length:auto,24px_24px,24px_24px] opacity-70"
+        className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.018)_1px,transparent_1px)] bg-[length:24px_24px] opacity-35"
         aria-hidden
       />
+      {showChatSuggestions && (
+        <ChatSuggestionsPopover open={chatSuggestionsOpen} />
+      )}
       {(showPinButton || showManagementButtons) && (
         <div className="absolute right-2 top-2 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           {showPinButton && <ViewCardPinButton view={view} onPin={onPin} />}
@@ -504,7 +560,7 @@ function ViewCard({
           )}
         </div>
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -568,7 +624,7 @@ function ViewSection({
 }) {
   if (views.length === 0) return null;
   return (
-    <section className="mb-5 rounded-lg border border-border/30 bg-black/18 p-3 shadow-[0_18px_44px_rgba(0,0,0,0.18)]">
+    <section className="mb-5 rounded-md border border-border/35 bg-card/35 p-3">
       <div className="mb-2 flex items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted/80">
           <span className="text-accent">{icon}</span>
@@ -610,7 +666,7 @@ function TopViewsSection({
   if (views.length === 0) return null;
   return (
     <section
-      className="mb-5 rounded-lg border border-border/30 bg-black/18 p-3 shadow-[0_18px_44px_rgba(0,0,0,0.18)]"
+      className="mb-5 rounded-md border border-border/35 bg-card/35 p-3"
       data-testid="views-top-section"
     >
       <div className="mb-2 flex items-center justify-between gap-3">
@@ -650,7 +706,7 @@ function ToolbarSegmentButton({
       onClick={onClick}
       className={`inline-flex h-9 items-center justify-center rounded-md px-3 text-xs font-semibold transition-colors ${
         active
-          ? "border border-accent/75 bg-accent/12 text-txt shadow-[0_0_22px_rgba(255,115,0,0.18)]"
+          ? "border border-accent/55 bg-accent/10 text-txt"
           : "border border-transparent text-muted hover:border-border/50 hover:bg-card/70 hover:text-txt"
       }`}
     >
@@ -1045,7 +1101,7 @@ export function ViewManagerPage() {
 
   return (
     <ShellViewAgentSurface viewId="views">
-      <div className="flex flex-1 min-h-0 flex-col bg-[radial-gradient(circle_at_18%_0%,rgba(255,115,0,0.13),transparent_34%),radial-gradient(circle_at_86%_10%,rgba(255,115,0,0.08),transparent_28%)]">
+      <div className="flex flex-1 min-h-0 flex-col bg-[linear-gradient(180deg,rgba(255,115,0,0.045),transparent_18rem)]">
         {/* Header */}
         <div className="shrink-0 border-b border-border/45 px-6 pb-4 pt-5">
           <div className="flex flex-col gap-4">
@@ -1070,7 +1126,7 @@ export function ViewManagerPage() {
               </div>
               <button
                 type="button"
-                className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-border/45 bg-card/72 px-3 text-xs font-semibold text-muted"
+                className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-border/45 bg-card/60 px-3 text-xs font-semibold text-muted hover:border-border/65 hover:text-txt"
               >
                 <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />
                 Popular
@@ -1089,7 +1145,7 @@ export function ViewManagerPage() {
                   })}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  className="h-11 w-full rounded-lg border border-border/65 bg-card/76 py-2 pl-9 pr-9 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="h-11 w-full rounded-md border border-border/60 bg-card/70 py-2 pl-9 pr-9 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
                   {...searchInput.agentProps}
                 />
                 {query && (
@@ -1106,7 +1162,7 @@ export function ViewManagerPage() {
                 )}
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-3">
-                <div className="inline-flex rounded-lg border border-border/45 bg-card/60 p-1">
+                <div className="inline-flex rounded-md border border-border/45 bg-card/50 p-1">
                   {SOURCE_FILTERS.map((filter) => (
                     <ToolbarSegmentButton
                       key={filter}
@@ -1121,7 +1177,7 @@ export function ViewManagerPage() {
                     </ToolbarSegmentButton>
                   ))}
                 </div>
-                <div className="inline-flex rounded-lg border border-border/45 bg-card/60 p-1">
+                <div className="inline-flex rounded-md border border-border/45 bg-card/50 p-1">
                   {VIEW_TYPE_FILTERS.map((filter) => (
                     <ToolbarSegmentButton
                       key={filter}
@@ -1138,7 +1194,7 @@ export function ViewManagerPage() {
                 type="button"
                 disabled={loading}
                 onClick={() => void refresh()}
-                className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-border/55 bg-card/72 px-3 text-sm font-medium text-txt transition-colors hover:border-accent/45 hover:bg-card disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-md border border-border/55 bg-card/65 px-3 text-sm font-medium text-txt transition-colors hover:border-accent/35 hover:bg-card disabled:cursor-not-allowed disabled:opacity-60"
                 {...refreshButton.agentProps}
               >
                 <RefreshCw
