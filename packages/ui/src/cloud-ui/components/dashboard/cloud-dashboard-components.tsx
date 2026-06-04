@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { Skeleton } from "../../../components/ui/skeleton";
 import { cn } from "../../lib/utils";
 import { BrandButton } from "../brand/brand-button";
 import { DashboardTableSkeleton } from "../data-list/dashboard-table-skeleton";
@@ -173,8 +174,8 @@ export function DashboardActionCardsSkeleton() {
           key={id}
           className="flex min-h-[148px] flex-col justify-between rounded-sm border border-white/10 bg-white/5 p-5"
         >
-          <div className="h-5 w-5 animate-pulse rounded-sm bg-white/10" />
-          <div className="h-5 w-28 animate-pulse rounded-sm bg-white/10" />
+          <Skeleton className="h-5 w-5" />
+          <Skeleton className="h-5 w-28" />
         </div>
       ))}
     </div>

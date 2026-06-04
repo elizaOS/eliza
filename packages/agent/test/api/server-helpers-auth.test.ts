@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   applyCors,
   CORS_ALLOWED_HEADERS,
+  isAuthorized,
+  isServerTokenAuthorized,
   isWaifuChatAuthorized,
   resolveWaifuChatAccessToken,
   waifuChatRoleToWorldRole,
@@ -327,6 +329,7 @@ class RemoteForwardRequest extends http.IncomingMessage {
       configurable: true,
     });
     super(socket);
+    this.headers = {};
     this.headers.host = "203.0.113.7:19687";
     for (const [key, value] of Object.entries(headers)) {
       this.headers[key.toLowerCase()] = value;

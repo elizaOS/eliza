@@ -1,7 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import * as React from "react";
 import { client } from "../api";
-import { invokeDesktopBridgeRequest } from "../bridge";
+import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
 import { getBootConfig } from "../config/boot-config";
 import {
   canSelectLocalRuntime,
@@ -192,6 +192,12 @@ async function startMobileLocalAgent(): Promise<void> {
 async function startLocalRuntime(): Promise<void> {
   if (isDesktopPlatform()) {
     try {
+      const desktopRuntimeMode = await getDesktopRuntimeMode().catch(
+        () => null,
+      );
+      if (desktopRuntimeMode && desktopRuntimeMode.mode !== "local") {
+        return;
+      }
       await invokeDesktopBridgeRequest({
         rpcMethod: "agentStart",
         ipcChannel: "agent:start",

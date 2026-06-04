@@ -22,6 +22,7 @@ import {
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -31,7 +32,7 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {
   try {
-    await requireServiceKey(c);
+    const identity = await requireServiceKey(c);
     const agentId = c.req.param("agentId") ?? "";
     const agent = await elizaSandboxService.getAgentById(agentId);
     if (!agent) throw NotFoundError("Agent not found");
@@ -57,8 +58,26 @@ app.post("/", async (c) => {
 
     logger.info("[service-api] Restart requested", { agentId });
 
-    await elizaSandboxService.shutdown(agentId, agent.organization_id);
-    await elizaSandboxService.provision(agentId, agent.organization_id);
+    const writableAgent = await elizaSandboxService.getAgentForWrite(
+      agentId,
+      agent.organization_id,
+    );
+    if (!writableAgent) {
+      throw NotFoundError("Agent not found");
+    }
+
+    if (writableAgent.status === "provisioning") {
+      return c.json(
+        { success: false, error: "Agent provisioning is in progress" },
+        409,
+      );
+    }
+
+    await provisioningJobService.enqueueAgentRestartOnce({
+      agentId,
+      organizationId: identity.organizationId,
+      userId: identity.userId,
+    });
 
     await agentBillingRepository.reactivateSandboxBillingAfterFunding(
       agentId,

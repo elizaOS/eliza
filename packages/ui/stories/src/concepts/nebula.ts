@@ -25,30 +25,35 @@ function dustColor(r: number): [number, number, number] {
     // core: deep violet → indigo
     const t = r / 0.35;
     return [
-      0.38 + t * 0.08,   // r: 0.38 → 0.46
-      0.05 + t * 0.10,   // g: 0.05 → 0.15
-      0.72 + t * 0.22,   // b: 0.72 → 0.94
+      0.38 + t * 0.08, // r: 0.38 → 0.46
+      0.05 + t * 0.1, // g: 0.05 → 0.15
+      0.72 + t * 0.22, // b: 0.72 → 0.94
     ];
   }
-  if (r < 0.70) {
+  if (r < 0.7) {
     // mid: indigo-blue → blue-cyan
     const t = (r - 0.35) / 0.35;
     return [
-      0.46 - t * 0.28,   // r: 0.46 → 0.18
-      0.15 + t * 0.12,   // g: 0.15 → 0.27
-      0.94 - t * 0.10,   // b: 0.94 → 0.84
+      0.46 - t * 0.28, // r: 0.46 → 0.18
+      0.15 + t * 0.12, // g: 0.15 → 0.27
+      0.94 - t * 0.1, // b: 0.94 → 0.84
     ];
   }
   // outer: blue → dim magenta edge
-  const t = (r - 0.70) / 0.30;
+  const t = (r - 0.7) / 0.3;
   return [
-    0.18 + t * 0.42,   // r: 0.18 → 0.60
-    0.27 - t * 0.20,   // g: 0.27 → 0.07
-    0.84 - t * 0.26,   // b: 0.84 → 0.58
+    0.18 + t * 0.42, // r: 0.18 → 0.60
+    0.27 - t * 0.2, // g: 0.27 → 0.07
+    0.84 - t * 0.26, // b: 0.84 → 0.58
   ];
 }
 
-function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: any): VariantHandle {
+function build(
+  THREE: WebGPUModule,
+  _TSL: TSLModule,
+  _U: OrbUniforms,
+  parent: any,
+): VariantHandle {
   // ---- Dust cloud ----
   const dustPosArr = new Float32Array(DUST_COUNT * 3);
   const dustColArr = new Float32Array(DUST_COUNT * 3);
@@ -58,17 +63,17 @@ function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: an
   for (let i = 0; i < DUST_COUNT; i += 1) {
     // Cluster toward centre: radius = rand^0.6 → denser in middle.
     const rawR = Math.random();
-    const r = Math.pow(rawR, 0.6) * 1.28; // max radius 1.28, within 1.3
+    const r = rawR ** 0.6 * 1.28; // max radius 1.28, within 1.3
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.acos(2 * Math.random() - 1);
     const sinPhi = Math.sin(phi);
     const x = r * sinPhi * Math.cos(theta);
     const y = r * sinPhi * Math.sin(theta);
     const z = r * Math.cos(phi);
-    dustPosArr[i * 3    ] = x;
+    dustPosArr[i * 3] = x;
     dustPosArr[i * 3 + 1] = y;
     dustPosArr[i * 3 + 2] = z;
-    dustBase[i * 3    ] = x;
+    dustBase[i * 3] = x;
     dustBase[i * 3 + 1] = y;
     dustBase[i * 3 + 2] = z;
 
@@ -77,7 +82,7 @@ function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: an
     const [cr, cg, cb] = dustColor(rn);
     // Keep outer points fairly vivid so the cloud reads on the bright sky.
     const fade = 1.0 - rn * 0.3;
-    dustColArr[i * 3    ] = cr * fade;
+    dustColArr[i * 3] = cr * fade;
     dustColArr[i * 3 + 1] = cg * fade;
     dustColArr[i * 3 + 2] = cb * fade;
   }
@@ -110,7 +115,7 @@ function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: an
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.acos(2 * Math.random() - 1);
     const sinPhi = Math.sin(phi);
-    starPosArr[i * 3    ] = r * sinPhi * Math.cos(theta);
+    starPosArr[i * 3] = r * sinPhi * Math.cos(theta);
     starPosArr[i * 3 + 1] = r * sinPhi * Math.sin(theta);
     starPosArr[i * 3 + 2] = r * Math.cos(phi);
   }
@@ -134,9 +139,15 @@ function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: an
 
   // ---- Soft glowing core — a few large very-dim additive points at origin ----
   const corePosArr = new Float32Array(9); // 3 points at tiny offsets
-  corePosArr[0] = 0.0;  corePosArr[1] = 0.0;  corePosArr[2] = 0.0;
-  corePosArr[3] = 0.01; corePosArr[4] = 0.0;  corePosArr[5] = 0.01;
-  corePosArr[6] = -0.01;corePosArr[7] = 0.01; corePosArr[8] = 0.0;
+  corePosArr[0] = 0.0;
+  corePosArr[1] = 0.0;
+  corePosArr[2] = 0.0;
+  corePosArr[3] = 0.01;
+  corePosArr[4] = 0.0;
+  corePosArr[5] = 0.01;
+  corePosArr[6] = -0.01;
+  corePosArr[7] = 0.01;
+  corePosArr[8] = 0.0;
   const coreGeo = new THREE.BufferGeometry();
   coreGeo.setAttribute("position", new THREE.BufferAttribute(corePosArr, 3));
 
@@ -176,14 +187,17 @@ function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: an
       // --- Breathe: scale cloud outward on respond ---
       const breathe = 1.0 + f.respond * 0.12 + f.energy * 0.06;
       dust.scale.setScalar(breathe);
-      stars.scale.setScalar(0.98 + f.respond * 0.10 + f.energy * 0.04);
+      stars.scale.setScalar(0.98 + f.respond * 0.1 + f.energy * 0.04);
 
       // --- Brightness: energy pulses overall opacity ---
       dustMat.opacity = 0.62 + f.energy * 0.32 + f.respond * 0.08;
 
       // --- Star twinkle: jitter opacity on respond ---
       twinklePhase += 0.09;
-      const twinkle = 0.72 + Math.sin(twinklePhase * 2.3) * 0.18 + Math.cos(twinklePhase * 3.7) * 0.08;
+      const twinkle =
+        0.72 +
+        Math.sin(twinklePhase * 2.3) * 0.18 +
+        Math.cos(twinklePhase * 3.7) * 0.08;
       starMat.opacity = twinkle * (0.7 + f.respond * 0.35 + f.energy * 0.25);
 
       // --- Magenta flush: shift dust color on respond ---

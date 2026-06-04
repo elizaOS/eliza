@@ -13,11 +13,11 @@ import type {
 // layered. Stored as [r, g, b] linear-ish sRGB components.
 const SHELL_HUES: [number, number, number][] = [
   [0.92, 0.34, 0.46], // rose
-  [0.96, 0.50, 0.30], // coral
+  [0.96, 0.5, 0.3], // coral
   [0.56, 0.36, 0.84], // violet
-  [0.20, 0.70, 0.54], // jade
+  [0.2, 0.7, 0.54], // jade
   [0.24, 0.56, 0.86], // ocean
-  [0.90, 0.66, 0.20], // amber
+  [0.9, 0.66, 0.2], // amber
 ];
 
 // Per-shell animation parameters baked at build time.
@@ -55,10 +55,10 @@ function build(
   const shellCount = SHELL_HUES.length;
   for (let i = 0; i < shellCount; i += 1) {
     const t: number = i / (shellCount - 1); // 0 → 1
-    const radius: number = 0.60 + t * 0.65; // 0.60 … 1.25
+    const radius: number = 0.6 + t * 0.65; // 0.60 … 1.25
 
     // Outermost shells are slightly more opaque so the depth reads.
-    const baseOpacity: number = 0.20 + t * 0.10;
+    const baseOpacity: number = 0.2 + t * 0.1;
 
     const geo = new THREE.SphereGeometry(radius, 40, 40);
     const mat = new THREE.MeshBasicNodeMaterial();

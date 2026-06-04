@@ -14,7 +14,7 @@ import type {
 // Hues for the 5 ribbons: greens, teals, violets. Each is [r,g,b] in 0-1.
 const RIBBON_HUES: [number, number, number][] = [
   [0.05, 0.88, 0.55], // bright green
-  [0.0,  0.72, 0.82], // cyan-teal
+  [0.0, 0.72, 0.82], // cyan-teal
   [0.12, 0.55, 0.75], // deep teal-blue
   [0.45, 0.18, 0.88], // violet
   [0.68, 0.12, 0.72], // magenta-violet
@@ -22,14 +22,19 @@ const RIBBON_HUES: [number, number, number][] = [
 
 // Per-ribbon orbit offsets and animation parameters.
 const RIBBON_PARAMS = [
-  { orbitY: 0.0,  orbitR: 0.82, speed: 0.38, phase: 0.0 },
-  { orbitY: 0.18, orbitR: 0.90, speed: 0.29, phase: 1.26 },
-  { orbitY: -0.14,orbitR: 0.86, speed: 0.44, phase: 2.51 },
+  { orbitY: 0.0, orbitR: 0.82, speed: 0.38, phase: 0.0 },
+  { orbitY: 0.18, orbitR: 0.9, speed: 0.29, phase: 1.26 },
+  { orbitY: -0.14, orbitR: 0.86, speed: 0.44, phase: 2.51 },
   { orbitY: 0.08, orbitR: 0.95, speed: 0.33, phase: 3.77 },
-  { orbitY: -0.22,orbitR: 0.78, speed: 0.41, phase: 5.03 },
+  { orbitY: -0.22, orbitR: 0.78, speed: 0.41, phase: 5.03 },
 ];
 
-function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: any): VariantHandle {
+function build(
+  THREE: WebGPUModule,
+  _TSL: TSLModule,
+  _U: OrbUniforms,
+  parent: any,
+): VariantHandle {
   // --- Build curved ribbon geometries once at construction ---
   // PlaneGeometry(width, height, wSegs, hSegs): width=0.22, height=2.2, hSegs=36
   // We walk the Y-column of vertices and displace X,Z into an arc so the ribbon
@@ -42,7 +47,7 @@ function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: an
     mesh: any;
     geo: any;
     mat: any;
-    param: typeof RIBBON_PARAMS[number];
+    param: (typeof RIBBON_PARAMS)[number];
     baseR: number;
     baseG: number;
     baseB: number;
@@ -73,7 +78,12 @@ function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: an
       const curveZ = (Math.cos(t) - 1) * arcRadius * 0.5;
 
       // Keep a thin width (rawX stays as a lateral offset in the ribbon plane).
-      pos.setXYZ(vi, curveX + rawX * Math.cos(t), rawY + param.orbitY * 0.0, curveZ + rawZ);
+      pos.setXYZ(
+        vi,
+        curveX + rawX * Math.cos(t),
+        rawY + param.orbitY * 0.0,
+        curveZ + rawZ,
+      );
       // Suppress unused variable warning — rawZ is zero for PlaneGeometry
       void rawZ;
     }
@@ -112,7 +122,7 @@ function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: an
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.acos(2 * Math.random() - 1);
     const r = 0.5 + Math.random() * 0.75;
-    starPositions[i * 3    ] = r * Math.sin(phi) * Math.cos(theta);
+    starPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
     starPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
     starPositions[i * 3 + 2] = r * Math.cos(phi);
   }
@@ -149,7 +159,8 @@ function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: an
 
         // Keep ribbons near-vertical with a small drifting tilt for depth.
         const baseTiltX = (ri % 2 === 0 ? 1 : -1) * 0.1;
-        mesh.rotation.x = baseTiltX + Math.cos(f.time * 0.13 + param.phase) * 0.05;
+        mesh.rotation.x =
+          baseTiltX + Math.cos(f.time * 0.13 + param.phase) * 0.05;
 
         // Vertical position drift for the orbitY offset.
         mesh.position.y =

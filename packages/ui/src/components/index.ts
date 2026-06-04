@@ -43,8 +43,6 @@ export {
 export {
   CodeDisplay,
   type CodeDisplayProps,
-  JsonEditorWithHighlight,
-  JsonSyntaxHighlighter,
   MonacoEditorSkeleton,
 } from "../cloud-ui/components/code";
 export {
@@ -77,12 +75,6 @@ export {
   ListActionMenu,
   type ListActionMenuItem,
   type ListActionMenuProps,
-  ResponsiveEntityList,
-  type ResponsiveEntityListColumn,
-  type ResponsiveEntityListProps,
-  StatSummary,
-  type StatSummaryItem,
-  type StatSummaryProps,
 } from "../cloud-ui/components/data-list";
 export {
   type ApiEndpointCardEndpoint,

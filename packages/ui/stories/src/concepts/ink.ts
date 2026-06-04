@@ -5,6 +5,7 @@ import type {
   VariantHandle,
   WebGPUModule,
 } from "../orb-kit.ts";
+
 function build(
   THREE: WebGPUModule,
   _TSL: TSLModule,
@@ -99,7 +100,8 @@ function build(
       inkPoints.rotation.y = f.time * 0.018;
 
       // Hanko seal: emissive lifts modestly on respond — stays a deep stamp.
-      const respondPulse = 0.25 + f.respond * 0.6 + Math.sin(f.time * 1.8) * 0.06 * f.respond;
+      const respondPulse =
+        0.25 + f.respond * 0.6 + Math.sin(f.time * 1.8) * 0.06 * f.respond;
       sealMat.emissiveIntensity = respondPulse;
 
       // Seal gently bobs

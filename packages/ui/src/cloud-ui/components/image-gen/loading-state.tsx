@@ -4,7 +4,7 @@
  */
 "use client";
 
-import { Loader2 } from "lucide-react";
+import { Spinner } from "../../../components/ui/spinner";
 import { Skeleton } from "../skeleton";
 
 export function LoadingState() {
@@ -20,7 +20,7 @@ export function LoadingState() {
       </div>
 
       <div className="flex items-center justify-center gap-2 py-3">
-        <Loader2 className="h-4 w-4 animate-spin text-[#FF5800]" />
+        <Spinner size={16} className="text-[#FF5800]" />
         <p className="text-sm font-medium text-white/60">
           Creating your image...
         </p>
