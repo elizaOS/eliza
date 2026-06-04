@@ -39,6 +39,11 @@ on:
         required: false
         default: ''
         type: string
+      allow_bridge_host_fallback:
+        description: 'Temporarily allow legacy public host/port routing when HEADSCALE_API_KEY is unavailable'
+        required: false
+        default: false
+        type: boolean
 
 # Per-env concurrency: a develop push (staging) and a main push (production)
 # can deploy in parallel without one cancelling the other.
@@ -86,6 +91,13 @@ jobs:
       DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
       DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
       DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
+      DEPLOY_ENVIRONMENT: ${{ needs.determine-env.outputs.environment }}
+      HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
+      HEADSCALE_API_URL: ${{ needs.determine-env.outputs.environment == 'production' && 'https://headscale.elizacloud.ai' || 'https://headscale-staging.elizacloud.ai' }}
+      HEADSCALE_PUBLIC_URL: ${{ needs.determine-env.outputs.environment == 'production' && 'https://headscale.elizacloud.ai' || 'https://headscale-staging.elizacloud.ai' }}
+      HEADSCALE_USER: agent
+      ELIZA_CLOUD_AGENT_BASE_DOMAIN: waifu.fun
+      AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_bridge_host_fallback && '1' || '0' }}
     steps:
       - name: Check deploy configuration
         id: deploy_config
@@ -163,7 +175,7 @@ jobs:
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 10m
-          envs: DEPLOY_BRANCH,SYSTEMD_UNIT
+          envs: DEPLOY_BRANCH,SYSTEMD_UNIT,DEPLOY_ENVIRONMENT,HEADSCALE_API_KEY,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_USER,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK
           script: |
             set -euo pipefail
             echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH) ==="
@@ -260,6 +272,35 @@ jobs:
             # idempotently after `bun install` is done.
             mkdir -p node_modules/@elizaos
             ln -sfn ../../packages/cloud-shared node_modules/@elizaos/cloud-shared
+
+            mkdir -p cloud
+            touch cloud/.env.local
+            chmod 600 cloud/.env.local
+
+            upsert_env() {
+              key="$1"
+              value="$2"
+              if [ -z "$value" ]; then
+                return 0
+              fi
+              tmp="$(mktemp)"
+              if grep -q "^${key}=" cloud/.env.local; then
+                awk -v k="$key" -v v="$value" 'BEGIN { q=sprintf("%c", 39) } $0 ~ "^" k "=" { print k "=" q v q; next } { print }' cloud/.env.local > "$tmp"
+              else
+                cp cloud/.env.local "$tmp"
+                printf "%s='%s'\n" "$key" "$value" >> "$tmp"
+              fi
+              install -m 0600 "$tmp" cloud/.env.local
+              rm -f "$tmp"
+            }
+
+            upsert_env ENVIRONMENT "$DEPLOY_ENVIRONMENT"
+            upsert_env HEADSCALE_API_KEY "$HEADSCALE_API_KEY"
+            upsert_env HEADSCALE_API_URL "$HEADSCALE_API_URL"
+            upsert_env HEADSCALE_PUBLIC_URL "$HEADSCALE_PUBLIC_URL"
+            upsert_env HEADSCALE_USER "$HEADSCALE_USER"
+            upsert_env ELIZA_CLOUD_AGENT_BASE_DOMAIN "$ELIZA_CLOUD_AGENT_BASE_DOMAIN"
+            upsert_env AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK "$AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK"
 
             # Install/refresh both systemd units (provisioning worker + agent router).
             sudo install -m 0644 \
