@@ -86,6 +86,99 @@ function LifeOpsNavRailItem({
   );
 }
 
+function LifeOpsNavTabItem({
+  item,
+  isActive,
+  onNavigate,
+}: {
+  item: NavItem;
+  isActive: boolean;
+  onNavigate: (section: LifeOpsSection) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `nav-${item.id}`,
+    role: "tab",
+    label: item.label,
+    group: "lifeops-nav",
+    status: isActive ? "active" : "inactive",
+    description: `Open the ${item.label} section`,
+  });
+  return (
+    <TooltipHint content={item.label} side="bottom">
+      <button
+        ref={ref}
+        type="button"
+        aria-label={item.label}
+        aria-current={isActive ? "page" : undefined}
+        onClick={() => onNavigate(item.id)}
+        data-sidebar-item
+        {...agentProps}
+        className={[
+          "group relative flex shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left transition-colors",
+          isActive ? "bg-accent/15 text-txt" : "text-txt hover:bg-bg-muted/50",
+        ].join(" ")}
+      >
+        <span
+          className={[
+            "flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--radius-sm)] transition-colors",
+            isActive
+              ? "bg-white/8 text-txt"
+              : "bg-transparent text-muted/80 group-hover:text-txt",
+          ].join(" ")}
+        >
+          {item.icon}
+        </span>
+        <span className="truncate text-xs-tight font-medium">{item.label}</span>
+        <span
+          aria-hidden
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${item.dotColor} opacity-60`}
+        />
+      </button>
+    </TooltipHint>
+  );
+}
+
+/**
+ * Horizontal variant of the LifeOps section nav. Renders the same
+ * {@link NAV_GROUPS} items as a single scrollable tab strip so the workspace can
+ * present one vertical content column with navigation pinned to the top instead
+ * of a side rail.
+ */
+export function LifeOpsNavTabs({
+  activeSection,
+  onNavigate,
+}: Pick<LifeOpsNavRailProps, "activeSection" | "onNavigate">) {
+  return (
+    <TooltipProvider delayDuration={320} skipDelayDuration={120}>
+      <div
+        role="tablist"
+        aria-label="LifeOps sections"
+        data-testid="lifeops-nav-tabs"
+        className="flex min-w-0 items-center gap-1 overflow-x-auto"
+      >
+        {NAV_GROUPS.map((group, groupIndex) => (
+          <div key={group.key} className="flex shrink-0 items-center gap-1">
+            {groupIndex > 0 ? (
+              <span
+                aria-hidden
+                className="mx-1 h-5 w-px shrink-0 bg-border/12"
+              />
+            ) : null}
+            {group.items.map((item) => (
+              <LifeOpsNavTabItem
+                key={item.id}
+                item={item}
+                isActive={item.id === activeSection}
+                onNavigate={onNavigate}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+    </TooltipProvider>
+  );
+}
+
 export function LifeOpsNavRail({
   activeSection,
   onNavigate,

@@ -7,7 +7,6 @@ import {
   isWebPlatform,
   openExternalUrl,
   PagePanel,
-  PageScopedChatPane,
   useApp,
   useMediaQuery,
 } from "@elizaos/ui";
@@ -32,10 +31,7 @@ import {
   loadLifeOpsTuiState,
 } from "./LifeOpsPageView.interact.js";
 import { LifeOpsSectionContent } from "./LifeOpsSectionContent.js";
-import {
-  type LifeOpsSelection,
-  useLifeOpsSelection,
-} from "./LifeOpsSelectionContext.helpers.js";
+import { useLifeOpsSelection } from "./LifeOpsSelectionContext.helpers.js";
 import { LifeOpsSelectionProvider } from "./LifeOpsSelectionContext.js";
 import { LifeOpsSettingsSection } from "./LifeOpsSettingsSection";
 import { clearLifeOpsSetupGateDismissed } from "./LifeOpsSetupGate.helpers.js";
@@ -471,32 +467,6 @@ function LifeOpsSettingsSectionView({
 
       <LifeOpsXPanel />
     </div>
-  );
-}
-
-function resolveLifeOpsChatPlaceholder(
-  selection: LifeOpsSelection,
-): string | undefined {
-  if (selection.reminderId) {
-    return "Ask about this reminder";
-  }
-  if (selection.eventId) {
-    return "Ask about this event";
-  }
-  if (selection.messageId) {
-    return "Ask about this message";
-  }
-  return undefined;
-}
-
-function LifeOpsPageChat() {
-  const { selection } = useLifeOpsSelection();
-  return (
-    <PageScopedChatPane
-      scope="page-lifeops"
-      title="LifeOps"
-      placeholderOverride={resolveLifeOpsChatPlaceholder(selection)}
-    />
   );
 }
 
@@ -1309,9 +1279,14 @@ function LifeOpsWorkspaceInner() {
     );
   })();
 
+  // Single-pane layout: the workspace shell renders one vertical column (top
+  // section-tab bar over the scrollable content). The right chat rail is
+  // disabled — the global floating chat pill owns LifeOps chat via the
+  // `page-lifeops` scope, and the shell's top bar keeps quick chat/voice access.
   return (
     <AppWorkspaceChrome
       testId="lifeops-shell"
+      chatDisabled
       main={
         <LifeOpsWorkspaceShell
           compactLayout={compactLayout}
@@ -1321,7 +1296,6 @@ function LifeOpsWorkspaceInner() {
           {mainContent}
         </LifeOpsWorkspaceShell>
       }
-      chat={<LifeOpsPageChat />}
     />
   );
 }

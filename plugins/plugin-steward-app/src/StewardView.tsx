@@ -3,14 +3,7 @@
  * Renders inside the Wallets tab as a sub-section or alongside inventory.
  */
 
-import {
-  PageLayout,
-  PagePanel,
-  Sidebar,
-  SidebarContent,
-  SidebarPanel,
-  useApp,
-} from "@elizaos/ui";
+import { cn, PagePanel, useApp } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { FileText } from "lucide-react";
 import type { ReactNode } from "react";
@@ -26,19 +19,17 @@ type StewardTab = "history" | "approvals";
 function StewardTabItem({
   tab,
   label,
-  description,
   active,
   onSelect,
   icon,
 }: {
   tab: StewardTab;
   label: string;
-  description: string;
   active: boolean;
   onSelect: (tab: StewardTab) => void;
   icon: ReactNode;
 }) {
-  const { ref, agentProps } = useAgentElement<HTMLElement>({
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: `tab-${tab}`,
     role: "tab",
     label,
@@ -47,23 +38,23 @@ function StewardTabItem({
     description: `Switch to the ${label} view`,
   });
   return (
-    <SidebarContent.Item
+    <button
       ref={ref}
-      active={active}
+      type="button"
+      role="tab"
+      aria-selected={active}
       onClick={() => onSelect(tab)}
-      aria-current={active ? "true" : undefined}
+      className={cn(
+        "inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors",
+        active
+          ? "bg-bg-elevated text-txt-strong shadow-sm"
+          : "text-muted hover:bg-bg-hover hover:text-txt-strong",
+      )}
       {...agentProps}
     >
-      <SidebarContent.ItemIcon active={active} className="relative">
-        {icon}
-      </SidebarContent.ItemIcon>
-      <SidebarContent.ItemBody>
-        <SidebarContent.ItemTitle>{label}</SidebarContent.ItemTitle>
-        <SidebarContent.ItemDescription>
-          {description}
-        </SidebarContent.ItemDescription>
-      </SidebarContent.ItemBody>
-    </SidebarContent.Item>
+      <span className="relative inline-flex">{icon}</span>
+      <span>{label}</span>
+    </button>
   );
 }
 
@@ -128,103 +119,101 @@ export function StewardView() {
     );
   }
 
-  const stewardSidebar = (
-    <Sidebar testId="steward-sidebar">
-      <SidebarPanel>
-        <SidebarContent.SectionLabel>Steward</SidebarContent.SectionLabel>
-        <div className="mt-1.5 text-xs text-muted">
-          {stewardStatus?.connected ? "Vault management" : "Connecting…"}
-        </div>
-
-        <nav className="mt-4 space-y-1.5">
-          <StewardTabItem
-            tab="approvals"
-            label="Approvals"
-            description={
-              pendingCount > 0 ? `${pendingCount} pending` : "None pending"
-            }
-            active={activeTab === "approvals"}
-            onSelect={setActiveTab}
-            icon={
-              <>
-                <StewardLogo size={16} />
-                {pendingCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-status-danger px-1 text-3xs font-bold text-[var(--destructive-foreground)]">
-                    {pendingCount > 99 ? "99+" : pendingCount}
-                  </span>
-                )}
-              </>
-            }
-          />
-
-          <StewardTabItem
-            tab="history"
-            label="History"
-            description="All transactions"
-            active={activeTab === "history"}
-            onSelect={setActiveTab}
-            icon={<FileText className="h-4 w-4" />}
-          />
-        </nav>
-
-        {/* Steward status */}
-        {stewardStatus?.connected && (
-          <div className="mt-auto pt-4">
-            <div className="inline-flex items-center gap-1.5 rounded-2xl border border-accent/25 bg-accent/10 px-3 py-2 text-xs-tight text-accent-fg">
-              <StewardLogo size={12} />
-              <span>Connected</span>
-            </div>
-            {stewardStatus.evmAddress && (
-              <div className="mt-1.5 font-mono text-2xs text-muted/60">
-                {stewardStatus.evmAddress.slice(0, 6)}…
-                {stewardStatus.evmAddress.slice(-4)}
-              </div>
-            )}
-          </div>
-        )}
-      </SidebarPanel>
-    </Sidebar>
-  );
-
   return (
-    <PageLayout sidebar={stewardSidebar}>
-      <div className="mx-auto max-w-[76rem]">
-        {/* Header */}
-        <PagePanel variant="surface" className="px-5 py-5 sm:px-6">
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
-            Steward
+    <div
+      data-testid="steward-view"
+      className="mx-auto flex w-full max-w-[76rem] flex-1 flex-col"
+    >
+      {/* Header — Steward eyebrow, dynamic title, subtitle, and connection status */}
+      <PagePanel variant="surface" className="px-5 py-5 sm:px-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
+              Steward
+            </div>
+            <h1 className="mt-1 text-2xl font-semibold text-txt-strong">
+              {activeTab === "approvals" ? "Approvals" : "Transaction History"}
+            </h1>
+            <div className="mt-1.5 max-w-2xl text-sm text-muted">
+              {activeTab === "approvals"
+                ? "Transactions that need your sign-off."
+                : "All signed and broadcast transactions from the vault."}
+            </div>
           </div>
-          <h1 className="mt-1 text-2xl font-semibold text-txt-strong">
-            {activeTab === "approvals" ? "Approvals" : "Transaction History"}
-          </h1>
-          <div className="mt-1.5 max-w-2xl text-sm text-muted">
-            {activeTab === "approvals"
-              ? "Transactions that need your sign-off."
-              : "All signed and broadcast transactions from the vault."}
-          </div>
-        </PagePanel>
 
-        {/* Content */}
-        <div className="mt-4">
-          {activeTab === "approvals" ? (
-            <ApprovalQueue
-              getStewardPending={getStewardPending}
-              approveStewardTx={approveStewardTx}
-              rejectStewardTx={rejectStewardTx}
-              copyToClipboard={copyToClipboard}
-              setActionNotice={setActionNotice}
-              onPendingCountChange={handlePendingCountChange}
-            />
+          {/* Connection status (folded in from the former sidebar) */}
+          {stewardStatus?.connected ? (
+            <div className="flex shrink-0 flex-col items-start gap-1 sm:items-end">
+              <div className="inline-flex items-center gap-1.5 rounded-2xl border border-accent/25 bg-accent/10 px-3 py-2 text-xs-tight text-accent-fg">
+                <StewardLogo size={12} />
+                <span>Connected</span>
+              </div>
+              {stewardStatus.evmAddress && (
+                <div className="font-mono text-2xs text-muted/60">
+                  {stewardStatus.evmAddress.slice(0, 6)}…
+                  {stewardStatus.evmAddress.slice(-4)}
+                </div>
+              )}
+            </div>
           ) : (
-            <TransactionHistory
-              getStewardHistory={getStewardHistory}
-              copyToClipboard={copyToClipboard}
-              setActionNotice={setActionNotice}
-            />
+            <div className="shrink-0 text-xs text-muted">
+              {stewardStatus ? "Vault management" : "Connecting…"}
+            </div>
           )}
         </div>
+      </PagePanel>
+
+      {/* Tab strip — navigation moved out of the sidebar into a top segmented control */}
+      <div
+        role="tablist"
+        aria-label="Steward sections"
+        className="mt-4 inline-flex w-full items-center gap-1 rounded-2xl border border-border bg-surface p-1 sm:w-auto sm:self-start"
+      >
+        <StewardTabItem
+          tab="approvals"
+          label="Approvals"
+          active={activeTab === "approvals"}
+          onSelect={setActiveTab}
+          icon={
+            <>
+              <StewardLogo size={16} />
+              {pendingCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-status-danger px-1 text-3xs font-bold text-[var(--destructive-foreground)]">
+                  {pendingCount > 99 ? "99+" : pendingCount}
+                </span>
+              )}
+            </>
+          }
+        />
+        <StewardTabItem
+          tab="history"
+          label="History"
+          active={activeTab === "history"}
+          onSelect={setActiveTab}
+          icon={<FileText className="h-4 w-4" />}
+        />
       </div>
-    </PageLayout>
+
+      {/* Content — single body, one tab at a time, stacked below the tab strip */}
+      <div className="mt-4">
+        {activeTab === "approvals" ? (
+          <ApprovalQueue
+            getStewardPending={getStewardPending}
+            approveStewardTx={approveStewardTx}
+            rejectStewardTx={rejectStewardTx}
+            copyToClipboard={copyToClipboard}
+            setActionNotice={setActionNotice}
+            onPendingCountChange={handlePendingCountChange}
+          />
+        ) : (
+          <TransactionHistory
+            getStewardHistory={getStewardHistory}
+            copyToClipboard={copyToClipboard}
+            setActionNotice={setActionNotice}
+          />
+        )}
+      </div>
+    </div>
   );
 }
 

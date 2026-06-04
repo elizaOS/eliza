@@ -464,9 +464,9 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
         </div>
       )}
 
-      <main className="grid min-h-0 flex-1 md:grid-cols-[340px_minmax(0,1fr)]">
+      <main className="flex min-h-0 flex-1 flex-col">
         <section
-          className={`min-h-0 flex-col border-border/24 md:flex md:border-r ${
+          className={`min-h-0 flex-1 flex-col ${
             showComposer ? "hidden" : "flex"
           }`}
           data-testid="messages-thread-list"
@@ -516,7 +516,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
         </section>
 
         <section
-          className={`min-h-0 flex-col ${showComposer ? "flex" : "hidden md:flex"}`}
+          className={`min-h-0 flex-1 flex-col ${showComposer ? "flex" : "hidden"}`}
           data-testid="messages-composer-panel"
         >
           {showComposer ? (

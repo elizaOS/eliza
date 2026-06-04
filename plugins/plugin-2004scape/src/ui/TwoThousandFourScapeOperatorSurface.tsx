@@ -5,7 +5,6 @@ import {
   SurfaceBadge,
   SurfaceCard,
   SurfaceEmptyState,
-  SurfaceGrid,
   SurfaceSection,
   selectLatestRunForApp,
   toneForHealthState,
@@ -984,7 +983,7 @@ export function TwoThousandFourScapeOperatorSurface({
 
       {showDashboard ? (
         <SurfaceSection title="Launch & Loop">
-          <SurfaceGrid>
+          <div className="space-y-2">
             <SurfaceCard
               label="Bot Login"
               value={autoLoginLabel}
@@ -1009,13 +1008,13 @@ export function TwoThousandFourScapeOperatorSurface({
               tone={steeringReady ? "success" : "warn"}
               subtitle={steeringSubtitle}
             />
-          </SurfaceGrid>
+          </div>
         </SurfaceSection>
       ) : null}
 
       {showDashboard ? (
         <SurfaceSection title="Live State">
-          <SurfaceGrid>
+          <div className="space-y-2">
             <SurfaceCard
               label="Goal"
               value={session?.goalLabel ?? "No goal recorded."}
@@ -1069,13 +1068,13 @@ export function TwoThousandFourScapeOperatorSurface({
               )}
               subtitle={`Started ${formatDetailTimestamp(run.startedAt)}`}
             />
-          </SurfaceGrid>
+          </div>
           {nearbyTargets.length > 0 ? (
             <div className="space-y-2">
               <div className="text-2xs font-semibold uppercase tracking-[0.18em] text-muted">
                 Nearby Targets
               </div>
-              <div className="grid gap-2 md:grid-cols-2">
+              <div className="space-y-2">
                 {nearbyTargets.map((target) => (
                   <div
                     key={target.id}
@@ -1177,7 +1176,7 @@ export function TwoThousandFourScapeOperatorSurface({
               />
             ) : null}
           </div>
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="space-y-2">
             <OperatorMessageInput
               value={operatorMessage}
               onChange={setOperatorMessage}

@@ -372,15 +372,21 @@ describe("LifeOps visual copy", () => {
     expect(source).toContain("Calendars clear");
   });
 
-  it("keeps desktop navigation compact and active-label only", () => {
+  it("keeps the workspace a single vertical pane with top section tabs", () => {
     const shell = readComponent("LifeOpsWorkspaceShell.tsx");
     const nav = readComponent("LifeOpsNavRail.tsx");
     const page = readComponent("LifeOpsPageView.tsx");
 
-    expect(shell).toContain('labelMode="active"');
-    expect(shell).toContain('storageKey="lifeops:nav-rail-width:compact"');
-    expect(shell).not.toContain("defaultWidth={296}");
+    // Single column: a flex-col stack, no side rail and no resizable sidebar.
+    expect(shell).toContain("flex h-full min-h-0 min-w-0 flex-col");
+    expect(shell).toContain("LifeOpsNavTabs");
+    expect(shell).not.toContain("LifeOpsResizableSidebar");
+    expect(shell).not.toContain('storageKey="lifeops:nav-rail-width:compact"');
+    // Horizontal tab strip exists and the rail still exposes its label modes.
+    expect(nav).toContain("export function LifeOpsNavTabs");
     expect(nav).toContain('labelMode?: "all" | "active"');
+    // Right chat rail is disabled; the global pill owns LifeOps chat.
+    expect(page).toContain("chatDisabled");
     expect(page).not.toContain("Enabling…");
   });
 });

@@ -7,7 +7,9 @@ import {
   CircleAlert,
   Cloud,
   KeyRound,
+  type LucideIcon,
   RefreshCw,
+  Shield,
   ShieldCheck,
   ShieldX,
 } from "lucide-react";
@@ -19,19 +21,38 @@ import { useHyperliquidState } from "./useHyperliquidState";
 function ReadinessPill({ ready, label }: { ready: boolean; label: string }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border ${
         ready
           ? "border-ok/35 bg-ok/12 text-ok"
           : "border-border bg-bg-accent text-muted"
       }`}
+      role="status"
+      aria-label={label}
+      title={label}
     >
       {ready ? (
-        <ShieldCheck className="h-3.5 w-3.5" />
+        <ShieldCheck className="h-4 w-4" />
       ) : (
-        <ShieldX className="h-3.5 w-3.5" />
+        <ShieldX className="h-4 w-4" />
       )}
-      {label}
     </span>
+  );
+}
+
+function StatusTile({
+  icon: Icon,
+  label,
+  ready,
+}: {
+  icon: LucideIcon;
+  label: string;
+  ready: boolean;
+}) {
+  return (
+    <div className="flex min-h-16 items-center justify-center gap-2 rounded-lg border border-border/24 bg-card/50 px-3">
+      <Icon className={`h-4 w-4 ${ready ? "text-ok" : "text-muted"}`} />
+      <span className="truncate text-sm font-semibold text-txt">{label}</span>
+    </div>
   );
 }
 
@@ -113,44 +134,22 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
         <div className="mx-auto max-w-5xl space-y-4">
           {error && <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>}
 
-          <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <div className="rounded-lg border border-border/24 bg-card/50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase text-muted">
-                Public reads
-              </div>
-              <div className="mt-3">
-                <ReadinessPill
-                  ready={publicReadReady}
-                  label={publicReadReady ? "Ready" : "Unavailable"}
-                />
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-border/24 bg-card/50 px-4 py-3">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted">
-                {credentialMode === "managed_vault" ? (
-                  <Cloud className="h-3.5 w-3.5" />
-                ) : (
-                  <KeyRound className="h-3.5 w-3.5" />
-                )}
-                Credentials
-              </div>
-              <div className="mt-3">
-                <ReadinessPill
-                  ready={status?.signerReady ?? false}
-                  label={credentialModeLabel(credentialMode)}
-                />
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-border/24 bg-card/50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase text-muted">
-                Account
-              </div>
-              <div className="mt-3 truncate font-mono text-xs text-txt">
-                {status?.account.address ?? "No account address configured"}
-              </div>
-            </div>
+          <section className="grid grid-cols-3 gap-3">
+            <StatusTile
+              icon={BarChart3}
+              label="Reads"
+              ready={publicReadReady}
+            />
+            <StatusTile
+              icon={credentialMode === "managed_vault" ? Cloud : KeyRound}
+              label={credentialModeLabel(credentialMode)}
+              ready={status?.signerReady ?? false}
+            />
+            <StatusTile
+              icon={Shield}
+              label={status?.account.address ? "Account" : "No account"}
+              ready={Boolean(status?.account.address)}
+            />
           </section>
 
           {status?.executionBlockedReason && (
@@ -172,7 +171,7 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
               Loading Hyperliquid state
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
+            <div className="space-y-4">
               <section className="rounded-lg border border-border/24 bg-card/50">
                 <div className="flex items-center gap-2 border-b border-border/20 px-4 py-3">
                   <BarChart3 className="h-4 w-4 text-muted" />
@@ -203,11 +202,23 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
                 </div>
               </section>
 
-              <section className="space-y-4">
+              <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="rounded-lg border border-border/24 bg-card/50 px-4 py-3">
-                  <h2 className="text-sm font-semibold text-txt">Positions</h2>
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-sm font-semibold text-txt">
+                      Positions
+                    </h2>
+                    <ReadinessPill
+                      ready={!positions?.readBlockedReason}
+                      label={
+                        positions?.readBlockedReason
+                          ? "Blocked"
+                          : "Positions readable"
+                      }
+                    />
+                  </div>
                   {positions?.readBlockedReason ? (
-                    <div className="mt-2 text-xs text-muted">
+                    <div className="mt-2 truncate text-xs text-muted">
                       {positions.readBlockedReason}
                     </div>
                   ) : (
@@ -218,11 +229,19 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
                 </div>
 
                 <div className="rounded-lg border border-border/24 bg-card/50 px-4 py-3">
-                  <h2 className="text-sm font-semibold text-txt">
-                    Open orders
-                  </h2>
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-sm font-semibold text-txt">Orders</h2>
+                    <ReadinessPill
+                      ready={!orders?.readBlockedReason}
+                      label={
+                        orders?.readBlockedReason
+                          ? "Blocked"
+                          : "Orders readable"
+                      }
+                    />
+                  </div>
                   {orders?.readBlockedReason ? (
-                    <div className="mt-2 text-xs text-muted">
+                    <div className="mt-2 truncate text-xs text-muted">
                       {orders.readBlockedReason}
                     </div>
                   ) : (
@@ -324,7 +343,7 @@ export function HyperliquidTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(300px, 1.2fr) minmax(280px, 0.8fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
