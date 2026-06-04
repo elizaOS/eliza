@@ -31,6 +31,8 @@ At least one upstream provider credential is required for routable models:
   `BITROUTER_<PROVIDER_ID>_API_KEY` for registry providers; use the prefixed
   name when available so the proxy does not accidentally consume a key intended
   for another process.
+- Cerebras is configured as an explicit OpenAI-compatible provider. Use
+  `cerebras:gpt-oss-120b` or `cerebras:zai-glm-4.7` to force the BYOK route.
 
 Optional:
 

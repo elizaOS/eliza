@@ -88,6 +88,8 @@ export function getProviderFromModel(model: string): string {
     return normalizeProviderKey(provider);
   }
 
+  if (model.startsWith("cerebras:")) return "cerebras";
+
   // Handle non-prefixed format: "gpt-5-mini"
   if (model.startsWith("gpt-")) return "openai";
   if (model.startsWith("claude-")) return "anthropic";
@@ -234,6 +236,9 @@ export function normalizeModelName(model: string): string {
   if (model.includes("/")) {
     const [, modelName] = model.split("/");
     return modelName;
+  }
+  if (model.startsWith("cerebras:")) {
+    return model.slice("cerebras:".length);
   }
   return model;
 }
