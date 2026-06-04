@@ -34,6 +34,11 @@ on:
         options:
           - staging
           - production
+      deploy_branch:
+        description: 'Git branch to deploy; defaults to main for production and develop for staging'
+        required: false
+        default: ''
+        type: string
 
 # Per-env concurrency: a develop push (staging) and a main push (production)
 # can deploy in parallel without one cancelling the other.
@@ -62,7 +67,10 @@ jobs:
           else
             env="staging"
           fi
-          branch=$([ "$env" = "production" ] && echo "main" || echo "develop")
+          branch="${{ github.event.inputs.deploy_branch }}"
+          if [ -z "$branch" ]; then
+            branch=$([ "$env" = "production" ] && echo "main" || echo "develop")
+          fi
           echo "environment=$env" >> "$GITHUB_OUTPUT"
           echo "branch=$branch"   >> "$GITHUB_OUTPUT"
           echo "Resolved: environment=$env branch=$branch"
