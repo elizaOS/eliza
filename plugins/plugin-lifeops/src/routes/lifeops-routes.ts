@@ -4,6 +4,7 @@ import {
   createIntegrationTelemetrySpan,
   type RateLimitConfig,
 } from "@elizaos/agent";
+import { handleCalendarRoutes } from "@elizaos/plugin-calendar/routes/calendar-routes";
 import type { ReadJsonBodyOptions } from "@elizaos/core";
 import {
   type AgentRuntime,
@@ -22,7 +23,6 @@ import type {
   CaptureLifeOpsManualOverrideRequest,
   CaptureLifeOpsPhoneConsentRequest,
   CompleteLifeOpsOccurrenceRequest,
-  CreateLifeOpsCalendarEventRequest,
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGmailBatchReplyDraftsRequest,
   CreateLifeOpsGmailReplyDraftRequest,
@@ -30,7 +30,6 @@ import type {
   CreateLifeOpsWorkflowRequest,
   CreateLifeOpsXPostRequest,
   DisconnectLifeOpsMessagingConnectorRequest,
-  GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailRecommendationsRequest,
   GetLifeOpsGmailSearchRequest,
   GetLifeOpsGmailSpamReviewRequest,
@@ -40,12 +39,10 @@ import type {
   GetLifeOpsIMessageMessagesRequest,
   GetLifeOpsInboxRequest,
   IngestLifeOpsGmailEventRequest,
-  LifeOpsCalendarEventUpdate,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsHealthConnectorProvider,
   LifeOpsInboxChannel,
-  ListLifeOpsCalendarsRequest,
   ManageLifeOpsGmailMessagesRequest,
   ProcessLifeOpsRemindersRequest,
   RelockLifeOpsWebsiteAccessRequest,
@@ -54,7 +51,6 @@ import type {
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
-  SetLifeOpsCalendarIncludedRequest,
   SetLifeOpsReminderPreferenceRequest,
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsDefinitionRequest,
@@ -874,6 +870,31 @@ export async function handleLifeOpsRoutes(
 ): Promise<boolean> {
   const { req, res, method, pathname, url, json, readJsonBody } = ctx;
 
+  // Calendar routes are owned by @elizaos/plugin-calendar; the path -> service
+  // mapping lives there. We inject LifeOps' HTTP plumbing so the calendar plugin
+  // never depends back on LifeOps.
+  if (
+    await handleCalendarRoutes({
+      method,
+      pathname,
+      url,
+      runRoute: (fn) =>
+        runRoute(ctx, fn as unknown as (service: LifeOpsService) => Promise<void>),
+      rateLimit: (key) => rateLimitRequest(ctx, key),
+      json: (data, status) => json(res, data, status),
+      readJsonBody: <T extends object>() => readJsonBody<T>(req, res),
+      decodePathComponent: (raw, label) =>
+        ctx.decodePathComponent(raw, res, label),
+      parseConnectorMode: (value) => parseConnectorModeQuery(value),
+      parseConnectorSide: (value) => parseConnectorSideQuery(value),
+      parseBoolean: (value, field) => parseBooleanQuery(value, field),
+      serviceError: (status, message) =>
+        new LifeOpsServiceError(status, message),
+    })
+  ) {
+    return true;
+  }
+
   if (method === "GET" && pathname === "/api/lifeops/app-state") {
     if (!requireAuthorizedRouteContext(ctx)) return true;
     const runtime = ctx.state.runtime;
@@ -1009,97 +1030,6 @@ export async function handleLifeOpsRoutes(
       );
     }
     return true;
-  }
-
-  if (method === "GET" && pathname === "/api/lifeops/calendar/feed") {
-    if (rateLimitRequest(ctx, "google_api_read")) return true;
-    return runRoute(ctx, async (service) => {
-      const request: GetLifeOpsCalendarFeedRequest = {
-        mode: parseConnectorModeQuery(url.searchParams.get("mode")),
-        side: parseConnectorSideQuery(url.searchParams.get("side")),
-        calendarId: url.searchParams.get("calendarId") ?? undefined,
-        includeHiddenCalendars: parseBooleanQuery(
-          url.searchParams.get("includeHiddenCalendars"),
-          "includeHiddenCalendars",
-        ),
-        timeMin: url.searchParams.get("timeMin") ?? undefined,
-        timeMax: url.searchParams.get("timeMax") ?? undefined,
-        timeZone: url.searchParams.get("timeZone") ?? undefined,
-        forceSync: parseBooleanQuery(
-          url.searchParams.get("forceSync"),
-          "forceSync",
-        ),
-        grantId: url.searchParams.get("grantId") ?? undefined,
-      };
-      json(res, await service.getCalendarFeed(url, request));
-    });
-  }
-
-  if (method === "GET" && pathname === "/api/lifeops/calendar/calendars") {
-    if (rateLimitRequest(ctx, "google_api_read")) return true;
-    return runRoute(ctx, async (service) => {
-      const request: ListLifeOpsCalendarsRequest = {
-        mode: parseConnectorModeQuery(url.searchParams.get("mode")),
-        side: parseConnectorSideQuery(url.searchParams.get("side")),
-        grantId: url.searchParams.get("grantId") ?? undefined,
-      };
-      const calendars = await service.listCalendars(url, request);
-      json(res, { calendars });
-    });
-  }
-
-  const setCalendarIncludedMatch =
-    method === "PUT"
-      ? pathname.match(
-          /^\/api\/lifeops\/calendar\/calendars\/([^/]+)\/include$/,
-        )
-      : null;
-  if (setCalendarIncludedMatch) {
-    if (rateLimitRequest(ctx, "google_api_write")) return true;
-    const calendarId = decodeMatchedPathComponent(
-      ctx,
-      setCalendarIncludedMatch,
-      1,
-      res,
-      "calendarId",
-    );
-    if (!calendarId) return true;
-    const body = await readJsonBody<SetLifeOpsCalendarIncludedRequest>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      if (body.calendarId && body.calendarId !== calendarId) {
-        throw new LifeOpsServiceError(
-          400,
-          "calendarId must match between path and request body",
-        );
-      }
-      const calendar = await service.setCalendarIncluded(url, {
-        calendarId,
-        includeInFeed: body.includeInFeed,
-        mode: body.mode,
-        side: body.side,
-        grantId: body.grantId,
-      });
-      json(res, { calendar });
-    });
-  }
-
-  if (method === "GET" && pathname === "/api/lifeops/calendar/next-context") {
-    if (rateLimitRequest(ctx, "google_api_read")) return true;
-    return runRoute(ctx, async (service) => {
-      const request: GetLifeOpsCalendarFeedRequest = {
-        mode: parseConnectorModeQuery(url.searchParams.get("mode")),
-        side: parseConnectorSideQuery(url.searchParams.get("side")),
-        calendarId: url.searchParams.get("calendarId") ?? undefined,
-        timeMin: url.searchParams.get("timeMin") ?? undefined,
-        timeMax: url.searchParams.get("timeMax") ?? undefined,
-        timeZone: url.searchParams.get("timeZone") ?? undefined,
-      };
-      json(res, await service.getNextCalendarEventContext(url, request));
-    });
   }
 
   if (method === "GET" && pathname === "/api/lifeops/gmail/triage") {
@@ -1274,69 +1204,6 @@ export async function handleLifeOpsRoutes(
       };
       json(res, await service.getGmailUnresponded(url, request));
     });
-  }
-
-  if (method === "POST" && pathname === "/api/lifeops/calendar/events") {
-    if (rateLimitRequest(ctx, "calendar_create")) return true;
-    const body = await readJsonBody<CreateLifeOpsCalendarEventRequest>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(res, { event: await service.createCalendarEvent(url, body) }, 201);
-    });
-  }
-
-  const calendarEventMatch = pathname.match(
-    /^\/api\/lifeops\/calendar\/events\/([^/]+)$/,
-  );
-  if (calendarEventMatch) {
-    const eventId = decodeMatchedPathComponent(
-      ctx,
-      calendarEventMatch,
-      1,
-      res,
-      "event id",
-    );
-    if (!eventId) return true;
-    if (method === "PATCH") {
-      if (rateLimitRequest(ctx, "calendar_update")) return true;
-      const body = await readJsonBody<LifeOpsCalendarEventUpdate>(req, res);
-      if (!body) return true;
-      return runRoute(ctx, async (service) => {
-        const event = await service.updateCalendarEvent(url, {
-          eventId,
-          mode:
-            body.mode ?? parseConnectorModeQuery(url.searchParams.get("mode")),
-          side:
-            body.side ?? parseConnectorSideQuery(url.searchParams.get("side")),
-          grantId: body.grantId ?? url.searchParams.get("grantId") ?? undefined,
-          calendarId:
-            body.calendarId ?? url.searchParams.get("calendarId") ?? undefined,
-          title: body.title,
-          description: body.notes,
-          startAt: body.startAt,
-          endAt: body.endAt,
-          timeZone: body.timeZone,
-          location: body.location,
-          attendees: body.attendees,
-        });
-        json(res, { event });
-      });
-    }
-    if (method === "DELETE") {
-      if (rateLimitRequest(ctx, "calendar_delete")) return true;
-      return runRoute(ctx, async (service) => {
-        await service.deleteCalendarEvent(url, {
-          eventId,
-          side: parseConnectorSideQuery(url.searchParams.get("side")),
-          grantId: url.searchParams.get("grantId") ?? undefined,
-          calendarId: url.searchParams.get("calendarId") ?? undefined,
-        });
-        json(res, { deleted: true });
-      });
-    }
   }
 
   if (method === "GET" && pathname === "/api/lifeops/inbox") {
