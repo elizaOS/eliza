@@ -44,6 +44,11 @@ on:
         required: false
         default: false
         type: boolean
+      diagnostic_agent_id:
+        description: 'Optional agent id to collect redacted provisioning diagnostics for after deploy'
+        required: false
+        default: ''
+        type: string
 
 # Per-env concurrency: a develop push (staging) and a main push (production)
 # can deploy in parallel without one cancelling the other.
@@ -98,6 +103,7 @@ jobs:
       HEADSCALE_USER: agent
       ELIZA_CLOUD_AGENT_BASE_DOMAIN: waifu.fun
       AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_bridge_host_fallback && '1' || '0' }}
+      DIAGNOSTIC_AGENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_agent_id || '' }}
     steps:
       - name: Check deploy configuration
         id: deploy_config
@@ -391,6 +397,44 @@ jobs:
             sudo systemctl status eliza-agent-router.service --no-pager || true
             sudo journalctl -u eliza-agent-router.service -n 200 --no-pager || true
             exit 1
+
+      - name: Collect redacted agent diagnostics
+        if: steps.deploy_config.outputs.configured == 'true' && env.DIAGNOSTIC_AGENT_ID != ''
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          command_timeout: 2m
+          envs: SYSTEMD_UNIT,DIAGNOSTIC_AGENT_ID
+          script: |
+            set -euo pipefail
+            agent_id="$DIAGNOSTIC_AGENT_ID"
+            safe_agent_id="$(printf '%s' "$agent_id" | tr -cd 'A-Za-z0-9._-')"
+            if [ "$safe_agent_id" != "$agent_id" ] || [ -z "$safe_agent_id" ]; then
+              echo "::error::Invalid diagnostic_agent_id"
+              exit 1
+            fi
+
+            redact_stream() {
+              sed -E \
+                -e 's#(postgres(ql)?://)[^[:space:]]+#\1[REDACTED]#g' \
+                -e 's#(Bearer )[A-Za-z0-9._~+/-]+=*#\1[REDACTED]#g' \
+                -e 's#eliza_[A-Za-z0-9._-]+#eliza_[REDACTED]#g' \
+                -e 's#[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}#[JWT_REDACTED]#g'
+            }
+
+            echo "=== Redacted provisioning diagnostics for ${safe_agent_id} ==="
+            sudo journalctl -u "$SYSTEMD_UNIT" --since "90 minutes ago" --no-pager 2>/dev/null \
+              | grep -F "$safe_agent_id" -A 40 -B 20 \
+              | tail -n 320 \
+              | redact_stream || true
+
+            echo "=== Redacted container-name diagnostics for agent-${safe_agent_id} ==="
+            sudo journalctl -u "$SYSTEMD_UNIT" --since "90 minutes ago" --no-pager 2>/dev/null \
+              | grep -F "agent-${safe_agent_id}" -A 60 -B 20 \
+              | tail -n 320 \
+              | redact_stream || true
 
       - name: Notify Discord (Success)
         if: success() && steps.deploy_config.outputs.configured == 'true'
