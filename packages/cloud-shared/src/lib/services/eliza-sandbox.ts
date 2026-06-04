@@ -920,7 +920,24 @@ export class ElizaSandboxService {
             backup.id,
           );
           if (restoreState) {
-            await this.pushState(handle.bridgeUrl, restoreState, { trusted: true });
+            try {
+              await this.pushState(handle.bridgeUrl, restoreState, { trusted: true });
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              if (
+                rec.execution_tier !== "custom" ||
+                !message.startsWith("State restore failed: HTTP 404")
+              ) {
+                throw error;
+              }
+              logger.info(
+                "[agent-sandbox] Backup restore skipped: custom image has no restore endpoint",
+                {
+                  agentId: rec.id,
+                  backupId: backup.id,
+                },
+              );
+            }
           } else {
             logger.warn("[agent-sandbox] Backup restore skipped: reconstructed state was null", {
               agentId: rec.id,

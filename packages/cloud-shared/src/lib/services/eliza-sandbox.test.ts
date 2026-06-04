@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 
-import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";
+import type { AgentSandbox, AgentSandboxBackup } from "../../db/repositories/agent-sandboxes";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
+import { apiKeysService } from "./api-keys";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
+import type { SandboxProvider } from "./sandbox-provider-types";
 
 const originalFetch = globalThis.fetch;
 const originalWebSocketPair = Object.getOwnPropertyDescriptor(globalThis, "WebSocketPair");
@@ -190,6 +192,124 @@ describe("ElizaSandboxService bridge status", () => {
       });
     } finally {
       findRunningSandboxSpy.mockRestore();
+    }
+  });
+});
+
+describe("ElizaSandboxService wake", () => {
+  test("skips missing state restore endpoint for web-only custom images", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const now = new Date("2026-06-04T12:05:00.000Z");
+    const sleepingSandbox: AgentSandbox = {
+      ...customSandbox(),
+      status: "sleeping",
+      sandbox_id: null,
+      bridge_url: null,
+      health_url: null,
+      node_id: null,
+      container_name: null,
+      bridge_port: null,
+      web_ui_port: null,
+      headscale_ip: null,
+      updated_at: now,
+    };
+    const backup: AgentSandboxBackup = {
+      id: "11111111-1111-4111-8111-111111111111",
+      sandbox_record_id: sleepingSandbox.id,
+      snapshot_type: "pre-shutdown",
+      state_data: { memories: [], config: {}, workspaceFiles: {} },
+      state_data_storage: "inline",
+      state_data_key: null,
+      size_bytes: 2,
+      backup_kind: "full",
+      parent_backup_id: null,
+      content_hash: null,
+      created_at: now,
+    };
+    const provider: SandboxProvider = {
+      create: mock(async () => ({
+        sandboxId: "agent-e06bb509",
+        bridgeUrl: "https://runtime.example",
+        healthUrl: "https://runtime.example/health",
+        metadata: {
+          nodeId: "node-1",
+          containerName: "agent-e06bb509",
+          bridgePort: 21060,
+          webUiPort: 3000,
+        },
+      })),
+      stop: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    const requests: string[] = [];
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const url = fetchUrl(input);
+      requests.push(url);
+      if (url === "https://runtime.example/api/agents") {
+        return Response.json({ error: "Not found" }, { status: 404 });
+      }
+      if (url === "https://runtime.example/api/restore") {
+        return Response.json({ error: "Not found" }, { status: 404 });
+      }
+      return Response.json({ ok: true });
+    });
+    const findByIdAndOrgSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
+      sleepingSandbox,
+    );
+    const trySetProvisioningSpy = spyOn(
+      agentSandboxesRepository,
+      "trySetProvisioning",
+    ).mockResolvedValue({
+      ...sleepingSandbox,
+      status: "provisioning",
+    });
+    const getLatestBackupSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
+      backup,
+    );
+    const getReconstructedBackupStateSpy = spyOn(
+      agentSandboxesRepository,
+      "getReconstructedBackupState",
+    ).mockResolvedValue({
+      memories: [],
+      config: {},
+      workspaceFiles: {},
+    });
+    const createForAgentSpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => ({
+        ...sleepingSandbox,
+        ...data,
+        updated_at: now,
+      }),
+    );
+
+    try {
+      const result = await new ElizaSandboxService(provider).executeWake(
+        sleepingSandbox.id,
+        sleepingSandbox.organization_id,
+      );
+
+      expect(result).toEqual({
+        success: true,
+        reprovisioned: true,
+        restoredBackupId: backup.id,
+      });
+      expect(requests).toContain("https://runtime.example/api/restore");
+      expect(updateSpy).toHaveBeenCalledWith(
+        sleepingSandbox.id,
+        expect.objectContaining({ status: "running" }),
+      );
+    } finally {
+      findByIdAndOrgSpy.mockRestore();
+      trySetProvisioningSpy.mockRestore();
+      getLatestBackupSpy.mockRestore();
+      getReconstructedBackupStateSpy.mockRestore();
+      createForAgentSpy.mockRestore();
+      updateSpy.mockRestore();
     }
   });
 });
