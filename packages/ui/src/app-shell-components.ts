@@ -35,10 +35,10 @@ export { MemoryViewerView } from "./components/pages/MemoryViewerView";
 export { PluginsPageView } from "./components/pages/PluginsPageView";
 export { RelationshipsView } from "./components/pages/RelationshipsView";
 export { RuntimeView } from "./components/pages/RuntimeView";
-// SettingsView, StreamView removed: App.tsx lazy-loads them.
-export { SkillsView } from "./components/pages/SkillsView";
+// SettingsView, SkillsView, StreamView, TrajectoriesView removed:
+// App.tsx lazy-loads them, and re-exporting them from this barrel folds the
+// lazy boundary back into the main app chunk.
 export { TasksPageView } from "./components/pages/TasksPageView";
-export { TrajectoriesView } from "./components/pages/TrajectoriesView";
 // DesktopWorkspaceSection removed: App.tsx lazy-loads it.
 export { BugReportModal } from "./components/shell/BugReportModal";
 export { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
