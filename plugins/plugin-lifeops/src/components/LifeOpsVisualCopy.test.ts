@@ -9,6 +9,13 @@ function readComponent(name: string): string {
   return readFileSync(resolve(here, name), "utf8");
 }
 
+function readCalendarComponent(name: string): string {
+  return readFileSync(
+    resolve(here, "../../../plugin-calendar/src/components", name),
+    "utf8",
+  );
+}
+
 describe("LifeOps visual copy", () => {
   it("keeps LifeOps app metadata focused on personal assistant ownership", () => {
     const pluginSource = readFileSync(resolve(here, "../plugin.ts"), "utf8");
@@ -102,7 +109,7 @@ describe("LifeOps visual copy", () => {
   });
 
   it("keeps calendar status states icon-led and separator text plain", () => {
-    const source = readComponent("LifeOpsCalendarSection.tsx");
+    const source = readCalendarComponent("CalendarSection.tsx");
 
     expect(source).toContain("CalendarStatusIcon");
     expect(source).not.toContain("Loading events…");
@@ -111,7 +118,7 @@ describe("LifeOps visual copy", () => {
   });
 
   it("keeps event editor commands and calendar labels icon-led", () => {
-    const source = readComponent("EventEditorDrawer.tsx");
+    const source = readCalendarComponent("EventEditorDrawer.tsx");
 
     expect(source).toContain("MessageSquare");
     expect(source).toContain("Trash2");

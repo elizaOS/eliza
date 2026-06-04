@@ -32,6 +32,16 @@
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
     },
+    "./ui": {
+      "types": "./dist/ui.d.ts",
+      "eliza-source": {
+        "types": "./src/ui.ts",
+        "import": "./src/ui.ts",
+        "default": "./src/ui.ts"
+      },
+      "import": "./dist/ui.js",
+      "default": "./dist/ui.js"
+    },
     "./*.css": "./dist/*.css",
     "./*": {
       "types": "./dist/*.d.ts",

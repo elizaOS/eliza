@@ -40,6 +40,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import "../api/client-calendar.js";
 
 type EditorMode = "edit" | "create";
 

@@ -41,8 +41,8 @@ import {
   useMemo,
   useState,
 } from "react";
+import { useCalendarWeek } from "@elizaos/plugin-calendar/ui";
 import type { LifeOpsSocialHabitSummary } from "../api/client-lifeops.js";
-import { useCalendarWeek } from "../hooks/useCalendarWeek.js";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";
 import { useInbox } from "../hooks/useInbox.js";
 import { useLifeOpsCapabilitiesStatus } from "../hooks/useLifeOpsCapabilitiesStatus.js";

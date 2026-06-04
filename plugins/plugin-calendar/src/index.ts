@@ -20,3 +20,19 @@ export {
   createCalendarActionRunner,
   extractCalendarPlanWithLlm,
 } from "./actions/index.js";
+export {
+  CalendarSection,
+  type CalendarSectionProps,
+} from "./components/CalendarSection.js";
+export {
+  EventEditorDrawer,
+  type EventEditorDefaults,
+  type EventEditorDrawerProps,
+  type EventEditorMode,
+} from "./components/EventEditorDrawer.js";
+export {
+  type CalendarViewMode,
+  useCalendarWeek,
+  type UseCalendarWeekOptions,
+  type UseCalendarWeekResult,
+} from "./hooks/useCalendarWeek.js";
