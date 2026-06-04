@@ -68,15 +68,19 @@ async function pickInjectedConnector(
  *   3. Call onSuccess(result) or onError(err).
  */
 export function WalletButtons({
+  autoStart,
   auth,
   disabled,
+  onAutoStartHandled,
   onSuccess,
   onError,
   onLoadingChange,
   loadingProvider,
 }: {
+  autoStart?: "ethereum" | "solana" | null;
   auth: StewardAuth;
   disabled: boolean;
+  onAutoStartHandled?: () => void;
   onSuccess: (result: StewardAuthResult) => void | Promise<void>;
   onError: (error: Error, kind: "ethereum" | "solana") => void;
   onLoadingChange: (kind: "ethereum" | "solana" | null) => void;
@@ -85,16 +89,20 @@ export function WalletButtons({
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
       <EthereumButton
+        autoStart={autoStart === "ethereum"}
         auth={auth}
         disabled={disabled}
+        onAutoStartHandled={onAutoStartHandled}
         loading={loadingProvider === "ethereum"}
         onSuccess={onSuccess}
         onError={(err) => onError(err, "ethereum")}
         onLoadingChange={(l) => onLoadingChange(l ? "ethereum" : null)}
       />
       <SolanaButton
+        autoStart={autoStart === "solana"}
         auth={auth}
         disabled={disabled}
+        onAutoStartHandled={onAutoStartHandled}
         loading={loadingProvider === "solana"}
         onSuccess={onSuccess}
         onError={(err) => onError(err, "solana")}
@@ -107,16 +115,20 @@ export function WalletButtons({
 // ── Ethereum ────────────────────────────────────────────────────────────────
 
 function EthereumButton({
+  autoStart,
   auth,
   disabled,
   loading,
+  onAutoStartHandled,
   onSuccess,
   onError,
   onLoadingChange,
 }: {
+  autoStart: boolean;
   auth: StewardAuth;
   disabled: boolean;
   loading: boolean;
+  onAutoStartHandled?: () => void;
   onSuccess: (result: StewardAuthResult) => void | Promise<void>;
   onError: (err: Error) => void;
   onLoadingChange: (loading: boolean) => void;
@@ -206,6 +218,14 @@ function EthereumButton({
     void connectAndSign();
   }, [disabled, loading, isConnected, address, sign, connectAndSign]);
 
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (!autoStart || autoStartedRef.current || disabled || loading) return;
+    autoStartedRef.current = true;
+    onAutoStartHandled?.();
+    handleClick();
+  }, [autoStart, disabled, handleClick, loading, onAutoStartHandled]);
+
   // If the user closes the modal without connecting, we don't have a clean
   // signal from RainbowKit; the next effect-tick just leaves pendingSignRef
   // set until the next connect. That's fine — worst case is a stale flag
@@ -227,16 +247,20 @@ function EthereumButton({
 // ── Solana ──────────────────────────────────────────────────────────────────
 
 function SolanaButton({
+  autoStart,
   auth,
   disabled,
   loading,
+  onAutoStartHandled,
   onSuccess,
   onError,
   onLoadingChange,
 }: {
+  autoStart: boolean;
   auth: StewardAuth;
   disabled: boolean;
   loading: boolean;
+  onAutoStartHandled?: () => void;
   onSuccess: (result: StewardAuthResult) => void | Promise<void>;
   onError: (err: Error) => void;
   onLoadingChange: (loading: boolean) => void;
@@ -300,6 +324,14 @@ function SolanaButton({
     pendingSignRef.current = true;
     setVisible(true);
   }, [disabled, loading, wallet.connected, wallet.publicKey, sign, setVisible]);
+
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (!autoStart || autoStartedRef.current || disabled || loading) return;
+    autoStartedRef.current = true;
+    onAutoStartHandled?.();
+    handleClick();
+  }, [autoStart, disabled, handleClick, loading, onAutoStartHandled]);
 
   return (
     <button

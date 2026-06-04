@@ -153,6 +153,10 @@ export default function StewardLoginSection() {
   const [error, setError] = useState<string | null>(null);
   const [callbackError, setCallbackError] = useState<string | null>(null);
   const [redirectTo, setRedirectTo] = useState<string | null>(null);
+  const [walletButtonsMounted, setWalletButtonsMounted] = useState(false);
+  const [autoStartWallet, setAutoStartWallet] = useState<WalletKind | null>(
+    null,
+  );
   const [providersLoaded, setProvidersLoaded] = useState(
     PLAYWRIGHT_TEST_AUTH_ENABLED || cachedStewardProviders !== null,
   );
@@ -381,6 +385,11 @@ export default function StewardLoginSection() {
     );
   }
 
+  function handleWalletIntent(kind: WalletKind) {
+    setWalletButtonsMounted(true);
+    setAutoStartWallet(kind);
+  }
+
   if (redirectTo) {
     return <Navigate to={redirectTo} replace />;
   }
@@ -561,29 +570,52 @@ export default function StewardLoginSection() {
             <div className="h-px flex-1 bg-white/14" />
           </div>
 
-          <StewardWalletProviders>
-            <WalletButtons
-              auth={auth}
-              disabled={isLoading}
-              loadingProvider={
-                loading === "ethereum" || loading === "solana"
-                  ? (loading as WalletKind)
-                  : null
-              }
-              onLoadingChange={(kind) => setLoading(kind)}
-              onSuccess={(result) =>
-                handleSuccess(result.token, result.refreshToken)
-              }
-              onError={(walletError) => {
-                setError(
-                  walletError.message ||
-                    t("cloud.login.error.walletFailed", {
-                      defaultValue: "Wallet sign-in failed",
-                    }),
-                );
-              }}
-            />
-          </StewardWalletProviders>
+          {walletButtonsMounted ? (
+            <StewardWalletProviders>
+              <WalletButtons
+                auth={auth}
+                autoStart={autoStartWallet}
+                disabled={isLoading}
+                loadingProvider={
+                  loading === "ethereum" || loading === "solana"
+                    ? (loading as WalletKind)
+                    : null
+                }
+                onAutoStartHandled={() => setAutoStartWallet(null)}
+                onLoadingChange={(kind) => setLoading(kind)}
+                onSuccess={(result) =>
+                  handleSuccess(result.token, result.refreshToken)
+                }
+                onError={(walletError) => {
+                  setError(
+                    walletError.message ||
+                      t("cloud.login.error.walletFailed", {
+                        defaultValue: "Wallet sign-in failed",
+                      }),
+                  );
+                }}
+              />
+            </StewardWalletProviders>
+          ) : (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => handleWalletIntent("ethereum")}
+                disabled={isLoading}
+                className="flex items-center justify-center gap-2 bg-transparent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-black disabled:opacity-50"
+              >
+                {t("cloud.login.wallet.evm", { defaultValue: "EVM" })}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleWalletIntent("solana")}
+                disabled={isLoading}
+                className="flex items-center justify-center gap-2 bg-transparent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-black disabled:opacity-50"
+              >
+                {t("cloud.login.wallet.solana", { defaultValue: "Solana" })}
+              </button>
+            </div>
+          )}
         </>
       )}
 
