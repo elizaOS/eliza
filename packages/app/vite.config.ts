@@ -314,6 +314,42 @@ const adzeEntry = (() => {
     return undefined;
   }
 })();
+// react-day-picker (transitive via @elizaos/ui's calendar) statically imports
+// `date-fns/locale` — the barrel re-exporting ~700 per-locale modules — and
+// `date-fns` from 150+ call sites. date-fns is hoisted into the bun store where
+// packages/app cannot resolve the bare specifier, so with optimizeDeps.noDiscovery
+// on it could never be pre-bundled and Vite served the whole locale tree raw:
+// 700+ cold module round-trips on every load and every HMR full-reload, which
+// stalled the dev server until the dev-ui supervisor health-check SIGTERM+restarted
+// it ("[vite] server connection lost. Polling for restart…" + ERR_CONNECTION_REFUSED).
+// Resolve each ESM entry through react-day-picker's scope and alias the bare
+// specifiers so they resolve from the app optimizer root and pre-bundle into a
+// single chunk. date-fns is `type: module`, so `index.js`/`locale.js` are the
+// browser entries; date-fns-jalali mirrors it (react-day-picker imports it for
+// the Persian calendar path).
+const reactDayPickerEntry = tryResolvePackageModuleEntryFrom(
+  "react-day-picker",
+  uiPackageJsonPath,
+);
+const resolveDateFnsDir = (id: string): string | undefined => {
+  if (!reactDayPickerEntry) return undefined;
+  const packageJson = _tryResolveFrom(`${id}/package.json`, reactDayPickerEntry);
+  return packageJson ? path.dirname(packageJson) : undefined;
+};
+const dateFnsDir = resolveDateFnsDir("date-fns");
+const dateFnsEntry = dateFnsDir
+  ? path.join(dateFnsDir, "index.js")
+  : undefined;
+const dateFnsLocaleEntry = dateFnsDir
+  ? path.join(dateFnsDir, "locale.js")
+  : undefined;
+const dateFnsJalaliDir = resolveDateFnsDir("date-fns-jalali");
+const dateFnsJalaliEntry = dateFnsJalaliDir
+  ? path.join(dateFnsJalaliDir, "index.js")
+  : undefined;
+const dateFnsJalaliLocaleEntry = dateFnsJalaliDir
+  ? path.join(dateFnsJalaliDir, "locale.js")
+  : undefined;
 // @opentelemetry/api is a transitive runtime dep of @elizaos/core's browser
 // bundle (StackContextManager / streaming-context tracing) but is not hoisted
 // where packages/app can resolve the bare specifier, so Vite served its ~46
@@ -2034,6 +2070,28 @@ export const INVALID_TRACER_PROVIDER = {};
         ? [{ find: /^uuid$/, replacement: uuidBrowserEntry }]
         : []),
       ...(adzeEntry ? [{ find: /^adze$/, replacement: adzeEntry }] : []),
+      ...(reactDayPickerEntry
+        ? [{ find: /^react-day-picker$/, replacement: reactDayPickerEntry }]
+        : []),
+      // Order matters: the `/locale` subpaths must precede the bare-package
+      // aliases so `^date-fns$` does not shadow `^date-fns/locale$`.
+      ...(dateFnsLocaleEntry
+        ? [{ find: /^date-fns\/locale$/, replacement: dateFnsLocaleEntry }]
+        : []),
+      ...(dateFnsEntry
+        ? [{ find: /^date-fns$/, replacement: dateFnsEntry }]
+        : []),
+      ...(dateFnsJalaliLocaleEntry
+        ? [
+            {
+              find: /^date-fns-jalali\/locale$/,
+              replacement: dateFnsJalaliLocaleEntry,
+            },
+          ]
+        : []),
+      ...(dateFnsJalaliEntry
+        ? [{ find: /^date-fns-jalali$/, replacement: dateFnsJalaliEntry }]
+        : []),
       ...(fs.existsSync(streamdownEntry)
         ? [{ find: /^streamdown$/, replacement: streamdownEntry }]
         : []),
@@ -2483,6 +2541,24 @@ export const INVALID_TRACER_PROVIDER = {};
       "zod",
       "zod/v3",
       "zod/v4",
+      // react-day-picker (via @elizaos/ui's calendar) statically imports
+      // `date-fns/locale` — the barrel that re-exports ~700 per-locale modules
+      // — from 100+ call sites. With noDiscovery on and date-fns unbundled,
+      // Vite served that whole locale tree raw, so every page load (and every
+      // HMR full-reload) fired 700+ cold module round-trips. The request storm
+      // stalled the dev server long enough for the dev-ui supervisor's port
+      // health-check to declare it unresponsive and SIGTERM+restart it —
+      // surfacing as "[vite] server connection lost. Polling for restart…"
+      // plus ERR_CONNECTION_REFUSED across the in-flight locale requests and a
+      // failed dynamic import of plugin-wallet-ui. Pre-bundling collapses the
+      // tree (date-fns + date-fns-jalali locales) into a single optimized
+      // chunk. date-fns-jalali is also pre-bundled because react-day-picker
+      // statically imports it for the Persian calendar path.
+      "react-day-picker",
+      "date-fns",
+      "date-fns/locale",
+      "date-fns-jalali",
+      "date-fns-jalali/locale",
       // Resolvable via the resolve.alias above (transitive through @elizaos/core).
       "@opentelemetry/api",
     ],
