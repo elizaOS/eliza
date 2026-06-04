@@ -30,8 +30,7 @@ const dbRead = {
           chain: "bsc",
           chainId: 56,
           account: {
-            primaryWalletAddress:
-              "0x0000000000000000000000000000000000000001",
+            primaryWalletAddress: "0x0000000000000000000000000000000000000001",
             walletKeyRef: "steward:waifu-agent",
           },
           webhookUrl:

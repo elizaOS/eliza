@@ -18,10 +18,7 @@ import {
 } from "../../../api";
 import { useApp } from "../../../state";
 import { WidgetSection } from "./shared";
-import type {
-  ChatSidebarWidgetDefinition,
-  ChatSidebarWidgetProps,
-} from "./types";
+import type { ChatSidebarWidgetProps } from "./types";
 
 const POLL_INTERVAL_MS = 4_000;
 const MAX_TAB_ROWS = 8;
@@ -152,11 +149,3 @@ export function BrowserStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
     </WidgetSection>
   );
 }
-
-export const BROWSER_STATUS_WIDGET: ChatSidebarWidgetDefinition = {
-  id: "browser.status",
-  pluginId: "browser-workspace",
-  order: 75,
-  defaultEnabled: true,
-  Component: BrowserStatusSidebarWidget,
-};

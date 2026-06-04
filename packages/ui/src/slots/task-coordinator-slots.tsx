@@ -13,66 +13,46 @@
  * the task-coordinator slot-registration module).
  */
 
-import type { ComponentType } from "react";
-import type { CodingAgentSession } from "../api/client-types-cloud.js";
+import {
+  registeredTaskCoordinatorSlots,
+  type TaskCoordinatorCodingAgentControlChipProps,
+  type TaskCoordinatorCodingAgentSettingsSectionProps,
+  type TaskCoordinatorCodingAgentTasksPanelProps,
+  type TaskCoordinatorPtyConsoleBaseProps,
+} from "./task-coordinator-slots.helpers";
 
-export type TaskCoordinatorCodingAgentSettingsSectionProps = Record<
-  string,
-  never
->;
-
-export interface TaskCoordinatorCodingAgentTasksPanelProps {
-  fullPage?: boolean;
-}
-
-export type TaskCoordinatorCodingAgentControlChipProps = Record<string, never>;
-
-export interface TaskCoordinatorPtyConsoleBaseProps {
-  activeSessionId: string;
-  sessions: CodingAgentSession[];
-  onClose: () => void;
-  variant: "drawer" | "side-panel" | "full";
-}
-
-export interface TaskCoordinatorSlots {
-  CodingAgentSettingsSection: ComponentType<TaskCoordinatorCodingAgentSettingsSectionProps>;
-  CodingAgentTasksPanel: ComponentType<TaskCoordinatorCodingAgentTasksPanelProps>;
-  CodingAgentControlChip: ComponentType<TaskCoordinatorCodingAgentControlChipProps>;
-  PtyConsoleBase: ComponentType<TaskCoordinatorPtyConsoleBaseProps>;
-}
-
-let registered: Partial<TaskCoordinatorSlots> = {};
-
-export function registerTaskCoordinatorSlots(
-  components: Partial<TaskCoordinatorSlots>,
-): void {
-  registered = { ...registered, ...components };
-}
+export type {
+  TaskCoordinatorCodingAgentControlChipProps,
+  TaskCoordinatorCodingAgentSettingsSectionProps,
+  TaskCoordinatorCodingAgentTasksPanelProps,
+  TaskCoordinatorPtyConsoleBaseProps,
+  TaskCoordinatorSlots,
+} from "./task-coordinator-slots.helpers";
 
 export function CodingAgentSettingsSection(
   props: TaskCoordinatorCodingAgentSettingsSectionProps,
 ): React.JSX.Element | null {
-  const Component = registered.CodingAgentSettingsSection;
+  const Component = registeredTaskCoordinatorSlots.CodingAgentSettingsSection;
   return Component ? <Component {...props} /> : null;
 }
 
 export function CodingAgentTasksPanel(
   props: TaskCoordinatorCodingAgentTasksPanelProps,
 ): React.JSX.Element | null {
-  const Component = registered.CodingAgentTasksPanel;
+  const Component = registeredTaskCoordinatorSlots.CodingAgentTasksPanel;
   return Component ? <Component {...props} /> : null;
 }
 
 export function CodingAgentControlChip(
   props: TaskCoordinatorCodingAgentControlChipProps,
 ): React.JSX.Element | null {
-  const Component = registered.CodingAgentControlChip;
+  const Component = registeredTaskCoordinatorSlots.CodingAgentControlChip;
   return Component ? <Component {...props} /> : null;
 }
 
 export function PtyConsoleBase(
   props: TaskCoordinatorPtyConsoleBaseProps,
 ): React.JSX.Element | null {
-  const Component = registered.PtyConsoleBase;
+  const Component = registeredTaskCoordinatorSlots.PtyConsoleBase;
   return Component ? <Component {...props} /> : null;
 }

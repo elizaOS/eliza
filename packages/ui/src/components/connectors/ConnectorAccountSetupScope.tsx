@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { ConnectorAccountRecord } from "../../api/client-agent";
 import { useConnectorAccounts } from "../../hooks/useConnectorAccounts";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Badge } from "../ui/badge";
 import {
   Select,

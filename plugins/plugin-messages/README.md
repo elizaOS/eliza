@@ -11,7 +11,7 @@ Android SMS plugin for elizaOS. Adds an SMS inbox, thread viewer, and compose su
 
 ## Platform requirement
 
-**Android only.** The plugin is marked `androidOnly: true`. The overlay app registration is skipped on non-Android runtimes.
+**Android only.** The plugin is marked `androidOnly: true`. Non-Android runtimes leave overlay app registration unchanged.
 
 ## Enabling the plugin
 

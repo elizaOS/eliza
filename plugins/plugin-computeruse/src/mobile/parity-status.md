@@ -48,7 +48,7 @@ Cell legend:
   are documented in `docs/ANDROID_CONSTRAINTS.md` but never compiled into the
   consumer build — the matrix above reflects the consumer surface.
 
-## Stubs that remain
+## Capabilities still unavailable
 
 - **OCR — Android**: no Android-native OCR provider; falls back to a
   host-side Tesseract subprocess when one is available. Adding ML Kit Text

@@ -15,7 +15,7 @@ import { InventoryView } from "./InventoryView.tsx";
 // (INEFFECTIVE_DYNAMIC_IMPORT). Collapse to static imports to silence the
 // warning; bundle size is unchanged because the static path was already used.
 import { walletAppPlugin } from "./plugin.ts";
-import { WALLET_STATUS_WIDGET } from "./widgets/wallet-status.tsx";
+import { WALLET_STATUS_WIDGET } from "./widgets/wallet-status.helpers.ts";
 
 registerAppRoutePluginLoader(
   "@elizaos/plugin-wallet-ui",

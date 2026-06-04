@@ -1,6 +1,6 @@
 import type React from "react";
 import { useState } from "react";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Switch } from "../ui/switch";
 
 /**

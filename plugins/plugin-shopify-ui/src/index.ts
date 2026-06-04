@@ -6,6 +6,7 @@ export { shopifyPlugin } from "./plugin";
 export * from "./register";
 export * from "./routes";
 export * from "./ShopifyAppView";
+export * from "./ShopifyAppView.helpers";
 export * from "./StoreOverviewCard";
 export { SHOPIFY_APP_NAME, shopifyApp } from "./shopify-app";
 export * from "./useShopifyDashboard";

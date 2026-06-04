@@ -16,7 +16,7 @@ import type {
   VoiceProfilesClient,
 } from "../../api/client-voice-profiles";
 import { cn } from "../../lib/utils";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 
 export interface VoiceProfileSectionProps {

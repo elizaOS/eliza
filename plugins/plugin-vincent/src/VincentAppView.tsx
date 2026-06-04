@@ -11,7 +11,7 @@
  * Implements the OverlayApp Component contract.
  */
 
-import type { WalletAddresses, WalletBalancesResponse } from "@elizaos/shared";
+import type { WalletAddresses } from "@elizaos/shared";
 import type { OverlayAppContext } from "@elizaos/ui";
 import { Button, PagePanel, Spinner, useApp } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
@@ -23,17 +23,11 @@ import {
   Wallet,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { vincentClient } from "./client";
 import { TradingProfileCard } from "./TradingProfileCard";
 import { TradingStrategyPanel } from "./TradingStrategyPanel";
 import { useVincentDashboard } from "./useVincentDashboard";
+import { loadVincentTuiState } from "./VincentAppView.helpers";
 import { VincentConnectionCard } from "./VincentConnectionCard";
-import type {
-  VincentStatusResponse,
-  VincentStrategyResponse,
-  VincentStrategyUpdateRequest,
-  VincentTradingProfileResponse,
-} from "./vincent-contracts";
 import { WalletStatusCard } from "./WalletStatusCard";
 
 export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
@@ -210,39 +204,6 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
       </div>
     </div>
   );
-}
-
-async function loadVincentTuiState(): Promise<{
-  status: VincentStatusResponse;
-  walletAddresses: WalletAddresses | null;
-  walletBalances: WalletBalancesResponse | null;
-  strategy: VincentStrategyResponse;
-  tradingProfile: VincentTradingProfileResponse;
-}> {
-  const status = await vincentClient.vincentStatus();
-  const [walletAddresses, walletBalances, strategy, tradingProfile] =
-    await Promise.allSettled([
-      vincentClient.getWalletAddresses(),
-      vincentClient.getWalletBalances(),
-      vincentClient.vincentStrategy(),
-      vincentClient.vincentTradingProfile(),
-    ]);
-
-  return {
-    status,
-    walletAddresses:
-      walletAddresses.status === "fulfilled" ? walletAddresses.value : null,
-    walletBalances:
-      walletBalances.status === "fulfilled" ? walletBalances.value : null,
-    strategy:
-      strategy.status === "fulfilled"
-        ? strategy.value
-        : { connected: status.connected, strategy: null },
-    tradingProfile:
-      tradingProfile.status === "fulfilled"
-        ? tradingProfile.value
-        : { connected: status.connected, profile: null },
-  };
 }
 
 export function VincentTuiView() {
@@ -450,52 +411,4 @@ export function VincentTuiView() {
       </div>
     </div>
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-vincent-state") {
-    return { viewType: "tui", ...(await loadVincentTuiState()) };
-  }
-
-  if (capability === "terminal-vincent-start-login") {
-    return {
-      viewType: "tui",
-      login: await vincentClient.vincentStartLogin(
-        typeof params?.appName === "string" ? params.appName : "Eliza",
-      ),
-    };
-  }
-
-  if (capability === "terminal-vincent-disconnect") {
-    return {
-      viewType: "tui",
-      disconnected: await vincentClient.vincentDisconnect(),
-    };
-  }
-
-  if (capability === "terminal-vincent-update-strategy") {
-    const request: VincentStrategyUpdateRequest = {};
-    if (typeof params?.strategy === "string") {
-      request.strategy =
-        params.strategy as VincentStrategyUpdateRequest["strategy"];
-    }
-    if (params?.params && typeof params.params === "object") {
-      request.params = params.params as Record<string, unknown>;
-    }
-    if (typeof params?.intervalSeconds === "number") {
-      request.intervalSeconds = params.intervalSeconds;
-    }
-    if (typeof params?.dryRun === "boolean") {
-      request.dryRun = params.dryRun;
-    }
-    return {
-      viewType: "tui",
-      update: await vincentClient.vincentUpdateStrategy(request),
-    };
-  }
-
-  throw new Error(`Unsupported capability "${capability}"`);
 }

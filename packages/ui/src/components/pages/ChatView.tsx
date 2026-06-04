@@ -22,8 +22,8 @@ import {
   CodingAgentControlChip,
   PtyConsoleBase,
 } from "../../slots/task-coordinator-slots.js";
-import { useChatComposer } from "../../state/ChatComposerContext";
-import { usePtySessions } from "../../state/PtySessionsContext";
+import { useChatComposer } from "../../state/ChatComposerContext.hooks";
+import { usePtySessions } from "../../state/PtySessionsContext.hooks";
 import {
   loadContinuousChatMode,
   saveContinuousChatMode,
@@ -60,8 +60,6 @@ import {
   useChatVoiceController,
   useGameModalMessages,
 } from "./chat-view-hooks";
-
-export { __resetCompanionSpeechMemoryForTests } from "./chat-view-hooks";
 
 const CHAT_INPUT_MIN_HEIGHT_PX = 46;
 const CHAT_INPUT_MAX_HEIGHT_PX = 200;

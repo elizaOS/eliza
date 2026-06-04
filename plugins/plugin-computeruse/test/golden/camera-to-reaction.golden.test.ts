@@ -3,19 +3,19 @@
  *
  * Validates PLUMBING for the camera-driven "I see someone" reaction loop.
  * The camera frame is a fixed PNG fixture; the person detector is
- * replaced with a deterministic stub that returns a known bbox when fed
+ * replaced with a deterministic fixture provider that returns a known bbox when fed
  * the fixture. The reaction surface contract is "the runtime gets a
  * `PersonDetected` event with confidence + bbox, and emits a single
  * non-empty reaction string."
  *
- * When WS9 (camera capture + person detect) lands, the stub contracts
- * become the integration contract.
+ * When WS9 (camera capture + person detect) is integrated, these fixture
+ * contracts remain the integration contract.
  */
 
 import { describe, expect, it } from "vitest";
 
 /* --------------------------------------------------------------------- */
-/* Stub contracts                                                         */
+/* Fixture contracts                                                      */
 /* --------------------------------------------------------------------- */
 
 interface CameraFrame {
@@ -38,7 +38,7 @@ interface ReactionEvent {
 }
 
 /* --------------------------------------------------------------------- */
-/* Deterministic stubs                                                    */
+/* Deterministic fixture providers                                        */
 /* --------------------------------------------------------------------- */
 
 const ONE_PX_PNG: Buffer = Buffer.from([
@@ -50,7 +50,7 @@ const ONE_PX_PNG: Buffer = Buffer.from([
   0x60, 0x82,
 ]);
 
-function stubCameraFrame(): CameraFrame {
+function fixtureCameraFrame(): CameraFrame {
   return {
     png: ONE_PX_PNG,
     width: 1280,
@@ -59,8 +59,8 @@ function stubCameraFrame(): CameraFrame {
   };
 }
 
-function stubDetect(frame: CameraFrame): DetectorHit[] {
-  // The stub returns a single fixture hit. A real YOLOv8n int8 might
+function fixtureDetect(_frame: CameraFrame): DetectorHit[] {
+  // The fixture returns a single hit. A real YOLOv8n int8 might
   // return zero or several; the golden path only asserts that "at least
   // one person triggers a reaction".
   return [
@@ -72,7 +72,7 @@ function stubDetect(frame: CameraFrame): DetectorHit[] {
   ];
 }
 
-function stubReactionSurface(hit: DetectorHit): ReactionEvent {
+function fixtureReactionSurface(hit: DetectorHit): ReactionEvent {
   return {
     kind: "person-detected",
     hit,
@@ -86,18 +86,18 @@ function stubReactionSurface(hit: DetectorHit): ReactionEvent {
 
 describe("golden path: camera frame → detector → reaction", () => {
   it("produces a reaction event when the detector returns a person hit", () => {
-    const frame = stubCameraFrame();
+    const frame = fixtureCameraFrame();
     expect(frame.png[0]).toBe(0x89);
     expect(frame.width).toBeGreaterThan(0);
     expect(frame.height).toBeGreaterThan(0);
     expect(frame.capturedAtMs).toBeGreaterThan(0);
 
-    const hits = stubDetect(frame);
+    const hits = fixtureDetect(frame);
     expect(hits.length).toBeGreaterThan(0);
     const personHits = hits.filter((h) => h.label === "person");
     expect(personHits.length).toBeGreaterThan(0);
 
-    const event = stubReactionSurface(personHits[0]);
+    const event = fixtureReactionSurface(personHits[0]);
     expect(event.kind).toBe("person-detected");
     expect(event.hit.label).toBe("person");
     expect(event.hit.confidence).toBeGreaterThan(0.5);
@@ -109,7 +109,7 @@ describe("golden path: camera frame → detector → reaction", () => {
   });
 
   it("emits no reaction when the detector returns zero person hits", () => {
-    const frame = stubCameraFrame();
+    const _frame = fixtureCameraFrame();
     const hits: DetectorHit[] = [];
     const personHits = hits.filter((h) => h.label === "person");
     expect(personHits).toHaveLength(0);

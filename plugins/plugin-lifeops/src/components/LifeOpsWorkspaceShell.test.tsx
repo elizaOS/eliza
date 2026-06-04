@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ASSISTANT_INTENTS,
   LIFEOPS_VOICE_COMMAND_PROMPT,
-} from "./LifeOpsAssistantSection.js";
+} from "./LifeOpsAssistantSection.helpers.js";
 import { LifeOpsWorkspaceShell } from "./LifeOpsWorkspaceShell.js";
 
 vi.mock(
@@ -18,7 +18,7 @@ vi.mock(
 
 const openLifeOpsChat = vi.fn();
 
-vi.mock("./LifeOpsChatAdapter.js", () => ({
+vi.mock("./LifeOpsChatAdapter.helpers.js", () => ({
   useLifeOpsChatLauncher: () => ({ openLifeOpsChat }),
 }));
 

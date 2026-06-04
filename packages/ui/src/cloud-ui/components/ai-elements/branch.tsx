@@ -22,7 +22,7 @@ import {
   useState,
 } from "react";
 import { cn } from "../../lib/utils";
-import { useRenderGuard } from "../../runtime/render-telemetry";
+import { useRenderGuard } from "../../runtime/render-telemetry.helpers";
 import { Button } from "../button";
 
 type BranchContextType = {

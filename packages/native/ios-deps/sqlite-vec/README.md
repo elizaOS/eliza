@@ -106,7 +106,7 @@ console.log(v.sqlite, v.sqlite_vec);
 
 The build harness produces `dist/SqliteVec.xcframework`; the Capacitor pod can
 link it by adding the framework path shown above. The Swift loader compiles
-without the framework and falls back to a no-op, and the JS shim still works for
+without the framework and reports vector support unavailable, and the JS shim still works for
 non-vector queries. iOS embeddings and similarity search require linking this
 extension in the app target.
 

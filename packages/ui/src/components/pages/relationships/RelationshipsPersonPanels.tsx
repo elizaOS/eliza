@@ -41,7 +41,7 @@ import { shouldUseHashNavigation } from "../../../navigation";
 import {
   type TranslationContextValue,
   useTranslation,
-} from "../../../state/TranslationContext";
+} from "../../../state/TranslationContext.hooks";
 import { formatDateTime, formatShortDate } from "../../../utils/format";
 import { PagePanel } from "../../composites/page-panel";
 import { MetaPill } from "../../composites/page-panel/page-panel-header";

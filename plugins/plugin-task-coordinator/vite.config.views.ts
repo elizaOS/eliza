@@ -3,7 +3,7 @@ import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.
 export default createViewBundleConfig({
   packageName: "@elizaos/plugin-task-coordinator",
   viewId: "task-coordinator",
-  entry: "./src/CodingAgentTasksPanel.tsx",
+  entry: "./src/task-coordinator-view-bundle.ts",
   outDir: "dist/views",
   componentExport: "CodingAgentTasksPanel",
 });

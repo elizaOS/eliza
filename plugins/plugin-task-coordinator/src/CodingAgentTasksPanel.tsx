@@ -1,4 +1,15 @@
-import { Badge, Button, type CodingAgentSession, type CodingAgentTaskThread, type CodingAgentTaskThreadDetail, client, EmptyWidgetState, TerminalPluginView, useApp, WidgetSection } from "@elizaos/ui";
+import {
+  Badge,
+  Button,
+  type CodingAgentSession,
+  type CodingAgentTaskThread,
+  type CodingAgentTaskThreadDetail,
+  client,
+  EmptyWidgetState,
+  TerminalPluginView,
+  useApp,
+  WidgetSection,
+} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Activity, SquareArrowOutUpRight } from "lucide-react";
 import {
@@ -8,14 +19,6 @@ import {
   useMemo,
   useState,
 } from "react";
-import {
-  ORCHESTRATOR_CAPABILITY_IDS,
-  runOrchestratorCapability,
-} from "./OrchestratorWorkbench";
-
-// Re-exported so the view bundle exposes the workbench as a named export the
-// `/orchestrator` view resolves via its `componentExport`.
-export { OrchestratorWorkbench } from "./OrchestratorWorkbench";
 
 const ANSI_ESCAPE_PATTERN = new RegExp(
   [
@@ -1069,58 +1072,7 @@ export function OrchestratorTuiView() {
         "orchestrator-stop-agent",
         "orchestrator-send-message",
       ]}
-      endpoints={[
-        "/api/orchestrator/status",
-        "/api/orchestrator/tasks",
-      ]}
+      endpoints={["/api/orchestrator/status", "/api/orchestrator/tasks"]}
     />
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (ORCHESTRATOR_CAPABILITY_IDS.has(capability)) {
-    return runOrchestratorCapability(capability, params);
-  }
-
-  if (capability === "list-sessions" || capability === "refresh") {
-    return client.getCodingAgentStatus();
-  }
-
-  if (capability === "list-task-threads") {
-    return client.listCodingAgentTaskThreads({
-      includeArchived: params?.includeArchived === true,
-      search: typeof params?.search === "string" ? params.search : undefined,
-      limit: typeof params?.limit === "number" ? params.limit : 30,
-    });
-  }
-
-  if (capability === "open-thread") {
-    const threadId =
-      typeof params?.threadId === "string" ? params.threadId.trim() : "";
-    if (threadId) {
-      return client.getCodingAgentTaskThread(threadId);
-    }
-    const [firstThread] = await client.listCodingAgentTaskThreads({
-      includeArchived: false,
-      limit: 1,
-    });
-    return firstThread ? client.getCodingAgentTaskThread(firstThread.id) : null;
-  }
-
-  if (capability === "stop-session") {
-    const sessionId =
-      typeof params?.sessionId === "string" ? params.sessionId.trim() : "";
-    if (!sessionId) {
-      return {
-        stopped: false,
-        reason: "sessionId is required to stop a coding agent session",
-      };
-    }
-    return client.stopCodingAgent(sessionId);
-  }
-
-  throw new Error(`Task Coordinator TUI does not support "${capability}".`);
 }

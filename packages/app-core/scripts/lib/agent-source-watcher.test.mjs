@@ -56,25 +56,39 @@ describe("collectAgentSourceDirs", () => {
 });
 
 describe("isReloadableChangePath", () => {
-  it("reloads for backend code files the agent loads", () => {
+  it("reloads for hand-written TS source + json the agent loads", () => {
     for (const p of [
       "/r/plugins/plugin-app-control/src/actions/views.ts",
       "/r/packages/agent/src/api/server.ts",
       "/r/packages/core/src/runtime/x.tsx",
+      "/r/packages/core/src/runtime/y.mts",
       "/r/plugins/p/src/registry.json",
-      "/r/packages/shared/src/util.mjs",
     ]) {
       expect(isReloadableChangePath(p)).toBe(true);
     }
   });
 
-  it("ignores build output, deps, and test/coverage dirs", () => {
+  it("does NOT react to compiled .js / .d.ts shadows next to source", () => {
+    // This monorepo emits .js/.d.ts into src/; reacting would bounce the agent
+    // on every build.
     for (const p of [
-      "/r/packages/core/dist/index.js",
-      "/r/packages/core/src/node_modules/x/y.js",
+      "/r/packages/core/src/runtime/views.js",
+      "/r/packages/core/src/runtime/views.mjs",
+      "/r/packages/core/src/runtime/views.d.ts",
+      "/r/packages/core/src/runtime/views.d.mts",
+    ]) {
+      expect(isReloadableChangePath(p)).toBe(false);
+    }
+  });
+
+  it("ignores build output, deps, generated, and test/coverage dirs", () => {
+    for (const p of [
+      "/r/packages/core/dist/index.ts",
+      "/r/packages/core/src/node_modules/x/y.ts",
       "/r/packages/core/src/__tests__/a.ts",
+      "/r/packages/core/src/generated/data.ts",
       "/r/packages/core/.turbo/log.json",
-      "/r/packages/core/coverage/lcov.js",
+      "/r/packages/core/coverage/lcov.ts",
     ]) {
       expect(isReloadableChangePath(p)).toBe(false);
     }
@@ -117,7 +131,7 @@ describe("startAgentSourceWatcher (integration)", () => {
     handle = startAgentSourceWatcher({
       root,
       debounceMs: 60,
-      onChange: (rel) => calls.push(rel),
+      onChange: (rel, count) => calls.push({ rel, count }),
     });
     // Only the plugin src is watched; the frontend package is excluded.
     expect(handle.count).toBe(1);
@@ -130,6 +144,41 @@ describe("startAgentSourceWatcher (integration)", () => {
 
     const fired = await waitUntil(() => calls.length > 0, 4000);
     expect(fired).toBe(true);
-    expect(calls.some((c) => c.includes("views.ts"))).toBe(true);
+    expect(calls.some((c) => c.rel.includes("views.ts"))).toBe(true);
+    // A single edit reports a small changed-count (the bulk guard keys on this).
+    expect(calls.every((c) => c.count <= 2)).toBe(true);
+  });
+
+  it("reports a high changed-count for a bulk rewrite (so callers can skip it)", async () => {
+    root = mkdtempSync(path.join(tmpdir(), "agent-watch-bulk-"));
+    const srcDir = path.join(root, "plugins", "plugin-x", "src");
+    mkdirSync(srcDir, { recursive: true });
+    for (let i = 0; i < 20; i++) {
+      writeFileSync(path.join(srcDir, `mod-${i}.ts`), `export const v${i}=0;\n`);
+    }
+
+    const calls = [];
+    handle = startAgentSourceWatcher({
+      root,
+      debounceMs: 300,
+      onChange: (rel, count) => calls.push({ rel, count }),
+    });
+    expect(handle.count).toBe(1);
+
+    await delay(200);
+    // Simulate a reset/checkout: many files rewritten in one burst.
+    for (let i = 0; i < 20; i++) {
+      writeFileSync(
+        path.join(srcDir, `mod-${i}.ts`),
+        `export const v${i}=1;\n`,
+      );
+      await delay(5);
+    }
+
+    const fired = await waitUntil(() => calls.length > 0, 4000);
+    expect(fired).toBe(true);
+    // macOS can coalesce fs.watch events, but burst rewrites still report more
+    // than the default bulk threshold used by dev-ui.
+    expect(Math.max(...calls.map((c) => c.count))).toBeGreaterThan(4);
   });
 });

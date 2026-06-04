@@ -16,14 +16,10 @@ import {
 import { useApp } from "../../state";
 import { getProvenanceFlags, getProvenanceTitle } from "../apps/provenance";
 import { PagePanel } from "../composites/page-panel";
-import {
-  ConnectorModeSelector,
-  useConnectorMode,
-} from "../connectors/ConnectorModeSelector";
-import {
-  ConnectorSetupPanel,
-  hasConnectorSetupPanel,
-} from "../connectors/ConnectorSetupPanel";
+import { ConnectorModeSelector } from "../connectors/ConnectorModeSelector";
+import { useConnectorMode } from "../connectors/ConnectorModeSelector.hooks";
+import { ConnectorSetupPanel } from "../connectors/ConnectorSetupPanel";
+import { hasConnectorSetupPanel } from "../connectors/ConnectorSetupPanel.helpers";
 import { getBrandIcon } from "../conversations/brand-icons";
 import { Button } from "../ui/button";
 import {

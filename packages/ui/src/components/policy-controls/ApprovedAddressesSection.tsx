@@ -1,6 +1,6 @@
 import { Plus, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import {
@@ -214,10 +214,4 @@ export function ApprovedAddressesSection({
       )}
     </div>
   );
-}
-
-export function addressSummary(config: ApprovedAddressesConfig): string {
-  const count = config.addresses?.length ?? 0;
-  const mode = config.mode === "whitelist" ? "allowed" : "blocked";
-  return count === 0 ? `No addresses ${mode}` : `${count} ${mode}`;
 }

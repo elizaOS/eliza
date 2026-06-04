@@ -2,7 +2,7 @@ import type {
   CatalogModel,
   DownloadJob,
 } from "../../api/client-local-inference";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
 import { displayModelName, findCatalogModel } from "./hub-utils";

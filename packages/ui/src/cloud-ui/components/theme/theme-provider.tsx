@@ -1,9 +1,13 @@
 "use client";
 
 import * as React from "react";
+import {
+  type ResolvedTheme,
+  type Theme,
+  ThemeContext,
+} from "./theme-provider.hooks";
 
-type Theme = "light" | "dark" | "system";
-type ResolvedTheme = "light" | "dark";
+export type { ThemeContextValue } from "./theme-provider.hooks";
 
 interface ThemeProviderProps {
   children: React.ReactNode;
@@ -14,17 +18,8 @@ interface ThemeProviderProps {
   storageKey?: string;
 }
 
-interface ThemeContextValue {
-  theme: Theme;
-  setTheme: (theme: Theme) => void;
-  resolvedTheme: ResolvedTheme;
-  systemTheme: ResolvedTheme;
-}
-
 const DEFAULT_STORAGE_KEY = "eliza-cloud-theme";
 const MEDIA_QUERY = "(prefers-color-scheme: dark)";
-
-const ThemeContext = React.createContext<ThemeContextValue | null>(null);
 
 function isTheme(value: string | null): value is Theme {
   return value === "light" || value === "dark" || value === "system";
@@ -140,12 +135,4 @@ export function ThemeProvider({
   return (
     <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
   );
-}
-
-export function useTheme(): ThemeContextValue {
-  const context = React.useContext(ThemeContext);
-  if (!context) {
-    throw new Error("useTheme must be used within ThemeProvider");
-  }
-  return context;
 }

@@ -65,6 +65,12 @@ const SEND_GLYPH = "M18 10L25 18H21V27H15V18H11Z";
 const MIC_GLYPH =
   "M6 14H9V22H6Z M11.5 10H14.5V26H11.5Z M16.5 7H19.5V29H16.5Z M22 10H25V26H22Z M27 14H30V22H27Z";
 const PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
+// Assistant voice output: a speaker (distinct from the mic waveform above) —
+// "on" = speaker + sound waves, "muted" = speaker + slash.
+const SPEAKER_GLYPH =
+  "M7 15H12L18 10V26L12 21H7Z M21 14Q25 18 21 22L23 22Q27 18 23 14Z M25 11Q31 18 25 25L27 25Q33 18 27 11Z";
+const SPEAKER_MUTED_GLYPH =
+  "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
 // Two diagonal expand arrows (top-right + bottom-left) — "open in full page".
 const MAXIMIZE_GLYPH =
   "M20 8H28V16H25V13.1L18.5 19.6L16.4 17.5L22.9 11H20Z " +
@@ -228,6 +234,9 @@ export function ContinuousChatOverlay({
     startRecording,
     stopRecording,
     transcript,
+    speaking,
+    agentVoiceMuted,
+    toggleAgentVoiceMute,
     clearConversation,
   } = controller;
 
@@ -866,6 +875,21 @@ export function ContinuousChatOverlay({
           <span id="cc-booting-hint" className="sr-only">
             connecting — you can’t send yet
           </span>
+          {/* Assistant-voice mute: shown only while the agent is speaking or
+              already muted, so the resting bar stays uncluttered. */}
+          {speaking || agentVoiceMuted ? (
+            <SoftButton
+              glyph={agentVoiceMuted ? SPEAKER_MUTED_GLYPH : SPEAKER_GLYPH}
+              label={
+                agentVoiceMuted
+                  ? "unmute assistant voice"
+                  : "mute assistant voice"
+              }
+              active={agentVoiceMuted}
+              onClick={toggleAgentVoiceMute}
+              testId="chat-voice-mute"
+            />
+          ) : null}
           {/* One trailing control, ChatGPT-style: mic when there's nothing to
               send (or while recording, to stop), swapping to send once the user
               starts typing or attaches an image. */}

@@ -44,7 +44,7 @@ import {
   useState,
 } from "react";
 import { readPref, writePref } from "../util/storage";
-import { useWindowManager, type WindowMeta } from "../WindowManager";
+import { useWindowManager, type WindowMeta } from "../WindowManager.context";
 
 export type ResizeDir = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 

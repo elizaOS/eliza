@@ -14,7 +14,7 @@ import {
   loadSavedCustomCommands,
   type SavedCustomCommand,
 } from "../chat";
-import { useChatInputRef } from "../state/ChatComposerContext";
+import { useChatInputRef } from "../state/ChatComposerContext.hooks";
 import { useApp } from "../state/useApp";
 
 export type CustomCommand = SavedCustomCommand;

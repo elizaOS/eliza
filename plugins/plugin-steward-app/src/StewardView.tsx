@@ -17,13 +17,9 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { ApprovalQueue } from "./ApprovalQueue";
 import { StewardLogo } from "./StewardLogo";
+import { loadStewardTuiState } from "./StewardView.helpers";
 import { TransactionHistory } from "./TransactionHistory";
-import type {
-  StewardApprovalActionResponse,
-  StewardPendingApproval,
-  StewardStatusResponse,
-  StewardTxRecord,
-} from "./types/steward";
+import type { StewardStatusResponse } from "./types/steward";
 
 type StewardTab = "history" | "approvals";
 
@@ -232,71 +228,6 @@ export function StewardView() {
   );
 }
 
-interface StewardTxRecordsResponse {
-  records: StewardTxRecord[];
-  total: number;
-  offset: number;
-  limit: number;
-}
-
-async function stewardJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message =
-      data && typeof data === "object" && "error" in data
-        ? String(data.error)
-        : `Steward request failed with ${response.status}`;
-    throw new Error(message);
-  }
-  return data as T;
-}
-
-async function postStewardJson<T>(
-  url: string,
-  body: Record<string, unknown>,
-): Promise<T> {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message =
-      data && typeof data === "object" && "error" in data
-        ? String(data.error)
-        : `Steward request failed with ${response.status}`;
-    throw new Error(message);
-  }
-  return data as T;
-}
-
-async function loadStewardTuiState(): Promise<{
-  status: StewardStatusResponse;
-  pending: StewardPendingApproval[];
-  history: StewardTxRecordsResponse | null;
-}> {
-  const status = await stewardJson<StewardStatusResponse>(
-    "/api/wallet/steward-status",
-  );
-
-  if (!status.connected) {
-    return { status, pending: [], history: null };
-  }
-
-  const [pending, history] = await Promise.all([
-    stewardJson<StewardPendingApproval[]>(
-      "/api/wallet/steward-pending-approvals",
-    ),
-    stewardJson<StewardTxRecordsResponse>(
-      "/api/wallet/steward-tx-records?limit=25&offset=0",
-    ),
-  ]);
-
-  return { status, pending, history };
-}
-
 export function StewardTuiView() {
   const [state, setState] = useState<Awaited<
     ReturnType<typeof loadStewardTuiState>
@@ -488,61 +419,4 @@ export function StewardTuiView() {
       </div>
     </div>
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-steward-state") {
-    return { viewType: "tui", ...(await loadStewardTuiState()) };
-  }
-
-  if (capability === "terminal-steward-pending") {
-    return {
-      viewType: "tui",
-      pending: await stewardJson<StewardPendingApproval[]>(
-        "/api/wallet/steward-pending-approvals",
-      ),
-    };
-  }
-
-  if (capability === "terminal-steward-history") {
-    const status = typeof params?.status === "string" ? params.status : "";
-    const limit = typeof params?.limit === "number" ? params.limit : 50;
-    const offset = typeof params?.offset === "number" ? params.offset : 0;
-    const search = new URLSearchParams({
-      limit: String(limit),
-      offset: String(offset),
-    });
-    if (status) search.set("status", status);
-    return {
-      viewType: "tui",
-      history: await stewardJson<StewardTxRecordsResponse>(
-        `/api/wallet/steward-tx-records?${search}`,
-      ),
-    };
-  }
-
-  if (
-    capability === "terminal-steward-approve" ||
-    capability === "terminal-steward-deny"
-  ) {
-    const txId = typeof params?.txId === "string" ? params.txId.trim() : "";
-    if (!txId) throw new Error("txId is required");
-    const deny = capability === "terminal-steward-deny";
-    return {
-      viewType: "tui",
-      result: await postStewardJson<StewardApprovalActionResponse>(
-        deny ? "/api/wallet/steward-deny-tx" : "/api/wallet/steward-approve-tx",
-        {
-          txId,
-          reason:
-            typeof params?.reason === "string" ? params.reason : undefined,
-        },
-      ),
-    };
-  }
-
-  throw new Error(`Unsupported capability "${capability}"`);
 }

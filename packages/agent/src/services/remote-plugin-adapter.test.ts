@@ -23,6 +23,7 @@ import {
   type Service,
   type UUID,
 } from "@elizaos/core";
+import { build as esbuild } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { persistConfigEnv } from "../api/config-env.ts";
 import { dispatchRoute } from "../api/dispatch-route.ts";

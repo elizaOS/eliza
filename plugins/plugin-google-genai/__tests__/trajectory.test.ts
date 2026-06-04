@@ -39,10 +39,10 @@ function createInlineRuntime(calls: CapturedLlmCall[]): IAgentRuntime {
 if (!SHOULD_RUN) {
   process.env.SKIP_REASON ||= `missing required env: ${REQUIRED_KEY}`;
   console.warn(
-    `\x1b[33m[google-genai trajectory.test] skipped — missing required env: ${REQUIRED_KEY} (set ${REQUIRED_KEY} to enable)\x1b[0m`,
+    `\x1b[33m[google-genai trajectory.test] live test disabled: missing required env ${REQUIRED_KEY} (set ${REQUIRED_KEY} to enable)\x1b[0m`,
   );
   describe("Google GenAI trajectory wrapping (live)", () => {
-    it.skip(`[live] suite skipped — set ${REQUIRED_KEY} to enable`, () => {});
+    it.skip(`[live] requires ${REQUIRED_KEY}`, () => {});
   });
 } else {
   describe("Google GenAI trajectory wrapping (live)", () => {

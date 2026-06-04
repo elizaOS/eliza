@@ -66,7 +66,7 @@ vi.mock("./LifeOpsSectionContent.js", () => ({
 vi.mock("./LifeOpsSettingsSection", () => ({
   LifeOpsSettingsSection: () => null,
 }));
-vi.mock("./LifeOpsSetupGate.js", () => ({
+vi.mock("./LifeOpsSetupGate.helpers.js", () => ({
   clearLifeOpsSetupGateDismissed: vi.fn(),
 }));
 vi.mock("./LifeOpsWorkspaceShell.js", () => ({
@@ -79,6 +79,8 @@ vi.mock("./MessagingConnectorCards", () => ({
 vi.mock("./LifeOpsSelectionContext.js", () => ({
   LifeOpsSelectionProvider: (props: { children: React.ReactNode }) =>
     React.createElement(React.Fragment, null, props.children),
+}));
+vi.mock("./LifeOpsSelectionContext.helpers.js", () => ({
   useLifeOpsSelection: () => ({ selection: {} }),
 }));
 vi.mock("../hooks/useLifeOpsAppState.js", () => ({
@@ -100,7 +102,8 @@ vi.mock("../platform/lifeops-github.js", () => ({
   drainLifeOpsGithubCallbacks: vi.fn(),
 }));
 
-import { interact, LifeOpsTuiView } from "./LifeOpsPageView";
+import { LifeOpsTuiView } from "./LifeOpsPageView";
+import { interact } from "./LifeOpsPageView.interact";
 
 const overview = {
   summary: {

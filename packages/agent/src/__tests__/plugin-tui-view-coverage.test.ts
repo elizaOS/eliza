@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import type http from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -241,6 +241,16 @@ function readManifest(path: string): string {
   return readFileSync(resolve(repoRoot, path), "utf8");
 }
 
+function readCapabilitySource(path: string): string {
+  const componentSource = readManifest(path);
+  const interactPath = path.replace(/\.[cm]?tsx?$/, ".interact.ts");
+  const absoluteInteractPath = resolve(repoRoot, interactPath);
+  if (!existsSync(absoluteInteractPath)) {
+    return componentSource;
+  }
+  return `${componentSource}\n${readFileSync(absoluteInteractPath, "utf8")}`;
+}
+
 function viewObjects(source: string): string[] {
   const viewsStart = source.indexOf("views:");
   if (viewsStart === -1) return [];
@@ -403,7 +413,7 @@ describe("plugin TUI view coverage", () => {
     for (const [sourcePath, capabilities] of Object.entries(
       TUI_PARITY_CAPABILITIES,
     )) {
-      const source = readManifest(sourcePath);
+      const source = readCapabilitySource(sourcePath);
       for (const capability of capabilities) {
         if (!source.includes(capability)) {
           failures.push(`${sourcePath}:${capability}`);

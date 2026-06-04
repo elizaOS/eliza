@@ -9,13 +9,11 @@ import {
 } from "../../chat/coding-agent-session-state";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useApp } from "../../state";
-import { usePtySessions } from "../../state/PtySessionsContext";
+import { usePtySessions } from "../../state/PtySessionsContext.hooks";
 import { errorMessage } from "../../utils/errors";
 import { ChatConversationItem } from "../composites/chat/chat-conversation-item";
-import {
-  ChatSourceIcon,
-  getChatSourceMeta,
-} from "../composites/chat/chat-source";
+import { ChatSourceIcon } from "../composites/chat/chat-source";
+import { getChatSourceMeta } from "../composites/chat/chat-source.helpers";
 import { SidebarCollapsedActionButton } from "../composites/sidebar/sidebar-collapsed-rail";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";

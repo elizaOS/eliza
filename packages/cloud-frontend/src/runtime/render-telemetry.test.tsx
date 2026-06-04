@@ -1,9 +1,9 @@
+import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import {
   type AnyRenderTelemetryEvent,
-  RenderTelemetryProfiler,
   setRenderTelemetrySink,
   useRenderGuard,
-} from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
+} from "@elizaos/ui/cloud-ui/runtime/render-telemetry.helpers";
 import { act, render } from "@testing-library/react";
 import { useEffect, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";

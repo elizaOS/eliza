@@ -3,7 +3,7 @@ import * as React from "react";
 
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
-import { useWorkspaceMobileSidebarControls } from "../workspace-layout/workspace-mobile-sidebar-controls";
+import { useWorkspaceMobileSidebarControls } from "../workspace-layout/workspace-mobile-sidebar-controls.hooks";
 import type { PageLayoutMobileDrawerProps } from "./page-layout-types";
 
 export function PageLayoutMobileDrawer({

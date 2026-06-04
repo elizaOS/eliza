@@ -2,11 +2,13 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGatewayProvider, type GatewayProvider } from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";
 import {
+  BITROUTER_DEFAULT_FREE_MODEL,
+  BITROUTER_RECOMMENDED_TEXT_MODEL,
+  CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
+  CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
   getGroqApiModelId,
   isGroqNativeModel,
   isVastNativeModel,
-  BITROUTER_DEFAULT_FREE_MODEL,
-  BITROUTER_RECOMMENDED_TEXT_MODEL,
 } from "../models";
 import { toBitRouterModelId } from "./model-id-translation";
 import { getProviderKey } from "./provider-env";
@@ -19,6 +21,7 @@ let openAIClient: {
   baseURL?: string;
   client: ReturnType<typeof createOpenAI>;
 } | null = null;
+let cerebrasClient: ReturnType<typeof createOpenAI> | null = null;
 let bitRouterClient: ReturnType<typeof createOpenAI> | null = null;
 let anthropicClient: ReturnType<typeof createAnthropic> | null = null;
 let vercelAIGatewayClient: GatewayProvider | null = null;
@@ -76,6 +79,22 @@ function getOpenAIClient() {
   }
 
   return openAIClient.client;
+}
+
+function getCerebrasClient() {
+  if (!cerebrasClient) {
+    const apiKey = getProviderKey("CEREBRAS_API_KEY");
+    if (!apiKey) {
+      throw new Error("CEREBRAS_API_KEY environment variable is required");
+    }
+
+    cerebrasClient = createOpenAI({
+      apiKey,
+      baseURL: "https://api.cerebras.ai/v1",
+    });
+  }
+
+  return cerebrasClient;
 }
 
 function getBitRouterApiKey(): string | null {
@@ -158,6 +177,17 @@ function isAnthropicNativeModel(model: string): boolean {
   return model.startsWith("anthropic/") || model.startsWith("claude-");
 }
 
+function normalizeCerebrasModelId(model: string): string {
+  return model.startsWith("cerebras/") ? model.slice("cerebras/".length) : model;
+}
+
+function isCerebrasNativeModel(model: string): boolean {
+  const modelId = normalizeCerebrasModelId(model);
+  return (
+    modelId === CEREBRAS_DEFAULT_TEXT_SMALL_MODEL || modelId === CEREBRAS_DEFAULT_TEXT_LARGE_MODEL
+  );
+}
+
 function requiresBitRouterRouting(model: string): boolean {
   const bitRouterModel = toBitRouterModelId(model);
   return (
@@ -201,6 +231,10 @@ export function hasLanguageModelProviderConfigured(model: string): boolean {
     return false;
   }
 
+  if (isCerebrasNativeModel(model)) {
+    return Boolean(getProviderKey("CEREBRAS_API_KEY"));
+  }
+
   if (getVercelAIGatewayApiKey()) {
     return true;
   }
@@ -238,6 +272,10 @@ export function getLanguageModel(model: string) {
 
   if (requiresBitRouterRouting(model)) {
     throw new Error("BITROUTER_API_KEY environment variable is required for this model");
+  }
+
+  if (isCerebrasNativeModel(model) && getProviderKey("CEREBRAS_API_KEY")) {
+    return getCerebrasClient().chat(normalizeCerebrasModelId(model));
   }
 
   if (getVercelAIGatewayApiKey()) {
@@ -292,7 +330,7 @@ export function hasGroqLanguageModelProviderConfigured(): boolean {
 
 export function resolveAiProviderSource(
   model: string,
-): "groq" | "vast" | "bitrouter" | "gateway" | "openai" | "anthropic" | null {
+): "groq" | "vast" | "bitrouter" | "gateway" | "cerebras" | "openai" | "anthropic" | null {
   if (isGroqNativeModel(model)) {
     return getProviderKey("GROQ_API_KEY") ? "groq" : null;
   }
@@ -307,6 +345,10 @@ export function resolveAiProviderSource(
 
   if (requiresBitRouterRouting(model)) {
     return null;
+  }
+
+  if (isCerebrasNativeModel(model)) {
+    return getProviderKey("CEREBRAS_API_KEY") ? "cerebras" : null;
   }
 
   if (getVercelAIGatewayApiKey()) {
@@ -344,6 +386,7 @@ export function hasAnyAiProviderConfigured(): boolean {
   return Boolean(
     getBitRouterApiKey() ||
       getVercelAIGatewayApiKey() ||
+      getProviderKey("CEREBRAS_API_KEY") ||
       getProviderKey("OPENAI_API_KEY") ||
       getProviderKey("ANTHROPIC_API_KEY") ||
       getProviderKey("GROQ_API_KEY") ||
@@ -355,6 +398,7 @@ export function getAiProviderConfigurationStatus() {
   return {
     bitrouter: Boolean(getBitRouterApiKey()),
     gateway: Boolean(getVercelAIGatewayApiKey()),
+    cerebras: Boolean(getProviderKey("CEREBRAS_API_KEY")),
     openai: Boolean(getProviderKey("OPENAI_API_KEY")),
     anthropic: Boolean(getProviderKey("ANTHROPIC_API_KEY")),
     groq: Boolean(getProviderKey("GROQ_API_KEY")),

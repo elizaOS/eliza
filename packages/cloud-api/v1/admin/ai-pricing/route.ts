@@ -28,6 +28,7 @@ const OverrideSchema = z.object({
   billingSource: z.enum([
     "gateway",
     "bitrouter",
+    "cerebras",
     "openai",
     "groq",
     "vast",
@@ -71,7 +72,15 @@ const OverrideSchema = z.object({
 const RefreshSchema = z.object({
   sources: z
     .array(
-      z.enum(["gateway", "bitrouter", "fal", "elevenlabs", "suno", "vast"]),
+      z.enum([
+        "gateway",
+        "bitrouter",
+        "cerebras",
+        "fal",
+        "elevenlabs",
+        "suno",
+        "vast",
+      ]),
     )
     .optional(),
 });

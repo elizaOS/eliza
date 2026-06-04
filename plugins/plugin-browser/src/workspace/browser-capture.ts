@@ -8,7 +8,7 @@
  *
  * Visual parity with the desktop shell:
  * - Appends `?popout` to the URL so the app renders StreamView directly
- *   (skips onboarding, auth gates, navigation chrome).
+ *   (without onboarding, auth gates, or navigation chrome).
  * - Enables SwiftShader for WebGL so VRM avatar renders identically.
  * - Seeds localStorage with overlay layout, theme, and avatar index so
  *   the first rendered frame matches the configured appearance.
@@ -63,7 +63,7 @@ export function isBrowserCaptureSupported(): boolean {
 
 /**
  * Ensure the URL includes the `?popout` parameter so the app renders only
- * StreamView, skipping startup gates and navigation chrome.
+ * StreamView without startup gates or navigation chrome.
  */
 function ensurePopoutUrl(raw: string): string {
   try {

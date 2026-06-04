@@ -48,13 +48,13 @@ The contracts are real; the silicon and the confidential runtime are not yet.
   `tee-evidence.ts` (strict `normalizeTeeEvidence`, no `any`), `tee-policy.ts`
   (`evaluateTeeEvidencePolicy` — the single trust decision), `tee-revocation.ts`,
   `tee-release-policy.ts`, `tee-signer-backend.ts` (re-attests every sign), and the
-  fail-closed `remote-capability-endpoint-provider`. **What is mock/missing:** no
-  real quote verification anywhere (the dstack provider fetches a self-asserted
-  `TeeEvidence` JSON; `evidence.quote` is carried but never cryptographically
-  checked); the HTTP key-release path does not bind a fresh nonce + ephemeral key
-  (replayable); no production wiring (the `tee-*` modules are exported but nothing
-  in agent boot consumes them); and **no confidential-inference path** (`model-key`
-  scope has no consumer).
+  fail-closed `remote-capability-endpoint-provider`. **Current hardware-bound
+  gaps:** no real quote verification anywhere (the dstack provider fetches a
+  self-asserted `TeeEvidence` JSON; `evidence.quote` is carried but never
+  cryptographically checked); the HTTP key-release path does not bind a fresh
+  nonce + ephemeral key (replayable); no production wiring (the `tee-*` modules
+  are exported but nothing in agent boot consumes them); and **no
+  confidential-inference path** (`model-key` scope has no consumer).
 
 So all three layers have a real skeleton and a real consumer contract; the silicon
 mechanisms, the reproducible confidential image, and the runtime quote-verification
@@ -262,10 +262,10 @@ Establish the executable contract and the fail-closed gate floor.
 - **Agent (~13.5 PW):** add the production-profile policy; wire `tee-*` into agent
   boot (consume `resolveTeeRuntimePolicy`, gate secrets, wrap the signer); add fresh
   nonce + epk binding to the key-release client; negative/revocation test vectors;
-  plumb the `model-key` unseal path against mock evidence.
+  plumb the `model-key` unseal path against synthetic fixture evidence.
 - **OS (~3.25 PM):** add the `tee` block to the release manifest; create the
-  `meta-elizaos` confidential profile; build the evidence bridge with mock fixtures;
-  ship policy + dstack-pin data; add `compose`/`gpuFirmware`/`npuFirmware`/
+  `meta-elizaos` confidential profile; build the evidence bridge with fixture
+  transcripts; ship policy + dstack-pin data; add `compose`/`gpuFirmware`/`npuFirmware`/
   `modelWeights` to the measurement contract + fixtures.
 - **Hardware (Phase-1 models/gates):** page-state transition model, `TeeEvidence`
   quote serializer, OTP fuse-map checker, MEE-freshness model check, purge-sequence
@@ -360,4 +360,4 @@ provisioning.
 4. **Stand up the lane-05 perf loop** so every later hardening change is measured
    against a baseline, not guessed.
 5. **Pin/harden dstack** per §4 before any reliance, and stand up the cloud TDX lane
-   skeleton against mock evidence so it's ready when a TDX + CC-GPU host appears.
+   contract against fixture evidence so it's ready when a TDX + CC-GPU host appears.

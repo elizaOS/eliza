@@ -43,13 +43,42 @@ export interface SelectorModel {
 export const BITROUTER_RECOMMENDED_TEXT_MODEL = "openai/gpt-oss-120b:nitro";
 export const BITROUTER_DEFAULT_TEXT_MODEL = BITROUTER_RECOMMENDED_TEXT_MODEL;
 export const BITROUTER_DEFAULT_FREE_MODEL = "openai/gpt-oss-120b:free";
+export const CEREBRAS_DEFAULT_TEXT_SMALL_MODEL = "gpt-oss-120b";
+export const CEREBRAS_DEFAULT_TEXT_LARGE_MODEL = "zai-glm-4.7";
 
 const BITROUTER_RECOMMENDED_MODEL_IDS = new Set<string>([BITROUTER_RECOMMENDED_TEXT_MODEL]);
 
 // Verified against the public provider catalogs on 2026-04-25:
 // - BitRouter: https://bitrouter.ai/api/v1/models
 // - Groq docs: https://console.groq.com/docs/models
+// - Cerebras: https://api.cerebras.ai/public/v1/models?format=openrouter
 const BITROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
+  {
+    id: CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
+    object: "model",
+    created: 1767744000,
+    owned_by: "cerebras",
+    name: "Z.ai GLM 4.7",
+    description:
+      "Default TEXT_LARGE model on Cerebras for coding, advanced reasoning, and tool use",
+    type: "language",
+    context_window: 131072,
+    max_tokens: 40960,
+    tags: ["recommended", "reasoning", "tool-use", "cerebras"],
+    recommended: true,
+  },
+  {
+    id: CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+    object: "model",
+    created: 1754438400,
+    owned_by: "cerebras",
+    name: "GPT OSS 120B",
+    description: "Default TEXT_SMALL model on Cerebras for fast open-weight reasoning",
+    type: "language",
+    context_window: 131072,
+    max_tokens: 40960,
+    tags: ["reasoning", "open-weight", "cerebras"],
+  },
   {
     id: BITROUTER_RECOMMENDED_TEXT_MODEL,
     object: "model",

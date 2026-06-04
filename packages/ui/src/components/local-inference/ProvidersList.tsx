@@ -5,7 +5,7 @@ import { client } from "../../api";
 import type { ProviderStatus } from "../../api/client-local-inference";
 import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 
 const KIND_ICON: Record<
   ProviderStatus["kind"],

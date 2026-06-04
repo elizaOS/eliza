@@ -40,7 +40,7 @@ import {
 import {
   type TranslationContextValue,
   useTranslation,
-} from "../../state/TranslationContext";
+} from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 

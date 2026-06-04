@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { GLASS_COMPOSER_CLASS, GlassIconButton } from "./glass-composer";
+import { GlassIconButton } from "./glass-composer";
+import { GLASS_COMPOSER_CLASS } from "./glass-composer.helpers";
 
 // White negative-space glyphs read against a warm glass backdrop.
 const Backdrop = ({ children }: { children: React.ReactNode }) => (

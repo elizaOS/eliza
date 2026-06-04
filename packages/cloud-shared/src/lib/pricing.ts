@@ -91,7 +91,9 @@ export function getProviderFromModel(model: string): string {
   if (model.startsWith("cerebras:")) return "cerebras";
 
   // Handle non-prefixed format: "gpt-5-mini"
+  if (model === "gpt-oss-120b") return "cerebras";
   if (model.startsWith("gpt-")) return "openai";
+  if (model.startsWith("zai-glm-")) return "cerebras";
   if (model.startsWith("claude-")) return "anthropic";
   if (model.startsWith("gemini-")) return "google";
   if (model.startsWith("llama")) return "meta";

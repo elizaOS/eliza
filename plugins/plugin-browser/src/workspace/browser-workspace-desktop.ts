@@ -1565,7 +1565,12 @@ export async function executeDesktopBrowserWorkspaceDomCommand(
   command: BrowserWorkspaceCommand,
   env: NodeJS.ProcessEnv,
 ): Promise<BrowserWorkspaceCommandResult> {
-  assertBrowserWorkspaceUserScriptAllowed(command.script, "wait", "desktop", env);
+  assertBrowserWorkspaceUserScriptAllowed(
+    command.script,
+    "wait",
+    "desktop",
+    env,
+  );
   const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
   const startedAt = Date.now();
   command = resolveBrowserWorkspaceCommandElementRefs(command, "desktop", id);
@@ -1659,7 +1664,7 @@ export async function resolveDesktopBrowserWorkspaceTargetTabId(
   // from `browser-workspace.ts` here would create a compile-time circular
   // dependency (browser-workspace → desktop → browser-workspace); the web
   // fallback in that function is also not reachable from these call sites.
-  // So hit the bridge directly and skip the detour.
+  // Query the bridge directly and avoid the circular detour.
   const payload = await requestBrowserWorkspace<{
     tabs?: BrowserWorkspaceTab[];
   }>("/tabs", undefined, env);

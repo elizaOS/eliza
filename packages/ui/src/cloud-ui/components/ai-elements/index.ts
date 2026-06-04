@@ -18,6 +18,7 @@ export * from "./node";
 export * from "./open-in-chat";
 export * from "./panel";
 export * from "./prompt-input";
+export * from "./prompt-input.helpers";
 export * from "./reasoning";
 export * from "./response";
 export * from "./sources";

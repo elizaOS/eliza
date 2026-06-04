@@ -44,7 +44,7 @@ describe("VisionPipeline", () => {
 
   it("describeFrame calls IMAGE_DESCRIPTION model with data URL", async () => {
     const runtime = makeRuntime("a red chair");
-    const data = Buffer.from([0xff, 0xd8, 0xff]); // fake JPEG header
+    const data = Buffer.from([0xff, 0xd8, 0xff]); // Minimal JPEG header bytes.
     pipeline.storeFrame("conn1", FRAME_HEADER, data);
 
     const result = await pipeline.describeFrame(runtime, "conn1");

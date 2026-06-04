@@ -23,6 +23,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { postAppRunCommand } from "./TwoThousandFourScapeOperatorSurface.helpers";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "outline" | "default";
@@ -324,50 +325,6 @@ const tuiInputStyle: CSSProperties = {
   fontFamily: "inherit",
 };
 
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-2004scape-state") {
-    return {
-      viewType: "tui",
-      appName: "@elizaos/plugin-2004scape",
-      commands: [
-        "check status",
-        "continue tutorial",
-        "pause",
-        "resume",
-        "terminal-2004scape-command",
-      ],
-    };
-  }
-  if (capability === "terminal-2004scape-command") {
-    const runId = typeof params?.runId === "string" ? params.runId.trim() : "";
-    const content =
-      typeof params?.content === "string" ? params.content.trim() : "";
-    if (!runId) throw new Error("runId is required");
-    if (!content) throw new Error("content is required");
-    return {
-      viewType: "tui",
-      command: await postAppRunCommand(runId, "message", { content }),
-    };
-  }
-  if (
-    capability === "terminal-2004scape-pause" ||
-    capability === "terminal-2004scape-resume"
-  ) {
-    const runId = typeof params?.runId === "string" ? params.runId.trim() : "";
-    if (!runId) throw new Error("runId is required");
-    const action =
-      capability === "terminal-2004scape-pause" ? "pause" : "resume";
-    return {
-      viewType: "tui",
-      control: await postAppRunCommand(runId, "control", { action }),
-    };
-  }
-  throw new Error(`Unsupported 2004scape TUI capability: ${capability}`);
-}
-
 function Input({
   className,
   ref,
@@ -385,11 +342,6 @@ function Input({
       {...props}
     />
   );
-}
-
-interface AppRunCommandResponse {
-  success: boolean;
-  message: string;
 }
 
 interface RecentActivityEntry {
@@ -505,36 +457,6 @@ function readBooleanValue(
 ): boolean | null {
   const value = record?.[key];
   return typeof value === "boolean" ? value : null;
-}
-
-async function postAppRunCommand(
-  runId: string,
-  path: "message" | "control",
-  body: Record<string, string>,
-): Promise<AppRunCommandResponse> {
-  const response = await fetch(
-    `/api/apps/runs/${encodeURIComponent(runId)}/${path}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
-  const data = (await response.json().catch(() => ({}))) as Record<
-    string,
-    unknown
-  >;
-  return {
-    success: Boolean(data.success),
-    message:
-      typeof data.message === "string" && data.message.trim().length > 0
-        ? data.message.trim()
-        : response.status === 202
-          ? "Command queued."
-          : response.status >= 500
-            ? "Command unavailable."
-            : "Command rejected.",
-  };
 }
 
 function formatDistance(distance: number | null): string {
