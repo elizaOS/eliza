@@ -25,12 +25,19 @@ const startLocalAsrRecorderMock = vi.mocked(startLocalAsrRecorder);
 describe("useVoiceChat local ASR", () => {
   beforeEach(() => {
     isLocalAsrCaptureSupportedMock.mockReturnValue(true);
-    fetchWithCsrfMock.mockResolvedValue(
-      new Response(JSON.stringify({ text: "hello local voice" }), {
+    // Route by endpoint: the readiness gate (GET /status) must report ready so
+    // the local-inference recorder actually starts; the ASR POST returns the
+    // transcript. A single blanket mock would fail the readiness check.
+    fetchWithCsrfMock.mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : String(input);
+      const body = url.includes("/api/asr/local-inference/status")
+        ? { ready: true }
+        : { text: "hello local voice" };
+      return new Response(JSON.stringify(body), {
         status: 200,
         headers: { "content-type": "application/json" },
-      }),
-    );
+      });
+    });
   });
 
   afterEach(() => {
