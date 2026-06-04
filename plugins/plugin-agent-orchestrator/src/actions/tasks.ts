@@ -51,6 +51,7 @@ import type {
   WorkspaceResult,
 } from "../services/workspace-service.js";
 import { getCodingWorkspaceService } from "../services/workspace-service.js";
+import { runDurableTask, shouldUseSmithersTaskRunner } from '../services/smithers-task-integration';
 import {
   callbackText,
   contentRecord,
@@ -396,6 +397,40 @@ function looksLikePersonalLifeOpsTask(text: string): boolean {
   );
 }
 
+// Durable variant of runPromptAndClose: drives the spawned session through the
+// Smithers engine (a persisted, crash-resumable run) instead of a single direct
+// prompt. Single-turn by default, so behaviour matches; enabled by default (see
+// shouldUseSmithersTaskRunner). Emits the same session events as runPromptAndClose.
+async function runPromptViaSmithers(
+  service: ReturnType<typeof getAcpService> & {},
+  session: SpawnResult,
+  task: string,
+  timeoutMs: number | undefined,
+  model: string | undefined,
+): Promise<void> {
+  const startedAt = Date.now();
+  try {
+    const { lastResponse } = await runDurableTask(service, session, task, { timeoutMs, model });
+    emitSessionEvent(service, session.sessionId, "task_complete", {
+      response: lastResponse ?? "",
+      durationMs: Date.now() - startedAt,
+    });
+  } catch (error) {
+    emitSessionEvent(service, session.sessionId, "error", {
+      message: failureMessage(error),
+    });
+    throw error;
+  } finally {
+    try {
+      await service.stopSession(session.sessionId);
+    } finally {
+      emitSessionEvent(service, session.sessionId, "stopped", {
+        sessionId: session.sessionId,
+      });
+    }
+  }
+}
+
 async function runPromptAndClose(
   service: ReturnType<typeof getAcpService> & {},
   session: SpawnResult,
@@ -536,13 +571,11 @@ async function runCreate(
           workdirRoute: route,
         },
       });
-      await runPromptAndClose(
-        service,
-        session,
-        taskWithRouteHints,
-        timeoutMs,
-        model,
-      );
+      if (shouldUseSmithersTaskRunner()) {
+        await runPromptViaSmithers(service, session, taskWithRouteHints, timeoutMs, model);
+      } else {
+        await runPromptAndClose(service, session, taskWithRouteHints, timeoutMs, model);
+      }
       return { session, label, agentType };
     }),
   );
