@@ -1107,7 +1107,9 @@ export class OrchestratorTaskService extends Service {
       source?.sessionId ??
       latestActiveSession(doc)?.sessionId;
     if (!sessionId) {
-      throw new RecoveryConflictError("sessionId is required for same-session retry");
+      throw new RecoveryConflictError(
+        "sessionId is required for same-session retry",
+      );
     }
     const session = doc.sessions.find((item) => item.sessionId === sessionId);
     if (!session) throw new RecoveryConflictError("Session not found");
