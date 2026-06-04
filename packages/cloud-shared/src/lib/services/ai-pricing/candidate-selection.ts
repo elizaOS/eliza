@@ -93,6 +93,15 @@ function stripBitRouterModelVariant(model: string): string | null {
   return model.slice(0, variantIndex);
 }
 
+function stripForcedProviderPrefix(model: string): string | null {
+  const slashIndex = model.indexOf("/");
+  const colonIndex = model.indexOf(":");
+  if (colonIndex <= 0 || (slashIndex !== -1 && slashIndex < colonIndex)) {
+    return null;
+  }
+  return model.slice(colonIndex + 1);
+}
+
 /** Manual gateway rename map + inverse (new id → legacy ids still in DB). */
 function collectGatewayPricingManualAliasCandidates(canonicalModel: string): string[] {
   const extras: string[] = [];
@@ -142,6 +151,10 @@ export function expandPricingCatalogModelCandidates(canonicalModel: string): str
   };
 
   pushWithTranslations(canonicalModel);
+  const unforcedModel = stripForcedProviderPrefix(canonicalModel);
+  if (unforcedModel) {
+    pushWithTranslations(unforcedModel);
+  }
   const baseVariantModel = stripBitRouterModelVariant(canonicalModel);
   if (baseVariantModel) {
     pushWithTranslations(baseVariantModel);

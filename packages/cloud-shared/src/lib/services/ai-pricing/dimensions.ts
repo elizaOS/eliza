@@ -84,6 +84,12 @@ export function sourcePriorityForKind(sourceKind: string): number {
 }
 
 export function canonicalModelId(model: string, provider?: string | null): string {
+  const slashIndex = model.indexOf("/");
+  const colonIndex = model.indexOf(":");
+  if (colonIndex > 0 && (slashIndex === -1 || colonIndex < slashIndex)) {
+    return model;
+  }
+
   if (model.includes("/")) {
     return model;
   }
@@ -104,6 +110,12 @@ export function canonicalModelId(model: string, provider?: string | null): strin
 }
 
 export function inferProviderFromCanonicalModel(model: string): string {
+  const slashIndex = model.indexOf("/");
+  const colonIndex = model.indexOf(":");
+  if (colonIndex > 0 && (slashIndex === -1 || colonIndex < slashIndex)) {
+    return normalizeProviderKey(model.slice(0, colonIndex));
+  }
+
   if (model.startsWith("fal-ai/") || model.startsWith("wan/")) return "fal";
   if (model.startsWith("elevenlabs/")) return "elevenlabs";
   if (!model.includes("/")) return "unknown";

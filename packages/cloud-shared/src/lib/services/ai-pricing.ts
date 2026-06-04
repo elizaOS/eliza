@@ -8,6 +8,8 @@ export {
 } from "./ai-pricing/candidate-selection";
 export {
   buildDimensionKey,
+  canonicalModelId,
+  inferProviderFromCanonicalModel,
   normalizePricingDimensions,
   providerForPricingCandidate,
 } from "./ai-pricing/dimensions";
