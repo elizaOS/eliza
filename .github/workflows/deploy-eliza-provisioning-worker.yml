@@ -273,8 +273,9 @@ jobs:
             mkdir -p node_modules/@elizaos
             ln -sfn ../../packages/cloud-shared node_modules/@elizaos/cloud-shared
 
-            mkdir -p cloud
-            touch cloud/.env.local
+            sudo mkdir -p cloud
+            sudo touch cloud/.env.local
+            sudo chown deploy:deploy cloud cloud/.env.local
             chmod 600 cloud/.env.local
 
             upsert_env() {
