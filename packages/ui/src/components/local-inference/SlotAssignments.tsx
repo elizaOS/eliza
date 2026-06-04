@@ -6,7 +6,7 @@ import type {
   ModelAssignments,
 } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { LOCAL_INFERENCE_SLOT_DESCRIPTORS } from "./slot-metadata";
 
 interface SlotAssignmentsProps {

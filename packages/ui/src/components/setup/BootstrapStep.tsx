@@ -27,7 +27,7 @@ import { startFreshFirstRunReload } from "../../platform";
 import {
   type TranslationContextValue,
   useTranslation,
-} from "../../state/TranslationContext";
+} from "../../state/TranslationContext.hooks";
 import {
   SetupField,
   setupDetailStackClassName,

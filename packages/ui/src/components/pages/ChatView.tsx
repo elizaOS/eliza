@@ -22,8 +22,8 @@ import {
   CodingAgentControlChip,
   PtyConsoleBase,
 } from "../../slots/task-coordinator-slots.js";
-import { useChatComposer } from "../../state/ChatComposerContext";
-import { usePtySessions } from "../../state/PtySessionsContext";
+import { useChatComposer } from "../../state/ChatComposerContext.hooks";
+import { usePtySessions } from "../../state/PtySessionsContext.hooks";
 import {
   loadContinuousChatMode,
   saveContinuousChatMode,

@@ -1,7 +1,7 @@
 import { Play, Star } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";

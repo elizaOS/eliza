@@ -28,7 +28,7 @@ import {
   getActiveViewModality,
   type ViewModality,
 } from "../../platform/platform-guards";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import {
   readRecentViewIds,

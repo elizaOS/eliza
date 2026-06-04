@@ -21,7 +21,7 @@ import {
   normalizeSlashCommandName,
 } from "../chat";
 import { getWindowNavigationPath, type Tab } from "../navigation";
-import { clearChatDraft } from "./ChatComposerContext";
+import { clearChatDraft } from "./ChatComposerContext.hooks";
 import { isConversationRecord } from "./chat-conversation-guards";
 import {
   applyStreamingTextModification,

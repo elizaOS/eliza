@@ -43,7 +43,7 @@ import {
   useState,
 } from "react";
 import { useAgentElement } from "../../agent-surface";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";

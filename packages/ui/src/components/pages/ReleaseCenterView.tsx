@@ -24,7 +24,7 @@ import { openDesktopSurfaceWindow } from "../../utils/desktop-workspace";
 import {
   normalizeReleaseNotesUrl,
   summarizeError,
-} from "../release-center/shared";
+} from "../release-center/shared.helpers";
 import type {
   AppReleaseStatus,
   DesktopUpdaterSnapshot,

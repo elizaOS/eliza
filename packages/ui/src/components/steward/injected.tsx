@@ -3,7 +3,7 @@ import type {
   StewardLogoProps,
   StewardTransactionHistoryProps,
 } from "../../config/boot-config";
-import { useBootConfig } from "../../config/boot-config-react";
+import { useBootConfig } from "../../config/boot-config-react.hooks";
 
 export function StewardLogo(props: StewardLogoProps) {
   const { stewardLogo: StewardLogoComponent } = useBootConfig();

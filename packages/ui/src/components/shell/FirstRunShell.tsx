@@ -22,7 +22,7 @@ import type { MicrophonePermissionController } from "../../first-run/use-microph
 import {
   type TranslationContextValue,
   useTranslation,
-} from "../../state/TranslationContext";
+} from "../../state/TranslationContext.hooks";
 import { StatusBadge } from "../ui/status-badge";
 
 type TranslateFn = TranslationContextValue["t"];

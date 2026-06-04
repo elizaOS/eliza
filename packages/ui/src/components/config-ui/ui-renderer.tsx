@@ -13,8 +13,6 @@ import type {
   UiElement,
   UiRenderContext,
   UiSpec,
-  UiSpecValidationCheck,
-  UiSpecVisibilityCondition,
 } from "../../config/ui-spec";
 import { useApp } from "../../state";
 import { confirmDesktopAction, resolveAppAssetUrl } from "../../utils";
@@ -27,20 +25,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { ConfigFieldErrors } from "./config-control-primitives";
 import {
-  ConfigFieldErrors,
   getConfigInputClassName,
   getConfigTextareaClassName,
-} from "./config-control-primitives";
+} from "./config-control-primitives.helpers";
+import {
+  evaluateUiVisibility,
+  runValidation,
+  type SupportedUiComponentType,
+  sanitizeLinkHref,
+} from "./ui-renderer.helpers";
+
+export {
+  evaluateUiVisibility,
+  getSupportedComponents,
+  runValidation,
+  sanitizeLinkHref,
+} from "./ui-renderer.helpers";
 
 const UiContext = createContext<UiRenderContext | null>(null);
-
-const BLOCKED_LINK_PROTOCOLS = new Set([
-  "javascript",
-  "data",
-  "vbscript",
-  "file",
-]);
 
 function useUiCtx(): UiRenderContext {
   const ctx = useContext(UiContext);
@@ -131,147 +135,6 @@ function resolveProps(
     resolved[k] = resolveProp(v, ctx);
   }
   return resolved;
-}
-
-// ── Visibility evaluation ────────────────────────────────────────────
-
-export function evaluateUiVisibility(
-  condition: UiSpecVisibilityCondition | undefined,
-  state: Record<string, unknown>,
-  auth?: AuthState,
-): boolean {
-  if (!condition) return true;
-
-  // Path-based
-  if ("path" in condition && "operator" in condition) {
-    const val = getByPath(state, condition.path);
-    const target = condition.value;
-    switch (condition.operator) {
-      case "eq":
-        return val === target;
-      case "ne":
-        return val !== target;
-      case "gt":
-        return Number(val) > Number(target);
-      case "gte":
-        return Number(val) >= Number(target);
-      case "lt":
-        return Number(val) < Number(target);
-      case "lte":
-        return Number(val) <= Number(target);
-      default:
-        return true;
-    }
-  }
-
-  // Auth-based
-  if ("auth" in condition) {
-    if (!auth) return false;
-    switch (condition.auth) {
-      case "signedIn":
-        return auth.isSignedIn;
-      case "signedOut":
-        return !auth.isSignedIn;
-      case "admin":
-        return auth.roles?.includes("admin") ?? false;
-      default:
-        return auth.roles?.includes(condition.auth) ?? false;
-    }
-  }
-
-  // Logic combinators
-  if ("and" in condition)
-    return condition.and.every((c: UiSpecVisibilityCondition) =>
-      evaluateUiVisibility(c, state, auth),
-    );
-  if ("or" in condition)
-    return condition.or.some((c: UiSpecVisibilityCondition) =>
-      evaluateUiVisibility(c, state, auth),
-    );
-  if ("not" in condition)
-    return !evaluateUiVisibility(condition.not, state, auth);
-
-  return true;
-}
-
-export function sanitizeLinkHref(href: unknown): string {
-  // Strip ASCII control chars (tab, LF, CR) that browsers silently remove
-  // during URL parsing, preventing bypass attacks like "java\nscript:alert(1)".
-  const raw = String(href ?? "#")
-    .trim()
-    .replace(/[\t\n\r]/g, "");
-  if (!raw) return "#";
-
-  // Keep relative/hash links unchanged.
-  if (
-    raw.startsWith("#") ||
-    raw.startsWith("/") ||
-    raw.startsWith("./") ||
-    raw.startsWith("../") ||
-    raw.startsWith("?")
-  ) {
-    return raw;
-  }
-
-  const match = /^([a-zA-Z][a-zA-Z\d+.-]*):/.exec(raw);
-  if (!match) return raw;
-
-  const protocol = match[1].toLowerCase();
-  if (BLOCKED_LINK_PROTOCOLS.has(protocol)) return "#";
-
-  return raw;
-}
-
-// ── Built-in validators ─────────────────────────────────────────────
-
-const BUILTIN_VALIDATORS: Record<
-  string,
-  (value: unknown, args?: Record<string, unknown>) => boolean
-> = {
-  required: (v) => v != null && v !== "",
-  email: (v) =>
-    typeof v === "string" &&
-    v.length <= 254 &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
-  minLength: (v, args) =>
-    typeof v === "string" && v.length >= Number(args?.length ?? 0),
-  maxLength: (v, args) =>
-    typeof v === "string" && v.length <= Number(args?.length ?? Infinity),
-  pattern: (v, args) => {
-    if (typeof v !== "string" || !args?.pattern) return true;
-    try {
-      return new RegExp(String(args.pattern)).test(v);
-    } catch {
-      return true;
-    }
-  },
-  min: (v, args) => Number(v) >= Number(args?.value ?? -Infinity),
-  max: (v, args) => Number(v) <= Number(args?.value ?? Infinity),
-};
-
-// ── Validation runner ───────────────────────────────────────────────
-
-export function runValidation(
-  checks: UiSpecValidationCheck[],
-  value: unknown,
-  customValidators?: Record<
-    string,
-    (
-      value: unknown,
-      args?: Record<string, unknown>,
-    ) => boolean | Promise<boolean>
-  >,
-): string[] {
-  const errors: string[] = [];
-  for (const check of checks) {
-    const fn = BUILTIN_VALIDATORS[check.fn] ?? customValidators?.[check.fn];
-    if (fn) {
-      const result = fn(value, check.args);
-      // Handle sync validators only (async handled separately)
-      if (result === false) errors.push(check.message);
-    }
-  }
-  return errors;
 }
 
 // ── State helpers ───────────────────────────────────────────────────
@@ -1557,7 +1420,7 @@ const DrawerComponent: ComponentFn = (props, children, ctx) => {
 
 // ── Component map ───────────────────────────────────────────────────
 
-const COMPONENTS: Record<string, ComponentFn> = {
+const COMPONENTS: Record<SupportedUiComponentType, ComponentFn> = {
   // Layout
   Stack: StackComponent,
   Grid: GridComponent,
@@ -1765,9 +1628,4 @@ export function UiRenderer({
       <ElementRenderer elementId={spec.root} />
     </UiContext.Provider>
   );
-}
-
-/** Get the full list of supported component types. */
-export function getSupportedComponents(): string[] {
-  return Object.keys(COMPONENTS);
 }

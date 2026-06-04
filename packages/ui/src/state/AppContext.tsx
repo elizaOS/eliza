@@ -15,7 +15,7 @@ import {
 import { client } from "../api";
 import { ConfirmDialog, PromptDialog } from "../components/ui/confirm-dialog";
 import { useConfirm, usePrompt } from "../components/ui/confirm-dialog.hooks";
-import { AppBootContext } from "../config/boot-config-react";
+import { AppBootContext } from "../config/boot-config-react.hooks";
 import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
@@ -28,6 +28,7 @@ import {
 } from "../navigation";
 import { applyThemeToDocument } from "../themes/apply-theme";
 import { copyTextToClipboard } from "../utils";
+import { RESYNC_EVENT, type ResyncEventDetail } from "./AppContext.hooks";
 import {
   getActiveProfile,
   loadAgentProfileRegistry,
@@ -38,17 +39,18 @@ import {
   ChatInputRefCtx,
   clearAllChatDrafts,
   useChatComposerDraftPersistence,
-} from "./ChatComposerContext";
-import { CompanionSceneConfigCtx } from "./CompanionSceneConfigContext";
+} from "./ChatComposerContext.hooks";
+import { CompanionSceneConfigCtx } from "./CompanionSceneConfigContext.hooks";
 import { AppContext, type AppContextValue, type AppState } from "./internal";
-import { PtySessionsCtx } from "./PtySessionsContext";
+import { PtySessionsCtx } from "./PtySessionsContext.hooks";
 import {
   createPersistedActiveServer,
   savePersistedActiveServer,
 } from "./persistence";
 import { deriveUiShellModeForTab } from "./shell-routing";
 import type { RuntimeTarget } from "./startup-coordinator";
-import { TranslationProvider, useTranslation } from "./TranslationContext";
+import { useTranslation } from "./TranslationContext.hooks";
+import { TranslationProvider } from "./TranslationProvider";
 import { useAppLifecycleEvents } from "./useAppLifecycleEvents";
 import {
   useAgentGreetingEffects,
@@ -76,17 +78,7 @@ import { useTabSync } from "./useTabSync";
 import { useTriggersState } from "./useTriggersState";
 import { useWalletState } from "./useWalletState";
 
-/**
- * DOM event dispatched after a WebSocket reconnect so conversation views can
- * refetch their recent messages and repair state that drifted during the gap.
- * `detail.conversationId` is the active conversation at reconnect time (or null).
- */
-export const RESYNC_EVENT = "elizaos:needs-resync";
-
-export interface ResyncEventDetail {
-  conversationId: string | null;
-}
-
+export { RESYNC_EVENT, type ResyncEventDetail } from "./AppContext.hooks";
 export {
   type ActionNotice,
   AGENT_STATES,

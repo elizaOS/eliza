@@ -23,7 +23,7 @@ import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { VoiceProfilesClient } from "../../api/client-voice-profiles";
 import { cn } from "../../lib/utils";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../../voice/local-asr-capture";
 import {
   DEFAULT_VOICE_CONTINUOUS_MODE,

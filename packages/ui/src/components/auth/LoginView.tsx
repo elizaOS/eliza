@@ -1,7 +1,7 @@
 import { type FormEvent, useCallback, useId, useState } from "react";
 import { type AuthLoginResult, authLoginPassword } from "../../api/auth-client";
 import { cn } from "../../lib/utils";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import {
   SetupStepDivider,
   setupBodyTextShadowStyle,

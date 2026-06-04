@@ -1,4 +1,4 @@
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Label } from "../ui/label";
 import { Slider } from "../ui/slider";
 import type { RateLimitConfig } from "./types";

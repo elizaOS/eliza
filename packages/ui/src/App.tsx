@@ -48,7 +48,7 @@ import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
 import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
 import { ErrorBoundary } from "./components/ui/error-boundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
-import { useBootConfig } from "./config/boot-config-react";
+import { useBootConfig } from "./config/boot-config-react.hooks";
 import type { CompanionShellComponentProps } from "./config/boot-config-store";
 import {
   FOCUS_CONNECTOR_EVENT,

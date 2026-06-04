@@ -1,12 +1,7 @@
-import { createContext, useContext } from "react";
-import {
-  type AppBootConfig,
-  DEFAULT_BOOT_CONFIG,
-} from "./boot-config-store.js";
-
-export const AppBootContext = createContext<AppBootConfig>(DEFAULT_BOOT_CONFIG);
-
-/** Read the boot config from a React component. */
-export function useBootConfig(): AppBootConfig {
-  return useContext(AppBootContext);
-}
+/**
+ * Compatibility re-export. The context object + `useBootConfig` hook live in
+ * `./boot-config-react.hooks` so importers stay React Fast Refresh-compatible.
+ * Kept as a stable subpath so `@elizaos/ui/config/boot-config-react` and the
+ * `browser.ts` facade resolve unchanged.
+ */
+export { AppBootContext, useBootConfig } from "./boot-config-react.hooks";

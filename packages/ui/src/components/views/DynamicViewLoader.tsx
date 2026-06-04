@@ -41,7 +41,7 @@ import {
 } from "../../agent-surface";
 import { client } from "../../api/index.ts";
 import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useApp } from "../../state/useApp.ts";
 import { registerDetailExtension } from "../apps/extensions/registry.ts";
 import {

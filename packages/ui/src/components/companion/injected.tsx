@@ -1,5 +1,5 @@
 import type { CompanionInferenceNotice } from "../../config/boot-config";
-import { useBootConfig } from "../../config/boot-config-react";
+import { useBootConfig } from "../../config/boot-config-react.hooks";
 
 export function CompanionInferenceAlertButton({
   notice,

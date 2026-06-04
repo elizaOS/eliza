@@ -1,19 +1,11 @@
-import * as React from "react";
-
-export interface WorkspaceMobileSidebarControl {
-  id: string;
-  label?: React.ReactNode;
-  open: boolean;
-  setOpen: (open: boolean) => void;
-}
-
-export interface WorkspaceMobileSidebarControls {
-  register: (control: WorkspaceMobileSidebarControl) => () => void;
-}
-
-export const WorkspaceMobileSidebarControlsContext =
-  React.createContext<WorkspaceMobileSidebarControls | null>(null);
-
-export function useWorkspaceMobileSidebarControls(): WorkspaceMobileSidebarControls | null {
-  return React.useContext(WorkspaceMobileSidebarControlsContext);
-}
+/**
+ * Compatibility re-export. The context object, hook, and types live in
+ * `./workspace-mobile-sidebar-controls.hooks` so importers stay React Fast
+ * Refresh-compatible. Kept so the `workspace-layout` barrel resolves unchanged.
+ */
+export {
+  useWorkspaceMobileSidebarControls,
+  type WorkspaceMobileSidebarControl,
+  type WorkspaceMobileSidebarControls,
+  WorkspaceMobileSidebarControlsContext,
+} from "./workspace-mobile-sidebar-controls.hooks";

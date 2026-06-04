@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import { cn } from "../../lib/utils";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { GLASS_COMPOSER_CLASS, GlassIconButton } from "./glass-composer";
 import type { ShellMessage } from "./shell-state";
 

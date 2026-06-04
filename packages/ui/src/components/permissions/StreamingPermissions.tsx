@@ -58,7 +58,7 @@ const MEDIA_PERMISSIONS: MediaPermissionDef[] = [
   },
 ];
 
-export function isStreamingPermissionVisibleForMode(
+function isStreamingPermissionVisibleForMode(
   def: MediaPermissionDef,
   mode: StreamingPermissionMode,
 ): boolean {
