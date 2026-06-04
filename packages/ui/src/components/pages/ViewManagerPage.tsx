@@ -58,6 +58,7 @@ const VIEW_LOADING_SKELETON_KEYS = [
 
 const SOURCE_FILTERS = ["all", "core", "plugins"] as const;
 const VIEW_TYPE_FILTERS = ["all", "gui", "xr", "tui"] as const;
+const FEATURED_VIEW_LIMIT = 4;
 
 type SourceFilter = (typeof SOURCE_FILTERS)[number];
 type ViewTypeFilter = (typeof VIEW_TYPE_FILTERS)[number];
@@ -461,7 +462,7 @@ function ViewCard({
   const cardClass = isFeatured
     ? "group relative min-h-[10.25rem] overflow-hidden rounded-md border border-border/50 bg-card/78 p-3.5 text-left transition-colors hover:border-accent/45 hover:bg-card/88 focus-within:ring-2 focus-within:ring-ring/50"
     : isCompact
-      ? "group relative overflow-hidden rounded-md border border-border/45 bg-card/72 p-2.5 text-left transition-colors hover:border-accent/40 hover:bg-card/86 focus-within:ring-2 focus-within:ring-ring/50"
+      ? "group relative min-h-[10.25rem] overflow-hidden rounded-md border border-border/45 bg-card/72 p-2.5 text-left transition-colors hover:border-accent/40 hover:bg-card/86 focus-within:ring-2 focus-within:ring-ring/50"
       : "group relative overflow-hidden rounded-md border border-border/45 bg-card/72 p-3 text-left transition-colors hover:border-accent/40 hover:bg-card/86 focus-within:ring-2 focus-within:ring-ring/50";
 
   return (
@@ -498,7 +499,11 @@ function ViewCard({
       )}
 
       <div
-        className={`relative z-[1] flex min-w-0 ${isFeatured ? "h-full flex-col items-start gap-3" : "items-center gap-3"}`}
+        className={`relative z-[1] flex min-w-0 ${
+          isFeatured || isCompact
+            ? "h-full flex-col items-stretch gap-2.5"
+            : "items-center gap-3"
+        }`}
       >
         <ViewCardOpenButton view={view} onClick={onClick}>
           <div
@@ -535,7 +540,9 @@ function ViewCard({
         </ViewCardOpenButton>
 
         <div
-          className={`${isFeatured ? "mt-auto w-full justify-end" : "ml-auto"} flex shrink-0 items-center gap-2`}
+          className={`flex shrink-0 items-center gap-2 ${
+            isFeatured || isCompact ? "mt-auto w-full justify-end" : "ml-auto"
+          }`}
         >
           {group.modes.length > 1 ? (
             group.modes.map((mode) => (
@@ -942,7 +949,7 @@ export function ViewManagerPage() {
       }
       if (ordered.length >= TOP_VIEW_LIMIT) break;
     }
-    return ordered.slice(0, TOP_VIEW_LIMIT);
+    return ordered.slice(0, Math.min(FEATURED_VIEW_LIMIT, TOP_VIEW_LIMIT));
   }, [desktopTabs, recentViewIds, visibleViewGroups]);
   const topViewKeys = useMemo(
     () => new Set(topViews.map((group) => group.key)),

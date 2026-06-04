@@ -271,7 +271,7 @@ describe("ViewManagerPage", () => {
     window.removeEventListener("eliza:navigate:view", listener);
   });
 
-  it("shows pinned and recent views as the top eight launcher without duplicates", () => {
+  it("shows pinned and recent views as the featured launcher without duplicates", () => {
     const manyViews = [
       ...views,
       ...Array.from({ length: 10 }, (_, index) =>
@@ -320,11 +320,11 @@ describe("ViewManagerPage", () => {
     const topSection = screen.getByTestId("views-top-section");
     expect(topSection.textContent).toContain("Remote Ledger");
     expect(topSection.textContent).toContain("Plugin 0");
-    expect(topSection.textContent).toContain("Plugin 6");
-    expect(topSection.textContent).not.toContain("Plugin 7");
+    expect(topSection.textContent).toContain("Plugin 2");
+    expect(topSection.textContent).not.toContain("Plugin 3");
     expect(
       topSection.querySelectorAll('[data-testid^="view-card-"]'),
-    ).toHaveLength(8);
+    ).toHaveLength(4);
     expect(screen.getAllByTestId("view-card-remote.ledger")).toHaveLength(1);
     expect(screen.getAllByText("Remote Ledger")).toHaveLength(1);
   });
