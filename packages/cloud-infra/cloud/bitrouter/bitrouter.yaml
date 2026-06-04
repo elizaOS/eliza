@@ -10,5 +10,6 @@ providers:
   anthropic: {}
   google: {}
   groq: {}
+  cerebras: {}
 
 inherit_defaults: true
