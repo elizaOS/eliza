@@ -3906,6 +3906,7 @@
         "@elizaos/macosreminders": "workspace:*",
         "@elizaos/native-activity-tracker": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
+        "@elizaos/plugin-calendar": "workspace:*",
         "@elizaos/plugin-calendly": "workspace:*",
         "@elizaos/plugin-discord": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
@@ -5066,6 +5067,8 @@
       "version": "2.0.3-beta.1",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-calendar": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "@xterm/addon-fit": "^0.10.0",
         "@xterm/xterm": "^5.5.0",
