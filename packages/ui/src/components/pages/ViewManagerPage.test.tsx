@@ -250,6 +250,8 @@ describe("ViewManagerPage", () => {
     expect(
       topSection.querySelectorAll('[data-testid^="view-card-"]'),
     ).toHaveLength(8);
+    expect(screen.getAllByTestId("view-card-remote.ledger")).toHaveLength(1);
+    expect(screen.getAllByText("Remote Ledger")).toHaveLength(1);
   });
 
   it("uses the search input to render server-ranked remote results", async () => {

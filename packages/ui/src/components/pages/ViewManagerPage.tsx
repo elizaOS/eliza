@@ -238,6 +238,10 @@ function buildViewContext(view: ViewRegistryEntry) {
   };
 }
 
+function viewInstanceKey(view: Pick<ViewRegistryEntry, "id" | "viewType">) {
+  return `${view.viewType ?? "gui"}:${view.id}`;
+}
+
 function ViewStatusBadge({ available }: { available: boolean }) {
   return (
     <span
@@ -429,7 +433,7 @@ function ViewSection({
       <div className="grid gap-2">
         {views.map((view) => (
           <ViewCard
-            key={`${view.viewType ?? "gui"}:${view.id}`}
+            key={viewInstanceKey(view)}
             view={view}
             onClick={onViewClick}
             onPin={onViewPin}
@@ -466,7 +470,7 @@ function TopViewsSection({
       <div className="grid gap-2">
         {views.map((view) => (
           <ViewCard
-            key={`${view.viewType ?? "gui"}:${view.id}`}
+            key={viewInstanceKey(view)}
             view={view}
             onClick={onViewClick}
             onPin={onViewPin}
@@ -668,9 +672,26 @@ export function ViewManagerPage() {
     }
     return ordered.slice(0, TOP_VIEW_LIMIT);
   }, [desktopTabs, recentViewIds, visibleViews]);
+  const topViewKeys = useMemo(
+    () => new Set(topViews.map((view) => viewInstanceKey(view))),
+    [topViews],
+  );
+  const hasQuery = query.trim().length > 0;
+  const sectionBuiltinViews = useMemo(() => {
+    if (hasQuery) return builtinViews;
+    return builtinViews.filter(
+      (view) => !topViewKeys.has(viewInstanceKey(view)),
+    );
+  }, [builtinViews, hasQuery, topViewKeys]);
+  const sectionPluginViews = useMemo(() => {
+    if (hasQuery) return pluginViews;
+    return pluginViews.filter(
+      (view) => !topViewKeys.has(viewInstanceKey(view)),
+    );
+  }, [hasQuery, pluginViews, topViewKeys]);
 
   const totalVisible = builtinViews.length + pluginViews.length;
-  const isSearching = searchLoading && query.trim().length > 0;
+  const isSearching = searchLoading && hasQuery;
   const availableCount = visibleViews.filter((view) => view.available).length;
   const pluginCount = pluginViews.length;
   const typeCounts = visibleViews.reduce(
@@ -989,14 +1010,16 @@ export function ViewManagerPage() {
             <ViewsEmptyState hasQuery={query.trim().length > 0} />
           ) : (
             <>
-              <TopViewsSection
-                views={topViews}
-                onViewClick={handleViewClick}
-                onViewPin={handleViewPin}
-              />
+              {!hasQuery && (
+                <TopViewsSection
+                  views={topViews}
+                  onViewClick={handleViewClick}
+                  onViewPin={handleViewPin}
+                />
+              )}
               <ViewSection
                 title={t("viewmanager.section.core", { defaultValue: "Core" })}
-                views={builtinViews}
+                views={sectionBuiltinViews}
                 onViewClick={handleViewClick}
                 onViewPin={handleViewPin}
               />
@@ -1004,7 +1027,7 @@ export function ViewManagerPage() {
                 title={t("viewmanager.section.plugins", {
                   defaultValue: "Plugins",
                 })}
-                views={pluginViews}
+                views={sectionPluginViews}
                 onViewClick={handleViewClick}
                 onViewPin={handleViewPin}
                 onViewEdit={
