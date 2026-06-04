@@ -41,6 +41,7 @@ import {
   RefreshCw,
   Server,
   Settings as SettingsIcon,
+  Trash2,
 } from "lucide-react";
 import {
   type ReactNode,
@@ -300,6 +301,8 @@ export function CookbookView({
   const [trendingOpen, setTrendingOpen] = useState(false);
   const [repoInput, setRepoInput] = useState("");
   const [downloading, setDownloading] = useState(false);
+  // Per-row uninstall busy flag (only the model being removed shows a spinner).
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [usecase, setUsecase] = useState("");
   const [scanQuery, setScanQuery] = useState("");
   const [engine, setEngine] = useState("");
@@ -431,6 +434,21 @@ export function CookbookView({
         /* download failed to enqueue — the input stays so the user can retry */
       })
       .finally(() => setDownloading(false));
+  };
+
+  // odysseus cookbookServe's per-model uninstall — removes a cached GGUF via the
+  // real client method, then refreshes the installed list (mirrors startDownload).
+  const uninstallModel = (id: string, name: string) => {
+    if (removingId) return;
+    if (!window.confirm(`Remove the cached model "${name}"?`)) return;
+    setRemovingId(id);
+    void client
+      .uninstallLocalInferenceModel(id)
+      .then(() => loadInstalled())
+      .catch(() => {
+        /* uninstall failed — the row stays so the user can retry */
+      })
+      .finally(() => setRemovingId(null));
   };
 
   // cookbook-hwfit.js context slider change: persist the chosen preset and force
@@ -1018,6 +1036,19 @@ export function CookbookView({
                         <span className="od-cb-serve-card-size">
                           {(m.sizeBytes / 1e9).toFixed(1)} GB
                         </span>
+                        <button
+                          type="button"
+                          className="od-cb-serve-card-uninstall"
+                          aria-label={`Uninstall ${m.displayName || m.id}`}
+                          title="Uninstall this cached model"
+                          disabled={removingId !== null}
+                          aria-busy={removingId === m.id}
+                          onClick={() =>
+                            uninstallModel(m.id, m.displayName || m.id)
+                          }
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                       {m.hfRepo ? (
                         <span className="od-cb-serve-card-repo">

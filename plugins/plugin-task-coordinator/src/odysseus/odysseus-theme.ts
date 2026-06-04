@@ -10672,6 +10672,15 @@ export const ODYSSEUS_CSS = `
   font-size: 10px; color: var(--muted); opacity: 0.8; margin-top: 2px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.odysseus-root .od-cb-serve-card-uninstall {
+  flex-shrink: 0; display: grid; place-items: center; width: 24px; height: 24px;
+  border: none; background: transparent; color: var(--muted); cursor: pointer;
+  border-radius: 6px; opacity: 0.6; transition: opacity 0.12s, color 0.12s, background 0.12s;
+}
+.odysseus-root .od-cb-serve-card-uninstall:hover {
+  opacity: 1; color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent);
+}
+.odysseus-root .od-cb-serve-card-uninstall:disabled { opacity: 0.3; cursor: default; }
 
 /* Dependencies head + grid. */
 .odysseus-root .od-cb-deps-head { display: flex; align-items: center; gap: 8px; }
