@@ -218,8 +218,8 @@ vi.mock("./components/pages/ChatView", () => ({
   __resetCompanionSpeechMemoryForTests: vi.fn(),
 }));
 
-vi.mock("./components/pages/ViewManagerPage", () => ({
-  ViewManagerPage: () => <div data-testid="view-manager-page" />,
+vi.mock("./components/pages/ViewCatalog", () => ({
+  ViewCatalog: () => <div data-testid="view-manager-page" />,
 }));
 
 vi.mock("./components/settings/SecretsManagerSection", () => ({

@@ -122,9 +122,9 @@ import {
 import { useDesktopTabs } from "./hooks/useDesktopTabs";
 import { useIsDeveloperMode } from "./state/useDeveloperMode";
 
-const ViewManagerPage = lazyNamedView(
-  () => import("./components/pages/ViewManagerPage"),
-  "ViewManagerPage",
+const ViewCatalog = lazyNamedView(
+  () => import("./components/pages/ViewCatalog"),
+  "ViewCatalog",
 );
 const AutomationsFeed = lazyNamedView(
   () => import("./components/pages/AutomationsFeed"),
@@ -561,7 +561,7 @@ function renderRemoteView(view: ViewRegistryEntry): ReactNode {
 function ViewUnavailableFallback(): ReactNode {
   return (
     <TabContentView>
-      <ViewManagerPage />
+      <ViewCatalog />
     </TabContentView>
   );
 }
@@ -586,7 +586,7 @@ function renderAppsSurface(navigationPath: string): ReactNode {
       {getAppSlugFromPath(navigationPath) ? (
         <AppsPageView />
       ) : (
-        <ViewManagerPage />
+        <ViewCatalog />
       )}
     </TabContentView>
   );
@@ -1170,7 +1170,7 @@ export function App() {
   // Handle agent-dispatched view navigation events.
   // The VIEWS action (and future agent commands) dispatch this event to navigate
   // the user to a specific view by path or view ID.
-  // When the target is "/views" or "/apps" (the ViewManagerPage), we also
+  // When the target is "/views" or "/apps" (the ViewCatalog), we also
   // directly set the tab so the nav bar becomes visible.
   // On desktop, also open the view as a desktop tab if desktopTabEnabled.
   useEffect(() => {

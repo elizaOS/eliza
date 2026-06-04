@@ -19,7 +19,7 @@ import { useAvailableViews } from "../../hooks/useAvailableViews";
 import { useViewCatalog } from "../../hooks/useViewCatalog";
 import { getActiveViewModality } from "../../platform/platform-guards";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
-import { ViewManagerPage } from "./ViewManagerPage";
+import { ViewCatalog } from "./ViewCatalog";
 
 vi.mock("../../hooks/useAvailableViews", () => ({
   useAvailableViews: vi.fn(),
@@ -107,7 +107,7 @@ const views: ViewRegistryEntry[] = [
   }),
 ];
 
-describe("ViewManagerPage", () => {
+describe("ViewCatalog", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/views");
     window.localStorage.clear();
@@ -139,7 +139,7 @@ describe("ViewManagerPage", () => {
   });
 
   it("lists local and remote module views while hiding internal and developer-only views by default", () => {
-    render(<ViewManagerPage />);
+    render(<ViewCatalog />);
 
     expect(screen.getByRole("heading", { name: "Views" })).toBeTruthy();
     expect(screen.getByPlaceholderText("Search views…")).toBeTruthy();
@@ -152,14 +152,14 @@ describe("ViewManagerPage", () => {
   it("shows developer-only views when developer mode is enabled", () => {
     useIsDeveloperModeMock.mockReturnValue(true);
 
-    render(<ViewManagerPage />);
+    render(<ViewCatalog />);
 
     expect(screen.getByText("Developer Trace")).toBeTruthy();
     expect(screen.queryByText("Internal Hidden")).toBeNull();
   });
 
   it("opens a view through the actual rendered view card", () => {
-    render(<ViewManagerPage />);
+    render(<ViewCatalog />);
 
     fireEvent.click(screen.getByText("Remote Ledger"));
 
@@ -187,7 +187,7 @@ describe("ViewManagerPage", () => {
       refresh: vi.fn(),
     });
 
-    render(<ViewManagerPage />);
+    render(<ViewCatalog />);
 
     expect(screen.getByText("Dashboard")).toBeTruthy();
     expect(screen.queryByText("Terminal Only")).toBeNull();
@@ -217,7 +217,7 @@ describe("ViewManagerPage", () => {
       refresh: vi.fn(),
     });
 
-    render(<ViewManagerPage />);
+    render(<ViewCatalog />);
 
     expect(screen.getByText("Spatial XR")).toBeTruthy();
     expect(screen.getByTestId("view-card-space")).toBeTruthy();
@@ -251,7 +251,7 @@ describe("ViewManagerPage", () => {
       refresh: vi.fn(),
     });
 
-    render(<ViewManagerPage />);
+    render(<ViewCatalog />);
 
     expect(screen.getByText("With Hero")).toBeTruthy();
     expect(screen.getByText("No Hero")).toBeTruthy();
@@ -288,7 +288,7 @@ describe("ViewManagerPage", () => {
       get,
     });
 
-    render(<ViewManagerPage />);
+    render(<ViewCatalog />);
 
     expect(screen.getByTestId("views-catalog-section")).toBeTruthy();
     expect(screen.getByText("ClawVille")).toBeTruthy();
@@ -303,7 +303,7 @@ describe("ViewManagerPage", () => {
     };
     window.addEventListener("eliza:navigate:view", listener);
 
-    render(<ViewManagerPage />);
+    render(<ViewCatalog />);
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -367,7 +367,7 @@ describe("ViewManagerPage", () => {
       ]),
     );
 
-    render(<ViewManagerPage />);
+    render(<ViewCatalog />);
 
     const topSection = screen.getByTestId("views-top-section");
     expect(topSection.textContent).toContain("Remote Ledger");
@@ -397,7 +397,7 @@ describe("ViewManagerPage", () => {
       }),
     } as Response);
 
-    render(<ViewManagerPage />);
+    render(<ViewCatalog />);
 
     fireEvent.change(screen.getByPlaceholderText("Search views…"), {
       target: { value: "ledger" },
@@ -445,7 +445,7 @@ describe("ViewManagerPage", () => {
       return { removed: currentViews.length !== before };
     });
 
-    const { rerender } = render(<ViewManagerPage />);
+    const { rerender } = render(<ViewCatalog />);
 
     fireEvent.change(screen.getByLabelText("Dynamic view ID"), {
       target: { value: "developer.ledger" },
@@ -476,7 +476,7 @@ describe("ViewManagerPage", () => {
       );
     });
     expect(refresh).toHaveBeenCalledTimes(1);
-    rerender(<ViewManagerPage />);
+    rerender(<ViewCatalog />);
     expect(screen.getByText("Developer Ledger")).toBeTruthy();
 
     fireEvent.click(
@@ -505,7 +505,7 @@ describe("ViewManagerPage", () => {
       );
     });
     expect(refresh).toHaveBeenCalledTimes(2);
-    rerender(<ViewManagerPage />);
+    rerender(<ViewCatalog />);
     expect(screen.getByText("Developer Ledger Updated")).toBeTruthy();
     expect(screen.queryByText("Developer Ledger")).toBeNull();
 
@@ -519,7 +519,7 @@ describe("ViewManagerPage", () => {
       );
     });
     expect(refresh).toHaveBeenCalledTimes(3);
-    rerender(<ViewManagerPage />);
+    rerender(<ViewCatalog />);
     expect(screen.queryByText("Developer Ledger Updated")).toBeNull();
     expect(screen.getByText("Local Notes")).toBeTruthy();
     // Three register/edit/delete round-trips with waitFor — give it headroom

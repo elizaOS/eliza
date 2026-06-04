@@ -1,5 +1,5 @@
 /**
- * ViewManagerPage — the "Views" tab content.
+ * ViewCatalog — the "Views" tab content.
  *
  * Shows a searchable grid of registered views fetched from GET /api/views.
  * While the /api/views endpoint is not yet live the page renders gracefully
@@ -492,7 +492,7 @@ async function fetchSearchResults(
   return Array.isArray(results) ? (results as ViewRegistryEntry[]) : [];
 }
 
-export function ViewManagerPage() {
+export function ViewCatalog() {
   const { t } = useTranslation();
   const { views, loading, error, refresh } = useAvailableViews();
   const { tabs: desktopTabs } = useDesktopTabs();
