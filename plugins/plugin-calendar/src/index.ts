@@ -8,3 +8,15 @@ export {
   isAppleCalendarGrant,
 } from "./apple-calendar.js";
 export { CalendarServiceError } from "./internal/errors.js";
+export {
+  type CalendarActionDeps,
+  type CalendarHandlerAction,
+  type CalendarJsonModelResult,
+  type CalendarLlmPlan,
+  type CalendarModelCallArgs,
+  type CalendarTravelBufferDep,
+  type CalendarTravelBufferResult,
+  type CalendarTravelIntent,
+  createCalendarActionRunner,
+  extractCalendarPlanWithLlm,
+} from "./actions/index.js";

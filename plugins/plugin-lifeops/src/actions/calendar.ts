@@ -25,16 +25,30 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import {
+  type CalendarActionDeps,
+  CalendarService,
+  CalendarServiceError,
+  createCalendarActionRunner,
+} from "@elizaos/plugin-calendar";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
-import { formatCalendarEventDateTime } from "../lifeops/google/format-helpers.js";
-import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import {
+  formatCalendarEventDateTime,
+  runLifeOpsJsonModel,
+  runLifeOpsTextModel,
+} from "../lifeops/google/format-helpers.js";
 import {
   buildUtcDateFromLocalParts,
   getZonedDateParts,
 } from "../lifeops/time.js";
-import { calendarAction as googleCalendarAction } from "./lib/calendar-handler.js";
+import {
+  computeCreateEventTravelBuffer,
+  resolveCreateEventTravelIntent,
+} from "../travel-time/calendar-create.js";
+import { TravelTimeUnavailableError } from "../travel-time/service.js";
+import { recentConversationTexts } from "./lib/recent-context.js";
 import {
   resolveActionArgs,
   type SubactionsMap,
@@ -45,10 +59,81 @@ import {
   runUpdateMeetingPreferencesHandler,
 } from "./lib/scheduling-handler.js";
 
-// Re-exported for consumers that route calendar-plan extraction without
-// going through the umbrella handler (multilingual routing test, live LLM
-// extraction test). The implementation lives in `./lib/calendar-handler.ts`.
-export { extractCalendarPlanWithLlm } from "./lib/calendar-handler.js";
+/**
+ * Resolve the canonical `CalendarService` for direct calendar feed reads. The
+ * umbrella's `bulk_reschedule` preview and the travel-buffer dependency read
+ * the live feed; they hit `CalendarService` (which owns the feed) rather than
+ * routing through `LifeOpsService`.
+ */
+function resolveCalendarService(runtime: IAgentRuntime): CalendarService {
+  const service = runtime.getService<CalendarService>(
+    CalendarService.serviceType,
+  );
+  if (!service) {
+    throw new CalendarServiceError(
+      503,
+      "Calendar service is not available.",
+      "CALENDAR_SERVICE_UNAVAILABLE",
+    );
+  }
+  return service;
+}
+
+/**
+ * LifeOps-owned dependencies the moved calendar handler relies on. The handler
+ * itself lives in `@elizaos/plugin-calendar`; these are the host integrations
+ * that genuinely belong to LifeOps (the trajectory-aware LLM model runners, the
+ * recent-conversation collector, and the travel-time domain) and so are
+ * injected rather than moved.
+ */
+const calendarActionDeps: CalendarActionDeps = {
+  runTextModel: (args) =>
+    runLifeOpsTextModel({
+      runtime: args.runtime,
+      prompt: args.prompt,
+      actionType: args.actionType,
+      failureMessage: args.failureMessage,
+      source: args.source,
+      ...(args.purpose ? { purpose: args.purpose } : {}),
+    }),
+  runJsonModel: (args) =>
+    runLifeOpsJsonModel({
+      runtime: args.runtime,
+      prompt: args.prompt,
+      actionType: args.actionType,
+      failureMessage: args.failureMessage,
+      source: args.source,
+      ...(args.purpose ? { purpose: args.purpose } : {}),
+    }),
+  recentConversationTexts: (args) => recentConversationTexts(args),
+  travelBuffer: {
+    resolveTravelIntent: (args) => resolveCreateEventTravelIntent(args),
+    computeTravelBuffer: (args) => {
+      const service = resolveCalendarService(args.runtime);
+      return computeCreateEventTravelBuffer({
+        runtime: args.runtime,
+        calendar: {
+          getCalendarFeed: service.getCalendarFeed.bind(service),
+        },
+        event: args.event,
+        travelIntent: args.travelIntent,
+      });
+    },
+    isTravelTimeUnavailable: (
+      error,
+    ): error is TravelTimeUnavailableError =>
+      error instanceof TravelTimeUnavailableError,
+  },
+};
+
+const googleCalendarAction = createCalendarActionRunner(calendarActionDeps);
+
+// Re-exported for consumers that route calendar-plan extraction without going
+// through the umbrella handler (multilingual routing test, live LLM extraction
+// test). The implementation lives in `@elizaos/plugin-calendar`; importing this
+// module first runs `createCalendarActionRunner` above, so the extractor's
+// injected LLM dependencies are wired before any caller invokes it.
+export { extractCalendarPlanWithLlm } from "@elizaos/plugin-calendar";
 
 type OwnerCalendarSubaction =
   // Calendar reads/writes
@@ -387,7 +472,7 @@ async function handleBulkReschedulePreview(args: {
     timeZone,
     text,
   );
-  const service = new LifeOpsService(args.runtime);
+  const service = resolveCalendarService(args.runtime);
 
   let events: readonly LifeOpsCalendarEvent[] = [];
   try {
@@ -399,7 +484,7 @@ async function handleBulkReschedulePreview(args: {
     });
     events = feed.events;
   } catch (error) {
-    if (error instanceof LifeOpsServiceError) {
+    if (error instanceof CalendarServiceError) {
       const failureText =
         error.status === 403
           ? "I can't scope that calendar reschedule yet because calendar access is not available. Grant Apple Calendar access or connect Google Calendar."

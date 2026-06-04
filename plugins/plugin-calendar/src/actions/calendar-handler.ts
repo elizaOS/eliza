@@ -15,37 +15,98 @@ import type {
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
-} from "../../contracts/index.js";
-import { hasLifeOpsAccess, INTERNAL_URL } from "../../lifeops/access.js";
-import { resolveDefaultTimeZone } from "../../lifeops/defaults.js";
+} from "@elizaos/shared";
+import { resolveDefaultTimeZone } from "../internal/constants.js";
 import {
   detailArray,
   detailBoolean,
   detailNumber,
   detailString,
+  INTERNAL_URL,
+  messageText,
+  parseCalendarJsonRecord,
+  toActionData,
+} from "../internal/detail.js";
+import { CalendarServiceError } from "../internal/errors.js";
+import {
   formatCalendarEventDateTime,
   formatCalendarFeed,
   formatNextEventContext,
-  messageText,
-  parseLifeOpsJsonRecord,
-  runLifeOpsJsonModel,
-  runLifeOpsTextModel,
-  toActionData,
-} from "../../lifeops/google/format-helpers.js";
-import { LifeOpsService, LifeOpsServiceError } from "../../lifeops/service.js";
+} from "../internal/format.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
   getWeekdayForLocalDate,
   getZonedDateParts,
-} from "../../lifeops/time.js";
-import {
-  type CreateEventTravelIntent,
-  computeCreateEventTravelBuffer,
-  resolveCreateEventTravelIntent,
-} from "../../travel-time/calendar-create.js";
-import { TravelTimeUnavailableError } from "../../travel-time/service.js";
-import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";
+} from "../internal/time.js";
+import { CalendarService } from "../service/CalendarService.js";
+import type {
+  CalendarActionDeps,
+  CalendarModelCallArgs,
+  CalendarTravelBufferResult,
+  CalendarTravelIntent,
+} from "./deps.js";
+
+/**
+ * Host-supplied dependencies, set once when the calendar action is built via
+ * {@link createCalendarActionRunner}. The CALENDAR action is registered exactly
+ * once per plugin instance, so a module-level holder is the right seam: it
+ * keeps the ~40 internal handler functions from each having to thread a `deps`
+ * parameter, without leaking the host (LifeOps) into this package's imports.
+ */
+let injectedDeps: CalendarActionDeps | null = null;
+
+function deps(): CalendarActionDeps {
+  if (!injectedDeps) {
+    throw new Error(
+      "[calendar] calendar action handler invoked before createCalendarActionRunner() supplied dependencies",
+    );
+  }
+  return injectedDeps;
+}
+
+function runLifeOpsTextModel(
+  args: CalendarModelCallArgs,
+): Promise<string | null> {
+  return deps().runTextModel(args);
+}
+
+function runLifeOpsJsonModel<
+  T extends Record<string, unknown> = Record<string, unknown>,
+>(args: CalendarModelCallArgs) {
+  return deps().runJsonModel<T>(args);
+}
+
+function collectRecentConversationTexts(args: {
+  runtime: IAgentRuntime;
+  message?: Memory;
+  state: State | undefined;
+  limit: number;
+}): Promise<string[]> {
+  return deps().recentConversationTexts(args);
+}
+
+/**
+ * Resolve the calendar domain service. Mirrors the prior `new LifeOpsService`
+ * construction — the 7 calendar methods (`getCalendarFeed`,
+ * `getNextCalendarEventContext`, `createCalendarEvent`, `updateCalendarEvent`,
+ * `deleteCalendarEvent`, …) are identical on `CalendarService`.
+ */
+function resolveCalendarService(runtime: IAgentRuntime): CalendarService {
+  const service = runtime.getService<CalendarService>(
+    CalendarService.serviceType,
+  );
+  if (!service) {
+    throw new CalendarServiceError(
+      503,
+      "Calendar service is not available.",
+      "CALENDAR_SERVICE_UNAVAILABLE",
+    );
+  }
+  return service;
+}
+
+type CreateEventTravelIntent = CalendarTravelIntent;
 
 type CalendarSubaction =
   | "feed"
@@ -763,7 +824,7 @@ async function finalizeCalendarPlan(args: {
 }
 
 function buildCalendarServiceErrorFallback(
-  error: LifeOpsServiceError,
+  error: CalendarServiceError,
   intent: string,
 ): string {
   const normalized = normalizeText(error.message);
@@ -797,7 +858,7 @@ function buildCalendarServiceErrorFallback(
   return "I couldn't finish that calendar change yet. Tell me the event and timing again, and I'll try it a different way.";
 }
 
-function isAppleCalendarPermissionError(error: LifeOpsServiceError): boolean {
+function isAppleCalendarPermissionError(error: CalendarServiceError): boolean {
   return (
     error.status === 403 &&
     normalizeText(error.message).includes("apple calendar permission")
@@ -1549,7 +1610,7 @@ function suggestCreateEventStartAt(args: {
 }
 
 async function loadCreateEventCalendarContext(
-  service: LifeOpsService,
+  service: CalendarService,
   details: Record<string, unknown> | undefined,
   hasCalendarRead: boolean,
 ): Promise<CreateEventCalendarContext | null> {
@@ -1994,7 +2055,7 @@ export async function extractCalendarPlanWithLlm(
   ].join("\n");
 
   const parseResponse = (raw: string): CalendarLlmPlan | null => {
-    const parsed = parseLifeOpsJsonRecord<Record<string, unknown>>(raw);
+    const parsed = parseCalendarJsonRecord<Record<string, unknown>>(raw);
     return parsed ? buildCalendarPlanFromParsed(parsed) : null;
   };
 
@@ -2316,10 +2377,11 @@ function buildCreateEventRequest(
     explicitDuration !== undefined || extractedDuration !== undefined
       ? durationMinutes
       : fallbackDuration;
-  const travelIntent = resolveCreateEventTravelIntent({
-    details: args.details,
-    extractedDetails: args.extractedDetails,
-  });
+  const travelIntent =
+    injectedDeps?.travelBuffer?.resolveTravelIntent({
+      details: args.details,
+      extractedDetails: args.extractedDetails,
+    }) ?? null;
 
   return {
     title,
@@ -2418,7 +2480,7 @@ function formatUpdateEventTargetContext(
   ].join("\n");
 }
 
-function shouldRetryCreateEventExtraction(error: LifeOpsServiceError): boolean {
+function shouldRetryCreateEventExtraction(error: CalendarServiceError): boolean {
   const normalized = normalizeText(error.message);
   if (error.status === 401 || error.status === 403) {
     return false;
@@ -2576,7 +2638,7 @@ async function repairCreateEventDetails(
   calendarContext: CreateEventCalendarContext | null,
   failedRequest: CreateLifeOpsCalendarEventRequest,
   previousExtraction: Record<string, unknown>,
-  error: LifeOpsServiceError,
+  error: CalendarServiceError,
   fallbackTimeZone = resolveDefaultTimeZone(),
 ): Promise<Record<string, unknown>> {
   const recentConversation = formatCreateEventRecentConversation(state);
@@ -2772,7 +2834,7 @@ function extractCalendarGroundedMatchIds(
   rawResponse: string,
   allowedIds: Set<string>,
 ): string[] | null {
-  const parsed = parseLifeOpsJsonRecord<Record<string, unknown>>(rawResponse);
+  const parsed = parseCalendarJsonRecord<Record<string, unknown>>(rawResponse);
   if (!parsed) {
     return null;
   }
@@ -3031,9 +3093,24 @@ function normalizeCalendarAttendees(
   return normalized.length > 0 ? normalized : undefined;
 }
 
-export const calendarAction: Action & {
+export type CalendarHandlerAction = Action & {
   suppressPostActionContinuation?: boolean;
-} = {
+};
+
+/**
+ * Build the inner calendar CRUD + LLM-intent action, wired to host-supplied
+ * dependencies. The LifeOps `CALENDAR` umbrella delegates to this action's
+ * handler after it has already gated owner access, so this handler trusts it
+ * is running for an authorized owner and performs no access check of its own.
+ */
+export function createCalendarActionRunner(
+  hostDeps: CalendarActionDeps,
+): CalendarHandlerAction {
+  injectedDeps = hostDeps;
+  return calendarAction;
+}
+
+const calendarAction: CalendarHandlerAction = {
   name: "CALENDAR",
   similes: [
     "CALENDAR_ACTION",
@@ -3084,9 +3161,9 @@ export const calendarAction: Action & {
   contexts: ["calendar", "contacts", "tasks"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
-  validate: async (runtime, message) => {
-    return hasLifeOpsAccess(runtime, message);
-  },
+  // Owner-access gating is performed by the LifeOps CALENDAR umbrella before it
+  // delegates here, so this inner handler trusts an authorized owner.
+  validate: async () => true,
   handler: async (
     runtime,
     message,
@@ -3094,15 +3171,6 @@ export const calendarAction: Action & {
     options,
     callback?: HandlerCallback,
   ) => {
-    if (!(await hasLifeOpsAccess(runtime, message))) {
-      const text =
-        "Calendar actions are restricted to the owner and the agent.";
-      await callback?.({ text });
-      return {
-        success: false,
-        text,
-      };
-    }
 
     const rawParams = (options as HandlerOptions | undefined)?.parameters as
       | CalendarActionParams
@@ -3175,7 +3243,7 @@ export const calendarAction: Action & {
         llmPlan,
       });
     }
-    const service = new LifeOpsService(runtime);
+    const service = resolveCalendarService(runtime);
     const respond = async <
       T extends NonNullable<ActionResult["data"]> | undefined,
     >(payload: {
@@ -3299,9 +3367,6 @@ export const calendarAction: Action & {
         const { title, resolvedStartAt, resolvedWindowPreset, request } =
           createEventBuild;
         let travelIntent = createEventBuild.travelIntent;
-        const calendarLookup = {
-          getCalendarFeed: service.getCalendarFeed.bind(service),
-        };
         if (!title) {
           return respond({
             success: false,
@@ -3373,7 +3438,7 @@ export const calendarAction: Action & {
           );
         } catch (error) {
           if (
-            error instanceof LifeOpsServiceError &&
+            error instanceof CalendarServiceError &&
             shouldRetryCreateEventExtraction(error)
           ) {
             const repairedDetails = await repairCreateEventDetails(
@@ -3424,15 +3489,14 @@ export const calendarAction: Action & {
             throw error;
           }
         }
-        let travelBuffer: Awaited<
-          ReturnType<typeof computeCreateEventTravelBuffer>
-        > | null = null;
-        let travelTimeUnavailable: TravelTimeUnavailableError | null = null;
-        if (travelIntent) {
+        const travel = injectedDeps?.travelBuffer;
+        let travelBuffer: CalendarTravelBufferResult | null = null;
+        let travelTimeUnavailable: { code: string; message: string } | null =
+          null;
+        if (travelIntent && travel) {
           try {
-            travelBuffer = await computeCreateEventTravelBuffer({
+            travelBuffer = await travel.computeTravelBuffer({
               runtime,
-              calendar: calendarLookup,
               event: {
                 id: event.id,
                 location: event.location,
@@ -3440,7 +3504,7 @@ export const calendarAction: Action & {
               travelIntent,
             });
           } catch (error) {
-            if (!(error instanceof TravelTimeUnavailableError)) {
+            if (!travel.isTravelTimeUnavailable(error)) {
               throw error;
             }
             travelTimeUnavailable = error;
@@ -4105,7 +4169,7 @@ export const calendarAction: Action & {
         data: toActionData(feed),
       });
     } catch (error) {
-      if (error instanceof LifeOpsServiceError) {
+      if (error instanceof CalendarServiceError) {
         if (isAppleCalendarPermissionError(error)) {
           return respond({
             success: false,
