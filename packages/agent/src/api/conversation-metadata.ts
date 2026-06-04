@@ -85,6 +85,25 @@ export function sanitizeConversationMetadata(
     next.terminalBridgeConversationId = terminalBridgeConversationId;
   }
 
+  const waifuChatOwnerWallet = normalizeOptionalString(
+    record.waifuChatOwnerWallet,
+  );
+  if (
+    waifuChatOwnerWallet &&
+    /^0x[a-fA-F0-9]{40}$/.test(waifuChatOwnerWallet)
+  ) {
+    next.waifuChatOwnerWallet = waifuChatOwnerWallet.toLowerCase();
+  }
+
+  const waifuChatRole = normalizeOptionalString(record.waifuChatRole);
+  if (
+    waifuChatRole === "admin" ||
+    waifuChatRole === "user" ||
+    waifuChatRole === "guest"
+  ) {
+    next.waifuChatRole = waifuChatRole;
+  }
+
   return Object.keys(next).length > 0 ? next : undefined;
 }
 
