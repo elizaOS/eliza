@@ -40,8 +40,8 @@
     "dev": "tsup --config tsup.config.ts --watch",
     "clean": "rm -rf dist .turbo",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
-    "lint": "echo \"Lint skipped\"",
-    "lint:check": "bun run lint",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
     "test": "vitest run"
   },
   "dependencies": {

@@ -1263,15 +1263,23 @@ if (uiOnly) {
     apiSpawnEnv.PATH = `${path.dirname(apiRuntimeCmd)}${path.delimiter}${apiSpawnEnv.PATH ?? ""}`;
   }
 
+  // The first launch is a cold boot; every later spawn is a hot-reload respawn
+  // (the source watcher bounced the child). Marking respawns lets the agent skip
+  // boot-tail work that only matters once — e.g. voice warmup, which otherwise
+  // re-fires a cloud TTS call and fully reloads the native whisper model on
+  // every edit, flooding the dev log.
+  let apiLaunchCount = 0;
   const apiSupervisor = createApiSupervisor({
     spawnChild: () => {
       const apiProcessSpawnedAtMs = String(Date.now());
+      const isHotReload = apiLaunchCount++ > 0;
       return spawn(apiCmd[0], apiCmd.slice(1), {
         cwd: apiSpawnCwd,
         env: {
           ...apiSpawnEnv,
           [API_PROCESS_SPAWNED_AT_ENV]: apiProcessSpawnedAtMs,
           [PROCESS_SPAWNED_AT_ENV]: apiProcessSpawnedAtMs,
+          ...(isHotReload ? { ELIZA_DEV_IS_HOT_RELOAD: "1" } : {}),
         },
         stdio: ["inherit", "pipe", "pipe"],
       });
