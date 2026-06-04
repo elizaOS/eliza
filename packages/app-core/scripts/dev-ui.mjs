@@ -1260,7 +1260,13 @@ if (uiOnly) {
     apiRuntimeCmd,
     "--conditions=eliza-source",
     ...(apiRuntimeIsBun ? [] : ["--import", "tsx"]),
-    ...nodeStealthImports.flatMap((filePath) => ["--import", filePath]),
+    // Bun preloads modules with `--preload`; Node uses `--import`. Passing
+    // `--import` to Bun breaks startup whenever a stealth shim is enabled
+    // (OpenAI Codex / Claude Code).
+    ...nodeStealthImports.flatMap((filePath) => [
+      apiRuntimeIsBun ? "--preload" : "--import",
+      filePath,
+    ]),
     ...(useWatch ? ["--watch"] : []),
     devServerEntry,
   ];

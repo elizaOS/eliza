@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
 if (process.argv[2] !== "root") {
   console.error("operator npm shim only supports `npm root`.");
