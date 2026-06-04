@@ -78,7 +78,7 @@ export function dimensionsAreSubset(
 export function sourcePriorityForKind(sourceKind: string): number {
   if (sourceKind === "manual_override") return 1000;
   if (sourceKind === "fal_model_page") return 250;
-  if (sourceKind === "openrouter_catalog") return 175;
+  if (sourceKind === "bitrouter_catalog") return 200;
   if (sourceKind === "elevenlabs_snapshot") return 150;
   return 100;
 }
@@ -125,16 +125,18 @@ export function normalizeBillingSourceCandidates(
     if (provider === "fal") return ["fal"];
     if (provider === "suno") return ["suno"];
     if (provider === "vast") return ["vast"];
-    return ["openrouter"];
+    return ["bitrouter"];
   }
 
   switch (requested) {
+    case "bitrouter":
+      return ["bitrouter"];
     case "openai":
-      return ["openai", "openrouter"];
+      return ["openai", "bitrouter"];
     case "anthropic":
-      return ["anthropic", "openrouter"];
+      return ["anthropic", "bitrouter"];
     case "groq":
-      return ["groq", "openrouter"];
+      return ["groq", "bitrouter"];
     default:
       return [requested];
   }

@@ -3,6 +3,7 @@ export * from "./useAutomationDeepLink";
 export * from "./useBugReport";
 export * from "./useChatAvatarVoiceBridge";
 export * from "./useConnectorAccounts";
+export * from "./useConnectorReconnect";
 export * from "./useConnectorSendAsAccount";
 export * from "./useContextMenu";
 export * from "./useDesktopBridgeEvent";

@@ -7,7 +7,10 @@ import {
   type LocalAsrRecorderOptions,
   startLocalAsrRecorder,
 } from "./local-asr-capture";
-import { transcribeLocalInferenceWav } from "./local-asr-transcribe";
+import {
+  isLocalInferenceAsrReady,
+  transcribeLocalInferenceWav,
+} from "./local-asr-transcribe";
 import { createVoiceCapture } from "./voice-capture-factory";
 
 vi.mock("./local-asr-capture", () => ({
@@ -16,16 +19,19 @@ vi.mock("./local-asr-capture", () => ({
 }));
 
 vi.mock("./local-asr-transcribe", () => ({
+  isLocalInferenceAsrReady: vi.fn(),
   transcribeLocalInferenceWav: vi.fn(),
 }));
 
 const isLocalAsrCaptureSupportedMock = vi.mocked(isLocalAsrCaptureSupported);
 const startLocalAsrRecorderMock = vi.mocked(startLocalAsrRecorder);
+const isLocalInferenceAsrReadyMock = vi.mocked(isLocalInferenceAsrReady);
 const transcribeLocalInferenceWavMock = vi.mocked(transcribeLocalInferenceWav);
 
 describe("createVoiceCapture", () => {
   beforeEach(() => {
     isLocalAsrCaptureSupportedMock.mockReturnValue(true);
+    isLocalInferenceAsrReadyMock.mockResolvedValue(true);
     transcribeLocalInferenceWavMock.mockResolvedValue({
       text: "Ada Lovelace",
     });
@@ -96,5 +102,26 @@ describe("createVoiceCapture", () => {
       onTranscript: vi.fn(),
     });
     expect(capture.getAnalyser()).toBeNull();
+  });
+
+  it("falls back to browser when local-inference ASR is not server-ready", async () => {
+    // No whisper model / native adapter on the server → status probe is false,
+    // so we must not capture audio we can only 502 on. jsdom has no
+    // SpeechRecognition, so the browser fallback surfaces its own error — the
+    // point is we never started the local recorder.
+    isLocalInferenceAsrReadyMock.mockResolvedValue(false);
+    const onStateChange = vi.fn();
+    const capture = createVoiceCapture({
+      asrProvider: "local-inference",
+      onStateChange,
+      onTranscript: vi.fn(),
+    });
+
+    await expect(capture.start()).rejects.toThrow(/SpeechRecognition/);
+    expect(startLocalAsrRecorderMock).not.toHaveBeenCalled();
+    expect(onStateChange).toHaveBeenLastCalledWith(
+      "error",
+      expect.any(Error),
+    );
   });
 });

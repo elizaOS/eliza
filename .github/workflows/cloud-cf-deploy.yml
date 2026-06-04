@@ -8,6 +8,10 @@ name: Cloud CF Deploy
 # Required repo secrets:
 #   CLOUDFLARE_API_TOKEN   - account-scoped token with Workers + Pages edit perms
 #   CLOUDFLARE_ACCOUNT_ID  - matches account_id in packages/cloud-api/wrangler.toml
+#   BITROUTER_API_KEY      - BitRouter proxy bearer token for the API Worker
+# Optional provider secrets are published when configured:
+#   OPENAI_API_KEY, ANTHROPIC_API_KEY, CEREBRAS_API_KEY, GROQ_API_KEY,
+#   AI_GATEWAY_API_KEY, FAL_KEY, ELEVENLABS_API_KEY, VAST_API_KEY, VAST_BASE_URL.
 #
 # Source: cloud/.github/workflows/cf-deploy.yml in the original elizaOS/cloud repo.
 
@@ -121,6 +125,53 @@ jobs:
               exit 1
             fi
           fi
+
+      - name: Publish Worker AI secrets
+        if: steps.cf.outputs.configured == 'true'
+        working-directory: packages/cloud-api
+        env:
+          BITROUTER_API_KEY: ${{ secrets.BITROUTER_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          FAL_KEY: ${{ secrets.FAL_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
+          VAST_BASE_URL: ${{ secrets.VAST_BASE_URL }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$BITROUTER_API_KEY" ]; then
+            echo "::error::BITROUTER_API_KEY is not configured. Add it at https://github.com/elizaOS/eliza/settings/secrets/actions."
+            exit 1
+          fi
+
+          publish_secret() {
+            local name="$1"
+            local value="${!name:-}"
+            if [ -z "$value" ]; then
+              echo "::notice::$name is not configured; skipping"
+              return 0
+            fi
+            printf '%s' "$value" | bunx wrangler secret put "$name" ${{ steps.env.outputs.wrangler_args }}
+          }
+
+          for name in \
+            BITROUTER_API_KEY \
+            OPENAI_API_KEY \
+            ANTHROPIC_API_KEY \
+            CEREBRAS_API_KEY \
+            GROQ_API_KEY \
+            AI_GATEWAY_API_KEY \
+            FAL_KEY \
+            ELEVENLABS_API_KEY \
+            VAST_API_KEY \
+            VAST_BASE_URL
+          do
+            publish_secret "$name"
+          done
 
       - name: Deploy to Cloudflare Workers
         if: steps.cf.outputs.configured == 'true'

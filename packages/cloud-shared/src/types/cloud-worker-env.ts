@@ -27,7 +27,8 @@ export interface Bindings {
 
   // ---- AI providers ----
   CEREBRAS_API_KEY?: string;
-  OPENROUTER_API_KEY?: string;
+  BITROUTER_API_KEY?: string;
+  BITROUTER_BASE_URL?: string;
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
   ANTHROPIC_API_KEY?: string;

@@ -3,6 +3,7 @@ import * as React from "react";
 import type { ImageAttachment } from "../../api/client-types-chat";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import { useApp } from "../../state";
+import { loadVadAutoStop } from "../../state/persistence";
 import {
   createVoiceCapture,
   type VoiceCaptureHandle,
@@ -47,6 +48,8 @@ export interface ShellController {
   toggleMute: () => void;
   /** Live interim transcription of the current utterance ("" when none). */
   transcript: string;
+  /** DEV-only: clear the conversation and start a fresh, greeted one. */
+  clearConversation: () => void;
 }
 
 /**
@@ -67,7 +70,15 @@ export function useShellController(): ShellController {
     chatSending,
     sendChatText,
     agentStatus,
+    handleNewConversation,
   } = app;
+
+  // DEV-only debug affordance: drop the current conversation and start a fresh,
+  // greeted one (handleNewConversation resets draft state + creates a new
+  // conversation with a bootstrap greeting).
+  const clearConversation = React.useCallback(() => {
+    void handleNewConversation();
+  }, [handleNewConversation]);
 
   const ready = startupCoordinator.phase === "ready";
   const modelStatus = useHomeModelStatus();
@@ -159,7 +170,11 @@ export function useShellController(): ShellController {
   const startCapture = React.useCallback(() => {
     if (!ready) return;
     if (captureRef.current) return;
+    // Read the user's VAD thresholds synchronously (local mirror of the
+    // `messages.voice` setting) so end-of-turn silence detection honors the
+    // configured sensitivity. Only consumed by the local-inference backend.
     const handle = createVoiceCapture({
+      localAsrAutoStop: loadVadAutoStop(),
       onTranscript: (segment) => {
         const text = segment.text.trim();
         if (!segment.final) {
@@ -179,7 +194,13 @@ export function useShellController(): ShellController {
       },
       onStateChange: (state: VoiceCaptureState) => {
         if (state === "error" || state === "stopped" || state === "idle") {
+          // Capture ended (clean stop, dispose, or error). Drop the handle and
+          // analyser so the shell phase returns to idle/summoned and a later
+          // startCapture is not blocked by a stale ref.
+          if (captureRef.current === handle) captureRef.current = null;
+          setAnalyser(null);
           setRecording(false);
+          setTranscript("");
         }
       },
     });
@@ -238,6 +259,11 @@ export function useShellController(): ShellController {
     if (captureRef.current) stopCapture();
   }, [stopCapture]);
 
+  // `recording` (push-to-talk press or continuous capture) wins over an
+  // in-flight response so the pill shows the red "listening" pulse the instant
+  // the mic opens, even while the previous turn is still streaming (barge-in).
+  // Stop/error clears `recording` (see startCapture/stopCapture), dropping the
+  // phase back to responding → summoned → idle.
   const phase: ShellPhase = !ready
     ? "booting"
     : recording
@@ -282,5 +308,6 @@ export function useShellController(): ShellController {
     muted,
     toggleMute,
     transcript,
+    clearConversation,
   };
 }

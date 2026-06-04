@@ -36,12 +36,10 @@ import type { ShellController } from "./useShellController";
  * context-reading mount (see App.tsx) that supplies the shared controller.
  */
 
-// Self-contained glass surfaces (fixed dark scrim + light edge highlight) — do
-// NOT use theme `--txt`, so they read over bright, dark, or warm backdrops.
-const GLASS_SHEET =
-  "rounded-3xl border border-white/12 bg-black/55 backdrop-blur-2xl " +
-  "shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_26px_72px_-18px_rgba(0,0,0,0.72)]";
-
+// Self-contained glass composer bar (fixed dark scrim + light edge highlight) —
+// does NOT use theme `--txt`, so it reads over bright, dark, or warm backdrops.
+// The expanded transcript itself is intentionally chrome-free (no panel
+// background/border); its lines carry their own scrim via ThreadLine `floating`.
 const GLASS_BAR =
   "flex items-center gap-2 rounded-full border border-white/18 bg-black/45 px-3 py-2 backdrop-blur-xl " +
   "shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_16px_46px_-12px_rgba(0,0,0,0.66)]";
@@ -49,12 +47,22 @@ const GLASS_BAR =
 // Floating (un-scrimmed) text gets a soft shadow so it reads over bright views.
 const FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
 
+// Resting / typing view (not fullscreen) shows only the last couple of turns
+// with no scroll; fullscreen shows the whole history with scroll.
+const RESTING_THREAD_LINES = 2;
+
 // Glyphs (viewBox 0 0 36 36), rendered in currentColor inside a soft chip — the
 // up-arrow (send) and five-bar waveform (mic) from the shared composer language.
 const SEND_GLYPH = "M18 10L25 18H21V27H15V18H11Z";
 const MIC_GLYPH =
   "M6 14H9V22H6Z M11.5 10H14.5V26H11.5Z M16.5 7H19.5V29H16.5Z M22 10H25V26H22Z M27 14H30V22H27Z";
 const PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
+// Two diagonal expand arrows (top-right + bottom-left) — "open in full page".
+const MAXIMIZE_GLYPH =
+  "M20 8H28V16H25V13.1L18.5 19.6L16.4 17.5L22.9 11H20Z " +
+  "M16 28H8V20H11V22.9L17.5 16.4L19.6 18.5L13.1 25H16Z";
+// Trash can (lid bar + body) — DEV-only "clear conversation" debug control.
+const TRASH_GLYPH = "M14 7H22V10H27V13H9V10H14Z M11 15H25L23.5 30H12.5Z";
 
 function Glyph({ d }: { d: string }): React.JSX.Element {
   return (
@@ -135,26 +143,6 @@ function TypingDots(): React.JSX.Element {
   );
 }
 
-/** Chevron for the inline expand/collapse affordance inside the composer bar. */
-function Chevron({ up }: { up: boolean }): React.JSX.Element {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ transform: up ? "rotate(180deg)" : undefined }}
-      aria-hidden="true"
-    >
-      <path d="m18 15-6-6-6 6" />
-    </svg>
-  );
-}
-
 /** One turn of the transcript as a chat bubble — assistant on the left, user on the right. */
 function ThreadLine({
   message,
@@ -177,9 +165,10 @@ function ThreadLine({
       <div
         className={cn(
           "max-w-[80%] rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed",
-          // Inside the expanded glass sheet, light bubbles read against the dark
-          // scrim; floating (whisper) bubbles carry their own dark glass so they
-          // stay legible over whatever view is behind.
+          // Both the whisper lines and the chrome-free expanded transcript
+          // render floating: each bubble carries its own dark glass so it stays
+          // legible directly over whatever view is behind. The light tone is for
+          // any embedding that supplies its own surrounding scrim.
           isUser ? "rounded-br-md" : "rounded-bl-md",
           floating
             ? cn(
@@ -215,10 +204,13 @@ export function ContinuousChatOverlay({
     startRecording,
     stopRecording,
     transcript,
+    clearConversation,
   } = controller;
 
   const [draft, setDraft] = React.useState("");
   const [expanded, setExpanded] = React.useState(false);
+  const [fullscreen, setFullscreen] = React.useState(false);
+  const [hovered, setHovered] = React.useState(false);
   const [whisperVisible, setWhisperVisible] = React.useState(false);
   const [pushToTalkActive, setPushToTalkActive] = React.useState(false);
   const [pendingImages, setPendingImages] = React.useState<ImageAttachment[]>(
@@ -234,56 +226,108 @@ export function ContinuousChatOverlay({
   const pushToTalkTimerRef = React.useRef<number | null>(null);
   const pushToTalkActiveRef = React.useRef(false);
   const suppressMicClickRef = React.useRef(false);
+  const hoverLeaveTimerRef = React.useRef<number | null>(null);
 
   const visibleMessages = messages.filter((m) => m.content.trim());
-  const recent = visibleMessages.slice(-3);
   const lastId = visibleMessages.at(-1)?.id ?? null;
+  const lastContent = visibleMessages.at(-1)?.content ?? "";
   const seenIdRef = React.useRef(lastId);
+  // The last line id the scroll effect pinned to — lets it tell a NEW line
+  // (always pin to bottom) from streaming growth of the current line (follow
+  // only when the reader is already at the bottom).
+  const scrollPinnedIdRef = React.useRef(lastId);
 
   const booting = phase === "booting";
   const listening = phase === "listening";
   const responding = phase === "responding";
   const hasDraft = draft.trim().length > 0;
   const hasImages = pendingImages.length > 0;
+  const open = expanded || hovered || fullscreen;
+  // "Peek" = the non-fullscreen reveal: the chat bubbles + suggestions fade in
+  // when the user hovers the bar OR clicks into the input (expanded), while a
+  // reply is streaming (responding), or briefly when a new line arrives
+  // (whisperVisible). They fade back out otherwise.
+  const peek =
+    !fullscreen && (hovered || expanded || responding || whisperVisible);
 
-  // Five tailored prompt suggestions for the resting overlay (pure/client-side).
-  const suggestions = usePromptSuggestions(messages);
+  // The suggestion strip rides along with the bubbles (same peek reveal). The
+  // base conditions keep it sensible (ready, nothing typed/attached, not
+  // listening); `peek` gates both its visibility and the model fetch so the
+  // small model isn't called for a hidden strip.
+  const suggestionsBase =
+    !fullscreen && !recording && !booting && canSend && !hasDraft && !hasImages;
+  const suggestionsVisible = peek && suggestionsBase;
+
+  // Three tailored prompt suggestions for the resting overlay (model-backed via
+  // TEXT_SMALL, with a static offline fallback).
+  const suggestions = usePromptSuggestions(messages, {
+    enabled: suggestionsVisible,
+  });
 
   // Whisper: when a genuinely NEW line arrives while collapsed, surface the
   // recent lines for 12s. Keyed on the last message id (not length, and the
-  // `expanded` dep early-returns) so toggling the panel never re-triggers it.
+  // `open` dep early-returns) so toggling the panel never re-triggers it.
   React.useEffect(() => {
     if (lastId === seenIdRef.current) return;
     seenIdRef.current = lastId;
-    if (expanded) return;
+    if (open) return;
     setWhisperVisible(true);
     const timer = window.setTimeout(() => setWhisperVisible(false), 12000);
     return () => window.clearTimeout(timer);
-  }, [lastId, expanded]);
+  }, [lastId, open]);
 
   React.useEffect(() => {
-    if (expanded) setWhisperVisible(false);
-  }, [expanded]);
+    if (open) setWhisperVisible(false);
+  }, [open]);
 
   React.useEffect(
     () => () => {
       if (pushToTalkTimerRef.current !== null) {
         window.clearTimeout(pushToTalkTimerRef.current);
       }
+      if (hoverLeaveTimerRef.current !== null) {
+        window.clearTimeout(hoverLeaveTimerRef.current);
+      }
     },
     [],
   );
 
-  // messages.length and expanded are intentional triggers: re-scroll to the
-  // latest line whenever the thread grows or the panel expands (body reads refs).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: triggers, not reads
-  React.useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-    if (expanded && focusThreadRef.current) {
+  // Keep the transcript pinned to the latest line. On first open (or when
+  // entering fullscreen) jump INSTANTLY to the bottom — a layout effect runs
+  // before paint, so the thread never flashes at the top. A NEW line (the
+  // user's own send, or a fresh reply) always re-pins to the bottom; streaming
+  // growth of the current line follows only when the reader is already resting
+  // at the bottom, so scrolling up to read history is never yanked down.
+  const wasOpenRef = React.useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: lastId/lastContent/fullscreen are the triggers; the body reads refs
+  React.useLayoutEffect(() => {
+    // Only the fullscreen transcript scrolls; the resting/typing view shows the
+    // last couple of turns with no scroll, so there is nothing to pin there.
+    if (!fullscreen) {
+      wasOpenRef.current = false;
+      return;
+    }
+    const justOpened = !wasOpenRef.current;
+    wasOpenRef.current = true;
+    const isNewLine = lastId !== scrollPinnedIdRef.current;
+    scrollPinnedIdRef.current = lastId;
+
+    const el = threadRef.current;
+    const atBottom =
+      !el || el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+
+    if (justOpened || isNewLine || atBottom) {
+      endRef.current?.scrollIntoView(
+        isNewLine && !justOpened
+          ? { behavior: "smooth", block: "end" }
+          : { block: "end" },
+      );
+    }
+    if (justOpened && focusThreadRef.current) {
       threadRef.current?.focus();
       focusThreadRef.current = false;
     }
-  }, [messages.length, expanded]);
+  }, [lastId, lastContent, fullscreen]);
 
   const submit = React.useCallback(() => {
     const text = draft.trim();
@@ -383,18 +427,54 @@ export function ContinuousChatOverlay({
 
   const hasThread = visibleMessages.length > 0;
 
-  const toggleExpand = React.useCallback(() => {
-    setExpanded((e) => {
-      // Only arm the focus move when there's actually a thread to focus into.
-      if (!e && hasThread) focusThreadRef.current = true;
-      return !e;
-    });
-  }, [hasThread]);
+  const collapseAll = React.useCallback(() => {
+    setExpanded(false);
+    setFullscreen(false);
+    setHovered(false);
+    if (hoverLeaveTimerRef.current !== null) {
+      window.clearTimeout(hoverLeaveTimerRef.current);
+      hoverLeaveTimerRef.current = null;
+    }
+  }, []);
 
   const collapse = React.useCallback(() => {
-    setExpanded(false);
+    collapseAll();
     inputRef.current?.focus();
+  }, [collapseAll]);
+
+  // Hover reveal: entering the bar (or the bubbles) peeks the chat; leaving fades
+  // it back out after a short grace so moving between the bubbles and the
+  // composer doesn't flicker it closed.
+  const handleHoverEnter = React.useCallback(() => {
+    if (hoverLeaveTimerRef.current !== null) {
+      window.clearTimeout(hoverLeaveTimerRef.current);
+      hoverLeaveTimerRef.current = null;
+    }
+    setHovered(true);
   }, []);
+
+  const handleHoverLeave = React.useCallback(() => {
+    if (hoverLeaveTimerRef.current !== null) {
+      window.clearTimeout(hoverLeaveTimerRef.current);
+    }
+    hoverLeaveTimerRef.current = window.setTimeout(() => {
+      hoverLeaveTimerRef.current = null;
+      setHovered(false);
+    }, 150);
+  }, []);
+
+  // The maximize button: toggle a true full-screen transcript. /chat is the
+  // overlay itself (overlay-only), so there is no separate page to navigate to —
+  // "full screen" means expanding this same thread to fill the viewport.
+  const toggleFullscreen = React.useCallback(() => {
+    setFullscreen((f) => {
+      const next = !f;
+      if (next && hasThread) focusThreadRef.current = true;
+      return next;
+    });
+    // Entering fullscreen supersedes the partial panel; leaving it collapses.
+    setExpanded(false);
+  }, [hasThread]);
 
   // Click into the composer → reveal the thread, but keep keyboard focus in the
   // input (don't arm the thread-focus move) so the user can type immediately.
@@ -403,42 +483,70 @@ export function ContinuousChatOverlay({
     setExpanded(true);
   }, [hasThread]);
 
-  // Click anywhere outside the chat surface (composer, thread, or the top
-  // chat-icon) → hide the thread. The overlay root is pointer-events-none, so a
-  // document-level listener catches clicks that land on the live view behind.
+  // Close the thread on any pointer-down that isn't on a message bubble or the
+  // composer — i.e. anywhere that isn't the chat itself (the live view behind, a
+  // gap in the thread, the backdrop). The overlay root is pointer-events-none,
+  // so a capture-phase document listener still catches clicks that fall through
+  // to the view behind; guarding on the bubbles + composer keeps clicks on the
+  // conversation (e.g. selecting message text) from dismissing it.
   React.useEffect(() => {
-    if (!expanded) return;
+    if (!open) return;
     const onPointerDown = (e: PointerEvent) => {
-      const target = e.target as Node | null;
+      const target = e.target instanceof Element ? e.target : null;
       if (!target) return;
-      if (
-        threadRef.current?.contains(target) ||
-        composerRef.current?.contains(target)
-      ) {
-        return;
-      }
-      setExpanded(false);
+      const onBubble = target.closest('[data-testid="thread-line"]') !== null;
+      const inComposer = composerRef.current?.contains(target) ?? false;
+      if (onBubble || inComposer) return;
+      collapseAll();
     };
     document.addEventListener("pointerdown", onPointerDown, true);
     return () =>
       document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [expanded]);
+  }, [open, collapseAll]);
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 bottom-0 flex flex-col items-center px-4 pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+1.5rem)]"
+      className={cn(
+        "pointer-events-none fixed flex flex-col items-center px-4",
+        // Fullscreen: take over the whole viewport (transcript fills, composer
+        // pinned to the bottom). Otherwise: a bottom-anchored ambient bar.
+        fullscreen
+          ? "inset-0 justify-end pt-[calc(var(--safe-area-top,0px)+1rem)]"
+          : "inset-x-0 bottom-0",
+        "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+1.5rem)]",
+      )}
       style={{ zIndex: Z_SHELL_OVERLAY }}
       data-testid="continuous-chat-overlay"
+      data-fullscreen={fullscreen ? "true" : undefined}
     >
-      {/* Cinematic bottom vignette — grounds the floating bar and gives the
-          whisper/transcript lines something to read against over bright views. */}
+      {/* Focus backdrop — in fullscreen, a solid theme-colored (dark/light)
+          screen sits in front of the live view and behind the chat, so only the
+          conversation shows. Always mounted; fades via opacity so the takeover
+          animates in/out. It captures pointer events only while fullscreen (so
+          the view is fully blocked); clicking it exits via the outside-click
+          handler. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-72 bg-gradient-to-t from-black/45 via-black/15 to-transparent"
+        data-testid="chat-fullscreen-backdrop"
+        className={cn(
+          "fixed inset-0 bg-bg transition-opacity duration-300",
+          fullscreen
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0",
+        )}
       />
 
-      {/* Expanded — the one continuous thread, as a single flowing transcript */}
-      {expanded && hasThread ? (
+      {/* Cinematic bottom vignette — grounds the floating bar over bright views.
+          Hidden in fullscreen: the solid backdrop already supplies contrast. */}
+      {!fullscreen ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-72 bg-gradient-to-t from-black/45 via-black/15 to-transparent"
+        />
+      ) : null}
+
+      {/* Fullscreen transcript — the full history, scrollable, filling the view. */}
+      {fullscreen && hasThread ? (
         <div
           id="continuous-thread"
           ref={threadRef}
@@ -454,45 +562,47 @@ export function ContinuousChatOverlay({
             }
           }}
           className={cn(
-            GLASS_SHEET,
-            "pointer-events-auto relative mb-3 max-h-[58vh] w-full max-w-3xl overflow-y-auto px-5 py-4",
-            // No visible scrollbar — the thread still scrolls, the chrome just hides.
+            "pointer-events-auto relative mb-3 min-h-0 w-full max-w-3xl flex-1 overflow-y-auto px-1 py-2",
+            // No visible scrollbar — the thread still scrolls, the chrome hides.
             "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
           )}
         >
           {visibleMessages.map((m) => (
-            <ThreadLine key={m.id} message={m} />
+            <ThreadLine key={m.id} message={m} floating />
           ))}
           {responding ? <TypingDots /> : null}
           <div ref={endRef} />
         </div>
       ) : null}
 
-      {/* Whisper — recent lines dissolve in/out over whatever view is behind.
-          Kept mounted (when collapsed + present) and faded via opacity so the
-          transition actually plays in BOTH directions, rather than snapping. */}
-      {!expanded && recent.length > 0 ? (
+      {/* Resting / typing bubbles — the last couple of turns, floating over the
+          view with no scroll. Always mounted (when there is a thread) so the
+          quick opacity fade plays in BOTH directions; `peek` reveals them on
+          hover, on focus (expanded), while replying, or briefly when a new line
+          arrives, and fades them back out otherwise. */}
+      {!fullscreen && hasThread ? (
         <div
+          id="continuous-thread"
+          ref={threadRef}
+          role="log"
+          aria-label="conversation history"
           aria-live="polite"
-          // Hidden from the a11y tree once faded out: opacity-0 alone leaves the
-          // stale lines browseable to screen readers. aria-hidden flips false in
-          // the same commit a new line arrives (whisperVisible→true), so the new
-          // line still announces; it just isn't left exposed during the fade-out.
-          aria-hidden={!whisperVisible}
+          aria-hidden={!peek}
+          data-revealed={peek ? "true" : "false"}
+          onPointerEnter={handleHoverEnter}
+          onPointerLeave={handleHoverLeave}
           className={cn(
-            "pointer-events-none relative mb-4 flex w-full max-w-3xl flex-col transition-opacity duration-1000",
-            whisperVisible ? "opacity-100" : "opacity-0",
+            "relative mb-3 w-full max-w-3xl overflow-hidden px-1 py-2 transition-opacity duration-200",
+            peek
+              ? "pointer-events-auto opacity-100"
+              : "pointer-events-none opacity-0",
           )}
         >
-          {recent.map((m) => (
+          {visibleMessages.slice(-RESTING_THREAD_LINES).map((m) => (
             <ThreadLine key={m.id} message={m} floating />
           ))}
-        </div>
-      ) : null}
-      {!expanded && responding ? (
-        <div className="relative mb-4 w-full max-w-3xl pl-12">
-          <TypingDots />
+          {responding ? <TypingDots /> : null}
         </div>
       ) : null}
 
@@ -512,18 +622,21 @@ export function ContinuousChatOverlay({
         </div>
       ) : null}
 
-      {/* Five tailored prompt suggestions — keyboard-strip style, shown only on
-          the resting overlay (collapsed, ready, nothing typed/attached, not
-          listening) so they invite a first move without ever crowding an active
-          conversation. Tapping one sends it immediately. */}
-      {!expanded &&
-      !recording &&
-      !booting &&
-      canSend &&
-      !hasDraft &&
-      !hasImages ? (
+      {/* Three tailored prompt suggestions — keyboard-strip style. They ride
+          along with the chat bubbles (same `peek` reveal: hover or focus) and
+          fade with them, so they only appear when the conversation does. Tapping
+          one sends it immediately. */}
+      {suggestionsBase ? (
         <div
-          className="pointer-events-auto relative mb-2 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2"
+          onPointerEnter={handleHoverEnter}
+          onPointerLeave={handleHoverLeave}
+          aria-hidden={!suggestionsVisible}
+          className={cn(
+            "relative mb-2 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2 transition-opacity duration-200",
+            suggestionsVisible
+              ? "pointer-events-auto opacity-100"
+              : "pointer-events-none opacity-0",
+          )}
           data-testid="chat-suggestions"
         >
           {suggestions.map((s, i) => (
@@ -534,8 +647,8 @@ export function ContinuousChatOverlay({
               aria-label={s}
               onClick={() => pickSuggestion(s)}
               className={cn(
-                "max-w-full truncate rounded-full border border-white/15 bg-black/40 px-3.5 py-1.5",
-                "text-[13px] text-white/80 backdrop-blur-xl transition-colors",
+                "max-w-full truncate rounded-full border border-white/15 bg-black/40 px-3 py-1.5",
+                "text-[12px] text-white/80 backdrop-blur-xl transition-colors",
                 "shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_10px_30px_-12px_rgba(0,0,0,0.6)]",
                 "hover:border-white/30 hover:bg-white/15 hover:text-white",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
@@ -547,9 +660,12 @@ export function ContinuousChatOverlay({
         </div>
       ) : null}
 
-      {/* The always-present ambient composer (the heart of the layer) */}
+      {/* The always-present ambient composer (the heart of the layer). Hovering
+          it (or the bubbles/suggestions) peeks the chat; leaving fades it out. */}
       <div
         ref={composerRef}
+        onPointerEnter={handleHoverEnter}
+        onPointerLeave={handleHoverLeave}
         className="pointer-events-auto relative w-full max-w-3xl"
       >
         {/* Soft breath of light for live states — not a brand-colored alert ring.
@@ -613,25 +729,24 @@ export function ContinuousChatOverlay({
           }}
         />
         <div className={cn(GLASS_BAR, "relative")}>
-          {/* Inline expand/collapse — a quiet chevron that dissolves into the
-              bar, not a separate floating button. */}
-          <button
-            type="button"
-            aria-label={
-              expanded ? "collapse conversation" : "expand conversation"
-            }
-            aria-expanded={expanded}
-            aria-controls={
-              expanded && hasThread ? "continuous-thread" : undefined
-            }
-            onClick={toggleExpand}
-            className={cn(
-              "grid h-8 w-7 shrink-0 place-items-center rounded-full text-white/70 transition-colors hover:text-white",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
-            )}
-          >
-            <Chevron up={expanded} />
-          </button>
+          {/* No expand/collapse chevron: focusing the input opens the thread,
+              and Escape / clicking outside collapses it. */}
+          {/* DEV-only: clear the conversation and start a fresh, greeted one. */}
+          {import.meta.env.DEV ? (
+            <SoftButton
+              glyph={TRASH_GLYPH}
+              label="clear conversation (debug)"
+              onClick={() => clearConversation?.()}
+              testId="chat-composer-clear-debug"
+            />
+          ) : null}
+          <SoftButton
+            glyph={MAXIMIZE_GLYPH}
+            label={fullscreen ? "exit full screen" : "expand to full screen"}
+            active={fullscreen}
+            onClick={toggleFullscreen}
+            testId="chat-composer-fullscreen"
+          />
           <SoftButton
             glyph={PLUS_GLYPH}
             label="attach image"
@@ -648,9 +763,9 @@ export function ContinuousChatOverlay({
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 submit();
-              } else if (e.key === "Escape" && expanded) {
+              } else if (e.key === "Escape" && open) {
                 e.preventDefault();
-                setExpanded(false);
+                collapseAll();
               }
             }}
             placeholder={booting ? "connecting…" : "say anything…"}

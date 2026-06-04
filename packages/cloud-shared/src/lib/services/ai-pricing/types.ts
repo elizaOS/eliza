@@ -7,13 +7,7 @@ import type {
 
 export type PriceLookupSource = PricingBillingSource | "seed";
 
-export type PricingRefreshSource =
-  | "gateway"
-  | "openrouter"
-  | "fal"
-  | "elevenlabs"
-  | "suno"
-  | "vast";
+export type PricingRefreshSource = "gateway" | "bitrouter" | "fal" | "elevenlabs" | "suno" | "vast";
 
 export type PreparedPricingEntry = {
   billingSource: PriceLookupSource;
@@ -61,7 +55,7 @@ export interface FlatOperationCost {
   };
 }
 
-export type OpenRouterCatalogModel = {
+export type BitRouterCatalogModel = {
   id: string;
   architecture?: {
     modality?: string;
@@ -84,6 +78,4 @@ export type CandidatePreparedPricingEntry = {
 
 export const EXTERNAL_CACHE_TTL_MS = 15 * 60 * 1000;
 
-export const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models?output_modalities=all";
-
-export const DEFAULT_OPENROUTER_IMAGE_OUTPUT_TOKENS = 1300;
+export const BITROUTER_MODELS_URL = "https://api.bitrouter.ai/v1/models?output_modalities=all";

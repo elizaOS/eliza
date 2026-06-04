@@ -18,6 +18,7 @@ import {
   createMobileSignalsPermissionsRegistry,
   openMobilePermissionSettings,
 } from "../../platform/mobile-permissions-client";
+import { useChatComposer } from "../../state/ChatComposerContext";
 import { useApp } from "../../state/useApp";
 import type { ConfigUiHint } from "../../types";
 import {
@@ -31,7 +32,14 @@ import { UiRenderer } from "../config-ui/ui-renderer";
 import { paramsToSchema } from "../pages/plugin-list-utils";
 import { Button } from "../ui/button";
 import { findChoiceRegions } from "./message-choice-parser";
+import {
+  type FollowupOption,
+  findFollowupsRegions,
+} from "./message-followups-parser";
+import { type FormRequestSpec, findFormRegions } from "./message-form-parser";
 import { type ChoiceOption, ChoiceWidget } from "./widgets/ChoiceWidget";
+import { FollowupsWidget } from "./widgets/followups";
+import { FormRequest, type FormResultValue } from "./widgets/form-request";
 
 /** Reject prototype-pollution keys that should never be traversed or rendered. */
 const BLOCKED_IDS = new Set(["__proto__", "constructor", "prototype"]);
@@ -80,6 +88,8 @@ type Segment =
       scope: string;
       options: ChoiceOption[];
     }
+  | { kind: "followups"; id: string; options: FollowupOption[] }
+  | { kind: "form"; form: FormRequestSpec }
   | { kind: "permission"; payload: PermissionCardPayload }
   | { kind: "analysis-xml"; tag: string; content: string };
 
@@ -366,6 +376,28 @@ function parseSegments(text: string, analysisMode: boolean): Segment[] {
         scope: choice.scope,
         options: choice.options,
       },
+    });
+  }
+
+  // 1c. Find [FOLLOWUPS id=...] ... [/FOLLOWUPS] suggestion-chip blocks
+  for (const followups of findFollowupsRegions(targetText)) {
+    regions.push({
+      start: followups.start,
+      end: followups.end,
+      segment: {
+        kind: "followups",
+        id: followups.id,
+        options: followups.options,
+      },
+    });
+  }
+
+  // 1d. Find [FORM] ... [/FORM] generic in-chat form blocks
+  for (const form of findFormRegions(targetText)) {
+    regions.push({
+      start: form.start,
+      end: form.end,
+      segment: { kind: "form", form: form.form },
     });
   }
 
@@ -1041,6 +1073,9 @@ export function MessageContent({
   useRenderGuard(`MessageContent:${message.id ?? "unknown"}`);
   const app = useApp();
   const { sendActionMessage } = app;
+  // Composer prefill for followup `prompt` chips. `useChatComposer` has a
+  // no-op default outside the chat provider, so this is safe everywhere.
+  const { setChatInput } = useChatComposer();
   const [localDownloadState, setLocalDownloadState] = useState<
     "idle" | "busy" | "queued" | "failed"
   >("idle");
@@ -1061,6 +1096,37 @@ export function MessageContent({
   const handleChoice = useCallback(
     (value: string) => {
       void sendActionMessage(value);
+    },
+    [sendActionMessage],
+  );
+
+  // Followup `navigate` chip: deliver the passive view-switch SUGGESTION as the
+  // same `eliza:navigate:view` event the VIEWS action uses. A `/`-prefixed
+  // payload is a viewPath; anything else is treated as a viewId.
+  const handleNavigate = useCallback((payload: string) => {
+    if (typeof window === "undefined") return;
+    const detail = payload.startsWith("/")
+      ? { viewPath: payload }
+      : { viewId: payload };
+    window.dispatchEvent(new CustomEvent("eliza:navigate:view", { detail }));
+  }, []);
+
+  // Followup `prompt` chip: prefill the composer (falls back to send inside the
+  // widget when no composer is mounted).
+  const handlePrompt = useCallback(
+    (payload: string) => {
+      setChatInput(payload);
+    },
+    [setChatInput],
+  );
+
+  // Generic in-chat form submit: send the structured result back as a message
+  // through the existing action-message pipeline.
+  const handleFormSubmit = useCallback(
+    (formId: string, values: Record<string, FormResultValue>) => {
+      void sendActionMessage(
+        `[form:submit ${formId}] ${JSON.stringify(values)}`,
+      );
     },
     [sendActionMessage],
   );
@@ -1209,11 +1275,15 @@ export function MessageContent({
                 ? `config:${seg.pluginId}`
                 : seg.kind === "choice"
                   ? `choice:${seg.id}`
-                  : seg.kind === "permission"
-                    ? `permission:${seg.payload.feature}`
-                    : seg.kind === "analysis-xml"
-                      ? `analysis:${seg.tag}`
-                      : `ui:${seg.raw.slice(0, 80)}`;
+                  : seg.kind === "followups"
+                    ? `followups:${seg.id}`
+                    : seg.kind === "form"
+                      ? `form:${seg.form.id}`
+                      : seg.kind === "permission"
+                        ? `permission:${seg.payload.feature}`
+                        : seg.kind === "analysis-xml"
+                          ? `analysis:${seg.tag}`
+                          : `ui:${seg.raw.slice(0, 80)}`;
           const segmentKey = nextKey(baseKey);
 
           switch (seg.kind) {
@@ -1256,6 +1326,25 @@ export function MessageContent({
                   scope={seg.scope}
                   options={seg.options}
                   onChoose={handleChoice}
+                />
+              );
+            case "followups":
+              return (
+                <FollowupsWidget
+                  key={segmentKey}
+                  id={seg.id}
+                  options={seg.options}
+                  onChoose={handleChoice}
+                  onNavigate={handleNavigate}
+                  onPrompt={handlePrompt}
+                />
+              );
+            case "form":
+              return (
+                <FormRequest
+                  key={segmentKey}
+                  form={seg.form}
+                  onSubmit={handleFormSubmit}
                 />
               );
             case "permission":

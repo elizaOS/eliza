@@ -254,6 +254,32 @@ export interface VoiceChatState {
   /** Increments when AudioContext is unlocked by a user gesture, allowing callers to retry speech that was silently blocked by autoplay policy. */
   voiceUnlockedGeneration: number;
   /**
+   * True when an assistant TTS clip was blocked because the AudioContext is
+   * still suspended (browser autoplay policy). Callers surface a "tap to enable
+   * sound" prompt; cleared automatically on the next user-gesture unlock.
+   *
+   * Optional on the interface so existing `VoiceChatState` mocks stay valid;
+   * `useVoiceChat` always returns a concrete boolean.
+   */
+  needsAudioUnlock?: boolean;
+  /**
+   * Transient pulse (auto-clears after a short window) set when browser
+   * SpeechRecognition silently auto-restarts mid-session. Lets callers flash a
+   * brief "mic reconnected" indicator.
+   *
+   * Optional on the interface so existing `VoiceChatState` mocks stay valid;
+   * `useVoiceChat` always returns a concrete boolean.
+   */
+  micReconnected?: boolean;
+  /**
+   * Warm/resume the AudioContext in response to a user gesture, clearing
+   * `needsAudioUnlock`. Safe to call when already unlocked.
+   *
+   * Optional on the interface so existing `VoiceChatState` mocks stay valid;
+   * `useVoiceChat` always returns a concrete function.
+   */
+  unlockAudio?: () => void;
+  /**
    * Assistant reply TTS: `enhanced` = ElevenLabs path (own key, cloud proxy, or direct);
    * `standard` = browser / Edge voices or non-ElevenLabs provider.
    */

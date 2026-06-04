@@ -45,7 +45,10 @@ import {
   type LocalAsrRecorder,
   startLocalAsrRecorder,
 } from "../voice/local-asr-capture";
-import { transcribeLocalInferenceWav } from "../voice/local-asr-transcribe";
+import {
+  isLocalInferenceAsrReady,
+  transcribeLocalInferenceWav,
+} from "../voice/local-asr-transcribe";
 import {
   collapseWhitespace,
   nextIdleMouthOpen,
@@ -117,6 +120,8 @@ export type {
 let sharedAudioCtx: AudioContext | null = null;
 const AUDIO_CONTEXT_RESUME_TIMEOUT_MS = 1200;
 const LOCAL_INFERENCE_TTS_TIMEOUT_MS = 60_000;
+/** How long the transient `micReconnected` pulse stays set after an auto-restart. */
+const MIC_RECONNECT_PULSE_MS = 1500;
 
 // ── Internal helpers ─────────────────────────────────────────────────
 
@@ -227,6 +232,17 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   const [supported, setSupported] = useState(false);
   const [usingAudioAnalysis, setUsingAudioAnalysis] = useState(false);
   const [voiceUnlockedGeneration, setVoiceUnlockedGeneration] = useState(0);
+  // True when a TTS clip was blocked because the AudioContext is still
+  // suspended (browser autoplay policy). Callers surface an "tap to enable
+  // sound" hint. Cleared on the next user-gesture unlock.
+  const [needsAudioUnlock, setNeedsAudioUnlock] = useState(false);
+  // Transient pulse: set when browser SpeechRecognition silently auto-restarts
+  // (the engine ends a segment mid-session and we restart it). Lets callers
+  // flash a brief "reconnected" indicator instead of the restart being silent.
+  const [micReconnected, setMicReconnected] = useState(false);
+  const micReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   // Refs — stable across renders, read from animation loop & callbacks
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
@@ -330,6 +346,31 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       clearTimeout(speechTimeoutRef.current);
       speechTimeoutRef.current = null;
     }
+  }, []);
+
+  // Playback was rejected because the AudioContext is still suspended (autoplay
+  // policy). Raise the unlock hint so a caller can prompt for a user gesture.
+  const markAudioBlocked = useCallback(() => {
+    setNeedsAudioUnlock(true);
+  }, []);
+  // A clip played (or the context was already running). Any prior unlock hint is
+  // stale, so clear it.
+  const markAudioPlaying = useCallback(() => {
+    setNeedsAudioUnlock(false);
+  }, []);
+  // Explicitly unlock audio playback in response to a user gesture (e.g. the
+  // status-bar "enable sound" button). Warms/resumes the shared AudioContext,
+  // bumps the unlock generation so a blocked greeting retries, and clears the
+  // hint. The passive first-gesture listener covers the common case; this covers
+  // a context that re-suspended after the initial unlock (tab switch, etc.).
+  const unlockAudio = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (!sharedAudioCtx) {
+      sharedAudioCtx = new AudioContext();
+    }
+    void sharedAudioCtx.resume().catch(() => {});
+    setVoiceUnlockedGeneration((g) => g + 1);
+    setNeedsAudioUnlock(false);
   }, []);
 
   const rememberCachedSegment = useCallback(
@@ -679,6 +720,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       if (!isLocalAsrCaptureSupported()) {
         return false;
       }
+      // Defer to the next backend (talk-mode / browser) when the server can't
+      // transcribe right now — capturing here would only 502 at stop() with no
+      // recoverable fallback (no whisper model / native adapter installed).
+      if (!(await isLocalInferenceAsrReady())) {
+        return false;
+      }
 
       try {
         const recorder = await startLocalAsrRecorder();
@@ -747,6 +794,16 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         ) {
           try {
             recognition.start();
+            // Surface the silent restart as a brief pulse so the UI can show a
+            // "mic reconnected" indicator instead of an unexplained gap.
+            setMicReconnected(true);
+            if (micReconnectTimerRef.current !== null) {
+              clearTimeout(micReconnectTimerRef.current);
+            }
+            micReconnectTimerRef.current = setTimeout(() => {
+              micReconnectTimerRef.current = null;
+              setMicReconnected(false);
+            }, MIC_RECONNECT_PULSE_MS);
           } catch {
             /* already started */
           }
@@ -1019,12 +1076,14 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             provider: "elevenlabs",
             state: ctx.state,
           });
+          markAudioBlocked();
           throw new DOMException(
             "Audio playback is blocked until a user gesture unlocks the audio context",
             "NotAllowedError",
           );
         }
       }
+      markAudioPlaying();
 
       const voiceId = elConfig.voiceId ?? DEFAULT_ELEVEN_VOICE;
       const modelId = elConfig.modelId ?? DEFAULT_ELEVEN_MODEL;
@@ -1279,7 +1338,13 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         });
       });
     },
-    [clearSpeechTimers, makeElevenCacheKey, rememberCachedSegment],
+    [
+      clearSpeechTimers,
+      makeElevenCacheKey,
+      markAudioBlocked,
+      markAudioPlaying,
+      rememberCachedSegment,
+    ],
   );
 
   // ── Local inference TTS ───────────────────────────────────────────────
@@ -1298,12 +1363,14 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             provider: "local-inference",
             state: ctx.state,
           });
+          markAudioBlocked();
           throw new DOMException(
             "Audio playback is blocked until a user gesture unlocks the audio context",
             "NotAllowedError",
           );
         }
       }
+      markAudioPlaying();
 
       const cacheKey =
         task.cacheKey ??
@@ -1425,7 +1492,13 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         });
       });
     },
-    [clearSpeechTimers, makeLocalInferenceCacheKey, rememberCachedSegment],
+    [
+      clearSpeechTimers,
+      makeLocalInferenceCacheKey,
+      markAudioBlocked,
+      markAudioPlaying,
+      rememberCachedSegment,
+    ],
   );
 
   // ── Browser SpeechSynthesis TTS ───────────────────────────────────
@@ -2065,16 +2138,9 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     const handleUserGesture = () => {
       window.removeEventListener("pointerdown", handleUserGesture, true);
       window.removeEventListener("keydown", handleUserGesture, true);
-
-      // Warm AudioContext for ElevenLabs
-      if (!sharedAudioCtx) {
-        sharedAudioCtx = new AudioContext();
-      }
-      void sharedAudioCtx.resume().catch(() => {});
-
-      // Signal that audio is now unlocked so callers can retry speech
-      // that was silently blocked by browser autoplay policy.
-      setVoiceUnlockedGeneration((g) => g + 1);
+      // Warm/resume the context and clear any stale unlock hint. Shared with the
+      // explicit `unlockAudio` action so both paths behave identically.
+      unlockAudio();
     };
 
     window.addEventListener("pointerdown", handleUserGesture, true);
@@ -2084,7 +2150,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       window.removeEventListener("pointerdown", handleUserGesture, true);
       window.removeEventListener("keydown", handleUserGesture, true);
     };
-  }, []);
+  }, [unlockAudio]);
 
   // ── Cleanup on unmount ────────────────────────────────────────────
 
@@ -2093,6 +2159,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       void stopListening();
       void removeTalkModeListeners();
       stopSpeaking();
+      if (micReconnectTimerRef.current !== null) {
+        clearTimeout(micReconnectTimerRef.current);
+        micReconnectTimerRef.current = null;
+      }
     };
   }, [removeTalkModeListeners, stopListening, stopSpeaking]);
 
@@ -2111,6 +2181,9 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     queueAssistantSpeech,
     stopSpeaking,
     voiceUnlockedGeneration,
+    needsAudioUnlock,
+    micReconnected,
+    unlockAudio,
     assistantTtsQuality,
   };
 }

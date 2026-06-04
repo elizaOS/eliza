@@ -376,14 +376,28 @@ export function CompareView({
   if (win.minimized) return null;
 
   // ── Shared slot mutators (used by both selector and arena) ──
+  // A reveal/winner only applies to the exact lineup that was voted on, and the
+  // winner is tracked by INDEX (winnerIdx). Any change to the lineup invalidates
+  // that verdict: add / remove / shuffle shift or replace the indices, and
+  // swapping a slot's provider/model changes what an unchanged index refers to —
+  // the crown is model-bound, not pane-bound. Either way a stale winner/reveal
+  // mis-highlights a pane (or leaks blind picks), so every lineup change clears
+  // the round.
+  const resetRound = () => {
+    setRevealed(false);
+    setWinnerIdx(null);
+  };
+
   const addSlot = () => {
     if (slots.length >= MAX_SLOTS) return;
     setSlots((cur) => [...cur, newSlot()]);
+    resetRound();
   };
 
   const removeSlot = (slotId: string) => {
     if (slots.length <= 1) return;
     setSlots((cur) => cur.filter((s) => s.slotId !== slotId));
+    resetRound();
   };
 
   const setSlotProvider = (slotId: string, provider: string) => {
@@ -395,6 +409,7 @@ export function CompareView({
           : s,
       ),
     );
+    resetRound();
   };
 
   const setSlotModel = (slotId: string, m: ProviderModelRecord) => {
@@ -404,6 +419,7 @@ export function CompareView({
       ),
     );
     setSwapOpenFor(null);
+    resetRound();
   };
 
   // Dice shuffle — randomly fill every slot from the loaded model pool, honoring
@@ -433,6 +449,10 @@ export function CompareView({
       }),
     );
     setBlindMode(true);
+    // Re-shuffling replaces the lineup, so any prior vote/reveal is stale —
+    // clear it (otherwise a stale winnerIdx mis-marks a fresh pane and the old
+    // reveal leaks the newly-randomized blind names).
+    resetRound();
   };
 
   const toggleExcluded = (id: string) => {

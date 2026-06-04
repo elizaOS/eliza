@@ -22,7 +22,8 @@ export interface LocalAsrRecorderOptions {
   onAutoStop?: () => void;
 }
 
-interface LocalAsrAutoStopConfig {
+/** Fully-resolved auto-stop config (every {@link LocalAsrAutoStopOptions} field set). */
+export interface LocalAsrAutoStopConfig {
   startGraceMs: number;
   minSpeechMs: number;
   silenceMs: number;
@@ -111,7 +112,7 @@ export function isSilentPcmAudio(pcm: Float32Array): boolean {
   return measurePcmAudio(pcm).peak < 0.0005;
 }
 
-const DEFAULT_LOCAL_ASR_AUTO_STOP: LocalAsrAutoStopConfig = {
+export const DEFAULT_LOCAL_ASR_AUTO_STOP: LocalAsrAutoStopConfig = {
   startGraceMs: 250,
   minSpeechMs: 180,
   silenceMs: 900,
