@@ -2,13 +2,13 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGatewayProvider, type GatewayProvider } from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";
 import {
+  BITROUTER_DEFAULT_FREE_MODEL,
+  BITROUTER_RECOMMENDED_TEXT_MODEL,
   CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
   CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
   getGroqApiModelId,
   isGroqNativeModel,
   isVastNativeModel,
-  BITROUTER_DEFAULT_FREE_MODEL,
-  BITROUTER_RECOMMENDED_TEXT_MODEL,
 } from "../models";
 import { toBitRouterModelId } from "./model-id-translation";
 import { getProviderKey } from "./provider-env";
