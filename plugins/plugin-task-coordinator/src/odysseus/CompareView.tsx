@@ -376,14 +376,26 @@ export function CompareView({
   if (win.minimized) return null;
 
   // ── Shared slot mutators (used by both selector and arena) ──
+  // A reveal/winner only applies to the exact lineup that was voted on, and the
+  // winner is tracked by INDEX (winnerIdx); any structural change to the slot
+  // set (add / remove / shuffle) would otherwise leave a stale index pointing at
+  // the wrong pane — mis-highlighting a winner/loser, or leaking blind picks
+  // while keeping a stale verdict. So every structural change clears the round.
+  const resetRound = () => {
+    setRevealed(false);
+    setWinnerIdx(null);
+  };
+
   const addSlot = () => {
     if (slots.length >= MAX_SLOTS) return;
     setSlots((cur) => [...cur, newSlot()]);
+    resetRound();
   };
 
   const removeSlot = (slotId: string) => {
     if (slots.length <= 1) return;
     setSlots((cur) => cur.filter((s) => s.slotId !== slotId));
+    resetRound();
   };
 
   const setSlotProvider = (slotId: string, provider: string) => {
@@ -433,6 +445,10 @@ export function CompareView({
       }),
     );
     setBlindMode(true);
+    // Re-shuffling replaces the lineup, so any prior vote/reveal is stale —
+    // clear it (otherwise a stale winnerIdx mis-marks a fresh pane and the old
+    // reveal leaks the newly-randomized blind names).
+    resetRound();
   };
 
   const toggleExcluded = (id: string) => {
