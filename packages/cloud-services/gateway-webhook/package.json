@@ -18,7 +18,7 @@
     "@elizaos/cloud-services-common": "workspace:*",
     "@upstash/redis": "^1.37.0",
     "hashring": "^3.2.0",
-    "hono": "4.12.18",
+    "hono": "4.12.21",
     "ioredis": "^5.10.1",
     "zod": "^4.4.3"
   },
