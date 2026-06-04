@@ -15,16 +15,16 @@ test("chat, apps, and settings routes render through the real shell", async ({
   page,
 }) => {
   await openAppPath(page, "/chat");
-  // The chat tab now routes through the single global chat overlay
-  // surface. The ready signal is the compact conversation affordance plus the
-  // interactive composer.
+  // The chat tab routes through the single global chat overlay surface. The
+  // ready signal is the fullscreen conversation affordance plus the interactive
+  // composer.
   await assertReadyChecks(
     page,
     "chat shell",
     [
       {
         selector:
-          'button[aria-label="expand conversation"], button[aria-label="collapse conversation"]',
+          '[data-testid="chat-composer-fullscreen"], button[aria-label="expand to full screen"], button[aria-label="exit full screen"]',
       },
       {
         selector:
