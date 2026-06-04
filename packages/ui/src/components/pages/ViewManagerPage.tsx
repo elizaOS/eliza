@@ -10,6 +10,7 @@
  */
 
 import {
+  ArrowUpRight,
   Check,
   Circle,
   Pencil,
@@ -258,9 +259,49 @@ function ViewStatusBadge({ available }: { available: boolean }) {
 
 function ViewBadge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-md border border-border/45 px-1.5 py-0.5 text-[0.68rem] font-medium text-muted">
+    <span className="inline-flex items-center rounded-md border border-border/45 bg-bg/35 px-1.5 py-0.5 text-[0.68rem] font-medium text-muted">
       {children}
     </span>
+  );
+}
+
+function ViewStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-border/40 bg-bg/35 px-2.5 py-2">
+      <div className="text-base font-semibold leading-none text-txt">
+        {value}
+      </div>
+      <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-wider text-muted">
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function ViewTypeFrame({
+  view,
+  sourceLabel,
+  viewType,
+  available,
+}: {
+  view: ViewRegistryEntry;
+  sourceLabel: string;
+  viewType: string;
+  available: boolean;
+}) {
+  return (
+    <div className="relative flex min-h-20 w-24 shrink-0 flex-col justify-between overflow-hidden rounded-md border border-border/45 bg-muted/25 p-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex h-10 w-10 items-center justify-center rounded-md border border-border/45 bg-card/80 text-accent shadow-sm">
+          <ViewIcon icon={view.icon} label={view.label} />
+        </div>
+        <ViewStatusBadge available={available} />
+      </div>
+      <div className="flex flex-wrap items-center gap-1">
+        <ViewBadge>{sourceLabel}</ViewBadge>
+        <ViewBadge>{viewType.toUpperCase()}</ViewBadge>
+      </div>
+    </div>
   );
 }
 
@@ -288,7 +329,7 @@ function ViewCard({
 
   return (
     <div
-      className="group relative rounded-md border border-border/45 bg-card/80 p-3 text-left transition-colors hover:border-accent/45 hover:bg-card focus-within:ring-2 focus-within:ring-ring/50"
+      className="group relative overflow-hidden rounded-md border border-border/45 bg-card/80 p-3 text-left shadow-sm transition-colors hover:border-accent/45 hover:bg-card focus-within:ring-2 focus-within:ring-ring/50"
       data-testid={`view-card-${view.id}`}
     >
       {(showPinButton || showManagementButtons) && (
@@ -299,46 +340,50 @@ function ViewCard({
         </div>
       )}
 
-      <div className="flex gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-border/45 bg-muted/25 text-accent">
-          <ViewIcon icon={view.icon} label={view.label} />
-        </div>
+      <ViewCardOpenButton view={view} onClick={onClick}>
+        <div className="flex gap-3">
+          <ViewTypeFrame
+            view={view}
+            sourceLabel={sourceLabel}
+            viewType={viewType}
+            available={view.available}
+          />
 
-        <ViewCardOpenButton view={view} onClick={onClick}>
-          <div className="flex min-w-0 items-start gap-2 pr-7">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-txt transition-colors group-hover:text-accent">
+          <div className="min-w-0 flex-1 pr-7">
+            <div className="min-w-0">
+              <p className="truncate text-base font-semibold text-txt transition-colors group-hover:text-accent">
                 {view.label}
               </p>
-              <p className="mt-1 line-clamp-2 min-h-8 text-xs leading-4 text-muted">
+              <p className="mt-1 line-clamp-2 min-h-10 text-xs leading-5 text-muted">
                 {view.description ??
                   `Open the ${view.label} ${viewType.toUpperCase()} view.`}
               </p>
             </div>
-            <ViewStatusBadge available={view.available} />
-          </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            <ViewBadge>{sourceLabel}</ViewBadge>
-            <ViewBadge>{viewType.toUpperCase()}</ViewBadge>
-            {view.pluginName && <ViewBadge>{view.pluginName}</ViewBadge>}
-            {!compact && <ViewBadge>{route}</ViewBadge>}
-          </div>
-
-          {view.tags && view.tags.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
-              {view.tags.slice(0, 3).map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center rounded-md bg-muted/35 px-1.5 py-0.5 text-[0.68rem] text-muted"
-                >
-                  {tag}
-                </span>
-              ))}
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {view.pluginName && <ViewBadge>{view.pluginName}</ViewBadge>}
+              {!compact && <ViewBadge>{route}</ViewBadge>}
             </div>
-          )}
-        </ViewCardOpenButton>
-      </div>
+
+            {view.tags && view.tags.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {view.tags.slice(0, 3).map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center rounded-md bg-muted/35 px-1.5 py-0.5 text-[0.68rem] text-muted"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <span className="absolute bottom-3 right-3 flex h-7 w-7 items-center justify-center rounded-md border border-border/45 bg-bg/30 text-accent transition-colors group-hover:border-accent/45 group-hover:bg-accent/10">
+              <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
+            </span>
+          </div>
+        </div>
+      </ViewCardOpenButton>
     </div>
   );
 }
@@ -374,7 +419,7 @@ function ViewsLoadingSkeleton() {
       {VIEW_LOADING_SKELETON_KEYS.map((key) => (
         <div
           key={key}
-          className="h-36 animate-pulse rounded-md bg-muted/30"
+          className="h-64 animate-pulse rounded-md bg-muted/30"
           aria-hidden
         />
       ))}
@@ -406,7 +451,7 @@ function ViewSection({
         </h2>
         <span className="text-xs text-muted">{views.length}</span>
       </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {views.map((view) => (
           <ViewCard
             key={`${view.viewType ?? "gui"}:${view.id}`}
@@ -443,7 +488,7 @@ function TopViewsSection({
         </h2>
         <span className="text-xs text-muted">{views.length}</span>
       </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {views.map((view) => (
           <ViewCard
             key={`${view.viewType ?? "gui"}:${view.id}`}
@@ -795,69 +840,71 @@ export function ViewManagerPage() {
       <div className="flex flex-1 min-h-0 flex-col">
         {/* Header */}
         <div className="shrink-0 border-b border-border/50 px-4 py-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-semibold text-txt">
-                  {t("viewmanager.title", { defaultValue: "Views" })}
-                </h1>
-                {isSearching && (
-                  <span className="rounded-md border border-border/45 px-1.5 py-0.5 text-[0.68rem] text-muted">
-                    Searching
-                  </span>
-                )}
+          <div className="rounded-md border border-border/45 bg-card/65 p-3 shadow-sm">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-semibold text-txt">
+                    {t("viewmanager.title", { defaultValue: "Views" })}
+                  </h1>
+                  {isSearching && (
+                    <span className="rounded-md border border-border/45 bg-bg/35 px-1.5 py-0.5 text-[0.68rem] text-muted">
+                      Searching
+                    </span>
+                  )}
+                </div>
+                <div className="mt-2 grid grid-cols-6 gap-1.5">
+                  <ViewStat label="Views" value={visibleViews.length} />
+                  <ViewStat label="Ready" value={availableCount} />
+                  <ViewStat label="Plugin" value={pluginCount} />
+                  <ViewStat label="GUI" value={typeCounts.gui} />
+                  <ViewStat label="TUI" value={typeCounts.tui} />
+                  <ViewStat label="XR" value={typeCounts.xr} />
+                </div>
               </div>
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                <ViewBadge>{visibleViews.length} views</ViewBadge>
-                <ViewBadge>{availableCount} available</ViewBadge>
-                <ViewBadge>{pluginCount} plugin</ViewBadge>
-                <ViewBadge>{typeCounts.gui} GUI</ViewBadge>
-                <ViewBadge>{typeCounts.tui} TUI</ViewBadge>
-                {typeCounts.xr > 0 && <ViewBadge>{typeCounts.xr} XR</ViewBadge>}
-              </div>
-            </div>
 
-            <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row lg:w-[34rem]">
-              <div className="relative min-w-0 flex-1">
-                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted pointer-events-none" />
-                <input
-                  ref={searchInput.ref}
-                  type="search"
-                  placeholder={t("viewmanager.searchPlaceholder", {
-                    defaultValue: "Search views…",
-                  })}
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className="h-10 w-full rounded-md border border-border bg-muted/20 py-2 pl-9 pr-9 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
-                  {...searchInput.agentProps}
-                />
-                {query && (
-                  <button
-                    type="button"
-                    aria-label={t("viewmanager.clearSearch", {
-                      defaultValue: "Clear view search",
+              <div className="flex w-full min-w-0 flex-row gap-2 lg:w-[34rem]">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted pointer-events-none" />
+                  <input
+                    ref={searchInput.ref}
+                    type="search"
+                    placeholder={t("viewmanager.searchPlaceholder", {
+                      defaultValue: "Search views…",
                     })}
-                    onClick={() => setQuery("")}
-                    className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted transition-colors hover:bg-muted/30 hover:text-txt"
-                  >
-                    <X className="h-3.5 w-3.5" aria-hidden />
-                  </button>
-                )}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    className="h-10 w-full rounded-md border border-border bg-bg/35 py-2 pl-9 pr-9 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+                    {...searchInput.agentProps}
+                  />
+                  {query && (
+                    <button
+                      type="button"
+                      aria-label={t("viewmanager.clearSearch", {
+                        defaultValue: "Clear view search",
+                      })}
+                      onClick={() => setQuery("")}
+                      className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted transition-colors hover:bg-muted/30 hover:text-txt"
+                    >
+                      <X className="h-3.5 w-3.5" aria-hidden />
+                    </button>
+                  )}
+                </div>
+                <button
+                  ref={refreshButton.ref}
+                  type="button"
+                  disabled={loading}
+                  onClick={() => void refresh()}
+                  className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-bg/35 px-3 text-sm font-medium text-txt transition-colors hover:border-accent/45 hover:bg-card disabled:cursor-not-allowed disabled:opacity-60"
+                  {...refreshButton.agentProps}
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+                    aria-hidden
+                  />
+                  {t("viewmanager.refreshShort", { defaultValue: "Refresh" })}
+                </button>
               </div>
-              <button
-                ref={refreshButton.ref}
-                type="button"
-                disabled={loading}
-                onClick={() => void refresh()}
-                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium text-txt transition-colors hover:border-accent/45 hover:bg-card/80 disabled:cursor-not-allowed disabled:opacity-60"
-                {...refreshButton.agentProps}
-              >
-                <RefreshCw
-                  className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
-                  aria-hidden
-                />
-                {t("viewmanager.refreshShort", { defaultValue: "Refresh" })}
-              </button>
             </div>
           </div>
         </div>
