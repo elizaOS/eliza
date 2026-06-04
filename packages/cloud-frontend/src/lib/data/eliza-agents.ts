@@ -19,6 +19,7 @@ export function useAgents() {
       return res.data;
     },
     enabled: gate.enabled,
+    refetchInterval: gate.enabled ? 15_000 : false,
   });
 }
 

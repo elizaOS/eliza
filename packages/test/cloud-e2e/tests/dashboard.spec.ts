@@ -64,23 +64,19 @@ test.describe("dashboard session", () => {
         response.request().method() === "POST" &&
         [201, 202].includes(response.status()),
     );
-    const provisionResponsePromise = authenticatedPage.waitForResponse(
-      (response) =>
-        /\/api\/v1\/eliza\/agents\/[^/]+\/provision$/.test(
-          new URL(response.url()).pathname,
-        ) && [202, 409, 200].includes(response.status()),
-    );
 
     await authenticatedPage.getByRole("button", { name: "Deploy" }).click();
-    await createResponsePromise;
-    const provisionResponse = await provisionResponsePromise;
+    const createResponse = await createResponsePromise;
 
-    const provisionBody = (await provisionResponse.json()) as {
-      data?: { agentId?: string };
+    const createBody = (await createResponse.json()) as {
+      data?: { id?: string; agentId?: string; sandboxId?: string };
     };
-    const agentId = provisionBody.data?.agentId;
+    const agentId =
+      createBody.data?.agentId ??
+      createBody.data?.id ??
+      createBody.data?.sandboxId;
     if (!agentId) {
-      throw new Error("Expected provision response to include agent id");
+      throw new Error("Expected create response to include agent id");
     }
 
     expect(

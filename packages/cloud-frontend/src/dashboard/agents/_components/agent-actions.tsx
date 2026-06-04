@@ -36,6 +36,15 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
     onComplete: (job) => {
       const action = jobActionById.current.get(job.jobId);
       jobActionById.current.delete(job.jobId);
+      if (action === "delete") {
+        toast.success(
+          t("cloud.containers.agentActions.agentDeleted", {
+            defaultValue: "Agent deleted",
+          }),
+        );
+        navigate("/dashboard/agents");
+        return;
+      }
       toast.success(
         t("cloud.containers.agentActions.jobCompleted", {
           defaultValue: "{action} completed",
@@ -57,6 +66,9 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
   });
 
   const trackedJob = poller.getStatus(agentId);
+  const trackedAction = trackedJob
+    ? jobActionById.current.get(trackedJob.jobId)
+    : undefined;
   const effectiveStatus = poller.isActive(agentId) ? "provisioning" : status;
 
   const isRunning = effectiveStatus === "running";
@@ -113,16 +125,6 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
         );
       }
 
-      if (action === "delete") {
-        toast.success(
-          t("cloud.containers.agentActions.agentDeleted", {
-            defaultValue: "Agent deleted",
-          }),
-        );
-        navigate("/dashboard/agents");
-        return;
-      }
-
       // 202 + jobId — the backend enqueued a job; track it and tell the
       // user it's running. Avoids the toast lying ("Snapshot saved")
       // before the daemon actually finished.
@@ -145,6 +147,9 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
           shutdown: t("cloud.containers.agentActions.suspendQueued", {
             defaultValue: "Suspend queued",
           }),
+          delete: t("cloud.containers.agentActions.deleteQueued", {
+            defaultValue: "Delete queued",
+          }),
         };
         toast.success(
           queuedMessages[action] ??
@@ -153,6 +158,16 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
               action,
             }),
         );
+        return;
+      }
+
+      if (action === "delete") {
+        toast.success(
+          t("cloud.containers.agentActions.agentDeleted", {
+            defaultValue: "Agent deleted",
+          }),
+        );
+        navigate("/dashboard/agents");
         return;
       }
 
@@ -333,10 +348,15 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
               style={{ fontFamily: "var(--font-roboto-mono)" }}
             >
               <Loader2 className="h-4 w-4 animate-spin" />
-              {t("cloud.containers.agentActions.provisioningHint", {
-                defaultValue:
-                  "Agent is provisioning. This page will refresh when the job finishes.",
-              })}
+              {trackedAction === "delete"
+                ? t("cloud.containers.agentActions.deleteHint", {
+                    defaultValue:
+                      "Agent delete is running. This page will return to Instances when the job finishes.",
+                  })
+                : t("cloud.containers.agentActions.provisioningHint", {
+                    defaultValue:
+                      "Agent job is running. This page will refresh when the job finishes.",
+                  })}
             </p>
             {trackedJob && (
               <p

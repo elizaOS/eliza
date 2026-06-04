@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { apiKeysService } from "./api-keys";
 
@@ -112,6 +113,59 @@ export function mergeManagedAllowedOrigins(existingValue?: string): string {
   return [...merged].join(",");
 }
 
+function isManagedPublicBaseUrlCandidate(value: string): boolean {
+  const trimmed = value.trim();
+  if (
+    trimmed.includes("(new-agent-id)") ||
+    trimmed.includes("<agent-id>") ||
+    trimmed.includes("${agentId}")
+  ) {
+    return true;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return true;
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  return (
+    url.protocol !== "https:" ||
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0" ||
+    hostname === "[::1]" ||
+    hostname.endsWith(".localhost") ||
+    hostname.endsWith(".local") ||
+    hostname.endsWith(".trycloudflare.com") ||
+    hostname.endsWith(".ngrok-free.app") ||
+    hostname.endsWith(".ngrok.io")
+  );
+}
+
+export function mergeManagedPublicBaseUrl(
+  existingValue: string | undefined,
+  agentSandboxId: string,
+): string {
+  const publicUrl = getElizaAgentPublicWebUiUrl({
+    id: agentSandboxId,
+    headscale_ip: null,
+  });
+  const trimmed = existingValue?.trim();
+
+  if (!publicUrl) {
+    return trimmed ?? "";
+  }
+
+  if (!trimmed || isManagedPublicBaseUrlCandidate(trimmed)) {
+    return publicUrl;
+  }
+
+  return trimmed;
+}
+
 export async function prepareManagedElizaBaseEnvironment(
   params: PrepareManagedElizaSharedEnvironmentParams,
 ): Promise<ManagedElizaBaseEnvironmentResult> {
@@ -141,6 +195,10 @@ export async function prepareManagedElizaBaseEnvironment(
       ELIZAOS_CLOUD_ENABLED: "true",
       ELIZAOS_CLOUD_BASE_URL: resolveCloudApiBaseUrl(),
       ELIZA_CLOUD_AGENT_ID: params.agentSandboxId,
+      PUBLIC_BASE_URL: mergeManagedPublicBaseUrl(
+        existingEnv.PUBLIC_BASE_URL,
+        params.agentSandboxId,
+      ),
       WAIFU_ELIZA_CLOUD_AGENT_ID: params.agentSandboxId,
     },
   };

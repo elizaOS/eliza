@@ -248,13 +248,13 @@ export function ElizaAgentsTable({
             agent.createdAt ?? existing?.created_at ?? new Date().toISOString(),
           updated_at:
             agent.updatedAt ?? existing?.updated_at ?? new Date().toISOString(),
-          // Preserve infra fields from existing data (API list doesn't return these)
+          // Preserve detail-only infra fields while keeping API-created agents visible.
           node_id: existing?.node_id ?? null,
           container_name: existing?.container_name ?? null,
           bridge_port: existing?.bridge_port ?? null,
           web_ui_port: existing?.web_ui_port ?? null,
           headscale_ip: existing?.headscale_ip ?? null,
-          docker_image: existing?.docker_image ?? null,
+          docker_image: agent.dockerImage ?? existing?.docker_image ?? null,
           sandbox_id: existing?.sandbox_id ?? null,
           bridge_url: existing?.bridge_url ?? null,
           canonical_web_ui_url: existing?.canonical_web_ui_url ?? null,
