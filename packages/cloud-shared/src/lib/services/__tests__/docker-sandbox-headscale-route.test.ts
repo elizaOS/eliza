@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   DockerSandboxProvider,
   requiresHeadscaleRoute,
+  resolveContainerPort,
   resolveDockerSandboxImage,
 } from "../docker-sandbox-provider";
 
@@ -88,6 +89,32 @@ describe("resolveDockerSandboxImage", () => {
     expect(resolveDockerSandboxImage(undefined, "ghcr.io/elizaos/eliza:stable")).toBe(
       "ghcr.io/elizaos/eliza:stable",
     );
+  });
+});
+
+describe("resolveContainerPort", () => {
+  const baseConfig = {
+    agentId: "11111111-1111-4111-8111-111111111111",
+    agentName: "BNancy",
+    organizationId: "22222222-2222-4222-8222-222222222222",
+  };
+
+  test("uses HTTP_PORT when PORT is absent", () => {
+    expect(
+      resolveContainerPort({
+        ...baseConfig,
+        environmentVars: { HTTP_PORT: "3000" },
+      }),
+    ).toBe("3000");
+  });
+
+  test("prefers PORT over HTTP_PORT", () => {
+    expect(
+      resolveContainerPort({
+        ...baseConfig,
+        environmentVars: { PORT: "2138", HTTP_PORT: "3000" },
+      }),
+    ).toBe("2138");
   });
 });
 

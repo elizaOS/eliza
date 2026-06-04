@@ -379,10 +379,12 @@ function getDockerHealthCmd(port: string, path = "/api/health"): string {
   return `sh -lc 'STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${port}${path}" 2>/dev/null); [ "$STATUS" = "200" ] || [ "$STATUS" = "401" ]'`;
 }
 
-function resolveContainerPort(config: SandboxCreateConfig): string {
+export function resolveContainerPort(config: SandboxCreateConfig): string {
   const requested =
     typeof config.environmentVars.PORT === "string" && config.environmentVars.PORT.trim()
       ? config.environmentVars.PORT.trim()
+      : typeof config.environmentVars.HTTP_PORT === "string" && config.environmentVars.HTTP_PORT.trim()
+        ? config.environmentVars.HTTP_PORT.trim()
       : typeof config.container?.port === "number"
         ? String(config.container.port)
         : DEFAULT_AGENT_PORT;
