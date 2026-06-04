@@ -7725,6 +7725,7 @@ export const ODYSSEUS_CSS = `
 .odysseus-root .od-cal-event-info-btn { background:none; border:none; text-align:left; cursor:pointer; font-family:inherit; padding:0; color:var(--fg); }
 .odysseus-root .od-cal-event-more-btn { background:none; border:none; color:var(--fg); opacity:0.4; cursor:pointer; font-size:15px; line-height:1; padding:0 4px; align-self:flex-start; border-radius:4px; }
 .odysseus-root .od-cal-event-more-btn:hover { opacity:0.9; background:color-mix(in srgb, var(--fg) 8%, transparent); }
+.odysseus-root .od-cal-event-readonly { align-self:flex-start; font-size:9px; letter-spacing:0.05em; text-transform:uppercase; color:var(--fg); opacity:0.45; padding:1px 5px; border:1px solid color-mix(in srgb, var(--fg) 18%, transparent); border-radius:4px; cursor:default; user-select:none; }
 
 /* event more-menu dropdown */
 .odysseus-root .od-cal-event-dropdown { position:fixed; z-index:60; min-width:150px; background:var(--panel, var(--bg)); border:1px solid var(--border); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.3); padding:4px; display:flex; flex-direction:column; }
