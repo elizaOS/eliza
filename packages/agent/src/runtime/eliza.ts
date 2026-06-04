@@ -285,7 +285,7 @@ async function loadRequiredPluginSql(): Promise<
   typeof import("@elizaos/plugin-sql")
 > {
   try {
-    return await import("@elizaos/plugin-sql");
+    return await import(/* @vite-ignore */ "@elizaos/plugin-sql");
   } catch (err) {
     const sourceEntry = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
@@ -321,37 +321,43 @@ function resolveWorkspacePluginSourceEntry(packageName: string): string | null {
 const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
   try {
     if (packageName === "@elizaos/plugin-agent-orchestrator") {
-      return await import("@elizaos/plugin-agent-orchestrator");
+      return await import(
+        /* @vite-ignore */ "@elizaos/plugin-agent-orchestrator"
+      );
     }
     if (packageName === "@elizaos/plugin-task-coordinator") {
-      return await import("@elizaos/plugin-task-coordinator");
+      return await import(
+        /* @vite-ignore */ "@elizaos/plugin-task-coordinator"
+      );
     }
     if (packageName === "@elizaos/plugin-shell") {
-      return await import("@elizaos/plugin-shell");
+      return await import(/* @vite-ignore */ "@elizaos/plugin-shell");
     }
     if (packageName === "@elizaos/plugin-coding-tools") {
-      return await import("@elizaos/plugin-coding-tools");
+      return await import(/* @vite-ignore */ "@elizaos/plugin-coding-tools");
     }
     if (packageName === "@elizaos/plugin-ollama") {
-      return await import("@elizaos/plugin-ollama");
+      return await import(/* @vite-ignore */ "@elizaos/plugin-ollama");
     }
     if (packageName === "@elizaos/plugin-elizacloud") {
-      return await import("@elizaos/plugin-elizacloud");
+      return await import(/* @vite-ignore */ "@elizaos/plugin-elizacloud");
     }
     if (packageName === "@elizaos/plugin-commands") {
-      return await import("@elizaos/plugin-commands");
+      return await import(/* @vite-ignore */ "@elizaos/plugin-commands");
     }
     if (packageName === "@elizaos/plugin-video") {
-      return await import("@elizaos/plugin-video");
+      return await import(/* @vite-ignore */ "@elizaos/plugin-video");
     }
     if (packageName === "@elizaos/plugin-background-runner") {
-      return await import("@elizaos/plugin-background-runner");
+      return await import(
+        /* @vite-ignore */ "@elizaos/plugin-background-runner"
+      );
     }
     if (packageName === "@elizaos/plugin-anthropic") {
-      return await import("@elizaos/plugin-anthropic");
+      return await import(/* @vite-ignore */ "@elizaos/plugin-anthropic");
     }
     if (packageName === "@elizaos/plugin-openai") {
-      return await import("@elizaos/plugin-openai");
+      return await import(/* @vite-ignore */ "@elizaos/plugin-openai");
     }
     return await import(packageName);
   } catch {
@@ -402,7 +408,9 @@ async function getPluginLocalEmbedding(): Promise<
   if (!_pluginLocalEmbeddingPromise) {
     _pluginLocalEmbeddingPromise = (async () => {
       try {
-        return await import("@elizaos/plugin-local-inference");
+        return await import(
+          /* @vite-ignore */ "@elizaos/plugin-local-inference"
+        );
       } catch {
         return null;
       }
@@ -4546,7 +4554,9 @@ export async function startEliza(
       isEmbeddingWarmupReuseDisabled,
       ensureModel,
       DEFAULT_MODELS_DIR,
-    } = await import("@elizaos/plugin-local-inference/runtime");
+    } = await import(
+      /* @vite-ignore */ "@elizaos/plugin-local-inference/runtime"
+    );
 
     if (!shouldWarmupLocalEmbeddingModel()) {
       logger.info(
@@ -5551,7 +5561,9 @@ export async function startInCloudMode(
   // be populated for any code path that touches `STATIC_ELIZA_PLUGINS` while
   // the cloud proxy is active.
   await ensureCoreStaticPluginsRegistered();
-  const { CloudManager } = await import("@elizaos/plugin-elizacloud");
+  const { CloudManager } = await import(
+    /* @vite-ignore */ "@elizaos/plugin-elizacloud"
+  );
 
   const cloudConfig = config.cloud;
   if (!cloudConfig) {

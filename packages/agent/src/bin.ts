@@ -82,7 +82,7 @@ async function bootstrapMobileEntrypoint(): Promise<void> {
     _binDebugLog("[bin.ts] entering android block");
     try {
       const { registerAospLlamaLoader, ensureAospLocalInferenceHandlers } =
-        await import("@elizaos/plugin-aosp-local-inference");
+        await import(/* @vite-ignore */ "@elizaos/plugin-aosp-local-inference");
       (
         globalThis as {
           __elizaAospLlamaLoader?: typeof registerAospLlamaLoader;

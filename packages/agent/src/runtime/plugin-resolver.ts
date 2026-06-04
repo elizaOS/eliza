@@ -1762,7 +1762,9 @@ export async function resolvePlugins(
         // registry is the normal fast path, but use a literal import fallback
         // so Bun can still inline the required SQL plugin if module init order
         // leaves the registry empty.
-        const sqlPluginModule = await import("@elizaos/plugin-sql");
+        const sqlPluginModule = await import(
+          /* @vite-ignore */ "@elizaos/plugin-sql"
+        );
         mod = Object.fromEntries(
           Object.entries(sqlPluginModule),
         ) as PluginModuleShape;
