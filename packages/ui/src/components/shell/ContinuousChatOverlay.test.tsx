@@ -295,7 +295,7 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getAllByTestId("chat-composer-textarea")).toHaveLength(1);
   });
 
-  it("shows exactly three resting prompt suggestions", () => {
+  it("shows exactly five resting prompt suggestions", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
@@ -306,7 +306,7 @@ describe("ContinuousChatOverlay", () => {
     const strip = screen.getByTestId("chat-suggestions");
     expect(
       strip.querySelectorAll('[data-testid^="chat-suggestion-"]'),
-    ).toHaveLength(3);
+    ).toHaveLength(5);
   });
 
   it("scrolls to the latest line when a new message arrives in fullscreen", () => {
