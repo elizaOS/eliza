@@ -1,3 +1,4 @@
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import * as React from "react";
 
 import type { ImageAttachment } from "../../api/client-types-chat";
@@ -46,6 +47,13 @@ const GLASS_BAR =
 
 // Floating (un-scrimmed) text gets a soft shadow so it reads over bright views.
 const FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
+
+// Shared easing for the overlay's motion. Matches the repo's `motion/react`
+// convention (a tween with a custom cubic-bezier, no springs); centralising it
+// keeps the reveal/swap/glow timings coherent rather than scattering magic
+// numbers. Every motion below is transform/opacity only (GPU-friendly) and is
+// softened to a near-instant cross-fade under `prefers-reduced-motion`.
+const OVERLAY_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 // Resting / typing view (not fullscreen) shows only the last couple of turns
 // with no scroll; fullscreen shows the whole history with scroll.
@@ -122,24 +130,31 @@ function SoftButton({
 }
 
 /** Three quiet, borderless dots that breathe while the assistant is replying. */
-function TypingDots(): React.JSX.Element {
+function TypingDots({ reduce }: { reduce?: boolean }): React.JSX.Element {
   return (
-    <div
+    <motion.div
       className="flex gap-1.5"
       role="status"
       aria-label="assistant is responding"
+      // Fade in/out so the dots dissolve with the reply rather than popping.
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: reduce ? 0 : 0.25, ease: OVERLAY_EASE }}
     >
       {[0, 1, 2].map((i) => (
         <span
           key={i}
           className={cn(
-            "h-1.5 w-1.5 animate-pulse rounded-full bg-white/70",
+            // `motion-reduce:animate-none` stills the breathing pulse for users
+            // who ask for reduced motion (the CSS pulse isn't a motion/react anim).
+            "h-1.5 w-1.5 animate-pulse rounded-full bg-white/70 motion-reduce:animate-none",
             FLOAT_SHADOW,
           )}
           style={{ animationDelay: `${i * 180}ms` }}
         />
       ))}
-    </div>
+    </motion.div>
   );
 }
 
@@ -147,15 +162,24 @@ function TypingDots(): React.JSX.Element {
 function ThreadLine({
   message,
   floating,
+  reduce,
 }: {
   message: ShellMessage;
   floating?: boolean;
+  reduce?: boolean;
 }): React.JSX.Element {
   const isUser = message.role === "user";
   return (
-    <div
+    <motion.div
       data-testid="thread-line"
       data-role={message.role}
+      // New turns rise+fade in (and the old whisper line slides out as the
+      // 2-line resting window shifts). Transform/opacity only; reduced motion
+      // collapses it to a quick fade with no positional movement.
+      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
+      animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
+      exit={reduce ? { opacity: 0 } : { opacity: 0, y: -4 }}
+      transition={{ duration: reduce ? 0.12 : 0.32, ease: OVERLAY_EASE }}
       className={cn(
         "flex w-full",
         floating ? "mb-1.5" : "mb-2.5",
@@ -185,7 +209,7 @@ function ThreadLine({
       >
         {message.content}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -206,6 +230,10 @@ export function ContinuousChatOverlay({
     transcript,
     clearConversation,
   } = controller;
+
+  // Honor the OS "reduce motion" setting: every overlay animation collapses to
+  // a near-instant cross-fade with no positional movement when this is true.
+  const reduce = useReducedMotion() ?? false;
 
   const [draft, setDraft] = React.useState("");
   const [expanded, setExpanded] = React.useState(false);
@@ -318,7 +346,7 @@ export function ContinuousChatOverlay({
 
     if (justOpened || isNewLine || atBottom) {
       endRef.current?.scrollIntoView(
-        isNewLine && !justOpened
+        isNewLine && !justOpened && !reduce
           ? { behavior: "smooth", block: "end" }
           : { block: "end" },
       );
@@ -568,10 +596,14 @@ export function ContinuousChatOverlay({
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
           )}
         >
-          {visibleMessages.map((m) => (
-            <ThreadLine key={m.id} message={m} floating />
-          ))}
-          {responding ? <TypingDots /> : null}
+          <AnimatePresence initial={false}>
+            {visibleMessages.map((m) => (
+              <ThreadLine key={m.id} message={m} floating reduce={reduce} />
+            ))}
+          </AnimatePresence>
+          <AnimatePresence>
+            {responding ? <TypingDots reduce={reduce} /> : null}
+          </AnimatePresence>
           <div ref={endRef} />
         </div>
       ) : null}
@@ -599,10 +631,14 @@ export function ContinuousChatOverlay({
               : "pointer-events-none opacity-0",
           )}
         >
-          {visibleMessages.slice(-RESTING_THREAD_LINES).map((m) => (
-            <ThreadLine key={m.id} message={m} floating />
-          ))}
-          {responding ? <TypingDots /> : null}
+          <AnimatePresence initial={false}>
+            {visibleMessages.slice(-RESTING_THREAD_LINES).map((m) => (
+              <ThreadLine key={m.id} message={m} floating reduce={reduce} />
+            ))}
+          </AnimatePresence>
+          <AnimatePresence>
+            {responding ? <TypingDots reduce={reduce} /> : null}
+          </AnimatePresence>
         </div>
       ) : null}
 
@@ -670,15 +706,20 @@ export function ContinuousChatOverlay({
       >
         {/* Soft breath of light for live states — not a brand-colored alert ring.
             Always mounted; only opacity changes so it swells in/out over 700ms. */}
-        <div
+        <motion.div
           aria-hidden="true"
-          className={cn(
-            "pointer-events-none absolute -inset-3 rounded-full blur-2xl transition-opacity duration-700",
-            listening || responding ? "opacity-100" : "opacity-0",
-            listening
-              ? "bg-[rgba(255,180,120,0.32)]"
-              : "bg-[rgba(190,210,255,0.22)]",
-          )}
+          className="pointer-events-none absolute -inset-3 rounded-full blur-2xl"
+          // The glow both swells (opacity) and shifts hue — warm while listening,
+          // cool while replying. Animating backgroundColor tweens that hue smoothly
+          // instead of snapping. `initial={false}`: settle at rest, animate on change.
+          initial={false}
+          animate={{
+            opacity: listening || responding ? 1 : 0,
+            backgroundColor: listening
+              ? "rgba(255,180,120,0.32)"
+              : "rgba(190,210,255,0.22)",
+          }}
+          transition={{ duration: reduce ? 0 : 0.7, ease: "easeInOut" }}
         />
         {/* Pending image attachments + any read error, above the bar. */}
         {hasImages || imageError ? (
@@ -782,32 +823,44 @@ export function ContinuousChatOverlay({
           {/* One trailing control, ChatGPT-style: mic when there's nothing to
               send (or while recording, to stop), swapping to send once the user
               starts typing or attaches an image. */}
-          {(hasDraft || hasImages) && !recording ? (
-            <SoftButton
-              glyph={SEND_GLYPH}
-              label={canSend ? "send" : "send (waiting for reply)"}
-              disabled={!canSend}
-              onClick={submit}
-              testId="chat-composer-action"
-            />
-          ) : (
-            <SoftButton
-              glyph={MIC_GLYPH}
-              label={
-                pushToTalkActive
-                  ? "release to send"
-                  : recording
-                    ? "stop listening"
-                    : "talk"
-              }
-              active={recording}
-              disabled={booting}
-              onClick={handleMicClick}
-              onPointerDown={beginPushToTalkPress}
-              onPointerUp={endPushToTalkPress}
-              onPointerCancel={endPushToTalkPress}
-            />
-          )}
+          {/* The trailing control morphs between mic and send. The `key` flip
+              remounts on each swap, so React removes the old control instantly
+              (no exit lag) and the new one pops in — a quick scale/fade that
+              reads as a morph without an AnimatePresence exit delay. */}
+          <motion.div
+            key={(hasDraft || hasImages) && !recording ? "send" : "mic"}
+            className="shrink-0"
+            initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.7 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: reduce ? 0 : 0.18, ease: OVERLAY_EASE }}
+          >
+            {(hasDraft || hasImages) && !recording ? (
+              <SoftButton
+                glyph={SEND_GLYPH}
+                label={canSend ? "send" : "send (waiting for reply)"}
+                disabled={!canSend}
+                onClick={submit}
+                testId="chat-composer-action"
+              />
+            ) : (
+              <SoftButton
+                glyph={MIC_GLYPH}
+                label={
+                  pushToTalkActive
+                    ? "release to send"
+                    : recording
+                      ? "stop listening"
+                      : "talk"
+                }
+                active={recording}
+                disabled={booting}
+                onClick={handleMicClick}
+                onPointerDown={beginPushToTalkPress}
+                onPointerUp={endPushToTalkPress}
+                onPointerCancel={endPushToTalkPress}
+              />
+            )}
+          </motion.div>
         </div>
       </div>
     </div>
