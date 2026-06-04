@@ -2,7 +2,7 @@ name: Build libelizainference (macOS, FFI)
 
 # Builds the in-process bun:ffi shared library `libelizainference.dylib`
 # for darwin-arm64 (Apple Silicon Metal). The FFI streaming runner
-# (`packages/app-core/src/services/local-inference/ffi-streaming-runner.ts`)
+# (`plugins/plugin-local-inference/src/services/ffi-streaming-runner.ts`)
 # dlopens this artifact and binds the streaming-LLM symbols declared in
 # `scripts/omnivoice-fuse/ffi-streaming-llm.h`.
 #
