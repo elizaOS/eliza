@@ -135,21 +135,22 @@ function TypingDots(): React.JSX.Element {
   );
 }
 
-/** Speech-bubble glyph for the expand/collapse affordance at the top of the stack. */
-function ChatIcon(): React.JSX.Element {
+/** Chevron for the inline expand/collapse affordance inside the composer bar. */
+function Chevron({ up }: { up: boolean }): React.JSX.Element {
   return (
     <svg
-      width="18"
-      height="18"
+      width="16"
+      height="16"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
+      style={{ transform: up ? "rotate(180deg)" : undefined }}
       aria-hidden="true"
     >
-      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+      <path d="m18 15-6-6-6 6" />
     </svg>
   );
 }
@@ -229,7 +230,6 @@ export function ContinuousChatOverlay({
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const threadRef = React.useRef<HTMLDivElement>(null);
   const composerRef = React.useRef<HTMLDivElement>(null);
-  const topBarRef = React.useRef<HTMLDivElement>(null);
   const focusThreadRef = React.useRef(false);
   const pushToTalkTimerRef = React.useRef<number | null>(null);
   const pushToTalkActiveRef = React.useRef(false);
@@ -413,8 +413,7 @@ export function ContinuousChatOverlay({
       if (!target) return;
       if (
         threadRef.current?.contains(target) ||
-        composerRef.current?.contains(target) ||
-        topBarRef.current?.contains(target)
+        composerRef.current?.contains(target)
       ) {
         return;
       }
@@ -437,30 +436,6 @@ export function ContinuousChatOverlay({
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 bottom-0 h-72 bg-gradient-to-t from-black/45 via-black/15 to-transparent"
       />
-
-      {/* Chat icon — the single affordance to expand/collapse the thread. */}
-      {hasThread ? (
-        <div ref={topBarRef} className="pointer-events-auto relative mb-2">
-          <button
-            type="button"
-            aria-label={expanded ? "hide conversation" : "show conversation"}
-            aria-expanded={expanded}
-            aria-controls={
-              expanded && hasThread ? "continuous-thread" : undefined
-            }
-            onClick={toggleExpand}
-            className={cn(
-              "grid h-9 w-9 place-items-center rounded-full border transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
-              expanded
-                ? "border-white/40 bg-white/85 text-black"
-                : "border-white/15 bg-black/45 text-white/80 backdrop-blur-xl hover:bg-white/15 hover:text-white",
-            )}
-          >
-            <ChatIcon />
-          </button>
-        </div>
-      ) : null}
 
       {/* Expanded — the one continuous thread, as a single flowing transcript */}
       {expanded && hasThread ? (
@@ -638,6 +613,25 @@ export function ContinuousChatOverlay({
           }}
         />
         <div className={cn(GLASS_BAR, "relative")}>
+          {/* Inline expand/collapse — a quiet chevron that dissolves into the
+              bar, not a separate floating button. */}
+          <button
+            type="button"
+            aria-label={
+              expanded ? "collapse conversation" : "expand conversation"
+            }
+            aria-expanded={expanded}
+            aria-controls={
+              expanded && hasThread ? "continuous-thread" : undefined
+            }
+            onClick={toggleExpand}
+            className={cn(
+              "grid h-8 w-7 shrink-0 place-items-center rounded-full text-white/70 transition-colors hover:text-white",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
+            )}
+          >
+            <Chevron up={expanded} />
+          </button>
           <SoftButton
             glyph={PLUS_GLYPH}
             label="attach image"

@@ -81,13 +81,15 @@ describe("ContinuousChatOverlay", () => {
     expect(input.value).toBe("");
   });
 
-  it("expands the thread from the chat icon and exposes aria-expanded / a log region", () => {
+  it("expands the thread from the inline chevron and exposes aria-expanded / a log region", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    const toggle = screen.getByLabelText("show conversation");
+    const toggle = screen.getByLabelText("expand conversation");
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(toggle);
     expect(
-      screen.getByLabelText("hide conversation").getAttribute("aria-expanded"),
+      screen
+        .getByLabelText("collapse conversation")
+        .getAttribute("aria-expanded"),
     ).toBe("true");
     expect(document.getElementById("continuous-thread")).toBeTruthy();
   });
@@ -101,7 +103,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("filters whitespace-only messages from the expanded thread", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    fireEvent.click(screen.getByLabelText("show conversation"));
+    fireEvent.click(screen.getByLabelText("expand conversation"));
     const log = document.getElementById("continuous-thread");
     expect(log?.textContent).toContain("hi there");
     // one real message → exactly one transcript bubble
@@ -119,7 +121,7 @@ describe("ContinuousChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.click(screen.getByLabelText("show conversation"));
+    fireEvent.click(screen.getByLabelText("expand conversation"));
     const log = document.getElementById("continuous-thread");
     const lines = log?.querySelectorAll('[data-testid="thread-line"]');
     expect(lines?.length).toBe(2);
@@ -131,10 +133,10 @@ describe("ContinuousChatOverlay", () => {
 
   it("collapses the expanded thread on Escape", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    fireEvent.click(screen.getByLabelText("show conversation"));
+    fireEvent.click(screen.getByLabelText("expand conversation"));
     const input = screen.getByLabelText("message");
     fireEvent.keyDown(input, { key: "Escape" });
-    expect(screen.getByLabelText("show conversation")).toBeTruthy();
+    expect(screen.getByLabelText("expand conversation")).toBeTruthy();
   });
 
   it("shows the attach (+) control", () => {
