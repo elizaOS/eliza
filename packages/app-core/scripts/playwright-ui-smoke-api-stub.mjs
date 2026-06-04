@@ -2149,6 +2149,50 @@ function workbenchOverview() {
   };
 }
 
+const emptyOrchestratorUsage = {
+  inputTokens: 0,
+  outputTokens: 0,
+  reasoningTokens: 0,
+  cacheTokens: 0,
+  totalTokens: 0,
+  costUsd: 0,
+  state: "unavailable",
+  byProvider: [],
+};
+
+function emptyOrchestratorStatus() {
+  return {
+    taskCount: 0,
+    activeTaskCount: 0,
+    pausedTaskCount: 0,
+    blockedTaskCount: 0,
+    validatingTaskCount: 0,
+    sessionCount: 0,
+    activeSessionCount: 0,
+    usage: emptyOrchestratorUsage,
+    byStatus: {
+      open: 0,
+      active: 0,
+      waiting_on_user: 0,
+      blocked: 0,
+      validating: 0,
+      done: 0,
+      failed: 0,
+      archived: 0,
+      interrupted: 0,
+    },
+  };
+}
+
+function emptyTrajectoryList(url) {
+  return {
+    trajectories: [],
+    total: 0,
+    offset: Number(url.searchParams.get("offset") ?? 0),
+    limit: Number(url.searchParams.get("limit") ?? 50),
+  };
+}
+
 function streamSettings(payload = {}) {
   return {
     ok: true,
@@ -3575,6 +3619,93 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/orchestrator/status") {
+    sendJson(req, res, 200, emptyOrchestratorStatus());
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/orchestrator/tasks") {
+    sendJson(req, res, 200, { tasks: [] });
+    return;
+  }
+
+  const orchestratorTaskMatch =
+    /^\/api\/orchestrator\/tasks\/([^/]+)(?:\/([^/]+))?$/.exec(url.pathname);
+  if (orchestratorTaskMatch) {
+    const [, taskId, action] = orchestratorTaskMatch;
+    if (req.method === "GET" && action === "messages") {
+      sendJson(req, res, 200, { items: [], nextCursor: null });
+      return;
+    }
+    if (req.method === "GET" && action === "events") {
+      sendJson(req, res, 200, { items: [], nextCursor: null });
+      return;
+    }
+    if (req.method === "GET" && action === "timeline") {
+      sendJson(req, res, 200, { items: [], nextCursor: null });
+      return;
+    }
+    if (req.method === "GET" && action === "usage") {
+      sendJson(req, res, 200, emptyOrchestratorUsage);
+      return;
+    }
+    if (req.method === "GET" && !action) {
+      sendJson(req, res, 404, { error: `Task not found: ${taskId}` });
+      return;
+    }
+    if (req.method === "POST") {
+      sendJson(req, res, 200, { ok: true, id: taskId });
+      return;
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/trajectories/stats") {
+    sendJson(req, res, 200, {
+      totalTrajectories: 0,
+      totalLlmCalls: 0,
+      totalProviderAccesses: 0,
+      totalPromptTokens: 0,
+      totalCompletionTokens: 0,
+      averageDurationMs: 0,
+      bySource: {},
+      byModel: {},
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/trajectories/config") {
+    sendJson(req, res, 200, { enabled: false });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/trajectories/latest") {
+    sendJson(req, res, 200, { trajectory: null });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/trajectories") {
+    sendJson(req, res, 200, emptyTrajectoryList(url));
+    return;
+  }
+
+  const trajectoryDetailMatch = /^\/api\/trajectories\/([^/]+)$/.exec(
+    url.pathname,
+  );
+  if (req.method === "GET" && trajectoryDetailMatch) {
+    sendJson(req, res, 200, {
+      trajectory: {
+        id: decodeURIComponent(trajectoryDetailMatch[1] ?? "unknown"),
+        status: "completed",
+        llmCallCount: 0,
+      },
+      llmCalls: [],
+      providerAccesses: [],
+      toolEvents: [],
+      evaluationEvents: [],
+    });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/coding-agents/preflight") {
     sendJson(req, res, 200, {
       ok: true,
@@ -3602,6 +3733,43 @@ const server = http.createServer(async (req, res) => {
     url.pathname === "/api/coding-agents/coordinator/threads"
   ) {
     sendJson(req, res, 200, { threads: [], total: 0 });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/extension/status") {
+    sendJson(req, res, 200, {
+      installed: false,
+      connected: false,
+      relayReachable: false,
+      relayPort: 0,
+      extensionPath: null,
+      chromeBuildPath: null,
+      chromePackagePath: null,
+      safariWebExtensionPath: null,
+      safariAppPath: null,
+      safariPackagePath: null,
+      releaseManifest: null,
+    });
+    return;
+  }
+
+  if (
+    (req.method === "GET" || req.method === "POST") &&
+    url.pathname === "/api/training/auto/config"
+  ) {
+    sendJson(req, res, 200, {
+      config: {
+        autoTrain: false,
+        triggerThreshold: 20,
+        triggerCooldownHours: 24,
+        backends: [],
+      },
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/training/auto/status") {
+    sendJson(req, res, 200, { serviceRegistered: false });
     return;
   }
 
@@ -3793,6 +3961,50 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/skills/curated") {
+    sendJson(req, res, 200, { skills: [] });
+    return;
+  }
+
+  if (
+    (req.method === "POST" || req.method === "DELETE") &&
+    url.pathname.startsWith("/api/skills/curated/")
+  ) {
+    sendJson(req, res, 200, { ok: true });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/skills/catalog") {
+    sendJson(req, res, 200, {
+      total: 0,
+      page: Number(url.searchParams.get("page") ?? 1),
+      perPage: Number(url.searchParams.get("perPage") ?? 50),
+      totalPages: 0,
+      installedCount: 0,
+      skills: [],
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/skills/catalog/search") {
+    sendJson(req, res, 200, {
+      query: url.searchParams.get("q") ?? "",
+      count: 0,
+      results: [],
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname.startsWith("/api/skills/catalog/")) {
+    sendJson(req, res, 404, { error: "Skill not found" });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/skills/catalog/refresh") {
+    sendJson(req, res, 200, { ok: true, count: 0 });
+    return;
+  }
+
   if (
     req.method === "GET" &&
     url.pathname === "/api/skills/marketplace/search"
@@ -3820,7 +4032,9 @@ const server = http.createServer(async (req, res) => {
   if (
     req.method === "POST" &&
     (url.pathname === "/api/skills/marketplace/install" ||
-      url.pathname === "/api/skills/marketplace/uninstall")
+      url.pathname === "/api/skills/marketplace/uninstall" ||
+      url.pathname === "/api/skills/catalog/install" ||
+      url.pathname === "/api/skills/catalog/uninstall")
   ) {
     sendJson(req, res, 200, { ok: true });
     return;

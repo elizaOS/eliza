@@ -227,11 +227,10 @@ export * from "./pages/RelationshipsView";
 export * from "./pages/ReleaseCenterView";
 export * from "./pages/RuntimeView";
 export * from "./pages/SecretsView";
-// SettingsView, StreamView omitted — App.tsx lazy-loads them.
-export * from "./pages/SkillsView";
+// SettingsView, SkillsView, StreamView, TrajectoriesView omitted — App.tsx
+// lazy-loads them, and exporting them here folds those route chunks into main.
 export * from "./pages/TaskEditor";
 export * from "./pages/TasksPageView";
-export * from "./pages/TrajectoriesView";
 export * from "./pages/TrajectoryDetailView";
 // VectorBrowserView lives in @elizaos/plugin-vector-browser — it is a heavy
 // three.js (WebGL) surface loaded dynamically so neither it nor three ship in

@@ -59,6 +59,12 @@ export interface ToolView {
   title: string;
   /** ACP tool kind, e.g. `edit`, `execute`, `read`, `search`. */
   kind: string;
+  /** The raw adapter status, before UI normalization. */
+  rawStatus?: string;
+  /** The raw adapter input payload, preserved for operator inspection. */
+  rawInput?: Record<string, unknown>;
+  /** The raw adapter output payload, preserved for operator inspection. */
+  rawOutput?: unknown;
   status: ToolStatus;
   /** Edited/read file, relative to the session workdir when resolvable. */
   filePath?: string;
@@ -104,6 +110,8 @@ export type ConversationBlock =
       key: string;
       at: number;
       text: string;
+      eventIds: string[];
+      sessionId: string | null;
       /** Wall-clock span from the first to the last reasoning delta in the
        * coalesced burst; drives the "Thought for Ns" header. */
       durationMs?: number;
@@ -241,6 +249,7 @@ function normalizeOutput(value: unknown): string | undefined {
 interface ToolOutput {
   text?: string;
   diff?: { path?: string; oldText?: string; newText?: string };
+  exitCode?: number;
 }
 
 /** ACP tool results arrive as a JSON-encoded array of content blocks, e.g.
@@ -264,6 +273,7 @@ function parseToolOutput(raw: unknown): ToolOutput {
   const blocks = Array.isArray(value) ? value : [value];
   const texts: string[] = [];
   let diff: ToolOutput["diff"];
+  let parsedExitCode: number | undefined;
   for (const block of blocks) {
     const record = asRecord(block);
     if (!record) continue;
@@ -279,11 +289,22 @@ function parseToolOutput(raw: unknown): ToolOutput {
     }
     const inner = asRecord(record.content) ?? record;
     const text =
-      pickString(inner, "text", "content") ?? pickString(record, "text");
+      pickString(inner, "text", "content", "output") ??
+      pickString(record, "text", "output");
     if (text) texts.push(text);
+    const metadata = asRecord(record.metadata) ?? asRecord(inner.metadata);
+    const exitCode =
+      pickNumber(metadata, "exitCode", "exit_code") ??
+      pickNumber(record, "exitCode", "exit_code") ??
+      pickNumber(inner, "exitCode", "exit_code");
+    if (exitCode !== undefined) parsedExitCode = exitCode;
   }
   const joined = stripAnsi(texts.join("\n")).trim();
-  return { text: joined === "" ? undefined : joined, diff };
+  return {
+    text: joined === "" ? undefined : joined,
+    diff,
+    exitCode: parsedExitCode,
+  };
 }
 
 /** The raw `data.toolCall` object the ACP service forwards (see its field
@@ -307,7 +328,9 @@ function toToolView(
   let title = "tool";
   let kind = "";
   let status: ToolStatus = "running";
+  let rawStatus: string | undefined;
   let rawInput: Record<string, unknown> | undefined;
+  let rawOutput: unknown;
   let output: string | undefined;
   let outputDiff: ToolOutput["diff"];
   let exitCode: number | undefined;
@@ -316,17 +339,23 @@ function toToolView(
     if (!call) continue;
     title = pickString(call, "title", "name", "toolName") ?? title;
     kind = pickString(call, "kind") ?? kind;
-    const rawStatus = pickString(call, "status");
-    if (rawStatus) status = TOOL_STATUS_FROM_RAW[rawStatus] ?? status;
+    const nextRawStatus = pickString(call, "status");
+    if (nextRawStatus) {
+      rawStatus = nextRawStatus;
+      status = TOOL_STATUS_FROM_RAW[nextRawStatus] ?? status;
+    }
     const nextInput = asRecord(call.rawInput) ?? asRecord(call.input);
     if (nextInput) rawInput = { ...rawInput, ...nextInput };
-    const parsed = parseToolOutput(call.output ?? call.rawOutput);
+    const nextRawOutput = call.output ?? call.rawOutput;
+    if (nextRawOutput !== undefined) rawOutput = nextRawOutput;
+    const parsed = parseToolOutput(nextRawOutput);
     if (parsed.text) output = parsed.text;
     if (
       parsed.diff?.oldText !== undefined ||
       parsed.diff?.newText !== undefined
     )
       outputDiff = parsed.diff;
+    if (parsed.exitCode !== undefined) exitCode = parsed.exitCode;
     const nextExit =
       pickNumber(asRecord(call.exitStatus), "exitCode") ??
       pickNumber(call, "exitCode");
@@ -348,6 +377,9 @@ function toToolView(
     sessionId: events[0]?.sessionId ?? null,
     title,
     kind,
+    rawStatus,
+    rawInput,
+    rawOutput,
     status,
     filePath: pickString(rawInput, "filePath", "file_path", "path"),
     command: pickString(rawInput, "command", "cmd", "script"),
@@ -388,6 +420,7 @@ type Atom =
       at: number;
       order: number;
       type: "reasoning";
+      eventId: string;
       text: string;
       sessionId: string | null;
     }
@@ -481,6 +514,7 @@ export function buildConversation(
           at: event.timestamp,
           order: order++,
           type: "reasoning",
+          eventId: event.id,
           text,
           sessionId: event.sessionId,
         });
@@ -577,8 +611,9 @@ export function buildConversation(
       const streaming = atom.sessionId
         ? !finishedSessionIds.has(atom.sessionId)
         : false;
-      if (openReasoning) {
+      if (openReasoning && openReasoning.sessionId === atom.sessionId) {
         openReasoning.text += atom.text;
+        openReasoning.eventIds.push(atom.eventId);
         // Span = last delta's time − the burst's first; recomputed as deltas
         // append so it always reflects the full burst.
         openReasoning.durationMs = atom.at - openReasoning.at;
@@ -586,9 +621,11 @@ export function buildConversation(
       } else {
         const block = {
           kind: "reasoning" as const,
-          key: `reason-${atom.order}`,
+          key: `reason-${atom.eventId}`,
           at: atom.at,
           text: atom.text,
+          eventIds: [atom.eventId],
+          sessionId: atom.sessionId,
           // A single-delta burst has no span yet; left undefined so the header
           // reads "Thought" rather than "Thought for 0s".
           durationMs: undefined,
@@ -753,7 +790,7 @@ function clampOutput(text: string): string {
 /** The expandable body of a tool card: an interleaved diff for edits, the new
  * content for writes, the command + output for shells, and the raw output
  * otherwise. */
-function ToolBody({ tool }: { tool: ToolView }): ReactNode {
+export function ToolBody({ tool }: { tool: ToolView }): ReactNode {
   const blocks: ReactNode[] = [];
 
   if (tool.oldText !== undefined && tool.newText !== undefined) {
@@ -788,7 +825,13 @@ function ToolBody({ tool }: { tool: ToolView }): ReactNode {
   return <div className="mt-1.5 space-y-1.5">{blocks}</div>;
 }
 
-function ToolCallCard({ tool }: { tool: ToolView }): ReactNode {
+function ToolCallCard({
+  tool,
+  onInspect,
+}: {
+  tool: ToolView;
+  onInspect?: () => void;
+}): ReactNode {
   const Icon = toolIcon(tool);
   const badge = STATUS_BADGE[tool.status];
   const BadgeIcon = badge.icon;
@@ -830,7 +873,10 @@ function ToolCallCard({ tool }: { tool: ToolView }): ReactNode {
       <button
         type="button"
         disabled={!hasBody}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          onInspect?.();
+          setOpen((value) => !value);
+        }}
         className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left disabled:cursor-default"
       >
         {hasBody ? (
@@ -881,9 +927,11 @@ function ToolCallCard({ tool }: { tool: ToolView }): ReactNode {
 export function ConversationBlockView({
   block,
   locale,
+  onInspect,
 }: {
   block: ConversationBlock;
   locale?: string;
+  onInspect?: () => void;
 }): ReactNode {
   if (block.kind === "user") {
     return (
@@ -940,7 +988,7 @@ export function ConversationBlockView({
   }
 
   if (block.kind === "tool") {
-    return <ToolCallCard tool={block.tool} />;
+    return <ToolCallCard tool={block.tool} onInspect={onInspect} />;
   }
 
   if (block.kind === "reasoning") {

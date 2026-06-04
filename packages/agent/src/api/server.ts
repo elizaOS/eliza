@@ -820,6 +820,113 @@ async function handleBuiltinOptionalRoutes(
     return true;
   }
 
+  if (pathname === "/api/lifeops/activity-signals") {
+    if (method === "GET") {
+      json(res, { signals: [] });
+      return true;
+    }
+    if (method === "POST") {
+      await readBody(req).catch(() => undefined);
+      json(res, {
+        ok: true,
+        stored: false,
+        reason: "lifeops_route_unavailable",
+      });
+      return true;
+    }
+  }
+
+  if (method === "GET" && pathname === "/api/voice/profiles") {
+    json(res, { profiles: [] });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/discord-local/status") {
+    json(res, {
+      available: false,
+      connected: false,
+      authenticated: false,
+      currentUser: null,
+      subscribedChannelIds: [],
+      configuredChannelIds: [],
+      scopes: [],
+      lastError: null,
+      ipcPath: null,
+    });
+    return true;
+  }
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/imessage/status"
+  ) {
+    json(res, {
+      available: false,
+      connected: false,
+      bridgeType: "none",
+      hostPlatform: process.platform,
+      diagnostics: [],
+      error: null,
+      chatDbAvailable: false,
+      sendOnly: false,
+      reason: "lifeops_route_unavailable",
+      permissionAction: null,
+    });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/signal/status") {
+    const requestUrl = new URL(req.url ?? pathname, "http://localhost");
+    const accountId = requestUrl.searchParams.get("accountId") || "default";
+    json(res, {
+      accountId,
+      status: "idle",
+      authExists: false,
+      serviceConnected: false,
+      qrDataUrl: null,
+      phoneNumber: null,
+      error: null,
+    });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/setup/telegram-account/status") {
+    json(res, {
+      connector: "telegram-account",
+      state: "idle",
+      detail: {
+        status: "idle",
+        configured: false,
+        sessionExists: false,
+        serviceConnected: false,
+        restartRequired: false,
+        hasAppCredentials: false,
+        phone: null,
+        isCodeViaApp: false,
+        account: null,
+        error: null,
+      },
+    });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/whatsapp/status") {
+    const requestUrl = new URL(req.url ?? pathname, "http://localhost");
+    const accountId = requestUrl.searchParams.get("accountId") || "default";
+    const authScope = requestUrl.searchParams.get("authScope");
+    json(res, {
+      accountId,
+      ...(authScope === "platform" || authScope === "lifeops"
+        ? { authScope }
+        : {}),
+      status: "idle",
+      authExists: false,
+      serviceConnected: false,
+      servicePhone: null,
+    });
+    return true;
+  }
+
   if (method === "GET" && pathname === "/api/coding-agents/preflight") {
     json(res, { installed: [], available: false });
     return true;

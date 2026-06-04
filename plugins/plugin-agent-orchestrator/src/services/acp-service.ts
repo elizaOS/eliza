@@ -1725,9 +1725,11 @@ export class AcpService extends Service {
         this.appendOutput(sessionId, content.text);
         this.emitSessionEvent(sessionId, "message", { text: content.text });
       }
-      // tool_call: emit tool_running on first submission OR while in_progress;
-      // ignore terminal transitions (completed/failed) — they just need output
-      // capture, not re-emit. Some ACP adapters (notably claude-agent-sdk)
+      // tool_call: emit tool_running on first submission, while in_progress,
+      // and on terminal transitions. The terminal event is required by the
+      // operator inspector so a completed/failed tool keeps its raw status and
+      // raw output in the task timeline instead of only folding output into the
+      // final assistant text. Some ACP adapters (notably claude-agent-sdk)
       // submit tool_call without ever sending a status="in_progress" update,
       // so gating only on `in_progress|running` misses the activation entirely.
       // Treating the initial `tool_call` (without `_update` suffix) as a
@@ -1777,7 +1779,12 @@ export class AcpService extends Service {
           sessionUpdate === "tool_call_update" &&
           !isTerminalStatus &&
           hasRichInput;
-        if (isInitialSubmission || isRunningStatus || isInformativeUpdate) {
+        if (
+          isInitialSubmission ||
+          isRunningStatus ||
+          isInformativeUpdate ||
+          isTerminalStatus
+        ) {
           this.emitSessionEvent(sessionId, "tool_running", { toolCall });
           void this.store.updateStatus(sessionId, "tool_running").catch((err) =>
             this.log("warn", "failed to persist tool_running status", {

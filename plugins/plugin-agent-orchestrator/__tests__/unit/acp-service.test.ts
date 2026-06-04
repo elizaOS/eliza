@@ -681,8 +681,16 @@ describe("AcpService", () => {
     const service = new AcpService(runtime());
     const events: string[] = [];
     const taskCompletePayloads: Array<{ response?: string }> = [];
+    const toolPayloads: Array<{
+      toolCall?: { status?: string; output?: string; title?: string };
+    }> = [];
     service.onSessionEvent((_sid, event, payload) => {
       events.push(event);
+      if (event === "tool_running") {
+        toolPayloads.push(
+          payload as { toolCall?: { status?: string; output?: string } },
+        );
+      }
       if (event === "task_complete") {
         taskCompletePayloads.push(payload as { response?: string });
       }
@@ -749,6 +757,30 @@ describe("AcpService", () => {
     expect(result.response).not.toContain('"metadata"');
     expect(taskCompletePayloads[0]?.response).toBe(result.response);
     expect(result.stopReason).toBe("end_turn");
+    expect(toolPayloads).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          toolCall: expect.objectContaining({
+            status: "in_progress",
+            title: "Running tool",
+          }),
+        }),
+        expect.objectContaining({
+          toolCall: expect.objectContaining({
+            status: "completed",
+            title: "Running tool",
+            output: expect.stringContaining("/dev/root        45G"),
+          }),
+        }),
+        expect.objectContaining({
+          toolCall: expect.objectContaining({
+            status: "completed",
+            title: "Read home usage",
+            output: expect.stringContaining("/home            387G"),
+          }),
+        }),
+      ]),
+    );
     // A clean exit with captured output emits exactly one terminal event
     // (`task_complete`); the redundant `stopped` was dropped to avoid
     // double-processing downstream.

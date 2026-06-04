@@ -506,8 +506,20 @@ function remoteViewMatchesTab(
 }
 
 // These paths are owned by the built-in shell and must never be handed off to
-// a remote bundle, even if a plugin registers a remote view for them.
-const SHELL_RESERVED_PATHS = new Set(["/views", "/apps"]);
+// a remote bundle, even if the view registry returns a bundleUrl for them.
+const SHELL_RESERVED_PATHS = new Set([
+  "/views",
+  "/apps",
+  "/apps/plugins",
+  "/apps/skills",
+  "/apps/trajectories",
+  "/apps/relationships",
+  "/apps/memories",
+  "/apps/runtime",
+  "/apps/database",
+  "/apps/logs",
+  "/apps/tasks",
+]);
 
 function findRemoteViewForRoute(
   views: ViewRegistryEntry[],
