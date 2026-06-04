@@ -105,10 +105,7 @@ export const agentSandboxes = pgTable(
      * (container-free); only a real need escalates to a dedicated container.
      * The migration backfills pre-existing container rows to "dedicated-lazy".
      */
-    execution_tier: text("execution_tier")
-      .$type<AgentExecutionTier>()
-      .notNull()
-      .default("shared"),
+    execution_tier: text("execution_tier").$type<AgentExecutionTier>().notNull().default("shared"),
     bridge_url: text("bridge_url"),
     health_url: text("health_url"),
     agent_name: text("agent_name"),

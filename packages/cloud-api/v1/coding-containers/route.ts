@@ -157,7 +157,8 @@ async function createCodingContainer(
     // live, operator-configured allowlist) and how to widen it, instead of a
     // bare "not permitted". The machine-readable `code` is preserved so clients
     // can still branch on it.
-    const permitted = allowlist.length > 0 ? allowlist.join(", ") : "(none configured)";
+    const permitted =
+      allowlist.length > 0 ? allowlist.join(", ") : "(none configured)";
     return c.json(
       {
         success: false,

@@ -88,7 +88,12 @@ function buildSystemPrompt(character: SharedAgentCharacter): string {
   const system = character.system?.trim();
   if (system) parts.push(system);
   if (character.bio?.length) {
-    parts.push(`About you:\n- ${character.bio.map((b) => b.trim()).filter(Boolean).join("\n- ")}`);
+    parts.push(
+      `About you:\n- ${character.bio
+        .map((b) => b.trim())
+        .filter(Boolean)
+        .join("\n- ")}`,
+    );
   }
   return parts.join("\n\n") || `You are ${character.name}, a helpful assistant.`;
 }
@@ -114,7 +119,12 @@ export async function runSharedAgentTurn(
 
   if (!resolved) {
     const reply = `${input.character.name} is temporarily unavailable (no shared model configured).`;
-    return { reply, history: appendTurn(input.history, message, reply), model: "none", degraded: true };
+    return {
+      reply,
+      history: appendTurn(input.history, message, reply),
+      model: "none",
+      degraded: true,
+    };
   }
 
   try {
@@ -127,7 +137,12 @@ export async function runSharedAgentTurn(
       ],
     });
     const reply = text.trim() || "…";
-    return { reply, history: appendTurn(input.history, message, reply), model: resolved.model, degraded: false };
+    return {
+      reply,
+      history: appendTurn(input.history, message, reply),
+      model: resolved.model,
+      degraded: false,
+    };
   } catch (error) {
     logger.warn("[shared-runtime] turn failed; degrading", {
       agent: input.character.name,
@@ -135,6 +150,11 @@ export async function runSharedAgentTurn(
       error: error instanceof Error ? error.message : String(error),
     });
     const reply = `${input.character.name} hit a temporary error. Please try again.`;
-    return { reply, history: appendTurn(input.history, message, reply), model: resolved.model, degraded: true };
+    return {
+      reply,
+      history: appendTurn(input.history, message, reply),
+      model: resolved.model,
+      degraded: true,
+    };
   }
 }

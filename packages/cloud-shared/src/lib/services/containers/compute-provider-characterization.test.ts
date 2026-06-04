@@ -28,9 +28,9 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   type CreateServerInput,
   type CreateVolumeInput,
+  getHetznerCloudClient,
   HetznerCloudClient,
   HetznerCloudError,
-  getHetznerCloudClient,
   isHetznerCloudConfigured,
 } from "./hetzner-cloud-api";
 
@@ -196,9 +196,7 @@ describe("HetznerCloudClient servers", () => {
   test("listServers encodes a label selector", async () => {
     queueJson({ servers: [] });
     await client().listServers({ "managed-by": "eliza-cloud" });
-    expect(lastRequest().url).toBe(
-      `${API_BASE}/servers?label_selector=managed-by=eliza-cloud`,
-    );
+    expect(lastRequest().url).toBe(`${API_BASE}/servers?label_selector=managed-by=eliza-cloud`);
   });
 
   test("getServer returns the server payload on 200", async () => {
@@ -448,11 +446,7 @@ describe("HetznerCloudClient catalog", () => {
 // ---------------------------------------------------------------------------
 
 describe("HetznerCloudClient error mapping", () => {
-  async function expectCode(
-    status: number,
-    body: unknown,
-    code: string,
-  ): Promise<void> {
+  async function expectCode(status: number, body: unknown, code: string): Promise<void> {
     queueStatus(status, body);
     let caught: unknown;
     try {
@@ -487,7 +481,11 @@ describe("HetznerCloudClient error mapping", () => {
   });
 
   test("401 → missing_token", async () => {
-    await expectCode(401, { error: { code: "unauthorized", message: "no token" } }, "missing_token");
+    await expectCode(
+      401,
+      { error: { code: "unauthorized", message: "no token" } },
+      "missing_token",
+    );
   });
 
   test("404 (on a non-get-by-id call) → not_found", async () => {
@@ -503,7 +501,11 @@ describe("HetznerCloudClient error mapping", () => {
   });
 
   test("429 → rate_limited", async () => {
-    await expectCode(429, { error: { code: "rate_limit_exceeded", message: "slow" } }, "rate_limited");
+    await expectCode(
+      429,
+      { error: { code: "rate_limit_exceeded", message: "slow" } },
+      "rate_limited",
+    );
   });
 
   test("500 → server_error", async () => {

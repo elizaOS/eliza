@@ -11,7 +11,9 @@ import { runSharedAgentTurn } from "./run-shared-agent-turn";
 describe("getAgentTier", () => {
   it("defaults a plain agent to shared (no container)", () => {
     expect(getAgentTier({})).toBe("shared");
-    expect(getAgentTier({ plugins: ["@elizaos/plugin-bootstrap", "@elizaos/plugin-sql"] })).toBe("shared");
+    expect(getAgentTier({ plugins: ["@elizaos/plugin-bootstrap", "@elizaos/plugin-sql"] })).toBe(
+      "shared",
+    );
   });
 
   it("escalates a custom docker image to 'custom'", () => {

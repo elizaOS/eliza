@@ -93,7 +93,12 @@ export interface DODroplet {
   status: DropletStatus;
   created_at: string;
   networks?: {
-    v4?: Array<{ ip_address: string; type: "public" | "private"; netmask?: string; gateway?: string }>;
+    v4?: Array<{
+      ip_address: string;
+      type: "public" | "private";
+      netmask?: string;
+      gateway?: string;
+    }>;
     v6?: Array<{ ip_address: string; type: "public" | "private" }>;
   };
   size_slug?: string;
@@ -329,11 +334,9 @@ export class DigitalOceanComputeProvider implements ComputeProvider {
   }
 
   private async dropletAction(id: number | string, type: string): Promise<ComputeAction> {
-    const data = await this.request<{ action: DOAction }>(
-      "POST",
-      `/droplets/${id}/actions`,
-      { type },
-    );
+    const data = await this.request<{ action: DOAction }>("POST", `/droplets/${id}/actions`, {
+      type,
+    });
     return mapAction(data.action);
   }
 
@@ -393,11 +396,10 @@ export class DigitalOceanComputeProvider implements ComputeProvider {
 
   async attachVolume(volumeId: number | string, serverId: number | string): Promise<ComputeAction> {
     // DO attaches by name OR id at /volumes/{id}/actions with droplet_id.
-    const data = await this.request<{ action: DOAction }>(
-      "POST",
-      `/volumes/${volumeId}/actions`,
-      { type: "attach", droplet_id: Number(serverId) },
-    );
+    const data = await this.request<{ action: DOAction }>("POST", `/volumes/${volumeId}/actions`, {
+      type: "attach",
+      droplet_id: Number(serverId),
+    });
     return mapAction(data.action);
   }
 
@@ -411,11 +413,10 @@ export class DigitalOceanComputeProvider implements ComputeProvider {
         `Volume ${volumeId} is not attached to any droplet; cannot detach`,
       );
     }
-    const data = await this.request<{ action: DOAction }>(
-      "POST",
-      `/volumes/${volumeId}/actions`,
-      { type: "detach", droplet_id: Number(dropletId) },
-    );
+    const data = await this.request<{ action: DOAction }>("POST", `/volumes/${volumeId}/actions`, {
+      type: "detach",
+      droplet_id: Number(dropletId),
+    });
     return mapAction(data.action);
   }
 
@@ -457,10 +458,7 @@ export class DigitalOceanComputeProvider implements ComputeProvider {
   // ----------------------------------------------------------------------
 
   async listServerTypes(): Promise<ComputeServerType[]> {
-    const data = await this.request<{ sizes: DOSize[] }>(
-      "GET",
-      `/sizes?per_page=${LIST_PER_PAGE}`,
-    );
+    const data = await this.request<{ sizes: DOSize[] }>("GET", `/sizes?per_page=${LIST_PER_PAGE}`);
     return data.sizes.map((s) => ({
       id: s.slug,
       name: s.slug,

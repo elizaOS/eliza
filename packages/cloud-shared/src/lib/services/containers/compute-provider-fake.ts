@@ -181,7 +181,10 @@ export class InMemoryComputeProvider implements ComputeProvider {
   /** Advance the simulated clock by `n` ticks (default 1). Returns the new tick. */
   tick(n = 1): number {
     if (!Number.isInteger(n) || n < 0) {
-      throw new ComputeFakeError("invalid_input", `tick(n) requires a non-negative integer, got ${n}`);
+      throw new ComputeFakeError(
+        "invalid_input",
+        `tick(n) requires a non-negative integer, got ${n}`,
+      );
     }
     this.currentTick += n;
     return this.currentTick;

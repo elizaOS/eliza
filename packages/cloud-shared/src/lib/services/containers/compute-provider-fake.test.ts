@@ -16,6 +16,7 @@
  */
 
 import { beforeEach, describe, expect, test } from "bun:test";
+import type { CreateServerInput, CreateVolumeInput } from "./compute-provider";
 import {
   ACTION_STATUS_COMPLETED,
   ACTION_STATUS_ERRORED,
@@ -27,7 +28,6 @@ import {
   VOLUME_STATUS_AVAILABLE,
   VOLUME_STATUS_CREATING,
 } from "./compute-provider-fake";
-import type { CreateServerInput, CreateVolumeInput } from "./compute-provider";
 
 function serverInput(over: Partial<CreateServerInput> = {}): CreateServerInput {
   return {
@@ -243,7 +243,9 @@ describe("actions", () => {
     expect(action.status).toBe(ACTION_STATUS_IN_PROGRESS);
     expect((await provider.getVolume(vol.id as number))?.server).toBeNull();
 
-    expect((await provider.waitForAction(action.id as number)).status).toBe(ACTION_STATUS_COMPLETED);
+    expect((await provider.waitForAction(action.id as number)).status).toBe(
+      ACTION_STATUS_COMPLETED,
+    );
   });
 
   test("powerOff / powerOn return in-progress actions that complete", async () => {
@@ -316,7 +318,9 @@ describe("capacity", () => {
     const p = new InMemoryComputeProvider({ maxServers: 2 });
     await p.createServer(serverInput({ name: "a" }));
     await p.createServer(serverInput({ name: "b" }));
-    await expect(p.createServer(serverInput({ name: "c" }))).rejects.toBeInstanceOf(ComputeFakeError);
+    await expect(p.createServer(serverInput({ name: "c" }))).rejects.toBeInstanceOf(
+      ComputeFakeError,
+    );
     await expect(p.createServer(serverInput({ name: "c" }))).rejects.toMatchObject({
       code: "no_capacity",
     });
@@ -378,7 +382,9 @@ describe("injected clock", () => {
     expect((await provider.getVolume(vol.id as number))?.status).toBe(VOLUME_STATUS_AVAILABLE);
 
     const attach = await provider.attachVolume(vol.id as number, sid);
-    expect((await provider.waitForAction(attach.id as number)).status).toBe(ACTION_STATUS_COMPLETED);
+    expect((await provider.waitForAction(attach.id as number)).status).toBe(
+      ACTION_STATUS_COMPLETED,
+    );
 
     await provider.deleteServer(sid);
     expect(await provider.getServer(sid)).toBeNull();
