@@ -41,6 +41,7 @@ import {
   TOP_VIEW_LIMIT,
 } from "../../view-recents";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
+import { ViewIcon } from "../views/ViewIcon";
 
 const VIEW_LOADING_SKELETON_KEYS = [
   "view-skeleton-1",
@@ -356,37 +357,10 @@ function ViewBadge({ children }: { children: React.ReactNode }) {
   );
 }
 
-function buildViewCode(view: Pick<ViewRegistryEntry, "id" | "label">): string {
-  const source = cleanViewLabel(view.label || view.id);
-  const words = source
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .split(/[^a-z0-9]+/i)
-    .filter(Boolean);
-  if (words.length >= 3) {
-    return words
-      .slice(0, 3)
-      .map((word) => word[0])
-      .join("")
-      .toUpperCase();
-  }
-  if (words.length === 2) {
-    return `${words[0][0]}${words[1][0]}${words[1].at(-1)}`.toUpperCase();
-  }
-  const word = words[0] ?? "view";
-  if (word.length <= 3) return word.toUpperCase().padEnd(3, "V");
-  return `${word.slice(0, 2)}${word.at(-1)}`.toUpperCase();
-}
-
-function ViewIdentityTile({
-  view,
-}: {
-  view: Pick<ViewRegistryEntry, "id" | "label">;
-}) {
+function ViewIdentityTile({ view }: { view: ViewRegistryEntry }) {
   return (
     <div className="flex h-12 w-14 shrink-0 flex-col items-center justify-center rounded-md border border-border/45 bg-muted/25 text-accent">
-      <span className="text-xs font-semibold leading-none tracking-wide">
-        {buildViewCode(view)}
-      </span>
+      <ViewIcon icon={view.icon} label={view.label} className="h-5 w-5" />
       <span className="mt-1 h-1 w-6 rounded-full bg-accent/45" aria-hidden />
     </div>
   );
@@ -429,7 +403,7 @@ function ViewCard({
       <div className="flex min-w-0 items-center gap-3">
         <ViewCardOpenButton view={view} onClick={onClick}>
           <div className="flex min-w-0 items-center gap-3">
-            <ViewIdentityTile view={{ id: group.id, label: group.label }} />
+            <ViewIdentityTile view={view} />
 
             <div className="min-w-0 flex-1">
               <div className="min-w-0">

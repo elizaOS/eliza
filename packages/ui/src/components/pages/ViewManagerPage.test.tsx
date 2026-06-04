@@ -165,6 +165,8 @@ describe("ViewManagerPage", () => {
     );
 
     expect(card.querySelector("img")).toBeNull();
+    expect(card.querySelector("svg")).toBeTruthy();
+    expect(card.textContent).not.toContain("RLR");
     expect(card.textContent).toContain("ledger-plugin");
     expect(card.textContent).toContain("/apps/remote-ledger");
     expect(context).toMatchObject({
