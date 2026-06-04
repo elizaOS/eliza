@@ -1971,7 +1971,9 @@ export function patchAndroidAppActionsXmlResource(
   const escapedSchemes = [
     "eliza",
     "elizaos",
+    "milady",
     "ai.elizaos.app",
+    "ai.milady.milady",
     "app.eliza",
     androidPackage,
   ].filter(Boolean);
@@ -2117,6 +2119,8 @@ export function validateAndroidAppActionsXmlResource(
       : 'android:targetClass="ai.elizaos.app.MainActivity"',
     urlScheme === "eliza" ? null : "eliza://",
     urlScheme === "ai.elizaos.app" ? null : "ai.elizaos.app://",
+    urlScheme === "milady" ? null : "milady://",
+    urlScheme === "ai.milady.milady" ? null : "ai.milady.milady://",
     urlScheme === "app.eliza" ? null : "app.eliza://",
   ].filter(Boolean);
   for (const stale of staleLiterals) {
