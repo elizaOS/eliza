@@ -11,6 +11,12 @@ providers:
   anthropic: {}
   google: {}
   groq: {}
-  cerebras: {}
+  cerebras:
+    api_base: "https://api.cerebras.ai/v1"
+    api_key: "${BITROUTER_CEREBRAS_API_KEY}"
+    api_protocol: openai
+    models:
+      gpt-oss-120b: {}
+      zai-glm-4.7: {}
 
 inherit_defaults: true
