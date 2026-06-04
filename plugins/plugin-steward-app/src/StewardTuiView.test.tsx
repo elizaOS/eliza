@@ -52,7 +52,8 @@ vi.mock("@elizaos/ui", () => ({
   useApp: () => ({}),
 }));
 
-import { interact, StewardTuiView } from "./StewardView";
+import { StewardTuiView } from "./StewardView";
+import { interact } from "./StewardView.interact";
 
 const sampleStatus = {
   configured: true,

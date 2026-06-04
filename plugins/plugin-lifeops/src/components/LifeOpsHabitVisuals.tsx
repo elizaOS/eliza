@@ -1,10 +1,8 @@
 import type { ReactNode } from "react";
-
-export type LifeOpsBucket = {
-  key: string;
-  label: string;
-  totalSeconds: number;
-};
+import {
+  formatDurationSeconds,
+  type LifeOpsBucket,
+} from "./LifeOpsHabitVisuals.helpers.js";
 
 const BUCKET_COLORS = [
   "bg-cyan-400",
@@ -27,38 +25,6 @@ const DONUT_COLORS = [
   "#e879f9",
   "#fdba74",
 ];
-
-export function startOfLocalDayIso(date = new Date()): string {
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  return start.toISOString();
-}
-
-export function formatDurationSeconds(
-  value: number | null | undefined,
-): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return "";
-  }
-  if (value <= 0) {
-    return "0m";
-  }
-  const totalMinutes = Math.round(value / 60);
-  if (totalMinutes < 60) return `${totalMinutes}m`;
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
-}
-
-export function formatClockTime(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const parsed = Date.parse(iso);
-  if (!Number.isFinite(parsed)) return "";
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(parsed));
-}
 
 export function HabitPanel({
   title,

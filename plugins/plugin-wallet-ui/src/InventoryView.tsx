@@ -1,6 +1,4 @@
 import type {
-  WalletAddresses,
-  WalletBalancesResponse,
   WalletConfigStatus,
   WalletMarketMover,
   WalletMarketOverviewResponse,
@@ -10,6 +8,7 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileWindow,
 } from "@elizaos/shared";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
 import { Button } from "@elizaos/ui/components";
 import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
@@ -21,7 +20,6 @@ import { PageLayout } from "@elizaos/ui/layouts";
 import type { InventoryChainFilters } from "@elizaos/ui/state";
 import { useApp } from "@elizaos/ui/state";
 import { cn } from "@elizaos/ui/utils";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Activity,
   ArrowDownLeft,
@@ -47,6 +45,10 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  loadWalletTuiState,
+  resolveWalletAddresses,
+} from "./InventoryView.helpers";
 import { getNativeLogoUrl } from "./inventory/chainConfig.ts";
 import {
   formatBalance,
@@ -117,23 +119,6 @@ const compactDollarFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
 });
 
-function resolveWalletAddresses({
-  walletAddresses,
-  walletConfig,
-}: {
-  walletAddresses: WalletAddresses | null;
-  walletConfig: WalletConfigStatus | null;
-}): {
-  evmAddress: string | null;
-  solanaAddress: string | null;
-} {
-  return {
-    evmAddress: walletAddresses?.evmAddress ?? walletConfig?.evmAddress ?? null,
-    solanaAddress:
-      walletAddresses?.solanaAddress ?? walletConfig?.solanaAddress ?? null,
-  };
-}
-
 function readHiddenTokenIds(): Set<string> {
   if (typeof window === "undefined") return new Set();
   try {
@@ -184,123 +169,6 @@ function normalizeTokenAddress(address: string | null): string | null {
 function formatUsd(value: number): string {
   if (!Number.isFinite(value)) return usdFormatter.format(0);
   return usdFormatter.format(value);
-}
-
-function parseUsd(value: string | number | null | undefined): number {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  if (typeof value !== "string") return 0;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function summarizeWalletBalances(
-  walletBalances: WalletBalancesResponse | null,
-): {
-  totalUsd: number;
-  tokens: Array<{
-    chain: string;
-    symbol: string;
-    name: string;
-    contractAddress: string | null;
-    balance: string;
-    valueUsd: number;
-    isNative: boolean;
-  }>;
-  chainErrors: Array<{ chain: string; error: string }>;
-} {
-  const tokens: Array<{
-    chain: string;
-    symbol: string;
-    name: string;
-    contractAddress: string | null;
-    balance: string;
-    valueUsd: number;
-    isNative: boolean;
-  }> = [];
-  const chainErrors: Array<{ chain: string; error: string }> = [];
-
-  for (const chain of walletBalances?.evm?.chains ?? []) {
-    const nativeValueUsd = parseUsd(chain.nativeValueUsd);
-    tokens.push({
-      chain: chain.chain,
-      symbol: chain.nativeSymbol,
-      name: `${chain.chain} native`,
-      contractAddress: null,
-      balance: chain.nativeBalance,
-      valueUsd: nativeValueUsd,
-      isNative: true,
-    });
-    if (chain.error) {
-      chainErrors.push({ chain: chain.chain, error: chain.error });
-      continue;
-    }
-    for (const token of chain.tokens) {
-      tokens.push({
-        chain: chain.chain,
-        symbol: token.symbol,
-        name: token.name,
-        contractAddress: token.contractAddress,
-        balance: token.balance,
-        valueUsd: parseUsd(token.valueUsd),
-        isNative: false,
-      });
-    }
-  }
-
-  if (walletBalances?.solana) {
-    tokens.push({
-      chain: "Solana",
-      symbol: "SOL",
-      name: "Solana native",
-      contractAddress: null,
-      balance: walletBalances.solana.solBalance,
-      valueUsd: parseUsd(walletBalances.solana.solValueUsd),
-      isNative: true,
-    });
-    for (const token of walletBalances.solana.tokens) {
-      tokens.push({
-        chain: "Solana",
-        symbol: token.symbol,
-        name: token.name,
-        contractAddress: token.mint,
-        balance: token.balance,
-        valueUsd: parseUsd(token.valueUsd),
-        isNative: false,
-      });
-    }
-  }
-
-  tokens.sort((a, b) => b.valueUsd - a.valueUsd);
-  return {
-    totalUsd: tokens.reduce((sum, token) => sum + token.valueUsd, 0),
-    tokens,
-    chainErrors,
-  };
-}
-
-async function loadWalletTuiState() {
-  const [
-    walletAddresses,
-    walletConfig,
-    walletBalances,
-    walletNfts,
-    marketOverview,
-  ] = await Promise.all([
-    client.getWalletAddresses().catch(() => null),
-    client.getWalletConfig().catch(() => null),
-    client.getWalletBalances().catch(() => null),
-    client.getWalletNfts().catch(() => null),
-    client.getWalletMarketOverview().catch(() => null),
-  ]);
-  const summary = summarizeWalletBalances(walletBalances);
-  return {
-    walletAddresses,
-    walletConfig,
-    walletBalances,
-    walletNfts,
-    marketOverview,
-    summary,
-  };
 }
 
 function formatCompactUsd(value: number): string {
@@ -2952,55 +2820,4 @@ export function InventoryTuiView() {
       </div>
     </div>
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-wallet-state") {
-    const state = await loadWalletTuiState();
-    const addresses = resolveWalletAddresses({
-      walletAddresses: state.walletAddresses,
-      walletConfig: state.walletConfig,
-    });
-    return {
-      viewType: "tui",
-      addresses,
-      totalUsd: state.summary.totalUsd,
-      tokenCount: state.summary.tokens.length,
-      nftCount:
-        (state.walletNfts?.evm?.reduce(
-          (sum, collection) => sum + collection.nfts.length,
-          0,
-        ) ?? 0) + (state.walletNfts?.solana?.nfts.length ?? 0),
-      chainErrors: state.summary.chainErrors,
-      tokens: state.summary.tokens.slice(
-        0,
-        typeof params?.limit === "number" ? params.limit : 20,
-      ),
-    };
-  }
-
-  if (capability === "terminal-wallet-market-overview") {
-    return {
-      viewType: "tui",
-      overview: await client.getWalletMarketOverview(),
-    };
-  }
-
-  if (capability === "terminal-wallet-trading-profile") {
-    const window =
-      params?.window === "24h" ||
-      params?.window === "7d" ||
-      params?.window === "30d"
-        ? params.window
-        : "30d";
-    return {
-      viewType: "tui",
-      profile: await client.getWalletTradingProfile(window),
-    };
-  }
-
-  throw new Error(`Unsupported capability "${capability}"`);
 }

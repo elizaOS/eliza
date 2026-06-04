@@ -5,7 +5,7 @@ import type {
   TaskStepExecutor,
   TaskSubmitResult,
   TaskTurnResult,
-} from './smithers-task-types';
+} from "./smithers-task-types";
 
 /** Minimal ACP surface the executor needs. Satisfied by `AcpService`; faked in tests. */
 export interface AcpLike {
@@ -17,10 +17,17 @@ export interface AcpLike {
   }): Promise<{ sessionId: string }>;
   sendPrompt(
     sessionId: string,
-    text: string
-  ): Promise<{ stopReason?: string; finalText?: string; response?: string; error?: string }>;
+    text: string,
+  ): Promise<{
+    stopReason?: string;
+    finalText?: string;
+    response?: string;
+    error?: string;
+  }>;
   /** Reattach to a still-resumable session for this label (durable resume). */
-  findResumableSessionByLabel?(label: string): Promise<{ sessionId: string } | null | undefined>;
+  findResumableSessionByLabel?(
+    label: string,
+  ): Promise<{ sessionId: string } | null | undefined>;
   cancelSession?(sessionId: string): Promise<void>;
 }
 
@@ -49,8 +56,12 @@ export function detectTurnDone(result: {
   error?: string;
 }): boolean {
   if (result.error) return false;
-  const reason = (result.stopReason ?? '').toLowerCase();
-  if (reason.includes('max') || reason.includes('length') || reason.includes('interrupt')) {
+  const reason = (result.stopReason ?? "").toLowerCase();
+  if (
+    reason.includes("max") ||
+    reason.includes("length") ||
+    reason.includes("interrupt")
+  ) {
     return false;
   }
   return true;
@@ -76,7 +87,7 @@ export class SmithersTaskExecutor implements TaskStepExecutor {
 
   constructor(
     private readonly acp: AcpLike,
-    private readonly opts: SmithersTaskExecutorOptions = {}
+    private readonly opts: SmithersTaskExecutorOptions = {},
   ) {
     this.sessionId = opts.sessionId;
   }
@@ -109,14 +120,16 @@ export class SmithersTaskExecutor implements TaskStepExecutor {
     const sessionId = await this.ensureSession(ctx);
     const prompt =
       (ctx.turn ?? 1) === 1
-        ? (ctx.prompt ?? '')
-        : (this.opts.continuePrompt ?? 'Continue working on the task. Reply when complete.');
+        ? (ctx.prompt ?? "")
+        : (this.opts.continuePrompt ??
+          "Continue working on the task. Reply when complete.");
     const result = await this.acp.sendPrompt(sessionId, prompt);
     if (result.error) {
       this.lastError = new Error(result.error);
       throw this.lastError;
     }
-    this.lastResponse = result.finalText ?? result.response ?? this.lastResponse;
+    this.lastResponse =
+      result.finalText ?? result.response ?? this.lastResponse;
     return {
       done: detectTurnDone(result),
       output: { finalText: result.finalText, stopReason: result.stopReason },

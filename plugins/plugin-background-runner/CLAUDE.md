@@ -6,7 +6,7 @@ Drives core `TaskService.runDueTasks()` from OS-level wake-ups on Capacitor mobi
 
 This plugin adds a `BgTaskSchedulerService` to an Eliza agent runtime that bridges the OS background scheduler (iOS `BGTaskScheduler` via `@capacitor/background-runner`, Android `WorkManager` via the same) to elizaOS's core task queue. On every OS wake-up the service calls `TaskService.runDueTasks()` once, then returns — no long-lived process.
 
-It also sets `runtime.serverless = true` so core's `TaskService` skips its own timer and defers entirely to the OS.
+It also sets `runtime.serverless = true` so core's `TaskService` defers its own timer entirely to the OS.
 
 This plugin is **opt-in**: add it to the agent's plugin list. It registers no actions, providers, or evaluators — only the service.
 

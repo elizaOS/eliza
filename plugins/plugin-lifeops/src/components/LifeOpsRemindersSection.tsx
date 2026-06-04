@@ -24,11 +24,11 @@ import {
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
+import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.helpers.js";
 import {
   type LifeOpsSelection,
   useLifeOpsSelection,
-} from "./LifeOpsSelectionContext.js";
+} from "./LifeOpsSelectionContext.helpers.js";
 
 // ---------------------------------------------------------------------------
 // Types & constants
@@ -1644,9 +1644,7 @@ function RemindersTabBody({
   emptyLabel,
 }: RemindersTabBodyProps) {
   if (loading && reminderCount === 0) {
-    return (
-      <ReminderStatusIcon icon="reminder" loading label={loadingLabel} />
-    );
+    return <ReminderStatusIcon icon="reminder" loading label={loadingLabel} />;
   }
   if (reminderCount === 0) {
     return <ReminderStatusIcon icon="reminder" label={emptyLabel} />;

@@ -28,7 +28,8 @@ vi.mock("@elizaos/app-core", () => ({
 
 vi.mock("./client", () => ({}));
 
-import { HyperliquidTuiView, interact } from "./HyperliquidAppView";
+import { HyperliquidTuiView } from "./HyperliquidAppView";
+import { interact } from "./HyperliquidAppView.interact";
 
 const sampleStatus = {
   publicReadReady: true,

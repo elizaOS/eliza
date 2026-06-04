@@ -1,6 +1,7 @@
 import { Check, Copy } from "lucide-react";
 import { marked, type Token, type Tokens, type TokensList } from "marked";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { sanitizeMarkdownUrl } from "./orchestrator-markdown.helpers";
 
 // The coding agent writes markdown prose. We parse it with `marked` — a real
 // lexer, not a hand-rolled regex — then render its token AST directly to React
@@ -13,36 +14,6 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 
 function alignStyle(align: Tokens.TableCell["align"]) {
   return align ? { textAlign: align } : undefined;
-}
-
-export function sanitizeMarkdownUrl(value: string | undefined): string | null {
-  if (!value) return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-
-  if (
-    (trimmed.startsWith("/") && !trimmed.startsWith("//")) ||
-    trimmed.startsWith("./") ||
-    trimmed.startsWith("../") ||
-    trimmed.startsWith("#")
-  ) {
-    return trimmed;
-  }
-
-  try {
-    const parsed = new URL(trimmed);
-    if (
-      parsed.protocol === "http:" ||
-      parsed.protocol === "https:" ||
-      parsed.protocol === "mailto:"
-    ) {
-      return trimmed;
-    }
-  } catch {
-    return null;
-  }
-
-  return null;
 }
 
 function renderChildren(tokens: Token[] | undefined, key: string): ReactNode {

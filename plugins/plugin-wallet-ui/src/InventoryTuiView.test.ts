@@ -69,7 +69,8 @@ vi.mock("@elizaos/ui", () => ({
   useApp: appHooks.useApp,
 }));
 
-import { InventoryTuiView, InventoryView, interact } from "./InventoryView";
+import { InventoryTuiView, InventoryView } from "./InventoryView";
+import { interact } from "./InventoryView.interact";
 
 const balances = {
   evm: {

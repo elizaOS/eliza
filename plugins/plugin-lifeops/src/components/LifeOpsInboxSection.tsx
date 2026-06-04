@@ -51,11 +51,11 @@ import {
   buildMessageChatPrefill,
   buildReplyPrefill,
   useLifeOpsChatLauncher,
-} from "./LifeOpsChatAdapter.js";
+} from "./LifeOpsChatAdapter.helpers.js";
 import {
   type LifeOpsSelection,
   useLifeOpsSelection,
-} from "./LifeOpsSelectionContext.js";
+} from "./LifeOpsSelectionContext.helpers.js";
 
 interface ChannelStyle {
   label: string;

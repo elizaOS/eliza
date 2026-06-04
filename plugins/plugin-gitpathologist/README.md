@@ -52,7 +52,7 @@ The agent will activate this action when the user says things like:
 | Environment variable | Default | Description |
 |---|---|---|
 | `ELIZA_GITPATHOLOGIST` | auto | Set `true` to force-enable, `false` to force-disable. When unset, the plugin auto-enables in workspaces with a `.git` directory. |
-| `GITPATHOLOGIST_BUDGET` | `20` | Maximum LLM narration calls per analysis. Set to `0` to skip LLM narration entirely. |
+| `GITPATHOLOGIST_BUDGET` | `20` | Maximum LLM narration calls per analysis. Set to `0` to use deterministic narration only. |
 | `GITPATHOLOGIST_CACHE_DIR` | `<repoRoot>/.eliza/gitpathology` | Override the cache directory for pathology reports. |
 
 ## Requirements

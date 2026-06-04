@@ -3,7 +3,7 @@
  *
  * Wraps `@elizaos/capacitor-wifi` and exposes a simple scan + connect UI plus
  * a single SCAN_WIFI agent action. The app is only registered on Android via
- * the `register` subpath; other platforms intentionally skip registration so
+ * the `register` subpath; other platforms intentionally leave registration unchanged so
  * the app does not appear in the catalog where it cannot function.
  */
 

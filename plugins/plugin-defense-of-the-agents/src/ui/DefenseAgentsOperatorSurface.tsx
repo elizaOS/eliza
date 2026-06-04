@@ -9,8 +9,7 @@ import {
 } from "@elizaos/app-core/ui-compat";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
-
-const LANES = ["top", "mid", "bot"] as const;
+import { LANES } from "./DefenseAgentsOperatorSurface.helpers";
 
 function readString(
   source: Record<string, unknown> | null,
@@ -750,35 +749,3 @@ const tuiInputStyle: CSSProperties = {
   padding: "8px",
   fontFamily: "inherit",
 };
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-defense-state") {
-    return {
-      viewType: "tui",
-      appName: "@elizaos/plugin-defense-of-the-agents",
-      lanes: [...LANES],
-      primaryCommands: [
-        "review strategy",
-        "move to top",
-        "move to mid",
-        "move to bot",
-        "recall",
-      ],
-    };
-  }
-  if (capability === "terminal-defense-command") {
-    const runId = typeof params?.runId === "string" ? params.runId.trim() : "";
-    const content =
-      typeof params?.content === "string" ? params.content.trim() : "";
-    if (!runId) throw new Error("runId is required");
-    if (!content) throw new Error("content is required");
-    return {
-      viewType: "tui",
-      command: await client.sendAppRunMessage(runId, content),
-    };
-  }
-  throw new Error(`Unsupported Defense TUI capability: ${capability}`);
-}

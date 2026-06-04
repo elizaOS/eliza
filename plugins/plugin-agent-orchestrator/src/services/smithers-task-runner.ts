@@ -1,20 +1,20 @@
-import { spawn } from 'node:child_process';
-import { mkdir, readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { spawn } from "node:child_process";
+import { mkdir, readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
   TaskRunResult,
   TaskRunSpec,
   TaskStepContext,
   TaskStepExecutor,
-} from './smithers-task-types';
+} from "./smithers-task-types";
 
 const DEFAULT_MAX_TURNS = 32;
 
 interface StepRequest {
-  type: 'executeStep';
+  type: "executeStep";
   requestId: string;
-  kind: 'provision' | 'turn' | 'approval' | 'submit';
+  kind: "provision" | "turn" | "approval" | "submit";
   ctx: TaskStepContext;
 }
 
@@ -26,14 +26,16 @@ interface StepResponse {
 }
 
 const METHOD_BY_KIND = {
-  provision: 'provision',
-  turn: 'runTurn',
-  approval: 'requestApproval',
-  submit: 'submit',
+  provision: "provision",
+  turn: "runTurn",
+  approval: "requestApproval",
+  submit: "submit",
 } as const;
 
 function sanitizeId(value: string): string {
-  return value.replace(/[^a-zA-Z0-9_.:-]+/g, '-').replace(/^-+|-+$/g, '') || 'task';
+  return (
+    value.replace(/[^a-zA-Z0-9_.:-]+/g, "-").replace(/^-+|-+$/g, "") || "task"
+  );
 }
 
 /**
@@ -43,22 +45,30 @@ function sanitizeId(value: string): string {
  * keeps node+tsx dev hosts working too).
  */
 function resolveBunBinary(): string {
-  if (typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined') return process.execPath;
-  return process.env.BUN_BIN || 'bun';
+  if (typeof (globalThis as { Bun?: unknown }).Bun !== "undefined")
+    return process.execPath;
+  return process.env.BUN_BIN || "bun";
 }
 
 function resolveTaskDbPath(taskId: string): string {
-  return join(process.cwd(), '.eliza', 'smithers-tasks', `${sanitizeId(taskId)}.sqlite`);
+  return join(
+    process.cwd(),
+    ".eliza",
+    "smithers-tasks",
+    `${sanitizeId(taskId)}.sqlite`,
+  );
 }
 
 async function resolvePluginRoot(): Promise<string> {
   let dir = dirname(fileURLToPath(import.meta.url));
   for (let depth = 0; depth < 8; depth += 1) {
     try {
-      const manifest = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as {
+      const manifest = JSON.parse(
+        await readFile(join(dir, "package.json"), "utf8"),
+      ) as {
         name?: string;
       };
-      if (manifest.name === '@elizaos/plugin-agent-orchestrator') return dir;
+      if (manifest.name === "@elizaos/plugin-agent-orchestrator") return dir;
     } catch {
       // keep walking up to the plugin root
     }
@@ -197,7 +207,7 @@ function createTaskScript(): string {
 export async function runTaskWithSmithers(
   spec: TaskRunSpec,
   executor: TaskStepExecutor,
-  options: { signal?: AbortSignal } = {}
+  options: { signal?: AbortSignal } = {},
 ): Promise<TaskRunResult> {
   const dbPath = resolveTaskDbPath(spec.taskId);
   await mkdir(dirname(dbPath), { recursive: true });
@@ -218,22 +228,22 @@ export async function runTaskWithSmithers(
   });
 
   const pluginRoot = await resolvePluginRoot();
-  const proc = spawn(resolveBunBinary(), ['-e', createTaskScript()], {
+  const proc = spawn(resolveBunBinary(), ["-e", createTaskScript()], {
     cwd: pluginRoot,
     env: { ...process.env, ELIZA_TASK_RUN_PAYLOAD: payload },
-    stdio: ['pipe', 'pipe', 'pipe'],
+    stdio: ["pipe", "pipe", "pipe"],
   });
 
   const onAbort = (): void => {
     try {
-      proc.kill('SIGKILL');
+      proc.kill("SIGKILL");
     } catch {
       // already gone
     }
   };
   if (options.signal) {
     if (options.signal.aborted) onAbort();
-    else options.signal.addEventListener('abort', onAbort, { once: true });
+    else options.signal.addEventListener("abort", onAbort, { once: true });
   }
 
   const startedAt = Date.now();
@@ -246,41 +256,55 @@ export async function runTaskWithSmithers(
     turns: 0,
     agentsDone: new Array<boolean>(agents).fill(false),
   };
-  let stderr = '';
+  let stderr = "";
   const inflight: Promise<void>[] = [];
 
   const writeResponse = (response: StepResponse): void => {
     if (proc.stdin.writable) proc.stdin.write(`${JSON.stringify(response)}\n`);
   };
 
-  const record = (kind: StepRequest['kind'], ctx: TaskStepContext, output: unknown): void => {
+  const record = (
+    kind: StepRequest["kind"],
+    ctx: TaskStepContext,
+    output: unknown,
+  ): void => {
     const out = (output ?? {}) as Record<string, unknown>;
-    if (kind === 'provision') {
-      assembled.workspace = (out.workspace as Record<string, unknown>) ?? assembled.workspace;
-    } else if (kind === 'turn') {
+    if (kind === "provision") {
+      assembled.workspace =
+        (out.workspace as Record<string, unknown>) ?? assembled.workspace;
+    } else if (kind === "turn") {
       assembled.turns += 1;
       assembled.agentsDone[ctx.agentIndex ?? 0] = out.done === true;
-    } else if (kind === 'approval') {
+    } else if (kind === "approval") {
       assembled.approved = out.approved !== false;
-    } else if (kind === 'submit') {
-      assembled.submitOutput = (out.output as Record<string, unknown>) ?? assembled.submitOutput;
+    } else if (kind === "submit") {
+      assembled.submitOutput =
+        (out.output as Record<string, unknown>) ?? assembled.submitOutput;
     }
   };
 
   const dispatchStep = (request: StepRequest): void => {
     // Enforce the approval gate parent-side: a denied task skips submit entirely.
-    if (request.kind === 'submit' && !assembled.approved) {
-      writeResponse({ requestId: request.requestId, ok: true, output: { skipped: true } });
+    if (request.kind === "submit" && !assembled.approved) {
+      writeResponse({
+        requestId: request.requestId,
+        ok: true,
+        output: { skipped: true },
+      });
       return;
     }
     const handler = executor[METHOD_BY_KIND[request.kind]] as
       | ((ctx: TaskStepContext) => Promise<unknown>)
       | undefined;
-    if (typeof handler !== 'function') {
+    if (typeof handler !== "function") {
       // Optional step with no executor method → degrade to a no-op default
       // rather than wedging the run (turn always has a handler — it's required).
-      const fallback = request.kind === 'approval' ? { approved: true } : {};
-      writeResponse({ requestId: request.requestId, ok: true, output: fallback });
+      const fallback = request.kind === "approval" ? { approved: true } : {};
+      writeResponse({
+        requestId: request.requestId,
+        ok: true,
+        output: fallback,
+      });
       return;
     }
     inflight.push(
@@ -294,9 +318,11 @@ export async function runTaskWithSmithers(
           writeResponse({
             requestId: request.requestId,
             ok: false,
-            error: { message: error instanceof Error ? error.message : String(error) },
-          })
-        )
+            error: {
+              message: error instanceof Error ? error.message : String(error),
+            },
+          }),
+        ),
     );
   };
 
@@ -304,34 +330,34 @@ export async function runTaskWithSmithers(
     // The subprocess shares stdout with Smithers' own logging; only our
     // newline-delimited protocol JSON is relevant, so ignore everything else.
     const trimmed = line.trim();
-    if (!trimmed || trimmed[0] !== '{') return;
+    if (trimmed?.[0] !== "{") return;
     let message: StepRequest;
     try {
       message = JSON.parse(trimmed) as StepRequest;
     } catch {
       return;
     }
-    if (message.type === 'executeStep') dispatchStep(message);
+    if (message.type === "executeStep") dispatchStep(message);
   };
 
-  proc.stdout.setEncoding('utf8');
-  let buffer = '';
-  proc.stdout.on('data', (chunk: string) => {
+  proc.stdout.setEncoding("utf8");
+  let buffer = "";
+  proc.stdout.on("data", (chunk: string) => {
     buffer += chunk;
     const lines = buffer.split(/\r?\n/);
-    buffer = lines.pop() ?? '';
+    buffer = lines.pop() ?? "";
     for (const line of lines) handleLine(line);
   });
-  proc.stderr.setEncoding('utf8');
-  proc.stderr.on('data', (chunk: string) => {
+  proc.stderr.setEncoding("utf8");
+  proc.stderr.on("data", (chunk: string) => {
     stderr += chunk;
   });
 
   const exitCode = await new Promise<number>((resolve, reject) => {
-    proc.on('error', reject);
-    proc.on('exit', (code) => resolve(code ?? 1));
+    proc.on("error", reject);
+    proc.on("exit", (code) => resolve(code ?? 1));
   });
-  options.signal?.removeEventListener('abort', onAbort);
+  options.signal?.removeEventListener("abort", onAbort);
   if (buffer.trim()) handleLine(buffer);
   // Only drain in-flight executor calls on a clean exit. On a crash/kill the
   // subprocess is gone and any pending call (e.g. an in-flight turn) is moot —
@@ -339,14 +365,16 @@ export async function runTaskWithSmithers(
   if (exitCode === 0) await Promise.all(inflight);
 
   if (exitCode !== 0) {
-    throw new Error(`Smithers task execution failed: ${stderr.trim() || `exit ${exitCode}`}`);
+    throw new Error(
+      `Smithers task execution failed: ${stderr.trim() || `exit ${exitCode}`}`,
+    );
   }
 
-  const status: TaskRunResult['status'] = !assembled.approved
-    ? 'denied'
+  const status: TaskRunResult["status"] = !assembled.approved
+    ? "denied"
     : assembled.agentsDone.length > 0 && assembled.agentsDone.every(Boolean)
-      ? 'completed'
-      : 'incomplete';
+      ? "completed"
+      : "incomplete";
 
   return {
     taskId: spec.taskId,

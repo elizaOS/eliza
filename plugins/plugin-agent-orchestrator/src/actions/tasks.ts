@@ -39,6 +39,10 @@ import { logger as coreLogger } from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
 import { normalizeRepositoryInput } from "../services/repo-input.js";
 import {
+  runDurableTask,
+  shouldUseSmithersTaskRunner,
+} from "../services/smithers-task-integration";
+import {
   type ResolvedWorkdirRoute,
   resolvePinnedAdapter,
   resolveSpawnWorkdir,
@@ -51,7 +55,6 @@ import type {
   WorkspaceResult,
 } from "../services/workspace-service.js";
 import { getCodingWorkspaceService } from "../services/workspace-service.js";
-import { runDurableTask, shouldUseSmithersTaskRunner } from '../services/smithers-task-integration';
 import {
   callbackText,
   contentRecord,
@@ -410,7 +413,10 @@ async function runPromptViaSmithers(
 ): Promise<void> {
   const startedAt = Date.now();
   try {
-    const { lastResponse } = await runDurableTask(service, session, task, { timeoutMs, model });
+    const { lastResponse } = await runDurableTask(service, session, task, {
+      timeoutMs,
+      model,
+    });
     emitSessionEvent(service, session.sessionId, "task_complete", {
       response: lastResponse ?? "",
       durationMs: Date.now() - startedAt,
@@ -572,9 +578,21 @@ async function runCreate(
         },
       });
       if (shouldUseSmithersTaskRunner()) {
-        await runPromptViaSmithers(service, session, taskWithRouteHints, timeoutMs, model);
+        await runPromptViaSmithers(
+          service,
+          session,
+          taskWithRouteHints,
+          timeoutMs,
+          model,
+        );
       } else {
-        await runPromptAndClose(service, session, taskWithRouteHints, timeoutMs, model);
+        await runPromptAndClose(
+          service,
+          session,
+          taskWithRouteHints,
+          timeoutMs,
+          model,
+        );
       }
       return { session, label, agentType };
     }),

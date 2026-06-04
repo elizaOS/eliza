@@ -364,7 +364,7 @@ export async function runWorkflowWithSmithers({
     // The subprocess shares stdout with Smithers' own logging; only our protocol
     // JSON is relevant, so ignore anything that isn't an object line.
     const trimmed = line.trim();
-    if (!trimmed || trimmed[0] !== '{') return;
+    if (trimmed?.[0] !== '{') return;
     let message: SmithersProtocolRequest | SmithersProtocolResult;
     try {
       message = JSON.parse(trimmed) as SmithersProtocolRequest | SmithersProtocolResult;
@@ -429,7 +429,12 @@ export async function runWorkflowWithSmithers({
   }
 
   logger.info(
-    { src: 'plugin:workflow:smithers', workflowId: workflow.id ?? '', executionId, ...(runMetrics ?? {}) },
+    {
+      src: 'plugin:workflow:smithers',
+      workflowId: workflow.id ?? '',
+      executionId,
+      ...(runMetrics ?? {}),
+    },
     'workflow executed'
   );
 

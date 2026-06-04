@@ -1,9 +1,14 @@
-import type { AcpLike } from './smithers-task-executor';
-import { SmithersTaskExecutor } from './smithers-task-executor';
-import { runTaskWithSmithers } from './smithers-task-runner';
-import type { TaskRunStatus } from './smithers-task-types';
+import type { AcpLike } from "./smithers-task-executor";
+import { SmithersTaskExecutor } from "./smithers-task-executor";
+import { runTaskWithSmithers } from "./smithers-task-runner";
+import type { TaskRunStatus } from "./smithers-task-types";
 
-type PromptOut = { stopReason?: string; finalText?: string; response?: string; error?: string };
+type PromptOut = {
+  stopReason?: string;
+  finalText?: string;
+  response?: string;
+  error?: string;
+};
 
 /** Structural subset of `AcpService` the durable task path uses (methods optional, as on the real service). */
 export interface AcpTaskService {
@@ -15,7 +20,7 @@ export interface AcpTaskService {
   sendPrompt?(
     sessionId: string,
     text: string,
-    opts?: { timeoutMs?: number; model?: string }
+    opts?: { timeoutMs?: number; model?: string },
   ): Promise<PromptOut>;
   sendToSession?(sessionId: string, text: string): Promise<PromptOut>;
 }
@@ -25,19 +30,24 @@ export interface AcpTaskService {
  * `ELIZA_ORCHESTRATOR_SMITHERS=0` to fall back to the direct prompt path.
  */
 export function shouldUseSmithersTaskRunner(): boolean {
-  return process.env.ELIZA_ORCHESTRATOR_SMITHERS !== '0';
+  return process.env.ELIZA_ORCHESTRATOR_SMITHERS !== "0";
 }
 
 /** Adapt the ACP service to the executor's minimal contract. */
 export function acpServiceToAcpLike(
   service: AcpTaskService,
-  defaults: { timeoutMs?: number; model?: string } = {}
+  defaults: { timeoutMs?: number; model?: string } = {},
 ): AcpLike {
   return {
     spawnSession: (opts) => {
-      if (!service.spawnSession) return Promise.reject(new Error('ACP service has no spawnSession'));
+      if (!service.spawnSession)
+        return Promise.reject(new Error("ACP service has no spawnSession"));
       return service
-        .spawnSession({ agentType: opts.agentType, workdir: opts.workdir, metadata: { label: opts.label } })
+        .spawnSession({
+          agentType: opts.agentType,
+          workdir: opts.workdir,
+          metadata: { label: opts.label },
+        })
         .then((r) => ({ sessionId: r.sessionId }));
     },
     sendPrompt: (sessionId, text) => {
@@ -48,7 +58,9 @@ export function acpServiceToAcpLike(
         });
       }
       if (service.sendToSession) return service.sendToSession(sessionId, text);
-      return Promise.reject(new Error('ACP service has neither sendPrompt nor sendToSession'));
+      return Promise.reject(
+        new Error("ACP service has neither sendPrompt nor sendToSession"),
+      );
     },
     // Reattach-by-label is intentionally not wired here: runDurableTask drives an
     // already-spawned session by id, and the real lookup is workdir-aware. The
@@ -66,11 +78,18 @@ export async function runDurableTask(
   service: AcpTaskService,
   session: { sessionId: string },
   task: string,
-  opts: { timeoutMs?: number; model?: string; maxTurns?: number } = {}
-): Promise<{ status: TaskRunStatus; lastResponse: string | undefined; turns: number }> {
-  const executor = new SmithersTaskExecutor(acpServiceToAcpLike(service, opts), {
-    sessionId: session.sessionId,
-  });
+  opts: { timeoutMs?: number; model?: string; maxTurns?: number } = {},
+): Promise<{
+  status: TaskRunStatus;
+  lastResponse: string | undefined;
+  turns: number;
+}> {
+  const executor = new SmithersTaskExecutor(
+    acpServiceToAcpLike(service, opts),
+    {
+      sessionId: session.sessionId,
+    },
+  );
   const result = await runTaskWithSmithers(
     {
       taskId: session.sessionId,
@@ -78,10 +97,14 @@ export async function runDurableTask(
       initialPrompt: task,
       maxTurns: opts.maxTurns ?? 1,
     },
-    executor
+    executor,
   );
   // A single-turn loop can swallow a turn throw via onMaxReached='return-last';
   // surface it so the host reports the failure (matching the direct path).
   if (executor.lastError) throw executor.lastError;
-  return { status: result.status, lastResponse: executor.lastResponse, turns: result.turns };
+  return {
+    status: result.status,
+    lastResponse: executor.lastResponse,
+    turns: result.turns,
+  };
 }

@@ -71,7 +71,7 @@
     "clean": "rm -rf dist .turbo",
     "test": "vitest run",
     "typecheck": "tsgo --noEmit",
-    "lint": "echo \"Lint skipped for release\"",
+    "lint": "bunx @biomejs/biome check .",
     "lint:check": "bun run lint",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."

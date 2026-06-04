@@ -81,7 +81,7 @@ export interface TaskStepExecutor {
   submit?(ctx: TaskStepContext): Promise<TaskSubmitResult>;
 }
 
-export type TaskRunStatus = 'completed' | 'incomplete' | 'denied';
+export type TaskRunStatus = "completed" | "incomplete" | "denied";
 
 export interface TaskRunMetrics {
   turns: number;

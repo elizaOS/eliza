@@ -18,7 +18,7 @@ vi.mock(
 
 const openLifeOpsChat = vi.fn();
 
-vi.mock("./LifeOpsChatAdapter.js", () => ({
+vi.mock("./LifeOpsChatAdapter.helpers.js", () => ({
   useLifeOpsChatLauncher: () => ({ openLifeOpsChat }),
 }));
 

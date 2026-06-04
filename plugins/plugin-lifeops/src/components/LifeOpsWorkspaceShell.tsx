@@ -5,7 +5,7 @@ import {
   ASSISTANT_INTENTS,
   LIFEOPS_VOICE_COMMAND_PROMPT,
 } from "./LifeOpsAssistantSection.js";
-import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
+import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.helpers.js";
 import { LifeOpsNavRail } from "./LifeOpsNavRail.js";
 import { LifeOpsResizableSidebar } from "./LifeOpsResizableSidebar.js";
 

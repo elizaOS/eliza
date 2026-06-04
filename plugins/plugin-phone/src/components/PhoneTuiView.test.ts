@@ -22,7 +22,8 @@ vi.mock("@elizaos/capacitor-phone", () => ({
   Phone: phoneBridge,
 }));
 
-import { interact, PhoneAppView, PhoneTuiView } from "./PhoneAppView";
+import { PhoneAppView, PhoneTuiView } from "./PhoneAppView";
+import { interact } from "./PhoneAppView.interact";
 
 const t = (key: string, opts?: { defaultValue?: string }) =>
   opts?.defaultValue ?? key;

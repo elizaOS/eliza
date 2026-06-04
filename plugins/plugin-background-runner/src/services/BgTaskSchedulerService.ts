@@ -25,7 +25,7 @@ function isTaskServiceLike(service: Service | null): service is Service & TaskSe
  * Integrates the host's background scheduler (iOS BGTaskScheduler / Android
  * WorkManager via Capacitor, or plain setInterval) with core's TaskService.
  *
- * The serverless seam: TaskService skips its own timer when
+ * The serverless handoff: TaskService defers its own timer when
  * `runtime.serverless === true`. Each OS wake-up calls
  * `taskService.runDueTasks()` once and returns — no long-lived process.
  */

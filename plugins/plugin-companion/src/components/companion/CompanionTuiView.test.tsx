@@ -69,7 +69,8 @@ vi.mock("./InferenceCloudAlertButton", () => ({
     React.createElement("button", { type: "button" }),
 }));
 
-import { CompanionTuiView, interact } from "./CompanionView";
+import { CompanionTuiView } from "./CompanionView";
+import { interact } from "./CompanionView.interact";
 
 afterEach(() => {
   cleanup();

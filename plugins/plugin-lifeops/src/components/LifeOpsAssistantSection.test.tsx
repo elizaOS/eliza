@@ -54,7 +54,7 @@ const EXECUTIVE_ASSISTANT_INTENT_IDS = [
   "weekly-operating-review",
 ] as const;
 
-vi.mock("./LifeOpsChatAdapter.js", () => ({
+vi.mock("./LifeOpsChatAdapter.helpers.js", () => ({
   useLifeOpsChatLauncher: () => ({ openLifeOpsChat }),
 }));
 

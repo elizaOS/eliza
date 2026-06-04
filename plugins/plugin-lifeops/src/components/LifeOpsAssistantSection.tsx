@@ -1,3 +1,4 @@
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Activity,
   BriefcaseBusiness,
@@ -22,9 +23,8 @@ import {
   Users,
   Zap,
 } from "lucide-react";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { ReactNode } from "react";
-import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
+import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.helpers.js";
 
 export interface AssistantIntent {
   id: string;

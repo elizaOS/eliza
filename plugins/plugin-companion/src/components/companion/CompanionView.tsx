@@ -1,19 +1,10 @@
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import {
-  dispatchAppEmoteEvent,
-  dispatchAppEvent,
-  STOP_EMOTE_EVENT,
-} from "@elizaos/ui/events";
 import { useRenderGuard } from "@elizaos/ui/hooks";
 import { useApp } from "@elizaos/ui/state";
 import { type CSSProperties, memo, type ReactNode } from "react";
-import {
-  AGENT_EMOTE_CATALOG,
-  EMOTE_CATALOG,
-  type EmoteCategory,
-  getEmote,
-} from "../../emotes/catalog";
+import { AGENT_EMOTE_CATALOG, EMOTE_CATALOG } from "../../emotes/catalog";
 import { CompanionSceneHost } from "./CompanionSceneHost";
+import { countByCategory } from "./CompanionView.helpers";
 import { EmotePicker } from "./EmotePicker";
 import { resolveCompanionInferenceNotice } from "./resolve-companion-inference-notice";
 
@@ -49,25 +40,6 @@ export const CompanionView = memo(function CompanionView() {
     </CompanionSceneHost>
   );
 });
-
-function countByCategory() {
-  return EMOTE_CATALOG.reduce<Record<EmoteCategory, number>>(
-    (counts, emote) => {
-      counts[emote.category] = (counts[emote.category] ?? 0) + 1;
-      return counts;
-    },
-    {
-      greeting: 0,
-      emotion: 0,
-      dance: 0,
-      combat: 0,
-      idle: 0,
-      movement: 0,
-      gesture: 0,
-      other: 0,
-    },
-  );
-}
 
 function lastMessageSummary(messages: readonly unknown[]) {
   const last = messages[messages.length - 1];
@@ -329,70 +301,4 @@ function CompanionTuiButton({
       {children}
     </button>
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-companion-state") {
-    return {
-      viewType: "tui",
-      emoteCount: EMOTE_CATALOG.length,
-      agentEmoteCount: AGENT_EMOTE_CATALOG.length,
-      emotesByCategory: countByCategory(),
-      capabilities: [
-        "terminal-companion-state",
-        "terminal-companion-emotes",
-        "terminal-companion-play-emote",
-        "terminal-companion-stop-emote",
-      ],
-    };
-  }
-
-  if (capability === "terminal-companion-emotes") {
-    const category =
-      typeof params?.category === "string"
-        ? (params.category.trim() as EmoteCategory)
-        : null;
-    const source =
-      typeof params?.source === "string" ? params.source.trim() : "all";
-    const catalog = source === "agent" ? AGENT_EMOTE_CATALOG : EMOTE_CATALOG;
-    return {
-      viewType: "tui",
-      emotes: catalog
-        .filter((emote) => !category || emote.category === category)
-        .map((emote) => ({
-          id: emote.id,
-          name: emote.name,
-          category: emote.category,
-          duration: emote.duration,
-          loop: emote.loop,
-          path: emote.path,
-        })),
-    };
-  }
-
-  if (capability === "terminal-companion-play-emote") {
-    const emoteId =
-      typeof params?.emote === "string" ? params.emote.trim() : "";
-    if (!emoteId) throw new Error("emote is required");
-    const emote = getEmote(emoteId);
-    if (!emote) throw new Error(`Unknown emote: ${emoteId}`);
-    dispatchAppEmoteEvent({
-      emoteId: emote.id,
-      path: emote.path,
-      duration: emote.duration,
-      loop: emote.loop,
-      showOverlay: true,
-    });
-    return { viewType: "tui", played: emote.id };
-  }
-
-  if (capability === "terminal-companion-stop-emote") {
-    dispatchAppEvent(STOP_EMOTE_EVENT);
-    return { viewType: "tui", stopped: true };
-  }
-
-  throw new Error(`Unsupported companion TUI capability: ${capability}`);
 }
