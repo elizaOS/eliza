@@ -9,7 +9,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "echo skip (feed) >&2"
+    "typecheck": "cd ../.. && bun run tsc -b packages/pack-default --force --emitDeclarationOnly && bun run tsc -p packages/pack-default --noEmit"
   },
   "dependencies": {
     "@feed/shared": "workspace:*"
