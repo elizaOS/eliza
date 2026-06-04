@@ -24,7 +24,11 @@ describe("BitRouter Railway service", () => {
     expect(entrypoint).toContain("exec node /app/auth-proxy.mjs");
     expect(proxy).toContain("BITROUTER_PROXY_TOKEN");
     expect(proxy).toContain("BITROUTER_INTERNAL_JWT_FILE");
+    expect(proxy).toContain('proxyVersion = "forced-provider-v1"');
     expect(proxy).toContain("header === `Bearer ${token}`");
+    expect(proxy).toContain('prefix: "openrouter:"');
+    expect(proxy).toContain('prefix: "cerebras:"');
+    expect(proxy).toContain('body.reasoning_effort = "none"');
     expect(proxy).toContain('headers.set("authorization", getInternalAuthorization())');
     expect(proxy).toContain("fetch(target");
   });
@@ -33,13 +37,39 @@ describe("BitRouter Railway service", () => {
     const config = parseYaml(readBitRouterFile("bitrouter.yaml")) as {
       server: { listen: string };
       database: { url: string };
-      providers: Record<string, unknown>;
+      providers: Record<string, unknown> & {
+        cerebras?: {
+          api_protocol?: string;
+          models?: Array<{
+            id?: string;
+            pricing?: {
+              input_micro_usd_per_token?: number;
+              output_micro_usd_per_token?: number;
+            };
+          }>;
+        };
+        openrouter?: Record<string, unknown>;
+      };
     };
     const railway = readBitRouterFile("railway.toml");
 
     expect(config.server.listen).toBe("127.0.0.1:4356");
     expect(config.database.url).toBe("sqlite:/data/bitrouter.db");
     expect(config.providers).toHaveProperty("bitrouter");
+    expect(config.providers.openrouter).toEqual({});
+    expect(config.providers.cerebras?.api_protocol).toBe("chat_completions");
+    expect(config.providers.cerebras?.models?.map((model) => model.id)).toEqual([
+      "gpt-oss-120b",
+      "zai-glm-4.7",
+    ]);
+    expect(config.providers.cerebras?.models?.[0]?.pricing).toEqual({
+      input_micro_usd_per_token: 0.35,
+      output_micro_usd_per_token: 0.75,
+    });
+    expect(config.providers.cerebras?.models?.[1]?.pricing).toEqual({
+      input_micro_usd_per_token: 2.25,
+      output_micro_usd_per_token: 2.75,
+    });
     expect(railway).toContain('[deploy]');
     expect(railway).toContain('healthcheckPath = "/health"');
   });
