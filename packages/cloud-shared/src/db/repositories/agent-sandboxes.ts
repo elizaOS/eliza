@@ -37,13 +37,6 @@ export type {
   NewAgentSandboxBackup,
 };
 
-export interface AgentSandboxRoutingFields {
-  status: AgentSandbox["status"];
-  bridge_url: AgentSandbox["bridge_url"];
-  headscale_ip: AgentSandbox["headscale_ip"];
-  web_ui_port: AgentSandbox["web_ui_port"];
-}
-
 const EMPTY_BACKUP_STATE: AgentSandboxBackup["state_data"] = {
   memories: [],
   config: {},
@@ -114,20 +107,6 @@ export class AgentSandboxesRepository {
     await ensureAgentSandboxSchema();
     const [r] = await dbRead
       .select()
-      .from(agentSandboxes)
-      .where(eq(agentSandboxes.id, id))
-      .limit(1);
-    return r;
-  }
-
-  async findRoutingById(id: string): Promise<AgentSandboxRoutingFields | undefined> {
-    const [r] = await dbRead
-      .select({
-        status: agentSandboxes.status,
-        bridge_url: agentSandboxes.bridge_url,
-        headscale_ip: agentSandboxes.headscale_ip,
-        web_ui_port: agentSandboxes.web_ui_port,
-      })
       .from(agentSandboxes)
       .where(eq(agentSandboxes.id, id))
       .limit(1);

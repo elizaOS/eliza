@@ -22,12 +22,12 @@ import { fileURLToPath } from "node:url";
 import { loadLocalEnv } from "./shared/load-env";
 
 type Logger = typeof import("@elizaos/cloud-shared/lib/utils/logger").logger;
-type AgentSandboxesRepository =
-  typeof import("@elizaos/cloud-shared/db/repositories/agent-sandboxes").agentSandboxesRepository;
+type FindAgentSandboxRoutingById =
+  typeof import("@elizaos/cloud-shared/db/agent-sandbox-routing").findAgentSandboxRoutingById;
 
 interface RouterDeps {
   logger: Logger;
-  agentSandboxesRepository: AgentSandboxesRepository;
+  findAgentSandboxRoutingById: FindAgentSandboxRoutingById;
 }
 
 interface AgentRouterConfig {
@@ -58,10 +58,11 @@ let depsPromise: Promise<RouterDeps> | null = null;
 async function loadDeps(): Promise<RouterDeps> {
   if (!depsPromise) {
     depsPromise = Promise.all([
-      import("@elizaos/cloud-shared/db/repositories/agent-sandboxes"),
+      import("@elizaos/cloud-shared/db/agent-sandbox-routing"),
       import("@elizaos/cloud-shared/lib/utils/logger"),
-    ]).then(([agentSandboxesModule, loggerModule]) => ({
-      agentSandboxesRepository: agentSandboxesModule.agentSandboxesRepository,
+    ]).then(([agentRoutingModule, loggerModule]) => ({
+      findAgentSandboxRoutingById:
+        agentRoutingModule.findAgentSandboxRoutingById,
       logger: loggerModule.logger,
     }));
   }
@@ -136,8 +137,8 @@ export function isBridgeHostFallbackEnabled(
 export async function resolveAgentRouting(
   agentId: string,
 ): Promise<RoutingResponse | null> {
-  const { agentSandboxesRepository } = await loadDeps();
-  const sandbox = await agentSandboxesRepository.findRoutingById(agentId);
+  const { findAgentSandboxRoutingById } = await loadDeps();
+  const sandbox = await findAgentSandboxRoutingById(agentId);
   return resolveSandboxRouting(sandbox, {
     allowBridgeHostFallback: isBridgeHostFallbackEnabled(),
   });
@@ -178,6 +179,7 @@ let shuttingDown = false;
 async function main(): Promise<void> {
   loadLocalEnv(import.meta.url);
   const config = readRouterConfig();
+  await resolveAgentRouting("00000000-0000-4000-8000-000000000000");
 
   const { createServer } = await import("node:http");
   server = createServer((req, res) => {
