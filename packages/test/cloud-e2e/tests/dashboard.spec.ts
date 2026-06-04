@@ -1,7 +1,6 @@
 import {
   getPersistedDockerImage,
   pollSandboxStatus,
-  tickProvisioning,
 } from "../src/helpers/provisioning";
 import { expect, test } from "../src/helpers/test-fixtures";
 
@@ -41,6 +40,12 @@ test.describe("dashboard session", () => {
     seededUser,
   }) => {
     const dockerImage = "ghcr.io/elizaos/eliza:e2e-dashboard-custom";
+    const processJobs = async () => {
+      const result = await stack.mocks.controlPlane.processDbBackedJobs(
+        stack.urls.pglite,
+      );
+      expect(result.failed, JSON.stringify(result.errors)).toBe(0);
+    };
 
     await authenticatedPage.goto(`${stack.urls.frontend}/dashboard/agents`);
     await authenticatedPage.getByRole("button", { name: "New Agent" }).click();
@@ -57,7 +62,7 @@ test.describe("dashboard session", () => {
       (response) =>
         new URL(response.url()).pathname === "/api/v1/eliza/agents" &&
         response.request().method() === "POST" &&
-        response.status() === 201,
+        [201, 202].includes(response.status()),
     );
     const provisionResponsePromise = authenticatedPage.waitForResponse(
       (response) =>
@@ -90,9 +95,7 @@ test.describe("dashboard session", () => {
       {
         timeoutMs: 30_000,
         intervalMs: 250,
-        onTick: async () => {
-          await tickProvisioning({ apiUrl: stack.urls.api });
-        },
+        onTick: processJobs,
       },
     );
   });

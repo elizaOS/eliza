@@ -401,7 +401,17 @@ export function CreateElizaAgentDialog({
         );
       }
 
-      const agentId = (createData as { data?: { id?: string } }).data?.id;
+      const createdAgent = createData as {
+        data?: {
+          id?: string;
+          agentId?: string;
+          sandboxId?: string;
+        };
+      };
+      const agentId =
+        createdAgent.data?.id ??
+        createdAgent.data?.agentId ??
+        createdAgent.data?.sandboxId;
       if (!agentId) {
         throw new Error(
           t("cloud.createAgent.noAgentId", {

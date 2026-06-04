@@ -68,6 +68,16 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   tick: (
     limit?: number,
   ) => Promise<{ processed: number; failed: number; skipped: number }>;
+  processDbBackedJobs: (
+    databaseUrl: string,
+    origin: string,
+    limit?: number,
+  ) => Promise<{
+    claimed: number;
+    succeeded: number;
+    failed: number;
+    errors: Array<{ jobId: string; error: string }>;
+  }>;
   cleanupStuck: () => Promise<{ failed: number }>;
 } {
   const token =
@@ -152,7 +162,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   async function processDbBackedJobs(
     databaseUrl: string,
     origin: string,
-    limit: number,
+    limit = 1000,
   ): Promise<{
     claimed: number;
     succeeded: number;
@@ -1302,5 +1312,5 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     return { failed };
   }
 
-  return { app, store, tick, cleanupStuck };
+  return { app, store, tick, processDbBackedJobs, cleanupStuck };
 }
