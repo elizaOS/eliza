@@ -25,10 +25,8 @@ export {
   IconTag,
   type IconTagProps,
 } from "./components";
-export {
-  AgentSurfaceElementReporter,
-  useAgentSurfaceElementReporter,
-} from "./element-reporter";
+export { AgentSurfaceElementReporter } from "./element-reporter";
+export { useAgentSurfaceElementReporter } from "./element-reporter.hooks";
 export {
   getOrCreateViewRegistry,
   getViewRegistry,
