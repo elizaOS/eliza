@@ -508,9 +508,6 @@
       ],
       "ignore": ["dist/**"]
     },
-    "scripts/generate-registry": {
-      "ignore": ["site/**"]
-    },
     "packages/browser-bridge-extension": {
       "entry": [
         "entrypoints/**/*.ts",
