@@ -43,11 +43,11 @@ import {
   type PipelineStageId,
   TrajectoryPipelineGraph,
 } from "../composites/trajectories/trajectory-pipeline-graph";
+import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 import {
   getToolCallEventDisplayState,
   getToolCallName,
-  ToolCallEventLog,
-} from "../tool-events/ToolCallEventLog";
+} from "../tool-events/ToolCallEventLog.helpers";
 
 // ---------------------------------------------------------------------------
 // Pipeline stage mapping

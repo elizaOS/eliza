@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useApp, useContentPack } from "../../state";
 import { LANGUAGES } from "../shared/LanguageDropdown";
-import { selectableTileClass } from "./appearance-primitives";
+import { selectableTileClass } from "./appearance-primitives.helpers";
 import { LoadContentPackForm } from "./LoadContentPackForm";
 import { LoadedPacksList } from "./LoadedPacksList";
 

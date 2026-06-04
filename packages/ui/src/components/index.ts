@@ -165,6 +165,7 @@ export * from "../utils/trajectory-format";
 export * from "./accounts/EditableAccountLabel";
 export * from "./apps/extensions/registry";
 export * from "./apps/extensions/surface";
+export * from "./apps/extensions/surface.helpers";
 export * from "./apps/extensions/types";
 export * from "./apps/GameView";
 export * from "./apps/GameViewOverlay";

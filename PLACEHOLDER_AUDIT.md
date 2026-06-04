@@ -1118,13 +1118,23 @@ platform no-ops are separated from actionable runtime gaps.
   no-op/stub wording.
 - Reworded the simulator raw-camera note so IWER's missing rawCameraAccess path
   is described as outside its current emulation surface.
+- Reworded vision-pipeline sample-image comments and functional-parity assertion
+  labels from fake/stub terminology to minimal JPEG bytes and static shells.
+- Current remaining package-local marker hits are TypeScript `skipLibCheck` in
+  the plugin and simulator tsconfigs.
 - Verified `CLAUDE.md` and `AGENTS.md` are identical.
 - Verified with:
+  - `bun run --cwd plugins/plugin-xr lint`
   - `bun run --cwd plugins/plugin-xr typecheck`
-  - `bun run --cwd plugins/plugin-xr test`
   - `bun run --cwd plugins/plugin-xr build`
   - `bun run --cwd plugins/plugin-xr simulator:build`
   - case-insensitive marker scan excluding generated output
+- Verification caveat: `bun run --cwd plugins/plugin-xr test` currently fails
+  in `src/__tests__/xr-functional-parity.test.ts` because current companion,
+  contact, hyperliquid, messages, phone, and operator-surface sources are
+  missing asserted hook/TUI capability strings. The touched XR wording lines
+  lint and build successfully, but the full XR parity suite is not green in
+  this worktree.
 
 ### plugins/plugin-device-filesystem
 
@@ -1257,8 +1267,13 @@ platform no-ops are separated from actionable runtime gaps.
 
 - Reworded mirrored package guides so new methods add a browser web fallback
   returning `{ ...unsupported }`, not a stub.
+- Reworded the package purpose and build-output notes so web/browser targets
+  return explicit `not_supported` results and source-mode development is
+  described without stub/skip wording.
+- Current remaining package-local marker hit is TypeScript `skipLibCheck`.
 - Verified with:
   - `diff -u plugins/plugin-native-calendar/CLAUDE.md plugins/plugin-native-calendar/AGENTS.md`
+  - `bun run --cwd plugins/plugin-native-calendar test`
   - `bun run --cwd plugins/plugin-native-calendar build`
   - marker scan on `plugins/plugin-native-calendar`
   - `git diff --check -- plugins/plugin-native-calendar`
@@ -1298,10 +1313,19 @@ platform no-ops are separated from actionable runtime gaps.
 
 - Reworded the live-test inline runtime comment so disabled trajectory
   plumbing is described as returning cleanly, not as a no-op.
+- Replaced the skipped release `lint` script with real Biome checking and
+  updated mirrored package guides.
+- Reworded live-test warning/case labels from skipped wording to not-run
+  wording. Remaining package-local marker hits are TypeScript `skipLibCheck`,
+  the test-scoped `SKIP_REASON` env var name, and Vitest `it.skip` for missing
+  live credentials.
 - Verified with:
+  - `diff -u plugins/plugin-xai/CLAUDE.md plugins/plugin-xai/AGENTS.md`
+  - `bun run --cwd plugins/plugin-xai lint`
   - `bun run --cwd plugins/plugin-xai typecheck`
   - `bun run --cwd plugins/plugin-xai test` (live API test skipped without
     `XAI_API_KEY`; unit coverage passed)
+  - `bun run --cwd plugins/plugin-xai build`
   - marker scan on `plugins/plugin-xai`
   - `git diff --check -- plugins/plugin-xai`
 
@@ -1336,11 +1360,50 @@ platform no-ops are separated from actionable runtime gaps.
 
 - Reworded the browser entry description from a browser stub to an unsupported
   browser export while preserving the runtime warning.
+- Replaced skipped release `typecheck` and `lint` scripts with real
+  `tsgo --noEmit` and scoped Biome checks, removed three dead shell-service
+  default constants that the real lint surfaced, and updated mirrored package
+  guides with the current commands.
+- Current remaining package-local marker hits are TypeScript `skipLibCheck` and
+  the internal approval-analysis iterator action literal `"skip"`, which is a
+  real branch value in the allowlist scanner rather than unfinished code.
 - Verified with:
+  - `diff -u plugins/plugin-shell/CLAUDE.md plugins/plugin-shell/AGENTS.md`
+  - `bun run --cwd plugins/plugin-shell lint`
+  - `bun run --cwd plugins/plugin-shell typecheck`
   - `bun run --cwd plugins/plugin-shell test`
   - `bun run --cwd plugins/plugin-shell build`
   - marker scan on `plugins/plugin-shell`
   - `git diff --check -- plugins/plugin-shell`
+
+### plugins/plugin-benchmarks
+
+- Reworded mirrored package guide text so benchmark action handlers are
+  documented as pass-through adapters, not stubs, and Tau-bench's umbrella
+  action path is described without skip wording.
+- Current remaining package-local marker hit is TypeScript `skipLibCheck`.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-benchmarks lint:check`
+  - `bun run --cwd plugins/plugin-benchmarks typecheck`
+  - `bun run --cwd plugins/plugin-benchmarks test`
+  - `bun run --cwd plugins/plugin-benchmarks build`
+  - marker scan on `plugins/plugin-benchmarks`
+
+### plugins/plugin-inmemorydb
+
+- Reworded mirrored package-guide purpose text and the existing-adapter debug
+  log so adapter preservation is described as keeping the current adapter
+  registered, not skipping initialization.
+- Current remaining package-local marker hits are TypeScript `skipLibCheck` in
+  `tsconfig.json` and `tsconfig.build.json`.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-inmemorydb lint:check`
+  - `bun run --cwd plugins/plugin-inmemorydb typecheck`
+  - `bun run --cwd plugins/plugin-inmemorydb test`
+  - `bun run --cwd plugins/plugin-inmemorydb build`
+  - marker scan on `plugins/plugin-inmemorydb`
 
 ### plugins/plugin-form
 
@@ -1438,11 +1501,17 @@ platform no-ops are separated from actionable runtime gaps.
 
 ### plugins/plugin-anthropic
 
-- No source edits were needed. Remaining marker hits are Vitest
+- Reworded mirrored browser-build guide text so the browser export omits
+  `process.env` / `node:*` imports instead of skipping them.
+- Remaining package-local marker hits are TypeScript `skipLibCheck` and Vitest
   `stubGlobal` / `unstubAllGlobals` APIs in provider-fetch shape tests, used to
   inject a test `fetch` implementation.
 - Verified with:
   - `diff -u plugins/plugin-anthropic/CLAUDE.md plugins/plugin-anthropic/AGENTS.md`
+  - `bun run --cwd plugins/plugin-anthropic lint:check`
+  - `bun run --cwd plugins/plugin-anthropic typecheck`
+  - `bun run --cwd plugins/plugin-anthropic test`
+  - `bun run --cwd plugins/plugin-anthropic build`
   - marker scan on `plugins/plugin-anthropic`
   - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-anthropic`
 
@@ -1866,12 +1935,15 @@ platform no-ops are separated from actionable runtime gaps.
 
 ### plugins/plugin-messages
 
+- Reworded README platform support so non-Android runtimes leave overlay app
+  registration unchanged instead of skipping registration.
 - Remaining package-local marker hits are the SMS composer's user-facing
   placeholder/i18n label copy: the body `messages.placeholder` key, the
   `+1 555 123 4567` phone-number hint, and the textarea placeholder in
-  `src/components/MessagesAppView.tsx`.
+  `src/components/MessagesAppView.tsx`, plus TypeScript `skipLibCheck`.
 - Verified `CLAUDE.md` and `AGENTS.md` are identical.
 - Verified with:
+  - `bun run --cwd plugins/plugin-messages lint`
   - `bun run --cwd plugins/plugin-messages typecheck`
   - `bun run --cwd plugins/plugin-messages test`
   - `bun run --cwd plugins/plugin-messages build`
@@ -2288,6 +2360,14 @@ platform no-ops are separated from actionable runtime gaps.
   functional rather than a reserved stub/scaffold.
 - Added `src/services.test.ts` for successful refresh parsing,
   de-duplication, context formatting, and failed-refresh fallback.
+- Reworded malformed YAML frontmatter handling from skip terminology to ignore
+  behavior.
+- Current remaining package-local marker hits are TypeScript `skipLibCheck` and
+  Vitest `stubGlobal` / `unstubAllGlobals` APIs in service tests.
+- Verified with:
+  - `bun run --cwd plugins/plugin-undesirables test`
+  - `bun run --cwd plugins/plugin-undesirables build`
+  - marker scan on `plugins/plugin-undesirables`
 - Verified with:
   - `diff -u plugins/plugin-undesirables/CLAUDE.md plugins/plugin-undesirables/AGENTS.md`
   - `bun run --cwd plugins/plugin-undesirables test`
@@ -2510,14 +2590,51 @@ platform no-ops are separated from actionable runtime gaps.
   behavior and host-provided runner files are not labeled as no-op/stub code.
 - Reworded the runner-JS unit-test comment so injected `addEventListener`,
   `fetch`, and `console` globals are described as test globals rather than
-  stubs. Marker scan on the package is now clean.
+  stubs.
+- Reworded README and mirrored guide timer behavior so `runtime.serverless`
+  defers the core timer to the OS wake-up path, and reworded the service
+  comment from a serverless seam to a serverless handoff.
+- Current remaining package-local marker hit is TypeScript `skipLibCheck`.
 - Verified with:
   - `diff -u plugins/plugin-background-runner/CLAUDE.md plugins/plugin-background-runner/AGENTS.md`
+  - `bun run --cwd plugins/plugin-background-runner lint:check`
   - `bun run --cwd plugins/plugin-background-runner typecheck`
   - `bun run --cwd plugins/plugin-background-runner test`
   - `bun run --cwd plugins/plugin-background-runner build`
   - marker scan on `plugins/plugin-background-runner`
   - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-background-runner`
+
+### plugins/plugin-native-camera
+
+- Current package-local marker hits are TypeScript `skipLibCheck`, Swift
+  `FileManager.default.temporaryDirectory` API usage for capture scratch files,
+  and Kotlin `toDouble()` calls whose method name contains the marker substring
+  `todo`.
+- No source edits were needed for this package in this pass.
+- Verified with package-local marker scan.
+
+### plugins/plugin-native-websiteblocker
+
+- Current package-local marker hits are TypeScript `skipLibCheck`, Vitest
+  `stubGlobal` / `unstubAllGlobals` APIs in web tests, and Swift
+  `FileManager.default.temporaryDirectory` API usage for shared blocker data.
+- No source edits were needed for this package in this pass.
+- Verified with package-local marker scan.
+
+### plugins/plugin-suno
+
+- Replaced skipped release `lint` and `typecheck` scripts with real Biome and
+  TypeScript checks, and updated mirrored package guides with the current
+  commands.
+- Current remaining package-local marker hits are TypeScript `skipLibCheck` and
+  Vitest `stubGlobal` APIs in behavior tests.
+- Verified `CLAUDE.md` and `AGENTS.md` are identical.
+- Verified with:
+  - `bun run --cwd plugins/plugin-suno lint`
+  - `bun run --cwd plugins/plugin-suno typecheck`
+  - `bun run --cwd plugins/plugin-suno test`
+  - `bun run --cwd plugins/plugin-suno build`
+  - marker scan on `plugins/plugin-suno`
 
 ### plugins/plugin-aosp-local-inference
 
@@ -2802,11 +2919,14 @@ platform no-ops are separated from actionable runtime gaps.
 - Reworded the Android-only side-effect registration path so non-elizaOS
   platforms are described as leaving the overlay catalog unchanged, not as
   no-op registration. The behavior remains intentionally platform-gated.
-- Remaining package-local marker hits are a normal password input placeholder
-  and a Vitest `vi.mock("@elizaos/ui", ...)` module mock for overlay
-  registration coverage.
-- Verification: `bun run --cwd plugins/plugin-wifi typecheck`,
-  `bun run --cwd plugins/plugin-wifi test`, mirrored guide diff, marker scan,
+- Reworded public entry and overlay descriptor comments so non-elizaOS
+  platforms leave registration unchanged rather than skipping it.
+- Remaining package-local marker hits are TypeScript `skipLibCheck` and the
+  normal password input `placeholder="Password"` in `WifiAppView`.
+- Verification: `bun run --cwd plugins/plugin-wifi lint`,
+  `bun run --cwd plugins/plugin-wifi typecheck`,
+  `bun run --cwd plugins/plugin-wifi test`,
+  `bun run --cwd plugins/plugin-wifi build`, mirrored guide diff, marker scan,
   and `git diff --check -- plugins/plugin-wifi` all pass.
 
 ### plugins/plugin-capacitor-bridge
@@ -3311,12 +3431,16 @@ platform no-ops are separated from actionable runtime gaps.
 
 - Renamed the cache report test fixture from `fakeReport()` to
   `sampleReport()` and changed its fixture repo root from `/fake` to `/repo`.
-- Remaining package marker hit is the cache test title
-  `"does not leave temporary files after a successful write"`, which validates
-  the implemented atomic-write cleanup behavior.
+- Reworded the budget README entry and cache tests so deterministic narration,
+  transient write files, and malformed cache files are described without
+  skip/temporary marker wording.
+- Current remaining package-local marker hit is TypeScript `skipLibCheck`.
 - Verified with:
   - `diff -u plugins/plugin-gitpathologist/CLAUDE.md plugins/plugin-gitpathologist/AGENTS.md`
-  - `bun run --cwd plugins/plugin-gitpathologist test __tests__/cache.test.ts`
+  - `bun run --cwd plugins/plugin-gitpathologist lint:check`
+  - `bun run --cwd plugins/plugin-gitpathologist typecheck`
+  - `bun run --cwd plugins/plugin-gitpathologist test`
+  - `bun run --cwd plugins/plugin-gitpathologist build`
   - marker scan on `plugins/plugin-gitpathologist`
   - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-gitpathologist`
 
@@ -3353,11 +3477,17 @@ platform no-ops are separated from actionable runtime gaps.
 
 ### plugins/plugin-mysticism
 
-- No source edits were needed. Remaining marker hits are generated
-  package-local `bun.lock` entries for `@vitest/mocker`; the source tree has no
-  placeholder/stub/todo markers under the current scan.
+- Reworded the astrology intake timezone prompt so uncertain timezone input is
+  described as "say you're not sure" instead of the literal marker-looking
+  `"skip"` response.
+- Reworded the astrology reveal fallback comment so unknown planet IDs are
+  ignored rather than skipped.
+- Current remaining package-local marker hit is TypeScript `skipLibCheck`.
 - Verified with:
   - `diff -u plugins/plugin-mysticism/CLAUDE.md plugins/plugin-mysticism/AGENTS.md`
+  - `bun run --cwd plugins/plugin-mysticism lint:check`
+  - `bun run --cwd plugins/plugin-mysticism test`
+  - `bun run --cwd plugins/plugin-mysticism build`
   - marker scan on `plugins/plugin-mysticism`
   - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-mysticism`
 

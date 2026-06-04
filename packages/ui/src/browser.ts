@@ -93,9 +93,11 @@ export { Spinner } from "./components/ui/spinner.tsx";
 export {
   StatusBadge,
   StatusDot,
+} from "./components/ui/status-badge.tsx";
+export {
   statusLabelForState,
   statusToneForState,
-} from "./components/ui/status-badge.tsx";
+} from "./components/ui/status-badge.helpers.ts";
 export { Switch } from "./components/ui/switch.tsx";
 export * from "./components/ui/table.tsx";
 export * from "./components/ui/tabs.tsx";

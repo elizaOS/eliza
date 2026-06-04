@@ -17,7 +17,7 @@ import { paramsToSchema, TELEGRAM_ALLOW_ALL_HIDDEN } from "./plugin-list-utils";
  * doesn't flip the toggle. Returns the mode, a toggle handler, and
  * hiddenKeys for PluginConfigForm.
  */
-export function useTelegramChatMode(
+function useTelegramChatMode(
   plugin: PluginInfo,
   pluginConfigs: Record<string, Record<string, string>>,
   onParamChange: (pluginId: string, paramKey: string, value: string) => void,

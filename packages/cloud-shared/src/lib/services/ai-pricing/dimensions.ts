@@ -97,6 +97,10 @@ export function canonicalModelId(model: string, provider?: string | null): strin
     return model;
   }
 
+  if (provider === "cerebras") {
+    return `cerebras/${model.replace(/^cerebras\//, "")}`;
+  }
+
   if (provider) {
     return `${provider}/${model}`;
   }
@@ -107,6 +111,7 @@ export function canonicalModelId(model: string, provider?: string | null): strin
 export function inferProviderFromCanonicalModel(model: string): string {
   if (model.startsWith("fal-ai/") || model.startsWith("wan/")) return "fal";
   if (model.startsWith("elevenlabs/")) return "elevenlabs";
+  if (model.startsWith("cerebras/")) return "cerebras";
   if (!model.includes("/")) return "unknown";
   return normalizeProviderKey(model.split("/", 1)[0]);
 }
@@ -138,6 +143,8 @@ export function normalizeBillingSourceCandidates(
       return ["anthropic", "bitrouter"];
     case "groq":
       return ["groq", "bitrouter"];
+    case "cerebras":
+      return ["cerebras", "bitrouter"];
     default:
       return [requested];
   }

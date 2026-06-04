@@ -22,8 +22,8 @@ import {
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
-import { emailService } from "@/lib/services/email";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { emailService } from "@/lib/services/email";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -382,7 +382,10 @@ function resolveWaifuAgentId(config: Record<string, unknown>): string | null {
 
   const character = recordFromUnknown(config.character);
   const characterConfig = recordFromUnknown(character.config);
-  return stringField(characterConfig, "waifuAgentId") ?? stringField(characterConfig, "WAIFU_AGENT_ID");
+  return (
+    stringField(characterConfig, "waifuAgentId") ??
+    stringField(characterConfig, "WAIFU_AGENT_ID")
+  );
 }
 
 function recordFromUnknown(value: unknown): Record<string, unknown> {

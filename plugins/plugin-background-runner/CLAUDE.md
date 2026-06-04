@@ -78,7 +78,7 @@ This plugin reads no environment variables and has no `agentConfig.pluginParamet
 
 ## Conventions / gotchas
 
-- **Serverless seam.** The moment this plugin is registered, `runtime.serverless = true`. Core's `TaskService` will not run its own timer. Do not load this plugin on a server host unless you intend to disable the internal timer.
+- **Serverless handoff.** The moment this plugin is registered, `runtime.serverless = true`. Core's `TaskService` will not run its own timer. Do not load this plugin on a server host unless you intend to disable the internal timer.
 - **Mobile throw, not fallback.** On a Capacitor native platform without `@capacitor/background-runner` installed, `BgTaskSchedulerService.pickScheduler()` throws. This is intentional — silent `setInterval` on mobile produces no real background execution.
 - **Wake budget.** iOS gives ~30 seconds per `BGAppRefreshTask` wake; the OS kills the process on overrun. `runDueTasks()` must complete within that window.
 - **15-minute floor on Android.** WorkManager enforces a 15-minute minimum for periodic work regardless of `minimumIntervalMinutes`. Setting a smaller value in `capacitor.config.ts` will be clamped silently by Android.

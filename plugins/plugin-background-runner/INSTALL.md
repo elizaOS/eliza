@@ -219,7 +219,7 @@ shorter than 15 minutes on a Capacitor host
   host-app concerns — Wave 3A and 3B own those edits respectively.
 - It does **not** define `/api/internal/wake`. That endpoint lives in the
   API package and is wired by Wave 3D.
-- It does **not** start a long-lived process. The serverless seam in core's
+- It does **not** start a long-lived process. The serverless handoff in core's
   `TaskService` (`runtime.serverless = true`) means each wake runs once and
   returns.
 

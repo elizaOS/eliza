@@ -38,9 +38,9 @@ export type {
   DashboardSidebarLinkRenderProps,
   DashboardSidebarSection,
 } from "./dashboard-sidebar-types";
+export { PageHeaderProvider } from "./page-header-context";
 export {
-  PageHeaderProvider,
   usePageHeader,
   useSetPageHeader,
-} from "./page-header-context";
+} from "./page-header-context.hooks";
 export { PageTransition } from "./page-transition";

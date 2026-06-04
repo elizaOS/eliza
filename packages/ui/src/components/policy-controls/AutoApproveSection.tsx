@@ -54,7 +54,3 @@ export function AutoApproveSection({
     </div>
   );
 }
-
-export function autoApproveSummary(config: AutoApproveConfig): string {
-  return `Under $${config.threshold}`;
-}

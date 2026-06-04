@@ -6,11 +6,13 @@
 
 export { AgentElementOverlay } from "./AgentElementOverlay";
 export {
-  AgentSurfaceContext,
   AgentSurfaceProvider,
   type AgentSurfaceProviderProps,
-  useAgentSurface,
 } from "./AgentSurfaceContext";
+export {
+  AgentSurfaceContext,
+  useAgentSurface,
+} from "./AgentSurfaceContext.hooks";
 export {
   handleAgentSurfaceCapability,
   isAgentSurfaceCapability,

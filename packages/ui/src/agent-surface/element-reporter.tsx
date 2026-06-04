@@ -12,7 +12,7 @@
  */
 
 import { useEffect } from "react";
-import { useAgentSurface } from "./AgentSurfaceContext";
+import { useAgentSurface } from "./AgentSurfaceContext.hooks";
 import type { ViewAgentRegistry } from "./registry";
 
 // The API client + url helper are loaded dynamically inside flush() (production

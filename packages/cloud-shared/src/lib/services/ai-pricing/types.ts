@@ -7,7 +7,14 @@ import type {
 
 export type PriceLookupSource = PricingBillingSource | "seed";
 
-export type PricingRefreshSource = "gateway" | "bitrouter" | "fal" | "elevenlabs" | "suno" | "vast";
+export type PricingRefreshSource =
+  | "gateway"
+  | "bitrouter"
+  | "cerebras"
+  | "fal"
+  | "elevenlabs"
+  | "suno"
+  | "vast";
 
 export type PreparedPricingEntry = {
   billingSource: PriceLookupSource;

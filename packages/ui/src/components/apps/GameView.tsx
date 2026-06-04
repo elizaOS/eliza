@@ -33,7 +33,6 @@ import {
   openExternalUrl,
   preOpenWindow,
 } from "../../utils";
-import type { DesktopClickAuditItem } from "../../utils/desktop-workspace";
 import { formatTime } from "../../utils/format";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -90,7 +89,7 @@ function readLearningTelemetry(
   };
 }
 
-export function buildDisconnectedSessionState(
+function buildDisconnectedSessionState(
   session: AppSessionState | null,
 ): AppSessionState | null {
   if (!session) return null;
@@ -183,58 +182,6 @@ const TAG_COLORS: Record<string, { bg: string; fg: string }> = {
   autonomy: { bg: "rgba(245, 158, 11, 0.15)", fg: "rgb(245, 158, 11)" },
   websocket: { bg: "rgba(20, 184, 166, 0.15)", fg: "rgb(20, 184, 166)" },
 };
-
-export const DESKTOP_GAME_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
-  {
-    id: "game-native-refresh",
-    entryPoint: "game",
-    label: "Refresh Native Window State",
-    expectedAction: "Refresh canvas bounds and GPU window state.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "game-native-focus",
-    entryPoint: "game",
-    label: "Focus Game Window",
-    expectedAction: "Focus the native game canvas window.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "game-native-visibility",
-    entryPoint: "game",
-    label: "Show/Hide Game Window",
-    expectedAction: "Show or hide the native game canvas window.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "game-native-always-on-top",
-    entryPoint: "game",
-    label: "Toggle Game Window Always On Top",
-    expectedAction:
-      "Toggle whether the native game window floats above other windows.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "game-native-snapshot",
-    entryPoint: "game",
-    label: "Snapshot Game Window",
-    expectedAction: "Capture a native snapshot of the game canvas window.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "game-gpu-window",
-    entryPoint: "game",
-    label: "Launch GPU Diagnostics",
-    expectedAction: "Create or focus a safe GPU diagnostics window.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-] as const;
 
 export function DesktopGameWindowControls({
   gameWindowId,

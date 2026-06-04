@@ -7,12 +7,21 @@ import {
   useRef,
   useState,
 } from "react";
+import { useAgentElement } from "../../agent-surface";
 import type { PluginInfo } from "../../api";
 import { client } from "../../api";
+import { useLinkedSidebarSelection } from "../../hooks/useLinkedSidebarSelection";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { PageLayoutHeader } from "../../layouts/page-layout/page-layout-header";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
-
+import { PagePanel } from "../composites/page-panel";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { Button } from "../ui/button";
+import { PluginCard } from "./PluginCard";
 import {
   buildPluginListState,
   getPluginResourceLinks,
@@ -22,19 +31,6 @@ import {
   type StatusFilter,
   SUBGROUP_NAV_ICONS,
 } from "./plugin-list-utils";
-
-export { paramsToSchema } from "./plugin-list-utils";
-
-import { useAgentElement } from "../../agent-surface";
-import { useLinkedSidebarSelection } from "../../hooks/useLinkedSidebarSelection";
-import { PageLayoutHeader } from "../../layouts/page-layout/page-layout-header";
-import { PagePanel } from "../composites/page-panel";
-import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
-import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
-import { AppPageSidebar } from "../shared/AppPageSidebar";
-import { Button } from "../ui/button";
-import { PluginCard } from "./PluginCard";
 import {
   ConnectorPluginGroups,
   type PluginConnectionTestResult,

@@ -13,12 +13,8 @@ import {
   useState,
 } from "react";
 import { client } from "../api";
-import {
-  ConfirmDialog,
-  PromptDialog,
-  useConfirm,
-  usePrompt,
-} from "../components/ui/confirm-dialog";
+import { ConfirmDialog, PromptDialog } from "../components/ui/confirm-dialog";
+import { useConfirm, usePrompt } from "../components/ui/confirm-dialog.hooks";
 import { AppBootContext } from "../config/boot-config-react";
 import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";

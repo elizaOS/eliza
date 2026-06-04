@@ -61,8 +61,6 @@ import {
   useGameModalMessages,
 } from "./chat-view-hooks";
 
-export { __resetCompanionSpeechMemoryForTests } from "./chat-view-hooks";
-
 const CHAT_INPUT_MIN_HEIGHT_PX = 46;
 const CHAT_INPUT_MAX_HEIGHT_PX = 200;
 /** Hide the typing indicator if no first token arrives within this window. */

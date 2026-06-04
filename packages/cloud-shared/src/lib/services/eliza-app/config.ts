@@ -7,7 +7,7 @@
  */
 
 import { getPromptPreset, type PromptPreset } from "../../eliza/prompt-presets";
-import { OPENROUTER_DEFAULT_TEXT_MODEL } from "../../models";
+import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -27,8 +27,10 @@ function optionalRuntimeEnv(name: string, fallback = ""): string {
   return process.env[name] || (!isProduction ? fallback : "");
 }
 
-const ELIZA_APP_SMALL_MODEL = process.env.ELIZA_APP_SMALL_MODEL || OPENROUTER_DEFAULT_TEXT_MODEL;
-const ELIZA_APP_LARGE_MODEL = process.env.ELIZA_APP_LARGE_MODEL || OPENROUTER_DEFAULT_TEXT_MODEL;
+const ELIZA_APP_SMALL_MODEL =
+  process.env.ELIZA_APP_SMALL_MODEL || CEREBRAS_DEFAULT_TEXT_SMALL_MODEL;
+const ELIZA_APP_LARGE_MODEL =
+  process.env.ELIZA_APP_LARGE_MODEL || CEREBRAS_DEFAULT_TEXT_LARGE_MODEL;
 
 export const elizaAppConfig = {
   // Frontend URL (the consumer-facing app, e.g. eliza.app)

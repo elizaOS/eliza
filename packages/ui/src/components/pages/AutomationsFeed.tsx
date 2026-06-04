@@ -61,7 +61,6 @@ import {
 } from "./workflow-graph-events";
 
 export type { FeedFilter } from "../../utils/automation-feed-filter";
-export { passesFilter } from "../../utils/automation-feed-filter";
 
 type ChooserState = "closed" | "task" | "workflow";
 

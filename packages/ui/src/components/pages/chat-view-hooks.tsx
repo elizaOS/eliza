@@ -32,7 +32,7 @@ import {
   type VoiceSpeakerMetadata,
   type VoiceTranscriptEvent,
 } from "../../voice/voice-chat-types";
-import { useCompanionSceneStatus } from "../companion/injected";
+import { useCompanionSceneStatus } from "../companion/injected.hooks";
 
 /* ── Shared constants ──────────────────────────────────────────────── */
 

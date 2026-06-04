@@ -110,7 +110,7 @@ const HIDDEN_TAG_BLOCK_RE =
  */
 const TRAILING_PARTIAL_TAG_RE = /<\/?[a-zA-Z][^>]*$|<\/?$/s;
 
-export function normalizeDisplayText(text: string): string {
+function normalizeDisplayText(text: string): string {
   // Bound input length to keep the regex passes linear in adversarial cases.
   const MAX_DISPLAY_LEN = 200_000;
   let normalized =
@@ -152,13 +152,13 @@ function isUiSpec(obj: unknown): obj is UiSpec {
  * Quick pre-check: does this line look like a JSON patch object?
  * Handles both compact `{"op":` and spaced `{ "op":` formats.
  */
-export function looksLikePatch(trimmed: string): boolean {
+function looksLikePatch(trimmed: string): boolean {
   if (!trimmed.startsWith("{")) return false;
   return trimmed.includes('"op"') && trimmed.includes('"path"');
 }
 
 /** Try to parse a single line as an RFC 6902 JSON Patch operation. */
-export function tryParsePatch(line: string): PatchOp | null {
+function tryParsePatch(line: string): PatchOp | null {
   const t = line.trim();
   if (!looksLikePatch(t)) return null;
   try {
@@ -180,7 +180,7 @@ export function tryParsePatch(line: string): PatchOp | null {
  *   /state/<key>       → spec.state[key]
  *   /state             → spec.state (whole object)
  */
-export function compilePatches(patches: PatchOp[]): UiSpec | null {
+function compilePatches(patches: PatchOp[]): UiSpec | null {
   const spec: {
     root?: string;
     elements: Record<string, unknown>;
@@ -243,7 +243,7 @@ export function compilePatches(patches: PatchOp[]): UiSpec | null {
  * A patch block is a run of lines where each non-empty line parses as a
  * valid PatchOp. A single empty line between patch lines is allowed.
  */
-export function findPatchRegions(
+function findPatchRegions(
   text: string,
 ): Array<{ start: number; end: number; spec: UiSpec; raw: string }> {
   const results: Array<{
@@ -467,7 +467,7 @@ function parseSegments(text: string, analysisMode: boolean): Segment[] {
 // ── InlinePluginConfig ──────────────────────────────────────────────
 
 /** Normalize plugin ID: strip @scope/plugin- prefix so both "discord" and "@elizaos/plugin-discord" resolve. */
-export function normalizePluginId(id: string): string {
+function normalizePluginId(id: string): string {
   return id.replace(/^@[^/]+\/plugin-/, "");
 }
 

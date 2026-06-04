@@ -31,10 +31,8 @@ export {
   type DashboardActionCardsProps,
   DashboardActionCardsSkeleton,
 } from "./dashboard/cloud-dashboard-components";
-export {
-  DashboardRouteError,
-  formatDashboardRouteErrorMessage,
-} from "./dashboard/dashboard-route-error";
+export { DashboardRouteError } from "./dashboard/dashboard-route-error";
+export { formatDashboardRouteErrorMessage } from "./dashboard/dashboard-route-error.helpers";
 export {
   DashboardErrorState,
   DashboardLoadingState,

@@ -7,7 +7,7 @@ import type {
 } from "react";
 import { cn } from "../../lib/utils";
 import { DashboardPageContainer, DashboardPageStack } from "./dashboard-page";
-import { useSetPageHeader } from "./page-header-context";
+import { useSetPageHeader } from "./page-header-context.hooks";
 
 type DashboardRoutePageBannerTone = "info" | "success" | "warning" | "error";
 

@@ -29,10 +29,6 @@ import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
 
 export type { TaskScheduleKind } from "../../utils/task-schedule";
-export {
-  decodeScheduleTags,
-  encodeScheduleTags,
-} from "../../utils/task-schedule";
 
 export interface TaskEditorInitialValue {
   id?: string;

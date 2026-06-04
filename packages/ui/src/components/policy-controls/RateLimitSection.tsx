@@ -70,7 +70,3 @@ export function RateLimitSection({
     </div>
   );
 }
-
-export function rateLimitSummary(config: RateLimitConfig): string {
-  return `${config.maxTxPerHour}/hr · ${config.maxTxPerDay}/day`;
-}
