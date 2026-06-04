@@ -140,7 +140,7 @@ function TypingDots({ reduce }: { reduce?: boolean }): React.JSX.Element {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: reduce ? 0 : 0.25, ease: OVERLAY_EASE }}
+      transition={{ duration: reduce ? 0 : 0.45, ease: OVERLAY_EASE }}
     >
       {[0, 1, 2].map((i) => (
         <span
@@ -176,10 +176,10 @@ function ThreadLine({
       // New turns rise+fade in (and the old whisper line slides out as the
       // 2-line resting window shifts). Transform/opacity only; reduced motion
       // collapses it to a quick fade with no positional movement.
-      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
+      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 14 }}
       animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
-      exit={reduce ? { opacity: 0 } : { opacity: 0, y: -4 }}
-      transition={{ duration: reduce ? 0.12 : 0.32, ease: OVERLAY_EASE }}
+      exit={reduce ? { opacity: 0 } : { opacity: 0, y: -8 }}
+      transition={{ duration: reduce ? 0.15 : 0.52, ease: OVERLAY_EASE }}
       className={cn(
         "flex w-full",
         floating ? "mb-1.5" : "mb-2.5",
@@ -575,7 +575,7 @@ export function ContinuousChatOverlay({
             ? "blur(28px) saturate(160%)"
             : "blur(0px) saturate(100%)",
         }}
-        transition={{ duration: reduce ? 0.12 : 0.55, ease: OVERLAY_EASE }}
+        transition={{ duration: reduce ? 0.12 : 0.72, ease: OVERLAY_EASE }}
       />
 
       {/* Cinematic bottom vignette — grounds the floating bar over bright views.
@@ -611,7 +611,7 @@ export function ContinuousChatOverlay({
             }}
             style={{ transformOrigin: "50% 100%" }}
             initial={
-              reduce ? { opacity: 0 } : { opacity: 0, y: 28, scale: 0.94 }
+              reduce ? { opacity: 0 } : { opacity: 0, y: 36, scale: 0.92 }
             }
             animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
             exit={
@@ -619,15 +619,15 @@ export function ContinuousChatOverlay({
                 ? { opacity: 0 }
                 : {
                     opacity: 0,
-                    y: 18,
-                    scale: 0.965,
-                    transition: { duration: 0.34, ease: OVERLAY_EASE },
+                    y: 22,
+                    scale: 0.955,
+                    transition: { duration: 0.5, ease: OVERLAY_EASE },
                   }
             }
             transition={
               reduce
-                ? { duration: 0.12 }
-                : { type: "spring", stiffness: 200, damping: 24, mass: 0.9 }
+                ? { duration: 0.15 }
+                : { type: "spring", stiffness: 130, damping: 26, mass: 1.1 }
             }
             className={cn(
               "pointer-events-auto relative mb-3 min-h-0 w-full max-w-3xl flex-1 overflow-y-auto px-5 py-6",
@@ -765,7 +765,7 @@ export function ContinuousChatOverlay({
               ? "rgba(255,180,120,0.32)"
               : "rgba(190,210,255,0.22)",
           }}
-          transition={{ duration: reduce ? 0 : 0.7, ease: "easeInOut" }}
+          transition={{ duration: reduce ? 0 : 1.1, ease: "easeInOut" }}
         />
         {/* Pending image attachments + any read error, above the bar. */}
         {hasImages || imageError ? (
@@ -876,9 +876,9 @@ export function ContinuousChatOverlay({
           <motion.div
             key={(hasDraft || hasImages) && !recording ? "send" : "mic"}
             className="shrink-0"
-            initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.7 }}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.6 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: reduce ? 0 : 0.18, ease: OVERLAY_EASE }}
+            transition={{ duration: reduce ? 0 : 0.3, ease: OVERLAY_EASE }}
           >
             {(hasDraft || hasImages) && !recording ? (
               <SoftButton

@@ -3,6 +3,7 @@
  */
 
 import { Keyboard } from "@capacitor/keyboard";
+import { motion, useReducedMotion } from "motion/react";
 import "./components/chat/chat-source-registration";
 import {
   type ComponentType,
@@ -901,13 +902,38 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
   // the header, with the always-present ContinuousChatOverlay (mounted at the
   // shell root) as the whole chat experience. Ask it anything, or ask it to
   // open a view ("show me the coding view") which surfaces over this base.
+  const reduceMotion = useReducedMotion() ?? false;
   return (
     <div key="chat-shell" className={APP_SHELL_CLASS}>
       <Header />
       <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
-        <p className="-translate-y-8 select-none text-center text-3xl font-light italic text-muted/35">
+        {/* The greeting settles in — a slow blur+rise fade — then breathes
+            gently so the ambient home feels alive rather than static (Her-style).
+            Honors reduced motion (a plain, still fade). */}
+        <motion.p
+          className="-translate-y-8 select-none text-center text-3xl font-light italic text-muted"
+          initial={
+            reduceMotion
+              ? { opacity: 0 }
+              : { opacity: 0, y: 16, filter: "blur(12px)" }
+          }
+          animate={
+            reduceMotion
+              ? { opacity: 0.38 }
+              : { opacity: [0.3, 0.5, 0.3], y: 0, filter: "blur(0px)" }
+          }
+          transition={
+            reduceMotion
+              ? { duration: 0.6 }
+              : {
+                  y: { duration: 1.9, ease: [0.22, 1, 0.36, 1] },
+                  filter: { duration: 1.9, ease: [0.22, 1, 0.36, 1] },
+                  opacity: { duration: 8, repeat: Infinity, ease: "easeInOut" },
+                }
+          }
+        >
           {minimalHomeGreeting()}
-        </p>
+        </motion.p>
         <CustomActionsPanel
           open={props.customActionsPanelOpen}
           onClose={() => props.setCustomActionsPanelOpen(false)}
