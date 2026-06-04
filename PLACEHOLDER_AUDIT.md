@@ -1,6 +1,6 @@
 # Placeholder / Stub / TODO Audit
 
-Last updated: 2026-06-03
+Last updated: 2026-06-04
 
 Scope: package-by-package scan of source-level markers such as placeholder, stub,
 TODO, incomplete, unfinished, "for now", no-op, and not implemented. Generated
@@ -2842,9 +2842,10 @@ platform no-ops are separated from actionable runtime gaps.
 - Remaining Security markers are in TEE-native planning/threat-model docs and
   test assertions:
   - `docs/tee-native/*` intentionally records unresolved silicon/attestation
-    gaps: development-only RoT state, mock evidence bridges, secure-boot/debug
-    claims requiring fused keys, and lab-blocked side-channel/fault-injection
-    proof. These require real hardware/TEE evidence and should stay visible.
+    gaps: development-only RoT state, synthetic fixture evidence bridges,
+    secure-boot/debug claims requiring fused keys, and lab-blocked
+    side-channel/fault-injection proof. These require real hardware/TEE
+    evidence and should stay visible.
   - `src/__tests__/dispatcher.test.ts` inspects Vitest `mock.calls` for injected
     sink error handling; this is test API terminology, not a product mock.
 
@@ -4464,6 +4465,168 @@ platform no-ops are separated from actionable runtime gaps.
   `packages/cloud-shared/CLAUDE.md` explicitly marks migrations append-only and
   says never to hand-edit applied migrations, so these are recorded rather than
   rewritten in place.
+
+### plugins/plugin-browser target/capture marker wording
+
+- Reworded Stagehand auto-setup docs, bundle-safety guide notes, bridge target
+  registration comments, Stagehand target logs, desktop bridge tab lookup, and
+  headless capture popout comments so configured behavior is not described with
+  skip/no-op wording.
+- Remaining browser markers are intentional selector semantics for
+  `findBy: "placeholder"` / `[placeholder]`, TypeScript `skipLibCheck`, and
+  Vitest mocks in bridge route tests.
+- Verified with Biome on the touched TypeScript files,
+  `diff -q plugins/plugin-browser/CLAUDE.md plugins/plugin-browser/AGENTS.md`,
+  `bun run --cwd plugins/plugin-browser typecheck`,
+  `bun run --cwd plugins/plugin-browser test`,
+  `bun run --cwd plugins/plugin-browser build`, focused marker/stale-phrase
+  scans, and `git diff --check`.
+
+### plugins/plugin-coding-tools lint gate
+
+- Replaced the skipped lint script with real Biome `lint` and `lint:check`
+  scripts, and documented `lint:check` in the package-local `CLAUDE.md` /
+  `AGENTS.md` command list.
+- Fixed the lint issues exposed by enabling the gate: removed a dead
+  `isTruthy` helper in `auto-enable.ts`, rewrote the edit occurrence counter to
+  avoid assignment inside the loop condition, and accepted Biome import/format
+  cleanup in touched files.
+- Reworded the unreadable-glob-entry comment from skip wording to ignore
+  wording. Remaining markers are intentional ripgrep environment-gated tests,
+  `skip.log` fixture filenames, TypeScript `skipLibCheck`, the plugin-todos
+  package name, and test mocks.
+- Verified with:
+  - `diff -q plugins/plugin-coding-tools/CLAUDE.md plugins/plugin-coding-tools/AGENTS.md`
+  - `bun run --cwd plugins/plugin-coding-tools lint`
+  - `bun run --cwd plugins/plugin-coding-tools lint:check`
+  - `bun run --cwd plugins/plugin-coding-tools typecheck`
+  - `bun run --cwd plugins/plugin-coding-tools test`
+  - `bun run --cwd plugins/plugin-coding-tools build`
+  - focused marker/stale-phrase scans and `git diff --check`
+
+### plugins/plugin-hyperscape live-session wording
+
+- Reworded optional live-session resolution docs/logs and wallet-auth gotchas
+  so missing config or best-effort auth failures are described as unavailable
+  state, not hidden deferred work.
+- Remaining Hyperscape marker hits are user-facing input `placeholder` props in
+  the operator surface.
+- Verified with:
+  - `diff -q plugins/plugin-hyperscape/CLAUDE.md plugins/plugin-hyperscape/AGENTS.md`
+  - `bunx @biomejs/biome check --write --unsafe plugins/plugin-hyperscape/src/routes.ts`
+  - `bun run --cwd plugins/plugin-hyperscape build`
+  - focused marker/stale-phrase scans and `git diff --check`
+
+### packages/security TEE documentation status wording
+
+- Reworded TEE native planning docs so synthetic fixture evidence, absent
+  hardware quote verification, and hardware-backed secure-boot/debug claims are
+  described as explicit hardware-bound gates rather than mock/stub/placeholder
+  implementation.
+- Reworded the dstack `no_tee` issue class from fake-TEE wording to a
+  non-TEE launch path.
+- Remaining security markers are intentional: a Vitest mock call inspection,
+  TypeScript `skipLibCheck`, threat-model attack vocabulary such as fault-skip,
+  a historical dstack issue title containing "temporary CA", and a cloud-lane
+  cross-reference that says to continue at another numbered step.
+- Verified with:
+  - `diff -q packages/security/CLAUDE.md packages/security/AGENTS.md`
+  - focused marker scan on `packages/security`
+  - `git diff --check` on the touched TEE docs
+
+### native iOS dependency build-lane wording
+
+- Reworded `packages/native/ios-deps/llama.cpp` and `sqlite-vec` iOS build
+  scripts so non-requested, non-macOS, missing-Xcode, and failed-optional
+  build lanes are reported as not requested or unavailable rather than skipped
+  unfinished work.
+- Reworded the sqlite-vec README fallback from a no-op to explicit vector
+  support unavailable status, and reworded the llama.cpp build flag table so
+  library-only builds are not described with skip wording.
+- Verified with:
+  - `bash -n packages/native/ios-deps/llama.cpp/build-ios.sh`
+  - `bash -n packages/native/ios-deps/sqlite-vec/build-ios.sh`
+  - default `./build-ios.sh` execution in both dependency directories
+  - focused stale-phrase scan on the touched iOS dependency files
+
+### packages/shared build/mobile wording
+
+- Reworded the `build:dist` command guide so it says the command does not
+  regenerate i18n in the package-local guide pair.
+- Reworded the mobile runtime capability comment so mobile-host fallbacks are
+  described as logged unavailable status instead of skipped behavior.
+- Remaining shared marker hits are generated i18n keyword data, Todo feature
+  names, test-support mock helpers, TypeScript `skipLibCheck`, and API fields
+  like `totalSkipped`.
+- Verified with:
+  - `diff -q packages/shared/CLAUDE.md packages/shared/AGENTS.md`
+  - `bunx @biomejs/biome check packages/shared/src/runtime-env.ts`
+  - `bun run --cwd packages/shared typecheck`
+  - focused stale-phrase scan on the touched shared files
+
+### plugins/plugin-computeruse fixture/status wording
+
+- Reworded the Scene Builder and mobile parity docs so current capability
+  status and unavailable mobile features are not labeled as stubs.
+- Reworded the platform dependency postinstall message so the nutjs driver path
+  explains that shell-tool checks only apply to the legacy driver.
+- Renamed deterministic golden-test helpers and comments from stub terminology
+  to fixture-provider terminology across screen-to-click, imagegen-prompt, and
+  camera-to-reaction coverage.
+- Reworded the AOSP consumer bridge doc as a disabled bridge implementation
+  instead of a stub, and reworded the real-screen ComputerUse agent fixture VLM
+  label/message. The `.real.test.ts` file remains excluded by
+  `plugins/plugin-computeruse/vitest.config.ts`; an explicit runner attempt
+  still reported no test files because `**/*.real.test.{ts,tsx}` is excluded.
+- Remaining ComputerUse markers are intentional: test fakes/mocks, environment
+  gating for real/e2e tests, `skipLibCheck`, OSWorld action semantics, iOS
+  cursor no-op semantics, and feature words such as Apple Music "Skip" intent.
+- Verified with:
+  - `diff -q plugins/plugin-computeruse/CLAUDE.md plugins/plugin-computeruse/AGENTS.md`
+  - `bunx @biomejs/biome check --write --unsafe` on touched ComputerUse TS/JS files
+  - `bunx vitest run test/golden/screen-to-click.golden.test.ts test/golden/imagegen-prompt.golden.test.ts test/golden/camera-to-reaction.golden.test.ts`
+  - `bun run --cwd plugins/plugin-computeruse typecheck`
+  - `bun run --cwd plugins/plugin-computeruse build`
+  - `bun run --cwd plugins/plugin-computeruse test`
+  - focused stale-phrase scans and `git diff --check`
+
+### connector package dry-run and live-lane wording
+
+- `plugins/plugin-bluesky`: renamed production dry-run return helpers and IDs
+  from mock terminology to dry-run terminology, and reworded credential/account
+  initialization messages so unconfigured accounts are explicit unavailable
+  state.
+- `plugins/plugin-roblox`: replaced DataStore dry-run `console.log` calls with
+  structured logger output, reworded config/dry-run docs, changed the
+  integration-test script message from skipped-work wording to live-credential
+  requirements, and made `lint:check` a non-writing Biome check.
+- `plugins/plugin-tailscale`: reworded first-active-wins tunnel-slot docs and
+  runtime log output so an already-registered tunnel service is described as a
+  deliberate ownership decision.
+- `plugins/plugin-google-genai`: reworded live-test messages so missing API
+  credentials are described as a disabled live lane rather than unfinished
+  implementation.
+- Remaining marker hits in these packages are test doubles, Vitest live-test
+  gating APIs, TypeScript `skipLibCheck`, and one Tailscale unit-test label
+  verifying that CLI calls are not made after cloud provisioning failure.
+- Verified with:
+  - `diff -q` guide parity checks for Bluesky, Roblox, Tailscale, and Google
+    GenAI
+  - `bun run --cwd plugins/plugin-bluesky typecheck`
+  - `bun run --cwd plugins/plugin-bluesky test`
+  - `bun run --cwd plugins/plugin-bluesky build`
+  - `bun run --cwd plugins/plugin-roblox lint:check`
+  - `bun run --cwd plugins/plugin-roblox typecheck`
+  - `bun run --cwd plugins/plugin-roblox test`
+  - `bun run --cwd plugins/plugin-roblox build`
+  - `bun run --cwd plugins/plugin-tailscale lint:check`
+  - `bun run --cwd plugins/plugin-tailscale typecheck`
+  - `bun run --cwd plugins/plugin-tailscale test`
+  - `bun run --cwd plugins/plugin-tailscale build`
+  - `bun run --cwd plugins/plugin-google-genai typecheck`
+  - `bun run --cwd plugins/plugin-google-genai test`
+  - `bun run --cwd plugins/plugin-google-genai build`
+  - focused stale-phrase scans and `git diff --check`
 
 ## Intentional / False-Positive Marker Classes
 

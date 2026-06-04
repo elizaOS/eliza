@@ -130,7 +130,7 @@ Only scripts defined in `packages/shared/package.json`:
 ```bash
 bun run --cwd packages/shared build          # generate-keywords + tsc dist
 bun run --cwd packages/shared build:i18n     # regenerate src/i18n/generated/
-bun run --cwd packages/shared build:dist     # tsc only (skip i18n)
+bun run --cwd packages/shared build:dist     # tsc only (does not regenerate i18n)
 bun run --cwd packages/shared typecheck      # tsgo --noEmit
 bun run --cwd packages/shared test           # vitest run
 bun run --cwd packages/shared lint           # biome check src

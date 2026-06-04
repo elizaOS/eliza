@@ -24,7 +24,7 @@ const agent = {
 };
 ```
 
-The service skips initialization unless both `ROBLOX_API_KEY` and
+The service is unavailable unless both `ROBLOX_API_KEY` and
 `ROBLOX_UNIVERSE_ID` are set, and the `ROBLOX` action only validates when both are
 present.
 
