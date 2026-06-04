@@ -309,6 +309,7 @@ import {
   handleRemoteCapabilityRoutes,
   handleSandboxRouteGroup,
   handleSubscriptionRoutes,
+  handleSuggestionsRoutes,
   handleUpdateRoutes,
   handleViewsRoutes,
   handleWorkbenchRoutes,
@@ -2817,6 +2818,21 @@ async function handleRequest(
     ) {
       return;
     }
+  }
+
+  // ── Prompt suggestions (/api/suggestions) ─────────────────────────────────
+  if (
+    await handleSuggestionsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      json,
+      error,
+      runtime: state.runtime,
+    })
+  ) {
+    return;
   }
 
   // ── View routes (/api/views/*) ────────────────────────────────────────────
