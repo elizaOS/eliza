@@ -9,6 +9,6 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "devDependencies": {
-    "vitest": "4.1.7"
+    "vitest": "4.1.8"
   }
 }
