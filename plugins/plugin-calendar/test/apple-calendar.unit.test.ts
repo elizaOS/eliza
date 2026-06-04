@@ -10,7 +10,7 @@ import {
   createNativeAppleCalendarEvent,
   getNativeAppleCalendarFeed,
   listNativeAppleCalendars,
-} from "../src/lifeops/apple-calendar.js";
+} from "../src/apple-calendar.js";
 
 function bridge(overrides = {}) {
   return {

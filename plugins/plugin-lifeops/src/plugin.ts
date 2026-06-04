@@ -73,6 +73,7 @@ import {
   registerMultilingualPromptRegistry,
 } from "./lifeops/i18n/prompt-registry.js";
 import { BrowserBridgeAdapter } from "@elizaos/plugin-browser";
+import { calendarPlugin } from "@elizaos/plugin-calendar";
 import { CalendlyAdapter } from "@elizaos/plugin-calendly";
 import { GoogleGmailAdapter } from "@elizaos/plugin-google";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
@@ -140,6 +141,7 @@ import {
   type SelfControlPluginConfig,
   setSelfControlPluginConfig,
 } from "./website-blocker/engine.js";
+import { registerLifeOpsCalendarGate } from "./lifeops/calendar-gate.js";
 import { WebsiteBlockerService } from "./website-blocker/service.js";
 
 const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
@@ -545,6 +547,21 @@ export async function ensureLifeOpsGooglePluginRegistered(
   await runtime.registerPlugin(plugin);
 }
 
+/**
+ * Register `@elizaos/plugin-calendar` if it is not already in the runtime so
+ * the calendar `CalendarService` (which LifeOps delegates every calendar call
+ * to) is available. The calendar plugin is a hard LifeOps dependency, so a
+ * static import is sufficient.
+ */
+export async function ensureLifeOpsCalendarPluginRegistered(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  if (runtime.plugins.some((plugin) => plugin.name === calendarPlugin.name)) {
+    return;
+  }
+  await runtime.registerPlugin(calendarPlugin);
+}
+
 const LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY =
   "eliza:lifeops:plugin:init-failures";
 
@@ -709,6 +726,29 @@ const rawAppLifeOpsPlugin: Plugin = {
     }
 
     await ensureLifeOpsGooglePluginRegistered(runtime);
+    await ensureLifeOpsCalendarPluginRegistered(runtime);
+
+    // Inject the LifeOps-backed calendar gate once the runtime has finished
+    // initializing both plugins, so calendar events keep firing reminders and
+    // writing audit rows through the LifeOps repository. Non-fatal on failure:
+    // the calendar service falls back to its default gate (Google-only, no
+    // reminder/audit side effects).
+    void runtime.initPromise
+      .then(() => {
+        if (
+          (runtime as IAgentRuntime & { stopped?: boolean }).stopped === true
+        ) {
+          return;
+        }
+        registerLifeOpsCalendarGate(runtime);
+      })
+      .catch((error) => {
+        logger.error(
+          `[lifeops] failed to register calendar host gate (calendar degraded to default gate): ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
 
     setSelfControlPluginConfig(pluginConfig as SelfControlPluginConfig);
     const status = await getSelfControlStatus();
