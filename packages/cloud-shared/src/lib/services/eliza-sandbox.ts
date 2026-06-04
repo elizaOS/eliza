@@ -531,15 +531,23 @@ export class ElizaSandboxService {
     agent: AgentSandbox;
     idempotent: boolean;
   }> {
+    const createParams: CreateAgentParams & { dockerImage: string } = {
+      ...params,
+      executionTier: params.executionTier ?? "custom",
+    };
+
     logger.info("[agent-sandbox] Creating coding-container agent", {
-      orgId: params.organizationId,
-      name: params.agentName,
-      image: params.dockerImage,
+      orgId: createParams.organizationId,
+      name: createParams.agentName,
+      image: createParams.dockerImage,
     });
 
     return dbWrite.transaction(async (tx) => {
       await tx.execute(
-        elizaCodingContainerImageAdvisoryLockSql(params.organizationId, params.dockerImage),
+        elizaCodingContainerImageAdvisoryLockSql(
+          createParams.organizationId,
+          createParams.dockerImage,
+        ),
       );
 
       const [existing] = await tx
@@ -547,8 +555,8 @@ export class ElizaSandboxService {
         .from(agentSandboxes)
         .where(
           and(
-            eq(agentSandboxes.organization_id, params.organizationId),
-            eq(agentSandboxes.docker_image, params.dockerImage),
+            eq(agentSandboxes.organization_id, createParams.organizationId),
+            eq(agentSandboxes.docker_image, createParams.dockerImage),
             sql`${agentSandboxes.pool_status} IS NULL`,
             sql`${agentSandboxes.status} IN ('pending', 'provisioning', 'running')`,
           ),
@@ -563,7 +571,7 @@ export class ElizaSandboxService {
 
       const [created] = await tx
         .insert(agentSandboxes)
-        .values(this.buildAgentInsertData(params))
+        .values(this.buildAgentInsertData(createParams))
         .returning();
       if (!created) throw new Error("Failed to create coding-container agent record");
       return { agent: created, idempotent: false };

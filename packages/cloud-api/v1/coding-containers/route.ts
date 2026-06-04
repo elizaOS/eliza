@@ -197,6 +197,7 @@ async function createCodingContainer(
     agentName: payload.name || payload.project_name,
     environmentVars: payload.environment_vars,
     dockerImage: payload.image,
+    executionTier: "custom",
   });
   if (createResult.idempotent) {
     const existing = createResult.agent;
