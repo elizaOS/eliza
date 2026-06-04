@@ -35,6 +35,7 @@ export const CORS_ALLOWED_HEADERS = [
   "X-Api-Key",
   "X-Eliza-Token",
   "X-ElizaOS-Token",
+  "X-Server-Token",
   "X-Waifu-Chat-Access-Token",
   "X-Eliza-Export-Token",
   "X-Eliza-Client-Id",

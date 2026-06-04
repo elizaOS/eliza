@@ -1975,6 +1975,16 @@ export const INVALID_TRACER_PROVIDER = {};
           "@elizaos/plugin-facewear/register",
           "plugins/plugin-facewear/src/register.ts",
         ],
+        // plugin-calendar subpaths consumed by plugin-lifeops in the renderer
+        // bundle. Resolve from source so the app build does not require
+        // plugin-calendar to be built first (its dist is absent during the
+        // renderer build in CI). client-calendar is a side-effect import that
+        // augments ElizaClient.prototype with the calendar feed methods.
+        [
+          "@elizaos/plugin-calendar/api/client-calendar",
+          "plugins/plugin-calendar/src/api/client-calendar.ts",
+        ],
+        ["@elizaos/plugin-calendar/ui", "plugins/plugin-calendar/src/ui.ts"],
       ].map(([pkgName, relativeEntry]) => ({
         find: new RegExp(`^${escapeRegExp(pkgName)}$`),
         replacement: path.resolve(elizaRoot, relativeEntry),

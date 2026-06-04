@@ -69,7 +69,7 @@ describe("toCompatStatus", () => {
       containerId: "container-1",
       containerUrl: "https://runtime.example",
       bridgeUrl: "https://runtime.example",
-      webUiUrl: "https://123e4567-e89b-12d3-a456-426614174000.waifu.fun",
+      webUiUrl: "https://123e4567-e89b-12d3-a456-426614174000.elizacloud.ai",
       status: "running",
       databaseStatus: "ready",
       account: {
