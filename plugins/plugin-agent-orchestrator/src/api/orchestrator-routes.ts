@@ -19,7 +19,10 @@ import type {
   TaskPlanRevisionDto,
   TaskThreadDetailDto,
 } from "../services/orchestrator-task-mapper.js";
-import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
+import {
+  OrchestratorTaskService,
+  RecoveryConflictError,
+} from "../services/orchestrator-task-service.js";
 import type {
   CreateTaskInput,
   OrchestratorTaskPriority,
@@ -110,12 +113,7 @@ function parseLimit(value: string | null): number | undefined {
 }
 
 function recoveryConflictStatus(error: unknown): number {
-  if (!(error instanceof Error)) return 500;
-  return /Base plan revision not found|Plan revision not found|Source message not found|Source event not found|Session not found|sessionId is required|Cannot retry|Destructive rerun/.test(
-    error.message,
-  )
-    ? 409
-    : 500;
+  return error instanceof RecoveryConflictError ? 409 : 500;
 }
 
 async function parseOptionalBody(
