@@ -51,6 +51,10 @@ const VIEW_LOADING_SKELETON_KEYS = [
   "view-skeleton-6",
 ];
 
+function isViewManagerEntry(view: Pick<ViewRegistryEntry, "id">) {
+  return view.id === "views-manager";
+}
+
 function ViewCardPinButton({
   view,
   onPin,
@@ -731,6 +735,7 @@ export function ViewManagerPage() {
     // When the search endpoint returned results, display those ranked by score.
     if (searchResults !== null) {
       const visible = searchResults.filter((v) => {
+        if (isViewManagerEntry(v)) return false;
         if (v.developerOnly && !isDeveloperMode) return false;
         if (v.visibleInManager === false) return false;
         return true;
@@ -743,6 +748,7 @@ export function ViewManagerPage() {
     // No active search — show all views with client-side visibility rules.
     const q = query.trim().toLowerCase();
     const visible = views.filter((v) => {
+      if (isViewManagerEntry(v)) return false;
       if (v.developerOnly && !isDeveloperMode) return false;
       if (v.visibleInManager === false) return false;
       if (!q) return true;

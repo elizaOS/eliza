@@ -62,6 +62,14 @@ function view(
 }
 
 const views: ViewRegistryEntry[] = [
+  view("views-manager", {
+    label: "Views",
+    description: "Browse and open available views contributed by plugins",
+    path: "/views",
+    pluginName: "app-control",
+    builtin: false,
+    tags: ["views"],
+  }),
   view("local.notes", {
     label: "Local Notes",
     description: "Built-in local note board",
@@ -125,6 +133,7 @@ describe("ViewManagerPage", () => {
     expect(screen.getByPlaceholderText("Search views…")).toBeTruthy();
     expect(screen.getByText("Local Notes")).toBeTruthy();
     expect(screen.getByText("Remote Ledger")).toBeTruthy();
+    expect(screen.queryByTestId("view-card-views-manager")).toBeNull();
     expect(screen.queryByText("Developer Trace")).toBeNull();
     expect(screen.queryByText("Internal Hidden")).toBeNull();
   });
