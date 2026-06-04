@@ -495,11 +495,6 @@ function runNode(commandArgs, options = {}) {
   run(node, commandArgs, options);
 }
 
-function runNodeStatus(commandArgs, options = {}) {
-  const node = which("node") ?? process.execPath;
-  return runStatus(node, commandArgs, options);
-}
-
 function runPackageBinary(binary, binaryArgs, options = {}) {
   const bunx = which("bunx");
   if (bunx) {
@@ -846,9 +841,7 @@ function workspaceRuntimePackageLooksBuilt(packageName, packageDir) {
     return (
       fs.existsSync(path.join(distDir, "index.js")) &&
       fs.existsSync(path.join(distDir, "App.js")) &&
-      fs.existsSync(
-        path.join(distDir, "components", "pages", "LogsView.js"),
-      )
+      fs.existsSync(path.join(distDir, "components", "pages", "LogsView.js"))
     );
   }
 
