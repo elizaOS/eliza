@@ -76,6 +76,7 @@ export interface ElizaAgentRow {
   web_ui_port: number | null;
   headscale_ip: string | null;
   docker_image: string | null;
+  execution_tier?: "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
   sandbox_id: string | null;
   bridge_url: string | null;
   error_message: string | null;
@@ -103,7 +104,22 @@ import {
 // ----------------------------------------------------------------
 
 function isDockerBacked(sb: ElizaAgentRow): boolean {
-  return !!sb.node_id;
+  return !!sb.node_id || sb.execution_tier === "custom" || !!sb.docker_image;
+}
+
+function getRuntimeKind(
+  sb: ElizaAgentRow,
+): "managed" | "shared" | "sandbox" | "notProvisioned" {
+  if (isDockerBacked(sb)) return "managed";
+  if (sb.execution_tier === "shared") return "shared";
+  if (
+    sb.sandbox_id ||
+    sb.status === "running" ||
+    sb.status === "provisioning"
+  ) {
+    return "sandbox";
+  }
+  return "notProvisioned";
 }
 
 // ----------------------------------------------------------------
@@ -837,9 +853,13 @@ export function ElizaAgentsTable({
                                 ? t("cloud.elizaAgentsTable.docker", {
                                     defaultValue: "Docker",
                                   })
-                                : t("cloud.elizaAgentsTable.sandbox", {
-                                    defaultValue: "Sandbox",
-                                  })}
+                                : sb.execution_tier === "shared"
+                                  ? t("cloud.elizaAgentsTable.shared", {
+                                      defaultValue: "Shared",
+                                    })
+                                  : t("cloud.elizaAgentsTable.sandbox", {
+                                      defaultValue: "Sandbox",
+                                    })}
                             </span>
                             <span className="text-[10px] text-white/20 font-mono tabular-nums">
                               {sb.id.slice(0, 8)}
@@ -861,11 +881,15 @@ export function ElizaAgentsTable({
                       {/* Runtime */}
                       <TableCell>
                         <span className="text-xs text-white/50">
-                          {isDocker
+                          {getRuntimeKind(sb) === "managed"
                             ? t("cloud.elizaAgentsTable.managedRuntime", {
                                 defaultValue: "Managed runtime",
                               })
-                            : sb.sandbox_id
+                            : getRuntimeKind(sb) === "shared"
+                              ? t("cloud.elizaAgentsTable.sharedRuntime", {
+                                  defaultValue: "Shared runtime",
+                                })
+                              : getRuntimeKind(sb) === "sandbox"
                               ? t("cloud.elizaAgentsTable.cloudSandbox", {
                                   defaultValue: "Cloud sandbox",
                                 })
@@ -1076,9 +1100,13 @@ export function ElizaAgentsTable({
                             ? t("cloud.elizaAgentsTable.docker", {
                                 defaultValue: "Docker",
                               })
-                            : t("cloud.elizaAgentsTable.sandbox", {
-                                defaultValue: "Sandbox",
-                              })}
+                            : sb.execution_tier === "shared"
+                              ? t("cloud.elizaAgentsTable.shared", {
+                                  defaultValue: "Shared",
+                                })
+                              : t("cloud.elizaAgentsTable.sandbox", {
+                                  defaultValue: "Sandbox",
+                                })}
                         </span>
                         <span className="text-[10px] text-white/20 font-mono tabular-nums">
                           {sb.id.slice(0, 8)}

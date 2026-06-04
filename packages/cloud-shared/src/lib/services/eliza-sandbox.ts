@@ -1571,7 +1571,7 @@ export class ElizaSandboxService {
     if (!rec.bridge_url) {
       throw new BridgeRouteUnavailableError("Sandbox has no bridge_url", 0);
     }
-    const url = await this.getSafeBridgeEndpoint(rec, "/bridge");
+    const url = await this.getAgentApiEndpoint(rec, "/bridge");
     const res = await fetch(url, {
       method: "POST",
       headers: this.getAgentJsonHeaders(rec),

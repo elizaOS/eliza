@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  extractAgentIdFromHost,
   isBridgeHostFallbackEnabled,
   resolveSandboxRouting,
 } from "./agent-router";
@@ -82,5 +83,24 @@ describe("resolveSandboxRouting", () => {
         AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: "1",
       } as NodeJS.ProcessEnv),
     ).toBe(true);
+  });
+});
+
+describe("extractAgentIdFromHost", () => {
+  const agentId = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
+
+  it("extracts generated agent subdomains for the configured base domain", () => {
+    expect(extractAgentIdFromHost(`${agentId}.waifu.fun`, "waifu.fun")).toBe(
+      agentId,
+    );
+    expect(
+      extractAgentIdFromHost(`${agentId}.waifu.fun:443`, "waifu.fun"),
+    ).toBe(agentId);
+  });
+
+  it("rejects root, unrelated, and malformed hosts", () => {
+    expect(extractAgentIdFromHost("waifu.fun", "waifu.fun")).toBeNull();
+    expect(extractAgentIdFromHost("example.com", "waifu.fun")).toBeNull();
+    expect(extractAgentIdFromHost("not-an-agent.waifu.fun", "waifu.fun")).toBeNull();
   });
 });

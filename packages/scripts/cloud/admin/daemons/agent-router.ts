@@ -3,7 +3,7 @@
  * Agent Router daemon.
  *
  * Resolves agent id → headscale IP / bridge port / web UI port for the nginx
- * Lua subdomain router. Routing requires a persisted headscale_ip by default;
+ * wildcard subdomain router. Routing requires a persisted headscale_ip by default;
  * legacy bridge-host fallback is opt-in because public host + dynamic port
  * metadata is not a reliable ingress target after the Hetzner/control-plane
  * split.
@@ -18,6 +18,7 @@
  */
 
 import * as path from "node:path";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { fileURLToPath } from "node:url";
 import { loadLocalEnv } from "./shared/load-env";
 
@@ -37,6 +38,21 @@ interface AgentRouterConfig {
 
 const DEFAULT_PORT = 3458;
 const DEFAULT_BIND_HOST = "127.0.0.1";
+const DEFAULT_AGENT_BASE_DOMAIN = "waifu.fun";
+const AGENT_ID_RE =
+  /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const HOP_BY_HOP_HEADERS = new Set([
+  "connection",
+  "content-length",
+  "expect",
+  "host",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "upgrade",
+]);
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -144,10 +160,105 @@ export async function resolveAgentRouting(
   });
 }
 
-const AGENT_ID_RE =
-  /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+export function extractAgentIdFromHost(
+  hostHeader: string | undefined,
+  baseDomain = process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN ??
+    DEFAULT_AGENT_BASE_DOMAIN,
+): string | null {
+  const hostname = hostHeader?.split(":")[0]?.trim().toLowerCase();
+  const normalizedBaseDomain = baseDomain.trim().toLowerCase();
+  if (!hostname || !normalizedBaseDomain) return null;
 
-async function handleRequest(url: URL): Promise<Response> {
+  const suffix = `.${normalizedBaseDomain}`;
+  if (!hostname.endsWith(suffix)) return null;
+
+  const subdomain = hostname.slice(0, -suffix.length);
+  if (!AGENT_ID_RE.test(subdomain)) return null;
+  return subdomain;
+}
+
+async function readIncomingBody(
+  req: IncomingMessage,
+): Promise<Uint8Array | undefined> {
+  const chunks: Uint8Array[] = [];
+  let totalLength = 0;
+  for await (const chunk of req) {
+    const bytes =
+      typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk;
+    chunks.push(bytes);
+    totalLength += bytes.byteLength;
+  }
+  if (chunks.length === 0) return undefined;
+  const body = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
+
+function buildProxyHeaders(
+  req: IncomingMessage,
+  target: string,
+): Headers {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (!value || HOP_BY_HOP_HEADERS.has(name.toLowerCase())) continue;
+    if (Array.isArray(value)) {
+      for (const item of value) headers.append(name, item);
+    } else {
+      headers.set(name, value);
+    }
+  }
+
+  headers.set("host", target);
+  if (req.headers.host) headers.set("x-forwarded-host", req.headers.host);
+  if (!headers.has("x-forwarded-proto")) headers.set("x-forwarded-proto", "http");
+  const forwardedFor = req.socket.remoteAddress;
+  if (forwardedFor) {
+    const existing = headers.get("x-forwarded-for");
+    headers.set(
+      "x-forwarded-for",
+      existing ? `${existing}, ${forwardedFor}` : forwardedFor,
+    );
+  }
+  return headers;
+}
+
+async function proxyAgentRequest(
+  agentId: string,
+  url: URL,
+  req: IncomingMessage,
+): Promise<Response> {
+  const routing = await resolveAgentRouting(agentId);
+  if (!routing) {
+    return Response.json(
+      { error: "agent not found or not running" },
+      { status: 404 },
+    );
+  }
+
+  const targetUrl = new URL(`${url.pathname}${url.search}`, `http://${routing.target}`);
+  const method = req.method ?? "GET";
+  const init: RequestInit = {
+    method,
+    headers: buildProxyHeaders(req, routing.target),
+    redirect: "manual",
+    signal: AbortSignal.timeout(120_000),
+  };
+  if (method !== "GET" && method !== "HEAD") {
+    const body = await readIncomingBody(req);
+    if (body) init.body = body;
+  }
+
+  return fetch(targetUrl, init);
+}
+
+async function handleRequest(
+  url: URL,
+  req?: IncomingMessage,
+): Promise<Response> {
   if (url.pathname === "/healthz") {
     return Response.json({ ok: true }, { status: 200 });
   }
@@ -157,6 +268,8 @@ async function handleRequest(url: URL): Promise<Response> {
     /^\/agents\/([^/]+)\/(headscale-ip|routing)$/,
   );
   if (!match) {
+    const agentId = extractAgentIdFromHost(req?.headers.host);
+    if (agentId && req) return proxyAgentRequest(agentId, url, req);
     return Response.json({ error: "not found" }, { status: 404 });
   }
   const agentId = match[1];
@@ -173,6 +286,18 @@ async function handleRequest(url: URL): Promise<Response> {
   return Response.json(routing, { status: 200 });
 }
 
+async function sendResponse(
+  res: ServerResponse,
+  response: Response,
+): Promise<void> {
+  res.statusCode = response.status;
+  response.headers.forEach((v, k) => {
+    res.setHeader(k, v);
+  });
+  const body = new Uint8Array(await response.arrayBuffer());
+  res.end(body);
+}
+
 let server: import("node:http").Server | null = null;
 let shuttingDown = false;
 
@@ -187,17 +312,8 @@ async function main(): Promise<void> {
       req.url ?? "/",
       `http://${req.headers.host || "localhost"}`,
     );
-    handleRequest(url)
-      .then((response) => {
-        res.statusCode = response.status;
-        response.headers.forEach((v, k) => {
-          res.setHeader(k, v);
-        });
-        return response.text();
-      })
-      .then((body) => {
-        res.end(body);
-      })
+    handleRequest(url, req)
+      .then((response) => sendResponse(res, response))
       .catch((err) => {
         const error = err instanceof Error ? err.message : String(err);
         void loadDeps()

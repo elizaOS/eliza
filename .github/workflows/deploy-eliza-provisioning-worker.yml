@@ -316,6 +316,79 @@ jobs:
             sudo install -m 0644 \
               packages/scripts/cloud/admin/eliza-agent-router.service \
               /etc/systemd/system/eliza-agent-router.service
+
+            if ! command -v nginx >/dev/null 2>&1 || ! command -v openssl >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y nginx openssl
+            fi
+
+            agent_domain="${ELIZA_CLOUD_AGENT_BASE_DOMAIN:-waifu.fun}"
+            sudo install -d -m 0755 /etc/nginx/ssl
+            if [ ! -f /etc/nginx/ssl/eliza-agent-router.crt ] || [ ! -f /etc/nginx/ssl/eliza-agent-router.key ]; then
+              sudo openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
+                -keyout /etc/nginx/ssl/eliza-agent-router.key \
+                -out /etc/nginx/ssl/eliza-agent-router.crt \
+                -subj "/CN=*.${agent_domain}" \
+                -addext "subjectAltName=DNS:*.${agent_domain},DNS:${agent_domain}"
+              sudo chmod 600 /etc/nginx/ssl/eliza-agent-router.key
+              sudo chmod 644 /etc/nginx/ssl/eliza-agent-router.crt
+            fi
+
+            sudo tee /etc/nginx/sites-available/eliza-agent-router >/dev/null <<NGINX
+            server {
+              listen 80;
+              listen [::]:80;
+              server_name .${agent_domain};
+              client_max_body_size 50m;
+
+              location / {
+                proxy_http_version 1.1;
+                proxy_set_header Host \$host;
+                proxy_set_header X-Real-IP \$remote_addr;
+                proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto \$scheme;
+                proxy_set_header Upgrade \$http_upgrade;
+                proxy_set_header Connection "upgrade";
+                proxy_buffering off;
+                proxy_read_timeout 120s;
+                proxy_send_timeout 120s;
+                proxy_pass http://127.0.0.1:3458;
+              }
+            }
+
+            server {
+              listen 443 ssl;
+              listen [::]:443 ssl;
+              server_name .${agent_domain};
+              client_max_body_size 50m;
+              ssl_certificate /etc/nginx/ssl/eliza-agent-router.crt;
+              ssl_certificate_key /etc/nginx/ssl/eliza-agent-router.key;
+
+              location / {
+                proxy_http_version 1.1;
+                proxy_set_header Host \$host;
+                proxy_set_header X-Real-IP \$remote_addr;
+                proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto \$scheme;
+                proxy_set_header Upgrade \$http_upgrade;
+                proxy_set_header Connection "upgrade";
+                proxy_buffering off;
+                proxy_read_timeout 120s;
+                proxy_send_timeout 120s;
+                proxy_pass http://127.0.0.1:3458;
+              }
+            }
+            NGINX
+            sudo ln -sfn /etc/nginx/sites-available/eliza-agent-router /etc/nginx/sites-enabled/eliza-agent-router
+            sudo rm -f /etc/nginx/sites-enabled/default
+            sudo nginx -t
+            sudo systemctl enable nginx
+            if sudo systemctl is-active --quiet nginx; then
+              sudo systemctl reload nginx
+            else
+              sudo systemctl start nginx
+            fi
+
             sudo systemctl daemon-reload
             sudo systemctl enable "$SYSTEMD_UNIT" eliza-agent-router.service
 
@@ -441,6 +514,8 @@ jobs:
             echo "=== Agent router diagnostics for ${safe_agent_id} ==="
             router_port="$(systemctl show eliza-agent-router.service --property=Environment --value | tr ' ' '\n' | awk -F= '$1=="AGENT_ROUTER_PORT" {print $2}')"
             : "${router_port:=3458}"
+            agent_domain="$(systemctl show eliza-agent-router.service --property=Environment --value | tr ' ' '\n' | awk -F= '$1=="ELIZA_CLOUD_AGENT_BASE_DOMAIN" {print $2}')"
+            : "${agent_domain:=waifu.fun}"
             router_pid="$(systemctl show eliza-agent-router.service --property=MainPID --value || true)"
             if [ -n "$router_pid" ] && [ "$router_pid" != "0" ]; then
               sudo tr '\0' '\n' <"/proc/${router_pid}/environ" \
@@ -464,6 +539,10 @@ jobs:
             else
               echo "agent-router returned no routing payload."
             fi
+            for path in / /health /api/health /pair; do
+              status="$(curl -s -o /dev/null -w "%{http_code}" -m 8 -H "Host: ${safe_agent_id}.${agent_domain}" "http://127.0.0.1${path}" 2>/dev/null || true)"
+              printf 'nginx_origin_check host=%s path=%s status=%s\n' "${safe_agent_id}.${agent_domain}" "$path" "$status" | redact_stream
+            done
 
             container_name="agent-${safe_agent_id}"
             if sudo docker inspect "$container_name" >/dev/null 2>&1; then
