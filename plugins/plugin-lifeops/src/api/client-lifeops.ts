@@ -21,12 +21,10 @@ import type {
   CompleteLifeOpsOccurrenceRequest,
   ConfirmLifeOpsBrowserSessionRequest,
   CreateLifeOpsBrowserSessionRequest,
-  CreateLifeOpsCalendarEventRequest,
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGmailReplyDraftRequest,
   CreateLifeOpsGoalRequest,
   DisconnectLifeOpsMessagingConnectorRequest,
-  GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailRecommendationsRequest,
   GetLifeOpsGmailSearchRequest,
   GetLifeOpsGmailSpamReviewRequest,
@@ -39,10 +37,6 @@ import type {
   IngestLifeOpsGmailEventRequest,
   LifeOpsActivitySignal,
   LifeOpsBrowserSession,
-  LifeOpsCalendarEventMutationResult,
-  LifeOpsCalendarEventUpdate,
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarSummary,
   LifeOpsCapabilitiesStatus,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
@@ -68,7 +62,6 @@ import type {
   LifeOpsIMessageMessage,
   LifeOpsInbox,
   LifeOpsManualOverrideResult,
-  LifeOpsNextCalendarEventContext,
   LifeOpsOccurrenceActionResult,
   LifeOpsOccurrenceExplanation,
   LifeOpsOverview,
@@ -86,7 +79,6 @@ import type {
   LifeOpsTelegramConnectorStatus,
   LifeOpsWhatsAppConnectorStatus,
   LifeOpsXConnectorStatus,
-  ListLifeOpsCalendarsRequest,
   ManageLifeOpsGmailMessagesRequest,
   SendLifeOpsDiscordMessageRequest,
   SendLifeOpsDiscordMessageResponse,
@@ -95,7 +87,6 @@ import type {
   SendLifeOpsSignalMessageRequest,
   SendLifeOpsSignalMessageResponse,
   SendLifeOpsWhatsAppMessageRequest,
-  SetLifeOpsCalendarIncludedRequest,
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsBrowserSessionProgressRequest,
   UpdateLifeOpsDefinitionRequest,
@@ -111,6 +102,10 @@ import type {
 // side-effect before re-exporting `ElizaClient` from its barrel, so a
 // barrel import here would resolve to `undefined` at module-init time.
 import { ElizaClient } from "@elizaos/ui";
+// Calendar client methods (getLifeOpsCalendarFeed / create|update|delete event,
+// …) live in @elizaos/plugin-calendar now; this side-effect import attaches
+// them to the shared ElizaClient prototype so the LifeOps dashboard keeps them.
+import "@elizaos/plugin-calendar/api/client-calendar";
 import type { FullDiskAccessProbeResult } from "../lifeops/fda-probe.js";
 import type {
   LifeOpsScheduleInspection,
@@ -355,15 +350,6 @@ interface LifeOpsElizaClientMethods {
   ): Promise<LifeOpsScheduleInspectionResponse>;
   getLifeOpsScheduleSummary(timezone: string): Promise<LifeOpsScheduleSummary>;
   getLifeOpsFullDiskAccessStatus(): Promise<FullDiskAccessProbeResult>;
-  getLifeOpsCalendarFeed(
-    options?: GetLifeOpsCalendarFeedRequest,
-  ): Promise<LifeOpsCalendarFeed>;
-  getLifeOpsCalendars(
-    options?: ListLifeOpsCalendarsRequest,
-  ): Promise<{ calendars: LifeOpsCalendarSummary[] }>;
-  setLifeOpsCalendarIncluded(
-    data: SetLifeOpsCalendarIncludedRequest,
-  ): Promise<{ calendar: LifeOpsCalendarSummary }>;
   getLifeOpsGmailTriage(
     options?: GetLifeOpsGmailTriageRequest,
   ): Promise<LifeOpsGmailTriageFeed>;
@@ -386,23 +372,6 @@ interface LifeOpsElizaClientMethods {
   getLifeOpsGmailUnresponded(
     options?: GetLifeOpsGmailUnrespondedRequest,
   ): Promise<LifeOpsGmailUnrespondedFeed>;
-  getLifeOpsNextCalendarEventContext(
-    options?: GetLifeOpsCalendarFeedRequest,
-  ): Promise<LifeOpsNextCalendarEventContext>;
-  createLifeOpsCalendarEvent(
-    data: CreateLifeOpsCalendarEventRequest,
-  ): Promise<{ event: LifeOpsCalendarFeed["events"][number] }>;
-  updateLifeOpsCalendarEvent(
-    eventId: string,
-    patch: LifeOpsCalendarEventUpdate,
-  ): Promise<LifeOpsCalendarEventMutationResult>;
-  deleteLifeOpsCalendarEvent(
-    eventId: string,
-    options?: Pick<
-      LifeOpsCalendarEventUpdate,
-      "calendarId" | "grantId" | "side"
-    >,
-  ): Promise<{ deleted: true }>;
   getLifeOpsInbox(options?: GetLifeOpsInboxRequest): Promise<LifeOpsInbox>;
   createLifeOpsGmailReplyDraft(
     data: CreateLifeOpsGmailReplyDraftRequest,
@@ -1065,80 +1034,6 @@ lifeOpsClientPrototype.getLifeOpsFullDiskAccessStatus = async function (
   return this.fetch("/api/lifeops/permissions/full-disk-access");
 };
 
-lifeOpsClientPrototype.getLifeOpsCalendarFeed = async function (
-  this: ElizaClient,
-  options: GetLifeOpsCalendarFeedRequest = {},
-) {
-  const params = new URLSearchParams();
-  if (options.mode) {
-    params.set("mode", options.mode);
-  }
-  if (options.side) {
-    params.set("side", options.side);
-  }
-  if (options.grantId) {
-    params.set("grantId", options.grantId);
-  }
-  if (options.calendarId) {
-    params.set("calendarId", options.calendarId);
-  }
-  if (options.includeHiddenCalendars !== undefined) {
-    params.set(
-      "includeHiddenCalendars",
-      String(options.includeHiddenCalendars),
-    );
-  }
-  if (options.timeMin) {
-    params.set("timeMin", options.timeMin);
-  }
-  if (options.timeMax) {
-    params.set("timeMax", options.timeMax);
-  }
-  if (options.timeZone) {
-    params.set("timeZone", options.timeZone);
-  }
-  if (options.forceSync !== undefined) {
-    params.set("forceSync", String(options.forceSync));
-  }
-  const query = params.toString();
-  return this.fetch<LifeOpsCalendarFeed>(
-    `/api/lifeops/calendar/feed${query ? `?${query}` : ""}`,
-  );
-};
-
-lifeOpsClientPrototype.getLifeOpsCalendars = async function (
-  this: ElizaClient,
-  options: ListLifeOpsCalendarsRequest = {},
-) {
-  const params = new URLSearchParams();
-  if (options.mode) {
-    params.set("mode", options.mode);
-  }
-  if (options.side) {
-    params.set("side", options.side);
-  }
-  if (options.grantId) {
-    params.set("grantId", options.grantId);
-  }
-  const query = params.toString();
-  return this.fetch<{ calendars: LifeOpsCalendarSummary[] }>(
-    `/api/lifeops/calendar/calendars${query ? `?${query}` : ""}`,
-  );
-};
-
-lifeOpsClientPrototype.setLifeOpsCalendarIncluded = async function (
-  this: ElizaClient,
-  data: SetLifeOpsCalendarIncludedRequest,
-) {
-  return this.fetch<{ calendar: LifeOpsCalendarSummary }>(
-    `/api/lifeops/calendar/calendars/${encodeURIComponent(data.calendarId)}/include`,
-    {
-      method: "PUT",
-      body: JSON.stringify(data),
-    },
-  );
-};
-
 lifeOpsClientPrototype.getLifeOpsGmailTriage = async function (
   this: ElizaClient,
   options: GetLifeOpsGmailTriageRequest = {},
@@ -1322,77 +1217,6 @@ lifeOpsClientPrototype.getLifeOpsGmailUnresponded = async function (
   const query = params.toString();
   return this.fetch<LifeOpsGmailUnrespondedFeed>(
     `/api/lifeops/gmail/unresponded${query ? `?${query}` : ""}`,
-  );
-};
-
-lifeOpsClientPrototype.getLifeOpsNextCalendarEventContext = async function (
-  this: ElizaClient,
-  options = {},
-) {
-  const params = new URLSearchParams();
-  if (options.mode) {
-    params.set("mode", options.mode);
-  }
-  if (options.side) {
-    params.set("side", options.side);
-  }
-  if (options.calendarId) {
-    params.set("calendarId", options.calendarId);
-  }
-  if (options.timeMin) {
-    params.set("timeMin", options.timeMin);
-  }
-  if (options.timeMax) {
-    params.set("timeMax", options.timeMax);
-  }
-  if (options.timeZone) {
-    params.set("timeZone", options.timeZone);
-  }
-  const query = params.toString();
-  return this.fetch(
-    `/api/lifeops/calendar/next-context${query ? `?${query}` : ""}`,
-  );
-};
-
-lifeOpsClientPrototype.createLifeOpsCalendarEvent = async function (
-  this: ElizaClient,
-  data,
-) {
-  return this.fetch("/api/lifeops/calendar/events", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-lifeOpsClientPrototype.updateLifeOpsCalendarEvent = async function (
-  this: ElizaClient,
-  eventId,
-  patch,
-) {
-  return this.fetch(
-    `/api/lifeops/calendar/events/${encodeURIComponent(eventId)}`,
-    {
-      method: "PATCH",
-      body: JSON.stringify(patch),
-    },
-  );
-};
-
-lifeOpsClientPrototype.deleteLifeOpsCalendarEvent = async function (
-  this: ElizaClient,
-  eventId,
-  options = {},
-) {
-  const params = new URLSearchParams();
-  if (options.calendarId) params.set("calendarId", options.calendarId);
-  if (options.grantId) params.set("grantId", options.grantId);
-  if (options.side) params.set("side", options.side);
-  const query = params.toString();
-  return this.fetch(
-    `/api/lifeops/calendar/events/${encodeURIComponent(eventId)}${query ? `?${query}` : ""}`,
-    {
-      method: "DELETE",
-    },
   );
 };
 
