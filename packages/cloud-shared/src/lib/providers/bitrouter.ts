@@ -1,8 +1,8 @@
 /**
- * OpenRouter provider implementation.
+ * BitRouter provider implementation.
  *
- * Provides OpenAI-compatible API access through OpenRouter.
- * Primary AI provider for all non-Groq traffic.
+ * Provides OpenAI-compatible API access through a self-hosted or BitRouter
+ * Cloud gateway. This is the principal cloud model router.
  */
 
 import { logger } from "../utils/logger";
@@ -15,24 +15,33 @@ import type {
   ProviderRequestOptions,
 } from "./types";
 
-const OPENROUTER_LABEL: ProviderLabel = {
-  display: "OpenRouter",
-  errorType: "openrouter_error",
-  requestFailedCode: "openrouter_request_failed",
-  timeoutCode: "openrouter_timeout",
+const BITROUTER_LABEL: ProviderLabel = {
+  display: "BitRouter",
+  errorType: "bitrouter_error",
+  requestFailedCode: "bitrouter_request_failed",
+  timeoutCode: "bitrouter_timeout",
 };
 
-export class OpenRouterProvider implements AIProvider {
-  name = "openrouter";
-  private baseUrl = "https://openrouter.ai/api/v1";
+const DEFAULT_BITROUTER_BASE_URL = "https://api.bitrouter.ai/v1";
+
+function normalizeBaseUrl(baseUrl: string | undefined): string {
+  const trimmed = baseUrl?.trim();
+  const normalized = (trimmed || DEFAULT_BITROUTER_BASE_URL).replace(/\/+$/, "");
+  return normalized.endsWith("/v1") ? normalized : `${normalized}/v1`;
+}
+
+export class BitRouterProvider implements AIProvider {
+  name = "bitrouter";
+  private baseUrl: string;
   private apiKey: string;
   private timeout = 2 * 60000; // 2 minutes
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, baseUrl?: string) {
     if (!apiKey) {
-      throw new Error("OpenRouter API key is required");
+      throw new Error("BitRouter API key is required");
     }
     this.apiKey = apiKey;
+    this.baseUrl = normalizeBaseUrl(baseUrl);
   }
 
   private getHeaders(): Record<string, string> {
@@ -49,7 +58,7 @@ export class OpenRouterProvider implements AIProvider {
     options: RequestInit,
     timeoutMs: number = this.timeout,
   ): Promise<Response> {
-    return providerFetchWithTimeout(url, options, timeoutMs, OPENROUTER_LABEL);
+    return providerFetchWithTimeout(url, options, timeoutMs, BITROUTER_LABEL);
   }
 
   async chatCompletions(
@@ -60,7 +69,7 @@ export class OpenRouterProvider implements AIProvider {
     const translatedModel = toOpenRouterModelId(rest.model);
     const body = translatedModel === rest.model ? rest : { ...rest, model: translatedModel };
 
-    logger.debug("[OpenRouter] Forwarding chat completion request", {
+    logger.debug("[BitRouter] Forwarding chat completion request", {
       model: translatedModel,
       streaming: request.stream,
       messageCount: request.messages.length,
@@ -83,7 +92,7 @@ export class OpenRouterProvider implements AIProvider {
     const body =
       translatedModel === request.model ? request : { ...request, model: translatedModel };
 
-    logger.debug("[OpenRouter] Forwarding embeddings request", {
+    logger.debug("[BitRouter] Forwarding embeddings request", {
       model: translatedModel,
       inputType: Array.isArray(request.input) ? "array" : "string",
     });
@@ -100,6 +109,7 @@ export class OpenRouterProvider implements AIProvider {
       method: "GET",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
+        Accept: "application/json",
       },
     });
   }
@@ -110,6 +120,7 @@ export class OpenRouterProvider implements AIProvider {
       method: "GET",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
+        Accept: "application/json",
       },
     });
   }

@@ -10,7 +10,7 @@ export type PricingProductFamily =
 
 export type PricingBillingSource =
   | "gateway"
-  | "openrouter"
+  | "bitrouter"
   | "groq"
   | "vast"
   | "openai"
@@ -195,49 +195,49 @@ export const SUPPORTED_IMAGE_MODELS: SupportedImageModelDefinition[] = [
   {
     modelId: "google/gemini-2.5-flash-image",
     provider: "google",
-    billingSource: "openrouter",
+    billingSource: "bitrouter",
     label: "Gemini 2.5 Flash Image",
-    sourceUrl: "https://openrouter.ai/api/v1/models",
+    sourceUrl: "https://api.bitrouter.ai/v1/models",
     defaultDimensions: { size: "default" },
   },
   {
     modelId: "google/gemini-3-pro-image-preview",
     provider: "google",
-    billingSource: "openrouter",
+    billingSource: "bitrouter",
     label: "Gemini 3 Pro Image Preview",
-    sourceUrl: "https://openrouter.ai/api/v1/models",
+    sourceUrl: "https://api.bitrouter.ai/v1/models",
     defaultDimensions: { size: "default" },
   },
   {
     modelId: "google/gemini-3.1-flash-image-preview",
     provider: "google",
-    billingSource: "openrouter",
+    billingSource: "bitrouter",
     label: "Gemini 3.1 Flash Image Preview",
-    sourceUrl: "https://openrouter.ai/api/v1/models",
+    sourceUrl: "https://api.bitrouter.ai/v1/models",
     defaultDimensions: { size: "default" },
   },
   {
     modelId: "openai/gpt-5.4-image-2",
     provider: "openai",
-    billingSource: "openrouter",
+    billingSource: "bitrouter",
     label: "GPT-5.4 Image 2",
-    sourceUrl: "https://openrouter.ai/api/v1/models",
+    sourceUrl: "https://api.bitrouter.ai/v1/models",
     defaultDimensions: { size: "1024x1024", quality: "high" },
   },
   {
     modelId: "openai/gpt-5-image-mini",
     provider: "openai",
-    billingSource: "openrouter",
+    billingSource: "bitrouter",
     label: "GPT-5 Image Mini",
-    sourceUrl: "https://openrouter.ai/api/v1/models",
+    sourceUrl: "https://api.bitrouter.ai/v1/models",
     defaultDimensions: { size: "1024x1024", quality: "medium" },
   },
   {
     modelId: "openai/gpt-5-image",
     provider: "openai",
-    billingSource: "openrouter",
+    billingSource: "bitrouter",
     label: "GPT-5 Image",
-    sourceUrl: "https://openrouter.ai/api/v1/models",
+    sourceUrl: "https://api.bitrouter.ai/v1/models",
     defaultDimensions: { size: "1024x1024", quality: "high" },
   },
   {

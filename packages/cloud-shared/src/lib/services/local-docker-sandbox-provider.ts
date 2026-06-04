@@ -241,9 +241,10 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
     const llmPassthrough: Record<string, string> = {};
     for (const key of [
       "ELIZAOS_CLOUD_API_KEY",
+      "BITROUTER_API_KEY",
+      "BITROUTER_BASE_URL",
       "OPENAI_API_KEY",
       "ANTHROPIC_API_KEY",
-      "OPENROUTER_API_KEY",
       "GOOGLE_API_KEY",
       "XAI_API_KEY",
       "GROQ_API_KEY",

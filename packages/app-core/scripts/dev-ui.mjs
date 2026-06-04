@@ -29,6 +29,7 @@ import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolveDesktopApiPort, resolveDesktopUiPort } from "@elizaos/shared";
 import * as JSON5Module from "json5";
+import { startAgentSourceWatcher } from "./lib/agent-source-watcher.mjs";
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
@@ -223,12 +224,13 @@ const devLogLevel =
     .toLowerCase() || "info";
 const quietApiLogs = process.env.ELIZA_DEV_QUIET_LOGS === "1";
 const verboseApiLogs = process.env.ELIZA_DEV_VERBOSE_LOGS !== "0";
-// Keep `node --watch` opt-in for the API server. Concurrent package builds,
-// native plugin builds, and staged plugin copies rewrite workspace `dist/`
-// files; Node follows imports into those files and can hot-reload while the
-// runtime is still bootstrapping, leaving PGlite locked by the previous
-// process. The supervisor still restarts the API on explicit restart exits.
-const skipBunWatch = process.env.ELIZA_DEV_NO_WATCH !== "0";
+// Agent hot-reload is ON by default: a source-only watcher (see
+// startAgentSourceWatcher) bounces the API child through the supervisor when
+// backend `*/src` changes. Unlike the old `node --watch`, it never watches
+// `dist/`, so concurrent package builds can't trigger a reload loop — which is
+// why this no longer needs the opt-in / concurrent-build auto-disable dance.
+// Opt out with ELIZA_DEV_NO_WATCH=1.
+const skipSourceWatch = process.env.ELIZA_DEV_NO_WATCH === "1";
 const DEV_TEST_MOCK_ENV_KEYS = [
   "ELIZA_MOCK_GOOGLE_BASE",
   "ELIZA_MOCK_TWILIO_BASE",
@@ -643,103 +645,6 @@ function createStartupFilter(dest) {
 }
 
 // ---------------------------------------------------------------------------
-// Concurrent build detection — node --watch follows imports into workspace
-// `dist/` files. If a build is rewriting those files (worse: its `clean` step
-// deletes `dist/` out from under the running server), --watch hot-reloads on
-// every write and prevents the agent from finishing initialization. We detect
-// that case here and auto-disable --watch.
-//
-// Primary signal: live `<package>/.build-lock/metadata.json` dirs written by
-// scripts/with-package-build-lock.mjs. Each carries the builder's PID, so a
-// lock whose PID is still alive is an unambiguous "build in progress" — far
-// more reliable than pattern-matching `ps` command lines (which misses bare
-// `build:dist:unlocked` and other non-turbo/tsup invocations).
-// ---------------------------------------------------------------------------
-
-function isPidAlive(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    // ESRCH = no such process; EPERM = alive but not ours (still alive).
-    return error?.code === "EPERM";
-  }
-}
-
-// Scan `<root>/{packages,plugins}/*/.build-lock/metadata.json` for a lock whose
-// builder PID is still running. Returns that PID, or null if none are live.
-function detectLiveBuildLock(scanRoots) {
-  for (const root of scanRoots) {
-    for (const group of ["packages", "plugins"]) {
-      const groupDir = path.join(root, group);
-      let entries;
-      try {
-        entries = readdirSync(groupDir, { withFileTypes: true });
-      } catch {
-        continue;
-      }
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        const metaPath = path.join(
-          groupDir,
-          entry.name,
-          ".build-lock",
-          "metadata.json",
-        );
-        if (!existsSync(metaPath)) continue;
-        try {
-          const pid = Number(JSON.parse(readFileSync(metaPath, "utf8"))?.pid);
-          if (isPidAlive(pid)) return pid;
-        } catch {
-          // Unreadable/partial lock — ignore; the build-lock helper self-heals.
-        }
-      }
-    }
-  }
-  return null;
-}
-
-function detectConcurrentBuilds(scanRoots = []) {
-  const lockPid = detectLiveBuildLock(scanRoots);
-  if (lockPid) return lockPid;
-  if (process.platform === "win32") return null;
-  let psOut;
-  try {
-    psOut = execSync("ps axo pid=,command=", {
-      encoding: "utf8",
-      maxBuffer: 10 * 1024 * 1024,
-      stdio: ["pipe", "pipe", "ignore"],
-    });
-  } catch {
-    return null;
-  }
-  const buildSignatures = [
-    /\bturbo\s+run\s+build\b/i,
-    /\bbun\s+run\s+build\b/i,
-    /\btsup\b.*\bbuild\b/i,
-    // No \b before --noEmit / tsconfig.build: a hyphen and a dot are non-word
-    // chars, so \b never matches at that boundary — the prior
-    // /\btsc\b.*\b(--noEmit|tsconfig\.build)\b/i was dead code that matched
-    // neither `tsc --noEmit` nor `vite build`, the exact commands that drive
-    // the node --watch hot-reload loop. Match them loosely instead.
-    /\btsc\b.*--noEmit/i,
-    /\btsc\b.*tsconfig\.build/i,
-    /\bvite\b.*\bbuild\b/i,
-  ];
-  for (const line of psOut.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (buildSignatures.some((re) => re.test(trimmed))) {
-      const sp = trimmed.indexOf(" ");
-      const pidStr = sp > 0 ? trimmed.slice(0, sp).trim() : trimmed;
-      return Number.parseInt(pidStr, 10) || null;
-    }
-  }
-  return null;
-}
-
-// ---------------------------------------------------------------------------
 // Port cleanup — force-kill zombie processes on our dev ports
 // ---------------------------------------------------------------------------
 
@@ -831,7 +736,7 @@ function isPortListening(port) {
 // ---------------------------------------------------------------------------
 // Wait for the agent runtime to be ready (not just the TCP port).
 // Polls GET /api/health and resolves when { ready: true }.
-// Handles node --watch restarts gracefully (connection resets → retry).
+// Handles supervised hot-reload restarts gracefully (connection resets → retry).
 // ---------------------------------------------------------------------------
 
 async function waitForAgentReady(
@@ -962,6 +867,8 @@ if (!uiOnly) {
 
 let apiProcess = null;
 let viteProcess = null;
+/** @type {{ count: number, close: () => void } | null} */
+let sourceWatcher = null;
 let shuttingDown = false;
 let vitePluginBuildAttempted = false;
 let viteRestartCount = 0;
@@ -989,6 +896,10 @@ function cleanup(exitCode = 0) {
   }
   shuttingDown = true;
 
+  if (sourceWatcher) {
+    sourceWatcher.close();
+    sourceWatcher = null;
+  }
   terminateChild(viteProcess, "SIGTERM");
   terminateChild(apiProcess, "SIGTERM");
   if (viteRestartTimer) {
@@ -1234,25 +1145,10 @@ if (uiOnly) {
     devServerEntry = path.resolve(cwd, devServerEntry);
   }
 
-  let useWatch = !skipBunWatch;
-  if (useWatch) {
-    const elizaSubmodule = path.join(cwd, "eliza");
-    const buildScanRoots = [
-      cwd,
-      ...(existsSync(path.join(elizaSubmodule, "package.json"))
-        ? [elizaSubmodule]
-        : []),
-    ];
-    const buildPid = detectConcurrentBuilds(buildScanRoots);
-    if (buildPid) {
-      console.log(
-        `  ${green(logPrefix)} ${dim(
-          `Concurrent build detected (PID ${buildPid}) — disabling --watch to avoid hot-reload loop on dist/ writes. Set ELIZA_DEV_NO_WATCH=1 to silence this notice.`,
-        )}`,
-      );
-      useWatch = false;
-    }
-  }
+  // Agent hot-reload is driven by a source-only watcher (started after the
+  // supervisor below), not by `node --watch`. The watcher never sees `dist/`,
+  // so it is immune to concurrent-build churn.
+  const useWatch = !skipSourceWatch;
 
   const apiRuntimeCmd = resolveApiRuntimeCommand(process.env);
   const apiRuntimeIsBun = apiRuntimeCmd === "bun";
@@ -1267,7 +1163,6 @@ if (uiOnly) {
       apiRuntimeIsBun ? "--preload" : "--import",
       filePath,
     ]),
-    ...(useWatch ? ["--watch"] : []),
     devServerEntry,
   ];
   // The API server resolves @elizaos/* deps via Bun workspace lookup, which
@@ -1285,7 +1180,7 @@ if (uiOnly) {
   const childEnv = createDevChildEnv(process.env);
   // V8 bytecode cache for the Node API runtime. The runtime is deliberately
   // Node (not Bun) for node: built-ins, so this persists compiled module
-  // bytecode across boots and --watch restarts, trimming plugin-import cost.
+  // bytecode across boots and hot-reload restarts, trimming plugin-import cost.
   // Node 22.8+ honors it; older node and Bun ignore the var (safe no-op).
   // Pinned under the state dir (not os.tmpdir()) so an OS temp reap doesn't
   // wipe the warm ~100MB cache and force a multi-second cold recompile on the
@@ -1393,11 +1288,36 @@ if (uiOnly) {
     },
     onGiveUp: (code) => cleanup(code ?? 1),
     isShuttingDown: () => shuttingDown,
+    // Reuse the dev process-tree killer so a hot-reload restart takes the
+    // API child's descendants (coding sub-agents, native helpers) with it.
+    terminate: (child, signal) => terminateChild(child, signal),
     log: (message) => console.log(`\n  ${green(logPrefix)} ${message}`),
     warn: (message) => console.error(`\n  ${green(logPrefix)} ${message}`),
   });
 
   apiSupervisor.start();
+
+  // Agent hot-reload: bounce the API child when backend source changes. The
+  // watcher only sees `*/src`, so concurrent `dist/` builds never trigger it.
+  if (useWatch) {
+    sourceWatcher = startAgentSourceWatcher({
+      root: apiSpawnCwd,
+      onChange: (relPath) => {
+        console.log(
+          `\n  ${green(logPrefix)} ${dim(`Source change (${relPath}) — reloading agent…`)}`,
+        );
+        apiSupervisor.restart();
+      },
+      onError: (dir, err) => {
+        console.log(
+          `  ${green(logPrefix)} ${dim(`Hot-reload watch skipped for ${path.relative(apiSpawnCwd, dir)}: ${err.message}`)}`,
+        );
+      },
+    });
+    console.log(
+      `  ${green(logPrefix)} ${dim(`Agent hot-reload on: watching ${sourceWatcher.count} source dirs (set ELIZA_DEV_NO_WATCH=1 to disable).`)}`,
+    );
+  }
 
   // Start Vite immediately, in parallel with the API boot. The dev server only
   // proxies to the API at request time — it has no startup dependency on the

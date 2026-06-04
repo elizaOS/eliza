@@ -140,6 +140,7 @@ SQL_HEAVY_PAYLOAD_STORAGE = "r2"
 SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
 SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "512"
 LLM_TRAJECTORY_STORAGE = "r2"
+BITROUTER_BASE_URL = "https://bitrouter-production.up.railway.app"
 HEADSCALE_PUBLIC_URL = "https://headscale.elizacloud.ai"
 HEADSCALE_API_URL = "https://headscale.elizacloud.ai"
 HEADSCALE_USER = "tunnel"
@@ -171,6 +172,8 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   KV_REST_API_URL                    Upstash Redis (rate-limit/cache fallback)
 #   KV_REST_API_TOKEN                  Upstash auth
 #   KV_REST_API_READ_ONLY_TOKEN        Upstash read-only token
+#   BITROUTER_API_KEY                 BitRouter proxy bearer token
+#   BITROUTER_BASE_URL                 BitRouter proxy base URL (Railway service or BitRouter Cloud)
 #   ANTHROPIC_API_KEY                  Claude
 #   OPENAI_API_KEY                     OpenAI direct
 #   AI_GATEWAY_API_KEY
@@ -354,6 +357,7 @@ SQL_HEAVY_PAYLOAD_STORAGE = "r2"
 SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
 SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "512"
 LLM_TRAJECTORY_STORAGE = "r2"
+BITROUTER_BASE_URL = "https://bitrouter-production.up.railway.app"
 HEADSCALE_PUBLIC_URL = "https://headscale.elizacloud.ai"
 HEADSCALE_API_URL = "https://headscale.elizacloud.ai"
 HEADSCALE_USER = "tunnel"

@@ -27,7 +27,7 @@ import { parseArgs } from "node:util";
 import dotenv from "dotenv";
 
 const PUBLIC_PREFIXES = ["NEXT_PUBLIC_", "VITE_"];
-const WORKER_DIR = "apps/api"; // wrangler must run inside the worker pkg
+const WORKER_DIR = "packages/cloud-api"; // wrangler must run inside the worker pkg
 
 const { values, positionals } = parseArgs({
   options: {
@@ -70,7 +70,7 @@ const candidates = Object.entries(parsed).filter(([key, val]) => {
 
 console.log(`source:   ${envFilePath}`);
 console.log(`env:      ${values.env ?? "(default)"}`);
-console.log(`worker:   cloud/${WORKER_DIR}`);
+console.log(`worker:   ${WORKER_DIR}`);
 console.log(`secrets:  ${candidates.length}`);
 console.log(`dry-run:  ${values["dry-run"] ? "yes" : "no"}`);
 console.log("");
