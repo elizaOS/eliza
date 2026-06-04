@@ -199,6 +199,18 @@ export interface OrchestratorTaskDecision {
   createdAt: string;
 }
 
+export interface OrchestratorTaskPlanRevision {
+  id: string;
+  taskId: string;
+  plan: Record<string, unknown>;
+  basePlanRevisionId?: string;
+  editSummary?: string;
+  createdBy: string;
+  metadata: Record<string, unknown>;
+  timestamp: number;
+  createdAt: string;
+}
+
 /** The full persisted unit. One document per task; child collections live
  * inline so a single read returns everything the detail view needs. */
 export interface OrchestratorTaskDocument {
@@ -209,6 +221,7 @@ export interface OrchestratorTaskDocument {
   usage: OrchestratorTaskUsage[];
   artifacts: OrchestratorTaskArtifact[];
   decisions: OrchestratorTaskDecision[];
+  planRevisions: OrchestratorTaskPlanRevision[];
 }
 
 export interface TaskListFilter {

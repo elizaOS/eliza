@@ -1,3 +1,4 @@
+import { logger } from "@elizaos/core";
 import type {
   DataStoreEntry,
   JsonValue,
@@ -137,7 +138,10 @@ export class RobloxClient {
     scope: string = "global"
   ): Promise<DataStoreEntry<T>> {
     if (this.config.dryRun) {
-      console.log(`[DRY RUN] Would set DataStore entry "${key}":`, value);
+      logger.info(
+        { datastoreName, key, scope, value },
+        "[RobloxClient] Dry run: would set DataStore entry"
+      );
       return {
         key,
         value,
@@ -174,7 +178,10 @@ export class RobloxClient {
     scope: string = "global"
   ): Promise<void> {
     if (this.config.dryRun) {
-      console.log(`[DRY RUN] Would delete DataStore entry "${key}"`);
+      logger.info(
+        { datastoreName, key, scope },
+        "[RobloxClient] Dry run: would delete DataStore entry"
+      );
       return;
     }
 

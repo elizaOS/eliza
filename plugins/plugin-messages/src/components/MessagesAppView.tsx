@@ -23,16 +23,13 @@ import {
   useMemo,
   useState,
 } from "react";
+import {
+  buildThreads,
+  loadMessagesState,
+  smsRole,
+  type ThreadSummary,
+} from "./MessagesAppView.helpers.ts";
 
-type ThreadSummary = {
-  id: string;
-  address: string;
-  messages: SmsMessageSummary[];
-  lastMessage: SmsMessageSummary;
-  unreadCount: number;
-};
-
-const INBOUND_SMS_TYPE = 1;
 const SENT_SMS_TYPE = 2;
 
 function defaultOverlayContext(): OverlayAppContext {
@@ -64,57 +61,6 @@ function formatTime(epochMs: number): string {
     month: "short",
     day: "numeric",
   });
-}
-
-function buildThreads(messages: SmsMessageSummary[]): ThreadSummary[] {
-  const byThread = new Map<string, SmsMessageSummary[]>();
-  for (const message of messages) {
-    const key = message.threadId || message.address || message.id;
-    const list = byThread.get(key) ?? [];
-    list.push(message);
-    byThread.set(key, list);
-  }
-  return Array.from(byThread.entries())
-    .map(([id, threadMessages]) => {
-      const sorted = [...threadMessages].sort((a, b) => a.date - b.date);
-      const lastMessage = sorted[sorted.length - 1] ?? threadMessages[0];
-      return {
-        id,
-        address: lastMessage?.address,
-        messages: sorted,
-        lastMessage,
-        unreadCount: sorted.filter(
-          (m) => !m.read && m.type === INBOUND_SMS_TYPE,
-        ).length,
-      };
-    })
-    .filter((thread): thread is ThreadSummary => Boolean(thread.lastMessage))
-    .sort((a, b) => b.lastMessage.date - a.lastMessage.date);
-}
-
-function smsRole(status: SystemStatus | null) {
-  return status?.roles.find((role) => role.role === "sms") ?? null;
-}
-
-function normalizeMessagesLimit(value: unknown, fallback = 200): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return Math.min(500, Math.max(1, Math.trunc(value)));
-}
-
-async function loadMessagesState(limit = 200) {
-  const [messageResult, statusResult] = await Promise.all([
-    Messages.listMessages({ limit: normalizeMessagesLimit(limit) }),
-    System.getStatus().catch(() => null),
-  ]);
-  const threads = buildThreads(messageResult.messages);
-  const currentSmsRole = smsRole(statusResult);
-  return {
-    messages: messageResult.messages,
-    threads,
-    systemStatus: statusResult,
-    ownsSmsRole: currentSmsRole?.held === true,
-    smsRoleHolder: currentSmsRole?.holders[0] ?? null,
-  };
 }
 
 function MessagesThreadButton({
@@ -1054,51 +1000,4 @@ export function MessagesTuiView() {
       </div>
     </div>
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-list-threads") {
-    const state = await loadMessagesState(
-      normalizeMessagesLimit(params?.limit),
-    );
-    return {
-      viewType: "tui",
-      threads: state.threads.map((thread) => ({
-        id: thread.id,
-        address: thread.address,
-        messageCount: thread.messages.length,
-        unreadCount: thread.unreadCount,
-        lastMessage: thread.lastMessage.body,
-        lastMessageAt: thread.lastMessage.date,
-      })),
-      ownsSmsRole: state.ownsSmsRole,
-      smsRoleHolder: state.smsRoleHolder,
-    };
-  }
-
-  if (capability === "terminal-send-sms") {
-    const address =
-      typeof params?.address === "string" ? params.address.trim() : "";
-    const body = typeof params?.body === "string" ? params.body.trim() : "";
-    if (!address) throw new Error("address is required");
-    if (!body) throw new Error("body is required");
-    await Messages.sendSms({ address, body });
-    return { sent: true, address, bodyLength: body.length, viewType: "tui" };
-  }
-
-  if (capability === "terminal-request-sms-role") {
-    await System.requestRole({ role: "sms" });
-    const state = await loadMessagesState(200);
-    return {
-      requested: true,
-      ownsSmsRole: state.ownsSmsRole,
-      smsRoleHolder: state.smsRoleHolder,
-      viewType: "tui",
-    };
-  }
-
-  throw new Error(`Unsupported capability "${capability}"`);
 }

@@ -7,7 +7,7 @@
 
 import * as React from "react";
 import { cn } from "../lib/utils";
-import { useRenderGuard } from "../runtime/render-telemetry";
+import { useRenderGuard } from "../runtime/render-telemetry.helpers";
 
 interface ResizablePanelGroupProps
   extends React.HTMLAttributes<HTMLDivElement> {

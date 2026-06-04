@@ -2,7 +2,7 @@ import { Loader2 } from "lucide-react";
 import {
   type TranslationContextValue,
   useTranslation,
-} from "../../state/TranslationContext";
+} from "../../state/TranslationContext.hooks";
 import { useTrainingBudget } from "./hooks/useTrainingApi";
 import type { TrainingBudget } from "./types";
 

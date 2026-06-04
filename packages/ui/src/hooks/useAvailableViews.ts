@@ -38,6 +38,11 @@ export interface ViewRegistryEntry {
   componentExport?: string;
   /** Public URL of a preview image to show in the view card. */
   heroImageUrl?: string;
+  /**
+   * True when a real hero image exists for this view. When false, `heroImageUrl`
+   * resolves to a generated placeholder, so the card renders the icon instead.
+   */
+  hasHeroImage?: boolean;
   /** Whether the view is currently loadable. */
   available: boolean;
   /** The plugin that provides this view. */

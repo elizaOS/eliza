@@ -20,6 +20,7 @@ export * from "./components/companion/CompanionHeader.tsx";
 export * from "./components/companion/CompanionPerformanceSettings.tsx";
 export * from "./components/companion/CompanionSceneHost.tsx";
 export * from "./components/companion/CompanionShell.tsx";
+export * from "./components/companion/CompanionView.helpers.ts";
 export * from "./components/companion/CompanionView.tsx";
 export * from "./components/companion/companion-app.ts";
 export * from "./components/companion/companion-scene-status-context.ts";

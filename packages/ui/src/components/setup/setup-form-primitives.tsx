@@ -1,24 +1,10 @@
 import type * as React from "react";
 import { cn } from "../../lib/utils";
 import { Field, FieldDescription, FieldLabel, FieldMessage } from "../ui/field";
-
-export const setupDetailStackClassName = "flex w-full flex-col gap-4 text-left";
-export const setupReadableTextStrongClassName =
-  "text-[var(--first-run-text-strong)] [text-shadow:var(--first-run-text-shadow-strong)] [-webkit-text-stroke:0.3px_var(--first-run-text-stroke)]";
-export const setupReadableTextPrimaryClassName =
-  "text-[var(--first-run-text-primary)] [text-shadow:var(--first-run-text-shadow-primary)]";
-export const setupReadableTextMutedClassName =
-  "text-[var(--first-run-text-muted)] [text-shadow:var(--first-run-text-shadow-muted)]";
-export const setupReadableTextSubtleClassName =
-  "text-[var(--first-run-text-subtle)] [text-shadow:var(--first-run-text-shadow-muted)]";
-export const setupReadableTextFaintClassName =
-  "text-[var(--first-run-text-faint)] [text-shadow:var(--first-run-text-shadow-muted)]";
-export const setupHelperTextClassName = `text-xs leading-relaxed ${setupReadableTextMutedClassName}`;
-const setupFieldLabelClassName = `text-xs font-semibold uppercase tracking-[0.14em] ${setupReadableTextMutedClassName}`;
-export const setupTextSupportClassName =
-  "rounded-sm bg-[var(--first-run-text-support-bg)] px-3 py-2 my-2";
-const setupInputSurfaceClassName = "bg-[var(--first-run-input-bg)]";
-export const setupInputClassName = `h-12 w-full rounded-sm px-4 text-left ${setupReadableTextPrimaryClassName} transition-[border-color,background-color] duration-200 placeholder:text-[var(--first-run-text-subtle)] focus-visible:border-[var(--first-run-field-focus-border)] focus-visible:ring-0 focus-visible:ring-offset-0 ${setupInputSurfaceClassName}`;
+import {
+  setupFieldLabelClassName,
+  setupHelperTextClassName,
+} from "./setup-classes";
 
 interface SetupFieldProps {
   align?: "left" | "center";

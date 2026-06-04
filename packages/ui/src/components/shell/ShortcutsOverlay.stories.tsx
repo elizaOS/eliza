@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { mockApp } from "../../storybook/mock-providers";
+import { mockApp } from "../../storybook/mock-providers.helpers";
 import { ShortcutsOverlay } from "./ShortcutsOverlay";
 
 // Unlike the context-gated shell banners, this overlay's visibility is local

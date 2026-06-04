@@ -37,7 +37,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useWindowManager } from "./WindowManager";
+import { useWindowManager } from "./WindowManager.context";
 
 // Explicit name→component map. lucide-react@1 ships no clean dynamic `icons`
 // record we can type against without an `any`, so the dock keeps a small,

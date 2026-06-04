@@ -2,7 +2,7 @@ import type {
   ActiveModelState,
   InstalledModel,
 } from "../../api/client-local-inference";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { displayModelName } from "./hub-utils";
 

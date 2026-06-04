@@ -62,6 +62,8 @@ Only scripts that exist in `package.json`:
 bun run --cwd plugins/plugin-shell build          # bun build → dist/
 bun run --cwd plugins/plugin-shell dev            # hot-reload build (bun --hot)
 bun run --cwd plugins/plugin-shell test           # vitest run
+bun run --cwd plugins/plugin-shell typecheck      # tsgo --noEmit
+bun run --cwd plugins/plugin-shell lint           # biome check
 bun run --cwd plugins/plugin-shell clean          # rm -rf dist .turbo
 bun run --cwd plugins/plugin-shell format         # biome format --write
 bun run --cwd plugins/plugin-shell format:check   # biome format (check only)

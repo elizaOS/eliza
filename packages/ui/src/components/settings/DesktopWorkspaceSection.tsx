@@ -31,13 +31,9 @@ import {
   CardTitle,
 } from "../ui/card";
 import { Textarea } from "../ui/textarea";
-import {
-  DesktopWorkspaceDisplay,
-  useDesktopDiagnosticsText,
-} from "./DesktopWorkspaceDisplay";
+import { DesktopWorkspaceDisplay } from "./DesktopWorkspaceDisplay";
+import { useDesktopDiagnosticsText } from "./DesktopWorkspaceDisplay.hooks";
 import { useDesktopWindowControls } from "./useDesktopWindowControls";
-
-export { DESKTOP_WORKSPACE_CLICK_AUDIT } from "./desktop-workspace-audit-config";
 
 function WorkspaceActionButton({
   agentId,

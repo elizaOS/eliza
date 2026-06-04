@@ -16,11 +16,16 @@ import {
 } from "../../bridge/electrobun-rpc";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import { useAvailableViews } from "../../hooks/useAvailableViews";
+import { getActiveViewModality } from "../../platform/platform-guards";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import { ViewManagerPage } from "./ViewManagerPage";
 
 vi.mock("../../hooks/useAvailableViews", () => ({
   useAvailableViews: vi.fn(),
+}));
+
+vi.mock("../../platform/platform-guards", () => ({
+  getActiveViewModality: vi.fn(() => "gui"),
 }));
 
 vi.mock("../../state/useDeveloperMode", () => ({
@@ -42,6 +47,7 @@ vi.mock("../../bridge/electrobun-rpc", () => ({
 
 const useAvailableViewsMock = vi.mocked(useAvailableViews);
 const useIsDeveloperModeMock = vi.mocked(useIsDeveloperMode);
+const getActiveViewModalityMock = vi.mocked(getActiveViewModality);
 const fetchWithCsrfMock = vi.mocked(fetchWithCsrf);
 const registerDynamicViewMock = vi.mocked(registerDynamicView);
 const unregisterDynamicViewMock = vi.mocked(unregisterDynamicView);
@@ -106,6 +112,7 @@ describe("ViewManagerPage", () => {
       refresh: vi.fn(),
     });
     useIsDeveloperModeMock.mockReturnValue(false);
+    getActiveViewModalityMock.mockReturnValue("gui");
     fetchWithCsrfMock.mockResolvedValue({
       ok: true,
       json: async () => ({ results: [] }),
@@ -144,6 +151,106 @@ describe("ViewManagerPage", () => {
     fireEvent.click(screen.getByText("Remote Ledger"));
 
     expect(window.location.pathname).toBe("/apps/remote-ledger");
+  });
+
+  it("hides TUI and XR views entirely on a GUI surface", () => {
+    getActiveViewModalityMock.mockReturnValue("gui");
+    useAvailableViewsMock.mockReturnValue({
+      views: [
+        view("dash", { label: "Dashboard", path: "/apps/dash" }),
+        view("term", {
+          label: "Terminal Only",
+          path: "/apps/term",
+          viewType: "tui",
+        }),
+        view("space", {
+          label: "Spatial Only",
+          path: "/apps/space",
+          viewType: "xr",
+        }),
+      ],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    render(<ViewManagerPage />);
+
+    expect(screen.getByText("Dashboard")).toBeTruthy();
+    expect(screen.queryByText("Terminal Only")).toBeNull();
+    expect(screen.queryByText("Spatial Only")).toBeNull();
+    expect(screen.queryByTestId("view-card-term")).toBeNull();
+    expect(screen.queryByTestId("view-card-space")).toBeNull();
+  });
+
+  it("shows only XR views when running in an XR surface", () => {
+    getActiveViewModalityMock.mockReturnValue("xr");
+    useAvailableViewsMock.mockReturnValue({
+      views: [
+        view("dash", { label: "Dashboard GUI", path: "/apps/dash" }),
+        view("term", {
+          label: "Terminal TUI",
+          path: "/apps/term",
+          viewType: "tui",
+        }),
+        view("space", {
+          label: "Spatial XR",
+          path: "/apps/space",
+          viewType: "xr",
+        }),
+      ],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    render(<ViewManagerPage />);
+
+    expect(screen.getByText("Spatial XR")).toBeTruthy();
+    expect(screen.getByTestId("view-card-space")).toBeTruthy();
+    expect(screen.queryByText("Dashboard GUI")).toBeNull();
+    expect(screen.queryByText("Terminal TUI")).toBeNull();
+  });
+
+  it("renders cards image-forward: real hero as image, placeholder as icon, no description/tags", () => {
+    getActiveViewModalityMock.mockReturnValue("gui");
+    useAvailableViewsMock.mockReturnValue({
+      views: [
+        view("withhero", {
+          label: "With Hero",
+          path: "/apps/withhero",
+          heroImageUrl: "/api/views/withhero/hero",
+          hasHeroImage: true,
+          description: "hidden description",
+          tags: ["hiddentag"],
+        }),
+        view("nohero", {
+          label: "No Hero",
+          path: "/apps/nohero",
+          icon: "Wallet",
+          heroImageUrl: "/api/views/nohero/hero",
+          hasHeroImage: false,
+          description: "also hidden",
+        }),
+      ],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    render(<ViewManagerPage />);
+
+    expect(screen.getByText("With Hero")).toBeTruthy();
+    expect(screen.getByText("No Hero")).toBeTruthy();
+    expect(
+      screen.getByTestId("view-card-withhero").querySelector("img"),
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId("view-card-nohero").querySelector("img"),
+    ).toBeNull();
+    expect(screen.queryByText("hidden description")).toBeNull();
+    expect(screen.queryByText("also hidden")).toBeNull();
+    expect(screen.queryByText("hiddentag")).toBeNull();
   });
 
   it("pins a remote view through the actual pin button without navigating", () => {

@@ -60,23 +60,26 @@ describe("App standalone chat-overlay wiring", () => {
     expect(APP_TSX).toContain("<ContinuousChatOverlayMount />");
   });
 
-  it("keeps minimal shell chrome decisions inside Header", () => {
-    // The app shell always mounts the ambient chat route; Header owns the
-    // minimal-shell navigation suppression.
+  it("renders a header-less app shell", () => {
+    // The app shell mounts no Header anywhere — navigation is conversational
+    // (the always-present chat overlay + the command palette). The Header
+    // component still ships from the library; the app just never mounts it.
     expect(APP_TSX).toContain("function ChatRouteShellContent");
     expect(APP_TSX).toContain("minimalHomeGreeting");
-    expect(HEADER_TSX).toContain('from "./shell-chrome"');
-    expect(HEADER_TSX).toContain("MINIMAL_SHELL ? null");
+    expect(APP_TSX).not.toContain("<Header");
+    expect(APP_TSX).not.toContain('from "./components/shell/Header"');
     expect(APP_TSX).not.toContain("function FullChatWorkspaceShellContent");
+    // Header remains a real library component (still navigation-capable).
+    expect(HEADER_TSX).toContain("getTabGroups");
   });
 
-  it("keeps the ambient chat route under header nav", () => {
+  it("renders the ambient chat route as a header-less greeting home", () => {
     expect(APP_TSX).toContain("function ChatRouteShellContent");
     expect(APP_TSX).toContain('<div key="chat-shell"');
-    expect(APP_TSX).toContain("<Header />");
-    // Header nav restored from the still-present navigation model.
-    expect(HEADER_TSX).toContain("getTabGroups");
-    expect(HEADER_TSX).toContain("primaryDesktopGroups");
+    expect(APP_TSX).toContain("minimalHomeGreeting");
+    // The shell no longer mounts a Header — the chat home is just the ambient
+    // greeting backdrop under the always-present chat overlay.
+    expect(APP_TSX).not.toContain("<Header />");
   });
 
   it("keeps the ambient overlay composer as the chat route composer", () => {

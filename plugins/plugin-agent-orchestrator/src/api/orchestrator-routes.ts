@@ -15,7 +15,10 @@ import {
   LLM_GOAL_VERIFIER_NAME,
   verifyGoalCompletion,
 } from "../services/goal-llm-verifier.js";
-import type { TaskThreadDetailDto } from "../services/orchestrator-task-mapper.js";
+import type {
+  TaskPlanRevisionDto,
+  TaskThreadDetailDto,
+} from "../services/orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import type {
   CreateTaskInput,
@@ -75,10 +78,44 @@ function asProviderPolicy(value: unknown): TaskProviderPolicy | undefined {
   return policy;
 }
 
+function asBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function asRetryMode(
+  value: unknown,
+): "same-session" | "new-session" | undefined {
+  return value === "same-session" || value === "new-session"
+    ? value
+    : undefined;
+}
+
+function asAgentOptions(value: unknown) {
+  if (!isRecord(value)) return undefined;
+  return {
+    framework: asString(value.framework),
+    providerSource: asString(value.providerSource),
+    model: asString(value.model),
+    workdir: asString(value.workdir),
+    repo: asString(value.repo),
+    label: asString(value.label),
+    task: asString(value.task),
+  };
+}
+
 function parseLimit(value: string | null): number | undefined {
   if (!value) return undefined;
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function recoveryConflictStatus(error: unknown): number {
+  if (!(error instanceof Error)) return 500;
+  return /Base plan revision not found|Plan revision not found|Source message not found|Source event not found|Session not found|sessionId is required|Cannot retry|Destructive rerun/.test(
+    error.message,
+  )
+    ? 409
+    : 500;
 }
 
 async function parseOptionalBody(
@@ -508,6 +545,225 @@ async function dispatchOrchestratorRoutes(
       return true;
     }
 
+    // /tasks/:taskId/plan-revisions
+    if (sub === "plan-revisions" && segments.length === 2) {
+      if (method === "GET") {
+        const page = await service.listPlanRevisions(taskId, {
+          cursor: query.get("cursor") ?? undefined,
+          limit: parseLimit(query.get("limit")),
+        });
+        if (!page) {
+          sendError(res, "Task not found", 404);
+          return true;
+        }
+        sendJson(res, page);
+        return true;
+      }
+      if (method === "POST") {
+        const body = await parseBody(req).catch(() => null);
+        if (!body) {
+          sendError(res, "Invalid JSON body", 400);
+          return true;
+        }
+        if (!isRecord(body.plan)) {
+          sendError(res, "plan is required", 400);
+          return true;
+        }
+        let revision: TaskPlanRevisionDto | null;
+        try {
+          revision = await service.createPlanRevision(taskId, {
+            plan: body.plan,
+            basePlanRevisionId: asString(body.basePlanRevisionId),
+            editSummary: asString(body.editSummary),
+            createdBy: asString(body.createdBy),
+            metadata: isRecord(body.metadata) ? body.metadata : undefined,
+          });
+        } catch (error) {
+          sendError(
+            res,
+            error instanceof Error
+              ? error.message
+              : "Failed to create plan revision",
+            recoveryConflictStatus(error),
+          );
+          return true;
+        }
+        if (!revision) {
+          sendError(res, "Task not found", 404);
+          return true;
+        }
+        sendJson(res, revision, 201);
+        return true;
+      }
+    }
+
+    // POST /tasks/:taskId/retry-turn
+    if (method === "POST" && sub === "retry-turn" && segments.length === 2) {
+      const body = await parseBody(req).catch(() => null);
+      if (!body) {
+        sendError(res, "Invalid JSON body", 400);
+        return true;
+      }
+      const rawMode = body.mode;
+      const mode = asRetryMode(rawMode);
+      if (rawMode !== undefined && !mode) {
+        sendError(res, "mode must be same-session or new-session", 400);
+        return true;
+      }
+      if (!asString(body.instruction) && !asString(body.messageId)) {
+        sendError(res, "instruction or messageId is required", 400);
+        return true;
+      }
+      let task: TaskThreadDetailDto | null;
+      try {
+        task = await service.retryTaskTurn(taskId, {
+          messageId: asString(body.messageId),
+          sessionId: asString(body.sessionId),
+          instruction: asString(body.instruction),
+          planRevisionId: asString(body.planRevisionId),
+          mode,
+          agent: asAgentOptions(body.agent),
+        });
+      } catch (error) {
+        sendError(
+          res,
+          error instanceof Error ? error.message : "Failed to retry turn",
+          recoveryConflictStatus(error),
+        );
+        return true;
+      }
+      if (!task) {
+        sendError(res, "Task not found", 404);
+        return true;
+      }
+      sendJson(res, task, 201);
+      return true;
+    }
+
+    // POST /tasks/:taskId/rerun-from-event
+    if (
+      method === "POST" &&
+      sub === "rerun-from-event" &&
+      segments.length === 2
+    ) {
+      const body = await parseBody(req).catch(() => null);
+      const eventId = body ? asString(body.eventId) : undefined;
+      if (!body) {
+        sendError(res, "Invalid JSON body", 400);
+        return true;
+      }
+      if (!eventId) {
+        sendError(res, "eventId is required", 400);
+        return true;
+      }
+      if (body.preserveHistory === false) {
+        sendError(
+          res,
+          "Destructive rerun is not supported; preserveHistory must be true",
+          409,
+        );
+        return true;
+      }
+      let task: TaskThreadDetailDto | null;
+      try {
+        task = await service.rerunFromEvent(taskId, {
+          eventId,
+          instruction: asString(body.instruction),
+          planRevisionId: asString(body.planRevisionId),
+          stopActive: asBoolean(body.stopActive),
+          preserveHistory: asBoolean(body.preserveHistory),
+          agent: asAgentOptions(body.agent),
+        });
+      } catch (error) {
+        sendError(
+          res,
+          error instanceof Error ? error.message : "Failed to rerun from event",
+          recoveryConflictStatus(error),
+        );
+        return true;
+      }
+      if (!task) {
+        sendError(res, "Task not found", 404);
+        return true;
+      }
+      sendJson(res, task, 201);
+      return true;
+    }
+
+    // POST /tasks/:taskId/restart
+    if (method === "POST" && sub === "restart" && segments.length === 2) {
+      const body = await parseBody(req).catch(() => null);
+      if (!body) {
+        sendError(res, "Invalid JSON body", 400);
+        return true;
+      }
+      let task: TaskThreadDetailDto | null;
+      try {
+        task = await service.restartTask(taskId, {
+          instruction: asString(body.instruction),
+          planRevisionId: asString(body.planRevisionId),
+          stopActive: asBoolean(body.stopActive),
+          agent: asAgentOptions(body.agent),
+        });
+      } catch (error) {
+        sendError(
+          res,
+          error instanceof Error ? error.message : "Failed to restart task",
+          recoveryConflictStatus(error),
+        );
+        return true;
+      }
+      if (!task) {
+        sendError(res, "Task not found", 404);
+        return true;
+      }
+      sendJson(res, task, 201);
+      return true;
+    }
+
+    // POST /tasks/:taskId/restart-with-edited-plan
+    if (
+      method === "POST" &&
+      sub === "restart-with-edited-plan" &&
+      segments.length === 2
+    ) {
+      const body = await parseBody(req).catch(() => null);
+      if (!body) {
+        sendError(res, "Invalid JSON body", 400);
+        return true;
+      }
+      if (!isRecord(body.plan)) {
+        sendError(res, "plan is required", 400);
+        return true;
+      }
+      let task: TaskThreadDetailDto | null;
+      try {
+        task = await service.restartWithEditedPlan(taskId, {
+          plan: body.plan,
+          basePlanRevisionId: asString(body.basePlanRevisionId),
+          editSummary: asString(body.editSummary),
+          instruction: asString(body.instruction),
+          stopActive: asBoolean(body.stopActive),
+          agent: asAgentOptions(body.agent),
+        });
+      } catch (error) {
+        sendError(
+          res,
+          error instanceof Error
+            ? error.message
+            : "Failed to restart with edited plan",
+          recoveryConflictStatus(error),
+        );
+        return true;
+      }
+      if (!task) {
+        sendError(res, "Task not found", 404);
+        return true;
+      }
+      sendJson(res, task, 201);
+      return true;
+    }
+
     // /tasks/:taskId/messages
     if (sub === "messages" && segments.length === 2) {
       if (method === "GET") {
@@ -515,6 +771,10 @@ async function dispatchOrchestratorRoutes(
           cursor: query.get("cursor") ?? undefined,
           limit: parseLimit(query.get("limit")),
         });
+        if (!page) {
+          sendError(res, "Task not found", 404);
+          return true;
+        }
         sendJson(res, page);
         return true;
       }
@@ -535,12 +795,30 @@ async function dispatchOrchestratorRoutes(
       }
     }
 
+    // GET /tasks/:taskId/timeline
+    if (method === "GET" && sub === "timeline" && segments.length === 2) {
+      const page = await service.listTimeline(taskId, {
+        cursor: query.get("cursor") ?? undefined,
+        limit: parseLimit(query.get("limit")),
+      });
+      if (!page) {
+        sendError(res, "Task not found", 404);
+        return true;
+      }
+      sendJson(res, page);
+      return true;
+    }
+
     // GET /tasks/:taskId/events
     if (method === "GET" && sub === "events" && segments.length === 2) {
       const page = await service.listEvents(taskId, {
         cursor: query.get("cursor") ?? undefined,
         limit: parseLimit(query.get("limit")),
       });
+      if (!page) {
+        sendError(res, "Task not found", 404);
+        return true;
+      }
       sendJson(res, page);
       return true;
     }

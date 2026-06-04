@@ -30,10 +30,16 @@ export const HOT_RELOAD_FRONTEND_PACKAGES = new Set([
   "os",
 ]);
 
-export const HOT_RELOAD_CODE_FILE = /\.(?:[cm]?tsx?|[cm]?js|json)$/;
+// Only hand-written agent source: .ts/.tsx/.mts/.cts + .json. Compiled `.js`
+// is deliberately NOT matched — this monorepo emits compiled `.js`/`.d.ts`
+// shadows next to `.ts` source, and reacting to those would bounce the agent on
+// every build. `.d.ts` (declaration emit) is excluded explicitly since it ends
+// in `.ts`.
+export const HOT_RELOAD_CODE_FILE = /\.(?:tsx?|mts|cts|json)$/;
+export const HOT_RELOAD_DECLARATION = /\.d\.[cm]?ts$/;
 export const HOT_RELOAD_TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
 export const HOT_RELOAD_IGNORED_SEGMENT =
-  /(?:^|[/\\])(?:dist|node_modules|\.turbo|\.git|coverage|__tests__|\.vite|build)(?:[/\\]|$)/;
+  /(?:^|[/\\])(?:dist|node_modules|\.turbo|\.git|coverage|__tests__|\.vite|build|generated)(?:[/\\]|$)/;
 export const HOT_RELOAD_DEBOUNCE_MS = 350;
 
 /**
@@ -72,8 +78,9 @@ export function collectAgentSourceDirs(root) {
 /**
  * Whether a watch event for `absPath` should trigger a reload. A null/empty
  * path (some platforms omit the filename) is treated as reloadable so we never
- * miss a real change. Build output, deps, and test/coverage dirs are ignored,
- * and only code files (ts/tsx/js/mjs/cjs/json) qualify.
+ * miss a real change. Build output, deps, generated, and test/coverage dirs are
+ * ignored, as are declaration (`.d.ts`) and test/spec files; only hand-written
+ * source (ts/tsx/mts/cts/json) qualifies.
  *
  * @param {string | null | undefined} absPath
  * @returns {boolean}
@@ -81,6 +88,7 @@ export function collectAgentSourceDirs(root) {
 export function isReloadableChangePath(absPath) {
   if (!absPath) return true;
   if (HOT_RELOAD_IGNORED_SEGMENT.test(absPath)) return false;
+  if (HOT_RELOAD_DECLARATION.test(absPath)) return false;
   if (HOT_RELOAD_TEST_FILE.test(absPath)) return false;
   return HOT_RELOAD_CODE_FILE.test(absPath);
 }
@@ -91,8 +99,11 @@ export function isReloadableChangePath(absPath) {
  *
  * @param {Object} params
  * @param {string} params.root Repo root.
- * @param {(relPath: string) => void} params.onChange Debounced; receives the
- *   changed path relative to `root` (or "source" when the filename is unknown).
+ * @param {(relPath: string, changedCount: number) => void} params.onChange
+ *   Debounced; receives one sample path (relative to `root`, or "source" when
+ *   the filename is unknown) and the number of DISTINCT files that changed in
+ *   the window — so the caller can ignore bulk rewrites (a git reset / checkout
+ *   / build touches many files at once; a human edit touches one or a few).
  * @param {(dir: string, err: Error) => void} [params.onError] Per-dir watch
  *   setup failure (e.g. a platform without recursive watch).
  * @param {number} [params.debounceMs]
@@ -109,17 +120,24 @@ export function startAgentSourceWatcher({
   const watchers = [];
   /** @type {ReturnType<typeof setTimeout> | null} */
   let debounce = null;
-  let pendingFile = null;
+  /** Distinct changed paths accumulated in the current debounce window. */
+  const pendingFiles = new Set();
+  let pendingSample = null;
 
   const fire = (absPath) => {
     if (absPath && !isReloadableChangePath(absPath)) return;
-    if (absPath) pendingFile = absPath;
+    if (absPath) {
+      pendingFiles.add(absPath);
+      pendingSample = absPath;
+    }
     if (debounce) clearTimeout(debounce);
     debounce = setTimeout(() => {
-      const changed = pendingFile;
-      pendingFile = null;
+      const count = pendingFiles.size;
+      const sample = pendingSample;
+      pendingFiles.clear();
+      pendingSample = null;
       debounce = null;
-      onChange(changed ? path.relative(root, changed) : "source");
+      onChange(sample ? path.relative(root, sample) : "source", count);
     }, debounceMs);
     debounce.unref?.();
   };

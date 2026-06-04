@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
-import { TranslationProvider } from "../../state/TranslationContext";
+import { TranslationProvider } from "../../state/TranslationProvider";
 import { DEFAULT_SPENDING } from "./constants";
 import { SpendingLimitSection } from "./SpendingLimitSection";
 import type { SpendingLimitConfig } from "./types";

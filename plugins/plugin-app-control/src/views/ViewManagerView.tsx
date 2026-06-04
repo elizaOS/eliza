@@ -18,8 +18,6 @@ import {
 	type ViewEntry,
 } from "./viewManagerData";
 
-export { interact } from "./viewManagerData";
-
 // Shell theme tokens — inherit the host shell chrome instead of hardcoding a
 // dark cyan palette. Fallbacks avoid the forbidden literal colors.
 const viewManagerTheme = {

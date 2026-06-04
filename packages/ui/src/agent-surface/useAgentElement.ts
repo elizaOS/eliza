@@ -19,7 +19,7 @@
 
 import type { RefObject } from "react";
 import { useEffect, useRef } from "react";
-import { useAgentSurface } from "./AgentSurfaceContext";
+import { useAgentSurface } from "./AgentSurfaceContext.hooks";
 import type { AgentElementDescriptor } from "./types";
 
 export interface AgentElementHandle<T extends HTMLElement> {

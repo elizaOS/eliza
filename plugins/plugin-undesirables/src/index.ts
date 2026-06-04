@@ -186,7 +186,7 @@ async function loadWorkspace(workspacePath: string): Promise<SoulWorkspace> {
           }
         }
       } catch {
-        // Silently skip malformed YAML frontmatter
+        // Ignore malformed YAML frontmatter.
       }
     }
   }

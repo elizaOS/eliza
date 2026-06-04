@@ -181,9 +181,38 @@ function _tryResolve(id: string): string | undefined {
     return undefined;
   }
 }
+function _tryResolveFrom(id: string, fromFile: string): string | undefined {
+  try {
+    return createRequire(fromFile).resolve(id);
+  } catch {
+    return undefined;
+  }
+}
 function tryResolvePackageModuleEntry(id: string): string | undefined {
   try {
     const packageJsonPath = _require.resolve(`${id}/package.json`);
+    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as {
+      module?: unknown;
+      main?: unknown;
+    };
+    const entry =
+      typeof pkg.module === "string"
+        ? pkg.module
+        : typeof pkg.main === "string"
+          ? pkg.main
+          : undefined;
+    return entry ? path.join(path.dirname(packageJsonPath), entry) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+function tryResolvePackageModuleEntryFrom(
+  id: string,
+  fromFile: string,
+): string | undefined {
+  try {
+    const packageJsonPath = _tryResolveFrom(`${id}/package.json`, fromFile);
+    if (!packageJsonPath) return undefined;
     const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as {
       module?: unknown;
       main?: unknown;
@@ -214,6 +243,37 @@ const markedEntry = path.join(
   elizaRoot,
   "plugins/plugin-task-coordinator/node_modules/marked/lib/marked.esm.js",
 );
+const streamdownEntry = path.join(
+  uiPkgRoot,
+  "node_modules/streamdown/dist/index.js",
+);
+const rechartsEntry = path.join(
+  uiPkgRoot,
+  "node_modules/recharts/es6/index.js",
+);
+const nprogressEntry = path.join(
+  uiPkgRoot,
+  "node_modules/nprogress/nprogress.js",
+);
+// react-router-dom is a direct UI package dependency, not an app dependency.
+// With optimizeDeps.noDiscovery enabled, Vite cannot discover/pre-bundle it
+// from packages/app, so its raw react-router dev chunk serves the CJS `cookie`
+// package to the browser and blanks the dev shell. Resolve this graph from the
+// package scopes that actually own each import.
+const uiPackageJsonPath = path.join(uiPkgRoot, "package.json");
+const reactRouterDomEntry = tryResolvePackageModuleEntryFrom(
+  "react-router-dom",
+  uiPackageJsonPath,
+);
+const reactRouterEntry = reactRouterDomEntry
+  ? tryResolvePackageModuleEntryFrom("react-router", reactRouterDomEntry)
+  : undefined;
+const reactRouterDomExportEntry = reactRouterEntry
+  ? _tryResolveFrom("react-router/dom", reactRouterEntry)
+  : undefined;
+const reactRouterCookieEntry = reactRouterEntry
+  ? tryResolvePackageModuleEntryFrom("cookie", reactRouterEntry)
+  : undefined;
 // yaml / uuid / adze are transitive deps (logger, core, plugin-documents) that
 // are listed in optimizeDeps.include but are not direct deps of packages/app,
 // so bun workspace hoisting leaves them unresolvable from the app's optimizer
@@ -1881,6 +1941,8 @@ export const INVALID_TRACER_PROVIDER = {};
     dedupe: [
       "react",
       "react-dom",
+      "react-router",
+      "react-router-dom",
       "three",
       "@capacitor/core",
       "@elizaos/app-core",
@@ -1919,7 +1981,7 @@ export const INVALID_TRACER_PROVIDER = {};
         replacement: path.resolve(here, "src/shims/style-to-js.ts"),
       },
       {
-        find: /^debug(?:\/src\/browser\.js)?$/,
+        find: /^debug(?:\/src\/browser(?:\.js)?)?$/,
         replacement: path.resolve(here, "src/shims/debug.ts"),
       },
       {
@@ -1958,7 +2020,7 @@ export const INVALID_TRACER_PROVIDER = {};
         replacement: path.resolve(here, "src/shims/use-sync-external-store.ts"),
       },
       {
-        find: /^use-sync-external-store\/shim\/with-selector(?:\.js)?$/,
+        find: /^use-sync-external-store\/(?:shim\/)?with-selector(?:\.js)?$/,
         replacement: path.resolve(
           here,
           "src/shims/use-sync-external-store-with-selector.ts",
@@ -1972,6 +2034,32 @@ export const INVALID_TRACER_PROVIDER = {};
         ? [{ find: /^uuid$/, replacement: uuidBrowserEntry }]
         : []),
       ...(adzeEntry ? [{ find: /^adze$/, replacement: adzeEntry }] : []),
+      ...(fs.existsSync(streamdownEntry)
+        ? [{ find: /^streamdown$/, replacement: streamdownEntry }]
+        : []),
+      ...(fs.existsSync(rechartsEntry)
+        ? [{ find: /^recharts$/, replacement: rechartsEntry }]
+        : []),
+      ...(fs.existsSync(nprogressEntry)
+        ? [{ find: /^nprogress$/, replacement: nprogressEntry }]
+        : []),
+      ...(reactRouterDomEntry
+        ? [{ find: /^react-router-dom$/, replacement: reactRouterDomEntry }]
+        : []),
+      ...(reactRouterEntry
+        ? [{ find: /^react-router$/, replacement: reactRouterEntry }]
+        : []),
+      ...(reactRouterDomExportEntry
+        ? [
+            {
+              find: /^react-router\/dom$/,
+              replacement: reactRouterDomExportEntry,
+            },
+          ]
+        : []),
+      ...(reactRouterCookieEntry
+        ? [{ find: /^cookie$/, replacement: reactRouterCookieEntry }]
+        : []),
       ...(fs.existsSync(markedEntry)
         ? [{ find: /^marked$/, replacement: markedEntry }]
         : []),
@@ -2360,6 +2448,9 @@ export const INVALID_TRACER_PROVIDER = {};
       "react",
       "react-dom",
       "react-dom/client",
+      "react-router",
+      "react-router/dom",
+      "react-router-dom",
       // Three.js core + all subpath imports must be pre-bundled together so
       // esbuild shares a single module identity.
       "three",
@@ -2374,6 +2465,10 @@ export const INVALID_TRACER_PROVIDER = {};
       // lucide-react alone is ~250 per-icon requests once the build-only
       // per-icon rewrite is disabled in dev; the rest are multi-file ESM libs.
       "lucide-react",
+      "streamdown",
+      "recharts",
+      "nprogress",
+      "cookie",
       "yaml",
       "uuid",
       "adze",

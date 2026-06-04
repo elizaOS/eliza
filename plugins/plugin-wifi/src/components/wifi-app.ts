@@ -2,7 +2,7 @@
  * WiFi overlay app definition + registration.
  *
  * Registered by the WiFi side-effect entry only on
- * Android; other platforms intentionally skip registration so the app does
+ * Android; other platforms intentionally leave registration unchanged so the app does
  * not appear in the catalog where it cannot function.
  */
 

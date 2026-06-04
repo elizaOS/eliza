@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { mockApp } from "../../storybook/mock-providers";
+import { mockApp } from "../../storybook/mock-providers.helpers";
 import { ConnectionFailedBanner } from "./ConnectionFailedBanner";
 
 // The banner reads useApp() state, not props: it returns null unless

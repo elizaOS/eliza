@@ -31,10 +31,8 @@ import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
 import { Button } from "../ui/button";
 import { HEADER_BUTTON_STYLE } from "./ShellHeaderControls";
-import { MINIMAL_SHELL } from "./shell-chrome";
 
 const MOBILE_HEADER_MEDIA_QUERY = "(max-width: 819px)";
-const DESKTOP_LABEL_COLLAPSE_MEDIA_QUERY = "(max-width: 1380px)";
 
 const NAV_LABEL_I18N_KEY: Record<string, string> = {
   Apps: "nav.apps",
@@ -63,19 +61,12 @@ const NAV_DESCRIPTION_I18N_KEY: Record<string, string> = {
   Wallet: "nav.description.wallet",
 };
 
-const TOPBAR_NAV_BUTTON_CLASSNAME =
-  "group relative inline-flex h-[2.375rem] min-h-[2.375rem] shrink-0 items-center gap-2 rounded-sm border border-transparent px-2.5 text-xs font-medium text-muted transition-colors duration-150 hover:text-txt after:absolute after:inset-x-2.5 after:bottom-0 after:h-[3px] after:rounded-t-full after:bg-accent/70 after:opacity-0 after:transition-opacity after:duration-150 hover:after:opacity-55";
-const TOPBAR_NAV_BUTTON_ACTIVE_CLASSNAME = "text-accent after:opacity-100";
 const TOPBAR_ICON_BUTTON_CLASSNAME =
   "relative inline-flex h-[2.375rem] w-[2.375rem] min-h-[2.375rem] min-w-[2.375rem] shrink-0 items-center justify-center rounded-sm border border-transparent bg-transparent text-muted transition-colors duration-150 hover:text-txt";
 const TOPBAR_ICON_BUTTON_ACTIVE_CLASSNAME = navActiveClassHorizontal;
 const TOPBAR_RIGHT_ICON_BUTTON_CLASSNAME =
   "inline-flex h-[2.375rem] w-[2.375rem] min-h-[2.375rem] min-w-[2.375rem] shrink-0 items-center justify-center rounded-sm border border-transparent !bg-transparent text-muted shadow-none ring-0 transition-colors duration-150 hover:!bg-transparent hover:text-txt active:!bg-transparent data-[state=open]:!bg-transparent";
 const TOPBAR_RIGHT_ICON_BUTTON_ACTIVE_CLASSNAME = navActiveClassHorizontal;
-const MOBILE_BOTTOM_NAV_BUTTON_CLASSNAME =
-  "group relative mx-auto inline-flex h-14 w-full max-w-16 min-w-0 shrink-0 flex-col items-center justify-center gap-0.5 rounded-sm py-1 text-muted transition-colors duration-150 hover:text-txt after:absolute after:inset-x-2 after:top-0 after:h-[2px] after:rounded-b-full after:bg-accent/70 after:opacity-0 after:transition-opacity after:duration-150";
-const MOBILE_BOTTOM_NAV_BUTTON_ACTIVE_CLASSNAME =
-  "text-accent after:opacity-100";
 const MAC_TITLEBAR_PADDING_STYLE: CSSProperties = {
   paddingInlineStart:
     "max(env(safe-area-inset-left, 0px), var(--eliza-macos-frame-left-inset, 80px))",
@@ -140,9 +131,6 @@ export function Header({
   const [mobileRuntimeMode, setMobileRuntimeMode] = useState(
     readPersistedMobileRuntimeMode,
   );
-  const collapseDesktopNavLabels = useMediaQuery(
-    DESKTOP_LABEL_COLLAPSE_MEDIA_QUERY,
-  );
   const showMacDesktopTitleBar = shouldShowMacDesktopTitleBar();
   const titlebarPaddingStyle = showMacDesktopTitleBar
     ? MAC_TITLEBAR_PADDING_STYLE
@@ -181,27 +169,6 @@ export function Header({
       );
     };
   }, []);
-
-  useEffect(() => {
-    if (typeof document === "undefined") {
-      return;
-    }
-
-    // The eliza-mobile-bottom-nav class drives the CSS padding offset that
-    // reserves space for the bottom nav bar. Only add it when the bar actually
-    // renders (same condition as `mobileBottomNav` below) — otherwise
-    // MINIMAL_SHELL mode reserves ~60px for a nav that never paints, leaving a
-    // phantom gap at the bottom of every padded shell.
-    if (isMobileViewport && !MINIMAL_SHELL) {
-      document.documentElement.classList.add("eliza-mobile-bottom-nav");
-    } else {
-      document.documentElement.classList.remove("eliza-mobile-bottom-nav");
-    }
-
-    return () => {
-      document.documentElement.classList.remove("eliza-mobile-bottom-nav");
-    };
-  }, [isMobileViewport]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -295,11 +262,6 @@ export function Header({
     () => tabGroups.find((group) => group.label === "Settings") ?? null,
     [tabGroups],
   );
-  const primaryDesktopGroups = useMemo(
-    () => tabGroups.filter((group) => group.label !== "Settings"),
-    [tabGroups],
-  );
-
   const localizeNavLabel = useCallback(
     (label: string) =>
       t(NAV_LABEL_I18N_KEY[label] ?? label, { defaultValue: label }),
@@ -483,60 +445,6 @@ export function Header({
     </Button>
   );
 
-  const mobileBottomNav =
-    isMobileViewport && !MINIMAL_SHELL ? (
-      <nav
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-border/55 bg-bg/95 pt-1.5 shadow-[0_-1px_0_rgba(255,255,255,0.04)] "
-        style={{
-          paddingBottom: "max(0.375rem, env(safe-area-inset-bottom, 0px))",
-          paddingLeft: "max(0.5rem, var(--safe-area-left, 0px))",
-          paddingRight: "max(0.5rem, var(--safe-area-right, 0px))",
-        }}
-        aria-label={t("aria.navMenu")}
-        data-testid="header-mobile-bottom-nav"
-        data-no-camera-drag="true"
-      >
-        <div
-          className="grid min-w-0 items-center gap-1 overflow-hidden"
-          style={{
-            gridTemplateColumns: `repeat(${tabGroups.length}, minmax(0, 1fr))`,
-          }}
-        >
-          {tabGroups.map((group) => {
-            const primaryTab = group.tabs[0];
-            const isActive = group.tabs.includes(tab);
-            const localizedGroup = localizeTabGroup(group);
-
-            return (
-              <Button
-                variant="ghost"
-                key={group.label}
-                data-testid={`header-mobile-bottom-nav-button-${primaryTab}`}
-                className={`${MOBILE_BOTTOM_NAV_BUTTON_CLASSNAME} ${
-                  isActive ? MOBILE_BOTTOM_NAV_BUTTON_ACTIVE_CLASSNAME : ""
-                }`}
-                onClick={() => setTab(primaryTab)}
-                onPointerDown={stopHeaderPointerPropagation}
-                aria-label={localizedGroup.label}
-                aria-current={isActive ? "page" : undefined}
-                title={localizedGroup.label}
-                style={HEADER_BUTTON_STYLE}
-                data-no-camera-drag="true"
-              >
-                <group.icon className="pointer-events-none h-4.5 w-4.5 shrink-0" />
-                <span
-                  data-testid={`header-mobile-bottom-nav-label-${primaryTab}`}
-                  className="pointer-events-none truncate text-[10px] leading-none font-medium"
-                >
-                  {localizedGroup.label}
-                </span>
-              </Button>
-            );
-          })}
-        </div>
-      </nav>
-    ) : null;
-
   const rightDesktopControls = (
     <div
       className="flex min-w-0 items-center justify-end gap-1.5"
@@ -587,149 +495,102 @@ export function Header({
   );
 
   return (
-    <>
-      <header
-        className="sticky top-0 z-30 w-full select-none border-b border-border/50 bg-bg/88 "
-        style={{ WebkitUserSelect: "none", userSelect: "none" }}
+    <header
+      className="sticky top-0 z-30 w-full select-none border-b border-border/50 bg-bg/88 "
+      style={{ WebkitUserSelect: "none", userSelect: "none" }}
+    >
+      <div
+        className={showMacDesktopTitleBar ? "pointer-events-auto" : undefined}
+        data-window-titlebar={showMacDesktopTitleBar ? "true" : undefined}
+        data-testid={
+          showMacDesktopTitleBar ? "desktop-window-titlebar" : undefined
+        }
       >
         <div
-          className={showMacDesktopTitleBar ? "pointer-events-auto" : undefined}
-          data-window-titlebar={showMacDesktopTitleBar ? "true" : undefined}
-          data-testid={
-            showMacDesktopTitleBar ? "desktop-window-titlebar" : undefined
+          className={
+            isMobileViewport
+              ? `grid ${
+                  mobileLeft || breadcrumbNode || pageRightExtras
+                    ? "min-h-[2.75rem]"
+                    : "min-h-0"
+                } grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-2`
+              : "grid min-h-[2.375rem] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-3"
           }
+          data-window-titlebar-padding={
+            showMacDesktopTitleBar ? "true" : undefined
+          }
+          style={titlebarPaddingStyle}
         >
-          <div
-            className={
-              isMobileViewport
-                ? `grid ${
-                    mobileLeft || breadcrumbNode || pageRightExtras
-                      ? "min-h-[2.75rem]"
-                      : "min-h-0"
-                  } grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-2`
-                : "grid min-h-[2.375rem] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-3"
-            }
-            data-window-titlebar-padding={
-              showMacDesktopTitleBar ? "true" : undefined
-            }
-            style={titlebarPaddingStyle}
-          >
-            {isMobileViewport ? (
-              <>
-                {/*
-                 * Mobile header — single canonical row that sits directly
-                 * below the system status bar (the body has
-                 * padding-top: env(safe-area-inset-top), so this row's
-                 * sticky `top: 0` lands just under the iPhone notch /
-                 * Dynamic Island and the Android status icons). Buttons at
-                 * the left and right edges naturally bracket the notch.
-                 */}
+          {isMobileViewport ? (
+            <>
+              {/*
+               * Mobile header — single canonical row that sits directly
+               * below the system status bar (the body has
+               * padding-top: env(safe-area-inset-top), so this row's
+               * sticky `top: 0` lands just under the iPhone notch /
+               * Dynamic Island and the Android status icons). Buttons at
+               * the left and right edges naturally bracket the notch.
+               */}
+              <div
+                className="flex min-w-0 items-center justify-start"
+                data-no-camera-drag="true"
+              >
+                {mobileLeft}
+              </div>
+              <div
+                className={
+                  breadcrumbNode
+                    ? "flex h-[2.375rem] min-w-0 items-center justify-center gap-2"
+                    : "pointer-events-none min-w-0"
+                }
+                data-testid={
+                  showMacDesktopTitleBar
+                    ? "desktop-window-titlebar-drag-zone"
+                    : undefined
+                }
+                data-no-camera-drag={breadcrumbNode ? "true" : undefined}
+                aria-hidden={breadcrumbNode ? undefined : "true"}
+              >
+                {breadcrumbNode}
+              </div>
+              <div
+                className="flex min-w-0 items-center justify-end"
+                data-no-camera-drag="true"
+              >
+                {pageRightExtras}
+              </div>
+            </>
+          ) : (
+            <>
+              <div aria-hidden="true" />
+              {breadcrumbNode ? (
                 <div
-                  className="flex min-w-0 items-center justify-start"
-                  data-no-camera-drag="true"
-                >
-                  {mobileLeft}
-                </div>
-                <div
-                  className={
-                    breadcrumbNode
-                      ? "flex h-[2.375rem] min-w-0 items-center justify-center gap-2"
-                      : "pointer-events-none min-w-0"
-                  }
+                  className="flex h-[2.375rem] min-w-0 items-center justify-center"
                   data-testid={
                     showMacDesktopTitleBar
                       ? "desktop-window-titlebar-drag-zone"
                       : undefined
                   }
-                  data-no-camera-drag={breadcrumbNode ? "true" : undefined}
-                  aria-hidden={breadcrumbNode ? undefined : "true"}
+                  data-no-camera-drag="true"
                 >
                   {breadcrumbNode}
                 </div>
+              ) : (
                 <div
-                  className="flex min-w-0 items-center justify-end"
-                  data-no-camera-drag="true"
-                >
-                  {pageRightExtras}
-                </div>
-              </>
-            ) : (
-              <>
-                {MINIMAL_SHELL ? null : (
-                  <nav
-                    className="scrollbar-hide flex min-w-0 items-center gap-1 overflow-x-auto pr-2"
-                    aria-label={t("aria.navMenu")}
-                    data-no-camera-drag="true"
-                  >
-                    {primaryDesktopGroups.map((group) => {
-                      const primaryTab = group.tabs[0];
-                      const isActive = group.tabs.includes(tab);
-                      const localizedGroup = localizeTabGroup(group);
-
-                      return (
-                        <Button
-                          variant="ghost"
-                          key={group.label}
-                          data-testid={`header-nav-button-${primaryTab}`}
-                          className={`${TOPBAR_NAV_BUTTON_CLASSNAME} ${
-                            isActive ? TOPBAR_NAV_BUTTON_ACTIVE_CLASSNAME : ""
-                          }`}
-                          onClick={() => setTab(primaryTab)}
-                          onPointerDown={stopHeaderPointerPropagation}
-                          aria-label={localizedGroup.label}
-                          title={
-                            collapseDesktopNavLabels
-                              ? localizedGroup.label
-                              : (localizedGroup.description ??
-                                localizedGroup.label)
-                          }
-                          style={HEADER_BUTTON_STYLE}
-                          data-no-camera-drag="true"
-                        >
-                          <group.icon className="pointer-events-none h-4 w-4 shrink-0" />
-                          <span
-                            data-testid={`header-nav-label-${primaryTab}`}
-                            className={`pointer-events-none truncate ${
-                              collapseDesktopNavLabels ? "hidden" : "inline"
-                            }`}
-                          >
-                            {localizedGroup.label}
-                          </span>
-                        </Button>
-                      );
-                    })}
-                  </nav>
-                )}
-                {breadcrumbNode ? (
-                  <div
-                    className="flex h-[2.375rem] min-w-0 items-center justify-center"
-                    data-testid={
-                      showMacDesktopTitleBar
-                        ? "desktop-window-titlebar-drag-zone"
-                        : undefined
-                    }
-                    data-no-camera-drag="true"
-                  >
-                    {breadcrumbNode}
-                  </div>
-                ) : (
-                  <div
-                    className="pointer-events-none h-[2.375rem] w-[clamp(3rem,8vw,8rem)] min-w-0"
-                    data-testid={
-                      showMacDesktopTitleBar
-                        ? "desktop-window-titlebar-drag-zone"
-                        : undefined
-                    }
-                    aria-hidden="true"
-                  />
-                )}
-                {rightDesktopControls}
-              </>
-            )}
-          </div>
+                  className="pointer-events-none h-[2.375rem] w-[clamp(3rem,8vw,8rem)] min-w-0"
+                  data-testid={
+                    showMacDesktopTitleBar
+                      ? "desktop-window-titlebar-drag-zone"
+                      : undefined
+                  }
+                  aria-hidden="true"
+                />
+              )}
+              {rightDesktopControls}
+            </>
+          )}
         </div>
-      </header>
-      {mobileBottomNav}
-    </>
+      </div>
+    </header>
   );
 }

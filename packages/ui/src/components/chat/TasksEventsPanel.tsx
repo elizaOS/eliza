@@ -23,17 +23,16 @@ import { useApp } from "../../state";
 import { resolveWidgetsForSlot } from "../../widgets";
 import { useChatSidebarVisibility } from "../../widgets/useChatSidebarVisibility";
 import {
-  APPS_SECTION_VISIBILITY_KEY,
   isWidgetVisible,
   type VisibilityCandidate,
 } from "../../widgets/visibility";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { AppsSection } from "./AppsSection";
 import {
-  buildAppsSectionVisibilityCandidate,
   type WidgetVisibilityCandidate,
   WidgetVisibilityEditor,
 } from "./WidgetVisibilityPanel";
+import { buildAppsSectionVisibilityCandidate } from "./WidgetVisibilityPanel.helpers";
 
 interface TasksEventsPanelProps {
   open: boolean;
@@ -267,7 +266,3 @@ export function TasksEventsPanel({
     </aside>
   );
 }
-
-// Re-export the Apps section visibility key so other modules can reference it
-// without depending on the panel module directly.
-export { APPS_SECTION_VISIBILITY_KEY };

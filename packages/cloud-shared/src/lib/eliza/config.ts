@@ -3,7 +3,11 @@
  * Determines API URL based on environment
  */
 
-import { BITROUTER_DEFAULT_TEXT_MODEL, FALLBACK_TEXT_SELECTOR_MODELS } from "../models";
+import {
+  CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
+  CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+  FALLBACK_TEXT_SELECTOR_MODELS,
+} from "../models";
 import { expandBitRouterModelIdCandidates } from "../providers/model-id-translation";
 
 /**
@@ -46,8 +50,8 @@ export function getElizaCloudApiUrl(): string {
  */
 export function getDefaultModels() {
   return {
-    small: process.env.ELIZAOS_CLOUD_SMALL_MODEL || BITROUTER_DEFAULT_TEXT_MODEL,
-    large: process.env.ELIZAOS_CLOUD_LARGE_MODEL || BITROUTER_DEFAULT_TEXT_MODEL,
+    small: process.env.ELIZAOS_CLOUD_SMALL_MODEL || CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+    large: process.env.ELIZAOS_CLOUD_LARGE_MODEL || CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
     embedding: process.env.ELIZAOS_CLOUD_EMBEDDING_MODEL || "text-embedding-3-small",
   };
 }

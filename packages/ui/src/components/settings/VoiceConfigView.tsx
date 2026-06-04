@@ -16,7 +16,6 @@ import {
 import { dispatchWindowEvent, VOICE_CONFIG_UPDATED_EVENT } from "../../events";
 import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
 import { useApp } from "../../state";
-import type { DesktopClickAuditItem } from "../../utils";
 import {
   hasConfiguredApiKey,
   PREMADE_VOICES,
@@ -38,8 +37,9 @@ import {
 import { Input } from "../ui/input";
 import { SaveFooter } from "../ui/save-footer";
 import { Switch } from "../ui/switch";
-import { AdvancedToggle, useAdvancedSettingsEnabled } from "./AdvancedToggle";
-import { useSettingsSave } from "./settings-control-primitives";
+import { AdvancedToggle } from "./AdvancedToggle";
+import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
+import { useSettingsSave } from "./settings-control-primitives.hooks";
 
 const DEFAULT_ELEVEN_FAST_MODEL = "eleven_flash_v2_5";
 
@@ -53,41 +53,6 @@ const MODEL_SIZES: Array<{
   { id: "medium", hintKey: "voiceconfigview.hintAccurate" },
   { id: "large", hintKey: "voiceconfigview.hintAccurate" },
 ];
-
-export const DESKTOP_TALKMODE_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
-  {
-    id: "voice-talkmode-refresh",
-    entryPoint: "settings:voice",
-    label: "Refresh Talk Mode",
-    expectedAction: "Refresh talk mode state and speaking status.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "voice-talkmode-start-stop",
-    entryPoint: "settings:voice",
-    label: "Start/Stop Talk Mode",
-    expectedAction: "Start or stop desktop talk mode.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "voice-talkmode-speak",
-    entryPoint: "settings:voice",
-    label: "Speak Test Phrase",
-    expectedAction: "Send a test phrase to talk mode speech output.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "voice-talkmode-stop-speaking",
-    entryPoint: "settings:voice",
-    label: "Stop Speaking",
-    expectedAction: "Stop current desktop speech output.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-] as const;
 
 export function DesktopTalkModePanel() {
   const desktopRuntime = isElectrobunRuntime();

@@ -6,6 +6,8 @@ import {
   ASSISTANT_INTENTS,
   LIFEOPS_ASSISTANT_INTENTS,
   LIFEOPS_VOICE_COMMAND_PROMPT,
+} from "./LifeOpsAssistantSection.helpers.js";
+import {
   LifeOpsAssistantIntentGrid,
   LifeOpsAssistantSection,
 } from "./LifeOpsAssistantSection.js";
@@ -54,7 +56,7 @@ const EXECUTIVE_ASSISTANT_INTENT_IDS = [
   "weekly-operating-review",
 ] as const;
 
-vi.mock("./LifeOpsChatAdapter.js", () => ({
+vi.mock("./LifeOpsChatAdapter.helpers.js", () => ({
   useLifeOpsChatLauncher: () => ({ openLifeOpsChat }),
 }));
 

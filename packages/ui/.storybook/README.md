@@ -87,13 +87,13 @@ bun run --cwd packages/ui build-storybook  # static build
 
 - **`ContinuousChatOverlay`** — covered by `ContinuousChatOverlay.test.tsx` (pure
   component, mock controller).
-- **`MINIMAL_SHELL`** — covered by `shell-chrome.test.ts`.
-- **Chat-shell wiring** (`hideComposer`, header nav, 3-panel restore, gating) —
-  covered at the source-invariant level in `App.cloud-shell.test.tsx`, and the
-  end-to-end behavior (overlay is the chat input; in-view composer hidden; nav
-  renders) was verified live via Playwright against a running agent.
-- **Deferred:** isolated render tests for `ChatView` (with `hideComposer`) and
-  `Header` (nav/tab-groups) need a richer `AppProvider` test harness — these
-  components read the full app context (e.g. `messages` must be iterable), so a
-  bare render throws. Worth a shared `renderWithAppContext(...)` helper that
-  seeds a complete mock `AppContextValue`; tracked, not blocking.
+- **Header-less shell** (`hideComposer`, no mounted `Header`, no primary nav bar,
+  gating) — covered at the source-invariant level in `App.cloud-shell.test.tsx`.
+  Navigation is conversational (the ambient chat overlay + command palette); the
+  end-to-end chat behavior (overlay is the chat input; in-view composer hidden)
+  was verified live via Playwright against a running agent.
+- **Deferred:** an isolated render test for `ChatView` (with `hideComposer`)
+  needs a richer `AppProvider` test harness — it reads the full app context
+  (e.g. `messages` must be iterable), so a bare render throws. Worth a shared
+  `renderWithAppContext(...)` helper that seeds a complete mock
+  `AppContextValue`; tracked, not blocking.

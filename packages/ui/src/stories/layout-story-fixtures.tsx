@@ -157,9 +157,3 @@ export function LayoutStoryContent() {
     </div>
   );
 }
-
-export const fullLayoutArgs = {
-  contentHeader: <LayoutStoryHeader />,
-  footer: <LayoutStoryFooter />,
-  sidebar: <LayoutStorySidebar />,
-};

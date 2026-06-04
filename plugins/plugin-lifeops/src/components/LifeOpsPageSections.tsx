@@ -72,25 +72,6 @@ function CompactEmptyState({ label }: { label: string }) {
   );
 }
 
-export function occurrenceSortValue(occurrence: LifeOpsOccurrenceView): number {
-  const candidates = [
-    occurrence.dueAt,
-    occurrence.snoozedUntil,
-    occurrence.scheduledAt,
-    occurrence.relevanceStartAt,
-  ];
-  for (const candidate of candidates) {
-    if (!candidate) {
-      continue;
-    }
-    const parsed = Date.parse(candidate);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-  return Number.MAX_SAFE_INTEGER;
-}
-
 function occurrenceWindowLabel(occurrence: LifeOpsOccurrenceView): string {
   if (occurrence.snoozedUntil) {
     return `Snoozed until ${formatDateTime(occurrence.snoozedUntil)}`;

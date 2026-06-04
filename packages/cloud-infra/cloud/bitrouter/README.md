@@ -44,6 +44,7 @@ Optional:
 railway add --service bitrouter
 railway variables --service bitrouter --set "BITROUTER_PROXY_TOKEN=<secret>" --skip-deploys
 railway variables --service bitrouter --set "BITROUTER_API_KEY=<brk_...>" --skip-deploys
+railway variables --service bitrouter --set "CEREBRAS_API_KEY=<csk_...>" --skip-deploys
 railway up --service bitrouter packages/cloud-infra/cloud/bitrouter --path-as-root
 railway domain --service bitrouter
 ```
@@ -53,4 +54,5 @@ After deploy, set Cloud API Worker secrets:
 ```bash
 wrangler secret put BITROUTER_API_KEY --env production
 wrangler secret put BITROUTER_BASE_URL --env production
+wrangler secret put CEREBRAS_API_KEY --env production # direct fallback when BitRouter is unavailable
 ```

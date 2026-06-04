@@ -3,7 +3,7 @@ import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.
 export default createViewBundleConfig({
   packageName: "@elizaos/plugin-clawville",
   viewId: "clawville",
-  entry: "./src/ui/ClawvilleOperatorSurface.tsx",
+  entry: "./src/ui/clawville-view-bundle.ts",
   outDir: "dist/views",
   componentExport: "ClawvilleOperatorSurface",
 });

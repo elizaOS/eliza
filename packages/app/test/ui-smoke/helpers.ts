@@ -1783,6 +1783,14 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       });
       return;
     }
+    if (request.method() === "GET" && url.pathname.endsWith("/timeline")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [], nextCursor: null }),
+      });
+      return;
+    }
     if (request.method() === "GET" && url.pathname.endsWith("/usage")) {
       await route.fulfill({
         status: 200,

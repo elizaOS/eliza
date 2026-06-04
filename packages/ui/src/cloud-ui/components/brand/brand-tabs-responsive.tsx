@@ -31,7 +31,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../select";
-import { BrandTabsContent } from "./brand-tabs";
 
 export interface TabItem {
   value: string;
@@ -160,5 +159,3 @@ export function BrandTabsResponsive({
     </TabsPrimitive.Root>
   );
 }
-
-export { BrandTabsContent };

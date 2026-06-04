@@ -17,8 +17,7 @@ import { useApp } from "../state";
 import { useIsDeveloperMode } from "../state/useDeveloperMode";
 import { resolveWidgetsForSlot } from "./registry";
 import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
-
-export const WIDGET_UI_ACTION_EVENT = "eliza:widget-ui-action" as const;
+import { WIDGET_UI_ACTION_EVENT } from "./WidgetHost.constants";
 
 export interface WidgetUiActionEventDetail {
   pluginId: string;
