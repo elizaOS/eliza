@@ -21,6 +21,10 @@ vi.mock(
 
 vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: vi.fn(), agentProps: {} }),
+  // plugin-calendar's client-calendar augments ElizaClient.prototype at import
+  // time (reached via the calendar UI now embedded in the overview section), so
+  // the mock must expose ElizaClient as a constructor with a writable prototype.
+  ElizaClient: class {},
 }));
 
 const openLifeOpsChat = vi.fn();

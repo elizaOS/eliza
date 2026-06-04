@@ -30,6 +30,13 @@ export default {
           import.meta.url,
         ),
       ),
+      // plugin-calendar's UI is consumed by LifeOps calendar/overview view
+      // sections. Resolve it from source so the view bundle does not depend on
+      // plugin-calendar being built first (its dist/ui.js is absent during the
+      // root build:views step in CI).
+      "@elizaos/plugin-calendar/ui": fileURLToPath(
+        new URL("../plugin-calendar/src/ui.ts", import.meta.url),
+      ),
     },
   },
 };
