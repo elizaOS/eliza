@@ -47,6 +47,10 @@ const GLASS_BAR =
 // Floating (un-scrimmed) text gets a soft shadow so it reads over bright views.
 const FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
 
+// Resting / typing view (not fullscreen) shows only the last couple of turns
+// with no scroll; fullscreen shows the whole history with scroll.
+const RESTING_THREAD_LINES = 2;
+
 // Glyphs (viewBox 0 0 36 36), rendered in currentColor inside a soft chip — the
 // up-arrow (send) and five-bar waveform (mic) from the shared composer language.
 const SEND_GLYPH = "M18 10L25 18H21V27H15V18H11Z";
@@ -237,8 +241,18 @@ export function ContinuousChatOverlay({
   // The thread is visible in either the partial (chevron) or fullscreen state.
   const open = expanded || fullscreen;
 
-  // Five tailored prompt suggestions for the resting overlay (pure/client-side).
-  const suggestions = usePromptSuggestions(messages);
+  // The resting composer strip shows three suggestions only when the overlay is
+  // idle (collapsed, ready, nothing typed/attached, not listening). This same
+  // flag gates the model fetch so the small model isn't called for a hidden
+  // strip.
+  const suggestionsVisible =
+    !open && !recording && !booting && canSend && !hasDraft && !hasImages;
+
+  // Three tailored prompt suggestions for the resting overlay (model-backed via
+  // TEXT_SMALL, with a static offline fallback).
+  const suggestions = usePromptSuggestions(messages, {
+    enabled: suggestionsVisible,
+  });
 
   // Whisper: when a genuinely NEW line arrives while collapsed, surface the
   // recent lines for 12s. Keyed on the last message id (not length, and the
@@ -272,9 +286,11 @@ export function ContinuousChatOverlay({
   // growth of the current line follows only when the reader is already resting
   // at the bottom, so scrolling up to read history is never yanked down.
   const wasOpenRef = React.useRef(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: lastId/lastContent/expanded/fullscreen are the triggers; the body reads refs
+  // biome-ignore lint/correctness/useExhaustiveDependencies: lastId/lastContent/fullscreen are the triggers; the body reads refs
   React.useLayoutEffect(() => {
-    if (!open) {
+    // Only the fullscreen transcript scrolls; the resting/typing view shows the
+    // last couple of turns with no scroll, so there is nothing to pin there.
+    if (!fullscreen) {
       wasOpenRef.current = false;
       return;
     }
@@ -298,7 +314,7 @@ export function ContinuousChatOverlay({
       threadRef.current?.focus();
       focusThreadRef.current = false;
     }
-  }, [lastId, lastContent, expanded, fullscreen]);
+  }, [lastId, lastContent, fullscreen]);
 
   const submit = React.useCallback(() => {
     const text = draft.trim();
@@ -510,16 +526,19 @@ export function ContinuousChatOverlay({
             }
           }}
           className={cn(
-            "pointer-events-auto relative mb-3 w-full max-w-3xl overflow-y-auto px-1 py-2",
-            // Fullscreen: grow to fill the viewport (flex child of the full-height
-            // root). Otherwise: a bottom-anchored partial panel.
-            fullscreen ? "min-h-0 flex-1" : "max-h-[58vh]",
-            // No visible scrollbar — the thread still scrolls, the chrome just hides.
-            "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            "pointer-events-auto relative mb-3 w-full max-w-3xl px-1 py-2",
+            // Fullscreen: fill the viewport and scroll the full history (scrollbar
+            // hidden). Resting/typing: just the last couple of turns, no scroll.
+            fullscreen
+              ? "min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              : "overflow-hidden",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
           )}
         >
-          {visibleMessages.map((m) => (
+          {(fullscreen
+            ? visibleMessages
+            : visibleMessages.slice(-RESTING_THREAD_LINES)
+          ).map((m) => (
             <ThreadLine key={m.id} message={m} floating />
           ))}
           {responding ? <TypingDots /> : null}
@@ -570,11 +589,11 @@ export function ContinuousChatOverlay({
         </div>
       ) : null}
 
-      {/* Five tailored prompt suggestions — keyboard-strip style, shown only on
+      {/* Three tailored prompt suggestions — keyboard-strip style, shown only on
           the resting overlay (collapsed, ready, nothing typed/attached, not
           listening) so they invite a first move without ever crowding an active
           conversation. Tapping one sends it immediately. */}
-      {!open && !recording && !booting && canSend && !hasDraft && !hasImages ? (
+      {suggestionsVisible ? (
         <div
           className="pointer-events-auto relative mb-2 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2"
           data-testid="chat-suggestions"
@@ -587,8 +606,8 @@ export function ContinuousChatOverlay({
               aria-label={s}
               onClick={() => pickSuggestion(s)}
               className={cn(
-                "max-w-full truncate rounded-full border border-white/15 bg-black/40 px-3.5 py-1.5",
-                "text-[13px] text-white/80 backdrop-blur-xl transition-colors",
+                "max-w-full truncate rounded-full border border-white/15 bg-black/40 px-3 py-1.5",
+                "text-[12px] text-white/80 backdrop-blur-xl transition-colors",
                 "shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_10px_30px_-12px_rgba(0,0,0,0.6)]",
                 "hover:border-white/30 hover:bg-white/15 hover:text-white",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",

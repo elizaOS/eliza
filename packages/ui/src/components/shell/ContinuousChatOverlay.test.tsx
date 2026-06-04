@@ -2,6 +2,13 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+// The resting overlay's suggestion strip fetches model suggestions via the
+// shared client; stub it so the strip stays on its static fallback in tests.
+vi.mock("../../api/client", () => ({
+  client: { fetch: vi.fn().mockRejectedValue(new Error("no api in test")) },
+}));
+
 import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
 import type { ShellController } from "./useShellController";
 
@@ -152,6 +159,34 @@ describe("ContinuousChatOverlay", () => {
     expect(backdrop.className).toContain("opacity-0");
   });
 
+  it("shows only the last 2 turns with no scroll while typing, full history in fullscreen", () => {
+    const controller = makeController({
+      messages: [
+        { id: "a", role: "assistant", content: "one", createdAt: 1 },
+        { id: "b", role: "user", content: "two", createdAt: 2 },
+        { id: "c", role: "assistant", content: "three", createdAt: 3 },
+      ],
+    } as unknown as Partial<ShellController>);
+    render(<ContinuousChatOverlay controller={controller} />);
+
+    // Typing (partial): only the last 2 turns, no scroll.
+    fireEvent.focus(screen.getByLabelText("message"));
+    const log = document.getElementById("continuous-thread");
+    expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(2);
+    expect(log?.className).toContain("overflow-hidden");
+    expect(log?.textContent).not.toContain("one");
+    expect(log?.textContent).toContain("three");
+
+    // Fullscreen: full history + scroll.
+    fireEvent.click(screen.getByLabelText("expand to full screen"));
+    const fsLog = document.getElementById("continuous-thread");
+    expect(fsLog?.querySelectorAll('[data-testid="thread-line"]').length).toBe(
+      3,
+    );
+    expect(fsLog?.className).toContain("overflow-y-auto");
+    expect(fsLog?.textContent).toContain("one");
+  });
+
   it("shows the attach (+) control", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     expect(screen.getByLabelText("attach image")).toBeTruthy();
@@ -236,7 +271,21 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getAllByTestId("chat-composer-textarea")).toHaveLength(1);
   });
 
-  it("scrolls to the latest line when a new message arrives while open", () => {
+  it("shows exactly three resting prompt suggestions", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: [],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    const strip = screen.getByTestId("chat-suggestions");
+    expect(
+      strip.querySelectorAll('[data-testid^="chat-suggestion-"]'),
+    ).toHaveLength(3);
+  });
+
+  it("scrolls to the latest line when a new message arrives in fullscreen", () => {
     const base = [{ id: "a", role: "assistant", content: "hi", createdAt: 1 }];
     const { rerender } = render(
       <ContinuousChatOverlay
@@ -245,7 +294,8 @@ describe("ContinuousChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.focus(screen.getByLabelText("message")); // open the thread
+    // Only the fullscreen transcript scrolls; the resting/typing view does not.
+    fireEvent.click(screen.getByLabelText("expand to full screen"));
     const scrollIntoView = Element.prototype.scrollIntoView as ReturnType<
       typeof vi.fn
     >;
