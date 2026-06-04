@@ -12,6 +12,7 @@ import {
   type CodingAgentAddAgentInput,
   type CodingAgentOrchestratorStatus,
   type CodingAgentRerunFromEventInput,
+  type CodingAgentRestartWithEditedPlanInput,
   type CodingAgentRetryTurnInput,
   type CodingAgentTaskArtifactRecord,
   type CodingAgentTaskEventRecord,
@@ -1194,6 +1195,180 @@ function PlanSection({ plan, t }: { plan: NormalizedPlan; t: Translate }) {
   );
 }
 
+function EditedPlanRestartSection({
+  plan,
+  latestPlanRevisionId,
+  busy,
+  onSubmit,
+  t,
+}: {
+  plan: Record<string, unknown>;
+  latestPlanRevisionId?: string;
+  busy: boolean;
+  onSubmit: (input: CodingAgentRestartWithEditedPlanInput) => void;
+  t: Translate;
+}) {
+  const planSource = useMemo(() => JSON.stringify(plan, null, 2), [plan]);
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(planSource);
+  const [summary, setSummary] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const toggleLabel = t("orchestrator.action.editPlan", {
+    defaultValue: "Edit plan",
+  });
+  const restartLabel = t("orchestrator.action.restartWithPlan", {
+    defaultValue: "Restart with plan",
+  });
+  const summaryLabel = t("orchestrator.planEdit.summary", {
+    defaultValue: "Edit summary",
+  });
+  const draftLabel = t("orchestrator.planEdit.draft", {
+    defaultValue: "Plan JSON",
+  });
+  const baseLabel = t("orchestrator.planEdit.base", {
+    defaultValue: "Base revision",
+  });
+  const currentPlanLabel = t("orchestrator.planEdit.currentPlan", {
+    defaultValue: "Current plan",
+  });
+  const { ref: toggleRef, agentProps: toggleAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "inspector-plan-edit-toggle",
+      role: "button",
+      label: toggleLabel,
+      group: "orchestrator-inspector",
+      description: "Open the plan JSON editor",
+    });
+  const { ref: restartRef, agentProps: restartAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "inspector-restart-edited-plan",
+      role: "button",
+      label: restartLabel,
+      group: "orchestrator-inspector",
+      description: "Restart this task with the edited plan",
+    });
+
+  useEffect(() => {
+    setDraft(planSource);
+    setSummary("");
+    setError(null);
+  }, [planSource]);
+
+  const submit = () => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(draft);
+    } catch {
+      setError(
+        t("orchestrator.planEdit.invalidJson", {
+          defaultValue: "Plan must be valid JSON.",
+        }),
+      );
+      return;
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      setError(
+        t("orchestrator.planEdit.invalidObject", {
+          defaultValue: "Plan must be a JSON object.",
+        }),
+      );
+      return;
+    }
+    const confirmed =
+      typeof window === "undefined" ||
+      window.confirm(
+        t("orchestrator.confirmRestartWithPlan", {
+          defaultValue:
+            "Restart this task with the edited plan? Active agents will be stopped first.",
+        }),
+      );
+    if (!confirmed) return;
+    setError(null);
+    onSubmit({
+      plan: parsed as Record<string, unknown>,
+      basePlanRevisionId: latestPlanRevisionId,
+      editSummary: summary.trim() || undefined,
+      stopActive: true,
+    });
+  };
+
+  return (
+    <InspectorSection
+      title={t("orchestrator.planEdit.title", {
+        defaultValue: "Plan editor",
+      })}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0 text-2xs text-muted">
+          <span className="font-semibold text-muted-strong">{baseLabel}</span>
+          <span className="ml-1 truncate">
+            {latestPlanRevisionId ?? currentPlanLabel}
+          </span>
+        </div>
+        <button
+          ref={toggleRef}
+          type="button"
+          disabled={busy}
+          onClick={() => setOpen((prev) => !prev)}
+          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-border/50 px-2 text-2xs font-semibold text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt disabled:opacity-50"
+          data-testid="orchestrator-plan-edit-toggle"
+          {...toggleAgentProps}
+        >
+          {open ? (
+            <ChevronUp className="h-3 w-3" />
+          ) : (
+            <ChevronDown className="h-3 w-3" />
+          )}
+          {toggleLabel}
+        </button>
+      </div>
+      {open ? (
+        <div className="mt-2 space-y-2">
+          <label className="block">
+            <FieldLabel>{summaryLabel}</FieldLabel>
+            <input
+              value={summary}
+              onChange={(event) => setSummary(event.target.value)}
+              className={FIELD_CLASS}
+              placeholder={t("orchestrator.planEdit.summaryPlaceholder", {
+                defaultValue: "What changed",
+              })}
+              data-testid="orchestrator-plan-edit-summary"
+            />
+          </label>
+          <label className="block">
+            <FieldLabel>{draftLabel}</FieldLabel>
+            <textarea
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              rows={8}
+              className={`${FIELD_CLASS} resize-y font-mono leading-relaxed`}
+              spellCheck={false}
+              data-testid="orchestrator-plan-draft"
+            />
+          </label>
+          {error ? <p className="text-2xs text-danger">{error}</p> : null}
+          <div className="flex justify-end">
+            <Button
+              ref={restartRef}
+              type="button"
+              size="sm"
+              disabled={busy}
+              onClick={submit}
+              className="h-7 gap-1.5 px-2.5 text-xs-tight"
+              data-testid="orchestrator-plan-restart"
+              {...restartAgentProps}
+            >
+              <RotateCcw className="h-3 w-3" />
+              {restartLabel}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </InspectorSection>
+  );
+}
+
 function AcceptanceSection({
   criteria,
   t,
@@ -1870,6 +2045,7 @@ function TaskInspector({
   onDelete,
   onFork,
   onRestart,
+  onRestartWithEditedPlan,
   onValidate,
   onSetPriority,
   onToggleAddAgent,
@@ -1892,6 +2068,9 @@ function TaskInspector({
   onDelete: () => void;
   onFork: () => void;
   onRestart: () => void;
+  onRestartWithEditedPlan: (
+    input: CodingAgentRestartWithEditedPlanInput,
+  ) => void;
   onValidate: (passed: boolean) => void;
   onSetPriority: (priority: TaskPriority) => void;
   onToggleAddAgent: () => void;
@@ -1906,6 +2085,10 @@ function TaskInspector({
     (a, b) => b.lastActivityAt - a.lastActivityAt,
   );
   const artifacts = [...detail.artifacts].reverse().slice(0, 12);
+  const latestPlanRevisionId =
+    detail.planRevisions.length > 0
+      ? detail.planRevisions[detail.planRevisions.length - 1]?.id
+      : undefined;
   const archived = detail.status === "archived";
   const terminal =
     archived || detail.status === "done" || detail.status === "failed";
@@ -2204,6 +2387,15 @@ function TaskInspector({
       </InspectorSection>
 
       {plan ? <PlanSection plan={plan} t={t} /> : null}
+      {detail.currentPlan && !archived ? (
+        <EditedPlanRestartSection
+          plan={detail.currentPlan}
+          latestPlanRevisionId={latestPlanRevisionId}
+          busy={busy}
+          onSubmit={onRestartWithEditedPlan}
+          t={t}
+        />
+      ) : null}
       {detail.acceptanceCriteria.length > 0 ? (
         <AcceptanceSection criteria={detail.acceptanceCriteria} t={t} />
       ) : null}
@@ -4015,6 +4207,11 @@ export function OrchestratorWorkbench() {
                 client.restartOrchestratorTask(detail.id, { stopActive: true }),
               );
             }}
+            onRestartWithEditedPlan={(input) =>
+              runMutation(() =>
+                client.restartOrchestratorTaskWithEditedPlan(detail.id, input),
+              )
+            }
             onValidate={(passed) =>
               runMutation(() =>
                 client.validateOrchestratorTask(detail.id, {

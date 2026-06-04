@@ -351,8 +351,10 @@
               Retry turn, rerun from event, restart, and restart with edited plan
               now exist as backend routes and UI client methods. The workbench
               exposes compact contextual recovery buttons from task, session, and
-              timeline detail surfaces. Operator input conflicts return explicit
-              conflict errors instead of pretending to succeed.
+              timeline detail surfaces, plus a compact inspector plan editor
+              that restarts a task from edited plan JSON. Operator input
+              conflicts return explicit conflict errors instead of pretending to
+              succeed.
             </p>
           </div>
           <div class="card">
@@ -607,11 +609,12 @@
             </p>
           </div>
           <div class="card">
-            <h3>Plan editor UI</h3>
+            <h3>Guided plan editor UX</h3>
             <p>
-              The data model and routes support edited plan revisions. The UI
-              still needs a real plan-editing surface that shows base revision,
-              edit summary, and restart impact before creating the revision.
+              A minimal inspector JSON editor can restart from an edited plan and
+              records the base revision plus edit summary. The next UX step is a
+              guided editor with structured step controls, plan selection,
+              previews, and clearer before/after impact.
             </p>
           </div>
           <div class="card">

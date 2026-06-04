@@ -176,6 +176,7 @@ async function installOrchestratorWorkbenchRoutes(
   messageBodies: JsonRecord[];
   addAgentBodies: JsonRecord[];
   patchBodies: JsonRecord[];
+  restartWithEditedPlanBodies: JsonRecord[];
   actionLog: string[];
 }> {
   let detail: JsonRecord | null = initial.detail ?? null;
@@ -185,6 +186,7 @@ async function installOrchestratorWorkbenchRoutes(
   const messageBodies: JsonRecord[] = [];
   const addAgentBodies: JsonRecord[] = [];
   const patchBodies: JsonRecord[] = [];
+  const restartWithEditedPlanBodies: JsonRecord[] = [];
   const actionLog: string[] = [];
 
   await page.route("**/api/orchestrator/**", async (route) => {
@@ -378,6 +380,28 @@ async function installOrchestratorWorkbenchRoutes(
     if (
       method === "POST" &&
       pathname ===
+        "/api/orchestrator/tasks/smoke-task-1/restart-with-edited-plan"
+    ) {
+      const body = JSON.parse(request.postData() ?? "{}") as JsonRecord;
+      restartWithEditedPlanBodies.push(body);
+      actionLog.push(
+        `restart-edited:${body.stopActive === true ? "stop-active" : "keep-active"}`,
+      );
+      const nextPlan = body.plan;
+      if (
+        nextPlan &&
+        typeof nextPlan === "object" &&
+        !Array.isArray(nextPlan)
+      ) {
+        detail = { ...(detail ?? taskDetail()), currentPlan: nextPlan };
+      }
+      await fulfillJson(route, detail ?? taskDetail());
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      pathname ===
         "/api/orchestrator/tasks/smoke-task-1/agents/session-codex/stop"
     ) {
       actionLog.push("stop:session-codex");
@@ -452,6 +476,7 @@ async function installOrchestratorWorkbenchRoutes(
     messageBodies,
     addAgentBodies,
     patchBodies,
+    restartWithEditedPlanBodies,
     actionLog,
   };
 }
@@ -520,6 +545,26 @@ function richOrchestratorFixture() {
         { title: "Run browser smoke checks", status: "pending" },
       ],
     },
+    planRevisions: [
+      {
+        id: "plan-rev-1",
+        threadId: "smoke-task-1",
+        plan: {
+          summary: "Build, review, and verify the Kanban planner.",
+          steps: [
+            { title: "Generate app shell", status: "completed" },
+            { title: "Review visual affordances", status: "in_progress" },
+            { title: "Run browser smoke checks", status: "pending" },
+          ],
+        },
+        basePlanRevisionId: null,
+        editSummary: null,
+        createdBy: "system",
+        metadata: {},
+        timestamp: Date.parse(NOW),
+        createdAt: NOW,
+      },
+    ],
     providerPolicy: {
       preferredFramework: "codex",
       providerSource: "cerebras",
@@ -706,6 +751,36 @@ test.describe("orchestrator GUI workbench", () => {
     await expect(inspector).toContainText("Browser smoke report");
     await expect(inspector).toContainText("cerebras · gpt-oss-120b");
     await expect(inspector).toContainText("codex · gpt-5.4");
+    await expect(inspector).toContainText("plan-rev-1");
+
+    const editedPlan = {
+      summary: "Build, review, and verify the Kanban planner with recovery.",
+      steps: [
+        { title: "Generate app shell", status: "completed" },
+        { title: "Review visual affordances", status: "completed" },
+        { title: "Retry failed smoke path", status: "pending" },
+      ],
+    };
+    await inspector.getByTestId("orchestrator-plan-edit-toggle").click();
+    await inspector
+      .getByTestId("orchestrator-plan-edit-summary")
+      .fill("Narrow recovery path");
+    await inspector
+      .getByTestId("orchestrator-plan-draft")
+      .fill(JSON.stringify(editedPlan, null, 2));
+    page.once("dialog", (dialog) => dialog.accept());
+    await inspector.getByTestId("orchestrator-plan-restart").click();
+    await expect
+      .poll(() => requests.restartWithEditedPlanBodies)
+      .toContainEqual({
+        plan: editedPlan,
+        basePlanRevisionId: "plan-rev-1",
+        editSummary: "Narrow recovery path",
+        stopActive: true,
+      });
+    await expect
+      .poll(() => requests.actionLog)
+      .toContain("restart-edited:stop-active");
 
     await page.getByTestId("orchestrator-inspect-session").first().click();
     const operatorDetail = page.getByTestId("orchestrator-operator-detail");
