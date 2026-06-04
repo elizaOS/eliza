@@ -1,5 +1,5 @@
 import type { DownloadJob } from "../../api/client-local-inference";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { formatByteSize } from "../../utils/format";
 import { formatEta, progressPercent } from "./hub-utils";
 

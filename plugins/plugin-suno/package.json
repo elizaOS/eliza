@@ -44,13 +44,13 @@
     "scripts": {
         "build": "tsup --format esm",
         "dev": "tsup --format esm --watch",
-        "lint": "echo \"Lint skipped for release\"",
+        "lint": "bunx @biomejs/biome check .",
         "lint:check": "bun run lint",
         "lint:fix": "bunx @biomejs/biome check --write ./src",
         "format": "bunx @biomejs/biome format --write ./src",
         "format:check": "bunx @biomejs/biome format ./src",
         "test": "vitest run --config vitest.config.ts",
-        "typecheck": "echo \"Typecheck skipped for release\""
+        "typecheck": "tsgo --noEmit -p tsconfig.json"
     },
     "devDependencies": {
         "@biomejs/biome": "^2.4.14",

@@ -20,7 +20,7 @@ import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "./bridge/electrobun-rpc";
-import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer";
+import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer.helpers";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
 import { LoginView } from "./components/auth/LoginView";
@@ -28,7 +28,6 @@ import { SaveCommandModal } from "./components/chat/SaveCommandModal";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
-import type { PageScope } from "./components/pages/page-scoped-conversations";
 import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSection";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
@@ -36,13 +35,10 @@ import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
-import { Header } from "./components/shell/Header";
 import { HomePill } from "./components/shell/HomePill";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
-import {
-  ShellControllerProvider,
-  useShellControllerContext,
-} from "./components/shell/ShellControllerContext";
+import { ShellControllerProvider } from "./components/shell/ShellControllerContext";
+import { useShellControllerContext } from "./components/shell/ShellControllerContext.hooks";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
 import { StartupScreen } from "./components/shell/StartupScreen";
@@ -50,7 +46,7 @@ import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
 import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
 import { ErrorBoundary } from "./components/ui/error-boundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
-import { useBootConfig } from "./config/boot-config-react";
+import { useBootConfig } from "./config/boot-config-react.hooks";
 import type { CompanionShellComponentProps } from "./config/boot-config-store";
 import {
   FOCUS_CONNECTOR_EVENT,
@@ -66,13 +62,11 @@ import {
   getAppSlugFromPath,
   getWindowNavigationPath,
   isAndroidPhoneSurfaceEnabled,
-  isAppsToolTab,
   isRouteRootPath,
   shouldUseHashNavigation,
 } from "./navigation";
 import { isIOS, isNative } from "./platform/init";
 import { type ActionNotice, useApp } from "./state";
-import type { FlaminaGuideTopic } from "./state/types";
 
 const MOBILE_NAV_PADDING_CLASS =
   "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px))]";
@@ -357,13 +351,7 @@ function TabScrollView({
   );
 }
 
-function TabContentView({
-  children,
-}: {
-  children: ReactNode;
-  chatScope?: PageScope;
-  chatDisabled?: boolean;
-}) {
+function TabContentView({ children }: { children: ReactNode }) {
   return (
     <AppWorkspaceChrome
       testId="tab-content-view"
@@ -516,8 +504,20 @@ function remoteViewMatchesTab(
 }
 
 // These paths are owned by the built-in shell and must never be handed off to
-// a remote bundle, even if a plugin registers a remote view for them.
-const SHELL_RESERVED_PATHS = new Set(["/views", "/apps"]);
+// a remote bundle, even if the view registry returns a bundleUrl for them.
+const SHELL_RESERVED_PATHS = new Set([
+  "/views",
+  "/apps",
+  "/apps/plugins",
+  "/apps/skills",
+  "/apps/trajectories",
+  "/apps/relationships",
+  "/apps/memories",
+  "/apps/runtime",
+  "/apps/database",
+  "/apps/logs",
+  "/apps/tasks",
+]);
 
 function findRemoteViewForRoute(
   views: ViewRegistryEntry[],
@@ -560,7 +560,7 @@ function renderRemoteView(view: ViewRegistryEntry): ReactNode {
  */
 function ViewUnavailableFallback(): ReactNode {
   return (
-    <TabContentView chatDisabled>
+    <TabContentView>
       <ViewManagerPage />
     </TabContentView>
   );
@@ -571,7 +571,7 @@ function renderPhoneSurface(
   Component: ComponentType,
 ): ReactNode {
   return enabled ? (
-    <TabContentView chatScope="page-phone">
+    <TabContentView>
       <Component />
     </TabContentView>
   ) : (
@@ -582,7 +582,7 @@ function renderPhoneSurface(
 function renderAppsSurface(navigationPath: string): ReactNode {
   if (!APPS_ENABLED) return <ViewUnavailableFallback />;
   return (
-    <TabContentView chatScope="page-apps">
+    <TabContentView>
       {getAppSlugFromPath(navigationPath) ? (
         <AppsPageView />
       ) : (
@@ -596,13 +596,13 @@ function renderStaticViewRouterTab({
   tab,
   androidPhoneSurfaceEnabled,
   navigationPath,
-  onCharacterHeaderActionsChange,
+  settingsInitialSection,
   LifeOpsPageView,
 }: {
   tab: string;
   androidPhoneSurfaceEnabled: boolean;
   navigationPath: string;
-  onCharacterHeaderActionsChange?: (actions: ReactNode | null) => void;
+  settingsInitialSection?: string | null;
   LifeOpsPageView: ComponentType | null | undefined;
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
@@ -624,8 +624,11 @@ function renderStaticViewRouterTab({
       </TabContentView>
     ),
     settings: (
-      <TabContentView chatDisabled>
-        <SettingsView key="settings-root" />
+      <TabContentView>
+        <SettingsView
+          key="settings-root"
+          initialSection={settingsInitialSection ?? undefined}
+        />
       </TabContentView>
     ),
     plugins: (
@@ -695,10 +698,8 @@ function renderStaticViewRouterTab({
     tab === "documents"
   ) {
     return (
-      <TabContentView chatScope="page-character">
-        <CharacterEditor
-          onHeaderActionsChange={onCharacterHeaderActionsChange}
-        />
+      <TabContentView>
+        <CharacterEditor />
       </TabContentView>
     );
   }
@@ -729,7 +730,7 @@ function renderViewRouterContent({
   appSlug,
   androidPhoneSurfaceEnabled,
   LifeOpsPageView,
-  onCharacterHeaderActionsChange,
+  settingsInitialSection,
 }: {
   tab: string;
   dynamicPage: ResolvedDynamicPage | null;
@@ -740,7 +741,7 @@ function renderViewRouterContent({
   appSlug: string | null;
   androidPhoneSurfaceEnabled: boolean;
   LifeOpsPageView: ComponentType | null | undefined;
-  onCharacterHeaderActionsChange?: (actions: ReactNode | null) => void;
+  settingsInitialSection?: string | null;
 }): ReactNode {
   if (visibleDynamicPage(dynamicPage, developerModeEnabled)) {
     return (
@@ -751,7 +752,7 @@ function renderViewRouterContent({
   }
   if (visibleDynamicPage(dynamicAppPage, developerModeEnabled)) {
     return (
-      <TabContentView chatScope="page-apps">
+      <TabContentView>
         <DynamicPluginPage resolved={dynamicAppPage} />
       </TabContentView>
     );
@@ -767,15 +768,15 @@ function renderViewRouterContent({
     tab,
     androidPhoneSurfaceEnabled,
     navigationPath,
-    onCharacterHeaderActionsChange,
+    settingsInitialSection,
     LifeOpsPageView,
   });
 }
 
 function ViewRouter({
-  onCharacterHeaderActionsChange,
+  settingsInitialSection,
 }: {
-  onCharacterHeaderActionsChange?: (actions: ReactNode | null) => void;
+  settingsInitialSection?: string | null;
 }) {
   const { tab } = useApp();
   const { lifeOpsPageView: LifeOpsPageView } = useBootConfig();
@@ -814,7 +815,7 @@ function ViewRouter({
     appSlug,
     androidPhoneSurfaceEnabled,
     LifeOpsPageView,
-    onCharacterHeaderActionsChange,
+    settingsInitialSection,
   });
 
   return (
@@ -837,20 +838,11 @@ const APP_SHELL_CLASS =
 type ShellContentProps = {
   CompanionShell: ComponentType<CompanionShellComponentProps> | undefined;
   actionNotice: ActionNotice | null;
-  characterHeaderActions: ReactNode | null;
   customActionsPanelOpen: boolean;
   desktopTabBar: ReactNode;
-  handleDeferredTaskOpen: (task: FlaminaGuideTopic) => void;
-  isAppsToolPage: boolean;
-  isCharacterPage: boolean;
   isChat: boolean;
   isCompanionTab: boolean;
-  isDesktopWorkspacePage: boolean;
   isFullBleed: boolean;
-  isHeartbeats: boolean;
-  isSettingsPage: boolean;
-  isWallets: boolean;
-  setCharacterHeaderActions: (actions: ReactNode | null) => void;
   setCustomActionsEditorOpen: (open: boolean) => void;
   setCustomActionsPanelOpen: (open: boolean) => void;
   setEditingAction: (action: import("./api").CustomActionDef | null) => void;
@@ -872,21 +864,6 @@ function CompanionShellContent(props: ShellContentProps): ReactNode {
   return <div key="companion-shell" className={APP_SHELL_CLASS} />;
 }
 
-function StreamShellContent(): ReactNode {
-  return (
-    <div key="stream-shell" className={APP_SHELL_CLASS}>
-      <Header />
-      <main
-        className={`flex-1 min-h-0 overflow-hidden ${MOBILE_NAV_PADDING_CLASS}`}
-      >
-        <LazyViewBoundary>
-          <StreamView />
-        </LazyViewBoundary>
-      </main>
-    </div>
-  );
-}
-
 /** Time-of-day greeting for the ambient chat home's backdrop (Her-style). */
 function minimalHomeGreeting(): string {
   const h = new Date().getHours();
@@ -897,13 +874,12 @@ function minimalHomeGreeting(): string {
 }
 
 function ChatRouteShellContent(props: ShellContentProps): ReactNode {
-  // The /chat route is the ambient conversational home: just open space under
-  // the header, with the always-present ContinuousChatOverlay (mounted at the
-  // shell root) as the whole chat experience. Ask it anything, or ask it to
-  // open a view ("show me the coding view") which surfaces over this base.
+  // The /chat route is the ambient conversational home: open space behind the
+  // always-present ContinuousChatOverlay (mounted at the shell root), which is
+  // the whole chat experience. Ask it anything, or ask it to open a view ("show
+  // me the coding view") which surfaces over this base.
   return (
     <div key="chat-shell" className={APP_SHELL_CLASS}>
-      <Header />
       <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
         <p className="-translate-y-8 select-none text-center text-3xl font-light italic text-muted/35">
           {minimalHomeGreeting()}
@@ -921,85 +897,6 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
   );
 }
 
-function HeartbeatsShellContent(): ReactNode {
-  return (
-    <div key="heartbeats-shell" className={APP_SHELL_CLASS}>
-      <Header />
-      <div
-        className={`flex flex-1 min-h-0 min-w-0 overflow-hidden ${MOBILE_NAV_PADDING_CLASS}`}
-      >
-        <LazyViewBoundary>
-          <AutomationsFeed key="automations-view-desktop" />
-        </LazyViewBoundary>
-      </div>
-    </div>
-  );
-}
-
-function SettingsShellContent(props: ShellContentProps): ReactNode {
-  return (
-    <div key={`settings-shell-${props.tab}`} className={APP_SHELL_CLASS}>
-      <Header />
-      <AppWorkspaceChrome
-        testId="settings-workspace"
-        chatDisabled
-        main={
-          <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-            <LazyViewBoundary>
-              <SettingsView
-                key={
-                  props.tab === "voice" ? "settings-identity" : "settings-root"
-                }
-                initialSection={
-                  props.tab === "voice"
-                    ? "identity"
-                    : (props.settingsInitialSection ?? undefined)
-                }
-              />
-            </LazyViewBoundary>
-          </div>
-        }
-      />
-    </div>
-  );
-}
-
-function WalletsShellContent(): ReactNode {
-  return (
-    <div key="wallets-shell" className={APP_SHELL_CLASS}>
-      <Header />
-      <AppWorkspaceChrome
-        testId="wallets-workspace"
-        chatDisabled
-        main={
-          <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-            <LazyViewBoundary>
-              <WalletInventoryPage />
-            </LazyViewBoundary>
-          </div>
-        }
-      />
-    </div>
-  );
-}
-
-function RoutedShellContent(props: ShellContentProps): ReactNode {
-  const headerActions = props.isCharacterPage
-    ? props.characterHeaderActions
-    : null;
-  return (
-    <div key={`tab-shell-${props.tab}`} className={APP_SHELL_CLASS}>
-      <Header pageRightExtras={headerActions} />
-      {props.desktopTabBar}
-      <main className={routedShellMainClass(props.tab)}>
-        <ViewRouter
-          onCharacterHeaderActionsChange={props.setCharacterHeaderActions}
-        />
-      </main>
-    </div>
-  );
-}
-
 function routedShellMainClass(tab: string): string {
   const pagePadding =
     tab === "browser" || tab === "apps" || tab === "views"
@@ -1009,55 +906,29 @@ function routedShellMainClass(tab: string): string {
   return `flex flex-1 min-h-0 min-w-0 overflow-hidden ${pagePadding} ${mobilePadding}`;
 }
 
-function CharacterShellContent(props: ShellContentProps): ReactNode {
+/**
+ * The single routed shell for every view. ViewRouter already resolves every tab
+ * — static page views, dynamic plugin pages, and remote view bundles — so the
+ * shell only adds the desktop tab bar and per-tab padding around it. Chat is the
+ * always-present ContinuousChatOverlay floating over this base, never embedded
+ * per-view.
+ */
+function RoutedShellContent(props: ShellContentProps): ReactNode {
   return (
-    <div key={`character-shell-${props.tab}`} className={APP_SHELL_CLASS}>
-      <Header pageRightExtras={props.characterHeaderActions} />
+    <div key={`tab-shell-${props.tab}`} className={APP_SHELL_CLASS}>
       {props.desktopTabBar}
-      <div
-        className={`flex flex-1 min-h-0 min-w-0 overflow-hidden ${MOBILE_NAV_PADDING_CLASS}`}
-      >
-        <ViewRouter
-          onCharacterHeaderActionsChange={props.setCharacterHeaderActions}
-        />
-      </div>
+      <main className={routedShellMainClass(props.tab)}>
+        <ViewRouter settingsInitialSection={props.settingsInitialSection} />
+      </main>
     </div>
   );
 }
 
-function AppsToolShellContent(props: ShellContentProps): ReactNode {
-  return (
-    <div key={`apps-tool-shell-${props.tab}`} className={APP_SHELL_CLASS}>
-      <Header />
-      {props.desktopTabBar}
-      <div
-        className={`flex flex-1 min-h-0 min-w-0 overflow-hidden ${MOBILE_NAV_PADDING_CLASS}`}
-      >
-        <ViewRouter />
-      </div>
-    </div>
-  );
-}
-
-function DesktopWorkspaceShellContent(props: ShellContentProps): ReactNode {
-  return (
-    <div key={`desktop-shell-${props.tab}`} className={APP_SHELL_CLASS}>
-      <Header />
-      {props.desktopTabBar}
-      <div
-        className={`flex flex-1 min-h-0 min-w-0 ${MOBILE_NAV_PADDING_CLASS}`}
-      >
-        <LazyViewBoundary>
-          <DesktopWorkspaceSection />
-        </LazyViewBoundary>
-      </div>
-    </div>
-  );
-}
-
+/**
+ * Edge-to-edge surface for pages that register `fullBleed` — no tab bar, no
+ * padding. The page owns its full window (e.g. the odysseus orchestrator).
+ */
 function FullBleedShellContent(props: ShellContentProps): ReactNode {
-  // Edge-to-edge: no Header, no desktop tab bar, no surrounding padding — the
-  // page owns its full window (e.g. the odysseus orchestrator).
   return (
     <div key={`fullbleed-shell-${props.tab}`} className={APP_SHELL_CLASS}>
       <main className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
@@ -1067,20 +938,18 @@ function FullBleedShellContent(props: ShellContentProps): ReactNode {
   );
 }
 
+/**
+ * Picks the shell wrapper for the active tab. Only three surfaces are genuinely
+ * distinct from a routed view: `fullBleed` pages (edge-to-edge), the ambient
+ * `/chat` home (open space behind the overlay), and the host-injected companion
+ * shell. Everything else is a view rendered through the single
+ * RoutedShellContent → ViewRouter path.
+ */
 function ShellContent(props: ShellContentProps): ReactNode {
   if (props.isFullBleed) return <FullBleedShellContent {...props} />;
   if (props.isChat) return <ChatRouteShellContent {...props} />;
   const companionContent = CompanionShellContent(props);
   if (companionContent) return companionContent;
-  if (props.tab === "stream") return <StreamShellContent />;
-  if (props.isHeartbeats) return <HeartbeatsShellContent />;
-  if (props.isSettingsPage) return <SettingsShellContent {...props} />;
-  if (props.isWallets) return <WalletsShellContent />;
-  if (props.isCharacterPage) return <CharacterShellContent {...props} />;
-  if (props.isAppsToolPage) return <AppsToolShellContent {...props} />;
-  if (props.isDesktopWorkspacePage) {
-    return <DesktopWorkspaceShellContent {...props} />;
-  }
   return <RoutedShellContent {...props} />;
 }
 
@@ -1264,18 +1133,10 @@ export function App() {
     import("./api").CustomActionDef | null
   >(null);
   const [desktopShuttingDown, setDesktopShuttingDown] = useState(false);
-  const [characterHeaderActions, setCharacterHeaderActions] =
-    useState<ReactNode | null>(null);
 
   const isCompanionTab = tab === "companion";
   const isChat = tab === "chat";
-  const isCharacterPage =
-    tab === "character" || tab === "character-select" || tab === "documents";
-  const isWallets = tab === "inventory";
-  const isHeartbeats = tab === "triggers" || tab === "automations";
   const isSettingsPage = tab === "settings" || tab === "voice";
-  const isAppsToolPage = isAppsToolTab(tab);
-  const isDesktopWorkspacePage = tab === "desktop";
   const isFullBleed = useTabIsFullBleed(tab);
 
   // Keep hook order stable across first-run/auth state transitions.
@@ -1292,24 +1153,6 @@ export function App() {
     setCustomActionsEditorOpen(false);
     setEditingAction(null);
   }, []);
-
-  const handleDeferredTaskOpen = useCallback(
-    (task: FlaminaGuideTopic) => {
-      if (task === "voice") {
-        setTab("voice");
-        return;
-      }
-      if (task === "permissions") {
-        setSettingsInitialSection("permissions");
-      } else if (task === "provider") {
-        setSettingsInitialSection("ai-model");
-      } else {
-        setSettingsInitialSection(null);
-      }
-      setTab("settings");
-    },
-    [setTab],
-  );
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -1450,20 +1293,11 @@ export function App() {
       <ShellContent
         CompanionShell={CompanionShell}
         actionNotice={actionNotice}
-        characterHeaderActions={characterHeaderActions}
         customActionsPanelOpen={customActionsPanelOpen}
         desktopTabBar={desktopTabBar}
-        handleDeferredTaskOpen={handleDeferredTaskOpen}
-        isAppsToolPage={isAppsToolPage}
-        isCharacterPage={isCharacterPage}
         isChat={isChat}
         isCompanionTab={isCompanionTab}
-        isDesktopWorkspacePage={isDesktopWorkspacePage}
         isFullBleed={isFullBleed}
-        isHeartbeats={isHeartbeats}
-        isSettingsPage={isSettingsPage}
-        isWallets={isWallets}
-        setCharacterHeaderActions={setCharacterHeaderActions}
         setCustomActionsEditorOpen={setCustomActionsEditorOpen}
         setCustomActionsPanelOpen={setCustomActionsPanelOpen}
         setEditingAction={setEditingAction}
@@ -1479,15 +1313,7 @@ export function App() {
       isCompanionTab,
       actionNotice,
       isChat,
-      isCharacterPage,
-      isHeartbeats,
-      isSettingsPage,
-      isWallets,
-      isAppsToolPage,
-      isDesktopWorkspacePage,
       isFullBleed,
-      characterHeaderActions,
-      handleDeferredTaskOpen,
       customActionsPanelOpen,
       settingsInitialSection,
       desktopTabBar,

@@ -2,31 +2,19 @@
  * AgentSurfaceProvider — supplies the per-view ViewAgentRegistry to descendant
  * elements via React context. Mounted by DynamicViewLoader around every view so
  * any view that calls `useAgentElement` is automatically agent-controllable.
+ *
+ * The context object and useAgentSurface hook live in
+ * ./AgentSurfaceContext.hooks so this file can export only the provider
+ * component (React Fast Refresh-compatible).
  */
 
+import { type ReactNode, useEffect, useRef } from "react";
 import {
-  createContext,
-  type ReactNode,
-  useContext,
-  useEffect,
-  useRef,
-} from "react";
-import {
-  getOrCreateViewRegistry,
-  removeViewRegistry,
-  type ViewAgentRegistry,
-} from "./registry";
+  AgentSurfaceContext,
+  type AgentSurfaceContextValue,
+} from "./AgentSurfaceContext.hooks";
+import { getOrCreateViewRegistry, removeViewRegistry } from "./registry";
 import type { AgentViewType } from "./types";
-
-interface AgentSurfaceContextValue {
-  registry: ViewAgentRegistry;
-  viewId: string;
-  viewType: AgentViewType;
-}
-
-const AgentSurfaceContext = createContext<AgentSurfaceContextValue | null>(
-  null,
-);
 
 export interface AgentSurfaceProviderProps {
   viewId: string;
@@ -66,10 +54,3 @@ export function AgentSurfaceProvider({
     </AgentSurfaceContext.Provider>
   );
 }
-
-/** Returns the active view's registry, or null when rendered outside a view. */
-export function useAgentSurface(): AgentSurfaceContextValue | null {
-  return useContext(AgentSurfaceContext);
-}
-
-export { AgentSurfaceContext };

@@ -518,7 +518,7 @@ export async function resolveLaunchSession(
   const base = resolveApiBase(runtime);
   if (!base) {
     logger.debug(
-      "[hyperscape] HYPERSCAPE_API_URL not configured; skipping live session resolution",
+      "[hyperscape] HYPERSCAPE_API_URL not configured; live session resolution unavailable",
     );
     return null;
   }
@@ -526,7 +526,7 @@ export async function resolveLaunchSession(
   const agentId = resolveAgentId(runtime, viewer);
   if (!agentId) {
     logger.debug(
-      "[hyperscape] No agentId available; skipping live session resolution",
+      "[hyperscape] No agentId available; live session resolution unavailable",
     );
     return null;
   }

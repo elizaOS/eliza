@@ -19,6 +19,7 @@
 import { OpenAIAgent } from "smithers-orchestrator";
 import { createOpenAI } from "@ai-sdk/openai";
 import { jsonSchema } from "ai";
+import { loadOptimizationArtifact, resolveOptimizedSystemPrompt } from "./optimization.mjs";
 
 const DEFAULT_BASE_URLS = {
   cerebras: "https://api.cerebras.ai/v1",
@@ -202,6 +203,20 @@ async function main() {
   const apiKey = typeof payload.api_key === "string" ? payload.api_key : process.env.CEREBRAS_API_KEY || "";
 
   const ctx = payload.context && typeof payload.context === "object" ? payload.context : {};
+
+  // GEPA: when an optimization artifact is configured (SMITHERS_OPTIMIZATION_ARTIFACT,
+  // produced by `smithers optimize`), override the benchmark's default system
+  // prompt with the optimized one before building messages. A missing/invalid
+  // artifact resolves to null and leaves the default prompt untouched.
+  const optimizationArtifact = loadOptimizationArtifact(process.env.SMITHERS_OPTIMIZATION_ARTIFACT);
+  if (optimizationArtifact) {
+    const optimizedPrompt = resolveOptimizedSystemPrompt(
+      optimizationArtifact,
+      payload.benchmark ?? ctx.benchmark,
+    );
+    if (optimizedPrompt) payload.system_prompt = optimizedPrompt;
+  }
+
   const tools = toToolSet(payload.tools ?? ctx.tools);
   const messages = buildMessages(payload);
 

@@ -16,12 +16,12 @@ import { Button } from "../../ui/button";
 import { Textarea } from "../../ui/textarea";
 import { ChatBubble } from "./chat-bubble";
 import { ChatMessageActions } from "./chat-message-actions";
+import { ChatVoiceSpeakerBadge } from "./chat-source";
 import {
-  ChatVoiceSpeakerBadge,
   normalizeChatSourceKey,
   renderChatReactionEmoji,
   resolveChatVoiceSpeakerLabel,
-} from "./chat-source";
+} from "./chat-source.helpers";
 import type {
   ChatMessageData,
   ChatMessageLabels,
@@ -42,7 +42,7 @@ export interface ChatMessageProps {
   userMessagesOnRight?: boolean;
 }
 
-export function getChatMessageAnchorId(messageId: string): string {
+function getChatMessageAnchorId(messageId: string): string {
   return `chat-message-${messageId}`;
 }
 

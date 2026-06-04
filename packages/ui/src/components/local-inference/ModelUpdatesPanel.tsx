@@ -25,11 +25,11 @@ import {
   type VoiceModelId,
   type VoiceModelVersion,
 } from "@elizaos/shared";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   type TranslationContextValue,
   useTranslation,
-} from "../../state/TranslationContext";
+} from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 
 type TranslateFn = TranslationContextValue["t"];
@@ -317,27 +317,6 @@ function ToggleRow({
       {hint ? <span className="text-muted-foreground">({hint})</span> : null}
     </label>
   );
-}
-
-/**
- * Standalone hook helper for callers that don't yet have a server route to
- * mount against — preserves the panel's contract (so storybooks render)
- * but tolerates absent endpoints.
- */
-export function useStaticVoiceUpdatePreferences(
-  initial?: VoiceUpdatePreferencesView,
-): {
-  preferences: VoiceUpdatePreferencesView;
-  setPreferences: (next: VoiceUpdatePreferencesView) => void;
-} {
-  const [preferences, setPreferences] = useState<VoiceUpdatePreferencesView>(
-    initial ?? {
-      autoUpdateOnWifi: true,
-      autoUpdateOnCellular: false,
-      autoUpdateOnMetered: false,
-    },
-  );
-  return { preferences, setPreferences };
 }
 
 export default ModelUpdatesPanel;

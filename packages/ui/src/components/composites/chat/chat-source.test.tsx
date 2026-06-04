@@ -3,10 +3,8 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  ChatVoiceSpeakerBadge,
-  resolveChatVoiceSpeakerLabel,
-} from "./chat-source";
+import { ChatVoiceSpeakerBadge } from "./chat-source";
+import { resolveChatVoiceSpeakerLabel } from "./chat-source.helpers";
 
 afterEach(() => {
   cleanup();

@@ -55,17 +55,17 @@ if [[ "$cmd" == "all" && "${ELIZA_SQLITE_VEC_FORCE_REBUILD:-0}" != "1" ]] && xcf
 fi
 
 if [[ "$cmd" == "all" && "${ELIZA_SQLITE_VEC_BUILD_IOS:-0}" != "1" ]]; then
-  printf '\033[33m[sqlite-vec-ios]\033[0m skipping iOS xcframework build: set ELIZA_SQLITE_VEC_BUILD_IOS=1 to compile sqlite-vec locally.\n'
+  printf '\033[33m[sqlite-vec-ios]\033[0m iOS xcframework build not requested: set ELIZA_SQLITE_VEC_BUILD_IOS=1 to compile sqlite-vec locally.\n'
   exit 0
 fi
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
-  printf '\033[33m[sqlite-vec-ios]\033[0m skipping iOS xcframework build: requires macOS host (uname=%s).\n' "$(uname -s)"
+  printf '\033[33m[sqlite-vec-ios]\033[0m iOS xcframework build unavailable: requires macOS host (uname=%s).\n' "$(uname -s)"
   exit 0
 fi
 
 if ! xcodebuild -version >/dev/null 2>&1 || ! xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1; then
-  printf '\033[33m[sqlite-vec-ios]\033[0m skipping iOS xcframework build: requires full Xcode with the iOS SDK.\n'
+  printf '\033[33m[sqlite-vec-ios]\033[0m iOS xcframework build unavailable: requires full Xcode with the iOS SDK.\n'
   exit 0
 fi
 

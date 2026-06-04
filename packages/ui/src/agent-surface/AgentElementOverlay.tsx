@@ -8,7 +8,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { useAgentSurface } from "./AgentSurfaceContext";
+import { useAgentSurface } from "./AgentSurfaceContext.hooks";
 
 const noopSubscribe = () => () => {};
 

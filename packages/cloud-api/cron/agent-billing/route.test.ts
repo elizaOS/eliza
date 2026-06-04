@@ -48,8 +48,9 @@ const scheduleShutdownWarning = mock(async () => undefined);
 const suspendSandboxForInsufficientCredits = mock(async () => undefined);
 const shutdownSandbox = mock(async () => ({ success: true }));
 const sendContainerShutdownWarningEmail = mock(async () => undefined);
-const webhookFetch = mock(async (_url: string | URL | Request, _init?: RequestInit) =>
-  Response.json({ ok: true }),
+const webhookFetch = mock(
+  async (_url: string | URL | Request, _init?: RequestInit) =>
+    Response.json({ ok: true }),
 );
 
 mock.module("@/db/repositories/agent-billing", () => ({

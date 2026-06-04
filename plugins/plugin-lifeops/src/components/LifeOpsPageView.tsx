@@ -1,4 +1,16 @@
-import { AppWorkspaceChrome, Button, type CloudOAuthConnection, client, isAppWindowRoute, isWebPlatform, openExternalUrl, PagePanel, PageScopedChatPane, useApp, useMediaQuery } from "@elizaos/ui";
+import {
+  AppWorkspaceChrome,
+  Button,
+  type CloudOAuthConnection,
+  client,
+  isAppWindowRoute,
+  isWebPlatform,
+  openExternalUrl,
+  PagePanel,
+  PageScopedChatPane,
+  useApp,
+  useMediaQuery,
+} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Power, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -15,14 +27,18 @@ import {
 } from "../platform/lifeops-github.js";
 import { LifeOpsXPanel } from "./LifeOpsOperationalPanels";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
+import {
+  lifeOpsClient,
+  loadLifeOpsTuiState,
+} from "./LifeOpsPageView.interact.js";
 import { LifeOpsSectionContent } from "./LifeOpsSectionContent.js";
 import {
   type LifeOpsSelection,
-  LifeOpsSelectionProvider,
   useLifeOpsSelection,
-} from "./LifeOpsSelectionContext.js";
+} from "./LifeOpsSelectionContext.helpers.js";
+import { LifeOpsSelectionProvider } from "./LifeOpsSelectionContext.js";
 import { LifeOpsSettingsSection } from "./LifeOpsSettingsSection";
-import { clearLifeOpsSetupGateDismissed } from "./LifeOpsSetupGate.js";
+import { clearLifeOpsSetupGateDismissed } from "./LifeOpsSetupGate.helpers.js";
 import { LifeOpsWorkspaceShell } from "./LifeOpsWorkspaceShell.js";
 import { MessagingConnectorGrid } from "./MessagingConnectorCards";
 
@@ -81,83 +97,6 @@ type TranslateFn = (
   key: string,
   options?: Record<string, unknown> & { defaultValue?: string },
 ) => string;
-
-type LifeOpsTuiOccurrence = {
-  id: string;
-  title?: string;
-  state?: string;
-  dueAt?: string | null;
-  scheduledAt?: string | null;
-  definitionKind?: string;
-  priority?: number;
-};
-
-type LifeOpsTuiOverview = {
-  summary?: {
-    activeOccurrenceCount?: number;
-    overdueOccurrenceCount?: number;
-    snoozedOccurrenceCount?: number;
-    activeReminderCount?: number;
-    activeGoalCount?: number;
-  };
-  occurrences?: LifeOpsTuiOccurrence[];
-  owner?: {
-    occurrences?: LifeOpsTuiOccurrence[];
-    goals?: Array<{ id: string; title?: string; status?: string }>;
-    reminders?: Array<{ id: string; title?: string }>;
-  };
-  agentOps?: {
-    occurrences?: LifeOpsTuiOccurrence[];
-    goals?: Array<{ id: string; title?: string; status?: string }>;
-    reminders?: Array<{ id: string; title?: string }>;
-  };
-};
-
-type LifeOpsTuiDefinitionRecord = {
-  definition?: {
-    id: string;
-    title?: string;
-    kind?: string;
-    status?: string;
-    priority?: number;
-  };
-};
-
-const lifeOpsClient = client as typeof client & {
-  getLifeOpsAppState?: () => Promise<{ enabled: boolean }>;
-  updateLifeOpsAppState?: (data: {
-    enabled: boolean;
-  }) => Promise<{ enabled: boolean }>;
-  getLifeOpsOverview?: () => Promise<LifeOpsTuiOverview>;
-  listLifeOpsDefinitions?: () => Promise<{
-    definitions: LifeOpsTuiDefinitionRecord[];
-  }>;
-  completeLifeOpsOccurrence?: (
-    occurrenceId: string,
-    data?: Record<string, unknown>,
-  ) => Promise<unknown>;
-  skipLifeOpsOccurrence?: (occurrenceId: string) => Promise<unknown>;
-  snoozeLifeOpsOccurrence?: (
-    occurrenceId: string,
-    data: { minutes?: number; until?: string },
-  ) => Promise<unknown>;
-};
-
-async function loadLifeOpsTuiState() {
-  const [appState, overview, definitions] = await Promise.all([
-    lifeOpsClient.getLifeOpsAppState?.().catch(() => null) ??
-      Promise.resolve(null),
-    lifeOpsClient.getLifeOpsOverview?.().catch(() => null) ??
-      Promise.resolve(null),
-    lifeOpsClient.listLifeOpsDefinitions?.().catch(() => null) ??
-      Promise.resolve(null),
-  ]);
-  return {
-    appState,
-    overview,
-    definitions: definitions?.definitions ?? [],
-  };
-}
 
 const LIFEOPS_COMPACT_LAYOUT_MEDIA_QUERY = "(max-width: 1023px)";
 
@@ -837,92 +776,6 @@ export function LifeOpsTuiView() {
       </div>
     </div>
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-lifeops-state") {
-    const state = await loadLifeOpsTuiState();
-    const overview = state.overview;
-    const occurrences =
-      overview?.occurrences ?? overview?.owner?.occurrences ?? [];
-    return {
-      viewType: "tui",
-      appState: state.appState,
-      summary: overview?.summary ?? null,
-      definitions: state.definitions.slice(
-        0,
-        typeof params?.limit === "number" ? params.limit : 20,
-      ),
-      occurrences: occurrences.slice(
-        0,
-        typeof params?.limit === "number" ? params.limit : 20,
-      ),
-    };
-  }
-
-  if (capability === "terminal-lifeops-enable") {
-    const enabled = params?.enabled !== false;
-    if (!lifeOpsClient.updateLifeOpsAppState) {
-      throw new Error("LifeOps app-state client is unavailable");
-    }
-    return {
-      viewType: "tui",
-      appState: await lifeOpsClient.updateLifeOpsAppState({ enabled }),
-    };
-  }
-
-  if (capability === "terminal-lifeops-complete") {
-    const occurrenceId =
-      typeof params?.occurrenceId === "string"
-        ? params.occurrenceId.trim()
-        : "";
-    if (!occurrenceId) throw new Error("occurrenceId is required");
-    if (!lifeOpsClient.completeLifeOpsOccurrence) {
-      throw new Error("LifeOps occurrence client is unavailable");
-    }
-    return {
-      viewType: "tui",
-      result: await lifeOpsClient.completeLifeOpsOccurrence(occurrenceId, {}),
-    };
-  }
-
-  if (capability === "terminal-lifeops-skip") {
-    const occurrenceId =
-      typeof params?.occurrenceId === "string"
-        ? params.occurrenceId.trim()
-        : "";
-    if (!occurrenceId) throw new Error("occurrenceId is required");
-    if (!lifeOpsClient.skipLifeOpsOccurrence) {
-      throw new Error("LifeOps occurrence client is unavailable");
-    }
-    return {
-      viewType: "tui",
-      result: await lifeOpsClient.skipLifeOpsOccurrence(occurrenceId),
-    };
-  }
-
-  if (capability === "terminal-lifeops-snooze") {
-    const occurrenceId =
-      typeof params?.occurrenceId === "string"
-        ? params.occurrenceId.trim()
-        : "";
-    if (!occurrenceId) throw new Error("occurrenceId is required");
-    if (!lifeOpsClient.snoozeLifeOpsOccurrence) {
-      throw new Error("LifeOps occurrence client is unavailable");
-    }
-    const minutes = typeof params?.minutes === "number" ? params.minutes : 30;
-    return {
-      viewType: "tui",
-      result: await lifeOpsClient.snoozeLifeOpsOccurrence(occurrenceId, {
-        minutes,
-      }),
-    };
-  }
-
-  throw new Error(`Unsupported capability "${capability}"`);
 }
 
 function LifeOpsWorkspaceInner() {

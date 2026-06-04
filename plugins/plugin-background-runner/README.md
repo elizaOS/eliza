@@ -7,7 +7,7 @@ Background task runner plugin for elizaOS. Drives the core `TaskService.runDueTa
 When loaded, the plugin:
 
 1. Registers a `BgTaskSchedulerService` against the runtime.
-2. Sets `runtime.serverless = true` so core's `TaskService` skips its own internal timer.
+2. Sets `runtime.serverless = true` so core's `TaskService` defers its internal timer to the OS wake-up path.
 3. Schedules a single periodic wake (label `"eliza-tasks"`, default 15-minute minimum interval).
 4. On each OS wake-up, calls `TaskService.runDueTasks()` once, then returns — no long-lived process.
 

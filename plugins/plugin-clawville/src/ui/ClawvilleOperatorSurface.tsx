@@ -9,6 +9,7 @@ import {
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
+import { PRIMARY_COMMANDS } from "./ClawvilleOperatorSurface.helpers";
 
 type RunEventSummary = {
   eventId: string;
@@ -25,33 +26,6 @@ type RunActivitySummary = {
   severity?: string;
   timestamp?: string | null;
 };
-
-const PRIMARY_COMMANDS = [
-  {
-    id: "move-tools",
-    label: "Go to Tools",
-    command: "Move to tool workshop",
-    testId: "clawville-command-move-krusty",
-  },
-  {
-    id: "move-code",
-    label: "Go to Code",
-    command: "Move to skill forge",
-    testId: "clawville-command-move-chum",
-  },
-  {
-    id: "visit-nearest",
-    label: "Visit nearest",
-    command: "Visit the nearest building",
-    testId: "clawville-command-visit-nearest",
-  },
-  {
-    id: "ask-npc",
-    label: "Ask NPC",
-    command: "Ask the nearest NPC what to learn next",
-    testId: "clawville-command-ask-npc",
-  },
-] as const;
 
 function readString(
   source: Record<string, unknown> | null,
@@ -699,28 +673,3 @@ const tuiInputStyle: CSSProperties = {
   padding: "8px",
   fontFamily: "inherit",
 };
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-clawville-state") {
-    return {
-      viewType: "tui",
-      appName: "@elizaos/plugin-clawville",
-      primaryCommands: PRIMARY_COMMANDS.map((item) => item.command),
-    };
-  }
-  if (capability === "terminal-clawville-command") {
-    const runId = typeof params?.runId === "string" ? params.runId.trim() : "";
-    const content =
-      typeof params?.content === "string" ? params.content.trim() : "";
-    if (!runId) throw new Error("runId is required");
-    if (!content) throw new Error("content is required");
-    return {
-      viewType: "tui",
-      command: await client.sendAppRunMessage(runId, content),
-    };
-  }
-  throw new Error(`Unsupported ClawVille TUI capability: ${capability}`);
-}

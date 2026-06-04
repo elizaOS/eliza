@@ -20,14 +20,16 @@ import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import {
-  BSC_RPC_OPTIONS,
   CloudServicesSection,
-  EVM_RPC_OPTIONS,
   RpcConfigSection,
   type RpcProviderOption,
   type RpcSectionConfigMap,
-  SOLANA_RPC_OPTIONS,
 } from "./config-page-sections";
+import {
+  BSC_RPC_OPTIONS,
+  EVM_RPC_OPTIONS,
+  SOLANA_RPC_OPTIONS,
+} from "./config-page-sections.helpers";
 import { SecretsView } from "./SecretsView";
 
 /* ── ConfigPageView ──────────────────────────────────────────────────── */

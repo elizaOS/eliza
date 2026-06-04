@@ -7,11 +7,21 @@
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./setup-routes": {
       "types": "./dist/setup-routes.d.ts",
+      "eliza-source": {
+        "types": "./src/setup-routes.ts",
+        "import": "./src/setup-routes.ts",
+        "default": "./src/setup-routes.ts"
+      },
       "import": "./dist/setup-routes.js",
       "default": "./dist/setup-routes.js"
     },
@@ -36,6 +46,7 @@
   "dependencies": {
     "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/scenario-runner": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*"
   },

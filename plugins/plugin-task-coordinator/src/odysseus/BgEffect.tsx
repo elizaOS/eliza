@@ -700,16 +700,6 @@ function runPerlin(canvas: HTMLCanvasElement): () => void {
   };
 }
 
-export const CANVAS_BG_PATTERNS: CanvasPattern[] = [
-  "sparkles",
-  "petals",
-  "rain",
-  "constellations",
-  "embers",
-  "synapse",
-  "perlin",
-];
-
 export function BgEffect({ pattern }: { pattern: string }): ReactNode {
   const ref = useRef<HTMLCanvasElement>(null);
 

@@ -105,7 +105,7 @@ dist/
 | `GGML_NATIVE=OFF`               | Don't probe host CPU; cross-compile cleanly.         |
 | `GGML_ACCELERATE=ON`            | Use Apple's Accelerate.framework on the CPU path.    |
 | `BUILD_SHARED_LIBS=OFF`         | Static library — folds into xcframework.             |
-| `LLAMA_BUILD_EXAMPLES=OFF`      | Skip CLI/server/tests.                               |
+| `LLAMA_BUILD_EXAMPLES=OFF`      | Build only the library target, not CLI/server/tests. |
 | `ELIZA_LLAMA_SIM_METAL=ON`     | (env, default OFF) Enable Metal on simulator slice.  |
 | `ELIZA_IOS_MIN_VERSION=15.0`   | (env) iOS deployment target.                         |
 

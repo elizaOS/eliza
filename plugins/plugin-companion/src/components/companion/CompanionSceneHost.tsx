@@ -63,10 +63,6 @@ type CompanionWheelEvent = Pick<
 
 let _companionTeleportCompletedOnce = false;
 
-export function hasCompanionTeleportCompletedOnce(): boolean {
-  return _companionTeleportCompletedOnce;
-}
-
 function getTouchDistance(points: Map<number, TouchPoint>): number {
   const touchPoints = [...points.values()];
   if (touchPoints.length < 2) return 0;

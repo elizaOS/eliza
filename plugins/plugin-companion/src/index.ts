@@ -22,6 +22,7 @@ export * from "./components/companion/CompanionHeader";
 export * from "./components/companion/CompanionSceneHost";
 export * from "./components/companion/CompanionShell";
 export * from "./components/companion/CompanionView";
+export * from "./components/companion/CompanionView.helpers";
 export * from "./components/companion/companion-app";
 export * from "./components/companion/companion-scene-status-context";
 export * from "./components/companion/companion-shell-styles";

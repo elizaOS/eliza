@@ -23,17 +23,14 @@ import {
   Children,
   type ClipboardEventHandler,
   type ComponentProps,
-  createContext,
   type FormEvent,
   type FormEventHandler,
   Fragment,
   type HTMLAttributes,
   type KeyboardEventHandler,
-  type PropsWithChildren,
   type ReactNode,
   type RefObject,
   useCallback,
-  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -41,7 +38,30 @@ import {
   useState,
 } from "react";
 import { cn } from "../../lib/utils";
-import { useRenderGuard } from "../../runtime/render-telemetry";
+import { useRenderGuard } from "../../runtime/render-telemetry.helpers";
+import {
+  type AttachmentsContext,
+  LocalAttachmentsContext,
+  PromptInputContext,
+  type PromptInputController,
+  type PromptInputProviderBridge,
+  PromptInputProviderBridgeContext,
+  type PromptInputProviderProps,
+  ProviderAttachmentsContext,
+  useOptionalPromptInputController,
+  useOptionalPromptInputProviderBridge,
+  usePromptInputAttachments,
+} from "./prompt-input.helpers";
+
+// Re-export the controller/attachments contracts (types are erased, so they do
+// not break React Fast Refresh). The hooks now live in ./prompt-input.helpers;
+// the ai-elements barrel re-exports them from there.
+export type {
+  AttachmentsContext,
+  PromptInputController,
+  PromptInputProviderProps,
+  TextInputContext,
+} from "./prompt-input.helpers";
 // Native img used for framework agnosticism
 import { Button } from "../button";
 import {
@@ -64,85 +84,10 @@ import {
   SelectValue,
 } from "../select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
+
 // ============================================================================
-// Provider Context & Types
+// Components
 // ============================================================================
-
-export type AttachmentsContext = {
-  files: (FileUIPart & { id: string })[];
-  add: (files: File[] | FileList) => void;
-  remove: (id: string) => void;
-  clear: () => void;
-  openFileDialog: () => void;
-  fileInputRef: RefObject<HTMLInputElement | null>;
-};
-
-export type TextInputContext = {
-  value: string;
-  setInput: (v: string) => void;
-  clear: () => void;
-};
-
-export type PromptInputController = {
-  textInput: TextInputContext;
-  attachments: AttachmentsContext;
-  /** INTERNAL: Allows PromptInput to register its file textInput + "open" callback */
-  __registerFileInput: (
-    ref: RefObject<HTMLInputElement | null>,
-    open: () => void,
-  ) => void;
-};
-
-type PromptInputProviderBridge = {
-  attachments: AttachmentsContext;
-  getTextInputValue: () => string;
-  clearTextInput: () => void;
-  __registerFileInput: PromptInputController["__registerFileInput"];
-};
-
-const PromptInputContext = createContext<PromptInputController | null>(null);
-const ProviderAttachmentsContext = createContext<AttachmentsContext | null>(
-  null,
-);
-const PromptInputProviderBridgeContext =
-  createContext<PromptInputProviderBridge | null>(null);
-
-export const usePromptInputController = () => {
-  const ctx = useContext(PromptInputContext);
-  if (!ctx) {
-    throw new Error(
-      "Wrap your component inside <PromptInputProvider> to use usePromptInputController().",
-    );
-  }
-  return ctx;
-};
-
-// Optional variants (do NOT throw). Useful for dual-mode components.
-const useOptionalPromptInputController = () => {
-  return useContext(PromptInputContext);
-};
-
-const useOptionalPromptInputProviderBridge = () => {
-  return useContext(PromptInputProviderBridgeContext);
-};
-
-export const useProviderAttachments = () => {
-  const ctx = useContext(ProviderAttachmentsContext);
-  if (!ctx) {
-    throw new Error(
-      "Wrap your component inside <PromptInputProvider> to use useProviderAttachments().",
-    );
-  }
-  return ctx;
-};
-
-const useOptionalProviderAttachments = () => {
-  return useContext(ProviderAttachmentsContext);
-};
-
-export type PromptInputProviderProps = PropsWithChildren<{
-  initialInput?: string;
-}>;
 
 /**
  * Optional global provider that lifts PromptInput state outside of PromptInput.
@@ -271,26 +216,6 @@ export function PromptInputProvider({
     </PromptInputProviderBridgeContext.Provider>
   );
 }
-
-// ============================================================================
-// Component Context & Hooks
-// ============================================================================
-
-const LocalAttachmentsContext = createContext<AttachmentsContext | null>(null);
-
-export const usePromptInputAttachments = () => {
-  // Components rendered inside PromptInput get the local/proxy context so
-  // per-input constraints apply even when a global provider owns the state.
-  const provider = useOptionalProviderAttachments();
-  const local = useContext(LocalAttachmentsContext);
-  const context = local ?? provider;
-  if (!context) {
-    throw new Error(
-      "usePromptInputAttachments must be used within a PromptInput or PromptInputProvider",
-    );
-  }
-  return context;
-};
 
 export type PromptInputAttachmentProps = HTMLAttributes<HTMLDivElement> & {
   data: FileUIPart & { id: string };

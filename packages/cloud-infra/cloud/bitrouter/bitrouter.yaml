@@ -6,6 +6,7 @@ database:
 
 providers:
   bitrouter: {}
+  cerebras: {}
   openai: {}
   anthropic: {}
   google: {}

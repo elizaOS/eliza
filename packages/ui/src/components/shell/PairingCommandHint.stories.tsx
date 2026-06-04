@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { withMockApp } from "../../storybook/mock-providers";
+import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { PairingCommandHint } from "./PairingCommandHint";
 
 const meta = {

@@ -23,13 +23,10 @@ import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { VoiceProfilesClient } from "../../api/client-voice-profiles";
 import { cn } from "../../lib/utils";
-import { useTranslation } from "../../state/TranslationContext";
-import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../../voice/local-asr-capture";
-import {
-  DEFAULT_VOICE_CONTINUOUS_MODE,
-  type VoiceContinuousMode,
-} from "../../voice/voice-chat-types";
+import { useTranslation } from "../../state/TranslationContext.hooks";
+import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
+import { DEFAULT_VAD_AUTO_STOP_PREFS } from "./VoiceSection.helpers";
 import { VoiceProfileSection } from "./VoiceProfileSection";
 import { type VoiceDeviceTier, VoiceTierBanner } from "./VoiceTierBanner";
 
@@ -47,11 +44,6 @@ export interface VadAutoStopPrefs {
   /** RMS amplitude (0–1) above which audio is treated as speech. */
   speechRmsThreshold: number;
 }
-
-export const DEFAULT_VAD_AUTO_STOP_PREFS: VadAutoStopPrefs = {
-  silenceMs: DEFAULT_LOCAL_ASR_AUTO_STOP.silenceMs,
-  speechRmsThreshold: DEFAULT_LOCAL_ASR_AUTO_STOP.speechRmsThreshold,
-};
 
 /** Bounds for the surfaced sliders, kept well inside sane capture ranges. */
 const VAD_SILENCE_MIN_MS = 300;
@@ -72,14 +64,6 @@ export interface VoiceSectionPrefs {
    */
   vadAutoStop?: VadAutoStopPrefs;
 }
-
-export const DEFAULT_VOICE_SECTION_PREFS: VoiceSectionPrefs = {
-  continuous: DEFAULT_VOICE_CONTINUOUS_MODE,
-  strategy: "auto",
-  cloudFirstLineCache: false,
-  autoLearnVoices: true,
-  vadAutoStop: DEFAULT_VAD_AUTO_STOP_PREFS,
-};
 
 export interface VoiceSectionProps {
   /** Hardware tier from I9 (null falls back to "GOOD"). */

@@ -1,3 +1,4 @@
+import { useCalendarWeek } from "@elizaos/plugin-calendar/ui";
 import type {
   LifeOpsActiveReminderView,
   LifeOpsCalendarEvent,
@@ -20,16 +21,16 @@ import {
   Loader2,
   Mail,
   MessageCircle,
-  MessageSquareText,
   MessageSquare,
+  MessageSquareText,
   Mic2,
   Phone,
   RefreshCw,
   Send,
   Share2,
   Shield,
-  Sparkles,
   Smartphone,
+  Sparkles,
   Target,
   TriangleAlert,
 } from "lucide-react";
@@ -41,7 +42,6 @@ import {
   useMemo,
   useState,
 } from "react";
-import { useCalendarWeek } from "@elizaos/plugin-calendar/ui";
 import type { LifeOpsSocialHabitSummary } from "../api/client-lifeops.js";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";
 import { useInbox } from "../hooks/useInbox.js";
@@ -50,15 +50,15 @@ import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
 import { useLifeOpsXConnector } from "../hooks/useLifeOpsXConnector.js";
 import { BrowserBridgeStatusChip } from "./BrowserBridgeStatusChip.js";
 import {
-  LIFEOPS_MAIL_CHANNELS,
-  LIFEOPS_MESSAGE_CHANNELS,
-} from "./LifeOpsInboxSection.js";
-import {
   ASSISTANT_INTENTS,
   LIFEOPS_VOICE_COMMAND_PROMPT,
-} from "./LifeOpsAssistantSection.js";
-import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
-import { useLifeOpsSelection } from "./LifeOpsSelectionContext.js";
+} from "./LifeOpsAssistantSection.helpers.js";
+import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.helpers.js";
+import {
+  LIFEOPS_MAIL_CHANNELS,
+  LIFEOPS_MESSAGE_CHANNELS,
+} from "./LifeOpsInboxSection.helpers.js";
+import { useLifeOpsSelection } from "./LifeOpsSelectionContext.helpers.js";
 import { MissingSourceCard } from "./MissingSourceCard.js";
 
 interface LifeOpsOverviewSectionProps {
@@ -1005,10 +1005,7 @@ export function LifeOpsOverviewSection({
     activeReminders.length > 0 ||
     hasOverdue;
   const hasAnySignalWidget =
-    socialAccess ||
-    calendarAccess ||
-    messagesAccess ||
-    mailAccess;
+    socialAccess || calendarAccess || messagesAccess || mailAccess;
   const hasAnyOverviewAccess = hasAnySignalWidget || remindersAccess;
   const setupSignalsLoading =
     capabilities.loading || googleConnector.loading || xConnector.loading;
@@ -1020,12 +1017,7 @@ export function LifeOpsOverviewSection({
         !mailAccess ? "Mail" : null,
         !calendarAccess ? "Calendar" : null,
       ].filter((value): value is string => Boolean(value)),
-    [
-      calendarAccess,
-      mailAccess,
-      messagesAccess,
-      socialAccess,
-    ],
+    [calendarAccess, mailAccess, messagesAccess, socialAccess],
   );
   const showSetupWarning = !setupSignalsLoading && missingWidgets.length > 0;
   const showNoAccessState =

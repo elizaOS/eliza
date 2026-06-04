@@ -9,7 +9,7 @@ import {
   readChatDraft,
   useChatComposerDraftPersistence,
   writeChatDraft,
-} from "./ChatComposerContext";
+} from "./ChatComposerContext.hooks";
 
 function DraftHarness({
   activeConversationId,

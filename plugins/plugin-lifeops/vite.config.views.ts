@@ -5,7 +5,7 @@ export default {
   ...createViewBundleConfig({
     packageName: "@elizaos/plugin-lifeops",
     viewId: "lifeops",
-    entry: "./src/components/LifeOpsPageView.tsx",
+    entry: "./src/components/lifeops-view-bundle.ts",
     outDir: "dist/views",
     componentExport: "LifeOpsPageView",
     additionalExternals: [

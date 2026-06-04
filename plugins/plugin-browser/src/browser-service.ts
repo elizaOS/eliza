@@ -104,9 +104,8 @@ export class BrowserService extends Service {
     const service = new BrowserService(runtime);
     service.registerTarget(createWorkspaceTarget());
     // Bridge target self-registers when its dependencies (BrowserBridgeRouteService
-    // implementor) are reachable via the runtime; we attempt registration here
-    // and silently skip if unavailable, so the agent can still boot in
-    // workspace-only mode.
+    // implementor) are reachable via the runtime. Missing dependencies keep the
+    // agent in workspace-only mode.
     try {
       const bridgeTarget = await maybeCreateBridgeTarget(runtime);
       if (bridgeTarget) service.registerTarget(bridgeTarget);
@@ -213,7 +212,7 @@ export class BrowserService extends Service {
           });
         }
       } catch {
-        // skip unhealthy targets
+        // Ignore unhealthy targets during target resolution.
       }
     }
 

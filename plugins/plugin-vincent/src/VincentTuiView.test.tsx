@@ -35,7 +35,8 @@ vi.mock("./client", () => ({
   vincentClient: vincentClientMock,
 }));
 
-import { interact, VincentTuiView } from "./VincentAppView";
+import { VincentTuiView } from "./VincentAppView";
+import { interact } from "./VincentAppView.interact";
 
 const sampleStatus = {
   connected: true,

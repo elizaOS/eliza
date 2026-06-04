@@ -6,32 +6,23 @@ import {
   useRef,
   useState,
 } from "react";
-import { client } from "../../api/client";
 import type {
   ConversationChannelType,
   ConversationMessage,
 } from "../../api/client-types-chat";
-import type { VoiceConfig } from "../../api/client-types-config";
 import type { ElizaCloudStatusUpdatedDetail } from "../../events";
-import {
-  ELIZA_CLOUD_STATUS_UPDATED_EVENT,
-  VOICE_CONFIG_UPDATED_EVENT,
-} from "../../events";
+import { ELIZA_CLOUD_STATUS_UPDATED_EVENT } from "../../events";
 import {
   type ContinuousChatLatency,
   type ContinuousChatState,
   useContinuousChat,
 } from "../../hooks/useContinuousChat";
-import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
 import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useTimeout } from "../../hooks/useTimeout";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import type { useApp } from "../../state/useApp";
 import { ttsDebug } from "../../utils/tts-debug";
-import {
-  applyVoiceProviderDefaults,
-  resolveCharacterVoiceConfigFromAppConfig,
-} from "../../voice/character-voice-config";
+import { useVoiceConfig } from "../../voice/useVoiceConfig";
 import {
   DEFAULT_VOICE_CONTINUOUS_MODE,
   type VoiceAssistantSpeechTelemetry,
@@ -41,7 +32,7 @@ import {
   type VoiceSpeakerMetadata,
   type VoiceTranscriptEvent,
 } from "../../voice/voice-chat-types";
-import { useCompanionSceneStatus } from "../companion/injected";
+import { useCompanionSceneStatus } from "../companion/injected.hooks";
 
 /* ── Shared constants ──────────────────────────────────────────────── */
 
@@ -220,14 +211,14 @@ export function useChatVoiceController(options: {
   const [cloudVoiceSnapshot, setCloudVoiceSnapshot] = useState<boolean | null>(
     null,
   );
-  const { defaults: voiceProviderDefaults } = useDefaultProviderPresets();
-  const [voiceConfig, setVoiceConfig] = useState<VoiceConfig | null>(null);
-  const effectiveVoiceConfig = useMemo(
-    () => applyVoiceProviderDefaults(voiceConfig, voiceProviderDefaults),
-    [voiceConfig, voiceProviderDefaults],
-  );
-  /** Bumps after each `getConfig` (or inline VOICE_CONFIG event) settles — game-modal auto-speak waits for this so TTS does not run with a stale/null voice profile and get stuck deduped. */
-  const [voiceBootstrapTick, setVoiceBootstrapTick] = useState(0);
+  // Shared voice-config pipeline (also used by the ambient /chat overlay).
+  // `voiceBootstrapTick` bumps after each settled load (0 until the first one)
+  // so game-modal auto-speak waits for a real profile before queueing TTS.
+  const {
+    voiceConfig: effectiveVoiceConfig,
+    voiceBootstrapTick,
+    reloadVoiceConfig,
+  } = useVoiceConfig(uiLanguage);
   const [voiceLatency, setVoiceLatency] = useState<VoiceLatencyState | null>(
     null,
   );
@@ -277,55 +268,6 @@ export function useChatVoiceController(options: {
   const prevIsGameModalRef = useRef(isGameModal);
   const gameModalJustActivatedRef = useRef(false);
 
-  const loadVoiceConfig = useCallback(async () => {
-    try {
-      const cfg = await client.getConfig();
-      const resolved = resolveCharacterVoiceConfigFromAppConfig({
-        config: cfg,
-        uiLanguage,
-      });
-      setVoiceConfig(resolved.voiceConfig);
-      if (resolved.shouldPersist && resolved.voiceConfig) {
-        void client
-          .updateConfig({
-            messages: {
-              tts: resolved.voiceConfig,
-            },
-          })
-          .catch(() => {});
-      }
-    } catch {
-      /* ignore — will use browser TTS fallback */
-      setVoiceConfig(null);
-    } finally {
-      setVoiceBootstrapTick((t) => t + 1);
-    }
-  }, [uiLanguage]);
-
-  useEffect(() => {
-    void loadVoiceConfig();
-  }, [loadVoiceConfig]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const handler = (event: Event) => {
-      const detail = (event as CustomEvent<VoiceConfig | undefined>).detail;
-      if (detail && typeof detail === "object") {
-        setVoiceConfig(detail);
-        setVoiceBootstrapTick((t) => t + 1);
-        return;
-      }
-      void loadVoiceConfig();
-    };
-
-    window.addEventListener(VOICE_CONFIG_UPDATED_EVENT, handler);
-    return () =>
-      window.removeEventListener(VOICE_CONFIG_UPDATED_EVENT, handler);
-  }, [loadVoiceConfig]);
-
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -344,7 +286,8 @@ export function useChatVoiceController(options: {
       if (detail && typeof detail.cloudVoiceProxyAvailable === "boolean") {
         setCloudVoiceSnapshot(detail.cloudVoiceProxyAvailable);
       }
-      void loadVoiceConfig();
+      // Cloud voice availability can flip provider selection — re-resolve config.
+      reloadVoiceConfig();
     };
     window.addEventListener(ELIZA_CLOUD_STATUS_UPDATED_EVENT, onCloudStatus);
     return () =>
@@ -352,7 +295,7 @@ export function useChatVoiceController(options: {
         ELIZA_CLOUD_STATUS_UPDATED_EVENT,
         onCloudStatus,
       );
-  }, [loadVoiceConfig]);
+  }, [reloadVoiceConfig]);
 
   const composeVoiceDraft = useCallback((transcript: string) => {
     const base = voiceDraftBaseInputRef.current.trim();

@@ -3,7 +3,7 @@ import type * as React from "react";
 import type { Conversation } from "../../api/client-types-chat";
 import { isMainChatConversation } from "../../state/chat-conversation-guards";
 import type { TranslateFn } from "../../types";
-import { getChatSourceMeta } from "../composites/chat/chat-source";
+import { getChatSourceMeta } from "../composites/chat/chat-source.helpers";
 
 import {
   formatRelativeTime,

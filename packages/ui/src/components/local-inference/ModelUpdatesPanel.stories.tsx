@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
-import { TranslationProvider } from "../../state/TranslationContext";
+import { TranslationProvider } from "../../state/TranslationProvider";
 import {
   ModelUpdatesPanel,
   type VoiceModelInstallationView,

@@ -3,7 +3,7 @@ import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.
 export default createViewBundleConfig({
   packageName: "@elizaos/plugin-messages",
   viewId: "messages",
-  entry: "./src/components/MessagesAppView.tsx",
+  entry: "./src/components/messages-view-bundle.ts",
   outDir: "dist/views",
   componentExport: "MessagesPluginView",
 });

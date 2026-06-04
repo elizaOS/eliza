@@ -1,6 +1,7 @@
 export * from "./actions/perpetual-market";
 export * from "./client";
 export * from "./HyperliquidAppView";
+export { interact } from "./HyperliquidAppView.interact";
 export { HYPERLIQUID_APP_NAME, hyperliquidApp } from "./hyperliquid-app";
 export * from "./hyperliquid-contracts";
 export { hyperliquidPlugin } from "./plugin";

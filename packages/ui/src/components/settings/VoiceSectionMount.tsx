@@ -21,13 +21,15 @@ import {
   type VoiceContinuousMode,
 } from "../../voice/voice-chat-types";
 import {
-  DEFAULT_VAD_AUTO_STOP_PREFS,
-  DEFAULT_VOICE_SECTION_PREFS,
   type VadAutoStopPrefs,
   type VoiceLocalCloudStrategy,
   VoiceSection,
   type VoiceSectionPrefs,
 } from "./VoiceSection";
+import {
+  DEFAULT_VAD_AUTO_STOP_PREFS,
+  DEFAULT_VOICE_SECTION_PREFS,
+} from "./VoiceSection.helpers";
 
 const VOICE_PREFS_CONFIG_KEY = "voice";
 

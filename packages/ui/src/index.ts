@@ -137,15 +137,15 @@ export {
 export { default as dynamic } from "./cloud-ui/runtime/dynamic";
 export { default as Image } from "./cloud-ui/runtime/image";
 export * from "./cloud-ui/runtime/navigation";
+export { RenderTelemetryProfiler } from "./cloud-ui/runtime/render-telemetry";
 export {
   type AnyRenderTelemetryEvent,
   type ProfilerRenderTelemetryEvent,
   RENDER_TELEMETRY_EVENT,
   type RenderTelemetryEvent,
-  RenderTelemetryProfiler,
   type RenderTelemetrySeverity,
   setRenderTelemetrySink,
-} from "./cloud-ui/runtime/render-telemetry";
+} from "./cloud-ui/runtime/render-telemetry.helpers";
 export {
   type ChatMediaAttachment,
   ContentType,
@@ -165,8 +165,10 @@ export {
   maybeCompressDocumentUploadImage,
 } from "./components";
 export * from "./components/apps/AppWindowRenderer";
+export * from "./components/apps/AppWindowRenderer.helpers";
 export * from "./components/apps/extensions/registry";
 export * from "./components/apps/extensions/surface";
+export * from "./components/apps/extensions/surface.helpers";
 export * from "./components/apps/extensions/types";
 export * from "./components/apps/overlay-app-api";
 export * from "./components/apps/overlay-app-registry";
@@ -430,6 +432,7 @@ export * from "./platform/index";
 export * from "./providers/index";
 export * from "./shell-params";
 export * from "./slots/task-coordinator-slots";
+export * from "./slots/task-coordinator-slots.helpers";
 export type {
   ActionNotice,
   CompanionHalfFramerateMode,

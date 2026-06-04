@@ -13,7 +13,7 @@ import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.
 export default createViewBundleConfig({
 	packageName: "@elizaos/plugin-app-control",
 	viewId: "views-manager",
-	entry: "./src/views/ViewManagerView.tsx",
+	entry: "./src/views/app-control-view-bundle.ts",
 	outDir: "dist/views",
 	componentExport: "ViewManagerView",
 });

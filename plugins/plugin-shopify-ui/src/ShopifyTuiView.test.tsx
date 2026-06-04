@@ -25,7 +25,8 @@ vi.mock("@elizaos/ui", () => ({
     React.createElement("button", {}, children),
 }));
 
-import { interact, ShopifyTuiView } from "./ShopifyAppView";
+import { ShopifyTuiView } from "./ShopifyAppView";
+import { interact } from "./ShopifyAppView.interact";
 
 const sampleStatus = {
   connected: true,

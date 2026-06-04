@@ -5,7 +5,7 @@ export default {
   ...createViewBundleConfig({
     packageName: "@elizaos/plugin-contacts",
     viewId: "contacts",
-    entry: "./src/components/ContactsAppView.tsx",
+    entry: "./src/components/contacts-view-bundle.ts",
     outDir: "dist/views",
     componentExport: "ContactsAppView",
   }),

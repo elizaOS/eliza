@@ -2,6 +2,8 @@ export {
   annotateCatalogModel,
   annotateCatalogModels,
   type CatalogModel,
+  CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
+  CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
   FALLBACK_TEXT_SELECTOR_MODELS,
   formatSelectorProvider,
   GROQ_NATIVE_MODEL_ID_MAP,

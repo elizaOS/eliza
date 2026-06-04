@@ -260,20 +260,20 @@
   </script>
   <style>
     /* FOUC guard — runs before external CSS so we use concrete values.
-       The script above already applied .dark / data-theme to <html>, so
-       these selectors resolve synchronously on first paint. */
+       The fallback is the brand orange (#FF5800) the StartupShell loader uses
+       (packages/ui/src/components/shell/StartupShell.tsx): until base.css
+       defines --bg, the first paint is orange in every theme, so the page
+       never flashes black/white before the loader appears. Once --bg resolves
+       the body follows the theme, and #root paints its own --bg over this
+       anyway once the app mounts. */
     html, body {
       margin: 0;
       padding: 0;
-      background-color: #ffffff;
-      color: #09090b;
+      background-color: var(--bg, #FF5800);
+      color: #ffffff;
       font-family: var(--font-sans, "Poppins", Arial, system-ui, sans-serif);
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
-    }
-    html.dark, html[data-theme="dark"] {
-      background-color: var(--bg, #000000);
-      color: #e8e8ec;
     }
 
     /* Safe area insets for notched devices */

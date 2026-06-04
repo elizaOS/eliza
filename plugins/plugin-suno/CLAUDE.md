@@ -53,12 +53,12 @@ Only scripts defined in this package's `package.json`:
 bun run --cwd plugins/plugin-suno build        # tsup ESM build → dist/
 bun run --cwd plugins/plugin-suno dev          # watch build
 bun run --cwd plugins/plugin-suno test         # vitest run
+bun run --cwd plugins/plugin-suno typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-suno lint         # biome check
 bun run --cwd plugins/plugin-suno format       # biome format src/
 bun run --cwd plugins/plugin-suno format:check # biome format check (no write)
 bun run --cwd plugins/plugin-suno lint:fix     # biome check --write src/
 ```
-
-`typecheck` and `lint` are no-ops (skipped for release).
 
 ## Config / env vars
 

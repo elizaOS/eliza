@@ -6,7 +6,7 @@ import { useFetchData } from "../../hooks";
 import {
   type TranslationContextValue,
   useTranslation,
-} from "../../state/TranslationContext";
+} from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
 

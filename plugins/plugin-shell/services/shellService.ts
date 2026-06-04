@@ -38,7 +38,6 @@ import {
   getShellConfig,
   killSession,
   pad,
-  readEnvInt,
   resolveWorkdir,
   sanitizeBinaryOutput,
   sliceLogLines,
@@ -63,19 +62,6 @@ import {
   markExited,
 } from "./processRegistry";
 
-const DEFAULT_MAX_OUTPUT = clampNumber(
-  readEnvInt("SHELL_MAX_OUTPUT_CHARS"),
-  200_000,
-  1_000,
-  200_000
-);
-const DEFAULT_PENDING_MAX_OUTPUT = clampNumber(
-  readEnvInt("SHELL_PENDING_MAX_OUTPUT_CHARS"),
-  200_000,
-  1_000,
-  200_000
-);
-const DEFAULT_BACKGROUND_MS = clampNumber(readEnvInt("SHELL_BACKGROUND_MS"), 10_000, 10, 120_000);
 const DEFAULT_TIMEOUT_SEC = 1800; // 30 minutes
 
 interface RuntimeSandboxManager {

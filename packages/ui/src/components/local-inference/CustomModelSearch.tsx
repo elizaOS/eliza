@@ -16,7 +16,7 @@ import {
   listLocalModelSearchProviders,
   wrapLocalModelSearchResults,
 } from "../../services/local-inference/custom-search";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { ModelCard } from "./ModelCard";
 

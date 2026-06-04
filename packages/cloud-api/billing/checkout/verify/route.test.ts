@@ -43,8 +43,9 @@ const retrieveSession = mock(async () => ({
     agent_id: agentId,
   },
 }));
-const webhookFetch = mock(async (_url: string | URL | Request, _init?: RequestInit) =>
-  Response.json({ ok: true }),
+const webhookFetch = mock(
+  async (_url: string | URL | Request, _init?: RequestInit) =>
+    Response.json({ ok: true }),
 );
 
 function dbChain(rows: unknown[]) {
@@ -69,8 +70,7 @@ const dbRead = {
           chain: "bsc",
           chainId: 56,
           account: {
-            primaryWalletAddress:
-              "0x0000000000000000000000000000000000000001",
+            primaryWalletAddress: "0x0000000000000000000000000000000000000001",
             walletKeyRef: "steward:waifu-agent",
           },
           webhookUrl:

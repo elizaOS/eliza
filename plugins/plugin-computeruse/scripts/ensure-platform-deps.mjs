@@ -24,7 +24,7 @@ const driver = (process.env.ELIZA_COMPUTERUSE_DRIVER ?? "nutjs")
 
 if (driver === "nutjs") {
   console.log(
-    "[computeruse] Driver = nutjs (cross-platform). Skipping shell-tool checks.",
+    "[computeruse] Driver = nutjs (cross-platform). Shell-tool checks are only required for the legacy driver.",
   );
   console.log(
     "[computeruse] Set ELIZA_COMPUTERUSE_DRIVER=legacy to switch to per-OS shell drivers.",

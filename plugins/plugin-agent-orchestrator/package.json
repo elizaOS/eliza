@@ -74,7 +74,9 @@
     "@elizaos/plugin-task-coordinator": "workspace:*",
     "@octokit/rest": "^22.0.0",
     "coding-agent-adapters": "0.16.3",
-    "drizzle-orm": "^0.45.1"
+    "drizzle-orm": "^0.45.1",
+    "effect": "^3.21.1",
+    "smithers-orchestrator": "0.22.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

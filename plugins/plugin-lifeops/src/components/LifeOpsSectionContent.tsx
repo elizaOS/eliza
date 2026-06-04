@@ -6,8 +6,8 @@ import { LifeOpsDocumentsSection } from "./LifeOpsDocumentsSection.js";
 import {
   LIFEOPS_MAIL_CHANNELS,
   LIFEOPS_MESSAGE_CHANNELS,
-  LifeOpsInboxSection,
-} from "./LifeOpsInboxSection.js";
+} from "./LifeOpsInboxSection.helpers.js";
+import { LifeOpsInboxSection } from "./LifeOpsInboxSection.js";
 import { LifeOpsMoneySection } from "./LifeOpsMoneySection.js";
 import { LifeOpsOverviewSection } from "./LifeOpsOverviewSection.js";
 import { LifeOpsRemindersSection } from "./LifeOpsRemindersSection.js";

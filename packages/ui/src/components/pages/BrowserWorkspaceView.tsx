@@ -35,7 +35,8 @@ import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { CollapsibleSidebarSection } from "../shared/CollapsibleSidebarSection";
 import { Button } from "../ui/button";
-import { ConfirmDialog, useConfirm } from "../ui/confirm-dialog";
+import { ConfirmDialog } from "../ui/confirm-dialog";
+import { useConfirm } from "../ui/confirm-dialog.hooks";
 import { Input } from "../ui/input";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import {

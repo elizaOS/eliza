@@ -1,10 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
 import { client, type PluginParamDef } from "../../api";
+import { ConfigRenderer } from "../../components/config-ui/config-renderer";
 import {
-  ConfigRenderer,
   defaultRegistry,
   useConfigValidation,
-} from "../../components/config-ui/config-renderer";
+} from "../../components/config-ui/config-renderer.helpers";
 import { API_KEY_PREFIX_HINTS } from "../../config/api-key-prefix-hints";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import { useTimeout } from "../../hooks/useTimeout";

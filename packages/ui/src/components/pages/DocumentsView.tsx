@@ -39,11 +39,12 @@ import { PagePanel } from "../composites/page-panel";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
 import { Button } from "../ui/button";
 import { ListSkeleton } from "../ui/skeleton-layouts";
+import { DocumentViewer } from "./documents-detail";
 import {
-  DocumentViewer,
   getDocumentSummary,
   getDocumentTypeLabel,
-} from "./documents-detail";
+} from "./documents-detail.helpers";
+import { UploadZone } from "./documents-upload";
 import {
   BULK_UPLOAD_TARGET_BYTES,
   DEFAULT_DOCUMENT_UPLOAD_SCOPE,
@@ -56,15 +57,9 @@ import {
   MAX_BULK_REQUEST_DOCUMENTS,
   MAX_UPLOAD_REQUEST_BYTES,
   shouldReadDocumentFileAsText,
-  UploadZone,
-} from "./documents-upload";
+} from "./documents-upload.helpers";
 
-// Re-export public API used by tests and other modules
-export {
-  type DocumentUploadFile,
-  getDocumentUploadFilename,
-  shouldReadDocumentFileAsText,
-} from "./documents-upload";
+export type { DocumentUploadFile } from "./documents-upload.helpers";
 
 type DocumentScopeFilter = "all" | DocumentScope;
 

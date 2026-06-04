@@ -13,7 +13,7 @@ import type {
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { filterSettingsDefaultLocalModels } from "../../services/local-inference/catalog-policy";
 import { useApp } from "../../state";
-import type { TranslationContextValue } from "../../state/TranslationContext";
+import type { TranslationContextValue } from "../../state/TranslationContext.hooks";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
 import { AdvancedSettingsDisclosure } from "../settings/settings-control-primitives";

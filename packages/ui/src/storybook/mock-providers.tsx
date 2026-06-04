@@ -1,11 +1,10 @@
-import type { Decorator } from "@storybook/react";
 import type { ReactNode } from "react";
 import type { AppContextValue } from "../state/types";
 import { AppContext } from "../state/useApp";
 
 type MockAppOverrides = Partial<AppContextValue>;
 type MockAgentStatus = Partial<NonNullable<AppContextValue["agentStatus"]>>;
-type MockAppOptions = Omit<MockAppOverrides, "agentStatus"> & {
+export type MockAppOptions = Omit<MockAppOverrides, "agentStatus"> & {
   agentStatus?: MockAgentStatus | null;
 };
 
@@ -74,19 +73,5 @@ export function MockAppProvider({
     <AppContext.Provider value={createMockApp(value)}>
       {children}
     </AppContext.Provider>
-  );
-}
-
-export const withMockApp: Decorator = (Story) => (
-  <MockAppProvider>
-    <Story />
-  </MockAppProvider>
-);
-
-export function mockApp(overrides?: MockAppOptions): Decorator {
-  return (Story) => (
-    <MockAppProvider value={overrides}>
-      <Story />
-    </MockAppProvider>
   );
 }
