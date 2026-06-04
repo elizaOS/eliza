@@ -10,6 +10,68 @@ import { useCallback, useEffect, useRef } from "react";
 import { type Connector, useAccount, useConnect, useSignMessage } from "wagmi";
 import { useT } from "@/providers/I18nProvider";
 
+type HexAddress = `0x${string}`;
+
+interface Eip1193Provider {
+  isPhantom?: boolean;
+  request(args: {
+    method: "eth_accounts" | "eth_requestAccounts";
+  }): Promise<readonly string[] | null>;
+  request(args: {
+    method: "personal_sign";
+    params: readonly [`0x${string}`, HexAddress];
+  }): Promise<string>;
+}
+
+function getWindowEthereumProvider(): Eip1193Provider | null {
+  if (typeof window === "undefined") return null;
+  const ethereum = (window as Window & { ethereum?: Eip1193Provider }).ethereum;
+  if (!ethereum || typeof ethereum.request !== "function") return null;
+  if (ethereum.isPhantom === true) return null;
+  return ethereum;
+}
+
+function isHexAddress(value: string | undefined): value is HexAddress {
+  return /^0x[a-fA-F0-9]{40}$/.test(value ?? "");
+}
+
+async function requestEip1193Account(
+  provider: Eip1193Provider,
+): Promise<HexAddress | null> {
+  const existingAccounts = await provider.request({ method: "eth_accounts" });
+  const [existingAccount] = existingAccounts ?? [];
+  if (isHexAddress(existingAccount)) return existingAccount;
+
+  const requestedAccounts = await provider.request({
+    method: "eth_requestAccounts",
+  });
+  const [requestedAccount] = requestedAccounts ?? [];
+  return isHexAddress(requestedAccount) ? requestedAccount : null;
+}
+
+function stringToHex(value: string): `0x${string}` {
+  let hex = "";
+  for (const byte of new TextEncoder().encode(value)) {
+    hex += byte.toString(16).padStart(2, "0");
+  }
+  return `0x${hex}`;
+}
+
+async function personalSign(
+  provider: Eip1193Provider,
+  address: HexAddress,
+  message: string,
+): Promise<string> {
+  const signature = await provider.request({
+    method: "personal_sign",
+    params: [stringToHex(message), address],
+  });
+  if (!signature.startsWith("0x")) {
+    throw new Error("Wallet returned an invalid Ethereum signature.");
+  }
+  return signature;
+}
+
 // Phantom injects itself as an Ethereum provider but must never be used for
 // SIWE — it is Solana-first and the user's intent for SIWE is a real EVM wallet.
 // We mirror the previous EIP-1193 isPhantom check, but against the connector's
@@ -143,16 +205,14 @@ function EthereumButton({
   // connection to trigger SIWE" intent.
   const pendingSignRef = useRef(false);
 
-  const sign = useCallback(
-    async (addr: `0x${string}`) => {
+  const signWith = useCallback(
+    async (
+      addr: HexAddress,
+      signMessage: (message: string) => Promise<string>,
+    ) => {
       onLoadingChange(true);
       try {
-        const result = await auth.signInWithSIWE(
-          addr,
-          async (message: string) => {
-            return await signMessageAsync({ message });
-          },
-        );
+        const result = await auth.signInWithSIWE(addr, signMessage);
         await onSuccess(result);
       } catch (e) {
         const err = e instanceof Error ? e : new Error(String(e));
@@ -161,7 +221,25 @@ function EthereumButton({
         onLoadingChange(false);
       }
     },
-    [auth, signMessageAsync, onSuccess, onError, onLoadingChange],
+    [auth, onSuccess, onError, onLoadingChange],
+  );
+
+  const sign = useCallback(
+    async (addr: HexAddress) => {
+      await signWith(addr, async (message: string) => {
+        return await signMessageAsync({ message });
+      });
+    },
+    [signMessageAsync, signWith],
+  );
+
+  const signWithEip1193 = useCallback(
+    async (provider: Eip1193Provider, addr: HexAddress) => {
+      await signWith(addr, async (message: string) => {
+        return await personalSign(provider, addr, message);
+      });
+    },
+    [signWith],
   );
 
   // If click triggered a connect modal, once connection lands, auto-sign.
@@ -175,6 +253,15 @@ function EthereumButton({
   const connectAndSign = useCallback(async () => {
     onLoadingChange(true);
     try {
+      const provider = getWindowEthereumProvider();
+      if (provider) {
+        const account = await requestEip1193Account(provider);
+        if (account) {
+          await signWithEip1193(provider, account);
+          return;
+        }
+      }
+
       const connector = await pickInjectedConnector(connectors);
       if (!connector) {
         // No injected connector available — fall through to the RainbowKit
@@ -206,6 +293,7 @@ function EthereumButton({
     onError,
     onLoadingChange,
     sign,
+    signWithEip1193,
     t,
   ]);
 
