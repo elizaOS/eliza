@@ -206,7 +206,7 @@ CLASSIFIED_DIAGNOSTIC_LINE_RE = re.compile(
     r"if not isinstance\(scaffold, dict\)|"
     r"placeholder_marker_count|placeholder_footprint_count|"
     r"command_value = value or hint\.placeholder|"
-    r'if "TO' + r'DO" in text|still contains TO' + r'DO|'
+    r'if "TO' + r'DO" in text|still contains TO' + r"DO|"
     r"--build-stub|"
     r"Required AOSP scaffold sources|Source scaffold presence|"
     r"synthetic stub when the script printed nothing|"
