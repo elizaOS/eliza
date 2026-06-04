@@ -16,9 +16,7 @@ describe("managed Eliza environment", () => {
   });
 
   test("pins managed containers to their cloud agent id for waifu chat JWT scope", async () => {
-    const { prepareManagedElizaBaseEnvironment } = await import(
-      "./managed-eliza-config"
-    );
+    const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
 
     const result = await prepareManagedElizaBaseEnvironment({
       organizationId: "org-1",
@@ -27,15 +25,11 @@ describe("managed Eliza environment", () => {
     });
 
     expect(result.environmentVars.ELIZA_CLOUD_AGENT_ID).toBe("cloud-agent-1");
-    expect(result.environmentVars.WAIFU_ELIZA_CLOUD_AGENT_ID).toBe(
-      "cloud-agent-1",
-    );
+    expect(result.environmentVars.WAIFU_ELIZA_CLOUD_AGENT_ID).toBe("cloud-agent-1");
   });
 
   test("preserves waifu-provided hosted UI enablement", async () => {
-    const { prepareManagedElizaBaseEnvironment } = await import(
-      "./managed-eliza-config"
-    );
+    const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
 
     const result = await prepareManagedElizaBaseEnvironment({
       organizationId: "org-1",
@@ -50,9 +44,7 @@ describe("managed Eliza environment", () => {
   });
 
   test("preserves waifu chat auth and frame env for hosted token pages", async () => {
-    const { prepareManagedElizaBaseEnvironment } = await import(
-      "./managed-eliza-config"
-    );
+    const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
 
     const result = await prepareManagedElizaBaseEnvironment({
       organizationId: "org-1",
@@ -60,14 +52,11 @@ describe("managed Eliza environment", () => {
       agentSandboxId: "cloud-agent-1",
       existingEnv: {
         WAIFU_CHAT_ACCESS_JWT_SECRET: "waifu-chat-secret",
-        WAIFU_CHAT_FRAME_ANCESTORS:
-          "https://waifu.fun https://staging.waifu.fun",
+        WAIFU_CHAT_FRAME_ANCESTORS: "https://waifu.fun https://staging.waifu.fun",
       },
     });
 
-    expect(result.environmentVars.WAIFU_CHAT_ACCESS_JWT_SECRET).toBe(
-      "waifu-chat-secret",
-    );
+    expect(result.environmentVars.WAIFU_CHAT_ACCESS_JWT_SECRET).toBe("waifu-chat-secret");
     expect(result.environmentVars.WAIFU_CHAT_FRAME_ANCESTORS).toBe(
       "https://waifu.fun https://staging.waifu.fun",
     );

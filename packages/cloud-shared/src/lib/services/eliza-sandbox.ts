@@ -48,8 +48,8 @@ import {
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
 import { getNeonClient, NeonClientError } from "./neon-client";
 import { JOB_TYPES } from "./provisioning-job-types";
-import { createSandboxProvider, type SandboxProvider } from "./sandbox-provider";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
+import { createSandboxProvider, type SandboxProvider } from "./sandbox-provider";
 
 /** Shared Neon project used as branch parent for per-agent databases. */
 const NEON_PARENT_PROJECT_ID: string = process.env.NEON_PARENT_PROJECT_ID ?? "";
