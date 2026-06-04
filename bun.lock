@@ -3159,6 +3159,35 @@
         "vitest": "^4.0.17",
       },
     },
+    "plugins/plugin-calendar": {
+      "name": "@elizaos/plugin-calendar",
+      "version": "2.0.3-beta.1",
+      "dependencies": {
+        "@capacitor/core": "8.3.1",
+        "@elizaos/agent": "workspace:*",
+        "@elizaos/app-core": "workspace:*",
+        "@elizaos/capacitor-calendar": "workspace:*",
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-google": "workspace:*",
+        "@elizaos/shared": "workspace:*",
+        "@elizaos/ui": "workspace:*",
+        "drizzle-orm": "0.45.2",
+        "lucide-react": "^1.0.0",
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@electric-sql/pglite": "^0.4.0",
+        "bun-types": "1.3.14",
+        "react-dom": "*",
+        "tsup": "^8.5.1",
+        "vite": "^8.0.0",
+        "vitest": "^4.0.17",
+      },
+      "peerDependencies": {
+        "react": "*",
+        "react-dom": "*",
+      },
+    },
     "plugins/plugin-calendly": {
       "name": "@elizaos/plugin-calendly",
       "version": "2.0.3-beta.1",
@@ -6337,6 +6366,8 @@
     "@elizaos/plugin-bluesky": ["@elizaos/plugin-bluesky@workspace:plugins/plugin-bluesky"],
 
     "@elizaos/plugin-browser": ["@elizaos/plugin-browser@workspace:plugins/plugin-browser"],
+
+    "@elizaos/plugin-calendar": ["@elizaos/plugin-calendar@workspace:plugins/plugin-calendar"],
 
     "@elizaos/plugin-calendly": ["@elizaos/plugin-calendly@workspace:plugins/plugin-calendly"],
 
