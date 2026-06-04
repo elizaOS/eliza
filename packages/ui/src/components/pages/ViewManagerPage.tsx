@@ -67,6 +67,26 @@ function isViewManagerEntry(view: Pick<ViewRegistryEntry, "id">) {
   return view.id === "views-manager";
 }
 
+function isShellNavigationEntry(view: Pick<ViewRegistryEntry, "id" | "path">) {
+  return (
+    view.id === "chat" ||
+    view.path === "/chat" ||
+    view.id === "character" ||
+    view.path === "/character"
+  );
+}
+
+function isVisibleInViewManager(
+  view: ViewRegistryEntry,
+  isDeveloperMode: boolean,
+) {
+  if (isViewManagerEntry(view)) return false;
+  if (isShellNavigationEntry(view)) return false;
+  if (view.developerOnly && !isDeveloperMode) return false;
+  if (view.visibleInManager === false) return false;
+  return true;
+}
+
 function ViewCardPinButton({
   view,
   onPin,
@@ -400,41 +420,6 @@ function ViewIdentityTile({
   );
 }
 
-function isChatViewGroup(group: ViewGroup) {
-  return group.id === "chat" || group.primary.path === "/chat";
-}
-
-function ChatSuggestionsPopover({ open }: { open: boolean }) {
-  const suggestions = [
-    "Resume my latest thread",
-    "Summarize recent messages",
-    "Find the right view for this task",
-  ];
-  return (
-    <div
-      className={`pointer-events-none absolute bottom-2 left-2 right-2 z-20 rounded-md border border-border/55 bg-card/95 p-2 shadow-lg shadow-black/20 backdrop-blur transition-all duration-150 ${
-        open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
-      }`}
-      data-state={open ? "open" : "closed"}
-      data-testid="chat-view-suggestions"
-    >
-      <p className="mb-1.5 text-[0.66rem] font-semibold uppercase tracking-wider text-muted">
-        Chat suggestions
-      </p>
-      <div className="flex flex-wrap gap-1.5">
-        {suggestions.map((suggestion) => (
-          <span
-            key={suggestion}
-            className="rounded-md border border-border/45 bg-bg/45 px-2 py-1 text-[0.68rem] font-medium text-txt"
-          >
-            {suggestion}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function ViewCard({
   group,
   onClick,
@@ -455,8 +440,6 @@ function ViewCard({
   const showPinButton = isDesktop && view.desktopTabEnabled !== false && onPin;
   const showManagementButtons = Boolean(onEdit || onDelete);
   const sourceLabel = group.builtin ? "Core" : "Plugin";
-  const showChatSuggestions = isChatViewGroup(group);
-  const [chatSuggestionsOpen, setChatSuggestionsOpen] = useState(false);
   const isFeatured = variant === "featured";
   const isCompact = variant === "compact";
   const cardClass = isFeatured
@@ -470,26 +453,11 @@ function ViewCard({
       aria-label={`${group.label} view`}
       className={cardClass}
       data-testid={`view-card-${group.id}`}
-      onBlurCapture={() => {
-        if (showChatSuggestions) setChatSuggestionsOpen(false);
-      }}
-      onFocusCapture={() => {
-        if (showChatSuggestions) setChatSuggestionsOpen(true);
-      }}
-      onMouseEnter={() => {
-        if (showChatSuggestions) setChatSuggestionsOpen(true);
-      }}
-      onMouseLeave={() => {
-        if (showChatSuggestions) setChatSuggestionsOpen(false);
-      }}
     >
       <div
         className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.018)_1px,transparent_1px)] bg-[length:24px_24px] opacity-35"
         aria-hidden
       />
-      {showChatSuggestions && (
-        <ChatSuggestionsPopover open={chatSuggestionsOpen} />
-      )}
       {(showPinButton || showManagementButtons) && (
         <div className="absolute right-2 top-2 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           {showPinButton && <ViewCardPinButton view={view} onPin={onPin} />}
@@ -864,9 +832,7 @@ export function ViewManagerPage() {
     // When the search endpoint returned results, display those ranked by score.
     if (searchResults !== null) {
       const visible = searchResults.filter((v) => {
-        if (isViewManagerEntry(v)) return false;
-        if (v.developerOnly && !isDeveloperMode) return false;
-        if (v.visibleInManager === false) return false;
+        if (!isVisibleInViewManager(v, isDeveloperMode)) return false;
         if (sourceFilter === "core" && !v.builtin) return false;
         if (sourceFilter === "plugins" && v.builtin) return false;
         if (
@@ -885,9 +851,7 @@ export function ViewManagerPage() {
     // No active search — show all views with client-side visibility rules.
     const q = query.trim().toLowerCase();
     const visible = views.filter((v) => {
-      if (isViewManagerEntry(v)) return false;
-      if (v.developerOnly && !isDeveloperMode) return false;
-      if (v.visibleInManager === false) return false;
+      if (!isVisibleInViewManager(v, isDeveloperMode)) return false;
       if (sourceFilter === "core" && !v.builtin) return false;
       if (sourceFilter === "plugins" && v.builtin) return false;
       if (

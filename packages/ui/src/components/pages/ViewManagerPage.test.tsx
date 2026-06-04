@@ -86,6 +86,14 @@ const views: ViewRegistryEntry[] = [
     builtin: true,
     tags: ["chat", "messages"],
   }),
+  view("character", {
+    label: "Character",
+    description: "Agent identity and knowledge documents",
+    path: "/character",
+    pluginName: "@elizaos/builtin/character",
+    builtin: true,
+    tags: ["character", "identity"],
+  }),
   view("remote.ledger", {
     label: "Remote Ledger",
     description: "Remote module loaded from a plugin bundle",
@@ -142,6 +150,8 @@ describe("ViewManagerPage", () => {
     expect(screen.getByText("Local Notes")).toBeTruthy();
     expect(screen.getByText("Remote Ledger")).toBeTruthy();
     expect(screen.queryByTestId("view-card-views-manager")).toBeNull();
+    expect(screen.queryByTestId("view-card-chat")).toBeNull();
+    expect(screen.queryByTestId("view-card-character")).toBeNull();
     expect(screen.queryByText("Developer Trace")).toBeNull();
     expect(screen.queryByText("Internal Hidden")).toBeNull();
   });
@@ -186,21 +196,6 @@ describe("ViewManagerPage", () => {
       status: "available",
     });
     expect(context.agentDescription).toContain("Purpose:");
-  });
-
-  it("renders chat-specific suggestion chips for hover and focus discovery", () => {
-    render(<ViewManagerPage />);
-
-    const chatCard = screen.getByTestId("view-card-chat");
-    const suggestions = screen.getByTestId("chat-view-suggestions");
-
-    expect(suggestions.getAttribute("data-state")).toBe("closed");
-    fireEvent.mouseEnter(chatCard);
-
-    expect(suggestions.getAttribute("data-state")).toBe("open");
-    expect(chatCard.textContent).toContain("Chat suggestions");
-    expect(suggestions.textContent).toContain("Summarize recent messages");
-    expect(chatCard.textContent).not.toContain("RLR");
   });
 
   it("groups GUI, XR, and TUI variants into one launcher row with mode buttons", () => {
