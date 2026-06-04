@@ -73,10 +73,14 @@ import {
 } from "react";
 import {
   buildConversation,
+  type ConversationBlock,
   ConversationBlockView,
+  ToolBody,
 } from "./orchestrator-stream";
 import {
+  formatClockTime,
   formatCompactNumber,
+  formatDuration,
   formatIsoRelative,
   formatRelativeTime,
   formatUsd,
@@ -86,6 +90,16 @@ type Translate = (key: string, vars?: Record<string, unknown>) => string;
 type TaskStatus = CodingAgentTaskThread["status"];
 type TaskPriority = CodingAgentTaskThread["priority"];
 type StatusFilter = "all" | TaskStatus;
+type OperatorTab = "input" | "output" | "events" | "usage";
+type DetailDrawerSelection =
+  | { kind: "session"; sessionId: string }
+  | {
+      kind: "block";
+      blockKey: string;
+      blockKind: ConversationBlock["kind"];
+      eventIds: string[];
+      messageIds: string[];
+    };
 
 const fallbackTranslate: Translate = (key, vars) =>
   String(vars?.defaultValue ?? key);
@@ -1092,12 +1106,14 @@ function TaskRailItem({
 function SubAgentCard({
   session,
   busy,
+  onInspect,
   onStop,
   t,
   locale,
 }: {
   session: CodingAgentTaskSessionRecord;
   busy: boolean;
+  onInspect: (sessionId: string) => void;
   onStop: (sessionId: string) => void;
   t: Translate;
   locale?: string;
@@ -1113,6 +1129,17 @@ function SubAgentCard({
   const stopLabel = t("orchestrator.action.stopAgent", {
     defaultValue: "Stop agent",
   });
+  const inspectLabel = t("orchestrator.action.inspectAgent", {
+    defaultValue: "Inspect agent",
+  });
+  const { ref: inspectRef, agentProps: inspectAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: `sub-agent-inspect-${session.sessionId}`,
+      role: "button",
+      label: `${inspectLabel}: ${session.label}`,
+      group: "orchestrator-sub-agents",
+      description: `Open recovery and event details for the "${session.label}" sub-agent`,
+    });
   const { ref: stopRef, agentProps: stopAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: `sub-agent-stop-${session.sessionId}`,
@@ -1128,6 +1155,18 @@ function SubAgentCard({
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-txt">
           {session.label}
         </span>
+        <button
+          ref={inspectRef}
+          type="button"
+          onClick={() => onInspect(session.sessionId)}
+          className="flex items-center gap-0.5 rounded px-1 py-0.5 text-2xs text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
+          data-testid="orchestrator-inspect-session"
+          aria-label={inspectLabel}
+          title={inspectLabel}
+          {...inspectAgentProps}
+        >
+          <PanelRightOpen className="h-3 w-3" />
+        </button>
         {stoppable ? (
           <button
             ref={stopRef}
@@ -2050,6 +2089,7 @@ function TaskInspector({
   onSetPriority,
   onToggleAddAgent,
   onAddAgent,
+  onInspectSession,
   onStopAgent,
   onCopyLink,
   t,
@@ -2075,6 +2115,7 @@ function TaskInspector({
   onSetPriority: (priority: TaskPriority) => void;
   onToggleAddAgent: () => void;
   onAddAgent: (input: CodingAgentAddAgentInput) => void;
+  onInspectSession: (sessionId: string) => void;
   onStopAgent: (sessionId: string) => void;
   onCopyLink: () => void;
   t: Translate;
@@ -2377,6 +2418,7 @@ function TaskInspector({
                 key={session.id}
                 session={session}
                 busy={busy}
+                onInspect={onInspectSession}
                 onStop={onStopAgent}
                 t={t}
                 locale={locale}
@@ -2549,11 +2591,6 @@ function sessionUsage(
   };
 }
 
-function blockSessionId(block: ConversationBlock): string | null {
-  if (block.kind === "tool") return block.tool.sessionId;
-  return block.sessionId;
-}
-
 function blockEventIds(block: ConversationBlock): string[] {
   if (block.kind === "tool") return block.tool.eventIds;
   if (block.kind === "reasoning") return block.eventIds;
@@ -2571,6 +2608,7 @@ function blockSelection(
 ): Extract<DetailDrawerSelection, { kind: "block" }> {
   return {
     kind: "block",
+    blockKey: block.key,
     blockKind: block.kind,
     eventIds: blockEventIds(block),
     messageIds: blockMessageIds(block),
@@ -2581,6 +2619,7 @@ function blockMatchesSelection(
   block: ConversationBlock,
   selection: Extract<DetailDrawerSelection, { kind: "block" }>,
 ): boolean {
+  if (block.key === selection.blockKey) return true;
   if (block.kind !== selection.blockKind) return false;
   const eventIds = blockEventIds(block);
   if (
@@ -2597,10 +2636,10 @@ function blockMatchesSelection(
 }
 
 function blockSelectionKey(selection: DetailDrawerSelection): string {
-  if (selection.kind === "task") return "task";
   if (selection.kind === "session") return `session:${selection.sessionId}`;
   return [
     "block",
+    selection.blockKey,
     selection.blockKind,
     selection.eventIds.join(","),
     selection.messageIds.join(","),
@@ -3378,6 +3417,18 @@ function TimelineHeader({
       {statusDot}
       {title}
       {pausedBadge}
+      <button
+        ref={detailsRef}
+        type="button"
+        onClick={onOpenInspector}
+        className="shrink-0 rounded-md border border-border/50 p-1 text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
+        aria-label={detailsLabel}
+        title={detailsLabel}
+        data-testid="orchestrator-open-inspector"
+        {...detailsAgentProps}
+      >
+        <PanelRightOpen className="h-4 w-4" aria-hidden />
+      </button>
     </div>
   );
 }
@@ -3413,6 +3464,8 @@ export function OrchestratorWorkbench() {
   const [createOpen, setCreateOpen] = useState(false);
   const [addAgentOpen, setAddAgentOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [detailDrawer, setDetailDrawer] =
+    useState<DetailDrawerSelection | null>(null);
   const [loading, setLoading] = useState(true);
   const [mutating, setMutating] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -3515,6 +3568,7 @@ export function OrchestratorWorkbench() {
     // task starts clean and scrolled to its latest activity.
     setInspectorOpen(false);
     setAddAgentOpen(false);
+    setDetailDrawer(null);
     stickToBottomRef.current = true;
     if (!selectedId) {
       setDetail(null);
@@ -3670,12 +3724,14 @@ export function OrchestratorWorkbench() {
     createOpen,
     addAgentOpen,
     inspectorOpen,
+    detailDrawer,
     stop: handleStopActive,
   });
   escStateRef.current = {
     createOpen,
     addAgentOpen,
     inspectorOpen,
+    detailDrawer,
     stop: handleStopActive,
   };
   useEffect(() => {
@@ -3692,6 +3748,10 @@ export function OrchestratorWorkbench() {
       }
       if (s.inspectorOpen) {
         setInspectorOpen(false);
+        return;
+      }
+      if (s.detailDrawer) {
+        setDetailDrawer(null);
         return;
       }
       s.stop();
@@ -3755,6 +3815,56 @@ export function OrchestratorWorkbench() {
         finishedSessionIds,
       ),
     [messages, events, sessionLabelById, mainAgentName, finishedSessionIds, t],
+  );
+  const selectedBlock = useMemo(() => {
+    if (detailDrawer?.kind !== "block") return null;
+    return (
+      conversation.find((block) =>
+        blockMatchesSelection(block, detailDrawer),
+      ) ?? null
+    );
+  }, [conversation, detailDrawer]);
+  const selectedSession = useMemo(() => {
+    if (detailDrawer?.kind !== "session" || !detail) return null;
+    return (
+      detail.sessions.find(
+        (session) => session.sessionId === detailDrawer.sessionId,
+      ) ?? null
+    );
+  }, [detail, detailDrawer]);
+  const selectedBlockEvents = useMemo(() => {
+    if (!detailDrawer) return [];
+    if (detailDrawer.kind === "session") {
+      return events.filter(
+        (event) => event.sessionId === detailDrawer.sessionId,
+      );
+    }
+    const ids = new Set(detailDrawer.eventIds);
+    return events.filter((event) => ids.has(event.id));
+  }, [detailDrawer, events]);
+  const selectedBlockMessages = useMemo(() => {
+    if (!detailDrawer) return [];
+    if (detailDrawer.kind === "session") {
+      return messages.filter(
+        (message) => message.sessionId === detailDrawer.sessionId,
+      );
+    }
+    const ids = new Set(detailDrawer.messageIds);
+    return messages.filter((message) => ids.has(message.id));
+  }, [detailDrawer, messages]);
+  const handleSelectBlock = useCallback(
+    (block: ConversationBlock) => {
+      setDetailDrawer(blockSelection(block));
+      if (isMobile) setInspectorOpen(true);
+    },
+    [isMobile],
+  );
+  const handleInspectSession = useCallback(
+    (sessionId: string) => {
+      setDetailDrawer({ kind: "session", sessionId });
+      if (isMobile) setInspectorOpen(true);
+    },
+    [isMobile],
   );
 
   // Re-pin to the newest entry whenever the conversation grows (subject to the
@@ -3974,7 +4084,10 @@ export function OrchestratorWorkbench() {
                 detail={detail}
                 isMobile={isMobile}
                 onBack={() => setSelectedId(null)}
-                onOpenInspector={() => setInspectorOpen(true)}
+                onOpenInspector={() => {
+                  setDetailDrawer(null);
+                  setInspectorOpen(true);
+                }}
                 t={t}
               />
               <div
@@ -4006,13 +4119,44 @@ export function OrchestratorWorkbench() {
                     })}
                   </p>
                 ) : (
-                  conversation.map((block) => (
-                    <ConversationBlockView
-                      key={block.key}
-                      block={block}
-                      locale={locale}
-                    />
-                  ))
+                  conversation.map((block) => {
+                    const selected =
+                      detailDrawer?.kind === "block" &&
+                      blockMatchesSelection(block, detailDrawer);
+                    return (
+                      <div
+                        key={block.key}
+                        className={`group flex gap-1.5 rounded-md transition-colors ${
+                          selected
+                            ? "bg-accent-subtle ring-1 ring-accent/60"
+                            : "hover:bg-bg-hover/30"
+                        }`}
+                        data-testid="orchestrator-conversation-block"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleSelectBlock(block)}
+                          className="mt-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted opacity-0 transition-colors hover:bg-bg-hover/60 hover:text-txt focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+                          aria-label={t("orchestrator.action.inspectBlock", {
+                            defaultValue: `Inspect ${blockTitle(block, t)}`,
+                          })}
+                          title={t("orchestrator.action.inspectBlock", {
+                            defaultValue: `Inspect ${blockTitle(block, t)}`,
+                          })}
+                          data-testid="orchestrator-inspect-block"
+                        >
+                          <PanelRightOpen className="h-3.5 w-3.5" />
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <ConversationBlockView
+                            block={block}
+                            locale={locale}
+                            onInspect={() => handleSelectBlock(block)}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
               </div>
               {detail.activeSessionCount > 0 ? (
@@ -4147,12 +4291,50 @@ export function OrchestratorWorkbench() {
             aria-label={t("orchestrator.action.closeDetails", {
               defaultValue: "Close details",
             })}
-            onClick={() => setInspectorOpen(false)}
+            onClick={() => {
+              setInspectorOpen(false);
+              setDetailDrawer(null);
+            }}
             className="absolute inset-0 z-20 bg-black/40"
             data-testid="orchestrator-inspector-backdrop"
           />
         ) : null}
-        {detail ? (
+        {detail && detailDrawer ? (
+          <OperatorDetailDrawer
+            key={blockSelectionKey(detailDrawer)}
+            selection={detailDrawer}
+            block={selectedBlock}
+            session={selectedSession}
+            events={selectedBlockEvents}
+            messages={selectedBlockMessages}
+            taskUsage={detail.usage}
+            busy={mutating}
+            className={isMobile ? "flex" : "flex w-80"}
+            style={
+              isMobile
+                ? inspectorOpen
+                  ? INSPECTOR_DRAWER_STYLE
+                  : HIDDEN_STYLE
+                : undefined
+            }
+            onClose={() => {
+              setDetailDrawer(null);
+              if (isMobile) setInspectorOpen(false);
+            }}
+            onRetry={(input) =>
+              runMutation(() =>
+                client.retryOrchestratorTaskTurn(detail.id, input),
+              )
+            }
+            onRerun={(input) =>
+              runMutation(() =>
+                client.rerunOrchestratorTaskFromEvent(detail.id, input),
+              )
+            }
+            t={t}
+            locale={locale}
+          />
+        ) : detail ? (
           <TaskInspector
             detail={detail}
             className={isMobile ? "flex" : "flex w-80"}
@@ -4232,38 +4414,13 @@ export function OrchestratorWorkbench() {
                 setAddAgentOpen(false);
               })
             }
+            onInspectSession={handleInspectSession}
             onStopAgent={(sessionId) =>
               runMutation(() =>
                 client.stopOrchestratorAgent(detail.id, sessionId),
               )
             }
             onCopyLink={handleCopyLink}
-            t={t}
-            locale={locale}
-          />
-        ) : detail && detailDrawer ? (
-          <OperatorDetailDrawer
-            key={blockSelectionKey(detailDrawer)}
-            selection={detailDrawer}
-            block={selectedBlock}
-            session={selectedSession}
-            events={selectedBlockEvents}
-            messages={selectedBlockMessages}
-            taskUsage={detail.usage}
-            busy={mutating}
-            className={isMobile ? "flex" : "flex w-80"}
-            style={isMobile ? INSPECTOR_DRAWER_STYLE : undefined}
-            onClose={() => setDetailDrawer(null)}
-            onRetry={(input) =>
-              runMutation(() =>
-                client.retryOrchestratorTaskTurn(detail.id, input),
-              )
-            }
-            onRerun={(input) =>
-              runMutation(() =>
-                client.rerunOrchestratorTaskFromEvent(detail.id, input),
-              )
-            }
             t={t}
             locale={locale}
           />

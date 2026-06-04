@@ -579,6 +579,8 @@ function richOrchestratorFixture() {
         framework: "codex",
         providerSource: "local-auth",
         model: "gpt-5.4",
+        originalTask:
+          "Generate the planner shell and persist card movement locally.",
         workdir: "/tmp/orchestrator-kanban",
         repo: "/home/shaw/milady/eliza",
         activeTool: "write",
@@ -595,6 +597,8 @@ function richOrchestratorFixture() {
         framework: "eliza",
         providerSource: "cerebras",
         model: "gpt-oss-120b",
+        originalTask:
+          "Review the planner visual affordances and interaction model.",
         workdir: "/tmp/orchestrator-kanban",
         repo: "/home/shaw/milady/eliza",
         activeTool: "review",
