@@ -329,6 +329,7 @@ class RemoteForwardRequest extends http.IncomingMessage {
       configurable: true,
     });
     super(socket);
+    this.headers = {};
     this.headers.host = "203.0.113.7:19687";
     for (const [key, value] of Object.entries(headers)) {
       this.headers[key.toLowerCase()] = value;
