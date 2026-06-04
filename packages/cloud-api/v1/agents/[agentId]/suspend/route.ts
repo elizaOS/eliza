@@ -29,7 +29,7 @@ const suspendSchema = z.object({
 
 app.post("/", async (c) => {
   try {
-    await requireServiceKey(c);
+    const identity = await requireServiceKey(c);
     const agentId = c.req.param("agentId") ?? "";
     const agent = await elizaSandboxService.getAgentById(agentId);
     if (!agent) throw NotFoundError("Agent not found");
@@ -41,14 +41,6 @@ app.post("/", async (c) => {
       : "owner requested suspension";
 
     logger.info("[service-api] Suspend requested", { agentId, reason });
-
-    const agent = await elizaSandboxService.getAgentForWrite(
-      agentId,
-      agent.organization_id,
-    );
-    if (!agent) {
-      return c.json({ success: false, error: "Agent not found" }, 404);
-    }
 
     if (agent.status === "stopped") {
       return c.json({

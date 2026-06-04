@@ -29,7 +29,7 @@ const app = new Hono<AppEnv>();
 
 app.get("/", async (c) => {
   try {
-    await requireServiceKey(c);
+    const identity = await requireServiceKey(c);
     const agentId = c.req.param("agentId") ?? "";
     const agent = await elizaSandboxService.getAgentById(agentId);
 
