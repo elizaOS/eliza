@@ -21,7 +21,7 @@ import type {
   LifeOpsCalendarFeed,
   LifeOpsCalendarSummary,
   LifeOpsConnectorSide,
-} from "../contracts/index.js";
+} from "@elizaos/shared";
 
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
 
@@ -361,10 +361,10 @@ function getRegistryFromRuntime(
   if (!runtime) return null;
   const service = runtime.getService(PERMISSIONS_REGISTRY_SERVICE);
   if (!service) return null;
-  // Single-step cast: IPermissionsRegistry is a plain interface (no Service
-  // base), so getService<T> generic isn't usable, but the types are
-  // non-conflicting and a single cast from Service to interface suffices.
-  return service as IPermissionsRegistry;
+  // IPermissionsRegistry is a plain interface (no Service base), so the
+  // getService<T> generic isn't usable; the registry service implements the
+  // interface structurally at runtime but does not extend it nominally.
+  return service as unknown as IPermissionsRegistry;
 }
 
 function buildPermissionFailure(

@@ -1,4 +1,5 @@
 import type { Plugin } from "@elizaos/core";
+import { CalendarService } from "./service/CalendarService.js";
 
 /**
  * First-class calendar plugin. Owns the calendar domain that previously lived
@@ -13,7 +14,7 @@ export const calendarPlugin: Plugin = {
   name: "calendar",
   description:
     "Calendar feed and event management (Google + Apple) for Eliza agents.",
-  services: [],
+  services: [CalendarService],
   actions: [],
   providers: [],
 };
