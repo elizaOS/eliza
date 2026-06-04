@@ -438,6 +438,23 @@ jobs:
               | tail -n 320 \
               | redact_stream || true
 
+            echo "=== Agent router diagnostics for ${safe_agent_id} ==="
+            router_port="$(systemctl show eliza-agent-router.service --property=Environment --value | tr ' ' '\n' | awk -F= '$1=="AGENT_ROUTER_PORT" {print $2}')"
+            : "${router_port:=3458}"
+            routing_json="$(curl -sf -m 5 "http://127.0.0.1:${router_port}/agents/${safe_agent_id}/routing" || true)"
+            if [ -n "$routing_json" ]; then
+              printf '%s\n' "$routing_json" | redact_stream
+              target="$(ROUTING_JSON="$routing_json" node -e 'try { const data = JSON.parse(process.env.ROUTING_JSON || "{}"); if (typeof data.target === "string") console.log(data.target); } catch {}')"
+              if [ -n "$target" ]; then
+                for path in / /health /api/health /pair; do
+                  status="$(curl -s -o /dev/null -w "%{http_code}" -m 8 "http://${target}${path}" 2>/dev/null || true)"
+                  printf 'router_target_check target=%s path=%s status=%s\n' "$target" "$path" "$status" | redact_stream
+                done
+              fi
+            else
+              echo "agent-router returned no routing payload."
+            fi
+
             container_name="agent-${safe_agent_id}"
             if sudo docker inspect "$container_name" >/dev/null 2>&1; then
               echo "=== Docker port diagnostics for ${container_name} ==="
