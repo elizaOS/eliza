@@ -20,10 +20,12 @@ const grantInitialCreditsToWalletAccount = mock(async () => ({
 }));
 type CreditGateResult = { allowed: boolean; balance: number; error?: string };
 
-const checkAgentCreditGate = mock(async (): Promise<CreditGateResult> => ({
-  allowed: true,
-  balance: 5,
-}));
+const checkAgentCreditGate = mock(
+  async (): Promise<CreditGateResult> => ({
+    allowed: true,
+    balance: 5,
+  }),
+);
 const checkProvisioningWorkerHealth = mock(async () => ({ ok: true }));
 const findByTokenAddress = mock(
   async (): Promise<{ id: string } | null> => null,
@@ -44,21 +46,24 @@ const createAgent = mock(async (input: Record<string, unknown>) => ({
   input,
 }));
 const provisionAgent = mock(
-  async (): Promise<{ success: boolean; sandboxRecord: Record<string, unknown> }> => ({
-  success: true,
-  sandboxRecord: {
-    id: "cloud-agent-1",
-    container_name: null,
-    sandbox_id: null,
-    bridge_url: null,
-    status: "running",
-    last_heartbeat_at: null,
-    node_id: null,
-    error_message: null,
-    database_status: "ready",
-    agent_config: {},
-  },
-}),
+  async (): Promise<{
+    success: boolean;
+    sandboxRecord: Record<string, unknown>;
+  }> => ({
+    success: true,
+    sandboxRecord: {
+      id: "cloud-agent-1",
+      container_name: null,
+      sandbox_id: null,
+      bridge_url: null,
+      status: "running",
+      last_heartbeat_at: null,
+      node_id: null,
+      error_message: null,
+      database_status: "ready",
+      agent_config: {},
+    },
+  }),
 );
 const enqueueAgentProvision = mock(async () => ({ id: "job-1" }));
 
@@ -250,13 +255,11 @@ describe("service agent provisioning route", () => {
       "0x0000000000000000000000000000000000000001",
       { grantInitialCredits: false },
     );
-    expect(grantInitialCreditsToWalletAccount).toHaveBeenCalledWith(
-      {
-        organizationId: "agent-wallet-org",
-        walletAddress: "0x0000000000000000000000000000000000000001",
-        requireInitialCredits: true,
-      },
-    );
+    expect(grantInitialCreditsToWalletAccount).toHaveBeenCalledWith({
+      organizationId: "agent-wallet-org",
+      walletAddress: "0x0000000000000000000000000000000000000001",
+      requireInitialCredits: true,
+    });
     expect(checkAgentCreditGate).toHaveBeenCalledWith("agent-wallet-org");
     expect(createCharacter).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -312,8 +315,7 @@ describe("service agent provisioning route", () => {
           AGENT_PRIMARY_WALLET_ADDRESS:
             "0x0000000000000000000000000000000000000001",
           AGENT_PRIMARY_WALLET_KEY_REF: "steward:waifu-smoke-key",
-          WAIFU_AGENT_EVM_ADDRESS:
-            "0x0000000000000000000000000000000000000001",
+          WAIFU_AGENT_EVM_ADDRESS: "0x0000000000000000000000000000000000000001",
           WAIFU_AGENT_EVM_KEY_REF: "steward:waifu-smoke-key",
           AGENT_ADMIN_WALLET_ADDRESS:
             "0x0000000000000000000000000000000000000002",
@@ -790,11 +792,9 @@ describe("service agent provisioning route", () => {
     ) as Error & { code: string };
     duplicateError.code = "23505";
     createCharacter.mockRejectedValueOnce(duplicateError);
-    findByTokenAddress
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({
-        id: "11111111-1111-4111-8111-111111111111",
-      });
+    findByTokenAddress.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: "11111111-1111-4111-8111-111111111111",
+    });
     findLatestByCharacterId.mockResolvedValueOnce({
       id: "22222222-2222-4222-8222-222222222222",
     });

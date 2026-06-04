@@ -15,11 +15,11 @@ import { isAddress } from "viem";
 import { z } from "zod";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@/db/repositories/characters";
-import { toCompatStatus } from "@/lib/api/compat-envelope";
 import {
   failureResponse,
   ValidationError,
 } from "@/lib/api/cloud-worker-errors";
+import { toCompatStatus } from "@/lib/api/compat-envelope";
 import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
@@ -146,9 +146,8 @@ async function duplicateTokenResponseBody(
   tokenContractAddress: string,
   chain: string,
 ): Promise<Record<string, unknown>> {
-  const existingSandbox = await agentSandboxesRepository.findLatestByCharacterId(
-    existingChar.id,
-  );
+  const existingSandbox =
+    await agentSandboxesRepository.findLatestByCharacterId(existingChar.id);
 
   return {
     error: `An agent is already linked to token ${tokenContractAddress} on ${chain}`,
@@ -208,7 +207,9 @@ app.post("/", async (c) => {
       mode: "owner_credits" as const,
       initialReserveUsd: INITIAL_FREE_CREDITS,
     };
-    const invalidAdminWallet = adminWallets.find((wallet) => !isAddress(wallet));
+    const invalidAdminWallet = adminWallets.find(
+      (wallet) => !isAddress(wallet),
+    );
     if (invalidAdminWallet) {
       throw ValidationError("Invalid request data", {
         details: [
@@ -322,13 +323,16 @@ app.post("/", async (c) => {
           ? (creditCheck as { error: string }).error
           : "insufficient credits";
       if (!creditCheck.allowed) {
-        logger.warn("[service-api] Provisioning blocked: insufficient credits", {
-          orgId: ownerOrganizationId,
-          serviceOrgId: identity.organizationId,
-          walletOwned: Boolean(walletAccount),
-          balance: creditCheck.balance,
-          required: AGENT_PRICING.MINIMUM_DEPOSIT,
-        });
+        logger.warn(
+          "[service-api] Provisioning blocked: insufficient credits",
+          {
+            orgId: ownerOrganizationId,
+            serviceOrgId: identity.organizationId,
+            walletOwned: Boolean(walletAccount),
+            balance: creditCheck.balance,
+            required: AGENT_PRICING.MINIMUM_DEPOSIT,
+          },
+        );
         await charactersService.delete(character.id);
         return c.json(
           {

@@ -58,15 +58,15 @@ app.post("/", async (c) => {
 
     logger.info("[service-api] Restart requested", { agentId });
 
-    const agent = await elizaSandboxService.getAgentForWrite(
+    const writableAgent = await elizaSandboxService.getAgentForWrite(
       agentId,
       agent.organization_id,
     );
-    if (!agent) {
+    if (!writableAgent) {
       throw NotFoundError("Agent not found");
     }
 
-    if (agent.status === "provisioning") {
+    if (writableAgent.status === "provisioning") {
       return c.json(
         { success: false, error: "Agent provisioning is in progress" },
         409,
@@ -75,11 +75,9 @@ app.post("/", async (c) => {
 
     const enqueueResult = await provisioningJobService.enqueueAgentRestartOnce({
       agentId,
-      agent.organization_id,
-    );
-    if (!result.success) {
-      return c.json({ success: false, error: result.error }, 500);
-    }
+      organizationId: agent.organization_id,
+      userId: agent.user_id,
+    });
 
     await agentBillingRepository.reactivateSandboxBillingAfterFunding(
       agentId,

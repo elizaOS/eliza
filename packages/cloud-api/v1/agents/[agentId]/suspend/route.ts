@@ -42,27 +42,27 @@ app.post("/", async (c) => {
 
     logger.info("[service-api] Suspend requested", { agentId, reason });
 
-    const agent = await elizaSandboxService.getAgentForWrite(
+    const writableAgent = await elizaSandboxService.getAgentForWrite(
       agentId,
       agent.organization_id,
     );
-    if (!agent) {
+    if (!writableAgent) {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }
 
-    if (agent.status === "stopped") {
+    if (writableAgent.status === "stopped") {
       return c.json({
         success: true,
         data: {
           agentId,
           action: "suspend",
           message: "Agent is already suspended",
-          previousStatus: agent.status,
+          previousStatus: writableAgent.status,
         },
       });
     }
 
-    if (agent.status === "provisioning") {
+    if (writableAgent.status === "provisioning") {
       return c.json(
         { success: false, error: "Agent provisioning is in progress" },
         409,
@@ -71,8 +71,8 @@ app.post("/", async (c) => {
 
     const enqueueResult = await provisioningJobService.enqueueAgentSuspendOnce({
       agentId,
-      organizationId: identity.organizationId,
-      userId: identity.userId,
+      organizationId: agent.organization_id,
+      userId: agent.user_id,
     });
 
     void provisioningJobService.triggerImmediate(c.env).catch(() => {
@@ -89,7 +89,7 @@ app.post("/", async (c) => {
           action: "suspend",
           jobId: enqueueResult.job.id,
           status: enqueueResult.job.status,
-          previousStatus: agent.status,
+          previousStatus: writableAgent.status,
         },
         polling: {
           endpoint: `/api/v1/jobs/${enqueueResult.job.id}`,
