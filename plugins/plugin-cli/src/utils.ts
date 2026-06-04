@@ -139,6 +139,9 @@ export function parseDurationMs(input: string): ParsedDuration {
 	// Check for number only (milliseconds)
 	const numOnly = parseInt(trimmed, 10);
 	if (!Number.isNaN(numOnly) && String(numOnly) === trimmed) {
+		if (numOnly < 0) {
+			return { ms: 0, original: input, valid: false };
+		}
 		return { ms: numOnly, original: input, valid: true };
 	}
 

@@ -38,6 +38,7 @@ describe("plugin-cli utilities", () => {
 			"1e309d",
 			"Infinity",
 			"NaN",
+			"-1",
 			"-1s",
 		]) {
 			expect(parseDurationMs(input)).toEqual({

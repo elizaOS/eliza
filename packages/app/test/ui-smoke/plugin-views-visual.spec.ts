@@ -76,7 +76,10 @@ test.describe("registered plugin views visual coverage", () => {
         `${view.id} ${view.viewType} initial load`,
       );
 
-      const viewRoot = page.locator("main").first();
+      const viewRoot = page.locator(view.rootSelector ?? "main").first();
+      const visualSignal = view.visualSignalSelector
+        ? page.locator(view.visualSignalSelector).first()
+        : null;
       await expect(viewRoot).toBeVisible({ timeout: 60_000 });
       await expect
         .poll(
@@ -84,7 +87,8 @@ test.describe("registered plugin views visual coverage", () => {
             const text = await viewRoot.evaluate((root) =>
               root.innerText.trim().replace(/\s+/g, " "),
             );
-            return text.length > 20 && !/^Loading view\b/.test(text);
+            if (text.length > 20 && !/^Loading view\b/.test(text)) return true;
+            return visualSignal ? await visualSignal.isVisible() : false;
           },
           {
             message: `${view.id} ${view.viewType} should finish dynamic view loading before audit`,
@@ -139,10 +143,17 @@ test.describe("registered plugin views visual coverage", () => {
         },
       );
 
-      expect(
-        preOverlayAudit.visibleText.length,
-        `${view.id} ${view.viewType} should expose readable view text before opening the assistant overlay`,
-      ).toBeGreaterThan(20);
+      if (visualSignal) {
+        await expect(
+          visualSignal,
+          `${view.id} ${view.viewType} should expose its visual view root before opening the assistant overlay`,
+        ).toBeVisible();
+      } else {
+        expect(
+          preOverlayAudit.visibleText.length,
+          `${view.id} ${view.viewType} should expose readable view text before opening the assistant overlay`,
+        ).toBeGreaterThan(20);
+      }
       if (view.id !== "views-manager") {
         expect(
           preOverlayAudit.visibleText,
@@ -244,8 +255,11 @@ test.describe("registered plugin views visual coverage", () => {
       }
 
       const audit = await page.evaluate(
-        ({ id, viewType, viewPath, focused }) => {
-          const root = document.querySelector("main") ?? document.body;
+        ({ id, viewType, viewPath, focused, rootSelector }) => {
+          const root =
+            (rootSelector ? document.querySelector(rootSelector) : null) ??
+            document.querySelector("main") ??
+            document.body;
           const normalize = (value: string | null | undefined) =>
             (value ?? "").trim().replace(/\s+/g, " ");
           const controls = Array.from(
@@ -283,13 +297,21 @@ test.describe("registered plugin views visual coverage", () => {
           viewType: view.viewType,
           viewPath: view.path,
           focused: focusedAfterTabs,
+          rootSelector: view.rootSelector ?? null,
         },
       );
 
-      expect(
-        audit.visibleText.length,
-        `${view.id} ${view.viewType} should expose readable text`,
-      ).toBeGreaterThan(20);
+      if (visualSignal) {
+        await expect(
+          visualSignal,
+          `${view.id} ${view.viewType} should expose visual content`,
+        ).toBeVisible();
+      } else {
+        expect(
+          audit.visibleText.length,
+          `${view.id} ${view.viewType} should expose readable text`,
+        ).toBeGreaterThan(20);
+      }
       if (view.viewType === "tui") {
         expect(
           audit.controls.length,
