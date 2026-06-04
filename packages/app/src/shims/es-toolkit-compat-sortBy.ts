@@ -1,0 +1,1 @@
+export { sortBy, sortBy as default } from "./es-toolkit-compat";
