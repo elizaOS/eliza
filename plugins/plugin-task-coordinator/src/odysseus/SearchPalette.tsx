@@ -24,31 +24,34 @@ import {
 
 /** Split `text` on `query` (case-insensitive) and wrap matches in a <mark>,
  * mirroring odysseus highlightMatch (search-chat.js L43-L48). React escaping
- * replaces the manual escapeHtml step. */
+ * replaces the manual escapeHtml step.
+ *
+ * Splits via a case-insensitive regex over the ORIGINAL `text` (every segment
+ * is a slice of `text` itself), rather than indexing a `toLowerCase()` copy —
+ * some characters change length when lowercased (e.g. "İ", "ẞ"), which would
+ * otherwise shift the indices and slice the highlight at the wrong offset. */
 function highlightMatch(text: string, query: string): ReactNode {
   if (!query) return text;
-  const lowerText = text.toLowerCase();
-  const lowerQuery = query.toLowerCase();
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Single capturing group keeps the matched text in the split result, so odd
+  // indices are matches and even indices are the surrounding gaps.
+  const segments = text.split(new RegExp(`(${escaped})`, "gi"));
   const parts: ReactNode[] = [];
-  let cursor = 0;
-  let matchAt = lowerText.indexOf(lowerQuery, cursor);
-  let key = 0;
-  while (matchAt !== -1) {
-    if (matchAt > cursor) {
-      parts.push(<Fragment key={key}>{text.slice(cursor, matchAt)}</Fragment>);
-      key += 1;
-    }
+  let offset = 0;
+  for (let i = 0; i < segments.length; i += 1) {
+    const seg = segments[i];
+    const start = offset; // char offset into `text` — a stable, unique key
+    offset += seg.length;
+    if (seg === "") continue;
     parts.push(
-      <mark key={key} className="od-search-highlight">
-        {text.slice(matchAt, matchAt + query.length)}
-      </mark>,
+      i % 2 === 1 ? (
+        <mark key={start} className="od-search-highlight">
+          {seg}
+        </mark>
+      ) : (
+        <Fragment key={start}>{seg}</Fragment>
+      ),
     );
-    key += 1;
-    cursor = matchAt + query.length;
-    matchAt = lowerText.indexOf(lowerQuery, cursor);
-  }
-  if (cursor < text.length) {
-    parts.push(<Fragment key={key}>{text.slice(cursor)}</Fragment>);
   }
   return parts;
 }
