@@ -140,6 +140,8 @@ export async function prepareManagedElizaBaseEnvironment(
       ELIZAOS_CLOUD_API_KEY: agentApiKey,
       ELIZAOS_CLOUD_ENABLED: "true",
       ELIZAOS_CLOUD_BASE_URL: resolveCloudApiBaseUrl(),
+      ELIZA_CLOUD_AGENT_ID: params.agentSandboxId,
+      WAIFU_ELIZA_CLOUD_AGENT_ID: params.agentSandboxId,
     },
   };
 }

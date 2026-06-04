@@ -1361,6 +1361,7 @@ import {
   isAllowedHost as _isAllowedHost,
   isAuthorized as _isAuthorized,
   isSharedTerminalClientId as _isSharedTerminalClientId,
+  isWaifuChatAuthorized as _isWaifuChatAuthorized,
   isWebSocketAuthorized as _isWebSocketAuthorized,
   normalizePairingCode as _normalizePairingCode,
   normalizeWsClientId as _normalizeWsClientId,
@@ -1377,6 +1378,7 @@ export {
   extractAuthToken,
   isAllowedHost,
   isAuthorized,
+  isWaifuChatAuthorized,
   normalizeWsClientId,
   resolveCorsOrigin,
   resolveTerminalRunClientId,
@@ -1389,6 +1391,7 @@ export {
 const isAllowedHost = _isAllowedHost;
 const applyCors = _applyCors;
 const isAuthorized = _isAuthorized;
+const isWaifuChatAuthorized = _isWaifuChatAuthorized;
 const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
 const normalizeWsClientId = _normalizeWsClientId;
 const resolveTerminalRunClientId = _resolveTerminalRunClientId;
@@ -1657,7 +1660,8 @@ async function handleRequest(
       method,
       pathname,
     }) &&
-    !isAuthorized(req)
+    !isAuthorized(req) &&
+    !isWaifuChatAuthorized(req, method, pathname)
   ) {
     json(res, { error: "Unauthorized" }, 401);
     return;

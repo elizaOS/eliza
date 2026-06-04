@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type AgentBillingStatus,
@@ -14,6 +14,7 @@ export interface AgentBillingSandbox {
   agent_name: string | null;
   organization_id: string;
   user_id: string;
+  agent_config: Record<string, unknown> | null;
   status: AgentSandboxStatus;
   billing_status: AgentBillingStatus;
   last_billed_at: Date | null;
@@ -81,6 +82,7 @@ export class AgentBillingRepository {
       agent_name: agentSandboxes.agent_name,
       organization_id: agentSandboxes.organization_id,
       user_id: agentSandboxes.user_id,
+      agent_config: agentSandboxes.agent_config,
       status: agentSandboxes.status,
       billing_status: agentSandboxes.billing_status,
       last_billed_at: agentSandboxes.last_billed_at,
@@ -171,6 +173,18 @@ export class AgentBillingRepository {
         updated_at: now,
       })
       .where(eq(agentSandboxes.id, sandboxId));
+  }
+
+  async reactivateSandboxBillingAfterFunding(sandboxId: string, now: Date): Promise<void> {
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        billing_status: "active" as AgentBillingStatus,
+        shutdown_warning_sent_at: null,
+        scheduled_shutdown_at: null,
+        updated_at: now,
+      })
+      .where(and(eq(agentSandboxes.id, sandboxId), ne(agentSandboxes.billing_status, "exempt")));
   }
 
   async recordHourlyBilling(input: AgentHourlyBillingInput): Promise<AgentHourlyBillingOutcome> {

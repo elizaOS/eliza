@@ -162,6 +162,17 @@ export class AgentSandboxesRepository {
     return r;
   }
 
+  async findLatestByCharacterId(characterId: string): Promise<AgentSandbox | undefined> {
+    await ensureAgentSandboxSchema();
+    const [r] = await dbRead
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.character_id, characterId))
+      .orderBy(desc(agentSandboxes.updated_at))
+      .limit(1);
+    return r;
+  }
+
   /** List active (non-terminal) sandboxes on a specific docker node. */
   async listByNodeId(nodeId: string): Promise<AgentSandbox[]> {
     await ensureAgentSandboxSchema();

@@ -47,6 +47,19 @@ const HEALTH_WAIT_TOTAL_MS = 60_000;
 
 const LOG_PREFIX = "[LocalDockerSandboxProvider]";
 
+function resolveContainerPort(config: SandboxCreateConfig): string {
+  const requested =
+    typeof config.environmentVars.PORT === "string" && config.environmentVars.PORT.trim()
+      ? config.environmentVars.PORT.trim()
+      : typeof config.container?.port === "number"
+        ? String(config.container.port)
+        : containersEnv.agentPort();
+  if (!/^\d+$/.test(requested)) {
+    throw new Error(`${LOG_PREFIX} Invalid container port: ${requested}`);
+  }
+  return requested;
+}
+
 // ---------------------------------------------------------------------------
 // Typed metadata returned in SandboxHandle.metadata
 // ---------------------------------------------------------------------------
@@ -172,7 +185,7 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
     // The provider needs to publish both so the cloud-side
     // elizaSandboxService can hit /api/* via health_url AND /bridge via
     // bridge_url. agentPort = health/api port, agentBridgePort = /bridge.
-    const agentPort = containersEnv.agentPort();
+    const agentPort = resolveContainerPort(config);
     const agentBridgePort = containersEnv.agentBridgePort();
     if (!/^\d+$/.test(agentPort) || !/^\d+$/.test(agentBridgePort)) {
       throw new Error(

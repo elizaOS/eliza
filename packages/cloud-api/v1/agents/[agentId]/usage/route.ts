@@ -16,12 +16,9 @@ const app = new Hono<AppEnv>();
 
 app.get("/", async (c) => {
   try {
-    const identity = await requireServiceKey(c);
+    await requireServiceKey(c);
     const agentId = c.req.param("agentId") ?? "";
-    const agent = await elizaSandboxService.getAgent(
-      agentId,
-      identity.organizationId,
-    );
+    const agent = await elizaSandboxService.getAgentById(agentId);
     if (!agent) throw NotFoundError("Agent not found");
     return c.json(toCompatUsage(agent));
   } catch (error) {
