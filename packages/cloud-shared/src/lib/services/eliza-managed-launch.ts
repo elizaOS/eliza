@@ -1,7 +1,7 @@
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import type { AgentSandbox } from "../../db/schemas/agent-sandboxes";
 import { cache } from "../cache/client";
-import { OPENROUTER_DEFAULT_TEXT_MODEL } from "../models";
+import { BITROUTER_DEFAULT_TEXT_MODEL } from "../models";
 import { logger } from "../utils/logger";
 import { elizaSandboxService } from "./eliza-sandbox";
 import {
@@ -13,8 +13,8 @@ import {
   resolveManagedAllowedOrigins,
 } from "./managed-eliza-config";
 
-const DEFAULT_SMALL_MODEL = OPENROUTER_DEFAULT_TEXT_MODEL;
-const DEFAULT_LARGE_MODEL = OPENROUTER_DEFAULT_TEXT_MODEL;
+const DEFAULT_SMALL_MODEL = BITROUTER_DEFAULT_TEXT_MODEL;
+const DEFAULT_LARGE_MODEL = BITROUTER_DEFAULT_TEXT_MODEL;
 const LAUNCH_SESSION_TTL_SECONDS = 300;
 
 export interface ManagedLaunchConnection {

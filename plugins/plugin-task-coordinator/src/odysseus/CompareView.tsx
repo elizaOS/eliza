@@ -377,10 +377,12 @@ export function CompareView({
 
   // ── Shared slot mutators (used by both selector and arena) ──
   // A reveal/winner only applies to the exact lineup that was voted on, and the
-  // winner is tracked by INDEX (winnerIdx); any structural change to the slot
-  // set (add / remove / shuffle) would otherwise leave a stale index pointing at
-  // the wrong pane — mis-highlighting a winner/loser, or leaking blind picks
-  // while keeping a stale verdict. So every structural change clears the round.
+  // winner is tracked by INDEX (winnerIdx). Any change to the lineup invalidates
+  // that verdict: add / remove / shuffle shift or replace the indices, and
+  // swapping a slot's provider/model changes what an unchanged index refers to —
+  // the crown is model-bound, not pane-bound. Either way a stale winner/reveal
+  // mis-highlights a pane (or leaks blind picks), so every lineup change clears
+  // the round.
   const resetRound = () => {
     setRevealed(false);
     setWinnerIdx(null);
@@ -407,6 +409,7 @@ export function CompareView({
           : s,
       ),
     );
+    resetRound();
   };
 
   const setSlotModel = (slotId: string, m: ProviderModelRecord) => {
@@ -416,6 +419,7 @@ export function CompareView({
       ),
     );
     setSwapOpenFor(null);
+    resetRound();
   };
 
   // Dice shuffle — randomly fill every slot from the loaded model pool, honoring

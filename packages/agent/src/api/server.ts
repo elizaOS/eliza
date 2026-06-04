@@ -41,6 +41,7 @@ import type {
   AppManagerLike,
   FavoriteAppsStore,
 } from "@elizaos/plugin-app-manager";
+import { handleCloudPairRoute } from "@elizaos/app-core/api/cloud-pair-route";
 import type { WalletRouteDependencies } from "@elizaos/plugin-wallet";
 import {
   getStylePresets,
@@ -1756,6 +1757,11 @@ async function handleRequest(
     json(res, { error: "Origin not allowed" }, 403);
     return;
   }
+
+  // Cloud SSO popup handoff: GET /pair?token=X must short-circuit BEFORE the
+  // static-UI catch-all, otherwise the SPA index.html is served and the user
+  // ends up on the password screen.
+  if (await handleCloudPairRoute(req, res)) return;
 
   // Serve dashboard static assets before the auth gates. serveStaticUi already
   // refuses /api/, /v1/, and /ws paths, so API endpoints remain protected

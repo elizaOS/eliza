@@ -7,7 +7,7 @@
 
 import { logger } from "../utils/logger";
 import { type ProviderLabel, providerFetchWithTimeout } from "./_http";
-import { toOpenRouterModelId } from "./model-id-translation";
+import { toBitRouterModelId } from "./model-id-translation";
 import type {
   AIProvider,
   OpenAIChatRequest,
@@ -66,7 +66,7 @@ export class BitRouterProvider implements AIProvider {
     options?: ProviderRequestOptions,
   ): Promise<Response> {
     const { providerOptions: _providerOptions, ...rest } = request;
-    const translatedModel = toOpenRouterModelId(rest.model);
+    const translatedModel = toBitRouterModelId(rest.model);
     const body = translatedModel === rest.model ? rest : { ...rest, model: translatedModel };
 
     logger.debug("[BitRouter] Forwarding chat completion request", {
@@ -88,7 +88,7 @@ export class BitRouterProvider implements AIProvider {
   }
 
   async embeddings(request: OpenAIEmbeddingsRequest): Promise<Response> {
-    const translatedModel = toOpenRouterModelId(request.model);
+    const translatedModel = toBitRouterModelId(request.model);
     const body =
       translatedModel === request.model ? request : { ...request, model: translatedModel };
 
@@ -115,7 +115,7 @@ export class BitRouterProvider implements AIProvider {
   }
 
   async getModel(model: string): Promise<Response> {
-    const translatedModel = toOpenRouterModelId(model);
+    const translatedModel = toBitRouterModelId(model);
     return await this.fetchWithTimeout(`${this.baseUrl}/models/${translatedModel}`, {
       method: "GET",
       headers: {

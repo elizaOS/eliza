@@ -12,7 +12,7 @@ export type { NewUsageRecord, UsageRecord };
  * `canonicalUsageGroupingModel` / `normalizeProviderKey` in
  * `@/lib/providers/model-id-translation`.
  *
- * @see docs/openrouter-model-id-compatibility.md
+ * @see docs/bitrouter-model-id-compatibility.md
  *
  * Time granularity for usage time series queries.
  */
@@ -539,7 +539,7 @@ export class UsageRecordsRepository {
    *
    * **Model / provider dimensions:** Groups on the same normalized keys as
    * `getModelBreakdown` / `getProviderBreakdown` so cost explorer views do not
-   * split xAI or Mistral across two rows after the OpenRouter migration.
+   * split xAI or Mistral across two rows after the BitRouter migration.
    * **User / API key:** Still grouped on raw columns (UUIDs); null becomes
    * `"unknown"` in the mapped output.
    */

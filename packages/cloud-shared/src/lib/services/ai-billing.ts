@@ -2,7 +2,7 @@
  * AI Billing Service
  *
  * Centralized billing utilities for AI SDK usage.
- * Uses real-time usage data from OpenRouter responses.
+ * Uses real-time usage data from BitRouter responses.
  *
  * Rules:
  * - Always use AI SDK (streamText, generateText) - never call providers directly
