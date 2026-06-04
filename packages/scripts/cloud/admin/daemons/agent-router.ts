@@ -19,15 +19,18 @@
 
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { eq } from "drizzle-orm";
 import { loadLocalEnv } from "./shared/load-env";
 
 type Logger = typeof import("@elizaos/cloud-shared/lib/utils/logger").logger;
-type Repo =
-  typeof import("@elizaos/cloud-shared/db/repositories/agent-sandboxes").agentSandboxesRepository;
+type DbRead = typeof import("@elizaos/cloud-shared/db/helpers").dbRead;
+type AgentSandboxesTable =
+  typeof import("@elizaos/cloud-shared/db/schemas/agent-sandboxes").agentSandboxes;
 
 interface RouterDeps {
   logger: Logger;
-  agentSandboxesRepository: Repo;
+  dbRead: DbRead;
+  agentSandboxes: AgentSandboxesTable;
 }
 
 interface AgentRouterConfig {
@@ -58,10 +61,12 @@ let depsPromise: Promise<RouterDeps> | null = null;
 async function loadDeps(): Promise<RouterDeps> {
   if (!depsPromise) {
     depsPromise = Promise.all([
-      import("@elizaos/cloud-shared/db/repositories/agent-sandboxes"),
+      import("@elizaos/cloud-shared/db/helpers"),
+      import("@elizaos/cloud-shared/db/schemas/agent-sandboxes"),
       import("@elizaos/cloud-shared/lib/utils/logger"),
-    ]).then(([repoModule, loggerModule]) => ({
-      agentSandboxesRepository: repoModule.agentSandboxesRepository,
+    ]).then(([dbModule, schemaModule, loggerModule]) => ({
+      dbRead: dbModule.dbRead,
+      agentSandboxes: schemaModule.agentSandboxes,
       logger: loggerModule.logger,
     }));
   }
@@ -136,8 +141,17 @@ export function isBridgeHostFallbackEnabled(
 export async function resolveAgentRouting(
   agentId: string,
 ): Promise<RoutingResponse | null> {
-  const { agentSandboxesRepository } = await loadDeps();
-  const sandbox = await agentSandboxesRepository.findById(agentId);
+  const { agentSandboxes, dbRead } = await loadDeps();
+  const [sandbox] = await dbRead
+    .select({
+      status: agentSandboxes.status,
+      bridge_url: agentSandboxes.bridge_url,
+      headscale_ip: agentSandboxes.headscale_ip,
+      web_ui_port: agentSandboxes.web_ui_port,
+    })
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, agentId))
+    .limit(1);
   return resolveSandboxRouting(sandbox, {
     allowBridgeHostFallback: isBridgeHostFallbackEnabled(),
   });
