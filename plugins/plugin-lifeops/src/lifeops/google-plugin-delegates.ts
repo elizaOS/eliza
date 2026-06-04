@@ -5,10 +5,6 @@ import {
   type Metadata,
 } from "@elizaos/core";
 import type {
-  GoogleCalendarEvent,
-  GoogleCalendarEventInput,
-  GoogleCalendarEventPatchInput,
-  GoogleCalendarListEntry,
   GoogleDriveFile,
   GoogleEmailAddress,
   GoogleMessageSummary,
@@ -16,9 +12,6 @@ import type {
   IGoogleWorkspaceService,
 } from "@elizaos/plugin-google";
 import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarEventAttendee,
-  LifeOpsCalendarSummary,
   LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
@@ -524,147 +517,8 @@ export function lifeOpsGmailMessageFromGoogle(args: {
   };
 }
 
-function dateTimeValue(value: string | undefined, fallback: string): string {
+function _dateTimeValue(value: string | undefined, fallback: string): string {
   return value?.trim() ? value : fallback;
-}
-
-export function lifeOpsCalendarEventFromGoogle(args: {
-  event: GoogleCalendarEvent;
-  grant: LifeOpsConnectorGrant;
-  agentId: string;
-  syncedAt?: string;
-}): LifeOpsCalendarEvent {
-  const { event, grant, agentId } = args;
-  const syncedAt = args.syncedAt ?? new Date().toISOString();
-  const externalId = event.id;
-  const startAt = dateTimeValue(event.start, syncedAt);
-  const endAt = dateTimeValue(event.end, startAt);
-  return {
-    id: `${agentId}:google:${grant.side}:calendar:${event.calendarId}:${externalId}`,
-    externalId,
-    agentId,
-    provider: "google",
-    side: grant.side,
-    calendarId: event.calendarId,
-    title: event.title ?? "(untitled)",
-    description: event.description ?? "",
-    location: event.location ?? "",
-    status: event.status ?? "confirmed",
-    startAt,
-    endAt,
-    isAllDay: event.isAllDay ?? false,
-    timezone: event.timeZone ?? null,
-    htmlLink: event.htmlLink ?? null,
-    conferenceLink: event.meetLink ?? null,
-    organizer: event.organizer ? { ...event.organizer } : null,
-    attendees: (event.attendees ?? []).map(lifeOpsCalendarAttendeeFromGoogle),
-    metadata: {
-      googlePlugin: true,
-      ...(event.metadata ?? {}),
-    },
-    syncedAt,
-    updatedAt: syncedAt,
-    connectorAccountId: grant.connectorAccountId ?? undefined,
-    grantId: grant.id,
-    accountEmail: grant.identityEmail ?? undefined,
-  };
-}
-
-function lifeOpsCalendarAttendeeFromGoogle(
-  attendee: GoogleEmailAddress,
-): LifeOpsCalendarEventAttendee {
-  return {
-    email: attendee.email,
-    displayName: attendee.name ?? null,
-    responseStatus: null,
-    self: false,
-    organizer: false,
-    optional: false,
-  };
-}
-
-export function lifeOpsCalendarSummaryFromGoogle(args: {
-  entry: GoogleCalendarListEntry;
-  grant: LifeOpsConnectorGrant;
-  includeInFeed?: boolean;
-}): LifeOpsCalendarSummary {
-  const { entry, grant } = args;
-  return {
-    provider: "google",
-    side: grant.side,
-    grantId: grant.id,
-    accountEmail: grant.identityEmail ?? null,
-    calendarId: entry.calendarId,
-    summary: entry.summary,
-    description: entry.description,
-    primary: entry.primary,
-    accessRole: entry.accessRole,
-    backgroundColor: entry.backgroundColor,
-    foregroundColor: entry.foregroundColor,
-    timeZone: entry.timeZone,
-    selected: entry.selected,
-    includeInFeed: args.includeInFeed ?? true,
-  };
-}
-
-export function googleCalendarEventInput(args: {
-  accountId: string;
-  calendarId?: string | null;
-  title: string;
-  startAt: string;
-  endAt: string;
-  timeZone?: string | null;
-  description?: string | null;
-  location?: string | null;
-  attendees?:
-    | readonly { email?: string | null; displayName?: string | null }[]
-    | null;
-}): GoogleCalendarEventInput {
-  return {
-    accountId: args.accountId,
-    calendarId: args.calendarId ?? undefined,
-    title: args.title,
-    start: args.startAt,
-    end: args.endAt,
-    timeZone: args.timeZone ?? undefined,
-    description: args.description ?? undefined,
-    location: args.location ?? undefined,
-    attendees: args.attendees
-      ?.map((attendee) => attendee.email?.trim())
-      .filter(Boolean)
-      .map((email) => ({ email })) as GoogleEmailAddress[] | undefined,
-  };
-}
-
-export function googleCalendarEventPatchInput(args: {
-  accountId: string;
-  calendarId?: string | null;
-  eventId: string;
-  title?: string;
-  startAt?: string;
-  endAt?: string;
-  timeZone?: string | null;
-  description?: string;
-  location?: string;
-  attendees?:
-    | readonly { email?: string | null; displayName?: string | null }[]
-    | null;
-}): GoogleCalendarEventPatchInput {
-  return {
-    accountId: args.accountId,
-    calendarId: args.calendarId ?? undefined,
-    eventId: args.eventId,
-    title: args.title,
-    start: args.startAt,
-    end: args.endAt,
-    timeZone: args.timeZone ?? undefined,
-    description: args.description,
-    location: args.location,
-    attendees: args.attendees
-      ?.map((attendee) => attendee.email?.trim())
-      .filter(Boolean)
-      .map((email) => ({ email })) as GoogleEmailAddress[] | undefined,
-  };
 }
 
 export function googleSendEmailInput(args: {
