@@ -82,5 +82,14 @@ jobs:
       - name: Generate shared i18n assets
         run: bun run --cwd packages/shared build:i18n
 
+      # Without a prebuilt dist/, the renderer's vite dev server serves
+      # @elizaos/core from its source graph (400+ on-demand module transforms),
+      # which is too slow on CI for the chat composer to mount inside the test's
+      # 90s window. Prebuilding core (and its workspace deps) makes the dev server
+      # serve the compiled browser bundle instead. See resolveElizaCoreBundlePath
+      # in packages/app/vite.config.ts.
+      - name: Build @elizaos/core browser bundle
+        run: bunx turbo run build --filter=@elizaos/core
+
       - name: Run bun dev onboarding chat smoke
         run: bun run --cwd packages/app test:dev-smoke
