@@ -336,9 +336,18 @@ export function VoiceView({
 
   const stopRecording = () => {
     const handle = captureRef.current;
-    if (handle) {
-      void handle.stop().catch(() => {});
+    // The browser SpeechRecognition engine can auto-end (timeout) without
+    // propagating back to "idle", leaving the recorder wedged in a live state
+    // with a Stop button that no-ops on the already-ended handle. If the handle
+    // is gone or no longer active, force a clean reset (mirroring the open/teardown
+    // path) so the next press starts a fresh capture instead of doing nothing.
+    if (!handle?.isActive()) {
+      teardownCapture();
+      setRecState("idle");
+      setRecError(null);
+      return;
     }
+    void handle.stop().catch(() => {});
   };
 
   const toggleRecording = () => {

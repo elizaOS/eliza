@@ -90,6 +90,51 @@ describe("buildConversation", () => {
     ]);
   });
 
+  it("keeps consecutive user messages as separate turns (no run-on coalescing)", () => {
+    const blocks = buildConversation(
+      [
+        baseMessage({
+          id: "u1",
+          senderKind: "user",
+          direction: "stdin",
+          content: "first question",
+          timestamp: 10,
+        }),
+        baseMessage({
+          id: "u2",
+          senderKind: "user",
+          direction: "stdin",
+          content: "second question",
+          timestamp: 11,
+        }),
+      ],
+      [] satisfies EventRecord[],
+      (message) => message.senderKind,
+      new Set(),
+    );
+
+    // Two discrete user messages must render as two distinct user turns, each
+    // with its own id/timestamp — not merged into one run-on bubble.
+    expect(blocks).toEqual([
+      {
+        kind: "user",
+        key: "msg-u1",
+        at: 10,
+        content: "first question",
+        messageIds: ["u1"],
+        sessionId: null,
+      },
+      {
+        kind: "user",
+        key: "msg-u2",
+        at: 11,
+        content: "second question",
+        messageIds: ["u2"],
+        sessionId: null,
+      },
+    ]);
+  });
+
   it("preserves message identity when adjacent chunks merge", () => {
     const blocks = buildConversation(
       [

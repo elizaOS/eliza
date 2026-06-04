@@ -405,7 +405,10 @@ type Atom =
  * are adjacent in time merge into one turn. `stderr` stays in its own lane so
  * error output never blends into normal prose. */
 function messageLane(message: CodingAgentTaskMessageRecord): string {
-  if (message.senderKind === "user") return "user";
+  // Each user message is its own turn: key on the id (not a shared "user"
+  // lane) so consecutive user messages don't coalesce into one run-on bubble
+  // under a single (wrong) shared timestamp.
+  if (message.senderKind === "user") return `user:${message.id}`;
   const stream = message.direction === "stderr" ? "err" : "out";
   // Fall back to the message id, not a shared empty string, so unrelated
   // session-less output never coalesces into one rendered turn.
@@ -539,7 +542,7 @@ export function buildConversation(
         openLane.block.messageIds.push(atom.message.id);
         continue;
       }
-      if (lane === "user") {
+      if (atom.message.senderKind === "user") {
         const block: ConversationBlock = {
           kind: "user",
           key: `msg-${atom.message.id}`,
