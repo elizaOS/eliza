@@ -1,0 +1,14 @@
+server:
+  listen: "127.0.0.1:4356"
+
+database:
+  url: "sqlite:/data/bitrouter.db"
+
+providers:
+  bitrouter: {}
+  openai: {}
+  anthropic: {}
+  google: {}
+  groq: {}
+
+inherit_defaults: true

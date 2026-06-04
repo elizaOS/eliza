@@ -132,7 +132,8 @@ async function generateOneImage(request: ImageRequest): Promise<{
         ? `${request.width}x${request.height}`
         : undefined,
     apiKeys: {
-      OPENROUTER_API_KEY: env.OPENROUTER_API_KEY,
+      BITROUTER_API_KEY: env.BITROUTER_API_KEY,
+      BITROUTER_BASE_URL: env.BITROUTER_BASE_URL,
       FAL_KEY: env.FAL_KEY,
       FAL_API_KEY: env.FAL_API_KEY,
     },
@@ -170,7 +171,7 @@ app.post("/", async (c) => {
       );
     }
     const env = getCloudAwareEnv();
-    if (definition.billingSource === "openrouter" && !env.OPENROUTER_API_KEY) {
+    if (definition.billingSource === "bitrouter" && !env.BITROUTER_API_KEY) {
       return jsonError(
         c,
         503,

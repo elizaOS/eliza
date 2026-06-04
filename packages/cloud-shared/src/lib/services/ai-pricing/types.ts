@@ -9,7 +9,7 @@ export type PriceLookupSource = PricingBillingSource | "seed";
 
 export type PricingRefreshSource =
   | "gateway"
-  | "openrouter"
+  | "bitrouter"
   | "fal"
   | "elevenlabs"
   | "suno"
@@ -71,6 +71,8 @@ export type OpenRouterCatalogModel = {
   pricing?: Record<string, unknown>;
 };
 
+export type BitRouterCatalogModel = OpenRouterCatalogModel;
+
 export type ExternalCacheValue = {
   expiresAt: number;
   entries: PreparedPricingEntry[];
@@ -84,6 +86,4 @@ export type CandidatePreparedPricingEntry = {
 
 export const EXTERNAL_CACHE_TTL_MS = 15 * 60 * 1000;
 
-export const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models?output_modalities=all";
-
-export const DEFAULT_OPENROUTER_IMAGE_OUTPUT_TOKENS = 1300;
+export const BITROUTER_MODELS_URL = "https://api.bitrouter.ai/v1/models?output_modalities=all";

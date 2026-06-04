@@ -1,5 +1,5 @@
 /**
- * Catalog-time variant indexing: OpenRouter lists models under snapshot ids
+ * Catalog-time variant indexing: BitRouter lists models under snapshot ids
  * (e.g. `google/gemini-2.0-flash-001`) but clients send the unsuffixed
  * canonical id. The ingest now emits a low-priority duplicate row under the
  * stripped base id so lookups for the canonical id resolve without
@@ -8,7 +8,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
-  buildOpenRouterPreparedEntries,
+  buildBitRouterPreparedEntries,
   chooseBestCandidatePricingEntry,
   stripVersionedSnapshotSuffix,
 } from "@/lib/services/ai-pricing";
@@ -107,9 +107,9 @@ describe("stripVersionedSnapshotSuffix — must-not-strip cases", () => {
   });
 });
 
-describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
+describe("buildBitRouterPreparedEntries — exact + stripped variants", () => {
   test("emits both exact and stripped rows for prompt and completion", () => {
-    const entries = buildOpenRouterPreparedEntries({
+    const entries = buildBitRouterPreparedEntries({
       id: "google/gemini-2.0-flash-001",
       architecture: {
         modality: "text->text",
@@ -139,7 +139,7 @@ describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
   });
 
   test("emits only exact rows when no suffix can be stripped", () => {
-    const entries = buildOpenRouterPreparedEntries({
+    const entries = buildBitRouterPreparedEntries({
       id: "openai/gpt-4o-mini",
       architecture: { modality: "text->text" },
       pricing: { prompt: "0.00000015", completion: "0.0000006" },
@@ -151,7 +151,7 @@ describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
   });
 
   test("propagates provider, productFamily, billingSource on stripped row", () => {
-    const entries = buildOpenRouterPreparedEntries({
+    const entries = buildBitRouterPreparedEntries({
       id: "anthropic/claude-3-5-haiku-20241022",
       architecture: { modality: "text->text" },
       pricing: { prompt: "0.0000008" },
@@ -162,12 +162,12 @@ describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
     expect(stripped?.priority).toBe(-1);
     expect(stripped?.provider).toBe("anthropic");
     expect(stripped?.productFamily).toBe("language");
-    expect(stripped?.billingSource).toBe("openrouter");
-    expect(stripped?.sourceKind).toBe("openrouter_catalog");
+    expect(stripped?.billingSource).toBe("bitrouter");
+    expect(stripped?.sourceKind).toBe("bitrouter_catalog");
   });
 
   test("does not emit stripped row when prices are missing", () => {
-    const entries = buildOpenRouterPreparedEntries({
+    const entries = buildBitRouterPreparedEntries({
       id: "google/gemini-2.0-flash-001",
       architecture: { modality: "text->text" },
       pricing: {},
@@ -177,7 +177,7 @@ describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
   });
 
   test("emits stripped row only for the priced direction (input-only)", () => {
-    const entries = buildOpenRouterPreparedEntries({
+    const entries = buildBitRouterPreparedEntries({
       id: "google/gemini-2.0-flash-001",
       architecture: { modality: "text->text" },
       pricing: { prompt: "0.0000001" },
@@ -193,15 +193,15 @@ describe("chooseBestCandidatePricingEntry — tie-break when stripped variants c
   function buildCandidate(snapshotId: string, unitPrice: number) {
     return {
       entry: {
-        billingSource: "openrouter" as const,
+        billingSource: "bitrouter" as const,
         provider: "google",
         model: "google/gemini-2.0-flash",
         productFamily: "language" as const,
         chargeType: "input",
         unit: "token" as const,
         unitPrice,
-        sourceKind: "openrouter_catalog",
-        sourceUrl: "https://openrouter.ai/api/v1/models",
+        sourceKind: "bitrouter_catalog",
+        sourceUrl: "https://api.bitrouter.ai/v1/models",
         priority: -1,
         metadata: { snapshotId },
       },

@@ -8,6 +8,7 @@ name: Cloud CF Deploy
 # Required repo secrets:
 #   CLOUDFLARE_API_TOKEN   - account-scoped token with Workers + Pages edit perms
 #   CLOUDFLARE_ACCOUNT_ID  - matches account_id in packages/cloud-api/wrangler.toml
+#   BITROUTER_API_KEY      - BitRouter proxy bearer token for the API Worker
 #
 # Source: cloud/.github/workflows/cf-deploy.yml in the original elizaOS/cloud repo.
 
@@ -117,6 +118,20 @@ jobs:
               exit 1
             fi
           fi
+
+      - name: Publish BitRouter Worker secret
+        if: steps.cf.outputs.configured == 'true'
+        working-directory: packages/cloud-api
+        env:
+          BITROUTER_API_KEY: ${{ secrets.BITROUTER_API_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$BITROUTER_API_KEY" ]; then
+            echo "::error::BITROUTER_API_KEY is not configured. Add it at https://github.com/elizaOS/eliza/settings/secrets/actions."
+            exit 1
+          fi
+          printf '%s' "$BITROUTER_API_KEY" | bunx wrangler secret put BITROUTER_API_KEY ${{ steps.env.outputs.wrangler_args }}
 
       - name: Deploy to Cloudflare Workers
         if: steps.cf.outputs.configured == 'true'

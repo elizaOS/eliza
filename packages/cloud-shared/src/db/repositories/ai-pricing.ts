@@ -151,7 +151,7 @@ export class AiPricingRepository {
   async createManualOverride(input: {
     billingSource:
       | "gateway"
-      | "openrouter"
+      | "bitrouter"
       | "openai"
       | "groq"
       | "vast"

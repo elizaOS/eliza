@@ -18,7 +18,7 @@ function dataUrlToImage(dataUrl: string): { bytes: Uint8Array; mimeType: string 
   return { mimeType: match[1], bytes: base64ToBytes(match[2]) };
 }
 
-function buildOpenRouterMessages(request: ImageGenRequest) {
+function buildBitRouterMessages(request: ImageGenRequest) {
   if (!request.sourceImage) {
     return [{ role: "user", content: request.prompt }];
   }
@@ -34,7 +34,7 @@ function buildOpenRouterMessages(request: ImageGenRequest) {
   ];
 }
 
-function extractOpenRouterImage(payload: Record<string, unknown>): {
+function extractBitRouterImage(payload: Record<string, unknown>): {
   dataUrl: string;
   text: string;
 } {
@@ -53,13 +53,21 @@ function extractOpenRouterImage(payload: Record<string, unknown>): {
   return { dataUrl, text };
 }
 
-export async function generateOpenRouterImage(request: ImageGenRequest): Promise<GeneratedImage> {
-  const apiKey = request.apiKeys.OPENROUTER_API_KEY;
+function bitRouterBaseUrl(request: ImageGenRequest): string {
+  const baseUrl = (request.apiKeys.BITROUTER_BASE_URL || "https://api.bitrouter.ai/v1").replace(
+    /\/+$/,
+    "",
+  );
+  return baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
+}
+
+export async function generateBitRouterImage(request: ImageGenRequest): Promise<GeneratedImage> {
+  const apiKey = request.apiKeys.BITROUTER_API_KEY;
   if (!apiKey) {
     throw new Error(getAiProviderConfigurationError());
   }
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const response = await fetch(`${bitRouterBaseUrl(request)}/chat/completions`, {
     method: "POST",
     headers: {
       authorization: `Bearer ${apiKey}`,
@@ -69,7 +77,7 @@ export async function generateOpenRouterImage(request: ImageGenRequest): Promise
     },
     body: JSON.stringify({
       model: request.model,
-      messages: buildOpenRouterMessages(request),
+      messages: buildBitRouterMessages(request),
       modalities: ["image", "text"],
       ...(request.aspectRatio || request.size
         ? {
@@ -85,19 +93,19 @@ export async function generateOpenRouterImage(request: ImageGenRequest): Promise
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
   if (!response.ok) {
     const error = payload.error as { message?: string; code?: string } | undefined;
-    const message = error?.message ?? `OpenRouter image generation failed: ${response.status}`;
+    const message = error?.message ?? `BitRouter image generation failed: ${response.status}`;
     const code = error?.code ? ` (${error.code})` : "";
     throw new Error(`${message}${code}`);
   }
 
-  const { dataUrl, text } = extractOpenRouterImage(payload);
+  const { dataUrl, text } = extractBitRouterImage(payload);
   const { bytes, mimeType } = dataUrlToImage(dataUrl);
   return { dataUrl, bytes, mimeType, text };
 }
 
-export const openRouterImageProvider: ImageProvider = {
-  billingSource: "openrouter",
-  generate: generateOpenRouterImage,
+export const bitRouterImageProvider: ImageProvider = {
+  billingSource: "bitrouter",
+  generate: generateBitRouterImage,
   async healthCheck() {
     return true;
   },

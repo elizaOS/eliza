@@ -19,7 +19,7 @@ let openAIClient: {
   baseURL?: string;
   client: ReturnType<typeof createOpenAI>;
 } | null = null;
-let openRouterClient: ReturnType<typeof createOpenAI> | null = null;
+let bitRouterClient: ReturnType<typeof createOpenAI> | null = null;
 let anthropicClient: ReturnType<typeof createAnthropic> | null = null;
 let vercelAIGatewayClient: GatewayProvider | null = null;
 
@@ -78,8 +78,16 @@ function getOpenAIClient() {
   return openAIClient.client;
 }
 
-function getOpenRouterApiKey(): string | null {
-  return getProviderKey("OPENROUTER_API_KEY");
+function getBitRouterApiKey(): string | null {
+  return getProviderKey("BITROUTER_API_KEY");
+}
+
+function getBitRouterBaseURL(): string {
+  const baseUrl = (getProviderKey("BITROUTER_BASE_URL") ?? "https://api.bitrouter.ai/v1").replace(
+    /\/+$/,
+    "",
+  );
+  return baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
 }
 
 function getVercelAIGatewayApiKey(): string | null {
@@ -90,20 +98,20 @@ function getVercelAIGatewayBaseURL(): string | undefined {
   return getProviderKey("AI_GATEWAY_BASE_URL") ?? undefined;
 }
 
-function getOpenRouterClient() {
-  if (!openRouterClient) {
-    const apiKey = getOpenRouterApiKey();
+function getBitRouterClient() {
+  if (!bitRouterClient) {
+    const apiKey = getBitRouterApiKey();
     if (!apiKey) {
-      throw new Error("OPENROUTER_API_KEY environment variable is required");
+      throw new Error("BITROUTER_API_KEY environment variable is required");
     }
 
-    openRouterClient = createOpenAI({
+    bitRouterClient = createOpenAI({
       apiKey,
-      baseURL: "https://openrouter.ai/api/v1",
+      baseURL: getBitRouterBaseURL(),
     });
   }
 
-  return openRouterClient;
+  return bitRouterClient;
 }
 
 function getAnthropicClient() {
@@ -169,11 +177,11 @@ function normalizeAnthropicModelId(model: string): string {
 }
 
 /**
- * True iff a gateway-style provider is configured. OpenRouter stays first
+ * True iff a gateway-style provider is configured. BitRouter stays first
  * when present; Vercel AI Gateway is the local/dev fallback.
  */
 export function hasGatewayProviderConfigured(): boolean {
-  return getOpenRouterApiKey() !== null || getVercelAIGatewayApiKey() !== null;
+  return getBitRouterApiKey() !== null || getVercelAIGatewayApiKey() !== null;
 }
 
 export function hasLanguageModelProviderConfigured(model: string): boolean {
@@ -185,7 +193,7 @@ export function hasLanguageModelProviderConfigured(model: string): boolean {
     return resolveVastEndpointConfig(model) !== null;
   }
 
-  if (getOpenRouterApiKey()) {
+  if (getBitRouterApiKey()) {
     return true;
   }
 
@@ -210,7 +218,7 @@ export function hasLanguageModelProviderConfigured(model: string): boolean {
 
 export function hasTextEmbeddingProviderConfigured(): boolean {
   return Boolean(
-    getOpenRouterApiKey() || getVercelAIGatewayApiKey() || getProviderKey("OPENAI_API_KEY"),
+    getBitRouterApiKey() || getVercelAIGatewayApiKey() || getProviderKey("OPENAI_API_KEY"),
   );
 }
 
@@ -224,12 +232,12 @@ export function getLanguageModel(model: string) {
     return client.languageModel(apiModelId);
   }
 
-  if (getOpenRouterApiKey()) {
-    return getOpenRouterClient().languageModel(toOpenRouterModelId(model));
+  if (getBitRouterApiKey()) {
+    return getBitRouterClient().languageModel(toOpenRouterModelId(model));
   }
 
   if (requiresOpenRouterRouting(model)) {
-    throw new Error("OPENROUTER_API_KEY environment variable is required for this model");
+    throw new Error("BITROUTER_API_KEY environment variable is required for this model");
   }
 
   if (getVercelAIGatewayApiKey()) {
@@ -251,8 +259,8 @@ export function getLanguageModel(model: string) {
 }
 
 export function getTextEmbeddingModel(model: string) {
-  if (getOpenRouterApiKey()) {
-    return getOpenRouterClient().textEmbeddingModel(toOpenRouterModelId(model));
+  if (getBitRouterApiKey()) {
+    return getBitRouterClient().textEmbeddingModel(toOpenRouterModelId(model));
   }
 
   if (getVercelAIGatewayApiKey()) {
@@ -284,7 +292,7 @@ export function hasGroqLanguageModelProviderConfigured(): boolean {
 
 export function resolveAiProviderSource(
   model: string,
-): "groq" | "vast" | "openrouter" | "gateway" | "openai" | "anthropic" | null {
+): "groq" | "vast" | "bitrouter" | "gateway" | "openai" | "anthropic" | null {
   if (isGroqNativeModel(model)) {
     return getProviderKey("GROQ_API_KEY") ? "groq" : null;
   }
@@ -293,8 +301,8 @@ export function resolveAiProviderSource(
     return resolveVastEndpointConfig(model) ? "vast" : null;
   }
 
-  if (getOpenRouterApiKey()) {
-    return "openrouter";
+  if (getBitRouterApiKey()) {
+    return "bitrouter";
   }
 
   if (requiresOpenRouterRouting(model)) {
@@ -316,9 +324,9 @@ export function resolveAiProviderSource(
   return null;
 }
 
-export function resolveEmbeddingProviderSource(): "openrouter" | "gateway" | "openai" | null {
-  if (getOpenRouterApiKey()) {
-    return "openrouter";
+export function resolveEmbeddingProviderSource(): "bitrouter" | "gateway" | "openai" | null {
+  if (getBitRouterApiKey()) {
+    return "bitrouter";
   }
 
   if (getVercelAIGatewayApiKey()) {
@@ -334,7 +342,7 @@ export function resolveEmbeddingProviderSource(): "openrouter" | "gateway" | "op
 
 export function hasAnyAiProviderConfigured(): boolean {
   return Boolean(
-    getOpenRouterApiKey() ||
+    getBitRouterApiKey() ||
       getVercelAIGatewayApiKey() ||
       getProviderKey("OPENAI_API_KEY") ||
       getProviderKey("ANTHROPIC_API_KEY") ||
@@ -345,7 +353,7 @@ export function hasAnyAiProviderConfigured(): boolean {
 
 export function getAiProviderConfigurationStatus() {
   return {
-    openrouter: Boolean(getOpenRouterApiKey()),
+    bitrouter: Boolean(getBitRouterApiKey()),
     gateway: Boolean(getVercelAIGatewayApiKey()),
     openai: Boolean(getProviderKey("OPENAI_API_KEY")),
     anthropic: Boolean(getProviderKey("ANTHROPIC_API_KEY")),
