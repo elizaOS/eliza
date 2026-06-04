@@ -48,6 +48,8 @@ export interface ShellController {
   toggleMute: () => void;
   /** Live interim transcription of the current utterance ("" when none). */
   transcript: string;
+  /** DEV-only: clear the conversation and start a fresh, greeted one. */
+  clearConversation: () => void;
 }
 
 /**
@@ -68,7 +70,15 @@ export function useShellController(): ShellController {
     chatSending,
     sendChatText,
     agentStatus,
+    handleNewConversation,
   } = app;
+
+  // DEV-only debug affordance: drop the current conversation and start a fresh,
+  // greeted one (handleNewConversation resets draft state + creates a new
+  // conversation with a bootstrap greeting).
+  const clearConversation = React.useCallback(() => {
+    void handleNewConversation();
+  }, [handleNewConversation]);
 
   const ready = startupCoordinator.phase === "ready";
   const modelStatus = useHomeModelStatus();
@@ -298,5 +308,6 @@ export function useShellController(): ShellController {
     muted,
     toggleMute,
     transcript,
+    clearConversation,
   };
 }

@@ -61,6 +61,8 @@ const PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
 const MAXIMIZE_GLYPH =
   "M20 8H28V16H25V13.1L18.5 19.6L16.4 17.5L22.9 11H20Z " +
   "M16 28H8V20H11V22.9L17.5 16.4L19.6 18.5L13.1 25H16Z";
+// Trash can (lid bar + body) — DEV-only "clear conversation" debug control.
+const TRASH_GLYPH = "M14 7H22V10H27V13H9V10H14Z M11 15H25L23.5 30H12.5Z";
 
 function Glyph({ d }: { d: string }): React.JSX.Element {
   return (
@@ -202,6 +204,7 @@ export function ContinuousChatOverlay({
     startRecording,
     stopRecording,
     transcript,
+    clearConversation,
   } = controller;
 
   const [draft, setDraft] = React.useState("");
@@ -728,6 +731,15 @@ export function ContinuousChatOverlay({
         <div className={cn(GLASS_BAR, "relative")}>
           {/* No expand/collapse chevron: focusing the input opens the thread,
               and Escape / clicking outside collapses it. */}
+          {/* DEV-only: clear the conversation and start a fresh, greeted one. */}
+          {import.meta.env.DEV ? (
+            <SoftButton
+              glyph={TRASH_GLYPH}
+              label="clear conversation (debug)"
+              onClick={() => clearConversation?.()}
+              testId="chat-composer-clear-debug"
+            />
+          ) : null}
           <SoftButton
             glyph={MAXIMIZE_GLYPH}
             label={fullscreen ? "exit full screen" : "expand to full screen"}
