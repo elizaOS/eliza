@@ -55,6 +55,8 @@ export interface ShellController {
   agentVoiceMuted: boolean;
   /** Mute/unmute assistant voice output. Muting stops any in-flight speech. */
   toggleAgentVoiceMute: () => void;
+  /** DEV-only: clear the conversation and start a fresh, greeted one. */
+  clearConversation: () => void;
 }
 
 /**
@@ -77,7 +79,15 @@ export function useShellController(): ShellController {
     agentStatus,
     uiLanguage,
     elizaCloudVoiceProxyAvailable,
+    handleNewConversation,
   } = app;
+
+  // DEV-only debug affordance: drop the current conversation and start a fresh,
+  // greeted one (handleNewConversation resets draft state + creates a new
+  // conversation with a bootstrap greeting).
+  const clearConversation = React.useCallback(() => {
+    void handleNewConversation();
+  }, [handleNewConversation]);
 
   const ready = startupCoordinator.phase === "ready";
   const modelStatus = useHomeModelStatus();
@@ -326,5 +336,6 @@ export function useShellController(): ShellController {
     speaking: voiceOutput.speaking,
     agentVoiceMuted: voiceOutput.agentVoiceMuted,
     toggleAgentVoiceMute: voiceOutput.toggleAgentVoiceMute,
+    clearConversation,
   };
 }

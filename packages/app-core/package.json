@@ -96,6 +96,11 @@
       "import": "./dist/api/auth.js",
       "default": "./dist/api/auth.js"
     },
+    "./api/cloud-pair-route": {
+      "types": "./dist/api/cloud-pair-route.d.ts",
+      "import": "./dist/api/cloud-pair-route.js",
+      "default": "./dist/api/cloud-pair-route.js"
+    },
     "./api/compat-route-shared": {
       "types": "./dist/api/compat-route-shared.d.ts",
       "import": "./dist/api/compat-route-shared.js",

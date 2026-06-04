@@ -40,7 +40,7 @@ import { SaveFooter } from "../ui/save-footer";
 import { Switch } from "../ui/switch";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
-import { useSettingsSave } from "./settings-control-primitives";
+import { useSettingsSave } from "./settings-control-primitives.hooks";
 
 const DEFAULT_ELEVEN_FAST_MODEL = "eleven_flash_v2_5";
 

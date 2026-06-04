@@ -13,7 +13,7 @@ import {
   hasBitRouterProviderConfigured,
   hasGroqProviderConfigured,
 } from "../providers";
-import { expandOpenRouterModelIdCandidates } from "../providers/model-id-translation";
+import { expandBitRouterModelIdCandidates } from "../providers/model-id-translation";
 import type { OpenAIModelsResponse } from "../providers/types";
 import { logger } from "../utils/logger";
 
@@ -94,20 +94,20 @@ export async function getCachedMergedModelCatalog(): Promise<CatalogModel[]> {
   return models;
 }
 
-export function findOpenRouterCatalogModelById(
+export function findBitRouterCatalogModelById(
   models: readonly CatalogModel[],
   modelId: string,
 ): CatalogModel | null {
-  for (const candidate of expandOpenRouterModelIdCandidates(modelId)) {
+  for (const candidate of expandBitRouterModelIdCandidates(modelId)) {
     const found = models.find((model) => model.id === candidate);
     if (found) return found;
   }
   return null;
 }
 
-export async function getCachedOpenRouterModelById(modelId: string): Promise<CatalogModel | null> {
+export async function getCachedBitRouterModelById(modelId: string): Promise<CatalogModel | null> {
   const bitRouterModels = await getCachedBitRouterModelCatalog();
-  return findOpenRouterCatalogModelById(bitRouterModels, modelId);
+  return findBitRouterCatalogModelById(bitRouterModels, modelId);
 }
 
 export async function getCachedGatewayModelById(modelId: string): Promise<CatalogModel | null> {
@@ -117,5 +117,5 @@ export async function getCachedGatewayModelById(modelId: string): Promise<Catalo
     return getGroqCatalogModel(modelId);
   }
 
-  return findOpenRouterCatalogModelById(models, modelId);
+  return findBitRouterCatalogModelById(models, modelId);
 }

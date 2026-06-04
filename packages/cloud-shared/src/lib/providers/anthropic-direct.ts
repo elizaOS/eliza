@@ -1,7 +1,7 @@
 /**
  * Anthropic direct provider.
  *
- * Used as a per-family fallback when OpenRouter is unavailable for an
+ * Used as a per-family fallback when BitRouter is unavailable for an
  * `anthropic/*` model. Calls Anthropic's OpenAI-compatible endpoint at
  * `https://api.anthropic.com/v1/chat/completions`, stripping the
  * `anthropic/` prefix. Anthropic's OpenAI compat layer covers chat

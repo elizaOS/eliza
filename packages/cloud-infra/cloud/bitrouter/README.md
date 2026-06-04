@@ -26,8 +26,11 @@ At least one upstream provider credential is required for routable models:
 
 - `BITROUTER_API_KEY` — BitRouter Cloud key (`brk_...`) for cloud-managed
   routing, when BitRouter Cloud billing is enabled inside the service.
-- `CEREBRAS_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`,
-  or `GROQ_API_KEY` for direct BYOK routing.
+- `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, or
+  `BITROUTER_CEREBRAS_API_KEY` for direct BYOK routing. BitRouter also accepts
+  `BITROUTER_<PROVIDER_ID>_API_KEY` for registry providers; use the prefixed
+  name when available so the proxy does not accidentally consume a key intended
+  for another process.
 
 Optional:
 

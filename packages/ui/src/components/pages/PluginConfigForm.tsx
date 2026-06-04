@@ -1,9 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PluginInfo, PluginParamDef } from "../../api";
-import {
-  ConfigRenderer,
-  defaultRegistry,
-} from "../../components/config-ui/config-renderer";
+import { ConfigRenderer } from "../../components/config-ui/config-renderer";
+import { defaultRegistry } from "../../components/config-ui/config-renderer.helpers";
 import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
 import { Switch } from "../ui/switch";

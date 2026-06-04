@@ -6,10 +6,8 @@
 import { normalizeFirstRunProviderId } from "@elizaos/shared";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
-import {
-  ConfigRenderer,
-  defaultRegistry,
-} from "../../components/config-ui/config-renderer";
+import { ConfigRenderer } from "../../components/config-ui/config-renderer";
+import { defaultRegistry } from "../../components/config-ui/config-renderer.helpers";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import { useApp } from "../../state";
 import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";

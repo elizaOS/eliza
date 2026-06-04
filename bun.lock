@@ -2921,7 +2921,7 @@
     },
     "plugins/plugin-agent-orchestrator": {
       "name": "@elizaos/plugin-agent-orchestrator",
-      "version": "2.0.3-beta.1",
+      "version": "2.0.3-beta.2",
       "dependencies": {
         "@elizaos/plugin-task-coordinator": "workspace:*",
         "@octokit/rest": "^22.0.0",

@@ -229,7 +229,7 @@ const skipSourceWatch = process.env.ELIZA_DEV_NO_WATCH === "1";
 // git reset / checkout / build (churn), not a hand edit — skip the reload.
 // Override with ELIZA_DEV_HOT_RELOAD_BULK_LIMIT.
 const HOT_RELOAD_BULK_CHANGE_LIMIT =
-  Number(process.env.ELIZA_DEV_HOT_RELOAD_BULK_LIMIT) || 8;
+  Number(process.env.ELIZA_DEV_HOT_RELOAD_BULK_LIMIT) || 4;
 const DEV_TEST_MOCK_ENV_KEYS = [
   "ELIZA_MOCK_GOOGLE_BASE",
   "ELIZA_MOCK_TWILIO_BASE",

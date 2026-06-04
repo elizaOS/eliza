@@ -4,7 +4,7 @@
  * Cloud's lower-level inference routes expect an OpenAI-compatible `Response`
  * object. Vercel AI Gateway uses the AI SDK protocol, so this adapter bridges
  * the two shapes while keeping the provider behind the same `AIProvider`
- * interface as OpenRouter/OpenAI/Groq.
+ * interface as BitRouter/OpenAI/Groq.
  */
 
 import { createGatewayProvider, type GatewayProvider } from "@ai-sdk/gateway";

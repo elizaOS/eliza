@@ -7,10 +7,10 @@ import {
   getGroqApiModelId,
   isGroqNativeModel,
   isVastNativeModel,
-  OPENROUTER_DEFAULT_FREE_MODEL,
-  OPENROUTER_RECOMMENDED_TEXT_MODEL,
+  BITROUTER_DEFAULT_FREE_MODEL,
+  BITROUTER_RECOMMENDED_TEXT_MODEL,
 } from "../models";
-import { toOpenRouterModelId } from "./model-id-translation";
+import { toBitRouterModelId } from "./model-id-translation";
 import { getProviderKey } from "./provider-env";
 import { hasAnyVastProviderConfigured, resolveVastEndpointConfig } from "./vast-endpoints";
 
@@ -188,13 +188,13 @@ function isCerebrasNativeModel(model: string): boolean {
   );
 }
 
-function requiresOpenRouterRouting(model: string): boolean {
-  const openRouterModel = toOpenRouterModelId(model);
+function requiresBitRouterRouting(model: string): boolean {
+  const bitRouterModel = toBitRouterModelId(model);
   return (
-    openRouterModel === OPENROUTER_RECOMMENDED_TEXT_MODEL ||
-    openRouterModel === OPENROUTER_DEFAULT_FREE_MODEL ||
-    openRouterModel === "openai/gpt-oss-120b" ||
-    (openRouterModel.includes("/") && openRouterModel.split("/")[1]?.includes(":"))
+    bitRouterModel === BITROUTER_RECOMMENDED_TEXT_MODEL ||
+    bitRouterModel === BITROUTER_DEFAULT_FREE_MODEL ||
+    bitRouterModel === "openai/gpt-oss-120b" ||
+    (bitRouterModel.includes("/") && bitRouterModel.split("/")[1]?.includes(":"))
   );
 }
 
@@ -227,7 +227,7 @@ export function hasLanguageModelProviderConfigured(model: string): boolean {
     return true;
   }
 
-  if (requiresOpenRouterRouting(model)) {
+  if (requiresBitRouterRouting(model)) {
     return false;
   }
 
@@ -267,10 +267,10 @@ export function getLanguageModel(model: string) {
   }
 
   if (getBitRouterApiKey()) {
-    return getBitRouterClient().languageModel(toOpenRouterModelId(model));
+    return getBitRouterClient().languageModel(toBitRouterModelId(model));
   }
 
-  if (requiresOpenRouterRouting(model)) {
+  if (requiresBitRouterRouting(model)) {
     throw new Error("BITROUTER_API_KEY environment variable is required for this model");
   }
 
@@ -298,7 +298,7 @@ export function getLanguageModel(model: string) {
 
 export function getTextEmbeddingModel(model: string) {
   if (getBitRouterApiKey()) {
-    return getBitRouterClient().textEmbeddingModel(toOpenRouterModelId(model));
+    return getBitRouterClient().textEmbeddingModel(toBitRouterModelId(model));
   }
 
   if (getVercelAIGatewayApiKey()) {
@@ -343,7 +343,7 @@ export function resolveAiProviderSource(
     return "bitrouter";
   }
 
-  if (requiresOpenRouterRouting(model)) {
+  if (requiresBitRouterRouting(model)) {
     return null;
   }
 

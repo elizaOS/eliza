@@ -38,8 +38,8 @@ export function detectModelProvider(runtime: IAgentRuntime): ModelInfo {
   } else if (providerString.includes("google") || modelString.includes("gemini")) {
     provider = "google";
     supportsStructuredOutputs = true;
-  } else if (providerString.includes("openrouter") || modelString.includes("openrouter")) {
-    provider = "openrouter";
+  } else if (providerString.includes("bitrouter") || modelString.includes("bitrouter")) {
+    provider = "bitrouter";
   }
 
   return {

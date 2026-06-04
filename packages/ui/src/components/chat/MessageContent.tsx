@@ -18,16 +18,17 @@ import {
   createMobileSignalsPermissionsRegistry,
   openMobilePermissionSettings,
 } from "../../platform/mobile-permissions-client";
-import { useChatComposer } from "../../state/ChatComposerContext";
+import { useChatComposer } from "../../state/ChatComposerContext.hooks";
 import { useApp } from "../../state/useApp";
 import type { ConfigUiHint } from "../../types";
+import { PermissionCard } from "../composites/chat/permission-card";
 import {
   createClientPermissionsRegistry,
-  PermissionCard,
   type PermissionCardPayload,
   parsePermissionRequestFromText,
-} from "../composites/chat/permission-card";
-import { ConfigRenderer, defaultRegistry } from "../config-ui/config-renderer";
+} from "../composites/chat/permission-card.helpers";
+import { ConfigRenderer } from "../config-ui/config-renderer";
+import { defaultRegistry } from "../config-ui/config-renderer.helpers";
 import { UiRenderer } from "../config-ui/ui-renderer";
 import { paramsToSchema } from "../pages/plugin-list-utils";
 import { Button } from "../ui/button";

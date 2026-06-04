@@ -8,7 +8,7 @@ import {
   CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
   FALLBACK_TEXT_SELECTOR_MODELS,
 } from "../models";
-import { expandOpenRouterModelIdCandidates } from "../providers/model-id-translation";
+import { expandBitRouterModelIdCandidates } from "../providers/model-id-translation";
 
 /**
  * Get the elizaOS Cloud API base URL based on environment
@@ -57,9 +57,9 @@ export function getDefaultModels() {
 }
 
 /**
- * Allowed models for chat interface (curated list). Entries use **OpenRouter**
+ * Allowed models for chat interface (curated list). Entries use **BitRouter**
  * ids where the provider prefix differs from legacy gateway style (`x-ai/`,
- * `mistralai/`). **Why:** The runtime and catalog speak OpenRouter; legacy ids
+ * `mistralai/`). **Why:** The runtime and catalog speak BitRouter; legacy ids
  * are still accepted via `isAllowedChatModel`, not by duplicating every row here.
  */
 export const ALLOWED_CHAT_MODELS: readonly string[] = [
@@ -71,12 +71,12 @@ export const ALLOWED_CHAT_MODELS: readonly string[] = [
 ];
 
 const ALLOWED_CHAT_MODEL_CANDIDATES = new Set<string>(
-  ALLOWED_CHAT_MODELS.flatMap((id) => expandOpenRouterModelIdCandidates(id)),
+  ALLOWED_CHAT_MODELS.flatMap((id) => expandBitRouterModelIdCandidates(id)),
 );
 
 /**
  * Membership check that accepts both gateway-style (`xai/`, `mistral/`) and
- * OpenRouter (`x-ai/`, `mistralai/`) spellings of allowed chat model ids.
+ * BitRouter (`x-ai/`, `mistralai/`) spellings of allowed chat model ids.
  *
  * **Why not `ALLOWED_CHAT_MODELS.includes(modelId)` alone:** Stored characters,
  * imports, and older API clients may still send legacy prefixes; rejecting them
@@ -84,7 +84,7 @@ const ALLOWED_CHAT_MODEL_CANDIDATES = new Set<string>(
  * expansion) at enforcement sites.
  */
 export function isAllowedChatModel(modelId: string): boolean {
-  return expandOpenRouterModelIdCandidates(modelId).some((candidate) =>
+  return expandBitRouterModelIdCandidates(modelId).some((candidate) =>
     ALLOWED_CHAT_MODEL_CANDIDATES.has(candidate),
   );
 }

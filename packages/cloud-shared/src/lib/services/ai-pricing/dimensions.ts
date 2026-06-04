@@ -79,7 +79,6 @@ export function sourcePriorityForKind(sourceKind: string): number {
   if (sourceKind === "manual_override") return 1000;
   if (sourceKind === "fal_model_page") return 250;
   if (sourceKind === "bitrouter_catalog") return 200;
-  if (sourceKind === "openrouter_catalog") return 175;
   if (sourceKind === "elevenlabs_snapshot") return 150;
   return 100;
 }
