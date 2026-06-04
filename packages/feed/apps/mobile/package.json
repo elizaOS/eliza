@@ -79,7 +79,7 @@
   },
   "devDependencies": {
     "@capacitor/android": "^7.0.0",
-    "@capacitor/cli": "^7.0.0",
+    "@capacitor/cli": "^8.4.0",
     "@capacitor/ios": "^7.0.0",
     "@types/node": "^24.10.0",
     "@types/react": "^19.2.2",
