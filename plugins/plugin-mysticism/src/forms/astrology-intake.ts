@@ -73,7 +73,7 @@ export const astrologyIntakeForm: FormDefinition = {
       ask:
         "Do you know what timezone your birth time is in? For example, " +
         "'Eastern Time', 'UTC+5:30', or 'PST'. If you're not sure, " +
-        "I can figure it out from your birth place — just say 'skip'.",
+        "I can figure it out from your birth place — just say you're not sure.",
       description: "The timezone of the birth time, if known",
       hint: ["timezone", "time zone", "utc", "gmt", "est", "pst", "cst", "mst"],
       example: "Eastern Time (ET)",

@@ -44,6 +44,12 @@ function buildSilentWav() {
 }
 
 const SILENT_WAV = buildSilentWav();
+// Deterministic transcript the local-inference ASR stub returns for any audio
+// the /chat overlay captures — keeps the voice e2e turn reproducible.
+const SMOKE_VOICE_TRANSCRIPT = "this is the voice smoke transcript";
+// The spoken reply the stub returns for that transcript — a clean sentence so
+// the overlay's TTS output is non-empty and the assistant bubble is assertable.
+const SMOKE_VOICE_REPLY = "Got it, this is the spoken reply.";
 function readSmokeVrm() {
   const candidates = [
     new URL(
@@ -1226,6 +1232,11 @@ function classifyAssistantAction(text) {
 
 function createDeterministicAssistantText({ body, conversationId, transport }) {
   const inputText = normalizeAssistantInput(body?.text ?? body?.message);
+  if (inputText === SMOKE_VOICE_TRANSCRIPT) {
+    // Voice e2e: reply to the spoken turn with a plain sentence (not the JSON
+    // fixture) so the bidirectional voice output is speakable + assertable.
+    return SMOKE_VOICE_REPLY;
+  }
   if (/\bbroken[_ -]?llm[_ -]?response\b/i.test(inputText)) {
     return `BROKEN_MOCK_LLM_RESPONSE:${JSON.stringify({
       fixture: "ui-smoke-assistant-v1",
@@ -2107,6 +2118,17 @@ async function readJsonBody(req) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
+// Consume and discard a request body (binary or irrelevant) so the socket
+// drains cleanly before the response is sent.
+async function drainRequest(req) {
+  await new Promise((resolve) => {
+    req.on("data", () => {});
+    req.on("end", resolve);
+    req.on("error", resolve);
+    req.resume();
+  });
+}
+
 function workbenchOverview() {
   return {
     tasks: [],
@@ -2415,6 +2437,13 @@ const server = http.createServer(async (req, res) => {
     const config = {
       cloud: { enabled: false },
       media: {},
+      // Select the local-inference voice provider so the /chat overlay's
+      // bidirectional loop drives /api/asr/local-inference (in) and
+      // /api/tts/local-inference (out) — both stubbed below.
+      messages: {
+        tts: { provider: "local-inference" },
+        asr: { provider: "local-inference" },
+      },
       plugins: { entries: {} },
       ui: {},
       wallet: {},
@@ -3913,6 +3942,34 @@ const server = http.createServer(async (req, res) => {
     // Onboarding synthesizes its scripted voice lines here and plays the bytes
     // as audio/wav. Return decodable silence so the live stack never logs a
     // 501; the real route (first-run-tts-route.ts) returns neural TTS audio.
+    sendBinary(req, res, 200, "audio/wav", SILENT_WAV);
+    return;
+  }
+
+  // ── Local-inference voice (drives the /chat overlay's bidirectional loop) ──
+  // The client mic capture + VAD end-of-turn are REAL (Chromium fake-audio
+  // file); these endpoints stand in for the on-device ASR/TTS models so the
+  // transcript-in / spoken-reply-out round trip stays deterministic.
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/asr/local-inference/status"
+  ) {
+    sendJson(req, res, 200, { ready: true, provider: "local-inference" });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/asr/local-inference") {
+    // The WAV body is real captured audio; we don't transcribe it, we return a
+    // fixed phrase so the spoken turn resolves to a known message.
+    await drainRequest(req);
+    sendJson(req, res, 200, { text: SMOKE_VOICE_TRANSCRIPT });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/tts/local-inference") {
+    // Assistant reply spoken back. Decodable silence is enough — the request
+    // itself is the bidirectional-output signal the e2e asserts on.
+    await drainRequest(req);
     sendBinary(req, res, 200, "audio/wav", SILENT_WAV);
     return;
   }
