@@ -222,7 +222,12 @@ export function ContinuousChatOverlay({
   const visibleMessages = messages.filter((m) => m.content.trim());
   const recent = visibleMessages.slice(-3);
   const lastId = visibleMessages.at(-1)?.id ?? null;
+  const lastContent = visibleMessages.at(-1)?.content ?? "";
   const seenIdRef = React.useRef(lastId);
+  // The last line id the scroll effect pinned to — lets it tell a NEW line
+  // (always pin to bottom) from streaming growth of the current line (follow
+  // only when the reader is already at the bottom).
+  const scrollPinnedIdRef = React.useRef(lastId);
 
   const booting = phase === "booting";
   const listening = phase === "listening";
@@ -262,10 +267,12 @@ export function ContinuousChatOverlay({
 
   // Keep the transcript pinned to the latest line. On first open (or when
   // entering fullscreen) jump INSTANTLY to the bottom — a layout effect runs
-  // before paint, so the thread never flashes at the top — then scroll smoothly
-  // for new lines that arrive while it's already open.
+  // before paint, so the thread never flashes at the top. A NEW line (the
+  // user's own send, or a fresh reply) always re-pins to the bottom; streaming
+  // growth of the current line follows only when the reader is already resting
+  // at the bottom, so scrolling up to read history is never yanked down.
   const wasOpenRef = React.useRef(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: messages.length/expanded/fullscreen are triggers; body reads refs
+  // biome-ignore lint/correctness/useExhaustiveDependencies: lastId/lastContent/expanded/fullscreen are the triggers; the body reads refs
   React.useLayoutEffect(() => {
     if (!open) {
       wasOpenRef.current = false;
@@ -273,14 +280,25 @@ export function ContinuousChatOverlay({
     }
     const justOpened = !wasOpenRef.current;
     wasOpenRef.current = true;
-    endRef.current?.scrollIntoView(
-      justOpened ? { block: "end" } : { behavior: "smooth", block: "end" },
-    );
+    const isNewLine = lastId !== scrollPinnedIdRef.current;
+    scrollPinnedIdRef.current = lastId;
+
+    const el = threadRef.current;
+    const atBottom =
+      !el || el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+
+    if (justOpened || isNewLine || atBottom) {
+      endRef.current?.scrollIntoView(
+        isNewLine && !justOpened
+          ? { behavior: "smooth", block: "end" }
+          : { block: "end" },
+      );
+    }
     if (justOpened && focusThreadRef.current) {
       threadRef.current?.focus();
       focusThreadRef.current = false;
     }
-  }, [messages.length, expanded, fullscreen]);
+  }, [lastId, lastContent, expanded, fullscreen]);
 
   const submit = React.useCallback(() => {
     const text = draft.trim();
@@ -410,20 +428,20 @@ export function ContinuousChatOverlay({
     setExpanded(true);
   }, [hasThread]);
 
-  // Click anywhere outside the chat surface (composer, thread, or the top
-  // chat-icon) → hide the thread. The overlay root is pointer-events-none, so a
-  // document-level listener catches clicks that land on the live view behind.
+  // Close the thread on any pointer-down that isn't on a message bubble or the
+  // composer — i.e. anywhere that isn't the chat itself (the live view behind, a
+  // gap in the thread, the backdrop). The overlay root is pointer-events-none,
+  // so a capture-phase document listener still catches clicks that fall through
+  // to the view behind; guarding on the bubbles + composer keeps clicks on the
+  // conversation (e.g. selecting message text) from dismissing it.
   React.useEffect(() => {
     if (!open) return;
     const onPointerDown = (e: PointerEvent) => {
-      const target = e.target as Node | null;
+      const target = e.target instanceof Element ? e.target : null;
       if (!target) return;
-      if (
-        threadRef.current?.contains(target) ||
-        composerRef.current?.contains(target)
-      ) {
-        return;
-      }
+      const onBubble = target.closest('[data-testid="thread-line"]') !== null;
+      const inComposer = composerRef.current?.contains(target) ?? false;
+      if (onBubble || inComposer) return;
       collapseAll();
     };
     document.addEventListener("pointerdown", onPointerDown, true);
@@ -446,12 +464,31 @@ export function ContinuousChatOverlay({
       data-testid="continuous-chat-overlay"
       data-fullscreen={fullscreen ? "true" : undefined}
     >
-      {/* Cinematic bottom vignette — grounds the floating bar and gives the
-          whisper/transcript lines something to read against over bright views. */}
+      {/* Focus backdrop — in fullscreen, a solid theme-colored (dark/light)
+          screen sits in front of the live view and behind the chat, so only the
+          conversation shows. Always mounted; fades via opacity so the takeover
+          animates in/out. It captures pointer events only while fullscreen (so
+          the view is fully blocked); clicking it exits via the outside-click
+          handler. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-72 bg-gradient-to-t from-black/45 via-black/15 to-transparent"
+        data-testid="chat-fullscreen-backdrop"
+        className={cn(
+          "fixed inset-0 bg-bg transition-opacity duration-300",
+          fullscreen
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0",
+        )}
       />
+
+      {/* Cinematic bottom vignette — grounds the floating bar over bright views.
+          Hidden in fullscreen: the solid backdrop already supplies contrast. */}
+      {!fullscreen ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-72 bg-gradient-to-t from-black/45 via-black/15 to-transparent"
+        />
+      ) : null}
 
       {/* Expanded — the one continuous thread, as a single flowing transcript.
           No panel chrome (background/border): the thread floats directly over
