@@ -65,6 +65,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         agent: ["eliza", "hermes", "openclaw"]
     steps:
