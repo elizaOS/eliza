@@ -81,19 +81,6 @@ describe("ContinuousChatOverlay", () => {
     expect(input.value).toBe("");
   });
 
-  it("expands the thread from the inline chevron and exposes aria-expanded / a log region", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
-    const toggle = screen.getByLabelText("expand conversation");
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(toggle);
-    expect(
-      screen
-        .getByLabelText("collapse conversation")
-        .getAttribute("aria-expanded"),
-    ).toBe("true");
-    expect(document.getElementById("continuous-thread")).toBeTruthy();
-  });
-
   it("reveals the thread when the composer input is focused", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     expect(document.getElementById("continuous-thread")).toBeNull();
@@ -103,7 +90,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("filters whitespace-only messages from the expanded thread", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    fireEvent.click(screen.getByLabelText("expand conversation"));
+    fireEvent.focus(screen.getByLabelText("message"));
     const log = document.getElementById("continuous-thread");
     expect(log?.textContent).toContain("hi there");
     // one real message → exactly one transcript bubble
@@ -121,7 +108,7 @@ describe("ContinuousChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.click(screen.getByLabelText("expand conversation"));
+    fireEvent.focus(screen.getByLabelText("message"));
     const log = document.getElementById("continuous-thread");
     const lines = log?.querySelectorAll('[data-testid="thread-line"]');
     expect(lines?.length).toBe(2);
@@ -133,10 +120,11 @@ describe("ContinuousChatOverlay", () => {
 
   it("collapses the expanded thread on Escape", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    fireEvent.click(screen.getByLabelText("expand conversation"));
     const input = screen.getByLabelText("message");
+    fireEvent.focus(input);
+    expect(document.getElementById("continuous-thread")).toBeTruthy();
     fireEvent.keyDown(input, { key: "Escape" });
-    expect(screen.getByLabelText("expand conversation")).toBeTruthy();
+    expect(document.getElementById("continuous-thread")).toBeNull();
   });
 
   it("shows the attach (+) control", () => {

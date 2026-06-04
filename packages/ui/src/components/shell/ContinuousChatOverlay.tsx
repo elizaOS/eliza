@@ -137,26 +137,6 @@ function TypingDots(): React.JSX.Element {
   );
 }
 
-/** Chevron for the inline expand/collapse affordance inside the composer bar. */
-function Chevron({ up }: { up: boolean }): React.JSX.Element {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ transform: up ? "rotate(180deg)" : undefined }}
-      aria-hidden="true"
-    >
-      <path d="m18 15-6-6-6 6" />
-    </svg>
-  );
-}
-
 /** One turn of the transcript as a chat bubble — assistant on the left, user on the right. */
 function ThreadLine({
   message,
@@ -405,17 +385,6 @@ export function ContinuousChatOverlay({
     setFullscreen(false);
   }, []);
 
-  // The chevron: collapse everything when the thread is open (partial OR
-  // fullscreen), otherwise open the partial panel.
-  const toggleExpand = React.useCallback(() => {
-    if (open) {
-      collapseAll();
-      return;
-    }
-    if (hasThread) focusThreadRef.current = true;
-    setExpanded(true);
-  }, [collapseAll, hasThread, open]);
-
   const collapse = React.useCallback(() => {
     collapseAll();
     inputRef.current?.focus();
@@ -649,21 +618,8 @@ export function ContinuousChatOverlay({
           }}
         />
         <div className={cn(GLASS_BAR, "relative")}>
-          {/* Inline expand/collapse — a quiet chevron that dissolves into the
-              bar, not a separate floating button. */}
-          <button
-            type="button"
-            aria-label={open ? "collapse conversation" : "expand conversation"}
-            aria-expanded={open}
-            aria-controls={open && hasThread ? "continuous-thread" : undefined}
-            onClick={toggleExpand}
-            className={cn(
-              "grid h-8 w-7 shrink-0 place-items-center rounded-full text-white/70 transition-colors hover:text-white",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
-            )}
-          >
-            <Chevron up={open} />
-          </button>
+          {/* No expand/collapse chevron: focusing the input opens the thread,
+              and Escape / clicking outside collapses it. */}
           <SoftButton
             glyph={MAXIMIZE_GLYPH}
             label={fullscreen ? "exit full screen" : "expand to full screen"}
