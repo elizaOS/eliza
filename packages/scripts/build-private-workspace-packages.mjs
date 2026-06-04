@@ -37,6 +37,13 @@ const REPO_ROOT = path.resolve(
 // already built; missing => run `bun run build` for that package.
 const PACKAGES = [
   {
+    // `@elizaos/core/src/logger.ts` re-exports `@elizaos/logger`. Bun's
+    // runtime resolution hits the package's default dist export in dev, so a
+    // fresh checkout needs this built before `bun run dev`.
+    dir: "packages/logger",
+    freshnessSentinel: "dist/index.js",
+  },
+  {
     dir: "packages/security",
     freshnessSentinel: "dist/index.js",
   },
