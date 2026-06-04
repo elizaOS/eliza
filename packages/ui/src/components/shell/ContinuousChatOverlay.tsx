@@ -547,21 +547,35 @@ export function ContinuousChatOverlay({
       data-testid="continuous-chat-overlay"
       data-fullscreen={fullscreen ? "true" : undefined}
     >
-      {/* Focus backdrop — in fullscreen, a solid theme-colored (dark/light)
-          screen sits in front of the live view and behind the chat, so only the
-          conversation shows. Always mounted; fades via opacity so the takeover
-          animates in/out. It captures pointer events only while fullscreen (so
-          the view is fully blocked); clicking it exits via the outside-click
-          handler. */}
-      <div
+      {/* Focus backdrop — a LIQUID-GLASS sheet that frosts the live view behind
+          the conversation rather than blacking it out: a heavy backdrop-blur +
+          saturation, a faint diagonal specular sheen, and a soft scrim for text
+          contrast. Always mounted (so its testid is stable); opacity + the blur
+          itself animate the takeover in/out. Captures pointer events only while
+          fullscreen; clicking it exits via the outside-click handler. */}
+      <motion.div
         aria-hidden="true"
         data-testid="chat-fullscreen-backdrop"
-        className={cn(
-          "fixed inset-0 bg-bg transition-opacity duration-300",
-          fullscreen
-            ? "pointer-events-auto opacity-100"
-            : "pointer-events-none opacity-0",
-        )}
+        data-active={fullscreen ? "true" : "false"}
+        className="fixed inset-0"
+        style={{
+          pointerEvents: fullscreen ? "auto" : "none",
+          // The glass tint: a diagonal sheen over a gentle scrim, so the frosted
+          // view keeps depth and the bubbles stay legible on light or dark views.
+          backgroundImage:
+            "linear-gradient(135deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.02) 36%, rgba(8,10,18,0.18) 100%)",
+        }}
+        initial={false}
+        animate={{
+          opacity: fullscreen ? 1 : 0,
+          backdropFilter: fullscreen
+            ? "blur(28px) saturate(160%)"
+            : "blur(0px) saturate(100%)",
+          WebkitBackdropFilter: fullscreen
+            ? "blur(28px) saturate(160%)"
+            : "blur(0px) saturate(100%)",
+        }}
+        transition={{ duration: reduce ? 0.12 : 0.55, ease: OVERLAY_EASE }}
       />
 
       {/* Cinematic bottom vignette — grounds the floating bar over bright views.
@@ -573,40 +587,71 @@ export function ContinuousChatOverlay({
         />
       ) : null}
 
-      {/* Fullscreen transcript — the full history, scrollable, filling the view. */}
-      {fullscreen && hasThread ? (
-        <div
-          id="continuous-thread"
-          ref={threadRef}
-          role="log"
-          aria-label="conversation history"
-          aria-live="polite"
-          // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable log region must be keyboard-focusable so it can be arrow/Page scrolled (WCAG 2.1.1)
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              e.preventDefault();
-              collapse();
+      {/* Fullscreen transcript — the full history on a liquid-glass panel that
+          BLOOMS open from the composer (spring: rise + scale + fade) and eases
+          shut. Its own AnimatePresence so the close animates too. */}
+      <AnimatePresence>
+        {fullscreen && hasThread ? (
+          <motion.div
+            key="fullscreen-thread"
+            id="continuous-thread"
+            data-variant="fullscreen"
+            ref={threadRef}
+            role="log"
+            aria-label="conversation history"
+            aria-live="polite"
+            // The scrollable log region is keyboard-focusable so it can be
+            // arrow/Page scrolled (WCAG 2.1.1).
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                collapse();
+              }
+            }}
+            style={{ transformOrigin: "50% 100%" }}
+            initial={
+              reduce ? { opacity: 0 } : { opacity: 0, y: 28, scale: 0.94 }
             }
-          }}
-          className={cn(
-            "pointer-events-auto relative mb-3 min-h-0 w-full max-w-3xl flex-1 overflow-y-auto px-1 py-2",
-            // No visible scrollbar — the thread still scrolls, the chrome hides.
-            "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
-          )}
-        >
-          <AnimatePresence initial={false}>
-            {visibleMessages.map((m) => (
-              <ThreadLine key={m.id} message={m} floating reduce={reduce} />
-            ))}
-          </AnimatePresence>
-          <AnimatePresence>
-            {responding ? <TypingDots reduce={reduce} /> : null}
-          </AnimatePresence>
-          <div ref={endRef} />
-        </div>
-      ) : null}
+            animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+            exit={
+              reduce
+                ? { opacity: 0 }
+                : {
+                    opacity: 0,
+                    y: 18,
+                    scale: 0.965,
+                    transition: { duration: 0.34, ease: OVERLAY_EASE },
+                  }
+            }
+            transition={
+              reduce
+                ? { duration: 0.12 }
+                : { type: "spring", stiffness: 200, damping: 24, mass: 0.9 }
+            }
+            className={cn(
+              "pointer-events-auto relative mb-3 min-h-0 w-full max-w-3xl flex-1 overflow-y-auto px-5 py-6",
+              // The liquid-glass panel: frosted translucency, a bright top edge,
+              // an inner glow and a deep drop shadow for floating-pane depth.
+              "rounded-[28px] border border-white/12 bg-white/[0.045] backdrop-blur-2xl",
+              "shadow-[inset_0_1px_0_rgba(255,255,255,0.22),inset_0_0_60px_-22px_rgba(255,255,255,0.14),0_44px_130px_-32px_rgba(0,0,0,0.6)]",
+              // No visible scrollbar — the thread still scrolls, the chrome hides.
+              "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+            )}
+          >
+            <AnimatePresence initial={false}>
+              {visibleMessages.map((m) => (
+                <ThreadLine key={m.id} message={m} floating reduce={reduce} />
+              ))}
+            </AnimatePresence>
+            <AnimatePresence>
+              {responding ? <TypingDots reduce={reduce} /> : null}
+            </AnimatePresence>
+            <div ref={endRef} />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       {/* Resting / typing bubbles — the last couple of turns, floating over the
           view with no scroll. Always mounted (when there is a thread) so the
@@ -622,6 +667,7 @@ export function ContinuousChatOverlay({
           aria-live="polite"
           aria-hidden={!peek}
           data-revealed={peek ? "true" : "false"}
+          data-variant="resting"
           onPointerEnter={handleHoverEnter}
           onPointerLeave={handleHoverLeave}
           className={cn(
