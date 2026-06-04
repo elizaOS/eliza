@@ -146,6 +146,29 @@ describe("ViewManagerPage", () => {
     expect(window.location.pathname).toBe("/apps/remote-ledger");
   });
 
+  it("renders compact context-rich view cards without hero images", () => {
+    render(<ViewManagerPage />);
+
+    const card = screen.getByTestId("view-card-remote.ledger");
+    const contextButton = card.querySelector("[data-view-context]");
+    const context = JSON.parse(
+      contextButton?.getAttribute("data-view-context") ?? "{}",
+    );
+
+    expect(card.querySelector("img")).toBeNull();
+    expect(card.textContent).toContain("ledger-plugin");
+    expect(card.textContent).toContain("/apps/remote-ledger");
+    expect(context).toMatchObject({
+      id: "remote.ledger",
+      label: "Remote Ledger",
+      pluginName: "ledger-plugin",
+      route: "/apps/remote-ledger",
+      viewType: "gui",
+      status: "available",
+    });
+    expect(context.agentDescription).toContain("Purpose:");
+  });
+
   it("pins a remote view through the actual pin button without navigating", () => {
     const events: CustomEvent[] = [];
     const listener = (event: Event) => {

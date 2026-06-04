@@ -9,7 +9,17 @@
  * or via the `eliza:navigate:view` custom event dispatched by VIEWS actions.
  */
 
-import { Pencil, Pin, Plus, Search, Trash2 } from "lucide-react";
+import {
+  Check,
+  Circle,
+  Pencil,
+  Pin,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { fetchWithCsrf } from "../../api/csrf-client";
@@ -178,12 +188,13 @@ function ViewCardOpenButton({
   onClick: (view: ViewRegistryEntry) => void;
   children: React.ReactNode;
 }) {
+  const context = buildViewContext(view);
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: `view-card-open-${view.id}`,
     role: "button",
-    label: view.label,
+    label: `Open ${view.label}`,
     group: "view-cards",
-    description: view.description ?? `Open the ${view.label} view`,
+    description: context.agentDescription,
     onActivate: () => onClick(view),
   });
   return (
@@ -191,11 +202,65 @@ function ViewCardOpenButton({
       ref={ref}
       type="button"
       onClick={() => onClick(view)}
-      className="flex flex-col gap-2 text-left focus:outline-none"
+      className="min-w-0 flex-1 text-left focus:outline-none"
+      data-view-context={JSON.stringify(context)}
       {...agentProps}
     >
       {children}
     </button>
+  );
+}
+
+function buildViewContext(view: ViewRegistryEntry) {
+  const viewType = view.viewType ?? "gui";
+  const route = view.path ?? `/apps/${view.id}`;
+  const status = view.available ? "available" : "missing bundle";
+  const tags = view.tags ?? [];
+  return {
+    id: view.id,
+    label: view.label,
+    viewType,
+    route,
+    pluginName: view.pluginName,
+    builtin: Boolean(view.builtin),
+    status,
+    description: view.description ?? null,
+    tags,
+    agentDescription: [
+      `Open ${view.label}.`,
+      `Type: ${viewType}.`,
+      `Route: ${route}.`,
+      `Plugin: ${view.pluginName}.`,
+      `Status: ${status}.`,
+      view.description ? `Purpose: ${view.description}.` : "",
+      tags.length ? `Tags: ${tags.join(", ")}.` : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
+  };
+}
+
+function ViewStatusBadge({ available }: { available: boolean }) {
+  const Icon = available ? Check : Circle;
+  return (
+    <span
+      className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border ${
+        available
+          ? "border-ok/35 bg-ok/10 text-ok"
+          : "border-border/45 bg-muted/20 text-muted"
+      }`}
+      title={available ? "Available" : "Bundle missing"}
+    >
+      <Icon className="h-3.5 w-3.5" aria-hidden />
+    </span>
+  );
+}
+
+function ViewBadge({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center rounded-md border border-border/45 px-1.5 py-0.5 text-[0.68rem] font-medium text-muted">
+      {children}
+    </span>
   );
 }
 
@@ -217,10 +282,13 @@ function ViewCard({
   const isDesktop = isElectrobunRuntime();
   const showPinButton = isDesktop && view.desktopTabEnabled !== false && onPin;
   const showManagementButtons = Boolean(onEdit || onDelete);
+  const route = view.path ?? `/apps/${view.id}`;
+  const viewType = view.viewType ?? "gui";
+  const sourceLabel = view.builtin ? "Core" : "Plugin";
 
   return (
     <div
-      className="group relative flex flex-col gap-2 rounded-sm border border-border/50 bg-card p-4 text-left transition-colors hover:bg-card/80 hover:border-border"
+      className="group relative rounded-md border border-border/45 bg-card/80 p-3 text-left transition-colors hover:border-accent/45 hover:bg-card focus-within:ring-2 focus-within:ring-ring/50"
       data-testid={`view-card-${view.id}`}
     >
       {(showPinButton || showManagementButtons) && (
@@ -231,55 +299,46 @@ function ViewCard({
         </div>
       )}
 
-      <ViewCardOpenButton view={view} onClick={onClick}>
-        {view.heroImageUrl && !compact && (
-          <div className="aspect-video w-full overflow-hidden rounded-sm bg-muted">
-            <img
-              src={view.heroImageUrl}
-              alt={view.label}
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          </div>
-        )}
-
-        <div className="flex items-start gap-3">
-          {!view.heroImageUrl && (
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-border/40 bg-accent/10 text-accent">
-              <ViewIcon icon={view.icon} label={view.label} />
-            </div>
-          )}
-
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-txt group-hover:text-accent transition-colors">
-              {view.label}
-            </p>
-            {view.description && (
-              <p className="mt-0.5 line-clamp-2 text-xs text-muted">
-                {view.description}
-              </p>
-            )}
-            {view.pluginName && (
-              <p className="mt-1 text-xs text-muted/60 truncate">
-                {view.pluginName}
-              </p>
-            )}
-          </div>
+      <div className="flex gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-border/45 bg-muted/25 text-accent">
+          <ViewIcon icon={view.icon} label={view.label} />
         </div>
 
-        {view.tags && view.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {view.tags.slice(0, 3).map((tag) => (
-              <span
-                key={tag}
-                className="inline-flex items-center rounded-full bg-muted/40 px-2 py-0.5 text-xs text-muted"
-              >
-                {tag}
-              </span>
-            ))}
+        <ViewCardOpenButton view={view} onClick={onClick}>
+          <div className="flex min-w-0 items-start gap-2 pr-7">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-txt transition-colors group-hover:text-accent">
+                {view.label}
+              </p>
+              <p className="mt-1 line-clamp-2 min-h-8 text-xs leading-4 text-muted">
+                {view.description ??
+                  `Open the ${view.label} ${viewType.toUpperCase()} view.`}
+              </p>
+            </div>
+            <ViewStatusBadge available={view.available} />
           </div>
-        )}
-      </ViewCardOpenButton>
+
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <ViewBadge>{sourceLabel}</ViewBadge>
+            <ViewBadge>{viewType.toUpperCase()}</ViewBadge>
+            {view.pluginName && <ViewBadge>{view.pluginName}</ViewBadge>}
+            {!compact && <ViewBadge>{route}</ViewBadge>}
+          </div>
+
+          {view.tags && view.tags.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {view.tags.slice(0, 3).map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center rounded-md bg-muted/35 px-1.5 py-0.5 text-[0.68rem] text-muted"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </ViewCardOpenButton>
+      </div>
     </div>
   );
 }
@@ -311,11 +370,11 @@ function ViewsEmptyState({ hasQuery }: { hasQuery: boolean }) {
 
 function ViewsLoadingSkeleton() {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       {VIEW_LOADING_SKELETON_KEYS.map((key) => (
         <div
           key={key}
-          className="h-24 animate-pulse rounded-sm bg-muted/30"
+          className="h-36 animate-pulse rounded-md bg-muted/30"
           aria-hidden
         />
       ))}
@@ -340,11 +399,14 @@ function ViewSection({
 }) {
   if (views.length === 0) return null;
   return (
-    <div className="mb-5">
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted/70">
-        {title}
-      </h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+    <section className="mb-6">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted/70">
+          {title}
+        </h2>
+        <span className="text-xs text-muted">{views.length}</span>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {views.map((view) => (
           <ViewCard
             key={`${view.viewType ?? "gui"}:${view.id}`}
@@ -356,7 +418,7 @@ function ViewSection({
           />
         ))}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -372,13 +434,16 @@ function TopViewsSection({
   const { t } = useTranslation();
   if (views.length === 0) return null;
   return (
-    <div className="mb-5" data-testid="views-top-section">
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted/70">
-        {t("viewmanager.section.pinnedRecent", {
-          defaultValue: "Pinned & recent",
-        })}
-      </h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <section className="mb-6" data-testid="views-top-section">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted/70">
+          {t("viewmanager.section.pinnedRecent", {
+            defaultValue: "Pinned & recent",
+          })}
+        </h2>
+        <span className="text-xs text-muted">{views.length}</span>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {views.map((view) => (
           <ViewCard
             key={`${view.viewType ?? "gui"}:${view.id}`}
@@ -389,7 +454,7 @@ function TopViewsSection({
           />
         ))}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -493,6 +558,15 @@ export function ViewManagerPage() {
     group: "views-management",
     description: "Register or update the dynamic view from the form fields",
   });
+  const refreshButton = useAgentElement<HTMLButtonElement>({
+    id: "views-refresh",
+    role: "button",
+    label: t("viewmanager.refresh", { defaultValue: "Refresh views" }),
+    group: "views-toolbar",
+    description: "Reload the registered view directory from the agent runtime",
+    status: loading ? "active" : "inactive",
+    onActivate: () => void refresh(),
+  });
 
   // When the query changes, debounce a call to the semantic search endpoint.
   useEffect(() => {
@@ -577,6 +651,16 @@ export function ViewManagerPage() {
 
   const totalVisible = builtinViews.length + pluginViews.length;
   const isSearching = searchLoading && query.trim().length > 0;
+  const availableCount = visibleViews.filter((view) => view.available).length;
+  const pluginCount = pluginViews.length;
+  const typeCounts = visibleViews.reduce(
+    (counts, view) => {
+      const viewType = view.viewType ?? "gui";
+      counts[viewType] += 1;
+      return counts;
+    },
+    { gui: 0, tui: 0, xr: 0 },
+  );
 
   function handleViewClick(view: ViewRegistryEntry) {
     setRecentViewIds(recordRecentViewId(view.id));
@@ -710,27 +794,71 @@ export function ViewManagerPage() {
     <ShellViewAgentSurface viewId="views">
       <div className="flex flex-1 min-h-0 flex-col">
         {/* Header */}
-        <div className="shrink-0 border-b border-border/50 px-4 py-3">
-          <h1 className="text-sm font-semibold text-txt">
-            {t("viewmanager.title", { defaultValue: "Views" })}
-          </h1>
-        </div>
+        <div className="shrink-0 border-b border-border/50 px-4 py-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-semibold text-txt">
+                  {t("viewmanager.title", { defaultValue: "Views" })}
+                </h1>
+                {isSearching && (
+                  <span className="rounded-md border border-border/45 px-1.5 py-0.5 text-[0.68rem] text-muted">
+                    Searching
+                  </span>
+                )}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                <ViewBadge>{visibleViews.length} views</ViewBadge>
+                <ViewBadge>{availableCount} available</ViewBadge>
+                <ViewBadge>{pluginCount} plugin</ViewBadge>
+                <ViewBadge>{typeCounts.gui} GUI</ViewBadge>
+                <ViewBadge>{typeCounts.tui} TUI</ViewBadge>
+                {typeCounts.xr > 0 && <ViewBadge>{typeCounts.xr} XR</ViewBadge>}
+              </div>
+            </div>
 
-        {/* Search */}
-        <div className="shrink-0 px-4 pt-3 pb-2">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted pointer-events-none" />
-            <input
-              ref={searchInput.ref}
-              type="search"
-              placeholder={t("viewmanager.searchPlaceholder", {
-                defaultValue: "Search views…",
-              })}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="w-full rounded-sm border border-border bg-muted/20 py-2 pl-9 pr-3 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
-              {...searchInput.agentProps}
-            />
+            <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row lg:w-[34rem]">
+              <div className="relative min-w-0 flex-1">
+                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted pointer-events-none" />
+                <input
+                  ref={searchInput.ref}
+                  type="search"
+                  placeholder={t("viewmanager.searchPlaceholder", {
+                    defaultValue: "Search views…",
+                  })}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="h-10 w-full rounded-md border border-border bg-muted/20 py-2 pl-9 pr-9 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+                  {...searchInput.agentProps}
+                />
+                {query && (
+                  <button
+                    type="button"
+                    aria-label={t("viewmanager.clearSearch", {
+                      defaultValue: "Clear view search",
+                    })}
+                    onClick={() => setQuery("")}
+                    className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted transition-colors hover:bg-muted/30 hover:text-txt"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                )}
+              </div>
+              <button
+                ref={refreshButton.ref}
+                type="button"
+                disabled={loading}
+                onClick={() => void refresh()}
+                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium text-txt transition-colors hover:border-accent/45 hover:bg-card/80 disabled:cursor-not-allowed disabled:opacity-60"
+                {...refreshButton.agentProps}
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+                  aria-hidden
+                />
+                {t("viewmanager.refreshShort", { defaultValue: "Refresh" })}
+              </button>
+            </div>
           </div>
         </div>
 
