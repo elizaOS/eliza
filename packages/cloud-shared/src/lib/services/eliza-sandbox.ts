@@ -49,6 +49,7 @@ import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
 import { getNeonClient, NeonClientError } from "./neon-client";
 import { JOB_TYPES } from "./provisioning-job-types";
 import { createSandboxProvider, type SandboxProvider } from "./sandbox-provider";
+import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
 
 /** Shared Neon project used as branch parent for per-agent databases. */
 const NEON_PARENT_PROJECT_ID: string = process.env.NEON_PARENT_PROJECT_ID ?? "";
@@ -561,6 +562,10 @@ export class ElizaSandboxService {
     return agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
   }
 
+  async getAgentById(agentId: string) {
+    return agentSandboxesRepository.findById(agentId);
+  }
+
   async updateAgentEnvironment(
     agentId: string,
     orgId: string,
@@ -790,6 +795,7 @@ export class ElizaSandboxService {
       userId: rec.user_id,
       sandboxId: agentId,
     });
+    const containerLaunch = resolveSandboxContainerLaunchConfig(rec.agent_config);
 
     if (managedEnvironment.changed) {
       const updatedEnvRecord = await agentSandboxesRepository.update(rec.id, {
@@ -841,6 +847,7 @@ export class ElizaSandboxService {
           routeAgentId: rec.character_id ?? undefined,
           snapshotId: rec.snapshot_id ?? undefined,
           dockerImage: rec.docker_image ?? undefined,
+          container: containerLaunch,
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

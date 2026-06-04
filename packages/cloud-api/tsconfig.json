@@ -34,6 +34,8 @@
       "@elizaos/cloud-shared/types": ["../cloud-shared/src/types/index.ts"],
       "@elizaos/cloud-shared/types/*": ["../cloud-shared/src/types/*"],
       "@elizaos/cloud-routing": ["../cloud-routing/src/index.ts"],
+      "@elizaos/contracts": ["../contracts/src/index.ts"],
+      "@elizaos/contracts/*": ["../contracts/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],

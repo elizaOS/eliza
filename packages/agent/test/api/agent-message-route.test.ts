@@ -23,6 +23,7 @@
  *     registered, `useModel` invokes it.
  */
 
+import crypto from "node:crypto";
 import http from "node:http";
 import {
   type AgentRuntime,
@@ -46,6 +47,7 @@ function createMockReq(
   method: string,
   pathname: string,
   body?: unknown,
+  headers?: Record<string, string>,
 ): http.IncomingMessage {
   const payload = body ? Buffer.from(JSON.stringify(body)) : Buffer.alloc(0);
   const req = Object.assign(new http.IncomingMessage(null as never), {
@@ -54,6 +56,7 @@ function createMockReq(
     headers: {
       "content-type": "application/json",
       "content-length": String(payload.length),
+      ...headers,
     },
   });
   req.on = ((event: string, listener: (...args: unknown[]) => void) => {
@@ -182,8 +185,10 @@ function createCtx(opts: {
   pathname: string;
   body?: unknown;
   runtime: AgentRuntime | null;
+  headers?: Record<string, string>;
+  state?: Record<string, unknown>;
 }) {
-  const req = createMockReq(opts.method, opts.pathname, opts.body);
+  const req = createMockReq(opts.method, opts.pathname, opts.body, opts.headers);
   const { res, record } = createMockRes();
   const json = (
     response: http.ServerResponse,
@@ -217,7 +222,7 @@ function createCtx(opts: {
     });
   };
 
-  const state = {
+  const state = opts.state ?? {
     runtime: opts.runtime,
     config: { user: { name: "tester" } },
     agentName: opts.runtime?.character.name ?? "Eliza",
@@ -227,10 +232,15 @@ function createCtx(opts: {
     chatConnectionReady: null,
     chatConnectionPromise: null,
     logBuffer: [],
+    conversations: new Map(),
+    conversationRestorePromise: null,
+    deletedConversationIds: new Set(),
+    broadcastWs: null,
   };
 
   return {
     record,
+    state,
     invoke: () =>
       handleConversationRouteGroup({
         req,
@@ -246,13 +256,42 @@ function createCtx(opts: {
   };
 }
 
+function signWaifuJwt(payload: Record<string, unknown>): string {
+  const header = Buffer.from(
+    JSON.stringify({ alg: "HS256", typ: "JWT" }),
+  ).toString("base64url");
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = crypto
+    .createHmac("sha256", "waifu-secret")
+    .update(`${header}.${body}`)
+    .digest("base64url");
+  return `${header}.${body}.${signature}`;
+}
+
+function waifuAuthHeaders(
+  role: "admin" | "user" | "guest",
+  walletAddress: string,
+): Record<string, string> {
+  return {
+    authorization: `Bearer ${signWaifuJwt({
+      iss: "waifu.fun",
+      aud: "eliza-cloud-chat",
+      exp: Math.floor(Date.now() / 1000) + 60,
+      role,
+      walletAddress,
+    })}`,
+  };
+}
+
 describe("POST /api/agents/:id/message (issue #7680)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.WAIFU_CHAT_ACCESS_JWT_SECRET = "waifu-secret";
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    delete process.env.WAIFU_CHAT_ACCESS_JWT_SECRET;
   });
 
   it("is bound by the dispatcher (no longer 404s as 'route missing') and routes via generateChatResponse", async () => {
@@ -332,6 +371,109 @@ describe("POST /api/agents/:id/message (issue #7680)", () => {
     const handled = await invoke();
     expect(handled).toBe(true);
     expect(record.status).toBe(503);
+  });
+
+  it("scopes hosted waifu conversations to the holder wallet while admin can see all", async () => {
+    const ownerWallet = "0x1111111111111111111111111111111111111111";
+    const otherWallet = "0x2222222222222222222222222222222222222222";
+
+    const created = createCtx({
+      method: "POST",
+      pathname: "/api/conversations",
+      body: { title: "holder chat" },
+      runtime: null,
+      headers: waifuAuthHeaders("guest", ownerWallet),
+    });
+    expect(await created.invoke()).toBe(true);
+    expect(created.record.status).toBe(200);
+
+    const createBody = parseResponseBody(created.record) as {
+      conversation?: { id: string; metadata?: Record<string, unknown> };
+    };
+    const conversationId = createBody.conversation?.id;
+    expect(conversationId).toBeTruthy();
+    expect(createBody.conversation?.metadata).toMatchObject({
+      waifuChatOwnerWallet: ownerWallet.toLowerCase(),
+      waifuChatRole: "guest",
+    });
+
+    const ownerList = createCtx({
+      method: "GET",
+      pathname: "/api/conversations",
+      runtime: null,
+      headers: waifuAuthHeaders("guest", ownerWallet),
+      state: created.state,
+    });
+    expect(await ownerList.invoke()).toBe(true);
+    expect(
+      (parseResponseBody(ownerList.record) as { conversations: unknown[] })
+        .conversations,
+    ).toHaveLength(1);
+
+    const otherList = createCtx({
+      method: "GET",
+      pathname: "/api/conversations",
+      runtime: null,
+      headers: waifuAuthHeaders("user", otherWallet),
+      state: created.state,
+    });
+    expect(await otherList.invoke()).toBe(true);
+    expect(
+      (parseResponseBody(otherList.record) as { conversations: unknown[] })
+        .conversations,
+    ).toHaveLength(0);
+
+    const otherMessages = createCtx({
+      method: "GET",
+      pathname: `/api/conversations/${conversationId}/messages`,
+      runtime: null,
+      headers: waifuAuthHeaders("user", otherWallet),
+      state: created.state,
+    });
+    expect(await otherMessages.invoke()).toBe(true);
+    expect(otherMessages.record.status).toBe(404);
+
+    const adminList = createCtx({
+      method: "GET",
+      pathname: "/api/conversations",
+      runtime: null,
+      headers: waifuAuthHeaders("admin", otherWallet),
+      state: created.state,
+    });
+    expect(await adminList.invoke()).toBe(true);
+    expect(
+      (parseResponseBody(adminList.record) as { conversations: unknown[] })
+        .conversations,
+    ).toHaveLength(1);
+  });
+
+  it("denies non-admin waifu mutations even when the holder owns the conversation", async () => {
+    const ownerWallet = "0x1111111111111111111111111111111111111111";
+
+    const created = createCtx({
+      method: "POST",
+      pathname: "/api/conversations",
+      body: { title: "holder chat" },
+      runtime: null,
+      headers: waifuAuthHeaders("user", ownerWallet),
+    });
+    expect(await created.invoke()).toBe(true);
+    const createBody = parseResponseBody(created.record) as {
+      conversation?: { id: string };
+    };
+    const conversationId = createBody.conversation?.id;
+    expect(conversationId).toBeTruthy();
+
+    const patch = createCtx({
+      method: "PATCH",
+      pathname: `/api/conversations/${conversationId}`,
+      body: { title: "renamed" },
+      runtime: null,
+      headers: waifuAuthHeaders("user", ownerWallet),
+      state: created.state,
+    });
+    expect(await patch.invoke()).toBe(true);
+    expect(patch.record.status).toBe(403);
   });
 });
 

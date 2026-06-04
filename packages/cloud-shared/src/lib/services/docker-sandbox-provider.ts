@@ -360,13 +360,29 @@ const DOCKER_CMD_TIMEOUT_MS = 60_000;
 const AUTOSCALED_NODE_READY_TIMEOUT_MS = 4 * 60 * 1000;
 const AUTOSCALED_NODE_READY_POLL_MS = 10_000;
 
-function getDockerHealthCmd(port: string): string {
+function getDockerHealthCmd(port: string, path = "/api/health"): string {
   if (!/^\d+$/.test(port)) {
     throw new Error(`[docker-sandbox] Invalid port "${port}": must be a numeric string.`);
   }
+  if (!/^\/[A-Za-z0-9._~/-]*$/.test(path)) {
+    throw new Error(`[docker-sandbox] Invalid health check path "${path}".`);
+  }
   // /api/health returns 200 or 401 (auth required) — both mean the server is up.
   // Use curl with -o /dev/null and check status code to accept either.
-  return `sh -lc 'STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${port}/api/health" 2>/dev/null); [ "$STATUS" = "200" ] || [ "$STATUS" = "401" ]'`;
+  return `sh -lc 'STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${port}${path}" 2>/dev/null); [ "$STATUS" = "200" ] || [ "$STATUS" = "401" ]'`;
+}
+
+function resolveContainerPort(config: SandboxCreateConfig): string {
+  const requested =
+    typeof config.environmentVars.PORT === "string" && config.environmentVars.PORT.trim()
+      ? config.environmentVars.PORT.trim()
+      : typeof config.container?.port === "number"
+        ? String(config.container.port)
+        : DEFAULT_AGENT_PORT;
+  if (!/^\d+$/.test(requested)) {
+    throw new Error(`[docker-sandbox] Invalid container port "${requested}".`);
+  }
+  return requested;
 }
 
 function extractStewardToken(raw: string): string {
@@ -578,6 +594,8 @@ export class DockerSandboxProvider implements SandboxProvider {
       DOCKER_IMAGE_OVERRIDE || config.dockerImage || "ghcr.io/elizaos/eliza:latest";
     const imagePlatform = containersEnv.defaultAgentImagePlatform();
     const platformFlags = dockerPlatformFlag(imagePlatform);
+    const containerPort = resolveContainerPort(config);
+    const healthCheckPath = config.container?.healthCheckPath ?? "/api/health";
 
     // 1. Input validation
     validateAgentName(agentName);
@@ -776,10 +794,10 @@ export class DockerSandboxProvider implements SandboxProvider {
       STEWARD_API_URL: stewardContainerUrl,
       STEWARD_AGENT_ID: agentId,
       // V2 image binds the eliza-api server to ELIZA_PORT, not PORT. Keep both
-      // aligned to DEFAULT_AGENT_PORT so the daemon's HTTP probe (which hits
+      // aligned to the requested app port so the daemon's HTTP probe (which hits
       // the host port mapped to container PORT) reaches the actual listener.
-      ELIZA_PORT: DEFAULT_AGENT_PORT,
-      PORT: DEFAULT_AGENT_PORT,
+      ELIZA_PORT: containerPort,
+      PORT: containerPort,
       BRIDGE_PORT: DEFAULT_BRIDGE_PORT,
       // Eliza server requires JWT_SECRET in production mode.
       // Generate a unique per-container secret if the caller didn't provide one.
@@ -933,11 +951,14 @@ export class DockerSandboxProvider implements SandboxProvider {
         ...(requiresDockerHostGateway(stewardContainerUrl) || Object.keys(proxyEnv).length > 0
           ? ["--add-host host.docker.internal:host-gateway"]
           : []),
-        `--health-cmd ${shellQuote(getDockerHealthCmd(allEnv.PORT || DEFAULT_AGENT_PORT))}`,
+        `--health-cmd ${shellQuote(getDockerHealthCmd(allEnv.PORT || containerPort, healthCheckPath))}`,
         "--health-interval 10s",
         "--health-timeout 5s",
         "--health-start-period 15s",
         "--health-retries 6",
+        ...(config.container?.memoryMb
+          ? [`--memory ${shellQuote(`${Math.ceil(config.container.memoryMb)}m`)}`]
+          : []),
         ...(headscaleEnabled ? ["--cap-add=NET_ADMIN", "--device /dev/net/tun"] : []),
         `-v ${shellQuote(volumePath)}:/app/data`,
         `-v ${shellQuote(`${volumePath}/eliza`)}:/root/.eliza`,

@@ -7,6 +7,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { dbRead } from "@/db/client";
+import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@/db/repositories/characters";
 import { organizations } from "@/db/schemas/organizations";
 import { userCharacters } from "@/db/schemas/user-characters";
@@ -64,6 +65,27 @@ function getMaxAgentsForOrg(
 const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
+
+async function duplicateTokenResponseBody(
+  existingCharacter: { id: string } | null | undefined,
+  tokenAddress: string,
+  tokenChain?: string,
+): Promise<Record<string, unknown>> {
+  const existingSandbox = existingCharacter?.id
+    ? await agentSandboxesRepository.findLatestByCharacterId(
+        existingCharacter.id,
+      )
+    : null;
+
+  return {
+    success: false,
+    error: `An agent is already linked to token ${tokenAddress}${tokenChain ? ` on ${tokenChain}` : ""}`,
+    ...(existingCharacter?.id
+      ? { existingCharacterId: existingCharacter.id }
+      : {}),
+    ...(existingSandbox?.id ? { existingAgentId: existingSandbox.id } : {}),
+  };
+}
 
 app.post("/", async (c) => {
   try {
@@ -150,11 +172,7 @@ app.post("/", async (c) => {
       );
       if (existing) {
         return c.json(
-          {
-            success: false,
-            error: `An agent is already linked to token ${tokenAddress}${tokenChain ? ` on ${tokenChain}` : ""}`,
-            existingAgentId: existing.id,
-          },
+          await duplicateTokenResponseBody(existing, tokenAddress, tokenChain),
           409,
         );
       }
@@ -181,11 +199,7 @@ app.post("/", async (c) => {
           tokenChain,
         );
         return c.json(
-          {
-            success: false,
-            error: `An agent is already linked to token ${tokenAddress}${tokenChain ? ` on ${tokenChain}` : ""}`,
-            existingAgentId: existing?.id,
-          },
+          await duplicateTokenResponseBody(existing, tokenAddress, tokenChain),
           409,
         );
       }
