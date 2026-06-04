@@ -530,16 +530,23 @@ jobs:
             if [ -n "$routing_json" ]; then
               printf '%s\n' "$routing_json" | redact_stream
               target="$(ROUTING_JSON="$routing_json" node -e 'try { const data = JSON.parse(process.env.ROUTING_JSON || "{}"); if (typeof data.target === "string") console.log(data.target); } catch {}')"
+              bridge_target="$(ROUTING_JSON="$routing_json" node -e 'try { const data = JSON.parse(process.env.ROUTING_JSON || "{}"); if (typeof data.bridgeTarget === "string") console.log(data.bridgeTarget); } catch {}')"
               if [ -n "$target" ]; then
                 for path in / /health /api/health /pair; do
                   status="$(curl -s -o /dev/null -w "%{http_code}" -m 8 "http://${target}${path}" 2>/dev/null || true)"
                   printf 'router_target_check target=%s path=%s status=%s\n' "$target" "$path" "$status" | redact_stream
                 done
               fi
+              if [ -n "$bridge_target" ]; then
+                for path in /api/agents /api/conversations /bridge; do
+                  status="$(curl -s -o /dev/null -w "%{http_code}" -m 8 "http://${bridge_target}${path}" 2>/dev/null || true)"
+                  printf 'router_bridge_target_check target=%s path=%s status=%s\n' "$bridge_target" "$path" "$status" | redact_stream
+                done
+              fi
             else
               echo "agent-router returned no routing payload."
             fi
-            for path in / /health /api/health /pair; do
+            for path in / /health /api/health /api/agents /api/conversations /bridge /pair; do
               status="$(curl -s -o /dev/null -w "%{http_code}" -m 8 -H "Host: ${safe_agent_id}.${agent_domain}" "http://127.0.0.1${path}" 2>/dev/null || true)"
               printf 'nginx_origin_check host=%s path=%s status=%s\n' "${safe_agent_id}.${agent_domain}" "$path" "$status" | redact_stream
             done

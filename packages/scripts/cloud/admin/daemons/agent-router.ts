@@ -1,4 +1,5 @@
 #!/usr/bin/env -S npx tsx
+
 /**
  * Agent Router daemon.
  *
@@ -17,8 +18,8 @@
  *   DATABASE_URL            Postgres connection (loaded from .env.local).
  */
 
-import * as path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadLocalEnv } from "./shared/load-env";
 
@@ -89,12 +90,15 @@ interface RoutingResponse {
   headscaleIp: string;
   bridgePort: number;
   webUiPort: number;
+  bridgeTarget: string;
+  webTarget: string;
   target: string;
 }
 
 interface SandboxRoutingFields {
   status: string;
   bridge_url?: string | null;
+  bridge_port?: number | null;
   headscale_ip?: string | null;
   web_ui_port?: number | null;
 }
@@ -107,11 +111,12 @@ export function resolveSandboxRouting(
   sandbox: SandboxRoutingFields | null | undefined,
   options: SandboxRoutingOptions = {},
 ): RoutingResponse | null {
-  if (!sandbox || sandbox.status !== "running" || !sandbox.web_ui_port) {
+  if (sandbox?.status !== "running" || !sandbox.web_ui_port) {
     return null;
   }
 
-  let bridgePort: number | null = null;
+  let bridgePort: number | null =
+    typeof sandbox.bridge_port === "number" ? sandbox.bridge_port : null;
   let bridgeHost: string | null = null;
   if (sandbox.bridge_url) {
     try {
@@ -119,10 +124,9 @@ export function resolveSandboxRouting(
       bridgeHost = options.allowBridgeHostFallback
         ? parsed.hostname || null
         : null;
-      bridgePort = parsed.port ? Number.parseInt(parsed.port, 10) : null;
+      bridgePort ??= parsed.port ? Number.parseInt(parsed.port, 10) : null;
     } catch {
       bridgeHost = null;
-      bridgePort = null;
     }
   }
 
@@ -133,12 +137,36 @@ export function resolveSandboxRouting(
   }
 
   const webUiPort = sandbox.web_ui_port;
+  const bridgeTarget = `${host}:${bridgePort}`;
+  const webTarget = `${host}:${webUiPort}`;
   return {
     headscaleIp: host,
     bridgePort,
     webUiPort,
-    target: `${host}:${webUiPort}`,
+    bridgeTarget,
+    webTarget,
+    target: webTarget,
   };
+}
+
+export function selectAgentProxyTarget(
+  routing: Pick<RoutingResponse, "bridgeTarget" | "webTarget">,
+  pathname: string,
+): string {
+  if (
+    pathname === "/bridge" ||
+    pathname === "/v1/chat/completions" ||
+    pathname.startsWith("/api/agents") ||
+    pathname.startsWith("/api/conversations") ||
+    pathname.startsWith("/api/messaging") ||
+    pathname.startsWith("/api/restore") ||
+    pathname.startsWith("/api/snapshot") ||
+    pathname.startsWith("/api/wallet")
+  ) {
+    return routing.bridgeTarget;
+  }
+
+  return routing.webTarget;
 }
 
 export function isBridgeHostFallbackEnabled(
@@ -198,10 +226,7 @@ async function readIncomingBody(
   return body;
 }
 
-function buildProxyHeaders(
-  req: IncomingMessage,
-  target: string,
-): Headers {
+function buildProxyHeaders(req: IncomingMessage, target: string): Headers {
   const headers = new Headers();
   for (const [name, value] of Object.entries(req.headers)) {
     if (!value || HOP_BY_HOP_HEADERS.has(name.toLowerCase())) continue;
@@ -214,7 +239,8 @@ function buildProxyHeaders(
 
   headers.set("host", target);
   if (req.headers.host) headers.set("x-forwarded-host", req.headers.host);
-  if (!headers.has("x-forwarded-proto")) headers.set("x-forwarded-proto", "http");
+  if (!headers.has("x-forwarded-proto"))
+    headers.set("x-forwarded-proto", "http");
   const forwardedFor = req.socket.remoteAddress;
   if (forwardedFor) {
     const existing = headers.get("x-forwarded-for");
@@ -239,11 +265,12 @@ async function proxyAgentRequest(
     );
   }
 
-  const targetUrl = new URL(`${url.pathname}${url.search}`, `http://${routing.target}`);
+  const target = selectAgentProxyTarget(routing, url.pathname);
+  const targetUrl = new URL(`${url.pathname}${url.search}`, `http://${target}`);
   const method = req.method ?? "GET";
   const init: RequestInit = {
     method,
-    headers: buildProxyHeaders(req, routing.target),
+    headers: buildProxyHeaders(req, target),
     redirect: "manual",
     signal: AbortSignal.timeout(120_000),
   };

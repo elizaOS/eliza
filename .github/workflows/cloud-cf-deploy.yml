@@ -88,12 +88,16 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.environment }}" = "production" ]; then
             echo "wrangler_args=--env production" >> "$GITHUB_OUTPUT"
+            echo "deploy_environment=production" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "wrangler_args=--env staging" >> "$GITHUB_OUTPUT"
+            echo "deploy_environment=staging" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
             echo "wrangler_args=--env production" >> "$GITHUB_OUTPUT"
+            echo "deploy_environment=production" >> "$GITHUB_OUTPUT"
           else
             echo "wrangler_args=--env staging" >> "$GITHUB_OUTPUT"
+            echo "deploy_environment=staging" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Check Cloudflare credentials
@@ -125,6 +129,84 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: bunx wrangler deploy ${{ steps.env.outputs.wrangler_args }}
+
+      - name: Ensure generated agent wildcard DNS
+        if: steps.cf.outputs.configured == 'true' && steps.env.outputs.deploy_environment == 'production'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          AGENT_BASE_DOMAIN: waifu.fun
+          AGENT_ROUTER_ORIGIN_HOST: eliza-production-1.elizacloud.ai
+        run: |
+          node --input-type=module <<'NODE'
+          import { resolve4 } from "node:dns/promises";
+
+          const token = process.env.CLOUDFLARE_API_TOKEN;
+          const baseDomain = process.env.AGENT_BASE_DOMAIN;
+          const originHost = process.env.AGENT_ROUTER_ORIGIN_HOST;
+          if (!token || !baseDomain || !originHost) {
+            throw new Error("Cloudflare DNS configuration is incomplete");
+          }
+
+          const [originIp] = await resolve4(originHost);
+          if (!originIp) throw new Error(`No A record found for ${originHost}`);
+
+          async function cf(path, init = {}) {
+            const res = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
+              ...init,
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+                ...(init.headers ?? {}),
+              },
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok || body.success === false) {
+              const errors = Array.isArray(body.errors)
+                ? body.errors.map((error) => error.message).join("; ")
+                : res.statusText;
+              throw new Error(`Cloudflare API failed ${res.status}: ${errors}`);
+            }
+            return body;
+          }
+
+          const zones = await cf(`/zones?name=${encodeURIComponent(baseDomain)}&per_page=1`);
+          const zone = zones.result?.[0];
+          if (!zone?.id) throw new Error(`Cloudflare zone not found for ${baseDomain}`);
+
+          const recordName = `*.${baseDomain}`;
+          const records = await cf(
+            `/zones/${zone.id}/dns_records?name=${encodeURIComponent(recordName)}&per_page=100`,
+          );
+          const existing = records.result?.[0];
+          const desired = {
+            type: "A",
+            name: recordName,
+            content: originIp,
+            ttl: 1,
+            proxied: true,
+            comment: `elizaOS generated agent wildcard routed to ${originHost}`,
+          };
+
+          if (existing?.id) {
+            await cf(`/zones/${zone.id}/dns_records/${existing.id}`, {
+              method: "PUT",
+              body: JSON.stringify(desired),
+            });
+          } else {
+            await cf(`/zones/${zone.id}/dns_records`, {
+              method: "POST",
+              body: JSON.stringify(desired),
+            });
+          }
+
+          for (const record of records.result ?? []) {
+            if (record.id && record.id !== existing?.id) {
+              await cf(`/zones/${zone.id}/dns_records/${record.id}`, { method: "DELETE" });
+            }
+          }
+
+          console.log(`agent_wildcard_dns=${recordName} origin=${originHost} origin_ip=${originIp}`);
+          NODE
 
   # ---------------------------------------------------------------------------
   # Frontend (Cloudflare Pages)
