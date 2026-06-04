@@ -33,11 +33,11 @@ standard location mirrors the openclaw install convention:
 ```
 
 Resolution precedence: `SMITHERS_DIR` env → `~/.eliza/agents/smithers/manifest.json`
-→ newest versioned subdir → `~/.eliza/agents/smithers/0.21.0`.
+→ newest versioned subdir → `~/.eliza/agents/smithers/0.22.0`.
 
 ```bash
-mkdir -p ~/.eliza/agents/smithers/0.21.0 && cd $_
-bun add smithers-orchestrator@0.21.0 @ai-sdk/openai ai zod
+mkdir -p ~/.eliza/agents/smithers/0.22.0 && cd $_
+bun add smithers-orchestrator@0.22.0 @ai-sdk/openai ai zod
 ```
 
 ## Run a benchmark
