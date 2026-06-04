@@ -15,6 +15,11 @@ export default defineConfig({
       "**/*.e2e.test.{ts,tsx}",
       "**/*.real.test.{ts,tsx}",
       "**/*.live.test.{ts,tsx}",
+      // Integration specs load @elizaos/agent, which (dynamically) pulls the full
+      // connector plugin graph. Those connector packages aren't built in the unit
+      // Plugin Tests lane, so Node fails to resolve their dist entries. Keep
+      // integration specs out of the unit run (they need a full-build lane).
+      "**/*.integration.test.{ts,tsx}",
     ],
     passWithNoTests: true,
     server: {

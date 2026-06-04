@@ -1,8 +1,4 @@
-// Narrow subpath import: pulling renderGroundedActionReply from the @elizaos/agent
-// barrel drags in the full connector/plugin graph (imessage, x402, …), which is
-// not built in the Plugin Tests lane and fails module resolution. The
-// grounded-action-reply module itself only depends on core/shared utilities.
-import { renderGroundedActionReply } from "@elizaos/agent/actions/grounded-action-reply";
+import { renderGroundedActionReply } from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
