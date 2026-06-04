@@ -25,7 +25,10 @@ import {
   type LocalAsrRecorder,
   startLocalAsrRecorder,
 } from "./local-asr-capture";
-import { transcribeLocalInferenceWav } from "./local-asr-transcribe";
+import {
+  isLocalInferenceAsrReady,
+  transcribeLocalInferenceWav,
+} from "./local-asr-transcribe";
 import {
   getSpeechRecognitionCtor,
   type SpeechRecognitionInstance,
@@ -109,29 +112,28 @@ export interface VoiceCaptureHandle {
   getAnalyser(): AnalyserNode | null;
 }
 
-interface ResolvedBackend {
-  kind: VoiceCaptureBackend;
-}
-
-function resolveBackend(
+async function resolveBackendKind(
   preferred: AsrProvider | "browser" | undefined,
-): ResolvedBackend {
+): Promise<VoiceCaptureBackend> {
   if (preferred === "browser") {
-    return { kind: "browser" };
+    return "browser";
   }
-  // local-inference is the default, but it requires both the mic capture
-  // primitives and (ultimately) a reachable /api/asr/local-inference. We
-  // can only check the former here; if the round-trip fails at stop() the
-  // caller is notified via onStateChange("error", err).
-  if (preferred === "local-inference" || preferred === undefined) {
-    if (isLocalAsrCaptureSupported()) {
-      return { kind: "local-inference" };
-    }
+  // local-inference is the default, but it needs BOTH the client mic-capture
+  // primitives AND a server that can actually transcribe. Probe the server's
+  // readiness (GET /api/asr/local-inference/status) so an unconfigured box
+  // (no whisper model / native adapter) degrades to browser SpeechRecognition
+  // instead of capturing audio it can only 502 on at stop().
+  if (
+    (preferred === "local-inference" || preferred === undefined) &&
+    isLocalAsrCaptureSupported() &&
+    (await isLocalInferenceAsrReady())
+  ) {
+    return "local-inference";
   }
   // Eliza-cloud / OpenAI providers go through the local-inference route
   // server-side today; until that changes, browser API is the only sane
   // client-side fallback.
-  return { kind: "browser" };
+  return "browser";
 }
 
 export function createVoiceCapture(
@@ -144,7 +146,9 @@ export function createVoiceCapture(
     lang = "en-US",
     localAsrAutoStop,
   } = options;
-  const backend = resolveBackend(asrProvider);
+  // Resolved on start() — the server-readiness probe is async, so the backend
+  // choice is deferred from construction to the first start() call.
+  let backendKind: VoiceCaptureBackend | null = null;
 
   let state: VoiceCaptureState = "idle";
   let active = false;
@@ -226,7 +230,8 @@ export function createVoiceCapture(
     if (active) return;
     setState("starting");
     try {
-      if (backend.kind === "local-inference") {
+      backendKind = await resolveBackendKind(asrProvider);
+      if (backendKind === "local-inference") {
         await startLocalInference();
       } else {
         startBrowser();
@@ -241,7 +246,7 @@ export function createVoiceCapture(
   async function stop(): Promise<void> {
     if (!active && state !== "starting") return;
 
-    if (backend.kind === "local-inference") {
+    if (backendKind === "local-inference") {
       const current = recorder;
       recorder = null;
       active = false;
