@@ -433,9 +433,18 @@ export function ContinuousChatOverlay({
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 bottom-0 flex flex-col items-center px-4 pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+1.5rem)]"
+      className={cn(
+        "pointer-events-none fixed flex flex-col items-center px-4",
+        // Fullscreen: take over the whole viewport (transcript fills, composer
+        // pinned to the bottom). Otherwise: a bottom-anchored ambient bar.
+        fullscreen
+          ? "inset-0 justify-end pt-[calc(var(--safe-area-top,0px)+1rem)]"
+          : "inset-x-0 bottom-0",
+        "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+1.5rem)]",
+      )}
       style={{ zIndex: Z_SHELL_OVERLAY }}
       data-testid="continuous-chat-overlay"
+      data-fullscreen={fullscreen ? "true" : undefined}
     >
       {/* Cinematic bottom vignette — grounds the floating bar and gives the
           whisper/transcript lines something to read against over bright views. */}
@@ -465,7 +474,9 @@ export function ContinuousChatOverlay({
           }}
           className={cn(
             "pointer-events-auto relative mb-3 w-full max-w-3xl overflow-y-auto px-1 py-2",
-            fullscreen ? "max-h-[86vh]" : "max-h-[58vh]",
+            // Fullscreen: grow to fill the viewport (flex child of the full-height
+            // root). Otherwise: a bottom-anchored partial panel.
+            fullscreen ? "min-h-0 flex-1" : "max-h-[58vh]",
             // No visible scrollbar — the thread still scrolls, the chrome just hides.
             "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",

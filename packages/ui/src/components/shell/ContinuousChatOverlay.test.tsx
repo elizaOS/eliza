@@ -127,6 +127,22 @@ describe("ContinuousChatOverlay", () => {
     expect(document.getElementById("continuous-thread")).toBeNull();
   });
 
+  it("toggles a full-screen takeover from the far-left button", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const root = screen.getByTestId("continuous-chat-overlay");
+    expect(root.getAttribute("data-fullscreen")).toBeNull();
+
+    // Far-left button enters full screen and opens the thread over the view.
+    fireEvent.click(screen.getByLabelText("expand to full screen"));
+    expect(root.getAttribute("data-fullscreen")).toBe("true");
+    expect(document.getElementById("continuous-thread")).toBeTruthy();
+
+    // Pressing it again returns to normal (ambient) mode.
+    fireEvent.click(screen.getByLabelText("exit full screen"));
+    expect(root.getAttribute("data-fullscreen")).toBeNull();
+    expect(document.getElementById("continuous-thread")).toBeNull();
+  });
+
   it("shows the attach (+) control", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     expect(screen.getByLabelText("attach image")).toBeTruthy();
