@@ -45,7 +45,10 @@ import {
   type LocalAsrRecorder,
   startLocalAsrRecorder,
 } from "../voice/local-asr-capture";
-import { transcribeLocalInferenceWav } from "../voice/local-asr-transcribe";
+import {
+  isLocalInferenceAsrReady,
+  transcribeLocalInferenceWav,
+} from "../voice/local-asr-transcribe";
 import {
   collapseWhitespace,
   nextIdleMouthOpen,
@@ -715,6 +718,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         return false;
       }
       if (!isLocalAsrCaptureSupported()) {
+        return false;
+      }
+      // Defer to the next backend (talk-mode / browser) when the server can't
+      // transcribe right now — capturing here would only 502 at stop() with no
+      // recoverable fallback (no whisper model / native adapter installed).
+      if (!(await isLocalInferenceAsrReady())) {
         return false;
       }
 
