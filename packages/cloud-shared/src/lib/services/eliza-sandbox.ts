@@ -1103,6 +1103,35 @@ export class ElizaSandboxService {
     return this.getSafeBridgeEndpoint(rec, path);
   }
 
+  private async getAgentWebEndpoint(
+    rec: Pick<
+      AgentSandbox,
+      | "id"
+      | "bridge_url"
+      | "health_url"
+      | "node_id"
+      | "bridge_port"
+      | "web_ui_port"
+      | "headscale_ip"
+      | "sandbox_id"
+    >,
+    path: string,
+  ): Promise<string> {
+    const baseDomain = this.getConfiguredAgentBaseDomain();
+    const publicEndpoint = getElizaAgentPublicWebUiUrl(
+      rec,
+      baseDomain ? { baseDomain, path } : { path },
+    );
+    if (publicEndpoint) return publicEndpoint;
+
+    const trustedWebBaseUrl = await this.getTrustedDockerWebBaseUrl(rec);
+    if (trustedWebBaseUrl) {
+      return new URL(path, trustedWebBaseUrl).toString();
+    }
+
+    return this.getSafeBridgeEndpoint(rec, path);
+  }
+
   private async getTrustedDockerWebBaseUrl(
     sandbox: Pick<
       AgentSandbox,
@@ -1456,7 +1485,7 @@ export class ElizaSandboxService {
       };
     }
 
-    const rootEndpoint = await this.getAgentApiEndpoint(rec, "/");
+    const rootEndpoint = await this.getAgentWebEndpoint(rec, "/");
     const rootRes = await fetch(rootEndpoint, {
       method: "GET",
       headers: this.getAgentJsonHeaders(rec),
@@ -1480,6 +1509,8 @@ export class ElizaSandboxService {
         status: "running",
         ready: true,
         agentId: rec.id,
+        runtime: "web",
+        chat: false,
       },
     };
   }

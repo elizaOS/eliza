@@ -42,6 +42,8 @@ interface BridgeMessageResult {
   agentName?: string;
   channelId?: string;
   runtime?: string;
+  ready?: boolean;
+  chat?: boolean;
 }
 
 interface BridgeEnvelope {
@@ -91,9 +93,11 @@ function AgentBridgeChat({ agent }: { agent: AgentDetailDto }) {
   const [isSending, setIsSending] = useState(false);
   const [bridgeState, setBridgeState] = useState<BridgeState>("idle");
   const [bridgeError, setBridgeError] = useState<string | null>(null);
+  const [chatAvailable, setChatAvailable] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const isRunning = agent.status === "running";
   const hasWebUi = Boolean(agent.adminDetails?.webUiUrl);
+  const canUseBridgeChat = isRunning && chatAvailable;
 
   useEffect(() => {
     if (messages.length === 0 && !isSending) return;
@@ -124,11 +128,13 @@ function AgentBridgeChat({ agent }: { agent: AgentDetailDto }) {
     try {
       const response = await postBridge("status.get", {});
       if (response.error) throw new Error(response.error.message);
+      setChatAvailable(response.result?.chat !== false);
       setBridgeState("ready");
     } catch (error) {
       const message = getErrorMessage(
         error instanceof Error ? error : new Error(String(error)),
       );
+      setChatAvailable(true);
       setBridgeState("error");
       setBridgeError(message);
     }
@@ -140,7 +146,7 @@ function AgentBridgeChat({ agent }: { agent: AgentDetailDto }) {
 
   const sendMessage = useCallback(async () => {
     const text = inputText.trim();
-    if (!text || isSending || !isRunning) return;
+    if (!text || isSending || !canUseBridgeChat) return;
 
     const requestId = Date.now();
     const userMessage: ChatMessage = {
@@ -191,7 +197,7 @@ function AgentBridgeChat({ agent }: { agent: AgentDetailDto }) {
     } finally {
       setIsSending(false);
     }
-  }, [agent.id, inputText, isRunning, isSending, postBridge]);
+  }, [agent.id, canUseBridgeChat, inputText, isSending, postBridge]);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -279,16 +285,31 @@ function AgentBridgeChat({ agent }: { agent: AgentDetailDto }) {
             </div>
           )}
 
+          {chatAvailable === false && isRunning && (
+            <div className="border-b border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/60">
+              {t("cloud.agents.chat.webOnly", {
+                defaultValue:
+                  "This custom app is online. Chat is handled by its Web UI.",
+              })}
+            </div>
+          )}
+
           <div className="flex-1 space-y-3 overflow-y-auto p-4">
             {messages.length === 0 ? (
               <div className="flex h-full min-h-[280px] items-center justify-center text-center text-sm text-white/35">
-                {isRunning
-                  ? t("cloud.agents.chat.emptyReady", {
-                      defaultValue: "Send a message to start this session.",
+                {chatAvailable === false && isRunning
+                  ? t("cloud.agents.chat.emptyWebOnly", {
+                      defaultValue:
+                        "Open the Web UI to interact with this app.",
                     })
-                  : t("cloud.agents.chat.emptyStopped", {
-                      defaultValue: "Agent chat is unavailable while stopped.",
-                    })}
+                  : isRunning
+                    ? t("cloud.agents.chat.emptyReady", {
+                        defaultValue: "Send a message to start this session.",
+                      })
+                    : t("cloud.agents.chat.emptyStopped", {
+                        defaultValue:
+                          "Agent chat is unavailable while stopped.",
+                      })}
               </div>
             ) : (
               messages.map((message) => (
@@ -336,11 +357,17 @@ function AgentBridgeChat({ agent }: { agent: AgentDetailDto }) {
               <textarea
                 value={inputText}
                 onChange={(event) => setInputText(event.target.value)}
-                disabled={!isRunning || isSending}
+                disabled={!canUseBridgeChat || isSending}
                 rows={2}
-                placeholder={t("cloud.agents.chat.placeholder", {
-                  defaultValue: "Message this agent",
-                })}
+                placeholder={
+                  chatAvailable === false
+                    ? t("cloud.agents.chat.webOnlyPlaceholder", {
+                        defaultValue: "Open the Web UI to interact",
+                      })
+                    : t("cloud.agents.chat.placeholder", {
+                        defaultValue: "Message this agent",
+                      })
+                }
                 className="min-h-12 flex-1 resize-none border border-white/10 bg-black px-3 py-2 text-sm leading-6 text-white outline-none transition-colors placeholder:text-white/25 focus:border-[#FF5800]/60 disabled:cursor-not-allowed disabled:text-white/30"
               />
               <BrandButton
@@ -348,7 +375,9 @@ function AgentBridgeChat({ agent }: { agent: AgentDetailDto }) {
                 variant="primary"
                 size="sm"
                 disabled={
-                  !isRunning || isSending || inputText.trim().length === 0
+                  !canUseBridgeChat ||
+                  isSending ||
+                  inputText.trim().length === 0
                 }
                 className="h-auto self-stretch px-3"
               >
