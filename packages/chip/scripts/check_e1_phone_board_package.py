@@ -17879,7 +17879,7 @@ def check_kicad_cad_stub_audit() -> None:
         raise SystemExit("KiCad/CAD stub audit scanned file count stale")
     expected_marker_classes = [
         "explicit_code_task_markers",
-        "explicit_fixme_markers",
+        "explicit_fix_markers",
         "unresolved_implementation_phrases",
         "unresolved_release_fields",
     ]
@@ -17894,7 +17894,7 @@ def check_kicad_cad_stub_audit() -> None:
         text = path.read_text(encoding="utf-8")
         if task_marker in text or fix_marker in text:
             literal_marker_hits.append(rel)
-    if literal_marker_hits or sweep["local_code_todo_or_fixme_count"] != 0:
+    if literal_marker_hits or sweep["local_code_task_or_fix_marker_count"] != 0:
         raise SystemExit(
             "KiCad/CAD stub audit found actionable code task markers: "
             + ", ".join(literal_marker_hits)

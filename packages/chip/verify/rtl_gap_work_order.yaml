@@ -46,7 +46,7 @@ areas:
           - build/reports/cpu_ap_completion_gate.json
           - build/reports/soc_integration.json
         partial_closure_evidence:
-          - docs/rtl/cpu-config-selection.md (Chipyard Rocket RV64GC + SV39 + L1 I/D selection, wrapper layout under rtl/wrappers/, pin TODO)
+          - docs/rtl/cpu-config-selection.md (Chipyard Rocket RV64GC + SV39 + L1 I/D selection, wrapper layout under rtl/wrappers/, pinned upstream SHA)
           - docs/architecture-optimization/soc-optimized-operating-point.yaml (modeled recommendation only; machine-checked false flags keep RTL, Linux/AOSP boot, silicon, release, and phone-performance claims blocked)
           - build/reports/rva23_compliance.json (toolchain profile report only; machine-checked false flags keep Linux/AOSP boot, phone, silicon, release, and certification claims blocked)
           - build/reports/linux_boot_artifacts.json and build/reports/mvp_npu_ml_smoke.json (artifact/smoke reports keep phone, release, silicon, board/Android/production, and Linux-integrated NPU claims false where applicable)

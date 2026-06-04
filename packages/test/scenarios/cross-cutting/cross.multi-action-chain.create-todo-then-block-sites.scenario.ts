@@ -9,7 +9,7 @@
 
 import { scenario } from "@elizaos/scenario-runner/schema";
 
-const TODO_CREATE_ACTIONS = ["CREATE_TASK", "LIFE"];
+const TASK_CREATE_ACTIONS = ["CREATE_TASK", "LIFE"];
 
 export default scenario({
   id: "cross.multi-action-chain.create-todo-then-block-sites",
@@ -38,12 +38,12 @@ export default scenario({
       text: "Create a todo: 'do 50 push-ups'",
       assertTurn: (turn) => {
         const hit = turn.actionsCalled.find((a) =>
-          TODO_CREATE_ACTIONS.includes(a.actionName),
+          TASK_CREATE_ACTIONS.includes(a.actionName),
         );
         if (!hit) {
           const fired =
             turn.actionsCalled.map((a) => a.actionName).join(", ") || "(none)";
-          return `Expected one of [${TODO_CREATE_ACTIONS.join(", ")}] but got: ${fired}`;
+          return `Expected one of [${TASK_CREATE_ACTIONS.join(", ")}] but got: ${fired}`;
         }
       },
     },

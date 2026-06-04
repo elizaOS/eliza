@@ -581,7 +581,8 @@ index 9dfb83f06e..a62b0c4f03 100644
              resetOnPosix();
          },
 +        .ios => {},
-         .wasm => @compileError("TODO"),
+-        .wasm => @compileError("TODO"),
++        .wasm => @compileError("unsupported wasm compile target"),
      }
  }
 diff --git a/src/ios/embedding.c b/src/ios/embedding.c

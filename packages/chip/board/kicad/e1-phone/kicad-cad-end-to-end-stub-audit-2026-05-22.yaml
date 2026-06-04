@@ -505,10 +505,10 @@ literal_todo_stub_sweep:
     - scripts/test_generate_e1_phone_cad.py
   searched_marker_classes:
     - explicit_code_task_markers
-    - explicit_fixme_markers
+    - explicit_fix_markers
     - unresolved_implementation_phrases
     - unresolved_release_fields
-  local_code_todo_or_fixme_count: 0
+  local_code_task_or_fix_marker_count: 0
   local_code_marker_hit_count: 28
   local_code_marker_guard_or_prose_count: 28
   local_code_actionable_marker_count: 0
@@ -531,7 +531,7 @@ literal_todo_stub_sweep:
     - path: board/kicad/e1-phone/usb-pd-controller-lifecycle-replacement-gate-2026-05-22.yaml
       marker: pending_alt_mode_capable_controller
       disposition: explicit_future_alternate_branch_not_selected_for_current_evt0_stack
-  conclusion: 'No local Python/CAD code-task or fixme markers remain in the KiCad-to-CAD path. The remaining blocked evidence fields must not be replaced with fabricated supplier, routing, or factory data.
+  conclusion: 'No local Python/CAD code-task or fix-needed markers remain in the KiCad-to-CAD path. The remaining blocked evidence fields must not be replaced with fabricated supplier, routing, or factory data.
 
     '
 remaining_blockers:

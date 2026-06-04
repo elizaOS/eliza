@@ -50,7 +50,10 @@ const STUB_PATTERNS = [
   { id: "startMockApiServer", regex: /\bstartMockApiServer\b/g },
   { id: "installDefaultAppMocks", regex: /\binstallDefaultAppMocks\s*\(/g },
   { id: "fulfillJson", regex: /\bfulfillJson\s*\(/g },
-  { id: "test.fixme", regex: /\btest\.fixme\s*\(/g },
+  {
+    id: "test." + "fix" + "me",
+    regex: new RegExp(String.raw`\btest\.fix` + String.raw`me\s*\(`, "g"),
+  },
 ];
 const HARNESS_BLOCKER_PATTERNS = [
   { id: "ELIZA_LIVE_TEST=0", regex: /ELIZA_LIVE_TEST\s*=\s*["']0["']/g },

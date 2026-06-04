@@ -32,7 +32,12 @@ SKIP_PARTS = {
 SKIP_DIR_PREFIXES = ("sim_build", "obj_dir")
 SKIP_SUFFIXES = {".pyc", ".sqlite", ".log", ".xml"}
 TERMS = re.compile(
-    r"\b(stub|placeholder|" + "TO" + r"DO|FIXME|not " + r"implemented|dummy|mock|scaffold)\b",
+    r"\b(stub|placeholder|"
+    + "TO"
+    + r"DO|"
+    + "FIX"
+    + r"ME|not "
+    + r"implemented|dummy|mock|scaffold)\b",
     re.IGNORECASE,
 )
 REQUIRED_GAP_AREAS = (

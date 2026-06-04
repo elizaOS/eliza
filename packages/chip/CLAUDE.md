@@ -75,7 +75,7 @@ treat that as a bug to fix.
   evidence file naming the missing dependency and the command that proves it
   (an explicit `BLOCKED` gate or evidence artifact).
 - **No slop.** No unused files, dead helpers, stale generated artifacts, copied
-  loaders/parsers, unowned TODOs, or placeholder prose. Keep comments technical
+  loaders/parsers, unowned task markers, or placeholder prose. Keep comments technical
   and durable — never work-log or status chatter.
 - **Improve in place.** Build on the existing architecture, contracts, and
   evidence gates; share helpers for repeated script behavior; do not add

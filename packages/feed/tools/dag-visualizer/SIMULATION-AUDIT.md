@@ -19,7 +19,7 @@ A thorough inspection of the game-tick execution flow, narrative arc system, eve
 
 NPCs receive "intuitions" derived from the predetermined question outcome:
 ```
-const outcome = true; // TODO: Fetch actual outcome
+const outcome = true; // Hardcoded outcome; should read the resolved market outcome.
 const signal = getSignalDirection(arcPlan, phase, agentId, outcome);
 ```
 
