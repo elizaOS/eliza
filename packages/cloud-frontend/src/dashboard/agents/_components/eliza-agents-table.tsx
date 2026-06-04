@@ -43,6 +43,7 @@ import {
   ExternalLink,
   FileText,
   Loader2,
+  MessageCircle,
   Pause,
   Play,
   Search,
@@ -821,6 +822,12 @@ export function ElizaAgentsTable({
                       displayStatus,
                     ) && !busy;
                   const canStop = displayStatus === "running" && !busy;
+                  const hasStandaloneWebUi =
+                    displayStatus === "running" &&
+                    sb.execution_tier !== "shared";
+                  const hasDashboardChat =
+                    displayStatus === "running" &&
+                    sb.execution_tier === "shared";
 
                   return (
                     <TableRow
@@ -890,18 +897,18 @@ export function ElizaAgentsTable({
                                   defaultValue: "Shared runtime",
                                 })
                               : getRuntimeKind(sb) === "sandbox"
-                              ? t("cloud.elizaAgentsTable.cloudSandbox", {
-                                  defaultValue: "Cloud sandbox",
-                                })
-                              : t("cloud.elizaAgentsTable.notProvisioned", {
-                                  defaultValue: "Not provisioned",
-                                })}
+                                ? t("cloud.elizaAgentsTable.cloudSandbox", {
+                                    defaultValue: "Cloud sandbox",
+                                  })
+                                : t("cloud.elizaAgentsTable.notProvisioned", {
+                                    defaultValue: "Not provisioned",
+                                  })}
                         </span>
                       </TableCell>
 
                       {/* Web UI */}
                       <TableCell>
-                        {displayStatus === "running" ? (
+                        {hasStandaloneWebUi ? (
                           <button
                             type="button"
                             onClick={() => openWebUIWithPairing(sb.id)}
@@ -912,9 +919,20 @@ export function ElizaAgentsTable({
                               defaultValue: "Open",
                             })}
                           </button>
+                        ) : hasDashboardChat ? (
+                          <a
+                            href={`/dashboard/agents/${sb.id}/chat`}
+                            className="inline-flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors"
+                          >
+                            <MessageCircle className="h-3 w-3" />
+                            {t("cloud.elizaAgentsTable.chat", {
+                              defaultValue: "Chat",
+                            })}
+                          </a>
                         ) : (
                           <span className="text-xs text-white/20">
-                            {displayStatus === "running"
+                            {displayStatus === "running" &&
+                            sb.execution_tier !== "shared"
                               ? t("cloud.elizaAgentsTable.unavailable", {
                                   defaultValue: "Unavailable",
                                 })
@@ -959,7 +977,7 @@ export function ElizaAgentsTable({
                             </TooltipContent>
                           </Tooltip>
 
-                          {displayStatus === "running" && (
+                          {hasStandaloneWebUi && (
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <button
@@ -973,6 +991,24 @@ export function ElizaAgentsTable({
                               <TooltipContent className="bg-neutral-900 border-white/10">
                                 {t("cloud.elizaAgentsTable.openWebUi", {
                                   defaultValue: "Open Web UI",
+                                })}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+
+                          {hasDashboardChat && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <a
+                                  href={`/dashboard/agents/${sb.id}/chat`}
+                                  className="p-2 text-white/30 hover:text-white hover:bg-white/10 transition-colors"
+                                >
+                                  <MessageCircle className="h-4 w-4" />
+                                </a>
+                              </TooltipTrigger>
+                              <TooltipContent className="bg-neutral-900 border-white/10">
+                                {t("cloud.elizaAgentsTable.openChat", {
+                                  defaultValue: "Open chat",
                                 })}
                               </TooltipContent>
                             </Tooltip>
@@ -1070,6 +1106,10 @@ export function ElizaAgentsTable({
                   displayStatus,
                 ) && !busy;
               const canStop = displayStatus === "running" && !busy;
+              const hasStandaloneWebUi =
+                displayStatus === "running" && sb.execution_tier !== "shared";
+              const hasDashboardChat =
+                displayStatus === "running" && sb.execution_tier === "shared";
 
               return (
                 <div
@@ -1148,7 +1188,7 @@ export function ElizaAgentsTable({
                       })}
                     </a>
 
-                    {displayStatus === "running" && (
+                    {hasStandaloneWebUi && (
                       <button
                         type="button"
                         onClick={() => openWebUIWithPairing(sb.id)}
@@ -1159,6 +1199,18 @@ export function ElizaAgentsTable({
                           defaultValue: "Web UI",
                         })}
                       </button>
+                    )}
+
+                    {hasDashboardChat && (
+                      <a
+                        href={`/dashboard/agents/${sb.id}/chat`}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-[var(--brand-orange)] hover:bg-white/5 transition-colors"
+                      >
+                        <MessageCircle className="h-3.5 w-3.5" />
+                        {t("cloud.elizaAgentsTable.chat", {
+                          defaultValue: "Chat",
+                        })}
+                      </a>
                     )}
 
                     {canStart && (

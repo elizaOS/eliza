@@ -77,15 +77,14 @@ describe("eliza agent environment route", () => {
       ...agent,
       environment_vars: {
         DATABASE_URL: "postgres://existing",
-        PUBLIC_BASE_URL:
-          "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai",
+        PUBLIC_BASE_URL: "https://old.example",
+        CUSTOM_GREETING: "gm",
       },
     });
 
     const response = await patchEnvironment({
       environmentVars: {
-        PUBLIC_BASE_URL:
-          "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai",
+        CUSTOM_GREETING: "gm",
         REMOVE_ME: null,
       },
     });
@@ -96,15 +95,15 @@ describe("eliza agent environment route", () => {
       "org-1",
       {
         DATABASE_URL: "postgres://existing",
-        PUBLIC_BASE_URL:
-          "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai",
+        PUBLIC_BASE_URL: "https://old.example",
+        CUSTOM_GREETING: "gm",
       },
     );
     await expect(response.json()).resolves.toEqual({
       success: true,
       data: {
         agentId: "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
-        updatedKeys: ["PUBLIC_BASE_URL"],
+        updatedKeys: ["CUSTOM_GREETING"],
         removedKeys: ["REMOVE_ME"],
         status: "running",
         executionTier: "custom",
@@ -124,12 +123,30 @@ describe("eliza agent environment route", () => {
     expect(updateAgentEnvironment).not.toHaveBeenCalled();
   });
 
+  test("rejects reserved managed environment keys", async () => {
+    const response = await patchEnvironment({
+      environmentVars: {
+        DATABASE_URL: "postgres://replacement",
+        ELIZA_API_TOKEN: null,
+        PUBLIC_BASE_URL: "https://replacement.example",
+      },
+    });
+
+    expect(response.status).toBe(400);
+    expect(updateAgentEnvironment).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Reserved environment variables cannot be patched",
+      reservedKeys: ["DATABASE_URL", "ELIZA_API_TOKEN", "PUBLIC_BASE_URL"],
+    });
+  });
+
   test("returns not found for an agent outside the organization", async () => {
     getAgentForWrite.mockResolvedValue(null);
 
     const response = await patchEnvironment({
       environmentVars: {
-        PUBLIC_BASE_URL: "https://example.com",
+        CUSTOM_GREETING: "gm",
       },
     });
 

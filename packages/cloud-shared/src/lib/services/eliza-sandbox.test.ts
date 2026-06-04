@@ -2,6 +2,7 @@ import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 import type { AgentSandbox, AgentSandboxBackup } from "../../db/repositories/agent-sandboxes";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
+import { cache } from "../cache/client";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import { apiKeysService } from "./api-keys";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
@@ -75,6 +76,25 @@ function customSandbox(): AgentSandbox {
     created_at: now,
     updated_at: now,
     deleted_at: null,
+  };
+}
+
+function sharedSandbox(): AgentSandbox {
+  return {
+    ...customSandbox(),
+    sandbox_id: null,
+    execution_tier: "shared",
+    bridge_url: null,
+    health_url: null,
+    agent_name: "shared-nancy",
+    agent_config: { system: "You are shared-nancy." },
+    environment_vars: {},
+    node_id: null,
+    container_name: null,
+    bridge_port: null,
+    web_ui_port: null,
+    headscale_ip: null,
+    docker_image: null,
   };
 }
 
@@ -192,6 +212,54 @@ describe("ElizaSandboxService bridge status", () => {
       });
     } finally {
       findRunningSandboxSpy.mockRestore();
+    }
+  });
+});
+
+describe("ElizaSandboxService shared runtime bridge", () => {
+  test("does not persist degraded shared-runtime turns", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = sharedSandbox();
+    const findRunningSandboxSpy = spyOn(
+      agentSandboxesRepository,
+      "findRunningSandbox",
+    ).mockResolvedValue(sandbox);
+    const cacheGetSpy = spyOn(cache, "get").mockResolvedValue([]);
+    const cacheSetSpy = spyOn(cache, "set").mockResolvedValue(undefined);
+
+    try {
+      const response = await runWithCloudBindings(
+        {
+          CEREBRAS_API_KEY: "",
+          OPENAI_API_KEY: "",
+        },
+        () =>
+          new ElizaSandboxService().bridge(sandbox.id, sandbox.organization_id, {
+            jsonrpc: "2.0",
+            id: "shared-turn",
+            method: "message.send",
+            params: { text: "hello" },
+          }),
+      );
+
+      expect(response).toEqual({
+        jsonrpc: "2.0",
+        id: "shared-turn",
+        result: {
+          text: "shared-nancy is temporarily unavailable (no shared model configured).",
+          agentName: "shared-nancy",
+          channelId: expect.any(String),
+          model: "none",
+          degraded: true,
+          runtime: "shared",
+        },
+      });
+      expect(cacheGetSpy).toHaveBeenCalled();
+      expect(cacheSetSpy).not.toHaveBeenCalled();
+    } finally {
+      findRunningSandboxSpy.mockRestore();
+      cacheGetSpy.mockRestore();
+      cacheSetSpy.mockRestore();
     }
   });
 });

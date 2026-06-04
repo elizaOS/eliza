@@ -3,6 +3,7 @@ import { z } from "zod";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { findReservedManagedElizaEnvKeys } from "@/lib/services/managed-eliza-config";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -38,6 +39,22 @@ async function __hono_PATCH(
             success: false,
             error: "Invalid request data",
             details: parsed.error.issues,
+          },
+          { status: 400 },
+        ),
+        CORS_METHODS,
+      );
+    }
+    const reservedKeys = findReservedManagedElizaEnvKeys(
+      Object.keys(parsed.data.environmentVars),
+    );
+    if (reservedKeys.length > 0) {
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error: "Reserved environment variables cannot be patched",
+            reservedKeys,
           },
           { status: 400 },
         ),

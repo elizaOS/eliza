@@ -53,7 +53,7 @@ on:
 # Per-env concurrency: a develop push (staging) and a main push (production)
 # can deploy in parallel without one cancelling the other.
 concurrency:
-  group: deploy-eliza-provisioning-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+  group: deploy-eliza-provisioning-worker-${{ inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
   cancel-in-progress: false
 
 # Default to least privilege. Override per-job where needed.
@@ -69,15 +69,20 @@ jobs:
       branch: ${{ steps.env.outputs.branch }}
     steps:
       - id: env
+        env:
+          DEPLOY_BRANCH_INPUT: ${{ inputs.deploy_branch }}
+          ENVIRONMENT_INPUT: ${{ inputs.environment }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            env="${{ github.event.inputs.environment }}"
-          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            env="$ENVIRONMENT_INPUT"
+          elif [ "$REF_NAME" = "refs/heads/main" ]; then
             env="production"
           else
             env="staging"
           fi
-          branch="${{ github.event.inputs.deploy_branch }}"
+          branch="$DEPLOY_BRANCH_INPUT"
           if [ -z "$branch" ]; then
             branch=$([ "$env" = "production" ] && echo "main" || echo "develop")
           fi

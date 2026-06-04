@@ -51,15 +51,35 @@ export interface RunSharedAgentTurnResult {
   model: string;
   /** True when no shared model was configured or generation failed. */
   degraded: boolean;
+  usage?: SharedAgentTurnUsage;
 }
 
 const CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1";
 const CEREBRAS_MODEL = "gpt-oss-120b";
 const OPENAI_FALLBACK_MODEL = "gpt-4o-mini";
 
+export interface SharedAgentTurnUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cachedInputTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  cacheWriteInputTokens?: number;
+}
+
 interface ResolvedModel {
   client: ReturnType<typeof createOpenAI>;
   model: string;
+}
+
+export function resolveSharedAgentTurnModel(preferred?: string): string | null {
+  const env = getCloudAwareEnv();
+  if (env.CEREBRAS_API_KEY) return preferred ?? CEREBRAS_MODEL;
+  if (env.OPENAI_API_KEY) return preferred ?? OPENAI_FALLBACK_MODEL;
+  return null;
 }
 
 /**
@@ -68,16 +88,19 @@ interface ResolvedModel {
  */
 function resolveSharedModel(preferred?: string): ResolvedModel | null {
   const env = getCloudAwareEnv();
+  const model = resolveSharedAgentTurnModel(preferred);
+  if (!model) return null;
+
   if (env.CEREBRAS_API_KEY) {
     return {
       client: createOpenAI({ apiKey: env.CEREBRAS_API_KEY, baseURL: CEREBRAS_BASE_URL }),
-      model: preferred ?? CEREBRAS_MODEL,
+      model,
     };
   }
   if (env.OPENAI_API_KEY) {
     return {
       client: createOpenAI({ apiKey: env.OPENAI_API_KEY }),
-      model: preferred ?? OPENAI_FALLBACK_MODEL,
+      model,
     };
   }
   return null;
@@ -128,7 +151,7 @@ export async function runSharedAgentTurn(
   }
 
   try {
-    const { text } = await generateText({
+    const { text, usage } = await generateText({
       model: resolved.client.chat(resolved.model),
       system: buildSystemPrompt(input.character),
       messages: [
@@ -142,6 +165,7 @@ export async function runSharedAgentTurn(
       history: appendTurn(input.history, message, reply),
       model: resolved.model,
       degraded: false,
+      usage,
     };
   } catch (error) {
     logger.warn("[shared-runtime] turn failed; degrading", {

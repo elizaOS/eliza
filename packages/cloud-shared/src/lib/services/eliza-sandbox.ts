@@ -36,7 +36,18 @@ import {
   incrementalChainDepth,
   planIncrementalBackup,
 } from "./agent-backup-diff";
+import {
+  type AIUsage,
+  type BillingContext,
+  billUsage,
+  estimateInputTokens,
+  InsufficientCreditsError,
+  recordUsageAnalytics,
+  reserveCredits,
+} from "./ai-billing";
+import { aiBillingRecordsService } from "./ai-billing-records";
 import { apiKeysService } from "./api-keys";
+import type { CreditReconciliationResult, CreditReservation } from "./credits";
 import type { DockerSandboxMetadata } from "./docker-sandbox-provider";
 import {
   reusesExistingElizaCharacter,
@@ -53,6 +64,8 @@ import { JOB_TYPES } from "./provisioning-job-types";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
 import { createSandboxProvider, type SandboxProvider } from "./sandbox-provider";
 import {
+  type RunSharedAgentTurnResult,
+  resolveSharedAgentTurnModel,
   runSharedAgentTurn,
   type SharedAgentCharacter,
   type SharedTurnMessage,
@@ -1367,6 +1380,35 @@ export class ElizaSandboxService {
     );
   }
 
+  private sharedRuntimeBillingPrompt(
+    character: SharedAgentCharacter,
+    history: SharedTurnMessage[],
+    message: string,
+  ): Array<{ content: string }> {
+    return [
+      { content: character.system },
+      ...(character.bio ?? []).map((content) => ({ content })),
+      ...history.map((turn) => ({ content: turn.content })),
+      { content: message },
+    ].filter((entry) => entry.content.trim().length > 0);
+  }
+
+  private sharedRuntimeBillingUsage(
+    turn: RunSharedAgentTurnResult,
+    estimatedInputTokens: number,
+  ): AIUsage {
+    const inputTokens = turn.usage?.inputTokens ?? turn.usage?.promptTokens ?? 0;
+    const outputTokens = turn.usage?.outputTokens ?? turn.usage?.completionTokens ?? 0;
+    const totalTokens = turn.usage?.totalTokens ?? inputTokens + outputTokens;
+    if (inputTokens > 0 || outputTokens > 0 || totalTokens > 0) {
+      return turn.usage ?? {};
+    }
+    return {
+      inputTokens: estimatedInputTokens,
+      outputTokens: estimateInputTokens([{ content: turn.reply }]),
+    };
+  }
+
   private async buildSharedRuntimeCharacter(rec: AgentSandbox): Promise<SharedAgentCharacter> {
     const config = this.nestedBridgeRecord(rec.agent_config) ?? {};
     const configCharacter = this.nestedBridgeRecord(config.character) ?? config;
@@ -1439,12 +1481,101 @@ export class ElizaSandboxService {
       this.buildSharedRuntimeCharacter(rec),
       this.loadSharedRuntimeHistory(rec.id, channelId),
     ]);
+    const billingModel = resolveSharedAgentTurnModel(character.model);
+    const estimatedInputTokens = billingModel
+      ? estimateInputTokens(this.sharedRuntimeBillingPrompt(character, history, text))
+      : 0;
+    const idempotencyKey = `shared-runtime:${rec.id}:${channelId}:${crypto.randomUUID()}`;
+    const requestId = `shared-runtime-${crypto.randomUUID()}`;
+    const billingContext: BillingContext | null = billingModel
+      ? {
+          organizationId: rec.organization_id,
+          userId: rec.user_id,
+          model: billingModel,
+          requestId,
+          description: `Shared runtime turn: ${character.name}`,
+          metadata: {
+            agentId: rec.id,
+            channelId,
+            executionTier: rec.execution_tier,
+            idempotencyKey,
+            prompt: text,
+            runtime: "shared",
+          },
+        }
+      : null;
+    let reservation: CreditReservation | null = null;
+    let reservationSettled = false;
+    const settleReservation = async (
+      actualCost: number,
+    ): Promise<CreditReconciliationResult | null> => {
+      if (!reservation || reservationSettled) return null;
+      reservationSettled = true;
+      return (await reservation.reconcile(actualCost)) ?? null;
+    };
+    if (billingContext) {
+      try {
+        reservation = await reserveCredits(billingContext, estimatedInputTokens, 500);
+      } catch (error) {
+        if (error instanceof InsufficientCreditsError) {
+          return {
+            jsonrpc: "2.0",
+            id: rpc.id,
+            error: {
+              code: -32002,
+              message: `Insufficient credits. Required: $${error.required.toFixed(4)}, Available: $${error.available.toFixed(4)}`,
+            },
+          };
+        }
+        throw error;
+      }
+    }
     const turn = await runSharedAgentTurn({
       character,
       history,
       message: text,
     });
-    await this.saveSharedRuntimeHistory(rec.id, channelId, turn.history);
+    if (!turn.degraded) {
+      await this.saveSharedRuntimeHistory(rec.id, channelId, turn.history);
+    }
+    if (turn.degraded) {
+      await settleReservation(0);
+    } else if (billingContext) {
+      try {
+        const billing = await billUsage(
+          billingContext,
+          this.sharedRuntimeBillingUsage(turn, estimatedInputTokens),
+        );
+        const settlement = await settleReservation(billing.totalCost);
+        const usageRecord = await recordUsageAnalytics(billingContext, billing, {
+          type: "chat",
+          content: turn.reply,
+          prompt: text,
+        });
+        if (usageRecord) {
+          await aiBillingRecordsService
+            .record({
+              context: billingContext,
+              billing,
+              usageRecord,
+              idempotencyKey,
+              reconciliation: settlement,
+            })
+            .catch((error) => {
+              logger.error("[shared-runtime] AI billing audit record failed", {
+                error: error instanceof Error ? error.message : String(error),
+                agentId: rec.id,
+              });
+            });
+        }
+      } catch (error) {
+        await settleReservation(0);
+        logger.error("[shared-runtime] billing failed", {
+          error: error instanceof Error ? error.message : String(error),
+          agentId: rec.id,
+        });
+      }
+    }
 
     return {
       jsonrpc: "2.0",

@@ -458,7 +458,11 @@ export default function AgentDetailPage() {
             </section>
           )}
 
-          <ElizaAgentActions agentId={agent.id} status={agent.status} />
+          <ElizaAgentActions
+            agentId={agent.id}
+            executionTier={agent.executionTier}
+            status={agent.status}
+          />
 
           <ElizaAgentBackupsPanel
             agentId={agent.id}

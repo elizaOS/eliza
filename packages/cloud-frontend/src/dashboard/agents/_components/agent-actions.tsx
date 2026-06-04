@@ -9,6 +9,7 @@ import {
   Camera,
   ExternalLink,
   Loader2,
+  MessageCircle,
   Pause,
   Play,
   Trash2,
@@ -18,14 +19,20 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { openWebUIWithPairing } from "@/lib/hooks/open-web-ui";
 import { useJobPoller } from "@/lib/hooks/use-job-poller";
+import type { AgentExecutionTier } from "@/lib/types/cloud-api";
 import { useT } from "@/providers/I18nProvider";
 
 interface ElizaAgentActionsProps {
   agentId: string;
+  executionTier: AgentExecutionTier;
   status: string;
 }
 
-export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
+export function ElizaAgentActions({
+  agentId,
+  executionTier,
+  status,
+}: ElizaAgentActionsProps) {
   const t = useT();
   const navigate = useNavigate();
   const [loading, setLoading] = useState<string | null>(null);
@@ -72,6 +79,8 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
   const effectiveStatus = poller.isActive(agentId) ? "provisioning" : status;
 
   const isRunning = effectiveStatus === "running";
+  const hasStandaloneWebUi = isRunning && executionTier !== "shared";
+  const hasDashboardChat = isRunning && executionTier === "shared";
   const isStopped = ["stopped", "error", "pending", "disconnected"].includes(
     effectiveStatus,
   );
@@ -220,7 +229,7 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
 
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex flex-wrap gap-3">
-            {isRunning && (
+            {hasStandaloneWebUi && (
               <BrandButton
                 variant="primary"
                 size="sm"
@@ -229,6 +238,19 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
                 <ExternalLink className="h-4 w-4" />
                 {t("cloud.containers.agentActions.openWebUi", {
                   defaultValue: "Open Web UI",
+                })}
+              </BrandButton>
+            )}
+
+            {hasDashboardChat && (
+              <BrandButton
+                variant="primary"
+                size="sm"
+                onClick={() => navigate(`/dashboard/agents/${agentId}/chat`)}
+              >
+                <MessageCircle className="h-4 w-4" />
+                {t("cloud.containers.agentActions.chat", {
+                  defaultValue: "Chat",
                 })}
               </BrandButton>
             )}
