@@ -441,7 +441,17 @@ jobs:
             echo "=== Agent router diagnostics for ${safe_agent_id} ==="
             router_port="$(systemctl show eliza-agent-router.service --property=Environment --value | tr ' ' '\n' | awk -F= '$1=="AGENT_ROUTER_PORT" {print $2}')"
             : "${router_port:=3458}"
-            routing_json="$(curl -sf -m 5 "http://127.0.0.1:${router_port}/agents/${safe_agent_id}/routing" || true)"
+            router_pid="$(systemctl show eliza-agent-router.service --property=MainPID --value || true)"
+            if [ -n "$router_pid" ] && [ "$router_pid" != "0" ]; then
+              sudo tr '\0' '\n' <"/proc/${router_pid}/environ" \
+                | awk -F= '$1=="AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK" || $1=="ELIZA_CLOUD_AGENT_BASE_DOMAIN" { print } $1=="DATABASE_URL" { print "DATABASE_URL=[present]" }' \
+                | redact_stream || true
+            fi
+            routing_body="$(mktemp)"
+            routing_status="$(curl -s -o "$routing_body" -w "%{http_code}" -m 5 "http://127.0.0.1:${router_port}/agents/${safe_agent_id}/routing" 2>/dev/null || true)"
+            routing_json="$(cat "$routing_body")"
+            rm -f "$routing_body"
+            printf 'agent_router_status=%s\n' "${routing_status:-curl_failed}" | redact_stream
             if [ -n "$routing_json" ]; then
               printf '%s\n' "$routing_json" | redact_stream
               target="$(ROUTING_JSON="$routing_json" node -e 'try { const data = JSON.parse(process.env.ROUTING_JSON || "{}"); if (typeof data.target === "string") console.log(data.target); } catch {}')"
