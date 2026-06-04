@@ -24,6 +24,10 @@ import {
   type ViewRegistryEntry,
 } from "../../hooks/useAvailableViews";
 import { useDesktopTabs } from "../../hooks/useDesktopTabs";
+import {
+  getActiveViewModality,
+  type ViewModality,
+} from "../../platform/platform-guards";
 import { useTranslation } from "../../state/TranslationContext";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import {
@@ -217,14 +221,15 @@ function ViewCard({
   const isDesktop = isElectrobunRuntime();
   const showPinButton = isDesktop && view.desktopTabEnabled !== false && onPin;
   const showManagementButtons = Boolean(onEdit || onDelete);
+  const showHero = Boolean(view.hasHeroImage && view.heroImageUrl);
 
   return (
     <div
-      className="group relative flex flex-col gap-2 rounded-sm border border-border/50 bg-card p-4 text-left transition-colors hover:bg-card/80 hover:border-border"
+      className="group relative flex flex-col overflow-hidden rounded-md border border-border/50 bg-card text-left transition-colors hover:border-accent/60"
       data-testid={`view-card-${view.id}`}
     >
       {(showPinButton || showManagementButtons) && (
-        <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+        <div className="absolute right-2 top-2 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           {showPinButton && <ViewCardPinButton view={view} onPin={onPin} />}
           {onEdit && <ViewCardEditButton view={view} onEdit={onEdit} />}
           {onDelete && <ViewCardDeleteButton view={view} onDelete={onDelete} />}
@@ -232,53 +237,29 @@ function ViewCard({
       )}
 
       <ViewCardOpenButton view={view} onClick={onClick}>
-        {view.heroImageUrl && !compact && (
-          <div className="aspect-video w-full overflow-hidden rounded-sm bg-muted">
+        <div
+          className={`w-full overflow-hidden ${compact ? "aspect-square" : "aspect-video"}`}
+        >
+          {showHero ? (
             <img
               src={view.heroImageUrl}
-              alt={view.label}
-              className="h-full w-full object-cover"
+              alt=""
+              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
               loading="lazy"
             />
-          </div>
-        )}
-
-        <div className="flex items-start gap-3">
-          {!view.heroImageUrl && (
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-border/40 bg-accent/10 text-accent">
-              <ViewIcon icon={view.icon} label={view.label} />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-accent/25 via-accent/10 to-card text-accent transition-colors group-hover:from-accent/35">
+              <ViewIcon
+                icon={view.icon}
+                label={view.label}
+                className={compact ? "h-7 w-7" : "h-12 w-12"}
+              />
             </div>
           )}
-
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-txt group-hover:text-accent transition-colors">
-              {view.label}
-            </p>
-            {view.description && (
-              <p className="mt-0.5 line-clamp-2 text-xs text-muted">
-                {view.description}
-              </p>
-            )}
-            {view.pluginName && (
-              <p className="mt-1 text-xs text-muted/60 truncate">
-                {view.pluginName}
-              </p>
-            )}
-          </div>
         </div>
-
-        {view.tags && view.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {view.tags.slice(0, 3).map((tag) => (
-              <span
-                key={tag}
-                className="inline-flex items-center rounded-full bg-muted/40 px-2 py-0.5 text-xs text-muted"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
+        <p className="truncate px-3 pb-2 text-sm font-semibold text-txt transition-colors group-hover:text-accent">
+          {view.label}
+        </p>
       </ViewCardOpenButton>
     </div>
   );
@@ -393,14 +374,17 @@ function TopViewsSection({
   );
 }
 
-/** Fetch semantic search results from /api/views/search. */
+/** Fetch semantic search results from /api/views/search for one modality. */
 async function fetchSearchResults(
   q: string,
   limit: number,
+  viewType: ViewModality,
 ): Promise<ViewRegistryEntry[]> {
   const url = new URL("/api/views/search", window.location.origin);
   url.searchParams.set("q", q);
   url.searchParams.set("limit", String(limit));
+  // GUI is the server default — only the XR/TUI surfaces scope the query.
+  if (viewType !== "gui") url.searchParams.set("viewType", viewType);
   const resp = await fetchWithCsrf(url.pathname + url.search);
   if (!resp.ok) return [];
   const body = (await resp.json()) as unknown;
@@ -415,6 +399,9 @@ export function ViewManagerPage() {
   const { tabs: desktopTabs } = useDesktopTabs();
   const isDeveloperMode = useIsDeveloperMode();
   const canManageDynamicViews = isDeveloperMode && isElectrobunRuntime();
+  // Views are scoped to the surface modality: a GUI surface lists only GUI
+  // views (TUI/XR hidden entirely); an XR surface lists only XR views.
+  const activeModality = useMemo(() => getActiveViewModality(), []);
   const [query, setQuery] = useState("");
   const [formViewId, setFormViewId] = useState("agent.quick-view");
   const [formTitle, setFormTitle] = useState("Quick View");
@@ -506,7 +493,7 @@ export function ViewManagerPage() {
     setSearchLoading(true);
     debounceRef.current = setTimeout(async () => {
       try {
-        const results = await fetchSearchResults(q, 10);
+        const results = await fetchSearchResults(q, 10, activeModality);
         setSearchResults(results);
       } catch {
         // Semantic search unavailable — fall back to client-side filtering.
@@ -518,12 +505,17 @@ export function ViewManagerPage() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query]);
+  }, [query, activeModality]);
 
   const { builtinViews, pluginViews } = useMemo(() => {
+    // Views of a different modality than the current surface are hidden
+    // entirely — a GUI surface never lists TUI/XR views, and vice versa.
+    const inActiveModality = (v: ViewRegistryEntry) =>
+      (v.viewType ?? "gui") === activeModality;
     // When the search endpoint returned results, display those ranked by score.
     if (searchResults !== null) {
       const visible = searchResults.filter((v) => {
+        if (!inActiveModality(v)) return false;
         if (v.developerOnly && !isDeveloperMode) return false;
         if (v.visibleInManager === false) return false;
         return true;
@@ -536,6 +528,7 @@ export function ViewManagerPage() {
     // No active search — show all views with client-side visibility rules.
     const q = query.trim().toLowerCase();
     const visible = views.filter((v) => {
+      if (!inActiveModality(v)) return false;
       if (v.developerOnly && !isDeveloperMode) return false;
       if (v.visibleInManager === false) return false;
       if (!q) return true;
@@ -543,14 +536,14 @@ export function ViewManagerPage() {
         v.label.toLowerCase().includes(q) ||
         (v.description?.toLowerCase().includes(q) ?? false) ||
         (v.pluginName?.toLowerCase().includes(q) ?? false) ||
-        (v.tags?.some((t) => t.toLowerCase().includes(q)) ?? false)
+        (v.tags?.some((tag) => tag.toLowerCase().includes(q)) ?? false)
       );
     });
     return {
       builtinViews: visible.filter((v) => v.builtin),
       pluginViews: visible.filter((v) => !v.builtin),
     };
-  }, [views, isDeveloperMode, query, searchResults]);
+  }, [views, isDeveloperMode, query, searchResults, activeModality]);
   const visibleViews = useMemo(
     () => [...builtinViews, ...pluginViews],
     [builtinViews, pluginViews],
