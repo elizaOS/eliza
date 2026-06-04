@@ -184,13 +184,11 @@ test.describe("registered plugin views visual coverage", () => {
       );
 
       if (view.shellPill === "expected") {
-        const assistantLauncher = page
-          .getByTestId("shell-home-pill")
-          .or(
-            page.getByRole("button", {
-              name: /show conversation|hide conversation/i,
-            }),
-          );
+        const assistantLauncher = page.getByTestId("shell-home-pill").or(
+          page.getByRole("button", {
+            name: /expand conversation|collapse conversation/i,
+          }),
+        );
         const assistantComposer = page
           .getByTestId("chat-composer-textarea")
           .or(page.getByLabel("message"))
@@ -203,13 +201,11 @@ test.describe("registered plugin views visual coverage", () => {
         await assistantComposer.focus();
       } else {
         await expect(
-          page
-            .getByTestId("shell-home-pill")
-            .or(
-              page.getByRole("button", {
-                name: /show conversation|hide conversation/i,
-              }),
-            ),
+          page.getByTestId("shell-home-pill").or(
+            page.getByRole("button", {
+              name: /expand conversation|collapse conversation/i,
+            }),
+          ),
         ).toHaveCount(0);
       }
 
@@ -239,8 +235,7 @@ test.describe("registered plugin views visual coverage", () => {
             element.getAttribute("role") ?? "",
             element.getAttribute("aria-label") ?? "",
             element.getAttribute("data-testid") ?? "",
-            element.textContent?.trim().replace(/\s+/g, " ").slice(0, 80) ??
-              "",
+            element.textContent?.trim().replace(/\s+/g, " ").slice(0, 80) ?? "",
           ]
             .filter(Boolean)
             .join(":");

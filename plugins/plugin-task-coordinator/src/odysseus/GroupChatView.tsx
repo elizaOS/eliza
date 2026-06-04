@@ -201,7 +201,11 @@ export function GroupChatView({
       setDetail(null);
       return;
     }
-    // Reset transient per-room UI when the selected room changes.
+    // Reset transient per-room UI when the selected room changes. Clear the
+    // previous room's detail FIRST so its now-foreign participant rows can't
+    // render or be acted on (remove/start) against the new room while the
+    // refetch is in flight.
+    setDetail(null);
     setPicking(false);
     setAddError(null);
     setStartError(null);

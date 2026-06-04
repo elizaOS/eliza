@@ -290,6 +290,15 @@ export function TasksView({
     });
   }, [counts]);
 
+  // Clear a category filter whose category no longer exists (e.g. a refresh
+  // completes/removes the last thread in that category) — otherwise the list
+  // strands at "No matching tasks" with the reset chip hidden (the chip row
+  // only renders when categories.length > 1). Mirrors upstream odysseus, which
+  // clears its task filter when its count is gone before the visibility gate.
+  useEffect(() => {
+    if (filter && !counts[filter]) setFilter(null);
+  }, [counts, filter]);
+
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     const out = threads.filter((t) => {
