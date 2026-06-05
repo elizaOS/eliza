@@ -45,7 +45,7 @@ export class PendingRequestMap {
 
   /**
    * Resolve a pending request with the given result.
-   * No-op when the requestId is unknown (e.g. already timed out).
+   * Ignored when the requestId is unknown (e.g. already timed out).
    */
   resolve(requestId: string, result: ViewInteractResult): void {
     const pending = this.map.get(requestId);

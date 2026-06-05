@@ -73,16 +73,13 @@ function sampleLimitation(sample) {
   if (sample.reviewCompleteness === "empty-response-token-usage") {
     return "Token usage exists, but no text response was captured.";
   }
-  return "Inline evidence is incomplete; use playback/source links.";
+  return "Inline evidence is partial; use playback/source links.";
 }
 
 function buildPayload() {
   const outcome = readJson("reports/benchmark-analysis/benchmark-outcome-analysis/outcome-analysis.json");
   const samples = readJson(
     "reports/benchmark-analysis/benchmark-sample-review-matrix/sample-review-matrix.json",
-  );
-  const closure = readJson(
-    "reports/benchmark-analysis/benchmark-closure-matrix/benchmark-closure-matrix.json",
   );
   const version = readJson(
     "reports/benchmark-analysis/version-remediation-matrix/version-remediation.json",
@@ -94,7 +91,6 @@ function buildPayload() {
     if (!samplesByBenchmark.has(row.benchmark)) samplesByBenchmark.set(row.benchmark, []);
     samplesByBenchmark.get(row.benchmark).push(row);
   }
-  const closureByBenchmark = new Map((closure.rows || []).map((row) => [row.benchmark, row]));
   const versionByBenchmark = new Map((version.rows || []).map((row) => [row.benchmark, row]));
   const manualByBenchmark = new Map(
     (manual.items || [])
@@ -109,7 +105,6 @@ function buildPayload() {
       const sampleRows = (samplesByBenchmark.get(row.benchmark) || []).sort(
         (a, b) => Number(a.sampleOrdinal || 0) - Number(b.sampleOrdinal || 0),
       );
-      const closureRow = closureByBenchmark.get(row.benchmark) || {};
       const versionRow = versionByBenchmark.get(row.benchmark) || {};
       const manualItem = manualByBenchmark.get(row.benchmark) || null;
       const fileName = `${slug(row.benchmark)}.html`;
@@ -376,7 +371,7 @@ function main() {
   }
   writeFileSync(
     path.join(REPORT_DIR, "benchmark-review-packs.json"),
-    JSON.stringify(payload, null, 2) + "\n",
+    `${JSON.stringify(payload, null, 2)}\n`,
     "utf8",
   );
   writeFileSync(path.join(REPORT_DIR, "index.html"), indexHtml(payload), "utf8");

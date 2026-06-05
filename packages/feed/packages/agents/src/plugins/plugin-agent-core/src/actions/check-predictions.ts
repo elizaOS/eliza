@@ -167,7 +167,8 @@ export const checkPredictionsAction: Action = {
           resolved: prediction.resolved,
           resolution: resolutionStr,
           daysUntil,
-          endDate: prediction.endDate?.toISOString().split("T")[0] ?? "unscheduled",
+          endDate:
+            prediction.endDate?.toISOString().split("T")[0] ?? "unscheduled",
           yesShares,
           noShares,
         };

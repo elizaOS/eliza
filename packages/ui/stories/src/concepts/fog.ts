@@ -27,16 +27,146 @@ const SHELL_CONFIGS: readonly {
   spinSpeed: number;
   driftPhase: number;
 }[] = [
-  { radius: 1.25, ox:  0.00, oy:  0.00, oz:  0.00, r: 0.40, g: 0.48, b: 0.62, opacity: 0.10, spinDir:  1, spinAxis: "y", spinSpeed: 0.012, driftPhase: 0.0 },
-  { radius: 1.15, ox:  0.08, oy: -0.05, oz:  0.04, r: 0.36, g: 0.44, b: 0.60, opacity: 0.11, spinDir: -1, spinAxis: "y", spinSpeed: 0.009, driftPhase: 1.3 },
-  { radius: 1.10, ox: -0.06, oy:  0.07, oz: -0.05, r: 0.38, g: 0.47, b: 0.64, opacity: 0.12, spinDir:  1, spinAxis: "x", spinSpeed: 0.008, driftPhase: 2.6 },
-  { radius: 1.05, ox:  0.05, oy:  0.06, oz:  0.03, r: 0.32, g: 0.41, b: 0.57, opacity: 0.13, spinDir: -1, spinAxis: "z", spinSpeed: 0.010, driftPhase: 0.9 },
-  { radius: 0.98, ox: -0.07, oy: -0.04, oz:  0.06, r: 0.34, g: 0.43, b: 0.58, opacity: 0.14, spinDir:  1, spinAxis: "y", spinSpeed: 0.013, driftPhase: 4.1 },
-  { radius: 0.92, ox:  0.04, oy:  0.08, oz: -0.04, r: 0.30, g: 0.39, b: 0.56, opacity: 0.15, spinDir: -1, spinAxis: "x", spinSpeed: 0.007, driftPhase: 5.5 },
-  { radius: 0.86, ox: -0.05, oy: -0.06, oz:  0.05, r: 0.36, g: 0.45, b: 0.62, opacity: 0.14, spinDir:  1, spinAxis: "z", spinSpeed: 0.011, driftPhase: 2.2 },
-  { radius: 0.80, ox:  0.06, oy:  0.05, oz: -0.06, r: 0.32, g: 0.42, b: 0.60, opacity: 0.13, spinDir: -1, spinAxis: "y", spinSpeed: 0.014, driftPhase: 3.7 },
-  { radius: 0.75, ox: -0.04, oy:  0.07, oz:  0.04, r: 0.38, g: 0.47, b: 0.64, opacity: 0.12, spinDir:  1, spinAxis: "x", spinSpeed: 0.009, driftPhase: 6.0 },
-  { radius: 0.70, ox:  0.07, oy: -0.05, oz: -0.03, r: 0.35, g: 0.44, b: 0.61, opacity: 0.11, spinDir: -1, spinAxis: "y", spinSpeed: 0.008, driftPhase: 1.8 },
+  {
+    radius: 1.25,
+    ox: 0.0,
+    oy: 0.0,
+    oz: 0.0,
+    r: 0.4,
+    g: 0.48,
+    b: 0.62,
+    opacity: 0.1,
+    spinDir: 1,
+    spinAxis: "y",
+    spinSpeed: 0.012,
+    driftPhase: 0.0,
+  },
+  {
+    radius: 1.15,
+    ox: 0.08,
+    oy: -0.05,
+    oz: 0.04,
+    r: 0.36,
+    g: 0.44,
+    b: 0.6,
+    opacity: 0.11,
+    spinDir: -1,
+    spinAxis: "y",
+    spinSpeed: 0.009,
+    driftPhase: 1.3,
+  },
+  {
+    radius: 1.1,
+    ox: -0.06,
+    oy: 0.07,
+    oz: -0.05,
+    r: 0.38,
+    g: 0.47,
+    b: 0.64,
+    opacity: 0.12,
+    spinDir: 1,
+    spinAxis: "x",
+    spinSpeed: 0.008,
+    driftPhase: 2.6,
+  },
+  {
+    radius: 1.05,
+    ox: 0.05,
+    oy: 0.06,
+    oz: 0.03,
+    r: 0.32,
+    g: 0.41,
+    b: 0.57,
+    opacity: 0.13,
+    spinDir: -1,
+    spinAxis: "z",
+    spinSpeed: 0.01,
+    driftPhase: 0.9,
+  },
+  {
+    radius: 0.98,
+    ox: -0.07,
+    oy: -0.04,
+    oz: 0.06,
+    r: 0.34,
+    g: 0.43,
+    b: 0.58,
+    opacity: 0.14,
+    spinDir: 1,
+    spinAxis: "y",
+    spinSpeed: 0.013,
+    driftPhase: 4.1,
+  },
+  {
+    radius: 0.92,
+    ox: 0.04,
+    oy: 0.08,
+    oz: -0.04,
+    r: 0.3,
+    g: 0.39,
+    b: 0.56,
+    opacity: 0.15,
+    spinDir: -1,
+    spinAxis: "x",
+    spinSpeed: 0.007,
+    driftPhase: 5.5,
+  },
+  {
+    radius: 0.86,
+    ox: -0.05,
+    oy: -0.06,
+    oz: 0.05,
+    r: 0.36,
+    g: 0.45,
+    b: 0.62,
+    opacity: 0.14,
+    spinDir: 1,
+    spinAxis: "z",
+    spinSpeed: 0.011,
+    driftPhase: 2.2,
+  },
+  {
+    radius: 0.8,
+    ox: 0.06,
+    oy: 0.05,
+    oz: -0.06,
+    r: 0.32,
+    g: 0.42,
+    b: 0.6,
+    opacity: 0.13,
+    spinDir: -1,
+    spinAxis: "y",
+    spinSpeed: 0.014,
+    driftPhase: 3.7,
+  },
+  {
+    radius: 0.75,
+    ox: -0.04,
+    oy: 0.07,
+    oz: 0.04,
+    r: 0.38,
+    g: 0.47,
+    b: 0.64,
+    opacity: 0.12,
+    spinDir: 1,
+    spinAxis: "x",
+    spinSpeed: 0.009,
+    driftPhase: 6.0,
+  },
+  {
+    radius: 0.7,
+    ox: 0.07,
+    oy: -0.05,
+    oz: -0.03,
+    r: 0.35,
+    g: 0.44,
+    b: 0.61,
+    opacity: 0.11,
+    spinDir: -1,
+    spinAxis: "y",
+    spinSpeed: 0.008,
+    driftPhase: 1.8,
+  },
 ];
 
 function build(
@@ -76,10 +206,10 @@ function build(
     const theta: number = Math.random() * Math.PI * 2;
     const phi: number = Math.acos(2 * Math.random() - 1);
     const r: number = 0.5 + Math.random() * 0.75;
-    motePos[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+    motePos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
     motePos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
     motePos[i * 3 + 2] = r * Math.cos(phi);
-    moteSeeds[i * 3]     = Math.random();
+    moteSeeds[i * 3] = Math.random();
     moteSeeds[i * 3 + 1] = Math.random();
     moteSeeds[i * 3 + 2] = Math.random();
   }
@@ -96,14 +226,20 @@ function build(
   parent.add(motes);
 
   // Pre-computed per-mote drift parameters for JS animation.
-  const moteDrift: { theta0: number; phi0: number; r0: number; speed: number; phase: number }[] = [];
+  const moteDrift: {
+    theta0: number;
+    phi0: number;
+    r0: number;
+    speed: number;
+    phase: number;
+  }[] = [];
   for (let i = 0; i < moteCount; i++) {
     moteDrift.push({
       theta0: moteSeeds[i * 3] * Math.PI * 2,
-      phi0:   Math.acos(2 * moteSeeds[i * 3 + 1] - 1),
-      r0:     0.5 + moteSeeds[i * 3 + 2] * 0.75,
-      speed:  0.04 + moteSeeds[i * 3 + 2] * 0.06,
-      phase:  moteSeeds[i * 3] * Math.PI * 2,
+      phi0: Math.acos(2 * moteSeeds[i * 3 + 1] - 1),
+      r0: 0.5 + moteSeeds[i * 3 + 2] * 0.75,
+      speed: 0.04 + moteSeeds[i * 3 + 2] * 0.06,
+      phase: moteSeeds[i * 3] * Math.PI * 2,
     });
   }
   const motePosAttr = moteGeo.attributes.position as any;
@@ -115,7 +251,7 @@ function build(
 
       // Respond: faint cool brightening — raise opacity slightly, lighten color.
       const respondLift: number = f.respond * 0.015;
-      const listenDim: number  = f.listen  * 0.008;
+      const listenDim: number = f.listen * 0.008;
 
       for (const { mesh, mat, cfg } of shells) {
         // Slow rotation on each shell's axis in alternating directions.
@@ -133,9 +269,12 @@ function build(
 
         // Drifting centre offset — each shell wanders slowly on sin waves.
         const drift: number = 0.025;
-        mesh.position.x = cfg.ox + Math.sin(f.time * 0.11 + cfg.driftPhase) * drift;
-        mesh.position.y = cfg.oy + Math.sin(f.time * 0.08 + cfg.driftPhase + 1.2) * drift;
-        mesh.position.z = cfg.oz + Math.sin(f.time * 0.09 + cfg.driftPhase + 2.4) * drift;
+        mesh.position.x =
+          cfg.ox + Math.sin(f.time * 0.11 + cfg.driftPhase) * drift;
+        mesh.position.y =
+          cfg.oy + Math.sin(f.time * 0.08 + cfg.driftPhase + 1.2) * drift;
+        mesh.position.z =
+          cfg.oz + Math.sin(f.time * 0.09 + cfg.driftPhase + 2.4) * drift;
 
         // Uniform scale breath.
         mesh.scale.setScalar(breatheScale);

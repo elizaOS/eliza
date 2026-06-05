@@ -39,7 +39,7 @@ and the MTP drafter distiller). Mixed precision: bf16 if CUDA available, else
 fp32. Logging goes to TensorBoard via `<run-dir>/tb/`.
 
 Synthetic-smoke mode (`--synthetic-smoke`) runs the full control flow with a
-stub model on CPU, asserting checkpoint emission and manifest correctness
+synthetic CPU model, asserting checkpoint emission and manifest correctness
 without importing torch's CUDA paths. CI uses this to catch pipeline rot.
 """
 
@@ -522,6 +522,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--run-dir", type=Path, required=True, help="Output dir from prep_ljspeech.py.")
     p.add_argument("--config", type=str, default="kokoro_lora_ljspeech.yaml")
+    p.add_argument(
+        "--mode",
+        type=str,
+        default=None,
+        choices=("full-finetune", "lora-experimental"),
+        help=(
+            "Training path. `full-finetune` drives the vendored "
+            "kokoro_training trainer via eliza_adapter; `lora-experimental` "
+            "uses the installed kokoro PyPI KModel path. When omitted, falls "
+            "back to config mode: legacy `full` maps to full-finetune and "
+            "legacy `lora` maps to lora-experimental."
+        ),
+    )
     p.add_argument("--resume", type=Path, default=None, help="Checkpoint to resume from.")
     p.add_argument("--epochs", type=int, default=None, help="Override max_steps via N epochs.")
     p.add_argument("--no-tensorboard", action="store_true")
@@ -531,6 +544,95 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run pipeline shape without torch/CUDA (for CI).",
     )
     return p
+
+
+_EXECUTION_MODE_ALIASES = {
+    "full": "full-finetune",
+    "full-finetune": "full-finetune",
+    "lora": "lora-experimental",
+    "lora-experimental": "lora-experimental",
+}
+
+
+def _resolve_execution_mode(args: argparse.Namespace, cfg: dict[str, Any]) -> str:
+    raw = args.mode if args.mode is not None else cfg.get("mode", "full")
+    try:
+        return _EXECUTION_MODE_ALIASES[str(raw)]
+    except KeyError as exc:
+        raise SystemExit(
+            f"unknown Kokoro training mode {raw!r}; expected full-finetune "
+            "or lora-experimental (legacy config aliases: full, lora)",
+        ) from exc
+
+
+def _run_full_finetune_via_adapter(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
+    """Drive the vendored kokoro_training trainer through eliza_adapter."""
+
+    repo_root = Path(__file__).resolve().parents[4]
+    adapter_root = (
+        repo_root
+        / "plugins"
+        / "plugin-local-inference"
+        / "native"
+        / "kokoro_training"
+    )
+    if not adapter_root.exists():
+        raise SystemExit(
+            f"vendored kokoro_training root not found at {adapter_root}; "
+            "restore plugins/plugin-local-inference/native/kokoro_training "
+            "before running full-finetune mode",
+        )
+
+    for candidate in (adapter_root, repo_root / "packages" / "training" / "scripts"):
+        candidate_s = str(candidate)
+        if candidate_s not in sys.path:
+            sys.path.insert(0, candidate_s)
+
+    from eliza_adapter import run_full_finetune  # type: ignore  # noqa: PLC0415
+
+    run_dir = Path(args.run_dir).resolve()
+    train_list_path = run_dir / "processed" / "train_list.txt"
+    dataset_size_hint = 0
+    if train_list_path.exists():
+        dataset_size_hint = sum(
+            1
+            for line in train_list_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        )
+
+    corpus_dir = str(cfg.get("dataset_path") or run_dir)
+    rc = run_full_finetune(
+        cfg,
+        corpus_dir=corpus_dir,
+        output_dir=str(run_dir),
+        dataset_size_hint=dataset_size_hint,
+    )
+
+    ckpt_dir = run_dir / "checkpoints"
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    steps = int(cfg.get("max_steps", 0))
+    val_list_path = run_dir / "processed" / "val_list.txt"
+    manifest = _build_manifest(
+        args=args,
+        cfg=cfg,
+        train_list=_list_lines(train_list_path) if train_list_path.exists() else [],
+        val_list=_list_lines(val_list_path) if val_list_path.exists() else [],
+        stats=TrainStats(
+            step=steps,
+            epoch=steps,
+            train_loss=0.0,
+            val_loss=0.0,
+            best_val_loss=0.0,
+            best_step=steps,
+        ),
+        prep_manifest_sha256=None,
+        synthetic=False,
+        checkpoint_paths=[],
+    )
+    manifest["adapter"] = "eliza_adapter"
+    (ckpt_dir / "train_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    log.info("full-finetune complete; manifest at %s", ckpt_dir / "train_manifest.json")
+    return rc
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -544,6 +646,13 @@ def main(argv: list[str] | None = None) -> int:
     os.environ.setdefault("PYTHONHASHSEED", str(cfg.get("seed", 1337)))
     if args.synthetic_smoke:
         return _run_synthetic_smoke(args, cfg)
+    execution_mode = _resolve_execution_mode(args, cfg)
+    if execution_mode == "full-finetune":
+        cfg = dict(cfg)
+        cfg["mode"] = "full-finetune"
+        return _run_full_finetune_via_adapter(args, cfg)
+    cfg = dict(cfg)
+    cfg["mode"] = "lora"
     return _real_train(args, cfg)
 
 

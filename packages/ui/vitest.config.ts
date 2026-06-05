@@ -106,7 +106,7 @@ export default defineConfig({
       },
       {
         // Dynamically loaded by DynamicViewLoader as a host-external plugin;
-        // stub it so the ui test build doesn't require its built dist.
+        // alias it so the ui test build doesn't require its built dist.
         find: /^@elizaos\/plugin-training$/,
         replacement: hostExternalStub,
       },
@@ -157,7 +157,7 @@ export default defineConfig({
       },
       // `@capacitor/app` is an optional native bridge the host app supplies — not
       // a declared dep of `@elizaos/ui`. Tests `vi.mock` it; alias to a resolvable
-      // stub so vite's transform doesn't fail in CI where it isn't installed.
+      // test double so vite's transform doesn't fail in CI where it isn't installed.
       {
         find: /^@capacitor\/app$/,
         replacement: resolve(packageRoot, "test/stubs/capacitor-app.ts"),

@@ -2,7 +2,11 @@ import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
+import { containersEnv } from "@/lib/config/containers-env";
+import {
+  getElizaAgentDirectWebUiUrl,
+  getElizaAgentPublicWebUiUrl,
+} from "@/lib/eliza-agent-web-ui";
 import { getPairingTokenService } from "@/lib/services/pairing-token";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import {
@@ -30,47 +34,42 @@ type PairingSandbox = NonNullable<
   Awaited<ReturnType<typeof agentSandboxesRepository.findByIdAndOrg>>
 >;
 
-function getDirectDockerWebUiUrl(sandbox: PairingSandbox): string | null {
-  const port = sandbox.web_ui_port ?? sandbox.bridge_port;
-  if (!port) return null;
-
-  let host = sandbox.headscale_ip ?? null;
-  for (const candidate of [sandbox.health_url, sandbox.bridge_url]) {
-    if (host || !candidate) continue;
-    try {
-      host = new URL(candidate).hostname;
-    } catch {
-      // Ignore malformed legacy URLs and keep looking for a usable host.
-    }
+/**
+ * Return the browser-facing direct web UI origin for Docker-backed agents.
+ * `bridge_url` is the API/control listener, while `web_ui_port` is the UI
+ * listener on the same host for local Docker and current Hetzner shapes.
+ */
+function resolveDirectWebUiUrlFromBridgeHost(sandbox: PairingSandbox): string | null {
+  if (!sandbox.web_ui_port) {
+    return null;
   }
 
-  return host ? `http://${host}:${port}` : null;
-}
+  const raw = sandbox.bridge_url?.trim();
+  if (!raw) return null;
 
-async function isWebUiReachable(webUiUrl: string): Promise<boolean> {
   try {
-    const response = await fetch(webUiUrl, {
-      method: "GET",
-      redirect: "manual",
-      signal: AbortSignal.timeout(3500),
-    });
-    return response.status >= 200 && response.status < 400;
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    url.port = String(sandbox.web_ui_port);
+    url.pathname = "/";
+    url.search = "";
+    url.hash = "";
+    return url.origin;
   } catch {
-    return false;
+    return null;
   }
 }
 
-async function resolveReachableWebUiUrl(
-  sandbox: PairingSandbox,
-): Promise<string | null> {
-  const publicUrl = getElizaAgentPublicWebUiUrl(sandbox);
-  const directUrl = getDirectDockerWebUiUrl(sandbox);
+function resolveManagedWebUiUrl(sandbox: PairingSandbox): string | null {
+  if (sandbox.execution_tier === "shared") return null;
 
-  if (process.env.NODE_ENV === "production" && publicUrl && directUrl) {
-    return (await isWebUiReachable(publicUrl)) ? publicUrl : directUrl;
-  }
-
-  return publicUrl ?? directUrl;
+  return (
+    resolveDirectWebUiUrlFromBridgeHost(sandbox) ??
+    getElizaAgentDirectWebUiUrl(sandbox) ??
+    getElizaAgentPublicWebUiUrl(sandbox, {
+      baseDomain: containersEnv.publicBaseDomain(),
+    })
+  );
 }
 
 /**
@@ -86,7 +85,7 @@ async function resolveReachableWebUiUrl(
  *     — agent is not running. We've kicked off (or detected) provisioning.
  *       Client should retry after `Retry-After` seconds.
  *   404 — agent not owned by caller.
- *   500 — agent in an `error` state or web UI URL not configurable.
+ *   503 — running agent has no managed HTTPS Web UI URL configured.
  *
  * The 202 path replaces the previous hard-fail 400 ("Agent must be running
  * to generate pairing token"). The old behavior shifted the responsibility
@@ -212,12 +211,18 @@ async function __hono_POST(
       return response;
     }
 
-    const webUiUrl = await resolveReachableWebUiUrl(sandbox);
+    const webUiUrl = resolveManagedWebUiUrl(sandbox);
     if (!webUiUrl) {
       return applyCorsHeaders(
         Response.json(
-          { success: false, error: "Agent Web UI URL is not configured" },
-          { status: 500 },
+          {
+            success: false,
+            code: "AGENT_WEB_UI_NOT_READY",
+            error:
+              "Agent Web UI is not configured through the managed HTTPS route yet. Retry in a moment.",
+            retryable: true,
+          },
+          { status: 503 },
         ),
         CORS_METHODS,
       );

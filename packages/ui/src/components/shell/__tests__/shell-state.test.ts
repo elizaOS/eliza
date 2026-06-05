@@ -144,6 +144,48 @@ describe("shellReducer", () => {
     expect(stillResponding).toBe(responding);
   });
 
+  it("LISTEN_START moves summoned -> listening, LISTEN_STOP moves it back", () => {
+    const summoned = reduce(initialShellState, [
+      { type: "BOOT_READY" },
+      { type: "OPEN" },
+    ]);
+    const listening = shellReducer(summoned, { type: "LISTEN_START" });
+    expect(listening.phase).toBe("listening");
+    const back = shellReducer(listening, { type: "LISTEN_STOP" });
+    expect(back.phase).toBe("summoned");
+  });
+
+  it("LISTEN_START is a no-op outside summoned", () => {
+    const idle = reduce(initialShellState, [{ type: "BOOT_READY" }]);
+    expect(shellReducer(idle, { type: "LISTEN_START" })).toBe(idle);
+    const responding = reduce(initialShellState, [
+      { type: "BOOT_READY" },
+      { type: "OPEN" },
+      { type: "SEND", text: "hi" },
+    ]);
+    expect(shellReducer(responding, { type: "LISTEN_START" })).toBe(responding);
+  });
+
+  it("LISTEN_STOP is a no-op when not listening", () => {
+    const summoned = reduce(initialShellState, [
+      { type: "BOOT_READY" },
+      { type: "OPEN" },
+    ]);
+    expect(shellReducer(summoned, { type: "LISTEN_STOP" })).toBe(summoned);
+  });
+
+  it("SEND from listening starts a response (push-to-talk submit)", () => {
+    const listening = reduce(initialShellState, [
+      { type: "BOOT_READY" },
+      { type: "OPEN" },
+      { type: "LISTEN_START" },
+    ]);
+    expect(listening.phase).toBe("listening");
+    const next = shellReducer(listening, { type: "SEND", text: "hello" });
+    expect(next.phase).toBe("responding");
+    expect(next.messages).toHaveLength(2);
+  });
+
   it("CLOSE works from summoned, listening, and responding", () => {
     const summoned = reduce(initialShellState, [
       { type: "BOOT_READY" },
@@ -151,9 +193,10 @@ describe("shellReducer", () => {
     ]);
     expect(shellReducer(summoned, { type: "CLOSE" }).phase).toBe("idle");
 
-    // listening state isn't reachable yet (no transition into it in v1),
-    // but the reducer should still allow CLOSE if some other action set it.
-    const listening = { ...summoned, phase: "listening" as const };
+    // listening is reachable via LISTEN_START (push-to-talk); CLOSE must still
+    // collapse it straight to idle (ends the session, not just the capture).
+    const listening = shellReducer(summoned, { type: "LISTEN_START" });
+    expect(listening.phase).toBe("listening");
     expect(shellReducer(listening, { type: "CLOSE" }).phase).toBe("idle");
 
     const responding = reduce(initialShellState, [

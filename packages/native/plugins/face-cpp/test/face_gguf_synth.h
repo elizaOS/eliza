@@ -157,7 +157,7 @@ static int synth_write(synth_gguf *g, const char *path) {
     }
 
     /* Tensor info (assign offsets after we know the total info size) */
-    /* First pass: write tensor info with placeholder offsets to compute
+    /* First pass: write tensor info with temporary offsets to compute
      * size, then re-write with correct offsets. Simpler: compute sizes
      * before we emit. */
     uint64_t cumulative_off = 0;

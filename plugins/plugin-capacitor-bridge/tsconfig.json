@@ -24,6 +24,9 @@
 				"../../packages/app-core/src/agent-bridge.ts"
 			],
 			"@elizaos/app-core/api/auth": ["../../packages/app-core/src/api/auth.ts"],
+			"@elizaos/app-core/api/cloud-pair-route": [
+				"../../packages/app-core/src/api/cloud-pair-route.ts"
+			],
 			"@elizaos/app-core/api/compat-route-shared": [
 				"../../packages/app-core/src/api/compat-route-shared.ts"
 			],

@@ -299,7 +299,7 @@ export function createServer(
 
 // Run as a script: `bun server.ts` boots the production server on PORT.
 // When imported (e.g. from a test that calls `createServer({...})`), this
-// branch is a no-op because import.meta.main is false.
+// branch stays inactive because import.meta.main is false.
 if (import.meta.main) {
   const server = createServer();
   console.log(

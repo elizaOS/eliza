@@ -22,6 +22,7 @@
 
 import type { AgentSandbox, AgentSandboxStatus } from "../../db/schemas/agent-sandboxes";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
+import { resolveSandboxContainerLaunchConfig } from "../services/sandbox-container-launch-config";
 
 /**
  * Get the public web UI URL for an agent sandbox.
@@ -252,6 +253,10 @@ export function toCompatJob(sandbox: AgentSandbox): CompatJobShape {
 // ---------------------------------------------------------------------------
 
 export interface CompatStatusShape {
+  agentId: string;
+  cloudAgentId: string;
+  containerId: string | null;
+  containerUrl: string | null;
   status: string;
   lastHeartbeat: string | null;
   bridgeUrl: string | null;
@@ -259,6 +264,8 @@ export interface CompatStatusShape {
   currentNode: string | null;
   suspendedReason: string | null;
   databaseStatus: string;
+  account: Record<string, unknown> | null;
+  container: Record<string, unknown> | null;
 }
 
 /**
@@ -266,8 +273,38 @@ export interface CompatStatusShape {
  */
 export function toCompatStatus(sandbox: AgentSandbox): CompatStatusShape {
   const webUiUrl = getAgentWebUiUrl(sandbox);
+  const agentConfig =
+    sandbox.agent_config &&
+    typeof sandbox.agent_config === "object" &&
+    !Array.isArray(sandbox.agent_config)
+      ? (sandbox.agent_config as Record<string, unknown>)
+      : {};
+  const account =
+    agentConfig.account &&
+    typeof agentConfig.account === "object" &&
+    !Array.isArray(agentConfig.account)
+      ? (agentConfig.account as Record<string, unknown>)
+      : null;
+  const launchConfig = resolveSandboxContainerLaunchConfig(agentConfig);
+  const container =
+    launchConfig || sandbox.docker_image || sandbox.web_ui_port || sandbox.bridge_port
+      ? {
+          ...(launchConfig ?? {}),
+          ...(sandbox.docker_image ? { image: sandbox.docker_image } : {}),
+          ...((sandbox.container_name ?? sandbox.sandbox_id)
+            ? { id: sandbox.container_name ?? sandbox.sandbox_id }
+            : {}),
+          ...(sandbox.node_id ? { nodeId: sandbox.node_id } : {}),
+          ...(sandbox.bridge_port ? { bridgePort: sandbox.bridge_port } : {}),
+          ...(sandbox.web_ui_port ? { webUiPort: sandbox.web_ui_port } : {}),
+        }
+      : null;
 
   return {
+    agentId: sandbox.id,
+    cloudAgentId: sandbox.id,
+    containerId: sandbox.container_name ?? sandbox.sandbox_id ?? null,
+    containerUrl: sandbox.bridge_url ?? null,
     status: mapStatus(sandbox.status),
     lastHeartbeat: sandbox.last_heartbeat_at ? toISO(sandbox.last_heartbeat_at) : null,
     bridgeUrl: sandbox.bridge_url ?? null,
@@ -275,6 +312,8 @@ export function toCompatStatus(sandbox: AgentSandbox): CompatStatusShape {
     currentNode: sandbox.node_id ?? null,
     suspendedReason: sandbox.error_message ?? null,
     databaseStatus: sandbox.database_status,
+    account,
+    container,
   };
 }
 

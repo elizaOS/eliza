@@ -212,7 +212,7 @@ def test_idempotent_rerun(tmp_path: Path) -> None:
     res2 = _run(*common)
     assert res2.returncode == 0, res2.stderr
     contents2 = ts_path.read_text(encoding="utf-8")
-    # Second run is a no-op.
+    # Second run leaves the file unchanged.
     assert contents1 == contents2
     # The version literal appears exactly once.
     assert contents2.count('version: "0.2.0"') == 1

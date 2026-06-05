@@ -252,7 +252,6 @@ describe("scenario PR workflow contract", () => {
     expect(workflow).toContain(
       "bun run --cwd packages/app test:e2e test/ui-smoke/view-manager-actual-flow.spec.ts --project=chromium",
     );
-    expect(workflow).toContain("test/ui-smoke/homescreen-edit-mode.spec.ts");
     expect(workflow).toContain(
       "bun run --cwd packages/scenario-runner test:pr:e2e",
     );

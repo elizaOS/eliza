@@ -5,7 +5,10 @@ import type {
   IAgentRuntime,
 } from "@elizaos/core";
 import { getConnectorAccountManager } from "@elizaos/core";
-import { OAuth2Client } from "google-auth-library";
+import { Auth } from "googleapis";
+
+const { OAuth2Client } = Auth;
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import googlePlugin, {
   createGoogleConnectorAccountProvider,

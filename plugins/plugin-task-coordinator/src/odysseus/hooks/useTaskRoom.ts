@@ -11,10 +11,8 @@ import type {
 } from "@elizaos/ui";
 import { client } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  buildConversation,
-  type ConversationBlock,
-} from "../../orchestrator-stream";
+import type { ConversationBlock } from "../../orchestrator-stream";
+import { buildConversation } from "../../orchestrator-stream.helpers";
 
 const POLL_INTERVAL_MS = 5_000;
 const ACTIVE_POLL_INTERVAL_MS = 1_500;

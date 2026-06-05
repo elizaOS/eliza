@@ -119,7 +119,7 @@ export async function runAutonomousCli(
     // bundle cannot import (would create an `agent → app-core →
     // agent` workspace cycle). Bootstrapping the AOSP llama loader
     // and ModelType handlers here keeps the registration in the
-    // agent package and out of the bundler's cycle path. No-op when
+    // agent package and out of the bundler's cycle path. Skipped when
     // `ELIZA_LOCAL_LLAMA !== "1"`.
     if (runtime && process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
       const { ensureAospLocalInferenceHandlers } = await import(

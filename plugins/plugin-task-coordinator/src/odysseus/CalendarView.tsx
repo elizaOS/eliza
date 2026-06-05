@@ -6,21 +6,30 @@
 // settings panel (per-calendar colour/name/delete, New calendar, .ics
 // import/export).
 //
-// elizaMapping: odysseus's calendar is CalDAV-backed (an HTTP API for events +
-// a /api/calendar/quick-parse NLP endpoint + /api/notes for reminders). eliza
-// exposes the LifeOps calendar *types* (LifeOpsCalendarEvent /
-// LifeOpsCalendarFeed in @elizaos/ui's client-types-config) but NO
-// frontend-callable client method to fetch/create events, parse natural
-// language, or create reminder notes. So this is the faithful no-eliza-backend
-// path: the calendar is fully **local-first** — calendars and events are owned
-// by, created in, and persisted to localStorage (matching odysseus's local
-// zero-state before any CalDAV sync). Nothing is fabricated as if it came from
-// the agent. Two odysseus surfaces require a backend eliza lacks and are
-// therefore intentionally NOT shipped (rather than shipped as dead controls):
-//   - the natural-language quick-add row (needs /api/calendar/quick-parse),
-//   - "Remind me" / CalDAV "Sync now" (need /api/notes + a CalDAV server).
-// An eliza-backed calendar client method is the follow-up that unlocks both.
+// elizaMapping: this view is **local-first AND provider-overlaid**. The local
+// layer owns every write: calendars and events the user creates, edits,
+// deletes, and imports/exports as .ics live in localStorage (the same
+// zero-state odysseus shipped before any CalDAV sync). On top of that, when a
+// calendar grant is connected (Google / Apple via @elizaos/plugin-calendar),
+// the view overlays the agent's aggregated calendar feed as a **read-only**
+// provider layer: provider calendars and events render alongside the local
+// ones but cannot be edited, deleted, or exported here. The feed is fetched via
+// the @elizaos/ui client methods that @elizaos/plugin-calendar augments onto
+// the client prototype (getLifeOpsCalendars / getLifeOpsCalendarFeed). When no
+// grant is connected the feed is simply absent and the view is purely
+// local-first. Provider write-back (creating/editing events on the connected
+// account from this surface) is a follow-up.
+//
+// The natural-language quick-add row remains inert chrome: there is no
+// frontend-callable calendar NLP parser, so the row is rendered disabled rather
+// than as a dead control that silently drops input.
 
+import "@elizaos/plugin-calendar/api/client-calendar";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarSummary,
+} from "@elizaos/shared";
+import { client } from "@elizaos/ui";
 import {
   ArrowLeft,
   ArrowRight,
@@ -257,6 +266,33 @@ function readableTextColor(bg: string): string {
 
 function newUid(): string {
   return `ev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// Provider-overlay layer: read-only calendars + events sourced from the
+// connected account feed (Google / Apple via @elizaos/plugin-calendar). Their
+// `href` / `uid` carry this prefix so the render paths can mix them with local
+// items while the write paths (create/edit/delete, settings CRUD, .ics) skip
+// them. Format: `provider:<provider>:<grantId>:<calendarId>` (calendars) and
+// `provider:<eventId>` (events).
+const PROVIDER_PREFIX = "provider:";
+
+function isProviderRef(ref: string): boolean {
+  return ref.startsWith(PROVIDER_PREFIX);
+}
+
+function providerCalendarHref(
+  provider: string,
+  grantId: string,
+  calendarId: string,
+): string {
+  return `${PROVIDER_PREFIX}${provider}:${grantId}:${calendarId}`;
+}
+
+// `HH:MM` 24h local wall-clock from an ISO timestamp; empty for all-day events.
+function isoToLocalTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 // ── .ics (RFC 5545) serialise / parse — pure client-side, mirrors odysseus's
@@ -918,6 +954,17 @@ export function CalendarView({
   const [events, setEvents] = useState<CalEvent[]>(() =>
     readPref<CalEvent[]>(EVENTS_PREF_KEY, []),
   );
+  // Read-only provider overlay (Google / Apple via @elizaos/plugin-calendar).
+  // Never persisted to localStorage — refetched from the agent feed on open and
+  // on Refresh. `providerStatus` is "unavailable" when no calendar grant is
+  // connected (the normal local-only case), "connected" once a feed loads.
+  const [providerCalendars, setProviderCalendars] = useState<LocalCalendar[]>(
+    [],
+  );
+  const [providerEvents, setProviderEvents] = useState<CalEvent[]>([]);
+  const [providerStatus, setProviderStatus] = useState<
+    "idle" | "loading" | "connected" | "unavailable"
+  >("idle");
   const [formState, setFormState] = useState<{
     existing: CalEvent | null;
     date: string;
@@ -929,6 +976,9 @@ export function CalendarView({
     y: number;
   } | null>(null);
   const [syncing, setSyncing] = useState(false);
+  // Bumped by Refresh to re-run the provider-feed fetch (the local store is
+  // re-read synchronously in doRefresh; the feed is async).
+  const [refreshTick, setRefreshTick] = useState(0);
   // The pending sync-spin timer, cleared on unmount so the cosmetic
   // setSyncing(false) never fires after the view is gone.
   const syncTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(
@@ -983,17 +1033,118 @@ export function CalendarView({
     [],
   );
 
+  // Fetch the read-only provider feed (Google / Apple) when the view opens and
+  // whenever Refresh fires. No calendar grant connected is the expected state:
+  // the feed call rejects (401/403/409/"not connected"), and we silently fall
+  // back to a purely local-first calendar. Only genuinely unexpected failures
+  // are swallowed without a connected feed — there is no structured logger in
+  // this browser file, so the expected case stays silent by design.
+  useEffect(() => {
+    void refreshTick;
+    if (!open) return;
+    let cancelled = false;
+    setProviderStatus("loading");
+
+    const margin = 24 * 60 * 60 * 1000;
+    const center = current.getTime();
+    const timeMin = new Date(center - 60 * margin).toISOString();
+    const timeMax = new Date(center + 120 * margin).toISOString();
+
+    (async () => {
+      try {
+        const [{ calendars: summaries }, feed] = await Promise.all([
+          client.getLifeOpsCalendars(),
+          client.getLifeOpsCalendarFeed({ timeMin, timeMax }),
+        ]);
+        if (cancelled) return;
+
+        const mappedCalendars: LocalCalendar[] = summaries.map(
+          (s: LifeOpsCalendarSummary, i) => ({
+            href: providerCalendarHref(s.provider, s.grantId, s.calendarId),
+            name: s.summary,
+            color:
+              s.backgroundColor || CAL_PALETTE[(i + 1) % CAL_PALETTE.length],
+          }),
+        );
+        const calendarHrefs = new Set(mappedCalendars.map((c) => c.href));
+
+        const mappedEvents: CalEvent[] = [];
+        for (const ev of feed.events as LifeOpsCalendarEvent[]) {
+          const href = providerCalendarHref(
+            ev.provider,
+            ev.grantId ?? "",
+            ev.calendarId,
+          );
+          // The feed can carry events whose calendar is not in the summary list
+          // (e.g. shared/holiday calendars); synthesize a labelled chip for them
+          // so they still render and remain toggleable.
+          if (!calendarHrefs.has(href)) {
+            calendarHrefs.add(href);
+            mappedCalendars.push({
+              href,
+              name: ev.calendarSummary || ev.calendarId,
+              color:
+                CAL_PALETTE[(mappedCalendars.length + 1) % CAL_PALETTE.length],
+            });
+          }
+          mappedEvents.push({
+            uid: `${PROVIDER_PREFIX}${ev.id}`,
+            summary: ev.title,
+            calendarHref: href,
+            date: ymd(new Date(ev.startAt)),
+            endDate: ymd(new Date(ev.endAt)),
+            startTime: ev.isAllDay ? "" : isoToLocalTime(ev.startAt),
+            endTime: ev.isAllDay ? "" : isoToLocalTime(ev.endAt),
+            allDay: ev.isAllDay,
+            location: ev.location ?? "",
+            description: ev.description ?? "",
+            rrule: "",
+          });
+        }
+
+        setProviderCalendars(mappedCalendars);
+        setProviderEvents(mappedEvents);
+        setProviderStatus("connected");
+      } catch {
+        // Expected when no Google/Apple calendar grant is connected, and the
+        // safe fallback for any unexpected error: no provider overlay, pure
+        // local-first calendar. Intentionally silent (no logger in this view).
+        if (cancelled) return;
+        setProviderCalendars([]);
+        setProviderEvents([]);
+        setProviderStatus("unavailable");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, current, refreshTick]);
+
   const today = ymd(new Date());
   const year = current.getFullYear();
   const month = current.getMonth();
+
+  // Render layers: local-first store + read-only provider overlay merged for
+  // display only. WRITE paths (create/edit/delete, settings CRUD, .ics
+  // import/export, persistEvents/persistCalendars) keep operating on the local
+  // `calendars` / `events` arrays — never these merged views.
+  const displayCalendars = useMemo(
+    () => [...calendars, ...providerCalendars],
+    [calendars, providerCalendars],
+  );
+  const displayEvents = useMemo(
+    () => [...events, ...providerEvents],
+    [events, providerEvents],
+  );
 
   const eventVisible = useCallback(
     (e: CalEvent): boolean => !hiddenCals.has(e.calendarHref),
     [hiddenCals],
   );
   const visibleEvents = useMemo(
-    () => events.filter(eventVisible),
-    [events, eventVisible],
+    () => displayEvents.filter(eventVisible),
+    [displayEvents, eventVisible],
   );
 
   const eventsForDay = useCallback(
@@ -1036,6 +1187,7 @@ export function CalendarView({
     setSyncing(true);
     setCalendars(readPref<LocalCalendar[]>(CAL_PREF_KEY, DEFAULT_CALENDARS));
     setEvents(readPref<CalEvent[]>(EVENTS_PREF_KEY, []));
+    setRefreshTick((t) => t + 1);
     if (syncTimerRef.current !== null) {
       window.clearTimeout(syncTimerRef.current);
     }
@@ -1064,10 +1216,15 @@ export function CalendarView({
 
   const openNew = (date?: string) =>
     setFormState({ existing: null, date: date ?? selectedDay ?? today });
-  const openEdit = (ev: CalEvent) =>
+  // Provider events are read-only: opening the edit form would expose Save /
+  // Delete against a feed this surface cannot write back to, so clicking one is
+  // ignored (the row also renders a "synced" badge instead of the more-menu).
+  const openEdit = (ev: CalEvent) => {
+    if (isProviderRef(ev.uid)) return;
     setFormState({ existing: ev, date: ev.date });
+  };
 
-  const showFilters = calendars.length > 1;
+  const showFilters = displayCalendars.length > 1;
 
   // ── Toolbar (shared across views) ───────────────────────────────────────
   const titleText =
@@ -1225,7 +1382,7 @@ export function CalendarView({
         placeholder=" "
         autoComplete="off"
         disabled
-        title="Natural-language quick add needs a calendar parser backend (unavailable locally)"
+        title="Quick add parser offline"
         aria-label="Quick add event (unavailable)"
       />
       <span className="od-cal-quickadd-hint" aria-hidden="true">
@@ -1253,7 +1410,7 @@ export function CalendarView({
   const filterRow =
     showFilters && !filtersCollapsed ? (
       <div className="od-cal-filters">
-        {calendars.map((c) => {
+        {displayCalendars.map((c) => {
           const off = hiddenCals.has(c.href);
           return (
             <button
@@ -1331,7 +1488,7 @@ export function CalendarView({
                   <span className="od-cal-event-row" key={ev.uid}>
                     <span
                       className="od-cal-event-row-dot"
-                      style={{ background: calColor(ev, calendars) }}
+                      style={{ background: calColor(ev, displayCalendars) }}
                     />
                     {ev.startTime ? (
                       <span className="od-cal-event-row-time">
@@ -1409,7 +1566,7 @@ export function CalendarView({
               </div>
               <div className="od-cal-wk-allday">
                 {allDayEvents.map((ev) => {
-                  const bg = calColor(ev, calendars);
+                  const bg = calColor(ev, displayCalendars);
                   return (
                     <button
                       type="button"
@@ -1452,8 +1609,8 @@ export function CalendarView({
                       style={{
                         top,
                         height,
-                        background: `color-mix(in srgb, ${calColor(ev, calendars)} 22%, var(--bg))`,
-                        borderLeftColor: calColor(ev, calendars),
+                        background: `color-mix(in srgb, ${calColor(ev, displayCalendars)} 22%, var(--bg))`,
+                        borderLeftColor: calColor(ev, displayCalendars),
                       }}
                       onClick={() => openEdit(ev)}
                     >
@@ -1578,7 +1735,7 @@ export function CalendarView({
                   >
                     <span
                       className="od-cal-event-dot"
-                      style={{ background: calColor(ev, calendars) }}
+                      style={{ background: calColor(ev, displayCalendars) }}
                     />
                     <div className="od-cal-event-info">
                       <div className="od-cal-event-name">{ev.summary}</div>
@@ -1619,40 +1776,53 @@ export function CalendarView({
         })
     : [];
 
-  const renderEventRow = (ev: CalEvent, withDate: boolean): ReactNode => (
-    <div className="od-cal-event-item" key={ev.uid}>
-      <span
-        className="od-cal-event-dot"
-        style={{ background: calColor(ev, calendars) }}
-      />
-      <button
-        type="button"
-        className="od-cal-event-info od-cal-event-info-btn"
-        onClick={() => openEdit(ev)}
-      >
-        <div className="od-cal-event-name">{ev.summary}</div>
-        <div className="od-cal-event-time">
-          {withDate ? `${fmtLongDate(ev.date)} · ` : ""}
-          {ev.allDay
-            ? "All day"
-            : `${fmtClock(ev.startTime)} – ${fmtClock(ev.endTime)}`}
-          {ev.location ? ` · ${ev.location}` : ""}
-        </div>
-      </button>
-      <button
-        type="button"
-        className="od-cal-event-more-btn"
-        title="More"
-        aria-label="Event actions"
-        onClick={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          setMoreMenu({ ev, x: r.left, y: r.bottom + 4 });
-        }}
-      >
-        ⋯
-      </button>
-    </div>
-  );
+  const renderEventRow = (ev: CalEvent, withDate: boolean): ReactNode => {
+    const readOnly = isProviderRef(ev.uid);
+    return (
+      <div className="od-cal-event-item" key={ev.uid}>
+        <span
+          className="od-cal-event-dot"
+          style={{ background: calColor(ev, displayCalendars) }}
+        />
+        <button
+          type="button"
+          className="od-cal-event-info od-cal-event-info-btn"
+          onClick={() => openEdit(ev)}
+          disabled={readOnly}
+        >
+          <div className="od-cal-event-name">{ev.summary}</div>
+          <div className="od-cal-event-time">
+            {withDate ? `${fmtLongDate(ev.date)} · ` : ""}
+            {ev.allDay
+              ? "All day"
+              : `${fmtClock(ev.startTime)} – ${fmtClock(ev.endTime)}`}
+            {ev.location ? ` · ${ev.location}` : ""}
+          </div>
+        </button>
+        {readOnly ? (
+          <span
+            className="od-cal-event-readonly"
+            title="Synced from a connected calendar — read-only here"
+          >
+            synced
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="od-cal-event-more-btn"
+            title="More"
+            aria-label="Event actions"
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setMoreMenu({ ev, x: r.left, y: r.bottom + 4 });
+            }}
+          >
+            ⋯
+          </button>
+        )}
+      </div>
+    );
+  };
 
   const dayDetail =
     view === "month" || view === "week" ? (
@@ -1721,7 +1891,7 @@ export function CalendarView({
       </>
     ) : null;
 
-  const hasCalendars = calendars.length > 0;
+  const hasCalendars = displayCalendars.length > 0;
 
   return (
     <div
@@ -1743,7 +1913,11 @@ export function CalendarView({
           aria-hidden="true"
         />
       ) : null}
-      <div className="od-search-panel od-cal-panel" style={win.panelStyle}>
+      <div
+        className="od-search-panel od-cal-panel"
+        style={win.panelStyle}
+        data-provider-status={providerStatus}
+      >
         <ResizeHandles controls={win} />
         {windowHeader}
         <div className="od-cal-body">

@@ -9,8 +9,10 @@ import { Textarea } from "@elizaos/ui/components/ui/textarea";
 import {
   ArrowLeft,
   ChevronLeft,
+  Inbox,
   MessageSquareText,
   Plus,
+  Radio,
   RefreshCw,
   Send,
   ShieldCheck,
@@ -18,21 +20,19 @@ import {
 } from "lucide-react";
 import {
   type ChangeEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
   useState,
 } from "react";
+import {
+  buildThreads,
+  loadMessagesState,
+  smsRole,
+  type ThreadSummary,
+} from "./MessagesAppView.helpers.ts";
 
-type ThreadSummary = {
-  id: string;
-  address: string;
-  messages: SmsMessageSummary[];
-  lastMessage: SmsMessageSummary;
-  unreadCount: number;
-};
-
-const INBOUND_SMS_TYPE = 1;
 const SENT_SMS_TYPE = 2;
 
 function defaultOverlayContext(): OverlayAppContext {
@@ -64,57 +64,6 @@ function formatTime(epochMs: number): string {
     month: "short",
     day: "numeric",
   });
-}
-
-function buildThreads(messages: SmsMessageSummary[]): ThreadSummary[] {
-  const byThread = new Map<string, SmsMessageSummary[]>();
-  for (const message of messages) {
-    const key = message.threadId || message.address || message.id;
-    const list = byThread.get(key) ?? [];
-    list.push(message);
-    byThread.set(key, list);
-  }
-  return Array.from(byThread.entries())
-    .map(([id, threadMessages]) => {
-      const sorted = [...threadMessages].sort((a, b) => a.date - b.date);
-      const lastMessage = sorted[sorted.length - 1] ?? threadMessages[0];
-      return {
-        id,
-        address: lastMessage?.address,
-        messages: sorted,
-        lastMessage,
-        unreadCount: sorted.filter(
-          (m) => !m.read && m.type === INBOUND_SMS_TYPE,
-        ).length,
-      };
-    })
-    .filter((thread): thread is ThreadSummary => Boolean(thread.lastMessage))
-    .sort((a, b) => b.lastMessage.date - a.lastMessage.date);
-}
-
-function smsRole(status: SystemStatus | null) {
-  return status?.roles.find((role) => role.role === "sms") ?? null;
-}
-
-function normalizeMessagesLimit(value: unknown, fallback = 200): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return Math.min(500, Math.max(1, Math.trunc(value)));
-}
-
-async function loadMessagesState(limit = 200) {
-  const [messageResult, statusResult] = await Promise.all([
-    Messages.listMessages({ limit: normalizeMessagesLimit(limit) }),
-    System.getStatus().catch(() => null),
-  ]);
-  const threads = buildThreads(messageResult.messages);
-  const currentSmsRole = smsRole(statusResult);
-  return {
-    messages: messageResult.messages,
-    threads,
-    systemStatus: statusResult,
-    ownsSmsRole: currentSmsRole?.held === true,
-    smsRoleHolder: currentSmsRole?.holders[0] ?? null,
-  };
 }
 
 function MessagesThreadButton({
@@ -227,6 +176,44 @@ function TuiThreadButton({
   );
 }
 
+function MessagesDashboardCard({
+  icon,
+  label,
+  value,
+  tone = "neutral",
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  tone?: "neutral" | "success" | "warn" | "accent";
+}) {
+  const toneClass = {
+    accent: "border-info/30 bg-info/10 text-info",
+    neutral: "border-border/30 bg-bg-accent/50 text-muted",
+    success: "border-success/30 bg-success/10 text-success",
+    warn: "border-warning/30 bg-warning/10 text-warning",
+  }[tone];
+
+  return (
+    <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/30 bg-bg/78 px-4 py-3 shadow-sm">
+      <span
+        aria-hidden
+        className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg border ${toneClass}`}
+      >
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[11px] font-semibold uppercase tracking-normal text-muted">
+          {label}
+        </span>
+        <span className="block truncate text-sm font-semibold text-txt">
+          {value}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
   const [messages, setMessages] = useState<SmsMessageSummary[]>([]);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
@@ -269,6 +256,11 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
   );
   const currentSmsRole = smsRole(systemStatus);
   const ownsSmsRole = currentSmsRole?.held === true;
+  const unreadTotal = threads.reduce(
+    (total, thread) => total + thread.unreadCount,
+    0,
+  );
+  const latestThread = threads[0] ?? null;
   const canSend =
     composeAddress.trim().length > 0 &&
     composeBody.trim().length > 0 &&
@@ -518,9 +510,9 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
         </div>
       )}
 
-      <main className="grid min-h-0 flex-1 md:grid-cols-[340px_minmax(0,1fr)]">
+      <main className="flex min-h-0 flex-1 flex-col">
         <section
-          className={`min-h-0 flex-col border-border/24 md:flex md:border-r ${
+          className={`min-h-0 flex-1 flex-col ${
             showComposer ? "hidden" : "flex"
           }`}
           data-testid="messages-thread-list"
@@ -530,47 +522,83 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
               {t("messages.loading", { defaultValue: "Loading messages…" })}
             </div>
           ) : threads.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-              <MessageSquareText className="h-11 w-11 text-muted" />
-              <div>
-                <div className="text-sm font-medium text-txt">
-                  {t("messages.emptyTitle", {
-                    defaultValue: "No SMS threads yet",
-                  })}
-                </div>
-                <p className="mt-1 text-xs text-muted">
-                  {t("messages.emptyBody", {
-                    defaultValue:
-                      "Start a message, or grant SMS permissions on Android to load existing conversations.",
-                  })}
-                </p>
+            <div className="flex flex-1 justify-center px-4 py-5 pb-32">
+              <div className="grid w-full max-w-3xl grid-cols-1 gap-3">
+                <MessagesDashboardCard
+                  icon={<MessageSquareText className="h-4 w-4" />}
+                  label="Threads"
+                  value="0"
+                  tone="accent"
+                />
+                <MessagesDashboardCard
+                  icon={<Radio className="h-4 w-4" />}
+                  label="Bridge"
+                  value={ownsSmsRole ? "Default SMS" : "Android SMS"}
+                  tone={ownsSmsRole ? "success" : "warn"}
+                />
+                <MessagesDashboardCard
+                  icon={<Inbox className="h-4 w-4" />}
+                  label="Unread"
+                  value="0"
+                />
+                <Button
+                  ref={emptyNewMessage.ref}
+                  {...emptyNewMessage.agentProps}
+                  variant="ghost"
+                  size="sm"
+                  className="min-h-14 justify-start gap-3 rounded-xl border border-border/30 bg-bg/78 px-4 text-left text-txt shadow-sm hover:bg-bg-accent hover:text-txt"
+                  onClick={openNewComposer}
+                >
+                  <span className="grid h-10 w-10 place-items-center rounded-lg bg-info text-bg">
+                    <Plus className="h-4 w-4" />
+                  </span>
+                  <span className="font-semibold">
+                    {t("messages.new", { defaultValue: "New message" })}
+                  </span>
+                </Button>
               </div>
-              <Button
-                ref={emptyNewMessage.ref}
-                {...emptyNewMessage.agentProps}
-                size="sm"
-                onClick={openNewComposer}
-              >
-                <Plus className="mr-1.5 h-4 w-4" />
-                {t("messages.new", { defaultValue: "New message" })}
-              </Button>
             </div>
           ) : (
-            <div className="chat-native-scrollbar min-h-0 flex-1 overflow-y-auto">
-              {threads.map((thread) => (
-                <MessagesThreadButton
-                  key={thread.id}
-                  thread={thread}
-                  selected={thread.id === selectedThreadId}
-                  onOpen={openThread}
+            <div className="chat-native-scrollbar min-h-0 flex-1 overflow-y-auto pb-32">
+              <div className="grid gap-3 px-4 py-4">
+                <MessagesDashboardCard
+                  icon={<MessageSquareText className="h-4 w-4" />}
+                  label="Threads"
+                  value={String(threads.length)}
+                  tone="accent"
                 />
-              ))}
+                <MessagesDashboardCard
+                  icon={<Inbox className="h-4 w-4" />}
+                  label="Unread"
+                  value={String(unreadTotal)}
+                  tone={unreadTotal > 0 ? "warn" : "neutral"}
+                />
+                <MessagesDashboardCard
+                  icon={<Radio className="h-4 w-4" />}
+                  label="Latest"
+                  value={
+                    latestThread
+                      ? formatTime(latestThread.lastMessage.date)
+                      : "idle"
+                  }
+                />
+              </div>
+              <div>
+                {threads.map((thread) => (
+                  <MessagesThreadButton
+                    key={thread.id}
+                    thread={thread}
+                    selected={thread.id === selectedThreadId}
+                    onOpen={openThread}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </section>
 
         <section
-          className={`min-h-0 flex-col ${showComposer ? "flex" : "hidden md:flex"}`}
+          className={`min-h-0 flex-1 flex-col ${showComposer ? "flex" : "hidden"}`}
           data-testid="messages-composer-panel"
         >
           {showComposer ? (
@@ -864,13 +892,7 @@ export function MessagesTuiView() {
         | {lastAction}
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(220px, 0.9fr) minmax(280px, 1.1fr)",
-          gap: 16,
-        }}
-      >
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
         <section
           aria-label="SMS threads"
           style={{
@@ -913,7 +935,7 @@ export function MessagesTuiView() {
           {!loading && !error && threads.length === 0 && (
             <div style={{ color: "#64748b" }}>no sms threads</div>
           )}
-          {threads.map((thread, index) => (
+          {threads.slice(0, 24).map((thread, index) => (
             <TuiThreadButton
               key={thread.id}
               thread={thread}
@@ -937,7 +959,8 @@ export function MessagesTuiView() {
             {selectedThread ? selectedThread.address : "compose"}
           </strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: refresh | request-role | send
+            {messages.length} messages / sms{" "}
+            {ownsSmsRole ? "ready" : smsRoleHolder ? "held" : "unclaimed"}
           </div>
 
           {!ownsSmsRole && (
@@ -1054,51 +1077,4 @@ export function MessagesTuiView() {
       </div>
     </div>
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-list-threads") {
-    const state = await loadMessagesState(
-      normalizeMessagesLimit(params?.limit),
-    );
-    return {
-      viewType: "tui",
-      threads: state.threads.map((thread) => ({
-        id: thread.id,
-        address: thread.address,
-        messageCount: thread.messages.length,
-        unreadCount: thread.unreadCount,
-        lastMessage: thread.lastMessage.body,
-        lastMessageAt: thread.lastMessage.date,
-      })),
-      ownsSmsRole: state.ownsSmsRole,
-      smsRoleHolder: state.smsRoleHolder,
-    };
-  }
-
-  if (capability === "terminal-send-sms") {
-    const address =
-      typeof params?.address === "string" ? params.address.trim() : "";
-    const body = typeof params?.body === "string" ? params.body.trim() : "";
-    if (!address) throw new Error("address is required");
-    if (!body) throw new Error("body is required");
-    await Messages.sendSms({ address, body });
-    return { sent: true, address, bodyLength: body.length, viewType: "tui" };
-  }
-
-  if (capability === "terminal-request-sms-role") {
-    await System.requestRole({ role: "sms" });
-    const state = await loadMessagesState(200);
-    return {
-      requested: true,
-      ownsSmsRole: state.ownsSmsRole,
-      smsRoleHolder: state.smsRoleHolder,
-      viewType: "tui",
-    };
-  }
-
-  throw new Error(`Unsupported capability "${capability}"`);
 }

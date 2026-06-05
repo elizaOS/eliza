@@ -4,10 +4,8 @@ import {
   registerBuiltinWidgets,
 } from "@elizaos/ui";
 import { LIFEOPS_CHANNEL_WIDGETS } from "../components/chat/widgets/plugins/lifeops-channels.js";
-import {
-  LIFEOPS_OVERVIEW_WIDGETS,
-  LifeOpsOverviewSidebarWidget,
-} from "../components/chat/widgets/plugins/lifeops-overview.js";
+import { LIFEOPS_OVERVIEW_WIDGETS } from "../components/chat/widgets/plugins/lifeops-overview.helpers.js";
+import { LifeOpsOverviewSidebarWidget } from "../components/chat/widgets/plugins/lifeops-overview.js";
 
 // The consolidated "Glance" overview is intentionally not registered —
 // the right rail now surfaces Calendar, Inbox, and Automations as three

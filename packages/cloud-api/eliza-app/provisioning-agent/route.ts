@@ -4,7 +4,7 @@
  * GET  — returns sandbox status for the session user's org.
  * POST — idempotent provision trigger: creates + enqueues a sandbox if none
  *        exists, otherwise returns the current sandbox status. Safe to call
- *        multiple times; second call is a no-op when a sandbox already exists.
+ *        multiple times; second call returns the existing sandbox status.
  *
  * Auth: eliza-app session Bearer token (same as /api/eliza-app/user/me).
  */

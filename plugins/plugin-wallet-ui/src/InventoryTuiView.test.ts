@@ -26,50 +26,14 @@ vi.mock("@elizaos/ui", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
   client: walletClient,
   Button: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", props),
-  AppPageSidebar: ({
-    children,
-    collapsed,
-    width,
-    testId,
-  }: React.HTMLAttributes<HTMLDivElement> & {
-    collapsed?: boolean;
-    width?: number;
-    testId?: string;
-  }) =>
-    React.createElement(
-      "aside",
-      {
-        "data-testid": testId,
-        "data-collapsed": String(Boolean(collapsed)),
-        "data-width": width,
-      },
-      children,
-    ),
-  PageLayout: ({
-    children,
-    sidebar,
-    ...props
-  }: React.HTMLAttributes<HTMLDivElement> & { sidebar?: React.ReactNode }) =>
-    React.createElement("div", props, sidebar, children),
-  SidebarContent: Object.assign(
-    (props: React.HTMLAttributes<HTMLDivElement>) =>
-      React.createElement("div", props),
-    {
-      RailItem: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-        React.createElement("button", props),
-    },
-  ),
-  SidebarPanel: (props: React.HTMLAttributes<HTMLDivElement>) =>
-    React.createElement("div", props),
-  SidebarScrollRegion: (props: React.HTMLAttributes<HTMLDivElement>) =>
-    React.createElement("div", props),
+    React.createElement("button", { type: "button", ...props }),
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
   useActivityEvents: () => ({ events: [] }),
   useApp: appHooks.useApp,
 }));
 
-import { InventoryTuiView, InventoryView, interact } from "./InventoryView";
+import { InventoryTuiView, InventoryView } from "./InventoryView";
+import { interact } from "./InventoryView.interact";
 
 const balances = {
   evm: {
@@ -262,10 +226,8 @@ describe("InventoryTuiView", () => {
     expect(walletClient.getWalletTradingProfile).toHaveBeenCalledWith("7d");
   });
 
-  it("restores sidebar state and preserves back navigation when opening RPC settings", async () => {
+  it("preserves back navigation when opening RPC settings", async () => {
     seedWalletClientResponses();
-    window.localStorage.setItem("eliza:wallets:sidebar:collapsed", "true");
-    window.localStorage.setItem("eliza:wallets:sidebar:width", "9999");
     window.history.replaceState(null, "", "/inventory");
     const setTab = vi.fn();
 
@@ -298,9 +260,7 @@ describe("InventoryTuiView", () => {
 
     render(React.createElement(InventoryView));
 
-    const sidebar = screen.getByTestId("wallets-sidebar");
-    expect(sidebar.getAttribute("data-collapsed")).toBe("true");
-    expect(sidebar.getAttribute("data-width")).toBe("520");
+    expect(screen.getByTestId("wallets-sidebar")).toBeTruthy();
 
     fireEvent.click(screen.getByLabelText("Open RPC settings"));
 

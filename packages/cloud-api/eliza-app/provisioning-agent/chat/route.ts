@@ -1,7 +1,7 @@
 /**
  * POST /api/eliza-app/provisioning-agent/chat
  *
- * Sends a message to the serverless provisioning placeholder agent (Cerebras).
+ * Sends a message to the serverless provisioning agent (Cerebras).
  * Auth: eliza-app session Bearer token.
  */
 

@@ -61,6 +61,23 @@ const preview: Preview = {
     },
     layout: "centered",
     backgrounds: { disable: true }, // theme classes own the background
+    // Lead the sidebar with the app-facing surfaces (the shell, overlay apps,
+    // views, composites) and push the big shared parts-bin to the bottom, so the
+    // catalog reads top-down from "the app" to "the primitives it's built from".
+    // `*` is the wildcard slot for any section not named here.
+    options: {
+      storySort: {
+        order: [
+          "Shell",
+          "Apps",
+          "Views",
+          "Composites",
+          "*",
+          "Companion", // plugin stories (globbed in from plugins/plugin-companion)
+          "Primitives", // 300+ base components — the parts bin, kept last
+        ],
+      },
+    },
   },
   decorators: [
     (Story, context) => (

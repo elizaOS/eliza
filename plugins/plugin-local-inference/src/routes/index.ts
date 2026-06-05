@@ -23,7 +23,6 @@ export {
 	setFamilyMemberProfileStore,
 } from "./family-member-route.js";
 export * from "./local-inference-asr-route.js";
-export * from "./local-inference-asr-route.js";
 export * from "./local-inference-compat-routes.js";
 export * from "./local-inference-tts-route.js";
 export {
@@ -44,3 +43,14 @@ export {
 	setVoiceModelsUpdater,
 	type VoiceModelInstallationView,
 } from "./voice-models-routes.js";
+export { voiceProfilePluginRoutes } from "./voice-profile-plugin-routes.js";
+export {
+	handleVoiceProfilesManagementRoutes,
+	setVoiceProfilesManagementStore,
+	type VoiceProfileDto,
+} from "./voice-profiles-management-routes.js";
+export {
+	handleVoiceSpeakerProfileRoutes,
+	type SpeakerProfileSummary,
+	setVoiceSpeakerProfileStore,
+} from "./voice-speaker-profile-routes.js";

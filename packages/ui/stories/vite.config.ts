@@ -73,7 +73,7 @@ export default defineConfig({
       "fast-redact": fastRedactShim,
       // The shared barrel re-exports a node-only package-root resolver
       // (utils/eliza-root.ts). The catalog never calls it, but its top-level
-      // `node:*` imports throw under Vite's dev externalization — stub them.
+      // `node:*` imports throw under Vite's dev externalization; alias to browser shims.
       "node:url": nodeBuiltinsShim,
       "node:fs/promises": nodeBuiltinsShim,
       "node:fs": nodeBuiltinsShim,

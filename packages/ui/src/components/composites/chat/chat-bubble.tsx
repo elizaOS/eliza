@@ -1,7 +1,10 @@
 import type * as React from "react";
 
 import { cn } from "../../../lib/utils";
-import { getChatSourceMeta, normalizeChatSourceKey } from "./chat-source";
+import {
+  getChatSourceMeta,
+  normalizeChatSourceKey,
+} from "./chat-source.helpers";
 
 export type ChatBubbleTone = "assistant" | "user";
 

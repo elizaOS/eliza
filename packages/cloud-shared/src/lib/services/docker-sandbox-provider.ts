@@ -8,6 +8,7 @@
  * Reference: eliza-cloud/backend/services/container-orchestrator.ts
  */
 
+import { createHash, createHmac } from "node:crypto";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import type { DockerNode } from "../../db/schemas/docker-nodes";
@@ -115,6 +116,13 @@ function resolveStewardContainerEnvUrl(): string {
 }
 
 const STEWARD_JWT_FILE = "/app/data/steward.jwt";
+
+export function resolveDockerSandboxImage(
+  dockerImage?: string,
+  operatorOverride = DOCKER_IMAGE_OVERRIDE,
+): string {
+  return dockerImage || operatorOverride || "ghcr.io/elizaos/eliza:latest";
+}
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
@@ -360,13 +368,32 @@ const DOCKER_CMD_TIMEOUT_MS = 60_000;
 const AUTOSCALED_NODE_READY_TIMEOUT_MS = 4 * 60 * 1000;
 const AUTOSCALED_NODE_READY_POLL_MS = 10_000;
 
-function getDockerHealthCmd(port: string): string {
+function getDockerHealthCmd(port: string, path = "/api/health"): string {
   if (!/^\d+$/.test(port)) {
     throw new Error(`[docker-sandbox] Invalid port "${port}": must be a numeric string.`);
   }
+  if (!/^\/[A-Za-z0-9._~/-]*$/.test(path)) {
+    throw new Error(`[docker-sandbox] Invalid health check path "${path}".`);
+  }
   // /api/health returns 200 or 401 (auth required) — both mean the server is up.
   // Use curl with -o /dev/null and check status code to accept either.
-  return `sh -lc 'STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${port}/api/health" 2>/dev/null); [ "$STATUS" = "200" ] || [ "$STATUS" = "401" ]'`;
+  return `sh -lc 'STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${port}${path}" 2>/dev/null); [ "$STATUS" = "200" ] || [ "$STATUS" = "401" ]'`;
+}
+
+export function resolveContainerPort(config: SandboxCreateConfig): string {
+  const requested =
+    typeof config.environmentVars.PORT === "string" && config.environmentVars.PORT.trim()
+      ? config.environmentVars.PORT.trim()
+      : typeof config.environmentVars.HTTP_PORT === "string" &&
+          config.environmentVars.HTTP_PORT.trim()
+        ? config.environmentVars.HTTP_PORT.trim()
+        : typeof config.container?.port === "number"
+          ? String(config.container.port)
+          : DEFAULT_AGENT_PORT;
+  if (!/^\d+$/.test(requested)) {
+    throw new Error(`[docker-sandbox] Invalid container port "${requested}".`);
+  }
+  return requested;
 }
 
 function extractStewardToken(raw: string): string {
@@ -430,6 +457,87 @@ function warnMissingStewardTenantApiKey(apiKey?: string) {
   );
 }
 
+function resolveStewardRequestSigningSecret(apiKey?: string): string | undefined {
+  const env = getCloudAwareEnv();
+  const explicit = env.STEWARD_REQUEST_SIGNING_SECRET?.trim();
+  if (explicit) {
+    return explicit;
+  }
+  const fromList = env.STEWARD_REQUEST_SIGNING_SECRETS?.split(",")
+    .map((secret) => secret.trim())
+    .find((secret) => secret.length > 0);
+  return fromList ?? apiKey?.trim() ?? undefined;
+}
+
+function resolveStewardRequestSigningKeyId(): string | undefined {
+  const keyId = getCloudAwareEnv().STEWARD_REQUEST_SIGNING_KEY_ID?.trim();
+  return keyId && keyId.length > 0 ? keyId : undefined;
+}
+
+function sha256TextHex(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function buildStewardCanonicalRequest(input: {
+  method: string;
+  path: string;
+  tenantId: string;
+  apiKey: string;
+  timestamp: string;
+  expiresAt: string;
+  idempotencyKey: string;
+  body: string;
+}): string {
+  return [
+    "steward-request-signature-v1",
+    input.method.toUpperCase(),
+    input.path,
+    input.tenantId,
+    sha256TextHex(""),
+    sha256TextHex(input.apiKey),
+    sha256TextHex(""),
+    sha256TextHex(""),
+    sha256TextHex(""),
+    sha256TextHex(""),
+    sha256TextHex(""),
+    input.timestamp,
+    input.expiresAt,
+    input.idempotencyKey,
+    sha256TextHex(input.body),
+  ].join("\n");
+}
+
+function buildStewardSignedHeaders(params: {
+  path: string;
+  body: string;
+  tenantId: string;
+  apiKey?: string;
+  signingSecret: string;
+}): Record<string, string> {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const expiresAt = (Number(timestamp) + 300).toString();
+  const idempotencyKey = `eliza-cloud-${crypto.randomUUID()}`;
+  const signingKeyId = resolveStewardRequestSigningKeyId();
+  const canonical = buildStewardCanonicalRequest({
+    method: "POST",
+    path: params.path,
+    tenantId: params.tenantId,
+    apiKey: params.apiKey ?? "",
+    timestamp,
+    expiresAt,
+    idempotencyKey,
+    body: params.body,
+  });
+  const signature = createHmac("sha256", params.signingSecret).update(canonical).digest("hex");
+  return {
+    "X-Steward-Request-Timestamp": timestamp,
+    "X-Steward-Request-Expires-At": expiresAt,
+    "Idempotency-Key": idempotencyKey,
+    "X-Steward-Signature": `v1=${signature}`,
+    ...(signingKeyId === undefined ? {} : { "X-Steward-Signing-Key-Id": signingKeyId }),
+  };
+}
+
 async function registerAgentWithSteward(
   ssh: DockerSSHClient,
   agentId: string,
@@ -438,6 +546,29 @@ async function registerAgentWithSteward(
   apiKey?: string,
 ): Promise<string> {
   warnMissingStewardTenantApiKey(apiKey);
+  const agentBody = JSON.stringify({ id: agentId, name: agentName });
+  const tokenBody = JSON.stringify({ expiresIn: "365d" });
+  const signingSecret = resolveStewardRequestSigningSecret(apiKey);
+  const agentSignedHeaders =
+    signingSecret === undefined
+      ? {}
+      : buildStewardSignedHeaders({
+          path: "/agents",
+          body: agentBody,
+          tenantId,
+          ...(apiKey === undefined ? {} : { apiKey }),
+          signingSecret,
+        });
+  const tokenSignedHeaders =
+    signingSecret === undefined
+      ? {}
+      : buildStewardSignedHeaders({
+          path: `/agents/${encodeURIComponent(agentId)}/token`,
+          body: tokenBody,
+          tenantId,
+          ...(apiKey === undefined ? {} : { apiKey }),
+          signingSecret,
+        });
 
   const script = `python3 - <<'PY'
 import json
@@ -450,17 +581,22 @@ api_key = ${JSON.stringify(apiKey ?? "")}
 tenant_id = ${JSON.stringify(tenantId)}
 agent_id = ${JSON.stringify(agentId)}
 agent_name = ${JSON.stringify(agentName)}
+agent_body = ${JSON.stringify(agentBody)}
+token_body = ${JSON.stringify(tokenBody)}
+agent_signed_headers = ${JSON.stringify(agentSignedHeaders)}
+token_signed_headers = ${JSON.stringify(tokenSignedHeaders)}
 
 
-def post(path, payload):
+def post(path, body_text, signed_headers):
     headers = {"Content-Type": "application/json", "User-Agent": "eliza-cloud-provisioner/1.0"}
     if tenant_id:
         headers["X-Steward-Tenant"] = tenant_id
     if api_key:
         headers["X-Steward-Key"] = api_key
+    headers.update(signed_headers)
     req = urllib.request.Request(
         f"{base_url}{path}",
-        data=json.dumps(payload).encode("utf-8"),
+        data=body_text.encode("utf-8"),
         headers=headers,
         method="POST",
     )
@@ -471,13 +607,13 @@ def post(path, payload):
         return error.code, error.read().decode("utf-8")
 
 
-status, body = post("/agents", {"id": agent_id, "name": agent_name})
+status, body = post("/agents", agent_body, agent_signed_headers)
 if status not in (200, 201, 202, 400, 409):
     print(body, file=sys.stderr)
     raise SystemExit(f"Steward agent registration failed with status {status}")
 # 400/409 = agent already exists, continue to token minting
 
-status, body = post(f"/agents/{agent_id}/token", {"expiresIn": "365d"})
+status, body = post(f"/agents/{agent_id}/token", token_body, token_signed_headers)
 if status not in (200, 201):
     print(body, file=sys.stderr)
     raise SystemExit(f"Steward token mint failed with status {status}")
@@ -571,13 +707,14 @@ export class DockerSandboxProvider implements SandboxProvider {
     const { agentId, agentName, environmentVars, organizationId, agentConfig, routeAgentId } =
       config;
 
-    // Resolve Docker image: operator env override > per-agent DB override > hardcoded default.
+    // Resolve Docker image: per-agent DB override > operator env override > hardcoded default.
     // Keep the fallback out of DOCKER_IMAGE_OVERRIDE so per-agent flavor/image
     // overrides are not accidentally shadowed by the generic Eliza default.
-    const resolvedImage =
-      DOCKER_IMAGE_OVERRIDE || config.dockerImage || "ghcr.io/elizaos/eliza:latest";
+    const resolvedImage = resolveDockerSandboxImage(config.dockerImage);
     const imagePlatform = containersEnv.defaultAgentImagePlatform();
     const platformFlags = dockerPlatformFlag(imagePlatform);
+    const containerPort = resolveContainerPort(config);
+    const healthCheckPath = config.container?.healthCheckPath ?? "/api/health";
 
     // 1. Input validation
     validateAgentName(agentName);
@@ -776,10 +913,10 @@ export class DockerSandboxProvider implements SandboxProvider {
       STEWARD_API_URL: stewardContainerUrl,
       STEWARD_AGENT_ID: agentId,
       // V2 image binds the eliza-api server to ELIZA_PORT, not PORT. Keep both
-      // aligned to DEFAULT_AGENT_PORT so the daemon's HTTP probe (which hits
+      // aligned to the requested app port so the daemon's HTTP probe (which hits
       // the host port mapped to container PORT) reaches the actual listener.
-      ELIZA_PORT: DEFAULT_AGENT_PORT,
-      PORT: DEFAULT_AGENT_PORT,
+      ELIZA_PORT: containerPort,
+      PORT: containerPort,
       BRIDGE_PORT: DEFAULT_BRIDGE_PORT,
       // Eliza server requires JWT_SECRET in production mode.
       // Generate a unique per-container secret if the caller didn't provide one.
@@ -933,11 +1070,14 @@ export class DockerSandboxProvider implements SandboxProvider {
         ...(requiresDockerHostGateway(stewardContainerUrl) || Object.keys(proxyEnv).length > 0
           ? ["--add-host host.docker.internal:host-gateway"]
           : []),
-        `--health-cmd ${shellQuote(getDockerHealthCmd(allEnv.PORT || DEFAULT_AGENT_PORT))}`,
+        `--health-cmd ${shellQuote(getDockerHealthCmd(allEnv.PORT || containerPort, healthCheckPath))}`,
         "--health-interval 10s",
         "--health-timeout 5s",
         "--health-start-period 15s",
         "--health-retries 6",
+        ...(config.container?.memoryMb
+          ? [`--memory ${shellQuote(`${Math.ceil(config.container.memoryMb)}m`)}`]
+          : []),
         ...(headscaleEnabled ? ["--cap-add=NET_ADMIN", "--device /dev/net/tun"] : []),
         `-v ${shellQuote(volumePath)}:/app/data`,
         `-v ${shellQuote(`${volumePath}/eliza`)}:/root/.eliza`,

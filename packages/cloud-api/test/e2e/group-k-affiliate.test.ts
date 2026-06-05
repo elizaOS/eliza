@@ -26,11 +26,6 @@ afterAll(async () => {
   }
 });
 
-// `/api/affiliate/create-character` is intentionally a 501 stub on Workers
-// while the R2-backed image upload path is being wired up. These tests
-// exist to enforce the migration when it lands; until then they would
-// fail against the live stub. Skip the auth + happy-path cases and keep
-// only the OPTIONS preflight check, which the stub still handles.
 describe("Group K — /api/affiliate/create-character", () => {
   test("OPTIONS returns CORS metadata", async () => {
     const res = await fetch(`${getBaseUrl()}/api/affiliate/create-character`, {
@@ -40,7 +35,7 @@ describe("Group K — /api/affiliate/create-character", () => {
     expect(res.headers.get("Access-Control-Allow-Methods")).toContain("POST");
   });
 
-  test.skip("POST rejects missing auth without returning the migration stub", async () => {
+  test("POST rejects missing auth without returning a migration fallback", async () => {
     const res = await api.post("/api/affiliate/create-character", {
       character: { name: "Missing Auth Affiliate Character" },
       affiliateId: "worker-e2e",
@@ -51,7 +46,7 @@ describe("Group K — /api/affiliate/create-character", () => {
     expect(body.details).toBeUndefined();
   });
 
-  test.skip("standard API key is forbidden without affiliate permission", async () => {
+  test("standard API key is forbidden without affiliate permission", async () => {
     const res = await api.post(
       "/api/affiliate/create-character",
       {
@@ -64,7 +59,7 @@ describe("Group K — /api/affiliate/create-character", () => {
     expect(res.status).not.toBe(501);
   });
 
-  test.skip("affiliate API key creates a real character", async () => {
+  test("affiliate API key creates a real character", async () => {
     const res = await api.post(
       "/api/affiliate/create-character",
       {

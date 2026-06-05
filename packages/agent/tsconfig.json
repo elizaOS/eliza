@@ -37,9 +37,7 @@
       "@elizaos/capacitor-contacts": [
         "../../plugins/plugin-native-contacts/src/index.ts"
       ],
-      "@elizaos/capacitor-*": [
-        "../../plugins/plugin-native-*/src/index.ts"
-      ],
+      "@elizaos/capacitor-*": ["../../plugins/plugin-native-*/src/index.ts"],
       "@elizaos/capacitor-llama": [
         "../../plugins/plugin-native-llama/src/index.ts"
       ],

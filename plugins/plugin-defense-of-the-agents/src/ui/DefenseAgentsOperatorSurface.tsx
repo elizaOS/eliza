@@ -10,8 +10,6 @@ import {
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
 
-const LANES = ["top", "mid", "bot"] as const;
-
 function readString(
   source: Record<string, unknown> | null,
   key: string,
@@ -98,6 +96,44 @@ function cleanDefenseMessage(message: string): string {
   return message;
 }
 
+function DefenseReadyCard({
+  icon,
+  label,
+  value,
+  tone = "cyan",
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  tone?: "cyan" | "emerald" | "amber" | "rose";
+}) {
+  const toneClass = {
+    amber: "border-amber-300/35 bg-amber-400/10 text-amber-700",
+    cyan: "border-cyan-300/35 bg-cyan-400/10 text-cyan-700",
+    emerald: "border-emerald-300/35 bg-emerald-400/10 text-emerald-700",
+    rose: "border-rose-300/35 bg-rose-400/10 text-rose-700",
+  }[tone];
+
+  return (
+    <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+      <div
+        aria-hidden
+        className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border text-lg ${toneClass}`}
+      >
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+          {label}
+        </div>
+        <div className="truncate text-sm font-semibold text-foreground">
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function collectRunEvents(
   run: AppRunSummary,
   telemetry: Record<string, unknown> | null,
@@ -182,7 +218,6 @@ export function DefenseAgentsOperatorSurface({
         )[0] ?? null,
     [appName, appRuns],
   );
-  const [draft, setDraft] = useState("");
   const [localEvents, setLocalEvents] = useState<GameOperatorEvent[]>([]);
   const [sendingCommand, setSendingCommand] = useState<string | null>(null);
 
@@ -199,7 +234,7 @@ export function DefenseAgentsOperatorSurface({
     .filter((prompt) => !/^auto[- ]?play/i.test(prompt));
 
   const sendCommand = useCallback(
-    async (content: string, clearDraftOnSuccess = false) => {
+    async (content: string) => {
       const trimmed = content.trim();
       if (!run?.runId || !trimmed || sendingCommand) return;
 
@@ -221,9 +256,6 @@ export function DefenseAgentsOperatorSurface({
           response.run?.session ?? response.session ?? null;
         if (response.run) {
           setState("appRuns", replaceRun(appRuns, response.run));
-        }
-        if (clearDraftOnSuccess) {
-          setDraft((current) => (current.trim() === trimmed ? "" : current));
         }
         if (persistedSession) {
           setLocalEvents([]);
@@ -268,11 +300,56 @@ export function DefenseAgentsOperatorSurface({
   if (!run) {
     return (
       <section
-        className={variant === "live" ? "p-3" : ""}
+        className={variant === "live" ? "p-3" : "p-4"}
         data-testid="defense-operator-empty"
       >
-        <div className="rounded-2xl border border-border/35 bg-card/74 p-4 text-xs text-muted-strong">
-          Launch Defense of the Agents to open game chat.
+        <div className="mx-auto flex max-w-3xl flex-col gap-3">
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/45 bg-card/82 px-4 py-3 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div
+                aria-hidden
+                className="grid h-10 w-10 place-items-center rounded-xl bg-slate-950 text-xl text-white shadow-sm"
+              >
+                ♜
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-foreground">
+                  Defense of the Agents
+                </div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  tactical surface ready
+                </div>
+              </div>
+            </div>
+            <div className="h-3 w-3 rounded-full bg-amber-400 shadow-[0_0_0_4px_rgba(251,191,36,0.18)]" />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3">
+            <DefenseReadyCard
+              icon="🛡"
+              label="Hero"
+              value="Deploy lane on launch"
+              tone="emerald"
+            />
+            <DefenseReadyCard
+              icon="⚔"
+              label="Tactics"
+              value="Move · recall · reinforce"
+              tone="rose"
+            />
+            <DefenseReadyCard
+              icon="▶"
+              label="Autoplay"
+              value="Toggle after session starts"
+              tone="amber"
+            />
+            <DefenseReadyCard
+              icon="↗"
+              label="Path"
+              value="/defense-of-the-agents"
+              tone="cyan"
+            />
+          </div>
         </div>
       </section>
     );
@@ -292,35 +369,32 @@ export function DefenseAgentsOperatorSurface({
       command: "Recall to base",
       testId: "defense-command-recall",
     },
-    ...LANES.map((lane) => ({
-      id: `lane-${lane}`,
-      label: heroLane ? `Move ${lane}` : `Deploy ${lane}`,
+    {
+      id: `lane-${heroLane ?? "mid"}`,
+      label: heroLane ? `Move ${heroLane}` : "Deploy mid",
       command: heroLane
-        ? `Move to ${lane} lane`
-        : `Deploy as ${heroClass} in ${lane} lane`,
-      active: heroLane === lane,
-      testId: `defense-command-lane-${lane}`,
-    })),
+        ? `Move to ${heroLane} lane`
+        : `Deploy as ${heroClass} in mid lane`,
+      active: Boolean(heroLane),
+      testId: `defense-command-lane-${heroLane ?? "mid"}`,
+    },
   ];
 
-  const suggestedActions = tacticalPrompts.map((prompt) => ({
+  const suggestedActions = tacticalPrompts.slice(0, 2).map((prompt) => ({
     id: prompt,
     label: prompt,
     command: prompt,
     testId: "defense-suggested-command",
   }));
 
-  const events = collectRunEvents(run, telemetry, localEvents);
+  const events = collectRunEvents(run, telemetry, localEvents).slice(0, 3);
 
   return (
     <>
       <DefenseOperatorRegistrar
         primaryActions={primaryActions}
         suggestedActions={suggestedActions}
-        getDraft={() => draft}
-        onDraftChange={setDraft}
         onCommand={(command) => void sendCommand(command)}
-        onSendDraft={() => void sendCommand(draft, true)}
       />
       <GameOperatorShell
         surfaceTestId={
@@ -331,9 +405,7 @@ export function DefenseAgentsOperatorSurface({
         title="Defense command"
         statusLabel={statusLabel(run.status)}
         statusTone={statusTone(run.status)}
-        objective={
-          run.session?.goalLabel ?? run.session?.summary ?? run.summary
-        }
+        objective={run.session?.goalLabel ?? run.summary}
         detailItems={[
           { label: "Hero", value: formatHeroLine(telemetry) },
           { label: "Mode", value: autoPlay ? "Autoplay" : "Manual" },
@@ -341,17 +413,11 @@ export function DefenseAgentsOperatorSurface({
         primaryActions={primaryActions}
         suggestedActions={suggestedActions}
         events={events}
-        emptyEventsLabel="Commands and match events will appear here. Start with a lane move, recall, or a strategy note."
-        draft={draft}
-        inputPlaceholder="Command the hero..."
+        emptyEventsLabel="No match events yet."
         canSend={canSend}
         sending={Boolean(sendingCommand)}
-        chatInputTestId="defense-chat-input"
-        chatSendTestId="defense-chat-send"
         noticeTestId="defense-command-notice"
         variant={variant}
-        onDraftChange={setDraft}
-        onSendDraft={() => void sendCommand(draft, true)}
         onCommand={(command) => void sendCommand(command)}
       />
     </>
@@ -409,62 +475,20 @@ function DefenseSuggestedActionRegistrar({
   return null;
 }
 
-function DefenseDraftInputRegistrar({
-  getDraft,
-  onDraftChange,
-}: {
-  getDraft: () => string;
-  onDraftChange: (value: string) => void;
-}) {
-  useAgentElement<HTMLInputElement>({
-    id: "chat-command-input",
-    role: "text-input",
-    label: "Defense command",
-    group: "defense-chat",
-    description: "Type a command for the hero, then send it",
-    getValue: getDraft,
-    onFill: onDraftChange,
-  });
-  return null;
-}
-
-function DefenseSendDraftRegistrar({
-  onSendDraft,
-}: {
-  onSendDraft: () => void;
-}) {
-  useAgentElement<HTMLButtonElement>({
-    id: "chat-send",
-    role: "button",
-    label: "Send command",
-    group: "defense-chat",
-    description: "Send the typed command to the hero",
-    onActivate: onSendDraft,
-  });
-  return null;
-}
-
 /**
  * Registers the operator surface's interactive controls with the agent surface.
  * GameOperatorShell renders these controls and does not forward refs, so each is
  * registered as a callback-driven element wired to the same handlers the shell
- * invokes (primary lane/recall/autoplay commands, suggested commands, the chat
- * input, and the send button).
+ * invokes (primary lane/recall/autoplay commands and suggested commands).
  */
 function DefenseOperatorRegistrar({
   primaryActions,
   suggestedActions,
-  getDraft,
-  onDraftChange,
   onCommand,
-  onSendDraft,
 }: {
   primaryActions: GameOperatorAction[];
   suggestedActions: GameOperatorAction[];
-  getDraft: () => string;
-  onDraftChange: (value: string) => void;
   onCommand: (command: string) => void;
-  onSendDraft: () => void;
 }) {
   return (
     <>
@@ -483,11 +507,6 @@ function DefenseOperatorRegistrar({
           onCommand={onCommand}
         />
       ))}
-      <DefenseDraftInputRegistrar
-        getDraft={getDraft}
-        onDraftChange={onDraftChange}
-      />
-      <DefenseSendDraftRegistrar onSendDraft={onSendDraft} />
     </>
   );
 }
@@ -750,35 +769,3 @@ const tuiInputStyle: CSSProperties = {
   padding: "8px",
   fontFamily: "inherit",
 };
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-defense-state") {
-    return {
-      viewType: "tui",
-      appName: "@elizaos/plugin-defense-of-the-agents",
-      lanes: [...LANES],
-      primaryCommands: [
-        "review strategy",
-        "move to top",
-        "move to mid",
-        "move to bot",
-        "recall",
-      ],
-    };
-  }
-  if (capability === "terminal-defense-command") {
-    const runId = typeof params?.runId === "string" ? params.runId.trim() : "";
-    const content =
-      typeof params?.content === "string" ? params.content.trim() : "";
-    if (!runId) throw new Error("runId is required");
-    if (!content) throw new Error("content is required");
-    return {
-      viewType: "tui",
-      command: await client.sendAppRunMessage(runId, content),
-    };
-  }
-  throw new Error(`Unsupported Defense TUI capability: ${capability}`);
-}

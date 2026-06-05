@@ -4,7 +4,7 @@ A Capacitor plugin that reads and writes Apple Calendar events through EventKit,
 
 ## Purpose / Role
 
-This package exposes a `AppleCalendar` Capacitor plugin object that Eliza agents embedded in an iOS or macOS Electrobun application can call to interact with the device's native calendar store via EventKit. On web/browser targets the plugin stubs every method with a graceful `not_supported` error — no calendar access is possible outside the native runtime. The package is **not** an elizaOS `Plugin` object (no actions/providers/services); it is a Capacitor native-bridge library imported by whichever elizaOS plugin or service layer needs calendar access.
+This package exposes a `AppleCalendar` Capacitor plugin object that Eliza agents embedded in an iOS or macOS Electrobun application can call to interact with the device's native calendar store via EventKit. On web/browser targets every method returns a graceful `not_supported` result — no calendar access is possible outside the native runtime. The package is **not** an elizaOS `Plugin` object (no actions/providers/services); it is a Capacitor native-bridge library imported by whichever elizaOS plugin or service layer needs calendar access.
 
 ## Plugin Surface
 
@@ -81,5 +81,5 @@ None. This package reads no environment variables and has no runtime configurati
 - **iOS 17+ permission model.** `requestFullAccessToEvents` is used on iOS 17+; older devices fall back to `requestAccess(to:)`. `writeOnly` authorization maps to `restricted`, not `granted`.
 - **Dates must be ISO 8601.** The Swift layer accepts both fractional-seconds and whole-seconds variants; always pass UTC ISO strings from TypeScript.
 - **`calendarId = "primary"` or `""` resolves to `defaultCalendarForNewEvents`** in the Swift layer.
-- **Build output:** `dist/plugin.cjs.js` (CJS), `dist/esm/index.js` (ESM), `dist/plugin.js` (IIFE for unpkg). The `bun`/`development` export condition resolves directly to `src/index.ts` to skip the build step in dev.
+- **Build output:** `dist/plugin.cjs.js` (CJS), `dist/esm/index.js` (ESM), `dist/plugin.js` (IIFE for unpkg). The `bun`/`development` export condition resolves directly to `src/index.ts` for source-mode development.
 - See the root `AGENTS.md` for repo-wide architecture rules, naming conventions, and logger requirements.

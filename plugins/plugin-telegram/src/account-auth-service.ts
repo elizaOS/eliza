@@ -676,7 +676,7 @@ export class TelegramAccountAuthSession
 
   private async beginTelegramLogin(): Promise<void> {
     if (!this.credentials || !this.snapshot.phone) {
-      throw new Error("Telegram login credentials are incomplete");
+      throw new Error("Telegram login credentials are partial");
     }
 
     const session = new StringSession(loadTelegramAccountSessionString());

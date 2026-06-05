@@ -70,6 +70,8 @@ export const ConversationMetadataSchema = z
     pageId: z.string().optional(),
     sourceConversationId: z.string().optional(),
     terminalBridgeConversationId: z.string().optional(),
+    waifuChatOwnerWallet: z.string().optional(),
+    waifuChatRole: z.enum(["admin", "user", "guest"]).optional(),
   })
   .strict();
 

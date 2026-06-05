@@ -89,6 +89,7 @@ function ensureGeneratedKeywordData() {
 function parseArgs(argv) {
   const options = {
     reportDir: DEFAULT_REPORT_DIR,
+    failOnMissing: true,
     json: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -100,6 +101,10 @@ function parseArgs(argv) {
       i += 1;
     } else if (arg === "--json") {
       options.json = true;
+    } else if (arg === "--fail-on-missing") {
+      options.failOnMissing = true;
+    } else if (arg === "--allow-missing") {
+      options.failOnMissing = false;
     } else {
       throw new Error(`unknown argument: ${arg}`);
     }
@@ -108,16 +113,12 @@ function parseArgs(argv) {
 }
 
 function runScenarioList(root, globs = [], extraEnv = {}) {
-  const completed = spawnSync(
-    "bun",
-    [SCENARIO_CLI, "list", root, ...globs],
-    {
-      cwd: REPO_ROOT,
-      env: scenarioListEnv(extraEnv),
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
+  const completed = spawnSync("bun", [SCENARIO_CLI, "list", root, ...globs], {
+    cwd: REPO_ROOT,
+    env: scenarioListEnv(extraEnv),
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   if (completed.status !== 0) {
     throw new Error(
       `scenario list failed for ${root}: ${completed.stderr || completed.stdout}`,
@@ -130,11 +131,23 @@ function runScenarioList(root, globs = [], extraEnv = {}) {
 }
 
 function workflowScenarioGlobs() {
-  const workflowPath = path.join(REPO_ROOT, ".github", "workflows", "scenario-matrix.yml");
+  const workflowPath = path.join(
+    REPO_ROOT,
+    ".github",
+    "workflows",
+    "scenario-matrix.yml",
+  );
   const text = readFileSync(workflowPath, "utf8");
-  const matches = [...text.matchAll(/globs:\s*"([^"]+)"/g)].map((match) => match[1]);
+  const matches = [...text.matchAll(/globs:\s*"([^"]+)"/g)].map(
+    (match) => match[1],
+  );
   return matches
-    .flatMap((value) => value.split(/\s+/).map((item) => item.trim()).filter(Boolean))
+    .flatMap((value) =>
+      value
+        .split(/\s+/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+    )
     .filter((item) => item !== "**/*.scenario.ts");
 }
 
@@ -175,7 +188,9 @@ function summarizeScenarioMatrix(filePath) {
         ? matrix.completedAtIso
         : undefined,
     totalCount:
-      typeof matrix.totalCount === "number" ? matrix.totalCount : scenarios.length,
+      typeof matrix.totalCount === "number"
+        ? matrix.totalCount
+        : scenarios.length,
     passedCount:
       typeof matrix.passedCount === "number"
         ? matrix.passedCount
@@ -219,8 +234,8 @@ function existingScenarioRunArtifacts(reportDir) {
       cwd: REPO_ROOT,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
-    }).stdout
-      .split(/\r?\n/)
+    })
+      .stdout.split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean);
   } catch {
@@ -251,7 +266,9 @@ function existingScenarioRunArtifacts(reportDir) {
       byRunDir.set(runDir, item);
     }
   }
-  return [...byRunDir.values()].sort((a, b) => a.runDir.localeCompare(b.runDir));
+  return [...byRunDir.values()].sort((a, b) =>
+    a.runDir.localeCompare(b.runDir),
+  );
 }
 
 function scenarioCatalogHtml() {
@@ -451,34 +468,55 @@ function renderMarkdown(summary, runArtifacts = []) {
         typeof artifact.totalCount === "number"
           ? `${artifact.passedCount ?? 0}/${artifact.totalCount} passed, ${artifact.failedCount ?? 0} failed`
           : "matrix summary unavailable";
-      const provider = artifact.providerName ? `, provider=${artifact.providerName}` : "";
-      const viewer = artifact.viewerIndex ? `, viewer=${artifact.viewerIndex}` : "";
+      const provider = artifact.providerName
+        ? `, provider=${artifact.providerName}`
+        : "";
+      const viewer = artifact.viewerIndex
+        ? `, viewer=${artifact.viewerIndex}`
+        : "";
       lines.push(`- ${artifact.runDir}: ${result}${provider}${viewer}`);
     }
   }
   lines.push("");
-  lines.push("Full lists are in this directory as `.txt` files; exact missing IDs are in `workflow-coverage.json`.");
+  lines.push(
+    "Full lists are in this directory as `.txt` files; exact missing IDs are in `workflow-coverage.json`.",
+  );
   lines.push("");
   return lines.join("\n");
 }
 
 function main() {
-const options = parseArgs(process.argv.slice(2));
-ensureGeneratedKeywordData();
-mkdirSync(options.reportDir, { recursive: true });
+  const options = parseArgs(process.argv.slice(2));
+  ensureGeneratedKeywordData();
+  mkdirSync(options.reportDir, { recursive: true });
 
   const defaultIds = runScenarioList(DEFAULT_SCENARIO_ROOT);
   const includePendingIds = runScenarioList(DEFAULT_SCENARIO_ROOT, [], {
     SCENARIO_INCLUDE_PENDING: "1",
   });
-  const pluginLifeopsIds = runScenarioList("plugins/plugin-lifeops/test/scenarios");
-  const pluginAppControlIds = runScenarioList("plugins/plugin-app-control/test/scenarios");
-  const scenarioRunnerIds = runScenarioList("packages/scenario-runner/test/scenarios");
+  const pluginLifeopsIds = runScenarioList(
+    "plugins/plugin-lifeops/test/scenarios",
+  );
+  const pluginAppControlIds = runScenarioList(
+    "plugins/plugin-app-control/test/scenarios",
+  );
+  const scenarioRunnerIds = runScenarioList(
+    "packages/scenario-runner/test/scenarios",
+  );
   const allScenarioRows = [
     ...scopedScenarioRows("packages/test/scenarios", defaultIds),
-    ...scopedScenarioRows("plugins/plugin-lifeops/test/scenarios", pluginLifeopsIds),
-    ...scopedScenarioRows("plugins/plugin-app-control/test/scenarios", pluginAppControlIds),
-    ...scopedScenarioRows("packages/scenario-runner/test/scenarios", scenarioRunnerIds),
+    ...scopedScenarioRows(
+      "plugins/plugin-lifeops/test/scenarios",
+      pluginLifeopsIds,
+    ),
+    ...scopedScenarioRows(
+      "plugins/plugin-app-control/test/scenarios",
+      pluginAppControlIds,
+    ),
+    ...scopedScenarioRows(
+      "packages/scenario-runner/test/scenarios",
+      scenarioRunnerIds,
+    ),
   ].sort();
 
   const covered = new Set();
@@ -507,7 +545,11 @@ mkdirSync(options.reportDir, { recursive: true });
   };
 
   writeList(options.reportDir, "packages-test-default.txt", defaultIds);
-  writeList(options.reportDir, "packages-test-include-pending.txt", includePendingIds);
+  writeList(
+    options.reportDir,
+    "packages-test-include-pending.txt",
+    includePendingIds,
+  );
   writeList(options.reportDir, "plugin-lifeops.txt", pluginLifeopsIds);
   writeList(options.reportDir, "plugin-app-control.txt", pluginAppControlIds);
   writeList(options.reportDir, "scenario-runner-test.txt", scenarioRunnerIds);
@@ -537,10 +579,13 @@ mkdirSync(options.reportDir, { recursive: true });
   const viewer = writeCatalogViewer(options.reportDir, payload);
   writeFileSync(
     path.join(options.reportDir, "README.md"),
-    renderMarkdown({
-      ...summary,
-      viewerIndex: viewer.indexPath,
-    }, runArtifacts),
+    renderMarkdown(
+      {
+        ...summary,
+        viewerIndex: viewer.indexPath,
+      },
+      runArtifacts,
+    ),
     "utf8",
   );
 
@@ -551,7 +596,7 @@ mkdirSync(options.reportDir, { recursive: true });
       `scenario workflow coverage ${summary.coveredDefaultCount}/${summary.defaultScenarioCount}; missing ${summary.missingDefaultIds.length}\n`,
     );
   }
-  return summary.missingDefaultIds.length === 0 ? 0 : 1;
+  return options.failOnMissing && summary.missingDefaultIds.length > 0 ? 1 : 0;
 }
 
 try {

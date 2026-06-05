@@ -9,15 +9,13 @@ import {
   STATIC_TEXT_CATALOG_MODELS,
 } from "../models";
 import {
-  getOpenRouterProvider,
+  getBitRouterProvider,
+  hasBitRouterProviderConfigured,
   hasGroqProviderConfigured,
-  hasOpenRouterProviderConfigured,
 } from "../providers";
-import { expandOpenRouterModelIdCandidates } from "../providers/model-id-translation";
+import { expandBitRouterModelIdCandidates } from "../providers/model-id-translation";
 import type { OpenAIModelsResponse } from "../providers/types";
 import { logger } from "../utils/logger";
-
-const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models?output_modalities=all";
 
 interface SWRCachedValue<T> {
   data: T;
@@ -35,36 +33,34 @@ function buildSWRValue<T>(data: T): SWRCachedValue<T> {
   };
 }
 
-async function fetchOpenRouterModelCatalog(): Promise<CatalogModel[]> {
+async function fetchBitRouterModelCatalog(): Promise<CatalogModel[]> {
   try {
-    const response = hasOpenRouterProviderConfigured()
-      ? await getOpenRouterProvider().listModels()
-      : await fetch(OPENROUTER_MODELS_URL, {
-          headers: {
-            Accept: "application/json",
-          },
-        });
+    if (!hasBitRouterProviderConfigured()) {
+      return [];
+    }
+
+    const response = await getBitRouterProvider().listModels();
     const data = (await response.json()) as OpenAIModelsResponse;
 
     if (!Array.isArray(data.data)) {
-      logger.warn("[Model Catalog] OpenRouter returned an invalid model catalog");
+      logger.warn("[Model Catalog] BitRouter returned an invalid model catalog");
       return [];
     }
 
     return data.data;
   } catch (error) {
-    logger.warn("[Model Catalog] Failed to fetch OpenRouter model catalog", {
+    logger.warn("[Model Catalog] Failed to fetch BitRouter model catalog", {
       error,
     });
     return [];
   }
 }
 
-export async function getCachedOpenRouterModelCatalog(): Promise<CatalogModel[]> {
+export async function getCachedBitRouterModelCatalog(): Promise<CatalogModel[]> {
   const cached = await cache.getWithSWR<CatalogModel[]>(
-    CacheKeys.models.openrouterCatalog(),
+    CacheKeys.models.bitrouterCatalog(),
     CacheStaleTTL.models.catalog,
-    fetchOpenRouterModelCatalog,
+    fetchBitRouterModelCatalog,
     CacheTTL.models.catalog,
   );
 
@@ -72,14 +68,14 @@ export async function getCachedOpenRouterModelCatalog(): Promise<CatalogModel[]>
 }
 
 export function hasModelCatalogProviderConfigured(): boolean {
-  return hasOpenRouterProviderConfigured() || hasGroqProviderConfigured();
+  return hasBitRouterProviderConfigured() || hasGroqProviderConfigured();
 }
 
-export async function refreshOpenRouterModelCatalog(): Promise<CatalogModel[]> {
-  const models = await fetchOpenRouterModelCatalog();
+export async function refreshBitRouterModelCatalog(): Promise<CatalogModel[]> {
+  const models = await fetchBitRouterModelCatalog();
 
   await cache.set(
-    CacheKeys.models.openrouterCatalog(),
+    CacheKeys.models.bitrouterCatalog(),
     buildSWRValue(models),
     CacheTTL.models.catalog,
   );
@@ -88,8 +84,8 @@ export async function refreshOpenRouterModelCatalog(): Promise<CatalogModel[]> {
 }
 
 export async function getCachedMergedModelCatalog(): Promise<CatalogModel[]> {
-  const openRouterModels = await getCachedOpenRouterModelCatalog();
-  let models = mergeCatalogModels(openRouterModels, STATIC_TEXT_CATALOG_MODELS);
+  const bitRouterModels = await getCachedBitRouterModelCatalog();
+  let models = mergeCatalogModels(bitRouterModels, STATIC_TEXT_CATALOG_MODELS);
 
   if (hasGroqProviderConfigured()) {
     models = mergeCatalogModels(models, GROQ_NATIVE_MODELS);
@@ -98,20 +94,20 @@ export async function getCachedMergedModelCatalog(): Promise<CatalogModel[]> {
   return models;
 }
 
-export function findOpenRouterCatalogModelById(
+export function findBitRouterCatalogModelById(
   models: readonly CatalogModel[],
   modelId: string,
 ): CatalogModel | null {
-  for (const candidate of expandOpenRouterModelIdCandidates(modelId)) {
+  for (const candidate of expandBitRouterModelIdCandidates(modelId)) {
     const found = models.find((model) => model.id === candidate);
     if (found) return found;
   }
   return null;
 }
 
-export async function getCachedOpenRouterModelById(modelId: string): Promise<CatalogModel | null> {
-  const openRouterModels = await getCachedOpenRouterModelCatalog();
-  return findOpenRouterCatalogModelById(openRouterModels, modelId);
+export async function getCachedBitRouterModelById(modelId: string): Promise<CatalogModel | null> {
+  const bitRouterModels = await getCachedBitRouterModelCatalog();
+  return findBitRouterCatalogModelById(bitRouterModels, modelId);
 }
 
 export async function getCachedGatewayModelById(modelId: string): Promise<CatalogModel | null> {
@@ -121,5 +117,5 @@ export async function getCachedGatewayModelById(modelId: string): Promise<Catalo
     return getGroqCatalogModel(modelId);
   }
 
-  return findOpenRouterCatalogModelById(models, modelId);
+  return findBitRouterCatalogModelById(models, modelId);
 }

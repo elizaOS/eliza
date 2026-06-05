@@ -62,7 +62,7 @@ function fakeScene(): Scene {
   };
 }
 
-function fakeService(): ComputerUseService {
+function fixtureService(): ComputerUseService {
   return {
     getCurrentScene: () => fakeScene(),
     refreshScene: async () => fakeScene(),
@@ -77,16 +77,16 @@ function fakeService(): ComputerUseService {
   } as unknown as ComputerUseService;
 }
 
-describe("Computer-use agent — real Linux end-to-end with fake VLM", () => {
+describe("Computer-use agent — real Linux end-to-end with fixture VLM", () => {
   it("captures live screen frames, walks wait→finish, terminates cleanly", async () => {
-    // Try a real capture once. If the host has no screen tools we skip,
+    // Try a real capture once. If the host has no screen tools this is unavailable,
     // since the env is the constraint, not the cascade logic.
     let captures: DisplayCapture[] = [];
     try {
       captures = await captureAllDisplays();
     } catch (err) {
       console.warn(
-        `[computer-use-agent.real] live capture failed (${String(err)}); skipping real-screen E2E`,
+        `[computer-use-agent.real] live capture failed (${String(err)}); real-screen E2E unavailable`,
       );
       return;
     }
@@ -103,14 +103,14 @@ describe("Computer-use agent — real Linux end-to-end with fake VLM", () => {
         if (step === 1) {
           return JSON.stringify({
             scene_summary: "screen captured",
-            target_display_id: captures[0]!.display.id,
+            target_display_id: captures[0]?.display.id,
             roi: [],
             proposed_action: { kind: "wait", rationale: "wait one tick" },
           });
         }
         return JSON.stringify({
           scene_summary: "done",
-          target_display_id: captures[0]!.display.id,
+          target_display_id: captures[0]?.display.id,
           roi: [],
           proposed_action: { kind: "finish", rationale: "goal reached" },
         });
@@ -120,7 +120,7 @@ describe("Computer-use agent — real Linux end-to-end with fake VLM", () => {
     const report: ComputerUseAgentReport = await runComputerUseAgentLoop(
       null,
       { goal: "wait then finish", maxSteps: 5 },
-      fakeService(),
+      fixtureService(),
       { brain, captureAll: async () => captures },
     );
     expect(report.reason).toBe("finish");

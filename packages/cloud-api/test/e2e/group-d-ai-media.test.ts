@@ -71,7 +71,7 @@ beforeAll(async () => {
 describe("Group D — /api/elevenlabs/stt", () => {
   test("auth gate: missing credentials → 401", async () => {
     if (!serverReachable) return;
-    const res = await api.post("/api/elevenlabs/stt", { audio: "stub" });
+    const res = await api.post("/api/elevenlabs/stt", { audio: "test-audio" });
     expect(res.status).toBe(401);
   });
 

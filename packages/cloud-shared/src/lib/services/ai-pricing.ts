@@ -8,6 +8,8 @@ export {
 } from "./ai-pricing/candidate-selection";
 export {
   buildDimensionKey,
+  canonicalModelId,
+  inferProviderFromCanonicalModel,
   normalizePricingDimensions,
   providerForPricingCandidate,
 } from "./ai-pricing/dimensions";
@@ -23,7 +25,7 @@ export {
   listPersistedPricingEntries,
   listRecentPricingRefreshRuns,
 } from "./ai-pricing/lookup";
-export { buildOpenRouterPreparedEntries } from "./ai-pricing/providers/openrouter";
+export { buildBitRouterPreparedEntries } from "./ai-pricing/providers/bitrouter";
 export { refreshPricingCatalog } from "./ai-pricing/refresh";
 export { stripVersionedSnapshotSuffix } from "./ai-pricing/suffix-stripping";
 export type { FlatOperationCost, TokenCostBreakdown } from "./ai-pricing/types";

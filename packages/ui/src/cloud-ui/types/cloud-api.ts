@@ -371,6 +371,11 @@ export type AgentSandboxStatus =
   | "error";
 
 export type AgentDatabaseStatus = "none" | "provisioning" | "ready" | "error";
+export type AgentExecutionTier =
+  | "shared"
+  | "dedicated-lazy"
+  | "dedicated-always"
+  | "custom";
 
 export interface AgentListItemDto {
   id: string;
@@ -386,6 +391,8 @@ export interface AgentListItemDto {
   token_chain: string | null;
   token_name: string | null;
   token_ticker: string | null;
+  dockerImage: string | null;
+  executionTier: AgentExecutionTier;
 }
 
 export interface AgentAdminDetailsDto {

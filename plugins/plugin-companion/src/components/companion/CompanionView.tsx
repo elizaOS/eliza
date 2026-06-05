@@ -1,194 +1,146 @@
-// Static import: CharacterEditor is statically re-exported by app-core's
-// browser entry, so the previous lazy() was eagerly merged back into the
-// main chunk. Drop the wrapper to silence the dynamic↔static collision
-// warning and remove the unnecessary Suspense boundary overhead.
-
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { CharacterEditor } from "@elizaos/ui/components";
-import {
-  dispatchAppEmoteEvent,
-  dispatchAppEvent,
-  STOP_EMOTE_EVENT,
-} from "@elizaos/ui/events";
 import { useRenderGuard } from "@elizaos/ui/hooks";
 import { useApp } from "@elizaos/ui/state";
-import {
-  type CSSProperties,
-  memo,
-  type ReactNode,
-  Suspense,
-  useCallback,
-  useMemo,
-  useState,
-} from "react";
-import {
-  AGENT_EMOTE_CATALOG,
-  EMOTE_CATALOG,
-  type EmoteCategory,
-  getEmote,
-} from "../../emotes/catalog";
-import { CompanionHeader, type CompanionShellView } from "./CompanionHeader";
+import { type CSSProperties, memo, type ReactNode } from "react";
+import { AGENT_EMOTE_CATALOG, EMOTE_CATALOG } from "../../emotes/catalog";
 import { CompanionSceneHost } from "./CompanionSceneHost";
-import { CompanionSettingsPanel } from "./CompanionSettingsPanel";
+import { countByCategory } from "./CompanionView.helpers";
+import { useCompanionSceneStatus } from "./companion-scene-status-context";
 import { EmotePicker } from "./EmotePicker";
-import { InferenceCloudAlertButton } from "./InferenceCloudAlertButton";
 import { resolveCompanionInferenceNotice } from "./resolve-companion-inference-notice";
 
 /**
- * Inner overlay that subscribes to useApp() for frequently-changing data
- * (conversationMessages, chatLastUsage, etc.). Extracted so that
- * CompanionView itself doesn't subscribe — keeping the children prop
- * passed to CompanionSceneHost referentially stable and avoiding
- * cascading re-renders into the 3D scene.
+ * Inner overlay rendered on top of the avatar scene. The companion now shows
+ * just the avatar — no header / nav bar — so this only hosts the emote picker
+ * overlay. Chat/voice happen in the global floating pill that floats over every
+ * view; character + settings live in the main app's own tabs.
  */
 const CompanionViewOverlay = memo(function CompanionViewOverlay() {
   useRenderGuard("CompanionView");
-  const {
-    uiLanguage,
-    setUiLanguage,
-    uiTheme,
-    setUiTheme,
-    chatAgentVoiceMuted,
-    chatLastUsage,
-    conversationMessages,
-    elizaCloudAuthRejected,
-    elizaCloudConnected,
-    elizaCloudCreditsError,
-    elizaCloudEnabled,
-    emotePickerOpen,
-    openEmotePicker,
-    closeEmotePicker,
-    handleNewConversation,
-    navigation,
-    setState,
-    setTab,
-    t,
-  } = useApp();
-
-  const [companionView, setCompanionView] =
-    useState<CompanionShellView>("companion");
-
-  const handleExitToDesktop = useCallback(() => {
-    setState("activeOverlayApp", null);
-    setTab("chat");
-  }, [setState, setTab]);
-
-  const handleSwitchToCharacter = useCallback(() => {
-    setCompanionView("character");
-  }, []);
-
-  const handleOpenSettings = useCallback(() => {
-    setCompanionView("settings");
-  }, []);
-
-  const handleSwitchToCompanion = useCallback(() => {
-    setCompanionView("companion");
-  }, []);
-
-  const handleToggleEmotePicker = useCallback(() => {
-    if (emotePickerOpen) {
-      closeEmotePicker();
-      return;
-    }
-    openEmotePicker();
-  }, [closeEmotePicker, emotePickerOpen, openEmotePicker]);
-
-  const hasInterruptedAssistant = useMemo(
-    () =>
-      conversationMessages.some((m) => m.role === "assistant" && m.interrupted),
-    [conversationMessages],
-  );
-
-  const inferenceNotice = useMemo(
-    () =>
-      resolveCompanionInferenceNotice({
-        elizaCloudConnected,
-        elizaCloudAuthRejected,
-        elizaCloudCreditsError,
-        elizaCloudEnabled,
-        chatLastUsageModel: chatLastUsage?.model,
-        hasInterruptedAssistant,
-        t,
-      }),
-    [
-      chatLastUsage?.model,
-      elizaCloudAuthRejected,
-      elizaCloudConnected,
-      elizaCloudCreditsError,
-      elizaCloudEnabled,
-      hasInterruptedAssistant,
-      t,
-    ],
-  );
-
-  const handleInferenceAlertClick = useCallback(() => {
-    if (!inferenceNotice) return;
-    setState("activeOverlayApp", null);
-    navigation.scheduleAfterTabCommit(() => {
-      setTab("settings");
-      if (inferenceNotice.kind === "cloud") {
-        setState("cloudDashboardView", "billing");
-      }
-    });
-  }, [inferenceNotice, navigation, setState, setTab]);
-
-  const companionHeaderRightExtras = (
-    <>
-      {inferenceNotice ? (
-        <InferenceCloudAlertButton
-          notice={inferenceNotice}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={handleInferenceAlertClick}
-        />
-      ) : null}
-    </>
-  );
+  const emoteCategories = countByCategory();
+  const categoryCount = Object.keys(emoteCategories).length;
+  const { avatarReady } = useCompanionSceneStatus();
 
   return (
-    <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
-      <div>
-        <CompanionHeader
-          activeView={companionView}
-          onExitToDesktop={handleExitToDesktop}
-          onExitToCharacter={handleSwitchToCharacter}
-          onOpenSettings={handleOpenSettings}
-          onSwitchToCompanion={handleSwitchToCompanion}
-          uiLanguage={uiLanguage}
-          setUiLanguage={setUiLanguage}
-          uiTheme={uiTheme}
-          setUiTheme={setUiTheme}
-          t={t}
-          chatAgentVoiceMuted={chatAgentVoiceMuted}
-          onToggleVoiceMute={() =>
-            setState("chatAgentVoiceMuted", !chatAgentVoiceMuted)
-          }
-          onNewChat={() => void handleNewConversation()}
-          onToggleEmotePicker={handleToggleEmotePicker}
-          rightExtras={companionHeaderRightExtras}
-        />
-      </div>
-
-      {/* In-view chat removed — the global floating pill is the only chat
-          surface. The companion view shows the avatar; chat/voice happen in
-          the pill that floats on top of every view. */}
-
-      {companionView === "character" && (
-        <Suspense fallback={null}>
-          <CharacterEditor sceneOverlay />
-        </Suspense>
-      )}
-
-      {companionView === "settings" && <CompanionSettingsPanel />}
-
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        zIndex: 10,
+        display: "flex",
+        flexDirection: "column",
+        pointerEvents: "none",
+      }}
+    >
       <EmotePicker />
 
-      {/* Center (empty to show character) */}
-      <div className="flex-1 grid grid-cols-[1fr_auto] gap-6 min-h-0 relative">
-        <div className="w-full h-full" />
+      {/* Compact aesthetic status chip cluster — theme-token driven, not a
+          devtools panel. Lives top-left, translucent + blurred over the stage.
+          Layout is inline-styled: the companion view bundle ships no compiled
+          Tailwind, so arbitrary/utility classes would have no effect here. */}
+      <div
+        style={{
+          position: "absolute",
+          left: 16,
+          top: 16,
+          zIndex: 20,
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: 6,
+          maxWidth: "calc(100vw - 32px)",
+          padding: 6,
+          borderRadius: 9999,
+          border: "1px solid var(--border)",
+          background: "var(--bg-elevated)",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          boxShadow: "0 8px 28px rgba(0,0,0,0.18)",
+        }}
+        title="Companion avatar surface"
+      >
+        <StatusChip ready={avatarReady} />
+        <CompanionChip
+          label={`${AGENT_EMOTE_CATALOG.length} emotes`}
+          title="Agent emotes"
+        />
+        <CompanionChip
+          label={`${EMOTE_CATALOG.length}/${categoryCount} catalog`}
+          title="Emote catalog"
+        />
+        <CompanionChip label="overlay relay" title="Global chat relay" subtle />
       </div>
+
+      <div style={{ minHeight: 0, flex: 1 }} />
     </div>
   );
 });
+
+const CHIP_BASE: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  minHeight: 28,
+  padding: "4px 10px",
+  borderRadius: 9999,
+  fontSize: 11,
+  fontWeight: 600,
+  lineHeight: 1,
+  whiteSpace: "nowrap",
+};
+
+function StatusChip({ ready }: { ready: boolean }) {
+  return (
+    <span
+      style={{
+        ...CHIP_BASE,
+        background: ready ? "var(--status-success-bg)" : "var(--accent-subtle)",
+        color: ready ? "var(--status-success)" : "var(--accent)",
+      }}
+    >
+      <span
+        style={{
+          width: 6,
+          height: 6,
+          flexShrink: 0,
+          borderRadius: "50%",
+          background: ready ? "var(--status-success)" : "var(--accent)",
+          boxShadow: ready
+            ? "0 0 0 3px var(--status-success-bg)"
+            : "0 0 0 3px var(--accent-subtle)",
+          animation: ready
+            ? undefined
+            : "companion-chip-pulse 1.4s ease-in-out infinite",
+        }}
+      />
+      <span>{ready ? "ready" : "loading"}</span>
+      <style>{`@keyframes companion-chip-pulse{0%,100%{opacity:1}50%{opacity:0.35}}`}</style>
+    </span>
+  );
+}
+
+function CompanionChip({
+  label,
+  title,
+  subtle = false,
+}: {
+  label: string;
+  title: string;
+  subtle?: boolean;
+}) {
+  return (
+    <span
+      style={{
+        ...CHIP_BASE,
+        background: "var(--surface)",
+        color: subtle ? "var(--muted)" : "var(--text-strong)",
+      }}
+      title={title}
+    >
+      {label}
+    </span>
+  );
+}
 
 /**
  * CompanionView — thin shell that composes CompanionSceneHost + overlay.
@@ -202,25 +154,6 @@ export const CompanionView = memo(function CompanionView() {
     </CompanionSceneHost>
   );
 });
-
-function countByCategory() {
-  return EMOTE_CATALOG.reduce<Record<EmoteCategory, number>>(
-    (counts, emote) => {
-      counts[emote.category] = (counts[emote.category] ?? 0) + 1;
-      return counts;
-    },
-    {
-      greeting: 0,
-      emotion: 0,
-      dance: 0,
-      combat: 0,
-      idle: 0,
-      movement: 0,
-      gesture: 0,
-      other: 0,
-    },
-  );
-}
 
 function lastMessageSummary(messages: readonly unknown[]) {
   const last = messages[messages.length - 1];
@@ -354,7 +287,7 @@ export function CompanionTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -391,7 +324,8 @@ export function CompanionTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>controls</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | emotes | play-emote | stop-emote | toggle-voice
+            {AGENT_EMOTE_CATALOG.length} agent emotes / voice{" "}
+            {chatAgentVoiceMuted ? "muted" : "live"}
           </div>
           <CompanionTuiButton
             agentId="tui-toggle-voice"
@@ -423,13 +357,13 @@ export function CompanionTuiView() {
             settings
           </CompanionTuiButton>
           <div style={{ marginTop: 14 }}>
-            {Object.entries(viewState.emotesByCategory).map(
-              ([category, count]) => (
+            {Object.entries(viewState.emotesByCategory)
+              .slice(0, 6)
+              .map(([category, count]) => (
                 <div key={category}>
                   <span style={{ color: "#64748b" }}>{category}</span> {count}
                 </div>
-              ),
-            )}
+              ))}
           </div>
         </section>
       </div>
@@ -482,70 +416,4 @@ function CompanionTuiButton({
       {children}
     </button>
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-companion-state") {
-    return {
-      viewType: "tui",
-      emoteCount: EMOTE_CATALOG.length,
-      agentEmoteCount: AGENT_EMOTE_CATALOG.length,
-      emotesByCategory: countByCategory(),
-      capabilities: [
-        "terminal-companion-state",
-        "terminal-companion-emotes",
-        "terminal-companion-play-emote",
-        "terminal-companion-stop-emote",
-      ],
-    };
-  }
-
-  if (capability === "terminal-companion-emotes") {
-    const category =
-      typeof params?.category === "string"
-        ? (params.category.trim() as EmoteCategory)
-        : null;
-    const source =
-      typeof params?.source === "string" ? params.source.trim() : "all";
-    const catalog = source === "agent" ? AGENT_EMOTE_CATALOG : EMOTE_CATALOG;
-    return {
-      viewType: "tui",
-      emotes: catalog
-        .filter((emote) => !category || emote.category === category)
-        .map((emote) => ({
-          id: emote.id,
-          name: emote.name,
-          category: emote.category,
-          duration: emote.duration,
-          loop: emote.loop,
-          path: emote.path,
-        })),
-    };
-  }
-
-  if (capability === "terminal-companion-play-emote") {
-    const emoteId =
-      typeof params?.emote === "string" ? params.emote.trim() : "";
-    if (!emoteId) throw new Error("emote is required");
-    const emote = getEmote(emoteId);
-    if (!emote) throw new Error(`Unknown emote: ${emoteId}`);
-    dispatchAppEmoteEvent({
-      emoteId: emote.id,
-      path: emote.path,
-      duration: emote.duration,
-      loop: emote.loop,
-      showOverlay: true,
-    });
-    return { viewType: "tui", played: emote.id };
-  }
-
-  if (capability === "terminal-companion-stop-emote") {
-    dispatchAppEvent(STOP_EMOTE_EVENT);
-    return { viewType: "tui", stopped: true };
-  }
-
-  throw new Error(`Unsupported companion TUI capability: ${capability}`);
 }

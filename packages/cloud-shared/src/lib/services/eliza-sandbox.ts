@@ -18,12 +18,14 @@ import { userCharactersRepository } from "../../db/repositories/characters";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import {
   type AgentBackupStateData,
+  type AgentExecutionTier,
   agentSandboxBackups,
   agentSandboxes,
   type NewAgentSandbox,
   type NewAgentSandboxBackup,
 } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
+import { cache } from "../cache/client";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
@@ -34,7 +36,18 @@ import {
   incrementalChainDepth,
   planIncrementalBackup,
 } from "./agent-backup-diff";
+import {
+  type AIUsage,
+  type BillingContext,
+  billUsage,
+  estimateInputTokens,
+  InsufficientCreditsError,
+  recordUsageAnalytics,
+  reserveCredits,
+} from "./ai-billing";
+import { aiBillingRecordsService } from "./ai-billing-records";
 import { apiKeysService } from "./api-keys";
+import type { CreditReconciliationResult, CreditReservation } from "./credits";
 import type { DockerSandboxMetadata } from "./docker-sandbox-provider";
 import {
   reusesExistingElizaCharacter,
@@ -48,7 +61,15 @@ import {
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
 import { getNeonClient, NeonClientError } from "./neon-client";
 import { JOB_TYPES } from "./provisioning-job-types";
+import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
 import { createSandboxProvider, type SandboxProvider } from "./sandbox-provider";
+import {
+  type RunSharedAgentTurnResult,
+  resolveSharedAgentTurnModel,
+  runSharedAgentTurn,
+  type SharedAgentCharacter,
+  type SharedTurnMessage,
+} from "./shared-runtime/run-shared-agent-turn";
 
 /** Shared Neon project used as branch parent for per-agent databases. */
 const NEON_PARENT_PROJECT_ID: string = process.env.NEON_PARENT_PROJECT_ID ?? "";
@@ -59,10 +80,9 @@ export interface CreateAgentParams {
   agentName: string;
   agentConfig?: Record<string, unknown>;
   environmentVars?: Record<string, string>;
-  /** Link to a user_characters record (canonical character with token linkage). */
   characterId?: string;
-  /** Override the default Docker image (e.g. for different agent flavors). */
   dockerImage?: string;
+  executionTier?: AgentExecutionTier;
 }
 
 export type ProvisionResult =
@@ -99,6 +119,8 @@ export interface SnapshotResult {
 }
 
 const MAX_BACKUPS = 10;
+const SHARED_RUNTIME_HISTORY_TTL_SECONDS = 60 * 60 * 24 * 30;
+const SHARED_RUNTIME_HISTORY_MAX_MESSAGES = 40;
 type LifecycleTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 function digestPinnedImageRef(imageRef: string, digest: string): string {
@@ -492,13 +514,17 @@ export class ElizaSandboxService {
       ? withReusedElizaCharacterOwnership(sanitizedConfig)
       : sanitizedConfig;
 
+    const executionTier: AgentExecutionTier = params.executionTier ?? "shared";
+    const status = executionTier === "shared" ? "running" : "pending";
+
     return {
       organization_id: params.organizationId,
       user_id: params.userId,
       agent_name: params.agentName,
       agent_config: agentConfig,
       environment_vars: params.environmentVars ?? {},
-      status: "pending",
+      status,
+      execution_tier: executionTier,
       database_status: "none",
       ...(params.characterId && { character_id: params.characterId }),
       ...(params.dockerImage && { docker_image: params.dockerImage }),
@@ -518,15 +544,23 @@ export class ElizaSandboxService {
     agent: AgentSandbox;
     idempotent: boolean;
   }> {
+    const createParams: CreateAgentParams & { dockerImage: string } = {
+      ...params,
+      executionTier: params.executionTier ?? "custom",
+    };
+
     logger.info("[agent-sandbox] Creating coding-container agent", {
-      orgId: params.organizationId,
-      name: params.agentName,
-      image: params.dockerImage,
+      orgId: createParams.organizationId,
+      name: createParams.agentName,
+      image: createParams.dockerImage,
     });
 
     return dbWrite.transaction(async (tx) => {
       await tx.execute(
-        elizaCodingContainerImageAdvisoryLockSql(params.organizationId, params.dockerImage),
+        elizaCodingContainerImageAdvisoryLockSql(
+          createParams.organizationId,
+          createParams.dockerImage,
+        ),
       );
 
       const [existing] = await tx
@@ -534,8 +568,8 @@ export class ElizaSandboxService {
         .from(agentSandboxes)
         .where(
           and(
-            eq(agentSandboxes.organization_id, params.organizationId),
-            eq(agentSandboxes.docker_image, params.dockerImage),
+            eq(agentSandboxes.organization_id, createParams.organizationId),
+            eq(agentSandboxes.docker_image, createParams.dockerImage),
             sql`${agentSandboxes.pool_status} IS NULL`,
             sql`${agentSandboxes.status} IN ('pending', 'provisioning', 'running')`,
           ),
@@ -550,7 +584,7 @@ export class ElizaSandboxService {
 
       const [created] = await tx
         .insert(agentSandboxes)
-        .values(this.buildAgentInsertData(params))
+        .values(this.buildAgentInsertData(createParams))
         .returning();
       if (!created) throw new Error("Failed to create coding-container agent record");
       return { agent: created, idempotent: false };
@@ -559,6 +593,10 @@ export class ElizaSandboxService {
 
   async getAgent(agentId: string, orgId: string) {
     return agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+  }
+
+  async getAgentById(agentId: string) {
+    return agentSandboxesRepository.findById(agentId);
   }
 
   async updateAgentEnvironment(
@@ -790,6 +828,7 @@ export class ElizaSandboxService {
       userId: rec.user_id,
       sandboxId: agentId,
     });
+    const containerLaunch = resolveSandboxContainerLaunchConfig(rec.agent_config);
 
     if (managedEnvironment.changed) {
       const updatedEnvRecord = await agentSandboxesRepository.update(rec.id, {
@@ -818,13 +857,26 @@ export class ElizaSandboxService {
 
       try {
         // 2. Sandbox (via provider)
+        const callerEnv = (rec.environment_vars as Record<string, string>) ?? {};
+        // DATABASE_URL precedence: a self-contained image (e.g. a coding
+        // container running its own bot) can ship its OWN database. Do not
+        // silently clobber it with the managed Neon URL — that would force the
+        // image onto a DB it never asked for. If the caller already set
+        // DATABASE_URL, keep it and expose the managed URL under a distinct
+        // name (ELIZA_MANAGED_DATABASE_URL) so the image can opt in. Only when
+        // the caller did NOT supply one do we inject the managed URL as
+        // DATABASE_URL — the normal managed-agent path, byte-identical to before.
+        const callerSuppliedDatabaseUrl =
+          typeof callerEnv.DATABASE_URL === "string" && callerEnv.DATABASE_URL.trim().length > 0;
         handle = await (await this.getProvider()).create({
           agentId: rec.id,
           agentName: rec.agent_name ?? "CloudAgent",
           organizationId: rec.organization_id,
           environmentVars: {
-            ...((rec.environment_vars as Record<string, string>) ?? {}),
-            DATABASE_URL: dbUri,
+            ...callerEnv,
+            ...(callerSuppliedDatabaseUrl
+              ? { ELIZA_MANAGED_DATABASE_URL: dbUri }
+              : { DATABASE_URL: dbUri }),
           },
           // Path A: pass the persisted character so the container boots AS
           // this agent (see docker-sandbox-provider ELIZA_AGENT_CHARACTER_JSON
@@ -841,6 +893,7 @@ export class ElizaSandboxService {
           routeAgentId: rec.character_id ?? undefined,
           snapshotId: rec.snapshot_id ?? undefined,
           dockerImage: rec.docker_image ?? undefined,
+          container: containerLaunch,
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -880,7 +933,24 @@ export class ElizaSandboxService {
             backup.id,
           );
           if (restoreState) {
-            await this.pushState(handle.bridgeUrl, restoreState, { trusted: true });
+            try {
+              await this.pushState(handle.bridgeUrl, restoreState, { trusted: true });
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              if (
+                rec.execution_tier !== "custom" ||
+                !message.startsWith("State restore failed: HTTP 404")
+              ) {
+                throw error;
+              }
+              logger.info(
+                "[agent-sandbox] Backup restore skipped: custom image has no restore endpoint",
+                {
+                  agentId: rec.id,
+                  backupId: backup.id,
+                },
+              );
+            }
           } else {
             logger.warn("[agent-sandbox] Backup restore skipped: reconstructed state was null", {
               agentId: rec.id,
@@ -1016,9 +1086,20 @@ export class ElizaSandboxService {
   private getConfiguredAgentBaseDomain(): string | null {
     const configured = getCloudAwareEnv().ELIZA_CLOUD_AGENT_BASE_DOMAIN?.trim();
     if (!configured) return null;
-    const normalized = configured
+    return this.normalizeConfiguredHostname(configured);
+  }
+
+  private getConfiguredAgentRouterOriginHost(): string | null {
+    const configured = getCloudAwareEnv().AGENT_ROUTER_ORIGIN_HOST?.trim();
+    if (!configured) return null;
+    return this.normalizeConfiguredHostname(configured);
+  }
+
+  private normalizeConfiguredHostname(hostname: string): string | null {
+    const normalized = hostname
       .replace(/^https?:\/\//, "")
       .replace(/\/.*$/, "")
+      .toLowerCase()
       .replace(/\.+$/, "");
     return normalized || null;
   }
@@ -1058,6 +1139,68 @@ export class ElizaSandboxService {
         path,
       });
       if (publicEndpoint) return publicEndpoint;
+    }
+
+    return this.getSafeBridgeEndpoint(rec, path);
+  }
+
+  private async getAgentWebFetchTarget(
+    rec: Pick<
+      AgentSandbox,
+      | "id"
+      | "bridge_url"
+      | "health_url"
+      | "node_id"
+      | "bridge_port"
+      | "web_ui_port"
+      | "headscale_ip"
+      | "sandbox_id"
+    >,
+    path: string,
+  ): Promise<{ url: string; forwardedHost?: string }> {
+    const originHost = this.isCloudflareWorkerRuntime()
+      ? this.getConfiguredAgentRouterOriginHost()
+      : null;
+    if (originHost) {
+      const baseDomain = this.getConfiguredAgentBaseDomain();
+      const publicEndpoint = getElizaAgentPublicWebUiUrl(
+        rec,
+        baseDomain ? { baseDomain, path } : { path },
+      );
+      if (publicEndpoint) {
+        const agentHost = new URL(publicEndpoint).host;
+        const url = new URL(path, `https://${originHost}`).toString();
+        return { url, forwardedHost: agentHost };
+      }
+    }
+
+    return { url: await this.getAgentWebEndpoint(rec, path) };
+  }
+
+  private async getAgentWebEndpoint(
+    rec: Pick<
+      AgentSandbox,
+      | "id"
+      | "bridge_url"
+      | "health_url"
+      | "node_id"
+      | "bridge_port"
+      | "web_ui_port"
+      | "headscale_ip"
+      | "sandbox_id"
+    >,
+    path: string,
+  ): Promise<string> {
+    const baseDomain = this.getConfiguredAgentBaseDomain();
+    const publicEndpoint = getElizaAgentPublicWebUiUrl(
+      rec,
+      baseDomain ? { baseDomain, path } : { path },
+    );
+    if (publicEndpoint) return publicEndpoint;
+
+    const trustedWebBaseUrl = await this.getTrustedDockerWebBaseUrl(rec);
+    if (trustedWebBaseUrl) {
+      return new URL(path, trustedWebBaseUrl).toString();
     }
 
     return this.getSafeBridgeEndpoint(rec, path);
@@ -1183,11 +1326,276 @@ export class ElizaSandboxService {
     return typeof globalThis !== "undefined" && "WebSocketPair" in globalThis;
   }
 
+  private sharedRuntimeStringValue(value: unknown): string | undefined {
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  }
+
+  private sharedRuntimeStringList(value: unknown): string[] {
+    if (typeof value === "string" && value.trim()) return [value.trim()];
+    if (!Array.isArray(value)) return [];
+    return value.filter(
+      (item): item is string => typeof item === "string" && item.trim().length > 0,
+    );
+  }
+
+  private sharedRuntimeHistoryCacheKey(agentId: string, channelId: string): string {
+    return `shared-runtime:${agentId}:${channelId}:history:v1`;
+  }
+
+  private isSharedTurnMessage(value: unknown): value is SharedTurnMessage {
+    const message = this.nestedBridgeRecord(value);
+    return (
+      (message?.role === "user" || message?.role === "assistant") &&
+      typeof message.content === "string" &&
+      message.content.trim().length > 0
+    );
+  }
+
+  private async loadSharedRuntimeHistory(
+    agentId: string,
+    channelId: string,
+  ): Promise<SharedTurnMessage[]> {
+    const cached = await cache.get<SharedTurnMessage[]>(
+      this.sharedRuntimeHistoryCacheKey(agentId, channelId),
+    );
+    if (!Array.isArray(cached)) return [];
+    return cached.filter((message): message is SharedTurnMessage =>
+      this.isSharedTurnMessage(message),
+    );
+  }
+
+  private async saveSharedRuntimeHistory(
+    agentId: string,
+    channelId: string,
+    history: SharedTurnMessage[],
+  ): Promise<void> {
+    const capped =
+      history.length > SHARED_RUNTIME_HISTORY_MAX_MESSAGES
+        ? history.slice(history.length - SHARED_RUNTIME_HISTORY_MAX_MESSAGES)
+        : history;
+    await cache.set(
+      this.sharedRuntimeHistoryCacheKey(agentId, channelId),
+      capped,
+      SHARED_RUNTIME_HISTORY_TTL_SECONDS,
+    );
+  }
+
+  private sharedRuntimeBillingPrompt(
+    character: SharedAgentCharacter,
+    history: SharedTurnMessage[],
+    message: string,
+  ): Array<{ content: string }> {
+    return [
+      { content: character.system },
+      ...(character.bio ?? []).map((content) => ({ content })),
+      ...history.map((turn) => ({ content: turn.content })),
+      { content: message },
+    ].filter((entry) => entry.content.trim().length > 0);
+  }
+
+  private sharedRuntimeBillingUsage(
+    turn: RunSharedAgentTurnResult,
+    estimatedInputTokens: number,
+  ): AIUsage {
+    const inputTokens = turn.usage?.inputTokens ?? turn.usage?.promptTokens ?? 0;
+    const outputTokens = turn.usage?.outputTokens ?? turn.usage?.completionTokens ?? 0;
+    const totalTokens = turn.usage?.totalTokens ?? inputTokens + outputTokens;
+    if (inputTokens > 0 || outputTokens > 0 || totalTokens > 0) {
+      return turn.usage ?? {};
+    }
+    return {
+      inputTokens: estimatedInputTokens,
+      outputTokens: estimateInputTokens([{ content: turn.reply }]),
+    };
+  }
+
+  private async buildSharedRuntimeCharacter(rec: AgentSandbox): Promise<SharedAgentCharacter> {
+    const config = this.nestedBridgeRecord(rec.agent_config) ?? {};
+    const configCharacter = this.nestedBridgeRecord(config.character) ?? config;
+    const linkedCharacter = rec.character_id
+      ? await userCharactersRepository.findByIdInOrganization(rec.character_id, rec.organization_id)
+      : undefined;
+    const linkedSettings = this.nestedBridgeRecord(linkedCharacter?.settings);
+
+    const name =
+      this.sharedRuntimeStringValue(linkedCharacter?.name) ??
+      this.sharedRuntimeStringValue(configCharacter.name) ??
+      this.sharedRuntimeStringValue(config.name) ??
+      rec.agent_name ??
+      "Eliza agent";
+    const system =
+      this.sharedRuntimeStringValue(linkedCharacter?.system) ??
+      this.sharedRuntimeStringValue(configCharacter.system) ??
+      this.sharedRuntimeStringValue(config.system) ??
+      this.sharedRuntimeStringValue(configCharacter.prompt) ??
+      this.sharedRuntimeStringValue(config.prompt) ??
+      `You are ${name}, a helpful assistant.`;
+    const bio = [
+      ...this.sharedRuntimeStringList(linkedCharacter?.bio),
+      ...this.sharedRuntimeStringList(configCharacter.bio),
+      ...this.sharedRuntimeStringList(config.bio),
+    ];
+    const model =
+      this.sharedRuntimeStringValue(linkedSettings?.model) ??
+      this.sharedRuntimeStringValue(configCharacter.model) ??
+      this.sharedRuntimeStringValue(config.model);
+
+    return {
+      name,
+      system,
+      ...(bio.length > 0 ? { bio } : {}),
+      ...(model ? { model } : {}),
+    };
+  }
+
+  private async bridgeSharedStatus(rec: AgentSandbox, rpc: BridgeRequest): Promise<BridgeResponse> {
+    return {
+      jsonrpc: "2.0",
+      id: rpc.id,
+      result: {
+        status: "running",
+        ready: true,
+        agentId: rec.id,
+        agentName: rec.agent_name ?? undefined,
+        runtime: "shared",
+      },
+    };
+  }
+
+  private async bridgeSharedMessageSend(
+    rec: AgentSandbox,
+    rpc: BridgeRequest,
+  ): Promise<BridgeResponse> {
+    const params = rpc.params && typeof rpc.params === "object" ? rpc.params : {};
+    const text = typeof params.text === "string" ? params.text : "";
+    if (!text.trim()) {
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        error: { code: -32602, message: "message.send requires params.text" },
+      };
+    }
+
+    const channelId = this.stableBridgeChannelId(rec.id, params);
+    const [character, history] = await Promise.all([
+      this.buildSharedRuntimeCharacter(rec),
+      this.loadSharedRuntimeHistory(rec.id, channelId),
+    ]);
+    const billingModel = resolveSharedAgentTurnModel(character.model);
+    const estimatedInputTokens = billingModel
+      ? estimateInputTokens(this.sharedRuntimeBillingPrompt(character, history, text))
+      : 0;
+    const idempotencyKey = `shared-runtime:${rec.id}:${channelId}:${crypto.randomUUID()}`;
+    const requestId = `shared-runtime-${crypto.randomUUID()}`;
+    const billingContext: BillingContext | null = billingModel
+      ? {
+          organizationId: rec.organization_id,
+          userId: rec.user_id,
+          model: billingModel,
+          requestId,
+          description: `Shared runtime turn: ${character.name}`,
+          metadata: {
+            agentId: rec.id,
+            channelId,
+            executionTier: rec.execution_tier,
+            idempotencyKey,
+            prompt: text,
+            runtime: "shared",
+          },
+        }
+      : null;
+    let reservation: CreditReservation | null = null;
+    let reservationSettled = false;
+    const settleReservation = async (
+      actualCost: number,
+    ): Promise<CreditReconciliationResult | null> => {
+      if (!reservation || reservationSettled) return null;
+      reservationSettled = true;
+      return (await reservation.reconcile(actualCost)) ?? null;
+    };
+    if (billingContext) {
+      try {
+        reservation = await reserveCredits(billingContext, estimatedInputTokens, 500);
+      } catch (error) {
+        if (error instanceof InsufficientCreditsError) {
+          return {
+            jsonrpc: "2.0",
+            id: rpc.id,
+            error: {
+              code: -32002,
+              message: `Insufficient credits. Required: $${error.required.toFixed(4)}, Available: $${error.available.toFixed(4)}`,
+            },
+          };
+        }
+        throw error;
+      }
+    }
+    const turn = await runSharedAgentTurn({
+      character,
+      history,
+      message: text,
+    });
+    if (!turn.degraded) {
+      await this.saveSharedRuntimeHistory(rec.id, channelId, turn.history);
+    }
+    if (turn.degraded) {
+      await settleReservation(0);
+    } else if (billingContext) {
+      try {
+        const billing = await billUsage(
+          billingContext,
+          this.sharedRuntimeBillingUsage(turn, estimatedInputTokens),
+        );
+        const settlement = await settleReservation(billing.totalCost);
+        const usageRecord = await recordUsageAnalytics(billingContext, billing, {
+          type: "chat",
+          content: turn.reply,
+          prompt: text,
+        });
+        if (usageRecord) {
+          await aiBillingRecordsService
+            .record({
+              context: billingContext,
+              billing,
+              usageRecord,
+              idempotencyKey,
+              reconciliation: settlement,
+            })
+            .catch((error) => {
+              logger.error("[shared-runtime] AI billing audit record failed", {
+                error: error instanceof Error ? error.message : String(error),
+                agentId: rec.id,
+              });
+            });
+        }
+      } catch (error) {
+        await settleReservation(0);
+        logger.error("[shared-runtime] billing failed", {
+          error: error instanceof Error ? error.message : String(error),
+          agentId: rec.id,
+        });
+      }
+    }
+
+    return {
+      jsonrpc: "2.0",
+      id: rpc.id,
+      result: {
+        text: turn.reply,
+        agentName: character.name,
+        channelId,
+        model: turn.model,
+        degraded: turn.degraded,
+        runtime: "shared",
+      },
+    };
+  }
+
   // Bridge
 
   async bridge(agentId: string, orgId: string, rpc: BridgeRequest): Promise<BridgeResponse> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
-    if (!rec?.bridge_url) {
+    if (!rec) {
       logger.warn("[agent-sandbox] Bridge call to non-running sandbox", {
         agentId,
         method: rpc.method,
@@ -1200,6 +1608,32 @@ export class ElizaSandboxService {
     }
 
     try {
+      if (rec.execution_tier === "shared") {
+        if (rpc.method === "status.get" || rpc.method === "heartbeat") {
+          return await this.bridgeSharedStatus(rec, rpc);
+        }
+        if (rpc.method === "message.send") {
+          return await this.bridgeSharedMessageSend(rec, rpc);
+        }
+        return {
+          jsonrpc: "2.0",
+          id: rpc.id,
+          error: { code: -32601, message: `Method not found: ${rpc.method}` },
+        };
+      }
+
+      if (!rec.bridge_url) {
+        logger.warn("[agent-sandbox] Bridge call to running sandbox without bridge URL", {
+          agentId,
+          method: rpc.method,
+        });
+        return {
+          jsonrpc: "2.0",
+          id: rpc.id,
+          error: { code: -32000, message: "Sandbox is not running" },
+        };
+      }
+
       if (rpc.method === "status.get" || rpc.method === "heartbeat") {
         return await this.bridgeStatus(rec, rpc);
       }
@@ -1243,10 +1677,15 @@ export class ElizaSandboxService {
       };
     }
 
-    const rootEndpoint = await this.getAgentApiEndpoint(rec, "/");
-    const rootRes = await fetch(rootEndpoint, {
+    const rootTarget = await this.getAgentWebFetchTarget(rec, "/");
+    const headers = this.getAgentJsonHeaders(rec);
+    if (rootTarget.forwardedHost) {
+      headers["x-forwarded-host"] = rootTarget.forwardedHost;
+      headers["x-forwarded-proto"] = "https";
+    }
+    const rootRes = await fetch(rootTarget.url, {
       method: "GET",
-      headers: this.getAgentJsonHeaders(rec),
+      headers,
       signal: AbortSignal.timeout(10_000),
     });
     if (!rootRes.ok) {
@@ -1267,6 +1706,8 @@ export class ElizaSandboxService {
         status: "running",
         ready: true,
         agentId: rec.id,
+        runtime: "web",
+        chat: true,
       },
     };
   }
@@ -1358,7 +1799,7 @@ export class ElizaSandboxService {
     if (!rec.bridge_url) {
       throw new BridgeRouteUnavailableError("Sandbox has no bridge_url", 0);
     }
-    const url = await this.getSafeBridgeEndpoint(rec, "/bridge");
+    const url = await this.getAgentApiEndpoint(rec, "/bridge");
     const res = await fetch(url, {
       method: "POST",
       headers: this.getAgentJsonHeaders(rec),
@@ -2420,7 +2861,7 @@ export class ElizaSandboxService {
 
   async bridgeStream(agentId: string, orgId: string, rpc: BridgeRequest): Promise<Response | null> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
-    if (!rec?.bridge_url) {
+    if (!rec) {
       logger.warn("[agent-sandbox] Bridge stream to non-running sandbox", {
         agentId,
         method: rpc.method,
@@ -2431,6 +2872,26 @@ export class ElizaSandboxService {
     const params =
       rpc.params && typeof rpc.params === "object" ? (rpc.params as Record<string, unknown>) : {};
     const fallbackText = this.buildBridgeNoReplyFallbackText(params);
+
+    if (rec.execution_tier === "shared") {
+      const sharedResponse = await this.bridgeSharedMessageSend(rec, rpc);
+      const text = sharedResponse.result?.text;
+      if (typeof text === "string" && text.trim()) {
+        return this.createBridgeSseTextResponse(text);
+      }
+      if (sharedResponse.error) {
+        return this.createBridgeSseErrorResponse(sharedResponse.error.message);
+      }
+      return fallbackText ? this.createBridgeSseTextResponse(fallbackText) : null;
+    }
+
+    if (!rec.bridge_url) {
+      logger.warn("[agent-sandbox] Bridge stream to running sandbox without bridge URL", {
+        agentId,
+        method: rpc.method,
+      });
+      return null;
+    }
 
     try {
       const conversationId = await this.createBridgeConversation(rec, params);

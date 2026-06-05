@@ -59,7 +59,7 @@ class ViewSearchIndex {
 
   /**
    * Compute and store an embedding for `view`.
-   * No-ops gracefully when the runtime has no embedding model configured.
+   * Returns without indexing when the runtime has no embedding model configured.
    */
   async indexView(
     view: ViewRegistryEntry,

@@ -127,7 +127,7 @@ export function getNextMilestone(streak: number): {
 }
 
 /**
- * Builds a ClaimResult with sensible defaults for error/incomplete cases.
+ * Builds a ClaimResult with sensible defaults for error/partial cases.
  * Exported for testing purposes.
  */
 export function buildClaimResult(

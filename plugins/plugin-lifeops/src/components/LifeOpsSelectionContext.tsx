@@ -1,37 +1,10 @@
+import { useCallback, useMemo, useState } from "react";
 import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-} from "react";
-
-export interface LifeOpsSelection {
-  eventId: string | null;
-  messageId: string | null;
-  reminderId: string | null;
-}
-
-interface SelectArgs {
-  eventId?: string | null;
-  messageId?: string | null;
-  reminderId?: string | null;
-}
-
-interface LifeOpsSelectionContextValue {
-  selection: LifeOpsSelection;
-  select: (args: SelectArgs) => void;
-  clearSelection: () => void;
-}
-
-const EMPTY_SELECTION: LifeOpsSelection = {
-  eventId: null,
-  messageId: null,
-  reminderId: null,
-};
-
-const LifeOpsSelectionContext =
-  createContext<LifeOpsSelectionContextValue | null>(null);
+  EMPTY_SELECTION,
+  type LifeOpsSelection,
+  LifeOpsSelectionContext,
+  type SelectArgs,
+} from "./LifeOpsSelectionContext.helpers.js";
 
 export function LifeOpsSelectionProvider({
   children,
@@ -62,14 +35,4 @@ export function LifeOpsSelectionProvider({
       {children}
     </LifeOpsSelectionContext.Provider>
   );
-}
-
-export function useLifeOpsSelection(): LifeOpsSelectionContextValue {
-  const ctx = useContext(LifeOpsSelectionContext);
-  if (!ctx) {
-    throw new Error(
-      "useLifeOpsSelection must be used inside LifeOpsSelectionProvider",
-    );
-  }
-  return ctx;
 }

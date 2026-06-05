@@ -12,7 +12,7 @@ import type {
   RelationshipsGraphSnapshot,
   RelationshipsMergeCandidate,
 } from "../../../api/client-types-relationships";
-import { useTranslation } from "../../../state/TranslationContext";
+import { useTranslation } from "../../../state/TranslationContext.hooks";
 import { formatDateTime } from "../../../utils/format";
 import { PagePanel } from "../../composites/page-panel";
 import { MetaPill } from "../../composites/page-panel/page-panel-header";

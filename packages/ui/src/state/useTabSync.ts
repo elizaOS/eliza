@@ -8,7 +8,7 @@
  * only mirrors UI selection between windows of the *same* browser.
  *
  * Environments without BroadcastChannel (older webviews, SSR, some native
- * shells) get a no-op `publish*` surface and never receive callbacks.
+ * shells) get an inert `publish*` surface and never receive callbacks.
  */
 
 import { useCallback, useEffect, useMemo, useRef } from "react";

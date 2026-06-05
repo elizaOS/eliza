@@ -1,5 +1,5 @@
 /**
- * Catalog-time variant indexing: OpenRouter lists models under snapshot ids
+ * Catalog-time variant indexing: BitRouter lists models under snapshot ids
  * (e.g. `google/gemini-2.0-flash-001`) but clients send the unsuffixed
  * canonical id. The ingest now emits a low-priority duplicate row under the
  * stripped base id so lookups for the canonical id resolve without
@@ -8,10 +8,14 @@
 
 import { describe, expect, test } from "bun:test";
 import {
-  buildOpenRouterPreparedEntries,
+  buildBitRouterPreparedEntries,
+  canonicalModelId,
   chooseBestCandidatePricingEntry,
+  expandPricingCatalogModelCandidates,
+  inferProviderFromCanonicalModel,
   stripVersionedSnapshotSuffix,
 } from "@/lib/services/ai-pricing";
+import { fetchBitRouterCatalogEntries } from "@/lib/services/ai-pricing/providers/bitrouter";
 
 describe("stripVersionedSnapshotSuffix — dated and labelled suffixes", () => {
   test("strips compact 8-digit date suffix", () => {
@@ -107,9 +111,9 @@ describe("stripVersionedSnapshotSuffix — must-not-strip cases", () => {
   });
 });
 
-describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
+describe("buildBitRouterPreparedEntries — exact + stripped variants", () => {
   test("emits both exact and stripped rows for prompt and completion", () => {
-    const entries = buildOpenRouterPreparedEntries({
+    const entries = buildBitRouterPreparedEntries({
       id: "google/gemini-2.0-flash-001",
       architecture: {
         modality: "text->text",
@@ -139,7 +143,7 @@ describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
   });
 
   test("emits only exact rows when no suffix can be stripped", () => {
-    const entries = buildOpenRouterPreparedEntries({
+    const entries = buildBitRouterPreparedEntries({
       id: "openai/gpt-4o-mini",
       architecture: { modality: "text->text" },
       pricing: { prompt: "0.00000015", completion: "0.0000006" },
@@ -151,7 +155,7 @@ describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
   });
 
   test("propagates provider, productFamily, billingSource on stripped row", () => {
-    const entries = buildOpenRouterPreparedEntries({
+    const entries = buildBitRouterPreparedEntries({
       id: "anthropic/claude-3-5-haiku-20241022",
       architecture: { modality: "text->text" },
       pricing: { prompt: "0.0000008" },
@@ -162,12 +166,12 @@ describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
     expect(stripped?.priority).toBe(-1);
     expect(stripped?.provider).toBe("anthropic");
     expect(stripped?.productFamily).toBe("language");
-    expect(stripped?.billingSource).toBe("openrouter");
-    expect(stripped?.sourceKind).toBe("openrouter_catalog");
+    expect(stripped?.billingSource).toBe("bitrouter");
+    expect(stripped?.sourceKind).toBe("bitrouter_catalog");
   });
 
   test("does not emit stripped row when prices are missing", () => {
-    const entries = buildOpenRouterPreparedEntries({
+    const entries = buildBitRouterPreparedEntries({
       id: "google/gemini-2.0-flash-001",
       architecture: { modality: "text->text" },
       pricing: {},
@@ -177,7 +181,7 @@ describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
   });
 
   test("emits stripped row only for the priced direction (input-only)", () => {
-    const entries = buildOpenRouterPreparedEntries({
+    const entries = buildBitRouterPreparedEntries({
       id: "google/gemini-2.0-flash-001",
       architecture: { modality: "text->text" },
       pricing: { prompt: "0.0000001" },
@@ -189,19 +193,81 @@ describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
   });
 });
 
+describe("forced provider route pricing ids", () => {
+  test("keeps forced route ids canonical before slash-prefixed aliases", () => {
+    expect(canonicalModelId("openrouter:openai/gpt-oss-120b", "openrouter")).toBe(
+      "openrouter:openai/gpt-oss-120b",
+    );
+    expect(canonicalModelId("cerebras:gpt-oss-120b", "cerebras")).toBe("cerebras:gpt-oss-120b");
+  });
+
+  test("infers provider from forced route prefixes", () => {
+    expect(inferProviderFromCanonicalModel("openrouter:openai/gpt-oss-120b")).toBe("openrouter");
+    expect(inferProviderFromCanonicalModel("cerebras:zai-glm-4.7")).toBe("cerebras");
+  });
+
+  test("uses underlying catalog id as an alias for OpenRouter forced routes", () => {
+    expect(expandPricingCatalogModelCandidates("openrouter:openai/gpt-oss-120b")).toContain(
+      "openai/gpt-oss-120b",
+    );
+  });
+
+  test("adds synthetic Cerebras pricing rows to the BitRouter catalog", async () => {
+    const previousApiKey = process.env.BITROUTER_API_KEY;
+    const previousFetch = globalThis.fetch;
+    process.env.BITROUTER_API_KEY = "test-bitrouter-key";
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          data: [],
+        }),
+        { status: 200 },
+      );
+
+    try {
+      const entries = await fetchBitRouterCatalogEntries();
+      const gptInput = entries.find(
+        (entry) => entry.model === "cerebras:gpt-oss-120b" && entry.chargeType === "input",
+      );
+      const gptOutput = entries.find(
+        (entry) => entry.model === "cerebras:gpt-oss-120b" && entry.chargeType === "output",
+      );
+      const glmInput = entries.find(
+        (entry) => entry.model === "cerebras:zai-glm-4.7" && entry.chargeType === "input",
+      );
+      const glmOutput = entries.find(
+        (entry) => entry.model === "cerebras:zai-glm-4.7" && entry.chargeType === "output",
+      );
+
+      expect(gptInput?.provider).toBe("cerebras");
+      expect(gptInput?.unitPrice).toBe(0.00000035);
+      expect(gptOutput?.unitPrice).toBe(0.00000075);
+      expect(glmInput?.unitPrice).toBe(0.00000225);
+      expect(glmOutput?.unitPrice).toBe(0.00000275);
+    } finally {
+      if (previousApiKey === undefined) {
+        delete process.env.BITROUTER_API_KEY;
+      } else {
+        process.env.BITROUTER_API_KEY = previousApiKey;
+      }
+      globalThis.fetch = previousFetch;
+    }
+  });
+});
+
 describe("chooseBestCandidatePricingEntry — tie-break when stripped variants conflict", () => {
   function buildCandidate(snapshotId: string, unitPrice: number) {
     return {
       entry: {
-        billingSource: "openrouter" as const,
+        billingSource: "bitrouter" as const,
         provider: "google",
         model: "google/gemini-2.0-flash",
         productFamily: "language" as const,
         chargeType: "input",
         unit: "token" as const,
         unitPrice,
-        sourceKind: "openrouter_catalog",
-        sourceUrl: "https://openrouter.ai/api/v1/models",
+        sourceKind: "bitrouter_catalog",
+        sourceUrl: "https://api.bitrouter.ai/v1/models",
         priority: -1,
         metadata: { snapshotId },
       },

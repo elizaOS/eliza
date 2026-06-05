@@ -26,6 +26,7 @@ import {
   loadContinuousChatMode,
   saveContinuousChatMode,
 } from "../../state/persistence";
+import { MAX_CHAT_IMAGES } from "../../utils/image-attachment";
 import type {
   VoiceContinuousMode,
   VoiceSpeakerMetadata,
@@ -54,7 +55,6 @@ import {
   resolvePageScopedConversation,
 } from "./page-scoped-conversations";
 
-const MAX_PAGE_CHAT_IMAGES = 4;
 const CHAT_PREFILL_EVENT = "eliza:chat:prefill";
 
 interface ChatPrefillDetail {
@@ -448,11 +448,15 @@ export function PageScopedChatPane({
       images?: ImageAttachment[];
       metadata?: Record<string, unknown>;
       text?: string;
+      force?: boolean;
     }) => {
       const raw = (options?.text ?? input).trim();
       const images = options?.images ?? pendingImages;
       if ((!raw && images.length === 0) || !conversation || sending) return;
-      if (blockingAccountReason) {
+      // `force` is set by the account-required auto-retry after a successful
+      // reconnect: the captured `blockingAccountReason` closure is stale (still
+      // truthy), but the account is now connected, so bypass the guard.
+      if (!options?.force && blockingAccountReason) {
         setLoadError(blockingAccountReason);
         return;
       }
@@ -579,7 +583,7 @@ export function PageScopedChatPane({
   const addImageFiles = useCallback((files: FileList | File[]) => {
     const imageFiles = Array.from(files)
       .filter((file) => file.type.startsWith("image/"))
-      .slice(0, MAX_PAGE_CHAT_IMAGES);
+      .slice(0, MAX_CHAT_IMAGES);
     if (imageFiles.length === 0) return;
 
     setAttachmentError(null);
@@ -605,7 +609,7 @@ export function PageScopedChatPane({
     void Promise.all(readers)
       .then((attachments) => {
         setPendingImages((prev) =>
-          [...prev, ...attachments].slice(0, MAX_PAGE_CHAT_IMAGES),
+          [...prev, ...attachments].slice(0, MAX_CHAT_IMAGES),
         );
       })
       .catch(() => {
@@ -939,6 +943,9 @@ export function PageScopedChatPane({
             onConnectAccount={handleConnectSendAsAccount}
             onReconnectAccount={handleReconnectSendAsAccount}
             onSelectAccount={handleSelectSendAsAccount}
+            retryAction={async () => {
+              await handleSend({ force: true });
+            }}
           />
         ) : showWriteConfirmation ? (
           <AccountRequiredCard
@@ -968,6 +975,9 @@ export function PageScopedChatPane({
             interimTranscript={continuous.interimTranscript}
             speaker={voiceSpeaker}
             latency={continuous.latency}
+            needsAudioUnlock={continuous.needsAudioUnlock}
+            onUnlockAudio={continuous.unlockAudio}
+            micReconnected={continuous.micReconnected}
             visible
             className="mb-1"
             data-testid={`page-scoped-chat-voice-status-bar-${scope}`}

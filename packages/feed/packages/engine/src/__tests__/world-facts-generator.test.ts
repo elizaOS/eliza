@@ -23,6 +23,7 @@ function createChainableThenable<T>(
 ) {
   const thenable = {
     ...methods,
+    // biome-ignore lint/suspicious/noThenProperty: Intentional Drizzle-style thenable test double.
     then: (resolve: (value: T[]) => void) => {
       resolve(result);
       return Promise.resolve(result);

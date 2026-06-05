@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { DrizzleClient } from "@feed/db";
 import { FeedEngine } from "../core/engine";
 import { defineSystem } from "../core/system";
-import type { EngineContext, FeedSystem } from "../core/types";
+import type { FeedSystem } from "../core/types";
 import { TickPhase } from "../core/types";
 
 function makeTestEngine() {
@@ -33,19 +33,18 @@ describe("Runtime hooks", () => {
   it("fires engine:boot after boot", async () => {
     const engine = makeTestEngine();
     let bootFired = false;
-    let bootCtx: EngineContext | null = null;
+    let bootBudgetMs: number | undefined;
 
     engine.hook("engine:boot", (ctx) => {
       bootFired = true;
-      bootCtx = ctx;
+      bootBudgetMs = ctx.config.budgetMs;
     });
 
     engine.use(makeModule({ id: "a", phase: TickPhase.Bootstrap }));
     await engine.boot();
 
     expect(bootFired).toBe(true);
-    expect(bootCtx).toBeTruthy();
-    expect(bootCtx?.config.budgetMs).toBe(60000);
+    expect(bootBudgetMs).toBe(60000);
     await engine.shutdown();
   });
 

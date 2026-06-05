@@ -64,7 +64,7 @@
     "exceljs": "^4.4.0",
     "expletives": "^0.1.5",
     "gray-matter": "^4.0.3",
-    "hono": "4.12.18",
+    "hono": "4.12.21",
     "jose": "^6.0.0",
     "json-schema": "^0.4.0",
     "json5": "^2.2.3",
@@ -85,7 +85,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.15",
+    "@biomejs/biome": "2.4.16",
     "@cloudflare/workers-types": "^4.20260429.1",
     "@types/node": "^25.6.0",
     "@types/nodemailer": "^8.0.0",

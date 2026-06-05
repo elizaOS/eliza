@@ -2,8 +2,10 @@
  * Shared placeholders + skeletons used across dashboard routes (SPA).
  */
 
+import { Skeleton } from "../../../components/ui/skeleton";
+
 function SkeletonBlock({ className }: { className: string }) {
-  return <div className={`animate-pulse rounded-sm bg-white/5 ${className}`} />;
+  return <Skeleton className={className} />;
 }
 
 /**

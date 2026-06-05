@@ -1,12 +1,12 @@
-// Complete node:crypto stub for the Storybook browser catalog. Vite
+// Complete node:crypto shim for the Storybook browser catalog. Vite
 // externalizes node builtins; core feature/secrets modules pulled via the
 // @elizaos/shared barrel touch crypto at load. These paths never run during a
 // story render. Key functions get browser-backed/benign behaviour; the rest are
-// throwing stubs so every static named import resolves.
+// throwing shims so every static named import resolves.
 
 const webcrypto = (globalThis as { crypto?: Crypto }).crypto;
 const notAvailable = (name: string) => {
-  throw new Error(`node:crypto stub cannot ${name} in Storybook`);
+  throw new Error(`node:crypto browser shim cannot ${name} in Storybook`);
 };
 
 class HashLike {
@@ -38,86 +38,86 @@ export const timingSafeEqual = (a: ArrayLike<number>, b: ArrayLike<number>) => {
 export const getRandomValues = <T extends ArrayBufferView | null>(buf: T): T =>
   (webcrypto?.getRandomValues?.(buf as never) as T) ?? buf;
 
-export const Certificate = (...args: unknown[]) => notAvailable("Certificate");
-export const Cipheriv = (...args: unknown[]) => notAvailable("Cipheriv");
-export const Decipheriv = (...args: unknown[]) => notAvailable("Decipheriv");
-export const DiffieHellman = (...args: unknown[]) =>
+export const Certificate = (..._args: unknown[]) => notAvailable("Certificate");
+export const Cipheriv = (..._args: unknown[]) => notAvailable("Cipheriv");
+export const Decipheriv = (..._args: unknown[]) => notAvailable("Decipheriv");
+export const DiffieHellman = (..._args: unknown[]) =>
   notAvailable("DiffieHellman");
-export const DiffieHellmanGroup = (...args: unknown[]) =>
+export const DiffieHellmanGroup = (..._args: unknown[]) =>
   notAvailable("DiffieHellmanGroup");
-export const ECDH = (...args: unknown[]) => notAvailable("ECDH");
-export const Hash = (...args: unknown[]) => notAvailable("Hash");
-export const Hmac = (...args: unknown[]) => notAvailable("Hmac");
-export const KeyObject = (...args: unknown[]) => notAvailable("KeyObject");
-export const Sign = (...args: unknown[]) => notAvailable("Sign");
-export const Verify = (...args: unknown[]) => notAvailable("Verify");
-export const X509Certificate = (...args: unknown[]) =>
+export const ECDH = (..._args: unknown[]) => notAvailable("ECDH");
+export const Hash = (..._args: unknown[]) => notAvailable("Hash");
+export const Hmac = (..._args: unknown[]) => notAvailable("Hmac");
+export const KeyObject = (..._args: unknown[]) => notAvailable("KeyObject");
+export const Sign = (..._args: unknown[]) => notAvailable("Sign");
+export const Verify = (..._args: unknown[]) => notAvailable("Verify");
+export const X509Certificate = (..._args: unknown[]) =>
   notAvailable("X509Certificate");
-export const checkPrime = (...args: unknown[]) => notAvailable("checkPrime");
-export const checkPrimeSync = (...args: unknown[]) =>
+export const checkPrime = (..._args: unknown[]) => notAvailable("checkPrime");
+export const checkPrimeSync = (..._args: unknown[]) =>
   notAvailable("checkPrimeSync");
-export const createCipheriv = (...args: unknown[]) =>
+export const createCipheriv = (..._args: unknown[]) =>
   notAvailable("createCipheriv");
-export const createDecipheriv = (...args: unknown[]) =>
+export const createDecipheriv = (..._args: unknown[]) =>
   notAvailable("createDecipheriv");
-export const createDiffieHellman = (...args: unknown[]) =>
+export const createDiffieHellman = (..._args: unknown[]) =>
   notAvailable("createDiffieHellman");
-export const createDiffieHellmanGroup = (...args: unknown[]) =>
+export const createDiffieHellmanGroup = (..._args: unknown[]) =>
   notAvailable("createDiffieHellmanGroup");
-export const createECDH = (...args: unknown[]) => notAvailable("createECDH");
-export const createPrivateKey = (...args: unknown[]) =>
+export const createECDH = (..._args: unknown[]) => notAvailable("createECDH");
+export const createPrivateKey = (..._args: unknown[]) =>
   notAvailable("createPrivateKey");
-export const createPublicKey = (...args: unknown[]) =>
+export const createPublicKey = (..._args: unknown[]) =>
   notAvailable("createPublicKey");
-export const createSecretKey = (...args: unknown[]) =>
+export const createSecretKey = (..._args: unknown[]) =>
   notAvailable("createSecretKey");
-export const createSign = (...args: unknown[]) => notAvailable("createSign");
-export const createVerify = (...args: unknown[]) =>
+export const createSign = (..._args: unknown[]) => notAvailable("createSign");
+export const createVerify = (..._args: unknown[]) =>
   notAvailable("createVerify");
-export const diffieHellman = (...args: unknown[]) =>
+export const diffieHellman = (..._args: unknown[]) =>
   notAvailable("diffieHellman");
-export const generateKey = (...args: unknown[]) => notAvailable("generateKey");
-export const generateKeyPair = (...args: unknown[]) =>
+export const generateKey = (..._args: unknown[]) => notAvailable("generateKey");
+export const generateKeyPair = (..._args: unknown[]) =>
   notAvailable("generateKeyPair");
-export const generateKeyPairSync = (...args: unknown[]) =>
+export const generateKeyPairSync = (..._args: unknown[]) =>
   notAvailable("generateKeyPairSync");
-export const generateKeySync = (...args: unknown[]) =>
+export const generateKeySync = (..._args: unknown[]) =>
   notAvailable("generateKeySync");
-export const generatePrime = (...args: unknown[]) =>
+export const generatePrime = (..._args: unknown[]) =>
   notAvailable("generatePrime");
-export const generatePrimeSync = (...args: unknown[]) =>
+export const generatePrimeSync = (..._args: unknown[]) =>
   notAvailable("generatePrimeSync");
-export const getCipherInfo = (...args: unknown[]) =>
+export const getCipherInfo = (..._args: unknown[]) =>
   notAvailable("getCipherInfo");
-export const getCiphers = (...args: unknown[]) => notAvailable("getCiphers");
-export const getCurves = (...args: unknown[]) => notAvailable("getCurves");
-export const getDiffieHellman = (...args: unknown[]) =>
+export const getCiphers = (..._args: unknown[]) => notAvailable("getCiphers");
+export const getCurves = (..._args: unknown[]) => notAvailable("getCurves");
+export const getDiffieHellman = (..._args: unknown[]) =>
   notAvailable("getDiffieHellman");
-export const getFips = (...args: unknown[]) => notAvailable("getFips");
-export const getHashes = (...args: unknown[]) => notAvailable("getHashes");
-export const hash = (...args: unknown[]) => notAvailable("hash");
-export const hkdf = (...args: unknown[]) => notAvailable("hkdf");
-export const hkdfSync = (...args: unknown[]) => notAvailable("hkdfSync");
-export const pbkdf2 = (...args: unknown[]) => notAvailable("pbkdf2");
-export const pbkdf2Sync = (...args: unknown[]) => notAvailable("pbkdf2Sync");
-export const privateDecrypt = (...args: unknown[]) =>
+export const getFips = (..._args: unknown[]) => notAvailable("getFips");
+export const getHashes = (..._args: unknown[]) => notAvailable("getHashes");
+export const hash = (..._args: unknown[]) => notAvailable("hash");
+export const hkdf = (..._args: unknown[]) => notAvailable("hkdf");
+export const hkdfSync = (..._args: unknown[]) => notAvailable("hkdfSync");
+export const pbkdf2 = (..._args: unknown[]) => notAvailable("pbkdf2");
+export const pbkdf2Sync = (..._args: unknown[]) => notAvailable("pbkdf2Sync");
+export const privateDecrypt = (..._args: unknown[]) =>
   notAvailable("privateDecrypt");
-export const privateEncrypt = (...args: unknown[]) =>
+export const privateEncrypt = (..._args: unknown[]) =>
   notAvailable("privateEncrypt");
-export const publicDecrypt = (...args: unknown[]) =>
+export const publicDecrypt = (..._args: unknown[]) =>
   notAvailable("publicDecrypt");
-export const publicEncrypt = (...args: unknown[]) =>
+export const publicEncrypt = (..._args: unknown[]) =>
   notAvailable("publicEncrypt");
-export const randomFill = (...args: unknown[]) => notAvailable("randomFill");
-export const randomInt = (...args: unknown[]) => notAvailable("randomInt");
-export const scrypt = (...args: unknown[]) => notAvailable("scrypt");
-export const scryptSync = (...args: unknown[]) => notAvailable("scryptSync");
-export const secureHeapUsed = (...args: unknown[]) =>
+export const randomFill = (..._args: unknown[]) => notAvailable("randomFill");
+export const randomInt = (..._args: unknown[]) => notAvailable("randomInt");
+export const scrypt = (..._args: unknown[]) => notAvailable("scrypt");
+export const scryptSync = (..._args: unknown[]) => notAvailable("scryptSync");
+export const secureHeapUsed = (..._args: unknown[]) =>
   notAvailable("secureHeapUsed");
-export const setEngine = (...args: unknown[]) => notAvailable("setEngine");
-export const setFips = (...args: unknown[]) => notAvailable("setFips");
-export const sign = (...args: unknown[]) => notAvailable("sign");
-export const verify = (...args: unknown[]) => notAvailable("verify");
+export const setEngine = (..._args: unknown[]) => notAvailable("setEngine");
+export const setFips = (..._args: unknown[]) => notAvailable("setFips");
+export const sign = (..._args: unknown[]) => notAvailable("sign");
+export const verify = (..._args: unknown[]) => notAvailable("verify");
 
 export default {
   Certificate,

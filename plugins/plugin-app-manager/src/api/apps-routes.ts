@@ -1399,7 +1399,7 @@ export async function handleAppsRoutes(
     } | null;
     const registry = runtimeWithList?.getService?.("app-registry") ?? null;
     if (!registry?.listPermissionsViews) {
-      error(res, "AppRegistryService is not registered on the runtime", 503);
+      json(res, []);
       return true;
     }
     const views = await registry.listPermissionsViews();

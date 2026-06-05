@@ -13,7 +13,7 @@ import {
 } from "../core/composables";
 import { FeedEngine } from "../core/engine";
 import { defineSystem } from "../core/system";
-import type { EngineContext, TickContext } from "../core/types";
+import type { EngineContext } from "../core/types";
 import { TickPhase } from "../core/types";
 
 function makeTestEngine() {
@@ -174,7 +174,7 @@ describe("composables inside onTick", () => {
   });
 
   it("tryUseTick returns context inside a tick", async () => {
-    let tickCtx: TickContext | null = null;
+    let tickNumber: number | undefined;
     const engine = makeTestEngine();
     engine.use(
       defineSystem({
@@ -182,15 +182,14 @@ describe("composables inside onTick", () => {
         name: "Try Tick",
         phase: TickPhase.Bootstrap,
         onTick: async () => {
-          tickCtx = tryUseTick();
+          tickNumber = tryUseTick()?.tickNumber;
           return {};
         },
       }),
     );
     await engine.boot();
     await engine.tick();
-    expect(tickCtx).toBeTruthy();
-    expect(tickCtx?.tickNumber).toBe(1);
+    expect(tickNumber).toBe(1);
     await engine.shutdown();
   });
 

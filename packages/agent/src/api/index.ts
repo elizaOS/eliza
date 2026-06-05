@@ -21,7 +21,7 @@ export type {
 } from "@elizaos/plugin-wallet";
 export const handleWalletRoutes: typeof import("@elizaos/plugin-wallet").handleWalletRoutes =
   async (context) => {
-    const walletApi = await import("@elizaos/plugin-wallet");
+    const walletApi = await import(/* @vite-ignore */ "@elizaos/plugin-wallet");
     return walletApi.handleWalletRoutes(context);
   };
 export * from "./accounts-routes.ts";

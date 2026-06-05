@@ -98,7 +98,14 @@ export function PhoneCompanionApp(): React.JSX.Element {
   }, [persistPairingToNative]);
 
   if (!nav.ready) {
-    return <div style={{ padding: 24 }}>Loading...</div>;
+    return (
+      <main style={styles.loadingRoot}>
+        <div style={styles.loadingPanel}>
+          <span style={styles.loadingDot} />
+          <span style={styles.loadingLabel}>Starting</span>
+        </div>
+      </main>
+    );
   }
 
   return renderView(nav.view, {
@@ -151,3 +158,37 @@ function renderView(view: ViewName, h: ViewHandlers): React.JSX.Element {
     />
   );
 }
+
+const styles: Record<string, React.CSSProperties> = {
+  loadingRoot: {
+    minHeight: "100%",
+    display: "grid",
+    placeItems: "center",
+    background: "#0b0f14",
+    color: "#f8fafc",
+  },
+  loadingPanel: {
+    minWidth: 160,
+    minHeight: 56,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    border: "1px solid #1f2937",
+    borderRadius: 8,
+    background: "#111827",
+  },
+  loadingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    background: "#f97316",
+    boxShadow: "0 0 18px rgba(249, 115, 22, 0.55)",
+  },
+  loadingLabel: {
+    fontSize: 13,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: 0,
+  },
+};

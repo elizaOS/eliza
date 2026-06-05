@@ -60,6 +60,23 @@ async function __hono_POST(
       );
     }
 
+    if (agent.execution_tier === "shared") {
+      return applyCorsHeaders(
+        Response.json({
+          success: true,
+          source: "shared_runtime",
+          data: {
+            agentId,
+            action: "resume",
+            message: "Agent is already available on the shared runtime",
+            status: agent.status,
+            executionTier: agent.execution_tier,
+          },
+        }),
+        CORS_METHODS,
+      );
+    }
+
     if (agent.status === "running" && agent.bridge_url && agent.health_url) {
       return applyCorsHeaders(
         Response.json({

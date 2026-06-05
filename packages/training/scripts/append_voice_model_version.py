@@ -416,7 +416,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if already_has_entry(ts_text, args.id, args.version):
         log.info(
-            "voice-models.ts already contains %s @ %s — no-op (idempotent)",
+            "voice-models.ts already contains %s @ %s — unchanged (idempotent)",
             args.id,
             args.version,
         )

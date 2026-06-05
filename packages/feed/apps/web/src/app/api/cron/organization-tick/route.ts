@@ -635,7 +635,8 @@ function selectWeightedOrganizations<
 
     // Pick random org from this type
     const idx = Math.floor(secureRandom() * typeOrgs.length);
-    const org = typeOrgs[idx]!;
+    const org = typeOrgs[idx];
+    if (!org) continue;
     if (!selectedIds.has(org.id)) {
       selected.push(org);
       selectedIds.add(org.id);
@@ -659,10 +660,12 @@ function selectWeightedOrganizations<
       let random = secureRandom() * totalWeight;
 
       for (let i = 0; i < weightedPool.length; i++) {
-        random -= weightedPool[i]?.weight;
+        const weighted = weightedPool[i];
+        if (!weighted) continue;
+        random -= weighted.weight;
         if (random <= 0) {
-          selected.push(weightedPool[i]?.org);
-          selectedIds.add(weightedPool[i]?.org.id);
+          selected.push(weighted.org);
+          selectedIds.add(weighted.org.id);
           weightedPool.splice(i, 1);
           break;
         }

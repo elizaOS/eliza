@@ -181,7 +181,7 @@ VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON = (
 )
 VISION_LANGUAGE_FIXED_RUNTIME_REASON = (
     "vision-language currently runs the fixed eliza-1 VLM runtime only; "
-    "Hermes/OpenClaw harness adapters are not implemented"
+    "Hermes/OpenClaw VLM harnesses are outside this fixed-runtime path"
 )
 VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON = (
     "vision-language Hermes/OpenClaw VLM runtime unavailable "

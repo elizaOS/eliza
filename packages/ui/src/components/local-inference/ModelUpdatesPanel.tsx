@@ -11,8 +11,8 @@
  *   surface is testable.
  * - Toggle persistence lands in `<stateDir>/local-inference/voice-update-prefs.json`
  *   via `POST /api/local-inference/voice-models/preferences` (route to be
- *   added in plugin-local-inference; the panel calls a tolerant stub that
- *   no-ops when the route is missing so the UI does not break in dev).
+ *   added in plugin-local-inference; the panel uses tolerant route handling
+ *   when the endpoint is missing so the UI does not break in dev).
  *
  * OWNER gating: the cellular-auto-update toggle is OWNER-only per R5 §5.4.
  * `isOwner` defaults to `false` so non-OWNER renders show the toggle
@@ -25,11 +25,11 @@ import {
   type VoiceModelId,
   type VoiceModelVersion,
 } from "@elizaos/shared";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   type TranslationContextValue,
   useTranslation,
-} from "../../state/TranslationContext";
+} from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 
 type TranslateFn = TranslationContextValue["t"];
@@ -51,8 +51,8 @@ export interface ModelUpdatesPanelProps {
   /**
    * Per-id installation state (installed version + pin flag). Caller wires
    * from the runtime's `/api/local-inference/voice-models/status` endpoint
-   * once it lands; pass an empty array to surface "no models installed"
-   * placeholders for every id in `VOICE_MODEL_VERSIONS`.
+   * once it lands; pass an empty array to surface "no models installed" rows
+   * for every id in `VOICE_MODEL_VERSIONS`.
    */
   readonly installations: ReadonlyArray<VoiceModelInstallationView>;
   readonly preferences: VoiceUpdatePreferencesView;
@@ -317,27 +317,6 @@ function ToggleRow({
       {hint ? <span className="text-muted-foreground">({hint})</span> : null}
     </label>
   );
-}
-
-/**
- * Standalone hook helper for callers that don't yet have a server route to
- * mount against — preserves the panel's contract (so storybooks render)
- * but tolerates absent endpoints.
- */
-export function useStaticVoiceUpdatePreferences(
-  initial?: VoiceUpdatePreferencesView,
-): {
-  preferences: VoiceUpdatePreferencesView;
-  setPreferences: (next: VoiceUpdatePreferencesView) => void;
-} {
-  const [preferences, setPreferences] = useState<VoiceUpdatePreferencesView>(
-    initial ?? {
-      autoUpdateOnWifi: true,
-      autoUpdateOnCellular: false,
-      autoUpdateOnMetered: false,
-    },
-  );
-  return { preferences, setPreferences };
 }
 
 export default ModelUpdatesPanel;

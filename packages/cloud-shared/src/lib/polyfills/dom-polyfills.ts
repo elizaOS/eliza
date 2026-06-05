@@ -109,7 +109,7 @@ if (typeof (globalThis as { window?: unknown }).window === "undefined") {
   }
 }
 
-// Export a no-op function so this can be imported
+// Export an explicit initializer for modules that expect one.
 export function initPolyfills() {
   // Polyfills are applied on module load
 }

@@ -234,7 +234,8 @@ describe("executeDirectRepost", () => {
     const originalSelect = activeDb.select;
     const originalTransaction = activeDb.transaction;
     activeDb.select = mockDbSuccess.select;
-    activeDb.transaction = mockDbSuccess.transaction as typeof mockDb.transaction;
+    activeDb.transaction =
+      mockDbSuccess.transaction as typeof mockDb.transaction;
 
     try {
       const result = await executeDirectRepost({

@@ -19,7 +19,7 @@
 // Those controls belong in an eliza notes service + plugin-background-runner.
 
 import { Minus } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { formatRelativeTime } from "../view-format";
 import { useWindowControls } from "./hooks/useWindowControls";
 import { ResizeHandles } from "./ResizeHandles";
@@ -791,6 +791,19 @@ function NoteForm({
   onSave: () => void;
   onCancel: () => void;
 }): ReactNode {
+  // The quick-add input swaps itself out for this form on the first keystroke
+  // (openNewForm seeds the title), which drops focus. Move focus into the title
+  // input with the caret at the end on mount, so typing continues seamlessly
+  // (mirrors notes.js, which focuses the title field when the editor opens).
+  const titleRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    el.focus();
+    const end = el.value.length;
+    el.setSelectionRange(end, end);
+  }, []);
+
   return (
     <div className="od-note-form">
       <fieldset className="od-note-form-seg" aria-label="Note type">
@@ -814,6 +827,7 @@ function NoteForm({
         </button>
       </fieldset>
       <input
+        ref={titleRef}
         className="od-note-form-title"
         value={draft.title}
         onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}

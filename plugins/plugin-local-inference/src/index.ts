@@ -13,6 +13,10 @@ export {
 	type MediaKind,
 } from "./actions/generate-media.js";
 export {
+	extractSpeakerName,
+	identifySpeakerAction,
+} from "./actions/identify-speaker.js";
+export {
 	getLocalInferenceActiveModelId,
 	getLocalInferenceActiveSnapshot,
 	getLocalInferenceChatStatus,

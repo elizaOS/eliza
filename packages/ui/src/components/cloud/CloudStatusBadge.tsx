@@ -41,7 +41,7 @@ function trimTrailingZeroes(value: string): string {
   return value.replace(/\.0+$|(\.\d*[1-9])0+$/, "$1");
 }
 
-export function formatCompactCloudCredits(balance: number): string {
+function formatCompactCloudCredits(balance: number): string {
   const absoluteBalance = Math.abs(balance);
   const sign = balance < 0 ? "-" : "";
 
@@ -64,7 +64,7 @@ export function formatCompactCloudCredits(balance: number): string {
   return `${sign}$${trimTrailingZeroes(absoluteBalance.toFixed(2))}`;
 }
 
-export function resolveCloudStatusBadgeState(
+function resolveCloudStatusBadgeState(
   args: ResolveCloudStatusBadgeStateArgs,
 ): CloudStatusBadgeState | null {
   const {

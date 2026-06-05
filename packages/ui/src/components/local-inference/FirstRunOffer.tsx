@@ -5,7 +5,7 @@ import type {
   InstalledModel,
 } from "../../api/client-local-inference";
 import { selectRecommendedModels } from "../../services/local-inference/recommendation";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { displayModelName, findInstalled } from "./hub-utils";
 

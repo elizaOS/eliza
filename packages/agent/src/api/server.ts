@@ -23,6 +23,7 @@ function tokenMatches(expected: string, provided: string): boolean {
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
 import path from "node:path";
+import { handleCloudPairRoute } from "@elizaos/app-core/api/cloud-pair-route";
 import {
   type AgentRuntime,
   type IAgentRuntime,
@@ -72,18 +73,20 @@ let x402PluginModulePromise: Promise<X402PluginModule> | null = null;
 
 async function getBrowserPlugin(): Promise<BrowserPluginModule> {
   if (browserPluginModule) return browserPluginModule;
-  browserPluginModulePromise ??= import("@elizaos/plugin-browser").then(
-    (browser) => {
-      browserPluginModule = browser;
-      return browser;
-    },
-  );
+  browserPluginModulePromise ??= import(
+    /* @vite-ignore */ "@elizaos/plugin-browser"
+  ).then((browser) => {
+    browserPluginModule = browser;
+    return browser;
+  });
   return browserPluginModulePromise;
 }
 
 async function getX402Plugin(): Promise<X402PluginModule> {
   if (x402PluginModule) return x402PluginModule;
-  x402PluginModulePromise ??= import("@elizaos/plugin-x402").then((x402) => {
+  x402PluginModulePromise ??= import(
+    /* @vite-ignore */ "@elizaos/plugin-x402"
+  ).then((x402) => {
     x402PluginModule = x402;
     return x402;
   });
@@ -91,15 +94,16 @@ async function getX402Plugin(): Promise<X402PluginModule> {
 }
 
 const optionalPluginImports = {
-  capacitor: () => import("@elizaos/plugin-capacitor-bridge"),
-  computerUse: () => import("@elizaos/plugin-computeruse"),
-  cloud: () => import("@elizaos/plugin-elizacloud"),
-  imessage: () => import("@elizaos/plugin-imessage"),
-  mcp: () => import("@elizaos/plugin-mcp"),
-  signal: () => import("@elizaos/plugin-signal"),
-  streaming: () => import("@elizaos/plugin-streaming"),
-  whatsapp: () => import("@elizaos/plugin-whatsapp"),
-  workflow: () => import("@elizaos/plugin-workflow"),
+  capacitor: () =>
+    import(/* @vite-ignore */ "@elizaos/plugin-capacitor-bridge"),
+  computerUse: () => import(/* @vite-ignore */ "@elizaos/plugin-computeruse"),
+  cloud: () => import(/* @vite-ignore */ "@elizaos/plugin-elizacloud"),
+  imessage: () => import(/* @vite-ignore */ "@elizaos/plugin-imessage"),
+  mcp: () => import(/* @vite-ignore */ "@elizaos/plugin-mcp"),
+  signal: () => import(/* @vite-ignore */ "@elizaos/plugin-signal"),
+  streaming: () => import(/* @vite-ignore */ "@elizaos/plugin-streaming"),
+  whatsapp: () => import(/* @vite-ignore */ "@elizaos/plugin-whatsapp"),
+  workflow: () => import(/* @vite-ignore */ "@elizaos/plugin-workflow"),
 };
 
 type LocalInferenceServerApi = {
@@ -120,7 +124,7 @@ let localInferenceServerApiPromise: Promise<LocalInferenceServerApi> | null =
 
 function getLocalInferenceServerApi(): Promise<LocalInferenceServerApi> {
   localInferenceServerApiPromise ??= import(
-    "@elizaos/plugin-local-inference"
+    /* @vite-ignore */ "@elizaos/plugin-local-inference"
   ) as Promise<LocalInferenceServerApi>;
   return localInferenceServerApiPromise;
 }
@@ -146,7 +150,9 @@ let agentSkillsApiPromise:
 function getAgentSkillsApi(): Promise<
   typeof import("@elizaos/plugin-agent-skills")
 > {
-  agentSkillsApiPromise ??= import("@elizaos/plugin-agent-skills");
+  agentSkillsApiPromise ??= import(
+    /* @vite-ignore */ "@elizaos/plugin-agent-skills"
+  );
   return agentSkillsApiPromise;
 }
 
@@ -156,7 +162,9 @@ let appManagerApiPromise:
 function getAppManagerApi(): Promise<
   typeof import("@elizaos/plugin-app-manager")
 > {
-  appManagerApiPromise ??= import("@elizaos/plugin-app-manager");
+  appManagerApiPromise ??= import(
+    /* @vite-ignore */ "@elizaos/plugin-app-manager"
+  );
   return appManagerApiPromise;
 }
 
@@ -164,7 +172,7 @@ let walletApiPromise:
   | Promise<typeof import("@elizaos/plugin-wallet")>
   | undefined;
 function getWalletApi(): Promise<typeof import("@elizaos/plugin-wallet")> {
-  walletApiPromise ??= import("@elizaos/plugin-wallet");
+  walletApiPromise ??= import(/* @vite-ignore */ "@elizaos/plugin-wallet");
   return walletApiPromise;
 }
 
@@ -181,7 +189,9 @@ let pluginRegistryApiPromise:
 function getPluginRegistryApi(): Promise<
   typeof import("@elizaos/plugin-registry")
 > {
-  pluginRegistryApiPromise ??= import("@elizaos/plugin-registry");
+  pluginRegistryApiPromise ??= import(
+    /* @vite-ignore */ "@elizaos/plugin-registry"
+  );
   return pluginRegistryApiPromise;
 }
 
@@ -300,6 +310,7 @@ import {
   handleRemoteCapabilityRoutes,
   handleSandboxRouteGroup,
   handleSubscriptionRoutes,
+  handleSuggestionsRoutes,
   handleUpdateRoutes,
   handleViewsRoutes,
   handleWorkbenchRoutes,
@@ -806,6 +817,113 @@ async function handleBuiltinOptionalRoutes(
       perTaskThresholds: emptyTrainingTaskCounters(),
       perTaskCooldownMs: emptyTrainingTaskCounters(),
       serviceRegistered: false,
+    });
+    return true;
+  }
+
+  if (pathname === "/api/lifeops/activity-signals") {
+    if (method === "GET") {
+      json(res, { signals: [] });
+      return true;
+    }
+    if (method === "POST") {
+      await readBody(req).catch(() => undefined);
+      json(res, {
+        ok: true,
+        stored: false,
+        reason: "lifeops_route_unavailable",
+      });
+      return true;
+    }
+  }
+
+  if (method === "GET" && pathname === "/api/voice/profiles") {
+    json(res, { profiles: [] });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/discord-local/status") {
+    json(res, {
+      available: false,
+      connected: false,
+      authenticated: false,
+      currentUser: null,
+      subscribedChannelIds: [],
+      configuredChannelIds: [],
+      scopes: [],
+      lastError: null,
+      ipcPath: null,
+    });
+    return true;
+  }
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/imessage/status"
+  ) {
+    json(res, {
+      available: false,
+      connected: false,
+      bridgeType: "none",
+      hostPlatform: process.platform,
+      diagnostics: [],
+      error: null,
+      chatDbAvailable: false,
+      sendOnly: false,
+      reason: "lifeops_route_unavailable",
+      permissionAction: null,
+    });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/signal/status") {
+    const requestUrl = new URL(req.url ?? pathname, "http://localhost");
+    const accountId = requestUrl.searchParams.get("accountId") || "default";
+    json(res, {
+      accountId,
+      status: "idle",
+      authExists: false,
+      serviceConnected: false,
+      qrDataUrl: null,
+      phoneNumber: null,
+      error: null,
+    });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/setup/telegram-account/status") {
+    json(res, {
+      connector: "telegram-account",
+      state: "idle",
+      detail: {
+        status: "idle",
+        configured: false,
+        sessionExists: false,
+        serviceConnected: false,
+        restartRequired: false,
+        hasAppCredentials: false,
+        phone: null,
+        isCodeViaApp: false,
+        account: null,
+        error: null,
+      },
+    });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/whatsapp/status") {
+    const requestUrl = new URL(req.url ?? pathname, "http://localhost");
+    const accountId = requestUrl.searchParams.get("accountId") || "default";
+    const authScope = requestUrl.searchParams.get("authScope");
+    json(res, {
+      accountId,
+      ...(authScope === "platform" || authScope === "lifeops"
+        ? { authScope }
+        : {}),
+      status: "idle",
+      authExists: false,
+      serviceConnected: false,
+      servicePhone: null,
     });
     return true;
   }
@@ -1361,6 +1479,7 @@ import {
   isAllowedHost as _isAllowedHost,
   isAuthorized as _isAuthorized,
   isSharedTerminalClientId as _isSharedTerminalClientId,
+  isWaifuChatAuthorized as _isWaifuChatAuthorized,
   isWebSocketAuthorized as _isWebSocketAuthorized,
   normalizePairingCode as _normalizePairingCode,
   normalizeWsClientId as _normalizeWsClientId,
@@ -1377,6 +1496,7 @@ export {
   extractAuthToken,
   isAllowedHost,
   isAuthorized,
+  isWaifuChatAuthorized,
   normalizeWsClientId,
   resolveCorsOrigin,
   resolveTerminalRunClientId,
@@ -1389,6 +1509,7 @@ export {
 const isAllowedHost = _isAllowedHost;
 const applyCors = _applyCors;
 const isAuthorized = _isAuthorized;
+const isWaifuChatAuthorized = _isWaifuChatAuthorized;
 const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
 const normalizeWsClientId = _normalizeWsClientId;
 const resolveTerminalRunClientId = _resolveTerminalRunClientId;
@@ -1637,6 +1758,11 @@ async function handleRequest(
     return;
   }
 
+  // Cloud SSO popup handoff: GET /pair?token=X must short-circuit BEFORE the
+  // static-UI catch-all, otherwise the SPA index.html is served and the user
+  // ends up on the password screen.
+  if (await handleCloudPairRoute(req, res)) return;
+
   // Serve dashboard static assets before the auth gates. serveStaticUi already
   // refuses /api/, /v1/, and /ws paths, so API endpoints remain protected
   // while steward-managed containers can still reach the built-in dashboard.
@@ -1657,7 +1783,8 @@ async function handleRequest(
       method,
       pathname,
     }) &&
-    !isAuthorized(req)
+    !isAuthorized(req) &&
+    !isWaifuChatAuthorized(req, method, pathname)
   ) {
     json(res, { error: "Unauthorized" }, 401);
     return;
@@ -2677,11 +2804,11 @@ async function handleRequest(
   // /api/issues/*) are now provided by the @elizaos/plugin-agent-orchestrator
   // plugin via the runtime route registry. Most of those paths genuinely need
   // the runtime, so a pre-runtime 503 is correct. The GET capability probes
-  // below are the exception: they have graceful builtin stubs
+  // below are the exception: they have graceful builtin probe handlers
   // (handleBuiltinOptionalRoutes → { available: false } / "unavailable"). The
   // dashboard polls /preflight the instant agentStatus flips to "running", which
   // can race ahead of state.runtime being assigned during a restart; serve those
-  // from the stub instead of a 503 the browser logs as a red console error.
+  // from the builtin probe handler instead of a 503 the browser logs as a red console error.
   const isCodingAgentBuiltinProbe =
     pathname === "/api/coding-agents/preflight" ||
     pathname === "/api/coding-agents/coordinator/status";
@@ -2804,6 +2931,21 @@ async function handleRequest(
     ) {
       return;
     }
+  }
+
+  // ── Prompt suggestions (/api/suggestions) ─────────────────────────────────
+  if (
+    await handleSuggestionsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      json,
+      error,
+      runtime: state.runtime,
+    })
+  ) {
+    return;
   }
 
   // ── View routes (/api/views/*) ────────────────────────────────────────────
@@ -3711,7 +3853,9 @@ export async function startApiServer(opts?: {
         return;
       }
       try {
-        const streamRoutes = await import("@elizaos/plugin-streaming");
+        const streamRoutes = await import(
+          /* @vite-ignore */ "@elizaos/plugin-streaming"
+        );
         const handleStreamRoute =
           typeof streamRoutes.handleStreamRoute === "function"
             ? streamRoutes.handleStreamRoute
@@ -3905,14 +4049,14 @@ export async function startApiServer(opts?: {
         // `handleStreamRoute` is exported by `@elizaos/plugin-streaming`,
         // which the mobile bundle replaces with a null-plugin proxy (see
         // `packages/agent/scripts/build-mobile-bundle.mjs` —
-        // `@elizaos/plugin-streaming` is in the stub allowlist because the
+        // `@elizaos/plugin-streaming` is in the mobile replacement allowlist because the
         // TTS / SSE worker pool has zero mobile use). On mobile the
         // dynamic import resolves successfully but `handleStreamRoute` is
         // `undefined`, and the closure here gets pushed into
         // `connectorRouteHandlers` anyway — so every inbound HTTP request
         // (including `/api/local-inference/device-bridge/status`) errors
         // with `handleStreamRoute is not a function`. Skip the push when
-        // the import returned a stub.
+        // the import returned a null-plugin proxy.
         if (typeof handleStreamRoute === "function") {
           state.connectorRouteHandlers.push((req, res, pathname, method) =>
             handleStreamRoute(req, res, pathname, method, streamState as never),

@@ -13,8 +13,8 @@
     }
   },
   "scripts": {
-    "lint": "echo skip (feed) >&2",
-    "typecheck": "echo skip (feed) >&2",
+    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/testing/package.json packages/testing/tsconfig.json packages/testing/tsconfig.typecheck.json packages/testing/src packages/testing/unit packages/testing/e2e",
+    "typecheck": "cd ../.. && bun run scripts/typecheck-workspace.ts packages/testing",
     "test:unit": "bun test unit/ --preload ./unit/preload.ts",
     "test:integration": "bun test integration/ --preload ./integration/preload.ts",
     "test:e2e": "cd ../.. && rm -rf packages/testing/node_modules/@playwright packages/testing/node_modules/playwright && bunx playwright test --config packages/testing/playwright.config.ts",

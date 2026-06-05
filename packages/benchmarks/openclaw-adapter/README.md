@@ -20,7 +20,7 @@ Cerebras / OpenAI / other provider
 OpenClaw is a one-shot CLI per turn — there is no long-running daemon to
 manage. The `OpenClawCLIManager` is intentionally thin: `start()` validates
 the binary exists and warms up the Node compile cache by running `--version`;
-`stop()` is a no-op.
+`stop()` clears the manager's local started state for interface compatibility.
 
 For hermetic adapter tests and lightweight smoke checks, `OpenClawClient` also
 supports a direct OpenAI-compatible path when constructed with
@@ -40,7 +40,7 @@ parity.
 openclaw_adapter/
   __init__.py          re-exports OpenClawClient, OpenClawCLIManager, MessageResponse
   client.py            OpenClawClient — spawns `openclaw agent --local --json` per turn
-  server_manager.py    OpenClawCLIManager — lifecycle (start = validate binary; stop = no-op)
+  server_manager.py    OpenClawCLIManager — lifecycle (start = validate binary; stop = clear started state)
   clawbench.py         build_clawbench_agent_fn — runs an openclaw scenario via CLI
   bfcl.py              build_bfcl_agent_fn — function-call-style benchmark factory
   lifeops_bench.py     build_lifeops_bench_agent_fn — LifeOpsBench compatible

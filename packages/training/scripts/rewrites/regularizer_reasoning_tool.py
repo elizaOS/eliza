@@ -79,7 +79,7 @@ def _extract_answer(text: str | None, thought: str | None) -> str | None:
             tail = sentences[-1]
             # Truncate over-long single-sentence thoughts at 400 chars rather
             # than rejecting outright — these records are often "this chunk
-            # has nothing to add" no-op conclusions where the sentence IS
+            # has nothing to add" empty conclusions where the sentence IS
             # the answer.
             if len(tail) > 400:
                 tail = tail[-400:].lstrip()

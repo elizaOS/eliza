@@ -392,7 +392,7 @@ def audit_alberta_objective_completion(
                 and _check(preflight, "brax_validation", "ok") is True
                 and brax_contract.get("ok") is True
             )
-            else ["production PPO/Brax/SOTA baseline artifacts are incomplete"],
+            else ["production PPO/Brax/SOTA baseline artifacts are not fully present"],
         ),
         _requirement(
             "alberta_vs_ppo_side_by_side_comparison",
@@ -524,7 +524,7 @@ def audit_alberta_objective_completion(
             },
             blockers=[]
             if obstacle_local_4task.get("ok") is True
-            else ["production obstacle-course continual benchmark is incomplete"],
+            else ["production obstacle-course continual benchmark is not fully proved"],
         ),
         _requirement(
             "checkpoint_bound_local_policy_videos_reviewed",
@@ -558,7 +558,7 @@ def audit_alberta_objective_completion(
             },
             blockers=[]
             if checkpoint_bound_local_videos_ok or production_policy_videos_ok
-            else ["checkpoint-bound local Alberta videos are incomplete or not reviewed"],
+            else ["checkpoint-bound local Alberta videos are missing or not reviewed"],
         ),
         _requirement(
             "production_robot_policy_videos_reviewed",
@@ -725,7 +725,7 @@ def write_markdown(report: dict[str, Any], path: Path) -> None:
     lines = [
         "# Alberta Objective Completion Audit",
         "",
-        f"Result: `{'complete' if report.get('ok') else 'incomplete'}`",
+        f"Result: `{'complete' if report.get('ok') else 'not-complete'}`",
         f"Generated: `{report.get('generated_at')}`",
         "",
         "| requirement | ok | blockers |",

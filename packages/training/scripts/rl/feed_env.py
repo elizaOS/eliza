@@ -2069,7 +2069,7 @@ You receive market updates and must analyze, reason, and then act."""
         if think_result.is_properly_paired and action_result.is_valid_json:
             score += 0.10  # Well-formed response
 
-        # Check response isn't truncated/incomplete
+        # Check response isn't truncated or partial.
         response_lower = response.lower()
         if response.strip().endswith("}") or "</think>" in response_lower:
             score += 0.05

@@ -1,8 +1,10 @@
+export { BugReportProvider } from "./BugReportProvider";
 export * from "./useActivityEvents";
 export * from "./useAutomationDeepLink";
-export * from "./useBugReport";
+export * from "./useBugReport.hooks";
 export * from "./useChatAvatarVoiceBridge";
 export * from "./useConnectorAccounts";
+export * from "./useConnectorReconnect";
 export * from "./useConnectorSendAsAccount";
 export * from "./useContextMenu";
 export * from "./useDesktopBridgeEvent";

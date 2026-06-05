@@ -1,18 +1,18 @@
-import { Sidebar, SidebarContent, SidebarPanel, SidebarScrollRegion, TooltipHint, TooltipProvider } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
-  BriefcaseBusiness,
-  CalendarDays,
-  CreditCard,
-  FileText,
-  LayoutDashboard,
-  Mail,
-  MessageSquare,
-  MessageSquareText,
-  Settings2,
-} from "lucide-react";
-import type { ReactNode } from "react";
+  Sidebar,
+  SidebarContent,
+  SidebarPanel,
+  SidebarScrollRegion,
+  TooltipHint,
+  TooltipProvider,
+} from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
+import {
+  NAV_GROUPS,
+  type NavGroup,
+  type NavItem,
+} from "./LifeOpsNavRail.helpers.js";
 
 interface LifeOpsNavRailProps {
   activeSection: LifeOpsSection;
@@ -21,89 +21,7 @@ interface LifeOpsNavRailProps {
   labelMode?: "all" | "active";
 }
 
-interface NavGroup {
-  key: string;
-  label: string;
-  items: NavItem[];
-}
-
-interface NavItem {
-  id: LifeOpsSection;
-  label: string;
-  icon: ReactNode;
-  dotColor: string;
-}
-
-export const NAV_GROUPS: NavGroup[] = [
-  {
-    key: "today",
-    label: "Assistant",
-    items: [
-      {
-        id: "assistant",
-        label: "Assistant",
-        icon: <MessageSquareText className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-amber-300",
-      },
-      {
-        id: "overview",
-        label: "Overview",
-        icon: <LayoutDashboard className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-violet-400",
-      },
-      {
-        id: "messages",
-        label: "Messages",
-        icon: <MessageSquare className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-emerald-400",
-      },
-      {
-        id: "mail",
-        label: "Mail",
-        icon: <Mail className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-rose-400",
-      },
-      {
-        id: "calendar",
-        label: "Calendar",
-        icon: <CalendarDays className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-blue-400",
-      },
-      {
-        id: "reminders",
-        label: "Reminders",
-        icon: <BriefcaseBusiness className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-amber-400",
-      },
-      {
-        id: "money",
-        label: "Money",
-        icon: <CreditCard className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-green-400",
-      },
-      {
-        id: "documents",
-        label: "Documents",
-        icon: <FileText className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-cyan-400",
-      },
-    ],
-  },
-  {
-    key: "config",
-    label: "Configure",
-    items: [
-      {
-        id: "setup",
-        label: "Settings",
-        icon: <Settings2 className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-rose-400",
-      },
-    ],
-  },
-];
-
-const NAV_ITEMS = NAV_GROUPS.flatMap((group) => group.items);
+const NAV_ITEMS = NAV_GROUPS.flatMap((group: NavGroup) => group.items);
 
 function LifeOpsNavRailItem({
   item,
@@ -165,6 +83,107 @@ function LifeOpsNavRailItem({
         />
       </button>
     </TooltipHint>
+  );
+}
+
+function LifeOpsNavTabItem({
+  item,
+  isActive,
+  onNavigate,
+}: {
+  item: NavItem;
+  isActive: boolean;
+  onNavigate: (section: LifeOpsSection) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `nav-${item.id}`,
+    role: "tab",
+    label: item.label,
+    group: "lifeops-nav",
+    status: isActive ? "active" : "inactive",
+    description: `Open the ${item.label} section`,
+  });
+  return (
+    <TooltipHint content={item.label} side="bottom">
+      <button
+        ref={ref}
+        type="button"
+        aria-label={item.label}
+        aria-current={isActive ? "page" : undefined}
+        onClick={() => onNavigate(item.id)}
+        data-sidebar-item
+        {...agentProps}
+        className={[
+          "group relative flex h-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] px-2 transition-colors",
+          isActive ? "w-auto gap-1.5 pr-2.5" : "w-8",
+          isActive ? "bg-accent/15 text-txt" : "text-txt hover:bg-bg-muted/50",
+        ].join(" ")}
+      >
+        <span
+          className={[
+            "flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--radius-sm)] transition-colors",
+            isActive
+              ? "bg-white/8 text-txt"
+              : "bg-transparent text-muted/80 group-hover:text-txt",
+          ].join(" ")}
+        >
+          {item.icon}
+        </span>
+        {isActive ? (
+          <span className="max-w-24 truncate text-xs-tight font-medium">
+            {item.label}
+          </span>
+        ) : null}
+        <span
+          aria-hidden
+          className={[
+            `h-1.5 w-1.5 shrink-0 rounded-full ${item.dotColor} opacity-60`,
+            isActive ? "" : "absolute right-1 top-1",
+          ].join(" ")}
+        />
+      </button>
+    </TooltipHint>
+  );
+}
+
+/**
+ * Horizontal variant of the LifeOps section nav. Renders the same
+ * {@link NAV_GROUPS} items as a single scrollable tab strip so the workspace can
+ * present one vertical content column with navigation pinned to the top instead
+ * of a side rail.
+ */
+export function LifeOpsNavTabs({
+  activeSection,
+  onNavigate,
+}: Pick<LifeOpsNavRailProps, "activeSection" | "onNavigate">) {
+  return (
+    <TooltipProvider delayDuration={320} skipDelayDuration={120}>
+      <div
+        role="tablist"
+        aria-label="LifeOps sections"
+        data-testid="lifeops-nav-tabs"
+        className="flex min-w-0 items-center gap-1 overflow-x-auto"
+      >
+        {NAV_GROUPS.map((group, groupIndex) => (
+          <div key={group.key} className="flex shrink-0 items-center gap-1">
+            {groupIndex > 0 ? (
+              <span
+                aria-hidden
+                className="mx-1 h-5 w-px shrink-0 bg-border/12"
+              />
+            ) : null}
+            {group.items.map((item) => (
+              <LifeOpsNavTabItem
+                key={item.id}
+                item={item}
+                isActive={item.id === activeSection}
+                onNavigate={onNavigate}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+    </TooltipProvider>
   );
 }
 

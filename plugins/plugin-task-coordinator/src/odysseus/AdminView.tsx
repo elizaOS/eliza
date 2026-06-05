@@ -1,6 +1,8 @@
 // odysseus Admin panel (static/js/admin.js + the admin sub-tabs of the settings
-// modal in static/index.html). The admin-only surface: a left rail of admin
-// sections (Users / System / Agent Tools), the Users tab (Registration
+// modal in static/index.html). The admin-only surface, presented as ONE vertical
+// column: a horizontal tab bar of admin sections (Agent Tools / Users / System)
+// above a single content panel that renders one section at a time — the Users tab
+// (Registration
 // "Open signup" toggle, the user list with a per-user privilege panel — feature
 // toggles, a daily-message limit, and an allowed-models checkbox list — plus an
 // Add User form), the System tab (Data Backup export/import + a per-category
@@ -507,14 +509,14 @@ export function AdminView({
         </div>
 
         <div className="od-admin-body">
-          {/* ── Left rail of admin sections (settings-sidebar admin-only) ── */}
+          {/* ── Horizontal section tab bar above the panel (single-pane). The
+              modal header already reads "Admin", so no standalone rail label. ── */}
           <div
             className="od-admin-rail"
             role="tablist"
             aria-label="Admin sections"
           >
-            <div className="od-admin-rail-label">Admin</div>
-            {/* Rail item order matches the real odysseus settings ADMIN group:
+            {/* Tab order matches the real odysseus settings ADMIN group:
                 Agent Tools, then Users, then System (verified vs 16-admin.png). */}
             <button
               type="button"
@@ -548,7 +550,7 @@ export function AdminView({
             </button>
           </div>
 
-          {/* ── Panels ── */}
+          {/* ── Single content panel below the tab bar (one section at a time) ── */}
           <div className="od-admin-panels">
             {tab === "users" ? (
               <UsersTab

@@ -27,7 +27,8 @@ export interface Bindings {
 
   // ---- AI providers ----
   CEREBRAS_API_KEY?: string;
-  OPENROUTER_API_KEY?: string;
+  BITROUTER_API_KEY?: string;
+  BITROUTER_BASE_URL?: string;
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
   ANTHROPIC_API_KEY?: string;
@@ -62,6 +63,9 @@ export interface Bindings {
   /** Server-only platform / tenant API keys. */
   STEWARD_PLATFORM_KEYS?: string;
   STEWARD_TENANT_API_KEY?: string;
+  STEWARD_REQUEST_SIGNING_SECRET?: string;
+  STEWARD_REQUEST_SIGNING_SECRETS?: string;
+  STEWARD_REQUEST_SIGNING_KEY_ID?: string;
   RPC_URL?: string;
   CHAIN_ID?: string;
 
@@ -86,7 +90,9 @@ export interface Bindings {
   // ---- App config ----
   NEXT_PUBLIC_APP_URL?: string;
   NEXT_PUBLIC_API_URL?: string;
+  AGENT_ROUTER_ORIGIN_HOST?: string;
   ELIZA_APP_WEBHOOK_GATEWAY_URL?: string;
+  ELIZA_CLOUD_AGENT_BASE_DOMAIN?: string;
   WEBHOOK_GATEWAY_URL?: string;
   GATEWAY_WEBHOOK_URL?: string;
   ELIZA_APP_WEBHOOK_PROJECT?: string;

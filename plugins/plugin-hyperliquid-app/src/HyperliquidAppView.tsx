@@ -1,5 +1,5 @@
 import type { OverlayAppContext } from "@elizaos/app-core";
-import { Button, client, PagePanel, Spinner } from "@elizaos/app-core";
+import { Button, PagePanel, Spinner } from "@elizaos/app-core";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   ArrowLeft,
@@ -7,37 +7,52 @@ import {
   CircleAlert,
   Cloud,
   KeyRound,
+  type LucideIcon,
   RefreshCw,
+  Shield,
   ShieldCheck,
   ShieldX,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import "./client";
-import type { HyperliquidClient } from "./client";
-import type {
-  HyperliquidMarketsResponse,
-  HyperliquidOrdersResponse,
-  HyperliquidPositionsResponse,
-  HyperliquidStatusResponse,
-} from "./hyperliquid-contracts";
+import { loadHyperliquidTuiState } from "./HyperliquidAppView.interact";
 import { useHyperliquidState } from "./useHyperliquidState";
 
 function ReadinessPill({ ready, label }: { ready: boolean; label: string }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border ${
         ready
           ? "border-ok/35 bg-ok/12 text-ok"
           : "border-border bg-bg-accent text-muted"
       }`}
+      role="status"
+      aria-label={label}
+      title={label}
     >
       {ready ? (
-        <ShieldCheck className="h-3.5 w-3.5" />
+        <ShieldCheck className="h-4 w-4" />
       ) : (
-        <ShieldX className="h-3.5 w-3.5" />
+        <ShieldX className="h-4 w-4" />
       )}
-      {label}
     </span>
+  );
+}
+
+function StatusTile({
+  icon: Icon,
+  label,
+  ready,
+}: {
+  icon: LucideIcon;
+  label: string;
+  ready: boolean;
+}) {
+  return (
+    <div className="flex min-h-16 items-center justify-center gap-2 rounded-lg border border-border/24 bg-card/50 px-3">
+      <Icon className={`h-4 w-4 ${ready ? "text-ok" : "text-muted"}`} />
+      <span className="truncate text-sm font-semibold text-txt">{label}</span>
+    </div>
   );
 }
 
@@ -52,48 +67,6 @@ function credentialModeLabel(
     default:
       return "Read-only";
   }
-}
-
-async function loadHyperliquidTuiState(): Promise<{
-  status: HyperliquidStatusResponse;
-  markets: HyperliquidMarketsResponse | null;
-  positions: HyperliquidPositionsResponse | null;
-  orders: HyperliquidOrdersResponse | null;
-}> {
-  const hyperliquidClient = client as HyperliquidClient;
-  const status = await hyperliquidClient.hyperliquidStatus();
-  if (!status.publicReadReady) {
-    return { status, markets: null, positions: null, orders: null };
-  }
-  const [markets, positions, orders] = await Promise.all([
-    hyperliquidClient.hyperliquidMarkets(),
-    hyperliquidClient.hyperliquidPositions(),
-    hyperliquidClient.hyperliquidOrders(),
-  ]);
-  return { status, markets, positions, orders };
-}
-
-async function postHyperliquidCommand(
-  path: string,
-  body: Record<string, unknown>,
-): Promise<unknown> {
-  const response = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message =
-      typeof data === "object" &&
-      data !== null &&
-      "error" in data &&
-      typeof data.error === "string"
-        ? data.error
-        : `Hyperliquid request failed with ${response.status}`;
-    throw new Error(message);
-  }
-  return data;
 }
 
 export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
@@ -161,44 +134,22 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
         <div className="mx-auto max-w-5xl space-y-4">
           {error && <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>}
 
-          <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <div className="rounded-lg border border-border/24 bg-card/50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase text-muted">
-                Public reads
-              </div>
-              <div className="mt-3">
-                <ReadinessPill
-                  ready={publicReadReady}
-                  label={publicReadReady ? "Ready" : "Unavailable"}
-                />
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-border/24 bg-card/50 px-4 py-3">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted">
-                {credentialMode === "managed_vault" ? (
-                  <Cloud className="h-3.5 w-3.5" />
-                ) : (
-                  <KeyRound className="h-3.5 w-3.5" />
-                )}
-                Credentials
-              </div>
-              <div className="mt-3">
-                <ReadinessPill
-                  ready={status?.signerReady ?? false}
-                  label={credentialModeLabel(credentialMode)}
-                />
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-border/24 bg-card/50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase text-muted">
-                Account
-              </div>
-              <div className="mt-3 truncate font-mono text-xs text-txt">
-                {status?.account.address ?? "No account address configured"}
-              </div>
-            </div>
+          <section className="grid gap-3">
+            <StatusTile
+              icon={BarChart3}
+              label="Reads"
+              ready={publicReadReady}
+            />
+            <StatusTile
+              icon={credentialMode === "managed_vault" ? Cloud : KeyRound}
+              label={credentialModeLabel(credentialMode)}
+              ready={status?.signerReady ?? false}
+            />
+            <StatusTile
+              icon={Shield}
+              label={status?.account.address ? "Account" : "No account"}
+              ready={Boolean(status?.account.address)}
+            />
           </section>
 
           {status?.executionBlockedReason && (
@@ -220,7 +171,7 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
               Loading Hyperliquid state
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
+            <div className="space-y-4">
               <section className="rounded-lg border border-border/24 bg-card/50">
                 <div className="flex items-center gap-2 border-b border-border/20 px-4 py-3">
                   <BarChart3 className="h-4 w-4 text-muted" />
@@ -239,9 +190,7 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
                         {market.name}
                       </span>
                       <span className="text-xs text-muted">
-                        {market.maxLeverage
-                          ? `${market.maxLeverage}x`
-                          : "No leverage data"}
+                        {market.maxLeverage ? `${market.maxLeverage}x` : "—"}
                       </span>
                       <span className="font-mono text-xs text-muted">
                         sz {market.szDecimals}
@@ -251,11 +200,23 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
                 </div>
               </section>
 
-              <section className="space-y-4">
+              <section className="grid gap-4">
                 <div className="rounded-lg border border-border/24 bg-card/50 px-4 py-3">
-                  <h2 className="text-sm font-semibold text-txt">Positions</h2>
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-sm font-semibold text-txt">
+                      Positions
+                    </h2>
+                    <ReadinessPill
+                      ready={!positions?.readBlockedReason}
+                      label={
+                        positions?.readBlockedReason
+                          ? "Blocked"
+                          : "Positions readable"
+                      }
+                    />
+                  </div>
                   {positions?.readBlockedReason ? (
-                    <div className="mt-2 text-xs text-muted">
+                    <div className="mt-2 truncate text-xs text-muted">
                       {positions.readBlockedReason}
                     </div>
                   ) : (
@@ -266,11 +227,19 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
                 </div>
 
                 <div className="rounded-lg border border-border/24 bg-card/50 px-4 py-3">
-                  <h2 className="text-sm font-semibold text-txt">
-                    Open orders
-                  </h2>
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-sm font-semibold text-txt">Orders</h2>
+                    <ReadinessPill
+                      ready={!orders?.readBlockedReason}
+                      label={
+                        orders?.readBlockedReason
+                          ? "Blocked"
+                          : "Orders readable"
+                      }
+                    />
+                  </div>
                   {orders?.readBlockedReason ? (
-                    <div className="mt-2 text-xs text-muted">
+                    <div className="mt-2 truncate text-xs text-muted">
                       {orders.readBlockedReason}
                     </div>
                   ) : (
@@ -372,7 +341,7 @@ export function HyperliquidTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(300px, 1.2fr) minmax(280px, 0.8fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -457,7 +426,8 @@ export function HyperliquidTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>account</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | market | execution-check
+            {state?.positions?.positions.length ?? 0} positions /{" "}
+            {state?.orders?.orders.length ?? 0} orders
           </div>
           <div style={{ marginBottom: 12 }}>
             <div>
@@ -504,51 +474,4 @@ export function HyperliquidTuiView() {
       </div>
     </div>
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-hyperliquid-state") {
-    const state = await loadHyperliquidTuiState();
-    return {
-      viewType: "tui",
-      status: state.status,
-      markets:
-        state.markets?.markets.slice(
-          0,
-          typeof params?.limit === "number" ? params.limit : 25,
-        ) ?? [],
-      positions: state.positions,
-      orders: state.orders,
-    };
-  }
-
-  if (capability === "terminal-hyperliquid-market") {
-    const coin =
-      typeof params?.coin === "string" ? params.coin.trim().toUpperCase() : "";
-    if (!coin) throw new Error("coin is required");
-    const state = await loadHyperliquidTuiState();
-    return {
-      viewType: "tui",
-      market:
-        state.markets?.markets.find(
-          (market) => market.name.toUpperCase() === coin,
-        ) ?? null,
-    };
-  }
-
-  if (capability === "terminal-hyperliquid-execution-check") {
-    return {
-      viewType: "tui",
-      result: await postHyperliquidCommand("/api/hyperliquid/orders/open", {
-        coin: typeof params?.coin === "string" ? params.coin : "BTC",
-        side: typeof params?.side === "string" ? params.side : "buy",
-        size: typeof params?.size === "string" ? params.size : "0",
-      }),
-    };
-  }
-
-  throw new Error(`Unsupported capability "${capability}"`);
 }

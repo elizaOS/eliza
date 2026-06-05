@@ -3,11 +3,10 @@ import type { PluginInfo, PluginParamDef } from "../../api";
 import { useApp } from "../../state";
 import { getProvenanceFlags, getProvenanceTitle } from "../apps/provenance";
 import { Button } from "../ui/button";
+import { PluginVisual } from "./PluginVisual";
 import {
   getPluginResourceLinks,
-  iconImageSource,
   pluginResourceLinkLabel,
-  resolveIcon,
 } from "./plugin-list-utils";
 
 function PluginCardResourceLink({
@@ -214,8 +213,6 @@ export function PluginCard({
     releaseStreamSelections[p.id] ??
     p.releaseStream ??
     (p.betaVersion ? "beta" : "latest");
-  const remoteVersionForSelection =
-    selectedReleaseStream === "beta" ? p.betaVersion : p.latestVersion;
   const showReleaseControls = !isShowcase && Boolean(p.npmName);
   const canUpdate = showReleaseControls && Boolean(p.version);
   const canUninstall =
@@ -255,6 +252,11 @@ export function PluginCard({
   const pluginLinks = getPluginResourceLinks(p);
   const provenanceLabels = pluginProvenanceLabels(p);
 
+  const needsConfig = hasParams && !allParamsSet && !isShowcase;
+  const openDetail = () => {
+    if (hasParams) onToggleSettings(p.id);
+  };
+
   return (
     <li
       key={p.id}
@@ -269,47 +271,51 @@ export function PluginCard({
       }
       onDrop={allowCustomOrder && onDrop ? (e) => onDrop(e, p.id) : undefined}
       onDragEnd={allowCustomOrder ? onDragEnd : undefined}
-      className={`border border-border bg-card transition-colors duration-150 flex flex-col ${enabledBorder} ${
-        isOpen ? "ring-1 ring-accent" : "hover:border-accent/40"
-      } ${isDragging ? "opacity-30" : ""} ${isDragOver ? "ring-2 ring-accent/60" : ""}`}
+      onClick={hasParams ? openDetail : undefined}
+      onKeyDown={
+        hasParams
+          ? (e) => {
+              if (
+                e.target === e.currentTarget &&
+                (e.key === "Enter" || e.key === " ")
+              ) {
+                e.preventDefault();
+                openDetail();
+              }
+            }
+          : undefined
+      }
+      tabIndex={hasParams ? 0 : undefined}
+      className={`group relative flex flex-col rounded-lg border border-border bg-card transition-all duration-150 ${
+        hasParams ? "cursor-pointer" : ""
+      } ${enabledBorder} ${
+        isOpen
+          ? "ring-1 ring-accent border-accent/50"
+          : "hover:border-accent/40 hover:shadow-[0_2px_18px_-8px_rgba(var(--accent-rgb),0.35)]"
+      } ${isDragging ? "opacity-30" : ""} ${
+        isDragOver ? "ring-2 ring-accent/60" : ""
+      }`}
       data-plugin-id={p.id}
     >
-      <div className="flex items-center gap-2 px-3 pt-3 pb-1">
-        {allowCustomOrder && (
-          <span
-            className="text-2xs text-muted opacity-30 hover:opacity-70 cursor-grab active:cursor-grabbing shrink-0 select-none leading-none"
-            title={t("pluginsview.DragToReorder")}
-          >
-            {t("pluginsview.X2807")}
+      <div className="flex items-start gap-3 px-4 pt-4">
+        <PluginVisual plugin={p} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate text-sm font-bold leading-tight text-txt">
+              {p.name}
+            </span>
+            {p.version && (
+              <span className="shrink-0 font-mono text-2xs text-muted/60">
+                v{p.version}
+              </span>
+            )}
+          </div>
+          <span className="mt-0.5 block text-2xs font-semibold uppercase tracking-wide text-muted/70">
+            {categoryLabel}
           </span>
-        )}
-        <span className="font-bold text-sm flex items-center gap-1.5 min-w-0 truncate flex-1">
-          {(() => {
-            const icon = resolveIcon(p);
-            if (!icon) return null;
-            if (typeof icon === "string") {
-              const imageSrc = iconImageSource(icon);
-              return imageSrc ? (
-                <img
-                  src={imageSrc}
-                  alt=""
-                  className="w-5 h-5 rounded-sm object-contain"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).style.display =
-                      "none";
-                  }}
-                />
-              ) : (
-                <span className="text-sm">{icon}</span>
-              );
-            }
-            const IconComponent = icon;
-            return <IconComponent className="w-5 h-5" />;
-          })()}
-          {p.name}
-        </span>
+        </div>
         {isShowcase ? (
-          <span className="text-2xs font-bold tracking-wider px-2.5 py-[2px] border border-accent text-txt bg-accent-subtle shrink-0">
+          <span className="shrink-0 rounded-full border border-accent bg-accent-subtle px-2.5 py-[3px] text-2xs font-bold tracking-wider text-txt">
             {t("pluginsview.DEMO")}
           </span>
         ) : (
@@ -318,13 +324,13 @@ export function PluginCard({
             variant="outline"
             size="sm"
             data-plugin-toggle={p.id}
-            className={`text-2xs font-bold tracking-wider px-2.5 py-[2px] h-auto rounded-none border transition-colors duration-150 shrink-0 ${
+            className={`h-auto shrink-0 rounded-full border px-3 py-[3px] text-2xs font-bold tracking-wider transition-colors duration-150 ${
               p.enabled
-                ? "bg-accent text-accent-fg border-accent"
-                : "bg-transparent text-muted border-border hover:text-txt"
+                ? "border-accent bg-accent text-accent-fg hover:bg-accent/90"
+                : "border-border bg-transparent text-muted hover:border-accent/50 hover:text-txt"
             } ${
               toggleDisabled
-                ? "opacity-60 cursor-not-allowed"
+                ? "cursor-not-allowed opacity-60"
                 : "cursor-pointer"
             }`}
             onClick={(e) => {
@@ -336,55 +342,45 @@ export function PluginCard({
             {...toggleControl.agentProps}
           >
             {isToggleBusy
-              ? t("pluginsview.Applying", {
-                  defaultValue: "Applying",
-                })
+              ? t("pluginsview.Applying", { defaultValue: "Applying" })
               : p.enabled
                 ? t("common.on")
                 : t("common.off")}
           </Button>
         )}
       </div>
-      <div className="flex items-center gap-1.5 px-3 pb-1.5">
-        <span className="text-2xs px-1.5 py-px border border-border bg-surface text-muted lowercase tracking-wide whitespace-nowrap">
-          {categoryLabel}
-        </span>
-        {p.version && (
-          <span className="text-2xs font-mono text-muted opacity-70">
-            v{p.version}
+
+      <p className="line-clamp-1 px-4 pt-2 text-xs text-muted">
+        {p.description || pluginDescriptionFallback}
+      </p>
+
+      <div className="mt-auto flex flex-wrap items-center gap-1.5 px-4 pb-4 pt-3">
+        {p.enabled && allParamsSet && !isShowcase && (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-ok/40 bg-ok/10 px-2 py-[2px] text-2xs font-bold tracking-wide text-ok">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-ok" />
+            {t("common.ready", { defaultValue: "Ready" })}
           </span>
         )}
-        {showReleaseControls && (
-          <span className="text-2xs px-1.5 py-px border border-border bg-surface text-muted lowercase tracking-wide whitespace-nowrap">
-            {selectedReleaseStream}
+        {needsConfig && (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-warn/45 bg-warn/10 px-2 py-[2px] text-2xs font-bold tracking-wide text-warn">
+            {t("pluginsview.NeedsConfigCount", {
+              defaultValue: "Needs config {{set}}/{{total}}",
+              set: setCount,
+              total: totalCount,
+            })}
           </span>
         )}
-        {provenanceLabels.originLabel && (
-          <span
-            className="text-2xs px-1.5 py-px border border-border bg-card text-muted lowercase whitespace-nowrap"
-            title={provenanceLabels.title}
-          >
-            {provenanceLabels.originLabel}
-          </span>
-        )}
-        {provenanceLabels.supportLabel && (
-          <span
-            className={`text-2xs px-1.5 py-px border lowercase whitespace-nowrap ${
-              provenanceLabels.supportLabel === "community"
-                ? "border-warn/50 bg-[rgba(234,179,8,0.06)] text-warn"
-                : "border-accent/40 bg-accent-subtle text-txt"
-            }`}
-            title={provenanceLabels.title}
-          >
-            {provenanceLabels.supportLabel}
+        {!hasParams && !isShowcase && (
+          <span className="rounded-full border border-border/50 bg-bg-accent/70 px-2 py-[2px] text-2xs font-semibold tracking-wide text-muted/70">
+            {t("pluginsview.NoConfigNeeded")}
           </span>
         )}
         {p.enabled && !p.isActive && !isShowcase && (
           <span
-            className={`text-2xs px-1.5 py-px border lowercase tracking-wide whitespace-nowrap ${
+            className={`rounded-full border px-2 py-[2px] text-2xs font-bold tracking-wide ${
               p.loadError
-                ? "border-destructive bg-[rgba(153,27,27,0.04)] text-destructive"
-                : "border-warn bg-[rgba(234,179,8,0.06)] text-warn"
+                ? "border-destructive/50 bg-destructive-subtle text-destructive"
+                : "border-warn/45 bg-warn/10 text-warn"
             }`}
             title={
               p.loadError || "Plugin is enabled but not loaded in the runtime"
@@ -394,215 +390,157 @@ export function PluginCard({
           </span>
         )}
         {isToggleBusy && (
-          <span className="text-2xs px-1.5 py-px border border-accent bg-accent-subtle text-txt lowercase tracking-wide whitespace-nowrap">
+          <span className="rounded-full border border-accent/50 bg-accent-subtle px-2 py-[2px] text-2xs font-bold tracking-wide text-txt">
             {t("pluginsview.restarting")}
           </span>
         )}
-      </div>
-      <p
-        className="text-xs text-muted px-3 pb-2 flex-1"
-        style={{
-          display: "-webkit-box",
-          WebkitLineClamp: 3,
-          WebkitBoxOrient: "vertical",
-          overflow: "hidden",
-        }}
-      >
-        {p.description || pluginDescriptionFallback}
-      </p>
+        {provenanceLabels.supportLabel && (
+          <span
+            className={`rounded-full border px-2 py-[2px] text-2xs font-semibold tracking-wide ${
+              provenanceLabels.supportLabel === "community"
+                ? "border-warn/40 bg-warn/10 text-warn"
+                : "border-accent/35 bg-accent-subtle text-txt"
+            }`}
+            title={provenanceLabels.title}
+          >
+            {provenanceLabels.supportLabel}
+          </span>
+        )}
 
-      {(p.tags?.length ?? 0) > 0 && (
-        <div className="flex flex-wrap gap-1.5 px-3 pb-2">
-          {p.tags?.slice(0, 4).map((tag) => (
-            <span
-              key={`${p.id}:${tag}`}
-              className="whitespace-nowrap border border-border/50 bg-bg-accent/80 px-1.5 py-px text-2xs lowercase tracking-wide text-muted-strong"
+        <div className="ml-auto flex items-center gap-1.5">
+          {showReleaseControls && (
+            <div className="flex items-center gap-0.5">
+              <Button
+                ref={releaseLatestControl.ref}
+                variant={
+                  selectedReleaseStream === "latest" ? "default" : "outline"
+                }
+                size="sm"
+                className="h-6 rounded-full px-2 text-2xs font-bold tracking-wide"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReleaseStreamChange(p.id, "latest");
+                }}
+                {...releaseLatestControl.agentProps}
+              >
+                main
+              </Button>
+              <Button
+                ref={releaseBetaControl.ref}
+                variant={
+                  selectedReleaseStream === "beta" ? "default" : "outline"
+                }
+                size="sm"
+                className="h-6 rounded-full px-2 text-2xs font-bold tracking-wide"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReleaseStreamChange(p.id, "beta");
+                }}
+                {...releaseBetaControl.agentProps}
+              >
+                beta
+              </Button>
+            </div>
+          )}
+          {isStoreInstallMissing && !isShowcase && !p.loadError && (
+            <Button
+              ref={installControl.ref}
+              variant="default"
+              size="sm"
+              className="h-7 max-w-[140px] truncate rounded-full px-3 text-2xs font-bold tracking-wide"
+              disabled={isInstalling || isUpdating || isUninstalling}
+              onClick={(e) => {
+                e.stopPropagation();
+                onInstall(p.id, p.npmName ?? "");
+              }}
+              {...installControl.agentProps}
             >
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {pluginLinks.length > 0 && (
-        <div className="flex flex-wrap gap-2 px-3 pb-2">
-          {pluginLinks.map((link) => (
+              {isInstalling
+                ? installProgressLabel(
+                    installProgress.get(p.npmName ?? "")?.message,
+                  )
+                : installLabel}
+            </Button>
+          )}
+          {canUpdate && (
+            <Button
+              ref={updateControl.ref}
+              variant="outline"
+              size="sm"
+              className="h-7 rounded-full px-3 text-2xs font-bold tracking-wide"
+              disabled={isInstalling || isUpdating || isUninstalling}
+              onClick={(e) => {
+                e.stopPropagation();
+                onUpdate(p.id, p.npmName ?? "");
+              }}
+              {...updateControl.agentProps}
+            >
+              {isUpdating
+                ? t("common.updating", { defaultValue: "Updating..." })
+                : t("pluginsview.Update", { defaultValue: "Update" })}
+            </Button>
+          )}
+          {canUninstall && (
+            <Button
+              ref={uninstallControl.ref}
+              variant="outline"
+              size="sm"
+              className="h-7 rounded-full border-destructive/40 px-3 text-2xs font-bold tracking-wide text-destructive hover:border-destructive"
+              disabled={isInstalling || isUpdating || isUninstalling}
+              onClick={(e) => {
+                e.stopPropagation();
+                onUninstall(p.id, p.npmName ?? "");
+              }}
+              {...uninstallControl.agentProps}
+            >
+              {isUninstalling
+                ? t("pluginsview.Uninstalling", {
+                    defaultValue: "Uninstalling...",
+                  })
+                : t("common.uninstall", { defaultValue: "Uninstall" })}
+            </Button>
+          )}
+          {pluginLinks[0] && (
             <PluginCardResourceLink
-              key={`${p.id}:${link.key}`}
               pluginId={p.id}
-              linkKey={link.key}
-              url={link.url}
-              label={pluginResourceLinkLabel(t, link.key)}
-              title={`${pluginResourceLinkLabel(t, link.key)}: ${link.url}`}
+              linkKey={pluginLinks[0].key}
+              url={pluginLinks[0].url}
+              label={pluginResourceLinkLabel(t, pluginLinks[0].key)}
+              title={`${pluginResourceLinkLabel(t, pluginLinks[0].key)}: ${pluginLinks[0].url}`}
               onOpen={onOpenExternalUrl}
             />
-          ))}
-        </div>
-      )}
-      <div className="mt-auto flex items-center gap-3 bg-card/55 px-4 py-3">
-        {hasParams && !isShowcase ? (
-          <>
-            <span
-              className={`inline-block w-2 h-2 rounded-full shrink-0 ${
-                allParamsSet
-                  ? "bg-ok text-ok"
-                  : "bg-destructive text-destructive"
+          )}
+          {hasParams && (
+            <Button
+              ref={settingsControl.ref}
+              variant="ghost"
+              size="sm"
+              className={`flex h-7 items-center gap-1 rounded-full px-2.5 text-xs-tight font-bold transition-all ${
+                isOpen
+                  ? "bg-accent/10 text-txt hover:bg-accent/20"
+                  : "text-muted hover:bg-bg-hover hover:text-txt"
               }`}
-            />
-            <span className="text-xs-tight font-bold tracking-wide text-muted">
-              {setCount}/{totalCount} {t("common.configured")}
-            </span>
-          </>
-        ) : !hasParams && !isShowcase ? (
-          <span className="text-xs-tight font-bold tracking-wide text-muted/60">
-            {t("pluginsview.NoConfigNeeded")}
-          </span>
-        ) : (
-          <span className="text-xs-tight font-bold tracking-wide text-muted/60">
-            {t("pluginsview.23FieldDemos")}
-          </span>
-        )}
-        {showReleaseControls && (
-          <div className="flex items-center gap-1">
-            <Button
-              ref={releaseLatestControl.ref}
-              variant={
-                selectedReleaseStream === "latest" ? "default" : "outline"
-              }
-              size="sm"
-              className="h-6 px-2 text-2xs font-bold tracking-wide"
               onClick={(e) => {
                 e.stopPropagation();
-                onReleaseStreamChange(p.id, "latest");
+                onToggleSettings(p.id);
               }}
-              {...releaseLatestControl.agentProps}
+              title={t("nav.settings")}
+              {...settingsControl.agentProps}
             >
-              main
+              <span className="text-sm leading-none">&#9881;</span>
             </Button>
-            <Button
-              ref={releaseBetaControl.ref}
-              variant={selectedReleaseStream === "beta" ? "default" : "outline"}
-              size="sm"
-              className="h-6 px-2 text-2xs font-bold tracking-wide"
-              onClick={(e) => {
-                e.stopPropagation();
-                onReleaseStreamChange(p.id, "beta");
-              }}
-              {...releaseBetaControl.agentProps}
-            >
-              beta
-            </Button>
-          </div>
-        )}
-        {showReleaseControls && remoteVersionForSelection && (
-          <span className="text-2xs font-mono text-muted/70 whitespace-nowrap">
-            {selectedReleaseStream}:{remoteVersionForSelection}
-          </span>
-        )}
-        <div className="flex-1" />
-        {isStoreInstallMissing && !isShowcase && !p.loadError && (
-          <Button
-            ref={installControl.ref}
-            variant="default"
-            size="sm"
-            className="h-7 px-3 text-2xs font-bold tracking-wide max-w-[140px] truncate"
-            disabled={isInstalling || isUpdating || isUninstalling}
-            onClick={(e) => {
-              e.stopPropagation();
-              onInstall(p.id, p.npmName ?? "");
-            }}
-            {...installControl.agentProps}
-          >
-            {isInstalling
-              ? installProgressLabel(
-                  installProgress.get(p.npmName ?? "")?.message,
-                )
-              : installLabel}
-          </Button>
-        )}
-        {canUpdate && (
-          <Button
-            ref={updateControl.ref}
-            variant="outline"
-            size="sm"
-            className="h-7 px-3 text-2xs font-bold tracking-wide"
-            disabled={isInstalling || isUpdating || isUninstalling}
-            onClick={(e) => {
-              e.stopPropagation();
-              onUpdate(p.id, p.npmName ?? "");
-            }}
-            {...updateControl.agentProps}
-          >
-            {isUpdating
-              ? t("common.updating", { defaultValue: "Updating..." })
-              : t("pluginsview.Update", { defaultValue: "Update" })}
-          </Button>
-        )}
-        {canUninstall && (
-          <Button
-            ref={uninstallControl.ref}
-            variant="outline"
-            size="sm"
-            className="h-7 px-3 text-2xs font-bold tracking-wide text-destructive border-destructive/40 hover:border-destructive"
-            disabled={isInstalling || isUpdating || isUninstalling}
-            onClick={(e) => {
-              e.stopPropagation();
-              onUninstall(p.id, p.npmName ?? "");
-            }}
-            {...uninstallControl.agentProps}
-          >
-            {isUninstalling
-              ? t("pluginsview.Uninstalling", {
-                  defaultValue: "Uninstalling...",
-                })
-              : t("common.uninstall", {
-                  defaultValue: "Uninstall",
-                })}
-          </Button>
-        )}
-        {hasParams && (
-          <Button
-            ref={settingsControl.ref}
-            variant="ghost"
-            size="sm"
-            className={`h-7 px-2.5 text-xs-tight font-bold transition-all flex items-center gap-1.5 ${
-              isOpen
-                ? "text-txt bg-accent/10 hover:bg-accent/20"
-                : "text-muted hover:bg-bg-hover hover:text-txt"
-            }`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleSettings(p.id);
-            }}
-            title={t("nav.settings")}
-            {...settingsControl.agentProps}
-          >
-            <span className="text-sm leading-none">&#9881;</span>
-            <span
-              className={`inline-block text-2xs transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`}
-            >
-              &#9654;
-            </span>
-          </Button>
-        )}
+          )}
+        </div>
       </div>
+
       {p.enabled && p.validationErrors && p.validationErrors.length > 0 && (
-        <div className="px-3 py-1.5 border-t border-destructive bg-[rgba(153,27,27,0.04)] text-xs">
+        <div className="border-t border-destructive/50 bg-destructive-subtle px-4 py-1.5 text-2xs">
           {p.validationErrors.map((err: { field: string; message: string }) => (
             <div
               key={`${err.field}:${err.message}`}
-              className="text-destructive mb-0.5 text-2xs"
+              className="mb-0.5 text-destructive"
             >
               {err.field}: {err.message}
-            </div>
-          ))}
-        </div>
-      )}
-      {p.enabled && p.validationWarnings && p.validationWarnings.length > 0 && (
-        <div className="px-3 py-1">
-          {p.validationWarnings.map((w: { field: string; message: string }) => (
-            <div key={`${w.field}:${w.message}`} className="text-warn text-2xs">
-              {w.message}
             </div>
           ))}
         </div>

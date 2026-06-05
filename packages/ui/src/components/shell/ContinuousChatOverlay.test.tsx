@@ -2,6 +2,13 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+// The resting overlay's suggestion strip fetches model suggestions via the
+// shared client; stub it so the strip stays on its static fallback in tests.
+vi.mock("../../api/client", () => ({
+  client: { fetch: vi.fn().mockRejectedValue(new Error("no api in test")) },
+}));
+
 import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
 import type { ShellController } from "./useShellController";
 
@@ -81,27 +88,34 @@ describe("ContinuousChatOverlay", () => {
     expect(input.value).toBe("");
   });
 
-  it("expands the thread from the chat icon and exposes aria-expanded / a log region", () => {
+  it("reveals the bubbles when the composer input is focused", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    const toggle = screen.getByLabelText("show conversation");
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(toggle);
-    expect(
-      screen.getByLabelText("hide conversation").getAttribute("aria-expanded"),
-    ).toBe("true");
-    expect(document.getElementById("continuous-thread")).toBeTruthy();
+    const thread = document.getElementById("continuous-thread");
+    expect(thread?.getAttribute("data-revealed")).toBe("false");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(thread?.getAttribute("data-revealed")).toBe("true");
   });
 
-  it("reveals the thread when the composer input is focused", () => {
+  it("reveals the bubbles on hover, not only on focus", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    expect(document.getElementById("continuous-thread")).toBeNull();
-    fireEvent.focus(screen.getByLabelText("message"));
-    expect(document.getElementById("continuous-thread")).toBeTruthy();
+    const thread = document.getElementById("continuous-thread");
+    expect(thread?.getAttribute("data-revealed")).toBe("false");
+    // Hovering the chat (here, the bubbles region) peeks it open.
+    fireEvent.pointerEnter(thread as Element);
+    expect(thread?.getAttribute("data-revealed")).toBe("true");
+  });
+
+  it("reveals the suggestion strip together with the bubbles", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const strip = screen.getByTestId("chat-suggestions");
+    expect(strip.className).toContain("opacity-0");
+    fireEvent.pointerEnter(strip);
+    expect(strip.className).toContain("opacity-100");
   });
 
   it("filters whitespace-only messages from the expanded thread", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    fireEvent.click(screen.getByLabelText("show conversation"));
+    fireEvent.focus(screen.getByLabelText("message"));
     const log = document.getElementById("continuous-thread");
     expect(log?.textContent).toContain("hi there");
     // one real message → exactly one transcript bubble
@@ -119,7 +133,7 @@ describe("ContinuousChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.click(screen.getByLabelText("show conversation"));
+    fireEvent.focus(screen.getByLabelText("message"));
     const log = document.getElementById("continuous-thread");
     const lines = log?.querySelectorAll('[data-testid="thread-line"]');
     expect(lines?.length).toBe(2);
@@ -129,12 +143,73 @@ describe("ContinuousChatOverlay", () => {
     expect(user?.className).toContain("justify-end");
   });
 
-  it("collapses the expanded thread on Escape", () => {
+  it("collapses the bubbles on Escape", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    fireEvent.click(screen.getByLabelText("show conversation"));
     const input = screen.getByLabelText("message");
+    const thread = document.getElementById("continuous-thread");
+    fireEvent.focus(input);
+    expect(thread?.getAttribute("data-revealed")).toBe("true");
     fireEvent.keyDown(input, { key: "Escape" });
-    expect(screen.getByLabelText("show conversation")).toBeTruthy();
+    expect(thread?.getAttribute("data-revealed")).toBe("false");
+  });
+
+  it("toggles a full-screen takeover with a liquid-glass focus backdrop", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const root = screen.getByTestId("continuous-chat-overlay");
+    const backdrop = screen.getByTestId("chat-fullscreen-backdrop");
+    expect(root.getAttribute("data-fullscreen")).toBeNull();
+    // Resting: backdrop is inactive + click-through (the live view stays usable).
+    // pointer-events live on the className (a static Tailwind class) so the
+    // perf-sensitive backdrop-filter is the only animated property.
+    expect(backdrop.getAttribute("data-active")).toBe("false");
+    expect(backdrop.className).toContain("pointer-events-none");
+
+    // Far-left button enters full screen and blooms the glass panel over the view.
+    fireEvent.click(screen.getByLabelText("expand to full screen"));
+    expect(root.getAttribute("data-fullscreen")).toBe("true");
+    expect(document.querySelector('[data-variant="fullscreen"]')).toBeTruthy();
+    // Backdrop becomes the active glass sheet that captures the view.
+    expect(backdrop.getAttribute("data-active")).toBe("true");
+    expect(backdrop.className).toContain("pointer-events-auto");
+
+    // Pressing it again returns to normal (ambient) mode: the partial bubbles
+    // are back (faded out) and the backdrop deactivates.
+    fireEvent.click(screen.getByLabelText("exit full screen"));
+    expect(root.getAttribute("data-fullscreen")).toBeNull();
+    expect(
+      document
+        .querySelector('[data-variant="resting"]')
+        ?.getAttribute("data-revealed"),
+    ).toBe("false");
+    expect(backdrop.getAttribute("data-active")).toBe("false");
+  });
+
+  it("shows only the last 2 turns with no scroll while typing, full history in fullscreen", () => {
+    const controller = makeController({
+      messages: [
+        { id: "a", role: "assistant", content: "one", createdAt: 1 },
+        { id: "b", role: "user", content: "two", createdAt: 2 },
+        { id: "c", role: "assistant", content: "three", createdAt: 3 },
+      ],
+    } as unknown as Partial<ShellController>);
+    render(<ContinuousChatOverlay controller={controller} />);
+
+    // Typing (partial): only the last 2 turns, no scroll.
+    fireEvent.focus(screen.getByLabelText("message"));
+    const log = document.getElementById("continuous-thread");
+    expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(2);
+    expect(log?.className).toContain("overflow-hidden");
+    expect(log?.textContent).not.toContain("one");
+    expect(log?.textContent).toContain("three");
+
+    // Fullscreen: full history + scroll.
+    fireEvent.click(screen.getByLabelText("expand to full screen"));
+    const fsLog = document.getElementById("continuous-thread");
+    expect(fsLog?.querySelectorAll('[data-testid="thread-line"]').length).toBe(
+      3,
+    );
+    expect(fsLog?.className).toContain("overflow-y-auto");
+    expect(fsLog?.textContent).toContain("one");
   });
 
   it("shows the attach (+) control", () => {
@@ -219,5 +294,82 @@ describe("ContinuousChatOverlay", () => {
       screen.getByLabelText("message"),
     );
     expect(screen.getAllByTestId("chat-composer-textarea")).toHaveLength(1);
+  });
+
+  it("shows exactly three resting prompt suggestions", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: [],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    const strip = screen.getByTestId("chat-suggestions");
+    expect(
+      strip.querySelectorAll('[data-testid^="chat-suggestion-"]'),
+    ).toHaveLength(3);
+  });
+
+  it("scrolls to the latest line when a new message arrives in fullscreen", () => {
+    const base = [{ id: "a", role: "assistant", content: "hi", createdAt: 1 }];
+    const { rerender } = render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: base,
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    // Only the fullscreen transcript scrolls; the resting/typing view does not.
+    fireEvent.click(screen.getByLabelText("expand to full screen"));
+    const scrollIntoView = Element.prototype.scrollIntoView as ReturnType<
+      typeof vi.fn
+    >;
+    scrollIntoView.mockClear();
+    rerender(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: [
+            ...base,
+            { id: "b", role: "user", content: "new line", createdAt: 2 },
+          ],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    expect(scrollIntoView).toHaveBeenCalled();
+  });
+
+  it("collapses the bubbles on a pointer-down outside the bubbles and composer", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const thread = document.getElementById("continuous-thread");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(thread?.getAttribute("data-revealed")).toBe("true");
+    // A click on the live view behind (here, the bare document body) closes it.
+    fireEvent.pointerDown(document.body);
+    expect(thread?.getAttribute("data-revealed")).toBe("false");
+  });
+
+  it("keeps the bubbles revealed when a message bubble is clicked", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    fireEvent.focus(screen.getByLabelText("message"));
+    const bubble = document.querySelector('[data-testid="thread-line"]');
+    expect(bubble).toBeTruthy();
+    fireEvent.pointerDown(bubble as Element);
+    expect(
+      document
+        .getElementById("continuous-thread")
+        ?.getAttribute("data-revealed"),
+    ).toBe("true");
+  });
+
+  it("keeps the bubbles revealed when the composer is clicked", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const input = screen.getByLabelText("message");
+    fireEvent.focus(input);
+    fireEvent.pointerDown(input);
+    expect(
+      document
+        .getElementById("continuous-thread")
+        ?.getAttribute("data-revealed"),
+    ).toBe("true");
   });
 });

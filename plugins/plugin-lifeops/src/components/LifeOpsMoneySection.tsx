@@ -1,4 +1,5 @@
 import { type CloudBillingHistoryItem, client, useApp } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Ban,
   CalendarClock,
@@ -15,7 +16,6 @@ import {
   TrendingDown,
   Upload,
 } from "lucide-react";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   type ComponentProps,
   type JSX,
@@ -57,7 +57,8 @@ function MoneyIconButton({
     </button>
   );
 }
-import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
+
+import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.helpers.js";
 import { LifeOpsLinkBankButton } from "./LifeOpsLinkBankButton.js";
 import { LifeOpsLinkPaypalButton } from "./LifeOpsLinkPaypalButton.js";
 
@@ -1103,7 +1104,9 @@ function CloudCreditsActivity(props: {
               <Sparkles className="h-3.5 w-3.5" />
             )
           }
-          label={props.loading ? "Loading credit activity" : "No recent activity"}
+          label={
+            props.loading ? "Loading credit activity" : "No recent activity"
+          }
           spinning={props.loading}
         />
       ) : (

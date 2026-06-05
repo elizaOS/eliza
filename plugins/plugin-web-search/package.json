@@ -1,6 +1,6 @@
 {
     "name": "@elizaos/plugin-web-search",
-    "version": "2.0.3-beta.1",
+    "version": "2.0.3-beta.6",
     "type": "module",
     "main": "dist/index.js",
     "module": "dist/index.js",
@@ -38,7 +38,7 @@
         "@tavily/core": "^0.7.0"
     },
     "devDependencies": {
-        "@biomejs/biome": "2.4.15",
+        "@biomejs/biome": "2.4.16",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vitest": "^4.1.7"

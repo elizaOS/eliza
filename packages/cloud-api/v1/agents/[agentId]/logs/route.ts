@@ -31,11 +31,8 @@ app.get("/", async (c) => {
   try {
     const identity = await requireServiceKey(c);
     const agentId = c.req.param("agentId") ?? "";
+    const agent = await elizaSandboxService.getAgentById(agentId);
 
-    const agent = await elizaSandboxService.getAgent(
-      agentId,
-      identity.organizationId,
-    );
     if (!agent) {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }

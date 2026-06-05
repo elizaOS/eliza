@@ -135,6 +135,7 @@ export async function provisionCloudCapabilitySandbox(
       headers,
       body: JSON.stringify({
         agentName: options.name,
+        statefulRuntime: true,
         ...(options.bio?.length ? { agentConfig: { bio: options.bio } } : {}),
       }),
     },

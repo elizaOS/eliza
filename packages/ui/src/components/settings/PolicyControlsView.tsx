@@ -4,7 +4,7 @@ import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import type {
   ApprovedAddressesConfig,
   PolicyRule,
@@ -33,7 +33,7 @@ import { Label } from "../ui/label";
 import { Slider } from "../ui/slider";
 import { Spinner } from "../ui/spinner";
 import { Switch } from "../ui/switch";
-import { useSettingsSave } from "./settings-control-primitives";
+import { useSettingsSave } from "./settings-control-primitives.hooks";
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   asSharedRecord(value) ?? {};

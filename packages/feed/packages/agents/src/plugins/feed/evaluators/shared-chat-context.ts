@@ -1,11 +1,5 @@
-import type {
-  Evaluator,
-  HandlerCallback,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-  State,
-} from "@elizaos/core";
+import type { Evaluator, JSONSchema, Memory, State } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import { logger } from "../../../shared/logger";
 
 type StoredSnapshot = {
@@ -55,6 +49,14 @@ const CACHE_PREFIX = "shared-chat-context:last-message-count";
 const MIN_MESSAGES_BEFORE_REFRESH = 3;
 const REFRESH_EVERY_MESSAGES = 10;
 const STALE_AFTER_MINUTES = 30;
+const RUN_SCHEMA = {
+  type: "object",
+  properties: {
+    run: { type: "boolean" },
+  },
+  required: ["run"],
+  additionalProperties: false,
+} satisfies JSONSchema;
 
 function resolveChatId(message: Memory, state?: State): string | null {
   const typedMessage = message as Memory & {
@@ -70,7 +72,7 @@ function resolveChatId(message: Memory, state?: State): string | null {
   );
 }
 
-export const sharedChatContextEvaluator: Evaluator = {
+export const sharedChatContextEvaluator: Evaluator<{ run: boolean }> = {
   name: "SHARED_CHAT_CONTEXT_EVALUATOR",
   similes: [
     "group chat summarizer",
@@ -79,35 +81,10 @@ export const sharedChatContextEvaluator: Evaluator = {
   ],
   description:
     "Refreshes compact shared group chat summaries and facts on a low-cost cadence",
-  alwaysRun: false,
-  examples: [
-    {
-      prompt:
-        "A group chat just spent several turns discussing a login verification request",
-      outcome:
-        "Refresh shared chat context and capture the compact facts from the recent conversation.",
-      messages: [
-        {
-          name: "Alice",
-          content: {
-            text: "Can you DM me the verification code so I can finish setup?",
-          },
-        },
-        {
-          name: "Bob",
-          content: {
-            text: "I shared the docs link and a support note above.",
-          },
-        },
-      ],
-    },
-  ],
+  schema: RUN_SCHEMA,
+  modelType: ModelType.TEXT_NANO,
 
-  async validate(
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
-  ): Promise<boolean> {
+  async shouldRun({ runtime, message, state }): Promise<boolean> {
     const chatId = resolveChatId(message, state);
     if (!chatId) {
       return false;
@@ -151,32 +128,32 @@ export const sharedChatContextEvaluator: Evaluator = {
     return false;
   },
 
-  handler: (async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
-    _options?: HandlerOptions,
-    _callback?: HandlerCallback,
-    _responses?: Memory[],
-  ): Promise<void> => {
-    void runtime;
-    void message;
-    void state;
-    void _options;
-    void _callback;
-    void _responses;
+  prompt() {
+    return 'Return {"run":true} to refresh the shared chat context.';
+  },
 
-    const chatId = resolveChatId(message, state);
-    if (!chatId) {
-      return;
-    }
+  parse(): { run: boolean } {
+    return { run: true };
+  },
 
-    const sharedChatContextService = await getSharedChatContextService();
-    await sharedChatContextService.maybeRefreshChatContext(chatId, {
-      messageWindowSize: 10,
-      factLimit: 5,
-      staleAfterMinutes: STALE_AFTER_MINUTES,
-      refreshThreshold: REFRESH_EVERY_MESSAGES,
-    });
-  }) as unknown as Evaluator["handler"],
+  processors: [
+    {
+      name: "refreshSharedChatContext",
+      async process({ message, state }) {
+        const chatId = resolveChatId(message, state);
+        if (!chatId) {
+          return undefined;
+        }
+
+        const sharedChatContextService = await getSharedChatContextService();
+        await sharedChatContextService.maybeRefreshChatContext(chatId, {
+          messageWindowSize: 10,
+          factLimit: 5,
+          staleAfterMinutes: STALE_AFTER_MINUTES,
+          refreshThreshold: REFRESH_EVERY_MESSAGES,
+        });
+        return undefined;
+      },
+    },
+  ],
 };

@@ -127,7 +127,7 @@ export function consumeStewardTokensFromHash(): {
  */
 export async function exchangeStewardCodeViaApi(
   code: string,
-  opts: { redirectUri?: string; tenantId?: string } = {},
+  opts: { redirectUri?: string; tenantId?: string; codeVerifier?: string } = {},
 ): Promise<StewardNonceExchangeResponse> {
   const response = await apiFetch(STEWARD_NONCE_EXCHANGE_ENDPOINT, {
     method: "POST",
@@ -136,6 +136,10 @@ export async function exchangeStewardCodeViaApi(
       code,
       ...(opts.redirectUri ? { redirectUri: opts.redirectUri } : {}),
       ...(opts.tenantId ? { tenantId: opts.tenantId } : {}),
+      // PKCE verifier replayed for `response_type=code`. The cloud-api
+      // nonce-exchange route forwards it to Steward `/auth/oauth/exchange`,
+      // which checks it against the challenge bound at /authorize.
+      ...(opts.codeVerifier ? { codeVerifier: opts.codeVerifier } : {}),
     },
   });
 

@@ -13,8 +13,8 @@
     }
   },
   "scripts": {
-    "lint": "echo skip (feed) >&2",
-    "typecheck": "echo skip (feed) >&2"
+    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/mcp/package.json packages/mcp/tsconfig.json packages/mcp/src",
+    "typecheck": "cd ../.. && bun run tsc -p packages/api --emitDeclarationOnly --noCheck && bun run tsc -p packages/a2a --emitDeclarationOnly --noCheck && bun run tsc -p packages/mcp --noEmit"
   },
   "dependencies": {
     "@feed/shared": "workspace:*",

@@ -4,8 +4,6 @@ import {
   formatDetailTimestamp,
   SurfaceBadge,
   SurfaceCard,
-  SurfaceEmptyState,
-  SurfaceGrid,
   SurfaceSection,
   selectLatestRunForApp,
   toneForHealthState,
@@ -17,12 +15,12 @@ import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   type ButtonHTMLAttributes,
   type CSSProperties,
-  type InputHTMLAttributes,
   type Ref,
   useCallback,
   useMemo,
   useState,
 } from "react";
+import { postAppRunCommand } from "./TwoThousandFourScapeOperatorSurface.helpers";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "outline" | "default";
@@ -182,8 +180,7 @@ export function TwoThousandFourScapeTuiView() {
       )
     : [];
   const autoPlayEnabled =
-    readBooleanValue(telemetry, "autoPlay") ??
-    (!session || session.status !== "paused");
+    readBooleanValue(telemetry, "autoPlay") ?? session?.status !== "paused";
   const viewState = {
     viewType: "tui",
     viewId: "2004scape",
@@ -324,74 +321,6 @@ const tuiInputStyle: CSSProperties = {
   fontFamily: "inherit",
 };
 
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-2004scape-state") {
-    return {
-      viewType: "tui",
-      appName: "@elizaos/plugin-2004scape",
-      commands: [
-        "check status",
-        "continue tutorial",
-        "pause",
-        "resume",
-        "terminal-2004scape-command",
-      ],
-    };
-  }
-  if (capability === "terminal-2004scape-command") {
-    const runId = typeof params?.runId === "string" ? params.runId.trim() : "";
-    const content =
-      typeof params?.content === "string" ? params.content.trim() : "";
-    if (!runId) throw new Error("runId is required");
-    if (!content) throw new Error("content is required");
-    return {
-      viewType: "tui",
-      command: await postAppRunCommand(runId, "message", { content }),
-    };
-  }
-  if (
-    capability === "terminal-2004scape-pause" ||
-    capability === "terminal-2004scape-resume"
-  ) {
-    const runId = typeof params?.runId === "string" ? params.runId.trim() : "";
-    if (!runId) throw new Error("runId is required");
-    const action =
-      capability === "terminal-2004scape-pause" ? "pause" : "resume";
-    return {
-      viewType: "tui",
-      control: await postAppRunCommand(runId, "control", { action }),
-    };
-  }
-  throw new Error(`Unsupported 2004scape TUI capability: ${capability}`);
-}
-
-function Input({
-  className,
-  ref,
-  ...props
-}: InputHTMLAttributes<HTMLInputElement> & {
-  ref?: Ref<HTMLInputElement>;
-}) {
-  return (
-    <input
-      ref={ref}
-      className={joinClasses(
-        "flex w-full rounded-md border border-border bg-bg px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted focus-visible:ring-2 focus-visible:ring-primary/35 disabled:cursor-not-allowed disabled:opacity-50",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
-interface AppRunCommandResponse {
-  success: boolean;
-  message: string;
-}
-
 interface RecentActivityEntry {
   id: string;
   action?: string;
@@ -505,36 +434,6 @@ function readBooleanValue(
 ): boolean | null {
   const value = record?.[key];
   return typeof value === "boolean" ? value : null;
-}
-
-async function postAppRunCommand(
-  runId: string,
-  path: "message" | "control",
-  body: Record<string, string>,
-): Promise<AppRunCommandResponse> {
-  const response = await fetch(
-    `/api/apps/runs/${encodeURIComponent(runId)}/${path}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
-  const data = (await response.json().catch(() => ({}))) as Record<
-    string,
-    unknown
-  >;
-  return {
-    success: Boolean(data.success),
-    message:
-      typeof data.message === "string" && data.message.trim().length > 0
-        ? data.message.trim()
-        : response.status === 202
-          ? "Command queued."
-          : response.status >= 500
-            ? "Command unavailable."
-            : "Command rejected.",
-  };
 }
 
 function formatDistance(distance: number | null): string {
@@ -738,73 +637,6 @@ function ControlButton({
   );
 }
 
-function OperatorMessageInput({
-  value,
-  onChange,
-  onSubmit,
-  disabled,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  onSubmit: () => void;
-  disabled: boolean;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
-    id: "operator-message",
-    role: "text-input",
-    label: "Operator instruction",
-    group: "steering",
-    description: "Tell the bot what to train, where to go, or what to say",
-  });
-  return (
-    <Input
-      ref={ref}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      placeholder="Tell the bot what to train, where to go, or what to say."
-      className="min-h-11 rounded-xl"
-      onKeyDown={(event) => {
-        if (event.key === "Enter" && !event.shiftKey) {
-          event.preventDefault();
-          onSubmit();
-        }
-      }}
-      disabled={disabled}
-      {...agentProps}
-    />
-  );
-}
-
-function SendMessageButton({
-  sending,
-  disabled,
-  onActivate,
-}: {
-  sending: boolean;
-  disabled: boolean;
-  onActivate: () => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "send-message",
-    role: "button",
-    label: "Send",
-    group: "steering",
-    description: "Send the typed operator instruction to the bot",
-  });
-  return (
-    <Button
-      ref={ref}
-      type="button"
-      className="min-h-11 rounded-xl px-4 shadow-sm"
-      onClick={onActivate}
-      disabled={disabled}
-      {...agentProps}
-    >
-      {sending ? "Sending" : "Send"}
-    </Button>
-  );
-}
-
 export function TwoThousandFourScapeOperatorSurface({
   appName,
   variant = "detail",
@@ -815,7 +647,6 @@ export function TwoThousandFourScapeOperatorSurface({
     () => selectLatestRunForApp(appName, appRuns),
     [appName, appRuns],
   );
-  const [operatorMessage, setOperatorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
@@ -825,20 +656,21 @@ export function TwoThousandFourScapeOperatorSurface({
       ? session.telemetry
       : null;
   const suggestedPrompts: string[] = Array.isArray(session?.suggestedPrompts)
-    ? session.suggestedPrompts.filter(
-        (prompt: unknown): prompt is string =>
-          typeof prompt === "string" && prompt.trim().length > 0,
-      )
+    ? session.suggestedPrompts
+        .filter(
+          (prompt: unknown): prompt is string =>
+            typeof prompt === "string" && prompt.trim().length > 0,
+        )
+        .slice(0, 2)
     : [];
-  const recentActivity = extractRecentActivity(telemetry);
+  const recentActivity = extractRecentActivity(telemetry).slice(0, 2);
   const tutorial = asRecord(telemetry?.tutorial);
   const player = asRecord(telemetry?.player);
   const combatStyle = asRecord(telemetry?.combatStyle);
-  const nearbyTargets = extractNearbyTargets(telemetry);
-  const gameplayNotes = extractGameplayNotes(telemetry);
+  const nearbyTargets = extractNearbyTargets(telemetry).slice(0, 3);
+  const gameplayNotes = extractGameplayNotes(telemetry).slice(0, 2);
   const autoPlayEnabled =
-    readBooleanValue(telemetry, "autoPlay") ??
-    (!session || session.status !== "paused");
+    readBooleanValue(telemetry, "autoPlay") ?? session?.status !== "paused";
   const intentLabel =
     readStringValue(telemetry, "intent") ??
     (session?.status === "paused" ? "paused" : "tutorial");
@@ -875,11 +707,7 @@ export function TwoThousandFourScapeOperatorSurface({
       ? "Credentials stored"
       : "Waiting for stored credentials"
     : "Manual login required";
-  const autoLoginSubtitle = botUsername
-    ? `Bot ${botUsername} is ready for automatic sign-in.`
-    : viewerLocation
-      ? `Viewer ${viewerLocation}`
-      : "Launch with a live runtime to create bot credentials automatically.";
+  const autoLoginSubtitle = botUsername ?? viewerLocation ?? undefined;
   const runtimeLabel =
     session?.status === "running"
       ? "Connected to 2004scape"
@@ -914,15 +742,9 @@ export function TwoThousandFourScapeOperatorSurface({
       ? "Viewer attached"
       : run?.viewerAttachment === "detached"
         ? "Viewer detached"
-        : "Viewer pending";
+        : "Viewer unavailable";
   const viewerSubtitle =
-    run?.viewerAttachment === "attached"
-      ? "The run stays alive if you leave this screen."
-      : run?.viewerAttachment === "detached"
-        ? "Reattach without restarting the autonomous loop."
-        : viewerLocation
-          ? `Viewer ${viewerLocation}`
-          : "Viewer status will update after launch.";
+    run?.viewerAttachment === "unavailable" ? viewerLocation : undefined;
   const tutorialLabel = tutorialActive
     ? "Tutorial in progress"
     : "Tutorial clear";
@@ -981,15 +803,6 @@ export function TwoThousandFourScapeOperatorSurface({
     [run, sending],
   );
 
-  const handleSendMessage = useCallback(async () => {
-    const content = operatorMessage.trim();
-    if (content.length === 0) return;
-    const sent = await sendOperatorMessage(content);
-    if (sent) {
-      setOperatorMessage("");
-    }
-  }, [operatorMessage, sendOperatorMessage]);
-
   const handleSuggestedPrompt = useCallback(
     async (prompt: string) => {
       await sendOperatorMessage(prompt.trim());
@@ -1024,10 +837,84 @@ export function TwoThousandFourScapeOperatorSurface({
 
   if (!run) {
     return (
-      <SurfaceEmptyState
-        title="2004scape operator surface"
-        body="Launch 2004scape to verify auto-login, background runtime, and the live agent loop here."
-      />
+      <section className="p-4" data-testid="2004scape-operator-ready">
+        <div className="mx-auto flex max-w-3xl flex-col gap-3">
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/45 bg-card/82 px-4 py-3 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div
+                aria-hidden
+                className="grid h-10 w-10 place-items-center rounded-xl bg-orange-500 text-lg font-black text-white shadow-sm"
+              >
+                04
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-foreground">
+                  2004scape
+                </div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Bot SDK standby
+                </div>
+              </div>
+            </div>
+            <div className="h-3 w-3 rounded-full bg-amber-400 shadow-[0_0_0_4px_rgba(251,191,36,0.18)]" />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3">
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-orange-300/35 bg-orange-400/10 text-sm font-bold text-orange-700">
+                RS
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Gateway
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  Bridge pending
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-emerald-300/35 bg-emerald-400/10 text-lg text-emerald-700">
+                ▶
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Planner
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  15s loop
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-cyan-300/35 bg-cyan-400/10 text-lg text-cyan-700">
+                ◆
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Telemetry
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  HP · map · targets
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-violet-300/35 bg-violet-400/10 text-lg text-violet-700">
+                ↗
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Path
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  /2004scape
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     );
   }
 
@@ -1049,22 +936,16 @@ export function TwoThousandFourScapeOperatorSurface({
         <SurfaceBadge tone={toneForStatusText(run.status)}>
           {run.status}
         </SurfaceBadge>
-        <SurfaceBadge tone={toneForViewerAttachment(run.viewerAttachment)}>
-          {run.viewerAttachment}
-        </SurfaceBadge>
         <SurfaceBadge tone={toneForHealthState(run.health.state)}>
-          {run.health.state}
+          {matchingRuns.length}
         </SurfaceBadge>
-        <span className="ml-auto text-2xs uppercase tracking-[0.18em] text-muted">
-          {matchingRuns.length} active run{matchingRuns.length === 1 ? "" : "s"}
-        </span>
       </div>
 
       {showDashboard ? (
-        <SurfaceSection title="Launch & Loop">
-          <SurfaceGrid>
+        <SurfaceSection title="Runtime">
+          <div className="space-y-2">
             <SurfaceCard
-              label="Bot Login"
+              label="Login"
               value={autoLoginLabel}
               tone={hasAutoLoginCredentials ? "success" : "warn"}
               subtitle={autoLoginSubtitle}
@@ -1082,26 +963,22 @@ export function TwoThousandFourScapeOperatorSurface({
               subtitle={tutorialSubtitle}
             />
             <SurfaceCard
-              label="Operator Chat"
+              label="Steering"
               value={steeringLabel}
               tone={steeringReady ? "success" : "warn"}
               subtitle={steeringSubtitle}
             />
-          </SurfaceGrid>
+          </div>
         </SurfaceSection>
       ) : null}
 
       {showDashboard ? (
         <SurfaceSection title="Live State">
-          <SurfaceGrid>
+          <div className="space-y-2">
             <SurfaceCard
               label="Goal"
               value={session?.goalLabel ?? "No goal recorded."}
-              subtitle={
-                session?.summary ??
-                run.summary ??
-                "The bot has not reported a live objective yet."
-              }
+              subtitle={session?.summary ?? run.summary ?? undefined}
             />
             <SurfaceCard
               label="Current Intent"
@@ -1115,10 +992,7 @@ export function TwoThousandFourScapeOperatorSurface({
             <SurfaceCard
               label="Player"
               value={playerLabel}
-              subtitle={
-                playerSubtitle ||
-                "Player identity and combat state will appear after login."
-              }
+              subtitle={playerSubtitle || undefined}
             />
             <SurfaceCard
               label="Viewer"
@@ -1131,29 +1005,13 @@ export function TwoThousandFourScapeOperatorSurface({
               value={fieldIntelLabel}
               subtitle={fieldIntelSubtitle}
             />
-            <SurfaceCard
-              label="Identity"
-              value={session?.characterId ?? botUsername ?? "Identity pending"}
-              subtitle={
-                session?.agentId
-                  ? `Agent ${session.agentId}`
-                  : "The agent identity will appear once the session is attached."
-              }
-            />
-            <SurfaceCard
-              label="Last Heartbeat"
-              value={formatDetailTimestamp(
-                run.lastHeartbeatAt ?? run.updatedAt,
-              )}
-              subtitle={`Started ${formatDetailTimestamp(run.startedAt)}`}
-            />
-          </SurfaceGrid>
+          </div>
           {nearbyTargets.length > 0 ? (
             <div className="space-y-2">
               <div className="text-2xs font-semibold uppercase tracking-[0.18em] text-muted">
                 Nearby Targets
               </div>
-              <div className="grid gap-2 md:grid-cols-2">
+              <div className="space-y-2">
                 {nearbyTargets.map((target) => (
                   <div
                     key={target.id}
@@ -1166,9 +1024,7 @@ export function TwoThousandFourScapeOperatorSurface({
                       </span>
                     </div>
                     <div className="mt-1 text-xs-tight leading-5 text-muted-strong">
-                      {target.action
-                        ? `Primary action: ${target.action}`
-                        : "Waiting for an action hint."}
+                      {target.action ? target.action : "No action"}
                     </div>
                   </div>
                 ))}
@@ -1219,7 +1075,7 @@ export function TwoThousandFourScapeOperatorSurface({
             </div>
           ) : (
             <div className="rounded-xl border border-border/30 bg-bg/60 px-3 py-2 text-xs-tight italic text-muted">
-              No recent gameplay activity has been captured yet.
+              No activity.
             </div>
           )}
         </SurfaceSection>
@@ -1229,7 +1085,7 @@ export function TwoThousandFourScapeOperatorSurface({
         <SurfaceSection title="Steering">
           {suggestedPrompts.length > 0 ? (
             <div className="flex flex-wrap gap-2">
-              {suggestedPrompts.slice(0, 4).map((prompt, index) => (
+              {suggestedPrompts.map((prompt, index) => (
                 <SuggestedPromptButton
                   key={prompt}
                   prompt={prompt}
@@ -1255,23 +1111,6 @@ export function TwoThousandFourScapeOperatorSurface({
               />
             ) : null}
           </div>
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-            <OperatorMessageInput
-              value={operatorMessage}
-              onChange={setOperatorMessage}
-              onSubmit={() => void handleSendMessage()}
-              disabled={!session?.sessionId}
-            />
-            <SendMessageButton
-              sending={sending}
-              disabled={
-                sending ||
-                !session?.sessionId ||
-                operatorMessage.trim().length === 0
-              }
-              onActivate={() => void handleSendMessage()}
-            />
-          </div>
         </SurfaceSection>
       ) : null}
 
@@ -1280,9 +1119,6 @@ export function TwoThousandFourScapeOperatorSurface({
           {statusMessage}
         </div>
       ) : null}
-      <div className="text-2xs uppercase tracking-[0.18em] text-muted">
-        2004scape run stays independent from the viewer.
-      </div>
     </section>
   );
 }

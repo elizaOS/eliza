@@ -1,13 +1,13 @@
 "use client";
 
-import { cn } from "../../lib/utils";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../select";
+} from "../../../components/ui/select";
+import { cn } from "../../lib/utils";
 
 export interface ApiParameterSelectOption {
   value: string;

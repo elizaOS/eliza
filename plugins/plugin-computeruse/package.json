@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-computeruse",
-  "version": "2.0.3-beta.1",
+  "version": "2.0.3-beta.6",
   "description": "Desktop automation plugin — screenshots, mouse/keyboard control, browser CDP, and window management for elizaOS agents. Ported from open-computer-use (Apache 2.0).",
   "type": "module",
   "main": "dist/index.js",
@@ -50,7 +50,7 @@
     "@types/node": "^25.2.3",
     "bun-types": "^1.3.14",
     "typescript": "^6.0.3",
-    "vitest": "4.1.7"
+    "vitest": "4.1.8"
   },
   "dependencies": {
     "@nut-tree-fork/nut-js": "^4.2.6",

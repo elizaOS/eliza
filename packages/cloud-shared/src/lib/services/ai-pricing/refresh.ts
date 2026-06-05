@@ -4,13 +4,13 @@ import { aiPricingRepository } from "../../../db/repositories/ai-pricing";
 import { aiPricingEntries, aiPricingRefreshRuns } from "../../../db/schemas/ai-pricing";
 import { logger } from "../../utils/logger";
 import { toDbEntry } from "./dimensions";
+import { fetchBitRouterCatalogEntries } from "./providers/bitrouter";
 import { fetchElevenLabsEntries } from "./providers/elevenlabs";
 import { fetchFalCatalogEntries } from "./providers/fal";
-import { fetchOpenRouterCatalogEntries } from "./providers/openrouter";
 import { fetchSunoEntries } from "./providers/suno";
 import { fetchVastSnapshotEntries } from "./providers/vast";
 import {
-  OPENROUTER_MODELS_URL,
+  BITROUTER_MODELS_URL,
   type PreparedPricingEntry,
   type PricingRefreshSource,
 } from "./types";
@@ -117,14 +117,14 @@ async function refreshSourceEntries(
 }
 
 export async function refreshPricingCatalog(
-  sources: PricingRefreshSource[] = ["openrouter", "fal", "elevenlabs", "vast"],
+  sources: PricingRefreshSource[] = ["bitrouter", "fal", "elevenlabs", "vast"],
 ) {
   const results = [];
 
-  if (sources.includes("openrouter")) {
+  if (sources.includes("bitrouter")) {
     results.push(
-      await refreshSourceEntries("openrouter", OPENROUTER_MODELS_URL, async () => {
-        return await fetchOpenRouterCatalogEntries();
+      await refreshSourceEntries("bitrouter", BITROUTER_MODELS_URL, async () => {
+        return await fetchBitRouterCatalogEntries();
       }),
     );
   }

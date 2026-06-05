@@ -130,7 +130,7 @@ def test_gate_fail_wer() -> None:
 
 
 def test_eval_with_preset_no_ffi() -> None:
-    """When FFI is None, eval_with_preset returns placeholder metrics."""
+    """When FFI is None, eval_with_preset returns fallback metrics."""
     metrics = eval_omnivoice._eval_with_preset(
         val_records=[{"id": "s001", "wav": "/tmp/fake.wav", "transcript": "hello"}],
         cfg={"sample_rate": 24000},

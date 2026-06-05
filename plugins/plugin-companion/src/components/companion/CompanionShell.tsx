@@ -7,8 +7,6 @@ import { getVrmCount, getVrmUrl, VRM_COUNT } from "../../vrm-assets";
 import { prefetchVrmToCache } from "../avatar/VrmEngine";
 import { CompanionView } from "./CompanionView";
 
-export { COMPANION_OVERLAY_TABS } from "./companion-shell-styles";
-
 /* ── Main component ────────────────────────────────────────────────── */
 
 export interface CompanionShellProps {

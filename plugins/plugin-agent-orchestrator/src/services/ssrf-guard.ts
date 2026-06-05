@@ -32,7 +32,7 @@ const MAX_REDIRECTS = 5;
 
 /**
  * Resolves a hostname to its addresses. Injectable so tests (which probe
- * unresolvable reserved hostnames like `*.test` against a stubbed `fetch`) can
+ * unresolvable reserved hostnames like `*.test` against an injected `fetch`) can
  * supply a deterministic resolver without real DNS. Defaults to the system
  * resolver. Production code never overrides this.
  */

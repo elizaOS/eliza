@@ -1,9 +1,9 @@
 /**
  * Fetches available views from GET /api/views.
  *
- * This hook is the primary data source for the ViewManagerPage. When the
+ * This hook is the primary data source for the ViewCatalog. When the
  * /api/views endpoint is live, it will return the full ViewRegistryEntry list.
- * Until then it returns an empty list so the ViewManagerPage renders gracefully.
+ * Until then it returns an empty list so the ViewCatalog renders gracefully.
  *
  * Polling interval: 30s. The endpoint is expected to be cheap (in-memory list).
  * Polling can be replaced with a WebSocket subscription when
@@ -38,6 +38,11 @@ export interface ViewRegistryEntry {
   componentExport?: string;
   /** Public URL of a preview image to show in the view card. */
   heroImageUrl?: string;
+  /**
+   * True when a real hero image exists for this view. When false, `heroImageUrl`
+   * resolves to a generated fallback image, so the card renders the icon instead.
+   */
+  hasHeroImage?: boolean;
   /** Whether the view is currently loadable. */
   available: boolean;
   /** The plugin that provides this view. */

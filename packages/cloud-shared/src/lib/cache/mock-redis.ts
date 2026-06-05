@@ -57,10 +57,12 @@ interface IoRedisLike {
   quit(): Promise<string>;
 }
 
+type IoRedisMockCtor = new () => IoRedisLike;
+
 function createIoRedisMock(): IoRedisLike {
-  const mod = getRequireCJS()("ioredis-mock") as any;
-  const Ctor = mod?.default ?? mod;
-  return new Ctor() as IoRedisLike;
+  const mod = getRequireCJS()("ioredis-mock") as IoRedisMockCtor | { default: IoRedisMockCtor };
+  const Ctor: IoRedisMockCtor = "default" in mod ? mod.default : mod;
+  return new Ctor();
 }
 
 function serializeArg(value: unknown): string {

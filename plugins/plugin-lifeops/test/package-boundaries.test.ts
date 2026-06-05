@@ -306,24 +306,8 @@ describe("LifeOps package boundaries", () => {
     expect(browserMixin).not.toContain("function browserDomainFromUrl");
   });
 
-  it("imports Apple Calendar native bridge policy from plugin-native-calendar", () => {
-    const appleCalendar = readPackageFile("src/lifeops/apple-calendar.ts");
-
-    expect(appleCalendar).toContain('from "@elizaos/capacitor-calendar"');
-    expect(appleCalendar).toContain("appleCalendarMacosBridgeCandidates");
-    expect(appleCalendar).toContain(
-      "APPLE_CALENDAR_MACOS_BRIDGE_DYLIB_BASENAME",
-    );
-    expect(appleCalendar).not.toContain(
-      'const NATIVE_DYLIB_BASENAME = "libMacWindowEffects.dylib"',
-    );
-    expect(appleCalendar).not.toContain(
-      'path: `../../../../../../../${NATIVE_DYLIB_BASENAME}`',
-    );
-    expect(appleCalendar).not.toContain(
-      'path: `../../../../../../${NATIVE_DYLIB_BASENAME}`',
-    );
-  });
+  // Apple Calendar bridge moved to @elizaos/plugin-calendar; its native bridge
+  // boundary is asserted in that package's test suite.
 
   it("imports Apple Reminders native bridge policy from plugin-native-reminders", () => {
     const appleReminders = readPackageFile("src/lifeops/apple-reminders.ts");

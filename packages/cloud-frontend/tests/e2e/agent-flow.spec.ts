@@ -171,7 +171,9 @@ test("agent flow: landing → login → create agent → chat", async ({
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await dialog.getByLabel(/agent name/i).fill("playwright-agent");
-  await dialog.getByRole("button", { name: /deploy/i }).click();
+  await dialog
+    .getByRole("button", { name: /create shared agent/i })
+    .click();
 
   // ── 5. Provisioning completes and the running agent appears ─────────────
   // The mocked job can complete quickly enough to skip the transient

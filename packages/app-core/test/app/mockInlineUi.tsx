@@ -190,17 +190,6 @@ export function createInlineUiMock<T extends Record<string, unknown>>(
     DialogClose: passthrough,
     DialogOverlay: passthrough,
     DialogPortal: passthrough,
-    DrawerSheet: dialogRoot,
-    DrawerSheetContent: ({
-      children,
-      ...props
-    }: React.PropsWithChildren<Record<string, unknown>>) =>
-      React.createElement("div", props, children),
-    DrawerSheetDescription: passthrough,
-    DrawerSheetHeader: passthrough,
-    DrawerSheetOverlay: passthrough,
-    DrawerSheetPortal: passthrough,
-    DrawerSheetTitle: passthrough,
     Field: passthrough,
     FieldDescription: passthrough,
     FieldLabel: ({

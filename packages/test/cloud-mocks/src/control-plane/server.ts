@@ -68,6 +68,16 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   tick: (
     limit?: number,
   ) => Promise<{ processed: number; failed: number; skipped: number }>;
+  processDbBackedJobs: (
+    databaseUrl: string,
+    origin: string,
+    limit?: number,
+  ) => Promise<{
+    claimed: number;
+    succeeded: number;
+    failed: number;
+    errors: Array<{ jobId: string; error: string }>;
+  }>;
   cleanupStuck: () => Promise<{ failed: number }>;
 } {
   const token =
@@ -152,7 +162,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   async function processDbBackedJobs(
     databaseUrl: string,
     origin: string,
-    limit: number,
+    limit = 1000,
   ): Promise<{
     claimed: number;
     succeeded: number;
@@ -820,7 +830,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       string,
       unknown
     > | null;
-    if (!body || body.jsonrpc !== "2.0" || typeof body.method !== "string") {
+    if (body?.jsonrpc !== "2.0" || typeof body.method !== "string") {
       return c.json(
         {
           jsonrpc: "2.0",
@@ -880,7 +890,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       connection: "keep-alive",
       "x-accel-buffering": "no",
     };
-    if (!body || body.jsonrpc !== "2.0" || typeof body.method !== "string") {
+    if (body?.jsonrpc !== "2.0" || typeof body.method !== "string") {
       return new Response(
         `event: error\ndata: ${JSON.stringify({ message: "Invalid JSON-RPC stream request" })}\n\n`,
         { status: 400, headers: streamHeaders },
@@ -1082,7 +1092,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       data: {
         id,
         name: "Mock Agent",
-        bio: ["A stub agent character returned by the control-plane mock."],
+        bio: ["A mock agent character returned by the control-plane mock."],
         system: "You are a mock agent.",
         plugins: [],
       },
@@ -1302,5 +1312,5 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     return { failed };
   }
 
-  return { app, store, tick, cleanupStuck };
+  return { app, store, tick, processDbBackedJobs, cleanupStuck };
 }

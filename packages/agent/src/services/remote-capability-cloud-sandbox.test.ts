@@ -62,6 +62,7 @@ describe("cloud capability sandbox provisioner", () => {
     ]);
     expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
       agentName: "Capability Sandbox",
+      statefulRuntime: true,
       agentConfig: { bio: ["Builds remote plugins."] },
     });
     expect(calls[0]?.init?.headers).toMatchObject({

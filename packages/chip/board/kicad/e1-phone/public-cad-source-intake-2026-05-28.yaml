@@ -87,10 +87,6 @@ records:
     drawing_status: manufacturer_product_drawing_observed
     local_download_status: downloaded_and_hashed
     downloaded_artifacts:
-      - path: board/kicad/e1-phone/production/sourcing/public-cad-downloads/hirose_bm28b0_6_24dp_2_0_35v_53/BM28B0.6-24DP_2-0.35V_53_STEP_0001228577S.zip
-        kind: manufacturer_step_zip
-        bytes: 237383
-        sha256: 34bec3a555e535094585da3d4ba89ac8b2a1cfbbb44430ecf68db3596aa26f8e
       - path: board/kicad/e1-phone/production/sourcing/public-cad-downloads/hirose_bm28b0_6_24dp_2_0_35v_53/BM28B0.6-24DP_2-0.35V_3d_stp.stp
         kind: extracted_step
         bytes: 665174
@@ -129,10 +125,6 @@ records:
     drawing_status: manufacturer_product_drawing_observed
     local_download_status: downloaded_and_hashed
     downloaded_artifacts:
-      - path: board/kicad/e1-phone/production/sourcing/public-cad-downloads/hirose_bm28b0_6_50dp_2_0_35v_53/BM28B0.6-50DP_2-0.35V_53_STEP_D166732_ja.zip
-        kind: manufacturer_step_zip
-        bytes: 182247
-        sha256: cc407c9e92128e3ad0a7fbf3240010f50e07b395cbc83a8199789137a2d58b2b
       - path: board/kicad/e1-phone/production/sourcing/public-cad-downloads/hirose_bm28b0_6_50dp_2_0_35v_53/BM28B0.6-50DP_2-0.35V_3d_stp.stp
         kind: extracted_step
         bytes: 901993
@@ -173,10 +165,6 @@ records:
     drawing_status: manufacturer_2d_drawing_observed
     local_download_status: downloaded_and_hashed
     downloaded_artifacts:
-      - path: board/kicad/e1-phone/production/sourcing/public-cad-downloads/hirose_df40c_80dp_0_4v_51/DF40C-80DP-0.4V_51_STEP_0001218423S.zip
-        kind: manufacturer_step_zip
-        bytes: 380240
-        sha256: 05788592faabb222ab117e5f8f0aeaf0064b488427c394036226cf90372c5060
       - path: board/kicad/e1-phone/production/sourcing/public-cad-downloads/hirose_df40c_80dp_0_4v_51/DF40C-80DP-0.4V_3d_stp.stp
         kind: extracted_step
         bytes: 1744333

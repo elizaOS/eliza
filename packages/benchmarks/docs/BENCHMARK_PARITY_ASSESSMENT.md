@@ -1,4 +1,4 @@
-# Benchmark suite review — parity, gaps, and unfinished work
+# Benchmark suite review — parity, gaps, and open work
 
 Date: 2026-05-28. Scope: `packages/benchmarks`. Method: discovered adapters via
 `orchestrator.discover_adapters`, inspected per-harness factory coverage, and
@@ -53,7 +53,7 @@ So the real parity gaps are:
 3. **5 infra-gated benchmarks** — not a code gap; they need credentials/Docker/
    audio/multimodal runtimes to run for *any* harness.
 
-## Incomplete / unfinished items found
+## Open items found
 
 - **Duplicate hyphen/underscore directories.** Several benchmarks exist as both
   a hyphenated dir and an underscore "matrix" sibling:

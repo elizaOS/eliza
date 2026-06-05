@@ -41,7 +41,7 @@ src/
   first-run/                first-run-config + runtime-target resolution
   security/                 agent-vault-id, platform-secure-store (+ -node), wallet key hydration
   services/                 auth-store, steward-credentials/sidecar, vault-mirror/bootstrap, account-pool, task-host-capabilities, sensitive-requests, …
-  platform/                 capacitor-bootstrap, ios-runtime-*, native-plugin-entrypoints, empty-node-module (browser-build alias target), *-browser-stub.ts
+  platform/                 ios-runtime-*, native-plugin-entrypoints, empty-node-module (browser-build alias target), *-browser-stub.ts
   permissions/types.ts, diagnostics/integration-observability.ts, connectors/ (capacitor sqlite/jsc/quickjs)
 scripts/                    build/packaging/sms-gateway/voice scripts (namespaced in package.json scripts)
 platforms/{android,ios,electrobun}/   native shell projects + Apple Store entitlements
@@ -73,6 +73,9 @@ Run from repo root with `--cwd packages/app-core`:
 - `ELIZAOS_CLOUD_API_KEY` (dev fallback `ELIZA_DEV_CLOUD_API_KEY` in non-prod).
 - `ELIZA_API_PROCESS_SPAWNED_AT_MS` / `ELIZA_PROCESS_SPAWNED_AT_MS` — startup timing (dev-server).
 - `/api/dev/stack` response schema tag is the `ELIZA_DEV_STACK_SCHEMA` constant (`"elizaos.dev.stack/v1"`) from `api/dev-stack.ts` — it is a code constant, not an env var. State dir via `@elizaos/core` `resolveStateDir`. Provider key aliases normalized in `run-main.ts` (`Z_AI_API_KEY`→`ZAI_API_KEY`, `KIMI_API_KEY`→`MOONSHOT_API_KEY`).
+- **App-route boot knobs** (opt-in dev speedups in `runtime/eliza.ts`; both default to byte-identical boot):
+  - `ELIZA_SKIP_APP_ROUTE_PLUGINS` — comma-separated app-route-plugin ids/short-aliases to NOT load (`getSkippedAppRoutePluginIds`). Filters WHICH route plugins register (e.g. `lifeops,steward,training,shopify`). Empty/unset → every loader runs.
+  - `ELIZA_DEFER_APP_ROUTES=1` — controls WHETHER the post-ready boot tail (app-route plugins, training hooks, sensitive-request adapters, telegram polling, trigger bridge, connector catalog, voice warmup) blocks the readiness gate (`getDeferAppRoutesEnabled`). When `=1`, `/api/health` flips `ready:true` before the tail finishes, so feature routes may 404 for a brief window after "Agent ready"; unset → the tail is awaited inline as before. Only the literal `"1"` enables it. Composes with `ELIZA_SKIP_APP_ROUTE_PLUGINS` (skip filters which load; defer controls when the tail blocks).
 
 ## How to extend
 

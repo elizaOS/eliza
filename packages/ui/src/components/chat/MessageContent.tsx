@@ -18,20 +18,29 @@ import {
   createMobileSignalsPermissionsRegistry,
   openMobilePermissionSettings,
 } from "../../platform/mobile-permissions-client";
+import { useChatComposer } from "../../state/ChatComposerContext.hooks";
 import { useApp } from "../../state/useApp";
 import type { ConfigUiHint } from "../../types";
+import { PermissionCard } from "../composites/chat/permission-card";
 import {
   createClientPermissionsRegistry,
-  PermissionCard,
   type PermissionCardPayload,
   parsePermissionRequestFromText,
-} from "../composites/chat/permission-card";
-import { ConfigRenderer, defaultRegistry } from "../config-ui/config-renderer";
+} from "../composites/chat/permission-card.helpers";
+import { ConfigRenderer } from "../config-ui/config-renderer";
+import { defaultRegistry } from "../config-ui/config-renderer.helpers";
 import { UiRenderer } from "../config-ui/ui-renderer";
 import { paramsToSchema } from "../pages/plugin-list-utils";
 import { Button } from "../ui/button";
 import { findChoiceRegions } from "./message-choice-parser";
+import {
+  type FollowupOption,
+  findFollowupsRegions,
+} from "./message-followups-parser";
+import { type FormRequestSpec, findFormRegions } from "./message-form-parser";
 import { type ChoiceOption, ChoiceWidget } from "./widgets/ChoiceWidget";
+import { FollowupsWidget } from "./widgets/followups";
+import { FormRequest, type FormResultValue } from "./widgets/form-request";
 
 /** Reject prototype-pollution keys that should never be traversed or rendered. */
 const BLOCKED_IDS = new Set(["__proto__", "constructor", "prototype"]);
@@ -80,6 +89,8 @@ type Segment =
       scope: string;
       options: ChoiceOption[];
     }
+  | { kind: "followups"; id: string; options: FollowupOption[] }
+  | { kind: "form"; form: FormRequestSpec }
   | { kind: "permission"; payload: PermissionCardPayload }
   | { kind: "analysis-xml"; tag: string; content: string };
 
@@ -92,7 +103,7 @@ const HIDDEN_TAG_BLOCK_RE =
   /<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
 
 /**
- * Strip partial/incomplete hidden tags at the end of a streaming text chunk.
+ * Strip trailing partial hidden tags at the end of a streaming text chunk.
  * During streaming, the buffer may end mid-tag (e.g. `"Hello<thi"`,
  * `"Hello</respon"`, or just `"Hello<"`).  These fragments are not
  * user-facing content and must be hidden from both the display and voice
@@ -100,7 +111,7 @@ const HIDDEN_TAG_BLOCK_RE =
  */
 const TRAILING_PARTIAL_TAG_RE = /<\/?[a-zA-Z][^>]*$|<\/?$/s;
 
-export function normalizeDisplayText(text: string): string {
+function normalizeDisplayText(text: string): string {
   // Bound input length to keep the regex passes linear in adversarial cases.
   const MAX_DISPLAY_LEN = 200_000;
   let normalized =
@@ -110,7 +121,7 @@ export function normalizeDisplayText(text: string): string {
   normalized = normalized.replace(HIDDEN_TAG_BLOCK_RE, " ");
 
   // During streaming, a chunk may end mid-tag (e.g. "<thi").
-  // Strip any incomplete opening or closing tag at the very end so the
+  // Strip any unterminated opening or closing tag at the very end so the
   // user never sees hidden-tag fragments while tokens arrive.
   normalized = normalized.replace(TRAILING_PARTIAL_TAG_RE, "");
 
@@ -142,13 +153,13 @@ function isUiSpec(obj: unknown): obj is UiSpec {
  * Quick pre-check: does this line look like a JSON patch object?
  * Handles both compact `{"op":` and spaced `{ "op":` formats.
  */
-export function looksLikePatch(trimmed: string): boolean {
+function looksLikePatch(trimmed: string): boolean {
   if (!trimmed.startsWith("{")) return false;
   return trimmed.includes('"op"') && trimmed.includes('"path"');
 }
 
 /** Try to parse a single line as an RFC 6902 JSON Patch operation. */
-export function tryParsePatch(line: string): PatchOp | null {
+function tryParsePatch(line: string): PatchOp | null {
   const t = line.trim();
   if (!looksLikePatch(t)) return null;
   try {
@@ -170,7 +181,7 @@ export function tryParsePatch(line: string): PatchOp | null {
  *   /state/<key>       → spec.state[key]
  *   /state             → spec.state (whole object)
  */
-export function compilePatches(patches: PatchOp[]): UiSpec | null {
+function compilePatches(patches: PatchOp[]): UiSpec | null {
   const spec: {
     root?: string;
     elements: Record<string, unknown>;
@@ -233,7 +244,7 @@ export function compilePatches(patches: PatchOp[]): UiSpec | null {
  * A patch block is a run of lines where each non-empty line parses as a
  * valid PatchOp. A single empty line between patch lines is allowed.
  */
-export function findPatchRegions(
+function findPatchRegions(
   text: string,
 ): Array<{ start: number; end: number; spec: UiSpec; raw: string }> {
   const results: Array<{
@@ -369,6 +380,28 @@ function parseSegments(text: string, analysisMode: boolean): Segment[] {
     });
   }
 
+  // 1c. Find [FOLLOWUPS id=...] ... [/FOLLOWUPS] suggestion-chip blocks
+  for (const followups of findFollowupsRegions(targetText)) {
+    regions.push({
+      start: followups.start,
+      end: followups.end,
+      segment: {
+        kind: "followups",
+        id: followups.id,
+        options: followups.options,
+      },
+    });
+  }
+
+  // 1d. Find [FORM] ... [/FORM] generic in-chat form blocks
+  for (const form of findFormRegions(targetText)) {
+    regions.push({
+      start: form.start,
+      end: form.end,
+      segment: { kind: "form", form: form.form },
+    });
+  }
+
   // 2. Find fenced JSON that is a UiSpec (Generate Mode / legacy format)
   FENCED_JSON_RE.lastIndex = 0;
   m = FENCED_JSON_RE.exec(targetText);
@@ -435,7 +468,7 @@ function parseSegments(text: string, analysisMode: boolean): Segment[] {
 // ── InlinePluginConfig ──────────────────────────────────────────────
 
 /** Normalize plugin ID: strip @scope/plugin- prefix so both "discord" and "@elizaos/plugin-discord" resolve. */
-export function normalizePluginId(id: string): string {
+function normalizePluginId(id: string): string {
   return id.replace(/^@[^/]+\/plugin-/, "");
 }
 
@@ -1041,6 +1074,9 @@ export function MessageContent({
   useRenderGuard(`MessageContent:${message.id ?? "unknown"}`);
   const app = useApp();
   const { sendActionMessage } = app;
+  // Composer prefill for followup `prompt` chips. Outside the chat provider,
+  // `useChatComposer` returns an inert setter, so this is safe everywhere.
+  const { setChatInput } = useChatComposer();
   const [localDownloadState, setLocalDownloadState] = useState<
     "idle" | "busy" | "queued" | "failed"
   >("idle");
@@ -1061,6 +1097,37 @@ export function MessageContent({
   const handleChoice = useCallback(
     (value: string) => {
       void sendActionMessage(value);
+    },
+    [sendActionMessage],
+  );
+
+  // Followup `navigate` chip: deliver the passive view-switch SUGGESTION as the
+  // same `eliza:navigate:view` event the VIEWS action uses. A `/`-prefixed
+  // payload is a viewPath; anything else is treated as a viewId.
+  const handleNavigate = useCallback((payload: string) => {
+    if (typeof window === "undefined") return;
+    const detail = payload.startsWith("/")
+      ? { viewPath: payload }
+      : { viewId: payload };
+    window.dispatchEvent(new CustomEvent("eliza:navigate:view", { detail }));
+  }, []);
+
+  // Followup `prompt` chip: prefill the composer (falls back to send inside the
+  // widget when no composer is mounted).
+  const handlePrompt = useCallback(
+    (payload: string) => {
+      setChatInput(payload);
+    },
+    [setChatInput],
+  );
+
+  // Generic in-chat form submit: send the structured result back as a message
+  // through the existing action-message pipeline.
+  const handleFormSubmit = useCallback(
+    (formId: string, values: Record<string, FormResultValue>) => {
+      void sendActionMessage(
+        `[form:submit ${formId}] ${JSON.stringify(values)}`,
+      );
     },
     [sendActionMessage],
   );
@@ -1209,11 +1276,15 @@ export function MessageContent({
                 ? `config:${seg.pluginId}`
                 : seg.kind === "choice"
                   ? `choice:${seg.id}`
-                  : seg.kind === "permission"
-                    ? `permission:${seg.payload.feature}`
-                    : seg.kind === "analysis-xml"
-                      ? `analysis:${seg.tag}`
-                      : `ui:${seg.raw.slice(0, 80)}`;
+                  : seg.kind === "followups"
+                    ? `followups:${seg.id}`
+                    : seg.kind === "form"
+                      ? `form:${seg.form.id}`
+                      : seg.kind === "permission"
+                        ? `permission:${seg.payload.feature}`
+                        : seg.kind === "analysis-xml"
+                          ? `analysis:${seg.tag}`
+                          : `ui:${seg.raw.slice(0, 80)}`;
           const segmentKey = nextKey(baseKey);
 
           switch (seg.kind) {
@@ -1256,6 +1327,25 @@ export function MessageContent({
                   scope={seg.scope}
                   options={seg.options}
                   onChoose={handleChoice}
+                />
+              );
+            case "followups":
+              return (
+                <FollowupsWidget
+                  key={segmentKey}
+                  id={seg.id}
+                  options={seg.options}
+                  onChoose={handleChoice}
+                  onNavigate={handleNavigate}
+                  onPrompt={handlePrompt}
+                />
+              );
+            case "form":
+              return (
+                <FormRequest
+                  key={segmentKey}
+                  form={seg.form}
+                  onSubmit={handleFormSubmit}
                 />
               );
             case "permission":

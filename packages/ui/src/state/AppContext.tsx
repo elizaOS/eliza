@@ -13,13 +13,9 @@ import {
   useState,
 } from "react";
 import { client } from "../api";
-import {
-  ConfirmDialog,
-  PromptDialog,
-  useConfirm,
-  usePrompt,
-} from "../components/ui/confirm-dialog";
-import { AppBootContext } from "../config/boot-config-react";
+import { ConfirmDialog, PromptDialog } from "../components/ui/confirm-dialog";
+import { useConfirm, usePrompt } from "../components/ui/confirm-dialog.hooks";
+import { AppBootContext } from "../config/boot-config-react.hooks";
 import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
@@ -32,6 +28,7 @@ import {
 } from "../navigation";
 import { applyThemeToDocument } from "../themes/apply-theme";
 import { copyTextToClipboard } from "../utils";
+import { RESYNC_EVENT, type ResyncEventDetail } from "./AppContext.hooks";
 import {
   getActiveProfile,
   loadAgentProfileRegistry,
@@ -42,17 +39,18 @@ import {
   ChatInputRefCtx,
   clearAllChatDrafts,
   useChatComposerDraftPersistence,
-} from "./ChatComposerContext";
-import { CompanionSceneConfigCtx } from "./CompanionSceneConfigContext";
+} from "./ChatComposerContext.hooks";
+import { CompanionSceneConfigCtx } from "./CompanionSceneConfigContext.hooks";
 import { AppContext, type AppContextValue, type AppState } from "./internal";
-import { PtySessionsCtx } from "./PtySessionsContext";
+import { PtySessionsCtx } from "./PtySessionsContext.hooks";
 import {
   createPersistedActiveServer,
   savePersistedActiveServer,
 } from "./persistence";
 import { deriveUiShellModeForTab } from "./shell-routing";
 import type { RuntimeTarget } from "./startup-coordinator";
-import { TranslationProvider, useTranslation } from "./TranslationContext";
+import { useTranslation } from "./TranslationContext.hooks";
+import { TranslationProvider } from "./TranslationProvider";
 import { useAppLifecycleEvents } from "./useAppLifecycleEvents";
 import {
   useAgentGreetingEffects,
@@ -79,94 +77,6 @@ import { useStartupCoordinator } from "./useStartupCoordinator";
 import { useTabSync } from "./useTabSync";
 import { useTriggersState } from "./useTriggersState";
 import { useWalletState } from "./useWalletState";
-
-/**
- * DOM event dispatched after a WebSocket reconnect so conversation views can
- * refetch their recent messages and repair state that drifted during the gap.
- * `detail.conversationId` is the active conversation at reconnect time (or null).
- */
-export const RESYNC_EVENT = "elizaos:needs-resync";
-
-export interface ResyncEventDetail {
-  conversationId: string | null;
-}
-
-export {
-  type ActionNotice,
-  AGENT_STATES,
-  AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
-  type AppActions,
-  AppContext,
-  type AppContextValue,
-  type AppState,
-  applyUiTheme,
-  asApiLikeError,
-  type ChatTurnUsage,
-  type CompanionHalfFramerateMode,
-  type CompanionVrmPowerMode,
-  computeStreamingDelta,
-  FIRST_RUN_PERMISSION_LABELS,
-  type FirstRunNextOptions,
-  formatSearchBullet,
-  formatStartupErrorDetail,
-  type GamePostMessageAuthPayload,
-  getCompanionBackgroundUrl,
-  getVrmBackgroundUrl,
-  getVrmCount,
-  getVrmPreviewUrl,
-  getVrmTitle,
-  getVrmUrl,
-  LIFECYCLE_MESSAGES,
-  type LifecycleAction,
-  type LoadConversationMessagesResult,
-  loadAvatarIndex,
-  loadChatAvatarVisible,
-  loadChatVoiceMuted,
-  loadCompanionAnimateWhenHidden,
-  loadCompanionHalfFramerateMode,
-  loadCompanionVrmPowerMode,
-  loadUiLanguage,
-  loadUiShellMode,
-  loadUiTheme,
-  mergeStreamingText,
-  normalizeAvatarIndex,
-  normalizeCompanionHalfFramerateMode,
-  normalizeCompanionVrmPowerMode,
-  normalizeCustomActionName,
-  normalizeStreamComparisonText,
-  normalizeUiShellMode,
-  normalizeUiTheme,
-  parseAgentStartupDiagnostics,
-  parseAgentStatusEvent,
-  parseAgentStatusFromMainMenuResetPayload,
-  parseConversationMessageEvent,
-  parseCustomActionParams,
-  parseProactiveMessageEvent,
-  parseSlashCommandInput,
-  parseStreamEventEnvelopeEvent,
-  type SetupStep,
-  type ShellView,
-  type SlashCommandInput,
-  type StartupErrorReason,
-  type StartupErrorState,
-  type StartupPhase,
-  saveAvatarIndex,
-  saveChatAvatarVisible,
-  saveChatVoiceMuted,
-  saveCompanionAnimateWhenHidden,
-  saveCompanionHalfFramerateMode,
-  saveCompanionVrmPowerMode,
-  saveUiLanguage,
-  saveUiShellMode,
-  saveUiTheme,
-  shouldApplyFinalStreamText,
-  type TranslationContextValue,
-  type UiShellMode,
-  type UiTheme,
-  useApp,
-  VRM_COUNT,
-} from "./internal";
-export { AGENT_READY_TIMEOUT_MS } from "./types";
 
 /**
  * FirstRunShell and bare `completeFirstRun()` land on the discovered

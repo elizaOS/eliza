@@ -24,9 +24,11 @@
 // sources, prompts, albums, counts, or progress are ever shown.
 
 import {
-  CornerDownLeft,
+  Folder,
   Image as ImageIcon,
   Minus,
+  Pencil,
+  Settings,
   Upload,
   X,
 } from "lucide-react";
@@ -53,16 +55,19 @@ const EDITOR_TEMPLATES: ReadonlyArray<{ w: number; h: number; label: string }> =
     { w: 3840, h: 2160, label: "4K — 3840 × 2160" },
   ];
 
-// Honest disabled reason for the Photos-tab controls (search, source filter,
-// sort, Select, Upload, filter chips). eliza exposes no image-library backend,
-// so none of these can do real work — they render 1:1 but stay inert.
-const NO_BACKEND = "No image-library backend is connected yet";
+const NO_BACKEND = "Image library offline";
+const NO_CANVAS_BACKEND = "Canvas backend offline";
 
-// Honest disabled reason for the canvas-opening affordances (New canvas /
-// template select). eliza exposes no frontend canvas/diffusion backend, so a
-// blank canvas can't be created here; "Browse photos" stays real (it just
-// switches to the Photos tab, same as odysseus).
-const NO_CANVAS_BACKEND = "No image/canvas backend is connected yet";
+const GALLERY_TABS: ReadonlyArray<{
+  id: GalleryTab;
+  label: string;
+  icon: ReactNode;
+}> = [
+  { id: "images", label: "Photos", icon: <ImageIcon size={14} /> },
+  { id: "albums", label: "Albums", icon: <Folder size={14} /> },
+  { id: "editor", label: "Edit", icon: <Pencil size={14} /> },
+  { id: "settings", label: "AI", icon: <Settings size={14} /> },
+];
 
 export function GalleryView({
   open,
@@ -136,105 +141,25 @@ export function GalleryView({
           </button>
         </div>
 
-        {/* ── Tabs (gallery.js .gallery-tabs): Photos · Albums · Edit · Settings ── */}
         <div className="od-gallery-tabs">
-          <button
-            type="button"
-            className={`od-gallery-tab${tab === "images" ? " active" : ""}`}
-            onClick={() => setTab("images")}
-          >
-            <span className="od-gallery-tab-icon">
-              <ImageIcon size={14} />
-            </span>
-            <span className="od-gallery-tab-label">Photos</span>
-          </button>
-          <button
-            type="button"
-            className={`od-gallery-tab${tab === "albums" ? " active" : ""}`}
-            onClick={() => setTab("albums")}
-          >
-            <span className="od-gallery-tab-icon">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                role="img"
-                aria-label="Albums"
-              >
-                <rect x="3" y="3" width="7" height="7" rx="1" />
-                <rect x="14" y="3" width="7" height="7" rx="1" />
-                <rect x="3" y="14" width="7" height="7" rx="1" />
-                <rect x="14" y="14" width="7" height="7" rx="1" />
-              </svg>
-            </span>
-            <span className="od-gallery-tab-label">Albums</span>
-          </button>
-          {/* Edit tab (gallery.js lines 1925-1929) — between Albums and
-              Settings, pencil icon + 'Edit'. (The hidden close × that
-              odysseus shows once a project is loaded needs an editor-drafts
-              backend eliza lacks, so it is omitted in this empty state.) */}
-          <button
-            type="button"
-            className={`od-gallery-tab${tab === "editor" ? " active" : ""}`}
-            onClick={() => setTab("editor")}
-          >
-            <span className="od-gallery-tab-icon">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                role="img"
-                aria-label="Edit"
-              >
-                <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-              </svg>
-            </span>
-            <span className="od-gallery-tab-label">Edit</span>
-          </button>
-          <button
-            type="button"
-            className={`od-gallery-tab${tab === "settings" ? " active" : ""}`}
-            onClick={() => setTab("settings")}
-          >
-            <span className="od-gallery-tab-icon">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                role="img"
-                aria-label="Settings"
-              >
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-              </svg>
-            </span>
-            <span className="od-gallery-tab-label">Settings</span>
-          </button>
+          {GALLERY_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={`od-gallery-tab${tab === t.id ? " active" : ""}`}
+              onClick={() => setTab(t.id)}
+              title={t.label}
+            >
+              <span className="od-gallery-tab-icon">{t.icon}</span>
+              <span className="od-gallery-tab-label">{t.label}</span>
+            </button>
+          ))}
         </div>
 
         {/* ── Body ── */}
         <div className="od-gallery-body">
           {tab === "images" ? (
             <div className="od-gallery-images-container">
-              {/* Toolbar (gallery.js .gallery-toolbar, lines 1945-1960):
-                  search w/ 'to tag' enter-hint, source filter, sort, Select.
-                  No gallery backend → every control inert/disabled with an
-                  honest title, but the full row renders for 1:1 layout. */}
               <div className="od-gallery-toolbar">
                 <div className="od-gallery-search-wrap">
                   <input
@@ -245,30 +170,7 @@ export function GalleryView({
                     title={NO_BACKEND}
                     aria-label="Search photos, tags"
                   />
-                  {/* odysseus's '↵ to tag' hint — hidden until text is typed
-                      (CSS :not(:placeholder-shown)); our input is disabled and
-                      empty, so it stays hidden, matching the real frame. */}
-                  <span
-                    className="od-gallery-search-enter-hint"
-                    aria-hidden="true"
-                  >
-                    <CornerDownLeft
-                      size={13}
-                      className="od-gallery-enter-key"
-                    />
-                    to tag
-                  </span>
                 </div>
-                <span className="od-gallery-toolbar-break" aria-hidden="true" />
-                <select
-                  className="od-gallery-model-filter"
-                  disabled
-                  title={NO_BACKEND}
-                  aria-label="Filter by source"
-                  defaultValue=""
-                >
-                  <option value="">All sources</option>
-                </select>
                 <select
                   className="od-gallery-sort"
                   disabled
@@ -290,34 +192,6 @@ export function GalleryView({
                 </button>
               </div>
 
-              {/* Filter chips (gallery.js #gallery-filter-chips, _renderAlbums
-                  lines 380-383): All (active) + heart Favorites. Inert — there
-                  is nothing to filter, but the row renders for 1:1 chrome. */}
-              <div className="od-gallery-filter-chips od-gallery-album-chips">
-                <button
-                  type="button"
-                  className="od-gallery-chip active"
-                  disabled
-                  title={NO_BACKEND}
-                >
-                  All
-                </button>
-                <button
-                  type="button"
-                  className="od-gallery-chip od-gallery-chip-fav"
-                  disabled
-                  title={`Favorites — ${NO_BACKEND}`}
-                  aria-label="Favorites"
-                >
-                  &#9829;
-                </button>
-              </div>
-
-              {/* Grid: Upload tile + odysseus's exact empty caption as the cell
-                  beside it (gallery.js _renderGrid empty branch: uploadTile +
-                  the empty caption in the same grid). No upload endpoint exists,
-                  so the tile is a disabled affordance rather than a control that
-                  routes nowhere. */}
               <div className="od-gallery-grid od-gallery-grid-empty">
                 <div
                   className="od-gallery-card od-gallery-card-upload od-gallery-card-disabled"
@@ -329,9 +203,7 @@ export function GalleryView({
                     <div className="od-gallery-card-upload-label">Upload</div>
                   </div>
                 </div>
-                <div className="od-gallery-empty">
-                  No photos yet. Click Upload or drag-and-drop to get started!
-                </div>
+                <div className="od-gallery-empty">Library offline</div>
               </div>
             </div>
           ) : null}
@@ -342,40 +214,13 @@ export function GalleryView({
             </div>
           ) : null}
 
-          {/* ── Edit tab landing (gallery.js _renderEditorLanding, lines
-              1083-1112). Pen-tool glyph + 'Image Editor' Alpha heading,
-              'New canvas...'/'Browse photos' actions, template select, and the
-              Saved-projects row. eliza has no canvas/editor-drafts backend, so
-              canvas-creating controls are honestly inert and the saved-projects
-              grid shows its empty state — but every control is present 1:1. ── */}
           {tab === "editor" ? (
             <div className="od-gallery-secondary">
               <div className="gallery-editor-landing">
-                <svg
-                  width="48"
-                  height="48"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ opacity: 0.6 }}
-                  role="img"
-                  aria-label="Image editor"
-                >
-                  <path d="M12 19l7-7 3 3-7 7-3-3z" />
-                  <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
-                  <path d="M2 2l7.586 7.586" />
-                  <circle cx="11" cy="11" r="2" />
-                </svg>
+                <Pencil size={44} strokeWidth={1.4} aria-hidden="true" />
                 <h3>
                   Image Editor <span className="ge-alpha-tag">Alpha</span>
                 </h3>
-                <p>
-                  Start a blank canvas, or open a photo from your gallery to
-                  edit it.
-                </p>
                 <div className="gallery-editor-landing-actions">
                   <button
                     type="button"
@@ -383,7 +228,7 @@ export function GalleryView({
                     title={NO_CANVAS_BACKEND}
                     disabled
                   >
-                    New canvas...
+                    New canvas
                   </button>
                   <button
                     type="button"
@@ -393,23 +238,20 @@ export function GalleryView({
                     Browse photos
                   </button>
                 </div>
-                <label className="gallery-editor-template-label">
-                  Or pick a template
-                  <select
-                    className="gallery-editor-template-select"
-                    defaultValue=""
-                    title={NO_CANVAS_BACKEND}
-                    disabled
-                    aria-label="Pick a canvas template size"
-                  >
-                    <option value="">Select a size…</option>
-                    {EDITOR_TEMPLATES.map((p, i) => (
-                      <option key={p.label} value={i}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <select
+                  className="gallery-editor-template-select"
+                  defaultValue=""
+                  title={NO_CANVAS_BACKEND}
+                  disabled
+                  aria-label="Pick a canvas template size"
+                >
+                  <option value="">Template size</option>
+                  {EDITOR_TEMPLATES.map((p, i) => (
+                    <option key={p.label} value={i}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
                 <div className="gallery-editor-drafts">
                   <div className="gallery-editor-drafts-header">
                     <h4 className="gallery-editor-drafts-title">
@@ -420,23 +262,21 @@ export function GalleryView({
                       className="gallery-editor-drafts-search"
                       placeholder="Search projects…"
                       autoComplete="off"
-                      title="Saved projects need an editor-drafts backend, which isn’t connected yet"
+                      title="Draft backend offline"
                       disabled
                       aria-label="Search saved projects"
                     />
                     <button
                       type="button"
                       className="od-gallery-select-btn"
-                      title="Saved projects need an editor-drafts backend, which isn’t connected yet"
+                      title="Draft backend offline"
                       disabled
                     >
                       Select
                     </button>
                   </div>
                   <div className="gallery-editor-drafts-grid">
-                    <div className="od-gallery-empty">
-                      No saved projects yet.
-                    </div>
+                    <div className="od-gallery-empty">No saved projects</div>
                   </div>
                 </div>
               </div>
@@ -447,10 +287,7 @@ export function GalleryView({
             <div className="od-gallery-secondary">
               <div className="od-gallery-settings-card">
                 <h2 className="od-gallery-settings-title">AI Tagging</h2>
-                <p className="od-gallery-settings-desc">
-                  Auto-tag photos by content with your vision model. Your own
-                  tags are kept. Available once an image library is connected.
-                </p>
+                <p className="od-gallery-settings-desc">Offline</p>
               </div>
             </div>
           ) : null}

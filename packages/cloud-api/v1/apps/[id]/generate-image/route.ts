@@ -348,13 +348,14 @@ app.post("/", async (c) => {
     const provider = getImageProvider(definition.billingSource);
     const env = getCloudAwareEnv();
     const apiKeys = {
-      OPENROUTER_API_KEY: env.OPENROUTER_API_KEY,
+      BITROUTER_API_KEY: env.BITROUTER_API_KEY,
+      BITROUTER_BASE_URL: env.BITROUTER_BASE_URL,
       FAL_KEY: env.FAL_KEY,
       FAL_API_KEY: env.FAL_API_KEY,
     };
     if (
-      definition.billingSource === "openrouter" &&
-      !apiKeys.OPENROUTER_API_KEY
+      definition.billingSource === "bitrouter" &&
+      !apiKeys.BITROUTER_API_KEY
     ) {
       return jsonError(
         c,

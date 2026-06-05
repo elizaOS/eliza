@@ -18,14 +18,8 @@ import { loadBrandFromArgv } from "./brand-config.mjs";
 import { lintInitRc } from "./lint-init-rc.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-// This file lives at packages/scripts/distro-android/validate.mjs, so the
-// repo root is three levels up. The previous `../..` value resolved to
-// `packages/` and silently broke vendor-dir resolution
-// (`path.resolve(repoRoot, brand.vendorDir)` produced
-// `packages/packages/os/android/vendor/<brand>` and the XML scan failed
-// before reaching the product-layer check). Reported by I1 against
-// brand-config rollouts that moved the vendor tree under
-// `packages/os/android/...`.
+// This file lives at packages/scripts/distro-android/, so the repo root is
+// three levels up — brand.vendorDir paths are resolved against it.
 const repoRoot = path.resolve(here, "../../..");
 
 const defaultGrantPermissions = [

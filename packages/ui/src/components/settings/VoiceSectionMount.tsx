@@ -15,16 +15,21 @@
 import * as React from "react";
 import { client } from "../../api/client";
 import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
+import { saveVadAutoStop } from "../../state/persistence";
 import {
   VOICE_CONTINUOUS_MODES,
   type VoiceContinuousMode,
 } from "../../voice/voice-chat-types";
 import {
-  DEFAULT_VOICE_SECTION_PREFS,
+  type VadAutoStopPrefs,
   type VoiceLocalCloudStrategy,
   VoiceSection,
   type VoiceSectionPrefs,
 } from "./VoiceSection";
+import {
+  DEFAULT_VAD_AUTO_STOP_PREFS,
+  DEFAULT_VOICE_SECTION_PREFS,
+} from "./VoiceSection.helpers";
 
 const VOICE_PREFS_CONFIG_KEY = "voice";
 
@@ -41,6 +46,21 @@ function isLocalCloudStrategy(
   value: unknown,
 ): value is VoiceLocalCloudStrategy {
   return value === "auto" || value === "force-local" || value === "force-cloud";
+}
+
+function readVadAutoStop(value: unknown): VadAutoStopPrefs {
+  const stored = (value ?? {}) as Record<string, unknown>;
+  return {
+    silenceMs:
+      typeof stored.silenceMs === "number" && Number.isFinite(stored.silenceMs)
+        ? stored.silenceMs
+        : DEFAULT_VAD_AUTO_STOP_PREFS.silenceMs,
+    speechRmsThreshold:
+      typeof stored.speechRmsThreshold === "number" &&
+      Number.isFinite(stored.speechRmsThreshold)
+        ? stored.speechRmsThreshold
+        : DEFAULT_VAD_AUTO_STOP_PREFS.speechRmsThreshold,
+  };
 }
 
 function readStoredVoicePrefs(
@@ -66,6 +86,7 @@ function readStoredVoicePrefs(
       typeof stored.autoLearnVoices === "boolean"
         ? stored.autoLearnVoices
         : DEFAULT_VOICE_SECTION_PREFS.autoLearnVoices,
+    vadAutoStop: readVadAutoStop(stored.vadAutoStop),
   };
 }
 
@@ -79,7 +100,11 @@ export function VoiceSectionMount(): React.ReactElement {
     let cancelled = false;
     void (async () => {
       const config = await client.getConfig();
-      if (!cancelled) setPrefs(readStoredVoicePrefs(config));
+      if (cancelled) return;
+      const loaded = readStoredVoicePrefs(config);
+      setPrefs(loaded);
+      // Seed the local mirror so the capture hot path reads the server value.
+      if (loaded.vadAutoStop) saveVadAutoStop(loaded.vadAutoStop);
     })();
     return () => {
       cancelled = true;
@@ -90,6 +115,9 @@ export function VoiceSectionMount(): React.ReactElement {
     async (next: VoiceSectionPrefs) => {
       setPrefs(next);
       setPersistError(null);
+      // Mirror to localStorage immediately so the capture path picks up the new
+      // VAD thresholds without waiting on the config round-trip.
+      if (next.vadAutoStop) saveVadAutoStop(next.vadAutoStop);
       try {
         const config = await client.getConfig();
         const messages = (config.messages ?? {}) as Record<string, unknown>;

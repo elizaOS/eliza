@@ -577,7 +577,7 @@ function ColorPickerPopover({
         onCommit(hex);
       })
       .catch(() => {
-        // user cancelled the OS eyedropper — no-op
+        // User cancelled the OS eyedropper.
       });
   }, [onPreview, onCommit]);
 

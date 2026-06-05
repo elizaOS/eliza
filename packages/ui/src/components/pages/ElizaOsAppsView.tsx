@@ -31,7 +31,7 @@ import type {
   SmsMessageSummary,
 } from "../../bridge/native-plugins";
 import { getPlugins } from "../../bridge/plugin-bridge";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";

@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, Download, Upload } from "lucide-react";
-import { Button } from "../button";
+import { Button } from "../../../components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,7 +9,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "../dropdown-menu";
+} from "../../../components/ui/dropdown-menu";
 
 type AnalyticsExportFormat = "csv" | "json" | "excel";
 type AnalyticsExportType = "timeseries" | "users" | "providers" | "models";

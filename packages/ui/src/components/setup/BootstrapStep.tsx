@@ -27,27 +27,25 @@ import { startFreshFirstRunReload } from "../../platform";
 import {
   type TranslationContextValue,
   useTranslation,
-} from "../../state/TranslationContext";
+} from "../../state/TranslationContext.hooks";
 import {
-  SetupField,
-  setupDetailStackClassName,
-  setupHelperTextClassName,
-  setupInputClassName,
-  setupReadableTextFaintClassName,
-  setupReadableTextMutedClassName,
-} from "./setup-form-primitives";
-import {
-  SetupStepDivider,
   setupBodyTextShadowStyle,
   setupDescriptionClass,
+  setupDetailStackClassName,
   setupEyebrowClass,
   setupFooterClass,
   setupHeaderBlockClass,
+  setupHelperTextClassName,
+  setupInputClassName,
   setupPrimaryActionClass,
   setupPrimaryActionTextShadowStyle,
+  setupReadableTextFaintClassName,
+  setupReadableTextMutedClassName,
   setupTextShadowStyle,
   setupTitleClass,
-} from "./setup-step-chrome";
+} from "./setup-classes";
+import { SetupField } from "./setup-form-primitives";
+import { SetupStepDivider } from "./setup-step-chrome";
 
 const SESSION_STORAGE_KEY = "eliza_session";
 const MONO_FONT = "'Poppins', Arial, system-ui, sans-serif";

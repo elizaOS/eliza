@@ -16,10 +16,8 @@ vi.mock("lucide-react", () => {
 });
 
 import type { NativeToolCallEvent } from "../../api/client-types-cloud";
-import {
-  getToolCallEventDisplayState,
-  ToolCallEventLog,
-} from "./ToolCallEventLog";
+import { ToolCallEventLog } from "./ToolCallEventLog";
+import { getToolCallEventDisplayState } from "./ToolCallEventLog.helpers";
 
 describe("ToolCallEventLog", () => {
   it("renders action, args preview, result preview, and success state", () => {

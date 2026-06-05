@@ -29,6 +29,7 @@ import type {
   OrchestratorTaskDocument,
   OrchestratorTaskEvent,
   OrchestratorTaskMessage,
+  OrchestratorTaskPlanRevision,
   OrchestratorTaskRecord,
   OrchestratorTaskSession,
   OrchestratorTaskUsage,
@@ -59,10 +60,9 @@ type SqlDatabaseAdapter = {
   select?: (sql: string, params?: unknown[]) => Promise<unknown[]> | unknown[];
 };
 
-// Bound inline collections so a long-lived, very chatty task cannot grow its
-// document without limit. Newest entries win; the timeline keeps the tail.
-const MAX_EVENTS = 500;
-const MAX_MESSAGES = 1000;
+// Bound auxiliary inline collections so telemetry/artifact chatter cannot grow
+// without limit. The primary operator timeline (messages + events) remains
+// uncapped so inspection and recovery can page all retained task history.
 const MAX_USAGE = 1000;
 const MAX_DECISIONS = 300;
 const MAX_ARTIFACTS = 200;
@@ -75,19 +75,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Boundary guard for documents loaded from disk/JSON. A document must carry a
- * task with an id plus the six inline child arrays. */
-function isTaskDocument(value: unknown): value is OrchestratorTaskDocument {
-  if (!isRecord(value)) return false;
+ * task with an id plus the inline child arrays that existed before the
+ * plan-revision rollout. `planRevisions` is filled below for older documents. */
+function normalizeTaskDocument(
+  value: unknown,
+): OrchestratorTaskDocument | null {
+  if (!isRecord(value)) return null;
   const task = value.task;
-  if (!isRecord(task) || typeof task.id !== "string") return false;
-  return (
+  if (!isRecord(task) || typeof task.id !== "string") return null;
+  const hasRequiredChildren =
     Array.isArray(value.sessions) &&
     Array.isArray(value.events) &&
     Array.isArray(value.messages) &&
     Array.isArray(value.usage) &&
     Array.isArray(value.artifacts) &&
-    Array.isArray(value.decisions)
-  );
+    Array.isArray(value.decisions);
+  if (!hasRequiredChildren) return null;
+  return {
+    ...(value as unknown as OrchestratorTaskDocument),
+    planRevisions: Array.isArray(value.planRevisions)
+      ? (value.planRevisions as OrchestratorTaskPlanRevision[])
+      : [],
+  };
 }
 
 function isSqlDatabaseAdapter(value: unknown): value is SqlDatabaseAdapter {
@@ -153,13 +162,14 @@ function newTaskDocument(input: CreateTaskInput): OrchestratorTaskDocument {
     usage: [],
     artifacts: [],
     decisions: [],
+    planRevisions: [],
   };
 }
 
 function cloneDocument(
   doc: OrchestratorTaskDocument,
 ): OrchestratorTaskDocument {
-  return structuredClone(doc);
+  return structuredClone({ ...doc, planRevisions: doc.planRevisions ?? [] });
 }
 
 function omitUndefined<T extends object>(value: T): Partial<T> {
@@ -237,7 +247,7 @@ export class InMemoryTaskStore {
     return this.enqueue(async () => {
       const doc = this.docs.get(id);
       if (!doc) return null;
-      const nextPatch = omitUndefined(patch);
+      const nextPatch = structuredClone(omitUndefined(patch));
       doc.task = {
         ...doc.task,
         ...nextPatch,
@@ -309,14 +319,12 @@ export class InMemoryTaskStore {
   async addEvent(event: OrchestratorTaskEvent): Promise<void> {
     await this.appendChild(event.taskId, (doc) => {
       doc.events.push(event);
-      doc.events = clampTail(doc.events, MAX_EVENTS);
     });
   }
 
   async addMessage(message: OrchestratorTaskMessage): Promise<void> {
     await this.appendChild(message.taskId, (doc) => {
       doc.messages.push(message);
-      doc.messages = clampTail(doc.messages, MAX_MESSAGES);
     });
   }
 
@@ -338,6 +346,17 @@ export class InMemoryTaskStore {
     await this.appendChild(decision.taskId, (doc) => {
       doc.decisions.push(decision);
       doc.decisions = clampTail(doc.decisions, MAX_DECISIONS);
+    });
+  }
+
+  async addPlanRevision(revision: OrchestratorTaskPlanRevision): Promise<void> {
+    await this.appendChild(revision.taskId, (doc) => {
+      const stored = structuredClone(revision);
+      const idx = doc.planRevisions.findIndex(
+        (item) => item.id === revision.id,
+      );
+      if (idx >= 0) doc.planRevisions[idx] = stored;
+      else doc.planRevisions.push(stored);
     });
   }
 
@@ -393,7 +412,11 @@ export class FileTaskStore extends InMemoryTaskStore {
       const contents = await readFile(this.filePath, "utf8");
       const parsed = JSON.parse(contents) as unknown;
       if (Array.isArray(parsed)) {
-        this.hydrate(parsed.filter(isTaskDocument));
+        this.hydrate(
+          parsed
+            .map(normalizeTaskDocument)
+            .filter((doc): doc is OrchestratorTaskDocument => doc !== null),
+        );
       }
     } catch (error) {
       const code =
@@ -465,6 +488,10 @@ export class FileTaskStore extends InMemoryTaskStore {
   override async addDecision(decision: OrchestratorTaskDecision) {
     await this.ensureLoaded();
     return super.addDecision(decision);
+  }
+  override async addPlanRevision(revision: OrchestratorTaskPlanRevision) {
+    await this.ensureLoaded();
+    return super.addPlanRevision(revision);
   }
 
   protected override async afterWrite(): Promise<void> {
@@ -588,7 +615,7 @@ export class RuntimeDbTaskStore {
     if (!isRecord(row) || typeof row.document !== "string") return null;
     try {
       const parsed: unknown = JSON.parse(row.document);
-      return isTaskDocument(parsed) ? parsed : null;
+      return normalizeTaskDocument(parsed);
     } catch {
       return null;
     }
@@ -742,6 +769,9 @@ export class RuntimeDbTaskStore {
   async addDecision(decision: OrchestratorTaskDecision) {
     return this.mutate(decision.taskId, (c) => c.addDecision(decision));
   }
+  async addPlanRevision(revision: OrchestratorTaskPlanRevision) {
+    return this.mutate(revision.taskId, (c) => c.addPlanRevision(revision));
+  }
 }
 
 export interface OrchestratorTaskStoreOptions {
@@ -816,5 +846,8 @@ export class OrchestratorTaskStore {
   }
   addDecision(decision: OrchestratorTaskDecision) {
     return this.delegate.addDecision(decision);
+  }
+  addPlanRevision(revision: OrchestratorTaskPlanRevision) {
+    return this.delegate.addPlanRevision(revision);
   }
 }

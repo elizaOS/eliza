@@ -1973,6 +1973,8 @@ export function patchAndroidAppActionsXmlResource(
     "elizaos",
     "ai.elizaos.app",
     "app.eliza",
+    "milady",
+    "ai.milady.milady",
     androidPackage,
   ].filter(Boolean);
   for (const scheme of escapedSchemes) {
@@ -2118,6 +2120,8 @@ export function validateAndroidAppActionsXmlResource(
     urlScheme === "eliza" ? null : "eliza://",
     urlScheme === "ai.elizaos.app" ? null : "ai.elizaos.app://",
     urlScheme === "app.eliza" ? null : "app.eliza://",
+    urlScheme === "milady" ? null : "milady://",
+    urlScheme === "ai.milady.milady" ? null : "ai.milady.milady://",
   ].filter(Boolean);
   for (const stale of staleLiterals) {
     if (xml.includes(stale)) {
@@ -4400,7 +4404,7 @@ function resolveIosBunEngineLibrary(xcframework, { buildTarget = null } = {}) {
     : [];
   const wantSimulator = isIosSimulatorBuildTarget(buildTarget);
   const library = libraries.find((entry) => {
-    if (!entry || entry.SupportedPlatform !== "ios") return false;
+    if (entry?.SupportedPlatform !== "ios") return false;
     const variant = entry.SupportedPlatformVariant;
     return wantSimulator ? variant === "simulator" : !variant;
   });

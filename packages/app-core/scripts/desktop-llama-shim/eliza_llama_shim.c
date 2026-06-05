@@ -184,16 +184,15 @@ int32_t eliza_llama_decode_unified(void* ctx, void* batch) {
 }
 
 void eliza_llama_context_detach_drafter(void* main_ctx) {
-    // Stub: no-op until the C++ wrapper over common_speculative lands.
-    // The adapter calls this on context teardown; a no-op is safe because
-    // attach_drafter is itself a stub returning -ENOSYS, so there's no
-    // drafter to detach.
+    // Unsupported MTP drafter path. The adapter calls this on context teardown;
+    // returning without work is safe because attach_drafter returns -ENOSYS, so
+    // there is no drafter to detach.
     (void)main_ctx;
 }
 
 int32_t eliza_llama_context_has_drafter(void* main_ctx) {
-    // Stub: paired with attach_drafter — until that's wired, no context
-    // ever has a drafter attached.
+    // Unsupported MTP drafter path paired with attach_drafter: no context can
+    // report a drafter while attach support returns -ENOSYS.
     (void)main_ctx;
     return 0;
 }
@@ -657,6 +656,11 @@ void* eliza_llama_sampler_init_prefill_plan(const uint8_t* plan_bytes, size_t pl
 
 #ifdef ELIZA_ENABLE_VISION
 #include "mtmd.h"
+#include "mtmd-helper.h"
+
+const char* eliza_mtmd_default_marker(void) {
+    return mtmd_default_marker();
+}
 
 void* eliza_mtmd_init(const char* mmproj_path, void* text_model, bool use_gpu, int n_threads) {
     if (!mmproj_path || !text_model) return NULL;
@@ -670,6 +674,10 @@ void eliza_mtmd_free(void* ctx) { if (ctx) mtmd_free((mtmd_context*)ctx); }
 
 void* eliza_mtmd_bitmap_init_rgb(uint32_t nx, uint32_t ny, const uint8_t* rgb) {
     return (!rgb) ? NULL : (void*)mtmd_bitmap_init(nx, ny, rgb);
+}
+void* eliza_mtmd_bitmap_init_from_buf(void* ctx, const uint8_t* buf, size_t len) {
+    if (!ctx || !buf || len == 0) return NULL;
+    return (void*)mtmd_helper_bitmap_init_from_buf((mtmd_context*)ctx, buf, len);
 }
 void eliza_mtmd_bitmap_free(void* bm) { if (bm) mtmd_bitmap_free((mtmd_bitmap*)bm); }
 
@@ -703,5 +711,25 @@ int32_t eliza_mtmd_encode_chunk(void* ctx, void* chunk) {
 
 const float* eliza_mtmd_output_embd(void* ctx) {
     return ctx ? mtmd_get_output_embd((mtmd_context*)ctx) : NULL;
+}
+
+int32_t eliza_mtmd_eval_chunks(void* ctx, void* lctx, const void* chunks,
+                               int32_t n_past, int32_t seq_id, int32_t n_batch,
+                               bool logits_last, int32_t* new_n_past) {
+    if (!ctx || !lctx || !chunks || !new_n_past || n_batch <= 0) return -1;
+    llama_pos out = 0;
+    int32_t rc = mtmd_helper_eval_chunks(
+        (mtmd_context*)ctx,
+        (struct llama_context*)lctx,
+        (const mtmd_input_chunks*)chunks,
+        (llama_pos)n_past,
+        (llama_seq_id)seq_id,
+        n_batch,
+        logits_last,
+        &out);
+    if (rc == 0) {
+        *new_n_past = (int32_t)out;
+    }
+    return rc;
 }
 #endif  // ELIZA_ENABLE_VISION

@@ -41,20 +41,22 @@ import {
 } from "../../agent-surface";
 import { client } from "../../api/index.ts";
 import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useApp } from "../../state/useApp.ts";
 import { registerDetailExtension } from "../apps/extensions/registry.ts";
 import {
   formatDetailTimestamp,
+  selectLatestRunForApp,
+  toneForHealthState,
+  toneForStatusText,
+  toneForViewerAttachment,
+} from "../apps/extensions/surface.helpers.ts";
+import {
   SurfaceBadge,
   SurfaceCard,
   SurfaceEmptyState,
   SurfaceGrid,
   SurfaceSection,
-  selectLatestRunForApp,
-  toneForHealthState,
-  toneForStatusText,
-  toneForViewerAttachment,
 } from "../apps/extensions/surface.tsx";
 import { registerOverlayApp } from "../apps/overlay-app-registry.ts";
 import { GameOperatorShell } from "../apps/surfaces/GameOperatorShell.tsx";

@@ -265,7 +265,7 @@ describe("Group E: admin / docker-containers (live + 501 stubs)", () => {
     }
   });
 
-  test("GET /api/v1/admin/docker-containers/audit is a 501 stub", async () => {
+  test("GET /api/v1/admin/docker-containers/audit returns the Worker boundary fallback", async () => {
     if (!shouldRun()) return;
     const unauthed = await api.get("/api/v1/admin/docker-containers/audit");
     expectAuthGate(unauthed.status, "GET docker-containers/audit (unauth)");
@@ -276,7 +276,7 @@ describe("Group E: admin / docker-containers (live + 501 stubs)", () => {
     expect(authed.status).toBe(501);
   });
 
-  test("POST /api/v1/admin/infrastructure/containers/actions is a 501 stub; rejects unauthenticated", async () => {
+  test("POST /api/v1/admin/infrastructure/containers/actions rejects unauthenticated and returns the Worker boundary fallback", async () => {
     if (!shouldRun()) return;
     const unauthed = await api.post(
       "/api/v1/admin/infrastructure/containers/actions",
@@ -481,7 +481,7 @@ describe("Group E: advertising / creatives", () => {
   });
 });
 
-describe("Group E: training / vertex tune (501 stub)", () => {
+describe("Group E: training / vertex tune Worker boundary", () => {
   test("POST /api/training/vertex/tune rejects unauthenticated", async () => {
     if (!serverReachable) return;
     const res = await api.post("/api/training/vertex/tune", {

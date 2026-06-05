@@ -3,7 +3,12 @@
   "root": false,
   "extends": ["../../biome.json"],
   "files": {
-    "includes": ["src/**", "!src/**/*.d.ts", "!src/**/*.d.ts.map", "!src/**/__e2e__/**"]
+    "includes": [
+      "src/**",
+      "!src/**/*.d.ts",
+      "!src/**/*.d.ts.map",
+      "!src/**/__e2e__"
+    ]
   },
   "linter": {
     "rules": {

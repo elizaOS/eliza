@@ -5,6 +5,6 @@
  */
 
 export * from "./admin";
+export * from "./auth-email-utils";
 export * from "./farcaster-auth-client";
 export * from "./farcaster-onboarding";
-export * from "./auth-email-utils";

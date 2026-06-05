@@ -135,6 +135,26 @@ export interface TaskMessageDto {
   createdAt: string;
 }
 
+export type TaskTimelineItemDto =
+  | {
+      id: string;
+      kind: "message";
+      threadId: string;
+      sessionId: string | null;
+      timestamp: number;
+      createdAt: string;
+      message: TaskMessageDto;
+    }
+  | {
+      id: string;
+      kind: "event";
+      threadId: string;
+      sessionId: string | null;
+      timestamp: number;
+      createdAt: string;
+      event: TaskEventDto;
+    };
+
 export interface TaskTranscriptDto {
   id: string;
   threadId: string;
@@ -143,6 +163,18 @@ export interface TaskTranscriptDto {
   direction: TaskMessageDirection;
   content: string;
   metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface TaskPlanRevisionDto {
+  id: string;
+  threadId: string;
+  plan: Record<string, unknown>;
+  basePlanRevisionId: string | null;
+  editSummary: string | null;
+  createdBy: string;
+  metadata: Record<string, unknown>;
+  timestamp: number;
   createdAt: string;
 }
 
@@ -165,6 +197,7 @@ export interface TaskThreadDetailDto extends TaskThreadDto {
   artifacts: TaskArtifactDto[];
   messages: TaskMessageDto[];
   transcripts: TaskTranscriptDto[];
+  planRevisions: TaskPlanRevisionDto[];
 }
 
 function latestSession(doc: OrchestratorTaskDocument) {
@@ -180,9 +213,88 @@ function latestSession(doc: OrchestratorTaskDocument) {
 }
 
 function rollUpUsageState(states: UsageState[]): UsageState {
-  if (states.includes("measured")) return "measured";
+  if (states.length === 0 || states.includes("unavailable")) {
+    return "unavailable";
+  }
   if (states.includes("estimated")) return "estimated";
-  return "unavailable";
+  return "measured";
+}
+
+export function toTaskEventDto(
+  event: OrchestratorTaskDocument["events"][number],
+): TaskEventDto {
+  return {
+    id: event.id,
+    threadId: event.taskId,
+    sessionId: event.sessionId ?? null,
+    eventType: event.eventType,
+    timestamp: event.timestamp,
+    summary: event.summary,
+    data: event.data,
+    createdAt: event.createdAt,
+  };
+}
+
+export function toTaskMessageDto(
+  message: OrchestratorTaskDocument["messages"][number],
+): TaskMessageDto {
+  return {
+    id: message.id,
+    threadId: message.taskId,
+    sessionId: message.sessionId ?? null,
+    senderKind: message.senderKind,
+    direction: message.direction,
+    content: message.content,
+    timestamp: message.timestamp,
+    metadata: message.metadata,
+    createdAt: message.createdAt,
+  };
+}
+
+export function toTaskTimelineMessageDto(
+  message: OrchestratorTaskDocument["messages"][number],
+): TaskTimelineItemDto {
+  const dto = toTaskMessageDto(message);
+  return {
+    id: `message:${message.id}`,
+    kind: "message",
+    threadId: dto.threadId,
+    sessionId: dto.sessionId,
+    timestamp: dto.timestamp,
+    createdAt: dto.createdAt,
+    message: dto,
+  };
+}
+
+export function toTaskTimelineEventDto(
+  event: OrchestratorTaskDocument["events"][number],
+): TaskTimelineItemDto {
+  const dto = toTaskEventDto(event);
+  return {
+    id: `event:${event.id}`,
+    kind: "event",
+    threadId: dto.threadId,
+    sessionId: dto.sessionId,
+    timestamp: dto.timestamp,
+    createdAt: dto.createdAt,
+    event: dto,
+  };
+}
+
+export function toTaskPlanRevisionDto(
+  revision: OrchestratorTaskDocument["planRevisions"][number],
+): TaskPlanRevisionDto {
+  return {
+    id: revision.id,
+    threadId: revision.taskId,
+    plan: structuredClone(revision.plan),
+    basePlanRevisionId: revision.basePlanRevisionId ?? null,
+    editSummary: revision.editSummary ?? null,
+    createdBy: revision.createdBy,
+    metadata: structuredClone(revision.metadata),
+    timestamp: revision.timestamp,
+    createdAt: revision.createdAt,
+  };
 }
 
 /** Aggregate per-session usage into the by-provider breakdown plus a total. The
@@ -351,16 +463,7 @@ export function toTaskThreadDetail(
       timestamp: decision.timestamp,
       createdAt: decision.createdAt,
     })),
-    events: doc.events.map((event) => ({
-      id: event.id,
-      threadId: event.taskId,
-      sessionId: event.sessionId ?? null,
-      eventType: event.eventType,
-      timestamp: event.timestamp,
-      summary: event.summary,
-      data: event.data,
-      createdAt: event.createdAt,
-    })),
+    events: doc.events.map(toTaskEventDto),
     artifacts: doc.artifacts.map((artifact) => ({
       id: artifact.id,
       threadId: artifact.taskId,
@@ -374,17 +477,7 @@ export function toTaskThreadDetail(
       metadata: artifact.metadata,
       createdAt: artifact.createdAt,
     })),
-    messages: doc.messages.map((message) => ({
-      id: message.id,
-      threadId: message.taskId,
-      sessionId: message.sessionId ?? null,
-      senderKind: message.senderKind,
-      direction: message.direction,
-      content: message.content,
-      timestamp: message.timestamp,
-      metadata: message.metadata,
-      createdAt: message.createdAt,
-    })),
+    messages: doc.messages.map(toTaskMessageDto),
     transcripts: doc.messages
       .filter((message) => message.sessionId)
       .map((message) => ({
@@ -397,5 +490,6 @@ export function toTaskThreadDetail(
         metadata: message.metadata,
         createdAt: message.createdAt,
       })),
+    planRevisions: doc.planRevisions.map(toTaskPlanRevisionDto),
   };
 }

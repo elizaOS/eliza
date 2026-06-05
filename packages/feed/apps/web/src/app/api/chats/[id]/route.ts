@@ -155,7 +155,8 @@ export const GET = withErrorHandling(
     } else {
       // Normal mode: require authentication and membership
       authUser = await authenticate(request);
-      userId = authUser.userId;
+      const authenticatedUserId = authUser.userId;
+      userId = authenticatedUserId;
 
       const [isMember] = await asUser(authUser, async (db) => {
         return await db
@@ -164,7 +165,7 @@ export const GET = withErrorHandling(
           .where(
             and(
               eq(chatParticipants.chatId, chatId),
-              eq(chatParticipants.userId, authUser?.userId),
+              eq(chatParticipants.userId, authenticatedUserId),
             ),
           )
           .limit(1);
@@ -195,7 +196,7 @@ export const GET = withErrorHandling(
       // 1. `after` (ISO timestamp): fetch messages NEWER than this time (ASC order, for sync)
       // 2. `cursor` (message ID): fetch messages OLDER than this cursor (DESC order, for load-more)
       // 3. Neither: fetch latest messages (DESC order, initial load)
-      let messagesList;
+      let messagesList: Array<typeof messages.$inferSelect>;
       if (after) {
         // Incremental sync: only messages after the given timestamp
         const afterDate = new Date(after);

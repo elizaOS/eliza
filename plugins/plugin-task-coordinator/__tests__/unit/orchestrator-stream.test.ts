@@ -1,14 +1,10 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import {
-  MarkdownText,
-  sanitizeMarkdownUrl,
-} from "../../src/orchestrator-markdown";
-import {
-  buildConversation,
-  type ConversationBlock,
-} from "../../src/orchestrator-stream";
+import { MarkdownText } from "../../src/orchestrator-markdown";
+import { sanitizeMarkdownUrl } from "../../src/orchestrator-markdown.helpers";
+import type { ConversationBlock } from "../../src/orchestrator-stream";
+import { buildConversation } from "../../src/orchestrator-stream.helpers";
 
 type MessageRecord = Parameters<typeof buildConversation>[0][number];
 type EventRecord = Parameters<typeof buildConversation>[1][number];
@@ -29,10 +25,10 @@ const baseMessage = (overrides: Partial<MessageRecord>): MessageRecord => ({
 const baseEvent = (overrides: Partial<EventRecord>): EventRecord => ({
   id: "event-1",
   threadId: "task-1",
-  sessionId: null,
-  eventType: "notice",
-  timestamp: 1,
-  summary: "notice",
+  sessionId: "session-codex",
+  eventType: "tool_running",
+  timestamp: 20,
+  summary: "tool running",
   data: {},
   createdAt: "2026-05-30T18:00:00.000Z",
   ...overrides,
@@ -87,6 +83,51 @@ describe("buildConversation", () => {
         messageIds: ["agent-stdout"],
         sessionId: "session-codex",
       }),
+    ]);
+  });
+
+  it("keeps consecutive user messages as separate turns (no run-on coalescing)", () => {
+    const blocks = buildConversation(
+      [
+        baseMessage({
+          id: "u1",
+          senderKind: "user",
+          direction: "stdin",
+          content: "first question",
+          timestamp: 10,
+        }),
+        baseMessage({
+          id: "u2",
+          senderKind: "user",
+          direction: "stdin",
+          content: "second question",
+          timestamp: 11,
+        }),
+      ],
+      [] satisfies EventRecord[],
+      (message) => message.senderKind,
+      new Set(),
+    );
+
+    // Two discrete user messages must render as two distinct user turns, each
+    // with its own id/timestamp — not merged into one run-on bubble.
+    expect(blocks).toEqual([
+      {
+        kind: "user",
+        key: "msg-u1",
+        at: 10,
+        content: "first question",
+        messageIds: ["u1"],
+        sessionId: null,
+      },
+      {
+        kind: "user",
+        key: "msg-u2",
+        at: 11,
+        content: "second question",
+        messageIds: ["u2"],
+        sessionId: null,
+      },
     ]);
   });
 
@@ -228,6 +269,143 @@ describe("buildConversation", () => {
     ]);
   });
 
+  it("merges tool updates by call id and preserves raw terminal details", () => {
+    const terminalOutput = JSON.stringify({
+      output:
+        "Filesystem      Size  Used Avail Use% Mounted on\n/dev/root        45G   38G  7.0G  84% /",
+      metadata: { exitCode: 0 },
+    });
+    const blocks = buildConversation(
+      [],
+      [
+        baseEvent({
+          id: "tool-start",
+          timestamp: 20,
+          data: {
+            toolCall: {
+              id: "tool-df",
+              title: "Run df",
+              kind: "execute",
+              status: "in_progress",
+              rawInput: { command: "df -h" },
+            },
+          },
+        }),
+        baseEvent({
+          id: "tool-done",
+          timestamp: 25,
+          data: {
+            toolCall: {
+              id: "tool-df",
+              title: "Run df",
+              kind: "execute",
+              status: "completed",
+              output: terminalOutput,
+            },
+          },
+        }),
+      ],
+      (message) => message.senderKind,
+      new Set(),
+    );
+
+    const toolBlock = blocks.find((block) => block.kind === "tool");
+    expect(toolBlock).toEqual(
+      expect.objectContaining({
+        kind: "tool",
+        key: "tool-session-codex:tool-df",
+        tool: expect.objectContaining({
+          id: "tool-df",
+          eventIds: ["tool-start", "tool-done"],
+          sessionId: "session-codex",
+          title: "Run df",
+          kind: "execute",
+          rawStatus: "completed",
+          rawInput: { command: "df -h" },
+          rawOutput: terminalOutput,
+          status: "done",
+          command: "df -h",
+          output: expect.stringContaining("/dev/root        45G"),
+          exitCode: 0,
+          durationMs: 5,
+        }),
+      }),
+    );
+  });
+
+  it("keeps stderr turns distinct and marks them as error output", () => {
+    const blocks = buildConversation(
+      [
+        baseMessage({
+          id: "stdout-1",
+          sessionId: "session-codex",
+          senderKind: "sub_agent",
+          direction: "stdout",
+          content: "Starting check.",
+          timestamp: 10,
+        }),
+        baseMessage({
+          id: "stderr-1",
+          sessionId: "session-codex",
+          senderKind: "sub_agent",
+          direction: "stderr",
+          content: "TypeError: missing route",
+          timestamp: 11,
+        }),
+      ],
+      [],
+      (message) => message.senderKind,
+      new Set(),
+    );
+
+    expect(blocks).toEqual([
+      expect.objectContaining({
+        kind: "agent",
+        content: "Starting check.",
+        tone: "normal",
+        messageIds: ["stdout-1"],
+      }),
+      expect.objectContaining({
+        kind: "agent",
+        content: "TypeError: missing route",
+        tone: "error",
+        messageIds: ["stderr-1"],
+      }),
+    ]);
+  });
+
+  it("coalesces reasoning deltas while preserving event ids for inspection", () => {
+    const blocks = buildConversation(
+      [],
+      [
+        baseEvent({
+          id: "reason-1",
+          eventType: "reasoning",
+          timestamp: 30,
+          data: { text: "Inspect task state. " },
+        }),
+        baseEvent({
+          id: "reason-2",
+          eventType: "reasoning",
+          timestamp: 31,
+          data: { text: "Then verify output." },
+        }),
+      ],
+      (message) => message.senderKind,
+      new Set(),
+    );
+
+    expect(blocks).toEqual([
+      expect.objectContaining({
+        kind: "reasoning",
+        key: "reason-reason-1",
+        text: "Inspect task state. Then verify output.",
+        eventIds: ["reason-1", "reason-2"],
+        sessionId: "session-codex",
+      }),
+    ]);
+  });
+
   it("keeps duplicate tool call ids separate across sessions", () => {
     const blocks = buildConversation(
       [] satisfies MessageRecord[],
@@ -291,6 +469,38 @@ describe("buildConversation", () => {
       "bun test:a",
       "bun test:b",
     ]);
+  });
+
+  it("settles adapter tools that never emit terminal status after the session finishes", () => {
+    const blocks = buildConversation(
+      [],
+      [
+        baseEvent({
+          id: "tool-only-running",
+          data: {
+            toolCall: {
+              id: "tool-opencode",
+              title: "Write file",
+              status: "in_progress",
+              rawInput: { filePath: "src/index.ts" },
+            },
+          },
+        }),
+      ],
+      (message) => message.senderKind,
+      new Set(["session-codex"]),
+    );
+
+    const toolBlock = blocks.find((block) => block.kind === "tool");
+    expect(toolBlock).toEqual(
+      expect.objectContaining({
+        tool: expect.objectContaining({
+          id: "tool-opencode",
+          status: "done",
+          rawStatus: "in_progress",
+        }),
+      }),
+    );
   });
 });
 

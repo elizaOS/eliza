@@ -193,7 +193,7 @@ export class MobileComputerInterface implements ComputerInterface {
   }
 
   async keyUp(_args: { key: string }): Promise<void> {
-    /* paired with keyDown via globalAction — no-op. */
+    /* Already emitted by keyDown via Android globalAction. */
   }
 
   async typeText(args: { text: string }): Promise<void> {
@@ -246,7 +246,7 @@ export class MobileComputerInterface implements ComputerInterface {
       0,
       display.bounds[3] - 1,
     );
-    if (endX === startX && endY === startY) return; // dx=dy=0 → no-op
+    if (endX === startX && endY === startY) return; // zero-length scroll
     const bridge = this.requireBridge();
     const args: GestureArgs = {
       type: "swipe",

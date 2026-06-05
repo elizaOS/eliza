@@ -7,6 +7,13 @@ import {
 import React from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
+import {
+	Card,
+	CardContent,
+	CardHeader,
+	CardTitle,
+} from "@elizaos/ui/components/ui/card";
+import { Spinner } from "@elizaos/ui/components/ui/spinner";
 // Import types from the central types.ts file
 import type {
 	Conviction, // Import Conviction enum
@@ -16,8 +23,6 @@ import type {
 	SupportedChain,
 } from "../types.ts"; // Adjusted path to central types.ts
 import { LeaderboardTable } from "./LeaderboardTable.tsx";
-import Loader from "./loader.tsx";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.tsx";
 
 declare global {
 	interface Window {
@@ -152,7 +157,11 @@ function LeaderboardPanelPage() {
 							</CardTitle>
 						</CardHeader>
 						<CardContent className="pt-6">
-							{isLoading && <Loader />}
+							{isLoading && (
+								<div className="flex w-full justify-center py-12">
+									<Spinner />
+								</div>
+							)}
 							{error && (
 								<div className="text-red-500 p-4 border border-destructive/50 bg-destructive/10 rounded-md text-center">
 									<p className="font-semibold">Error Fetching Leaderboard:</p>

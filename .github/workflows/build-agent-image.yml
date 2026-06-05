@@ -98,18 +98,11 @@ jobs:
         # kicks in when frozen-lockfile drifts doesn't always re-run the
         # repo postinstall in CI. Explicitly run the patches the
         # per-plugin builds depend on:
-        #   - patch-tsup-dts.mjs: rewires tsup's runtime require to
-        #     @rollup/wasm-node AND wraps the resulting `await` calls in
-        #     async functions. Without this patch tsup's worker thread
-        #     crashes with `SyntaxError: await is only valid in async
-        #     functions` (CJS file with top-level await) the moment any
-        #     plugin tries to emit .d.ts via tsup.
         #   - ensure-type-package-aliases: materializes @types/* under
         #     node_modules/@types so `tsc --build` resolves them.
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
-          bun packages/scripts/patch-tsup-dts.mjs || true
           node packages/app-core/scripts/ensure-type-package-aliases.mjs
 
       - name: Build @elizaos/core, shared, ui
@@ -180,12 +173,6 @@ jobs:
                 # build script references (tsup, tsc, tsdown, etc.).
                 bun install --no-frozen-lockfile --ignore-scripts
               )
-              # Re-apply patch-tsup-dts AFTER the per-plugin install —
-              # `bun install` re-extracts virtual-store entries from the
-              # global cache, wiping the earlier patch. Without this,
-              # tsup's worker thread loads an un-patched rollup.js with
-              # `await` at module-top-level → SyntaxError.
-              bun packages/scripts/patch-tsup-dts.mjs >/dev/null || true
               (cd "$plugin_dir" && bun run build)
               echo "::endgroup::"
             fi

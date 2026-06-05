@@ -109,7 +109,9 @@ export function getBundleDiskPath(entry: ViewRegistryEntry): string | null {
  * Returns `null` when the entry has no `heroImagePath` or no `pluginDir`.
  * This only handles declared paths; for extension-probing see `findHeroOnDisk`.
  */
-export function getHeroDiskPath(entry: ViewRegistryEntry): string | null {
+type HeroLookup = Pick<ViewRegistryEntry, "pluginDir" | "heroImagePath">;
+
+export function getHeroDiskPath(entry: HeroLookup): string | null {
   if (!entry.heroImagePath || !entry.pluginDir) return null;
   const resolved = path.resolve(entry.pluginDir, entry.heroImagePath);
   const packageRoot = `${path.resolve(entry.pluginDir)}${path.sep}`;
@@ -123,7 +125,7 @@ export function getHeroDiskPath(entry: ViewRegistryEntry): string | null {
  * `null` when nothing is found.
  */
 export async function findHeroOnDisk(
-  entry: ViewRegistryEntry,
+  entry: HeroLookup,
 ): Promise<{ absolutePath: string; contentType: string } | null> {
   if (!entry.pluginDir) return null;
 
@@ -153,7 +155,7 @@ export async function findHeroOnDisk(
 }
 
 /**
- * Build a minimal SVG placeholder when no hero image is available.
+ * Build a minimal generated SVG fallback when no hero image is available.
  */
 export function generateViewHeroSvg(label: string, icon?: string): string {
   const displayIcon = escapeSvgText(icon ?? label.slice(0, 2).toUpperCase());
@@ -269,8 +271,9 @@ export function unregisterPluginViews(pluginName: string): void {
  * by registering the same id only when a conflict is logged (built-in wins
  * under the existing conflict resolution rule).
  *
- * Safe to call multiple times — subsequent calls are no-ops because the
- * conflict guard in `registerPluginViews` keeps the first registration.
+ * Safe to call multiple times — subsequent calls have no additional effect
+ * because the conflict guard in `registerPluginViews` keeps the first
+ * registration.
  *
  * @param runtime - Optional agent runtime. When provided, embeddings for the
  *   built-in views are queued in the background search index.
@@ -296,6 +299,7 @@ export function registerBuiltinViews(runtime?: IAgentRuntime): void {
       bundleUrl: undefined,
       bundleUrlVersioned: undefined,
       heroImageUrl: `/api/views/${encodeURIComponent(view.id)}/hero`,
+      hasHeroImage: false,
       available: true,
       loadedAt,
       platform,
@@ -306,7 +310,7 @@ export function registerBuiltinViews(runtime?: IAgentRuntime): void {
   }
   // Called on every /api/views request and again during deferred startup, but
   // registration is idempotent — only the first call adds entries. Stay silent
-  // on the no-op re-calls so the boot log isn't spammed with the same line.
+  // on idempotent re-calls so the boot log isn't spammed with the same line.
   if (registered.length > 0) {
     logger.info(
       { src: "ViewRegistry", count: registered.length },
@@ -477,6 +481,13 @@ async function buildEntry(
       : bundleUrl;
 
   const heroImageUrl = buildAssetUrl("hero");
+  // Probe for a real hero asset so the client can choose a photo vs. its icon.
+  const hasHeroImage = pluginDir
+    ? (await findHeroOnDisk({
+        pluginDir,
+        heroImagePath: view.heroImagePath,
+      })) !== null
+    : false;
 
   // Derive a representative platform from the declaration's platforms list.
   // When multiple platforms are declared, the first entry wins. Absent the
@@ -492,6 +503,7 @@ async function buildEntry(
     bundleUrl,
     bundleUrlVersioned,
     heroImageUrl,
+    hasHeroImage,
     available,
     loadedAt,
     platform,

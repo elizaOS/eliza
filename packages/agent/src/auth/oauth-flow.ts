@@ -61,7 +61,7 @@ export interface OAuthFlowHandle {
   needsCodeSubmission: boolean;
   /** Resolves with the saved AccountCredentialRecord; rejects on cancel/timeout/error. */
   completion: Promise<{ account: AccountCredentialRecord }>;
-  /** Anthropic only — submit `code#state` from the redirect page. No-op for Codex. */
+  /** Anthropic only — submit `code#state` from the redirect page. Ignored for Codex. */
   submitCode: (code: string) => void;
   cancel: (reason?: string) => void;
 }
@@ -185,7 +185,7 @@ export function startAnthropicOAuthFlow(
 /**
  * Start a programmatic Codex OAuth flow. Codex has a loopback listener
  * on :1455, so the user just signs in in the browser and the listener
- * picks up the redirect — `submitCode()` is a no-op. The accountId
+ * picks up the redirect — `submitCode()` is accepted but unused. The accountId
  * baked into the JWT is preserved on `LinkedAccountConfig.organizationId`
  * (used by the Codex usage probe via the `ChatGPT-Account-Id` header).
  */

@@ -1,6 +1,7 @@
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "@ui-src/styles.ts";
+import { CONCEPTS } from "./concepts/index.ts";
 import {
   type ConceptBuilder,
   type ConceptDescriptor,
@@ -21,7 +22,6 @@ import {
   type VoiceWaveformMode,
   type WebGPUModule,
 } from "./orb-kit.ts";
-import { CONCEPTS } from "./concepts/index.ts";
 import "./stories.css";
 
 // Home accent so every variant is judged under the real surface accent.
@@ -254,7 +254,9 @@ function buildShards(
     vec3(0.7, 0.85, 1.0),
     U.uAccent,
     U.uRespond.mul(0.6),
-  ).mul(fresnel.mul(float(0.4).add(U.uEnergy.mul(1.2)).add(U.uRespond.mul(0.7))));
+  ).mul(
+    fresnel.mul(float(0.4).add(U.uEnergy.mul(1.2)).add(U.uRespond.mul(0.7))),
+  );
   const shell = new THREE.Mesh(shellGeo, shellMat);
 
   const midGeo = new THREE.IcosahedronGeometry(0.5, 1);
@@ -288,14 +290,17 @@ function buildShards(
 
 // The five original glass references, shown as their own selector row ahead of
 // the 20 authored concepts.
-const REFERENCE_VARIANTS: { id: string; label: string; build: ConceptBuilder }[] =
-  [
-    { id: "swarm", label: "swarm", build: buildSwarm },
-    { id: "intense", label: "intense", build: buildIntense },
-    { id: "fresnel", label: "fresnel", build: buildFresnel },
-    { id: "refract", label: "refract", build: buildRefract },
-    { id: "shards", label: "shards", build: buildShards },
-  ];
+const REFERENCE_VARIANTS: {
+  id: string;
+  label: string;
+  build: ConceptBuilder;
+}[] = [
+  { id: "swarm", label: "swarm", build: buildSwarm },
+  { id: "intense", label: "intense", build: buildIntense },
+  { id: "fresnel", label: "fresnel", build: buildFresnel },
+  { id: "refract", label: "refract", build: buildRefract },
+  { id: "shards", label: "shards", build: buildShards },
+];
 
 // id → builder for every selectable orb (references + authored concepts).
 const BUILDERS: Map<string, ConceptBuilder> = new Map();
@@ -319,7 +324,10 @@ interface SelectorRow {
   items: { id: string; label: string }[];
 }
 const SELECTOR_ROWS: SelectorRow[] = [
-  { label: "ref", items: REFERENCE_VARIANTS.map((v) => ({ id: v.id, label: v.label })) },
+  {
+    label: "ref",
+    items: REFERENCE_VARIANTS.map((v) => ({ id: v.id, label: v.label })),
+  },
   ...FAMILY_ORDER.map((family) => ({
     label: family,
     items: CONCEPTS.filter((c) => c.family === family).map((c) => ({
@@ -431,7 +439,11 @@ async function mountStage(
   // --- shared volumetric cloud backdrop (iq XslGRr, ported to TSL) ----------
   type Vec3Node = ReturnType<typeof vec3>;
   const densityAt = (p: Vec3Node) => {
-    const wind = vec3(U.uTime.mul(0.08), U.uTime.mul(-0.006), U.uTime.mul(0.022));
+    const wind = vec3(
+      U.uTime.mul(0.08),
+      U.uTime.mul(-0.006),
+      U.uTime.mul(0.022),
+    );
     const noise = mx_fractal_noise_float(p.mul(0.62).add(wind), 4, 2.02, 0.5)
       .mul(0.5)
       .add(0.5);
@@ -442,11 +454,19 @@ async function mountStage(
   const cloudColor = Fn(() => {
     const ndc = screenUV.sub(0.5).mul(2.0);
     const rd = normalize(
-      vec3(ndc.x.mul(U.uAspect).mul(0.62), ndc.y.mul(0.62).add(0.12), float(-1.0)),
+      vec3(
+        ndc.x.mul(U.uAspect).mul(0.62),
+        ndc.y.mul(0.62).add(0.12),
+        float(-1.0),
+      ),
     );
     const ro = vec3(U.uTime.mul(0.03), 1.25, 6.0);
     const horizon = clamp(screenUV.y.sub(0.18).mul(1.4), 0, 1);
-    const sky = mix(vec3(0.74, 0.86, 1.0), vec3(0.2, 0.45, 0.86), horizon.pow(0.7));
+    const sky = mix(
+      vec3(0.74, 0.86, 1.0),
+      vec3(0.2, 0.45, 0.86),
+      horizon.pow(0.7),
+    );
     const sum = vec4(0.0).toVar();
     const t = float(1.2).toVar();
     Loop(32, () => {
@@ -456,8 +476,16 @@ async function mountStage(
       const pos = ro.add(rd.mul(t));
       const den = densityAt(pos);
       If(den.greaterThan(0.01), () => {
-        const lit = clamp(den.sub(densityAt(pos.add(sunDir.mul(0.45)))).mul(2.6), 0, 1);
-        const base = mix(vec3(0.42, 0.5, 0.62), vec3(1.0, 1.0, 1.0), den.oneMinus());
+        const lit = clamp(
+          den.sub(densityAt(pos.add(sunDir.mul(0.45)))).mul(2.6),
+          0,
+          1,
+        );
+        const base = mix(
+          vec3(0.42, 0.5, 0.62),
+          vec3(1.0, 1.0, 1.0),
+          den.oneMinus(),
+        );
         const sun = vec3(1.0, 0.92, 0.78).mul(lit.mul(1.15));
         const a = den.mul(0.46);
         sum.addAssign(vec4(base.add(sun).mul(a), a).mul(sum.w.oneMinus()));
@@ -521,10 +549,17 @@ async function mountStage(
   glowMat.transparent = true;
   glowMat.depthWrite = false;
   glowMat.side = THREE.BackSide;
-  const haloFresnel = normalView.dot(positionViewDirection).abs().oneMinus().pow(2.2);
+  const haloFresnel = normalView
+    .dot(positionViewDirection)
+    .abs()
+    .oneMinus()
+    .pow(2.2);
   glowMat.colorNode = U.uAccent;
   glowMat.opacityNode = haloFresnel.mul(
-    float(0.04).add(U.uEnergy.mul(0.3)).add(U.uRespond.mul(0.16)).add(U.uListen.mul(0.08)),
+    float(0.04)
+      .add(U.uEnergy.mul(0.3))
+      .add(U.uRespond.mul(0.16))
+      .add(U.uListen.mul(0.08)),
   );
   const glow = new THREE.Mesh(glowGeo, glowMat);
   glow.renderOrder = 2;
@@ -553,7 +588,11 @@ async function mountStage(
   camera.position.set(0, 0, CAMERA_Z);
   camera.lookAt(0, 0, 0);
 
-  const renderer = new THREE.WebGPURenderer({ canvas, alpha: true, antialias: true });
+  const renderer = new THREE.WebGPURenderer({
+    canvas,
+    alpha: true,
+    antialias: true,
+  });
   renderer.setClearColor(0x000000, 0);
   renderer.setPixelRatio(1);
 
@@ -566,7 +605,9 @@ async function mountStage(
   await renderer.init();
 
   function resolveBuild(variant: string): ConceptBuilder {
-    return BUILDERS.get(variant) ?? BUILDERS.get(DEFAULT_VARIANT) ?? buildShards;
+    return (
+      BUILDERS.get(variant) ?? BUILDERS.get(DEFAULT_VARIANT) ?? buildShards
+    );
   }
 
   let current: VariantHandle = safeBuild(
@@ -614,7 +655,10 @@ async function mountStage(
     } catch (err) {
       if (!renderErrorLogged) {
         renderErrorLogged = true;
-        console.error("[orb] main render threw (likely a concept node graph)", err);
+        console.error(
+          "[orb] main render threw (likely a concept node graph)",
+          err,
+        );
       }
     }
   });
@@ -711,10 +755,18 @@ function ComparisonStage() {
   }, [mode]);
 
   return (
-    <div ref={wrapRef} style={{ position: "fixed", inset: 0, background: "#07080b" }}>
+    <div
+      ref={wrapRef}
+      style={{ position: "fixed", inset: 0, background: "#07080b" }}
+    >
       <canvas
         ref={canvasRef}
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+        }}
       />
       <div
         style={{
@@ -817,7 +869,9 @@ if (!container) {
 }
 // Reuse one root across HMR re-evaluations so a hot update never mounts a second
 // React tree that spins up a colliding WebGPURenderer on the same canvas.
-const rootHost = window as unknown as { __glassRoot?: ReturnType<typeof createRoot> };
+const rootHost = window as unknown as {
+  __glassRoot?: ReturnType<typeof createRoot>;
+};
 const root = rootHost.__glassRoot ?? createRoot(container);
 rootHost.__glassRoot = root;
 root.render(<ComparisonStage />);

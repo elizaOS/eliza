@@ -357,7 +357,7 @@ def _validate_quantization_sidecars(bundle: Path) -> list[Path]:
             ]
             if missing_keys:
                 raise OrchestratorError(
-                    f"quantization sidecar {sidecar} has incomplete "
+                    f"quantization sidecar {sidecar} has partial "
                     f"kernel_manifest; missing {missing_keys}",
                     EXIT_BUNDLE_LAYOUT_FAIL,
                 )
@@ -925,13 +925,13 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
             )
     # Real upstream license text + the license-manifest.json sidecar are
     # mandatory. The orchestrator refuses to publish a bundle whose
-    # licenses/ set is incomplete or whose embedded text is not the
+    # licenses/ set is partial or whose embedded text is not the
     # verbatim canonical SPDX text. See eliza1_licenses.py.
     license_components = _license_components_for_layout(out, bundle)
     license_problems = verify_bundle_licenses(licenses_dir, license_components)
     if license_problems:
         raise OrchestratorError(
-            "bundle layout: license attestation incomplete:\n  - "
+            "bundle layout: license attestation partial:\n  - "
             + "\n  - ".join(license_problems),
             EXIT_MISSING_FILE,
         )

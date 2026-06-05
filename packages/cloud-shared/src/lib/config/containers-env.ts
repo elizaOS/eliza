@@ -276,7 +276,7 @@ export const containersEnv = {
 
   /**
    * Whether the agent warm pool is enabled. When false, claim flow always
-   * falls through to the cold-start async path; replenish/drain crons no-op.
+   * falls through to the cold-start async path; replenish/drain crons stay inactive.
    * Default: false (opt-in).
    */
   warmPoolEnabled(): boolean {

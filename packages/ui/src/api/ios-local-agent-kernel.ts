@@ -2100,7 +2100,7 @@ async function generateLocalReply(
     // for cloud-paired state via `/api/auth/status`; if paired, forward
     // the prompt to the agent's cloud proxy and return its response. If
     // NOT paired, surface an honest, actionable error — silently inventing
-    // a fake response is a bigger bug than telling the user "pair cloud
+    // a synthetic response is a bigger bug than telling the user "pair cloud
     // or use a smaller model".
     const probe = await probeAgentCloudPaired();
     if (probe.kind === "paired") {

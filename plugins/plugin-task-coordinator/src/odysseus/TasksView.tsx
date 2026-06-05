@@ -17,9 +17,8 @@
 // delete wires to deleteOrchestratorTask; run-history opens
 // getCodingAgentTaskThread and renders the thread's decision log as runs.
 // odysseus's create-task form, ssh/script action types, cron pickers, and the
-// CalDAV-style onboarding have no eliza backend, so the "Add" tab renders an
-// honest empty state rather than a fake builder. When the orchestrator
-// has zero threads we show odysseus's faithful "No tasks yet" empty state.
+// CalDAV-style onboarding have no eliza backend, so this view omits that builder
+// and keeps the surface focused on real orchestrator threads.
 
 import {
   type CodingAgentOrchestratorStatus,
@@ -36,10 +35,8 @@ import {
   MoreVertical,
   Pause,
   Play,
-  Plus,
   Trash2,
   X,
-  Zap,
 } from "lucide-react";
 import {
   type ReactNode,
@@ -62,7 +59,7 @@ type DisplayStatus = "active" | "paused" | "completed" | "error";
 
 type SortMode = "recent" | "name" | "status";
 
-type TabId = "tasks" | "activity" | "new";
+type TabId = "tasks" | "activity";
 
 // odysseus _statusDot colours (tasks.js) — kept as theme vars so the dot
 // inherits the active palette instead of odysseus's literal hex.
@@ -290,6 +287,15 @@ export function TasksView({
     });
   }, [counts]);
 
+  // Clear a category filter whose category no longer exists (e.g. a refresh
+  // completes/removes the last thread in that category) — otherwise the list
+  // strands at "No matching tasks" with the reset chip hidden (the chip row
+  // only renders when categories.length > 1). Mirrors upstream odysseus, which
+  // clears its task filter when its count is gone before the visibility gate.
+  useEffect(() => {
+    if (filter && !counts[filter]) setFilter(null);
+  }, [counts, filter]);
+
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     const out = threads.filter((t) => {
@@ -497,16 +503,6 @@ export function TasksView({
             <Activity size={12} aria-hidden="true" />
             Activity
           </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "new"}
-            className={`od-tasks-tab${tab === "new" ? " active" : ""}`}
-            onClick={() => setTab("new")}
-          >
-            <Plus size={12} aria-hidden="true" />
-            Add
-          </button>
         </div>
 
         <div className="od-tasks-body">
@@ -548,11 +544,6 @@ export function TasksView({
                   {hasActive ? "Pause all" : "Resume all"}
                 </button>
               </div>
-              <p className="od-tasks-desc">
-                Scheduled prompts and actions that run automatically. Results
-                appear in a dedicated session.
-              </p>
-
               <div className="od-tasks-toolbar">
                 <div className="od-tasks-toolbar-left">
                   <select
@@ -672,10 +663,7 @@ export function TasksView({
                     <LoadingRow label="Loading…" />
                   </div>
                 ) : threads.length === 0 ? (
-                  <div className="od-tasks-empty">
-                    No tasks yet. The orchestrator creates a task thread when
-                    you start a coding job.
-                  </div>
+                  <div className="od-tasks-empty">No tasks yet.</div>
                 ) : visible.length === 0 ? (
                   <div className="od-tasks-empty">No matching tasks.</div>
                 ) : (
@@ -721,10 +709,6 @@ export function TasksView({
           ) : tab === "activity" ? (
             <div className="od-tasks-card">
               <h2 className="od-tasks-h2">Activity</h2>
-              <p className="od-tasks-desc">
-                A running log of finished task runs. Open a task and view its
-                history to see its decision-by-decision activity.
-              </p>
               <div className="od-tasks-list">
                 {status && status.sessionCount > 0 ? (
                   <div className="od-tasks-empty">
@@ -737,19 +721,7 @@ export function TasksView({
                 )}
               </div>
             </div>
-          ) : (
-            <div className="od-tasks-card">
-              <h2 className="od-tasks-h2">Add a task</h2>
-              <p className="od-tasks-desc">
-                Tasks are created by the orchestrator when you send it a coding
-                job from the chat. There is no scheduled-task builder yet.
-              </p>
-              <div className="od-tasks-add-empty">
-                <Zap size={18} aria-hidden="true" />
-                <span>Start a task by messaging the orchestrator.</span>
-              </div>
-            </div>
-          )}
+          ) : null}
         </div>
 
         <div className="od-tasks-clock">{clock}</div>
@@ -879,13 +851,13 @@ function TaskCard({
                 type="button"
                 className="od-tasks-status-badge od-tasks-run-badge"
                 title="Run history"
+                aria-label="Run history"
                 onClick={(e) => {
                   e.stopPropagation();
                   onHistory();
                 }}
               >
                 <Activity size={10} />
-                <span>History</span>
               </button>
             ) : null}
             <div className="od-tasks-menu-wrap">

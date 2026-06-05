@@ -344,7 +344,7 @@ test("task coordinator GUI searches, opens detail, shows operational state, and 
 
   await openAppPath(page, "/task-coordinator");
 
-  await expect(page.getByTestId("chat-widget-orchestrator")).toBeVisible();
+  await expect(page.getByTestId("task-coordinator-panel")).toBeVisible();
   await expect(page.getByText("Audit task coordinator GUI")).toBeVisible();
   await expect(page.getByText("Refactor sidebar density")).toBeVisible();
 

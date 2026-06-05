@@ -7,6 +7,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@/db/repositories/characters";
 import {
   ApiError,
@@ -14,7 +15,9 @@ import {
   ValidationError,
 } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { containersEnv } from "@/lib/config/containers-env";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
+import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import {
   stripReservedElizaConfigKeys,
@@ -22,6 +25,15 @@ import {
 } from "@/lib/services/eliza-agent-config";
 import { prepareManagedElizaEnvironment } from "@/lib/services/eliza-managed-launch";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import {
+  checkProvisioningWorkerHealth,
+  provisioningWorkerFailureBody,
+} from "@/lib/services/provisioning-worker-health";
+import {
+  getAgentTier,
+  tierProvisionsEagerly,
+} from "@/lib/services/shared-runtime/agent-tier";
 import type { AgentListItemDto, AgentsResponse } from "@/lib/types/cloud-api";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -41,12 +53,21 @@ const createAgentSchema = z.object({
   agentConfig: z.record(z.string(), z.unknown()).optional(),
   environmentVars: z.record(z.string(), z.string()).optional(),
   dockerImage: dockerImageSchema.optional(),
+  alwaysOn: z.boolean().optional(),
+  statefulRuntime: z.boolean().optional(),
+  modelTooLargeForShared: z.boolean().optional(),
+  // Provisioning is started automatically by default so a single round-trip
+  // returns a running session (warm pool) or a provisioning job to poll.
+  // S2S callers that want to create the record without spending can opt out
+  // with `autoProvision: false` (or the `?autoProvision=false` query param).
+  autoProvision: z.boolean().optional(),
 });
 
 type Agent = Awaited<ReturnType<typeof elizaSandboxService.listAgents>>[number];
 type UserCharacter = Awaited<
   ReturnType<typeof userCharactersRepository.findByIdsInOrganization>
 >[number];
+type CreateAgentBody = z.infer<typeof createAgentSchema>;
 
 function toIsoString(value: Date | string): string {
   return value instanceof Date
@@ -64,6 +85,93 @@ function stringConfigValue(
 ): string | null {
   const value = config?.[key];
   return typeof value === "string" ? value : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function booleanConfigValue(
+  config: Record<string, unknown> | undefined,
+  key: string,
+): boolean {
+  return config?.[key] === true;
+}
+
+function stringArrayValue(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (item): item is string =>
+      typeof item === "string" && item.trim().length > 0,
+  );
+}
+
+function nestedCharacterConfig(
+  config: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  return isRecord(config?.character) ? config.character : undefined;
+}
+
+function deriveAgentPlugins(
+  config: Record<string, unknown> | undefined,
+  character: UserCharacter | undefined,
+): string[] {
+  const characterConfig = nestedCharacterConfig(config);
+  return Array.from(
+    new Set([
+      ...stringArrayValue(config?.plugins),
+      ...stringArrayValue(characterConfig?.plugins),
+      ...(character?.plugins ?? []),
+    ]),
+  );
+}
+
+function deriveAlwaysOn(
+  data: CreateAgentBody,
+  config: Record<string, unknown> | undefined,
+): boolean {
+  const characterConfig = nestedCharacterConfig(config);
+  return (
+    data.alwaysOn === true ||
+    booleanConfigValue(config, "alwaysOn") ||
+    booleanConfigValue(config, "always_on") ||
+    booleanConfigValue(characterConfig, "alwaysOn") ||
+    booleanConfigValue(characterConfig, "always_on")
+  );
+}
+
+function deriveStatefulRuntime(
+  data: CreateAgentBody,
+  config: Record<string, unknown> | undefined,
+): boolean {
+  const characterConfig = nestedCharacterConfig(config);
+  return (
+    data.statefulRuntime === true ||
+    booleanConfigValue(config, "statefulRuntime") ||
+    booleanConfigValue(config, "stateful_runtime") ||
+    booleanConfigValue(characterConfig, "statefulRuntime") ||
+    booleanConfigValue(characterConfig, "stateful_runtime")
+  );
+}
+
+function deriveModelTooLargeForShared(
+  data: CreateAgentBody,
+  config: Record<string, unknown> | undefined,
+): boolean {
+  const characterConfig = nestedCharacterConfig(config);
+  return (
+    data.modelTooLargeForShared === true ||
+    booleanConfigValue(config, "modelTooLargeForShared") ||
+    booleanConfigValue(config, "model_too_large_for_shared") ||
+    booleanConfigValue(characterConfig, "modelTooLargeForShared") ||
+    booleanConfigValue(characterConfig, "model_too_large_for_shared")
+  );
+}
+
+function resolvePublicWebUiUrl(agent: Agent): string | null {
+  if (agent.execution_tier === "shared") return null;
+  const baseDomain = containersEnv.publicBaseDomain();
+  return getElizaAgentPublicWebUiUrl(agent, baseDomain ? { baseDomain } : {});
 }
 
 function toAgentListItemDto(
@@ -92,6 +200,8 @@ function toAgentListItemDto(
       character?.token_ticker ??
       stringConfigValue(agent.agent_config, "tokenTicker"),
     dockerImage: agent.docker_image,
+    executionTier: agent.execution_tier,
+    webUiUrl: resolvePublicWebUiUrl(agent),
   };
 }
 
@@ -141,35 +251,66 @@ app.post("/", async (c) => {
     });
   }
 
-  const creditCheck = await checkAgentCreditGate(user.organization_id);
-  if (!creditCheck.allowed) {
-    logger.warn("[agent-api] Agent creation blocked: insufficient credits", {
-      orgId: user.organization_id,
-      balance: creditCheck.balance,
-      required: AGENT_PRICING.MINIMUM_DEPOSIT,
-    });
-    throw new ApiError(
-      402,
-      "insufficient_credits",
-      creditCheck.error ?? "Insufficient credits",
-      {
-        requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
-        currentBalance: creditCheck.balance,
-      },
-    );
-  }
+  const autoProvision =
+    c.req.query("autoProvision") !== "false" &&
+    parsed.data.autoProvision !== false;
 
+  const sanitizedConfig = stripReservedElizaConfigKeys(parsed.data.agentConfig);
+  let linkedCharacter: UserCharacter | undefined;
   if (parsed.data.characterId) {
-    const character =
+    linkedCharacter =
       await userCharactersRepository.findByIdInOrganizationForWrite(
         parsed.data.characterId,
         user.organization_id,
       );
 
-    if (!character) throw NotFoundError("Character not found");
+    if (!linkedCharacter) throw NotFoundError("Character not found");
   }
 
-  const sanitizedConfig = stripReservedElizaConfigKeys(parsed.data.agentConfig);
+  const executionTier = getAgentTier({
+    dockerImage: parsed.data.dockerImage,
+    plugins: deriveAgentPlugins(sanitizedConfig, linkedCharacter),
+    alwaysOn: deriveAlwaysOn(parsed.data, sanitizedConfig),
+    statefulRuntime: deriveStatefulRuntime(parsed.data, sanitizedConfig),
+    modelTooLargeForShared: deriveModelTooLargeForShared(
+      parsed.data,
+      sanitizedConfig,
+    ),
+  });
+  const shouldProvisionEagerly =
+    autoProvision && tierProvisionsEagerly(executionTier);
+
+  if (shouldProvisionEagerly) {
+    const creditCheck = await checkAgentCreditGate(user.organization_id);
+    if (!creditCheck.allowed) {
+      logger.warn("[agent-api] Agent creation blocked: insufficient credits", {
+        orgId: user.organization_id,
+        balance: creditCheck.balance,
+        required: AGENT_PRICING.MINIMUM_DEPOSIT,
+      });
+      throw new ApiError(
+        402,
+        "insufficient_credits",
+        creditCheck.error ?? "Insufficient credits",
+        {
+          requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
+          currentBalance: creditCheck.balance,
+        },
+      );
+    }
+
+    const workerHealth = await checkProvisioningWorkerHealth();
+    if (!workerHealth.ok) {
+      logger.warn("[agent-api] Agent creation blocked: worker unavailable", {
+        orgId: user.organization_id,
+        code: workerHealth.code,
+      });
+      return c.json(
+        provisioningWorkerFailureBody(workerHealth),
+        workerHealth.status,
+      );
+    }
+  }
 
   const agent = await elizaSandboxService.createAgent({
     organizationId: user.organization_id,
@@ -181,6 +322,7 @@ app.post("/", async (c) => {
       ? withReusedElizaCharacterOwnership(sanitizedConfig)
       : sanitizedConfig,
     environmentVars: parsed.data.environmentVars,
+    executionTier,
   });
 
   const managedEnvironment = await prepareManagedElizaEnvironment({
@@ -201,19 +343,165 @@ app.post("/", async (c) => {
   logger.info("[agent-api] Agent created", {
     agentId: agent.id,
     orgId: user.organization_id,
+    autoProvision,
+    executionTier,
+  });
+
+  if (executionTier === "shared") {
+    return c.json(
+      {
+        success: true,
+        created: true,
+        source: "shared_runtime",
+        data: {
+          id: agent.id,
+          agentId: agent.id,
+          agentName: agent.agent_name,
+          status: agent.status,
+          createdAt: agent.created_at,
+          executionTier: agent.execution_tier,
+        },
+      },
+      201,
+    );
+  }
+
+  if (!shouldProvisionEagerly) {
+    return c.json(
+      {
+        success: true,
+        created: true,
+        data: {
+          id: agent.id,
+          agentId: agent.id,
+          agentName: agent.agent_name,
+          status: agent.status,
+          createdAt: agent.created_at,
+          executionTier: agent.execution_tier,
+        },
+      },
+      201,
+    );
+  }
+
+  if (executionTier !== "custom" && containersEnv.warmPoolEnabled()) {
+    try {
+      const claimed = await agentSandboxesRepository.claimWarmContainer({
+        userAgentId: agent.id,
+        organizationId: user.organization_id,
+        image: containersEnv.defaultAgentImage(),
+        agentName: agent.agent_name ?? agent.id,
+        agentConfig:
+          (agent.agent_config as Record<string, unknown> | undefined) ??
+          undefined,
+        characterId: agent.character_id,
+      });
+      if (claimed) {
+        logger.info("[agent-api] Warm pool claim succeeded on create", {
+          agentId: agent.id,
+          orgId: user.organization_id,
+          poolNodeId: claimed.node_id,
+        });
+        return c.json(
+          {
+            success: true,
+            source: "warm_pool",
+            data: {
+              id: claimed.id,
+              agentName: claimed.agent_name,
+              status: claimed.status,
+              bridgeUrl: claimed.bridge_url,
+              healthUrl: claimed.health_url,
+              executionTier: claimed.execution_tier,
+            },
+          },
+          201,
+        );
+      }
+    } catch (err) {
+      // Don't block on claim errors — fall through to the async job path.
+      logger.warn("[agent-api] Warm pool claim threw on create; falling back", {
+        agentId: agent.id,
+        orgId: user.organization_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  // ── Async path (default) ────────────────────────────────────────────────
+  // `expectedUpdatedAt` is intentionally omitted: the row was just created
+  // (and possibly touched by the managed-env update above), so there is no
+  // concurrent handle to guard against — passing the stale create timestamp
+  // would spuriously trip the race check after a managed-env write.
+  let job: Awaited<
+    ReturnType<typeof provisioningJobService.enqueueAgentProvision>
+  >;
+  try {
+    job = await provisioningJobService.enqueueAgentProvision({
+      agentId: agent.id,
+      organizationId: user.organization_id,
+      userId: user.id,
+      agentName: agent.agent_name ?? agent.id,
+    });
+  } catch (enqueueErr) {
+    // Roll back the just-created agent so a failed enqueue doesn't leave an
+    // unprovisionable row behind (mirrors the orphaned-record cleanup the
+    // S2S /api/v1/agents route does for its character).
+    try {
+      await agentSandboxesRepository.delete(agent.id, user.organization_id);
+      logger.info("[agent-api] Cleaned up agent after enqueue failure", {
+        agentId: agent.id,
+        orgId: user.organization_id,
+      });
+    } catch (cleanupErr) {
+      logger.error(
+        "[agent-api] Failed to clean up agent after enqueue failure",
+        {
+          agentId: agent.id,
+          orgId: user.organization_id,
+          error:
+            cleanupErr instanceof Error
+              ? cleanupErr.message
+              : String(cleanupErr),
+        },
+      );
+    }
+    throw enqueueErr;
+  }
+
+  // Inline trigger: kick the worker now instead of waiting up to a minute for
+  // the next cron tick. Fire-and-forget; the cron is the safety net.
+  void provisioningJobService.triggerImmediate(c.env).catch(() => {
+    // Logged inside the service.
+  });
+
+  logger.info("[agent-api] Agent provisioning job enqueued on create", {
+    agentId: agent.id,
+    orgId: user.organization_id,
+    jobId: job.id,
   });
 
   return c.json(
     {
       success: true,
+      created: true,
+      message:
+        "Agent created. Provisioning job started — poll the job endpoint for status.",
       data: {
-        id: agent.id,
+        agentId: agent.id,
         agentName: agent.agent_name,
-        status: agent.status,
-        createdAt: agent.created_at,
+        status: job.status,
+        jobId: job.id,
+        estimatedCompletionAt: job.estimated_completion_at,
+        executionTier: agent.execution_tier,
+      },
+      polling: {
+        endpoint: `/api/v1/jobs/${job.id}`,
+        intervalMs: 5000,
+        expectedDurationMs: 90000,
       },
     },
-    201,
+    202,
   );
 });
 

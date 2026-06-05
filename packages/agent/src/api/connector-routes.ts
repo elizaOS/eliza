@@ -75,7 +75,7 @@ export interface ConnectorRouteContext {
 /**
  * Emit the `connector_disconnected` runtime event so service subscribers can
  * purge their own caches. Safe when no runtime / no subscribers are
- * registered: the runtime emit is a no-op in that case.
+ * registered: the runtime emit simply has no listeners in that case.
  */
 async function emitConnectorDisconnected(
   runtime: IAgentRuntime | null | undefined,

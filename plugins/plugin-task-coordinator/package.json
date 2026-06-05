@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-task-coordinator",
-  "version": "2.0.3-beta.1",
+  "version": "2.0.3-beta.6",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -29,6 +29,8 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-calendar": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",

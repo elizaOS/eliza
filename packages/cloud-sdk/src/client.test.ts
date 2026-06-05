@@ -262,3 +262,79 @@ describe("ElizaCloudClient CLI login", () => {
     );
   });
 });
+
+describe("ElizaCloudClient web sign-in + app-credits affordances", () => {
+  it("sends X-App-Id when an appId is passed to createChatCompletion", async () => {
+    const { client, requests } = createClientRecorder({
+      choices: [{ message: { role: "assistant", content: "hi" } }],
+    });
+
+    await client.createChatCompletion(
+      {
+        model: "anthropic/claude-sonnet-4.5",
+        messages: [{ role: "user", content: "hi" }],
+      },
+      { appId: "app-123" },
+    );
+
+    expect(requests[0].url).toContain("/api/v1/chat/completions");
+    expect(requests[0].headers["x-app-id"]).toBe("app-123");
+  });
+
+  it("omits X-App-Id when no appId is given", async () => {
+    const { client, requests } = createClientRecorder({ choices: [] });
+    await client.createChatCompletion({
+      model: "anthropic/claude-sonnet-4.5",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect(requests[0].headers["x-app-id"]).toBeUndefined();
+  });
+
+  it("waitForCliLogin polls until authenticated and returns the key", async () => {
+    const statuses = ["pending", "pending", "authenticated"];
+    let call = 0;
+    const fetchImpl = (async (_input, _init = {}) => {
+      const status = statuses[Math.min(call++, statuses.length - 1)];
+      const body =
+        status === "authenticated"
+          ? { status, apiKey: "eliza_new_key", userId: "user-9" }
+          : { status };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const client = new ElizaCloudClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl,
+    });
+    const result = await client.waitForCliLogin("sess-1", {
+      intervalMs: 1,
+      timeoutMs: 5_000,
+    });
+
+    expect(result.status).toBe("authenticated");
+    expect(result.apiKey).toBe("eliza_new_key");
+    expect(result.userId).toBe("user-9");
+    expect(call).toBeGreaterThanOrEqual(3);
+  });
+
+  it("waitForCliLogin throws on an expired session", async () => {
+    const fetchImpl = (async (_input, _init = {}) =>
+      new Response(
+        JSON.stringify({ status: "expired", error: "session expired" }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      )) as typeof fetch;
+    const client = new ElizaCloudClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl,
+    });
+    await expect(
+      client.waitForCliLogin("sess-2", { intervalMs: 1 }),
+    ).rejects.toThrow(/expired/i);
+  });
+});

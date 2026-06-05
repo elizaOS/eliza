@@ -1,3 +1,4 @@
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import * as React from "react";
 
 import type { ImageAttachment } from "../../api/client-types-chat";
@@ -36,12 +37,10 @@ import type { ShellController } from "./useShellController";
  * context-reading mount (see App.tsx) that supplies the shared controller.
  */
 
-// Self-contained glass surfaces (fixed dark scrim + light edge highlight) — do
-// NOT use theme `--txt`, so they read over bright, dark, or warm backdrops.
-const GLASS_SHEET =
-  "rounded-3xl border border-white/12 bg-black/55 backdrop-blur-2xl " +
-  "shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_26px_72px_-18px_rgba(0,0,0,0.72)]";
-
+// Self-contained glass composer bar (fixed dark scrim + light edge highlight) —
+// does NOT use theme `--txt`, so it reads over bright, dark, or warm backdrops.
+// The expanded transcript itself is intentionally chrome-free (no panel
+// background/border); its lines carry their own scrim via ThreadLine `floating`.
 const GLASS_BAR =
   "flex items-center gap-2 rounded-full border border-white/18 bg-black/45 px-3 py-2 backdrop-blur-xl " +
   "shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_16px_46px_-12px_rgba(0,0,0,0.66)]";
@@ -49,12 +48,35 @@ const GLASS_BAR =
 // Floating (un-scrimmed) text gets a soft shadow so it reads over bright views.
 const FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
 
+// Shared easing for the overlay's motion. Matches the repo's `motion/react`
+// convention (a tween with a custom cubic-bezier, no springs); centralising it
+// keeps the reveal/swap/glow timings coherent rather than scattering magic
+// numbers. Every motion below is transform/opacity only (GPU-friendly) and is
+// softened to a near-instant cross-fade under `prefers-reduced-motion`.
+const OVERLAY_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
+
+// Resting / typing view (not fullscreen) shows only the last couple of turns
+// with no scroll; fullscreen shows the whole history with scroll.
+const RESTING_THREAD_LINES = 2;
+
 // Glyphs (viewBox 0 0 36 36), rendered in currentColor inside a soft chip — the
 // up-arrow (send) and five-bar waveform (mic) from the shared composer language.
 const SEND_GLYPH = "M18 10L25 18H21V27H15V18H11Z";
 const MIC_GLYPH =
   "M6 14H9V22H6Z M11.5 10H14.5V26H11.5Z M16.5 7H19.5V29H16.5Z M22 10H25V26H22Z M27 14H30V22H27Z";
 const PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
+// Assistant voice output: a speaker (distinct from the mic waveform above) —
+// "on" = speaker + sound waves, "muted" = speaker + slash.
+const SPEAKER_GLYPH =
+  "M7 15H12L18 10V26L12 21H7Z M21 14Q25 18 21 22L23 22Q27 18 23 14Z M25 11Q31 18 25 25L27 25Q33 18 27 11Z";
+const SPEAKER_MUTED_GLYPH =
+  "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
+// Two diagonal expand arrows (top-right + bottom-left) — "open in full page".
+const MAXIMIZE_GLYPH =
+  "M20 8H28V16H25V13.1L18.5 19.6L16.4 17.5L22.9 11H20Z " +
+  "M16 28H8V20H11V22.9L17.5 16.4L19.6 18.5L13.1 25H16Z";
+// Trash can (lid bar + body) — DEV-only "clear conversation" debug control.
+const TRASH_GLYPH = "M14 7H22V10H27V13H9V10H14Z M11 15H25L23.5 30H12.5Z";
 
 function Glyph({ d }: { d: string }): React.JSX.Element {
   return (
@@ -114,43 +136,31 @@ function SoftButton({
 }
 
 /** Three quiet, borderless dots that breathe while the assistant is replying. */
-function TypingDots(): React.JSX.Element {
+function TypingDots({ reduce }: { reduce?: boolean }): React.JSX.Element {
   return (
-    <div
+    <motion.div
       className="flex gap-1.5"
       role="status"
       aria-label="assistant is responding"
+      // Fade in/out so the dots dissolve with the reply rather than popping.
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: reduce ? 0 : 0.45, ease: OVERLAY_EASE }}
     >
       {[0, 1, 2].map((i) => (
         <span
           key={i}
           className={cn(
-            "h-1.5 w-1.5 animate-pulse rounded-full bg-white/70",
+            // `motion-reduce:animate-none` stills the breathing pulse for users
+            // who ask for reduced motion (the CSS pulse isn't a motion/react anim).
+            "h-1.5 w-1.5 animate-pulse rounded-full bg-white/70 motion-reduce:animate-none",
             FLOAT_SHADOW,
           )}
           style={{ animationDelay: `${i * 180}ms` }}
         />
       ))}
-    </div>
-  );
-}
-
-/** Speech-bubble glyph for the expand/collapse affordance at the top of the stack. */
-function ChatIcon(): React.JSX.Element {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-    </svg>
+    </motion.div>
   );
 }
 
@@ -158,15 +168,24 @@ function ChatIcon(): React.JSX.Element {
 function ThreadLine({
   message,
   floating,
+  reduce,
 }: {
   message: ShellMessage;
   floating?: boolean;
+  reduce?: boolean;
 }): React.JSX.Element {
   const isUser = message.role === "user";
   return (
-    <div
+    <motion.div
       data-testid="thread-line"
       data-role={message.role}
+      // New turns rise+fade in (and the old whisper line slides out as the
+      // 2-line resting window shifts). Transform/opacity only; reduced motion
+      // collapses it to a quick fade with no positional movement.
+      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 14 }}
+      animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
+      exit={reduce ? { opacity: 0 } : { opacity: 0, y: -8 }}
+      transition={{ duration: reduce ? 0.15 : 0.52, ease: OVERLAY_EASE }}
       className={cn(
         "flex w-full",
         floating ? "mb-1.5" : "mb-2.5",
@@ -176,9 +195,10 @@ function ThreadLine({
       <div
         className={cn(
           "max-w-[80%] rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed",
-          // Inside the expanded glass sheet, light bubbles read against the dark
-          // scrim; floating (whisper) bubbles carry their own dark glass so they
-          // stay legible over whatever view is behind.
+          // Both the whisper lines and the chrome-free expanded transcript
+          // render floating: each bubble carries its own dark glass so it stays
+          // legible directly over whatever view is behind. The light tone is for
+          // any embedding that supplies its own surrounding scrim.
           isUser ? "rounded-br-md" : "rounded-bl-md",
           floating
             ? cn(
@@ -195,7 +215,7 @@ function ThreadLine({
       >
         {message.content}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -214,10 +234,20 @@ export function ContinuousChatOverlay({
     startRecording,
     stopRecording,
     transcript,
+    speaking,
+    agentVoiceMuted,
+    toggleAgentVoiceMute,
+    clearConversation,
   } = controller;
+
+  // Honor the OS "reduce motion" setting: every overlay animation collapses to
+  // a near-instant cross-fade with no positional movement when this is true.
+  const reduce = useReducedMotion() ?? false;
 
   const [draft, setDraft] = React.useState("");
   const [expanded, setExpanded] = React.useState(false);
+  const [fullscreen, setFullscreen] = React.useState(false);
+  const [hovered, setHovered] = React.useState(false);
   const [whisperVisible, setWhisperVisible] = React.useState(false);
   const [pushToTalkActive, setPushToTalkActive] = React.useState(false);
   const [pendingImages, setPendingImages] = React.useState<ImageAttachment[]>(
@@ -229,61 +259,112 @@ export function ContinuousChatOverlay({
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const threadRef = React.useRef<HTMLDivElement>(null);
   const composerRef = React.useRef<HTMLDivElement>(null);
-  const topBarRef = React.useRef<HTMLDivElement>(null);
   const focusThreadRef = React.useRef(false);
   const pushToTalkTimerRef = React.useRef<number | null>(null);
   const pushToTalkActiveRef = React.useRef(false);
   const suppressMicClickRef = React.useRef(false);
+  const hoverLeaveTimerRef = React.useRef<number | null>(null);
 
   const visibleMessages = messages.filter((m) => m.content.trim());
-  const recent = visibleMessages.slice(-3);
   const lastId = visibleMessages.at(-1)?.id ?? null;
+  const lastContent = visibleMessages.at(-1)?.content ?? "";
   const seenIdRef = React.useRef(lastId);
+  // The last line id the scroll effect pinned to — lets it tell a NEW line
+  // (always pin to bottom) from streaming growth of the current line (follow
+  // only when the reader is already at the bottom).
+  const scrollPinnedIdRef = React.useRef(lastId);
 
   const booting = phase === "booting";
   const listening = phase === "listening";
   const responding = phase === "responding";
   const hasDraft = draft.trim().length > 0;
   const hasImages = pendingImages.length > 0;
+  const open = expanded || hovered || fullscreen;
+  // "Peek" = the non-fullscreen reveal: the chat bubbles + suggestions fade in
+  // when the user hovers the bar OR clicks into the input (expanded), while a
+  // reply is streaming (responding), or briefly when a new line arrives
+  // (whisperVisible). They fade back out otherwise.
+  const peek =
+    !fullscreen && (hovered || expanded || responding || whisperVisible);
 
-  // Five tailored prompt suggestions for the resting overlay (pure/client-side).
-  const suggestions = usePromptSuggestions(messages);
+  // The suggestion strip rides along with the bubbles (same peek reveal). The
+  // base conditions keep it sensible (ready, nothing typed/attached, not
+  // listening); `peek` gates both its visibility and the model fetch so the
+  // small model isn't called for a hidden strip.
+  const suggestionsBase =
+    !fullscreen && !recording && !booting && canSend && !hasDraft && !hasImages;
+  const suggestionsVisible = peek && suggestionsBase;
+
+  // Three tailored prompt suggestions for the resting overlay (model-backed via
+  // TEXT_SMALL, with a static offline fallback).
+  const suggestions = usePromptSuggestions(messages, {
+    enabled: suggestionsVisible,
+  });
 
   // Whisper: when a genuinely NEW line arrives while collapsed, surface the
   // recent lines for 12s. Keyed on the last message id (not length, and the
-  // `expanded` dep early-returns) so toggling the panel never re-triggers it.
+  // `open` dep early-returns) so toggling the panel never re-triggers it.
   React.useEffect(() => {
     if (lastId === seenIdRef.current) return;
     seenIdRef.current = lastId;
-    if (expanded) return;
+    if (open) return;
     setWhisperVisible(true);
     const timer = window.setTimeout(() => setWhisperVisible(false), 12000);
     return () => window.clearTimeout(timer);
-  }, [lastId, expanded]);
+  }, [lastId, open]);
 
   React.useEffect(() => {
-    if (expanded) setWhisperVisible(false);
-  }, [expanded]);
+    if (open) setWhisperVisible(false);
+  }, [open]);
 
   React.useEffect(
     () => () => {
       if (pushToTalkTimerRef.current !== null) {
         window.clearTimeout(pushToTalkTimerRef.current);
       }
+      if (hoverLeaveTimerRef.current !== null) {
+        window.clearTimeout(hoverLeaveTimerRef.current);
+      }
     },
     [],
   );
 
-  // messages.length and expanded are intentional triggers: re-scroll to the
-  // latest line whenever the thread grows or the panel expands (body reads refs).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: triggers, not reads
-  React.useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-    if (expanded && focusThreadRef.current) {
+  // Keep the transcript pinned to the latest line. On first open (or when
+  // entering fullscreen) jump INSTANTLY to the bottom — a layout effect runs
+  // before paint, so the thread never flashes at the top. A NEW line (the
+  // user's own send, or a fresh reply) always re-pins to the bottom; streaming
+  // growth of the current line follows only when the reader is already resting
+  // at the bottom, so scrolling up to read history is never yanked down.
+  const wasOpenRef = React.useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: lastId/lastContent/fullscreen are the triggers; the body reads refs
+  React.useLayoutEffect(() => {
+    // Only the fullscreen transcript scrolls; the resting/typing view shows the
+    // last couple of turns with no scroll, so there is nothing to pin there.
+    if (!fullscreen) {
+      wasOpenRef.current = false;
+      return;
+    }
+    const justOpened = !wasOpenRef.current;
+    wasOpenRef.current = true;
+    const isNewLine = lastId !== scrollPinnedIdRef.current;
+    scrollPinnedIdRef.current = lastId;
+
+    const el = threadRef.current;
+    const atBottom =
+      !el || el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+
+    if (justOpened || isNewLine || atBottom) {
+      endRef.current?.scrollIntoView(
+        isNewLine && !justOpened && !reduce
+          ? { behavior: "smooth", block: "end" }
+          : { block: "end" },
+      );
+    }
+    if (justOpened && focusThreadRef.current) {
       threadRef.current?.focus();
       focusThreadRef.current = false;
     }
-  }, [messages.length, expanded]);
+  }, [lastId, lastContent, fullscreen]);
 
   const submit = React.useCallback(() => {
     const text = draft.trim();
@@ -383,18 +464,54 @@ export function ContinuousChatOverlay({
 
   const hasThread = visibleMessages.length > 0;
 
-  const toggleExpand = React.useCallback(() => {
-    setExpanded((e) => {
-      // Only arm the focus move when there's actually a thread to focus into.
-      if (!e && hasThread) focusThreadRef.current = true;
-      return !e;
-    });
-  }, [hasThread]);
+  const collapseAll = React.useCallback(() => {
+    setExpanded(false);
+    setFullscreen(false);
+    setHovered(false);
+    if (hoverLeaveTimerRef.current !== null) {
+      window.clearTimeout(hoverLeaveTimerRef.current);
+      hoverLeaveTimerRef.current = null;
+    }
+  }, []);
 
   const collapse = React.useCallback(() => {
-    setExpanded(false);
+    collapseAll();
     inputRef.current?.focus();
+  }, [collapseAll]);
+
+  // Hover reveal: entering the bar (or the bubbles) peeks the chat; leaving fades
+  // it back out after a short grace so moving between the bubbles and the
+  // composer doesn't flicker it closed.
+  const handleHoverEnter = React.useCallback(() => {
+    if (hoverLeaveTimerRef.current !== null) {
+      window.clearTimeout(hoverLeaveTimerRef.current);
+      hoverLeaveTimerRef.current = null;
+    }
+    setHovered(true);
   }, []);
+
+  const handleHoverLeave = React.useCallback(() => {
+    if (hoverLeaveTimerRef.current !== null) {
+      window.clearTimeout(hoverLeaveTimerRef.current);
+    }
+    hoverLeaveTimerRef.current = window.setTimeout(() => {
+      hoverLeaveTimerRef.current = null;
+      setHovered(false);
+    }, 150);
+  }, []);
+
+  // The maximize button: toggle a true full-screen transcript. /chat is the
+  // overlay itself (overlay-only), so there is no separate page to navigate to —
+  // "full screen" means expanding this same thread to fill the viewport.
+  const toggleFullscreen = React.useCallback(() => {
+    setFullscreen((f) => {
+      const next = !f;
+      if (next && hasThread) focusThreadRef.current = true;
+      return next;
+    });
+    // Entering fullscreen supersedes the partial panel; leaving it collapses.
+    setExpanded(false);
+  }, [hasThread]);
 
   // Click into the composer → reveal the thread, but keep keyboard focus in the
   // input (don't arm the thread-focus move) so the user can type immediately.
@@ -403,121 +520,179 @@ export function ContinuousChatOverlay({
     setExpanded(true);
   }, [hasThread]);
 
-  // Click anywhere outside the chat surface (composer, thread, or the top
-  // chat-icon) → hide the thread. The overlay root is pointer-events-none, so a
-  // document-level listener catches clicks that land on the live view behind.
+  // Close the thread on any pointer-down that isn't on a message bubble or the
+  // composer — i.e. anywhere that isn't the chat itself (the live view behind, a
+  // gap in the thread, the backdrop). The overlay root is pointer-events-none,
+  // so a capture-phase document listener still catches clicks that fall through
+  // to the view behind; guarding on the bubbles + composer keeps clicks on the
+  // conversation (e.g. selecting message text) from dismissing it.
   React.useEffect(() => {
-    if (!expanded) return;
+    if (!open) return;
     const onPointerDown = (e: PointerEvent) => {
-      const target = e.target as Node | null;
+      const target = e.target instanceof Element ? e.target : null;
       if (!target) return;
-      if (
-        threadRef.current?.contains(target) ||
-        composerRef.current?.contains(target) ||
-        topBarRef.current?.contains(target)
-      ) {
-        return;
-      }
-      setExpanded(false);
+      const onBubble = target.closest('[data-testid="thread-line"]') !== null;
+      const inComposer = composerRef.current?.contains(target) ?? false;
+      if (onBubble || inComposer) return;
+      collapseAll();
     };
     document.addEventListener("pointerdown", onPointerDown, true);
     return () =>
       document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [expanded]);
+  }, [open, collapseAll]);
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 bottom-0 flex flex-col items-center px-4 pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+1.5rem)]"
+      className={cn(
+        "pointer-events-none fixed flex flex-col items-center px-4",
+        // Fullscreen: take over the whole viewport (transcript fills, composer
+        // pinned to the bottom). Otherwise: a bottom-anchored ambient bar.
+        fullscreen
+          ? "inset-0 justify-end pt-[calc(var(--safe-area-top,0px)+1rem)]"
+          : "inset-x-0 bottom-0",
+        "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+1.5rem)]",
+      )}
       style={{ zIndex: Z_SHELL_OVERLAY }}
       data-testid="continuous-chat-overlay"
+      data-fullscreen={fullscreen ? "true" : undefined}
     >
-      {/* Cinematic bottom vignette — grounds the floating bar and gives the
-          whisper/transcript lines something to read against over bright views. */}
-      <div
+      {/* Focus backdrop — a LIQUID-GLASS sheet that frosts the live view behind
+          the conversation rather than blacking it out: a heavy backdrop-blur +
+          saturation, a faint diagonal specular sheen, and a soft scrim for text
+          contrast. Always mounted (so its testid is stable); opacity + the blur
+          itself animate the takeover in/out. Captures pointer events only while
+          fullscreen; clicking it exits via the outside-click handler. */}
+      <motion.div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-72 bg-gradient-to-t from-black/45 via-black/15 to-transparent"
+        data-testid="chat-fullscreen-backdrop"
+        data-active={fullscreen ? "true" : "false"}
+        className={cn(
+          "fixed inset-0",
+          // The glass tint: a diagonal sheen over a gentle scrim, so the frosted
+          // view keeps depth and the bubbles stay legible on light or dark views.
+          "bg-[linear-gradient(135deg,rgba(255,255,255,0.10)_0%,rgba(255,255,255,0.02)_36%,rgba(8,10,18,0.18)_100%)]",
+          fullscreen ? "pointer-events-auto" : "pointer-events-none",
+        )}
+        initial={false}
+        animate={{
+          opacity: fullscreen ? 1 : 0,
+          // Animate only the unprefixed property — framer-motion's animation
+          // target type doesn't include `WebkitBackdropFilter`. Modern targets
+          // (Chromium/Electrobun, Safari 18+/iOS WebView) support unprefixed
+          // `backdrop-filter`, so the frosted-glass takeover still animates.
+          backdropFilter: fullscreen
+            ? "blur(28px) saturate(160%)"
+            : "blur(0px) saturate(100%)",
+        }}
+        transition={{ duration: reduce ? 0.12 : 0.72, ease: OVERLAY_EASE }}
       />
 
-      {/* Chat icon — the single affordance to expand/collapse the thread. */}
-      {hasThread ? (
-        <div ref={topBarRef} className="pointer-events-auto relative mb-2">
-          <button
-            type="button"
-            aria-label={expanded ? "hide conversation" : "show conversation"}
-            aria-expanded={expanded}
-            aria-controls={
-              expanded && hasThread ? "continuous-thread" : undefined
-            }
-            onClick={toggleExpand}
-            className={cn(
-              "grid h-9 w-9 place-items-center rounded-full border transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
-              expanded
-                ? "border-white/40 bg-white/85 text-black"
-                : "border-white/15 bg-black/45 text-white/80 backdrop-blur-xl hover:bg-white/15 hover:text-white",
-            )}
-          >
-            <ChatIcon />
-          </button>
-        </div>
+      {/* Cinematic bottom vignette — grounds the floating bar over bright views.
+          Hidden in fullscreen: the solid backdrop already supplies contrast. */}
+      {!fullscreen ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-72 bg-gradient-to-t from-black/45 via-black/15 to-transparent"
+        />
       ) : null}
 
-      {/* Expanded — the one continuous thread, as a single flowing transcript */}
-      {expanded && hasThread ? (
+      {/* Fullscreen transcript — the full history on a liquid-glass panel that
+          BLOOMS open from the composer (spring: rise + scale + fade) and eases
+          shut. Its own AnimatePresence so the close animates too. */}
+      <AnimatePresence>
+        {fullscreen && hasThread ? (
+          <motion.div
+            key="fullscreen-thread"
+            id="continuous-thread"
+            data-variant="fullscreen"
+            ref={threadRef}
+            role="log"
+            aria-label="conversation history"
+            aria-live="polite"
+            // The scrollable log region is keyboard-focusable so it can be
+            // arrow/Page scrolled (WCAG 2.1.1).
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                collapse();
+              }
+            }}
+            initial={
+              reduce ? { opacity: 0 } : { opacity: 0, y: 36, scale: 0.92 }
+            }
+            animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+            exit={
+              reduce
+                ? { opacity: 0 }
+                : {
+                    opacity: 0,
+                    y: 22,
+                    scale: 0.955,
+                    transition: { duration: 0.5, ease: OVERLAY_EASE },
+                  }
+            }
+            transition={
+              reduce
+                ? { duration: 0.15 }
+                : { type: "spring", stiffness: 130, damping: 26, mass: 1.1 }
+            }
+            className={cn(
+              "pointer-events-auto relative mb-3 min-h-0 w-full max-w-3xl flex-1 origin-bottom overflow-y-auto px-5 py-6",
+              // The liquid-glass panel: frosted translucency, a bright top edge,
+              // an inner glow and a deep drop shadow for floating-pane depth.
+              "rounded-[28px] border border-white/12 bg-white/[0.045] backdrop-blur-2xl",
+              "shadow-[inset_0_1px_0_rgba(255,255,255,0.22),inset_0_0_60px_-22px_rgba(255,255,255,0.14),0_44px_130px_-32px_rgba(0,0,0,0.6)]",
+              // No visible scrollbar — the thread still scrolls, the chrome hides.
+              "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+            )}
+          >
+            <AnimatePresence initial={false}>
+              {visibleMessages.map((m) => (
+                <ThreadLine key={m.id} message={m} floating reduce={reduce} />
+              ))}
+            </AnimatePresence>
+            <AnimatePresence>
+              {responding ? <TypingDots reduce={reduce} /> : null}
+            </AnimatePresence>
+            <div ref={endRef} />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      {/* Resting / typing bubbles — the last couple of turns, floating over the
+          view with no scroll. Always mounted (when there is a thread) so the
+          quick opacity fade plays in BOTH directions; `peek` reveals them on
+          hover, on focus (expanded), while replying, or briefly when a new line
+          arrives, and fades them back out otherwise. */}
+      {!fullscreen && hasThread ? (
         <div
           id="continuous-thread"
           ref={threadRef}
           role="log"
           aria-label="conversation history"
           aria-live="polite"
-          // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable log region must be keyboard-focusable so it can be arrow/Page scrolled (WCAG 2.1.1)
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              e.preventDefault();
-              collapse();
-            }
-          }}
+          aria-hidden={!peek}
+          data-revealed={peek ? "true" : "false"}
+          data-variant="resting"
+          onPointerEnter={handleHoverEnter}
+          onPointerLeave={handleHoverLeave}
           className={cn(
-            GLASS_SHEET,
-            "pointer-events-auto relative mb-3 max-h-[58vh] w-full max-w-3xl overflow-y-auto px-5 py-4",
-            // No visible scrollbar — the thread still scrolls, the chrome just hides.
-            "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+            "relative mb-3 w-full max-w-3xl overflow-hidden px-1 py-2 transition-opacity duration-200",
+            peek
+              ? "pointer-events-auto opacity-100"
+              : "pointer-events-none opacity-0",
           )}
         >
-          {visibleMessages.map((m) => (
-            <ThreadLine key={m.id} message={m} />
-          ))}
-          {responding ? <TypingDots /> : null}
-          <div ref={endRef} />
-        </div>
-      ) : null}
-
-      {/* Whisper — recent lines dissolve in/out over whatever view is behind.
-          Kept mounted (when collapsed + present) and faded via opacity so the
-          transition actually plays in BOTH directions, rather than snapping. */}
-      {!expanded && recent.length > 0 ? (
-        <div
-          aria-live="polite"
-          // Hidden from the a11y tree once faded out: opacity-0 alone leaves the
-          // stale lines browseable to screen readers. aria-hidden flips false in
-          // the same commit a new line arrives (whisperVisible→true), so the new
-          // line still announces; it just isn't left exposed during the fade-out.
-          aria-hidden={!whisperVisible}
-          className={cn(
-            "pointer-events-none relative mb-4 flex w-full max-w-3xl flex-col transition-opacity duration-1000",
-            whisperVisible ? "opacity-100" : "opacity-0",
-          )}
-        >
-          {recent.map((m) => (
-            <ThreadLine key={m.id} message={m} floating />
-          ))}
-        </div>
-      ) : null}
-      {!expanded && responding ? (
-        <div className="relative mb-4 w-full max-w-3xl pl-12">
-          <TypingDots />
+          <AnimatePresence initial={false}>
+            {visibleMessages.slice(-RESTING_THREAD_LINES).map((m) => (
+              <ThreadLine key={m.id} message={m} floating reduce={reduce} />
+            ))}
+          </AnimatePresence>
+          <AnimatePresence>
+            {responding ? <TypingDots reduce={reduce} /> : null}
+          </AnimatePresence>
         </div>
       ) : null}
 
@@ -537,18 +712,21 @@ export function ContinuousChatOverlay({
         </div>
       ) : null}
 
-      {/* Five tailored prompt suggestions — keyboard-strip style, shown only on
-          the resting overlay (collapsed, ready, nothing typed/attached, not
-          listening) so they invite a first move without ever crowding an active
-          conversation. Tapping one sends it immediately. */}
-      {!expanded &&
-      !recording &&
-      !booting &&
-      canSend &&
-      !hasDraft &&
-      !hasImages ? (
+      {/* Three tailored prompt suggestions — keyboard-strip style. They ride
+          along with the chat bubbles (same `peek` reveal: hover or focus) and
+          fade with them, so they only appear when the conversation does. Tapping
+          one sends it immediately. */}
+      {suggestionsBase ? (
         <div
-          className="pointer-events-auto relative mb-2 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2"
+          onPointerEnter={handleHoverEnter}
+          onPointerLeave={handleHoverLeave}
+          aria-hidden={!suggestionsVisible}
+          className={cn(
+            "relative mb-2 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2 transition-opacity duration-200",
+            suggestionsVisible
+              ? "pointer-events-auto opacity-100"
+              : "pointer-events-none opacity-0",
+          )}
           data-testid="chat-suggestions"
         >
           {suggestions.map((s, i) => (
@@ -559,8 +737,8 @@ export function ContinuousChatOverlay({
               aria-label={s}
               onClick={() => pickSuggestion(s)}
               className={cn(
-                "max-w-full truncate rounded-full border border-white/15 bg-black/40 px-3.5 py-1.5",
-                "text-[13px] text-white/80 backdrop-blur-xl transition-colors",
+                "max-w-full truncate rounded-full border border-white/15 bg-black/40 px-3 py-1.5",
+                "text-[12px] text-white/80 backdrop-blur-xl transition-colors",
                 "shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_10px_30px_-12px_rgba(0,0,0,0.6)]",
                 "hover:border-white/30 hover:bg-white/15 hover:text-white",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
@@ -572,22 +750,30 @@ export function ContinuousChatOverlay({
         </div>
       ) : null}
 
-      {/* The always-present ambient composer (the heart of the layer) */}
+      {/* The always-present ambient composer (the heart of the layer). Hovering
+          it (or the bubbles/suggestions) peeks the chat; leaving fades it out. */}
       <div
         ref={composerRef}
+        onPointerEnter={handleHoverEnter}
+        onPointerLeave={handleHoverLeave}
         className="pointer-events-auto relative w-full max-w-3xl"
       >
         {/* Soft breath of light for live states — not a brand-colored alert ring.
             Always mounted; only opacity changes so it swells in/out over 700ms. */}
-        <div
+        <motion.div
           aria-hidden="true"
-          className={cn(
-            "pointer-events-none absolute -inset-3 rounded-full blur-2xl transition-opacity duration-700",
-            listening || responding ? "opacity-100" : "opacity-0",
-            listening
-              ? "bg-[rgba(255,180,120,0.32)]"
-              : "bg-[rgba(190,210,255,0.22)]",
-          )}
+          className="pointer-events-none absolute -inset-3 rounded-full blur-2xl"
+          // The glow both swells (opacity) and shifts hue — warm while listening,
+          // cool while replying. Animating backgroundColor tweens that hue smoothly
+          // instead of snapping. `initial={false}`: settle at rest, animate on change.
+          initial={false}
+          animate={{
+            opacity: listening || responding ? 1 : 0,
+            backgroundColor: listening
+              ? "rgba(255,180,120,0.32)"
+              : "rgba(190,210,255,0.22)",
+          }}
+          transition={{ duration: reduce ? 0 : 1.1, ease: "easeInOut" }}
         />
         {/* Pending image attachments + any read error, above the bar. */}
         {hasImages || imageError ? (
@@ -638,6 +824,24 @@ export function ContinuousChatOverlay({
           }}
         />
         <div className={cn(GLASS_BAR, "relative")}>
+          {/* No expand/collapse chevron: focusing the input opens the thread,
+              and Escape / clicking outside collapses it. */}
+          {/* DEV-only: clear the conversation and start a fresh, greeted one. */}
+          {import.meta.env.DEV ? (
+            <SoftButton
+              glyph={TRASH_GLYPH}
+              label="clear conversation (debug)"
+              onClick={() => clearConversation?.()}
+              testId="chat-composer-clear-debug"
+            />
+          ) : null}
+          <SoftButton
+            glyph={MAXIMIZE_GLYPH}
+            label={fullscreen ? "exit full screen" : "expand to full screen"}
+            active={fullscreen}
+            onClick={toggleFullscreen}
+            testId="chat-composer-fullscreen"
+          />
           <SoftButton
             glyph={PLUS_GLYPH}
             label="attach image"
@@ -654,9 +858,9 @@ export function ContinuousChatOverlay({
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 submit();
-              } else if (e.key === "Escape" && expanded) {
+              } else if (e.key === "Escape" && open) {
                 e.preventDefault();
-                setExpanded(false);
+                collapseAll();
               }
             }}
             placeholder={booting ? "connecting…" : "say anything…"}
@@ -670,35 +874,62 @@ export function ContinuousChatOverlay({
           <span id="cc-booting-hint" className="sr-only">
             connecting — you can’t send yet
           </span>
+          {/* Assistant-voice mute: shown only while the agent is speaking or
+              already muted, so the resting bar stays uncluttered. */}
+          {speaking || agentVoiceMuted ? (
+            <SoftButton
+              glyph={agentVoiceMuted ? SPEAKER_MUTED_GLYPH : SPEAKER_GLYPH}
+              label={
+                agentVoiceMuted
+                  ? "unmute assistant voice"
+                  : "mute assistant voice"
+              }
+              active={agentVoiceMuted}
+              onClick={toggleAgentVoiceMute}
+              testId="chat-voice-mute"
+            />
+          ) : null}
           {/* One trailing control, ChatGPT-style: mic when there's nothing to
               send (or while recording, to stop), swapping to send once the user
               starts typing or attaches an image. */}
-          {(hasDraft || hasImages) && !recording ? (
-            <SoftButton
-              glyph={SEND_GLYPH}
-              label={canSend ? "send" : "send (waiting for reply)"}
-              disabled={!canSend}
-              onClick={submit}
-              testId="chat-composer-action"
-            />
-          ) : (
-            <SoftButton
-              glyph={MIC_GLYPH}
-              label={
-                pushToTalkActive
-                  ? "release to send"
-                  : recording
-                    ? "stop listening"
-                    : "talk"
-              }
-              active={recording}
-              disabled={booting}
-              onClick={handleMicClick}
-              onPointerDown={beginPushToTalkPress}
-              onPointerUp={endPushToTalkPress}
-              onPointerCancel={endPushToTalkPress}
-            />
-          )}
+          {/* The trailing control morphs between mic and send. The `key` flip
+              remounts on each swap, so React removes the old control instantly
+              (no exit lag) and the new one pops in — a quick scale/fade that
+              reads as a morph without an AnimatePresence exit delay. */}
+          <motion.div
+            key={(hasDraft || hasImages) && !recording ? "send" : "mic"}
+            className="shrink-0"
+            initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.6 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: reduce ? 0 : 0.3, ease: OVERLAY_EASE }}
+          >
+            {(hasDraft || hasImages) && !recording ? (
+              <SoftButton
+                glyph={SEND_GLYPH}
+                label={canSend ? "send" : "send (waiting for reply)"}
+                disabled={!canSend}
+                onClick={submit}
+                testId="chat-composer-action"
+              />
+            ) : (
+              <SoftButton
+                glyph={MIC_GLYPH}
+                label={
+                  pushToTalkActive
+                    ? "release to send"
+                    : recording
+                      ? "stop listening"
+                      : "talk"
+                }
+                active={recording}
+                disabled={booting}
+                onClick={handleMicClick}
+                onPointerDown={beginPushToTalkPress}
+                onPointerUp={endPushToTalkPress}
+                onPointerCancel={endPushToTalkPress}
+              />
+            )}
+          </motion.div>
         </div>
       </div>
     </div>

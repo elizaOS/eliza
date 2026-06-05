@@ -45,7 +45,7 @@ await mock.stop();
 
 ## Mockoon environments
 
-Stateless stub environments for read-only endpoints, suitable for designer
+Stateless mock environments for read-only endpoints, suitable for designer
 workflows and quick demos that don't need the stateful Hono mocks running.
 
 - `mockoon/hetzner-static.json` — Hetzner read-only catalog (`/locations`,

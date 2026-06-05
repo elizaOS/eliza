@@ -243,7 +243,7 @@ export function VoiceView({
       teardownCapture();
       // Reset the recorder so a close mid-recording (or after a mic error)
       // doesn't leave a stuck "Recording…"/error toast over a now-null
-      // captureRef whose Stop button would no-op on reopen.
+      // captureRef whose Stop button would be inert on reopen.
       setRecState("idle");
       setRecError(null);
     }
@@ -336,9 +336,18 @@ export function VoiceView({
 
   const stopRecording = () => {
     const handle = captureRef.current;
-    if (handle) {
-      void handle.stop().catch(() => {});
+    // The browser SpeechRecognition engine can auto-end (timeout) without
+    // propagating back to "idle", leaving the recorder wedged in a live state
+    // with a Stop button that no-ops on the already-ended handle. If the handle
+    // is gone or no longer active, force a clean reset (mirroring the open/teardown
+    // path) so the next press starts a fresh capture instead of doing nothing.
+    if (!handle?.isActive()) {
+      teardownCapture();
+      setRecState("idle");
+      setRecError(null);
+      return;
     }
+    void handle.stop().catch(() => {});
   };
 
   const toggleRecording = () => {
@@ -429,7 +438,7 @@ export function VoiceView({
             onClick={() => setTtsCardOpen((v) => !v)}
             aria-expanded={ttsCardOpen}
           >
-            {ttsCardOpen ? "Hide" : "Text to Speech"}
+            {ttsCardOpen ? "Hide" : "TTS"}
           </button>
         </div>
 
@@ -466,9 +475,6 @@ export function VoiceView({
                 <span className="od-admin-slider" />
               </label>
             </h2>
-            <div className="od-admin-toggle-sub">
-              Configure TTS provider for assistant message read-aloud.
-            </div>
             <div className="od-tts-fields">
               <div className="od-tts-row">
                 <span className="od-settings-label">Provider</span>
@@ -538,17 +544,17 @@ export function VoiceView({
                 title={
                   ttsAttached
                     ? "Preview the assistant voice"
-                    : `No voice service attached (provider: ${providerLabel}). Preview is unavailable.`
+                    : `Voice offline: ${providerLabel}`
                 }
               >
                 Preview
               </button>
               <div className="od-tts-msg">
                 {status.loading
-                  ? "Checking voice service…"
+                  ? "Checking…"
                   : ttsAttached
                     ? previewMsg
-                    : `No voice service is attached to the orchestrator (${presetHints.length} fallback voices available). Read-aloud stays off until a provider is configured.`}
+                    : `Offline · ${presetHints.length} fallback voices`}
               </div>
             </div>
           </div>

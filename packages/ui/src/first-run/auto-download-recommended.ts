@@ -15,10 +15,10 @@
  * activation; the Local Inference panel is the source of truth from then on.
  *
  * Failure modes:
- *   - agent never comes up within the deadline → silent no-op, no marker.
+ *   - agent never comes up within the deadline → silent skip, no marker.
  *     The next boot can retry.
- *   - hub fetch fails → silent no-op, no marker. Same retry semantics.
- *   - download POST fails → silent no-op, no marker.
+ *   - hub fetch fails → silent skip, no marker. Same retry semantics.
+ *   - download POST fails → silent skip, no marker.
  */
 
 import { client } from "../api";

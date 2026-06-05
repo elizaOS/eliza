@@ -6,7 +6,6 @@ import {
 } from "@elizaos/core";
 import type {
   LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
   LifeOpsGmailBatchReplyDraftsFeed,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailNeedsResponseFeed,
@@ -14,7 +13,6 @@ import type {
   LifeOpsGmailReplyDraft,
   LifeOpsGmailSearchFeed,
   LifeOpsGmailTriageFeed,
-  LifeOpsNextCalendarEventContext,
   LifeOpsOccurrenceView,
   LifeOpsOverview,
 } from "../../contracts/index.js";
@@ -260,7 +258,7 @@ export function formatCalendarEventDateTime(
   return `${datePart}, ${timePart}`;
 }
 
-function formatEventTime(event: LifeOpsCalendarEvent): string {
+function _formatEventTime(event: LifeOpsCalendarEvent): string {
   if (event.isAllDay) {
     return "all day";
   }
@@ -318,78 +316,6 @@ export function formatRelativeTime(isoDate: string): string {
     return `${hours}h ago`;
   }
   return `${Math.floor(hours / 24)}d ago`;
-}
-
-export function formatCalendarFeed(
-  feed: LifeOpsCalendarFeed,
-  label: string,
-): string {
-  if (feed.events.length === 0) {
-    return `No events ${label}.`;
-  }
-  const lines: string[] = [`Events ${label}:`];
-  for (const event of feed.events) {
-    const time = formatEventTime(event);
-    const parts = [`- **${event.title}** (${time})`];
-    if (event.location) {
-      parts.push(`  Location: ${event.location}`);
-    }
-    if (event.attendees.length > 0) {
-      const names = event.attendees
-        .slice(0, 4)
-        .map((attendee) => attendee.displayName || attendee.email || "unknown")
-        .join(", ");
-      const suffix =
-        event.attendees.length > 4
-          ? ` +${event.attendees.length - 4} more`
-          : "";
-      parts.push(`  With: ${names}${suffix}`);
-    }
-    if (event.conferenceLink) {
-      parts.push(`  Video: ${event.conferenceLink}`);
-    }
-    lines.push(parts.join("\n"));
-  }
-  return lines.join("\n");
-}
-
-export function formatNextEventContext(
-  context: LifeOpsNextCalendarEventContext,
-): string {
-  if (!context.event) {
-    return "No upcoming events on your calendar.";
-  }
-  const lines = [
-    `**Next event: ${context.event.title}** (${formatEventTime(context.event)})`,
-  ];
-  if (context.startsInMinutes !== null) {
-    lines[0] += ` — ${formatRelativeMinutes(context.startsInMinutes)}`;
-  }
-  if (context.location) {
-    lines.push(`Location: ${context.location}`);
-  }
-  if (context.conferenceLink) {
-    lines.push(`Video link: ${context.conferenceLink}`);
-  }
-  if (context.attendeeNames.length > 0) {
-    lines.push(`Attendees: ${context.attendeeNames.join(", ")}`);
-  }
-  if (context.preparationChecklist.length > 0) {
-    lines.push("Preparation:");
-    for (const item of context.preparationChecklist) {
-      lines.push(`- ${item}`);
-    }
-  }
-  if (context.linkedMail.length > 0) {
-    lines.push("Related emails:");
-    for (const mail of context.linkedMail.slice(0, 3)) {
-      const snippet = mail.snippet
-        ? ` (${truncateForPreview(mail.snippet, 60)})`
-        : "";
-      lines.push(`- "${mail.subject}" from ${mail.from}${snippet}`);
-    }
-  }
-  return lines.join("\n");
 }
 
 export function formatEmailTriage(feed: LifeOpsGmailTriageFeed): string {

@@ -1,7 +1,7 @@
-// Stub for `node:path` in the Storybook browser catalog. Vite externalizes
+// Shim for `node:path` in the Storybook browser catalog. Vite externalizes
 // node builtins, so accessing `path.isAbsolute`/`join`/`resolve` (called by
 // @elizaos/core/utils/state-dir at load) throws. These are pure string
-// operations, so the stub provides working posix implementations instead of
+// operations, so the shim provides working posix implementations instead of
 // throwing — derived paths stay correct enough for module init.
 
 export const sep = "/";

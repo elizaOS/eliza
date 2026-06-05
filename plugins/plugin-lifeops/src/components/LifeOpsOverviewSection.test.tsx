@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ASSISTANT_INTENTS,
   LIFEOPS_VOICE_COMMAND_PROMPT,
-} from "./LifeOpsAssistantSection.js";
+} from "./LifeOpsAssistantSection.helpers.js";
 import {
   LifeOpsOverviewAssistantDock,
   LifeOpsOverviewSignalsPanel,
@@ -21,6 +21,10 @@ vi.mock(
 
 vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: vi.fn(), agentProps: {} }),
+  // plugin-calendar's client-calendar augments ElizaClient.prototype at import
+  // time (reached via the calendar UI now embedded in the overview section), so
+  // the mock must expose ElizaClient as a constructor with a writable prototype.
+  ElizaClient: class {},
 }));
 
 const openLifeOpsChat = vi.fn();
@@ -43,9 +47,9 @@ describe("LifeOpsOverviewAssistantDock", () => {
 
     expect(container.querySelectorAll("p")).toHaveLength(0);
     expect(screen.getByTestId("lifeops-overview-assistant-dock")).toBeTruthy();
-    expect(screen.getAllByTestId("lifeops-overview-assistant-command")).toHaveLength(
-      4,
-    );
+    expect(
+      screen.getAllByTestId("lifeops-overview-assistant-command"),
+    ).toHaveLength(4);
     for (const label of [
       "Ask LifeOps",
       "Voice command",
@@ -67,8 +71,7 @@ describe("LifeOpsOverviewAssistantDock", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Ask LifeOps" }));
     expect(openLifeOpsChat).toHaveBeenLastCalledWith(
-      ASSISTANT_INTENTS.find((intent) => intent.id === "command-brief")
-        ?.prompt,
+      ASSISTANT_INTENTS.find((intent) => intent.id === "command-brief")?.prompt,
       {},
       { select: true },
     );
@@ -90,8 +93,7 @@ describe("LifeOpsOverviewAssistantDock", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Brief" }));
     expect(openLifeOpsChat).toHaveBeenLastCalledWith(
-      ASSISTANT_INTENTS.find((intent) => intent.id === "command-brief")
-        ?.prompt,
+      ASSISTANT_INTENTS.find((intent) => intent.id === "command-brief")?.prompt,
       {},
       { select: true },
     );
@@ -128,10 +130,7 @@ describe("LifeOpsOverviewSignalsPanel", () => {
       />,
     );
 
-    for (const label of [
-      "Ask about social",
-      "Ask about signals",
-    ]) {
+    for (const label of ["Ask about social", "Ask about signals"]) {
       fireEvent.click(screen.getByRole("button", { name: label }));
       expect(navigate).toHaveBeenLastCalledWith("assistant");
     }

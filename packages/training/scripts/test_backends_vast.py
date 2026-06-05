@@ -230,9 +230,9 @@ def test_teardown_is_idempotent_when_instance_already_gone(
         stderr="error: no such instance 42\n",
     )
     with mock.patch.object(subprocess, "run", side_effect=err):
-        # Must NOT raise — second teardowns are expected to no-op.
+        # Must NOT raise — second teardowns are expected to leave state unchanged.
         backend.teardown(handle)
-    # Warning must be logged so operators see the no-op.
+    # Warning must be logged so operators see the idempotent teardown.
     assert any(
         "already destroyed" in rec.getMessage() for rec in caplog.records
     )

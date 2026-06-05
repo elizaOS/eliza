@@ -174,6 +174,7 @@ class SurfpoolEnv(gym.Env):
         
         obs = {
             "sol_balance": 0,
+            "spl_token_balances": [],
             "agent_pubkey": str(self.agent_keypair.pubkey()),
             "block_height": 0,
             "discovered_programs": len(unique_programs),
@@ -194,7 +195,8 @@ class SurfpoolEnv(gym.Env):
             balance = await self.client.get_balance(self.agent_keypair.pubkey())
             obs["sol_balance"] = balance.value / 1e9 # Convert lamports to SOL
 
-            # TODO: Get other token balances
+            # SPL token balances are omitted from this benchmark observation;
+            # instruction discovery is scored from transactions, not holdings.
 
         except Exception as e:
             logging.error(f"Error getting observation: {e}", exc_info=True)
@@ -208,7 +210,9 @@ class SurfpoolEnv(gym.Env):
                 obs["last_tx_success"] = 0
                 obs["last_tx_error"] = str(receipt_dict.get("meta", {}).get("err"))
 
-        return [["observe", obs]]
+        observation = [["observe", obs]]
+        self.last_observation = observation
+        return observation
 
     def _partial_sign_transaction(self, tx_bytes: bytes, additional_signers: list[Keypair]) -> VersionedTransaction:
         """
@@ -404,8 +408,20 @@ class SurfpoolEnv(gym.Env):
         return reward
     
     def render(self, mode="human"):
-        logging.info("Rendering not implemented for this environment.")
-        pass
+        if mode != "human":
+            raise ValueError(f"Unsupported render mode: {mode}")
+
+        summary = {
+            "agent_pubkey": str(self.agent_keypair.pubkey()),
+            "unique_instructions_found": len(self.program_instructions_seen),
+            "last_tx_instruction_count": self.last_tx_instruction_count,
+            "last_tx_reward": self.last_tx_reward,
+            "total_reward": self.total_reward,
+        }
+        if self.last_observation is not None:
+            summary["last_observation"] = self.last_observation
+        logging.info("SurfpoolEnv render: %s", json.dumps(summary, sort_keys=True))
+        return summary
 
     async def close(self):
         if self._validator_cm:

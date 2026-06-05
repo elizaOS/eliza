@@ -5,16 +5,18 @@
  * by `_router.generated.ts`. Built-in bridges (`time`, `weather`, `crypto`) run
  * `mcp-handler` on Workers; OAuth providers return 501 unless
  * `MCP_<PROVIDER>_STREAMABLE_HTTP_URL` is set to proxy an external streamable-http
- * server. Assertions accept either a stub envelope or real `jsonrpc: "2.0"`.
+ * server. Assertions accept either the Worker fallback envelope or real
+ * `jsonrpc: "2.0"`.
  *
  * Per-provider assertions (~3 each):
  *   1. Auth gate — request without auth. The mounted handler answers 501 for
  *      every method/path; the route is also on the public-path list in
- *      `auth.ts`, so the response must be the route's own answer (501 stub
- *      today, real bridge envelope later) — never the global `Unauthorized`.
+ *      `auth.ts`, so the response must be the route's own answer (501
+ *      fallback today, real bridge envelope later) — never the global
+ *      `Unauthorized`.
  *   2. JSON-RPC envelope — POST a `tools/list` JSON-RPC request with a Bearer
  *      key (or unauthenticated when no key is bootstrapped). Response must be
- *      JSON. Either the 501 stub body, or a `jsonrpc: "2.0"` envelope.
+ *      JSON. Either the 501 fallback body, or a `jsonrpc: "2.0"` envelope.
  *   3. Bad transport — request a garbage transport segment. Today every route
  *      uses `app.all("*")` and answers 501 regardless; a real bridge should
  *      answer 400/404. Both are accepted here.
@@ -65,7 +67,7 @@ function jsonRpcToolsList(): Record<string, unknown> {
   };
 }
 
-function isStubEnvelope(body: unknown): boolean {
+function isFallbackEnvelope(body: unknown): boolean {
   if (typeof body !== "object" || body === null) return false;
   const b = body as { success?: unknown; error?: unknown };
   return b.success === false && typeof b.error === "string";
@@ -132,7 +134,7 @@ describe("Group G — MCP provider bridges", () => {
       test(`${provider}: unauthenticated request answers (no global 401)`, async () => {
         if (!serverReachable) return;
         const res = await api.get(basePath);
-        // Accept either the current 501 stub or a real bridge response. The
+        // Accept either the current 501 fallback or a real bridge response. The
         // route is on the public-path list, so the global auth middleware
         // never owns the response — anything in this set proves that.
         expect([200, 400, 404, 405, 501, 503]).toContain(res.status);
@@ -146,10 +148,10 @@ describe("Group G — MCP provider bridges", () => {
         }
       });
 
-      test(`${provider}: POST tools/list returns JSON envelope (501 stub or jsonrpc)`, async () => {
+      test(`${provider}: POST tools/list returns JSON envelope (501 fallback or jsonrpc)`, async () => {
         if (!serverReachable) return;
         const res = await postToolsList(basePath);
-        // 501 today for stubs. Real bridges can answer 200 or a JSON
+        // 501 today for fallback routes. Real bridges can answer 200 or a JSON
         // availability error when provider credentials are absent in CI.
         expect([200, 400, 404, 405, 501, 503]).toContain(res.status);
 
@@ -165,14 +167,14 @@ describe("Group G — MCP provider bridges", () => {
           );
         }
 
-        // One of: stub envelope, JSON-RPC 2.0 envelope, JSON error from a
+        // One of: fallback envelope, JSON-RPC 2.0 envelope, JSON error from a
         // configured bridge, or empty 405-ish body.
-        const isStub = isStubEnvelope(body);
+        const isFallback = isFallbackEnvelope(body);
         const isRpc = isJsonRpcEnvelope(body);
         const isJsonError = isJsonErrorEnvelope(body);
-        if (!isStub && !isRpc && !isJsonError && res.status !== 405) {
+        if (!isFallback && !isRpc && !isJsonError && res.status !== 405) {
           throw new Error(
-            `Expected stub, jsonrpc:"2.0", or JSON error envelope from ${basePath}, got status=${res.status} body=${text.slice(0, 200)}`,
+            `Expected fallback, jsonrpc:"2.0", or JSON error envelope from ${basePath}, got status=${res.status} body=${text.slice(0, 200)}`,
           );
         }
       });
@@ -180,7 +182,7 @@ describe("Group G — MCP provider bridges", () => {
       test(`${provider}: garbage :transport is rejected or stubbed`, async () => {
         if (!serverReachable) return;
         const res = await api.get(`/api/mcps/${provider}/garbage-transport`);
-        // Today's stub `app.all("*")` returns 501 for any transport string.
+        // Today's fallback `app.all("*")` returns 501 for any transport string.
         // A real bridge should answer 400/404 for unknown transports. Both
         // are valid future behavior — the test forbids 200 success and the
         // global 401, which would be regressions.

@@ -39,16 +39,11 @@ import {
   ListFilter,
   Maximize2,
   Menu,
-  MessageSquare,
   Minus,
   Play,
   Plus,
   RefreshCw,
   RotateCcw,
-  Save,
-  Search,
-  SearchCheck,
-  Terminal,
   X,
 } from "lucide-react";
 import {
@@ -123,46 +118,6 @@ const EVAL_PROMPTS: EvalPrompt[] = [
     label: "Butterfly ASCII",
     prompt:
       "Explain the butterfly lifecycle using ASCII art. Produce four separate frames in fenced code blocks, in order: egg, caterpillar, chrysalis, adult butterfly.",
-  },
-];
-
-// ── Compare TYPE tabs, 1:1 with selector.js `_modes` (Chat / Agent / Search /
-// Research). Only Chat is faithfully representable on this runtime — Agent /
-// Search / Research need a dual-model run plus a search-provider backend the
-// single-agent runtime does not expose, so they render present-but-disabled
-// (never omitted) to preserve odysseus's full four-tab row. ──
-type CompareType = "chat" | "agent" | "search" | "research";
-
-interface CompareTypeTab {
-  id: CompareType;
-  label: string;
-  // The single-agent runtime backs only `chat`; the rest are inert/honest.
-  enabled: boolean;
-  disabledReason: string;
-}
-
-const CMP_TYPES: CompareTypeTab[] = [
-  { id: "chat", label: "Chat", enabled: true, disabledReason: "" },
-  {
-    id: "agent",
-    label: "Agent",
-    enabled: false,
-    disabledReason:
-      "Agent compare needs a dual-model tool-running backend the single-agent runtime does not expose.",
-  },
-  {
-    id: "search",
-    label: "Search",
-    enabled: false,
-    disabledReason:
-      "Search compare needs a search-provider backend the single-agent runtime does not expose.",
-  },
-  {
-    id: "research",
-    label: "Research",
-    enabled: false,
-    disabledReason:
-      "Research compare needs a deep-research backend the single-agent runtime does not expose.",
   },
 ];
 
@@ -285,10 +240,6 @@ export function CompareView({
   // ── Run configuration (set in the selector, read by the arena) ──
   const [blindMode, setBlindMode] = useState(true);
   const [parallel, setParallel] = useState(true);
-  // odysseus's Save toggle keeps compare sessions after closing. The single-agent
-  // runtime has no dual-model compare-session store, so this is rendered inert
-  // (disabled) with an honest reason rather than faking persistence.
-  const saveOnClose = false;
   // Per-run timeout in seconds. Named *Sec to avoid shadowing global setTimeout.
   const [timeoutSec, setTimeoutSec] = useState(TIMEOUT_DEFAULT);
   const [slots, setSlots] = useState<Slot[]>([newSlot(), newSlot()]);
@@ -376,14 +327,28 @@ export function CompareView({
   if (win.minimized) return null;
 
   // ── Shared slot mutators (used by both selector and arena) ──
+  // A reveal/winner only applies to the exact lineup that was voted on, and the
+  // winner is tracked by INDEX (winnerIdx). Any change to the lineup invalidates
+  // that verdict: add / remove / shuffle shift or replace the indices, and
+  // swapping a slot's provider/model changes what an unchanged index refers to —
+  // the crown is model-bound, not pane-bound. Either way a stale winner/reveal
+  // mis-highlights a pane (or leaks blind picks), so every lineup change clears
+  // the round.
+  const resetRound = () => {
+    setRevealed(false);
+    setWinnerIdx(null);
+  };
+
   const addSlot = () => {
     if (slots.length >= MAX_SLOTS) return;
     setSlots((cur) => [...cur, newSlot()]);
+    resetRound();
   };
 
   const removeSlot = (slotId: string) => {
     if (slots.length <= 1) return;
     setSlots((cur) => cur.filter((s) => s.slotId !== slotId));
+    resetRound();
   };
 
   const setSlotProvider = (slotId: string, provider: string) => {
@@ -395,6 +360,7 @@ export function CompareView({
           : s,
       ),
     );
+    resetRound();
   };
 
   const setSlotModel = (slotId: string, m: ProviderModelRecord) => {
@@ -404,6 +370,7 @@ export function CompareView({
       ),
     );
     setSwapOpenFor(null);
+    resetRound();
   };
 
   // Dice shuffle — randomly fill every slot from the loaded model pool, honoring
@@ -433,6 +400,10 @@ export function CompareView({
       }),
     );
     setBlindMode(true);
+    // Re-shuffling replaces the lineup, so any prior vote/reveal is stale —
+    // clear it (otherwise a stale winnerIdx mis-marks a fresh pane and the old
+    // reveal leaks the newly-randomized blind names).
+    resetRound();
   };
 
   const toggleExcluded = (id: string) => {
@@ -568,7 +539,6 @@ export function CompareView({
           modelsByProvider={modelsByProvider}
           blindMode={blindMode}
           parallel={parallel}
-          saveOnClose={saveOnClose}
           timeout={timeoutSec}
           onSetBlind={setBlindMode}
           onSetParallel={setParallel}
@@ -861,9 +831,7 @@ export function CompareView({
                 ) : null}
 
                 <div className="od-pane-history" id={`cmp-history-${i}`}>
-                  <div className="od-pane-ready">
-                    Send a prompt to all models to start the comparison.
-                  </div>
+                  <div className="od-pane-ready">Ready</div>
                 </div>
 
                 <div className="od-pane-vote-footer">
@@ -1054,7 +1022,6 @@ function CompareSelector({
   modelsByProvider,
   blindMode,
   parallel,
-  saveOnClose,
   timeout,
   onSetBlind,
   onSetParallel,
@@ -1073,7 +1040,6 @@ function CompareSelector({
   modelsByProvider: Record<string, ProviderModelRecord[]>;
   blindMode: boolean;
   parallel: boolean;
-  saveOnClose: boolean;
   timeout: number;
   onSetBlind: (v: boolean) => void;
   onSetParallel: (v: boolean) => void;
@@ -1166,14 +1132,7 @@ function CompareSelector({
       </div>
 
       <div className="od-cmp-sel-body">
-        <p className="od-cmp-sel-desc">
-          Select models to compare side-by-side. Send the same prompt to all.
-        </p>
-
-        {/* Mode toggles — Blind / Parallel / Shuffle / Save / Reset, each a tall
-            icon-over-label box (selector.js compare-*-toggle, 56px flex:1 1 0). */}
         <div className="od-cmp-sel-section">
-          <div className="od-cmp-sel-label">Mode:</div>
           <div className="od-cmp-sel-toggles">
             <button
               type="button"
@@ -1208,16 +1167,6 @@ function CompareSelector({
             </button>
             <button
               type="button"
-              className="od-cmp-toggle od-cmp-toggle-save"
-              title="Save — keep sessions after closing compare (unavailable: the single-agent runtime has no dual-model compare-session store)"
-              aria-pressed={saveOnClose}
-              disabled
-            >
-              <Save size={18} />
-              <span className="od-cmp-toggle-label">Save</span>
-            </button>
-            <button
-              type="button"
               className="od-cmp-toggle"
               title="Reset — restore all defaults"
               onClick={onReset}
@@ -1228,37 +1177,6 @@ function CompareSelector({
           </div>
         </div>
 
-        {/* Type tabs — Chat / Agent / Search / Research, each the SAME tall
-            icon-over-label box as the Mode toggles (selector.js compare-mode-tab).
-            Only Chat is wired on the single-agent runtime; Agent / Search /
-            Research render present-but-disabled (never omitted) with an honest
-            reason rather than as dead tabs. */}
-        <div className="od-cmp-sel-section">
-          <div className="od-cmp-sel-label">Type:</div>
-          <div className="od-cmp-sel-tabs">
-            {CMP_TYPES.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                className={`od-cmp-sel-tab${t.id === "chat" ? " active" : ""}`}
-                title={t.enabled ? t.label : t.disabledReason}
-                aria-pressed={t.id === "chat"}
-                disabled={!t.enabled}
-              >
-                {t.id === "chat" ? <MessageSquare size={18} /> : null}
-                {t.id === "agent" ? <Terminal size={18} /> : null}
-                {t.id === "search" ? <Search size={18} /> : null}
-                {t.id === "research" ? <SearchCheck size={18} /> : null}
-                <span className="od-cmp-toggle-label">{t.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Model rows. odysseus has no MODELS section label; the rows live
-            directly under the Type tabs. When every chosen provider has loaded
-            and returned zero models, the whole list collapses to a single
-            centered "No models available" notice (selector.js line 1305). */}
         <div className="od-cmp-sel-section">
           {noModelsAvailable ? (
             <div className="od-cmp-sel-empty">No models available</div>

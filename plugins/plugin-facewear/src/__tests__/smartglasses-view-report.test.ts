@@ -17,7 +17,7 @@ import {
   viewPhysicalBlocker,
   viewScanDiagnosis,
   viewSetupHint,
-} from "../ui/SmartglassesView.tsx";
+} from "../ui/SmartglassesView.helpers.ts";
 
 const baseTests = {
   headsetConnected: false,

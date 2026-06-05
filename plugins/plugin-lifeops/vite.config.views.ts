@@ -5,7 +5,7 @@ export default {
   ...createViewBundleConfig({
     packageName: "@elizaos/plugin-lifeops",
     viewId: "lifeops",
-    entry: "./src/components/LifeOpsPageView.tsx",
+    entry: "./src/components/lifeops-view-bundle.ts",
     outDir: "dist/views",
     componentExport: "LifeOpsPageView",
     additionalExternals: [
@@ -29,6 +29,13 @@ export default {
           "../plugin-health/src/screen-time/mobile-signal-setup.ts",
           import.meta.url,
         ),
+      ),
+      // plugin-calendar's UI is consumed by LifeOps calendar/overview view
+      // sections. Resolve it from source so the view bundle does not depend on
+      // plugin-calendar being built first (its dist/ui.js is absent during the
+      // root build:views step in CI).
+      "@elizaos/plugin-calendar/ui": fileURLToPath(
+        new URL("../plugin-calendar/src/ui.ts", import.meta.url),
       ),
     },
   },

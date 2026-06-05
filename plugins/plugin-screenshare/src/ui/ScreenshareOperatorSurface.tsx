@@ -1,79 +1,39 @@
-import { type AppOperatorSurfaceProps, type AgentElementRole, Button, type ButtonProps, client, Input, type InputProps, SurfaceBadge, SurfaceEmptyState, SurfaceSection, selectLatestRunForApp, useApp } from "@elizaos/ui";
+import {
+  type AgentElementRole,
+  type AppOperatorSurfaceProps,
+  Button,
+  type ButtonProps,
+  client,
+  Input,
+  type InputProps,
+  SurfaceEmptyState,
+  SurfaceSection,
+  selectLatestRunForApp,
+  useApp,
+} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
+  CheckCircle2,
   Copy,
   ExternalLink,
+  type LucideIcon,
   MonitorUp,
   PlugZap,
   Power,
   RefreshCw,
+  XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-
-interface Capability {
-  available: boolean;
-  tool: string;
-}
-
-interface CapabilitiesResponse {
-  platform: string;
-  capabilities: Record<string, Capability>;
-}
-
-interface PublicSession {
-  id: string;
-  label: string;
-  status: "active" | "stopped";
-  createdAt: string;
-  updatedAt: string;
-  stoppedAt: string | null;
-  platform: string;
-  frameCount: number;
-  inputCount: number;
-  lastFrameAt: string | null;
-  lastInputAt: string | null;
-}
-
-interface StartSessionResponse {
-  session: PublicSession;
-  token: string;
-  viewerUrl: string;
-}
-
-interface SessionsResponse {
-  sessions: PublicSession[];
-}
+import {
+  buildViewerUrl,
+  type CapabilitiesResponse,
+  fetchJson,
+  loadScreenshareTuiState,
+  type PublicSession,
+  type StartSessionResponse,
+} from "./ScreenshareOperatorSurface.helpers";
 
 const APP_NAME = "@elizaos/plugin-screenshare";
-
-function apiUrl(path: string): string {
-  const base = client.getBaseUrl();
-  return base ? `${base}${path}` : path;
-}
-
-async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = client.getRestAuthToken();
-  const response = await fetch(apiUrl(path), {
-    ...init,
-    headers: {
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init?.headers,
-    },
-  });
-  const body = (await response.json().catch(() => null)) as unknown;
-  if (!response.ok) {
-    const message =
-      body &&
-      typeof body === "object" &&
-      "error" in body &&
-      typeof body.error === "string"
-        ? body.error
-        : `Request failed (${response.status})`;
-    throw new Error(message);
-  }
-  return body as T;
-}
 
 function parseViewerSession(
   viewerUrl: string | null | undefined,
@@ -91,29 +51,36 @@ function parseViewerSession(
   }
 }
 
-function buildViewerUrl(args: {
-  baseUrl?: string;
-  sessionId: string;
-  token: string;
-}): string {
-  const params = new URLSearchParams({
-    sessionId: args.sessionId,
-    token: args.token,
-  });
-  const base = args.baseUrl?.trim().replace(/\/+$/, "") ?? "";
-  if (base) {
-    params.set("remoteBase", base);
-    return `${base}/api/apps/screenshare/viewer?${params.toString()}`;
-  }
-  return apiUrl(`/api/apps/screenshare/viewer?${params.toString()}`);
-}
-
 function formatTime(value: string | null): string {
   if (!value) {
     return "Not yet";
   }
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Not yet" : date.toLocaleTimeString();
+}
+
+function ScreenshareMetric({
+  icon: Icon,
+  label,
+  value,
+  active,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string | number;
+  active?: boolean;
+}) {
+  return (
+    <div
+      className="flex min-h-16 items-center justify-center gap-2 rounded-lg border border-border/35 bg-bg/65 px-3 py-2"
+      title={label}
+      role="status"
+      aria-label={`${label}: ${value}`}
+    >
+      <Icon className={`h-4 w-4 ${active ? "text-ok" : "text-muted"}`} />
+      <span className="truncate text-sm font-semibold text-txt">{value}</span>
+    </div>
+  );
 }
 
 function ScreenshareActionButton({
@@ -165,9 +132,7 @@ function ScreenshareField({
     description,
     fillable: !inputProps.readOnly,
   });
-  return (
-    <Input ref={ref} aria-label={label} {...agentProps} {...inputProps} />
-  );
+  return <Input ref={ref} aria-label={label} {...agentProps} {...inputProps} />;
 }
 
 export function ScreenshareOperatorSurface({
@@ -349,48 +314,28 @@ export function ScreenshareOperatorSurface({
   return (
     <section className="flex min-h-0 flex-col gap-3 p-3">
       <SurfaceSection title="Host">
-        <div className="flex flex-wrap items-center gap-2">
-          <SurfaceBadge
-            tone={hostSession?.status === "active" ? "success" : "neutral"}
-          >
-            {hostSession?.status ?? "idle"}
-          </SurfaceBadge>
-          <SurfaceBadge tone="neutral">
-            {capabilities?.platform ?? hostSession?.platform ?? "desktop"}
-          </SurfaceBadge>
-          {capabilities?.capabilities.headfulGui ? (
-            <SurfaceBadge
-              tone={
-                capabilities.capabilities.headfulGui.available
-                  ? "success"
-                  : "warn"
-              }
-            >
-              GUI
-            </SurfaceBadge>
-          ) : null}
-        </div>
-
-        <div className="mt-3 grid gap-2">
-          <ScreenshareField
-            agentId="host-session-id"
-            label="Host session id"
-            group="host"
-            description="Active host screen share session id"
-            value={hostSession?.id ?? ""}
-            readOnly
-            placeholder="Session"
-            className="h-9 bg-bg text-xs"
+        <div className="grid grid-cols-3 gap-2">
+          <ScreenshareMetric
+            icon={MonitorUp}
+            label="Session"
+            value={hostSession?.status ?? "idle"}
+            active={hostSession?.status === "active"}
           />
-          <ScreenshareField
-            agentId="host-token"
-            label="Host session token"
-            group="host"
-            description="Token for the active host screen share session"
-            value={hostToken}
-            readOnly
-            placeholder="Token"
-            className="h-9 bg-bg text-xs"
+          <ScreenshareMetric
+            icon={PlugZap}
+            label="Platform"
+            value={capabilities?.platform ?? hostSession?.platform ?? "desktop"}
+            active={Boolean(capabilities?.platform || hostSession?.platform)}
+          />
+          <ScreenshareMetric
+            icon={
+              capabilities?.capabilities.headfulGui?.available
+                ? CheckCircle2
+                : XCircle
+            }
+            label="GUI"
+            value="GUI"
+            active={capabilities?.capabilities.headfulGui?.available}
           />
         </div>
 
@@ -454,7 +399,7 @@ export function ScreenshareOperatorSurface({
             variant="outline"
             className="h-9 gap-2"
             onClick={() => void stopHostSession()}
-            disabled={!hostSession || hostSession.status !== "active"}
+            disabled={hostSession?.status !== "active"}
           >
             <Power className="h-4 w-4" />
             Stop
@@ -462,11 +407,31 @@ export function ScreenshareOperatorSurface({
         </div>
 
         {hostSession ? (
-          <div className="mt-3 grid grid-cols-2 gap-2 text-xs-tight text-muted-strong">
-            <span>Frames: {hostSession.frameCount}</span>
-            <span>Inputs: {hostSession.inputCount}</span>
-            <span>Frame: {formatTime(hostSession.lastFrameAt)}</span>
-            <span>Input: {formatTime(hostSession.lastInputAt)}</span>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <ScreenshareMetric
+              icon={MonitorUp}
+              label="Frames"
+              value={hostSession.frameCount}
+              active={hostSession.frameCount > 0}
+            />
+            <ScreenshareMetric
+              icon={PlugZap}
+              label="Inputs"
+              value={hostSession.inputCount}
+              active={hostSession.inputCount > 0}
+            />
+            <ScreenshareMetric
+              icon={RefreshCw}
+              label="Last frame"
+              value={formatTime(hostSession.lastFrameAt)}
+              active={hostSession.lastFrameAt !== null}
+            />
+            <ScreenshareMetric
+              icon={Power}
+              label="Last input"
+              value={formatTime(hostSession.lastInputAt)}
+              active={hostSession.lastInputAt !== null}
+            />
           </div>
         ) : null}
       </SurfaceSection>
@@ -539,20 +504,27 @@ export function ScreenshareOperatorSurface({
 
       {capabilities ? (
         <SurfaceSection title="Capabilities">
-          <div className="grid gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {Object.entries(capabilities.capabilities).map(
               ([name, capability]) => (
                 <div
                   key={name}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-border/35 bg-bg/65 px-3 py-2 text-xs"
+                  className="flex min-h-14 items-center justify-center gap-2 rounded-lg border border-border/35 bg-bg/65 px-3 py-2"
+                  title={`${name}: ${capability.tool}`}
                 >
-                  <span className="font-medium text-txt">{name}</span>
+                  {capability.available ? (
+                    <CheckCircle2 className="h-4 w-4 text-ok" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-muted" />
+                  )}
                   <span
                     className={
-                      capability.available ? "text-ok" : "text-muted-strong"
+                      capability.available
+                        ? "truncate text-xs font-semibold text-txt"
+                        : "truncate text-xs font-semibold text-muted-strong"
                     }
                   >
-                    {capability.tool}
+                    {name}
                   </span>
                 </div>
               ),
@@ -651,7 +623,7 @@ export function ScreenshareTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -728,7 +700,12 @@ export function ScreenshareTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>capabilities</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | start | session | stop | input | viewer-url
+            {
+              Object.values(state?.capabilities.capabilities ?? {}).filter(
+                (capability) => capability.available,
+              ).length
+            }{" "}
+            live / {state?.sessions.length ?? 0} sessions
           </div>
           <div>
             <span style={{ color: "#64748b" }}>platform</span>{" "}
@@ -752,123 +729,4 @@ export function ScreenshareTuiView() {
       </div>
     </div>
   );
-}
-
-async function loadScreenshareTuiState(): Promise<{
-  capabilities: CapabilitiesResponse;
-  sessions: SessionsResponse;
-}> {
-  const [capabilities, sessions] = await Promise.all([
-    fetchJson<CapabilitiesResponse>("/api/apps/screenshare/capabilities"),
-    fetchJson<SessionsResponse>("/api/apps/screenshare/sessions"),
-  ]);
-  return { capabilities, sessions };
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-screenshare-state") {
-    return { viewType: "tui", ...(await loadScreenshareTuiState()) };
-  }
-
-  if (capability === "terminal-screenshare-start") {
-    return {
-      viewType: "tui",
-      ...(await fetchJson<StartSessionResponse>(
-        "/api/apps/screenshare/session",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            label:
-              typeof params?.label === "string" ? params.label : "Terminal",
-          }),
-        },
-      )),
-    };
-  }
-
-  if (capability === "terminal-screenshare-session") {
-    const sessionId =
-      typeof params?.sessionId === "string" ? params.sessionId.trim() : "";
-    const token = typeof params?.token === "string" ? params.token.trim() : "";
-    if (!sessionId) throw new Error("sessionId is required");
-    if (!token) throw new Error("token is required");
-    return {
-      viewType: "tui",
-      ...(await fetchJson<{ session: PublicSession }>(
-        `/api/apps/screenshare/session/${encodeURIComponent(
-          sessionId,
-        )}?token=${encodeURIComponent(token)}`,
-      )),
-    };
-  }
-
-  if (capability === "terminal-screenshare-stop") {
-    const sessionId =
-      typeof params?.sessionId === "string" ? params.sessionId.trim() : "";
-    const token = typeof params?.token === "string" ? params.token.trim() : "";
-    if (!sessionId) throw new Error("sessionId is required");
-    if (!token) throw new Error("token is required");
-    return {
-      viewType: "tui",
-      ...(await fetchJson<{ session: PublicSession }>(
-        `/api/apps/screenshare/session/${encodeURIComponent(sessionId)}/stop`,
-        {
-          method: "POST",
-          body: JSON.stringify({ token }),
-          headers: { "X-Screenshare-Token": token },
-        },
-      )),
-    };
-  }
-
-  if (capability === "terminal-screenshare-input") {
-    const sessionId =
-      typeof params?.sessionId === "string" ? params.sessionId.trim() : "";
-    const token = typeof params?.token === "string" ? params.token.trim() : "";
-    if (!sessionId) throw new Error("sessionId is required");
-    if (!token) throw new Error("token is required");
-    return {
-      viewType: "tui",
-      ...(await fetchJson<Record<string, unknown>>(
-        `/api/apps/screenshare/session/${encodeURIComponent(sessionId)}/input`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            token,
-            type: typeof params?.type === "string" ? params.type : "keypress",
-            keys: typeof params?.keys === "string" ? params.keys : undefined,
-            text: typeof params?.text === "string" ? params.text : undefined,
-            x: typeof params?.x === "number" ? params.x : undefined,
-            y: typeof params?.y === "number" ? params.y : undefined,
-            button:
-              typeof params?.button === "string" ? params.button : undefined,
-            deltaY:
-              typeof params?.deltaY === "number" ? params.deltaY : undefined,
-          }),
-          headers: { "X-Screenshare-Token": token },
-        },
-      )),
-    };
-  }
-
-  if (capability === "terminal-screenshare-viewer-url") {
-    const sessionId =
-      typeof params?.sessionId === "string" ? params.sessionId.trim() : "";
-    const token = typeof params?.token === "string" ? params.token.trim() : "";
-    if (!sessionId) throw new Error("sessionId is required");
-    if (!token) throw new Error("token is required");
-    return {
-      viewType: "tui",
-      viewerUrl: buildViewerUrl({
-        baseUrl: typeof params?.baseUrl === "string" ? params.baseUrl : "",
-        sessionId,
-        token,
-      }),
-    };
-  }
-
-  throw new Error(`Unsupported capability "${capability}"`);
 }

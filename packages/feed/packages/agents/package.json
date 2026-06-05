@@ -15,11 +15,16 @@
       "types": "./src/client.ts",
       "import": "./src/client.ts",
       "require": "./src/client.ts"
+    },
+    "./training": {
+      "types": "./src/training/index.ts",
+      "import": "./src/training/index.ts",
+      "require": "./src/training/index.ts"
     }
   },
   "scripts": {
-    "lint": "echo skip (feed) >&2",
-    "typecheck": "echo skip (feed) >&2"
+    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/agents/package.json packages/agents/tsconfig.json packages/agents/src",
+    "typecheck": "cd ../.. && bun run tsc -p packages/agents --noEmit"
   },
   "dependencies": {
     "@elizaos/core": "2.0.0-alpha.109",

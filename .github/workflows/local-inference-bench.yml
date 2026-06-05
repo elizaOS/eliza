@@ -5,7 +5,7 @@ name: Local Inference Bench
 # --target — so we run it in two layers:
 #
 #   1. PR + nightly: harness route smoke. Boots
-#      `packages/scripts/benchmark/stub-agent-server.mjs` on a free port and
+#      `packages/scripts/benchmark/synthetic-agent-server.mjs` on a free port and
 #      runs the profile harness against its model-ensure path.
 #   2. Nightly only: real agent profile. Boots `bun run dev`, points the
 #      harness at the dev server, writes the report under
@@ -90,7 +90,7 @@ jobs:
       - name: Boot stub agent server
         run: |
           set -euo pipefail
-          node packages/scripts/benchmark/stub-agent-server.mjs \
+          node packages/scripts/benchmark/synthetic-agent-server.mjs \
             --port "${STUB_PORT}" \
             --require-installed-models &
           echo $! > /tmp/stub.pid
@@ -225,7 +225,7 @@ jobs:
 
       - name: Open / update tracking issue
         if: ${{ env.REPORT_DIR != '' }}
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         with:
           script: |
             const fs = require("node:fs");
@@ -479,7 +479,7 @@ jobs:
             - Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
             - Diff path: `${{ env.DIFF_PATH }}`
 
-            W5-Catalog: please apply the diff to `packages/app-core/src/services/local-inference/catalog.ts`.
+            W5-Catalog: please apply the diff to `packages/shared/src/local-inference/catalog.ts`.
           add-paths: |
             reports/porting/**/catalog-diff.json
           delete-branch: true

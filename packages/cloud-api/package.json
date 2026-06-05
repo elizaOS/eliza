@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cloud-api",
-  "version": "2.0.3-beta.1",
+  "version": "2.0.3-beta.6",
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
@@ -31,7 +31,7 @@
     "ai": "^6.0.170",
     "drizzle-orm": "^0.45.1",
     "file-type": "^22.0.1",
-    "hono": "4.12.18",
+    "hono": "4.12.21",
     "music-metadata": "^11.12.3",
     "nanoid": "^5.1.9",
     "stripe": "^22.0.0",
@@ -43,7 +43,7 @@
     "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.15",
+    "@biomejs/biome": "2.4.16",
     "@types/pg": "^8.16.0",
     "dotenv": "^17.4.2",
     "pg": "^8.20.0",

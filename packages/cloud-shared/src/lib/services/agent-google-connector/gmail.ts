@@ -631,7 +631,7 @@ export async function readManagedGoogleGmailMessage(args: {
   const parsed = (await response.json()) as GoogleGmailMetadataResponse;
   const message = normalizeGoogleGmailMessage(parsed, selfEmail);
   if (!message) {
-    fail(502, "Google Gmail returned an incomplete message payload.");
+    fail(502, "Google Gmail returned a partial message payload.");
   }
   const rawBody = parsed.payload ? extractBody(parsed.payload) : "";
   return {

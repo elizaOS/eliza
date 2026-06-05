@@ -43,7 +43,6 @@ import {
   getChatFailureReply,
   hasRecentVisibleAssistantMemorySince,
   initSse,
-  isDuplicateChatMessage,
   normalizeChatResponseText,
   persistAssistantConversationMemory,
   persistConversationMemory,
@@ -66,6 +65,12 @@ import {
   resolveConversationGreetingText,
   resolveWalletModeGuidanceReply,
 } from "./server-helpers.ts";
+import {
+  resolveWaifuChatAccess,
+  type WaifuChatAccess,
+  type WaifuChatWorldRole,
+  waifuChatRoleToWorldRole,
+} from "./server-helpers-auth.ts";
 import type { ConversationMeta } from "./server-types.ts";
 
 interface DiscordProfileLike {
@@ -463,10 +468,87 @@ function ensureAdminEntityId(state: ConversationRouteState): UUID {
   return resolveConversationAdminEntityId(state);
 }
 
+function resolveConversationCaller(
+  req: http.IncomingMessage,
+  state: ConversationRouteState,
+): { entityId: UUID; role: WaifuChatWorldRole; userName: string } {
+  const access = resolveWaifuChatAccess(req);
+  if (!access) {
+    return {
+      entityId: ensureAdminEntityId(state),
+      role: "OWNER",
+      userName: resolveAppUserName(state.config),
+    };
+  }
+
+  return {
+    entityId: stringToUuid(
+      `waifu-wallet:${access.walletAddress.toLowerCase()}`,
+    ),
+    role: waifuChatRoleToWorldRole(access.role),
+    userName: access.walletAddress,
+  };
+}
+
+function normalizeWaifuWallet(address: string | undefined): string | null {
+  if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) return null;
+  return address.toLowerCase();
+}
+
+function getWaifuChatOwnerWallet(conv: ConversationMeta): string | null {
+  return normalizeWaifuWallet(conv.metadata?.waifuChatOwnerWallet);
+}
+
+function addWaifuConversationOwnerMetadata(
+  req: http.IncomingMessage,
+  metadata: ConversationMeta["metadata"],
+): ConversationMeta["metadata"] {
+  const access = resolveWaifuChatAccess(req);
+  if (!access) return metadata;
+  return {
+    ...(metadata ?? {}),
+    waifuChatOwnerWallet: access.walletAddress.toLowerCase(),
+    waifuChatRole: access.role,
+  };
+}
+
+function canWaifuAccessConversation(
+  access: WaifuChatAccess | null,
+  conv: ConversationMeta,
+): boolean {
+  if (!access || access.role === "admin") return true;
+  return getWaifuChatOwnerWallet(conv) === access.walletAddress.toLowerCase();
+}
+
+function rejectWaifuConversationAccessIfNeeded(
+  req: http.IncomingMessage,
+  conv: ConversationMeta,
+  error: ConversationRouteContext["error"],
+  res: http.ServerResponse,
+): boolean {
+  const access = resolveWaifuChatAccess(req);
+  if (canWaifuAccessConversation(access, conv)) return false;
+  error(res, "Conversation not found", 404);
+  return true;
+}
+
+function rejectWaifuNonAdminMutationIfNeeded(
+  req: http.IncomingMessage,
+  error: ConversationRouteContext["error"],
+  res: http.ServerResponse,
+): boolean {
+  const access = resolveWaifuChatAccess(req);
+  if (!access || access.role === "admin") return false;
+  error(res, "Forbidden", 403);
+  return true;
+}
+
 async function ensureWorldOwnershipAndRoles(
   runtime: AgentRuntime,
   worldId: UUID,
   ownerId: UUID,
+  callerId: UUID,
+  callerRole: WaifuChatWorldRole,
 ): Promise<void> {
   const world = await runtime.getWorld(worldId);
   if (!world) return;
@@ -489,6 +571,11 @@ async function ensureWorldOwnershipAndRoles(
   const roles = metadataWithRoles.roles ?? {};
   if (roles[ownerId] !== "OWNER") {
     roles[ownerId] = "OWNER";
+    metadataWithRoles.roles = roles;
+    needsUpdate = true;
+  }
+  if (roles[callerId] !== callerRole) {
+    roles[callerId] = callerRole;
     metadataWithRoles.roles = roles;
     needsUpdate = true;
   }
@@ -627,25 +714,36 @@ async function deleteConversationMemories(
 async function ensureConversationRoom(
   state: ConversationRouteState,
   conv: ConversationMeta,
+  caller: {
+    entityId: UUID;
+    role: WaifuChatWorldRole;
+    userName: string;
+  },
 ): Promise<void> {
   if (!state.runtime) return;
   const runtime = state.runtime;
   const agentName = runtime.character.name ?? "Eliza";
-  const userId = ensureAdminEntityId(state);
+  const ownerId = ensureAdminEntityId(state);
   const worldId = stringToUuid(`${agentName}-web-chat-world`);
   const messageServerId = stringToUuid(`${agentName}-web-server`) as UUID;
   await runtime.ensureConnection({
-    entityId: userId,
+    entityId: caller.entityId,
     roomId: conv.roomId,
     worldId,
-    userName: resolveAppUserName(state.config),
+    userName: caller.userName,
     source: "client_chat",
     channelId: `web-conv-${conv.id}`,
     type: ChannelType.DM,
     messageServerId,
-    metadata: { ownership: { ownerId: userId } },
+    metadata: { ownership: { ownerId }, waifuRole: caller.role },
   });
-  await ensureWorldOwnershipAndRoles(runtime, worldId as UUID, userId);
+  await ensureWorldOwnershipAndRoles(
+    runtime,
+    worldId as UUID,
+    ownerId,
+    caller.entityId,
+    caller.role,
+  );
 }
 
 async function syncConversationRoomState(
@@ -1076,8 +1174,10 @@ export async function handleConversationRoutes(
   // ── GET /api/conversations ──────────────────────────────────────────
   if (method === "GET" && pathname === "/api/conversations") {
     await waitForConversationRestore(state);
+    const waifuAccess = resolveWaifuChatAccess(req);
     const convos = Array.from(state.conversations.values())
       .filter((c) => !state.deletedConversationIds.has(c.id))
+      .filter((c) => canWaifuAccessConversation(waifuAccess, c))
       .sort(
         (a, b) =>
           new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
@@ -1104,13 +1204,15 @@ export async function handleConversationRoutes(
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     const roomId = stringToUuid(`web-conv-${id}`);
+    const metadata = addWaifuConversationOwnerMetadata(
+      req,
+      sanitizeConversationMetadata(body.metadata),
+    );
     const conv: ConversationMeta = {
       id,
       title: body.title?.trim() || "New Chat",
       roomId,
-      ...(sanitizeConversationMetadata(body.metadata)
-        ? { metadata: sanitizeConversationMetadata(body.metadata) }
-        : {}),
+      ...(metadata ? { metadata } : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -1129,7 +1231,11 @@ export async function handleConversationRoutes(
 
     if (state.runtime) {
       try {
-        await ensureConversationRoom(state, conv);
+        await ensureConversationRoom(
+          state,
+          conv,
+          resolveConversationCaller(req, state),
+        );
         await syncConversationRoomState(state, conv);
         if (body.includeGreeting === true) {
           const storedGreeting = await ensureConversationGreetingStored(
@@ -1168,6 +1274,9 @@ export async function handleConversationRoutes(
     const conv = await getConversationWithRestore(state, convId);
     if (!conv) {
       error(res, "Conversation not found", 404);
+      return true;
+    }
+    if (rejectWaifuConversationAccessIfNeeded(req, conv, error, res)) {
       return true;
     }
     if (!state.runtime) {
@@ -1391,6 +1500,7 @@ export async function handleConversationRoutes(
       error(res, "Conversation not found", 404);
       return true;
     }
+    if (rejectWaifuNonAdminMutationIfNeeded(req, error, res)) return true;
 
     const rawTrunc = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawTrunc === null) return true;
@@ -1448,6 +1558,9 @@ export async function handleConversationRoutes(
       error(res, "Conversation not found", 404);
       return true;
     }
+    if (rejectWaifuConversationAccessIfNeeded(req, conv, error, res)) {
+      return true;
+    }
 
     const disconnectTracker = createConversationStreamDisconnectTracker({
       req,
@@ -1478,7 +1591,6 @@ export async function handleConversationRoutes(
       preferredLanguage,
       source,
       metadata: chatMetadata,
-      clientMessageId,
     } = chatPayload;
 
     const runtime = state.runtime;
@@ -1489,41 +1601,12 @@ export async function handleConversationRoutes(
       return true;
     }
 
-    // HTTP idempotency (report 05, Finding 1 / W3.1). A retried or
-    // double-submitted POST carries the same client-stamped `clientMessageId`;
-    // without an idempotency key (absent/invalid id) this is always false, so
-    // behavior is unchanged for those requests. On a duplicate within the TTL
-    // window we skip the second LLM turn entirely and return the same benign
-    // shape the client already tolerates for a no-op turn (an empty `done` with
-    // `noResponseReason: "ignored"`): the client drops the duplicate optimistic
-    // placeholder and re-syncs the original turn from the DB. No second
-    // generation runs and no duplicate assistant memory is persisted.
-    const clientMessageIdForLog = clientMessageId ?? null;
-    if (isDuplicateChatMessage(conv.roomId, clientMessageIdForLog)) {
-      logger.info(
-        {
-          conversationId: conv.id,
-          roomId: conv.roomId,
-          clientMessageId: clientMessageIdForLog,
-        },
-        "[ConversationStream] duplicate chat send suppressed (idempotent)",
-      );
-      initSse(res);
-      writeSseJson(res, {
-        type: "done",
-        fullText: "",
-        agentName: state.agentName,
-        noResponseReason: "ignored",
-      });
-      finishStreamResponse();
-      return true;
-    }
-
-    const userId = ensureAdminEntityId(state);
+    const caller = resolveConversationCaller(req, state);
+    const userId = caller.entityId;
     const turnStartedAt = Date.now();
 
     try {
-      await ensureConversationRoom(state, conv);
+      await ensureConversationRoom(state, conv, caller);
     } catch (err) {
       error(
         res,
@@ -1840,6 +1923,9 @@ export async function handleConversationRoutes(
       error(res, "Conversation not found", 404);
       return true;
     }
+    if (rejectWaifuConversationAccessIfNeeded(req, conv, error, res)) {
+      return true;
+    }
     const chatPayload = await readChatRequestPayload(req, res, {
       readJsonBody,
       error,
@@ -1852,41 +1938,18 @@ export async function handleConversationRoutes(
       preferredLanguage,
       source,
       metadata: restMetadata,
-      clientMessageId,
     } = chatPayload;
     const runtime = state.runtime;
     if (!runtime) {
       error(res, "Agent is not running", 503);
       return true;
     }
-
-    // HTTP idempotency (report 05, Finding 1 / W3.1) — same guard as the
-    // streaming path. Absent/invalid `clientMessageId` is never a duplicate, so
-    // unkeyed requests are unaffected. On a duplicate we skip the second LLM
-    // turn and return the no-op JSON shape this endpoint already produces.
-    const clientMessageIdForLog = clientMessageId ?? null;
-    if (isDuplicateChatMessage(conv.roomId, clientMessageIdForLog)) {
-      logger.info(
-        {
-          conversationId: conv.id,
-          roomId: conv.roomId,
-          clientMessageId: clientMessageIdForLog,
-        },
-        "[conversations] duplicate chat send suppressed (idempotent)",
-      );
-      json(res, {
-        text: "",
-        agentName: state.agentName,
-        noResponseReason: "ignored",
-      });
-      return true;
-    }
-
-    const userId = ensureAdminEntityId(state);
+    const caller = resolveConversationCaller(req, state);
+    const userId = caller.entityId;
     const turnStartedAt = Date.now();
 
     try {
-      await ensureConversationRoom(state, conv);
+      await ensureConversationRoom(state, conv, caller);
     } catch (err) {
       error(
         res,
@@ -2030,6 +2093,9 @@ export async function handleConversationRoutes(
       error(res, "Conversation not found", 404);
       return true;
     }
+    if (rejectWaifuConversationAccessIfNeeded(req, conv, error, res)) {
+      return true;
+    }
 
     const runtime = state.runtime;
     if (!runtime) {
@@ -2040,7 +2106,11 @@ export async function handleConversationRoutes(
     const lang = url.searchParams.get("lang") ?? "en";
 
     try {
-      await ensureConversationRoom(state, conv);
+      await ensureConversationRoom(
+        state,
+        conv,
+        resolveConversationCaller(req, state),
+      );
     } catch (err) {
       error(
         res,
@@ -2080,6 +2150,7 @@ export async function handleConversationRoutes(
       error(res, "Conversation not found", 404);
       return true;
     }
+    if (rejectWaifuNonAdminMutationIfNeeded(req, error, res)) return true;
     const rawPatch = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawPatch === null) return true;
     const parsedPatch = PatchConversationRequestSchema.safeParse(rawPatch);
@@ -2173,6 +2244,7 @@ export async function handleConversationRoutes(
 
   // ── POST /api/conversations/cleanup-empty ───────────────────────────
   if (method === "POST" && pathname === "/api/conversations/cleanup-empty") {
+    if (rejectWaifuNonAdminMutationIfNeeded(req, error, res)) return true;
     const rawCleanup = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawCleanup === null) return true;
     const parsedCleanup =
@@ -2228,6 +2300,7 @@ export async function handleConversationRoutes(
     /^\/api\/conversations\/[^/]+$/.test(pathname) &&
     !pathname.endsWith("/messages")
   ) {
+    if (rejectWaifuNonAdminMutationIfNeeded(req, error, res)) return true;
     const convId = decodeURIComponent(pathname.split("/")[3]);
     const conv = await getConversationWithRestore(state, convId);
     if (conv?.roomId && state.runtime) {

@@ -1,4 +1,5 @@
 import { and, desc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
+import type { PricingBillingSource } from "../../lib/services/ai-pricing-definitions";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type AiPricingEntry,
@@ -149,15 +150,7 @@ export class AiPricingRepository {
   }
 
   async createManualOverride(input: {
-    billingSource:
-      | "gateway"
-      | "openrouter"
-      | "openai"
-      | "groq"
-      | "vast"
-      | "fal"
-      | "elevenlabs"
-      | "suno";
+    billingSource: PricingBillingSource;
     provider: string;
     model: string;
     productFamily:

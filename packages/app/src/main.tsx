@@ -1872,8 +1872,40 @@ function validateAndSetApiBase(apiBase: string): void {
 }
 
 function injectPopoutApiBase(): void {
-  const apiBase = getWindowUrlSearchParams().get("apiBase");
+  const params = getWindowUrlSearchParams();
+  const apiBase = params.get("apiBase");
   if (apiBase) validateAndSetApiBase(apiBase);
+}
+
+function injectWaifuChatAccessToken(): void {
+  const params = getWindowUrlSearchParams();
+  const waifuAccessToken = params.get("waifu_access_token")?.trim();
+  if (waifuAccessToken) {
+    setBootConfig({ ...getBootConfig(), apiToken: waifuAccessToken });
+    window.history.replaceState(
+      window.history.state,
+      "",
+      removeUrlParameter(window.location.href, "waifu_access_token"),
+    );
+  }
+}
+
+function removeUrlParameter(href: string, parameter: string): URL {
+  const nextUrl = new URL(href);
+  nextUrl.searchParams.delete(parameter);
+  const hashQueryIndex = nextUrl.hash.indexOf("?");
+  if (hashQueryIndex >= 0) {
+    const hashPath = nextUrl.hash.slice(0, hashQueryIndex);
+    const hashParams = new URLSearchParams(
+      nextUrl.hash.slice(hashQueryIndex + 1),
+    );
+    hashParams.delete(parameter);
+    const serializedHashParams = hashParams.toString();
+    nextUrl.hash = serializedHashParams
+      ? `${hashPath}?${serializedHashParams}`
+      : hashPath;
+  }
+  return nextUrl;
 }
 
 function injectDetachedShellApiBase(): void {
@@ -2234,6 +2266,8 @@ async function main(): Promise<void> {
       err instanceof Error ? err.message : err,
     );
   }
+
+  injectWaifuChatAccessToken();
 
   if (isPopoutWindow()) {
     injectPopoutApiBase();

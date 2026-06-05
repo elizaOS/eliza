@@ -302,20 +302,6 @@ async function runBenchmark(
 
   return result;
   */
-
-  // Unreachable - return placeholder to satisfy type checker
-  return {
-    id: "disabled",
-    totalTrades: 0,
-    totalPnL: 0,
-    winRate: 0,
-    avgROI: 0,
-    metrics: {
-      totalPnl: 0,
-      predictionMetrics: { accuracy: 0 },
-      optimalityScore: 0,
-    },
-  };
 }
 
 async function runMultiple(
@@ -392,12 +378,6 @@ async function runMultiple(
   log('');
   log(`Results: ${outputDir}`);
   */
-
-  // Unreachable - return placeholder to satisfy type checker
-  return {
-    runs: [],
-    comparison: {},
-  };
 }
 
 // CLI

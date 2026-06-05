@@ -4,7 +4,5 @@ export * from "./use-audio-player";
 export * from "./use-audio-recorder";
 export { VoiceAudioPlayer } from "./voice-audio-player";
 export { VoiceEmptyState } from "./voice-empty-state";
-export {
-  getEstimatedReadyMessage,
-  VoiceStatusBadge,
-} from "./voice-status-badge";
+export { VoiceStatusBadge } from "./voice-status-badge";
+export { getEstimatedReadyMessage } from "./voice-status-badge.helpers";

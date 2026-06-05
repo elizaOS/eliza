@@ -3,7 +3,7 @@
  *
  * Backs the `ModelUpdatesPanel` UI (R5-versioning §5) — the panel lives in
  * `packages/ui/src/components/local-inference/ModelUpdatesPanel.tsx` and
- * was originally wired with no-op handlers until the local-runtime compat
+ * was originally wired with inert handlers until the local-runtime compat
  * routes landed.
  *
  * Augments `ElizaClient` via declaration merging, same pattern as

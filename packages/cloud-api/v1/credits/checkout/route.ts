@@ -3,10 +3,17 @@
  * Create a Stripe checkout session for purchasing organization credits.
  */
 
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { dbRead } from "@/db/helpers";
+import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
+import {
+  failureResponse,
+  ValidationError,
+} from "@/lib/api/cloud-worker-errors";
+import { validateServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
@@ -17,12 +24,14 @@ import {
   getDefaultPlatformRedirectOrigins,
 } from "@/lib/security/redirect-validation";
 import { organizationsService } from "@/lib/services/organizations";
+import { usersService } from "@/lib/services/users";
 import { requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CheckoutSchema = z.object({
   credits: z.number().min(1).max(1000),
+  agent_id: z.string().uuid().optional(),
   success_url: z.string().url(),
   cancel_url: z.string().url(),
 });
@@ -33,10 +42,6 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
-    const stripeCurrency =
-      (c.env.STRIPE_CURRENCY as string | undefined) || "usd";
-
     const body = await c.req.json();
     const validation = CheckoutSchema.safeParse(body);
     if (!validation.success) {
@@ -46,7 +51,15 @@ app.post("/", async (c) => {
       );
     }
 
-    const { credits: amount, success_url, cancel_url } = validation.data;
+    const {
+      credits: amount,
+      agent_id,
+      success_url,
+      cancel_url,
+    } = validation.data;
+    const user = await resolveCreditUser(c, agent_id);
+    const stripeCurrency =
+      (c.env.STRIPE_CURRENCY as string | undefined) || "usd";
     const allowedRedirectOrigins = getDefaultPlatformRedirectOrigins();
     const successUrl = assertAllowedAbsoluteRedirectUrl(
       success_url,
@@ -123,6 +136,7 @@ app.post("/", async (c) => {
         user_id: user.id,
         credits: amount.toFixed(2),
         type: "custom_amount",
+        ...(agent_id ? { agent_id } : {}),
       },
     });
 
@@ -148,3 +162,32 @@ app.post("/", async (c) => {
 });
 
 export default app;
+
+async function resolveCreditUser(
+  c: Parameters<typeof requireUserOrApiKeyWithOrg>[0],
+  agentId?: string,
+): ReturnType<typeof requireUserOrApiKeyWithOrg> {
+  if (!agentId) return requireUserOrApiKeyWithOrg(c);
+  await validateServiceKey(c);
+
+  const [sandbox] = await dbRead
+    .select({
+      organizationId: agentSandboxes.organization_id,
+      userId: agentSandboxes.user_id,
+    })
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, agentId))
+    .limit(1);
+  if (!sandbox) throw ValidationError("Invalid agent_id");
+
+  const user = await usersService.getWithOrganization(sandbox.userId);
+  if (
+    !user?.organization_id ||
+    !user?.organization ||
+    user.organization_id !== sandbox.organizationId
+  ) {
+    throw ValidationError("Agent owner account is not billable");
+  }
+
+  return user as Awaited<ReturnType<typeof requireUserOrApiKeyWithOrg>>;
+}

@@ -61,7 +61,9 @@ let discordModulePromise: Promise<{
 
 function getDiscordModule() {
   if (!discordModulePromise) {
-    discordModulePromise = import("@elizaos/plugin-discord") as Promise<{
+    discordModulePromise = import(
+      /* @vite-ignore */ "@elizaos/plugin-discord"
+    ) as Promise<{
       cacheDiscordAvatarUrl: (
         avatarUrl: string | undefined,
         options: {

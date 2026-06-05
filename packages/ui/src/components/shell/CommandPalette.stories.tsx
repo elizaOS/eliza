@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import type * as React from "react";
-import { BugReportProvider, useBugReportState } from "../../hooks/useBugReport";
-import { mockApp } from "../../storybook/mock-providers";
+import { BugReportProvider } from "../../hooks/BugReportProvider";
+import { useBugReportState } from "../../hooks/useBugReport.hooks";
+import { mockApp } from "../../storybook/mock-providers.helpers";
 import { CommandPalette } from "./CommandPalette";
 
 // Visibility is gated on `commandPaletteOpen` from useApp() — it drives the

@@ -158,6 +158,8 @@ const CORE_PACKAGE_DIR = resolveWorkspacePackageDir("core");
 const PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR = resolveWorkspacePluginDir(
   "plugin-agent-orchestrator",
 );
+const APP_MODEL_TESTER_PACKAGE_DIR =
+  resolveWorkspacePluginDir("app-model-tester");
 const PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR = resolveWorkspacePluginDir(
   "plugin-local-inference",
 );
@@ -410,6 +412,14 @@ function runBunCapture(commandArgs, options = {}) {
   return runCapture(bun, commandArgs, options);
 }
 
+function runBunStatus(commandArgs, options = {}) {
+  const bun = resolveBunBinary();
+  if (!bun) {
+    fail('Could not find "bun" in PATH.');
+  }
+  return runStatus(bun, commandArgs, options);
+}
+
 function desktopBuildTempEnv(extraEnv = {}) {
   fs.mkdirSync(DESKTOP_BUILD_TMP_DIR, { recursive: true });
   return {
@@ -485,11 +495,6 @@ function runNode(commandArgs, options = {}) {
   run(node, commandArgs, options);
 }
 
-function runNodeStatus(commandArgs, options = {}) {
-  const node = which("node") ?? process.execPath;
-  return runStatus(node, commandArgs, options);
-}
-
 function runPackageBinary(binary, binaryArgs, options = {}) {
   const bunx = which("bunx");
   if (bunx) {
@@ -504,6 +509,16 @@ function runPackageBinary(binary, binaryArgs, options = {}) {
   }
 
   fail(`Could not find bunx or npx to run ${binary}.`);
+}
+
+function runBunPackageBinary(binary, binaryArgs, options = {}) {
+  const bunx = which("bunx");
+  if (bunx) {
+    run(bunx, ["--bun", binary, ...binaryArgs], options);
+    return;
+  }
+
+  runPackageBinary(binary, binaryArgs, options);
 }
 
 function runElectrobun(commandArgs, options = {}) {
@@ -826,9 +841,7 @@ function workspaceRuntimePackageLooksBuilt(packageName, packageDir) {
     return (
       fs.existsSync(path.join(distDir, "index.js")) &&
       fs.existsSync(path.join(distDir, "App.js")) &&
-      fs.existsSync(
-        path.join(distDir, "components", "pages", "LogsView.js"),
-      )
+      fs.existsSync(path.join(distDir, "components", "pages", "LogsView.js"))
     );
   }
 
@@ -851,6 +864,10 @@ function ensureWorkspaceRuntimePackagesBuilt() {
   ensureWorkspaceRuntimePackageBuilt(
     "@elizaos/plugin-agent-orchestrator",
     PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR,
+  );
+  ensureWorkspaceRuntimePackageBuilt(
+    "@elizaos/app-model-tester",
+    APP_MODEL_TESTER_PACKAGE_DIR,
   );
   ensureWorkspaceRuntimePackageBuilt("@elizaos/ui", UI_PACKAGE_DIR);
   ensureWorkspaceRuntimePackageBuilt(
@@ -1012,8 +1029,6 @@ function desktopRendererBuildEnv() {
 
 function runtimeCopyArgs() {
   return [
-    "--import",
-    "tsx",
     RUNTIME_COPY_SCRIPT,
     "--scan-dir",
     "dist",
@@ -1035,7 +1050,7 @@ function runtimeCopyLabel() {
 function copyRuntimeNodeModulesWithRetry() {
   const maxAttempts = 2;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const result = runNodeStatus(runtimeCopyArgs(), {
+    const result = runBunStatus(runtimeCopyArgs(), {
       cwd: ROOT,
       label:
         attempt === 1
@@ -1070,7 +1085,7 @@ function stageDesktopBuild() {
     label: "Generating UI runtime CSS string modules",
   });
 
-  runNode(["--import", "tsx", WRITE_BUILD_INFO_SCRIPT], {
+  runBun([WRITE_BUILD_INFO_SCRIPT], {
     cwd: ROOT,
     label: "Writing build metadata",
   });
@@ -1111,7 +1126,7 @@ function stageDesktopBuild() {
 
   ensureUiGeneratedAssets();
 
-  runPackageBinary("vite", ["build"], {
+  runBunPackageBinary("vite", ["build"], {
     cwd: APP_DIR,
     env: desktopRendererBuildEnv(),
     label: `Building renderer bundle (VITE_APP_VARIANT=${variant}, ELIZA_BUILD_VARIANT=${buildVariant})`,

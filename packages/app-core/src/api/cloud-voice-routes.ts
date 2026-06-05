@@ -44,7 +44,7 @@ export interface CloudVoiceRouteDeps {
   fetchCatalog?: (runtime: AgentRuntime) => Promise<CloudVoiceCatalogEntry[]>;
   /**
    * Auth gate; defaults to `ensureRouteAuthorized` from
-   * `./auth`. Tests pass a fake to drive 401 / pass cases.
+   * `./auth`. Tests pass a test double to drive 401 / pass cases.
    */
   ensureAuthorized?: (
     req: http.IncomingMessage,

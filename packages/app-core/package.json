@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-core",
-  "version": "2.0.3-beta.1",
+  "version": "2.0.3-beta.6",
   "description": "Shared application core for elizaOS white-label agent apps.",
   "type": "module",
   "license": "MIT",
@@ -95,6 +95,11 @@
       "types": "./dist/api/auth.d.ts",
       "import": "./dist/api/auth.js",
       "default": "./dist/api/auth.js"
+    },
+    "./api/cloud-pair-route": {
+      "types": "./dist/api/cloud-pair-route.d.ts",
+      "import": "./dist/api/cloud-pair-route.js",
+      "default": "./dist/api/cloud-pair-route.js"
     },
     "./api/compat-route-shared": {
       "types": "./dist/api/compat-route-shared.d.ts",
@@ -214,7 +219,7 @@
   "dependencies": {
     "@capacitor-community/sqlite": "^7.0.0",
     "@capacitor/barcode-scanner": "^3.0.0",
-    "@capacitor/core": "8.3.1",
+    "@capacitor/core": "8.4.0",
     "@capacitor/haptics": "8.0.2",
     "@capacitor/keyboard": "8.0.3",
     "@capacitor/preferences": "^8.0.1",

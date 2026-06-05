@@ -6,8 +6,8 @@
  *   booting    — StartupShell phase != "ready". Pill renders dim, no halo.
  *   idle       — Ready, no overlay. Pill renders solid, no halo.
  *   summoned   — Overlay open, no active mic/response. Pill renders faint halo.
- *   listening  — Reserved for the push-to-talk follow-up sub-project. Pill
- *                renders red pulse.
+ *   listening  — Push-to-talk capture in flight (LISTEN_START → LISTEN_STOP).
+ *                Pill renders red pulse.
  *   responding — Agent stream in flight. Pill renders ambient glow.
  */
 export type ShellPhase =
@@ -39,6 +39,8 @@ export type ShellAction =
   | { type: "BOOT_READY" }
   | { type: "OPEN" }
   | { type: "CLOSE" }
+  | { type: "LISTEN_START" }
+  | { type: "LISTEN_STOP" }
   | { type: "SEND"; text: string }
   | { type: "RESPONSE_DELTA"; delta: string }
   | { type: "RESPONSE_DONE" }
@@ -70,6 +72,16 @@ export function shellReducer(
         state.phase === "listening" ||
         state.phase === "responding"
         ? { ...state, phase: "idle" }
+        : state;
+    case "LISTEN_START":
+      // Push-to-talk capture begins from the open overlay.
+      return state.phase === "summoned"
+        ? { ...state, phase: "listening" }
+        : state;
+    case "LISTEN_STOP":
+      // Capture ended without a submitted turn — fall back to the open overlay.
+      return state.phase === "listening"
+        ? { ...state, phase: "summoned" }
         : state;
     case "SEND": {
       if (state.phase !== "summoned" && state.phase !== "listening") {

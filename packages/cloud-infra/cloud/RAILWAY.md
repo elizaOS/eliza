@@ -11,6 +11,7 @@ is heading.
 | `cloud-api` (REST + auth + billing) | Cloudflare Worker | `packages/cloud-api/` | `apps/api/wrangler.toml` (env vars, secrets via `wrangler secret`) |
 | `headscale` (Tailscale coordination server for customer tunnels) | Railway | `packages/cloud-services/headscale/` | `railway.toml`, `Dockerfile` |
 | `tunnel-proxy` (public HTTPS -> tailnet bridge) | Railway | `packages/cloud-services/tunnel-proxy/` | `railway.toml`, `Dockerfile` |
+| `bitrouter` (Eliza Cloud model router) | Railway | `packages/cloud-infra/cloud/bitrouter/` | `railway.toml`, `Dockerfile` |
 | `gateway-discord` | Cloudflare Worker | `packages/cloud-services/gateway-discord/` | own `wrangler.toml` |
 | `gateway-webhook` | Cloudflare Worker | `packages/cloud-services/gateway-webhook/` | own `wrangler.toml` |
 | `agent-server` (per-customer agent runtime) | Hetzner containers | `packages/cloud-services/agent-server/` | provisioned via `container-control-plane` |
@@ -40,6 +41,17 @@ operator explicitly opts in. New code should not target it.
 - Volume: `/var/lib/tunnel-proxy` (tsnet node identity).
 - Public domain: `tunnel.elizacloud.ai` + wildcard `*.tunnel.elizacloud.ai`.
 - Provisioning runbook: [`packages/cloud-services/headscale/DEPLOY.md`](../../cloud-services/headscale/DEPLOY.md) (covers both services).
+
+### `bitrouter`
+
+- Builder: Dockerfile (`node:24-bookworm-slim` + npm `bitrouter`).
+- Healthcheck: `GET /health` on the public auth proxy.
+- Public auth: `Authorization: Bearer $BITROUTER_PROXY_TOKEN`; the proxy
+  replaces it with an internal BitRouter JWT before forwarding to the local
+  daemon.
+- Cloud API config: `BITROUTER_BASE_URL=https://<railway-domain>` and
+  `BITROUTER_API_KEY=<same value as BITROUTER_PROXY_TOKEN>`.
+- Service runbook: [`packages/cloud-infra/cloud/bitrouter/README.md`](./bitrouter/README.md).
 
 ## Where Railway is heading
 

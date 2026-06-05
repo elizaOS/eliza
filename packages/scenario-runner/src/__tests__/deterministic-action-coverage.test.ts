@@ -85,7 +85,7 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
     "SKILL_UNINSTALL",
     "USE_SKILL",
   ],
-  "@elizaos/plugin-local-inference": ["GENERATE_MEDIA"],
+  "@elizaos/plugin-local-inference": ["GENERATE_MEDIA", "IDENTIFY_SPEAKER"],
   "@elizaos/plugin-gitpathologist": ["GIT_PATHOLOGY"],
   "@elizaos/plugin-todos": ["TODO"],
   "@elizaos/plugin-streaming": ["STREAM"],
@@ -154,7 +154,10 @@ function stableCoreActions(): string[] {
  * This baseline may only shrink: cover one and delete it here; add a new
  * stable-core action and either cover it or add it here.
  */
-const KNOWN_UNCOVERED: readonly string[] = [];
+const KNOWN_UNCOVERED: readonly string[] = [
+  // New speaker-diarization action; no deterministic keyless scenario yet.
+  "IDENTIFY_SPEAKER",
+];
 
 /**
  * Actions with deterministic keyless scenario coverage today. This is the

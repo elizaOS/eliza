@@ -3537,6 +3537,8 @@ export const ODYSSEUS_CSS = `
   gap: 5px;
   flex-wrap: wrap;
   margin-bottom: 8px;
+  max-height: 49px;
+  overflow: hidden;
 }
 .odysseus-root .od-tasks-chip {
   background: none;
@@ -3696,6 +3698,9 @@ export const ODYSSEUS_CSS = `
   color: var(--accent, var(--red));
   background: color-mix(in srgb, var(--accent, var(--red)) 16%, transparent);
   border-color: color-mix(in srgb, var(--accent, var(--red)) 34%, transparent);
+  width: 24px;
+  padding: 0;
+  justify-content: center;
 }
 .odysseus-root .od-tasks-run-badge:hover {
   background: color-mix(in srgb, var(--accent, var(--red)) 24%, transparent);
@@ -5240,36 +5245,29 @@ export const ODYSSEUS_CSS = `
   flex-shrink: 0;
 }
 
-/* ── Body: left rail + panels ── */
+/* ── Body: single column — horizontal tab bar above the panel ── */
 .odysseus-root .od-admin-body {
   display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
   gap: 0;
 }
 .odysseus-root .od-admin-rail {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 2px;
-  width: 178px;
+  width: 100%;
   flex-shrink: 0;
-  padding: 12px 10px;
-  border-right: 1px solid var(--border);
-  overflow-y: auto;
-}
-.odysseus-root .od-admin-rail-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-weight: 600;
-  opacity: 0.35;
-  padding: 4px 8px 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
 }
 .odysseus-root .od-admin-rail-item {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 7px 10px;
+  padding: 7px 12px;
   border: none;
   border-radius: 7px;
   background: none;
@@ -5277,6 +5275,7 @@ export const ODYSSEUS_CSS = `
   font-size: 13px;
   font-family: inherit;
   text-align: left;
+  white-space: nowrap;
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
@@ -5290,7 +5289,8 @@ export const ODYSSEUS_CSS = `
 }
 .odysseus-root .od-admin-panels {
   flex: 1;
-  min-width: 0;
+  width: 100%;
+  min-height: 0;
   padding: 14px;
   overflow-y: auto;
 }
@@ -7725,6 +7725,7 @@ export const ODYSSEUS_CSS = `
 .odysseus-root .od-cal-event-info-btn { background:none; border:none; text-align:left; cursor:pointer; font-family:inherit; padding:0; color:var(--fg); }
 .odysseus-root .od-cal-event-more-btn { background:none; border:none; color:var(--fg); opacity:0.4; cursor:pointer; font-size:15px; line-height:1; padding:0 4px; align-self:flex-start; border-radius:4px; }
 .odysseus-root .od-cal-event-more-btn:hover { opacity:0.9; background:color-mix(in srgb, var(--fg) 8%, transparent); }
+.odysseus-root .od-cal-event-readonly { align-self:flex-start; font-size:9px; letter-spacing:0.05em; text-transform:uppercase; color:var(--fg); opacity:0.45; padding:1px 5px; border:1px solid color-mix(in srgb, var(--fg) 18%, transparent); border-radius:4px; cursor:default; user-select:none; }
 
 /* event more-menu dropdown */
 .odysseus-root .od-cal-event-dropdown { position:fixed; z-index:60; min-width:150px; background:var(--panel, var(--bg)); border:1px solid var(--border); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.3); padding:4px; display:flex; flex-direction:column; }
@@ -8170,7 +8171,7 @@ export const ODYSSEUS_CSS = `
 .odysseus-root .od-doclib-toolbar-btn-active { border-color:var(--red); color:var(--red); }
 
 /* Extension filter chips (odysseus .memory-cat-chip, style.css L10649). */
-.odysseus-root .od-doclib-chips { display:flex; gap:4px; flex-wrap:wrap; flex-basis:100%; }
+.odysseus-root .od-doclib-chips { display:flex; gap:4px; flex-wrap:wrap; flex-basis:100%; max-height:48px; overflow:hidden; }
 .odysseus-root .od-doclib-chip { background:none; border:1px solid var(--border);
   color:color-mix(in srgb, var(--fg) 60%, transparent); font-size:10px; height:22px; padding:0 8px;
   display:inline-flex; align-items:center; border-radius:10px; cursor:pointer; font-family:inherit;
@@ -10671,6 +10672,15 @@ export const ODYSSEUS_CSS = `
   font-size: 10px; color: var(--muted); opacity: 0.8; margin-top: 2px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.odysseus-root .od-cb-serve-card-uninstall {
+  flex-shrink: 0; display: grid; place-items: center; width: 24px; height: 24px;
+  border: none; background: transparent; color: var(--muted); cursor: pointer;
+  border-radius: 6px; opacity: 0.6; transition: opacity 0.12s, color 0.12s, background 0.12s;
+}
+.odysseus-root .od-cb-serve-card-uninstall:hover {
+  opacity: 1; color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent);
+}
+.odysseus-root .od-cb-serve-card-uninstall:disabled { opacity: 0.3; cursor: default; }
 
 /* Dependencies head + grid. */
 .odysseus-root .od-cb-deps-head { display: flex; align-items: center; gap: 8px; }

@@ -1,7 +1,7 @@
 /**
  * AI provider implementations and singleton access.
  *
- * OpenRouter is the principal non-Groq provider. Per-family direct
+ * BitRouter is the principal non-Groq provider. Per-family direct
  * providers (OpenAI, Anthropic) are wired as failover targets via
  * `getProviderForModelWithFallback` when their respective API keys
  * are configured.
@@ -9,9 +9,9 @@
 
 import { isGroqNativeModel, isVastNativeModel } from "../models";
 import { AnthropicDirectProvider } from "./anthropic-direct";
+import { BitRouterProvider } from "./bitrouter";
 import { GroqProvider } from "./groq";
 import { OpenAIDirectProvider } from "./openai-direct";
-import { OpenRouterProvider } from "./openrouter";
 import { getProviderKey, getRequiredProviderKey } from "./provider-env";
 import type { AIProvider } from "./types";
 import { VastProvider } from "./vast";
@@ -23,10 +23,10 @@ export { AnthropicDirectProvider } from "./anthropic-direct";
 // as public API. Whitespace-only env values (e.g. "   ") will throw at startup rather than
 // silently disable thinking - this is intentional fail-fast behavior.
 export * from "./anthropic-thinking";
+export { BitRouterProvider } from "./bitrouter";
 export { withProviderFallback } from "./failover";
 export { GroqProvider } from "./groq";
 export { OpenAIDirectProvider } from "./openai-direct";
-export { OpenRouterProvider } from "./openrouter";
 export * from "./types";
 export { VastProvider } from "./vast";
 export * from "./vast-endpoints";
@@ -41,7 +41,11 @@ interface OpenAIDirectProviderSingleton extends ProviderSingleton {
   baseUrl?: string;
 }
 
-let openRouterProviderInstance: ProviderSingleton | null = null;
+interface BitRouterProviderSingleton extends ProviderSingleton {
+  baseUrl?: string;
+}
+
+let bitRouterProviderInstance: BitRouterProviderSingleton | null = null;
 let groqProviderInstance: ProviderSingleton | null = null;
 let openAIDirectProviderInstance: OpenAIDirectProviderSingleton | null = null;
 let anthropicDirectProviderInstance: ProviderSingleton | null = null;
@@ -49,22 +53,28 @@ let vercelAIGatewayProviderInstance: ProviderSingleton | null = null;
 let vastProviderInstances = new Map<string, AIProvider>();
 
 /**
- * Gets the principal AI provider instance (OpenRouter).
+ * Gets the principal AI provider instance (BitRouter).
  *
  * Lazy initialized on first call.
  *
- * @returns OpenRouter provider instance.
- * @throws Error if OPENROUTER_API_KEY is not configured.
+ * @returns BitRouter provider instance.
+ * @throws Error if BITROUTER_API_KEY is not configured.
  */
 export function getProvider(): AIProvider {
-  const apiKey = getRequiredProviderKey("OPENROUTER_API_KEY");
-  if (!openRouterProviderInstance || openRouterProviderInstance.apiKey !== apiKey) {
-    openRouterProviderInstance = {
+  const apiKey = getRequiredProviderKey("BITROUTER_API_KEY");
+  const baseUrl = getProviderKey("BITROUTER_BASE_URL") ?? undefined;
+  if (
+    !bitRouterProviderInstance ||
+    bitRouterProviderInstance.apiKey !== apiKey ||
+    bitRouterProviderInstance.baseUrl !== baseUrl
+  ) {
+    bitRouterProviderInstance = {
       apiKey,
-      provider: new OpenRouterProvider(apiKey),
+      baseUrl,
+      provider: new BitRouterProvider(apiKey, baseUrl),
     };
   }
-  return openRouterProviderInstance.provider;
+  return bitRouterProviderInstance.provider;
 }
 
 export function hasGroqProviderConfigured(): boolean {
@@ -83,11 +93,11 @@ export function getGroqProvider(): AIProvider {
   return groqProviderInstance.provider;
 }
 
-export function hasOpenRouterProviderConfigured(): boolean {
-  return Boolean(getProviderKey("OPENROUTER_API_KEY"));
+export function hasBitRouterProviderConfigured(): boolean {
+  return Boolean(getProviderKey("BITROUTER_API_KEY"));
 }
 
-export function getOpenRouterProvider(): AIProvider {
+export function getBitRouterProvider(): AIProvider {
   return getProvider();
 }
 
@@ -182,7 +192,7 @@ export function getProviderForModel(model: string): AIProvider {
     return getVastProvider(model);
   }
 
-  if (hasOpenRouterProviderConfigured()) {
+  if (hasBitRouterProviderConfigured()) {
     return getProvider();
   }
 
@@ -223,7 +233,7 @@ export function getProviderForModelWithFallback(model: string): {
     };
   }
 
-  const primary = hasOpenRouterProviderConfigured() ? getProvider() : getVercelAIGatewayProvider();
+  const primary = hasBitRouterProviderConfigured() ? getProvider() : getVercelAIGatewayProvider();
 
   if (model.startsWith("openai/") && hasOpenAIDirectConfigured()) {
     return { primary, fallback: getOpenAIDirectProvider() };

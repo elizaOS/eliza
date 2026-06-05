@@ -52,7 +52,7 @@ No env vars are required for public market reads. To enable account-specific rea
 | `HYPERLIQUID_ACCOUNT_ADDRESS` or `HL_ACCOUNT_ADDRESS` | EVM address for positions/orders reads. Must be `0x`-prefixed 40-char hex. |
 | `STEWARD_EVM_ADDRESS` or `ELIZA_MANAGED_EVM_ADDRESS` | Managed-vault EVM address (takes priority over the explicit env account). |
 
-Optional signing credentials (not needed for reads; order execution is not yet implemented):
+Optional signing credentials (reported in status only; this app keeps order execution disabled by design):
 
 | Env var | Description |
 |---|---|
@@ -85,5 +85,5 @@ The plugin also self-registers as an elizaOS overlay app and route-plugin loader
 ## Notes
 
 - Order placement (POST routes) is intentionally disabled in this version. The `place_order` action op reports the blocked-execution reason rather than submitting any transaction.
-- Funding-rate reads (`kind=funding`) are not wired to a live endpoint; the action returns a static explanation.
+- Funding-rate reads (`kind=funding`) use Hyperliquid's live `metaAndAssetCtxs` Info API response.
 - Market data is fetched from `https://api.hyperliquid.xyz/info` (the public Hyperliquid Info API). No API key is required.

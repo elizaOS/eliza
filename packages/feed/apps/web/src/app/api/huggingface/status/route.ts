@@ -35,9 +35,9 @@
  * ```
  */
 
+import { huggingFaceIntegration } from "@feed/agents/training";
 import { withErrorHandling } from "@feed/api";
 import { logger } from "@feed/shared";
-import { huggingFaceIntegration } from "@feed/training";
 import { NextResponse } from "next/server";
 
 export const GET = withErrorHandling(async function GET() {

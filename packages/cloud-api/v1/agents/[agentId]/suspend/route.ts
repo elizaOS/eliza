@@ -14,7 +14,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
 import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
@@ -31,6 +31,8 @@ app.post("/", async (c) => {
   try {
     const identity = await requireServiceKey(c);
     const agentId = c.req.param("agentId") ?? "";
+    const agent = await elizaSandboxService.getAgentById(agentId);
+    if (!agent) throw NotFoundError("Agent not found");
 
     const raw = await c.req.json().catch(() => ({}));
     const parsed = suspendSchema.safeParse(raw);
@@ -39,14 +41,6 @@ app.post("/", async (c) => {
       : "owner requested suspension";
 
     logger.info("[service-api] Suspend requested", { agentId, reason });
-
-    const agent = await elizaSandboxService.getAgentForWrite(
-      agentId,
-      identity.organizationId,
-    );
-    if (!agent) {
-      return c.json({ success: false, error: "Agent not found" }, 404);
-    }
 
     if (agent.status === "stopped") {
       return c.json({

@@ -4,7 +4,6 @@ import { TerminalPluginView } from "@elizaos/ui/components/views/TerminalPluginV
 import { Activity, ChevronLeft, History } from "lucide-react";
 import { useState } from "react";
 import type { TrajectoryListItem } from "../api-client";
-import { fetchTrajectoryDetail, fetchTrajectoryList } from "../api-client";
 import { type PhaseName, type PhaseSummary, summarizePhases } from "../phases";
 import { usePollingTrajectories } from "../usePollingTrajectories";
 import { PhaseChip } from "./PhaseChip";
@@ -39,7 +38,7 @@ export function TrajectoryLoggerView({ exitToApps }: OverlayAppContext) {
 
   return (
     <div className="flex h-full w-full flex-col bg-bg text-xs">
-      <header className="flex items-center justify-between gap-2 border-b border-border/24 px-3 py-2">
+      <header className="flex items-center justify-between gap-2 border-b border-border/24 px-2 py-1.5">
         <div className="flex items-center gap-2">
           <Button
             ref={backButton.ref}
@@ -54,16 +53,19 @@ export function TrajectoryLoggerView({ exitToApps }: OverlayAppContext) {
           <span className="text-sm font-semibold text-txt">
             Trajectory Logger
           </span>
-          <LoggingStatusBadge active={!!state.active} />
         </div>
         {state.error ? (
-          <span className="text-2xs text-red-400">{state.error}</span>
+          <span className="max-w-[42vw] truncate text-2xs text-red-400">
+            {state.error}
+          </span>
         ) : !state.ready ? (
           <span className="text-2xs text-muted/60">loading...</span>
-        ) : null}
+        ) : (
+          <LoggingStatusBadge active={!!state.active} />
+        )}
       </header>
 
-      <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2">
+      <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 pb-32">
         <PhaseStrip
           live
           slot="now"
@@ -93,7 +95,7 @@ export function TrajectoryLoggerView({ exitToApps }: OverlayAppContext) {
           }
         />
         {selected ? (
-          <div className="rounded border border-border/24 bg-card/30 p-2">
+          <div className="max-h-[52vh] overflow-auto rounded border border-border/24 bg-card/30 p-2">
             <PhaseDrilldown phase={selected} />
           </div>
         ) : null}
@@ -108,52 +110,10 @@ export function TrajectoryLoggerTuiView() {
       id="trajectory-logger"
       label="Trajectory Logger TUI"
       description="Terminal realtime trajectory inspector for HANDLE / PLAN / ACTION / EVALUATE turns"
-      commands={["list-trajectories", "open-latest", "filter-phase", "refresh"]}
+      commands={[]}
       endpoints={["/api/trajectories", "/api/trajectories/latest"]}
     />
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "list-trajectories" || capability === "refresh") {
-    return fetchTrajectoryList({
-      limit: typeof params?.limit === "number" ? params.limit : 10,
-    });
-  }
-
-  if (capability === "open-latest") {
-    const list = await fetchTrajectoryList({ limit: 1 });
-    const latest = list.trajectories[0];
-    return latest ? fetchTrajectoryDetail(latest.id) : null;
-  }
-
-  if (capability === "filter-phase") {
-    const requestedPhase =
-      typeof params?.phase === "string" ? params.phase.toUpperCase() : "HANDLE";
-    const list = await fetchTrajectoryList({ limit: 10 });
-    const details = await Promise.all(
-      list.trajectories
-        .slice(0, 5)
-        .map((trajectory) => fetchTrajectoryDetail(trajectory.id)),
-    );
-    return details.map((detail) => ({
-      id: detail.trajectory.id,
-      status: detail.trajectory.status,
-      phase: requestedPhase,
-      llmCalls: detail.llmCalls.filter((call) =>
-        [call.purpose, call.stepType, call.actionType]
-          .filter(Boolean)
-          .some((value) => value.toUpperCase().includes(requestedPhase)),
-      ).length,
-      toolEvents: detail.toolEvents?.length ?? 0,
-      evaluationEvents: detail.evaluationEvents?.length ?? 0,
-    }));
-  }
-
-  throw new Error(`Trajectory Logger TUI does not support "${capability}".`);
 }
 
 function PhaseStrip({
@@ -173,54 +133,51 @@ function PhaseStrip({
 }) {
   const Icon = live ? Activity : History;
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 flex-col gap-2 rounded-xl border border-border/24 bg-card/40 px-3 py-3 shadow-sm">
       <span
         title={live ? "Current turn" : "Last turn"}
         className={[
-          "flex w-5 shrink-0 justify-center",
-          live ? "text-blue-400" : "text-muted/60",
+          "flex items-center gap-2 text-[11px] font-semibold uppercase tracking-normal",
+          live ? "text-info" : "text-muted",
         ].join(" ")}
       >
         <Icon
           className={["h-3.5 w-3.5", live ? "animate-pulse" : ""].join(" ")}
           aria-label={live ? "Current turn" : "Last turn"}
         />
+        {live ? "Now" : "Last"}
       </span>
-      {trajectory ? (
-        <div className="flex flex-1 gap-1">
-          {phases.map((p) => (
-            <PhaseChip
-              key={p.phase}
-              slot={slot}
-              phase={p.phase}
-              status={p.status}
-              summary={p.summary}
-              selected={selectedPhase === p.phase}
-              onClick={() => onSelect(p.phase)}
-            />
-          ))}
-        </div>
-      ) : (
-        <span className="text-2xs text-muted/40">No trajectory</span>
-      )}
+      <div
+        className="grid min-w-0 flex-1 grid-cols-2 gap-2 overflow-x-auto md:grid-cols-4"
+        title={trajectory ? undefined : "No trajectory captured yet"}
+      >
+        {phases.map((p) => (
+          <PhaseChip
+            key={p.phase}
+            slot={slot}
+            phase={p.phase}
+            status={p.status}
+            summary={p.summary}
+            selected={selectedPhase === p.phase}
+            onClick={() => onSelect(p.phase)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
 
 /**
- * Compact privacy badge: surfaces "trajectory logging ON/OFF" prominently in
- * the view header. `active` reflects whether there is currently a live
- * trajectory being recorded; the badge stays informational either way (a user
- * who has logging ON but no active turn still sees "ON / idle").
+ * Compact status badge for the overlay header.
  */
 function LoggingStatusBadge({ active }: { active: boolean }) {
   const tone = active
-    ? "border-blue-500/40 bg-blue-500/10 text-blue-300"
+    ? "border-info/40 bg-info/10 text-info"
     : "border-border/30 bg-bg-elevated text-muted";
-  const label = active ? "Logging ON / recording" : "Logging ON / idle";
+  const label = active ? "recording" : "idle";
   return (
     <span
-      title="Trajectory logging is enabled. Disable in Cloud Dashboard / Security / Privacy."
+      title="Trajectory logging status"
       className={`inline-flex items-center rounded-sm border px-2 py-0.5 text-2xs uppercase tracking-wide ${tone}`}
       data-testid="trajectory-logging-badge"
     >

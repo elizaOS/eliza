@@ -76,22 +76,30 @@ test.describe("registered plugin views visual coverage", () => {
         `${view.id} ${view.viewType} initial load`,
       );
 
+      const isCompanionGui = view.id === "companion" && view.viewType === "gui";
       const viewRoot = page.locator("main").first();
       await expect(viewRoot).toBeVisible({ timeout: 60_000 });
-      await expect
-        .poll(
-          async () => {
-            const text = await viewRoot.evaluate((root) =>
-              root.innerText.trim().replace(/\s+/g, " "),
-            );
-            return text.length > 20 && !/^Loading view\b/.test(text);
-          },
-          {
-            message: `${view.id} ${view.viewType} should finish dynamic view loading before audit`,
-            timeout: 60_000,
-          },
-        )
-        .toBe(true);
+      if (isCompanionGui) {
+        await expect(
+          viewRoot.getByTestId("companion-root").first(),
+          `${view.id} ${view.viewType} should mount its canvas-first companion root before audit`,
+        ).toBeVisible({ timeout: 60_000 });
+      } else {
+        await expect
+          .poll(
+            async () => {
+              const text = await viewRoot.evaluate((root) =>
+                root.innerText.trim().replace(/\s+/g, " "),
+              );
+              return text.length > 20 && !/^Loading view\b/.test(text);
+            },
+            {
+              message: `${view.id} ${view.viewType} should finish dynamic view loading before audit`,
+              timeout: 60_000,
+            },
+          )
+          .toBe(true);
+      }
       await expect(page.getByText(/Loading view/)).toHaveCount(0);
       await expectNoFailedView(
         page,
@@ -139,10 +147,17 @@ test.describe("registered plugin views visual coverage", () => {
         },
       );
 
-      expect(
-        preOverlayAudit.visibleText.length,
-        `${view.id} ${view.viewType} should expose readable view text before opening the assistant overlay`,
-      ).toBeGreaterThan(20);
+      if (isCompanionGui) {
+        await expect(
+          viewRoot.getByTestId("companion-root").first(),
+          `${view.id} ${view.viewType} should expose its companion scene root before opening the assistant overlay`,
+        ).toBeVisible();
+      } else {
+        expect(
+          preOverlayAudit.visibleText.length,
+          `${view.id} ${view.viewType} should expose readable view text before opening the assistant overlay`,
+        ).toBeGreaterThan(20);
+      }
       if (view.id !== "views-manager") {
         expect(
           preOverlayAudit.visibleText,
@@ -184,13 +199,11 @@ test.describe("registered plugin views visual coverage", () => {
       );
 
       if (view.shellPill === "expected") {
-        const assistantLauncher = page
-          .getByTestId("shell-home-pill")
-          .or(
-            page.getByRole("button", {
-              name: /show conversation|hide conversation/i,
-            }),
-          );
+        const assistantLauncher = page.getByTestId("shell-home-pill").or(
+          page.getByRole("button", {
+            name: /expand conversation|collapse conversation/i,
+          }),
+        );
         const assistantComposer = page
           .getByTestId("chat-composer-textarea")
           .or(page.getByLabel("message"))
@@ -203,13 +216,11 @@ test.describe("registered plugin views visual coverage", () => {
         await assistantComposer.focus();
       } else {
         await expect(
-          page
-            .getByTestId("shell-home-pill")
-            .or(
-              page.getByRole("button", {
-                name: /show conversation|hide conversation/i,
-              }),
-            ),
+          page.getByTestId("shell-home-pill").or(
+            page.getByRole("button", {
+              name: /expand conversation|collapse conversation/i,
+            }),
+          ),
         ).toHaveCount(0);
       }
 
@@ -239,8 +250,7 @@ test.describe("registered plugin views visual coverage", () => {
             element.getAttribute("role") ?? "",
             element.getAttribute("aria-label") ?? "",
             element.getAttribute("data-testid") ?? "",
-            element.textContent?.trim().replace(/\s+/g, " ").slice(0, 80) ??
-              "",
+            element.textContent?.trim().replace(/\s+/g, " ").slice(0, 80) ?? "",
           ]
             .filter(Boolean)
             .join(":");
@@ -291,10 +301,17 @@ test.describe("registered plugin views visual coverage", () => {
         },
       );
 
-      expect(
-        audit.visibleText.length,
-        `${view.id} ${view.viewType} should expose readable text`,
-      ).toBeGreaterThan(20);
+      if (isCompanionGui) {
+        await expect(
+          viewRoot.getByTestId("companion-root").first(),
+          `${view.id} ${view.viewType} should expose its companion scene root after assistant overlay interaction`,
+        ).toBeVisible();
+      } else {
+        expect(
+          audit.visibleText.length,
+          `${view.id} ${view.viewType} should expose readable text`,
+        ).toBeGreaterThan(20);
+      }
       if (view.viewType === "tui") {
         expect(
           audit.controls.length,

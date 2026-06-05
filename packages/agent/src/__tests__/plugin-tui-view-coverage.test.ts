@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import type http from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -225,7 +225,10 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-training-stage-eliza1-bundle",
     "terminal-training-run-action-benchmark",
   ],
-  "plugins/plugin-facewear/src/ui/FacewearView.tsx": [
+  // FacewearView dispatches capabilities through the generic TerminalPluginView,
+  // so the capability ids live entirely in the plugin manifest's `capabilities`
+  // arrays (index.ts) — that file also declares the FacewearView componentExport.
+  "plugins/plugin-facewear/src/index.ts": [
     "connect-device",
     "manage-views",
     "device-diagnostics",
@@ -239,6 +242,35 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
 
 function readManifest(path: string): string {
   return readFileSync(resolve(repoRoot, path), "utf8");
+}
+
+// Capability ids may live in the component file, in a sibling `*.interact.ts`
+// dispatch module (the Fast-Refresh split pattern), or in a same-directory
+// helper that the interact module re-exports (e.g. orchestrator-capabilities.ts,
+// split out so the interact file stays a thin delegator). Gather the component
+// source plus any same-directory relative import targets it pulls in so the
+// parity surface tracks the real id locations across those refactors.
+function readCapabilitySource(path: string): string {
+  const seen = new Set<string>();
+  const collected: string[] = [];
+
+  const visit = (absolutePath: string): void => {
+    const normalized = absolutePath.replace(/\.[cm]?tsx?$/, "");
+    if (seen.has(normalized) || !existsSync(absolutePath)) return;
+    seen.add(normalized);
+    const source = readFileSync(absolutePath, "utf8");
+    collected.push(source);
+    const dir = dirname(absolutePath);
+    for (const match of source.matchAll(/from\s+"(\.[^"]+)"/g)) {
+      const specifier = match[1].replace(/\.[cm]?tsx?$/, "");
+      visit(resolve(dir, `${specifier}.ts`));
+    }
+  };
+
+  const absolutePath = resolve(repoRoot, path);
+  visit(absolutePath);
+  visit(absolutePath.replace(/\.[cm]?tsx?$/, ".interact.ts"));
+  return collected.join("\n");
 }
 
 function viewObjects(source: string): string[] {
@@ -403,7 +435,7 @@ describe("plugin TUI view coverage", () => {
     for (const [sourcePath, capabilities] of Object.entries(
       TUI_PARITY_CAPABILITIES,
     )) {
-      const source = readManifest(sourcePath);
+      const source = readCapabilitySource(sourcePath);
       for (const capability of capabilities) {
         if (!source.includes(capability)) {
           failures.push(`${sourcePath}:${capability}`);

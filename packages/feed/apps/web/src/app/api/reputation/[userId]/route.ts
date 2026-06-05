@@ -121,7 +121,7 @@ export const GET = withErrorHandling(async function GET(
   const rank = await db.agentPerformanceMetrics.count({
     where: {
       reputationScore: {
-        gt: metrics?.reputationScore,
+        gt: metrics?.reputationScore ?? 0,
       },
     },
   });
@@ -136,7 +136,7 @@ export const GET = withErrorHandling(async function GET(
   const res = NextResponse.json({
     success: true,
     userId: user.id,
-    reputationPoints: Math.round(metrics?.reputationScore),
+    reputationPoints: Math.round(metrics?.reputationScore ?? 0),
     averageFeedbackScore: metrics?.averageFeedbackScore,
     totalFeedbackReceived: metrics?.totalFeedbackCount,
     performance: {

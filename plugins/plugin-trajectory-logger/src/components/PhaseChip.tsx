@@ -55,9 +55,9 @@ export function PhaseChip({
       aria-current={selected ? "true" : undefined}
       {...agentProps}
       className={[
-        "flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs transition-colors",
+        "flex min-h-14 min-w-0 flex-1 items-center gap-1.5 rounded-lg px-2 py-2 text-left text-xs transition-colors",
         selected
-          ? "bg-card/80 ring-1 ring-blue-500/40"
+          ? "bg-card/80 ring-1 ring-info/40"
           : "bg-card/30 hover:bg-card/50",
       ].join(" ")}
     >

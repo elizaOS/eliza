@@ -1,12 +1,15 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 // Capture audit emits through the REAL singleton (setAuditDispatcher) rather
 // than mock.module'ing getAuditDispatcher — a module mock here is process-global
-// and would pin getAuditDispatcher to this stub for every later suite (e.g. the
+// and would pin getAuditDispatcher to this fake dispatcher for every later suite (e.g. the
 // SOC2 middleware tests' own dispatcher), so their sink would never see events.
 import {
   initAuditDispatcher,
   setAuditDispatcher,
 } from "@/api-app/services/audit-dispatcher-singleton";
+// Spread into the partial logger mock below — mock.module is process-global,
+// so dropping the real `redact` export breaks later suites that import it.
+import * as loggerActual from "@/lib/utils/logger";
 
 const constructEventAsync = mock();
 const emitAudit = mock(async () => undefined);
@@ -57,7 +60,9 @@ mock.module("@/lib/stripe", () => ({
 }));
 
 mock.module("@/lib/utils/logger", () => ({
+  ...loggerActual,
   logger: {
+    ...loggerActual.logger,
     debug: mock(),
     error: mock(),
     info: mock(),
@@ -110,7 +115,7 @@ describe("Stripe webhook route", () => {
     } as unknown as Parameters<typeof setAuditDispatcher>[0]);
   });
 
-  // Restore a real dispatcher so the captured stub does not leak into later
+  // Restore a real dispatcher so the captured fake dispatcher does not leak into later
   // suites that read the singleton.
   afterAll(() => {
     setAuditDispatcher(initAuditDispatcher());

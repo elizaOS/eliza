@@ -5,22 +5,21 @@ import {
   formatDetailTimestamp,
   SurfaceBadge,
   SurfaceCard,
-  SurfaceEmptyState,
-  SurfaceGrid,
   SurfaceSection,
-  type SurfaceTone,
   selectLatestRunForApp,
   toneForHealthState,
   toneForStatusText,
   toneForViewerAttachment,
   useApp,
 } from "@elizaos/app-core/ui-compat";
-import { Button, Input } from "@elizaos/ui";
+import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Telemetry shape — a partial view of what buildScapeSessionState emits.
+
+type OperatorSurfaceTone = "neutral" | "accent" | "success" | "warn" | "danger";
 // Keep this permissive: all fields are optional so an empty / idle session
 // still renders a useful frame.
 // ─────────────────────────────────────────────────────────────────────────
@@ -400,7 +399,7 @@ function formatHp(agent: ScapeAgentSelf | null): string {
 // Real SdkConnectionStatus values from plugins/plugin-scape/src/sdk/index.ts:
 // idle | connecting | auth-pending | spawn-pending | connected | reconnecting
 // | closed | failed
-function connectionTone(status: string | undefined): SurfaceTone {
+function connectionTone(status: string | undefined): OperatorSurfaceTone {
   switch (status) {
     case "connected":
       return "success";
@@ -438,7 +437,7 @@ function connectionLabel(status: string | undefined): string {
   }
 }
 
-function goalStatusTone(status: string): SurfaceTone {
+function goalStatusTone(status: string): OperatorSurfaceTone {
   switch (status) {
     case "active":
       return "accent";
@@ -453,7 +452,9 @@ function goalStatusTone(status: string): SurfaceTone {
   }
 }
 
-function memoryWeightTone(weight: number | null | undefined): SurfaceTone {
+function memoryWeightTone(
+  weight: number | null | undefined,
+): OperatorSurfaceTone {
   if (weight === null || weight === undefined) return "neutral";
   if (weight >= 4) return "accent";
   if (weight >= 3) return "warn";
@@ -509,7 +510,6 @@ export function ScapeOperatorSurface({
     [appName, appRuns],
   );
 
-  const [operatorMessage, setOperatorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [controlling, setControlling] = useState(false);
@@ -523,17 +523,17 @@ export function ScapeOperatorSurface({
     () => extractTelemetry(telemetryRecord),
     [telemetryRecord],
   );
-  const activity = session?.activity ?? [];
-  const suggestedPrompts = session?.suggestedPrompts ?? [];
+  const activity = (session?.activity ?? []).slice(0, 3);
+  const suggestedPrompts = (session?.suggestedPrompts ?? []).slice(0, 2);
 
   const agent = telemetry.agent;
   const activeGoal = telemetry.activeGoal;
-  const memories = telemetry.journal?.recent ?? [];
-  const nearbyNpcs = telemetry.nearby?.npcs ?? [];
-  const nearbyPlayers = telemetry.nearby?.players ?? [];
-  const nearbyItems = telemetry.nearby?.items ?? [];
-  const skills = telemetry.skills ?? [];
-  const inventory = telemetry.inventory ?? [];
+  const memories = (telemetry.journal?.recent ?? []).slice(0, 2);
+  const nearbyNpcs = (telemetry.nearby?.npcs ?? []).slice(0, 3);
+  const nearbyPlayers = (telemetry.nearby?.players ?? []).slice(0, 3);
+  const nearbyItems = (telemetry.nearby?.items ?? []).slice(0, 3);
+  const skills = (telemetry.skills ?? []).slice(0, 5);
+  const inventory = (telemetry.inventory ?? []).slice(0, 4);
 
   const paused =
     telemetry.pausedByOperator === true || session?.status === "paused";
@@ -575,13 +575,6 @@ export function ScapeOperatorSurface({
     },
     [run, sending],
   );
-
-  const handleSendMessage = useCallback(async () => {
-    const content = operatorMessage.trim();
-    if (content.length === 0) return;
-    const sent = await sendOperatorMessage(content);
-    if (sent) setOperatorMessage("");
-  }, [operatorMessage, sendOperatorMessage]);
 
   const handleSuggestedPrompt = useCallback(
     async (prompt: string) => {
@@ -632,27 +625,86 @@ export function ScapeOperatorSurface({
     description: "Let the 'scape agent act again after a pause",
     status: paused ? "inactive" : "active",
   });
-  const operatorInput = useAgentElement<HTMLInputElement>({
-    id: "operator-message",
-    role: "text-input",
-    label: "Operator directive",
-    group: "operator-chat",
-    description: "Natural-language directive to steer the 'scape agent",
-  });
-  const sendControl = useAgentElement<HTMLButtonElement>({
-    id: "control-send",
-    role: "button",
-    label: "Send directive",
-    group: "operator-chat",
-    description: "Send the typed directive to the 'scape agent",
-  });
-
   if (!run) {
     return (
-      <SurfaceEmptyState
-        title="'scape operator surface"
-        body="Launch 'scape to watch the agent spawn in xRSPS, then steer it from here with natural-language directives."
-      />
+      <section className="p-4" data-testid="scape-operator-ready">
+        <div className="mx-auto flex max-w-3xl flex-col gap-3">
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/45 bg-card/82 px-4 py-3 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div
+                aria-hidden
+                className="grid h-10 w-10 place-items-center rounded-xl bg-lime-600 text-lg font-black text-white shadow-sm"
+              >
+                S
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-foreground">
+                  &apos;scape
+                </div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  xRSPS spawn ready
+                </div>
+              </div>
+            </div>
+            <div className="h-3 w-3 rounded-full bg-amber-400 shadow-[0_0_0_4px_rgba(251,191,36,0.18)]" />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3">
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-amber-300/35 bg-amber-400/10 text-lg text-amber-700">
+                ◇
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Bot SDK
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  Token pending
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-lime-300/35 bg-lime-400/10 text-lg text-lime-700">
+                ◉
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Agent
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  Spawn pending
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-cyan-300/35 bg-cyan-400/10 text-lg text-cyan-700">
+                ◆
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Journal
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  Goals · memory
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-violet-300/35 bg-violet-400/10 text-lg text-violet-700">
+                ↗
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Path
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  /scape
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     );
   }
 
@@ -690,16 +742,12 @@ export function ScapeOperatorSurface({
       {/* Bot connection + agent identity + goal at-a-glance */}
       {showDashboard ? (
         <SurfaceSection title="Agent">
-          <SurfaceGrid>
+          <div className="space-y-2">
             <SurfaceCard
               label="Bot SDK"
               value={connectionLabel(connectionStatus)}
               tone={connectionTone(connectionStatus)}
-              subtitle={
-                botSdkOnline
-                  ? "Autonomous loop is receiving perception."
-                  : "Set SCAPE_BOT_SDK_URL + SCAPE_BOT_SDK_TOKEN to bring the agent online."
-              }
+              subtitle={botSdkOnline ? "Perception live" : "SDK offline"}
             />
             <SurfaceCard
               label="Character"
@@ -725,19 +773,15 @@ export function ScapeOperatorSurface({
               label="Operator Goal"
               value={telemetry.operatorGoal ?? "No directive set."}
               tone={telemetry.operatorGoal ? "accent" : "neutral"}
-              subtitle={
-                telemetry.operatorGoal
-                  ? "Active until the agent completes it or you override."
-                  : "Type a directive below or pick a suggested prompt."
-              }
+              subtitle={telemetry.operatorGoal ? "Active directive" : "Idle"}
             />
-          </SurfaceGrid>
+          </div>
         </SurfaceSection>
       ) : null}
 
       {/* Pause / resume — only meaningful when the bot-SDK is live */}
       {showDashboard ? (
-        <SurfaceSection title="Session Controls">
+        <SurfaceSection title="Controls">
           <div className="flex flex-wrap gap-2">
             <Button
               ref={pauseControl.ref}
@@ -750,7 +794,7 @@ export function ScapeOperatorSurface({
               aria-current={paused ? "true" : undefined}
               {...pauseControl.agentProps}
             >
-              Pause autonomous loop
+              Pause
             </Button>
             <Button
               ref={resumeControl.ref}
@@ -763,14 +807,10 @@ export function ScapeOperatorSurface({
               aria-current={!paused ? "true" : undefined}
               {...resumeControl.agentProps}
             >
-              Resume autonomous loop
+              Resume
             </Button>
-            <span className="ml-auto self-center text-xs-tight text-muted-strong">
-              {paused
-                ? "Loop is paused. Resume to let the agent act again."
-                : botSdkOnline
-                  ? "Loop is running. Pause to freeze the agent."
-                  : "Loop is offline until the bot-SDK connects."}
+            <span className="ml-auto self-center text-2xs uppercase tracking-[0.16em] text-muted">
+              {paused ? "Paused" : botSdkOnline ? "Running" : "Offline"}
             </span>
           </div>
         </SurfaceSection>
@@ -808,39 +848,9 @@ export function ScapeOperatorSurface({
         </SurfaceSection>
       ) : null}
 
-      {/* Operator chat */}
       {showChat ? (
-        <SurfaceSection title="Steer the Agent">
+        <SurfaceSection title="Steering">
           <div className="space-y-2">
-            <div className="flex gap-2">
-              <Input
-                ref={operatorInput.ref}
-                value={operatorMessage}
-                onChange={(event) => {
-                  setOperatorMessage(event.target.value);
-                }}
-                placeholder="Tell the agent what to do — e.g. 'go kill 20 chickens in Lumbridge'"
-                disabled={sending}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void handleSendMessage();
-                  }
-                }}
-                {...operatorInput.agentProps}
-              />
-              <Button
-                ref={sendControl.ref}
-                size="sm"
-                disabled={sending || operatorMessage.trim().length === 0}
-                onClick={() => {
-                  void handleSendMessage();
-                }}
-                {...sendControl.agentProps}
-              >
-                Send
-              </Button>
-            </div>
             {suggestedPrompts.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
                 {suggestedPrompts.map((prompt, index) => (
@@ -893,10 +903,7 @@ export function ScapeOperatorSurface({
               ))}
             </ul>
           ) : (
-            <p className="text-xs-tight text-muted-strong">
-              The agent has not written any memories yet. Directives, spawn
-              events, and notable encounters will appear here.
-            </p>
+            <p className="text-xs-tight text-muted-strong">No journal yet.</p>
           )}
         </SurfaceSection>
       ) : null}
@@ -904,7 +911,7 @@ export function ScapeOperatorSurface({
       {/* Nearby NPCs / players / items */}
       {showDashboard ? (
         <SurfaceSection title="Nearby">
-          <SurfaceGrid>
+          <div className="space-y-2">
             <SurfaceCard
               label="NPCs"
               value={
@@ -915,12 +922,12 @@ export function ScapeOperatorSurface({
                           `${npc.name ?? "unknown"} (${formatDistance(npc.distance)})`,
                       )
                       .join(" · ")
-                  : "None in view."
+                  : "—"
               }
               subtitle={
                 nearbyNpcs.length > 0
-                  ? `${nearbyNpcs.length} reported by perception`
-                  : "Autonomous loop has not reported any NPCs."
+                  ? `${nearbyNpcs.length} visible`
+                  : "No NPCs"
               }
             />
             <SurfaceCard
@@ -933,12 +940,12 @@ export function ScapeOperatorSurface({
                           `${player.name ?? "unknown"} (${formatDistance(player.distance)})`,
                       )
                       .join(" · ")
-                  : "None in view."
+                  : "—"
               }
               subtitle={
                 nearbyPlayers.length > 0
-                  ? `${nearbyPlayers.length} human players nearby`
-                  : "No other players within perception range."
+                  ? `${nearbyPlayers.length} visible`
+                  : "No players"
               }
             />
             <SurfaceCard
@@ -955,12 +962,12 @@ export function ScapeOperatorSurface({
                           }`,
                       )
                       .join(" · ")
-                  : "Nothing to loot."
+                  : "—"
               }
               subtitle={
                 nearbyItems.length > 0
-                  ? "Tell the agent to pick it up with a directive below."
-                  : "No drops within perception range."
+                  ? `${nearbyItems.length} drops`
+                  : "No drops"
               }
             />
             <SurfaceCard
@@ -977,15 +984,15 @@ export function ScapeOperatorSurface({
                           }`,
                       )
                       .join(" · ")
-                  : "Empty."
+                  : "—"
               }
               subtitle={
                 inventory.length > 0
-                  ? `${inventory.length} slot${inventory.length === 1 ? "" : "s"} held`
-                  : "The agent is carrying nothing."
+                  ? `${inventory.length} slot${inventory.length === 1 ? "" : "s"}`
+                  : "Empty"
               }
             />
-          </SurfaceGrid>
+          </div>
         </SurfaceSection>
       ) : null}
 
@@ -1006,7 +1013,7 @@ export function ScapeOperatorSurface({
       {showDashboard && activity.length > 0 ? (
         <SurfaceSection title="Recent Actions">
           <ul className="space-y-1">
-            {activity.slice(0, 8).map((entry) => (
+            {activity.map((entry) => (
               <li
                 key={entry.id}
                 className="flex items-center gap-2 rounded-xl border border-border/35 bg-card/74 px-3 py-1.5"
@@ -1271,41 +1278,3 @@ const tuiInputStyle: CSSProperties = {
   padding: "8px",
   fontFamily: "inherit",
 };
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-scape-state") {
-    return {
-      viewType: "tui",
-      appName: "@elizaos/plugin-scape",
-      commands: ["terminal-scape-command", "terminal-scape-control"],
-    };
-  }
-  if (capability === "terminal-scape-command") {
-    const runId = typeof params?.runId === "string" ? params.runId.trim() : "";
-    const content =
-      typeof params?.content === "string" ? params.content.trim() : "";
-    if (!runId) throw new Error("runId is required");
-    if (!content) throw new Error("content is required");
-    return {
-      viewType: "tui",
-      command: await client.sendAppRunMessage(runId, content),
-    };
-  }
-  if (capability === "terminal-scape-control") {
-    const runId = typeof params?.runId === "string" ? params.runId.trim() : "";
-    const action =
-      params?.action === "pause" || params?.action === "resume"
-        ? params.action
-        : null;
-    if (!runId) throw new Error("runId is required");
-    if (!action) throw new Error("action must be pause or resume");
-    return {
-      viewType: "tui",
-      control: await client.controlAppRun(runId, action),
-    };
-  }
-  throw new Error(`Unsupported 'scape TUI capability: ${capability}`);
-}

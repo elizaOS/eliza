@@ -988,7 +988,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
 	 *
 	 * Resolves the registry entry (which always points to the latest npm
 	 * version) and re-runs install. The package manager treats the existing
-	 * install as a no-op when the version already matches and as an upgrade
+	 * install as unchanged when the version already matches and as an upgrade
 	 * otherwise.
 	 */
 	async updatePlugin(

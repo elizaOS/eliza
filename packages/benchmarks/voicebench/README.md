@@ -83,7 +83,7 @@ cd benchmarks/voicebench
 Optional flags:
 
 - `--iterations=N` (default from `shared/config.json`)
-- `--ts-only` (no-op; only TypeScript runs). `--py-only` / `--rs-only` exit with an error.
+- `--ts-only` (accepted for compatibility; only TypeScript runs). `--py-only` / `--rs-only` exit with an error.
 - `--output-dir=/absolute/or/relative/path`
 - `--dataset=/path/to/manifest.json` (uses fixture samples instead of a single `VOICEBENCH_AUDIO_PATH`)
 

@@ -4,11 +4,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { VoiceProfilesClient } from "../../api/client-voice-profiles";
-import {
-  DEFAULT_VOICE_SECTION_PREFS,
-  VoiceSection,
-  type VoiceSectionPrefs,
-} from "./VoiceSection";
+import { VoiceSection, type VoiceSectionPrefs } from "./VoiceSection";
+import { DEFAULT_VOICE_SECTION_PREFS } from "./VoiceSection.helpers";
 
 afterEach(() => {
   cleanup();

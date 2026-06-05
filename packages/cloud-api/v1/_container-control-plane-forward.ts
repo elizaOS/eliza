@@ -113,7 +113,7 @@ export async function forwardToContainerControlPlane(
  * a dead-forward 5xx so the scheduled invocation stops erroring.
  *
  * (The former `forwardCronToContainerControlPlane` helper was removed when its
- * last caller migrated to this no-op; `forwardToContainerControlPlane` remains
+ * last caller migrated to this daemon-owned path; `forwardToContainerControlPlane` remains
  * for the still-live authed admin docker-node health-check forward.)
  *
  * Pass the daemon cycle name for observability.

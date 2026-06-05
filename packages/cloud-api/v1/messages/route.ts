@@ -572,7 +572,7 @@ app.post("/", async (c) => {
   const estimatedOutputTokens = request.max_tokens;
   const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
   const billingSource: PricingBillingSource =
-    resolveAiProviderSource(model) ?? "openrouter";
+    resolveAiProviderSource(model) ?? "bitrouter";
 
   let reservation: CreditReservation;
   let appCreditsInfo: AppCreditsInfo | undefined;

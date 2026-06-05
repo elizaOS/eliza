@@ -11,6 +11,7 @@
  * Protected by CRON_SECRET.
  */
 
+import { createHmac } from "node:crypto";
 import { Hono } from "hono";
 import { usersRepository } from "@/db/repositories";
 import {
@@ -21,6 +22,7 @@ import {
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
+import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { emailService } from "@/lib/services/email";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -167,6 +169,13 @@ async function processSandboxBilling(
       );
     }
 
+    await notifyWaifuCreditWebhook(sandbox, "credits.low", {
+      eventId: `agent-billing:${sandboxId}:credits.low:${now.toISOString()}`,
+      creditsRemaining: liveBalance,
+      requiredCredits: hourlyCost,
+      scheduledShutdownAt: shutdownTime.toISOString(),
+    });
+
     return {
       sandboxId,
       agentName,
@@ -194,10 +203,29 @@ async function processSandboxBilling(
       `[Agent Billing] Shutting down agent ${agentName} due to insufficient credits`,
     );
 
+    const shutdown = await elizaSandboxService.shutdown(
+      sandboxId,
+      organizationId,
+    );
+    if (!shutdown.success) {
+      throw new Error(
+        `Container shutdown failed before credit suspension: ${
+          shutdown.error ?? "unknown error"
+        }`,
+      );
+    }
+
     await agentBillingRepository.suspendSandboxForInsufficientCredits(
       sandboxId,
       now,
     );
+
+    await notifyWaifuCreditWebhook(sandbox, "credits.depleted", {
+      eventId: `agent-billing:${sandboxId}:credits.depleted:${sandbox.scheduled_shutdown_at.toISOString()}`,
+      creditsRemaining: 0,
+      requiredCredits: hourlyCost,
+      scheduledShutdownAt: sandbox.scheduled_shutdown_at.toISOString(),
+    });
 
     return { sandboxId, agentName, organizationId, action: "shutdown" };
   }
@@ -249,6 +277,14 @@ async function processSandboxBilling(
     },
   );
 
+  if (billingResult.newBalance < AGENT_PRICING.LOW_CREDIT_WARNING) {
+    await notifyWaifuCreditWebhook(sandbox, "credits.low", {
+      eventId: `agent-billing:${sandboxId}:credits.low:${billingResult.transactionId}`,
+      creditsRemaining: billingResult.newBalance,
+      requiredCredits: hourlyCost,
+    });
+  }
+
   return {
     sandboxId,
     agentName,
@@ -257,6 +293,129 @@ async function processSandboxBilling(
     amount: hourlyCost,
     newBalance: billingResult.newBalance,
   };
+}
+
+type WaifuCreditEvent = "credits.low" | "credits.depleted";
+
+async function notifyWaifuCreditWebhook(
+  sandbox: AgentBillingSandbox,
+  event: WaifuCreditEvent,
+  details: {
+    eventId: string;
+    creditsRemaining: number;
+    requiredCredits: number;
+    scheduledShutdownAt?: string;
+  },
+): Promise<void> {
+  const config = recordFromUnknown(sandbox.agent_config);
+  const waifuWebhook = recordFromUnknown(config.waifuWebhook);
+  const webhookUrl =
+    stringField(config, "webhookUrl") ?? stringField(waifuWebhook, "url");
+  const webhookSecret =
+    stringField(config, "webhookSecret") ??
+    stringField(waifuWebhook, "secret") ??
+    process.env.WAIFU_WEBHOOK_SECRET;
+  if (!webhookUrl || !webhookSecret) return;
+
+  const timestamp = new Date().toISOString();
+  const account = recordFromUnknown(config.account);
+  const waifuAgentId = resolveWaifuAgentId(config);
+  const body = JSON.stringify({
+    event,
+    timestamp,
+    eventId: details.eventId,
+    cloudAgentId: sandbox.id,
+    elizaCloudAgentId: sandbox.id,
+    agentId: waifuAgentId ?? sandbox.id,
+    organizationId: sandbox.organization_id,
+    tokenContractAddress: stringField(config, "tokenContractAddress"),
+    tokenAddress: stringField(config, "tokenContractAddress"),
+    tokenChain: stringField(config, "chain"),
+    chain: stringField(config, "chain"),
+    chainId: numberField(config, "chainId"),
+    primaryWalletAddress: stringField(account, "primaryWalletAddress"),
+    walletKeyRef: stringField(account, "walletKeyRef"),
+    creditsRemaining: details.creditsRemaining,
+    requiredCredits: details.requiredCredits,
+    billingStatus: sandbox.billing_status,
+    status: sandbox.status,
+    ...(details.scheduledShutdownAt
+      ? { scheduledShutdownAt: details.scheduledShutdownAt }
+      : {}),
+  });
+  const signature = `sha256=${createHmac("sha256", webhookSecret)
+    .update(`${timestamp}.${body}`)
+    .digest("hex")}`;
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Waifu-Webhook-Signature": signature,
+      },
+      body,
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      logger.warn("[Agent Billing] Waifu credit webhook failed", {
+        sandboxId: sandbox.id,
+        event,
+        status: response.status,
+      });
+    }
+  } catch (error) {
+    logger.warn("[Agent Billing] Waifu credit webhook error", {
+      sandboxId: sandbox.id,
+      event,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function resolveWaifuAgentId(config: Record<string, unknown>): string | null {
+  const direct =
+    stringField(config, "waifuAgentId") ??
+    stringField(config, "waifu_agent_id") ??
+    stringField(config, "WAIFU_AGENT_ID");
+  if (direct) return direct;
+
+  const character = recordFromUnknown(config.character);
+  const characterConfig = recordFromUnknown(character.config);
+  return (
+    stringField(characterConfig, "waifuAgentId") ??
+    stringField(characterConfig, "WAIFU_AGENT_ID")
+  );
+}
+
+function recordFromUnknown(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function stringField(
+  data: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = data[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function numberField(
+  data: Record<string, unknown>,
+  key: string,
+): number | null {
+  const value = data[key];
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 // ── Main Handler ──────────────────────────────────────────────────────

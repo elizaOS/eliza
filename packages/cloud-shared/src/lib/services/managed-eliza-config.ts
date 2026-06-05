@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { apiKeysService } from "./api-keys";
 
@@ -10,6 +11,21 @@ const DEV_ELIZA_APP_ORIGINS = [
   "http://localhost:4173",
   "http://127.0.0.1:4173",
 ] as const;
+export const RESERVED_MANAGED_ELIZA_ENV_KEYS = [
+  "DATABASE_URL",
+  "ELIZA_MANAGED_DATABASE_URL",
+  "ELIZA_API_TOKEN",
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_BASE_URL",
+  "ELIZAOS_CLOUD_ENABLED",
+  "ELIZA_CLOUD_AGENT_ID",
+  "PUBLIC_BASE_URL",
+  "STEWARD_AGENT_ID",
+  "STEWARD_AGENT_TOKEN",
+  "WAIFU_ELIZA_CLOUD_AGENT_ID",
+] as const;
+
+const RESERVED_MANAGED_ELIZA_ENV_KEY_SET = new Set<string>(RESERVED_MANAGED_ELIZA_ENV_KEYS);
 
 export interface ManagedElizaEnvironmentResult {
   apiToken: string;
@@ -29,6 +45,17 @@ export interface PrepareManagedElizaSharedEnvironmentParams {
   organizationId: string;
   userId: string;
   agentSandboxId: string;
+}
+
+export function findReservedManagedElizaEnvKeys(keys: Iterable<string>): string[] {
+  const reserved: string[] = [];
+  for (const key of keys) {
+    const normalized = key.toUpperCase();
+    if (RESERVED_MANAGED_ELIZA_ENV_KEY_SET.has(normalized)) {
+      reserved.push(key);
+    }
+  }
+  return reserved;
 }
 
 export function normalizeBaseUrl(raw: string): string {
@@ -112,6 +139,59 @@ export function mergeManagedAllowedOrigins(existingValue?: string): string {
   return [...merged].join(",");
 }
 
+function isManagedPublicBaseUrlCandidate(value: string): boolean {
+  const trimmed = value.trim();
+  if (
+    trimmed.includes("(new-agent-id)") ||
+    trimmed.includes("<agent-id>") ||
+    trimmed.includes("${agentId}")
+  ) {
+    return true;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return true;
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  return (
+    url.protocol !== "https:" ||
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0" ||
+    hostname === "[::1]" ||
+    hostname.endsWith(".localhost") ||
+    hostname.endsWith(".local") ||
+    hostname.endsWith(".trycloudflare.com") ||
+    hostname.endsWith(".ngrok-free.app") ||
+    hostname.endsWith(".ngrok.io")
+  );
+}
+
+export function mergeManagedPublicBaseUrl(
+  existingValue: string | undefined,
+  agentSandboxId: string,
+): string {
+  const publicUrl = getElizaAgentPublicWebUiUrl({
+    id: agentSandboxId,
+    headscale_ip: null,
+  });
+  const trimmed = existingValue?.trim();
+
+  if (!publicUrl) {
+    return trimmed ?? "";
+  }
+
+  if (!trimmed || isManagedPublicBaseUrlCandidate(trimmed)) {
+    return publicUrl;
+  }
+
+  return trimmed;
+}
+
 export async function prepareManagedElizaBaseEnvironment(
   params: PrepareManagedElizaSharedEnvironmentParams,
 ): Promise<ManagedElizaBaseEnvironmentResult> {
@@ -140,6 +220,12 @@ export async function prepareManagedElizaBaseEnvironment(
       ELIZAOS_CLOUD_API_KEY: agentApiKey,
       ELIZAOS_CLOUD_ENABLED: "true",
       ELIZAOS_CLOUD_BASE_URL: resolveCloudApiBaseUrl(),
+      ELIZA_CLOUD_AGENT_ID: params.agentSandboxId,
+      PUBLIC_BASE_URL: mergeManagedPublicBaseUrl(
+        existingEnv.PUBLIC_BASE_URL,
+        params.agentSandboxId,
+      ),
+      WAIFU_ELIZA_CLOUD_AGENT_ID: params.agentSandboxId,
     },
   };
 }

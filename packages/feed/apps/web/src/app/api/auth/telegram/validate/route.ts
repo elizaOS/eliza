@@ -140,7 +140,7 @@ function validateTelegramInitData(
   }
 
   if (!user.id || !user.first_name) {
-    return { valid: false, reason: "incomplete user data" };
+    return { valid: false, reason: "partial user data" };
   }
 
   return {

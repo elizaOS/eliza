@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { mockApp } from "../../storybook/mock-providers";
+import { mockApp } from "../../storybook/mock-providers.helpers";
 import { RestartBanner } from "./RestartBanner";
 
 // RestartBanner reads everything from useApp() and renders null unless a restart

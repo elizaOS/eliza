@@ -14,7 +14,8 @@ import { userCharactersRepository } from "@/db/repositories/characters";
 import { agentServerWallets } from "@/db/schemas/agent-server-wallets";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { getPreferredElizaAgentWebUiUrl } from "@/lib/eliza-agent-web-ui";
+import { containersEnv } from "@/lib/config/containers-env";
+import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { adminService } from "@/lib/services/admin";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
@@ -59,6 +60,7 @@ function stringConfigValue(
 function toAdminDetailsDto(
   agent: Agent,
   isDockerAgent: boolean,
+  webUiUrl: string | null,
 ): AgentAdminDetailsDto {
   return {
     nodeId: agent.node_id,
@@ -68,9 +70,15 @@ function toAdminDetailsDto(
     webUiPort: agent.web_ui_port,
     dockerImage: agent.docker_image,
     isDockerBacked: isDockerAgent,
-    webUiUrl: getPreferredElizaAgentWebUiUrl(agent),
+    webUiUrl,
     sshCommand: agent.headscale_ip ? `ssh root@${agent.headscale_ip}` : null,
   };
+}
+
+function resolvePublicWebUiUrl(agent: Agent): string | null {
+  if (agent.execution_tier === "shared") return null;
+  const baseDomain = containersEnv.publicBaseDomain();
+  return getElizaAgentPublicWebUiUrl(agent, baseDomain ? { baseDomain } : {});
 }
 
 app.get("/", async (c) => {
@@ -152,9 +160,10 @@ app.get("/", async (c) => {
     }
 
     const { isAdmin } = await adminService.getAdminStatusForUser(user);
+    const webUiUrl = resolvePublicWebUiUrl(agent);
 
     const adminDetails = isAdmin
-      ? toAdminDetailsDto(agent, isDockerAgent)
+      ? toAdminDetailsDto(agent, isDockerAgent, webUiUrl)
       : null;
 
     const data: AgentDetailDto = {
@@ -174,6 +183,8 @@ app.get("/", async (c) => {
       token_name: tokenName,
       token_ticker: tokenTicker,
       dockerImage: agent.docker_image,
+      executionTier: agent.execution_tier,
+      webUiUrl,
       walletAddress,
       walletProvider,
       walletStatus,
@@ -216,6 +227,20 @@ app.patch("/", async (c) => {
     );
     if (!agent) {
       return c.json({ success: false, error: "Agent not found" }, 404);
+    }
+
+    if (agent.execution_tier === "shared") {
+      return c.json({
+        success: true,
+        source: "shared_runtime",
+        data: {
+          agentId,
+          action: parsed.data.action,
+          message: "Shared-runtime agents do not use dedicated compute",
+          previousStatus: agent.status,
+          executionTier: agent.execution_tier,
+        },
+      });
     }
 
     if (agent.status === "stopped") {
@@ -307,6 +332,44 @@ app.delete("/", async (c) => {
         { success: false, error: "Agent provisioning is in progress" },
         409,
       );
+    }
+
+    if (existing.execution_tier === "shared") {
+      const result = await elizaSandboxService.deleteAgent(
+        agentId,
+        user.organization_id,
+      );
+      if (!result.success) {
+        const status =
+          result.error === "Agent not found"
+            ? 404
+            : result.error === "Agent provisioning is in progress"
+              ? 409
+              : 500;
+        return c.json(
+          {
+            success: false,
+            error: status === 500 ? "Failed to delete agent" : result.error,
+          },
+          status,
+        );
+      }
+
+      logger.info("[agent-api] Shared-runtime agent deleted", {
+        agentId,
+        orgId: user.organization_id,
+      });
+
+      return c.json({
+        success: true,
+        deleted: true,
+        source: "shared_runtime",
+        data: {
+          agentId,
+          status: "deleted",
+          executionTier: result.deletedSandbox.execution_tier,
+        },
+      });
     }
 
     // Async delete via the same job-queue path agent_provision uses. This

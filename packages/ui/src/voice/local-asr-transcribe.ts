@@ -25,6 +25,39 @@ export interface TranscribeWavResult {
   text: string;
 }
 
+/**
+ * Probe whether the server can fulfill local-inference ASR right now via
+ * `GET /api/asr/local-inference/status` (`{ ready, provider }`).
+ *
+ * Capture surfaces use this to choose a backend that can actually transcribe:
+ * routing audio to `/api/asr/local-inference` when the server has no whisper
+ * model / native adapter 502s at `stop()` with no recoverable fallback, so an
+ * unready (or unreachable) server must degrade to browser ASR instead. A
+ * failed probe deliberately resolves `false` — "unknown readiness" is treated
+ * as "not ready" so we never capture audio we can't transcribe.
+ */
+export async function isLocalInferenceAsrReady(
+  options?: TranscribeWavOptions,
+): Promise<boolean> {
+  try {
+    const res = await fetchWithCsrf(
+      resolveApiUrl("/api/asr/local-inference/status"),
+      {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        signal: options?.signal,
+      },
+    );
+    if (!res.ok) return false;
+    const parsed = (await res.json().catch(() => null)) as {
+      ready?: unknown;
+    } | null;
+    return parsed?.ready === true;
+  } catch {
+    return false;
+  }
+}
+
 export async function transcribeLocalInferenceWav(
   audio: Uint8Array,
   options?: TranscribeWavOptions,

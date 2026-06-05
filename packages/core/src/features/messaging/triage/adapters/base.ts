@@ -7,7 +7,7 @@
  *
  * Adapters without an available underlying plugin report isAvailable=false
  * and return an empty list from listMessages. sendDraft throws
- * NotYetImplementedError because a silent no-op would violate the connector
+ * NotYetImplementedError because silent success would violate the connector
  * contract.
  */
 

@@ -3,7 +3,7 @@ import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.
 export default createViewBundleConfig({
   packageName: "@elizaos/app-model-tester",
   viewId: "model-tester",
-  entry: "./src/ModelTesterAppView.tsx",
+  entry: "./src/model-tester-view-bundle.ts",
   outDir: "dist/views",
   componentExport: "ModelTesterAppView",
 });

@@ -9,7 +9,7 @@
 // TIMING CONSTANTS
 // =========================================================================
 
-/** Stdin buffer timeout in milliseconds - time to wait for incomplete sequences */
+/** Stdin buffer timeout in milliseconds - time to wait for partial sequences */
 export const STDIN_BUFFER_TIMEOUT_MS = 10;
 
 /** Loader animation frame interval in milliseconds */

@@ -408,7 +408,7 @@ def diversify_record(
 
 
 # ---------------------------------------------------------------------------
-# Acceptance check (no-op: native JSON decoder removed in native v5)
+# Acceptance check (skipped: native JSON decoder removed in native v5)
 # ---------------------------------------------------------------------------
 
 def _acceptance_check(sample: list[str]) -> dict:

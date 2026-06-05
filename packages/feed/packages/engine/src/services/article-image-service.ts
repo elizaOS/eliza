@@ -118,8 +118,7 @@ export async function generateArticleImage(
     result = (await fal.subscribe("fal-ai/nano-banana-2", {
       input: {
         prompt,
-        image_size: "landscape_16_9",
-        num_inference_steps: 4,
+        aspect_ratio: "16:9",
         num_images: 1,
       },
       logs: false,

@@ -27,8 +27,8 @@ export {
 
 import { MusicLibraryCharacterWidget } from "../components/character/MusicLibraryCharacterWidget";
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
-import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status";
-import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player";
+import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status.helpers";
+import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player.helpers";
 
 // -- Seed bundled widgets into the registry ----------------------------------
 

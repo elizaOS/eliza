@@ -1179,6 +1179,14 @@ export async function handleLocalInferenceRoutes(
 		);
 		if (await handleFamilyMemberRoute(req, res)) return true;
 	}
+	// Speaker voice-profile binding routes (bind/unbind a recognized voice to
+	// an elizaOS entity) live under /v1/voice/speaker-profiles.
+	if (pathname.startsWith("/v1/voice/speaker-profiles")) {
+		const { handleVoiceSpeakerProfileRoutes } = await import(
+			"./routes/voice-speaker-profile-routes.js"
+		);
+		if (await handleVoiceSpeakerProfileRoutes(req, res)) return true;
+	}
 	if (!pathname.startsWith("/api/local-inference/")) return false;
 
 	// Voice-sub-model auto-updater compat namespace

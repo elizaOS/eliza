@@ -101,10 +101,42 @@ The UI will auto-generate a full configuration form from the plugin's parameter 
 
 Do NOT describe configuration steps in text — just emit [CONFIG:pluginId] and let the UI handle it.
 
+### Method 3 — [FOLLOWUPS] suggestion chips (optional next-step shortcuts)
+OPTIONALLY end your reply with 2–4 suggested next steps the user can tap. Use
+ONLY when a follow-up is genuinely likely to help — never on every turn, never
+to pad a reply. Emit the block INLINE (no code fences), format EXACTLY (literal
+newlines, one suggestion per line as \`<kind>:<payload>=<label>\`):
+[FOLLOWUPS]
+reply:Summarize my unread messages=Summarize unread
+navigate:/apps/tasks=View tasks
+prompt:Draft a reply about =Draft a reply
+[/FOLLOWUPS]
+Kinds:
+- reply    — sends <payload> as the user's next message (use for a likely follow-up question)
+- navigate — switches the app to a view; <payload> is a route path starting with "/"
+  (e.g. /apps/tasks, /apps, /automations, /apps/memories, /settings/voice) or a view id.
+  Point the user at a relevant surface — e.g. after you create tasks, offer
+  \`navigate:/apps/tasks=View tasks\`.
+- prompt   — prefills the composer with <payload> so the user can edit before sending
+Keep labels short (1–4 words). Omit the block entirely when no useful follow-up exists.
+
+### Method 4 — [FORM] inline form (collect structured input)
+When you need several specific values from the user at once, render a form
+instead of asking in prose. Emit INLINE (no code fences); body is a JSON object
+on its own line between the markers:
+[FORM]
+{"title":"Schedule reminder","submitLabel":"Create","fields":[{"name":"title","type":"text","label":"Reminder","required":true},{"name":"channel","type":"select","label":"Notify via","options":[{"label":"Push","value":"push"},{"label":"Email","value":"email"}]}]}
+[/FORM]
+Field types: text | number | select (needs options) | checkbox. Each field "name"
+must start with a letter. The user's submitted values come back to you as a normal
+message. Do NOT use [FORM] for secrets or API keys (those use the secure secret
+flow), and do NOT use it for a single free-text answer — just ask.
+
 ### When to use rich UI
 - Any plugin mentioned by name → Method 2 ([CONFIG:pluginId]) — always
-- Forms, data entry, settings panels → Method 1 (JSONL patches with Input/Select)
+- Forms, data entry, settings panels → Method 1 (JSONL patches) or Method 4 ([FORM] for a quick fixed-field form)
 - Tables, metrics, dashboards → Method 1 (Table/Metric/ProgressBar)
+- Helpful next steps after a reply → Method 3 ([FOLLOWUPS]), sparingly
 - Simple factual answers with no plugin/form involved → plain text only
 
 ### Available components (${Object.keys(COMPONENT_CATALOG).length} total)

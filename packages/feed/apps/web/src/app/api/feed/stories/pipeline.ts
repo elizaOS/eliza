@@ -403,15 +403,15 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
       .from(questions)
       .leftJoin(arcStates, eq(arcStates.questionId, questions.id))
       .where(inArray(questions.questionNumber, questionNumbers));
-    rows.forEach((q) =>
+    rows.forEach((q) => {
       questionMetaMap.set(q.questionNumber, {
         title: q.text,
         status: q.status ?? "active",
         arcState: (q.arcState as ArcStateType | null) ?? null,
         resolutionDate: q.resolutionDate,
         topicKey: q.topicKey ?? null,
-      }),
-    );
+      });
+    });
   }
 
   // Group posts into story buckets by relatedQuestion
@@ -550,7 +550,9 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     );
 
-    const newestTimestamp = new Date(storyPosts[0]?.timestamp);
+    const newestPost = storyPosts[0];
+    if (!newestPost) continue;
+    const newestTimestamp = new Date(newestPost.timestamp);
     const totalLikes = storyPosts.reduce((acc, p) => acc + p.likeCount, 0);
     const totalComments = storyPosts.reduce(
       (acc, p) => acc + p.commentCount,
@@ -791,6 +793,10 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
       anchorPostId = anchorPost.id;
     }
 
+    const anchorNarrativePost = anchorPostId
+      ? anchorPostById[anchorPostId]
+      : undefined;
+
     stories.push({
       storyKey: `market:${question.questionNumber}`,
       storyTitle: question.text,
@@ -798,8 +804,8 @@ export async function buildStoriesFeed(): Promise<StoriesPipelineResult> {
       arcState: (question.arcState as ArcStateType | null) ?? null,
       storyScore:
         Math.round(recencyScore * arcMultiplier * topicBoost * 10000) / 10000,
-      postCount: anchorPostId ? 1 : 0,
-      posts: anchorPostId ? [anchorPostById[anchorPostId]!] : [],
+      postCount: anchorNarrativePost ? 1 : 0,
+      posts: anchorNarrativePost ? [anchorNarrativePost] : [],
       hasUserPosition: false,
       isNewMarket: true,
       resolutionDate: question.resolutionDate.toISOString(),

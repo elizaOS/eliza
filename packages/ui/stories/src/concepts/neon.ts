@@ -20,7 +20,12 @@ import type {
 const MAGENTA: [number, number, number] = [1.0, 0.08, 0.72];
 const CYAN: [number, number, number] = [0.0, 0.78, 0.95];
 
-function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: any): VariantHandle {
+function build(
+  THREE: WebGPUModule,
+  _TSL: TSLModule,
+  _U: OrbUniforms,
+  parent: any,
+): VariantHandle {
   // Primary torus-knot shape: p=2,q=3 gives a classic trefoil knot.
   const knotGeo = new THREE.TorusKnotGeometry(0.68, 0.22, 128, 16, 2, 3);
   const edgesGeo = new THREE.EdgesGeometry(knotGeo);
@@ -74,7 +79,8 @@ function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: an
       haloLines.scale.setScalar(beatScale * 1.04);
 
       // --- Hue cycle: on respond, hueCycle ramps toward 1.0; idles back ---
-      const hueCycleTarget: number = f.respond > 0.05 ? (Math.sin(f.time * 2.8) * 0.5 + 0.5) : 0.0;
+      const hueCycleTarget: number =
+        f.respond > 0.05 ? Math.sin(f.time * 2.8) * 0.5 + 0.5 : 0.0;
       hueCycle += (hueCycleTarget - hueCycle) * 0.06;
 
       // Lerp core between magenta and cyan based on hueCycle.
@@ -89,7 +95,10 @@ function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: an
       // NormalBlending: keep the hue saturated (a >1 glow multiply clips toward
       // white and washes out on the bright sky); drive intensity via opacity.
       coreMat.color.setRGB(coreR, coreG, coreB);
-      coreMat.opacity = Math.min(1.0, 0.85 + f.energy * 0.12 + f.respond * 0.08);
+      coreMat.opacity = Math.min(
+        1.0,
+        0.85 + f.energy * 0.12 + f.respond * 0.08,
+      );
 
       // Halo: wider outline behind the core; brightens with energy/respond.
       haloMat.color.setRGB(haloR, haloG, haloB);
@@ -108,4 +117,9 @@ function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: an
   };
 }
 
-export const concept: ConceptDescriptor = { id: "neon", label: "neon", family: "abstract", build };
+export const concept: ConceptDescriptor = {
+  id: "neon",
+  label: "neon",
+  family: "abstract",
+  build,
+};

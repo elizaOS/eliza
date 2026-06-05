@@ -41,7 +41,7 @@ function build(
   const geoB = new THREE.TetrahedronGeometry(0.78, 0);
   const matB = makePaperMat();
   // Warm the inner solid ever so slightly — a touch more ivory.
-  matB.color = new THREE.Color(0.99, 0.96, 0.90);
+  matB.color = new THREE.Color(0.99, 0.96, 0.9);
   const meshB = new THREE.Mesh(geoB, matB);
   // Invert it by flipping on X so it nests point-down inside the upright one.
   meshB.rotation.x = Math.PI;
@@ -106,7 +106,8 @@ function build(
       pivotA.rotation.y = f.time * baseSpeedA + unfold;
       pivotA.rotation.x = Math.sin(f.time * 0.32) * (0.06 + f.respond * 0.1);
       pivotB.rotation.y = f.time * baseSpeedB - unfold * 0.6;
-      pivotB.rotation.x = Math.PI + Math.sin(f.time * 0.28 + 1.1) * (0.05 + f.respond * 0.08);
+      pivotB.rotation.x =
+        Math.PI + Math.sin(f.time * 0.28 + 1.1) * (0.05 + f.respond * 0.08);
 
       // Emissive edge catch: brightens on energy — warm paper-white flare.
       const ei = f.energy * 0.35 + f.respond * 0.12;

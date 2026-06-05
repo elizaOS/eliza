@@ -20,49 +20,6 @@ import { useCallback, useState } from "react";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";
 import { useLifeOpsXConnector } from "../hooks/useLifeOpsXConnector.js";
 
-export const LIFEOPS_SETUP_GATE_DISMISSED_KEY =
-  "eliza:lifeops-setup-gate-dismissed";
-
-function loadDismissed(): boolean {
-  try {
-    return localStorage.getItem(LIFEOPS_SETUP_GATE_DISMISSED_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function saveDismissed(): void {
-  try {
-    localStorage.setItem(LIFEOPS_SETUP_GATE_DISMISSED_KEY, "1");
-  } catch {
-    // ignore
-  }
-}
-
-export function clearLifeOpsSetupGateDismissed(): void {
-  try {
-    localStorage.removeItem(LIFEOPS_SETUP_GATE_DISMISSED_KEY);
-  } catch {
-    // ignore
-  }
-}
-
-export function useLifeOpsSetupGate() {
-  const [dismissed, setDismissed] = useState<boolean>(loadDismissed);
-
-  const dismiss = useCallback(() => {
-    saveDismissed();
-    setDismissed(true);
-  }, []);
-
-  const reset = useCallback(() => {
-    clearLifeOpsSetupGateDismissed();
-    setDismissed(false);
-  }, []);
-
-  return { dismissed, dismiss, reset };
-}
-
 interface LifeOpsSetupGateProps {
   onDismiss: () => void;
 }
@@ -147,10 +104,7 @@ export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <label
-              htmlFor="lifeops-setup-name"
-              className="sr-only"
-            >
+            <label htmlFor="lifeops-setup-name" className="sr-only">
               {t("lifeopssetup.yourName", {
                 defaultValue: "Your name",
               })}
@@ -166,10 +120,7 @@ export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
             />
           </div>
           <div className="space-y-1.5">
-            <label
-              htmlFor="lifeops-setup-timezone"
-              className="sr-only"
-            >
+            <label htmlFor="lifeops-setup-timezone" className="sr-only">
               {t("lifeopssetup.timezone", {
                 defaultValue: "Timezone",
               })}

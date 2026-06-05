@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { BudgetPanel } from "./BudgetPanel";
 import {

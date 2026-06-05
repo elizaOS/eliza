@@ -38,6 +38,11 @@ import {
   Voicemail,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  callLabelFor,
+  loadPhoneState,
+  normalizeNumber,
+} from "./PhoneAppView.helpers.ts";
 
 interface ContactRow {
   id: string;
@@ -61,8 +66,6 @@ const DIAL_KEYS: readonly string[] = [
 ];
 
 type PhoneTab = "dialer" | "recent" | "contacts";
-const DEFAULT_CALL_LOG_LIMIT = 50;
-const MAX_CALL_LOG_LIMIT = 200;
 
 function defaultOverlayContext(): OverlayAppContext {
   return {
@@ -113,47 +116,6 @@ function callIconFor(type: CallLogType) {
     default:
       return <PhoneIcon className="h-4 w-4 text-muted" aria-hidden />;
   }
-}
-
-function callLabelFor(entry: CallLogEntry): string {
-  if (entry.cachedName && entry.cachedName.trim().length > 0) {
-    return entry.cachedName.trim();
-  }
-  if (entry.number && entry.number.trim().length > 0) {
-    return entry.number.trim();
-  }
-  return "Unknown";
-}
-
-/** Strip whitespace and visual separators while keeping leading + and digits. */
-function normalizeNumber(input: string): string {
-  const trimmed = input.trim();
-  if (!trimmed) return "";
-  const leadingPlus = trimmed.startsWith("+") ? "+" : "";
-  return `${leadingPlus}${trimmed.replace(/[^0-9]/g, "")}`;
-}
-
-function normalizeCallLogLimit(limit: unknown): number {
-  if (!Number.isFinite(limit) || typeof limit !== "number") {
-    return DEFAULT_CALL_LOG_LIMIT;
-  }
-  return Math.min(MAX_CALL_LOG_LIMIT, Math.max(1, Math.trunc(limit)));
-}
-
-async function loadPhoneState(options?: { limit?: unknown; number?: string }) {
-  const normalizedNumber =
-    typeof options?.number === "string" ? normalizeNumber(options.number) : "";
-  const [status, recent] = await Promise.all([
-    Phone.getStatus().catch(() => null),
-    Phone.listRecentCalls({
-      limit: normalizeCallLogLimit(options?.limit),
-      ...(normalizedNumber ? { number: normalizedNumber } : {}),
-    }),
-  ]);
-  return {
-    status,
-    calls: recent.calls,
-  };
 }
 
 interface ContactsModule {
@@ -718,7 +680,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
           value="dialer"
           className="flex-1 overflow-y-auto focus-visible:outline-none"
         >
-          <div className="flex min-h-full flex-col items-center justify-between px-4 py-6">
+          <div className="flex min-h-full flex-col items-center px-4 pb-32 pt-6">
             <div className="flex w-full max-w-sm flex-col items-center gap-3 pt-2">
               <output
                 className="block min-h-[3rem] w-full select-text rounded-xl border border-border bg-bg-accent px-4 py-3 text-center font-mono text-2xl text-txt"
@@ -794,7 +756,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
           value="recent"
           className="flex-1 overflow-hidden focus-visible:outline-none"
         >
-          <div className="chat-native-scrollbar h-full overflow-y-auto px-4 py-3">
+          <div className="chat-native-scrollbar h-full overflow-y-auto px-4 pb-32 pt-3">
             {callsError ? (
               <p className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
                 {callsError}
@@ -861,7 +823,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
           value="contacts"
           className="flex-1 overflow-hidden focus-visible:outline-none"
         >
-          <div className="chat-native-scrollbar h-full overflow-y-auto px-4 py-3">
+          <div className="chat-native-scrollbar h-full overflow-y-auto px-4 pb-32 pt-3">
             {!contactsAvailable ? (
               <div className="flex h-full items-center justify-center px-6 text-center">
                 <div className="max-w-sm">
@@ -1134,7 +1096,7 @@ export function PhoneTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(260px, 0.9fr) minmax(320px, 1.1fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -1402,7 +1364,7 @@ export function PhoneTuiView() {
           {!loading && !error && calls.length === 0 && (
             <div style={{ color: "#64748b" }}>no recent calls</div>
           )}
-          {calls.map((call, index) => (
+          {calls.slice(0, 12).map((call, index) => (
             <TuiRecentCallButton
               key={call.id}
               call={call}
@@ -1414,68 +1376,4 @@ export function PhoneTuiView() {
       </div>
     </div>
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-phone-state") {
-    const state = await loadPhoneState({
-      limit: params?.limit,
-      number: typeof params?.number === "string" ? params.number : undefined,
-    });
-    return {
-      viewType: "tui",
-      status: state.status,
-      calls: state.calls.map((call) => ({
-        id: call.id,
-        number: call.number,
-        cachedName: call.cachedName,
-        label: callLabelFor(call),
-        date: call.date,
-        durationSeconds: call.durationSeconds,
-        type: call.type,
-        isNew: call.isNew,
-        agentSummary: call.agentSummary,
-        agentTranscript: call.agentTranscript,
-      })),
-    };
-  }
-
-  if (capability === "terminal-place-call") {
-    const number = normalizeNumber(
-      typeof params?.number === "string" ? params.number : "",
-    );
-    if (!number) throw new Error("number is required");
-    await Phone.placeCall({ number });
-    return { placed: true, number, viewType: "tui" };
-  }
-
-  if (capability === "terminal-open-dialer") {
-    const number = normalizeNumber(
-      typeof params?.number === "string" ? params.number : "",
-    );
-    await Phone.openDialer(number ? { number } : undefined);
-    return { opened: true, number: number || null, viewType: "tui" };
-  }
-
-  if (capability === "terminal-save-call-transcript") {
-    const callId =
-      typeof params?.callId === "string" ? params.callId.trim() : "";
-    const transcript =
-      typeof params?.transcript === "string" ? params.transcript.trim() : "";
-    const summary =
-      typeof params?.summary === "string" ? params.summary.trim() : "";
-    if (!callId) throw new Error("callId is required");
-    if (!transcript) throw new Error("transcript is required");
-    const result = await Phone.saveCallTranscript({
-      callId,
-      transcript,
-      ...(summary ? { summary } : {}),
-    });
-    return { saved: true, updatedAt: result.updatedAt, viewType: "tui" };
-  }
-
-  throw new Error(`Unsupported capability "${capability}"`);
 }

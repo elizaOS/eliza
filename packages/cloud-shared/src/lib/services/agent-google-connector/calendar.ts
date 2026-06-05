@@ -415,7 +415,7 @@ export async function createManagedGoogleCalendarEvent(args: {
   const parsed = (await response.json()) as GoogleCalendarApiEvent;
   const event = normalizeGoogleCalendarEvent(args.calendarId, parsed, args.timeZone);
   if (!event) {
-    fail(502, "Google Calendar returned an incomplete event payload.");
+    fail(502, "Google Calendar returned a partial event payload.");
   }
   return { event };
 }
@@ -581,7 +581,7 @@ export async function updateManagedGoogleCalendarEvent(args: {
   const parsed = (await response.json()) as GoogleCalendarApiEvent;
   const event = normalizeGoogleCalendarEvent(args.calendarId, parsed, effectiveTimeZone);
   if (!event) {
-    fail(502, "Google Calendar returned an incomplete event payload.");
+    fail(502, "Google Calendar returned a partial event payload.");
   }
   return { event };
 }

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-xr",
-  "version": "2.0.3-beta.1",
+  "version": "2.0.3-beta.6",
   "type": "module",
   "description": "WebXR audio/video streaming for elizaOS — Quest 3 and XReal glasses",
   "main": "./dist/index.js",

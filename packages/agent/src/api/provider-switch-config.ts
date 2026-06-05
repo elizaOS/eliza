@@ -428,7 +428,7 @@ const PROVIDER_DEFAULT_MODELS: Record<
   // falls back to OpenAI ids (`gpt-5.4-mini` / `gpt-5`) that 404 on
   // api.cerebras.ai, so a switched-in Cerebras agent would fail every call.
   // small/large intentionally share the key+value: the `if (!process.env[key])`
-  // guard in applyDefaultModelNames makes the second write a no-op.
+  // guard in applyDefaultModelNames skips the second write.
   cerebras: {
     smallKey: "CEREBRAS_MODEL",
     smallVal: "gpt-oss-120b",

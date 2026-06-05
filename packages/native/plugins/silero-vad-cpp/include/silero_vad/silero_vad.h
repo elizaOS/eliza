@@ -128,7 +128,7 @@ int silero_vad_process(silero_vad_handle h,
                        float *speech_prob_out);
 
 /*
- * Release a session. NULL-safe (a NULL handle is a no-op success).
+ * Release a session. NULL-safe (a NULL handle returns success).
  *
  * Returns 0 on success.
  */

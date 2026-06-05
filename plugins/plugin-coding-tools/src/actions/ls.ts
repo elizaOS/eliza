@@ -4,9 +4,9 @@ import * as path from "node:path";
 import {
   type ActionResult,
   CapabilityError,
+  logger as coreLogger,
   type FileListResult,
   getCapabilityRouter,
-  logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
@@ -259,8 +259,7 @@ export async function lsHandler(
         type = "file";
         size = st.size;
       }
-    } catch {
-    }
+    } catch {}
     enriched.push(size === undefined ? { name, type } : { name, type, size });
   }
 

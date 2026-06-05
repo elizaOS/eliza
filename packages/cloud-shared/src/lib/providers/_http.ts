@@ -1,6 +1,6 @@
 /**
  * Shared HTTP fetch helper for direct OpenAI-compatible providers
- * (OpenRouter, OpenAI direct, Anthropic direct).
+ * (BitRouter, OpenAI direct, Anthropic direct).
  *
  * Each provider's `fetchWithTimeout` was a near-identical copy that:
  *   - merged its caller's AbortSignal with a per-call timeout signal,
@@ -16,13 +16,13 @@
 import type { ProviderHttpError } from "./types";
 
 export interface ProviderLabel {
-  /** Display name used in `message` strings, e.g. "OpenRouter". */
+  /** Display name used in `message` strings, e.g. "BitRouter". */
   display: string;
-  /** Snake-case slug used in `error.type` for upstream-shaped errors, e.g. "openrouter_error". */
+  /** Snake-case slug used in `error.type` for upstream-shaped errors, e.g. "bitrouter_error". */
   errorType: string;
-  /** Snake-case slug used in `error.code` for generic upstream failures, e.g. "openrouter_request_failed". */
+  /** Snake-case slug used in `error.code` for generic upstream failures, e.g. "bitrouter_request_failed". */
   requestFailedCode: string;
-  /** Snake-case slug used in `error.code` for timeouts, e.g. "openrouter_timeout". */
+  /** Snake-case slug used in `error.code` for timeouts, e.g. "bitrouter_timeout". */
   timeoutCode: string;
 }
 
