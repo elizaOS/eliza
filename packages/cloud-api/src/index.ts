@@ -21,6 +21,10 @@ const AGENT_ID_RE =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const DEFAULT_AGENT_BASE_DOMAIN = "elizacloud.ai";
 const DEFAULT_AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.elizacloud.ai";
+type AgentDomainBindings = Pick<
+  AppEnv["Bindings"],
+  "AGENT_ROUTER_ORIGIN_HOST" | "ELIZA_CLOUD_AGENT_BASE_DOMAIN"
+>;
 
 async function getApp(): Promise<Hono<AppEnv>> {
   appPromise ??= import("./bootstrap-app").then((m) => m.createApp());
@@ -46,7 +50,10 @@ function normalizeHostname(hostname: string | undefined): string | null {
   return normalized || null;
 }
 
-function getGeneratedAgentId(url: URL, env: AppEnv["Bindings"]): string | null {
+function getGeneratedAgentId(
+  url: URL,
+  env: AgentDomainBindings,
+): string | null {
   const baseDomain =
     normalizeHostname(env.ELIZA_CLOUD_AGENT_BASE_DOMAIN) ??
     DEFAULT_AGENT_BASE_DOMAIN;
@@ -55,6 +62,21 @@ function getGeneratedAgentId(url: URL, env: AppEnv["Bindings"]): string | null {
   if (!hostname?.endsWith(suffix)) return null;
   const subdomain = hostname.slice(0, -suffix.length);
   return AGENT_ID_RE.test(subdomain) ? subdomain : null;
+}
+
+export function redirectFrontendHost(
+  url: URL,
+  env: AgentDomainBindings,
+): Response | null {
+  const baseDomain =
+    normalizeHostname(env.ELIZA_CLOUD_AGENT_BASE_DOMAIN) ??
+    DEFAULT_AGENT_BASE_DOMAIN;
+  const hostname = normalizeHostname(url.hostname);
+  if (hostname !== `www.${baseDomain}`) return null;
+
+  const targetUrl = new URL(url);
+  targetUrl.hostname = baseDomain;
+  return Response.redirect(targetUrl.toString(), 308);
 }
 
 function proxyGeneratedAgentRequest(
@@ -98,6 +120,8 @@ export default {
     const url = new URL(request.url);
     const agentProxyResponse = proxyGeneratedAgentRequest(request, env, url);
     if (agentProxyResponse) return agentProxyResponse;
+    const frontendRedirect = redirectFrontendHost(url, env);
+    if (frontendRedirect) return frontendRedirect;
 
     if (url.pathname === "/api/health") {
       return healthResponse(env);
