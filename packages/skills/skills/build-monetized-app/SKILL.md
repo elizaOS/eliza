@@ -9,9 +9,9 @@ Use this skill when you need to build an app that takes a markup on every chat o
 
 Read `references/sdk-flow.md` for the 6-step build flow with a self-contained code example. External references (all public):
 
-- **Working chat-app**: [`elizaOS/cloud-mini-apps/apps/edad-chat`](https://github.com/elizaOS/cloud-mini-apps/tree/main/apps/edad-chat) — copyable end-to-end implementation. Read its `server.ts` and `api/proxy.ts` for the canonical chat-forwarder shape using `@elizaos/cloud-sdk`.
-- **SDK reference**: [`@elizaos/cloud-sdk` README](https://github.com/elizaOS/cloud/tree/develop/packages/sdk) — typed methods + helpers + auth.
-- **Human-readable recipe**: [`docs/building-a-monetized-app.md`](https://github.com/elizaOS/cloud/blob/develop/docs/building-a-monetized-app.md) — same loop, narrative form, with the schema fields explained.
+- **Working chat-app**: [`packages/examples/cloud/edad`](https://github.com/elizaos/eliza/tree/develop/packages/examples/cloud/edad) — copyable end-to-end implementation. Read its `server.ts` for the canonical chat-forwarder shape using `@elizaos/cloud-sdk`.
+- **SDK reference**: [`@elizaos/cloud-sdk` README](https://github.com/elizaos/eliza/blob/develop/packages/cloud-sdk/README.md) — typed methods + helpers + auth.
+- **Human-readable recipe**: [`packages/docs/cloud/monetized-apps.mdx`](https://github.com/elizaos/eliza/blob/develop/packages/docs/cloud/monetized-apps.mdx) — same loop, narrative form, with the schema fields explained.
 
 ## Skill Pairing
 
@@ -24,7 +24,7 @@ request both skills for Cloud app builds.
 
 ## The survival-economics loop
 
-An Eliza-style agent running in an Eliza Cloud container costs ~$0.67/day at the default tier (256 MB CPU + 512 MB RAM). When the org's credit balance and the owner's redeemable earnings both hit zero, the container is stopped after a 48-hour grace window. The container-billing cron pulls earnings before credits, so an app that earns more than its hosting costs keeps the agent alive indefinitely. See `references/survival-economics.md` for the exact accounting (`redeemable_earnings_ledger`, `credit_transactions`, the cron at `app/api/cron/container-billing/route.ts`).
+An Eliza-style agent running in an Eliza Cloud container costs ~$0.67/day at the default tier (256 MB CPU + 512 MB RAM). When the org's credit balance and the owner's redeemable earnings both hit zero, the container is stopped after a 48-hour grace window. The container-billing cron pulls earnings before credits, so an app that earns more than its hosting costs keeps the agent alive indefinitely. See `references/survival-economics.md` for the exact accounting (`redeemable_earnings_ledger`, `credit_transactions`, the cron at `packages/cloud-api/cron/container-billing/route.ts`).
 
 This is why the skill exists: making money is how the agent stays online.
 
@@ -61,8 +61,8 @@ Use the [`eliza-cloud`](../eliza-cloud/SKILL.md) skill and its
 `references/payments-and-promotion.md` details for exact charge flows.
 
 - Use `POST /api/v1/apps/{id}/charges` for reusable Stripe/OxaPay requests.
-  The payer buys app credits; creator earnings flow through the app-credit
-  earnings ledger.
+  The payer checks out via Stripe/OxaPay; this funds the per-app credit pool
+  and credits the app-credit earnings ledger — note this is the stranded per-app pool (issue #8253), not the live inference revenue path. The working inference revenue model is the caller's org-credit balance + `recordCreatorEarnings` (markup added to the org-balance debit), not the per-app pool.
 - Use `POST /api/v1/x402/requests` for direct wallet-native crypto payments.
   Current settlement support includes Base, Ethereum, BSC, and Solana, with the
   hosted default at `https://x402.elizacloud.ai`.
@@ -86,7 +86,7 @@ Full code in `references/sdk-flow.md`. The skill assumes you have:
 Every cloud-SDK call your deployed app makes on behalf of a user MUST carry:
 
 - `Authorization: Bearer <user_jwt>` — the JWT from the app-auth OAuth redirect
-- App identity from the route path, for example `POST /api/v1/apps/<appId>/chat`
+- App identity via the `x-app-id: <appId>` header on `POST /api/v1/messages` (debits the user's org credit balance and records creator earnings; the affiliate header is honored here, unlike the app-scoped chat route)
 - Optional `x-affiliate-code: <your_affiliate_code>` when the owner has configured an affiliate code
 
 This pattern is shared with the [`eliza-cloud`](../eliza-cloud/SKILL.md) skill; see that skill for the auth flow itself. This skill assumes you've already read it.

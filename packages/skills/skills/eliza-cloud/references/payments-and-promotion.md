@@ -8,7 +8,7 @@ paid Cloud actions.
 
 Eliza Cloud has multiple payment surfaces. Do not collapse them into one.
 
-- **Inference markup** earns on app-scoped chat/inference usage.
+- **Inference markup** earns on app-scoped chat/inference usage. The marked-up cost is debited from the caller's organization credit balance (not a per-app pool), and the markup is credited to the creator via `recordCreatorEarnings`.
 - **Purchase share** earns when users buy app credits for an app.
 - **App charge requests** create reusable Stripe/OxaPay links for exact dollar
   amounts. The payer receives app credits and creator earnings flow through the
@@ -199,7 +199,7 @@ High-level SDK helpers are available on `ElizaCloudClient`:
 Direct credit checkout is useful for account top-ups, not exact creator charge
 logic.
 
-- `POST /api/v1/app-credits/checkout` buys app credits:
+- `POST /api/v1/app-credits/checkout` buys into the per-app pre-purchased credit pool (`app_credit_balances`) — note inference now debits the org balance, so these purchases are currently stranded (issue #8253):
 
   ```json
   { "app_id": "app_uuid", "amount": 25, "success_url": "...", "cancel_url": "..." }
