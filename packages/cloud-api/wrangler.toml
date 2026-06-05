@@ -166,6 +166,9 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   STEWARD_DEFAULT_TENANT_KEY         Embedded Steward default tenant API key hash/source
 #   STEWARD_PLATFORM_KEYS              Server-only platform key (server-wallets, tenant ops)
 #   STEWARD_TENANT_API_KEY             Server-only tenant API key
+#   STEWARD_REQUEST_SIGNING_SECRET     HMAC secret for signed Steward mutating requests
+#   STEWARD_REQUEST_SIGNING_SECRETS    Comma-separated Steward HMAC secrets; first is used for signing
+#   STEWARD_REQUEST_SIGNING_KEY_ID     Optional Steward tenant signing-key id
 #   STRIPE_SECRET_KEY                  Stripe billing
 #   STRIPE_WEBHOOK_SECRET              Stripe webhook signing
 #   STRIPE_SMALL_PACK_PRICE_ID         (and MEDIUM/LARGE *_PRICE_ID/_PRODUCT_ID)

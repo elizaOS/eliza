@@ -63,6 +63,9 @@ export interface Bindings {
   /** Server-only platform / tenant API keys. */
   STEWARD_PLATFORM_KEYS?: string;
   STEWARD_TENANT_API_KEY?: string;
+  STEWARD_REQUEST_SIGNING_SECRET?: string;
+  STEWARD_REQUEST_SIGNING_SECRETS?: string;
+  STEWARD_REQUEST_SIGNING_KEY_ID?: string;
   RPC_URL?: string;
   CHAIN_ID?: string;
 

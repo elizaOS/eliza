@@ -8,6 +8,7 @@
  * Reference: eliza-cloud/backend/services/container-orchestrator.ts
  */
 
+import { createHash, createHmac } from "node:crypto";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import type { DockerNode } from "../../db/schemas/docker-nodes";
@@ -456,6 +457,87 @@ function warnMissingStewardTenantApiKey(apiKey?: string) {
   );
 }
 
+function resolveStewardRequestSigningSecret(apiKey?: string): string | undefined {
+  const env = getCloudAwareEnv();
+  const explicit = env.STEWARD_REQUEST_SIGNING_SECRET?.trim();
+  if (explicit) {
+    return explicit;
+  }
+  const fromList = env.STEWARD_REQUEST_SIGNING_SECRETS?.split(",")
+    .map((secret) => secret.trim())
+    .find((secret) => secret.length > 0);
+  return fromList ?? apiKey?.trim() ?? undefined;
+}
+
+function resolveStewardRequestSigningKeyId(): string | undefined {
+  const keyId = getCloudAwareEnv().STEWARD_REQUEST_SIGNING_KEY_ID?.trim();
+  return keyId && keyId.length > 0 ? keyId : undefined;
+}
+
+function sha256TextHex(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function buildStewardCanonicalRequest(input: {
+  method: string;
+  path: string;
+  tenantId: string;
+  apiKey: string;
+  timestamp: string;
+  expiresAt: string;
+  idempotencyKey: string;
+  body: string;
+}): string {
+  return [
+    "steward-request-signature-v1",
+    input.method.toUpperCase(),
+    input.path,
+    input.tenantId,
+    sha256TextHex(""),
+    sha256TextHex(input.apiKey),
+    sha256TextHex(""),
+    sha256TextHex(""),
+    sha256TextHex(""),
+    sha256TextHex(""),
+    sha256TextHex(""),
+    input.timestamp,
+    input.expiresAt,
+    input.idempotencyKey,
+    sha256TextHex(input.body),
+  ].join("\n");
+}
+
+function buildStewardSignedHeaders(params: {
+  path: string;
+  body: string;
+  tenantId: string;
+  apiKey?: string;
+  signingSecret: string;
+}): Record<string, string> {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const expiresAt = (Number(timestamp) + 300).toString();
+  const idempotencyKey = `eliza-cloud-${crypto.randomUUID()}`;
+  const signingKeyId = resolveStewardRequestSigningKeyId();
+  const canonical = buildStewardCanonicalRequest({
+    method: "POST",
+    path: params.path,
+    tenantId: params.tenantId,
+    apiKey: params.apiKey ?? "",
+    timestamp,
+    expiresAt,
+    idempotencyKey,
+    body: params.body,
+  });
+  const signature = createHmac("sha256", params.signingSecret).update(canonical).digest("hex");
+  return {
+    "X-Steward-Request-Timestamp": timestamp,
+    "X-Steward-Request-Expires-At": expiresAt,
+    "Idempotency-Key": idempotencyKey,
+    "X-Steward-Signature": `v1=${signature}`,
+    ...(signingKeyId === undefined ? {} : { "X-Steward-Signing-Key-Id": signingKeyId }),
+  };
+}
+
 async function registerAgentWithSteward(
   ssh: DockerSSHClient,
   agentId: string,
@@ -464,6 +546,29 @@ async function registerAgentWithSteward(
   apiKey?: string,
 ): Promise<string> {
   warnMissingStewardTenantApiKey(apiKey);
+  const agentBody = JSON.stringify({ id: agentId, name: agentName });
+  const tokenBody = JSON.stringify({ expiresIn: "365d" });
+  const signingSecret = resolveStewardRequestSigningSecret(apiKey);
+  const agentSignedHeaders =
+    signingSecret === undefined
+      ? {}
+      : buildStewardSignedHeaders({
+          path: "/agents",
+          body: agentBody,
+          tenantId,
+          ...(apiKey === undefined ? {} : { apiKey }),
+          signingSecret,
+        });
+  const tokenSignedHeaders =
+    signingSecret === undefined
+      ? {}
+      : buildStewardSignedHeaders({
+          path: `/agents/${encodeURIComponent(agentId)}/token`,
+          body: tokenBody,
+          tenantId,
+          ...(apiKey === undefined ? {} : { apiKey }),
+          signingSecret,
+        });
 
   const script = `python3 - <<'PY'
 import json
@@ -476,17 +581,22 @@ api_key = ${JSON.stringify(apiKey ?? "")}
 tenant_id = ${JSON.stringify(tenantId)}
 agent_id = ${JSON.stringify(agentId)}
 agent_name = ${JSON.stringify(agentName)}
+agent_body = ${JSON.stringify(agentBody)}
+token_body = ${JSON.stringify(tokenBody)}
+agent_signed_headers = ${JSON.stringify(agentSignedHeaders)}
+token_signed_headers = ${JSON.stringify(tokenSignedHeaders)}
 
 
-def post(path, payload):
+def post(path, body_text, signed_headers):
     headers = {"Content-Type": "application/json", "User-Agent": "eliza-cloud-provisioner/1.0"}
     if tenant_id:
         headers["X-Steward-Tenant"] = tenant_id
     if api_key:
         headers["X-Steward-Key"] = api_key
+    headers.update(signed_headers)
     req = urllib.request.Request(
         f"{base_url}{path}",
-        data=json.dumps(payload).encode("utf-8"),
+        data=body_text.encode("utf-8"),
         headers=headers,
         method="POST",
     )
@@ -497,13 +607,13 @@ def post(path, payload):
         return error.code, error.read().decode("utf-8")
 
 
-status, body = post("/agents", {"id": agent_id, "name": agent_name})
+status, body = post("/agents", agent_body, agent_signed_headers)
 if status not in (200, 201, 202, 400, 409):
     print(body, file=sys.stderr)
     raise SystemExit(f"Steward agent registration failed with status {status}")
 # 400/409 = agent already exists, continue to token minting
 
-status, body = post(f"/agents/{agent_id}/token", {"expiresIn": "365d"})
+status, body = post(f"/agents/{agent_id}/token", token_body, token_signed_headers)
 if status not in (200, 201):
     print(body, file=sys.stderr)
     raise SystemExit(f"Steward token mint failed with status {status}")
