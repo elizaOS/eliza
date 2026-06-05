@@ -10,6 +10,7 @@ import {
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
+  AlertTriangle,
   BarChart3,
   ChevronLeft,
   Globe2,
@@ -35,29 +36,47 @@ import { useShopifyDashboard } from "./useShopifyDashboard";
 
 function ShopifySetupCard() {
   return (
-    <div className="mx-auto w-full max-w-md">
-      <div className="rounded-xl border border-border/30 bg-card/40 px-4 py-5">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-ok/25 bg-ok/12">
-            <Store className="h-5 w-5 text-ok" />
+    <div className="mx-auto w-full max-w-xl">
+      <div className="rounded-2xl border border-border/30 bg-card/35 p-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-danger/20 bg-danger/10">
+            <Store className="h-5 w-5 text-danger" />
+            <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-bg bg-danger" />
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-base font-semibold text-txt">
-              Connect Shopify
+          <div className="min-w-0">
+            <div className="text-lg font-semibold text-txt">Shopify</div>
+            <div className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+              <WifiOff className="h-3.5 w-3.5" />
+              <span>offline</span>
             </div>
-            <div className="mt-2 grid gap-1.5 text-xs text-muted">
-              <div className="flex items-center gap-2">
-                <Globe2 className="h-3.5 w-3.5 text-info" />
-                <code className="font-mono">SHOPIFY_STORE_DOMAIN</code>
-              </div>
-              <div className="flex items-center gap-2">
-                <KeyRound className="h-3.5 w-3.5 text-warning" />
-                <code className="font-mono">SHOPIFY_ACCESS_TOKEN</code>
-              </div>
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="h-3.5 w-3.5 text-ok" />
-                <span>products, orders, inventory, customers</span>
-              </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          <div className="rounded-xl border border-border/24 bg-bg/45 px-3 py-3">
+            <Globe2 className="h-4 w-4 text-info" />
+            <code className="mt-2 block truncate font-mono text-[11px] text-txt">
+              SHOPIFY_STORE_DOMAIN
+            </code>
+          </div>
+          <div className="rounded-xl border border-border/24 bg-bg/45 px-3 py-3">
+            <KeyRound className="h-4 w-4 text-warn" />
+            <code className="mt-2 block truncate font-mono text-[11px] text-txt">
+              SHOPIFY_ACCESS_TOKEN
+            </code>
+          </div>
+          <div className="rounded-xl border border-border/24 bg-bg/45 px-3 py-3">
+            <ShieldCheck className="h-4 w-4 text-ok" />
+            <div className="mt-2 flex flex-wrap gap-1">
+              {["Products", "Orders", "Stock"].map((label) => (
+                <Badge
+                  key={label}
+                  variant="secondary"
+                  className="rounded-full px-1.5 py-0 text-2xs"
+                >
+                  {label}
+                </Badge>
+              ))}
             </div>
           </div>
         </div>
@@ -81,17 +100,19 @@ function ConnectionStatus({
 
   if (connected && domain) {
     return (
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5 rounded-full border border-ok/20 bg-ok/10 px-2.5 py-1">
         <Wifi className="h-3.5 w-3.5 text-ok" />
-        <span className="text-xs font-medium text-ok">{domain}</span>
+        <span className="max-w-[10rem] truncate text-xs font-medium text-ok">
+          {domain}
+        </span>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-1.5">
-      <WifiOff className="h-3.5 w-3.5 text-muted/60" />
-      <span className="text-xs text-muted">Not connected</span>
+    <div className="flex items-center gap-1.5 rounded-full border border-danger/20 bg-danger/10 px-2.5 py-1">
+      <WifiOff className="h-3.5 w-3.5 text-danger" />
+      <span className="text-xs font-medium text-danger">Offline</span>
     </div>
   );
 }
@@ -149,6 +170,43 @@ function ShopifyDashboardTabTrigger({
   );
 }
 
+function OverviewTile({
+  icon: Icon,
+  label,
+  value,
+  accent,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  accent: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex min-h-24 items-start gap-3 rounded-xl border border-border/24 bg-card/35 px-3 py-3 text-left transition-colors hover:bg-card/55"
+      title={label}
+    >
+      <span
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${accent}`}
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-2xl font-semibold leading-none text-txt">
+          {value}
+        </span>
+        <span className="mt-2 block truncate text-xs font-medium text-muted">
+          {label}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
 
@@ -194,6 +252,9 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
   const lowInventoryItems = inventoryItems.filter(
     (item) => item.available <= 5,
   );
+  const urgentInventoryCount = lowInventoryItems.filter(
+    (item) => item.available === 0,
+  ).length;
 
   const backButton = useAgentElement<HTMLButtonElement>({
     id: "action-back",
@@ -231,7 +292,7 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
       data-testid="shopify-shell"
       className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-bg pb-[var(--safe-area-bottom,0px)] pl-[var(--safe-area-left,0px)] pr-[var(--safe-area-right,0px)] pt-[var(--safe-area-top,0px)] supports-[height:100dvh]:h-[100dvh]"
     >
-      <div className="flex shrink-0 items-center gap-3 border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-md">
+      <div className="flex shrink-0 items-center gap-3 border-b border-border/20 bg-bg/85 px-4 py-3 backdrop-blur-md">
         <Button
           ref={backButton.ref}
           type="button"
@@ -245,9 +306,13 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
           <ChevronLeft className="h-4 w-4" />
         </Button>
 
-        <div className="flex items-center gap-2">
-          <Store className="h-4 w-4 shrink-0 text-muted-strong" />
-          <span className="text-sm font-semibold text-txt">Shopify</span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-ok/20 bg-ok/10">
+            <Store className="h-4 w-4 text-ok" />
+          </span>
+          <span className="truncate text-sm font-semibold text-txt">
+            {shop?.name ?? "Shopify"}
+          </span>
         </div>
 
         <div className="flex-1" />
@@ -275,7 +340,7 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
         </Button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto pb-[calc(7rem+var(--safe-area-bottom,0px))]">
         {statusError ? (
           <div className="m-4 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
             {statusError}
@@ -283,7 +348,7 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
         ) : null}
 
         {!statusLoading && !connected ? (
-          <div className="flex min-h-full items-center justify-center px-4 py-12">
+          <div className="flex min-h-full items-center justify-center px-4 py-10">
             <ShopifySetupCard />
           </div>
         ) : statusLoading && !connected ? (
@@ -296,7 +361,7 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
               value={activeTab}
               onValueChange={(v) => setActiveTab(v as DashboardTab)}
             >
-              <TabsList className="sticky top-3 z-10 mb-4 h-auto w-full justify-between gap-1 p-1 shadow-sm backdrop-blur sm:w-auto sm:justify-start">
+              <TabsList className="sticky top-3 z-10 mb-4 h-auto w-full justify-between gap-1 rounded-2xl border border-border/30 bg-bg/80 p-1 shadow-sm backdrop-blur sm:w-auto sm:justify-start">
                 {DASHBOARD_TABS.map((tab) => (
                   <ShopifyDashboardTabTrigger
                     key={tab.value}
@@ -310,9 +375,42 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
 
               <TabsContent value="overview">
                 <div className="space-y-4">
-                  {shop ? (
-                    <StoreOverviewCard shop={shop} counts={counts} />
-                  ) : null}
+                  {shop ? <StoreOverviewCard shop={shop} /> : null}
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <OverviewTile
+                      icon={Package}
+                      label="Products"
+                      value={counts.productCount.toLocaleString()}
+                      accent="border-info/20 bg-info/10 text-info"
+                      onClick={() => setActiveTab("products")}
+                    />
+                    <OverviewTile
+                      icon={ShoppingCart}
+                      label="Orders"
+                      value={counts.orderCount.toLocaleString()}
+                      accent="border-ok/20 bg-ok/10 text-ok"
+                      onClick={() => setActiveTab("orders")}
+                    />
+                    <OverviewTile
+                      icon={AlertTriangle}
+                      label="Low stock"
+                      value={lowInventoryItems.length.toLocaleString()}
+                      accent={
+                        urgentInventoryCount > 0
+                          ? "border-danger/20 bg-danger/10 text-danger"
+                          : "border-warn/20 bg-warn/10 text-warn"
+                      }
+                      onClick={() => setActiveTab("inventory")}
+                    />
+                    <OverviewTile
+                      icon={Users}
+                      label="Customers"
+                      value={counts.customerCount.toLocaleString()}
+                      accent="border-border/30 bg-bg-accent text-muted-strong"
+                      onClick={() => setActiveTab("customers")}
+                    />
+                  </div>
 
                   <div className="space-y-3">
                     <div className="rounded-xl border border-border/24 bg-card/32 px-3 py-3">

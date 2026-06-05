@@ -8,7 +8,7 @@
 
 import { Button, StatusDot } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { LogIn, LogOut, RefreshCw } from "lucide-react";
+import { KeyRound, LogIn, LogOut, RefreshCw, ShieldCheck } from "lucide-react";
 import { useVincentState } from "./useVincentState";
 
 interface VincentConnectionCardProps {
@@ -71,45 +71,41 @@ export function VincentConnectionCard({
   });
 
   return (
-    <div className="rounded-3xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-      <div className="flex items-start justify-between gap-4">
-        {/* Status */}
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <StatusDot
-            status={vincentConnected ? "connected" : "muted"}
-            tone={vincentConnected ? "success" : "muted"}
-            className="shrink-0"
-          />
-          <div className="min-w-0">
-            <div className="text-sm font-semibold text-txt">
+    <div className="rounded-2xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+      <div className="flex items-center justify-between gap-4">
+        <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:grid-cols-3">
+          <div
+            className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 ${
+              vincentConnected
+                ? "border-ok/25 bg-ok/10 text-ok"
+                : "border-border/25 bg-card/50 text-muted"
+            }`}
+          >
+            <StatusDot
+              status={vincentConnected ? "connected" : "muted"}
+              tone={vincentConnected ? "success" : "muted"}
+              className="shrink-0"
+            />
+            <span className="truncate text-xs font-semibold">
               {vincentConnected
-                ? t("vincent.connected", {
-                    defaultValue: "Connected to Vincent",
-                  })
-                : t("vincent.disconnected", {
-                    defaultValue: "Not connected to Vincent",
-                  })}
-            </div>
-            {vincentConnected && vincentConnectedAt && (
-              <div className="mt-0.5 text-xs text-muted">
-                {t("vincent.connectedSince", {
-                  defaultValue: "Connected since",
-                })}{" "}
-                {formatConnectedAt(vincentConnectedAt)}
-              </div>
-            )}
-            {!vincentConnected && (
-              <div className="mt-0.5 text-xs text-muted">
-                {t("vincent.connectDescription", {
-                  defaultValue:
-                    "Connect Vincent to let its agent handle Hyperliquid and Polymarket execution.",
-                })}
-              </div>
-            )}
+                ? t("vincent.connected", { defaultValue: "Connected" })
+                : t("vincent.disconnected", { defaultValue: "Offline" })}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 rounded-xl border border-border/25 bg-card/50 px-3 py-2.5 text-muted">
+            <KeyRound className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate text-xs font-semibold">OAuth</span>
+          </div>
+          <div className="hidden items-center gap-2 rounded-xl border border-border/25 bg-card/50 px-3 py-2.5 text-muted sm:flex">
+            <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate text-xs font-semibold">
+              {vincentConnectedAt
+                ? formatConnectedAt(vincentConnectedAt)
+                : "Ready"}
+            </span>
           </div>
         </div>
 
-        {/* Action */}
         <div className="flex shrink-0 items-center gap-2">
           {vincentConnected ? (
             <Button
