@@ -144,6 +144,20 @@ const CEREBRAS_TEXT_CATALOG_MODELS: CatalogModel[] = [
   },
 ];
 
+const OPENROUTER_TEXT_CATALOG_MODELS: CatalogModel[] = [
+  {
+    id: "openrouter:openai/gpt-oss-120b",
+    object: "model",
+    created: 0,
+    owned_by: "openrouter",
+    name: "GPT OSS 120B",
+    description: "OpenRouter-hosted GPT OSS 120B routed through BitRouter BYOK",
+    type: "language",
+    context_window: 131072,
+    tags: ["reasoning", "open-weight", "byok"],
+  },
+];
+
 const OPENAI_TEXT_MODEL_IDS = [
   "openai/gpt-5.5",
   "openai/gpt-5.4",
@@ -237,6 +251,8 @@ function formatProviderLabel(provider: string): string {
       return "Groq";
     case "cerebras":
       return "Cerebras";
+    case "openrouter":
+      return "OpenRouter";
     case "openai":
       return "OpenAI";
     case "anthropic":
@@ -530,6 +546,7 @@ const STATIC_TEXT_MODEL_IDS = [
 export const STATIC_TEXT_CATALOG_MODELS: CatalogModel[] = annotateCatalogModels([
   ...BITROUTER_FEATURED_TEXT_MODELS,
   ...CEREBRAS_TEXT_CATALOG_MODELS,
+  ...OPENROUTER_TEXT_CATALOG_MODELS,
   ...STATIC_TEXT_MODEL_IDS.map(buildCatalogModel),
 ]);
 
@@ -619,40 +636,42 @@ function getProviderSortIndex(provider: string): number {
       return 0;
     case "cerebras":
       return 1;
-    case "openai":
+    case "openrouter":
       return 2;
-    case "anthropic":
+    case "openai":
       return 3;
-    case "google":
+    case "anthropic":
       return 4;
-    case "deepseek":
+    case "google":
       return 5;
-    case "xai":
+    case "deepseek":
       return 6;
-    case "mistral":
+    case "xai":
       return 7;
-    case "alibaba":
+    case "mistral":
       return 8;
-    case "minimax":
+    case "alibaba":
       return 9;
-    case "zai":
+    case "minimax":
       return 10;
-    case "moonshotai":
+    case "zai":
       return 11;
-    case "meta":
+    case "moonshotai":
       return 12;
-    case "bytedance":
+    case "meta":
       return 13;
-    case "amazon":
+    case "bytedance":
       return 14;
-    case "cohere":
+    case "amazon":
       return 15;
-    case "perplexity":
+    case "cohere":
       return 16;
-    case "inception":
+    case "perplexity":
       return 17;
-    case "meituan":
+    case "inception":
       return 18;
+    case "meituan":
+      return 19;
     default:
       return 99;
   }

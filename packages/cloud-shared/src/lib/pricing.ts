@@ -82,13 +82,14 @@ export async function calculateCost(
  * @returns Provider name (defaults to "openai" if unknown).
  */
 export function getProviderFromModel(model: string): string {
+  if (model.startsWith("openrouter:")) return "openrouter";
+  if (model.startsWith("cerebras:")) return "cerebras";
+
   // Handle provider-prefixed format: "openai/gpt-5-mini" or "anthropic/claude-3"
   if (model.includes("/")) {
     const [provider] = model.split("/");
     return normalizeProviderKey(provider);
   }
-
-  if (model.startsWith("cerebras:")) return "cerebras";
 
   // Handle non-prefixed format: "gpt-5-mini"
   if (model === "gpt-oss-120b") return "cerebras";
@@ -235,12 +236,15 @@ export function getSafeModelParams(
  * @returns Model name without provider prefix (e.g., "gpt-5-mini").
  */
 export function normalizeModelName(model: string): string {
-  if (model.includes("/")) {
-    const [, modelName] = model.split("/");
-    return modelName;
+  if (model.startsWith("openrouter:")) {
+    return model.slice("openrouter:".length);
   }
   if (model.startsWith("cerebras:")) {
     return model.slice("cerebras:".length);
+  }
+  if (model.includes("/")) {
+    const [, modelName] = model.split("/");
+    return modelName;
   }
   return model;
 }
