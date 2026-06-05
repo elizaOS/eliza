@@ -1,5 +1,9 @@
 import { resolveBrowserStewardApiUrl } from "@elizaos/cloud-shared/lib/steward-url";
-import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import {
+  hasStewardAuthedCookie,
+  readStoredStewardToken,
+  writeStoredStewardToken,
+} from "@elizaos/shared/steward-session-client";
 import { Alert, AlertDescription, DiscordIcon } from "@elizaos/ui";
 import type { StewardProviders } from "@stwd/sdk";
 import { StewardAuth } from "@stwd/sdk";
@@ -26,6 +30,7 @@ import {
   buildStewardOAuthRedirectUri,
   type StewardOAuthProvider,
 } from "./steward-oauth-url";
+import { StewardWalletProviders } from "./steward-wallet-providers";
 import { WalletButtons } from "./wallet-buttons";
 
 // lucide-react v1.x dropped brand icons (Github included). Inline a small
@@ -152,6 +157,10 @@ export default function StewardLoginSection() {
   const [error, setError] = useState<string | null>(null);
   const [callbackError, setCallbackError] = useState<string | null>(null);
   const [redirectTo, setRedirectTo] = useState<string | null>(null);
+  const [walletButtonsMounted, setWalletButtonsMounted] = useState(false);
+  const [autoStartWallet, setAutoStartWallet] = useState<WalletKind | null>(
+    null,
+  );
   const [providersLoaded, setProvidersLoaded] = useState(
     PLAYWRIGHT_TEST_AUTH_ENABLED || cachedStewardProviders !== null,
   );
@@ -267,6 +276,8 @@ export default function StewardLoginSection() {
           return;
         }
 
+        if (!readStoredStewardToken() && !hasStewardAuthedCookie()) return;
+
         const refreshed = await auth.refreshSession();
         if (cancelled) return;
         if (refreshed?.token) {
@@ -378,6 +389,11 @@ export default function StewardLoginSection() {
         stewardTenantId: STEWARD_TENANT_ID,
       },
     );
+  }
+
+  function handleWalletIntent(kind: WalletKind) {
+    setWalletButtonsMounted(true);
+    setAutoStartWallet(kind);
   }
 
   if (redirectTo) {
@@ -560,27 +576,52 @@ export default function StewardLoginSection() {
             <div className="h-px flex-1 bg-white/14" />
           </div>
 
-          <WalletButtons
-            auth={auth}
-            disabled={isLoading}
-            loadingProvider={
-              loading === "ethereum" || loading === "solana"
-                ? (loading as WalletKind)
-                : null
-            }
-            onLoadingChange={(kind) => setLoading(kind)}
-            onSuccess={(result) =>
-              handleSuccess(result.token, result.refreshToken)
-            }
-            onError={(walletError) => {
-              setError(
-                walletError.message ||
-                  t("cloud.login.error.walletFailed", {
-                    defaultValue: "Wallet sign-in failed",
-                  }),
-              );
-            }}
-          />
+          {walletButtonsMounted ? (
+            <StewardWalletProviders>
+              <WalletButtons
+                auth={auth}
+                autoStart={autoStartWallet}
+                disabled={isLoading}
+                loadingProvider={
+                  loading === "ethereum" || loading === "solana"
+                    ? (loading as WalletKind)
+                    : null
+                }
+                onAutoStartHandled={() => setAutoStartWallet(null)}
+                onLoadingChange={(kind) => setLoading(kind)}
+                onSuccess={(result) =>
+                  handleSuccess(result.token, result.refreshToken)
+                }
+                onError={(walletError) => {
+                  setError(
+                    walletError.message ||
+                      t("cloud.login.error.walletFailed", {
+                        defaultValue: "Wallet sign-in failed",
+                      }),
+                  );
+                }}
+              />
+            </StewardWalletProviders>
+          ) : (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => handleWalletIntent("ethereum")}
+                disabled={isLoading}
+                className="flex items-center justify-center gap-2 bg-transparent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-black disabled:opacity-50"
+              >
+                {t("cloud.login.wallet.evm", { defaultValue: "EVM" })}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleWalletIntent("solana")}
+                disabled={isLoading}
+                className="flex items-center justify-center gap-2 bg-transparent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-black disabled:opacity-50"
+              >
+                {t("cloud.login.wallet.solana", { defaultValue: "Solana" })}
+              </button>
+            </div>
+          )}
         </>
       )}
 

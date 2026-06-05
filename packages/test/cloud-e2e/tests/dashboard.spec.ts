@@ -1,7 +1,6 @@
 import {
   getPersistedDockerImage,
   pollSandboxStatus,
-  tickProvisioning,
 } from "../src/helpers/provisioning";
 import { expect, test } from "../src/helpers/test-fixtures";
 
@@ -41,6 +40,12 @@ test.describe("dashboard session", () => {
     seededUser,
   }) => {
     const dockerImage = "ghcr.io/elizaos/eliza:e2e-dashboard-custom";
+    const processJobs = async () => {
+      const result = await stack.mocks.controlPlane.processDbBackedJobs(
+        stack.urls.pglite,
+      );
+      expect(result.failed, JSON.stringify(result.errors)).toBe(0);
+    };
 
     await authenticatedPage.goto(`${stack.urls.frontend}/dashboard/agents`);
     await authenticatedPage.getByRole("button", { name: "New Agent" }).click();
@@ -57,25 +62,21 @@ test.describe("dashboard session", () => {
       (response) =>
         new URL(response.url()).pathname === "/api/v1/eliza/agents" &&
         response.request().method() === "POST" &&
-        response.status() === 201,
-    );
-    const provisionResponsePromise = authenticatedPage.waitForResponse(
-      (response) =>
-        /\/api\/v1\/eliza\/agents\/[^/]+\/provision$/.test(
-          new URL(response.url()).pathname,
-        ) && [202, 409, 200].includes(response.status()),
+        [201, 202].includes(response.status()),
     );
 
     await authenticatedPage.getByRole("button", { name: "Deploy" }).click();
-    await createResponsePromise;
-    const provisionResponse = await provisionResponsePromise;
+    const createResponse = await createResponsePromise;
 
-    const provisionBody = (await provisionResponse.json()) as {
-      data?: { agentId?: string };
+    const createBody = (await createResponse.json()) as {
+      data?: { id?: string; agentId?: string; sandboxId?: string };
     };
-    const agentId = provisionBody.data?.agentId;
+    const agentId =
+      createBody.data?.agentId ??
+      createBody.data?.id ??
+      createBody.data?.sandboxId;
     if (!agentId) {
-      throw new Error("Expected provision response to include agent id");
+      throw new Error("Expected create response to include agent id");
     }
 
     expect(
@@ -90,9 +91,7 @@ test.describe("dashboard session", () => {
       {
         timeoutMs: 30_000,
         intervalMs: 250,
-        onTick: async () => {
-          await tickProvisioning({ apiUrl: stack.urls.api });
-        },
+        onTick: processJobs,
       },
     );
   });

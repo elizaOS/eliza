@@ -43,6 +43,7 @@ import {
   ExternalLink,
   FileText,
   Loader2,
+  MessageCircle,
   Pause,
   Play,
   Search,
@@ -76,6 +77,7 @@ export interface ElizaAgentRow {
   web_ui_port: number | null;
   headscale_ip: string | null;
   docker_image: string | null;
+  execution_tier?: "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
   sandbox_id: string | null;
   bridge_url: string | null;
   error_message: string | null;
@@ -103,7 +105,22 @@ import {
 // ----------------------------------------------------------------
 
 function isDockerBacked(sb: ElizaAgentRow): boolean {
-  return !!sb.node_id;
+  return !!sb.node_id || sb.execution_tier === "custom" || !!sb.docker_image;
+}
+
+function getRuntimeKind(
+  sb: ElizaAgentRow,
+): "managed" | "shared" | "sandbox" | "notProvisioned" {
+  if (isDockerBacked(sb)) return "managed";
+  if (sb.execution_tier === "shared") return "shared";
+  if (
+    sb.sandbox_id ||
+    sb.status === "running" ||
+    sb.status === "provisioning"
+  ) {
+    return "sandbox";
+  }
+  return "notProvisioned";
 }
 
 // ----------------------------------------------------------------
@@ -248,16 +265,23 @@ export function ElizaAgentsTable({
             agent.createdAt ?? existing?.created_at ?? new Date().toISOString(),
           updated_at:
             agent.updatedAt ?? existing?.updated_at ?? new Date().toISOString(),
-          // Preserve infra fields from existing data (API list doesn't return these)
+          // Preserve detail-only infra fields while keeping API-created agents visible.
           node_id: existing?.node_id ?? null,
           container_name: existing?.container_name ?? null,
           bridge_port: existing?.bridge_port ?? null,
           web_ui_port: existing?.web_ui_port ?? null,
           headscale_ip: existing?.headscale_ip ?? null,
-          docker_image: existing?.docker_image ?? null,
+          docker_image: agent.dockerImage ?? existing?.docker_image ?? null,
+          execution_tier:
+            agent.executionTier === undefined
+              ? existing?.execution_tier
+              : agent.executionTier,
           sandbox_id: existing?.sandbox_id ?? null,
           bridge_url: existing?.bridge_url ?? null,
-          canonical_web_ui_url: existing?.canonical_web_ui_url ?? null,
+          canonical_web_ui_url:
+            agent.webUiUrl === undefined
+              ? (existing?.canonical_web_ui_url ?? null)
+              : agent.webUiUrl,
         } as ElizaAgentRow;
       });
 
@@ -805,6 +829,11 @@ export function ElizaAgentsTable({
                       displayStatus,
                     ) && !busy;
                   const canStop = displayStatus === "running" && !busy;
+                  const hasStandaloneWebUi =
+                    displayStatus === "running" &&
+                    sb.execution_tier !== "shared" &&
+                    Boolean(sb.canonical_web_ui_url);
+                  const hasDashboardChat = displayStatus === "running";
 
                   return (
                     <TableRow
@@ -837,9 +866,13 @@ export function ElizaAgentsTable({
                                 ? t("cloud.elizaAgentsTable.docker", {
                                     defaultValue: "Docker",
                                   })
-                                : t("cloud.elizaAgentsTable.sandbox", {
-                                    defaultValue: "Sandbox",
-                                  })}
+                                : sb.execution_tier === "shared"
+                                  ? t("cloud.elizaAgentsTable.shared", {
+                                      defaultValue: "Shared",
+                                    })
+                                  : t("cloud.elizaAgentsTable.sandbox", {
+                                      defaultValue: "Sandbox",
+                                    })}
                             </span>
                             <span className="text-[10px] text-white/20 font-mono tabular-nums">
                               {sb.id.slice(0, 8)}
@@ -861,23 +894,27 @@ export function ElizaAgentsTable({
                       {/* Runtime */}
                       <TableCell>
                         <span className="text-xs text-white/50">
-                          {isDocker
+                          {getRuntimeKind(sb) === "managed"
                             ? t("cloud.elizaAgentsTable.managedRuntime", {
                                 defaultValue: "Managed runtime",
                               })
-                            : sb.sandbox_id
-                              ? t("cloud.elizaAgentsTable.cloudSandbox", {
-                                  defaultValue: "Cloud sandbox",
+                            : getRuntimeKind(sb) === "shared"
+                              ? t("cloud.elizaAgentsTable.sharedRuntime", {
+                                  defaultValue: "Shared runtime",
                                 })
-                              : t("cloud.elizaAgentsTable.notProvisioned", {
-                                  defaultValue: "Not provisioned",
-                                })}
+                              : getRuntimeKind(sb) === "sandbox"
+                                ? t("cloud.elizaAgentsTable.cloudSandbox", {
+                                    defaultValue: "Cloud sandbox",
+                                  })
+                                : t("cloud.elizaAgentsTable.notProvisioned", {
+                                    defaultValue: "Not provisioned",
+                                  })}
                         </span>
                       </TableCell>
 
                       {/* Web UI */}
                       <TableCell>
-                        {displayStatus === "running" ? (
+                        {hasStandaloneWebUi ? (
                           <button
                             type="button"
                             onClick={() => openWebUIWithPairing(sb.id)}
@@ -888,9 +925,21 @@ export function ElizaAgentsTable({
                               defaultValue: "Open",
                             })}
                           </button>
+                        ) : hasDashboardChat &&
+                          sb.execution_tier === "shared" ? (
+                          <a
+                            href={`/dashboard/agents/${sb.id}/chat`}
+                            className="inline-flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors"
+                          >
+                            <MessageCircle className="h-3 w-3" />
+                            {t("cloud.elizaAgentsTable.chat", {
+                              defaultValue: "Chat",
+                            })}
+                          </a>
                         ) : (
                           <span className="text-xs text-white/20">
-                            {displayStatus === "running"
+                            {displayStatus === "running" &&
+                            sb.execution_tier !== "shared"
                               ? t("cloud.elizaAgentsTable.unavailable", {
                                   defaultValue: "Unavailable",
                                 })
@@ -935,7 +984,7 @@ export function ElizaAgentsTable({
                             </TooltipContent>
                           </Tooltip>
 
-                          {displayStatus === "running" && (
+                          {hasStandaloneWebUi && (
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <button
@@ -949,6 +998,24 @@ export function ElizaAgentsTable({
                               <TooltipContent className="bg-neutral-900 border-white/10">
                                 {t("cloud.elizaAgentsTable.openWebUi", {
                                   defaultValue: "Open Web UI",
+                                })}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+
+                          {hasDashboardChat && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <a
+                                  href={`/dashboard/agents/${sb.id}/chat`}
+                                  className="p-2 text-white/30 hover:text-white hover:bg-white/10 transition-colors"
+                                >
+                                  <MessageCircle className="h-4 w-4" />
+                                </a>
+                              </TooltipTrigger>
+                              <TooltipContent className="bg-neutral-900 border-white/10">
+                                {t("cloud.elizaAgentsTable.openChat", {
+                                  defaultValue: "Open chat",
                                 })}
                               </TooltipContent>
                             </Tooltip>
@@ -1046,6 +1113,11 @@ export function ElizaAgentsTable({
                   displayStatus,
                 ) && !busy;
               const canStop = displayStatus === "running" && !busy;
+              const hasStandaloneWebUi =
+                displayStatus === "running" &&
+                sb.execution_tier !== "shared" &&
+                Boolean(sb.canonical_web_ui_url);
+              const hasDashboardChat = displayStatus === "running";
 
               return (
                 <div
@@ -1076,9 +1148,13 @@ export function ElizaAgentsTable({
                             ? t("cloud.elizaAgentsTable.docker", {
                                 defaultValue: "Docker",
                               })
-                            : t("cloud.elizaAgentsTable.sandbox", {
-                                defaultValue: "Sandbox",
-                              })}
+                            : sb.execution_tier === "shared"
+                              ? t("cloud.elizaAgentsTable.shared", {
+                                  defaultValue: "Shared",
+                                })
+                              : t("cloud.elizaAgentsTable.sandbox", {
+                                  defaultValue: "Sandbox",
+                                })}
                         </span>
                         <span className="text-[10px] text-white/20 font-mono tabular-nums">
                           {sb.id.slice(0, 8)}
@@ -1120,7 +1196,7 @@ export function ElizaAgentsTable({
                       })}
                     </a>
 
-                    {displayStatus === "running" && (
+                    {hasStandaloneWebUi && (
                       <button
                         type="button"
                         onClick={() => openWebUIWithPairing(sb.id)}
@@ -1131,6 +1207,18 @@ export function ElizaAgentsTable({
                           defaultValue: "Web UI",
                         })}
                       </button>
+                    )}
+
+                    {hasDashboardChat && (
+                      <a
+                        href={`/dashboard/agents/${sb.id}/chat`}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-[var(--brand-orange)] hover:bg-white/5 transition-colors"
+                      >
+                        <MessageCircle className="h-3.5 w-3.5" />
+                        {t("cloud.elizaAgentsTable.chat", {
+                          defaultValue: "Chat",
+                        })}
+                      </a>
                     )}
 
                     {canStart && (

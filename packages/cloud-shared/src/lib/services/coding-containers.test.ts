@@ -5,6 +5,7 @@ import {
   buildCodingContainerCreatePayload,
   buildCodingContainerSessionResponse,
   isCodingContainerImageAllowed,
+  RequestCodingAgentContainerRequestSchema,
 } from "./coding-containers";
 
 describe("coding container payloads", () => {
@@ -39,6 +40,37 @@ describe("coding container payloads", () => {
     );
 
     expect(payload.image).toBe("ghcr.io/example/custom-coding-image:latest");
+  });
+});
+
+describe("request schema", () => {
+  it("defaults a missing agent to claude", () => {
+    const parsed = RequestCodingAgentContainerRequestSchema.parse({});
+    expect(parsed.agent).toBe("claude");
+  });
+
+  it("still honors an explicit agent", () => {
+    const parsed = RequestCodingAgentContainerRequestSchema.parse({ agent: "codex" });
+    expect(parsed.agent).toBe("codex");
+  });
+
+  it("rejects dropped container fields instead of silently ignoring them", () => {
+    expect(() =>
+      RequestCodingAgentContainerRequestSchema.parse({ container: { cpu: 2 } }),
+    ).toThrow();
+    expect(() =>
+      RequestCodingAgentContainerRequestSchema.parse({ container: { memory: 1024 } }),
+    ).toThrow();
+    expect(() =>
+      RequestCodingAgentContainerRequestSchema.parse({ container: { architecture: "arm64" } }),
+    ).toThrow();
+  });
+
+  it("still accepts the supported container fields", () => {
+    const parsed = RequestCodingAgentContainerRequestSchema.parse({
+      container: { name: "nancy", image: "ghcr.io/dexploarer/bnancy:latest" },
+    });
+    expect(parsed.container?.image).toBe("ghcr.io/dexploarer/bnancy:latest");
   });
 });
 
