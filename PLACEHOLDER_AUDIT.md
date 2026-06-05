@@ -6004,6 +6004,18 @@ platform no-ops are separated from actionable runtime gaps.
   to hand-edit.
 - Verified with focused marker scans on `packages/shared`.
 
+### packages/elizaos scaffold-template classification
+
+- Read `packages/elizaos/CLAUDE.md` and confirmed `AGENTS.md` parity before
+  classification.
+- No code changes were needed. Remaining hits are intentional CLI/template
+  contracts: prompt `placeholder` values in `create`, scaffold docs requiring
+  users to replace placeholder descriptions/assets, optional app stub packages
+  that generated projects install when optional app deps are absent, the project
+  template's browser/native module no-op stubs, and todo fixture data in
+  packaged app tests.
+- Verified with a focused marker scan on `packages/elizaos`.
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.
