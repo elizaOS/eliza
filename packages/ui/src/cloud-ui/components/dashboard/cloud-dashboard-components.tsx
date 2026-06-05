@@ -23,7 +23,7 @@ import { cn } from "../../lib/utils";
 import { BrandButton } from "../brand/brand-button";
 import { DashboardTableSkeleton } from "../data-list/dashboard-table-skeleton";
 import { DashboardRoutePage } from "../layout/dashboard-route-page";
-import { ListSkeleton } from "../list-skeleton";
+import { ListSkeleton } from "../../../components/ui/skeleton-layouts";
 
 interface DashboardActionLinkProps {
   to: string;
@@ -216,7 +216,7 @@ export function AppsEmptyState({ description, action }: AppsEmptyStateProps) {
 }
 
 export function AppsSkeleton() {
-  return <ListSkeleton rows={3} variant="card" />;
+  return <ListSkeleton rows={3} />;
 }
 
 export function ContainersSkeleton() {

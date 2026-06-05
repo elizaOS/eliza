@@ -65,7 +65,7 @@ export * from "./glowing-effect";
 export * from "./glowing-stars";
 export * from "./infinite-moving-cards";
 export * from "./layout";
-export * from "./list-skeleton";
+export { DetailSkeleton, ListSkeleton, TableSkeleton } from "../../components/ui/skeleton-layouts";
 export {
   Button as MovingBorderButton,
   MovingBorder,
