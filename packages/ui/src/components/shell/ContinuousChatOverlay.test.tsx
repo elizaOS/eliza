@@ -159,8 +159,10 @@ describe("ContinuousChatOverlay", () => {
     const backdrop = screen.getByTestId("chat-fullscreen-backdrop");
     expect(root.getAttribute("data-fullscreen")).toBeNull();
     // Resting: backdrop is inactive + click-through (the live view stays usable).
+    // pointer-events live on the className (a static Tailwind class) so the
+    // perf-sensitive backdrop-filter is the only animated property.
     expect(backdrop.getAttribute("data-active")).toBe("false");
-    expect(backdrop.style.pointerEvents).toBe("none");
+    expect(backdrop.className).toContain("pointer-events-none");
 
     // Far-left button enters full screen and blooms the glass panel over the view.
     fireEvent.click(screen.getByLabelText("expand to full screen"));
@@ -168,7 +170,7 @@ describe("ContinuousChatOverlay", () => {
     expect(document.querySelector('[data-variant="fullscreen"]')).toBeTruthy();
     // Backdrop becomes the active glass sheet that captures the view.
     expect(backdrop.getAttribute("data-active")).toBe("true");
-    expect(backdrop.style.pointerEvents).toBe("auto");
+    expect(backdrop.className).toContain("pointer-events-auto");
 
     // Pressing it again returns to normal (ambient) mode: the partial bubbles
     // are back (faded out) and the backdrop deactivates.
