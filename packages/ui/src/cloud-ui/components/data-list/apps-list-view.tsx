@@ -10,7 +10,7 @@ import {
 import type { ReactNode } from "react";
 
 import { Badge } from "../../../components/ui/badge";
-import { StatusBadge } from "../status-badge";
+import { StatusBadge } from "../../../components/ui/status-badge";
 import { DashboardDataList } from "./dashboard-data-list";
 import { ListActionMenu } from "./list-action-menu";
 

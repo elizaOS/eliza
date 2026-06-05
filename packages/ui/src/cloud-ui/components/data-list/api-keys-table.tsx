@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "../../../components/ui/table";
 import { BrandButton } from "../brand/brand-button";
-import { StatusBadge } from "../status-badge";
+import { StatusBadge } from "../../../components/ui/status-badge";
 import {
   DashboardDataListDesktop,
   DashboardDataListMobile,
