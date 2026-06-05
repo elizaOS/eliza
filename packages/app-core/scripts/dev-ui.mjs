@@ -296,7 +296,7 @@ function resolveApiRuntimeCommand(env) {
           : "Bun runtime was selected, but bun/bunx was not found in PATH.",
       );
     }
-    return which("bun") ?? "bun";
+    return { runtime: "bun", command: which("bun") ?? "bun" };
   }
 
   if (!hasNode) {
@@ -321,11 +321,14 @@ function resolveApiRuntimeCommand(env) {
     "/usr/local/bin/node",
     "/usr/bin/node",
   ].filter(Boolean);
-  return resolveNodeExecPathFromCandidates({
-    candidates,
-    explicitNodePath: env.ELIZA_NODE_PATH,
-    platform: process.platform,
-  });
+  return {
+    runtime: "node",
+    command: resolveNodeExecPathFromCandidates({
+      candidates,
+      explicitNodePath: env.ELIZA_NODE_PATH,
+      platform: process.platform,
+    }),
+  };
 }
 
 const visionDepsRetryCommand = [
@@ -1177,8 +1180,9 @@ if (uiOnly) {
   // so it is immune to concurrent-build churn.
   const useWatch = !skipSourceWatch;
 
-  const apiRuntimeCmd = resolveApiRuntimeCommand(process.env);
-  const apiRuntimeIsBun = apiRuntimeCmd === "bun";
+  const { runtime: apiRuntime, command: apiRuntimeCmd } =
+    resolveApiRuntimeCommand(process.env);
+  const apiRuntimeIsBun = apiRuntime === "bun";
   const apiCmd = [
     apiRuntimeCmd,
     "--conditions=eliza-source",
