@@ -3,16 +3,11 @@
  * Extracted from ConfigPageView.tsx.
  */
 
-import {
-  normalizeFirstRunProviderId,
-  WALLET_RPC_PROVIDER_OPTIONS,
-} from "@elizaos/shared";
+import { normalizeFirstRunProviderId } from "@elizaos/shared";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
-import {
-  ConfigRenderer,
-  defaultRegistry,
-} from "../../components/config-ui/config-renderer";
+import { ConfigRenderer } from "../../components/config-ui/config-renderer";
+import { defaultRegistry } from "../../components/config-ui/config-renderer.helpers";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import { useApp } from "../../state";
 import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";
@@ -39,12 +34,6 @@ export type RpcFieldDefinition = {
 export type RpcFieldGroup = ReadonlyArray<RpcFieldDefinition>;
 
 export type RpcSectionConfigMap = Record<string, RpcFieldGroup>;
-
-/* ── Constants ─────────────────────────────────────────────────────── */
-
-export const EVM_RPC_OPTIONS = WALLET_RPC_PROVIDER_OPTIONS.evm;
-export const BSC_RPC_OPTIONS = WALLET_RPC_PROVIDER_OPTIONS.bsc;
-export const SOLANA_RPC_OPTIONS = WALLET_RPC_PROVIDER_OPTIONS.solana;
 
 /* ── CloudRpcStatus ────────────────────────────────────────────────── */
 
@@ -85,7 +74,7 @@ export function CloudRpcStatus({
 
 /* ── buildRpcRendererConfig ────────────────────────────────────────── */
 
-export function buildRpcRendererConfig(
+function buildRpcRendererConfig(
   t: TranslateFn,
   selectedProvider: string,
   providerConfigs: RpcSectionConfigMap,
@@ -218,7 +207,7 @@ export function RpcConfigSection<T extends string>({
 
 /* ── renderRpcProviderButtons ──────────────────────────────────────── */
 
-export function renderRpcProviderButtons<T extends string>(
+function renderRpcProviderButtons<T extends string>(
   options: readonly RpcProviderOption<T>[],
   selectedProvider: T,
   onSelect: (provider: T) => void,

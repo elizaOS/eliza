@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { mockApp } from "../../storybook/mock-providers";
+import { mockApp } from "../../storybook/mock-providers.helpers";
 import { SystemWarningBanner } from "./SystemWarningBanner";
 
 // The banner reads systemWarnings / dismissSystemWarning from useApp() and

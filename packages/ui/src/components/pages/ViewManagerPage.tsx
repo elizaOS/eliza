@@ -24,7 +24,13 @@ import {
   type ViewRegistryEntry,
 } from "../../hooks/useAvailableViews";
 import { useDesktopTabs } from "../../hooks/useDesktopTabs";
-import { useTranslation } from "../../state/TranslationContext";
+import { useViewCatalog } from "../../hooks/useViewCatalog";
+import type { ViewEntry } from "../../hooks/view-catalog";
+import {
+  getActiveViewModality,
+  type ViewModality,
+} from "../../platform/platform-guards";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import {
   readRecentViewIds,
@@ -217,14 +223,15 @@ function ViewCard({
   const isDesktop = isElectrobunRuntime();
   const showPinButton = isDesktop && view.desktopTabEnabled !== false && onPin;
   const showManagementButtons = Boolean(onEdit || onDelete);
+  const showHero = Boolean(view.hasHeroImage && view.heroImageUrl);
 
   return (
     <div
-      className="group relative flex flex-col gap-2 rounded-sm border border-border/50 bg-card p-4 text-left transition-colors hover:bg-card/80 hover:border-border"
+      className="group relative flex flex-col overflow-hidden rounded-md border border-border/50 bg-card text-left transition-colors hover:border-accent/60"
       data-testid={`view-card-${view.id}`}
     >
       {(showPinButton || showManagementButtons) && (
-        <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+        <div className="absolute right-2 top-2 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           {showPinButton && <ViewCardPinButton view={view} onPin={onPin} />}
           {onEdit && <ViewCardEditButton view={view} onEdit={onEdit} />}
           {onDelete && <ViewCardDeleteButton view={view} onDelete={onDelete} />}
@@ -232,53 +239,29 @@ function ViewCard({
       )}
 
       <ViewCardOpenButton view={view} onClick={onClick}>
-        {view.heroImageUrl && !compact && (
-          <div className="aspect-video w-full overflow-hidden rounded-sm bg-muted">
+        <div
+          className={`w-full overflow-hidden ${compact ? "aspect-square" : "aspect-video"}`}
+        >
+          {showHero ? (
             <img
               src={view.heroImageUrl}
-              alt={view.label}
-              className="h-full w-full object-cover"
+              alt=""
+              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
               loading="lazy"
             />
-          </div>
-        )}
-
-        <div className="flex items-start gap-3">
-          {!view.heroImageUrl && (
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-border/40 bg-accent/10 text-accent">
-              <ViewIcon icon={view.icon} label={view.label} />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-accent/25 via-accent/10 to-card text-accent transition-colors group-hover:from-accent/35">
+              <ViewIcon
+                icon={view.icon}
+                label={view.label}
+                className={compact ? "h-7 w-7" : "h-12 w-12"}
+              />
             </div>
           )}
-
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-txt group-hover:text-accent transition-colors">
-              {view.label}
-            </p>
-            {view.description && (
-              <p className="mt-0.5 line-clamp-2 text-xs text-muted">
-                {view.description}
-              </p>
-            )}
-            {view.pluginName && (
-              <p className="mt-1 text-xs text-muted/60 truncate">
-                {view.pluginName}
-              </p>
-            )}
-          </div>
         </div>
-
-        {view.tags && view.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {view.tags.slice(0, 3).map((tag) => (
-              <span
-                key={tag}
-                className="inline-flex items-center rounded-full bg-muted/40 px-2 py-0.5 text-xs text-muted"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
+        <p className="truncate px-3 pb-2 text-sm font-semibold text-txt transition-colors group-hover:text-accent">
+          {view.label}
+        </p>
       </ViewCardOpenButton>
     </div>
   );
@@ -319,6 +302,103 @@ function ViewsLoadingSkeleton() {
           aria-hidden
         />
       ))}
+    </div>
+  );
+}
+
+/**
+ * Card for a not-loaded catalog entry: hero/icon + label + a Get action that
+ * installs/loads the app (its view appears once the plugin registers).
+ */
+function CatalogGetCard({
+  entry,
+  onGet,
+}: {
+  entry: ViewEntry;
+  onGet: (entry: ViewEntry) => void;
+}) {
+  const { t } = useTranslation();
+  const showHero = Boolean(entry.hasHero && entry.heroUrl);
+  const busy = entry.state === "installing";
+  const errored = entry.state === "error";
+  const actionLabel = busy
+    ? t("viewmanager.catalog.getting", { defaultValue: "Getting…" })
+    : errored
+      ? t("viewmanager.catalog.retry", { defaultValue: "Retry" })
+      : t("viewmanager.catalog.get", { defaultValue: "Get" });
+  return (
+    <div
+      className="group relative flex flex-col overflow-hidden rounded-md border border-border/50 bg-card text-left transition-colors hover:border-accent/60"
+      data-testid={`view-card-${entry.id}`}
+    >
+      <button
+        type="button"
+        onClick={() => onGet(entry)}
+        disabled={busy}
+        aria-label={t("viewmanager.catalog.getAria", {
+          label: entry.label,
+          defaultValue: "Get {{label}}",
+        })}
+        className="flex flex-col text-left focus:outline-none disabled:cursor-not-allowed"
+      >
+        <div className="aspect-video w-full overflow-hidden">
+          {showHero ? (
+            <img
+              src={entry.heroUrl}
+              alt=""
+              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-accent/25 via-accent/10 to-card text-accent transition-colors group-hover:from-accent/35">
+              <ViewIcon
+                icon={entry.icon}
+                label={entry.label}
+                className="h-12 w-12"
+              />
+            </div>
+          )}
+        </div>
+        <div className="flex items-center justify-between gap-2 px-3 py-2">
+          <span className="truncate text-sm font-semibold text-txt transition-colors group-hover:text-accent">
+            {entry.label}
+          </span>
+          <span
+            data-testid={`view-get-${entry.id}`}
+            className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+              errored
+                ? "bg-destructive/15 text-destructive"
+                : "bg-accent text-accent-foreground"
+            } ${busy ? "opacity-70" : ""}`}
+          >
+            {actionLabel}
+          </span>
+        </div>
+      </button>
+    </div>
+  );
+}
+
+function CatalogSection({
+  title,
+  entries,
+  onGet,
+}: {
+  title: string;
+  entries: ViewEntry[];
+  onGet: (entry: ViewEntry) => void;
+}) {
+  if (entries.length === 0) return null;
+  return (
+    <div className="mb-5" data-testid="views-catalog-section">
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted/70">
+        {title}
+      </h2>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {entries.map((entry) => (
+          <CatalogGetCard key={entry.key} entry={entry} onGet={onGet} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -393,14 +473,17 @@ function TopViewsSection({
   );
 }
 
-/** Fetch semantic search results from /api/views/search. */
+/** Fetch semantic search results from /api/views/search for one modality. */
 async function fetchSearchResults(
   q: string,
   limit: number,
+  viewType: ViewModality,
 ): Promise<ViewRegistryEntry[]> {
   const url = new URL("/api/views/search", window.location.origin);
   url.searchParams.set("q", q);
   url.searchParams.set("limit", String(limit));
+  // GUI is the server default — only the XR/TUI surfaces scope the query.
+  if (viewType !== "gui") url.searchParams.set("viewType", viewType);
   const resp = await fetchWithCsrf(url.pathname + url.search);
   if (!resp.ok) return [];
   const body = (await resp.json()) as unknown;
@@ -415,6 +498,12 @@ export function ViewManagerPage() {
   const { tabs: desktopTabs } = useDesktopTabs();
   const isDeveloperMode = useIsDeveloperMode();
   const canManageDynamicViews = isDeveloperMode && isElectrobunRuntime();
+  // Views are scoped to the surface modality: a GUI surface lists only GUI
+  // views (TUI/XR hidden entirely); an XR surface lists only XR views.
+  const activeModality = useMemo(() => getActiveViewModality(), []);
+  // Installable catalog (apps/games not loaded yet) — surfaced as "Get" cards
+  // alongside the loaded views, decoupled from plugin loading.
+  const { entries: catalogAllEntries, get: getCatalogEntry } = useViewCatalog();
   const [query, setQuery] = useState("");
   const [formViewId, setFormViewId] = useState("agent.quick-view");
   const [formTitle, setFormTitle] = useState("Quick View");
@@ -506,7 +595,7 @@ export function ViewManagerPage() {
     setSearchLoading(true);
     debounceRef.current = setTimeout(async () => {
       try {
-        const results = await fetchSearchResults(q, 10);
+        const results = await fetchSearchResults(q, 10, activeModality);
         setSearchResults(results);
       } catch {
         // Semantic search unavailable — fall back to client-side filtering.
@@ -518,12 +607,17 @@ export function ViewManagerPage() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query]);
+  }, [query, activeModality]);
 
   const { builtinViews, pluginViews } = useMemo(() => {
+    // Views of a different modality than the current surface are hidden
+    // entirely — a GUI surface never lists TUI/XR views, and vice versa.
+    const inActiveModality = (v: ViewRegistryEntry) =>
+      (v.viewType ?? "gui") === activeModality;
     // When the search endpoint returned results, display those ranked by score.
     if (searchResults !== null) {
       const visible = searchResults.filter((v) => {
+        if (!inActiveModality(v)) return false;
         if (v.developerOnly && !isDeveloperMode) return false;
         if (v.visibleInManager === false) return false;
         return true;
@@ -536,6 +630,7 @@ export function ViewManagerPage() {
     // No active search — show all views with client-side visibility rules.
     const q = query.trim().toLowerCase();
     const visible = views.filter((v) => {
+      if (!inActiveModality(v)) return false;
       if (v.developerOnly && !isDeveloperMode) return false;
       if (v.visibleInManager === false) return false;
       if (!q) return true;
@@ -543,14 +638,14 @@ export function ViewManagerPage() {
         v.label.toLowerCase().includes(q) ||
         (v.description?.toLowerCase().includes(q) ?? false) ||
         (v.pluginName?.toLowerCase().includes(q) ?? false) ||
-        (v.tags?.some((t) => t.toLowerCase().includes(q)) ?? false)
+        (v.tags?.some((tag) => tag.toLowerCase().includes(q)) ?? false)
       );
     });
     return {
       builtinViews: visible.filter((v) => v.builtin),
       pluginViews: visible.filter((v) => !v.builtin),
     };
-  }, [views, isDeveloperMode, query, searchResults]);
+  }, [views, isDeveloperMode, query, searchResults, activeModality]);
   const visibleViews = useMemo(
     () => [...builtinViews, ...pluginViews],
     [builtinViews, pluginViews],
@@ -577,6 +672,22 @@ export function ViewManagerPage() {
 
   const totalVisible = builtinViews.length + pluginViews.length;
   const isSearching = searchLoading && query.trim().length > 0;
+  const availableEntries = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return catalogAllEntries
+      .filter((e) => e.state !== "loaded")
+      .filter(
+        (e) =>
+          !q ||
+          e.label.toLowerCase().includes(q) ||
+          (e.description?.toLowerCase().includes(q) ?? false) ||
+          (e.category?.toLowerCase().includes(q) ?? false),
+      );
+  }, [catalogAllEntries, query]);
+
+  function handleGet(entry: ViewEntry) {
+    void getCatalogEntry(entry);
+  }
 
   function handleViewClick(view: ViewRegistryEntry) {
     setRecentViewIds(recordRecentViewId(view.id));
@@ -835,7 +946,7 @@ export function ViewManagerPage() {
 
           {(loading && views.length === 0) || isSearching ? (
             <ViewsLoadingSkeleton />
-          ) : totalVisible === 0 ? (
+          ) : totalVisible === 0 && availableEntries.length === 0 ? (
             <ViewsEmptyState hasQuery={query.trim().length > 0} />
           ) : (
             <>
@@ -863,6 +974,13 @@ export function ViewManagerPage() {
                 onViewDelete={
                   canManageDynamicViews ? handleDeleteView : undefined
                 }
+              />
+              <CatalogSection
+                title={t("viewmanager.section.getMore", {
+                  defaultValue: "Get more",
+                })}
+                entries={availableEntries}
+                onGet={handleGet}
               />
             </>
           )}

@@ -24,12 +24,11 @@ import {
   CharacterStylePanel,
 } from "./CharacterEditorPanels";
 import { CharacterHubView } from "./CharacterHubView";
+import { CharacterRoster, type CharacterRosterEntry } from "./CharacterRoster";
 import {
-  CharacterRoster,
-  type CharacterRosterEntry,
   createCustomPackRosterEntry,
   resolveRosterEntries,
-} from "./CharacterRoster";
+} from "./CharacterRoster.helpers";
 import {
   buildCharacterDraftFromPreset,
   type FirstRunPreset,

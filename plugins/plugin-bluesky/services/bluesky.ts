@@ -103,7 +103,7 @@ export class BlueSkyService extends Service {
 			if (!config.handle || !config.password) {
 				logger.warn(
 					{ agentId: runtime.agentId, accountId },
-					"Skipping BlueSky account without handle/password",
+					"BlueSky account unavailable: handle/password not configured",
 				);
 				continue;
 			}

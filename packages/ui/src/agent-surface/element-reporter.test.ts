@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPayload } from "./element-reporter";
+import { buildPayload } from "./element-reporter.hooks";
 import { ViewAgentRegistry } from "./registry";
 
 describe("element-reporter buildPayload", () => {

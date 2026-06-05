@@ -17,7 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client, type RegistryAppInfo } from "../../api";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
-import type { TranslationContextValue } from "../../state/TranslationContext";
+import type { TranslationContextValue } from "../../state/TranslationContext.hooks";
 import { useApp } from "../../state/useApp";
 import { openExternalUrl } from "../../utils";
 import { getWidgetComponent } from "../../widgets/registry";
@@ -28,15 +28,13 @@ import {
   saveChatSidebarVisibility,
   widgetVisibilityKey,
 } from "../../widgets/visibility";
-import { resolveRuntimeImageUrl } from "../apps/app-identity";
+import { resolveRuntimeImageUrl } from "../apps/app-identity.helpers";
 import { getAppDetailExtension } from "../apps/extensions/registry";
 import { findAppBySlug, getAppSlug } from "../apps/helpers";
 import {
   getInternalToolAppDescriptors,
-  getInternalToolAppHasDetailsPage,
   getInternalToolApps,
   getInternalToolAppTargetTab,
-  isInternalToolApp,
 } from "../apps/internal-tool-apps";
 import {
   getLaunchHistoryForApp,
@@ -1051,38 +1049,4 @@ export function AppDetailsView({
       ) : null}
     </div>
   );
-}
-
-/**
- * Convenience: does this slug resolve to an app that wants the details
- * page? Used by AppsView.handleLaunch to decide whether to navigate to
- * /apps/<slug>/details or call openAppRouteWindow directly.
- *
- * Internal tools opt in with `hasDetailsPage`; catalog apps opt in through
- * launch metadata that implies setup, runtime control, or a heavier session.
- */
-export function appNeedsDetailsPage(app: RegistryAppInfo | string): boolean {
-  const name = typeof app === "string" ? app : app.name;
-  if (isInternalToolApp(name)) {
-    return getInternalToolAppHasDetailsPage(name);
-  }
-  if (isOverlayApp(name)) {
-    return false;
-  }
-  if (typeof app !== "string" && app.launchType === "overlay") {
-    return false;
-  }
-  if (typeof app === "string") {
-    return false;
-  }
-  if (app.uiExtension?.detailPanelId) {
-    return true;
-  }
-  if (app.session) {
-    return true;
-  }
-  if (app.category.trim().toLowerCase() === "game") {
-    return true;
-  }
-  return false;
 }

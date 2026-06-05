@@ -74,9 +74,9 @@ export {
 } from "./setup-resume";
 export {
   type TranslationContextValue,
-  TranslationProvider,
   useTranslation,
-} from "./TranslationContext";
+} from "./TranslationContext.hooks";
+export { TranslationProvider } from "./TranslationProvider";
 export {
   type ActionNotice,
   AGENT_READY_TIMEOUT_MS,

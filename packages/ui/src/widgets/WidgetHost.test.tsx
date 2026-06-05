@@ -2,7 +2,8 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { WIDGET_UI_ACTION_EVENT, WidgetHost } from "./WidgetHost";
+import { WidgetHost } from "./WidgetHost";
+import { WIDGET_UI_ACTION_EVENT } from "./WidgetHost.constants";
 
 vi.mock("../state", () => ({
   useApp: () => ({

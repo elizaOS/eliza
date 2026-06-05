@@ -12,11 +12,9 @@
  */
 
 import { type FormEvent, useCallback, useMemo, useState } from "react";
-import {
-  ConfigFieldErrors,
-  getConfigInputClassName,
-} from "../../config-ui/config-control-primitives";
-import { runValidation } from "../../config-ui/ui-renderer";
+import { ConfigFieldErrors } from "../../config-ui/config-control-primitives";
+import { getConfigInputClassName } from "../../config-ui/config-control-primitives.helpers";
+import { runValidation } from "../../config-ui/ui-renderer.helpers";
 import { Button } from "../../ui/button";
 import { Checkbox } from "../../ui/checkbox";
 import {

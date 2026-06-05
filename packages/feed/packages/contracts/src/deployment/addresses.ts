@@ -76,8 +76,9 @@ export function getContractAddresses(): DeployedContracts {
   }
 
   if (chainId === 84532) {
-    const feedOracle = (baseSepoliaDeployment.contracts as Record<string, string>)
-      .feedOracle as Address | undefined;
+    const feedOracle = (
+      baseSepoliaDeployment.contracts as Record<string, string>
+    ).feedOracle as Address | undefined;
     if (!feedOracle) {
       throw new Error(
         "Base Sepolia FeedGameOracle is not recorded in deployments/base-sepolia. Deploy FeedGameOracle and add contracts.feedOracle before using prediction oracle reads.",

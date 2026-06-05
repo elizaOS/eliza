@@ -12,18 +12,20 @@ export * from "@elizaos/ui/browser";
 export { ErrorBoundary } from "@elizaos/ui/browser";
 export { registerDetailExtension } from "@elizaos/ui/components/apps/extensions/registry";
 export {
-  formatDetailTimestamp,
   SurfaceBadge,
   SurfaceCard,
   SurfaceEmptyState,
   SurfaceGrid,
   SurfaceSection,
   type SurfaceTone,
+} from "@elizaos/ui/components/apps/extensions/surface";
+export {
+  formatDetailTimestamp,
   selectLatestRunForApp,
   toneForHealthState,
   toneForStatusText,
   toneForViewerAttachment,
-} from "@elizaos/ui/components/apps/extensions/surface";
+} from "@elizaos/ui/components/apps/extensions/surface.helpers";
 export type { AppDetailExtensionProps } from "@elizaos/ui/components/apps/extensions/types";
 export type {
   OverlayApp,

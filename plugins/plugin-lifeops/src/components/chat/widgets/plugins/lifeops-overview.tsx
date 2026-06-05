@@ -12,7 +12,6 @@ import type {
 } from "@elizaos/shared";
 import {
   Button,
-  type ChatSidebarWidgetDefinition,
   type ChatSidebarWidgetProps,
   client,
   EmptyWidgetState,
@@ -1546,13 +1545,3 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
     </WidgetSection>
   );
 }
-
-export const LIFEOPS_OVERVIEW_WIDGETS: ChatSidebarWidgetDefinition[] = [
-  {
-    id: "lifeops.overview",
-    pluginId: "lifeops",
-    order: 90,
-    defaultEnabled: true,
-    Component: LifeOpsOverviewSidebarWidget,
-  },
-];

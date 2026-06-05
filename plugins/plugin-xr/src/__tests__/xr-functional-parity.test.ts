@@ -458,9 +458,10 @@ describe("XR feature-by-feature functional parity — all 24 views", () => {
         noHooks.push(`${pluginDir}: ${xrComponentSrc}`);
       }
     }
-    expect(noHooks, "XR components with no React hooks (likely stubs)").toEqual(
-      [],
-    );
+    expect(
+      noHooks,
+      "XR components with no React hooks (likely static shells)",
+    ).toEqual([]);
   });
 
   // C. Bundle exports the declared component symbol ───────────────────────────

@@ -40,7 +40,7 @@ import type {
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { useAutomationDeepLink } from "../../hooks/useAutomationDeepLink";
 import { useFetchData } from "../../hooks/useFetchData";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import {
   type FeedFilter,
   passesFilter,
@@ -61,7 +61,6 @@ import {
 } from "./workflow-graph-events";
 
 export type { FeedFilter } from "../../utils/automation-feed-filter";
-export { passesFilter } from "../../utils/automation-feed-filter";
 
 type ChooserState = "closed" | "task" | "workflow";
 

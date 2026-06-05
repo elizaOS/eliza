@@ -8,10 +8,8 @@ import type {
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  PermissionCard,
-  parsePermissionRequestFromText,
-} from "./permission-card";
+import { PermissionCard } from "./permission-card";
+import { parsePermissionRequestFromText } from "./permission-card.helpers";
 
 afterEach(() => {
   cleanup();

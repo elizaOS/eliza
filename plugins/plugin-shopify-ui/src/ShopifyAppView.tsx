@@ -1,5 +1,13 @@
 import type { OverlayAppContext } from "@elizaos/ui";
-import { Badge, Button, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from "@elizaos/ui";
+import {
+  Badge,
+  Button,
+  Skeleton,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   BarChart3,
@@ -21,15 +29,9 @@ import { CustomersPanel } from "./CustomersPanel";
 import { InventoryLevelsPanel } from "./InventoryLevelsPanel";
 import { OrdersPanel } from "./OrdersPanel";
 import { ProductsPanel } from "./ProductsPanel";
+import { loadShopifyTuiState } from "./ShopifyAppView.helpers";
 import { StoreOverviewCard } from "./StoreOverviewCard";
-import {
-  type ShopifyCustomersResponse,
-  type ShopifyInventoryResponse,
-  type ShopifyOrdersResponse,
-  type ShopifyProductsResponse,
-  type ShopifyStatus,
-  useShopifyDashboard,
-} from "./useShopifyDashboard";
+import { useShopifyDashboard } from "./useShopifyDashboard";
 
 function ShopifySetupCard() {
   const setupItems = [
@@ -132,14 +134,17 @@ type DashboardTab =
   | "inventory"
   | "customers";
 
-const DASHBOARD_TABS: { value: DashboardTab; label: string; icon: LucideIcon }[] =
-  [
-    { value: "overview", label: "Overview", icon: BarChart3 },
-    { value: "products", label: "Products", icon: Package },
-    { value: "orders", label: "Orders", icon: ShoppingCart },
-    { value: "inventory", label: "Inventory", icon: BarChart3 },
-    { value: "customers", label: "Customers", icon: Users },
-  ];
+const DASHBOARD_TABS: {
+  value: DashboardTab;
+  label: string;
+  icon: LucideIcon;
+}[] = [
+  { value: "overview", label: "Overview", icon: BarChart3 },
+  { value: "products", label: "Products", icon: Package },
+  { value: "orders", label: "Orders", icon: ShoppingCart },
+  { value: "inventory", label: "Inventory", icon: BarChart3 },
+  { value: "customers", label: "Customers", icon: Users },
+];
 
 function ShopifyDashboardTabTrigger({
   value,
@@ -518,80 +523,6 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
   );
 }
 
-async function fetchShopifyTuiJson<T>(url: string): Promise<T | null> {
-  const response = await fetch(url);
-  if (response.status === 404) return null;
-  const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message =
-      data && typeof data === "object" && "error" in data
-        ? String(data.error)
-        : `Shopify request failed with ${response.status}`;
-    throw new Error(message);
-  }
-  return data as T;
-}
-
-async function postShopifyTuiJson(
-  url: string,
-  body: Record<string, unknown>,
-): Promise<unknown> {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message =
-      data && typeof data === "object" && "error" in data
-        ? String(data.error)
-        : `Shopify request failed with ${response.status}`;
-    throw new Error(message);
-  }
-  return data;
-}
-
-async function loadShopifyTuiState(): Promise<{
-  status: ShopifyStatus;
-  products: ShopifyProductsResponse | null;
-  orders: ShopifyOrdersResponse | null;
-  inventory: ShopifyInventoryResponse | null;
-  customers: ShopifyCustomersResponse | null;
-}> {
-  const status = (await fetchShopifyTuiJson<ShopifyStatus>(
-    "/api/shopify/status",
-  )) ?? {
-    connected: false,
-    shop: null,
-  };
-
-  if (!status.connected) {
-    return {
-      status,
-      products: null,
-      orders: null,
-      inventory: null,
-      customers: null,
-    };
-  }
-
-  const [products, orders, inventory, customers] = await Promise.all([
-    fetchShopifyTuiJson<ShopifyProductsResponse>(
-      "/api/shopify/products?page=1&limit=10&q=",
-    ),
-    fetchShopifyTuiJson<ShopifyOrdersResponse>(
-      "/api/shopify/orders?status=any&limit=10",
-    ),
-    fetchShopifyTuiJson<ShopifyInventoryResponse>("/api/shopify/inventory"),
-    fetchShopifyTuiJson<ShopifyCustomersResponse>(
-      "/api/shopify/customers?q=&limit=10",
-    ),
-  ]);
-
-  return { status, products, orders, inventory, customers };
-}
-
 export function ShopifyTuiView() {
   const [state, setState] = useState<Awaited<
     ReturnType<typeof loadShopifyTuiState>
@@ -785,110 +716,4 @@ export function ShopifyTuiView() {
       </div>
     </div>
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-shopify-state") {
-    return { viewType: "tui", ...(await loadShopifyTuiState()) };
-  }
-
-  if (capability === "terminal-shopify-products") {
-    const query = typeof params?.query === "string" ? params.query.trim() : "";
-    const page = typeof params?.page === "number" ? params.page : 1;
-    const limit = typeof params?.limit === "number" ? params.limit : 20;
-    return {
-      viewType: "tui",
-      products: await fetchShopifyTuiJson<ShopifyProductsResponse>(
-        `/api/shopify/products?${new URLSearchParams({
-          page: String(page),
-          limit: String(limit),
-          q: query,
-        })}`,
-      ),
-    };
-  }
-
-  if (capability === "terminal-shopify-orders") {
-    const status =
-      typeof params?.status === "string" ? params.status.trim() : "any";
-    const limit = typeof params?.limit === "number" ? params.limit : 20;
-    return {
-      viewType: "tui",
-      orders: await fetchShopifyTuiJson<ShopifyOrdersResponse>(
-        `/api/shopify/orders?${new URLSearchParams({
-          status,
-          limit: String(limit),
-        })}`,
-      ),
-    };
-  }
-
-  if (capability === "terminal-shopify-inventory") {
-    return {
-      viewType: "tui",
-      inventory: await fetchShopifyTuiJson<ShopifyInventoryResponse>(
-        "/api/shopify/inventory",
-      ),
-    };
-  }
-
-  if (capability === "terminal-shopify-customers") {
-    const query = typeof params?.query === "string" ? params.query.trim() : "";
-    const limit = typeof params?.limit === "number" ? params.limit : 20;
-    return {
-      viewType: "tui",
-      customers: await fetchShopifyTuiJson<ShopifyCustomersResponse>(
-        `/api/shopify/customers?${new URLSearchParams({
-          q: query,
-          limit: String(limit),
-        })}`,
-      ),
-    };
-  }
-
-  if (capability === "terminal-shopify-create-product") {
-    const title = typeof params?.title === "string" ? params.title.trim() : "";
-    if (!title) throw new Error("title is required");
-    return {
-      viewType: "tui",
-      product: await postShopifyTuiJson("/api/shopify/products", {
-        title,
-        vendor: typeof params?.vendor === "string" ? params.vendor : undefined,
-        productType:
-          typeof params?.productType === "string"
-            ? params.productType
-            : undefined,
-        price:
-          typeof params?.price === "string" || typeof params?.price === "number"
-            ? params.price
-            : undefined,
-      }),
-    };
-  }
-
-  if (capability === "terminal-shopify-adjust-inventory") {
-    const itemId =
-      typeof params?.itemId === "string" ? params.itemId.trim() : "";
-    const delta = typeof params?.delta === "number" ? params.delta : null;
-    if (!itemId) throw new Error("itemId is required");
-    if (delta === null) throw new Error("delta is required");
-    return {
-      viewType: "tui",
-      inventory: await postShopifyTuiJson(
-        `/api/shopify/inventory/${encodeURIComponent(itemId)}/adjust`,
-        {
-          delta,
-          locationId:
-            typeof params?.locationId === "string"
-              ? params.locationId
-              : undefined,
-        },
-      ),
-    };
-  }
-
-  throw new Error(`Unsupported capability "${capability}"`);
 }

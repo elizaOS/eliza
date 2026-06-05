@@ -11,53 +11,18 @@
 // The provider holds that state; the registry entries themselves are plain
 // data (no DOM handles — restore/close run through the React tree, not by
 // toggling `.hidden` on a detached element).
+//
+// The context, types, and the useWindowManager hook live in
+// ./WindowManager.context so this file exports only the provider component and
+// stays Fast-Refresh-compatible.
 
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 import {
-  createContext,
-  type ReactNode,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-} from "react";
-
-// The icon is a lucide icon NAME (e.g. "StickyNote"), resolved to a component
-// by the dock's explicit name→component map. We keep it a plain string here so
-// the registry stays serializable-shaped data and the manager never imports
-// lucide — only the presentational dock does.
-export interface WindowMeta {
-  /** Human-readable window title shown on the dock chip. */
-  label: string;
-  /** A lucide-react icon name (e.g. "Calendar"); resolved by the dock. */
-  icon: string;
-  /** Close the underlying view (the dock chip's × calls this so closing a
-   *  minimized window truly closes it instead of resurrecting its panel).
-   *  useWindowControls passes a stable wrapper, so its identity never churns. */
-  onClose?: () => void;
-}
-
-export interface WindowEntry extends WindowMeta {
-  /** Stable window id — the same storageKey the view passes to useWindowControls. */
-  id: string;
-  /** Whether the window is currently minimized to the dock. */
-  minimized: boolean;
-}
-
-export interface WindowManagerApi {
-  /** Register (or refresh the meta of) a window. Idempotent on re-register;
-   *  preserves the existing `minimized` flag so a meta refresh never restores. */
-  register(id: string, meta: WindowMeta): void;
-  /** Remove a window from the registry entirely (its dock chip disappears). */
-  unregister(id: string): void;
-  /** Flip a window's minimized flag. No-op for an unregistered id. */
-  setMinimized(id: string, minimized: boolean): void;
-  /** Read a single window's minimized flag (false when unregistered). */
-  isMinimized(id: string): boolean;
-  /** The windows currently minimized, in stable insertion order. */
-  minimizedWindows: WindowEntry[];
-}
-
-const WindowManagerContext = createContext<WindowManagerApi | null>(null);
+  type WindowEntry,
+  type WindowManagerApi,
+  WindowManagerContext,
+  type WindowMeta,
+} from "./WindowManager.context";
 
 export function WindowManagerProvider({
   children,
@@ -145,14 +110,4 @@ export function WindowManagerProvider({
       {children}
     </WindowManagerContext.Provider>
   );
-}
-
-/**
- * Access the window manager. Returns `null` when called outside a
- * WindowManagerProvider — callers (useWindowControls) must degrade gracefully
- * rather than throw, so a view rendered standalone (tests, storybook, a host
- * that hasn't wrapped the shell) never breaks.
- */
-export function useWindowManager(): WindowManagerApi | null {
-  return useContext(WindowManagerContext);
 }

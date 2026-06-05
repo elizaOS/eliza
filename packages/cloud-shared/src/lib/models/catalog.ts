@@ -43,13 +43,42 @@ export interface SelectorModel {
 export const BITROUTER_RECOMMENDED_TEXT_MODEL = "openai/gpt-oss-120b:nitro";
 export const BITROUTER_DEFAULT_TEXT_MODEL = BITROUTER_RECOMMENDED_TEXT_MODEL;
 export const BITROUTER_DEFAULT_FREE_MODEL = "openai/gpt-oss-120b:free";
+export const CEREBRAS_DEFAULT_TEXT_SMALL_MODEL = "gpt-oss-120b";
+export const CEREBRAS_DEFAULT_TEXT_LARGE_MODEL = "zai-glm-4.7";
 
 const BITROUTER_RECOMMENDED_MODEL_IDS = new Set<string>([BITROUTER_RECOMMENDED_TEXT_MODEL]);
 
 // Verified against the public provider catalogs on 2026-04-25:
 // - BitRouter: https://bitrouter.ai/api/v1/models
 // - Groq docs: https://console.groq.com/docs/models
+// - Cerebras: https://api.cerebras.ai/public/v1/models?format=openrouter
 const BITROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
+  {
+    id: CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
+    object: "model",
+    created: 1767744000,
+    owned_by: "cerebras",
+    name: "Z.ai GLM 4.7",
+    description:
+      "Default TEXT_LARGE model on Cerebras for coding, advanced reasoning, and tool use",
+    type: "language",
+    context_window: 131072,
+    max_tokens: 40960,
+    tags: ["recommended", "reasoning", "tool-use", "cerebras"],
+    recommended: true,
+  },
+  {
+    id: CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+    object: "model",
+    created: 1754438400,
+    owned_by: "cerebras",
+    name: "GPT OSS 120B",
+    description: "Default TEXT_SMALL model on Cerebras for fast open-weight reasoning",
+    type: "language",
+    context_window: 131072,
+    max_tokens: 40960,
+    tags: ["reasoning", "open-weight", "cerebras"],
+  },
   {
     id: BITROUTER_RECOMMENDED_TEXT_MODEL,
     object: "model",
@@ -88,6 +117,30 @@ const BITROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
     },
     tags: ["free", "reasoning", "open-weight"],
     free: true,
+  },
+];
+
+const CEREBRAS_TEXT_CATALOG_MODELS: CatalogModel[] = [
+  {
+    id: "cerebras:gpt-oss-120b",
+    object: "model",
+    created: 0,
+    owned_by: "cerebras",
+    name: "GPT OSS 120B",
+    description: "Cerebras-hosted open-weight reasoning model routed through BitRouter BYOK",
+    type: "language",
+    context_window: 131072,
+    tags: ["reasoning", "open-weight", "byok"],
+  },
+  {
+    id: "cerebras:zai-glm-4.7",
+    object: "model",
+    created: 0,
+    owned_by: "cerebras",
+    name: "ZAI GLM 4.7",
+    description: "Cerebras-hosted GLM language model routed through BitRouter BYOK",
+    type: "language",
+    tags: ["byok"],
   },
 ];
 
@@ -182,6 +235,8 @@ function formatProviderLabel(provider: string): string {
   switch (normalizeProviderKey(provider)) {
     case "groq":
       return "Groq";
+    case "cerebras":
+      return "Cerebras";
     case "openai":
       return "OpenAI";
     case "anthropic":
@@ -474,6 +529,7 @@ const STATIC_TEXT_MODEL_IDS = [
 
 export const STATIC_TEXT_CATALOG_MODELS: CatalogModel[] = annotateCatalogModels([
   ...BITROUTER_FEATURED_TEXT_MODELS,
+  ...CEREBRAS_TEXT_CATALOG_MODELS,
   ...STATIC_TEXT_MODEL_IDS.map(buildCatalogModel),
 ]);
 
@@ -561,40 +617,42 @@ function getProviderSortIndex(provider: string): number {
   switch (normalizeProviderKey(provider)) {
     case "groq":
       return 0;
-    case "openai":
+    case "cerebras":
       return 1;
-    case "anthropic":
+    case "openai":
       return 2;
-    case "google":
+    case "anthropic":
       return 3;
-    case "deepseek":
+    case "google":
       return 4;
-    case "xai":
+    case "deepseek":
       return 5;
-    case "mistral":
+    case "xai":
       return 6;
-    case "alibaba":
+    case "mistral":
       return 7;
-    case "minimax":
+    case "alibaba":
       return 8;
-    case "zai":
+    case "minimax":
       return 9;
-    case "moonshotai":
+    case "zai":
       return 10;
-    case "meta":
+    case "moonshotai":
       return 11;
-    case "bytedance":
+    case "meta":
       return 12;
-    case "amazon":
+    case "bytedance":
       return 13;
-    case "cohere":
+    case "amazon":
       return 14;
-    case "perplexity":
+    case "cohere":
       return 15;
-    case "inception":
+    case "perplexity":
       return 16;
-    case "meituan":
+    case "inception":
       return 17;
+    case "meituan":
+      return 18;
     default:
       return 99;
   }

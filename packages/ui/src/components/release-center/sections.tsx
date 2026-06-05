@@ -4,7 +4,8 @@ import { useApp } from "../../state";
 import { formatDateTime } from "../../utils/format";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { DefinitionRow, partitionDescription, StatusPill } from "./shared";
+import { partitionDescription } from "./shared.helpers";
+import { DefinitionRow, StatusPill } from "./shared";
 import type {
   AppReleaseStatus,
   DesktopBuildInfo,

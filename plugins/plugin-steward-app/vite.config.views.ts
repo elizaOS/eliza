@@ -3,7 +3,7 @@ import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.
 export default createViewBundleConfig({
   packageName: "@elizaos/plugin-steward-app",
   viewId: "steward",
-  entry: "./src/StewardView.tsx",
+  entry: "./src/steward-view-bundle.ts",
   outDir: "dist/views",
   componentExport: "StewardView",
   additionalExternals: ["@elizaos/app-core"],

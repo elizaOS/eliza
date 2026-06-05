@@ -16,4 +16,5 @@ export type {
   WidgetSlot,
 } from "./types";
 export type { WidgetHostProps, WidgetUiActionEventDetail } from "./WidgetHost";
-export { WIDGET_UI_ACTION_EVENT, WidgetHost } from "./WidgetHost";
+export { WidgetHost } from "./WidgetHost";
+export { WIDGET_UI_ACTION_EVENT } from "./WidgetHost.constants";

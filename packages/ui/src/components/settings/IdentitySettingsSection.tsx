@@ -31,8 +31,8 @@ import { Textarea } from "../ui/textarea";
 import {
   SettingsField,
   SettingsFieldLabel,
-  useSettingsSave,
 } from "./settings-control-primitives";
+import { useSettingsSave } from "./settings-control-primitives.hooks";
 
 function resolveEditableVoiceSelectionKey(config: VoiceConfig | null): string {
   const elevenLabsVoiceId =

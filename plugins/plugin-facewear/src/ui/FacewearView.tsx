@@ -385,5 +385,3 @@ export function SmartglassesTuiView() {
     />
   );
 }
-
-export { SmartglassesView } from "./SmartglassesView.tsx";

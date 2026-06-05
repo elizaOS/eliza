@@ -60,7 +60,7 @@ describe("createReportCache", () => {
     expect(back).toEqual(report);
   });
 
-  it("does not leave temporary files after a successful write", () => {
+  it("does not leave transient files after a successful write", () => {
     const cache = createReportCache(dir);
     cache.write(sampleReport());
 
@@ -100,7 +100,7 @@ describe("createReportCache", () => {
     expect(list[1]?.surface).toBe("old");
   });
 
-  it("skips malformed cache files when listing reports", () => {
+  it("ignores malformed cache files when listing reports", () => {
     const cache = createReportCache(dir);
     cache.write(sampleReport({ cacheKey: "good", surface: "ok" }));
     writeFileSync(path.join(dir, "bad.json"), "{not json", "utf8");

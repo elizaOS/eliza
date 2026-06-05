@@ -1,8 +1,11 @@
-import type React from "react";
 import { getBootConfig } from "../../config/boot-config";
 import { BlueBubblesStatusPanel } from "./BlueBubblesStatusPanel";
 import { ConnectorAccountList } from "./ConnectorAccountList";
 import { ConnectorAccountSetupScope } from "./ConnectorAccountSetupScope";
+import {
+  connectorSetupRegistry,
+  normalizePluginId,
+} from "./ConnectorSetupPanel.helpers";
 import {
   getConnectorPluginManagedAccountCreateInput,
   getConnectorPluginManagedAccountOption,
@@ -14,66 +17,6 @@ import { SignalQrOverlay } from "./SignalQrOverlay";
 import { TelegramAccountConnectorPanel } from "./TelegramAccountConnectorPanel";
 import { TelegramBotSetupPanel } from "./TelegramBotSetupPanel";
 import { WhatsAppQrOverlay } from "./WhatsAppQrOverlay";
-
-function normalizePluginId(pluginId: string): string {
-  return pluginId
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-}
-
-// ---------------------------------------------------------------------------
-// Connector setup panel registry — allows plugins to register their own
-// setup panels at runtime without modifying the hardcoded switch statement.
-// ---------------------------------------------------------------------------
-
-const connectorSetupRegistry = new Map<string, React.ComponentType>();
-
-/**
- * Register a custom connector setup panel component for a given connector ID.
- * The connectorId is normalized (lowercased, non-alphanumeric stripped) before
- * storage, so callers can pass raw plugin IDs.
- */
-export function registerConnectorSetupPanel(
-  connectorId: string,
-  component: React.ComponentType,
-): void {
-  connectorSetupRegistry.set(normalizePluginId(connectorId), component);
-}
-
-export function hasConnectorSetupPanel(pluginId: string): boolean {
-  const normalized = normalizePluginId(pluginId);
-  if (parseConnectorAccountManagementPanelPluginId(pluginId)) {
-    return true;
-  }
-  // Check registry first
-  if (connectorSetupRegistry.has(normalized)) {
-    return true;
-  }
-  if (
-    normalized.includes("lifeopsbrowser") ||
-    normalized.includes("browserbridg")
-  ) {
-    return Boolean(getBootConfig().lifeOpsBrowserSetupPanel);
-  }
-  if (normalized.includes("telegramaccount")) {
-    return true;
-  }
-  if (normalized.includes("plugintelegram")) {
-    return true;
-  }
-  switch (normalized) {
-    case "whatsapp":
-    case "signal":
-    case "discordlocal":
-    case "bluebubbles":
-    case "imessage":
-    case "telegram":
-      return true;
-    default:
-      return false;
-  }
-}
 
 function ConnectorAccountManagementPanel({
   provider,

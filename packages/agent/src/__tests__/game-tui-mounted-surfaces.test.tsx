@@ -107,26 +107,16 @@ vi.mock("@elizaos/ui/agent-surface", () => uiMock);
 vi.mock("@elizaos/app-core", () => uiMock);
 vi.mock("@elizaos/app-core/ui-compat", () => uiMock);
 
-import {
-  interact as interact2004scape,
-  TwoThousandFourScapeTuiView,
-} from "../../../../plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface";
-import {
-  ClawvilleTuiView,
-  interact as interactClawville,
-} from "../../../../plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface";
-import {
-  DefenseAgentsTuiView,
-  interact as interactDefense,
-} from "../../../../plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface";
-import {
-  HyperscapeTuiView,
-  interact as interactHyperscape,
-} from "../../../../plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface";
-import {
-  interact as interactScape,
-  ScapeTuiView,
-} from "../../../../plugins/plugin-scape/src/ui/ScapeOperatorSurface";
+import { TwoThousandFourScapeTuiView } from "../../../../plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface";
+import { interact as interact2004scape } from "../../../../plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.interact";
+import { ClawvilleTuiView } from "../../../../plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface";
+import { interact as interactClawville } from "../../../../plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.interact";
+import { DefenseAgentsTuiView } from "../../../../plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface";
+import { interact as interactDefense } from "../../../../plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.interact";
+import { HyperscapeTuiView } from "../../../../plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface";
+import { interact as interactHyperscape } from "../../../../plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.interact";
+import { ScapeTuiView } from "../../../../plugins/plugin-scape/src/ui/ScapeOperatorSurface";
+import { interact as interactScape } from "../../../../plugins/plugin-scape/src/ui/ScapeOperatorSurface.interact";
 
 const baseRun = {
   runId: "run-1",

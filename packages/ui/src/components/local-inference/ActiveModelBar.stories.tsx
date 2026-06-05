@@ -3,7 +3,7 @@ import type {
   ActiveModelState,
   InstalledModel,
 } from "../../api/client-local-inference";
-import { TranslationProvider } from "../../state/TranslationContext";
+import { TranslationProvider } from "../../state/TranslationProvider";
 import { ActiveModelBar } from "./ActiveModelBar";
 
 const installed: InstalledModel[] = [

@@ -1,8 +1,7 @@
-export {
-  ApprovedAddressesSection,
-  addressSummary,
-} from "./ApprovedAddressesSection";
-export { AutoApproveSection, autoApproveSummary } from "./AutoApproveSection";
+export { ApprovedAddressesSection } from "./ApprovedAddressesSection";
+export { addressSummary } from "./ApprovedAddressesSection.helpers";
+export { AutoApproveSection } from "./AutoApproveSection";
+export { autoApproveSummary } from "./AutoApproveSection.helpers";
 export * from "./constants";
 export {
   approvedAddressValue,
@@ -13,7 +12,10 @@ export {
   parseAmount,
 } from "./helpers";
 export { PolicyToggle } from "./PolicyToggle";
-export { RateLimitSection, rateLimitSummary } from "./RateLimitSection";
-export { SpendingLimitSection, spendingSummary } from "./SpendingLimitSection";
-export { TimeWindowSection, timeWindowSummary } from "./TimeWindowSection";
+export { RateLimitSection } from "./RateLimitSection";
+export { rateLimitSummary } from "./RateLimitSection.helpers";
+export { SpendingLimitSection } from "./SpendingLimitSection";
+export { spendingSummary } from "./SpendingLimitSection.helpers";
+export { TimeWindowSection } from "./TimeWindowSection";
+export { timeWindowSummary } from "./TimeWindowSection.helpers";
 export * from "./types";

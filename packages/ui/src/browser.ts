@@ -28,8 +28,10 @@ export { sendJson, sendJsonError } from "./api/response.ts";
 export { registerAppShellPage } from "./app-shell-registry.ts";
 export * from "./bridge/index.ts";
 export * from "./chat/index.ts";
+export * from "./components/apps/AppWindowRenderer.helpers.ts";
 export * from "./components/apps/AppWindowRenderer.tsx";
 export * from "./components/apps/extensions/registry.ts";
+export * from "./components/apps/extensions/surface.helpers.ts";
 export * from "./components/apps/extensions/surface.tsx";
 export * from "./components/apps/extensions/types.ts";
 export * from "./components/apps/overlay-app-api.ts";
@@ -49,17 +51,21 @@ export { SidebarContent } from "./components/composites/sidebar/sidebar-content.
 export { SidebarPanel } from "./components/composites/sidebar/sidebar-panel.tsx";
 export { Sidebar } from "./components/composites/sidebar/sidebar-root.tsx";
 export { SidebarScrollRegion } from "./components/composites/sidebar/sidebar-scroll-region.tsx";
+export * from "./components/config-ui/config-renderer.helpers.ts";
 export * from "./components/config-ui/config-renderer.tsx";
 export {
   evaluateUiVisibility,
   getSupportedComponents,
   runValidation as runUiValidation,
   sanitizeLinkHref,
+} from "./components/config-ui/ui-renderer.helpers.ts";
+export {
   UiRenderer,
   type UiRendererProps,
 } from "./components/config-ui/ui-renderer.tsx";
 export * from "./components/pages/PageScopedChatPane.tsx";
 export { AppPageSidebar } from "./components/shared/AppPageSidebar.tsx";
+export * from "./components/shared/LanguageDropdown.helpers.ts";
 export type { TranslatorFn } from "./components/shared/LanguageDropdown.tsx";
 export * from "./components/shared/LanguageDropdown.tsx";
 export * from "./components/shared/ThemeToggle.tsx";
@@ -91,10 +97,12 @@ export { SettingsControls } from "./components/ui/settings-controls.tsx";
 export { Skeleton } from "./components/ui/skeleton.tsx";
 export { Spinner } from "./components/ui/spinner.tsx";
 export {
-  StatusBadge,
-  StatusDot,
   statusLabelForState,
   statusToneForState,
+} from "./components/ui/status-badge.helpers.ts";
+export {
+  StatusBadge,
+  StatusDot,
 } from "./components/ui/status-badge.tsx";
 export { Switch } from "./components/ui/switch.tsx";
 export * from "./components/ui/table.tsx";
@@ -110,10 +118,11 @@ export type {
   VoicePillProps,
 } from "./components/voice-pill/index.ts";
 export { VoicePill } from "./components/voice-pill/index.ts";
+export * from "./components/workspace/AppWorkspaceChrome.hooks.ts";
 export * from "./components/workspace/AppWorkspaceChrome.tsx";
 // === Phase 5C: ./config/app-config moved to @elizaos/app-core/config/app-config ===
 export * from "./config/boot-config.ts";
-export * from "./config/boot-config-react.tsx";
+export * from "./config/boot-config-react.hooks.ts";
 export type {
   CompanionInferenceNotice,
   CompanionSceneStatus,
@@ -137,8 +146,9 @@ export * from "./first-run/mobile-runtime-mode.ts";
 export * from "./first-run/pre-seed-local-runtime.ts";
 export * from "./first-run/reload-into-first-run-runtime.ts";
 export * from "./first-run/runtime-target.ts";
+export { BugReportProvider } from "./hooks/BugReportProvider.tsx";
 export * from "./hooks/useActivityEvents.ts";
-export * from "./hooks/useBugReport.tsx";
+export * from "./hooks/useBugReport.hooks.ts";
 export * from "./hooks/useChatAvatarVoiceBridge.ts";
 export * from "./hooks/useContextMenu.ts";
 export { useIntervalWhenDocumentVisible } from "./hooks/useDocumentVisibility.ts";
@@ -156,8 +166,9 @@ export { Z_GLOBAL_EMOTE, Z_SYSTEM_CRITICAL } from "./lib/floating-layers.ts";
 export { cn } from "./lib/utils.ts";
 export * from "./navigation/index.ts";
 export * from "./platform/index.ts";
+export * from "./slots/task-coordinator-slots.helpers.ts";
 export * from "./slots/task-coordinator-slots.tsx";
-export * from "./state/CompanionSceneConfigContext.tsx";
+export * from "./state/CompanionSceneConfigContext.hooks.ts";
 export * from "./state/index.ts";
 export * from "./themes/index.ts";
 export * from "./types/index.ts";

@@ -27,9 +27,9 @@ import {
   authRevokeSession,
   authSetup,
 } from "../../api/auth-client";
-import { useBootConfig } from "../../config/boot-config-react";
+import { useBootConfig } from "../../config/boot-config-react.hooks";
 import { cn } from "../../lib/utils";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";

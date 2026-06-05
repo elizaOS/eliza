@@ -5,6 +5,7 @@ export {
   type PolymarketTopOfBook,
 } from "./orderbook";
 export * from "./PolymarketAppView";
+export * from "./PolymarketAppView.helpers";
 export { polymarketPlugin } from "./plugin";
 export { POLYMARKET_APP_NAME, polymarketApp } from "./polymarket-app";
 export * from "./polymarket-contracts";

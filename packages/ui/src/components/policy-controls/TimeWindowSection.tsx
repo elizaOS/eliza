@@ -1,4 +1,4 @@
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Label } from "../ui/label";
 import { DAY_NAMES, TIMEZONES } from "./constants";
@@ -123,13 +123,4 @@ export function TimeWindowSection({
       </div>
     </div>
   );
-}
-
-export function timeWindowSummary(config: TimeWindowConfig): string {
-  const hours = config.allowedHours[0];
-  if (!hours) return "No hours set";
-  const days = config.allowedDays.length;
-  const fmtStart = formatHour(hours.start);
-  const fmtEnd = formatHour(hours.end);
-  return `${fmtStart}–${fmtEnd} · ${days} days`;
 }

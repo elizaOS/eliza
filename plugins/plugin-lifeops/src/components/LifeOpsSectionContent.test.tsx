@@ -27,9 +27,12 @@ vi.mock("./LifeOpsDocumentsSection.js", () => ({
 }));
 
 vi.mock("./LifeOpsInboxSection.js", () => ({
+  LifeOpsInboxSection: () => <section data-testid="inbox-section" />,
+}));
+
+vi.mock("./LifeOpsInboxSection.helpers.js", () => ({
   LIFEOPS_MAIL_CHANNELS: ["gmail"],
   LIFEOPS_MESSAGE_CHANNELS: ["discord"],
-  LifeOpsInboxSection: () => <section data-testid="inbox-section" />,
 }));
 
 vi.mock("./LifeOpsMoneySection.js", () => ({

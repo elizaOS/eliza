@@ -1,5 +1,6 @@
 import type { PreparedPricingEntry, PriceLookupSource } from "../types";
 import { fetchBitRouterCatalogEntries } from "./bitrouter";
+import { fetchCerebrasPublicCatalogEntries } from "./cerebras";
 import { fetchElevenLabsEntries } from "./elevenlabs";
 import { fetchFalCatalogEntries } from "./fal";
 import { fetchSunoEntries } from "./suno";
@@ -16,6 +17,8 @@ export async function fetchEntriesForSource(
     case "anthropic":
     case "groq":
       return await fetchBitRouterCatalogEntries();
+    case "cerebras":
+      return await fetchCerebrasPublicCatalogEntries();
     case "fal":
       return await fetchFalCatalogEntries();
     case "elevenlabs":

@@ -1,9 +1,8 @@
-const COMMENT_RE = /\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g;
-const CUSTOM_PROPERTY_RE = /^--[a-zA-Z0-9_-]+$/;
-const HYPHEN_RE = /-([a-z])/g;
-const NO_HYPHEN_RE = /^[^-]+$/;
-const VENDOR_PREFIX_RE = /^-(webkit|moz|ms|o|khtml)-/;
-const MS_VENDOR_PREFIX_RE = /^-(ms)-/;
+const CUSTOM_PROPERTY_REGEX = /^--[a-zA-Z0-9_-]+$/;
+const HYPHEN_REGEX = /-([a-z])/g;
+const NO_HYPHEN_REGEX = /^[^-]+$/;
+const VENDOR_PREFIX_REGEX = /^-(webkit|moz|ms|o|khtml)-/;
+const MS_VENDOR_PREFIX_REGEX = /^-(ms)-/;
 
 export interface StyleToJSOptions {
   reactCompat?: boolean;
@@ -16,51 +15,47 @@ interface StyleToJSFunction {
   default?: StyleToJSFunction;
 }
 
-function camelCase(property: string, options: StyleToJSOptions): string {
-  if (
+function skipCamelCase(property: string): boolean {
+  return (
     !property ||
-    NO_HYPHEN_RE.test(property) ||
-    CUSTOM_PROPERTY_RE.test(property)
-  ) {
-    return property;
-  }
-
-  let normalized = property.toLowerCase();
-  normalized = options.reactCompat
-    ? normalized.replace(
-        MS_VENDOR_PREFIX_RE,
-        (_match, prefix: string) => `${prefix}-`,
-      )
-    : normalized.replace(
-        VENDOR_PREFIX_RE,
-        (_match, prefix: string) => `${prefix}-`,
-      );
-
-  return normalized.replace(HYPHEN_RE, (_match, character: string) =>
-    character.toUpperCase(),
+    NO_HYPHEN_REGEX.test(property) ||
+    CUSTOM_PROPERTY_REGEX.test(property)
   );
 }
 
-function findDelimiter(input: string, delimiter: string): number {
+function camelCase(property: string, options: StyleToJSOptions = {}): string {
+  if (skipCamelCase(property)) {
+    return property;
+  }
+
+  let nextProperty = property.toLowerCase();
+  nextProperty = options.reactCompat
+    ? nextProperty.replace(MS_VENDOR_PREFIX_REGEX, (_match, prefix) => {
+        return `${prefix}-`;
+      })
+    : nextProperty.replace(VENDOR_PREFIX_REGEX, (_match, prefix) => {
+        return `${prefix}-`;
+      });
+
+  return nextProperty.replace(HYPHEN_REGEX, (_match, character) => {
+    return character.toUpperCase();
+  });
+}
+
+function splitDeclarations(style: string): string[] {
+  const declarations: string[] = [];
+  let start = 0;
   let quote: string | null = null;
-  let escaped = false;
-  let depth = 0;
+  let parenDepth = 0;
 
-  for (let index = 0; index < input.length; index += 1) {
-    const character = input[index];
-
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-
-    if (character === "\\") {
-      escaped = true;
-      continue;
-    }
+  for (let index = 0; index < style.length; index += 1) {
+    const character = style[index];
+    const previous = style[index - 1];
 
     if (quote) {
-      if (character === quote) quote = null;
+      if (character === quote && previous !== "\\") {
+        quote = null;
+      }
       continue;
     }
 
@@ -70,63 +65,82 @@ function findDelimiter(input: string, delimiter: string): number {
     }
 
     if (character === "(") {
-      depth += 1;
+      parenDepth += 1;
       continue;
     }
 
-    if (character === ")") {
-      depth = Math.max(0, depth - 1);
+    if (character === ")" && parenDepth > 0) {
+      parenDepth -= 1;
       continue;
     }
 
-    if (depth === 0 && character === delimiter) {
-      return index;
+    if (character === ";" && parenDepth === 0) {
+      declarations.push(style.slice(start, index));
+      start = index + 1;
     }
   }
 
-  return -1;
-}
-
-function splitDeclarations(style: string): string[] {
-  const declarations: string[] = [];
-  let rest = style.replace(COMMENT_RE, "");
-
-  while (rest.length > 0) {
-    const index = findDelimiter(rest, ";");
-    const declaration = index === -1 ? rest : rest.slice(0, index);
-    if (declaration.trim()) declarations.push(declaration);
-    if (index === -1) break;
-    rest = rest.slice(index + 1);
-  }
-
+  declarations.push(style.slice(start));
   return declarations;
 }
 
-export const StyleToJS: StyleToJSFunction = (style, options = {}) => {
+function splitPropertyValue(declaration: string): [string, string] | null {
+  let quote: string | null = null;
+  let parenDepth = 0;
+
+  for (let index = 0; index < declaration.length; index += 1) {
+    const character = declaration[index];
+    const previous = declaration[index - 1];
+
+    if (quote) {
+      if (character === quote && previous !== "\\") {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (character === "'" || character === '"') {
+      quote = character;
+      continue;
+    }
+
+    if (character === "(") {
+      parenDepth += 1;
+      continue;
+    }
+
+    if (character === ")" && parenDepth > 0) {
+      parenDepth -= 1;
+      continue;
+    }
+
+    if (character === ":" && parenDepth === 0) {
+      const property = declaration.slice(0, index).trim();
+      const value = declaration.slice(index + 1).trim();
+      return property && value ? [property, value] : null;
+    }
+  }
+
+  return null;
+}
+
+const StyleToJS: StyleToJSFunction = (style, options = {}) => {
   const output: StyleObject = {};
-  if (!style || typeof style !== "string") return output;
+  if (!style || typeof style !== "string") {
+    return output;
+  }
 
   for (const declaration of splitDeclarations(style)) {
-    const index = findDelimiter(declaration, ":");
-    if (index === -1) continue;
-
-    const property = declaration.slice(0, index).trim();
-    const value = declaration.slice(index + 1).trim();
-    if (property && value) {
-      output[camelCase(property, options)] = value;
+    const pair = splitPropertyValue(declaration);
+    if (pair) {
+      output[camelCase(pair[0], options)] = pair[1];
     }
   }
 
   return output;
 };
 
-export function styleToJs(
-  style: string,
-  options: StyleToJSOptions = {},
-): StyleObject {
-  return StyleToJS(style, options);
-}
-
 StyleToJS.default = StyleToJS;
 
+export { StyleToJS };
 export default StyleToJS;

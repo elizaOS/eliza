@@ -44,6 +44,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { loadContactsState, matchesQuery } from "./ContactsAppView.helpers";
 
 type Mode = "list" | "detail" | "new";
 
@@ -80,48 +81,6 @@ function dedupePreservingOrder(values: string[]): string[] {
     result.push(value);
   }
   return result;
-}
-
-function matchesQuery(contact: ContactSummary, q: string): boolean {
-  if (q.length === 0) return true;
-  const needle = q.toLowerCase();
-  if (contact.displayName.toLowerCase().includes(needle)) return true;
-  if (
-    contact.phoneNumbers.some((p: string) => p.toLowerCase().includes(needle))
-  ) {
-    return true;
-  }
-  if (
-    contact.emailAddresses.some((e: string) => e.toLowerCase().includes(needle))
-  ) {
-    return true;
-  }
-  return false;
-}
-
-function normalizeContactsLimit(value: unknown, fallback = 200): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return Math.min(500, Math.max(1, Math.trunc(value)));
-}
-
-async function loadContactsState(options?: { query?: string; limit?: number }) {
-  const query = options?.query?.trim() ?? "";
-  const limit =
-    typeof options?.limit === "number"
-      ? normalizeContactsLimit(options.limit)
-      : undefined;
-  const result = await Contacts.listContacts({
-    ...(query ? { query } : {}),
-    ...(typeof limit === "number" ? { limit } : {}),
-  });
-  const contacts = query
-    ? result.contacts.filter((contact) => matchesQuery(contact, query))
-    : result.contacts;
-  return {
-    contacts,
-    query,
-    count: contacts.length,
-  };
 }
 
 export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
@@ -1360,68 +1319,4 @@ export function ContactsTuiView() {
       </div>
     </div>
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-list-contacts") {
-    const state = await loadContactsState({
-      query: typeof params?.query === "string" ? params.query : undefined,
-      limit: typeof params?.limit === "number" ? params.limit : undefined,
-    });
-    return {
-      viewType: "tui",
-      query: state.query,
-      count: state.count,
-      contacts: state.contacts.map((contact) => ({
-        id: contact.id,
-        lookupKey: contact.lookupKey,
-        displayName: contact.displayName,
-        phoneNumbers: contact.phoneNumbers,
-        emailAddresses: contact.emailAddresses,
-        starred: contact.starred,
-      })),
-    };
-  }
-
-  if (capability === "terminal-create-contact") {
-    const displayName =
-      typeof params?.displayName === "string" ? params.displayName.trim() : "";
-    if (!displayName) throw new Error("displayName is required");
-    const payload: CreateContactOptions = { displayName };
-    const phoneNumber =
-      typeof params?.phoneNumber === "string" ? params.phoneNumber.trim() : "";
-    const emailAddress =
-      typeof params?.emailAddress === "string"
-        ? params.emailAddress.trim()
-        : "";
-    if (phoneNumber) payload.phoneNumber = phoneNumber;
-    if (emailAddress) payload.emailAddress = emailAddress;
-    const result = await Contacts.createContact(payload);
-    return { created: true, id: result.id, viewType: "tui" };
-  }
-
-  if (capability === "terminal-import-vcard") {
-    const vcardText =
-      typeof params?.vcardText === "string" ? params.vcardText.trim() : "";
-    if (!vcardText) throw new Error("vcardText is required");
-    const result = await Contacts.importVCard({ vcardText });
-    return {
-      imported: result.imported.length,
-      contacts: result.imported.map((contact) => ({
-        id: contact.id,
-        lookupKey: contact.lookupKey,
-        displayName: contact.displayName,
-        phoneNumbers: contact.phoneNumbers,
-        emailAddresses: contact.emailAddresses,
-        starred: contact.starred,
-        sourceName: contact.sourceName,
-      })),
-      viewType: "tui",
-    };
-  }
-
-  throw new Error(`Unsupported capability "${capability}"`);
 }

@@ -43,8 +43,8 @@ export type {
 	ServiceTransport,
 };
 
-export const DEFAULT_ELIZA_CLOUD_TEXT_MODEL = "openai/gpt-oss-120b:nitro";
-export const DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL = "openai/gpt-oss-120b:free";
+export const DEFAULT_ELIZA_CLOUD_TEXT_MODEL = "gpt-oss-120b";
+export const DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL = "gpt-oss-120b";
 
 const ELIZA_CLOUD_ROUTE_BASE = {
 	backend: "elizacloud",

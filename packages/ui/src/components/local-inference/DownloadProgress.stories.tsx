@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import type { DownloadJob } from "../../api/client-local-inference";
-import { TranslationProvider } from "../../state/TranslationContext";
+import { TranslationProvider } from "../../state/TranslationProvider";
 import { DownloadProgress } from "./DownloadProgress";
 
 function makeJob(overrides: Partial<DownloadJob> = {}): DownloadJob {
