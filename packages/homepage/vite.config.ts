@@ -74,21 +74,21 @@ export default defineConfig({
         find: "@elizaos/ui/button",
         replacement: path.resolve(
           __dirname,
-          "../ui/src/cloud-ui/components/button.tsx",
+          "../ui/src/components/ui/button.tsx",
         ),
       },
       {
         find: "@elizaos/ui/dropdown-menu",
         replacement: path.resolve(
           __dirname,
-          "../ui/src/cloud-ui/components/dropdown-menu.tsx",
+          "../ui/src/components/ui/dropdown-menu.tsx",
         ),
       },
       {
         find: "@elizaos/ui/input",
         replacement: path.resolve(
           __dirname,
-          "../ui/src/cloud-ui/components/input.tsx",
+          "../ui/src/components/ui/input.tsx",
         ),
       },
       {

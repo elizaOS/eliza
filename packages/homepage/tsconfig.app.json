@@ -24,11 +24,11 @@
       "@elizaos/ui/cloud-ui/components/icons": [
         "../ui/src/cloud-ui/components/icons.tsx"
       ],
-      "@elizaos/ui/button": ["../ui/src/cloud-ui/components/button.tsx"],
+      "@elizaos/ui/button": ["../ui/src/components/ui/button.tsx"],
       "@elizaos/ui/dropdown-menu": [
-        "../ui/src/cloud-ui/components/dropdown-menu.tsx"
+        "../ui/src/components/ui/dropdown-menu.tsx"
       ],
-      "@elizaos/ui/input": ["../ui/src/cloud-ui/components/input.tsx"],
+      "@elizaos/ui/input": ["../ui/src/components/ui/input.tsx"],
       "@elizaos/ui/i18n/region": ["../ui/src/i18n/region.ts"],
       "@elizaos/ui/product-switcher": [
         "../ui/src/cloud-ui/components/product-switcher.tsx"
