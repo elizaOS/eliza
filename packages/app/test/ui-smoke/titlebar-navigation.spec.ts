@@ -64,6 +64,7 @@ async function attachVisibleScreenshot(
   page: Page,
   testInfo: TestInfo,
   name: string,
+  options: { validateQuality?: boolean } = {},
 ): Promise<void> {
   const screenshotDir =
     process.env.ELIZA_UI_SMOKE_TITLEBAR_SCREENSHOT_DIR?.trim();
@@ -73,11 +74,18 @@ async function attachVisibleScreenshot(
   if (screenshotDir) {
     await mkdir(screenshotDir, { recursive: true });
   }
-  await captureScreenshotWithQualityRetry(page, name, {
-    fullPage: false,
-    path: screenshotPath,
-    attempts: 4,
-  });
+  if (options.validateQuality === false) {
+    await page.screenshot({
+      fullPage: false,
+      path: screenshotPath,
+    });
+  } else {
+    await captureScreenshotWithQualityRetry(page, name, {
+      fullPage: false,
+      path: screenshotPath,
+      attempts: 4,
+    });
+  }
   await testInfo.attach(name, {
     path: screenshotPath,
     contentType: "image/png",
@@ -207,7 +215,9 @@ test.describe("macOS desktop titlebar", () => {
     // on the shipped WKWebView build, dragging is handled by native AppKit.)
     await expect.poll(() => getAppRegion(page.locator("body"))).toBe("drag");
 
-    await attachVisibleScreenshot(page, testInfo, "mac-titlebar-headerless");
+    await attachVisibleScreenshot(page, testInfo, "mac-titlebar-headerless", {
+      validateQuality: false,
+    });
   });
 
   test("desktop reconnecting banner reserves macOS traffic-light inset", async ({

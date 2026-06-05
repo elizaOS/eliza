@@ -76,36 +76,30 @@ test.describe("registered plugin views visual coverage", () => {
         `${view.id} ${view.viewType} initial load`,
       );
 
-      const isCanvasView = view.content === "canvas";
+      const isCompanionGui = view.id === "companion" && view.viewType === "gui";
       const viewRoot = page.locator("main").first();
       await expect(viewRoot).toBeVisible({ timeout: 60_000 });
-      await expect
-        .poll(
-          async () => {
-            if (isCanvasView) {
-              // Avatar/3D views render no readable text by design. Wait until
-              // the dynamic bundle resolves past the "Loading view" placeholder
-              // and the canvas root element has mounted.
-              if ((await page.getByText(/Loading view/).count()) > 0) {
-                return false;
-              }
-              return (
-                (await viewRoot
-                  .locator('[data-testid$="-root"], canvas')
-                  .count()) > 0
+      if (isCompanionGui) {
+        await expect(
+          viewRoot.getByTestId("companion-root").first(),
+          `${view.id} ${view.viewType} should mount its canvas-first companion root before audit`,
+        ).toBeVisible({ timeout: 60_000 });
+      } else {
+        await expect
+          .poll(
+            async () => {
+              const text = await viewRoot.evaluate((root) =>
+                root.innerText.trim().replace(/\s+/g, " "),
               );
-            }
-            const text = await viewRoot.evaluate((root) =>
-              root.innerText.trim().replace(/\s+/g, " "),
-            );
-            return text.length > 20 && !/^Loading view\b/.test(text);
-          },
-          {
-            message: `${view.id} ${view.viewType} should finish dynamic view loading before audit`,
-            timeout: 60_000,
-          },
-        )
-        .toBe(true);
+              return text.length > 20 && !/^Loading view\b/.test(text);
+            },
+            {
+              message: `${view.id} ${view.viewType} should finish dynamic view loading before audit`,
+              timeout: 60_000,
+            },
+          )
+          .toBe(true);
+      }
       await expect(page.getByText(/Loading view/)).toHaveCount(0);
       await expectNoFailedView(
         page,
@@ -153,10 +147,10 @@ test.describe("registered plugin views visual coverage", () => {
         },
       );
 
-      if (isCanvasView) {
+      if (isCompanionGui) {
         await expect(
-          viewRoot.locator('[data-testid$="-root"], canvas').first(),
-          `${view.id} ${view.viewType} should mount its canvas root`,
+          viewRoot.getByTestId("companion-root").first(),
+          `${view.id} ${view.viewType} should expose its companion scene root before opening the assistant overlay`,
         ).toBeVisible();
       } else {
         expect(
@@ -164,7 +158,7 @@ test.describe("registered plugin views visual coverage", () => {
           `${view.id} ${view.viewType} should expose readable view text before opening the assistant overlay`,
         ).toBeGreaterThan(20);
       }
-      if (!isCanvasView && view.id !== "views-manager") {
+      if (view.id !== "views-manager") {
         expect(
           preOverlayAudit.visibleText,
           `${view.id} ${view.viewType} should not fall through to the View Manager`,
@@ -307,7 +301,12 @@ test.describe("registered plugin views visual coverage", () => {
         },
       );
 
-      if (!isCanvasView) {
+      if (isCompanionGui) {
+        await expect(
+          viewRoot.getByTestId("companion-root").first(),
+          `${view.id} ${view.viewType} should expose its companion scene root after assistant overlay interaction`,
+        ).toBeVisible();
+      } else {
         expect(
           audit.visibleText.length,
           `${view.id} ${view.viewType} should expose readable text`,
