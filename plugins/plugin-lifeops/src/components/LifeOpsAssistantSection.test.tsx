@@ -116,7 +116,10 @@ describe("LifeOpsAssistantSection", () => {
 
     expect(container.querySelectorAll("p")).toHaveLength(0);
     expect(screen.getByTestId("lifeops-assistant-intents")).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: /^Quick / })).toHaveLength(5);
+    expect(screen.getAllByTestId("lifeops-assistant-intent")).toHaveLength(10);
+    expect(
+      screen.getByRole("button", { name: "Open LifeOps command brief" }),
+    ).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Open LifeOps voice command" }),
     ).toBeTruthy();
@@ -140,9 +143,7 @@ describe("LifeOpsAssistantSection", () => {
     );
 
     for (const intent of ASSISTANT_INTENTS.slice(0, 5)) {
-      fireEvent.click(
-        screen.getByRole("button", { name: `Quick ${intent.label}` }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: intent.label }));
       expect(openLifeOpsChat).toHaveBeenLastCalledWith(
         intent.prompt,
         {},
@@ -154,7 +155,8 @@ describe("LifeOpsAssistantSection", () => {
   it("launches every full-grid assistant intent from the actual assistant surface", () => {
     render(<LifeOpsAssistantSection />);
 
-    for (const intent of LIFEOPS_ASSISTANT_INTENTS) {
+    const surfaceIntents = ASSISTANT_INTENTS.slice(0, 10);
+    for (const intent of surfaceIntents) {
       fireEvent.click(screen.getByRole("button", { name: intent.label }));
       expect(openLifeOpsChat).toHaveBeenLastCalledWith(
         intent.prompt,
@@ -163,8 +165,6 @@ describe("LifeOpsAssistantSection", () => {
       );
     }
 
-    expect(openLifeOpsChat).toHaveBeenCalledTimes(
-      LIFEOPS_ASSISTANT_INTENTS.length,
-    );
+    expect(openLifeOpsChat).toHaveBeenCalledTimes(surfaceIntents.length);
   });
 });
