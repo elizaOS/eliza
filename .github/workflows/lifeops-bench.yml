@@ -137,7 +137,7 @@ jobs:
             echo "provider-throttled=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if grep -Eq 'cerebras error 429|too_many_requests_error|queue_exceeded|request_quota_exceeded|token_quota_exceeded|Tokens per day limit exceeded' verify-cerebras.log; then
+          if grep -Eq 'cerebras error 429|too_many_requests_error|too_many_tokens_error|queue_exceeded|request_quota_exceeded|token_quota_exceeded|Tokens per day limit exceeded' verify-cerebras.log; then
             echo "::notice::LifeOps benchmark skipped — Cerebras is currently rate limited or queue saturated."
             echo "provider-throttled=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -182,7 +182,7 @@ jobs:
           status=${PIPESTATUS[0]}
           set -e
           if [ "$status" -ne 0 ]; then
-            if grep -Eq 'cerebras error 429|too_many_requests_error|queue_exceeded|request_quota_exceeded|token_quota_exceeded|Tokens per day limit exceeded' lifeops-full.log; then
+            if grep -Eq 'cerebras error 429|too_many_requests_error|too_many_tokens_error|queue_exceeded|request_quota_exceeded|token_quota_exceeded|Tokens per day limit exceeded' lifeops-full.log; then
               echo "::notice::LifeOps benchmark skipped — Cerebras quota or rate limit was reached during benchmark execution."
               echo "provider-throttled=true" >> "$GITHUB_OUTPUT"
               exit 0
