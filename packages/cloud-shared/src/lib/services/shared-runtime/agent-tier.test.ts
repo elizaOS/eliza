@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   type AgentTier,
   getAgentTier,
@@ -64,9 +64,31 @@ describe("tier helpers", () => {
 });
 
 describe("runSharedAgentTurn (degraded path — no model configured)", () => {
+  // resolveSharedModel() only consults CEREBRAS_API_KEY and OPENAI_API_KEY. The
+  // cloud-shared suite runs single-process under bun, so a sibling test can leak
+  // either key into process.env and flip this off the degraded path. Snapshot and
+  // clear both keys regardless of lane order, restoring afterward.
+  const MODEL_KEYS = ["CEREBRAS_API_KEY", "OPENAI_API_KEY"] as const;
+  const saved: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    for (const key of MODEL_KEYS) {
+      saved[key] = process.env[key];
+      delete process.env[key];
+    }
+  });
+
+  afterEach(() => {
+    for (const key of MODEL_KEYS) {
+      const value = saved[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
   it("never throws and appends user+assistant to history when no shared model is set", async () => {
-    // In test there is no CEREBRAS_API_KEY/OPENAI_API_KEY -> resolveSharedModel() is null,
-    // so this exercises the degraded path with NO network call.
+    // With both model keys cleared, resolveSharedModel() is null, so this
+    // exercises the degraded path with NO network call.
     const result = await runSharedAgentTurn({
       character: { name: "Nova", system: "You are Nova, a concise helper." },
       history: [],
