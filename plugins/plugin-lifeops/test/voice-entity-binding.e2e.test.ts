@@ -46,6 +46,10 @@ import {
 } from "@elizaos/plugin-local-inference";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  createRealTestRuntime,
+  type RealTestRuntimeResult,
+} from "../../../packages/test/helpers/real-runtime.ts";
+import {
   handleVoiceProfilesManagementRoutes,
   setVoiceProfilesManagementStore,
 } from "../../plugin-local-inference/src/routes/voice-profiles-management-routes.js";
@@ -60,10 +64,6 @@ import {
 } from "../../plugin-local-inference/src/runtime/voice-entity-binding.js";
 import { VoiceProfileStore } from "../../plugin-local-inference/src/services/voice/profile-store.js";
 import { WESPEAKER_RESNET34_LM_INT8_MODEL_ID } from "../../plugin-local-inference/src/services/voice/speaker/encoder.js";
-import {
-  createRealTestRuntime,
-  type RealTestRuntimeResult,
-} from "../../../packages/test/helpers/real-runtime.ts";
 import { EntityStore } from "../src/lifeops/entities/store.js";
 import { handleVoiceTurnObserved } from "../src/lifeops/entities/voice-observer-bridge.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
@@ -202,9 +202,8 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
 
   it("re-observing the same cluster resolves to the same entity (cross-session memory)", async () => {
     const before = await store.get(
-      (await store.list()).find(
-        (r) => r.imprintClusterId === "cluster_jill",
-      )?.profileId ?? "",
+      (await store.list()).find((r) => r.imprintClusterId === "cluster_jill")
+        ?.profileId ?? "",
     );
     expect(before?.entityId).toBeTruthy();
 

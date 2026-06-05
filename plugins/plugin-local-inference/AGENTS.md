@@ -37,9 +37,13 @@ Import from `@elizaos/plugin-local-inference/routes` (except `handleLocalInferen
 - Voice first-run: `handleVoiceFirstRunRoutes` (`src/routes/voice-first-run-routes.ts`)
 - Voice models: `handleVoiceModelsRoutes` (`src/routes/voice-models-routes.ts`)
 - Voice profiles (TTS preset catalog): `handleVoiceProfileRoutes` (`src/services/voice/voice-profile-routes.ts`)
-- Speaker-profile entity binding (`/v1/voice/speaker-profiles`): `handleVoiceSpeakerProfileRoutes` (`src/routes/voice-speaker-profile-routes.ts`) — list speaker centroids and bind/unbind a recognized voice to an elizaOS entity (the runtime path for `VoiceProfileStore.bindEntity`)
 - Family-member voice encoder: `handleFamilyMemberRoute` (`src/routes/family-member-route.ts`)
 - Catalog/download/hardware/providers/routing (`/api/local-inference/*`): `handleLocalInferenceCompatRoutes` (`src/routes/local-inference-compat-routes.ts`) — this is the variant app-core mounts; `handleLocalInferenceRoutes` above is the upstream-agent equivalent.
+
+### HTTP routes (served from `plugin.routes` — `runtime.routes` rawPath)
+No server forwards these namespaces to the route dispatchers above, so they are registered as `rawPath` routes on the plugin object (`src/routes/voice-profile-plugin-routes.ts`) and served by both the upstream agent server and app-core via the runtime plugin route system. All are private (the host dispatcher answers 401 for unauthenticated callers):
+- Speaker-profile entity binding (`/v1/voice/speaker-profiles`, `…/:id/bind`, `…/:id/unbind`): `handleVoiceSpeakerProfileRoutes` (`src/routes/voice-speaker-profile-routes.ts`) — list speaker centroids and bind/unbind a recognized voice to an elizaOS entity (the HTTP runtime path for `VoiceProfileStore.bindEntity`, issue #8234)
+- Voice-profile management UI (`/api/voice/profiles*` — list / rename / delete / merge / split / export / sample / bind / unbind): `handleVoiceProfilesManagementRoutes` (`src/routes/voice-profiles-management-routes.ts`) — the server half of the `VoiceProfileSection` settings UI
 
 ### Runtime boot exports
 Import from `@elizaos/plugin-local-inference/runtime`:
@@ -67,7 +71,9 @@ src/
     local-inference-compat-routes.ts  /api/local-inference/* catalog, downloads, hardware, providers, routing
     voice-first-run-routes.ts     Voice onboarding flow
     voice-models-routes.ts        Voice model install/update routes
+    voice-profile-plugin-routes.ts   rawPath Route[] on the plugin object (mounts the two below)
     voice-speaker-profile-routes.ts  Bind/unbind a recognized speaker voice to an elizaOS entity
+    voice-profiles-management-routes.ts  /api/voice/profiles* — VoiceProfileSection management UI
     family-member-route.ts        Family-member voice encoder route
 
   runtime/
