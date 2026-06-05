@@ -5540,9 +5540,12 @@ export function FineTuningTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>jobs and models</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            {state?.jobs.jobs.length ?? 0} jobs /{" "}
-            {state?.models.models.length ?? 0} models /{" "}
-            {state?.datasets.datasets.length ?? 0} datasets
+            commands: state | build-dataset | start-job | cancel-job |
+            import-model | activate-model | benchmark-model | ingest-hf-dataset
+            | feed-generate | run-scenarios | run-eval-comparison |
+            run-collection | build-analysis-index | build-readiness-report |
+            write-benchmark-matrix | run-benchmark-vs-cerebras |
+            stage-eliza1-bundle | run-action-benchmark
           </div>
           <div style={{ color: "#a7f3d0", marginBottom: 8 }}>jobs</div>
           {(state?.jobs.jobs ?? []).slice(0, 10).map((job) => (
