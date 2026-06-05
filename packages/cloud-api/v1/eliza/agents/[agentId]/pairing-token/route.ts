@@ -2,8 +2,6 @@ import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { containersEnv } from "@/lib/config/containers-env";
-import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { getPairingTokenService } from "@/lib/services/pairing-token";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import {
@@ -54,18 +52,14 @@ function resolveSandboxBridgeUrl(sandbox: PairingSandbox): string | null {
 
 function resolveManagedWebUiUrl(sandbox: PairingSandbox): string | null {
   if (sandbox.execution_tier === "shared") return null;
-  const baseDomain = containersEnv.publicBaseDomain();
-  const managed = getElizaAgentPublicWebUiUrl(
-    sandbox,
-    baseDomain ? { baseDomain } : {},
-  );
-  // bridge_url is preferred over the wildcard subdomain because the
-  // <uuid>.<baseDomain> route has no resolver behind it today (the wildcard
-  // Worker that used to catch it was returning a stub JSON response — not
-  // an agent web UI — and was removed when staging was unblocked). Keep the
-  // managed value as a future hook for when a signed tunnel-proxy hostname
-  // lands on the sandbox row.
-  return resolveSandboxBridgeUrl(sandbox) ?? managed;
+  // The <uuid>.<baseDomain> hostname has no resolver behind it today (the
+  // wildcard Worker that used to return a stub JSON response was removed
+  // when staging was unblocked, and no signed tunnel-proxy entry has been
+  // wired in yet). Return the agent's bridge URL — the Hetzner IP+port
+  // serves the in-container HTTP server directly, including the /pair
+  // handler — and 503 the call when no bridge URL is stored. Once a tunnel
+  // hostname lands on the sandbox row, prefer it over the bridge URL here.
+  return resolveSandboxBridgeUrl(sandbox);
 }
 
 /**
