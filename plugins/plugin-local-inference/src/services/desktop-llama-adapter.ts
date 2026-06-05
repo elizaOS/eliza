@@ -15,11 +15,11 @@
  *      open/prefill/next/cancel/close sessions, one sampler chain per
  *      session, single-flight serialised at the runner layer.
  *
-	 * Implemented surface:
-	 *   - Text generation, embeddings, slot save/restore, prewarm via the runner,
-	 *     parallel resize, same-file MTP, and separate-drafter MTP.
-	 *   - Vision describe uses the mtmd build flag, mmproj state, native image
-	 *     decode, mtmd chunk evaluation, and the normal sampler loop.
+ * Implemented surface:
+ *   - Text generation, embeddings, slot save/restore, prewarm via the runner,
+ *     parallel resize, same-file MTP, and separate-drafter MTP.
+ *   - Vision describe uses the mtmd build flag, mmproj state, native image
+ *     decode, mtmd chunk evaluation, and the normal sampler loop.
  *   - Same-file MTP speculative decoding: when `LlmStreamConfig` sets
  *     `draftMin/draftMax > 0` with no `draftModelPath`, the session routes
  *     through a native MTP engine (`eliza_llama_mtp_engine_*`) that owns the
@@ -1014,7 +1014,9 @@ export class DesktopLlamaAdapter {
 		const marker =
 			readCString(this.vision.eliza_mtmd_default_marker(), this.ffi) ||
 			"<__media__>";
-		const userPrompt = (args.prompt ?? "Describe what is in this image.").trim();
+		const userPrompt = (
+			args.prompt ?? "Describe what is in this image."
+		).trim();
 		const promptText = userPrompt.includes(marker)
 			? userPrompt
 			: `${marker}\n${userPrompt}`;
@@ -1053,7 +1055,9 @@ export class DesktopLlamaAdapter {
 			}
 			chunks = this.vision.eliza_mtmd_input_chunks_init() ?? 0;
 			if (!chunks) {
-				throw new Error("[desktop-llama] describeImage: chunks allocation failed");
+				throw new Error(
+					"[desktop-llama] describeImage: chunks allocation failed",
+				);
 			}
 			const bitmapPtrs = new BigUint64Array([BigInt(bitmap)]);
 			const tokenizeRc = this.vision.eliza_mtmd_tokenize(
@@ -1066,7 +1070,9 @@ export class DesktopLlamaAdapter {
 				1n,
 			);
 			if (tokenizeRc !== 0) {
-				throw new Error(`[desktop-llama] describeImage tokenize rc=${tokenizeRc}`);
+				throw new Error(
+					`[desktop-llama] describeImage tokenize rc=${tokenizeRc}`,
+				);
 			}
 
 			const newNPast = new Int32Array(1);
@@ -1099,6 +1105,9 @@ export class DesktopLlamaAdapter {
 				generated += step.tokens.length;
 				if (step.done) break;
 				if (step.tokens.length === 0) break;
+			}
+			if (!sess.finished) {
+				text += this.flushTokenText(sess);
 			}
 
 			return {

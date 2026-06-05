@@ -89,7 +89,7 @@ function ensureGeneratedKeywordData() {
 function parseArgs(argv) {
   const options = {
     reportDir: DEFAULT_REPORT_DIR,
-    failOnMissing: false,
+    failOnMissing: true,
     json: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -103,6 +103,8 @@ function parseArgs(argv) {
       options.json = true;
     } else if (arg === "--fail-on-missing") {
       options.failOnMissing = true;
+    } else if (arg === "--allow-missing") {
+      options.failOnMissing = false;
     } else {
       throw new Error(`unknown argument: ${arg}`);
     }
