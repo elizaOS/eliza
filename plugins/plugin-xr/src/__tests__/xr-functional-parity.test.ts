@@ -16,7 +16,7 @@
  *      (proving the agent sees the same interface in XR as in TUI/GUI)
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -32,6 +32,26 @@ function readFile(relPath: string): string {
 
 function fileExists(relPath: string): boolean {
   return existsSync(resolve(repoRoot, relPath));
+}
+
+/**
+ * A view "component" is no longer a single monolithic .tsx — each view is a
+ * co-located family of files sharing one directory: the entry `X.tsx`, its
+ * agent-facing capability handlers in `X.interact.ts`, data/helpers in
+ * `X.helpers.ts`, plus extracted sub-components and hooks. The functional
+ * content, React hooks, and TUI capabilities live across that family. Read the
+ * whole directory (non-recursive) so the parity checks see the real source the
+ * shared bundle is built from, not just the thin shell entry file.
+ */
+function readComponentFamily(relPath: string): string {
+  const fileDir = dirname(resolve(repoRoot, relPath));
+  if (!existsSync(fileDir)) return "";
+  const parts: string[] = [];
+  for (const name of readdirSync(fileDir)) {
+    if (!name.endsWith(".ts") && !name.endsWith(".tsx")) continue;
+    parts.push(readFileSync(resolve(fileDir, name), "utf8"));
+  }
+  return parts.join("\n");
 }
 
 // ── Manifest parser ───────────────────────────────────────────────────────────
@@ -438,7 +458,7 @@ describe("XR feature-by-feature functional parity — all 24 views", () => {
       requiredTerms,
     } of PLUGIN_REGISTRY) {
       if (!fileExists(xrComponentSrc)) continue;
-      const src = readFile(xrComponentSrc);
+      const src = readComponentFamily(xrComponentSrc);
       for (const term of requiredTerms) {
         if (!src.includes(term)) {
           failures.push(
@@ -456,7 +476,7 @@ describe("XR feature-by-feature functional parity — all 24 views", () => {
     const noHooks: string[] = [];
     for (const { pluginDir, xrComponentSrc } of PLUGIN_REGISTRY) {
       if (!fileExists(xrComponentSrc)) continue;
-      const src = readFile(xrComponentSrc);
+      const src = readComponentFamily(xrComponentSrc);
       if (
         !src.includes("useState") &&
         !src.includes("useEffect") &&
@@ -510,7 +530,7 @@ describe("XR feature-by-feature functional parity — all 24 views", () => {
         failures.push(`${pluginDir}: source file ${srcFile} missing`);
         continue;
       }
-      const src = readFile(srcFile);
+      const src = readComponentFamily(srcFile);
       for (const cap of capabilities) {
         if (!src.includes(cap)) {
           failures.push(`${pluginDir}: capability "${cap}" not in ${srcFile}`);

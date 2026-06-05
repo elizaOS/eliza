@@ -541,18 +541,6 @@ export function ContinuousChatOverlay({
       document.removeEventListener("pointerdown", onPointerDown, true);
   }, [open, collapseAll]);
 
-  const backdropStyle: React.CSSProperties = {
-    // The glass tint: a diagonal sheen over a gentle scrim, so the frosted
-    // view keeps depth and the bubbles stay legible on light or dark views.
-    backgroundImage:
-      "linear-gradient(135deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.02) 36%, rgba(8,10,18,0.18) 100%)",
-    backdropFilter: fullscreen ? "blur(28px) saturate(160%)" : "none",
-    WebkitBackdropFilter: fullscreen ? "blur(28px) saturate(160%)" : "none",
-  };
-  const threadMotionStyle: React.CSSProperties = {
-    transformOrigin: "50% 100%",
-  };
-
   return (
     <div
       className={cn(
@@ -578,14 +566,24 @@ export function ContinuousChatOverlay({
         aria-hidden="true"
         data-testid="chat-fullscreen-backdrop"
         data-active={fullscreen ? "true" : "false"}
-        className={cn(
-          "fixed inset-0",
-          fullscreen ? "pointer-events-auto" : "pointer-events-none",
-        )}
-        style={backdropStyle}
+        className="fixed inset-0"
+        style={{
+          pointerEvents: fullscreen ? "auto" : "none",
+          // The glass tint: a diagonal sheen over a gentle scrim, so the frosted
+          // view keeps depth and the bubbles stay legible on light or dark views.
+          backgroundImage:
+            "linear-gradient(135deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.02) 36%, rgba(8,10,18,0.18) 100%)",
+        }}
         initial={false}
         animate={{
           opacity: fullscreen ? 1 : 0,
+          // Animate only the unprefixed property — framer-motion's animation
+          // target type doesn't include `WebkitBackdropFilter`. Modern targets
+          // (Chromium/Electrobun, Safari 18+/iOS WebView) support unprefixed
+          // `backdrop-filter`, so the frosted-glass takeover still animates.
+          backdropFilter: fullscreen
+            ? "blur(28px) saturate(160%)"
+            : "blur(0px) saturate(100%)",
         }}
         transition={{ duration: reduce ? 0.12 : 0.72, ease: OVERLAY_EASE }}
       />
@@ -621,7 +619,7 @@ export function ContinuousChatOverlay({
                 collapse();
               }
             }}
-            style={threadMotionStyle}
+            style={{ transformOrigin: "50% 100%" }}
             initial={
               reduce ? { opacity: 0 } : { opacity: 0, y: 36, scale: 0.92 }
             }
@@ -652,9 +650,11 @@ export function ContinuousChatOverlay({
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
             )}
           >
-            {visibleMessages.map((m) => (
-              <ThreadLine key={m.id} message={m} floating reduce={reduce} />
-            ))}
+            <AnimatePresence initial={false}>
+              {visibleMessages.map((m) => (
+                <ThreadLine key={m.id} message={m} floating reduce={reduce} />
+              ))}
+            </AnimatePresence>
             <AnimatePresence>
               {responding ? <TypingDots reduce={reduce} /> : null}
             </AnimatePresence>
@@ -687,9 +687,11 @@ export function ContinuousChatOverlay({
               : "pointer-events-none opacity-0",
           )}
         >
-          {visibleMessages.slice(-RESTING_THREAD_LINES).map((m) => (
-            <ThreadLine key={m.id} message={m} floating reduce={reduce} />
-          ))}
+          <AnimatePresence initial={false}>
+            {visibleMessages.slice(-RESTING_THREAD_LINES).map((m) => (
+              <ThreadLine key={m.id} message={m} floating reduce={reduce} />
+            ))}
+          </AnimatePresence>
           <AnimatePresence>
             {responding ? <TypingDots reduce={reduce} /> : null}
           </AnimatePresence>

@@ -1,6 +1,6 @@
 import { getProviderKey } from "../../../providers/provider-env";
 import { logger } from "../../../utils/logger";
-import { type PricingProductFamily } from "../../ai-pricing-definitions";
+import { type PricingChargeUnit, type PricingProductFamily } from "../../ai-pricing-definitions";
 import { getCachedExternalEntries } from "../cache";
 import { inferProviderFromCanonicalModel, parseNumericPrice } from "../dimensions";
 import { stripVersionedSnapshotSuffix } from "../suffix-stripping";
@@ -9,6 +9,44 @@ import {
   EXTERNAL_CACHE_TTL_MS,
   type PreparedPricingEntry,
 } from "../types";
+
+const CEREBRAS_PRICING_SOURCE_URL = "https://www.cerebras.ai/pricing";
+
+const FORCED_BITROUTER_PRICING: ReadonlyArray<{
+  model: string;
+  provider: string;
+  productFamily: PricingProductFamily;
+  unit: PricingChargeUnit;
+  inputUnitPrice: number;
+  outputUnitPrice: number;
+  sourceUrl: string;
+  metadata?: Record<string, unknown>;
+}> = [
+  {
+    model: "cerebras:gpt-oss-120b",
+    provider: "cerebras",
+    productFamily: "language",
+    unit: "token",
+    inputUnitPrice: 0.00000035,
+    outputUnitPrice: 0.00000075,
+    sourceUrl: CEREBRAS_PRICING_SOURCE_URL,
+    metadata: {
+      sourceNote: "Cerebras Developer tier price converted from $0.35/$0.75 per 1M tokens.",
+    },
+  },
+  {
+    model: "cerebras:zai-glm-4.7",
+    provider: "cerebras",
+    productFamily: "language",
+    unit: "token",
+    inputUnitPrice: 0.00000225,
+    outputUnitPrice: 0.00000275,
+    sourceUrl: CEREBRAS_PRICING_SOURCE_URL,
+    metadata: {
+      sourceNote: "Cerebras Developer tier price converted from $2.25/$2.75 per 1M tokens.",
+    },
+  },
+];
 
 function bitRouterModelsUrl(): string {
   const baseUrl = (getProviderKey("BITROUTER_BASE_URL") ?? "https://api.bitrouter.ai/v1").replace(
@@ -126,6 +164,53 @@ export function buildBitRouterPreparedEntries(
   return entries;
 }
 
+function buildForcedBitRouterPricingEntries(): PreparedPricingEntry[] {
+  const fetchedAt = new Date();
+  const staleAfter = new Date(fetchedAt.getTime() + EXTERNAL_CACHE_TTL_MS);
+
+  return FORCED_BITROUTER_PRICING.flatMap(
+    ({
+      model,
+      provider,
+      productFamily,
+      unit,
+      inputUnitPrice,
+      outputUnitPrice,
+      sourceUrl,
+      metadata,
+    }) => [
+      {
+        billingSource: "bitrouter" as const,
+        provider,
+        model,
+        productFamily,
+        chargeType: "input" as const,
+        unit,
+        unitPrice: inputUnitPrice,
+        sourceKind: "bitrouter_catalog",
+        sourceUrl,
+        fetchedAt,
+        staleAfter,
+        metadata,
+      },
+      {
+        billingSource: "bitrouter" as const,
+        provider,
+        model,
+        productFamily,
+        chargeType: "output" as const,
+        unit,
+        unitPrice: outputUnitPrice,
+        sourceKind: "bitrouter_catalog",
+        sourceUrl,
+        fetchedAt,
+        staleAfter,
+        metadata,
+      },
+    ],
+  );
+}
+
 async function fetchBitRouterJson<T>(url: string): Promise<T> {
   const apiKey = getProviderKey("BITROUTER_API_KEY");
   if (!apiKey) {
@@ -153,7 +238,10 @@ export async function fetchBitRouterCatalogEntries(): Promise<PreparedPricingEnt
     const url = bitRouterModelsUrl();
     const payload = await fetchBitRouterJson<{ data?: BitRouterCatalogModel[] }>(url);
     const models = Array.isArray(payload.data) ? payload.data : [];
-    const entries = models.flatMap((model) => buildBitRouterPreparedEntries(model));
+    const entries = [
+      ...models.flatMap((model) => buildBitRouterPreparedEntries(model)),
+      ...buildForcedBitRouterPricingEntries(),
+    ];
     if (entries.length === 0) {
       logger.warn("[AI Pricing] BitRouter catalog returned no priced models", {
         modelCount: models.length,

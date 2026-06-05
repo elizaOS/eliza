@@ -70,6 +70,9 @@ export default defineConfig({
         find: "@elizaos/ui/cloud-ui",
         replacement: path.resolve(__dirname, "../ui/src/cloud-ui/index.ts"),
       },
+      // Primitives were collapsed from cloud-ui/components shims into the
+      // canonical components/ui layer (ui refactor "collapse cloud-ui primitive
+      // re-export shims into canonical components/ui"); resolve to the new home.
       {
         find: "@elizaos/ui/button",
         replacement: path.resolve(

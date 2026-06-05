@@ -24,7 +24,9 @@ type RunActivitySummary = {
   type: string;
   message: string;
   severity?: string;
-  timestamp?: string | null;
+  // Matches @elizaos/ui AppSessionActivityItem.timestamp (epoch ms), the type
+  // of the run.session.activity entries this annotates.
+  timestamp?: number | null;
 };
 
 function readString(
