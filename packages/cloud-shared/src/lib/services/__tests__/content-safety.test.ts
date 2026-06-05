@@ -1,5 +1,16 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
+import * as realLogger from "@/lib/utils/logger";
 import { ApiError } from "../../api/cloud-worker-errors";
+// Eager spread-copies of the real modules, captured at module-eval time
+// (before the mock.module calls below execute). Live namespace bindings would
+// reflect the stub once mocked; the eager spread is what preserves the real
+// exports so they can be re-installed in afterAll — without this, the partial
+// cloud-bindings mock (missing runWithCloudBindings) leaks into every test
+// file loaded after this one in the single-process bun lane.
+import * as realCloudBindings from "../../runtime/cloud-bindings";
+
+const REAL_CLOUD_BINDINGS = { ...realCloudBindings };
+const REAL_LOGGER = { ...realLogger };
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -9,6 +20,7 @@ const ORIGINAL_CONTENT_SAFETY_REQUIRE_CONFIG = process.env.CONTENT_SAFETY_REQUIR
 const ORIGINAL_CONTENT_SAFETY_FAIL_OPEN = process.env.CONTENT_SAFETY_FAIL_OPEN;
 
 mock.module("@/lib/utils/logger", () => ({
+  ...REAL_LOGGER,
   logger: {
     debug: () => {},
     error: () => {},
@@ -18,8 +30,14 @@ mock.module("@/lib/utils/logger", () => ({
 }));
 
 mock.module("../../runtime/cloud-bindings", () => ({
+  ...REAL_CLOUD_BINDINGS,
   getCloudAwareEnv: mock(() => process.env),
 }));
+
+afterAll(() => {
+  mock.module("@/lib/utils/logger", () => REAL_LOGGER);
+  mock.module("../../runtime/cloud-bindings", () => REAL_CLOUD_BINDINGS);
+});
 
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
