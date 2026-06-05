@@ -629,7 +629,12 @@ export function FeedTuiView() {
       id="feed"
       label="Feed TUI"
       description="Terminal Feed prediction market operator dashboard"
-      commands={[]}
+      commands={[
+        "get-state",
+        "refresh-agent-status",
+        "open-live-dashboard",
+        "send-team-message",
+      ]}
       endpoints={[
         "/api/apps/feed/agent/status",
         "/api/apps/feed/team/dashboard",
