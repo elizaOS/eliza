@@ -19,11 +19,11 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { EmptyState } from "../../../components/ui/empty-state";
 import { Skeleton } from "../../../components/ui/skeleton";
+import { ListSkeleton } from "../../../components/ui/skeleton-layouts";
 import { cn } from "../../lib/utils";
 import { BrandButton } from "../brand/brand-button";
 import { DashboardTableSkeleton } from "../data-list/dashboard-table-skeleton";
 import { DashboardRoutePage } from "../layout/dashboard-route-page";
-import { ListSkeleton } from "../../../components/ui/skeleton-layouts";
 
 interface DashboardActionLinkProps {
   to: string;

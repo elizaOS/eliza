@@ -24,7 +24,14 @@ export * from "../../components/ui/scroll-area";
 export * from "../../components/ui/select";
 export * from "../../components/ui/separator";
 export * from "../../components/ui/skeleton";
+export {
+  DetailSkeleton,
+  ListSkeleton,
+  TableSkeleton,
+} from "../../components/ui/skeleton-layouts";
 export * from "../../components/ui/slider";
+export * from "../../components/ui/status-badge";
+export * from "../../components/ui/status-badge.helpers";
 export * from "../../components/ui/switch";
 export * from "../../components/ui/table";
 export * from "../../components/ui/tabs";
@@ -34,11 +41,7 @@ export * from "../../components/ui/tooltip";
 export * from "../lib/utils";
 export * from "./ai-elements";
 export * from "./analytics";
-export * from "./animated-icons";
-export { AnimatedTabs } from "./animated-tabs";
 export { ApiKeyEmptyState } from "./api-key-empty-state";
-export * from "./background-boxes";
-export * from "./bento-grid";
 export * from "./brand";
 export * from "./code";
 export * from "./connection-card";
@@ -61,26 +64,11 @@ export {
 export { DocsLayout, type DocsLayoutProps } from "./docs/docs-layout";
 export type { DocsFrontmatter, MdxModule, NavItem } from "./docs/docs-types";
 export * from "./drawer";
-export * from "./glowing-effect";
-export * from "./glowing-stars";
-export * from "./infinite-moving-cards";
 export * from "./layout";
-export { DetailSkeleton, ListSkeleton, TableSkeleton } from "../../components/ui/skeleton-layouts";
-export {
-  Button as MovingBorderButton,
-  MovingBorder,
-} from "./moving-border";
 export { NavigationProgress } from "./navigation-progress";
 export * from "./resizable";
 export * from "./share";
-export * from "./shooting-stars";
 export * from "./sonner";
-export type { ParticlesProps } from "./sparkles";
-export { SparklesCore, SparklesCore as SparklesLazy } from "./sparkles-lazy";
 export * from "./spotlight";
-export * from "./stars-background";
-export * from "../../components/ui/status-badge";
-export * from "../../components/ui/status-badge.helpers";
-export * from "./text-generate-effect";
 export * from "./theme";
 export * from "./timeline";
