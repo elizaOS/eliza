@@ -31,10 +31,41 @@ type PairingSandbox = NonNullable<
   Awaited<ReturnType<typeof agentSandboxesRepository.findByIdAndOrg>>
 >;
 
+/**
+ * The "managed" URL for a Docker-backed agent is `<sandbox.id>.<baseDomain>`
+ * (e.g. `<uuid>.elizacloud.ai`). That hostname only resolves to the agent if
+ * a wildcard Worker / signed tunnel-proxy entry is actually in place — today
+ * nothing routes it, so we treat it as best-effort and fall back to the
+ * agent's public bridge URL (the Hetzner IP:port from
+ * `agent_sandboxes.bridge_url`) which always serves the in-container HTTP
+ * server directly, including the `/pair` handler from PR #8236.
+ */
+function resolveSandboxBridgeUrl(sandbox: PairingSandbox): string | null {
+  const raw = sandbox.bridge_url?.trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
 function resolveManagedWebUiUrl(sandbox: PairingSandbox): string | null {
   if (sandbox.execution_tier === "shared") return null;
   const baseDomain = containersEnv.publicBaseDomain();
-  return getElizaAgentPublicWebUiUrl(sandbox, baseDomain ? { baseDomain } : {});
+  const managed = getElizaAgentPublicWebUiUrl(
+    sandbox,
+    baseDomain ? { baseDomain } : {},
+  );
+  // bridge_url is preferred over the wildcard subdomain because the
+  // <uuid>.<baseDomain> route has no resolver behind it today (the wildcard
+  // Worker that used to catch it was returning a stub JSON response — not
+  // an agent web UI — and was removed when staging was unblocked). Keep the
+  // managed value as a future hook for when a signed tunnel-proxy hostname
+  // lands on the sandbox row.
+  return resolveSandboxBridgeUrl(sandbox) ?? managed;
 }
 
 /**
