@@ -178,6 +178,31 @@ describe("FirstRunShell", () => {
     );
   });
 
+  it("resets stale cloud-inference when selecting the Local runtime card", async () => {
+    vi.useFakeTimers();
+    const updateDraft = vi.fn();
+    render(
+      <FirstRunShell
+        {...props({
+          updateDraft,
+          draft: {
+            agentName: "Eliza",
+            runtime: "cloud",
+            localInference: "cloud-inference",
+            remoteApiBase: "",
+            remoteToken: "",
+          },
+        })}
+      />,
+    );
+    await revealPrompt();
+
+    fireEvent.click(screen.getByTestId("first-run-runtime-local"));
+
+    expect(updateDraft).toHaveBeenCalledWith("runtime", "local");
+    expect(updateDraft).toHaveBeenCalledWith("localInference", "all-local");
+  });
+
   it("fires onPromptReady once per prompt even when its identity changes every render", async () => {
     // Regression guard for the onboarding freeze: the prompt-ready effect used
     // to depend on the `onPromptReady` identity. That handler ultimately derives
