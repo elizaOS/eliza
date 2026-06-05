@@ -370,8 +370,12 @@ describe("Agent Group Inheritance", () => {
 
       const tiers = await TieredGroupService.ensureAllTiersExist(npc.id);
       const tier3 = tiers.find((t) => t.tier === 3);
+      expect(tier3).toBeDefined();
+      if (!tier3) {
+        throw new Error("Expected tier 3 group");
+      }
 
-      const isInChat = await GroupChatService.isInChat(user.id, tier3?.chatId!);
+      const isInChat = await GroupChatService.isInChat(user.id, tier3.chatId);
       expect(isInChat).toBe(false);
     });
 
@@ -418,18 +422,22 @@ describe("Agent Group Inheritance", () => {
 
       const tiers = await TieredGroupService.ensureAllTiersExist(npc.id);
       const tier3 = tiers.find((t) => t.tier === 3);
+      expect(tier3).toBeDefined();
+      if (!tier3) {
+        throw new Error("Expected tier 3 group");
+      }
 
       // Owner is NOT assigned - should not be in chat
       const ownerInChat = await GroupChatService.isInChat(
         owner.id,
-        tier3?.chatId!,
+        tier3.chatId,
       );
       expect(ownerInChat).toBe(false);
 
       // Agent should NOT inherit access
       const agentInChat = await GroupChatService.isInChat(
         agent.id,
-        tier3?.chatId!,
+        tier3.chatId,
       );
       expect(agentInChat).toBe(false);
     });

@@ -3,6 +3,7 @@ import { useRenderGuard } from "@elizaos/ui/hooks";
 import { useApp } from "@elizaos/ui/state";
 import { memo, useEffect } from "react";
 import { CompanionSceneHost } from "./CompanionSceneHost";
+import { useCompanionSceneStatus } from "./companion-scene-status-context";
 import { EmotePicker } from "./EmotePicker";
 
 /**
@@ -18,6 +19,7 @@ const CompanionOverlay = memo(function CompanionOverlay({
 }) {
   useRenderGuard("CompanionAppView");
   const { emotePickerOpen } = useApp();
+  const { avatarReady } = useCompanionSceneStatus();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -35,6 +37,29 @@ const CompanionOverlay = memo(function CompanionOverlay({
   return (
     <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
       <EmotePicker />
+      <button
+        type="button"
+        aria-label="Close companion"
+        className="pointer-events-auto absolute right-4 top-4 z-20 grid h-10 w-10 place-items-center rounded-full border border-white/15 bg-black/55 text-sm font-semibold text-white shadow-lg backdrop-blur-md transition hover:bg-black/75"
+        onClick={exitToApps}
+        data-no-camera-drag="true"
+      >
+        x
+      </button>
+
+      <div
+        className="absolute bottom-4 left-4 z-20 flex items-center gap-2 rounded-full border border-white/15 bg-black/50 px-3 py-2 backdrop-blur-md"
+        title={avatarReady ? "Avatar ready" : "Avatar loading"}
+      >
+        <span
+          className={`h-2.5 w-2.5 rounded-full ${
+            avatarReady ? "bg-emerald-400" : "bg-amber-400"
+          }`}
+        />
+        <span className="text-2xs font-semibold uppercase tracking-normal text-white/80">
+          {avatarReady ? "Ready" : "Loading"}
+        </span>
+      </div>
 
       <div className="flex-1 grid grid-cols-[1fr_auto] gap-6 min-h-0 relative">
         <div className="w-full h-full" />

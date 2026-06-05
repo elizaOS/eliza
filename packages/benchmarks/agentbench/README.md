@@ -131,7 +131,7 @@ elizaos_agentbench/
   upstream_loader.py           # loaders for the vendored upstream data
   runner.py                    # AgentBenchRunner: dispatch -> adapters -> report
   eliza_harness.py             # ElizaOS bridge adapter (used by run_benchmark.py)
-  benchmark_actions.py         # compatibility no-ops for the legacy Python Eliza
+  benchmark_actions.py         # compatibility shims for the legacy Python Eliza
   adapters/
     base.py
     db_adapter.py

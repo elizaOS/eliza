@@ -60,7 +60,7 @@ const PROVIDERS = [
 // diffusion backend, so every control that would mutate pixels (menu actions,
 // AI buttons, selection-edit buttons) is disabled with this shared title
 // instead of rendering an enabled control that routes nowhere.
-const NO_BACKEND = "No image backend is connected yet";
+const NO_BACKEND = "Image backend offline";
 
 // odysseus editor/build/toolbar.js `tools` — the left tool palette, including
 // the AI-tools (✦) flag and the keyboard hint. `sep` rows render a labeled
@@ -320,10 +320,7 @@ export function GalleryEditorView({
             onPointerDown={win.onDragStart}
           >
             <div className="ge-topbar-left">
-              <span
-                className="ge-alpha-badge"
-                title="This editor is in active development — expect rough edges"
-              >
+              <span className="ge-alpha-badge" title="Alpha">
                 ALPHA
               </span>
               <button
@@ -335,7 +332,7 @@ export function GalleryEditorView({
                 <span className="ge-stacked-glyph">
                   <Undo2 size={14} />
                 </span>
-                <span className="ge-stacked-label">UNDO</span>
+                <span className="ge-stacked-label">Undo</span>
               </button>
               <button
                 type="button"
@@ -346,7 +343,7 @@ export function GalleryEditorView({
                 <span className="ge-stacked-glyph">
                   <Redo2 size={14} />
                 </span>
-                <span className="ge-stacked-label">REDO</span>
+                <span className="ge-stacked-label">Redo</span>
               </button>
               <button
                 type="button"
@@ -358,7 +355,7 @@ export function GalleryEditorView({
                 <span className="ge-stacked-glyph">
                   <RotateCcw size={14} />
                 </span>
-                <span className="ge-stacked-label">HISTORY</span>
+                <span className="ge-stacked-label">History</span>
               </button>
               <span className="ge-topbar-sep" />
               <button
@@ -426,7 +423,7 @@ export function GalleryEditorView({
                     <line x1="3" y1="21" x2="10" y2="14" />
                   </svg>
                 </span>
-                <span className="ge-stacked-label">FIT</span>
+                <span className="ge-stacked-label">Fit</span>
               </button>
               <button
                 type="button"
@@ -436,7 +433,7 @@ export function GalleryEditorView({
                 disabled
               >
                 <span className="ge-stacked-glyph">1:1</span>
-                <span className="ge-stacked-label">SCALE</span>
+                <span className="ge-stacked-label">Scale</span>
               </button>
               <span className="ge-topbar-sep" />
             </div>
@@ -453,7 +450,7 @@ export function GalleryEditorView({
                     setSaveMenuOpen(false);
                   }}
                 >
-                  Image ▾
+                  <ImageIcon size={14} />
                 </button>
                 {imageMenuOpen ? (
                   <div className="ge-image-menu dropdown" role="menu">
@@ -518,7 +515,7 @@ export function GalleryEditorView({
                     setSaveMenuOpen(false);
                   }}
                 >
-                  Filter ▾
+                  <Wand2 size={14} />
                 </button>
                 {filterMenuOpen ? (
                   <div className="ge-filter-menu dropdown" role="menu">
@@ -575,7 +572,7 @@ export function GalleryEditorView({
                 aria-label="Import image as layer"
                 disabled
               >
-                + Import
+                <Upload size={14} />
               </button>
               <div className="ge-save-wrap">
                 <button
@@ -588,7 +585,7 @@ export function GalleryEditorView({
                     setFilterMenuOpen(false);
                   }}
                 >
-                  Save
+                  <span>Save</span>
                   <svg
                     width="9"
                     height="9"
@@ -705,21 +702,12 @@ export function GalleryEditorView({
               )}
             </div>
 
-            {/* Canvas area (center) — honest empty stage. No canvas backend in
-                eliza, so render the checkerboard stage with odysseus's
-                "load / generate an image to edit" landing instead of a
-                fabricated canvas. */}
             <div className="ge-canvas-area">
               <div className="gallery-editor-landing">
                 <ImageIcon size={40} strokeWidth={1.25} aria-hidden="true" />
                 <h3>
-                  Image editor <span className="ge-alpha-tag">Alpha</span>
+                  Canvas <span className="ge-alpha-tag">Offline</span>
                 </h3>
-                <p>
-                  Load an image from the gallery or generate one to start
-                  editing. The canvas, layers, and AI tools light up once an
-                  image backend is connected.
-                </p>
                 <div className="gallery-editor-landing-actions">
                   <button
                     type="button"
@@ -728,7 +716,7 @@ export function GalleryEditorView({
                     title={NO_BACKEND}
                   >
                     <Upload size={14} />
-                    Import image
+                    Import
                   </button>
                   <button
                     type="button"
@@ -737,7 +725,7 @@ export function GalleryEditorView({
                     title={NO_BACKEND}
                   >
                     <Sparkles size={14} />
-                    Generate image
+                    Generate
                   </button>
                 </div>
               </div>

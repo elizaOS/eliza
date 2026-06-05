@@ -11,8 +11,15 @@
 "use client";
 
 import type { LanguageModelUsage } from "ai";
-import { type ComponentProps, createContext, useContext, useMemo } from "react";
-import { estimateCost, type ModelId } from "tokenlens";
+import {
+  type ComponentProps,
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import type { ModelId } from "tokenlens";
 import { cn } from "../../lib/utils";
 import { Button } from "../button";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "../hover-card";
@@ -34,6 +41,38 @@ const USD_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
 });
+
+// `tokenlens` is a frontend-only cost lib. Importing its `estimateCost` value
+// eagerly would pull tokenlens (and its broken sourcemaps) into the `@elizaos/ui`
+// root barrel, which server-side route plugins transitively evaluate at boot —
+// loading a browser cost-estimator into the API process. Load it lazily instead,
+// so only actually rendering a cost row touches tokenlens. The type import above
+// is erased at compile time and costs nothing at runtime.
+type EstimateCost = typeof import("tokenlens").estimateCost;
+let estimateCostFn: EstimateCost | null = null;
+let estimateCostLoad: Promise<void> | null = null;
+function loadEstimateCost(): Promise<void> {
+  estimateCostLoad ??= import("tokenlens").then((m) => {
+    estimateCostFn = m.estimateCost;
+  });
+  return estimateCostLoad;
+}
+
+/** Returns `estimateCost` once tokenlens has lazily loaded, else `null`. */
+function useEstimateCost(): EstimateCost | null {
+  const [fn, setFn] = useState<EstimateCost | null>(estimateCostFn);
+  useEffect(() => {
+    if (fn) return;
+    let active = true;
+    loadEstimateCost().then(() => {
+      if (active) setFn(() => estimateCostFn);
+    });
+    return () => {
+      active = false;
+    };
+  }, [fn]);
+  return fn;
+}
 
 type ContextSchema = {
   usedTokens: number;
@@ -218,15 +257,17 @@ export const ContextContentFooter = ({
   ...props
 }: ContextContentFooter) => {
   const { modelId, usage } = useContextValue();
-  const costUSD = modelId
-    ? estimateCost({
-        modelId,
-        usage: {
-          input: usage?.inputTokens ?? 0,
-          output: usage?.outputTokens ?? 0,
-        },
-      }).totalUSD
-    : undefined;
+  const estimateCost = useEstimateCost();
+  const costUSD =
+    modelId && estimateCost
+      ? estimateCost({
+          modelId,
+          usage: {
+            input: usage?.inputTokens ?? 0,
+            output: usage?.outputTokens ?? 0,
+          },
+        }).totalUSD
+      : undefined;
   const totalCost = formatUsd(costUSD);
 
   return (
@@ -255,6 +296,7 @@ export const ContextInputUsage = ({
   ...props
 }: ContextInputUsageProps) => {
   const { usage, modelId } = useContextValue();
+  const estimateCost = useEstimateCost();
   const inputTokens = usage?.inputTokens ?? 0;
 
   if (children) {
@@ -265,12 +307,13 @@ export const ContextInputUsage = ({
     return null;
   }
 
-  const inputCost = modelId
-    ? estimateCost({
-        modelId,
-        usage: { input: inputTokens, output: 0 },
-      }).totalUSD
-    : undefined;
+  const inputCost =
+    modelId && estimateCost
+      ? estimateCost({
+          modelId,
+          usage: { input: inputTokens, output: 0 },
+        }).totalUSD
+      : undefined;
   const inputCostText = formatUsd(inputCost);
 
   return (
@@ -292,6 +335,7 @@ export const ContextOutputUsage = ({
   ...props
 }: ContextOutputUsageProps) => {
   const { usage, modelId } = useContextValue();
+  const estimateCost = useEstimateCost();
   const outputTokens = usage?.outputTokens ?? 0;
 
   if (children) {
@@ -302,12 +346,13 @@ export const ContextOutputUsage = ({
     return null;
   }
 
-  const outputCost = modelId
-    ? estimateCost({
-        modelId,
-        usage: { input: 0, output: outputTokens },
-      }).totalUSD
-    : undefined;
+  const outputCost =
+    modelId && estimateCost
+      ? estimateCost({
+          modelId,
+          usage: { input: 0, output: outputTokens },
+        }).totalUSD
+      : undefined;
   const outputCostText = formatUsd(outputCost);
 
   return (
@@ -329,6 +374,7 @@ export const ContextReasoningUsage = ({
   ...props
 }: ContextReasoningUsageProps) => {
   const { usage, modelId } = useContextValue();
+  const estimateCost = useEstimateCost();
   const reasoningTokens = usage?.reasoningTokens ?? 0;
 
   if (children) {
@@ -339,12 +385,13 @@ export const ContextReasoningUsage = ({
     return null;
   }
 
-  const reasoningCost = modelId
-    ? estimateCost({
-        modelId,
-        usage: { reasoningTokens },
-      }).totalUSD
-    : undefined;
+  const reasoningCost =
+    modelId && estimateCost
+      ? estimateCost({
+          modelId,
+          usage: { reasoningTokens },
+        }).totalUSD
+      : undefined;
   const reasoningCostText = formatUsd(reasoningCost);
 
   return (
@@ -366,6 +413,7 @@ export const ContextCacheUsage = ({
   ...props
 }: ContextCacheUsageProps) => {
   const { usage, modelId } = useContextValue();
+  const estimateCost = useEstimateCost();
   const cacheTokens = usage?.cachedInputTokens ?? 0;
 
   if (children) {
@@ -376,12 +424,13 @@ export const ContextCacheUsage = ({
     return null;
   }
 
-  const cacheCost = modelId
-    ? estimateCost({
-        modelId,
-        usage: { cacheReads: cacheTokens, input: 0, output: 0 },
-      }).totalUSD
-    : undefined;
+  const cacheCost =
+    modelId && estimateCost
+      ? estimateCost({
+          modelId,
+          usage: { cacheReads: cacheTokens, input: 0, output: 0 },
+        }).totalUSD
+      : undefined;
   const cacheCostText = formatUsd(cacheCost);
 
   return (

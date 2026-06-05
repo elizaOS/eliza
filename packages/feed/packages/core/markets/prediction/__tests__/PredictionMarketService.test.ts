@@ -22,6 +22,13 @@ const feeConfig = {
   minFeeAmount: 0.01,
 };
 
+function requireValue<T>(value: T | null | undefined, label: string): T {
+  if (value === null || value === undefined) {
+    throw new Error(`${label} was not created`);
+  }
+  return value;
+}
+
 class InMemoryWallet implements WalletPort {
   balances = new Map<string, number>();
   pnls: Array<{ userId: string; pnl: number; reason: string }> = [];
@@ -298,7 +305,8 @@ describe("PredictionMarketService", () => {
     });
     const pos = await db.getPosition("u1", "m1", "yes");
     expect(pos).not.toBeNull();
-    const sellShares = pos?.shares * 0.9;
+    const position = requireValue(pos, "yes position");
+    const sellShares = position.shares * 0.9;
     const result = await service.sell({
       userId: "u1",
       marketId: "m1",
@@ -310,7 +318,7 @@ describe("PredictionMarketService", () => {
     const result2 = await service.sell({
       userId: "u1",
       marketId: "m1",
-      shares: pos?.shares - sellShares,
+      shares: position.shares - sellShares,
     });
     expect(result2.positionClosed).toBe(true);
     const closed = await db.getPosition("u1", "m1", "yes");
@@ -332,18 +340,20 @@ describe("PredictionMarketService", () => {
     const noPos = await db.getPosition("u1", "m1", "no");
     expect(yesPos).not.toBeNull();
     expect(noPos).not.toBeNull();
+    const yesPosition = requireValue(yesPos, "yes position");
+    const noPosition = requireValue(noPos, "no position");
 
     await service.sell({
       userId: "u1",
       marketId: "m1",
-      positionId: yesPos?.id,
-      shares: yesPos?.shares,
+      positionId: yesPosition.id,
+      shares: yesPosition.shares,
     });
 
     const sellNo = await service.sell({
       userId: "u1",
       marketId: "m1",
-      shares: noPos?.shares,
+      shares: noPosition.shares,
     });
     expect(sellNo.positionClosed).toBe(true);
   });
@@ -388,6 +398,7 @@ describe("PredictionMarketService", () => {
     });
     const pos = await db.getPosition("u1", "m1", "yes");
     expect(pos).not.toBeNull();
+    const position = requireValue(pos, "yes position");
 
     // Expire the market (but don't resolve it)
     await db.updateMarketState("m1", {
@@ -398,7 +409,7 @@ describe("PredictionMarketService", () => {
     const result = await service.sell({
       userId: "u1",
       marketId: "m1",
-      shares: pos?.shares,
+      shares: position.shares,
     });
     expect(result.positionClosed).toBe(true);
     expect(result.netProceeds).toBeGreaterThan(0);
@@ -509,6 +520,10 @@ describe("PredictionMarketService", () => {
 
     const marketPreResolve = await service.getMarket("m1");
     expect(marketPreResolve).not.toBeNull();
+    const marketBeforeResolve = requireValue(
+      marketPreResolve,
+      "pre-resolve market",
+    );
 
     const preWinnerBalance = (await wallet.getBalance("u1")).balance;
     const preLoserBalance = (await wallet.getBalance("u2")).balance;
@@ -519,21 +534,23 @@ describe("PredictionMarketService", () => {
     });
     const pos1 = await db.getPosition("u1", "m1", "yes");
     const pos2 = await db.getPosition("u2", "m1", "no");
-    expect(pos1?.status).toBe("resolved");
-    expect(pos2?.status).toBe("resolved");
-    expect(pos1?.outcome).toBe(true);
-    expect(pos2?.outcome).toBe(false);
+    const winnerPosition = requireValue(pos1, "winner position");
+    const loserPosition = requireValue(pos2, "loser position");
+    expect(winnerPosition.status).toBe("resolved");
+    expect(loserPosition.status).toBe("resolved");
+    expect(winnerPosition.outcome).toBe(true);
+    expect(loserPosition.outcome).toBe(false);
     const postWinnerBalance = (await wallet.getBalance("u1")).balance;
     const postLoserBalance = (await wallet.getBalance("u2")).balance;
     expect(postWinnerBalance).toBeGreaterThan(preWinnerBalance);
     expect(postLoserBalance).toBeLessThanOrEqual(preLoserBalance);
 
     // Pool-proportional payout: winner gets cost back + loser's deposits
-    const totalWinnerShares = pos1?.shares;
-    const totalLoserDeposits = pos2?.shares * pos2?.avgPrice;
+    const totalWinnerShares = winnerPosition.shares;
+    const totalLoserDeposits = loserPosition.shares * loserPosition.avgPrice;
     const expectedWinnerPayout = PredictionPricing.calculateExpectedPayout(
-      pos1?.shares,
-      pos1?.avgPrice,
+      winnerPosition.shares,
+      winnerPosition.avgPrice,
       totalWinnerShares,
       totalLoserDeposits,
     );
@@ -543,17 +560,17 @@ describe("PredictionMarketService", () => {
     expect(postWinnerBalance - preWinnerBalance).toBeCloseTo(
       expectedWinnerPayout,
     );
-    expect(pos1?.pnl).toBeCloseTo(expectedWinnerPnl);
-    expect(pos1?.pnl).toBeGreaterThan(0);
-    expect(pos2?.pnl).toBeCloseTo(expectedLoserPnl);
+    expect(winnerPosition.pnl).toBeCloseTo(expectedWinnerPnl);
+    expect(winnerPosition.pnl).toBeGreaterThan(0);
+    expect(loserPosition.pnl).toBeCloseTo(expectedLoserPnl);
 
     // Liquidity should decrease by total payouts (capped at available liquidity)
     const marketAfterResolve = await service.getMarket("m1");
     expect(marketAfterResolve?.resolved).toBe(true);
     const payout = expectedWinnerPayout;
-    const expectedReduction = Math.min(payout, marketPreResolve?.liquidity);
+    const expectedReduction = Math.min(payout, marketBeforeResolve.liquidity);
     expect(marketAfterResolve?.liquidity).toBeCloseTo(
-      marketPreResolve?.liquidity - expectedReduction,
+      marketBeforeResolve.liquidity - expectedReduction,
       6,
     );
 

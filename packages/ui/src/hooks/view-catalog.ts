@@ -33,7 +33,7 @@ export interface ViewEntry {
   description?: string;
   /** Lucide icon name or image URL/data-URI. */
   icon?: string;
-  /** Real preview image URL, or undefined when only a placeholder exists. */
+  /** Real preview image URL, or undefined when only a generated fallback exists. */
   heroUrl?: string;
   hasHero: boolean;
   category?: string;

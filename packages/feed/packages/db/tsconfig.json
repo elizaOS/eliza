@@ -5,6 +5,7 @@
     "rootDir": "./src",
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "baseUrl": ".",
+    "types": ["node", "bun-types"],
     "paths": {
       "@feed/shared": ["../shared/src/index.ts"],
       "@feed/shared/*": ["../shared/src/*"]

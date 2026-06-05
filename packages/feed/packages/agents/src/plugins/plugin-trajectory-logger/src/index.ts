@@ -36,8 +36,8 @@ export * from "./types";
 // - logLLMCallFromAction()
 // - logProviderFromAction()
 
-// Game-Knowledge Rewards: REMOVED (was dead stubs).
-// Canonical reward computation is in @feed/training: reward-judgments.ts
+// Game-Knowledge Rewards: removed after the reward path moved to canonical scoring.
+// Canonical reward computation is in @feed/agents/training.
 
 // ==========================================
 // TRAJECTORY FORMAT CONVERSION
@@ -76,6 +76,6 @@ export * from "./integration";
 // ==========================================
 // REWARD SCORING
 // Deterministic judge is auto-called in endTrajectory().
-// For manual scoring, import from @feed/training directly:
-//   import { computeDeterministicRewardJudgment } from '@feed/training/training/reward-judgments'
+// For manual scoring, import from @feed/agents/training directly:
+//   import { computeDeterministicRewardJudgment } from '@feed/agents/training'
 // ==========================================

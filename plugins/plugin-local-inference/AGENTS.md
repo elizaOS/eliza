@@ -12,6 +12,12 @@ This plugin registers model handlers for `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBED
 | Name | Description |
 |---|---|
 | `GENERATE_MEDIA` | Classifies user text as image/audio/video intent, then dispatches to `ModelType.IMAGE` or `ModelType.TEXT_TO_SPEECH`. Video is refused cleanly. |
+| `IDENTIFY_SPEAKER` | Binds the most-recently-heard *unidentified* speaker voice to a named person ("that was Jill"). Emits `VOICE_TURN_OBSERVED` to drive the merge engine; the `VOICE_ENTITY_BOUND` round-trip persists `entityId` onto the profile. Inert (logs only) if no merge-engine plugin is loaded. |
+
+### Events (voice ⇄ entity binding seam — issue #8234)
+The plugin owns the `VoiceProfileStore` (speaker centroids); a merge-engine plugin (plugin-lifeops) owns the entity graph. They communicate only through two core events — neither imports the other:
+- **emits** `VOICE_TURN_OBSERVED` (`emitVoiceTurnObserved`, `src/runtime/voice-entity-binding.ts`) — a recognized voice turn for the merge engine to fold into the graph.
+- **handles** `VOICE_ENTITY_BOUND` (`handleVoiceEntityBound`, registered in `provider.ts`) — persists the merge-engine's `entityId` onto every profile in the imprint cluster via `VoiceProfileStore.bindEntity` (the runtime caller that issue #8234 was missing).
 
 ### Model handlers (registered by `createLocalInferenceModelHandlers()`)
 `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `IMAGE`, `IMAGE_DESCRIPTION`, `TEXT_TO_SPEECH`, `TRANSCRIPTION`
@@ -52,6 +58,7 @@ src/
 
   actions/
     generate-media.ts             GENERATE_MEDIA action: keyword+classifier intent routing → IMAGE or TTS
+    identify-speaker.ts           IDENTIFY_SPEAKER action: name a recent unidentified voice → merge engine
 
   routes/
     index.ts                      Re-exports all route handlers
@@ -65,6 +72,7 @@ src/
 
   runtime/
     index.ts                      Boot-time exports (ensureLocalInferenceHandler, embedding policy, mobile gate)
+    voice-entity-binding.ts       VOICE_TURN_OBSERVED producer + VOICE_ENTITY_BOUND consumer (profile bindEntity)
     ensure-local-inference-handler.ts  Registers text/embedding handlers; wires router-handler
     embedding-presets.ts          detectEmbeddingPreset(), EMBEDDING_PRESETS
     embedding-warmup-policy.ts    shouldWarmupLocalEmbeddingModel()

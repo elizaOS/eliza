@@ -22,7 +22,7 @@ import { Button } from "../ui/button";
 export interface VoiceProfileSectionProps {
   /**
    * Adapter (R10 §5.3). Must be supplied by the parent that holds the
-   * `ElizaClient`.  In tests the caller can pass a fake adapter.
+   * `ElizaClient`. In tests the caller can pass a test adapter.
    */
   profilesClient: VoiceProfilesClient;
   /** Pre-loaded profiles (skips initial fetch — useful for tests). */

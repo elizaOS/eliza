@@ -1033,13 +1033,7 @@ export function TaskCoordinatorTuiView() {
       id="task-coordinator"
       label="Task Coordinator TUI"
       description="Terminal coding agent task coordinator"
-      commands={[
-        "list-sessions",
-        "list-task-threads",
-        "open-thread",
-        "stop-session",
-        "refresh",
-      ]}
+      commands={[]}
       endpoints={[
         "/api/coding-agents",
         "/api/orchestrator/tasks",
@@ -1055,23 +1049,7 @@ export function OrchestratorTuiView() {
       id="orchestrator"
       label="Orchestrator TUI"
       description="Terminal multi-agent task orchestration workbench"
-      commands={[
-        "orchestrator-status",
-        "orchestrator-list-tasks",
-        "orchestrator-open-task",
-        "orchestrator-create-task",
-        "orchestrator-pause-task",
-        "orchestrator-resume-task",
-        "orchestrator-pause-all",
-        "orchestrator-resume-all",
-        "orchestrator-delete-task",
-        "orchestrator-fork-task",
-        "orchestrator-update-task",
-        "orchestrator-validate-task",
-        "orchestrator-add-agent",
-        "orchestrator-stop-agent",
-        "orchestrator-send-message",
-      ]}
+      commands={[]}
       endpoints={["/api/orchestrator/status", "/api/orchestrator/tasks"]}
     />
   );

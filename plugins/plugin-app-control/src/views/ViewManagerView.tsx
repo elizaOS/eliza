@@ -10,7 +10,13 @@
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { LayoutGrid, PackageOpen, RefreshCw } from "lucide-react";
+import {
+	CheckCircle2,
+	LayoutGrid,
+	PackageOpen,
+	RefreshCw,
+	XCircle,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
 	fetchViewEntries,
@@ -68,24 +74,27 @@ function ViewCard({
 				textAlign: "left",
 				font: "inherit",
 				border: `1px solid ${viewManagerTheme.border}`,
-				borderRadius: 12,
+				borderRadius: 8,
 				overflow: "hidden",
 				background: viewManagerTheme.surface,
 				display: "flex",
-				flexDirection: "column",
+				alignItems: "center",
+				gap: 12,
 				cursor: "pointer",
-				padding: 0,
+				padding: 12,
 				transition: "border-color 0.15s",
 			}}
 		>
 			<img
 				src={heroSrc}
-				alt={view.label}
+				alt=""
 				style={{
-					width: "100%",
-					aspectRatio: "4/3",
+					width: 56,
+					height: 56,
 					objectFit: "cover",
 					display: "block",
+					borderRadius: 8,
+					flexShrink: 0,
 					background: viewManagerTheme.surfaceMuted,
 				}}
 				onError={(e) => {
@@ -94,40 +103,44 @@ function ViewCard({
 					(e.target as HTMLImageElement).style.display = "none";
 				}}
 			/>
-			<div style={{ padding: "12px 16px 16px" }}>
+			<div style={{ minWidth: 0, flex: 1 }}>
 				<div
 					style={{
 						fontWeight: 600,
 						fontSize: 14,
 						color: viewManagerTheme.foreground,
-						marginBottom: 4,
+						whiteSpace: "nowrap",
+						overflow: "hidden",
+						textOverflow: "ellipsis",
 					}}
 				>
 					{view.label}
 				</div>
-				{view.description && (
-					<div
-						style={{
-							fontSize: 12,
-							color: viewManagerTheme.muted,
-							lineHeight: 1.4,
-							marginBottom: 8,
-						}}
-					>
-						{view.description}
-					</div>
-				)}
 				<div
 					style={{
 						fontSize: 11,
-						color: view.available
-							? viewManagerTheme.success
-							: viewManagerTheme.muted,
+						color: viewManagerTheme.muted,
+						whiteSpace: "nowrap",
+						overflow: "hidden",
+						textOverflow: "ellipsis",
 					}}
 				>
-					{view.available ? "Bundle ready" : "Not built"}
+					{view.path}
 				</div>
 			</div>
+			{view.available ? (
+				<CheckCircle2
+					size={18}
+					aria-label="Available"
+					style={{ color: viewManagerTheme.success, flexShrink: 0 }}
+				/>
+			) : (
+				<XCircle
+					size={18}
+					aria-label="Unavailable"
+					style={{ color: viewManagerTheme.muted, flexShrink: 0 }}
+				/>
+			)}
 		</button>
 	);
 }
@@ -147,11 +160,7 @@ function EmptyState() {
 			}}
 		>
 			<PackageOpen size={48} strokeWidth={1.2} />
-			<div style={{ fontSize: 15, fontWeight: 500 }}>No views registered</div>
-			<div style={{ fontSize: 13, maxWidth: 320 }}>
-				Views are UI bundles contributed by plugins. Install a plugin that
-				declares views to see them here.
-			</div>
+			<div style={{ fontSize: 15, fontWeight: 500 }}>No views</div>
 		</div>
 	);
 }
@@ -198,7 +207,6 @@ function RefreshButton({
 					animation: loading ? "spin 1s linear infinite" : "none",
 				}}
 			/>
-			Refresh
 		</button>
 	);
 }
@@ -251,7 +259,6 @@ export function ViewManagerView() {
 			>
 				<div style={{ display: "flex", alignItems: "center", gap: 10 }}>
 					<LayoutGrid size={20} style={{ color: viewManagerTheme.accent }} />
-					<span style={{ fontWeight: 600, fontSize: 16 }}>View Manager</span>
 					{!loading && (
 						<span
 							style={{
@@ -260,7 +267,7 @@ export function ViewManagerView() {
 								marginLeft: 4,
 							}}
 						>
-							{views.length} view{views.length !== 1 ? "s" : ""}
+							{views.length}
 						</span>
 					)}
 				</div>
@@ -301,8 +308,10 @@ export function ViewManagerView() {
 					<div
 						style={{
 							display: "grid",
-							gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-							gap: 16,
+							gridTemplateColumns: "1fr",
+							gap: 10,
+							maxWidth: 720,
+							margin: "0 auto",
 						}}
 					>
 						{views.map((view) => (

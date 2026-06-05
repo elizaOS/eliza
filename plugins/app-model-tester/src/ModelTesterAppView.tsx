@@ -4,14 +4,23 @@ import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Spinner } from "@elizaos/ui/components/ui/spinner";
 import {
+  Activity,
   ArrowLeft,
+  CheckCircle2,
+  CircleAlert,
+  Cpu,
   FileAudio,
+  Headphones,
   Image as ImageIcon,
+  ImagePlus,
+  type LucideIcon,
+  MessageSquareText,
   Mic,
   Play,
   RefreshCw,
   Sparkles,
   Volume2,
+  Waves,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -60,38 +69,49 @@ const TEST_ORDER: TestId[] = [
   "image",
 ];
 
-const TEST_COPY: Record<TestId, { title: string; subtitle: string }> = {
+const TEST_COPY: Record<
+  TestId,
+  { title: string; subtitle: string; Icon: LucideIcon }
+> = {
   "text-small": {
     title: "Text",
-    subtitle: "Non-streaming TEXT_SMALL probe",
+    subtitle: "TEXT_SMALL",
+    Icon: MessageSquareText,
   },
   "text-large": {
-    title: "Streaming Text",
-    subtitle: "TEXT_LARGE with chunk capture",
+    title: "Stream",
+    subtitle: "TEXT_LARGE",
+    Icon: Waves,
   },
   embedding: {
     title: "Embedding",
-    subtitle: "Vector dimensions and preview",
+    subtitle: "Vector",
+    Icon: Cpu,
   },
   "text-to-speech": {
     title: "Voice",
-    subtitle: "Generate playable speech",
+    subtitle: "TTS",
+    Icon: Volume2,
   },
   transcription: {
     title: "Transcription",
-    subtitle: "Transcribe selected audio",
+    subtitle: "Audio",
+    Icon: Mic,
   },
   vad: {
-    title: "Voice Activity",
-    subtitle: "Detect active regions in selected audio",
+    title: "Activity",
+    subtitle: "VAD",
+    Icon: Activity,
   },
   "image-description": {
-    title: "Image Description",
-    subtitle: "Describe selected image",
+    title: "Vision",
+    subtitle: "Describe",
+    Icon: ImageIcon,
   },
   image: {
-    title: "Image Generation",
-    subtitle: "Generate one image from the prompt",
+    title: "Image",
+    subtitle: "Generate",
+    Icon: ImagePlus,
   },
 };
 
@@ -171,6 +191,11 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
     () => new Map(statuses.map((status) => [status.id, status])),
     [statuses],
   );
+  const readyCount = TEST_ORDER.filter(
+    (id) => statusById.get(id)?.available ?? id === "vad",
+  ).length;
+  const runningCount = Object.values(running).filter(Boolean).length;
+  const completeCount = Object.values(results).filter(Boolean).length;
 
   const backControl = useAgentElement<HTMLButtonElement>({
     id: "action-back",
@@ -337,35 +362,49 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
       </div>
 
       <div className="chat-native-scrollbar flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-4 lg:grid-cols-[340px_1fr]">
-          <aside className="space-y-4">
-            <section className="rounded-lg border border-border/20 bg-bg-accent/60 p-4">
-              <label
-                htmlFor="model-tester-prompt"
-                className="text-xs font-semibold uppercase tracking-normal text-muted"
-              >
-                Prompt
-              </label>
-              <textarea
-                ref={promptControl.ref}
-                {...promptControl.agentProps}
-                id="model-tester-prompt"
-                value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
-                rows={5}
-                className="mt-2 w-full resize-none rounded-lg border border-border/30 bg-bg px-3 py-2 text-sm text-txt outline-none focus:border-border"
+        <div className="mx-auto flex max-w-5xl flex-col gap-4">
+          <section className="rounded-lg border border-border/20 bg-bg-accent/60 p-4">
+            <div className="grid grid-cols-3 gap-2">
+              <MetricBadge
+                icon={CheckCircle2}
+                value={`${readyCount}/${TEST_ORDER.length}`}
+                tone="ok"
+                label="Ready probes"
               />
-            </section>
+              <MetricBadge
+                icon={Play}
+                value={String(runningCount)}
+                tone={runningCount > 0 ? "accent" : "muted"}
+                label="Running probes"
+              />
+              <MetricBadge
+                icon={Sparkles}
+                value={String(completeCount)}
+                tone="muted"
+                label="Completed probes"
+              />
+            </div>
 
-            <section className="rounded-lg border border-border/20 bg-bg-accent/60 p-4">
-              <div className="mb-3 text-xs font-semibold uppercase tracking-normal text-muted">
-                Assets
-              </div>
-              <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-border/24 bg-bg px-3 py-3 text-sm text-txt hover:bg-bg-accent">
-                <ImageIcon className="h-4 w-4 text-muted" />
-                <span className="min-w-0 flex-1 truncate">
-                  {imageDataUrl ? "Image loaded" : "Choose image"}
-                </span>
+            <label htmlFor="model-tester-prompt" className="sr-only">
+              Prompt
+            </label>
+            <textarea
+              ref={promptControl.ref}
+              {...promptControl.agentProps}
+              id="model-tester-prompt"
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              rows={3}
+              className="mt-3 w-full resize-none rounded-lg border border-border/30 bg-bg px-3 py-2 text-sm text-txt outline-none focus:border-border"
+              aria-label="Prompt"
+            />
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <label className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-lg border border-border/24 bg-bg px-3 py-2 text-sm text-txt hover:bg-bg-accent">
+                <ImageIcon
+                  className={`h-4 w-4 ${imageDataUrl ? "text-ok" : "text-muted"}`}
+                />
+                <span className="min-w-0 truncate">Image</span>
                 <input
                   ref={imageInputControl.ref}
                   {...imageInputControl.agentProps}
@@ -377,11 +416,11 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
                   }
                 />
               </label>
-              <label className="mt-2 flex cursor-pointer items-center gap-3 rounded-lg border border-border/24 bg-bg px-3 py-3 text-sm text-txt hover:bg-bg-accent">
-                <FileAudio className="h-4 w-4 text-muted" />
-                <span className="min-w-0 flex-1 truncate">
-                  {audioPayload ? "Audio loaded" : "Choose audio"}
-                </span>
+              <label className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-lg border border-border/24 bg-bg px-3 py-2 text-sm text-txt hover:bg-bg-accent">
+                <FileAudio
+                  className={`h-4 w-4 ${audioPayload ? "text-ok" : "text-muted"}`}
+                />
+                <span className="min-w-0 truncate">Audio</span>
                 <input
                   ref={audioInputControl.ref}
                   {...audioInputControl.agentProps}
@@ -393,24 +432,25 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
                   }
                 />
               </label>
-              {assetError ? (
-                <div className="mt-3 text-xs leading-relaxed text-danger">
-                  {assetError}
-                </div>
-              ) : null}
-              {imageDataUrl ? (
-                <img
-                  src={imageDataUrl}
-                  alt=""
-                  className="mt-3 aspect-video w-full rounded-lg object-cover"
-                />
-              ) : null}
-            </section>
-          </aside>
+            </div>
+            {assetError ? (
+              <div className="mt-3 text-xs leading-relaxed text-danger">
+                {assetError}
+              </div>
+            ) : null}
+            {imageDataUrl ? (
+              <img
+                src={imageDataUrl}
+                alt=""
+                className="mt-3 aspect-video w-full rounded-lg object-cover"
+              />
+            ) : null}
+          </section>
 
-          <main className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+          <main className="grid grid-cols-1 gap-3">
             {TEST_ORDER.map((id) => {
               const copy = TEST_COPY[id];
+              const Icon = copy.Icon;
               const status = statusById.get(id);
               const result = results[id];
               const isRunning = running[id] === true;
@@ -419,40 +459,48 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
               return (
                 <section
                   key={id}
-                  className="min-h-64 rounded-lg border border-border/20 bg-bg-accent/60 p-4"
+                  className="rounded-lg border border-border/20 bg-bg-accent/60 p-4"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h2 className="text-sm font-semibold text-txt">
-                        {copy.title}
-                      </h2>
-                      <div className="mt-1 text-xs text-muted">
-                        {copy.subtitle}
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-border/20 bg-bg">
+                        <Icon className="h-5 w-5 text-txt" />
                       </div>
-                      <div className="mt-2 font-mono text-2xs text-muted">
-                        {status?.modelType ?? id}
+                      <div className="min-w-0">
+                        <h2 className="truncate text-sm font-semibold text-txt">
+                          {copy.title}
+                        </h2>
+                        <div className="mt-0.5 truncate font-mono text-2xs text-muted">
+                          {status?.modelType ?? copy.subtitle}
+                        </div>
                       </div>
                     </div>
-                    <StatusPill ready={status?.available ?? id === "vad"} />
+                    <div className="flex items-center gap-2">
+                      <StatusPill ready={status?.available ?? id === "vad"} />
+                      <TestRunButton
+                        id={id}
+                        title={copy.title}
+                        isRunning={isRunning}
+                        onRun={() => void runTest(id)}
+                      />
+                    </div>
                   </div>
-
-                  <TestRunButton
-                    id={id}
-                    title={copy.title}
-                    isRunning={isRunning}
-                    onRun={() => void runTest(id)}
-                  />
 
                   {result ? (
                     <div className="mt-4">
-                      <div
-                        className={`text-xs font-semibold ${
-                          result.ok ? "text-ok" : "text-danger"
-                        }`}
-                      >
-                        {result.ok
-                          ? `Passed in ${result.durationMs ?? 0}ms`
-                          : "Failed"}
+                      <div className="flex items-center gap-2">
+                        {result.ok ? (
+                          <CheckCircle2 className="h-4 w-4 text-ok" />
+                        ) : (
+                          <CircleAlert className="h-4 w-4 text-danger" />
+                        )}
+                        <span
+                          className={`text-xs font-semibold ${
+                            result.ok ? "text-ok" : "text-danger"
+                          }`}
+                        >
+                          {result.ok ? `${result.durationMs ?? 0}ms` : "Failed"}
+                        </span>
                       </div>
                       {audio ? (
                         // biome-ignore lint/a11y/useMediaCaption: This is generated TTS output, not source media with available captions.
@@ -471,8 +519,8 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
                       </pre>
                     </div>
                   ) : (
-                    <div className="mt-4 flex min-h-32 items-center justify-center rounded-lg border border-dashed border-border/25 text-xs text-muted">
-                      No output yet.
+                    <div className="mt-4 flex min-h-20 items-center justify-center rounded-lg border border-dashed border-border/25">
+                      <Sparkles className="h-4 w-4 text-muted" />
                     </div>
                   )}
                 </section>
@@ -491,13 +539,7 @@ export function ModelTesterTuiView() {
       id="model-tester"
       label="Model Tester TUI"
       description="Terminal probes for Eliza-1 text, voice, audio, and vision models"
-      commands={[
-        "get-status",
-        "run-text-small",
-        "run-transcription",
-        "run-vision",
-        "run-vad",
-      ]}
+      commands={[]}
       endpoints={["/api/model-tester/status", "/api/model-tester/run"]}
     />
   );
@@ -527,21 +569,21 @@ function TestRunButton({
       ref={ref}
       {...agentProps}
       variant="outline"
-      size="sm"
-      className="mt-4"
+      size="icon"
+      className="h-9 w-9 rounded-lg"
       disabled={isRunning}
       onClick={onRun}
+      aria-label={`Run ${title}`}
     >
       {isRunning ? (
-        <Spinner className="mr-2 h-4 w-4" />
+        <Spinner className="h-4 w-4" />
       ) : id === "text-to-speech" ? (
-        <Volume2 className="mr-2 h-4 w-4" />
+        <Headphones className="h-4 w-4" />
       ) : id === "transcription" || id === "vad" ? (
-        <Mic className="mr-2 h-4 w-4" />
+        <Mic className="h-4 w-4" />
       ) : (
-        <Sparkles className="mr-2 h-4 w-4" />
+        <Sparkles className="h-4 w-4" />
       )}
-      Run
     </Button>
   );
 }
@@ -549,16 +591,48 @@ function TestRunButton({
 function StatusPill({ ready }: { ready: boolean }) {
   return (
     <span
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs-tight font-semibold ${
+      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${
         ready
           ? "border-ok/35 bg-ok/12 text-ok"
           : "border-border bg-bg text-muted"
       }`}
+      role="status"
+      aria-label={ready ? "Ready" : "Missing"}
+      title={ready ? "Ready" : "Missing"}
     >
       <span
-        className={`h-1.5 w-1.5 rounded-full ${ready ? "bg-ok" : "bg-muted"}`}
+        className={`h-2 w-2 rounded-full ${ready ? "bg-ok" : "bg-muted"}`}
       />
-      {ready ? "Ready" : "Missing"}
     </span>
+  );
+}
+
+function MetricBadge({
+  icon: Icon,
+  value,
+  label,
+  tone,
+}: {
+  icon: LucideIcon;
+  value: string;
+  label: string;
+  tone: "ok" | "accent" | "muted";
+}) {
+  const toneClass =
+    tone === "ok"
+      ? "text-ok"
+      : tone === "accent"
+        ? "text-accent"
+        : "text-muted";
+  return (
+    <div
+      className="flex min-h-14 items-center justify-center gap-2 rounded-lg border border-border/20 bg-bg px-2"
+      role="status"
+      aria-label={label}
+      title={label}
+    >
+      <Icon className={`h-4 w-4 ${toneClass}`} />
+      <span className="text-sm font-semibold text-txt">{value}</span>
+    </div>
   );
 }

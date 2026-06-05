@@ -764,8 +764,8 @@ export class AutomationPipeline {
 
       const lastTraining = lastTrainingResult[0];
 
-      const hoursSinceLastTraining = lastTraining
-        ? (Date.now() - lastTraining.completedAt?.getTime()) / (1000 * 60 * 60)
+      const hoursSinceLastTraining = lastTraining?.completedAt
+        ? (Date.now() - lastTraining.completedAt.getTime()) / (1000 * 60 * 60)
         : 999;
 
       if (hoursSinceLastTraining >= this.config.trainingInterval) {
@@ -1101,9 +1101,9 @@ export class AutomationPipeline {
       training: {
         currentJob: this.currentTrainingJob,
         lastCompleted: lastCompleted?.completedAt || null,
-        nextScheduled: lastCompleted
+        nextScheduled: lastCompleted?.completedAt
           ? new Date(
-              lastCompleted.completedAt?.getTime() +
+              lastCompleted.completedAt.getTime() +
                 this.config.trainingInterval * 60 * 60 * 1000,
             )
           : null,

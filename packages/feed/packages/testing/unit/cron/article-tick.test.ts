@@ -100,6 +100,7 @@ const createQueryBuilder = (
     limit: mock(() => builder),
     returning: mock(async () => resultFn()),
     onConflictDoNothing: mock(() => builder),
+    // biome-ignore lint/suspicious/noThenProperty: The mock intentionally emulates Drizzle's awaitable query chain.
     then: <TResult1, TResult2 = never>(
       onFulfilled?:
         | ((value: unknown) => TResult1 | PromiseLike<TResult1>)

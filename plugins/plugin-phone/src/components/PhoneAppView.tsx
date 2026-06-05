@@ -1096,7 +1096,7 @@ export function PhoneTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(260px, 0.9fr) minmax(320px, 1.1fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -1364,7 +1364,7 @@ export function PhoneTuiView() {
           {!loading && !error && calls.length === 0 && (
             <div style={{ color: "#64748b" }}>no recent calls</div>
           )}
-          {calls.map((call, index) => (
+          {calls.slice(0, 12).map((call, index) => (
             <TuiRecentCallButton
               key={call.id}
               call={call}

@@ -6,7 +6,6 @@ database:
 
 providers:
   bitrouter: {}
-  cerebras: {}
   openai: {}
   anthropic: {}
   google: {}
@@ -16,7 +15,69 @@ providers:
     api_key: "${BITROUTER_CEREBRAS_API_KEY}"
     api_protocol: openai
     models:
-      gpt-oss-120b: {}
-      zai-glm-4.7: {}
+      gpt-oss-120b:
+        name: "GPT OSS 120B"
+        max_input_tokens: 131072
+        max_output_tokens: 40960
+        input_modalities:
+          - text
+        output_modalities:
+          - text
+        pricing:
+          input_tokens:
+            no_cache: 0.35
+          output_tokens:
+            text: 0.75
+      zai-glm-4.7:
+        name: "ZAI GLM 4.7"
+        max_input_tokens: 131072
+        max_output_tokens: 40960
+        input_modalities:
+          - text
+        output_modalities:
+          - text
+        pricing:
+          input_tokens:
+            no_cache: 2.25
+          output_tokens:
+            text: 2.75
+
+models:
+  gpt-oss-120b:
+    endpoints:
+      - provider: cerebras
+        service_id: gpt-oss-120b
+    pricing:
+      input_tokens:
+        no_cache: 0.35
+      output_tokens:
+        text: 0.75
+  "cerebras:gpt-oss-120b":
+    endpoints:
+      - provider: cerebras
+        service_id: gpt-oss-120b
+    pricing:
+      input_tokens:
+        no_cache: 0.35
+      output_tokens:
+        text: 0.75
+  zai-glm-4.7:
+    endpoints:
+      - provider: cerebras
+        service_id: zai-glm-4.7
+    pricing:
+      input_tokens:
+        no_cache: 2.25
+      output_tokens:
+        text: 2.75
+  "cerebras:zai-glm-4.7":
+    endpoints:
+      - provider: cerebras
+        service_id: zai-glm-4.7
+    pricing:
+      input_tokens:
+        no_cache: 2.25
+      output_tokens:
+        text: 2.75
 
 inherit_defaults: true

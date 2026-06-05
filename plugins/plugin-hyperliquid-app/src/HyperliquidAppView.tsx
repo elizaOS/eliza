@@ -134,7 +134,7 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
         <div className="mx-auto max-w-5xl space-y-4">
           {error && <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>}
 
-          <section className="grid grid-cols-3 gap-3">
+          <section className="grid gap-3">
             <StatusTile
               icon={BarChart3}
               label="Reads"
@@ -190,9 +190,7 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
                         {market.name}
                       </span>
                       <span className="text-xs text-muted">
-                        {market.maxLeverage
-                          ? `${market.maxLeverage}x`
-                          : "No leverage data"}
+                        {market.maxLeverage ? `${market.maxLeverage}x` : "—"}
                       </span>
                       <span className="font-mono text-xs text-muted">
                         sz {market.szDecimals}
@@ -202,7 +200,7 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
                 </div>
               </section>
 
-              <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <section className="grid gap-4">
                 <div className="rounded-lg border border-border/24 bg-card/50 px-4 py-3">
                   <div className="flex items-center justify-between gap-3">
                     <h2 className="text-sm font-semibold text-txt">
@@ -428,7 +426,8 @@ export function HyperliquidTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>account</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | market | execution-check
+            {state?.positions?.positions.length ?? 0} positions /{" "}
+            {state?.orders?.orders.length ?? 0} orders
           </div>
           <div style={{ marginBottom: 12 }}>
             <div>

@@ -460,7 +460,7 @@ function parseConversationBody(body: string): ParsedMessageLine[] {
  * Failure modes:
  *   - If `# Conversation Messages` is absent, returns a single user-message
  *     transcript containing the whole prompt. Downstream compaction will
- *     then no-op safely (no region to summarize).
+ *     then return safely with no region to summarize.
  */
 export function parsePromptToTranscript(prompt: string): CompactorTranscript {
   const region = locateConversationRegion(prompt);

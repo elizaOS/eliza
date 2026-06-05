@@ -126,7 +126,7 @@ function resolveLogger(
  * Returns null when the recommender has no fitting catalog entry — usually
  * means the device is below every tier's RAM floor. The caller falls back
  * to recording a skipped outcome per artifact so the user sees an audited
- * no-op rather than a silent miss.
+ * skip rather than a silent miss.
  */
 function tierFromRecommendation(
 	hardware: HardwareProbe,
@@ -192,7 +192,7 @@ function planArtifacts(
 /**
  * Run one artifact slot: skip when already installed, otherwise trigger the
  * download via the service facade. Never throws — errors are folded into the
- * outcome record so {@link Promise.allSettled} stays a no-op safety net.
+ * outcome record so {@link Promise.allSettled} stays a defensive safety net.
  */
 async function runArtifact(
 	plan: ArtifactPlan,
@@ -230,11 +230,11 @@ async function runArtifact(
 }
 
 /**
- * Build the no-op result for `cloud` / `remote` modes. Kept structurally
+ * Build the skipped result for `cloud` / `remote` modes. Kept structurally
  * identical to the local-mode result so callers don't have to branch on the
  * runtime mode just to read the response.
  */
-function noopResult(): EnsureLocalArtifactsResult {
+function skippedModeResult(): EnsureLocalArtifactsResult {
 	return { artifacts: [], complete: true };
 }
 
@@ -254,7 +254,7 @@ export async function ensureLocalArtifacts(
 	// (remote). Either way the local artifact pipeline is irrelevant.
 	if (args.mode === "cloud" || args.mode === "remote") {
 		logger.info(`mode is ${args.mode}; no on-device artifacts to download`);
-		return noopResult();
+		return skippedModeResult();
 	}
 
 	// Resolve the tier. Caller may pin one (settings override / test); else
@@ -262,7 +262,7 @@ export async function ensureLocalArtifacts(
 	// ladder so the chosen tier matches what the user would have selected
 	// via the model hub. When the recommender returns null (no fitting
 	// catalog entry — device below every tier's floor) we record skipped
-	// outcomes for every kind so the caller sees a clear, audited no-op
+	// outcomes for every kind so the caller sees a clear, audited skip
 	// rather than a silent miss.
 	let tier: Eliza1Tier | null = args.tier ?? null;
 	let recommendedModelLabel: string | null = null;

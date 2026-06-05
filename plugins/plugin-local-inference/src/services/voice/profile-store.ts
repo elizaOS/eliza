@@ -624,6 +624,33 @@ export class VoiceProfileStore {
 		return updated;
 	}
 
+	/**
+	 * Merge a metadata patch onto a profile. Keys mapped to `null` are
+	 * deleted; other keys overwrite. Used by the management routes for
+	 * rename / relationship / retention edits.
+	 */
+	async updateMetadata(
+		profileId: string,
+		patch: Record<string, unknown>,
+	): Promise<VoiceProfileRecord | null> {
+		const record = await this.ensureLoaded(profileId);
+		if (!record) return null;
+		const metadata: Record<string, unknown> = { ...(record.metadata ?? {}) };
+		for (const [key, value] of Object.entries(patch)) {
+			if (value === null || value === undefined) delete metadata[key];
+			else metadata[key] = value;
+		}
+		const updated: VoiceProfileRecord = {
+			...record,
+			metadata,
+			lastObservedAt: iso(),
+		};
+		await this.writeProfileToDisk(updated);
+		this.touchHot(updated);
+		await this.upsertIndexEntry(updated);
+		return updated;
+	}
+
 	async unbindEntity(profileId: string): Promise<VoiceProfileRecord | null> {
 		const record = await this.ensureLoaded(profileId);
 		if (!record) return null;
@@ -670,6 +697,176 @@ export class VoiceProfileStore {
 		index.entries = index.entries.filter((e) => e.profileId !== args.profileId);
 		await this.writeIndex(index);
 		return true;
+	}
+
+	/**
+	 * Merge `sourceId` into `targetId`: a sample-count-weighted centroid
+	 * combine (with the Chan parallel-variance update for Welford M2), union
+	 * of audio refs, summed counts/durations, and confidence average. The
+	 * target's metadata + entity binding win; an unbound target inherits the
+	 * source's `entityId`. The source profile is deleted. Returns the merged
+	 * target, or `null` if either profile is missing.
+	 *
+	 * Refuses when both carry a *different* `entityId` unless
+	 * `allowEntityOverwrite` is set — merging two bound identities is a
+	 * destructive operation the caller must opt into.
+	 */
+	async mergeProfiles(args: {
+		sourceId: string;
+		targetId: string;
+		allowEntityOverwrite?: boolean;
+	}): Promise<VoiceProfileRecord | null> {
+		if (args.sourceId === args.targetId) {
+			throw new Error(
+				"[VoiceProfileStore.mergeProfiles] source and target are identical",
+			);
+		}
+		const source = await this.ensureLoaded(args.sourceId);
+		const target = await this.ensureLoaded(args.targetId);
+		if (!source || !target) return null;
+		if (
+			source.embeddingModel !== target.embeddingModel ||
+			source.embeddingDim !== target.embeddingDim
+		) {
+			throw new Error(
+				`[VoiceProfileStore.mergeProfiles] embedding mismatch: ${target.embeddingModel}/${target.embeddingDim} vs ${source.embeddingModel}/${source.embeddingDim}`,
+			);
+		}
+		if (
+			source.entityId &&
+			target.entityId &&
+			source.entityId !== target.entityId &&
+			!args.allowEntityOverwrite
+		) {
+			throw new Error(
+				`[VoiceProfileStore.mergeProfiles] entity conflict: target ${target.entityId} vs source ${source.entityId}`,
+			);
+		}
+		const dim = target.embeddingDim;
+		const nA = Math.max(1, target.sampleCount);
+		const nB = Math.max(1, source.sampleCount);
+		const total = nA + nB;
+		const mean = new Array<number>(dim).fill(0);
+		const m2 = new Array<number>(dim).fill(0);
+		for (let i = 0; i < dim; i += 1) {
+			const a = target.centroid[i] ?? 0;
+			const b = source.centroid[i] ?? 0;
+			mean[i] = (a * nA + b * nB) / total;
+			const delta = b - a;
+			m2[i] =
+				(target.welfordM2[i] ?? 0) +
+				(source.welfordM2[i] ?? 0) +
+				(delta * delta * nA * nB) / total;
+		}
+		let sumSq = 0;
+		for (let i = 0; i < dim; i += 1) sumSq += mean[i] * mean[i];
+		const inv = sumSq > 0 ? 1 / Math.sqrt(sumSq) : 1;
+		const centroid = mean.map((v) => v * inv);
+		const mergedAudio = [...(target.audioRefs ?? [])];
+		const seen = new Set(mergedAudio.map((r) => r.sampleId));
+		for (const ref of source.audioRefs ?? []) {
+			if (!seen.has(ref.sampleId)) mergedAudio.push(ref);
+		}
+		const now = iso();
+		const updated: VoiceProfileRecord = {
+			...target,
+			centroid,
+			welfordM2: m2,
+			variance: welfordVariance(m2, total),
+			sampleCount: total,
+			totalDurationMs: target.totalDurationMs + source.totalDurationMs,
+			confidence: Math.max(
+				0,
+				Math.min(1, (target.confidence * nA + source.confidence * nB) / total),
+			),
+			entityId: target.entityId ?? source.entityId,
+			firstObservedAt:
+				target.firstObservedAt < source.firstObservedAt
+					? target.firstObservedAt
+					: source.firstObservedAt,
+			lastObservedAt:
+				target.lastObservedAt > source.lastObservedAt
+					? target.lastObservedAt
+					: source.lastObservedAt,
+			lastRefinedAt: now,
+			metadata: { ...(source.metadata ?? {}), ...(target.metadata ?? {}) },
+			...(mergedAudio.length ? { audioRefs: mergedAudio } : {}),
+		};
+		await this.writeProfileToDisk(updated);
+		this.touchHot(updated);
+		await this.upsertIndexEntry(updated);
+		await this.deleteProfile({
+			profileId: source.profileId,
+			allowBoundEntity: true,
+		});
+		return updated;
+	}
+
+	/**
+	 * Split the audio samples named by `sampleIds` out of `profileId` into a
+	 * new profile. Returns the updated original plus the new split profile,
+	 * or `null` if the profile is missing.
+	 *
+	 * Limitation: per-utterance embeddings are not retained (only the running
+	 * centroid + Welford accumulators), so the split cannot re-cluster — the
+	 * new profile copies the parent centroid and the split is by *audio sample
+	 * assignment* only. Both profiles should be re-refined from fresh captures
+	 * to diverge. The new profile is unbound (`entityId: null`) and gets a
+	 * fresh imprint cluster.
+	 */
+	async splitProfile(args: {
+		profileId: string;
+		sampleIds: string[];
+	}): Promise<{ original: VoiceProfileRecord; split: VoiceProfileRecord } | null> {
+		const record = await this.ensureLoaded(args.profileId);
+		if (!record) return null;
+		const moveSet = new Set(args.sampleIds);
+		const refs = record.audioRefs ?? [];
+		const moved = refs.filter((r) => moveSet.has(r.sampleId));
+		const kept = refs.filter((r) => !moveSet.has(r.sampleId));
+		if (moved.length === 0) {
+			throw new Error(
+				"[VoiceProfileStore.splitProfile] no matching sampleIds to split out",
+			);
+		}
+		const now = iso();
+		const movedDuration = moved.reduce((s, r) => s + (r.durationMs || 0), 0);
+		const splitId = `vp_split_${sha256(
+			moved
+				.map((r) => r.sampleId)
+				.sort()
+				.join("|"),
+		).slice(0, 28)}`;
+		const splitRecord: VoiceProfileRecord = {
+			...record,
+			profileId: splitId,
+			sampleCount: Math.max(1, moved.length),
+			totalDurationMs: Math.max(0, Math.round(movedDuration)),
+			entityId: null,
+			firstObservedAt: now,
+			lastObservedAt: now,
+			lastRefinedAt: now,
+			imprintClusterId: `cluster_${crypto.randomUUID()}`,
+			metadata: { ...(record.metadata ?? {}), splitFrom: record.profileId },
+			audioRefs: moved,
+		};
+		const original: VoiceProfileRecord = {
+			...record,
+			sampleCount: Math.max(1, record.sampleCount - moved.length),
+			totalDurationMs: Math.max(
+				0,
+				record.totalDurationMs - Math.round(movedDuration),
+			),
+			lastObservedAt: now,
+			audioRefs: kept,
+		};
+		await this.writeProfileToDisk(splitRecord);
+		this.touchHot(splitRecord);
+		await this.upsertIndexEntry(splitRecord);
+		await this.writeProfileToDisk(original);
+		this.touchHot(original);
+		await this.upsertIndexEntry(original);
+		return { original, split: splitRecord };
 	}
 }
 

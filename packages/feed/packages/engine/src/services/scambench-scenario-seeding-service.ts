@@ -324,7 +324,7 @@ async function resolveSegment(
   }
 
   return {
-    channel: inbound[0]?.channel,
+    channel: inbound[0]?.channel ?? "dm",
     messages: inbound,
     speakerNames,
   };

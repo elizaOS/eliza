@@ -23,6 +23,7 @@ function tokenMatches(expected: string, provided: string): boolean {
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
 import path from "node:path";
+import { handleCloudPairRoute } from "@elizaos/app-core/api/cloud-pair-route";
 import {
   type AgentRuntime,
   type IAgentRuntime,
@@ -41,7 +42,6 @@ import type {
   AppManagerLike,
   FavoriteAppsStore,
 } from "@elizaos/plugin-app-manager";
-import { handleCloudPairRoute } from "@elizaos/app-core/api/cloud-pair-route";
 import type { WalletRouteDependencies } from "@elizaos/plugin-wallet";
 import {
   getStylePresets,

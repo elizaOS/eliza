@@ -46,8 +46,8 @@ describe("access token retry", () => {
         new Error("Load failed while refreshing session"),
       ),
     ).toBe(true);
-    expect(
-      isRetryableAccessTokenError(new Error("Invalid JWT token")),
-    ).toBe(false);
+    expect(isRetryableAccessTokenError(new Error("Invalid JWT token"))).toBe(
+      false,
+    );
   });
 });

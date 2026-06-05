@@ -1,5 +1,5 @@
 /**
- * Provisioning placeholder agent chat service.
+ * Provisioning agent chat service.
  *
  * Runs entirely on Cloudflare Workers via Cerebras (ultra-fast inference).
  * Converses with the user while their dedicated container is provisioning.

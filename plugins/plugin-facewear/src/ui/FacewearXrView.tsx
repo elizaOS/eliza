@@ -1,6 +1,8 @@
 import { Bluetooth, Glasses, Wifi, Zap } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+const XR_DEVICE_LIMIT = 6;
+
 interface ConnectedDevice {
   id: string;
   kind: "xr" | "smartglasses";
@@ -43,19 +45,13 @@ export function FacewearXrView() {
   }, [fetchStatus]);
 
   return (
-    <div className="min-h-screen bg-bg p-8 text-txt">
-      {/* Header */}
-      <div className="mb-8 flex items-center gap-4 border-b border-border/60 pb-6">
-        <Glasses className="h-8 w-8 text-accent" />
-        <div className="flex min-w-0 items-center gap-3">
-          <h1 className="m-0 text-2xl font-bold">Facewear</h1>
-          <span className="rounded-md border border-border bg-bg-accent/40 px-2 py-0.5 text-xs font-medium uppercase tracking-[0.08em] text-muted">
-            XR hub
-          </span>
-        </div>
-        <div className="ml-auto">
+    <div className="min-h-screen bg-bg p-6 text-txt">
+      <div className="mx-auto max-w-3xl">
+        <div className="mb-6 flex items-center gap-4 border-b border-border/60 pb-4">
+          <Glasses className="h-7 w-7 text-accent" />
+          <h1 className="m-0 min-w-0 flex-1 text-xl font-bold">Facewear</h1>
           <span
-            className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-semibold ${
+            className={`inline-flex items-center gap-2 rounded-md border px-3 py-1 text-sm font-semibold ${
               status.connected
                 ? "border-ok/30 bg-ok/10 text-ok"
                 : "border-border bg-muted/10 text-muted"
@@ -65,52 +61,47 @@ export function FacewearXrView() {
             {status.connected ? "Active" : "Standby"}
           </span>
         </div>
-      </div>
 
-      {/* Loading */}
-      {loading && (
-        <div className="flex items-center justify-center p-12 text-muted">
-          Loading...
-        </div>
-      )}
+        {loading && (
+          <div className="flex items-center justify-center p-12 text-muted">
+            Loading...
+          </div>
+        )}
 
-      {/* Connected devices */}
-      {!loading && status.devices.length > 0 && (
-        <div className="mb-8">
-          <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.08em] text-muted">
-            Connected Devices
-          </h2>
-          <div className="flex flex-col gap-3">
-            {status.devices.map((device) => (
+        {!loading && status.devices.length > 0 && (
+          <div className="mb-8 flex flex-col gap-3">
+            {status.devices.slice(0, XR_DEVICE_LIMIT).map((device) => (
               <div
                 key={device.id}
                 className="flex items-center gap-4 rounded-lg border border-accent/20 bg-accent-subtle/40 px-5 py-4"
               >
                 <DeviceIcon kind={device.kind} />
-                <div>
-                  <div className="font-semibold">
+                <div className="min-w-0">
+                  <div className="truncate font-semibold">
                     {device.deviceType ?? device.kind}
                   </div>
                   <div className="mt-0.5 text-sm text-ok">Connected</div>
                 </div>
               </div>
             ))}
+            {status.devices.length > XR_DEVICE_LIMIT ? (
+              <div className="rounded-lg border border-border/60 bg-muted/10 px-5 py-3 text-sm text-muted">
+                +{status.devices.length - XR_DEVICE_LIMIT} more connected
+              </div>
+            ) : null}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* No devices */}
-      {!loading && status.devices.length === 0 && (
-        <div className="rounded-xl border border-border bg-bg-accent/30 px-8 py-12 text-center text-muted">
-          <Wifi className="mx-auto mb-4 h-10 w-10 opacity-50" />
-          <div className="text-lg font-medium text-txt">
-            No devices connected
+        {!loading && status.devices.length === 0 && (
+          <div className="rounded-lg border border-border bg-bg-accent/30 px-8 py-12 text-center text-muted">
+            <Wifi className="mx-auto mb-4 h-10 w-10 opacity-50" />
+            <div className="text-lg font-medium text-txt">No devices</div>
+            <div className="mt-2 text-sm text-muted/70">
+              Open Facewear to connect.
+            </div>
           </div>
-          <div className="mt-2 text-sm text-muted/70">
-            Open Facewear or pair via Bluetooth
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

@@ -37,7 +37,9 @@ setup("authenticate as admin", async ({ page }) => {
     throw new Error("Admin access denied for Steward development auth session");
   }
 
-  await expect(page.getByRole("heading", { name: "Admin Dashboard" })).toBeVisible({
+  await expect(
+    page.getByRole("heading", { name: "Admin Dashboard" }),
+  ).toBeVisible({
     timeout: 15_000,
   });
 

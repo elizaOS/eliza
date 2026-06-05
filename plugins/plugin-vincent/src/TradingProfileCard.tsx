@@ -39,12 +39,13 @@ export function TradingProfileCard({
 }: TradingProfileCardProps) {
   if (!tradingProfile) {
     return (
-      <div className="rounded-3xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-        <div className="flex items-center gap-2">
+      <div className="rounded-lg border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+        <div className="flex items-center justify-between gap-3">
           <TrendingUp className="h-4 w-4 text-muted/50" />
-          <span className="text-sm text-muted">
-            Vincent trading analytics are not available from Vincent yet.
-          </span>
+          <span
+            className="h-2 w-2 rounded-full bg-muted/50"
+            title="No analytics"
+          />
         </div>
       </div>
     );
@@ -54,7 +55,7 @@ export function TradingProfileCard({
     tradingProfile;
 
   return (
-    <div className="rounded-3xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] space-y-4">
+    <div className="space-y-4 rounded-lg border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
       {/* Header */}
       <div className="flex items-center gap-2">
         <TrendingUp className="h-4 w-4 text-accent" />
@@ -63,7 +64,7 @@ export function TradingProfileCard({
 
       {/* Summary stats */}
       <div className="rounded-xl border border-border/20 bg-card/40 px-4 divide-y divide-border/10">
-        <StatRow label="Total P&amp;L" value={totalPnl} accent />
+        <StatRow label="Total P&L" value={totalPnl} accent />
         <StatRow label="Win Rate" value={formatWinRate(winRate)} />
         <StatRow label="Total Swaps" value={String(totalSwaps)} />
         <StatRow label="24h Volume" value={volume24h} />
@@ -82,7 +83,7 @@ export function TradingProfileCard({
               <thead>
                 <tr className="text-left text-xs font-semibold uppercase tracking-wider text-muted/70">
                   <th className="px-4 py-2.5">Token</th>
-                  <th className="px-4 py-2.5 text-right">P&amp;L</th>
+                  <th className="px-4 py-2.5 text-right">P&L</th>
                   <th className="px-4 py-2.5 text-right">Swaps</th>
                 </tr>
               </thead>

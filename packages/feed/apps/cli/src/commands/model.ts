@@ -60,7 +60,9 @@ class HuggingFaceModelUploader {
       },
       body: JSON.stringify({
         name: repoName.split("/").pop(),
-        organization: repoName.includes("/") ? repoName.split("/")[0] : undefined,
+        organization: repoName.includes("/")
+          ? repoName.split("/")[0]
+          : undefined,
         type: "model",
         private: options.private,
       }),
@@ -142,7 +144,7 @@ class HuggingFaceModelUploader {
     const remotePath = /^https?:\/\//.test(source)
       ? path.basename(new URL(source).pathname) || "model.bin"
       : path.basename(source) || "model.bin";
-    let body: Blob | Buffer;
+    let body: Blob;
 
     if (/^https?:\/\//.test(source)) {
       const response = await fetch(source);
@@ -155,7 +157,8 @@ class HuggingFaceModelUploader {
       body = new Blob([await response.arrayBuffer()]);
     } else {
       try {
-        body = await fs.readFile(source);
+        const bytes = await fs.readFile(source);
+        body = new Blob([bytes]);
       } catch (err) {
         return {
           success: false,

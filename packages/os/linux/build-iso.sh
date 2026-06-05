@@ -19,7 +19,7 @@
 #              — cap Docker CPU quota and mksquashfs worker count for
 #                hot laptops / parallel Android or AOSP work.
 #   ELIZAOS_SKIP_WEBSITE
-#              — "1" installs a tiny local offline-docs placeholder
+#              — "1" installs a tiny local offline-docs bundle
 #                instead of rebuilding Tails' website.
 #   TAILS_BUILD_OPTIONS — passed through to Tails' build (defaults to
 #                "ignorechanges" since the mounted tree carries our

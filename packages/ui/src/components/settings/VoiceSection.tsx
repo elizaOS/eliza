@@ -5,7 +5,7 @@
  *
  * 1. Device tier banner (R10 §7, banner pulled in from VoiceTierBanner).
  * 2. Continuous chat mode (off / vad-gated / always-on).
- * 3. Wake word — placeholder until WakeWordSection is decoupled from
+ * 3. Wake word — inline controls until WakeWordSection is decoupled from
  *    VoiceConfigView.
  * 4. Local-vs-Cloud strategy (auto / force-local / force-cloud).
  * 5. Models — slot for I5's ModelUpdatesPanel (renders the slot prop or
@@ -26,8 +26,8 @@ import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
-import { DEFAULT_VAD_AUTO_STOP_PREFS } from "./VoiceSection.helpers";
 import { VoiceProfileSection } from "./VoiceProfileSection";
+import { DEFAULT_VAD_AUTO_STOP_PREFS } from "./VoiceSection.helpers";
 import { type VoiceDeviceTier, VoiceTierBanner } from "./VoiceTierBanner";
 
 export type VoiceLocalCloudStrategy = "auto" | "force-local" | "force-cloud";
@@ -78,8 +78,7 @@ export interface VoiceSectionProps {
   profilesClient: VoiceProfilesClient;
   /**
    * Slot for I5's ModelUpdatesPanel — caller mounts it when ready, otherwise
-   * we render a "Models will appear here once they finish downloading"
-   * placeholder.
+   * we render an empty-state banner until model downloads are available.
    */
   modelsPanel?: React.ReactNode;
   /** Whether the user has at least one wake-word configured. */

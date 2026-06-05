@@ -150,7 +150,6 @@ export function ClawvilleOperatorSurface({
     readString(telemetry, "nearestBuildingLabel") ??
     readString(telemetry, "nearestBuildingId") ??
     "the reef";
-  const knowledgeCount = readNumber(telemetry, "knowledgeCount");
   const canSend = Boolean(run?.runId && run.session?.canSendCommands);
 
   const sendCommand = useCallback(
@@ -236,14 +235,14 @@ export function ClawvilleOperatorSurface({
   const primaryActions: GameOperatorAction[] = PRIMARY_COMMANDS.map((item) => ({
     ...item,
   }));
-  const suggestedPrompts = run.session?.suggestedPrompts ?? [];
+  const suggestedPrompts = (run.session?.suggestedPrompts ?? []).slice(0, 2);
   const suggestedActions = suggestedPrompts.map((prompt: string) => ({
     id: prompt,
     label: prompt,
     command: prompt,
     testId: "clawville-suggested-command",
   }));
-  const events = collectRunEvents(run, localEvents);
+  const events = collectRunEvents(run, localEvents).slice(0, 3);
 
   return (
     <>
@@ -264,20 +263,11 @@ export function ClawvilleOperatorSurface({
         statusLabel={statusLabel(run.status)}
         statusTone={statusTone(run.status)}
         objective={run.session?.goalLabel ?? `Near ${nearestBuilding}`}
-        detailItems={[
-          { label: "Location", value: nearestBuilding },
-          {
-            label: "Skills",
-            value:
-              knowledgeCount === null
-                ? "Not loaded"
-                : `${knowledgeCount} learned`,
-          },
-        ]}
+        detailItems={[{ label: "Location", value: nearestBuilding }]}
         primaryActions={primaryActions}
         suggestedActions={suggestedActions}
         events={events}
-        emptyEventsLabel="Movement, NPC chat, and visit results will appear here. Start by visiting the nearest building or asking an NPC what to learn."
+        emptyEventsLabel="No events yet."
         draft={draft}
         inputPlaceholder="Tell ClawVille what to do..."
         canSend={canSend}

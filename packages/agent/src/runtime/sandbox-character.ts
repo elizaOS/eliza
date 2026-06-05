@@ -10,8 +10,8 @@
  *
  * This module parses that env var and merges it onto `config.agents.list[0]`
  * so the existing `buildCharacterFromConfig` path picks up the right name,
- * system prompt, bio, examples, topics, adjectives and style. It is a no-op
- * (returns the config unchanged) when the env var is absent or unparseable,
+ * system prompt, bio, examples, topics, adjectives and style. It returns the
+ * config unchanged when the env var is absent or unparseable,
  * so it is inert for every non-provisioned runtime.
  */
 

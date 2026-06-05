@@ -109,12 +109,19 @@ export function usePerpHistory(
     // so the > 0 check is sufficient after the type guard.
     const seedPrice = seedRef.current?.currentPrice;
     const livePriceValue = livePrice?.price;
-    const priceToUse =
-      Number.isFinite(seedPrice) && seedPrice! > 0
+    const finiteSeedPrice =
+      typeof seedPrice === "number" &&
+      Number.isFinite(seedPrice) &&
+      seedPrice > 0
         ? seedPrice
-        : Number.isFinite(livePriceValue) && livePriceValue! > 0
-          ? livePriceValue
-          : null;
+        : null;
+    const finiteLivePrice =
+      typeof livePriceValue === "number" &&
+      Number.isFinite(livePriceValue) &&
+      livePriceValue > 0
+        ? livePriceValue
+        : null;
+    const priceToUse = finiteSeedPrice ?? finiteLivePrice;
 
     if (!priceToUse) return;
 
@@ -307,8 +314,9 @@ export function usePerpHistory(
           }>,
         );
         setHistory(formatted);
-        if (formatted.length > 0) {
-          lastAppendedPriceRef.current = formatted[formatted.length - 1]?.price;
+        const latest = formatted.at(-1);
+        if (latest) {
+          lastAppendedPriceRef.current = latest.price;
         }
       } else {
         if (!response.ok) {

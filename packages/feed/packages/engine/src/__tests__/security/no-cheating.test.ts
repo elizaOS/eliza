@@ -165,7 +165,11 @@ describe.skipIf(!liveLlmConfig.enabled)("Security: Prevent Cheating", () => {
 
       let suspiciousPosts = 0;
 
-      for (const day of game?.timeline) {
+      if (!game) {
+        throw new Error("Expected game to be generated");
+      }
+
+      for (const day of game.timeline) {
         for (const post of day.feedPosts) {
           for (const pattern of suspiciousPatterns) {
             if (pattern.test(post.content)) {
@@ -344,7 +348,11 @@ describe.skipIf(!liveLlmConfig.enabled)("Security: Prevent Cheating", () => {
       // Game must be generated - enforced by beforeAll
       expect(game).toBeDefined();
 
-      for (const dayData of game?.timeline) {
+      if (!game) {
+        throw new Error("Expected game to be generated");
+      }
+
+      for (const dayData of game.timeline) {
         for (const event of dayData.events) {
           expect(event.day).toBe(dayData.day);
           expect(event.day).toBeGreaterThanOrEqual(1);

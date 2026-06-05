@@ -953,19 +953,14 @@ export function ResearchView({
                 </span>
               </h2>
             </div>
-            <p className="memory-desc research-desc">
-              <FlaskConical size={14} strokeWidth={2} />
-              <span>Multi-step web research with an LLM-in-the-loop agent</span>
-            </p>
             {showNoPastHint ? (
               <div className="memory-desc research-no-past-hint">
-                All past research found in{" "}
                 <button
                   type="button"
                   className="research-library-link"
                   onClick={openLibrary}
                 >
-                  Library, Research
+                  Library
                 </button>
               </div>
             ) : null}
@@ -976,7 +971,7 @@ export function ResearchView({
               onKeyDown={(e) => {
                 if (e.key === "Escape") onClose();
               }}
-              placeholder="e.g. Trace Odysseus's ten-year journey home from Troy — every island, monster, and detour, and why each one cost him"
+              placeholder="Research topic..."
               rows={4}
               aria-label="Research query"
             />
@@ -998,7 +993,7 @@ export function ResearchView({
               onClick={() => setSettingsOpen((v) => !v)}
               aria-expanded={settingsOpen}
             >
-              Settings
+              <FlaskConical size={14} strokeWidth={2} />
               <ChevronDown
                 size={10}
                 strokeWidth={2.5}

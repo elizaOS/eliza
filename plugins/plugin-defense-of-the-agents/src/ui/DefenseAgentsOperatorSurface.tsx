@@ -9,7 +9,6 @@ import {
 } from "@elizaos/app-core/ui-compat";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
-import { LANES } from "./DefenseAgentsOperatorSurface.helpers";
 
 function readString(
   source: Record<string, unknown> | null,
@@ -291,25 +290,25 @@ export function DefenseAgentsOperatorSurface({
       command: "Recall to base",
       testId: "defense-command-recall",
     },
-    ...LANES.map((lane) => ({
-      id: `lane-${lane}`,
-      label: heroLane ? `Move ${lane}` : `Deploy ${lane}`,
+    {
+      id: `lane-${heroLane ?? "mid"}`,
+      label: heroLane ? `Move ${heroLane}` : "Deploy mid",
       command: heroLane
-        ? `Move to ${lane} lane`
-        : `Deploy as ${heroClass} in ${lane} lane`,
-      active: heroLane === lane,
-      testId: `defense-command-lane-${lane}`,
-    })),
+        ? `Move to ${heroLane} lane`
+        : `Deploy as ${heroClass} in mid lane`,
+      active: Boolean(heroLane),
+      testId: `defense-command-lane-${heroLane ?? "mid"}`,
+    },
   ];
 
-  const suggestedActions = tacticalPrompts.map((prompt) => ({
+  const suggestedActions = tacticalPrompts.slice(0, 2).map((prompt) => ({
     id: prompt,
     label: prompt,
     command: prompt,
     testId: "defense-suggested-command",
   }));
 
-  const events = collectRunEvents(run, telemetry, localEvents);
+  const events = collectRunEvents(run, telemetry, localEvents).slice(0, 3);
 
   return (
     <>
@@ -330,9 +329,7 @@ export function DefenseAgentsOperatorSurface({
         title="Defense command"
         statusLabel={statusLabel(run.status)}
         statusTone={statusTone(run.status)}
-        objective={
-          run.session?.goalLabel ?? run.session?.summary ?? run.summary
-        }
+        objective={run.session?.goalLabel ?? run.summary}
         detailItems={[
           { label: "Hero", value: formatHeroLine(telemetry) },
           { label: "Mode", value: autoPlay ? "Autoplay" : "Manual" },
@@ -340,7 +337,7 @@ export function DefenseAgentsOperatorSurface({
         primaryActions={primaryActions}
         suggestedActions={suggestedActions}
         events={events}
-        emptyEventsLabel="Commands and match events will appear here. Start with a lane move, recall, or a strategy note."
+        emptyEventsLabel="No match events yet."
         draft={draft}
         inputPlaceholder="Command the hero..."
         canSend={canSend}

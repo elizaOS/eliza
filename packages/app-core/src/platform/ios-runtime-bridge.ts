@@ -4,7 +4,7 @@
 // in-process ElizaBunRuntime, drives a sequence of WebView-fetch and direct
 // bridge probes against the local agent, and persists the result back into
 // Preferences so the simulator host can read it. The probe runs once per
-// page load and is a no-op when the flag is absent.
+// page load and stays inactive when the flag is absent.
 import { Preferences } from "@capacitor/preferences";
 import { formatError } from "@elizaos/shared";
 import { primeIosFullBunRuntime } from "../api/ios-local-agent-transport";

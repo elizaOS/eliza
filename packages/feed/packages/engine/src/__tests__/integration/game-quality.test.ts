@@ -278,7 +278,10 @@ describe.skipIf(!liveLlmConfig.enabled)(
         expect(question.metadata).toBeDefined();
         expect(question.metadata?.arcPlan).toBeDefined();
 
-        const arcPlan = question.metadata?.arcPlan!;
+        const arcPlan = question.metadata?.arcPlan;
+        if (!arcPlan) {
+          throw new Error("Expected question arc plan metadata");
+        }
 
         expect(typeof arcPlan.uncertaintyPeakDay).toBe("number");
         expect(typeof arcPlan.clarityOnsetDay).toBe("number");

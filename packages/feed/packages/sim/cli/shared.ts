@@ -80,9 +80,17 @@ export async function buildEngine(
         dependencies: sys.dependencies,
         skipDeadlineCheck: sys.skipDeadlineCheck,
         intervals: sys.intervals,
-        register: sys.register ? (ctx) => sys.register?.(ctx) : undefined,
+        register: sys.register
+          ? async (ctx) => {
+              await sys.register?.(ctx);
+            }
+          : undefined,
         onTick: (ctx) => sys.onTick(ctx),
-        destroy: sys.destroy ? () => sys.destroy?.() : undefined,
+        destroy: sys.destroy
+          ? async () => {
+              await sys.destroy?.();
+            }
+          : undefined,
       };
     }
   }

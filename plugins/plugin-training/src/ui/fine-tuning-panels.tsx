@@ -1,7 +1,6 @@
 import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type {
-  StreamEventEnvelope,
   TrainingDatasetRecord,
   TrainingJobRecord,
   TrainingModelRecord,
@@ -22,10 +21,8 @@ import type { ReactNode } from "react";
 import {
   FINE_TUNING_ACTION_CLASS,
   FINE_TUNING_PANEL_CLASS,
-  FINE_TUNING_PANEL_HEADER_CLASS,
   FINE_TUNING_SECTION_CLASS,
   FINE_TUNING_SECTION_HEADER_CLASS,
-  FINE_TUNING_SECTION_KICKER_CLASS,
   formatDate,
   formatProgress,
   summarizeAvailability,
@@ -397,13 +394,8 @@ export function TrajectoriesSection({
   return (
     <section className={FINE_TUNING_SECTION_CLASS}>
       <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
-        <div className="space-y-1">
-          <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
-            {t("finetuningview.DataReview")}
-          </div>
-          <div className="text-lg font-semibold text-txt">
-            {t("finetuningview.Trajectories")}
-          </div>
+        <div className="text-lg font-semibold text-txt">
+          {t("finetuningview.Trajectories")}
         </div>
         <div className="flex items-center gap-2">
           <AgentActionButton
@@ -442,12 +434,9 @@ export function TrajectoriesSection({
           <div className="text-xs text-muted">
             {trajectoryList.total} {t("finetuningview.trajectoryRowsAvai")}
           </div>
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3">
             <div className={FINE_TUNING_PANEL_CLASS}>
-              <div className={FINE_TUNING_PANEL_HEADER_CLASS}>
-                {t("finetuningview.LatestTrajectories")}
-              </div>
-              <div className="max-h-72 overflow-auto">
+              <div className="max-h-64 overflow-auto">
                 {trajectoryList.trajectories.length === 0 ? (
                   <div className="p-3 text-xs text-muted">
                     {t("finetuningview.NoTrajectoriesFoun")}
@@ -465,9 +454,6 @@ export function TrajectoriesSection({
               </div>
             </div>
             <div className={`${FINE_TUNING_PANEL_CLASS} p-3`}>
-              <div className="mb-2 text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
-                {t("finetuningview.SelectedTrajectory")}
-              </div>
               {trajectoryLoading ? (
                 <div className="text-xs text-muted">
                   {t("finetuningview.LoadingTrajectoryD")}
@@ -503,7 +489,7 @@ export function TrajectoriesSection({
                   <SettingsControls.Textarea
                     readOnly
                     value={selectedTrajectory.stepsJson}
-                    className="min-h-56"
+                    className="max-h-72 min-h-40 overflow-auto font-mono text-xs"
                   />
                 </div>
               )}
@@ -545,16 +531,11 @@ export function DatasetSection({
   return (
     <section className={FINE_TUNING_SECTION_CLASS}>
       <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
-        <div className="space-y-1">
-          <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
-            {t("finetuningview.DatasetBuild")}
-          </div>
-          <div className="text-lg font-semibold text-txt">
-            {t("finetuningview.Datasets1")}
-          </div>
+        <div className="text-lg font-semibold text-txt">
+          {t("finetuningview.Datasets1")}
         </div>
       </div>
-      <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-4">
+      <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
         <AgentTextInput
           agentId="dataset-limit"
           label="Limit trajectories"
@@ -597,7 +578,7 @@ export function DatasetSection({
           {t("finetuningview.RefreshDatasets")}
         </AgentActionButton>
       </div>
-      <div className={`${FINE_TUNING_PANEL_CLASS} max-h-60 overflow-auto p-3`}>
+      <div className={`${FINE_TUNING_PANEL_CLASS} max-h-56 overflow-auto p-3`}>
         {datasets.length === 0 ? (
           <div className="text-sm text-muted">
             {t("finetuningview.NoDatasetsYet")}
@@ -676,19 +657,11 @@ export function TrainingJobsSection({
   return (
     <section className={FINE_TUNING_SECTION_CLASS}>
       <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
-        <div className="space-y-1">
-          <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
-            {t("finetuningview.Training")}
-          </div>
-          <div className="text-lg font-semibold text-txt">
-            {t("finetuningview.TrainingJobs")}
-          </div>
+        <div className="text-lg font-semibold text-txt">
+          {t("finetuningview.TrainingJobs")}
         </div>
       </div>
-      <div className="mb-3 rounded-xl border border-warning/35 bg-warning/10 px-3 py-2 text-xs text-muted">
-        {t("finetuningview.GpuFineTunesViaVast")}
-      </div>
-      <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+      <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
         <AgentSelect
           agentId="job-dataset"
           label="Training dataset"
@@ -800,8 +773,8 @@ export function TrainingJobsSection({
           </div>
         )}
       </div>
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div className={`${FINE_TUNING_PANEL_CLASS} max-h-72 overflow-auto`}>
+      <div className="grid grid-cols-1 gap-3">
+        <div className={`${FINE_TUNING_PANEL_CLASS} max-h-64 overflow-auto`}>
           {jobs.length === 0 ? (
             <div className="p-4 text-sm text-muted">
               {t("finetuningview.NoJobsYet")}
@@ -821,9 +794,6 @@ export function TrainingJobsSection({
           )}
         </div>
         <div className={`${FINE_TUNING_PANEL_CLASS} p-3`}>
-          <div className="mb-2 text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
-            {t("finetuningview.SelectedJobLogs")}
-          </div>
           <SelectedJobPanel selectedJob={selectedJob} t={t} />
         </div>
       </div>
@@ -877,20 +847,12 @@ export function TrainedModelsSection({
   return (
     <section className={FINE_TUNING_SECTION_CLASS}>
       <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
-        <div className="space-y-1">
-          <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
-            {t("finetuningview.ModelOps")}
-          </div>
-          <div className="text-lg font-semibold text-txt">
-            {t("finetuningview.TrainedModels")}
-          </div>
+        <div className="text-lg font-semibold text-txt">
+          {t("finetuningview.TrainedModels")}
         </div>
       </div>
-      <div className="mb-3 rounded-xl border border-warning/35 bg-warning/10 px-3 py-2 text-xs text-muted">
-        {t("finetuningview.ModelOpsNotWiredHere")}
-      </div>
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div className={`${FINE_TUNING_PANEL_CLASS} max-h-72 overflow-auto`}>
+      <div className="grid grid-cols-1 gap-3">
+        <div className={`${FINE_TUNING_PANEL_CLASS} max-h-64 overflow-auto`}>
           {models.length === 0 ? (
             <div className="p-4 text-sm text-muted">
               {t("finetuningview.NoTrainedModelsYe")}
@@ -908,9 +870,6 @@ export function TrainedModelsSection({
           )}
         </div>
         <div className={`${FINE_TUNING_PANEL_CLASS} p-3`}>
-          <div className="mb-2 text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
-            {t("finetuningview.ModelActions")}
-          </div>
           <SelectedModelPanel
             selectedModel={selectedModel}
             importModelName={importModelName}
@@ -947,22 +906,17 @@ export function LiveEventsPanel({
   return (
     <section className={FINE_TUNING_SECTION_CLASS}>
       <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
-        <div className="space-y-1">
-          <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
-            {t("finetuningview.Streaming")}
-          </div>
-          <div className="text-lg font-semibold text-txt">
-            {t("finetuningview.LiveTrainingEvents")}
-          </div>
+        <div className="text-lg font-semibold text-txt">
+          {t("finetuningview.LiveTrainingEvents")}
         </div>
       </div>
-      <div className={`${FINE_TUNING_PANEL_CLASS} max-h-56 overflow-auto`}>
+      <div className={`${FINE_TUNING_PANEL_CLASS} max-h-48 overflow-auto`}>
         {events.length === 0 ? (
           <div className="p-4 text-sm text-muted">
             {t("finetuningview.NoLiveEventsYet")}
           </div>
         ) : (
-          events.map((event) => (
+          events.slice(0, 80).map((event) => (
             <div
               key={`${event.ts}-${event.kind}-${String(event.message)}`}
               className="px-3 py-2 text-sm"
@@ -1020,7 +974,7 @@ export function SelectedJobPanel({
       <SettingsControls.Textarea
         readOnly
         value={selectedJob.logs.join("\n")}
-        className="min-h-56"
+        className="max-h-72 min-h-40 overflow-auto font-mono text-xs"
       />
     </div>
   );
@@ -1177,7 +1131,7 @@ export function SelectedModelPanel({
         <SettingsControls.Textarea
           readOnly
           value={smokeResult}
-          className="min-h-24"
+          className="max-h-48 min-h-24 overflow-auto"
         />
       )}
     </div>

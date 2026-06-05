@@ -299,7 +299,7 @@ export class CacheClient {
     }
 
     if (hasRestRedisConfig) {
-      logger.warn("[Cache] Ignoring placeholder or incomplete Redis REST credentials.");
+      logger.warn("[Cache] Ignoring placeholder or invalid Redis REST credentials.");
     }
 
     // Local dev fallback: when nothing real is configured and we're not in a

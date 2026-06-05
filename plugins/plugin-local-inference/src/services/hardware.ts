@@ -322,7 +322,7 @@ export async function probeHardware(): Promise<HardwareProbe> {
 	const cpuFeatures = detectCpuFeatures({ platform, arch });
 
 	// node-llama-cpp has been removed; the binding probe is intentionally a
-	// no-op (see `loadLlamaBinding()` above). Production GPU/VRAM detection
+	// passive compatibility probe (see `loadLlamaBinding()` above). Production GPU/VRAM detection
 	// for the desktop FFI backend and the Capacitor mobile backend is
 	// surfaced via `LlamaContext.gpu` per-context — there is no standalone
 	// hardware-probe API on either path. Callers wanting real VRAM

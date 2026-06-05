@@ -53,8 +53,8 @@
     }
   },
   "scripts": {
-    "lint": "echo skip (feed) >&2",
-    "typecheck": "echo skip (feed) >&2"
+    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/core/package.json packages/core/tsconfig.json packages/core/markets packages/core/storage",
+    "typecheck": "cd ../.. && bun run tsc -p packages/core --noEmit"
   },
   "dependencies": {
     "@feed/shared": "workspace:*",

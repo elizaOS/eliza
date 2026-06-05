@@ -545,13 +545,7 @@ function GoogleConnectorSideCard({
   github: GithubSetupState;
 }) {
   const { t } = useApp();
-  const {
-    accounts,
-    error,
-    loading,
-    selectMode,
-    status,
-  } = connector;
+  const { accounts, error, loading, selectMode, status } = connector;
   const [calendars, setCalendars] = useState<LifeOpsCalendarSummary[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarError, setCalendarError] = useState<string | null>(null);
@@ -1288,7 +1282,8 @@ function EmailIntelligenceCard() {
     label: "Auto-extract bills into Money",
     group: "lifeops-email-intelligence",
     status: autoExtract ? "active" : "inactive",
-    description: "Toggle automatic extraction of bills into the Money dashboard",
+    description:
+      "Toggle automatic extraction of bills into the Money dashboard",
     getValue: () => autoExtract,
     onActivate: () => {
       if (!loading && !saving && enabled) onToggleAutoExtract();
@@ -1499,7 +1494,7 @@ export function LifeOpsSettingsSection({
       <MobileSignalsSetupCard />
       <HealthConnectorRedirectCard />
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4">
         <GoogleConnectorSideCard
           connector={ownerConnector}
           side="owner"

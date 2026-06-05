@@ -284,8 +284,8 @@ export const GET = withErrorHandling(async function GET(
       lastChatAt: toISOOrNull(config?.lastChatAt),
       walletAddress: agent?.walletAddress,
       agent0TokenId,
-      createdAt: toISO(agent?.createdAt),
-      updatedAt: toISO(agent?.updatedAt),
+      createdAt: agent ? toISO(agent.createdAt) : null,
+      updatedAt: agent ? toISO(agent.updatedAt) : null,
     },
   });
 });

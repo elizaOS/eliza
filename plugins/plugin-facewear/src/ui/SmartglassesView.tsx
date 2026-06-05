@@ -54,6 +54,10 @@ import {
 
 type PlatformKey = "desktop" | "ios" | "android";
 
+const VISIBLE_TEST_LIMIT = 8;
+const VISIBLE_EVENT_LIMIT = 12;
+const VISIBLE_WIFI_LIMIT = 5;
+
 declare global {
   interface Window {
     __evenBridge?: SmartglassesBridge;
@@ -69,17 +73,17 @@ const PLATFORM_COPY: Record<
   desktop: {
     label: "Desktop",
     primary: "Chrome/Edge Web Bluetooth",
-    secondary: "Pair both lenses; disconnect stale phone pairings if needed.",
+    secondary: "Pair both lenses.",
   },
   ios: {
     label: "iOS",
     primary: "Native bridge required",
-    secondary: "Safari has no direct Web Bluetooth pairing path.",
+    secondary: "Use the host bridge.",
   },
   android: {
     label: "Android",
     primary: "Native bridge preferred",
-    secondary: "Use the host for pairing, Wi-Fi scan, and credentials.",
+    secondary: "Pair and configure in the host.",
   },
 };
 
@@ -137,9 +141,7 @@ export function SmartglassesView() {
   const [audioChunks, setAudioChunks] = useState<ReportAudio[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [testText, setTestText] = useState(
-    "Eliza smartglasses connected. Display, mic, serial, settings.",
-  );
+  const [testText, setTestText] = useState("Smartglasses display test.");
   const [micEnabled, setMicEnabled] = useState(false);
   const [wifiSsid, setWifiSsid] = useState("");
   const [wifiPassword, setWifiPassword] = useState("");
@@ -254,7 +256,7 @@ export function SmartglassesView() {
     useAgentElement<HTMLButtonElement>({
       id: "setup-connect-headset",
       role: "button",
-      label: "Connect Headset",
+      label: "Connect",
       group: "setup",
       status: headsetConnected ? "active" : "inactive",
       description:
@@ -725,7 +727,7 @@ export function SmartglassesView() {
       if (!bridge)
         throw new Error("No native smartglasses bridge is available");
       await callWifiBridge(bridge, "request_wifi_setup", {
-        reason: "Eliza smartglasses setup",
+        reason: "Smartglasses setup",
       });
       setWifiStatus("Native Wi-Fi setup requested");
       appendEvent("wifi", "Requested native Wi-Fi setup flow");
@@ -767,337 +769,331 @@ export function SmartglassesView() {
               <Glasses className="h-4 w-4 text-accent" />
               <h1 className="text-sm font-semibold">Smartglasses</h1>
             </div>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              <MiniBadge label="Pairing" />
-              <MiniBadge label="Diagnostics" />
-              <MiniBadge label="Wi-Fi bridge" />
-              <MiniBadge label="Report" />
-            </div>
           </div>
           <StatusPill
             ok={headsetConnected}
-            label={headsetConnected ? "Headset connected" : "Not connected"}
+            label={headsetConnected ? "Connected" : "Offline"}
           />
         </div>
       </div>
 
-      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-        <section className="space-y-4">
-          <Panel>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold">Setup</h2>
-              </div>
-              <button
-                ref={connectRef}
-                type="button"
-                onClick={() => void connectHeadset()}
-                disabled={(!bridge && !webBluetoothAvailable) || busy !== null}
-                aria-label="Connect Headset"
-                className="inline-flex h-9 items-center gap-2 rounded-md bg-accent px-3 text-sm font-medium text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                {...connectAgentProps}
-              >
-                <Bluetooth className="h-4 w-4" />
-                Connect Headset
-              </button>
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4">
+        <Panel>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">Setup</h2>
             </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <LensStatus side="left" state={lenses.left} />
-              <LensStatus side="right" state={lenses.right} />
-            </div>
-            {!webBluetoothAvailable && (
-              <p className="mt-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted">
-                Web Bluetooth unavailable. Use a native bridge or Chrome/Edge.
-              </p>
-            )}
-            <HeadsetStateHint
-              physicalState={physicalState}
-              batteryState={batteryState}
-              deviceState={deviceState}
-            />
-          </Panel>
+            <button
+              ref={connectRef}
+              type="button"
+              onClick={() => void connectHeadset()}
+              disabled={(!bridge && !webBluetoothAvailable) || busy !== null}
+              aria-label="Connect"
+              className="inline-flex h-9 items-center gap-2 rounded-md bg-accent px-3 text-sm font-medium text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              {...connectAgentProps}
+            >
+              <Bluetooth className="h-4 w-4" />
+              Connect
+            </button>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <LensStatus side="left" state={lenses.left} />
+            <LensStatus side="right" state={lenses.right} />
+          </div>
+          {!webBluetoothAvailable && (
+            <p className="mt-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted">
+              Web Bluetooth unavailable. Use a native bridge or Chrome/Edge.
+            </p>
+          )}
+          <HeadsetStateHint
+            physicalState={physicalState}
+            batteryState={batteryState}
+            deviceState={deviceState}
+          />
+        </Panel>
 
-          <Panel>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold">Test</h2>
-              </div>
-              <button
-                ref={runCheckRef}
-                type="button"
-                onClick={() => void runHardwareCheck()}
-                disabled={!headsetConnected || busy !== null}
-                aria-label="Run Check"
-                className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
-                {...runCheckAgentProps}
-              >
-                <RefreshCw className="h-4 w-4" />
-                Run Check
-              </button>
-            </div>
-            <textarea
-              ref={testTextRef}
-              value={testText}
-              onChange={(event) => setTestText(event.target.value)}
-              rows={4}
-              aria-label="Display test text"
-              className="mt-4 w-full resize-none rounded-md border border-border bg-bg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-              {...testTextAgentProps}
-            />
-            <div className="mt-3 flex flex-wrap gap-2">
-              <ActionButton
-                onClick={sendDisplay}
-                disabled={!headsetConnected || busy !== null}
-                agentId="test-send-display"
-                agentLabel="Send Display"
-                agentGroup="test"
-                agentDescription="Send the display test text to the smartglasses"
-              >
-                Send Display
-              </ActionButton>
-              <ActionButton
-                onClick={clearDisplay}
-                disabled={!headsetConnected || busy !== null}
-                agentId="test-clear-display"
-                agentLabel="Clear Display"
-                agentGroup="test"
-                agentDescription="Clear the smartglasses display"
-              >
-                Clear
-              </ActionButton>
-              <ActionButton
-                onClick={() => toggleMic(!micEnabled)}
-                disabled={!headsetConnected || busy !== null}
-                agentId="test-toggle-mic"
-                agentLabel={micEnabled ? "Turn Mic Off" : "Turn Mic On"}
-                agentGroup="test"
-                agentDescription="Toggle the smartglasses microphone on or off"
-              >
-                <Mic className="h-4 w-4" />
-                {micEnabled ? "Mic Off" : "Mic On"}
-              </ActionButton>
-              <ActionButton
-                onClick={runGuidedValidation}
-                disabled={!headsetConnected || busy !== null}
-                agentId="test-guided-validation"
-                agentLabel="Guided Validation"
-                agentGroup="test"
-                agentDescription="Run the guided side-tap and microphone validation flow"
-              >
-                Guided Validation
-              </ActionButton>
-            </div>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {(Object.entries(tests) as Array<[string, boolean]>).map(
-                ([id, ok]) => (
-                  <CheckRow key={id} ok={ok} label={labelForTest(id)} />
-                ),
-              )}
-            </div>
-          </Panel>
-
-          <Panel>
-            <div className="flex items-center gap-2">
-              <Wifi className="h-4 w-4 text-accent" />
-              <h2 className="text-sm font-semibold">Wi-Fi</h2>
-            </div>
-            <p className="mt-1 text-xs text-muted">Native bridge only.</p>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              <input
-                ref={wifiSsidRef}
-                value={wifiSsid}
-                onChange={(event) => setWifiSsid(event.target.value)}
-                placeholder="SSID"
-                aria-label="Wi-Fi SSID"
-                className="h-9 rounded-md border border-border bg-bg px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                {...wifiSsidAgentProps}
+        <Panel>
+          <h2 className="text-sm font-semibold">Platform</h2>
+          <div className="mt-3 grid grid-cols-3 gap-1 rounded-md bg-muted/20 p-1">
+            {(Object.keys(PLATFORM_COPY) as PlatformKey[]).map((key) => (
+              <PlatformTabButton
+                key={key}
+                platformKey={key}
+                isActive={activePlatform === key}
+                onSelect={setActivePlatform}
               />
-              <input
-                ref={wifiPasswordRef}
-                value={wifiPassword}
-                onChange={(event) => setWifiPassword(event.target.value)}
-                placeholder="Password"
-                type="password"
-                aria-label="Wi-Fi password"
-                className="h-9 rounded-md border border-border bg-bg px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                {...wifiPasswordAgentProps}
-              />
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <ActionButton
-                onClick={scanWifi}
-                disabled={!bridge || busy !== null}
-                agentId="wifi-scan"
-                agentLabel="Scan Wi-Fi"
-                agentGroup="wifi"
-                agentDescription="Scan for nearby Wi-Fi networks through the native bridge"
-              >
-                Scan
-              </ActionButton>
-              <ActionButton
-                onClick={refreshWifiStatus}
-                disabled={!bridge || busy !== null}
-                agentId="wifi-status"
-                agentLabel="Refresh Wi-Fi Status"
-                agentGroup="wifi"
-                agentDescription="Refresh the current Wi-Fi connection status"
-              >
-                Status
-              </ActionButton>
-              <ActionButton
-                onClick={configureWifi}
-                disabled={!bridge || busy !== null}
-                agentId="wifi-configure"
-                agentLabel="Configure Wi-Fi"
-                agentGroup="wifi"
-                agentDescription="Send the entered SSID and password to the glasses"
-              >
-                Configure Wi-Fi
-              </ActionButton>
-              <ActionButton
-                onClick={requestWifiSetup}
-                disabled={!bridge || busy !== null}
-                agentId="wifi-native-setup"
-                agentLabel="Native Wi-Fi Setup"
-                agentGroup="wifi"
-                agentDescription="Launch the native bridge Wi-Fi setup flow"
-              >
-                Native Setup
-              </ActionButton>
-            </div>
-            <p className="mt-3 text-xs text-muted">{wifiStatus}</p>
-            {wifiNetworks.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {wifiNetworks.slice(0, 8).map((network) => (
-                  <span
-                    key={network}
-                    className="rounded-md bg-muted/30 px-2 py-1 text-xs text-muted"
-                  >
-                    {network}
-                  </span>
-                ))}
-              </div>
-            )}
-          </Panel>
-        </section>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-txt">
+            {PLATFORM_COPY[activePlatform].primary}
+          </p>
+          <p className="mt-2 text-xs text-muted">
+            {PLATFORM_COPY[activePlatform].secondary}
+          </p>
+        </Panel>
 
-        <aside className="space-y-4">
-          <Panel>
-            <h2 className="text-sm font-semibold">Platform Setup</h2>
-            <div className="mt-3 grid grid-cols-3 gap-1 rounded-md bg-muted/20 p-1">
-              {(Object.keys(PLATFORM_COPY) as PlatformKey[]).map((key) => (
-                <PlatformTabButton
-                  key={key}
-                  platformKey={key}
-                  isActive={activePlatform === key}
-                  onSelect={setActivePlatform}
-                />
+        <Panel>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">Test</h2>
+            </div>
+            <button
+              ref={runCheckRef}
+              type="button"
+              onClick={() => void runHardwareCheck()}
+              disabled={!headsetConnected || busy !== null}
+              aria-label="Run Check"
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
+              {...runCheckAgentProps}
+            >
+              <RefreshCw className="h-4 w-4" />
+              Check
+            </button>
+          </div>
+          <textarea
+            ref={testTextRef}
+            value={testText}
+            onChange={(event) => setTestText(event.target.value)}
+            rows={4}
+            aria-label="Display test text"
+            className="mt-4 w-full resize-none rounded-md border border-border bg-bg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            {...testTextAgentProps}
+          />
+          <div className="mt-3 flex flex-wrap gap-2">
+            <ActionButton
+              onClick={sendDisplay}
+              disabled={!headsetConnected || busy !== null}
+              agentId="test-send-display"
+              agentLabel="Send Display"
+              agentGroup="test"
+              agentDescription="Send the display test text to the smartglasses"
+            >
+              Display
+            </ActionButton>
+            <ActionButton
+              onClick={clearDisplay}
+              disabled={!headsetConnected || busy !== null}
+              agentId="test-clear-display"
+              agentLabel="Clear Display"
+              agentGroup="test"
+              agentDescription="Clear the smartglasses display"
+            >
+              Clear
+            </ActionButton>
+            <ActionButton
+              onClick={() => toggleMic(!micEnabled)}
+              disabled={!headsetConnected || busy !== null}
+              agentId="test-toggle-mic"
+              agentLabel={micEnabled ? "Turn Mic Off" : "Turn Mic On"}
+              agentGroup="test"
+              agentDescription="Toggle the smartglasses microphone on or off"
+            >
+              <Mic className="h-4 w-4" />
+              {micEnabled ? "Mic Off" : "Mic On"}
+            </ActionButton>
+            <ActionButton
+              onClick={runGuidedValidation}
+              disabled={!headsetConnected || busy !== null}
+              agentId="test-guided-validation"
+              agentLabel="Guided Validation"
+              agentGroup="test"
+              agentDescription="Run the guided side-tap and microphone validation flow"
+            >
+              Validate
+            </ActionButton>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            {(Object.entries(tests) as Array<[string, boolean]>)
+              .slice(0, VISIBLE_TEST_LIMIT)
+              .map(([id, ok]) => (
+                <CheckRow key={id} ok={ok} label={labelForTest(id)} />
               ))}
-            </div>
-            <p className="mt-3 text-xs text-txt">
-              {PLATFORM_COPY[activePlatform].primary}
-            </p>
-            <p className="mt-2 text-xs text-muted">
-              {PLATFORM_COPY[activePlatform].secondary}
-            </p>
-          </Panel>
+            {Object.keys(tests).length > VISIBLE_TEST_LIMIT ? (
+              <div className="rounded-md border border-border/50 px-3 py-2 text-xs text-muted">
+                +{Object.keys(tests).length - VISIBLE_TEST_LIMIT} checks
+              </div>
+            ) : null}
+          </div>
+        </Panel>
 
-          <Panel>
-            <div className="flex items-center gap-2">
-              <BatteryCharging className="h-4 w-4 text-accent" />
-              <h2 className="text-sm font-semibold">Report</h2>
+        <Panel>
+          <div className="flex items-center gap-2">
+            <Wifi className="h-4 w-4 text-accent" />
+            <h2 className="text-sm font-semibold">Wi-Fi</h2>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <input
+              ref={wifiSsidRef}
+              value={wifiSsid}
+              onChange={(event) => setWifiSsid(event.target.value)}
+              placeholder="SSID"
+              aria-label="Wi-Fi SSID"
+              className="h-9 rounded-md border border-border bg-bg px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              {...wifiSsidAgentProps}
+            />
+            <input
+              ref={wifiPasswordRef}
+              value={wifiPassword}
+              onChange={(event) => setWifiPassword(event.target.value)}
+              placeholder="Password"
+              type="password"
+              aria-label="Wi-Fi password"
+              className="h-9 rounded-md border border-border bg-bg px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              {...wifiPasswordAgentProps}
+            />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <ActionButton
+              onClick={scanWifi}
+              disabled={!bridge || busy !== null}
+              agentId="wifi-scan"
+              agentLabel="Scan Wi-Fi"
+              agentGroup="wifi"
+              agentDescription="Scan for nearby Wi-Fi networks through the native bridge"
+            >
+              Scan
+            </ActionButton>
+            <ActionButton
+              onClick={refreshWifiStatus}
+              disabled={!bridge || busy !== null}
+              agentId="wifi-status"
+              agentLabel="Refresh Wi-Fi Status"
+              agentGroup="wifi"
+              agentDescription="Refresh the current Wi-Fi connection status"
+            >
+              Status
+            </ActionButton>
+            <ActionButton
+              onClick={configureWifi}
+              disabled={!bridge || busy !== null}
+              agentId="wifi-configure"
+              agentLabel="Configure Wi-Fi"
+              agentGroup="wifi"
+              agentDescription="Send the entered SSID and password to the glasses"
+            >
+              Configure
+            </ActionButton>
+            <ActionButton
+              onClick={requestWifiSetup}
+              disabled={!bridge || busy !== null}
+              agentId="wifi-native-setup"
+              agentLabel="Native Wi-Fi Setup"
+              agentGroup="wifi"
+              agentDescription="Launch the native bridge Wi-Fi setup flow"
+            >
+              Setup
+            </ActionButton>
+          </div>
+          <p className="mt-3 text-xs text-muted">{wifiStatus}</p>
+          {wifiNetworks.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {wifiNetworks.slice(0, VISIBLE_WIFI_LIMIT).map((network) => (
+                <span
+                  key={network}
+                  className="rounded-md bg-muted/30 px-2 py-1 text-xs text-muted"
+                >
+                  {network}
+                </span>
+              ))}
+              {wifiNetworks.length > VISIBLE_WIFI_LIMIT ? (
+                <span className="rounded-md bg-muted/20 px-2 py-1 text-xs text-muted">
+                  +{wifiNetworks.length - VISIBLE_WIFI_LIMIT}
+                </span>
+              ) : null}
             </div>
-            <div className="mt-3 grid gap-2 text-xs">
-              <ReportRow label="Transport" value={report.transport ?? "none"} />
-              <ReportRow label="Complete" value={report.ok ? "yes" : "no"} />
-              <ReportRow
-                label="Serial"
-                value={report.serialNumber ?? "unknown"}
-              />
-              <ReportRow label="Pairing" value={report.scanDiagnosis} />
-              <ReportRow
-                label="Blocker"
-                value={report.physicalBlocker ?? "none"}
-              />
-              <ReportRow label="Next" value={report.nextAction ?? "none"} />
-              <ReportRow
-                label="Missing"
-                value={
-                  report.missingEvidence.length === 0
-                    ? "none"
-                    : String(report.missingEvidence.length)
-                }
-              />
-              <ReportRow label="Bridge" value={bridge ? "available" : "none"} />
-              <ReportRow
-                label="State"
-                value={
-                  [physicalState, batteryState, deviceState]
-                    .filter(Boolean)
-                    .join(" / ") || "none"
-                }
-              />
-              <ReportRow
-                label="Battery"
-                value={formatBatteryLevels(batteryLevels)}
-              />
-              <ReportRow label="Writes" value={String(writes.length)} />
-              <ReportRow label="Audio" value={String(audioChunks.length)} />
-              <ReportRow label="Events" value={String(events.length)} />
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <ActionButton
-                onClick={copyReport}
-                agentId="report-copy"
-                agentLabel="Copy Report"
-                agentGroup="report"
-                agentDescription="Copy the smartglasses diagnostics report to the clipboard"
-              >
-                <Clipboard className="h-4 w-4" />
-                Copy
-              </ActionButton>
-              <ActionButton
-                onClick={downloadReport}
-                agentId="report-download"
-                agentLabel="Download Report"
-                agentGroup="report"
-                agentDescription="Download the smartglasses diagnostics report as JSON"
-              >
-                <Download className="h-4 w-4" />
-                Download
-              </ActionButton>
-            </div>
-          </Panel>
+          )}
+        </Panel>
 
-          <Panel>
-            <div className="flex items-center gap-2">
-              <Settings2 className="h-4 w-4 text-accent" />
-              <h2 className="text-sm font-semibold">Events</h2>
-            </div>
-            <div className="mt-3 max-h-72 overflow-y-auto rounded-md border border-border/50 bg-muted/10">
-              {events.length === 0 ? (
-                <p className="px-3 py-4 text-xs text-muted">No events yet.</p>
-              ) : (
-                events
-                  .slice()
-                  .reverse()
-                  .map((event) => (
-                    <div
-                      key={`${event.at}:${event.type}:${event.detail}`}
-                      className="border-b border-border/40 px-3 py-2 last:border-b-0"
-                    >
-                      <p className="text-xs font-medium text-txt">
-                        {event.type}
-                      </p>
-                      <p className="mt-0.5 text-xs text-muted">
-                        {event.detail}
-                      </p>
-                    </div>
-                  ))
-              )}
-            </div>
-          </Panel>
-        </aside>
+        <Panel>
+          <div className="flex items-center gap-2">
+            <BatteryCharging className="h-4 w-4 text-accent" />
+            <h2 className="text-sm font-semibold">Report</h2>
+          </div>
+          <div className="mt-3 grid gap-2 text-xs">
+            <ReportRow label="Transport" value={report.transport ?? "none"} />
+            <ReportRow label="Complete" value={report.ok ? "yes" : "no"} />
+            <ReportRow
+              label="Serial"
+              value={report.serialNumber ?? "unknown"}
+            />
+            <ReportRow label="Next" value={report.nextAction ?? "none"} />
+            <ReportRow
+              label="Missing"
+              value={
+                report.missingEvidence.length === 0
+                  ? "none"
+                  : String(report.missingEvidence.length)
+              }
+            />
+            <ReportRow label="Bridge" value={bridge ? "available" : "none"} />
+            <ReportRow
+              label="State"
+              value={
+                [physicalState, batteryState, deviceState]
+                  .filter(Boolean)
+                  .join(" / ") || "none"
+              }
+            />
+            <ReportRow
+              label="Battery"
+              value={formatBatteryLevels(batteryLevels)}
+            />
+            <ReportRow label="Events" value={String(events.length)} />
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <ActionButton
+              onClick={copyReport}
+              agentId="report-copy"
+              agentLabel="Copy Report"
+              agentGroup="report"
+              agentDescription="Copy the smartglasses diagnostics report to the clipboard"
+            >
+              <Clipboard className="h-4 w-4" />
+              Copy
+            </ActionButton>
+            <ActionButton
+              onClick={downloadReport}
+              agentId="report-download"
+              agentLabel="Download Report"
+              agentGroup="report"
+              agentDescription="Download the smartglasses diagnostics report as JSON"
+            >
+              <Download className="h-4 w-4" />
+              Download
+            </ActionButton>
+          </div>
+        </Panel>
+
+        <Panel>
+          <div className="flex items-center gap-2">
+            <Settings2 className="h-4 w-4 text-accent" />
+            <h2 className="text-sm font-semibold">Events</h2>
+          </div>
+          <div className="mt-3 max-h-72 overflow-y-auto rounded-md border border-border/50 bg-muted/10">
+            {events.length === 0 ? (
+              <p className="px-3 py-4 text-xs text-muted">No events yet.</p>
+            ) : (
+              events
+                .slice()
+                .reverse()
+                .slice(0, VISIBLE_EVENT_LIMIT)
+                .map((event) => (
+                  <div
+                    key={`${event.at}:${event.type}:${event.detail}`}
+                    className="border-b border-border/40 px-3 py-2 last:border-b-0"
+                  >
+                    <p className="text-xs font-medium text-txt">{event.type}</p>
+                    <p className="mt-0.5 text-xs text-muted">{event.detail}</p>
+                  </div>
+                ))
+            )}
+            {events.length > VISIBLE_EVENT_LIMIT ? (
+              <div className="px-3 py-2 text-xs text-muted">
+                +{events.length - VISIBLE_EVENT_LIMIT} older events
+              </div>
+            ) : null}
+          </div>
+        </Panel>
       </div>
       {error && (
         <div className="mx-4 mb-4 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
@@ -1212,14 +1208,6 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
-function MiniBadge({ label }: { label: string }) {
-  return (
-    <span className="rounded-md border border-border/50 bg-muted/20 px-2 py-1 text-2xs font-medium text-muted">
-      {label}
-    </span>
-  );
-}
-
 function LensStatus({ side, state }: { side: GlassSide; state: LensState }) {
   const ok = state === "connected";
   return (
@@ -1257,18 +1245,9 @@ function HeadsetStateHint({
       }`}
     >
       <span className="font-medium">Headset state:</span> {stateText}
-      {blocked && (
-        <span>
-          {" "}
-          Remove the glasses from the charging base and wear them before tap or
-          microphone validation.
-        </span>
-      )}
+      {blocked && <span> Remove from charger and wear before validation.</span>}
       {!blocked && !ready && (
-        <span>
-          {" "}
-          Tap/audio validation requires the glasses to report a wearing state.
-        </span>
+        <span> Wear state required for tap/audio validation.</span>
       )}
     </div>
   );

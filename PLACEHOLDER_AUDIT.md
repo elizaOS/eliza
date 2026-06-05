@@ -4619,8 +4619,11 @@ platform no-ops are separated from actionable runtime gaps.
   passing gates. Root `lint` now runs Biome check mode against stable root Feed
   files with the repo Biome config explicitly supplied, because the elizaOS root
   Biome ignore excludes `packages/feed/**`. Root `typecheck` now uses
-  `scripts/typecheck-workspace.ts` against `packages/shared` and
-  `packages/contracts`.
+  `scripts/typecheck-workspace.ts` against `packages/shared`,
+  `packages/contracts`, `packages/db`, `packages/core`, `packages/engine`,
+  `packages/sim`, `packages/agents`, `packages/api`, `packages/a2a`, and
+  `packages/mcp`, the `packages/testing` public surface, `apps/cli`, and the
+  `apps/mobile` native shell, and `apps/web`.
 - Updated `scripts/typecheck-workspace.ts` so it can typecheck an explicit
   workspace list directly through `tsc -p <workspace> --noEmit`, rather than
   delegating to nested package scripts. The full default workspace order is
@@ -4634,32 +4637,142 @@ platform no-ops are separated from actionable runtime gaps.
   fix.
 - Replaced the Chroma E2E tool `typecheck` placeholder with a real local
   `tsc -p . --noEmit` gate.
+- Replaced the package-local `lint` and `typecheck` placeholder scripts in
+  `packages/db` with real Biome and TypeScript gates. The DB tsconfig now
+  includes the Node/Bun runtime types it already depends on, and a stale
+  `@ts-expect-error` on the `@elizaos/plugin-sql` schema import was removed
+  after the dependency resolved cleanly.
+- Replaced the `packages/pack-default` `typecheck` placeholder with a real
+  build-mode declaration check followed by a no-emit typecheck. The script
+  explicitly builds referenced declarations first because this package depends
+  on `packages/shared` project-reference outputs.
+- Replaced the package-local `lint` and `typecheck` placeholders in
+  `packages/core` with real Biome and TypeScript gates. The prediction-market
+  service tests now explicitly require expected fixture rows before using their
+  fields, which removed the package's no-emit type errors without weakening the
+  assertions.
+- Replaced the `packages/engine` `typecheck` placeholder with a real no-emit
+  TypeScript gate. Fixes included explicit configured-client checks for OpenAI
+  calls, current Nano Banana input fields, safe date/array narrowing, and a
+  valid default ScamBench seed channel.
+- Replaced the `packages/engine` `lint` placeholder with a real Biome gate.
+  Biome safe formatting was applied across the engine package; the remaining
+  hard diagnostics were intentional Drizzle-style thenable test doubles,
+  optional-chain assertions in tests, and unsafe optional-chain loops. Those now
+  use targeted annotations or explicit guards. The engine lint gate still emits
+  warnings for broader existing style debt such as non-null assertions, but it
+  exits cleanly.
+- Replaced the package-local `lint` and `typecheck` placeholders in
+  `packages/sim` with real Biome and TypeScript gates. Fixes included explicit
+  async wrappers for phase-overridden systems and test captures that avoid
+  callback-assignment narrowing holes. The full sim test suite still passes.
+- Replaced the package-local `lint` and `typecheck` placeholders in
+  `packages/mcp` with real Biome and TypeScript gates, and added MCP to the
+  root Feed typecheck set. MCP now consumes API/A2A declaration output during
+  typecheck, avoiding stale declaration-output failures and avoiding a source
+  mapping that would pull API files outside MCP's `rootDir`.
+- Replaced the package-local `lint` and `typecheck` placeholders in
+  `packages/api` with real Biome and TypeScript gates, and added API to the
+  root Feed typecheck set. Fixes included explicit zero defaults for empty
+  aggregate rows in the achievement/challenge resolvers, a configured-client
+  guard for S3 list operations, token narrowing in email-unsubscribe tests,
+  formatter deltas, and targeted Biome annotations for tests that intentionally
+  emulate Drizzle thenable query chains.
+- Replaced the package-local `lint` and `typecheck` placeholders in
+  `packages/a2a` with real Biome and TypeScript gates, and added A2A to the
+  root Feed typecheck set. The Feed executor now builds group invite, block,
+  and mute DTOs from a single map lookup and coalesces optional nested fields
+  to `null`, keeping returned operation payloads valid JSON instead of
+  leaking `undefined`.
+- Replaced the `packages/examples/local-a2a-server` `typecheck` placeholder
+  with a real `tsc -p . --noEmit` gate. The local SQLite seed, market, social,
+  and agent-registry writes now pass positional values as Bun SQLite binding
+  arrays while keeping prepared query `get` / `all` calls positional, matching
+  the current Bun overloads.
+- Replaced the package-local `lint` and `typecheck` placeholders in
+  `packages/examples/feed-typescript-agent` with real Biome and TypeScript
+  gates. The disabled benchmark runner no longer keeps unreachable placeholder
+  return blocks after its explicit unavailable-module errors, and the complete
+  E2E test file is Biome-formatted.
+- Replaced the `apps/cli` `lint` placeholder with a real Biome gate. The CLI
+  formatter/import-order errors were fixed mechanically, and the touched
+  parallel-generation command no longer uses `forEach` callbacks that return
+  `console.log` values.
+- Replaced the `apps/cli` `typecheck` placeholder with a real no-emit
+  TypeScript gate, and added CLI to the stable root Feed typecheck set. The CLI
+  tsconfig now consumes declaration output for stable `@feed/*` packages rather
+  than pulling package source trees under the CLI `rootDir`; its two
+  load-testing dynamic imports use a narrow local declaration for the
+  `@feed/testing` load-test surface until the full testing package typecheck is
+  stable. Fixes included a consistent Hugging Face upload `Blob` body, explicit
+  block timestamp and load-test scenario guards, and typed training-service
+  compatibility fallbacks.
+- Replaced the `apps/mobile` `typecheck` placeholder with a real no-emit
+  TypeScript gate for the mobile-owned native shell. The scoped
+  `tsconfig.typecheck.json` covers Capacitor/Next config plus mobile
+  `src/lib/**` and `src/components/**`, while intentionally excluding mobile
+  route files that directly re-export the web app. The Capacitor keyboard
+  config now uses typed `KeyboardResize.Body` / `KeyboardStyle.Dark` constants.
+- Replaced the `packages/testing` `lint` placeholder with a real Biome gate.
+  The hard diagnostics were formatter drift, one unsafe optional-chain loop,
+  and intentional awaitable Drizzle query-builder mocks; those mocks now carry
+  targeted Biome annotations and the unsafe loop has an explicit context guard.
+- Replaced the `packages/testing` `typecheck` placeholder with a real
+  exported-surface no-emit TypeScript gate, and added that public surface to the
+  stable root Feed typecheck set. `tsconfig.typecheck.json` covers the
+  package's exported `src/index.ts` and `load-test/**` utilities, consuming
+  stable `@feed/*` declaration output instead of pulling dependency source
+  trees into the testing package `rootDir`.
+- Replaced the `packages/agents` `lint` placeholder with a real Biome gate.
+  The hard diagnostics were formatter/import ordering drift, intentional
+  awaitable query-chain mocks, one unsafe optional-chain loop, and unreachable
+  route-history / dataset-split code. Route history is now recorded before
+  returning the delivery response, and the dataset splitter no longer keeps a
+  dead unused-ratio statement after its return.
+- Replaced the `packages/agents` `typecheck` placeholder with a real no-emit
+  TypeScript gate, and added agents to the stable root Feed typecheck set.
+  Fixes included explicit root-barrel winners for ambiguous exports,
+  processor-shaped Eliza evaluator adapters, direct action handler dispatch in
+  `AgentChatService` after `processActions` was removed upstream, custom
+  string slots for Groq object generation, and strict null guards in training
+  pipeline/scoring helpers.
+- Replaced the `apps/web` `typecheck` placeholder with a real no-emit
+  TypeScript gate, and added web to the stable root Feed typecheck set. The web
+  gate uses `apps/web/tsconfig.typecheck.json` so app code consumes declaration
+  output for stable `@feed/*` packages instead of pulling package source trees
+  under the web `rootDir`.
+- Replaced the stale `@feed/training` imports in web routes with the real
+  `@feed/agents/training` surface, and added the missing training exports for
+  benchmark simulation, model storage/selection, benchmark service, and
+  HuggingFace dataset upload status/cron integration. The web chat route now
+  calls registered action handlers directly instead of the removed upstream
+  `runtime.processActions`.
+- Replaced the `apps/web` `lint` placeholder with a focused Biome gate for the
+  web config files plus the web files touched by this cleanup. A full
+  `apps/web/src` Biome probe still reports broad historical UI/a11y/style debt,
+  but the package script is no longer a no-op and the focused gate exits cleanly.
 - Updated `README.md` and the guide pair to document the real root gates.
   `CLAUDE.md` / `AGENTS.md` parity is preserved.
 - Ruler note: `bun run ruler:apply` still cannot run because the local `ruler`
   binary is unavailable. A one-off `bunx @intellectronica/ruler apply` attempt
   produced generated churn outside `.ruler/**`; that churn was removed because
   the stale root-gate wording was not present in `.ruler/**`.
-- Remaining Feed package script debt is package-local and still unresolved:
-  `apps/web`, `apps/cli`, `apps/mobile`, `packages/engine`,
-  `packages/testing`, `packages/sim`, `packages/core`, `packages/mcp`,
-  `packages/examples/local-a2a-server`, `packages/pack-default`,
-  `packages/examples/feed-typescript-agent`, `packages/db`, `packages/a2a`,
-  `packages/api`, and `packages/agents` still contain nested echo placeholders
-  in one or more `lint`, `typecheck`, or test scripts.
-- Broader Feed verification remains blocked by existing package issues: the
-  full web build cannot resolve `@feed/training`, and direct all-workspace
-  `tsc` currently fails starting in `packages/db` on existing declaration /
-  Node-type strictness problems.
-- `packages/pack-default` was probed next, but direct typecheck currently fails
-  because TypeScript expects built `packages/shared/dist/index.d.ts` output for
-  the referenced shared project.
-- `packages/examples/local-a2a-server` and
-  `packages/examples/feed-typescript-agent` were also probed. Their first
-  tsconfig blockers were fixed (`bun:sqlite` runtime types for the local A2A
-  server, TypeScript 6 deprecation opt-in for the TypeScript agent example),
-  but their package scripts remain unresolved because direct typecheck now
-  exposes deeper source/dependency errors.
+- Remaining Feed `echo skip (feed)` package-script marker scan is clean.
+- Broader Feed verification still has non-stable lanes outside this cleanup:
+  direct full mobile route-tree typecheck intentionally pulls web pages through
+  mobile re-exports, the broad `packages/testing/tsconfig.json` pulls app,
+  script, MCP, and external test targets outside its package `rootDir`, and full
+  `apps/web/src` Biome remains broad UI/a11y/style debt. The package-local
+  stable gates listed below pass.
+- Focused API notification-email and referral-service tests pass. The
+  achievement-engine test file remains blocked by an existing Bun runtime
+  mock/export resolution issue (`agentMessages` from `@feed/db` is not found
+  during dynamic import), even though the API package lint and no-emit
+  typecheck now pass.
+- The broad `packages/testing/tsconfig.json` was probed separately from the new
+  exported-surface gate. It remains unresolved because direct typecheck pulls
+  app, script, MCP, and external test targets outside the package `rootDir`,
+  alongside missing external types and strictness errors.
 - Verified with:
   - `bun run lint` in `packages/feed`
   - `bun run typecheck` in `packages/feed`
@@ -4667,6 +4780,28 @@ platform no-ops are separated from actionable runtime gaps.
     `packages/feed/packages/shared`
   - `bun run lint` / `bun run typecheck` in
     `packages/feed/packages/contracts`
+  - `bun run lint` / `bun run typecheck` in `packages/feed/packages/db`
+  - `bun run lint` / `bun run typecheck` in `packages/feed/packages/core`
+  - `bun test packages/core/markets/prediction/__tests__/PredictionMarketService.test.ts`
+  - `bun run lint` / `bun run typecheck` in `packages/feed/packages/engine`
+  - `bun build` smoke checks for the touched engine OpenAI/FAL service files
+  - `bun run lint` / `bun run typecheck` in `packages/feed/packages/sim`
+  - `bun test packages/sim/tests/*.test.ts`
+  - `bun run lint` / `bun run typecheck` in `packages/feed/packages/mcp`
+  - `bun run lint` / `bun run typecheck` in `packages/feed/packages/api`
+  - `bun test packages/api/src/__tests__/notification-email-service.test.ts packages/api/src/services/__tests__/referral-service.test.ts`
+  - `bun run lint` / `bun run typecheck` in `packages/feed/packages/a2a`
+  - `bun run typecheck` / `bun run build` in
+    `packages/feed/packages/examples/local-a2a-server`
+  - `bun run lint` / `bun run typecheck` in
+    `packages/feed/packages/examples/feed-typescript-agent`
+  - `bun run lint` in `packages/feed/apps/cli`
+  - `bun run typecheck` in `packages/feed/apps/cli`
+  - `bun run typecheck` in `packages/feed/apps/mobile`
+  - `bun run lint` / `bun run typecheck` in `packages/feed/apps/web`
+  - `bun run lint` / `bun run typecheck` in `packages/feed/packages/testing`
+  - `bun run lint` / `bun run typecheck` in `packages/feed/packages/agents`
+  - `bun run typecheck` in `packages/feed/packages/pack-default`
   - `bun run typecheck` in `packages/feed/tools/chroma`
   - `diff -q packages/feed/CLAUDE.md packages/feed/AGENTS.md`
   - focused stale-root-gate scan on the touched Feed root docs and package
@@ -4710,6 +4845,237 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd plugins/plugin-google-genai test`
   - `bun run --cwd plugins/plugin-google-genai build`
   - focused stale-phrase scans and `git diff --check`
+
+### packages/ui runtime fallback wording
+
+- Reworded shared UI runtime comments that described implemented fallbacks as
+  placeholders, stubs, no-ops, dummy hosts, or fake/test data.
+- Covered chat startup and reset paths, WebSocket host selection, EventSource
+  fallback typing, first-run auto-download failure modes, local-inference model
+  update rows, view-catalog hero-image fallbacks, connector setup role shaping,
+  voice singing-provider behavior, agent-surface inert props, plugin showcase
+  custom renderer help copy, and generated `.d.ts` mirrors for the touched API
+  surfaces.
+- Preserved intentional form `placeholder` props and `hint.placeholder` fields
+  in plugin config UI code; these are real input hints, not unfinished
+  behavior. The focused post-pass scan also has one `noopener` browser feature
+  string, which is unrelated to no-op behavior.
+- Updated `packages/ui/CLAUDE.md` and `packages/ui/AGENTS.md` together to call
+  top-level `test/` entries test doubles rather than stubs.
+- Broad `bun run --cwd packages/ui lint` still fails on pre-existing Biome
+  formatting/import-order issues in unrelated files
+  (`prompt-input.helpers.ts`, `prompt-input.tsx`, `render-telemetry.tsx`,
+  release-center sections, and a few tests). The focused edited-file Biome pass
+  is clean.
+- Verified with:
+  - `diff -q packages/ui/CLAUDE.md packages/ui/AGENTS.md`
+  - `bunx @biomejs/biome check --write` on the edited `.ts` / `.tsx` / README
+    files
+  - `bun run --cwd packages/ui typecheck`
+  - focused marker scan on the touched UI files
+  - `git diff --check -- packages/ui PLACEHOLDER_AUDIT.md`
+
+### plugin-local-inference artifact and inactive-path wording
+
+- Reworded first-party local-inference comments and test names that described
+  deliberate inactive paths as no-ops/stubs/placeholders.
+- `ensure-local-artifacts` now calls the cloud/remote branch a skipped mode
+  result, and its tests describe those modes as skipped downloads rather than
+  no-op behavior. The internal helper was renamed from `noopResult` to
+  `skippedModeResult`.
+- Clarified inactive AOSP loader registration, passive hardware binding probes,
+  delayed system-prefix warmup, idempotent conversation-handle close, backend
+  resize results, and FFI parallel-slot behavior. Generated `.d.ts` mirrors for
+  those touched surfaces were updated where they carry source comments.
+- Reworded image-generation declaration headers for Core ML, AOSP, and TensorRT
+  from backend stubs to backend contracts. Remaining focused hits are
+  declaration source-map filenames containing `stub` plus the exported
+  `fakeImageBytes` test hook for deterministic image backend tests.
+- Broad `bun run --cwd plugins/plugin-local-inference lint:check` still fails
+  on pre-existing Biome formatting/import-order issues in unrelated voice
+  profile management files. The focused edited-file Biome pass is clean.
+- Verified with:
+  - `diff -q plugins/plugin-local-inference/CLAUDE.md plugins/plugin-local-inference/AGENTS.md`
+  - focused marker scan on the touched local-inference files
+  - `bunx @biomejs/biome check --write` on the edited `.ts` test/runtime files
+  - `bun run --cwd plugins/plugin-local-inference typecheck`
+  - `bun test --cwd plugins/plugin-local-inference src/services/ensure-local-artifacts.test.ts src/services/ensure-local-artifacts.integration.test.ts`
+  - `git diff --check -- plugins/plugin-local-inference PLACEHOLDER_AUDIT.md`
+
+### packages/app-core browser alias and test-hook wording
+
+- Reworded app-core comments that made implemented compatibility behavior look
+  like unfinished no-op/stub work: dev cloud-key promotion, iOS smoke probe
+  gating, Capacitor SQLite bridge checks, cloud voice auth test hooks, and
+  secrets-manager test injection.
+- Reworded browser-side alias module comments from stubs to inert browser
+  aliases. The exported `noop` identifiers in
+  `platform/empty-node-module.ts`,
+  `platform/elizaos-agent-browser-stub.ts`, and
+  `platform/elizaos-plugin-elizacloud-browser-stub.ts` remain intentional
+  compatibility exports for browser bundling and are not unfinished work.
+- Verified with:
+  - `diff -q packages/app-core/CLAUDE.md packages/app-core/AGENTS.md`
+  - `bunx @biomejs/biome check --write` on the edited app-core files
+  - `bun run --cwd packages/app-core typecheck`
+  - `bun run --cwd packages/app-core lint`
+  - focused marker scan on the touched app-core files
+  - `git diff --check -- packages/app-core PLACEHOLDER_AUDIT.md`
+
+### packages/benchmarks documentation and compatibility wording
+
+- `qwen-web-bench`: replaced the guide's literal
+  `<standard incomplete-work marker regex>` placeholder with the concrete
+  marker scan command. `CLAUDE.md` / `AGENTS.md` parity is preserved.
+- `openclaw-adapter`: reworded one-shot CLI manager lifecycle docs and comments
+  from `stop = no-op` to `stop = clear started state`, and reworded a
+  preserved LifeOpsBench kwarg as compatibility rather than a no-op. The full
+  mocked adapter test suite passes.
+- `loca-bench`: removed a dead `[TODO](#todo)` table-of-contents entry from the
+  vendored README; there is no matching section.
+- `tests`: renamed runner-normalization no-op wording to unchanged-output
+  behavior for unknown/no-matching artifacts. The targeted normalization tests
+  pass.
+- `voicebench`: reworded `--ts-only` as an accepted compatibility flag, since
+  the benchmark only has a TypeScript runner.
+- `agentbench`: reworded legacy Python Eliza compatibility no-ops/stubs as
+  compatibility shims and fallback sample tasks. The targeted upstream-loader
+  tests pass.
+- Remaining benchmark marker hits are dominated by vendored benchmark corpora
+  (`nl2repo/test_files`, LOCA GEM env text), benchmark-subject terms
+  (`placeholder-only` validation, incomplete orders/payloads, fake attack
+  examples), deterministic smoke/stub runtimes, and research/plan documents
+  that intentionally record known benchmark limitations.
+- Verified with:
+  - `diff -q` guide parity checks for `qwen-web-bench` and
+    `openclaw-adapter`
+  - focused stale-phrase scans on the touched benchmark files
+  - `python -m pytest tests/ -q` from
+    `packages/benchmarks/openclaw-adapter`
+  - `python -m pytest tests/test_runner_normalization.py -q` from
+    `packages/benchmarks`
+  - `python -m pytest elizaos_agentbench/tests/test_upstream_loader.py -q`
+    from `packages/benchmarks/agentbench`
+  - `git diff --check` on the touched benchmark files
+
+### packages/cloud-shared provisioning/cache wording
+
+- Reworded the implemented provisioning agent chat service header from
+  "placeholder agent chat service" to "provisioning agent chat service"; the
+  service already runs via Cerebras on Cloudflare Workers with Redis-backed
+  history and sandbox-status awareness.
+- Reworded security/cache/config comments and log strings that made finished
+  guard behavior look incomplete: token-redemption pending checks are now
+  described as hardened, disabled warm-pool crons stay inactive, and invalid
+  Redis REST credentials are logged consistently.
+- Remaining cloud-shared marker hits are mostly intentional: credential
+  placeholder detection, disabled feature compatibility paths, dev/test
+  registrar/DNS stubs, semantic incomplete external payload errors, template
+  placeholders, and generated/fixture test doubles.
+- Verified with:
+  - `diff -q packages/cloud-shared/CLAUDE.md packages/cloud-shared/AGENTS.md`
+  - focused stale-phrase scan on the touched cloud-shared files
+  - `bunx @biomejs/biome check --write` on the touched cloud-shared files
+  - `bun run --cwd packages/cloud-shared typecheck`
+  - `bun run --cwd packages/cloud-shared lint`
+  - `git diff --check -- packages/cloud-shared PLACEHOLDER_AUDIT.md`
+
+### packages/agent runtime fallback wording
+
+- Reworded implemented compatibility/idempotency paths that were described as
+  no-ops or placeholders: Codex OAuth `submitCode`, view hero fallback SVGs,
+  repeated built-in view registration, generated hero route fallback, empty chat
+  fallback text, active-view action weighting, restart browser defaults, sandbox
+  character/connector ownership guards, provider env notification, optional
+  training-trigger dispatch, core mobile overlay plugin gating, and prompt
+  compactor fallback parsing.
+- Updated tracked declaration mirrors for the touched agent APIs where comments
+  are duplicated in `.d.ts` files, so the source and exported declarations no
+  longer contradict each other.
+- Cleaned up unrelated package lint blockers found during verification:
+  `conversation-routes.ts` had an unused chat-route import and unused
+  `clientMessageId` destructures, and `server.ts` had import ordering drift.
+- Followed the package typecheck blockers into the Scape UI plugins and fixed
+  them narrowly: `plugin-2004scape` now uses the real `unavailable` viewer
+  attachment state instead of comparing to `"pending"`, and `plugin-scape`
+  anchors local tone helpers to the surface tone literal union.
+- Remaining agent marker hits are intentional or semantic: config/UI
+  `placeholder` fields, `[REDACTED]` placeholder scrubbing, workbench TODO tag
+  names, route errors for incomplete request bodies, noopener link security,
+  Vitest `fake`/`stub` test doubles, browser/mobile optional-plugin
+  compatibility stubs, and tests that explicitly assert idempotent no-work
+  behavior.
+- Verified with:
+  - `diff -q packages/agent/CLAUDE.md packages/agent/AGENTS.md`
+  - focused stale-phrase scans on the touched agent files
+  - `bunx @biomejs/biome check --write` on the touched agent files
+  - `bunx @biomejs/biome check --write` on the touched Scape UI files
+  - `bun run --cwd packages/agent lint`
+  - `bun run --cwd packages/agent typecheck`
+  - `bun run --cwd plugins/plugin-scape build:views`
+  - `bun run --cwd plugins/plugin-2004scape build:views`
+  - `git diff --check -- packages/agent plugins/plugin-scape
+    plugins/plugin-2004scape PLACEHOLDER_AUDIT.md`
+
+### packages/chip stub audit generated-report handling
+
+- Read `packages/chip/CLAUDE.md` and confirmed `AGENTS.md` parity. The package
+  explicitly treats placeholders/stubs as fail-closed evidence vocabulary, not
+  as prose to hide; the built-in `make stub-audit` gate is the source of truth
+  for owned RTL/sim/verification marker inventory.
+- `make stub-audit` initially failed even though no silent placeholder terms were
+  found, because `verify/rtl_gap_work_order.yaml` lists generated
+  `build/reports/soc_integration.json` and
+  `build/reports/npu_coverage_summary.json` as affected artifacts and the audit
+  required every affected path to exist in a clean checkout.
+- Updated `verify/check_stub_audit.py` so checked-in affected paths still must
+  exist, while generated `build/reports/*.json` affected artifacts are accepted
+  without being committed. This preserves the fail-closed source path check and
+  aligns with the package rule that generated machine-local artifacts stay out
+  of source unless they are stable release evidence.
+- Remaining chip marker hits are mostly intentional evidence contracts:
+  documented open RTL gaps, fail-closed generated evidence/report schemas,
+  tests that reject placeholder/incomplete transcripts, supplier/PD/manufacturing
+  blocker inventories, security negative-case names, and generated or external
+  hardware evidence records. The stub audit's allowed inventory names each owned
+  RTL/sim/verification placeholder/stub with a rationale.
+- Verified with:
+  - `diff -q packages/chip/CLAUDE.md packages/chip/AGENTS.md`
+  - `make stub-audit`
+  - `python3 -m py_compile verify/check_stub_audit.py`
+  - `git diff --check -- packages/chip/verify/check_stub_audit.py
+    PLACEHOLDER_AUDIT.md`
+
+### packages/os live distro compatibility wording
+
+- Read `packages/os/CLAUDE.md` and confirmed `AGENTS.md` parity. There are no
+  deeper subpackage agent guides under `linux/`, `android/`, `setup/`, or
+  `usb-installer/`.
+- Reworded implemented compatibility paths that were described as
+  no-ops/placeholders: Linux ISO cache aliases now describe uniform workflow
+  targets with no separate cache work, skipped offline docs are a tiny local
+  bundle, live USB optional connector entries are live-safe overlays/shells,
+  WhatsApp's disabled QR hook uses an `inert` helper, Cuttlefish package
+  stripping is described as having no effect, draft TEE measurements are named
+  as draft bring-up measurements, the setup server import path stays inactive
+  when imported, dependency loading shows checking rows, and the setup dev log
+  mentions an adb fallback line rather than a placeholder line.
+- Remaining OS marker hits are intentional: upstream Tails source/translation
+  placeholders under `linux/tails/`, UI input `placeholder` props, checksum
+  placeholder rejection gates, test fakes/stubs, live-safe optional package stub
+  version contracts (`0.0.0-elizaos-live-stub`), confidential-compute draft
+  digest policy checks, and docs that explicitly record release blockers for
+  OS images or signed manifests.
+- Verified with:
+  - `diff -q packages/os/CLAUDE.md packages/os/AGENTS.md`
+  - focused stale-phrase scan on the touched OS files
+  - `bunx @biomejs/biome check --write` on the touched setup TS/TSX files
+  - `bash -n packages/os/linux/build-iso.sh packages/os/setup/run-dev.sh`
+  - `node --check packages/os/linux/scripts/prepare-elizaos-app-overlay.mjs`
+  - `just --justfile packages/os/linux/Justfile --summary`
+  - `bun run --cwd packages/os/setup lint`
+  - `bun run --cwd packages/os/setup typecheck`
+  - `git diff --check -- packages/os PLACEHOLDER_AUDIT.md`
 
 ## Intentional / False-Positive Marker Classes
 

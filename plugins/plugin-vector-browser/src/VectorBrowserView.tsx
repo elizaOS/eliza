@@ -1,9 +1,6 @@
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client, type QueryResult, type TableInfo } from "@elizaos/ui/api";
-import {
-  MetaPill,
-  PagePanel,
-} from "@elizaos/ui/components/composites/page-panel";
+import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import { MemoryDetailPanel } from "@elizaos/ui/components/pages/MemoryDetailPanel";
 import {
   buildVectorGraph2DLayout,
@@ -1237,45 +1234,28 @@ export function VectorBrowserView({
   };
 
   const summaryHeader = (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2">
       {leftNav}
-      <PagePanel.SummaryCard>
-        <div className="text-sm font-semibold text-txt">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0 truncate text-base font-semibold text-txt">
           {selectedTable ||
             t("common.vectors", {
               defaultValue: "Vectors",
             })}
         </div>
-        <div className="mt-3 flex flex-wrap gap-2 text-2xs font-semibold uppercase tracking-[0.14em] text-muted/75">
-          <MetaPill>
-            {viewMode === "list"
-              ? t("vectorbrowserview.ListView", {
-                  defaultValue: "List view",
-                })
-              : viewMode === "graph"
-                ? t("vectorbrowserview.Graph2D", {
-                    defaultValue: "2D graph",
-                  })
-                : t("vectorbrowserview.Graph3D", {
-                    defaultValue: "3D graph",
-                  })}
-          </MetaPill>
-          {stats ? (
-            <MetaPill>
-              {t("vectorbrowserview.MemoryCount", {
-                count: Number(stats.total).toLocaleString(),
-                defaultValue: "{{count}} memories",
-              })}
-            </MetaPill>
-          ) : null}
-        </div>
-      </PagePanel.SummaryCard>
+        {stats ? (
+          <div className="text-xs text-muted">
+            {Number(stats.total).toLocaleString()}{" "}
+            {t("vectorbrowserview.memories")}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 
   const toolbar = (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
         {tables.length > 1 && (
           <Select
             value={selectedTable}
@@ -1293,7 +1273,7 @@ export function VectorBrowserView({
                 tableSelect.ref.current = node as HTMLButtonElement | null;
               }}
               {...tableSelect.agentProps}
-              className="h-9 w-full rounded-sm border border-border bg-card px-2.5 py-1.5 text-xs transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent sm:w-56"
+              className="h-9 w-full rounded-sm border border-border bg-card px-2.5 py-1.5 text-xs transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent"
             >
               <SelectValue />
             </SelectTrigger>
@@ -1307,14 +1287,14 @@ export function VectorBrowserView({
           </Select>
         )}
 
-        <div className="inline-flex rounded-sm border border-border/50 bg-card/40 p-0.5">
+        <div className="inline-flex w-full rounded-sm border border-border/50 bg-card/40 p-0.5 md:w-auto">
           <Button
             ref={listTab.ref}
             {...listTab.agentProps}
             aria-current={viewMode === "list" ? "true" : undefined}
             variant="ghost"
             size="sm"
-            className={`h-auto min-h-[1.75rem] rounded-sm border px-4 py-1 text-xs font-medium transition-all duration-300 ${
+            className={`h-auto min-h-[1.75rem] flex-1 rounded-sm border px-3 py-1 text-xs font-medium transition-all duration-300 md:flex-none ${
               viewMode === "list"
                 ? "border-accent/45 bg-accent/16 text-txt-strong "
                 : "border-transparent text-muted-strong hover:border-border/50 hover:bg-bg-hover hover:text-txt"
@@ -1329,7 +1309,7 @@ export function VectorBrowserView({
             aria-current={viewMode === "graph" ? "true" : undefined}
             variant="ghost"
             size="sm"
-            className={`h-auto min-h-[1.75rem] rounded-sm border px-4 py-1 text-xs font-medium transition-all duration-300 ${
+            className={`h-auto min-h-[1.75rem] flex-1 rounded-sm border px-3 py-1 text-xs font-medium transition-all duration-300 md:flex-none ${
               viewMode === "graph"
                 ? "border-accent/45 bg-accent/16 text-txt-strong "
                 : "border-transparent text-muted-strong hover:border-border/50 hover:bg-bg-hover hover:text-txt"
@@ -1344,7 +1324,7 @@ export function VectorBrowserView({
             aria-current={viewMode === "3d" ? "true" : undefined}
             variant="ghost"
             size="sm"
-            className={`h-auto min-h-[1.75rem] rounded-sm border px-4 py-1 text-xs font-medium transition-all duration-300 ${
+            className={`h-auto min-h-[1.75rem] flex-1 rounded-sm border px-3 py-1 text-xs font-medium transition-all duration-300 md:flex-none ${
               viewMode === "3d"
                 ? "border-accent/45 bg-accent/16 text-txt-strong "
                 : "border-transparent text-muted-strong hover:border-border/50 hover:bg-bg-hover hover:text-txt"
@@ -1354,38 +1334,34 @@ export function VectorBrowserView({
             {t("vectorbrowserview.3D", { defaultValue: "3D" })}
           </Button>
         </div>
-
-        {viewMode === "list" ? (
-          <div className="flex flex-1 gap-1.5">
-            <Input
-              ref={searchField.ref}
-              {...searchField.agentProps}
-              type="search"
-              placeholder={t("vectorbrowserview.SearchContent")}
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              className="h-10 min-w-0 flex-1 rounded-sm border border-border/60 bg-card/50 px-3 py-2 text-sm placeholder:text-muted/65 transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent sm:max-w-xs"
-            />
-            <Button
-              ref={searchButton.ref}
-              {...searchButton.agentProps}
-              variant="default"
-              size="sm"
-              onClick={handleSearch}
-            >
-              {t("common.search")}
-            </Button>
-          </div>
-        ) : null}
       </div>
 
+      {viewMode === "list" ? (
+        <div className="flex gap-1.5">
+          <Input
+            ref={searchField.ref}
+            {...searchField.agentProps}
+            type="search"
+            placeholder={t("vectorbrowserview.SearchContent")}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+            className="h-10 min-w-0 flex-1 rounded-sm border border-border/60 bg-card/50 px-3 py-2 text-sm placeholder:text-muted/65 transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent"
+          />
+          <Button
+            ref={searchButton.ref}
+            {...searchButton.agentProps}
+            variant="default"
+            size="sm"
+            onClick={handleSearch}
+          >
+            {t("common.search")}
+          </Button>
+        </div>
+      ) : null}
+
       {stats ? (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-sm border border-border/35 bg-bg/35 px-3 py-3 text-xs-tight text-muted">
-          <span className="font-semibold text-txt">
-            {Number(stats.total).toLocaleString()}{" "}
-            {t("vectorbrowserview.memories")}
-          </span>
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs-tight text-muted">
           <span>
             {Number(stats.dimensions) > 0
               ? t("vectorbrowserview.DimensionsEmbeddings", {
@@ -1491,7 +1467,7 @@ export function VectorBrowserView({
   if (viewMode === "graph") {
     mainSection = (
       <>
-        <PagePanel variant="inset" className="p-5">
+        <PagePanel variant="inset" className="p-3">
           {graphLoading ? (
             <ListSkeleton rows={5} rowClassName="h-16" />
           ) : (
@@ -1501,7 +1477,7 @@ export function VectorBrowserView({
             />
           )}
         </PagePanel>
-        <div className="min-h-[18rem] rounded-sm border border-border/40 bg-card/45">
+        <div className="max-h-[42vh] min-h-[14rem] overflow-auto rounded-sm border border-border/40 bg-card/45">
           <MemoryDetailPanel memory={selectedMemory} />
         </div>
       </>
@@ -1509,7 +1485,7 @@ export function VectorBrowserView({
   } else if (viewMode === "3d") {
     mainSection = (
       <>
-        <PagePanel variant="inset" className="p-5">
+        <PagePanel variant="inset" className="p-3">
           {graphLoading ? (
             <ListSkeleton rows={5} rowClassName="h-16" />
           ) : (
@@ -1519,7 +1495,7 @@ export function VectorBrowserView({
             />
           )}
         </PagePanel>
-        <div className="min-h-[18rem] rounded-sm border border-border/40 bg-card/45">
+        <div className="max-h-[42vh] min-h-[14rem] overflow-auto rounded-sm border border-border/40 bg-card/45">
           <MemoryDetailPanel memory={selectedMemory} />
         </div>
       </>
@@ -1538,7 +1514,7 @@ export function VectorBrowserView({
             })}
           </Button>
         </div>
-        <div className="min-h-[18rem] rounded-sm border border-border/40 bg-card/45">
+        <div className="max-h-[70vh] min-h-[14rem] overflow-auto rounded-sm border border-border/40 bg-card/45">
           <MemoryDetailPanel memory={selectedMemory} />
         </div>
       </>
@@ -1574,7 +1550,7 @@ export function VectorBrowserView({
           </div>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-6">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4 md:p-6">
           {summaryHeader}
           {toolbar}
           {error ? (

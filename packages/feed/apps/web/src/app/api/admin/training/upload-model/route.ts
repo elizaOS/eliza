@@ -58,9 +58,9 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { modelStorage } from "@feed/agents/training";
 import { requireAdmin, successResponse, withErrorHandling } from "@feed/api";
 import { logger } from "@feed/shared";
-import { modelStorage } from "@feed/training";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 

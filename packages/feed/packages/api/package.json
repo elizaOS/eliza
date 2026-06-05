@@ -10,8 +10,8 @@
     "./solana-registration-debug": "./src/solana-registration-debug.ts"
   },
   "scripts": {
-    "lint": "echo skip (feed) >&2",
-    "typecheck": "echo skip (feed) >&2"
+    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/api/package.json packages/api/tsconfig.json packages/api/src",
+    "typecheck": "cd ../.. && bun run tsc -p packages/api --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",

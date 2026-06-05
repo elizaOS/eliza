@@ -404,7 +404,7 @@ export function resolveCharacterCatalog(catalog: CharacterCatalogData): {
 
 // ---------------------------------------------------------------------------
 // Env var aliasing helpers (brand-agnostic version of brand-env.ts)
-// Server-side only — these are no-ops in browser environments.
+// Server-side only; inactive in browser environments.
 // ---------------------------------------------------------------------------
 
 const mirroredBrandKeys = new Set<string>();

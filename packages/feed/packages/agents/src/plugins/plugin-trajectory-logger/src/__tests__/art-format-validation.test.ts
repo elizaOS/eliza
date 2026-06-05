@@ -851,9 +851,13 @@ describe("ART Format Validation", () => {
       expect(groups).toHaveLength(1);
       expect(groups[0]?.scenarioId).toBe(scenarioId);
       expect(groups[0]?.trajectories).toHaveLength(5);
+      const group = groups[0];
+      if (!group) {
+        throw new Error("expected trajectory group");
+      }
 
       // All trajectories should convert to ART format
-      for (const traj of groups[0]?.trajectories) {
+      for (const traj of group.trajectories) {
         const artFormat = toARTTrajectory(traj);
         expect(artFormat.messages).toBeDefined();
         expect(Array.isArray(artFormat.messages)).toBe(true);

@@ -587,7 +587,7 @@ export function LifeOpsTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(300px, 1fr) minmax(300px, 1fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -649,7 +649,7 @@ export function LifeOpsTuiView() {
           {!loading && !error && occurrences.length === 0 && (
             <div style={{ color: "#64748b" }}>no active occurrences</div>
           )}
-          {occurrences.slice(0, 14).map((occurrence, index) => (
+          {occurrences.slice(0, 8).map((occurrence, index) => (
             <div
               key={occurrence.id}
               style={{
@@ -710,9 +710,9 @@ export function LifeOpsTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>definitions</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | enable | complete | skip | snooze
+            {definitions.length} definitions / {state.activeGoalCount} goals
           </div>
-          {definitions.slice(0, 10).map((record, index) => (
+          {definitions.slice(0, 6).map((record, index) => (
             <div
               key={record.definition?.id ?? String(index)}
               style={{
@@ -735,7 +735,7 @@ export function LifeOpsTuiView() {
 
           <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>goals</div>
           {(overview?.owner?.goals ?? overview?.goals ?? [])
-            .slice(0, 8)
+            .slice(0, 4)
             .map((goal) => (
               <div key={goal.id} style={{ padding: "4px 0" }}>
                 {goal.title ?? goal.id}{" "}

@@ -286,7 +286,7 @@ function splitDataset<T>(
   ratio?: { train: number; validation: number; test: number },
 ): { train: T[]; validation: T[]; test: T[] } {
   const defaultRatio = { train: 0.8, validation: 0.1, test: 0.1 };
-  const { train, validation, test: testRatio } = ratio || defaultRatio;
+  const { train, validation } = ratio || defaultRatio;
 
   // Shuffle data
   const shuffled = shuffleArray(data);
@@ -299,9 +299,6 @@ function splitDataset<T>(
     validation: shuffled.slice(trainSize, trainSize + valSize),
     test: shuffled.slice(trainSize + valSize),
   };
-
-  // Suppress unused variable warning
-  void testRatio;
 }
 
 /**

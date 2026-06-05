@@ -329,6 +329,12 @@ def require(condition: bool, message: str, errors: list[str]) -> None:
         errors.append(message)
 
 
+def is_generated_report_path(path: str) -> bool:
+    """Generated report paths are valid affected artifacts without being committed."""
+
+    return path.startswith("build/reports/") and path.endswith(".json")
+
+
 def check_renode_scaffold() -> list[str]:
     errors: list[str] = []
     readme = (ROOT / "docs/sim/renode/README.md").read_text(encoding="utf-8").lower()
@@ -459,6 +465,8 @@ def check_gap_work_order() -> list[str]:
                         affected_exists = (
                             any(ROOT.glob(affected)) if has_glob else (ROOT / affected).exists()
                         )
+                        if not affected_exists and not has_glob:
+                            affected_exists = is_generated_report_path(affected)
                         require(
                             affected_exists,
                             f"{area}:{gap_id} affected path does not exist: {affected}.",

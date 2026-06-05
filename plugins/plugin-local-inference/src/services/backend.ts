@@ -242,7 +242,7 @@ export interface LocalInferenceBackend {
 
 	/**
 	 * Resize the backend's parallel slot pool. Returns true on a real
-	 * restart/resize, false on no-op (target ≤ current, etc).
+	 * restart/resize, false when no resize was needed (target ≤ current, etc).
 	 */
 	resizeParallel?(target: number): Promise<boolean>;
 

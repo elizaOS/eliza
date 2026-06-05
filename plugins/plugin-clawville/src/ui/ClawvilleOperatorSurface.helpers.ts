@@ -5,18 +5,6 @@
 
 export const PRIMARY_COMMANDS = [
   {
-    id: "move-tools",
-    label: "Go to Tools",
-    command: "Move to tool workshop",
-    testId: "clawville-command-move-krusty",
-  },
-  {
-    id: "move-code",
-    label: "Go to Code",
-    command: "Move to skill forge",
-    testId: "clawville-command-move-chum",
-  },
-  {
     id: "visit-nearest",
     label: "Visit nearest",
     command: "Visit the nearest building",

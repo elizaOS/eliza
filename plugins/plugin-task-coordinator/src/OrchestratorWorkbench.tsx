@@ -48,13 +48,13 @@ import {
   GitFork,
   Layers,
   type LucideIcon,
+  MessageSquare,
   OctagonX,
   PanelRightOpen,
   Pause,
   Play,
   Plus,
   RotateCcw,
-  Send,
   Trash2,
   UserPlus,
   UserRound,
@@ -3301,7 +3301,6 @@ export function OrchestratorWorkbench() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [showArchived, setShowArchived] = useState(false);
-  const [composer, setComposer] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [addAgentOpen, setAddAgentOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
@@ -3516,27 +3515,6 @@ export function OrchestratorWorkbench() {
     setTimelineCursor(page.nextCursor);
   }, [timelineCursor]);
 
-  const handleSend = useCallback(() => {
-    const current = selectedIdRef.current;
-    const content = composer.trim();
-    if (!current || !content) return;
-    void runMutation(async () => {
-      const delivered = await client.postOrchestratorTaskMessage(
-        current,
-        content,
-      );
-      if (!delivered) {
-        throw new Error(
-          t("orchestrator.messageDeliveryFailed", {
-            defaultValue:
-              "Message was recorded, but no active agent accepted it.",
-          }),
-        );
-      }
-      setComposer("");
-    });
-  }, [composer, runMutation, t]);
-
   // Stop every still-running coding agent on the open task — the prominent
   // in-conversation interrupt (parity with Claude Code / Codex / opencode),
   // also bound to Esc below.
@@ -3734,10 +3712,6 @@ export function OrchestratorWorkbench() {
     defaultValue: "Load older",
   });
   const stopLabel = t("orchestrator.action.stop", { defaultValue: "Stop" });
-  const composerLabel = t("orchestrator.composerPlaceholder", {
-    defaultValue: "Message the orchestrator…",
-  });
-  const sendLabel = t("orchestrator.action.send", { defaultValue: "Send" });
   const { ref: searchRef, agentProps: searchAgentProps } =
     useAgentElement<HTMLInputElement>({
       id: "rail-search",
@@ -3774,28 +3748,6 @@ export function OrchestratorWorkbench() {
       group: "orchestrator-timeline",
       description: "Stop the running sub-agents on this task",
     });
-  const { ref: composerRef, agentProps: composerAgentProps } =
-    useAgentElement<HTMLTextAreaElement>({
-      id: "timeline-composer",
-      role: "textarea",
-      label: composerLabel,
-      group: "orchestrator-timeline",
-      description: "Message to send to the orchestrator for this task",
-      getValue: () => composer,
-      onFill: (value) => setComposer(value),
-    });
-  const { ref: sendRef, agentProps: sendAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "timeline-send",
-      role: "button",
-      label: sendLabel,
-      group: "orchestrator-timeline",
-      description: "Send the composed message to the orchestrator",
-      onActivate: () => {
-        if (!mutating && composer.trim() !== "") handleSend();
-      },
-    });
-
   return (
     <div
       className="relative flex h-full min-h-0 w-full flex-col bg-bg text-txt"
@@ -3826,13 +3778,10 @@ export function OrchestratorWorkbench() {
         </div>
       ) : null}
 
-      <div className="relative flex min-h-0 flex-1">
-        {/* Left rail — full-width list on mobile, fixed rail on desktop.
-            Hidden on mobile once a task is open (master-detail navigation). */}
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
+        {/* Dashboard rail — full-width in every viewport so tasks stay one-column. */}
         <aside
-          className={`shrink-0 flex-col border-r border-border/60 bg-bg ${
-            isMobile ? (selectedId ? "hidden" : "flex w-full") : "flex w-72"
-          }`}
+          className="flex shrink-0 flex-col border-b border-border/60 bg-bg"
           data-testid="orchestrator-rail"
         >
           <div className="space-y-2 border-b border-border/50 p-2.5">
@@ -3867,7 +3816,7 @@ export function OrchestratorWorkbench() {
               {showArchivedLabel}
             </label>
           </div>
-          <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
+          <div className="space-y-1.5 p-2">
             {tasks.length === 0 ? (
               loading ? (
                 <p className="p-2 text-xs text-muted">
@@ -3912,11 +3861,9 @@ export function OrchestratorWorkbench() {
           </div>
         </aside>
 
-        {/* Center timeline — hidden on mobile until a task is selected. */}
+        {/* Activity stack — selected task detail stays below the dashboard list. */}
         <main
-          className={`min-w-0 flex-1 flex-col bg-bg-accent/10 ${
-            isMobile ? (selectedId ? "flex" : "hidden") : "flex"
-          }`}
+          className="flex min-h-[20rem] min-w-0 flex-col bg-bg-accent/10"
           data-testid="orchestrator-timeline"
         >
           {detail ? (
@@ -4029,38 +3976,13 @@ export function OrchestratorWorkbench() {
                   </button>
                 </div>
               ) : null}
-              <div className="border-t border-border/50 bg-bg px-4 pt-3 pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+6rem)]">
-                <div className="flex items-end gap-2">
-                  <textarea
-                    ref={composerRef}
-                    value={composer}
-                    onChange={(event) => setComposer(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        handleSend();
-                      }
-                    }}
-                    rows={1}
-                    placeholder={composerLabel}
-                    aria-label={composerLabel}
-                    className={`${FIELD_CLASS} max-h-32 resize-none`}
-                    data-testid="orchestrator-composer"
-                    {...composerAgentProps}
-                  />
-                  <Button
-                    ref={sendRef}
-                    size="sm"
-                    disabled={mutating || composer.trim() === ""}
-                    onClick={handleSend}
-                    className="h-8 w-8 shrink-0 p-0"
-                    aria-label={sendLabel}
-                    title={sendLabel}
-                    data-testid="orchestrator-send"
-                    {...sendAgentProps}
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                  </Button>
+              <div className="border-t border-border/50 bg-bg px-4 py-2">
+                <div className="flex items-center gap-2 text-2xs text-muted">
+                  <MessageSquare className="h-3.5 w-3.5 text-accent" />
+                  {t("orchestrator.overlayChatHint", {
+                    defaultValue:
+                      "Use the overlay chat for follow-up instructions.",
+                  })}
                 </div>
               </div>
             </>
@@ -4124,8 +4046,7 @@ export function OrchestratorWorkbench() {
           )}
         </main>
 
-        {/* Right inspector — inline pane on desktop, slide-over drawer on
-            mobile (toggled by the Details button in the timeline header). */}
+        {/* Inspector — stacked below activity so the registered view stays one-column. */}
         {detail && isMobile && inspectorOpen ? (
           <button
             type="button"
@@ -4150,7 +4071,7 @@ export function OrchestratorWorkbench() {
             messages={selectedBlockMessages}
             taskUsage={detail.usage}
             busy={mutating}
-            className={isMobile ? "flex" : "flex w-80"}
+            className="flex"
             style={
               isMobile
                 ? inspectorOpen
@@ -4178,7 +4099,7 @@ export function OrchestratorWorkbench() {
         ) : detail ? (
           <TaskInspector
             detail={detail}
-            className={isMobile ? "flex" : "flex w-80"}
+            className="flex"
             style={
               isMobile
                 ? inspectorOpen

@@ -116,12 +116,16 @@ export const POST = withErrorHandling(
         isActive: true,
       },
     });
+    if (!pool) {
+      return NextResponse.json(
+        { success: false, error: "No active pool found for NPC" },
+        { status: 404 },
+      );
+    }
 
     let actorPersonality: string | null = null;
-    if (pool) {
-      const actorDetails = StaticDataRegistry.getActor(pool.npcActorId);
-      actorPersonality = actorDetails?.personality || null;
-    }
+    const actorDetails = StaticDataRegistry.getActor(pool.npcActorId);
+    actorPersonality = actorDetails?.personality || null;
 
     let strategy: "aggressive" | "conservative" | "balanced" = "balanced";
 
@@ -143,7 +147,7 @@ export const POST = withErrorHandling(
 
     if (body.action === "monitor") {
       const actions = await NPCInvestmentManager.monitorPortfolio(
-        pool?.id,
+        pool.id,
         actor.id,
         strategy,
       );
@@ -151,7 +155,7 @@ export const POST = withErrorHandling(
       return NextResponse.json({
         success: true,
         actorId: actor.id,
-        poolId: pool?.id,
+        poolId: pool.id,
         strategy,
         actions,
         actionCount: actions.length,
@@ -163,7 +167,7 @@ export const POST = withErrorHandling(
     }
     if (body.action === "rebalance") {
       const actions = await NPCInvestmentManager.monitorPortfolio(
-        pool?.id,
+        pool.id,
         actor.id,
         strategy,
       );
@@ -172,7 +176,7 @@ export const POST = withErrorHandling(
       for (const action of actions) {
         await NPCInvestmentManager.executeRebalanceAction(
           actor.id,
-          pool?.id,
+          pool.id,
           action,
         );
         results.push({ action, success: true });
@@ -181,7 +185,7 @@ export const POST = withErrorHandling(
       return NextResponse.json({
         success: true,
         actorId: actor.id,
-        poolId: pool?.id,
+        poolId: pool.id,
         strategy,
         actionsExecuted: results.length,
         results,
@@ -190,14 +194,14 @@ export const POST = withErrorHandling(
     }
     await NPCInvestmentManager.executeRebalanceAction(
       actor.id,
-      pool?.id,
+      pool.id,
       body.rebalanceAction,
     );
 
     return NextResponse.json({
       success: true,
       actorId: actor.id,
-      poolId: pool?.id,
+      poolId: pool.id,
       action: body.rebalanceAction,
       message: `Executed ${body.rebalanceAction.type} action for ${body.rebalanceAction.ticker || body.rebalanceAction.marketId}`,
     });

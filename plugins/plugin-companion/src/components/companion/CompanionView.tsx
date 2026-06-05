@@ -173,7 +173,7 @@ export function CompanionTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -210,7 +210,8 @@ export function CompanionTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>controls</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | emotes | play-emote | stop-emote | toggle-voice
+            {AGENT_EMOTE_CATALOG.length} agent emotes / voice{" "}
+            {chatAgentVoiceMuted ? "muted" : "live"}
           </div>
           <CompanionTuiButton
             agentId="tui-toggle-voice"
@@ -242,13 +243,13 @@ export function CompanionTuiView() {
             settings
           </CompanionTuiButton>
           <div style={{ marginTop: 14 }}>
-            {Object.entries(viewState.emotesByCategory).map(
-              ([category, count]) => (
+            {Object.entries(viewState.emotesByCategory)
+              .slice(0, 6)
+              .map(([category, count]) => (
                 <div key={category}>
                   <span style={{ color: "#64748b" }}>{category}</span> {count}
                 </div>
-              ),
-            )}
+              ))}
           </div>
         </section>
       </div>

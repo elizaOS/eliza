@@ -93,7 +93,7 @@ export function setActiveViewElements(
  * ViewDeclaration, action `name:` from that plugin's (or a thematically paired
  * plugin's) action source. Actions are plugin-conditional: when the owning
  * plugin is not loaded the name is simply not registered and the weighting is a
- * no-op (no error). Sources:
+ * missing-plugin skip (no error). Sources:
  *   wallet      — view plugins/plugin-wallet-ui; actions plugins/plugin-wallet
  *                 (chains/evm/actions swap+transfer, chains generated specs)
  *   polymarket  — plugins/plugin-polymarket-app/src/actions.ts (POLYMARKET_STATUS)
@@ -227,9 +227,10 @@ export function renderActiveViewContextBlock(view: ActiveViewContext): string {
 
 /**
  * Inject the active-view awareness block into a planner prompt. Idempotent
- * (skips if the block is already present) and a no-op when no view is active.
- * Placed just before the "# Available Actions" header so view context sits next
- * to the tool catalogue; falls back to prepending when that header is absent.
+ * (skips if the block is already present) and leaves the prompt unchanged when
+ * no view is active. Placed just before the "# Available Actions" header so
+ * view context sits next to the tool catalogue; falls back to prepending when
+ * that header is absent.
  */
 export function applyActiveViewAwareness(
   prompt: string,

@@ -81,6 +81,7 @@ mock.module("@feed/db", () => {
       returning: mock(async () => [{ id: "mock-lock-id" }]),
       onConflictDoNothing: mock(() => builder),
       // Make the builder awaitable
+      // biome-ignore lint/suspicious/noThenProperty: The mock intentionally emulates Drizzle's awaitable query chain.
       then: <TResult1 = Array<{ id: string }>, TResult2 = never>(
         onFulfilled?:
           | ((value: Array<{ id: string }>) => TResult1 | PromiseLike<TResult1>)

@@ -9,7 +9,7 @@
     "build": "bun build --target=bun --outfile dist/index.js src/server.ts",
     "start": "bun run src/server.ts",
     "test": "echo \"skip (feed): no unit tests; server is exercised by @feed/typescript-agent-example local-e2e\" >&2",
-    "typecheck": "echo skip (feed) >&2"
+    "typecheck": "bun run tsc -p . --noEmit"
   },
   "dependencies": {
     "cors": "^2.8.5",

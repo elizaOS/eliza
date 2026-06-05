@@ -763,7 +763,9 @@ async function loadBaseCandidates(): Promise<BaseForYouResult> {
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     );
 
-    const newestTimestamp = new Date(storyPosts[0]?.timestamp);
+    const newestPost = storyPosts[0];
+    if (!newestPost) continue;
+    const newestTimestamp = new Date(newestPost.timestamp);
     const totalLikes = storyPosts.reduce(
       (sum, post) => sum + post.likeCount,
       0,
@@ -835,7 +837,8 @@ async function loadBaseCandidates(): Promise<BaseForYouResult> {
       i < sorted.length && spillCount < MAX_SPILLOVER_PER_STORY;
       i++
     ) {
-      const post = sorted[i]!;
+      const post = sorted[i];
+      if (!post) continue;
       const engagement =
         post.likeCount + post.commentCount * 2 + post.shareCount * 3;
       if (engagement < MIN_SPILLOVER_ENGAGEMENT) break;
@@ -1214,7 +1217,8 @@ async function loadDiscoveryCandidates(): Promise<NarrativeStory[]> {
 
   const stories: NarrativeStory[] = [];
   for (let idx = 0; idx < discoveryPosts.length; idx++) {
-    const post = discoveryPosts[idx]!;
+    const post = discoveryPosts[idx];
+    if (!post) continue;
     const title =
       post.articleTitle ??
       (post.content.length > 80

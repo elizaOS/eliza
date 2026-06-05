@@ -11,7 +11,6 @@ import {
   SurfaceBadge,
   SurfaceCard,
   SurfaceEmptyState,
-  SurfaceGrid,
   SurfaceSection,
   selectLatestRunForApp,
   toneForHealthState,
@@ -159,6 +158,8 @@ export function FeedOperatorSurface({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const suggestedPrompts = (run?.session?.suggestedPrompts ?? []).slice(0, 2);
+  const recentChatMessages = agentChatMessages.slice(-2);
 
   const activeGoal =
     agentGoals.find((goal) => goal.status === "active") ??
@@ -354,8 +355,8 @@ export function FeedOperatorSurface({
   if (!run) {
     return (
       <SurfaceEmptyState
-        title="Feed operator surface"
-        body="Launch Feed to see live team coordination, market activity, and the agent chat stream here."
+        title="Feed operator"
+        body="Launch Feed to open the live market dashboard."
       />
     );
   }
@@ -391,19 +392,19 @@ export function FeedOperatorSurface({
 
       {showDashboard ? (
         <SurfaceSection title="Live Status">
-          <SurfaceGrid>
+          <div className="space-y-2">
             <SurfaceCard
               label="Agent"
               value={agentStatus?.displayName ?? agentStatus?.name ?? "Waiting"}
               subtitle={
                 agentStatus
                   ? `${agentStatus.agentStatus ?? "idle"} · ${agentStatus.autonomous ? "autonomous" : "operator-led"}`
-                  : "The Feed agent has not published status yet."
+                  : "No status"
               }
             />
             <SurfaceCard
               label="Current Focus"
-              value={activeGoal?.description ?? "No active goal recorded."}
+              value={activeGoal?.description ?? "—"}
               subtitle={
                 activeGoal
                   ? (() => {
@@ -420,7 +421,7 @@ export function FeedOperatorSurface({
               value={
                 agentPortfolio
                   ? `${formatCurrency(agentPortfolio.totalAssets)} total assets`
-                  : "Portfolio not available yet."
+                  : "—"
               }
               subtitle={
                 agentPortfolio
@@ -444,17 +445,14 @@ export function FeedOperatorSurface({
                   : "Team summary is not available yet."
               }
             />
-          </SurfaceGrid>
+          </div>
         </SurfaceSection>
       ) : null}
 
       {showDashboard ? (
         <SurfaceSection title="Market Watch">
-          <SurfaceCard
-            label="Prediction Markets"
-            value={listPreview(predictionMarkets)}
-          />
-          <div className="grid gap-2 md:grid-cols-3">
+          <SurfaceCard label="Markets" value={listPreview(predictionMarkets)} />
+          <div className="space-y-2">
             {recentTrades.slice(0, 3).map((trade) => (
               <SurfaceCard
                 key={trade.id}
@@ -466,18 +464,15 @@ export function FeedOperatorSurface({
               />
             ))}
             {recentTrades.length === 0 ? (
-              <SurfaceCard
-                label="Recent Trades"
-                value="No recent trades recorded."
-              />
+              <SurfaceCard label="Trades" value="—" />
             ) : null}
           </div>
         </SurfaceSection>
       ) : null}
 
       {showChat ? (
-        <SurfaceSection title="Team & Chat">
-          <div className="grid gap-2 md:grid-cols-2">
+        <SurfaceSection title="Team">
+          <div className="space-y-2">
             <SurfaceCard
               label="Team Conversations"
               value={
@@ -486,7 +481,7 @@ export function FeedOperatorSurface({
                       .slice(0, 3)
                       .map((conversation) => conversation.name || "Untitled")
                       .join(" · ")
-                  : "No team conversations yet."
+                  : "—"
               }
               subtitle={
                 teamConversations.length > 0
@@ -496,18 +491,14 @@ export function FeedOperatorSurface({
             />
             <SurfaceCard
               label="Operator Channel"
-              value={
-                run.session?.canSendCommands
-                  ? "Ready for live suggestions."
-                  : "Command bridge reconnecting."
-              }
+              value={run.session?.canSendCommands ? "Ready" : "Reconnecting"}
               subtitle={formatDetailTimestamp(
                 run.lastHeartbeatAt ?? run.updatedAt,
               )}
             />
           </div>
           <div className="space-y-2">
-            {agentChatMessages.slice(-3).map((message) => (
+            {recentChatMessages.map((message) => (
               <div
                 key={message.id}
                 className="rounded-xl border border-border/30 bg-bg/60 px-3 py-2"
@@ -525,9 +516,9 @@ export function FeedOperatorSurface({
                 </div>
               </div>
             ))}
-            {agentChatMessages.length === 0 ? (
+            {recentChatMessages.length === 0 ? (
               <div className="rounded-xl border border-border/30 bg-bg/60 px-3 py-2 text-xs-tight italic text-muted">
-                No agent chat history yet.
+                No relay yet.
               </div>
             ) : null}
           </div>
@@ -536,9 +527,9 @@ export function FeedOperatorSurface({
 
       {showChat ? (
         <SurfaceSection title="Steering">
-          {run.session?.suggestedPrompts?.length ? (
+          {suggestedPrompts.length ? (
             <div className="flex flex-wrap gap-2">
-              {run.session.suggestedPrompts.slice(0, 4).map((prompt, index) => (
+              {suggestedPrompts.map((prompt, index) => (
                 <FeedSuggestedPromptButton
                   key={prompt}
                   prompt={prompt}
@@ -549,14 +540,10 @@ export function FeedOperatorSurface({
               ))}
             </div>
           ) : null}
-          <div className="grid gap-2 md:grid-cols-2">
+          <div className="space-y-2">
             <SurfaceCard
               label="Autonomy"
-              value={
-                agentStatus?.autonomous
-                  ? "Autonomous play is active."
-                  : "Agent is paused or operator-led."
-              }
+              value={agentStatus?.autonomous ? "Active" : "Paused"}
               subtitle={
                 agentStatus
                   ? `${agentStatus.autonomousTrading ? "Trading" : "Trading paused"} · ${agentStatus.autonomousPosting ? "Posting" : "Posting paused"}`
@@ -586,15 +573,15 @@ export function FeedOperatorSurface({
               onClick={() => void handleToggleAgent()}
               {...toggleAgentButton.agentProps}
             >
-              {controlAction === "pause" ? "Pause agent" : "Resume agent"}
+              {controlAction === "pause" ? "Pause" : "Resume"}
             </Button>
           </div>
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="grid gap-2">
             <Input
               ref={chatInputElement.ref}
               value={chatInput}
               onChange={(event) => setChatInput(event.target.value)}
-              placeholder="Tell Feed what to prioritize, avoid, or explain."
+              placeholder="Steer Feed..."
               className="min-h-11 rounded-xl"
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
@@ -624,7 +611,7 @@ export function FeedOperatorSurface({
         </div>
       ) : null}
       <div className="text-2xs uppercase tracking-[0.18em] text-muted">
-        {loading ? "Refreshing Feed surface..." : "Feed surface ready."}
+        {loading ? "Refreshing..." : "Ready"}
       </div>
     </section>
   );
@@ -636,12 +623,7 @@ export function FeedTuiView() {
       id="feed"
       label="Feed TUI"
       description="Terminal Feed prediction market operator dashboard"
-      commands={[
-        "get-state",
-        "refresh-agent-status",
-        "open-live-dashboard",
-        "send-team-message",
-      ]}
+      commands={[]}
       endpoints={[
         "/api/apps/feed/agent/status",
         "/api/apps/feed/team/dashboard",

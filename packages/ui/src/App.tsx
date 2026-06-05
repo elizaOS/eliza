@@ -419,17 +419,16 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
  *   2. A `componentExport` import-spec like `"@elizaos/plugin-wallet-ui#InventoryView"`,
  *      loaded with dynamic `import()` and rendered via Suspense.
  *
- * Plugins that declare a `componentExport` without a matching
- * registration get a small loading placeholder until the import resolves.
- * (Until a real dynamic-import boundary is plumbed for these strings,
- * this is a documented placeholder; the plugin can also self-register.)
+ * Plugins that declare a `componentExport` without a matching registration get
+ * a small loading fallback until the import resolves. Plugins can avoid this
+ * path by self-registering with `registerAppShellPage` at boot.
  */
 function DynamicPluginPage({ resolved }: { resolved: ResolvedDynamicPage }) {
   if (resolved.registration) {
     const Component = resolved.registration.Component;
     return <Component />;
   }
-  // No bundled registration — display a lightweight loading placeholder
+  // No bundled registration — display a lightweight loading fallback
   // so the shell stays responsive. Plugins that ship bundled components
   // should call `registerAppShellPage` at boot to avoid this path.
   return (
@@ -583,11 +582,7 @@ function renderAppsSurface(navigationPath: string): ReactNode {
   if (!APPS_ENABLED) return <ViewUnavailableFallback />;
   return (
     <TabContentView>
-      {getAppSlugFromPath(navigationPath) ? (
-        <AppsPageView />
-      ) : (
-        <ViewCatalog />
-      )}
+      {getAppSlugFromPath(navigationPath) ? <AppsPageView /> : <ViewCatalog />}
     </TabContentView>
   );
 }

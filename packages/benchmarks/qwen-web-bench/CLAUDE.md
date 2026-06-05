@@ -19,7 +19,7 @@ There is no local test command for this directory because there is no harness.
 For documentation changes, run:
 
 ```bash
-rg -n "<standard incomplete-work marker regex>" packages/benchmarks/qwen-web-bench
+rg -n "not implemented|TODO|FIXME|unfinished|incomplete|placeholder|stub|no-op|noop|fake|dummy" packages/benchmarks/qwen-web-bench
 ```
 
 The expected remaining uses are benchmark-subject terms such as "when upstream

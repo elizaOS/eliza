@@ -723,13 +723,13 @@ export async function handleViewsRoutes(
           fs.readFile(resolved.absolutePath),
         ]);
       } catch {
-        // Fall through to generated placeholder.
+        // Fall through to generated fallback image.
         return sendGeneratedHero(res, entry.label, entry.icon);
       }
       return streamHeroImage(res, data, resolved.contentType, req, stat);
     }
 
-    // No image found — send an SVG placeholder.
+    // No image found — send a generated SVG fallback.
     return sendGeneratedHero(res, entry.label, entry.icon);
   }
 

@@ -64,7 +64,6 @@ const SUPPORTED_WALLET_CHAINS = Object.keys(ALL_INVENTORY_FILTERS);
 
 const DASHBOARD_WINDOWS: DashboardWindow[] = ["24h", "7d", "30d"];
 const HIDDEN_TOKEN_IDS_KEY = "eliza:wallet:hidden-token-ids:v1";
-const WALLET_CHAT_PREFILL_EVENT = "eliza:chat:prefill";
 interface InventoryPositionAsset {
   id: string;
   kind: "token" | "nft";
@@ -293,14 +292,6 @@ function deriveInventoryPositionAssets({
   }
 
   return positions;
-}
-
-function dispatchWalletChatPrefill(text: string): void {
-  window.dispatchEvent(
-    new CustomEvent(WALLET_CHAT_PREFILL_EVENT, {
-      detail: { text, select: true },
-    }),
-  );
 }
 
 function tokenBreakdownForRow(
@@ -1377,31 +1368,13 @@ function TokenRailRow({
   profile,
   maxPnl,
   onHideToken,
-  onTokenAction,
 }: {
   row: TokenRow;
   profile: WalletTradingProfileResponse | null;
   maxPnl: number;
   onHideToken: (row: TokenRow) => void;
-  onTokenAction: (row: TokenRow, action: "swap" | "bridge") => void;
 }) {
   const slug = tokenAgentSlug(row);
-  const { ref: swapRef, agentProps: swapAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `token-${slug}-swap`,
-      role: "button",
-      label: `Swap ${row.symbol}`,
-      group: "token-list",
-      description: `Swap the ${row.symbol} balance on ${row.chain}`,
-    });
-  const { ref: bridgeRef, agentProps: bridgeAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `token-${slug}-bridge`,
-      role: "button",
-      label: `Bridge ${row.symbol}`,
-      group: "token-list",
-      description: `Bridge the ${row.symbol} balance from ${row.chain}`,
-    });
   const { ref: hideRef, agentProps: hideAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: `token-${slug}-hide`,
@@ -1429,28 +1402,6 @@ function TokenRailRow({
           {formatUsd(row.valueUsd)}
         </div>
         <div className="flex gap-1 opacity-70 transition-opacity group-hover:opacity-100">
-          <button
-            ref={swapRef}
-            type="button"
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-bg/65 text-muted transition-colors hover:text-txt"
-            onClick={() => onTokenAction(row, "swap")}
-            aria-label={`Swap ${row.symbol}`}
-            title={`Swap ${row.symbol}`}
-            {...swapAgentProps}
-          >
-            <ArrowLeftRight className="h-3.5 w-3.5" />
-          </button>
-          <button
-            ref={bridgeRef}
-            type="button"
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-bg/65 text-muted transition-colors hover:text-txt"
-            onClick={() => onTokenAction(row, "bridge")}
-            aria-label={`Bridge ${row.symbol}`}
-            title={`Bridge ${row.symbol}`}
-            {...bridgeAgentProps}
-          >
-            <Layers3 className="h-3.5 w-3.5" />
-          </button>
           <button
             ref={hideRef}
             type="button"
@@ -1562,7 +1513,6 @@ function WalletHoldingsSection({
   walletConfig,
   profile,
   onHideToken,
-  onTokenAction,
   onOpenRpcSettings,
   onRefresh,
   refreshing,
@@ -1577,7 +1527,6 @@ function WalletHoldingsSection({
   walletConfig: WalletConfigStatus | null;
   profile: WalletTradingProfileResponse | null;
   onHideToken: (row: TokenRow) => void;
-  onTokenAction: (row: TokenRow, action: "swap" | "bridge") => void;
   onOpenRpcSettings: () => void;
   onRefresh: () => void;
   refreshing: boolean;
@@ -1675,7 +1624,6 @@ function WalletHoldingsSection({
                   profile={profile}
                   maxPnl={maxPnl}
                   onHideToken={onHideToken}
-                  onTokenAction={onTokenAction}
                 />
               ))
             )
@@ -2100,19 +2048,6 @@ export function InventoryView() {
     loadWalletConfig,
   ]);
 
-  const handleTokenAction = useCallback(
-    (row: TokenRow, action: "swap" | "bridge") => {
-      const verb = action === "swap" ? "swap" : "bridge";
-      dispatchWalletChatPrefill(
-        `Prepare a ${verb} for ${row.symbol}. Use the visible wallet inventory, then ask me for amount, destination, slippage, and execution path before any transaction.`,
-      );
-      setActionNotice(
-        `Prepared a ${verb} request for ${row.symbol} in wallet chat.`,
-      );
-    },
-    [setActionNotice],
-  );
-
   const handleOpenRpcSettings = useCallback(() => {
     setTab("settings");
     if (typeof window !== "undefined") {
@@ -2148,7 +2083,6 @@ export function InventoryView() {
           walletConfig={walletConfig}
           profile={tradingProfile}
           onHideToken={handleHideToken}
-          onTokenAction={handleTokenAction}
           onOpenRpcSettings={handleOpenRpcSettings}
           onRefresh={handleRefresh}
           refreshing={
@@ -2335,7 +2269,7 @@ export function InventoryTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(280px, 1fr) minmax(280px, 1fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -2427,10 +2361,11 @@ export function InventoryTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>market</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | trading-profile | market-overview
+            {(walletState?.marketOverview?.movers ?? []).length} movers /{" "}
+            {nfts.length} NFTs
           </div>
           {(walletState?.marketOverview?.movers ?? [])
-            .slice(0, 8)
+            .slice(0, 4)
             .map((mover) => (
               <div key={mover.id} style={{ padding: "4px 0" }}>
                 <span style={{ color: "#a7f3d0" }}>{mover.symbol}</span>{" "}
@@ -2442,7 +2377,7 @@ export function InventoryTuiView() {
             ))}
 
           <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>nfts</div>
-          {nfts.slice(0, 10).map((nft) => (
+          {nfts.slice(0, 4).map((nft) => (
             <div key={nft.identity} style={{ padding: "4px 0" }}>
               <span style={{ color: "#64748b" }}>{nft.chain}</span> {nft.name}
               {nft.collectionName ? (

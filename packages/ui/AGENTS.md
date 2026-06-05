@@ -76,7 +76,7 @@ src/
   utils/  lib/                Formatters, SQL helpers, rate limiters, cn(), floating-layers z-index
   slots/                      Plugin slot components (task-coordinator-slots)
   styles/  stories/             CSS modules, story fixtures
-test/                           Test stubs (top-level, not under src/)
+test/                           Test doubles (top-level, not under src/)
 ```
 
 ## Key exports / surface

@@ -5,7 +5,7 @@
 import type { WalletAddresses, WalletBalancesResponse } from "@elizaos/shared";
 import { Button, StatusBadge } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Copy, Wallet } from "lucide-react";
+import { Copy, Layers3, Wallet } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
 interface WalletStatusCardProps {
@@ -63,7 +63,7 @@ function CopyableAddress({
 
 function BalancePill({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col items-start gap-0.5 rounded-xl border border-border/30 bg-card/60 px-3 py-2 min-w-[100px]">
+    <div className="flex min-w-[100px] flex-col items-start gap-0.5 rounded-lg border border-border/30 bg-card/60 px-3 py-2">
       <span className="text-2xs font-semibold uppercase tracking-wider text-muted/70">
         {label}
       </span>
@@ -152,17 +152,26 @@ export function WalletStatusCard({
 
     return {
       totalUsd: total > 0 ? `$${total.toFixed(2)}` : null,
-      balancePills: pills,
+      balancePills: pills.sort(
+        (a, b) =>
+          Number.parseFloat(b.value.replace("$", "")) -
+          Number.parseFloat(a.value.replace("$", "")),
+      ),
     };
   }, [walletBalances]);
 
   const hasAddresses = evmAddress || solanaAddress;
+  const visibleBalancePills = balancePills.slice(0, 4);
+  const hiddenBalanceCount = Math.max(
+    0,
+    balancePills.length - visibleBalancePills.length,
+  );
 
   if (!hasAddresses && !walletBalances) {
     return (
       <div
         data-testid="vincent-wallet-status-card"
-        className="rounded-3xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+        className="rounded-lg border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
       >
         <div className="flex items-center gap-2">
           <Wallet className="h-4 w-4 text-muted/50" />
@@ -175,7 +184,7 @@ export function WalletStatusCard({
   return (
     <div
       data-testid="vincent-wallet-status-card"
-      className="rounded-3xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] space-y-4"
+      className="space-y-4 rounded-lg border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
     >
       {/* Header row */}
       <div className="flex items-center justify-between gap-3">
@@ -215,13 +224,24 @@ export function WalletStatusCard({
       {/* Balance pills — dust filtered */}
       {balancePills.length > 0 && (
         <div className="flex flex-wrap gap-2">
-          {balancePills.map((pill) => (
+          {visibleBalancePills.map((pill) => (
             <BalancePill
               key={pill.label}
               label={pill.label}
               value={pill.value}
             />
           ))}
+          {hiddenBalanceCount > 0 ? (
+            <div
+              className="flex min-w-[100px] items-center justify-center gap-2 rounded-lg border border-border/30 bg-card/60 px-3 py-2 text-muted"
+              title={`${hiddenBalanceCount} more balances`}
+            >
+              <Layers3 className="h-4 w-4" />
+              <span className="text-sm font-semibold tabular-nums">
+                +{hiddenBalanceCount}
+              </span>
+            </div>
+          ) : null}
         </div>
       )}
 

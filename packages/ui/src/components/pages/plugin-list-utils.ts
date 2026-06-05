@@ -417,7 +417,8 @@ export function paramsToSchema(
       delete (prop as Record<string, unknown>).__jsonHint;
     }
 
-    // Model name fields — helpful placeholder (overridden by server-provided model options via configUiHints)
+    // Model name fields get helpful input hints, overridden by server-provided
+    // model options via configUiHints.
     if (
       keyUpper.includes("MODEL") &&
       prop.type === "string" &&

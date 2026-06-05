@@ -299,7 +299,7 @@ export interface SpeakTask {
   emotion?: Emotion;
   /**
    * Route this clip through the singing-model codepath (omnivoice singing
-   * GGUF). Providers without a singing variant treat this as a no-op and
+   * GGUF). Providers without a singing variant ignore this field and
    * fall back to standard TTS.
    */
   singing?: boolean;

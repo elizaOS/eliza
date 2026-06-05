@@ -947,11 +947,6 @@ export function ModelsView({
               ) : !hasModels ? (
                 <div className="od-models-empty-state">
                   <span className="od-models-muted">No models available</span>
-                  <br />
-                  <span className="od-models-muted-sm">
-                    Configure a {providerRailLabel(provider)} API key in
-                    Settings to scan models.
-                  </span>
                 </div>
               ) : q ? (
                 /* ── Search mode: flat, filtered results across the catalogue ── */

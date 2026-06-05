@@ -123,9 +123,9 @@ export async function callGroqDirect(params: {
   const isElizaCloud = Boolean(elizacloudKey && !groqKey);
   const isCerebras = Boolean(cerebrasKey && !groqKey && !elizacloudKey);
   const model = isCerebras
-    ? (getRuntimeSetting(params.runtime, "CEREBRAS_MODEL") ||
+    ? getRuntimeSetting(params.runtime, "CEREBRAS_MODEL") ||
       process.env.CEREBRAS_MODEL ||
-      "gpt-oss-120b")
+      "gpt-oss-120b"
     : resolveGroqModel({
         modelSize: params.modelSize,
         runtime: params.runtime,

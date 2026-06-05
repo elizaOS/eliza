@@ -136,7 +136,7 @@ def test_lifeops_bench_factory_ignores_missing_snapshot(client: OpenClawClient, 
     through the tool catalog; the adapter just threads (history, tools).
     Earlier revisions inlined the entire snapshot into the system prompt,
     which blew past gpt-oss-120b's 131k context window for the medium
-    seed. ``world_snapshot_path`` is preserved as a no-op kwarg.
+    seed. ``world_snapshot_path`` is preserved as a compatibility kwarg.
     """
     pytest.importorskip(
         "eliza_lifeops_bench.types",

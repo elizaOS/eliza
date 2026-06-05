@@ -94,7 +94,7 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
                 className="mb-4 inline-flex items-center gap-1.5 text-xs font-medium text-muted hover:text-txt"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
-                Back to markets
+                Markets
               </button>
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
@@ -105,7 +105,7 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
                 <StatusPill ready={selectedMarket.active === true} />
               </div>
 
-              <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="mt-5 grid gap-3">
                 <Metric label="Liquidity" value={selectedMarket.liquidity} />
                 <Metric label="Volume" value={selectedMarket.volume} />
                 <Metric
@@ -137,7 +137,7 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
             </section>
           ) : (
             <section className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3">
                 <StatusTile
                   label="Reads"
                   ready={status?.publicReads.ready ?? false}
@@ -168,7 +168,7 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
                   </div>
                 ) : (
                   <div className="divide-y divide-border/15">
-                    {markets.map((market) => (
+                    {markets.slice(0, 24).map((market) => (
                       <MarketListItem
                         key={market.id}
                         market={market}
@@ -218,7 +218,7 @@ function MarketListItem({
     >
       <span className="line-clamp-2 text-sm font-medium text-txt">{label}</span>
       <span className="mt-1 block truncate text-xs text-muted">
-        {market.volume24hr ?? market.category ?? market.id}
+        {market.volume24hr ?? market.category ?? "—"}
       </span>
     </button>
   );
@@ -412,13 +412,7 @@ export function PolymarketTuiView() {
         {state?.status.trading.ready ? "ready" : "disabled"} | {lastAction}
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
-          gap: 16,
-        }}
-      >
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
         <section
           aria-label="Polymarket markets"
           style={{
@@ -457,7 +451,7 @@ export function PolymarketTuiView() {
             </button>
           </div>
           {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
-          {(state?.markets.markets ?? []).map((market, index) => (
+          {(state?.markets.markets ?? []).slice(0, 24).map((market, index) => (
             <PolymarketTuiMarketRow
               key={market.id}
               market={market}
@@ -479,7 +473,8 @@ export function PolymarketTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>market detail</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | market | orderbook | positions | trading-check
+            {state?.positions?.positions.length ?? 0} positions / trading{" "}
+            {state?.status.trading.ready ? "ready" : "disabled"}
           </div>
           {selectedMarket ? (
             <>
@@ -487,9 +482,7 @@ export function PolymarketTuiView() {
                 {selectedMarket.question ?? selectedMarket.slug}
               </div>
               <div style={{ color: "#94a3b8", marginBottom: 12 }}>
-                {selectedMarket.description ??
-                  selectedMarket.category ??
-                  "No description"}
+                {selectedMarket.category ?? selectedMarket.id}
               </div>
               <div style={{ color: "#a7f3d0", marginBottom: 8 }}>outcomes</div>
               {selectedMarket.outcomes.map((outcome) => (

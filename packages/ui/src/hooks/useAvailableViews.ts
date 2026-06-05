@@ -40,7 +40,7 @@ export interface ViewRegistryEntry {
   heroImageUrl?: string;
   /**
    * True when a real hero image exists for this view. When false, `heroImageUrl`
-   * resolves to a generated placeholder, so the card renders the icon instead.
+   * resolves to a generated fallback image, so the card renders the icon instead.
    */
   hasHeroImage?: boolean;
   /** Whether the view is currently loadable. */

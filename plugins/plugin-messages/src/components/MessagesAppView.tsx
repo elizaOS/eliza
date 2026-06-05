@@ -810,13 +810,7 @@ export function MessagesTuiView() {
         | {lastAction}
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(220px, 0.9fr) minmax(280px, 1.1fr)",
-          gap: 16,
-        }}
-      >
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
         <section
           aria-label="SMS threads"
           style={{
@@ -859,7 +853,7 @@ export function MessagesTuiView() {
           {!loading && !error && threads.length === 0 && (
             <div style={{ color: "#64748b" }}>no sms threads</div>
           )}
-          {threads.map((thread, index) => (
+          {threads.slice(0, 24).map((thread, index) => (
             <TuiThreadButton
               key={thread.id}
               thread={thread}
@@ -883,7 +877,8 @@ export function MessagesTuiView() {
             {selectedThread ? selectedThread.address : "compose"}
           </strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: refresh | request-role | send
+            {messages.length} messages / sms{" "}
+            {ownsSmsRole ? "ready" : smsRoleHolder ? "held" : "unclaimed"}
           </div>
 
           {!ownsSmsRole && (

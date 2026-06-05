@@ -45,9 +45,9 @@
  * ```
  */
 
+import { huggingFaceIntegration } from "@feed/agents/training";
 import { verifyCronAuth, withErrorHandling } from "@feed/api";
 import { logger } from "@feed/shared";
-import { huggingFaceIntegration } from "@feed/training";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
