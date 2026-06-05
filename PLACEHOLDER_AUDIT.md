@@ -6034,6 +6034,36 @@ platform no-ops are separated from actionable runtime gaps.
   - `git diff --check` on the touched orchestrator service and audit file
   - focused marker scan on `plugins/plugin-agent-orchestrator`
 
+### plugin-training UI and dataset marker classification
+
+- Read `plugins/plugin-training/CLAUDE.md` and confirmed `AGENTS.md` parity
+  before classification.
+- No code changes were needed. The already-dirty
+  `src/ui/FineTuningView.tsx` was left untouched.
+- Remaining source/config hits are intentional: dashboard input/select
+  placeholders, the prompt optimizer's instruction to preserve literal prompt
+  placeholders, a Vitest Discord test double path, a promotion-persist test
+  stub note, and todo benchmark ids in CLI tests.
+- Dataset hits under `plugins/plugin-training/datasets/*.jsonl` are checked-in
+  training examples and benchmark trajectories; they include real prompt text,
+  todo routing examples, and policy language about placeholders rather than
+  unfinished code.
+- Verified with focused marker scans on plugin-training source/config files and
+  the full plugin-training package.
+
+### plugin-shopify-ui, plugin-screenshare, plugin-phone, plugin-facewear, and plugin-companion UI classification
+
+- Read each plugin-local `CLAUDE.md` and confirmed `AGENTS.md` parity before
+  classification.
+- No code changes were needed. Remaining hits are intentional UI placeholder
+  attributes, viewer/login input placeholders, companion avatar placeholder
+  accessibility text, and TUI/dashboard form hints.
+- Non-UI hits are intentional tests or contracts: `plugin-facewear` asserting a
+  bridge bundle does not contain `"stub"`, `plugin-training`-style test double
+  naming is not present here, and `plugin-companion`/`plugin-phone` keep their
+  no-action/plugin-surface contracts documented in package guides.
+- Verified with focused marker scans on each of the five plugin packages.
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.
