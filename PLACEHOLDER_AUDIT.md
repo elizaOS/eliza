@@ -4590,6 +4590,89 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd plugins/plugin-computeruse test`
   - focused stale-phrase scans and `git diff --check`
 
+### plugins/plugin-localdb lint gate and dead adapter copies
+
+- Replaced the inert lint script with real Biome `lint` and `lint:check`
+  scripts. The existing Vitest suite was already real, so the package-local
+  guide pair now documents `test` instead of claiming no tests.
+- Removed unused local copies of `adapter.ts`, `hnsw.ts`, and `types.ts`.
+  `tsup.config.ts` only builds `index.ts` and `index.browser.ts`, and the
+  plugin entries import the shared `InMemoryDatabaseAdapter` / `IStorage` from
+  `@elizaos/plugin-inmemorydb`, so the local copies were not part of the
+  package runtime or build output.
+- Reworded adapter-gate docs so an existing runtime adapter is described as
+  being left in place rather than silently skipped.
+- Remaining localdb marker hits are Vitest mock APIs in `index.test.ts` and
+  `vitest.setup.ts`.
+- Verified with:
+  - `diff -q plugins/plugin-localdb/CLAUDE.md plugins/plugin-localdb/AGENTS.md`
+  - `bun run --cwd plugins/plugin-localdb lint`
+  - `bun run --cwd plugins/plugin-localdb lint:check`
+  - `bun run --cwd plugins/plugin-localdb typecheck`
+  - `bun run --cwd plugins/plugin-localdb test`
+  - `bun run --cwd plugins/plugin-localdb build`
+  - focused marker scan and `git diff --check`
+
+### packages/feed root quality gates
+
+- Replaced the root Feed `lint` / `typecheck` echo placeholders with real
+  passing gates. Root `lint` now runs Biome check mode against stable root Feed
+  files with the repo Biome config explicitly supplied, because the elizaOS root
+  Biome ignore excludes `packages/feed/**`. Root `typecheck` now uses
+  `scripts/typecheck-workspace.ts` against `packages/shared` and
+  `packages/contracts`.
+- Updated `scripts/typecheck-workspace.ts` so it can typecheck an explicit
+  workspace list directly through `tsc -p <workspace> --noEmit`, rather than
+  delegating to nested package scripts. The full default workspace order is
+  preserved for later expansion, and the `packages/agents` declaration
+  bootstrap only runs for workspaces that need it.
+- Replaced the package-local `lint` and `typecheck` placeholder scripts in
+  `packages/shared` and `packages/contracts` with real commands that run from
+  the Feed root. `packages/shared` source was made Biome-clean with narrow
+  fixes for safe array access, export ordering, config formatting, and control
+  character sanitization. `packages/contracts` needed only one Biome formatting
+  fix.
+- Replaced the Chroma E2E tool `typecheck` placeholder with a real local
+  `tsc -p . --noEmit` gate.
+- Updated `README.md` and the guide pair to document the real root gates.
+  `CLAUDE.md` / `AGENTS.md` parity is preserved.
+- Ruler note: `bun run ruler:apply` still cannot run because the local `ruler`
+  binary is unavailable. A one-off `bunx @intellectronica/ruler apply` attempt
+  produced generated churn outside `.ruler/**`; that churn was removed because
+  the stale root-gate wording was not present in `.ruler/**`.
+- Remaining Feed package script debt is package-local and still unresolved:
+  `apps/web`, `apps/cli`, `apps/mobile`, `packages/engine`,
+  `packages/testing`, `packages/sim`, `packages/core`, `packages/mcp`,
+  `packages/examples/local-a2a-server`, `packages/pack-default`,
+  `packages/examples/feed-typescript-agent`, `packages/db`, `packages/a2a`,
+  `packages/api`, and `packages/agents` still contain nested echo placeholders
+  in one or more `lint`, `typecheck`, or test scripts.
+- Broader Feed verification remains blocked by existing package issues: the
+  full web build cannot resolve `@feed/training`, and direct all-workspace
+  `tsc` currently fails starting in `packages/db` on existing declaration /
+  Node-type strictness problems.
+- `packages/pack-default` was probed next, but direct typecheck currently fails
+  because TypeScript expects built `packages/shared/dist/index.d.ts` output for
+  the referenced shared project.
+- `packages/examples/local-a2a-server` and
+  `packages/examples/feed-typescript-agent` were also probed. Their first
+  tsconfig blockers were fixed (`bun:sqlite` runtime types for the local A2A
+  server, TypeScript 6 deprecation opt-in for the TypeScript agent example),
+  but their package scripts remain unresolved because direct typecheck now
+  exposes deeper source/dependency errors.
+- Verified with:
+  - `bun run lint` in `packages/feed`
+  - `bun run typecheck` in `packages/feed`
+  - `bun run lint` / `bun run typecheck` in
+    `packages/feed/packages/shared`
+  - `bun run lint` / `bun run typecheck` in
+    `packages/feed/packages/contracts`
+  - `bun run typecheck` in `packages/feed/tools/chroma`
+  - `diff -q packages/feed/CLAUDE.md packages/feed/AGENTS.md`
+  - focused stale-root-gate scan on the touched Feed root docs and package
+    manifest
+  - `git diff --check` on the touched Feed root-gate files
+
 ### connector package dry-run and live-lane wording
 
 - `plugins/plugin-bluesky`: renamed production dry-run return helpers and IDs

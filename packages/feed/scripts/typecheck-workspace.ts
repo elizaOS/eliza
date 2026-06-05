@@ -24,11 +24,17 @@ const WORKSPACES = [
   "apps/web",
 ] as const;
 
+const selectedWorkspaces =
+  process.argv.length > 2 ? process.argv.slice(2) : [...WORKSPACES];
+const needsAgentDeclarations = selectedWorkspaces.some((workspace) =>
+  ["packages/api", "packages/agents"].includes(workspace),
+);
+
 async function runTypecheck(workspace: string): Promise<void> {
   process.stdout.write(`\n[${workspace}] typecheck\n`);
 
   await new Promise<void>((resolvePromise, rejectPromise) => {
-    const child = spawn("bun", ["run", "--cwd", workspace, "typecheck"], {
+    const child = spawn("bun", ["run", "tsc", "-p", workspace, "--noEmit"], {
       cwd: ROOT,
       stdio: "inherit",
       env: process.env,
@@ -51,35 +57,39 @@ async function runTypecheck(workspace: string): Promise<void> {
 // api resolves @feed/agents/* from agents/dist, but agents references api
 // via project refs. Emit agents .d.ts without type-checking so api can resolve
 // its imports before the full typecheck sequence runs.
-process.stdout.write("\n[packages/agents] emitting declarations (bootstrap)\n");
-await new Promise<void>((resolvePromise, rejectPromise) => {
-  const child = spawn(
-    "bun",
-    [
-      "run",
-      "tsc",
-      "-p",
-      "packages/agents",
-      "--emitDeclarationOnly",
-      "--noCheck",
-    ],
-    { cwd: ROOT, stdio: "inherit", env: process.env },
+if (needsAgentDeclarations) {
+  process.stdout.write(
+    "\n[packages/agents] emitting declarations (bootstrap)\n",
   );
-  child.on("error", rejectPromise);
-  child.on("exit", (code) => {
-    if (code === 0) {
-      resolvePromise();
-      return;
-    }
-    rejectPromise(
-      new Error(
-        `agents declaration bootstrap failed with code ${code ?? "null"}`,
-      ),
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    const child = spawn(
+      "bun",
+      [
+        "run",
+        "tsc",
+        "-p",
+        "packages/agents",
+        "--emitDeclarationOnly",
+        "--noCheck",
+      ],
+      { cwd: ROOT, stdio: "inherit", env: process.env },
     );
+    child.on("error", rejectPromise);
+    child.on("exit", (code) => {
+      if (code === 0) {
+        resolvePromise();
+        return;
+      }
+      rejectPromise(
+        new Error(
+          `agents declaration bootstrap failed with code ${code ?? "null"}`,
+        ),
+      );
+    });
   });
-});
+}
 
-for (const workspace of WORKSPACES) {
+for (const workspace of selectedWorkspaces) {
   await runTypecheck(workspace);
 }
 

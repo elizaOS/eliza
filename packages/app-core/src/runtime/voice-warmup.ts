@@ -38,6 +38,15 @@ export interface VoiceWarmupGate {
   /** ELIZA_SKIP_LOCAL_VOICE_WARMUP is set. */
   skipEnv: boolean;
   /**
+   * Dev hot-reload respawn (not a cold boot). Each hot-reload spawns a fresh
+   * API child that re-runs the whole boot tail; warming voice every bounce
+   * re-fires a billable cloud TTS call and fully reloads the native whisper
+   * model (~80 lines of GPU init), flooding the dev log on every edit. Warmup
+   * is a first-use-latency optimization, so we skip it on reloads — voice still
+   * loads on first real use. Cold boot still warms.
+   */
+  hotReload?: boolean;
+  /**
    * @deprecated No longer used — warmup fires for both local and cloud.
    * Kept for API compatibility; callers may still pass it.
    */
@@ -48,6 +57,7 @@ export interface VoiceWarmupGate {
 export function shouldWarmupVoice(gate: VoiceWarmupGate): boolean {
   if (gate.mobile) return false;
   if (gate.skipEnv) return false;
+  if (gate.hotReload) return false;
   return true;
 }
 

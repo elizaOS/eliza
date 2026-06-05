@@ -30,7 +30,8 @@ Import from `@elizaos/plugin-local-inference/routes` (except `handleLocalInferen
 - ASR: `handleLocalInferenceAsrRoute` (`src/routes/local-inference-asr-route.ts`)
 - Voice first-run: `handleVoiceFirstRunRoutes` (`src/routes/voice-first-run-routes.ts`)
 - Voice models: `handleVoiceModelsRoutes` (`src/routes/voice-models-routes.ts`)
-- Voice profiles: `handleVoiceProfileRoutes` (`src/services/voice/voice-profile-routes.ts`)
+- Voice profiles (TTS preset catalog): `handleVoiceProfileRoutes` (`src/services/voice/voice-profile-routes.ts`)
+- Speaker-profile entity binding (`/v1/voice/speaker-profiles`): `handleVoiceSpeakerProfileRoutes` (`src/routes/voice-speaker-profile-routes.ts`) — list speaker centroids and bind/unbind a recognized voice to an elizaOS entity (the runtime path for `VoiceProfileStore.bindEntity`)
 - Family-member voice encoder: `handleFamilyMemberRoute` (`src/routes/family-member-route.ts`)
 - Catalog/download/hardware/providers/routing (`/api/local-inference/*`): `handleLocalInferenceCompatRoutes` (`src/routes/local-inference-compat-routes.ts`) — this is the variant app-core mounts; `handleLocalInferenceRoutes` above is the upstream-agent equivalent.
 
@@ -59,6 +60,7 @@ src/
     local-inference-compat-routes.ts  /api/local-inference/* catalog, downloads, hardware, providers, routing
     voice-first-run-routes.ts     Voice onboarding flow
     voice-models-routes.ts        Voice model install/update routes
+    voice-speaker-profile-routes.ts  Bind/unbind a recognized speaker voice to an elizaOS entity
     family-member-route.ts        Family-member voice encoder route
 
   runtime/

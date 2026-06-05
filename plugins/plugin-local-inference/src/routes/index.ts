@@ -44,3 +44,8 @@ export {
 	setVoiceModelsUpdater,
 	type VoiceModelInstallationView,
 } from "./voice-models-routes.js";
+export {
+	handleVoiceSpeakerProfileRoutes,
+	type SpeakerProfileSummary,
+	setVoiceSpeakerProfileStore,
+} from "./voice-speaker-profile-routes.js";

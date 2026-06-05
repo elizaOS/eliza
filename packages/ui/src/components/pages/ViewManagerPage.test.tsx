@@ -16,12 +16,17 @@ import {
 } from "../../bridge/electrobun-rpc";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import { useAvailableViews } from "../../hooks/useAvailableViews";
+import { useViewCatalog } from "../../hooks/useViewCatalog";
 import { getActiveViewModality } from "../../platform/platform-guards";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import { ViewManagerPage } from "./ViewManagerPage";
 
 vi.mock("../../hooks/useAvailableViews", () => ({
   useAvailableViews: vi.fn(),
+}));
+
+vi.mock("../../hooks/useViewCatalog", () => ({
+  useViewCatalog: vi.fn(),
 }));
 
 vi.mock("../../platform/platform-guards", () => ({
@@ -46,6 +51,7 @@ vi.mock("../../bridge/electrobun-rpc", () => ({
 }));
 
 const useAvailableViewsMock = vi.mocked(useAvailableViews);
+const useViewCatalogMock = vi.mocked(useViewCatalog);
 const useIsDeveloperModeMock = vi.mocked(useIsDeveloperMode);
 const getActiveViewModalityMock = vi.mocked(getActiveViewModality);
 const fetchWithCsrfMock = vi.mocked(fetchWithCsrf);
@@ -113,6 +119,13 @@ describe("ViewManagerPage", () => {
     });
     useIsDeveloperModeMock.mockReturnValue(false);
     getActiveViewModalityMock.mockReturnValue("gui");
+    useViewCatalogMock.mockReturnValue({
+      entries: [],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+      get: vi.fn(),
+    });
     fetchWithCsrfMock.mockResolvedValue({
       ok: true,
       json: async () => ({ results: [] }),
@@ -251,6 +264,36 @@ describe("ViewManagerPage", () => {
     expect(screen.queryByText("hidden description")).toBeNull();
     expect(screen.queryByText("also hidden")).toBeNull();
     expect(screen.queryByText("hiddentag")).toBeNull();
+  });
+
+  it("lists not-loaded catalog apps in a Get section and triggers get() on click", () => {
+    const get = vi.fn();
+    useViewCatalogMock.mockReturnValue({
+      entries: [
+        {
+          key: "app:@elizaos/plugin-clawville",
+          id: "@elizaos/plugin-clawville",
+          label: "ClawVille",
+          hasHero: true,
+          heroUrl: "/api/apps/hero/clawville",
+          modality: "gui",
+          state: "available",
+          kind: "app",
+          appName: "@elizaos/plugin-clawville",
+        },
+      ],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+      get,
+    });
+
+    render(<ViewManagerPage />);
+
+    expect(screen.getByTestId("views-catalog-section")).toBeTruthy();
+    expect(screen.getByText("ClawVille")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Get ClawVille"));
+    expect(get).toHaveBeenCalledTimes(1);
   });
 
   it("pins a remote view through the actual pin button without navigating", () => {
@@ -479,5 +522,7 @@ describe("ViewManagerPage", () => {
     rerender(<ViewManagerPage />);
     expect(screen.queryByText("Developer Ledger Updated")).toBeNull();
     expect(screen.getByText("Local Notes")).toBeTruthy();
-  });
+    // Three register/edit/delete round-trips with waitFor — give it headroom
+    // so it doesn't flake on the default 5s timeout under heavy machine load.
+  }, 30000);
 });

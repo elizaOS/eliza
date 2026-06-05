@@ -4,7 +4,7 @@ Persistent local database adapter for elizaOS — JSON-file storage on Node.js, 
 
 ## Purpose / role
 
-Provides a file-backed (Node.js) and `localStorage`-backed (browser) `IDatabaseAdapter` for Eliza agents that need persistence across restarts without a full database server. It wraps `InMemoryDatabaseAdapter` from `@elizaos/plugin-inmemorydb` with a durable storage backend. The plugin is opt-in — its `init` hook silently exits if the runtime already has an adapter registered.
+Provides a file-backed (Node.js) and `localStorage`-backed (browser) `IDatabaseAdapter` for Eliza agents that need persistence across restarts without a full database server. It wraps `InMemoryDatabaseAdapter` from `@elizaos/plugin-inmemorydb` with a durable storage backend. The plugin is opt-in — its `init` hook leaves the existing adapter in place if the runtime already has one registered.
 
 Load it by adding `@elizaos/plugin-localdb` to an agent's plugin list. It has two build entries: `dist/index.js` (Node.js, file-backed) and `dist/index.browser.js` (browser, `localStorage`-backed).
 
@@ -33,13 +33,10 @@ The entry files (`index.ts`, `index.browser.ts`) import only `InMemoryDatabaseAd
 plugins/plugin-localdb/
   index.ts              Node plugin entry — FileStorage, plugin object, createDatabaseAdapter()
   index.browser.ts      Browser plugin entry — BrowserLocalStorage, plugin object, createDatabaseAdapter()
-  adapter.ts            InMemoryDatabaseAdapter — local copy (NOT used by plugin entries; plugin imports from @elizaos/plugin-inmemorydb)
-  hnsw.ts               EphemeralHNSW — local copy used only by adapter.ts
-  types.ts              IStorage, IVectorStorage, VectorSearchResult, COLLECTIONS — local copy used only by adapter.ts
   tsup.config.ts        Dual-entry build (index + index.browser), ESM only
 ```
 
-Note: `adapter.ts`, `hnsw.ts`, and `types.ts` are local copies of the equivalent files in `plugin-inmemorydb` but are NOT imported by `index.ts` or `index.browser.ts`. The plugin entries import only `InMemoryDatabaseAdapter` and `IStorage` from `@elizaos/plugin-inmemorydb`. The local copies are dead weight; if the upstream adapter is patched, no sync to these files is required for the plugin to function.
+The plugin entries import `InMemoryDatabaseAdapter` and `IStorage` from `@elizaos/plugin-inmemorydb`; local adapter/vector copies are intentionally absent so the package follows the shared adapter implementation.
 
 ## Commands
 
@@ -47,10 +44,11 @@ Note: `adapter.ts`, `hnsw.ts`, and `types.ts` are local copies of the equivalent
 bun run --cwd plugins/plugin-localdb build       # compile to dist/
 bun run --cwd plugins/plugin-localdb dev         # build --watch
 bun run --cwd plugins/plugin-localdb typecheck   # tsgo --noEmit
+bun run --cwd plugins/plugin-localdb lint        # biome check --write --unsafe .
+bun run --cwd plugins/plugin-localdb lint:check  # biome check .
+bun run --cwd plugins/plugin-localdb test        # vitest run
 bun run --cwd plugins/plugin-localdb clean       # rm -rf dist .turbo
 ```
-
-Lint and test scripts are no-ops in this package (`echo "Lint skipped"` / `echo "No tests"`).
 
 ## Config / env vars
 
@@ -73,10 +71,9 @@ To add a new collection: add a key to `COLLECTIONS` in `@elizaos/plugin-inmemory
 ## Conventions / gotchas
 
 - **Flush-on-write.** `FileStorage` awaits a full `writeFile` after every mutation. This is safe for small datasets but not designed for high-write throughput.
-- **Adapter gate.** The plugin will not register a second adapter. If another plugin (e.g., a SQL adapter) loads first, this plugin does nothing. Load order matters.
+- **Adapter gate.** The plugin will not register a second adapter. If another plugin (e.g., a SQL adapter) loads first, this plugin leaves that adapter in place. Load order matters.
 - **No transaction atomicity.** `transaction()` calls the callback with `this` — no rollback.
 - **HNSW is ephemeral.** The vector index is rebuilt from scratch on each process start; embeddings stored in `localdb.json` are not re-indexed automatically. Semantic search results are empty until new memories with embeddings are written after startup.
 - **Default embedding dimension is 384.** Call `adapter.ensureEmbeddingDimension(n)` before writing memories with a different size; when `n` differs from the current dimension it re-inits the HNSW index with the new dimension (subsequent `add()` calls validate against it).
 - **Batch API only.** No single-item helpers. Use `createEntities`, `getMemoriesByIds`, etc.
-- **Local copies are unused.** `adapter.ts`, `hnsw.ts`, and `types.ts` exist in this package but are not imported by either entry point. The plugin uses the versions from `@elizaos/plugin-inmemorydb`.
 - **Browser entry is separate.** The `exports` map routes `browser` consumers to `dist/index.browser.js`. Do not import from `index.ts` directly in a browser context.

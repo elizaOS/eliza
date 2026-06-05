@@ -104,5 +104,5 @@ export function getNextOnboardingStep(
   if (currentIndex === -1 || currentIndex >= ONBOARDING_STEP_ORDER.length - 1) {
     return "complete";
   }
-  return ONBOARDING_STEP_ORDER[currentIndex + 1]!;
+  return ONBOARDING_STEP_ORDER[currentIndex + 1] ?? "complete";
 }

@@ -1077,6 +1077,7 @@ async function startDeferredVoiceWarmup(runtime: AgentRuntime): Promise<void> {
     !shouldWarmupVoice({
       mobile: isMobilePlatform(),
       skipEnv: isTruthyEnvValue(process.env.ELIZA_SKIP_LOCAL_VOICE_WARMUP),
+      hotReload: isTruthyEnvValue(process.env.ELIZA_DEV_IS_HOT_RELOAD),
     })
   ) {
     return;
