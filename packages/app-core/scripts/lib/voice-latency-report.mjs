@@ -85,7 +85,7 @@ export function renderVoiceLatencyReport(payload, opts = {}) {
   const recent = traces.slice(Math.max(0, traces.length - maxTraces));
   lines.push(`Recent traces (last ${recent.length}):`);
   for (const t of recent) {
-    const flag = t?.complete ? "" : " [partial]";
+    const flag = t?.complete ? "" : " [incomplete]";
     const room = t?.roomId ? ` room=${t.roomId}` : "";
     const ttft = fmtMs(t?.derived?.ttftMs);
     const ttfa = fmtMs(t?.derived?.ttfaMs);
