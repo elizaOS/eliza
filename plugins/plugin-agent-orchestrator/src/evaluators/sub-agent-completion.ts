@@ -529,7 +529,7 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
           clearCandidateActions: true,
           clearParentActionHints: true,
           debug: [
-            "verified sub-agent completion had no captured output; suppressing placeholder reply",
+            "verified sub-agent completion had no captured output; suppressing empty reply",
           ],
         };
       }

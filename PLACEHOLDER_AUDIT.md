@@ -5515,6 +5515,25 @@ platform no-ops are separated from actionable runtime gaps.
   - focused marker scan on
     `plugins/plugin-local-inference/src/services/voice/engine-bridge.ts`
 
+### plugins/plugin-agent-orchestrator fallback and retry wording
+
+- Read `plugins/plugin-agent-orchestrator/CLAUDE.md` and confirmed `AGENTS.md`
+  parity before editing.
+- Reworded comments and descriptions for optional Smithers steps, unchanged
+  completions, SSRF test resolver injection, ACP plan updates, best-effort
+  process termination, sandbox-limited TASKS fallback behavior, legacy metrics
+  probes, and empty sub-agent completion replies. Behavior is unchanged.
+- Remaining `incomplete` hits in orchestrator source are intentional task/build
+  statuses and retry/reporting paths: incomplete sub-agent completions are
+  detected, retried when URL verification fails, and reported honestly when the
+  retry budget is exhausted. The only remaining `stub` hit in the focused scan
+  is the existing module path `actions/sandbox-stub.js`.
+- Verified with:
+  - `./node_modules/.bin/biome check` on all touched orchestrator files
+  - `bun run --cwd plugins/plugin-agent-orchestrator typecheck`
+  - focused `no-op|noop|stub|placeholder|not implemented|unfinished` scan on
+    `plugins/plugin-agent-orchestrator/src` excluding tests
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.

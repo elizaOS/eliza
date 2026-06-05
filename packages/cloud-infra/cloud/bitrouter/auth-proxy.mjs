@@ -69,6 +69,39 @@ function getRequestedModel(target, contentType, body) {
   }
 }
 
+function prepareChatCompletionRequest(target, contentType, body) {
+  const requestedModel = getRequestedModel(target, contentType, body);
+  if (!requestedModel) {
+    return { body, requestedModel: null };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(body.toString("utf-8"));
+  } catch {
+    return { body, requestedModel };
+  }
+
+  if (requestedModel === "zai-glm-4.7") {
+    if (parsed.reasoning_effort === undefined) {
+      parsed.reasoning_effort = "none";
+    }
+
+    const maxTokens = parsed.max_tokens ?? parsed.max_completion_tokens;
+    if (typeof maxTokens !== "number" || maxTokens < 256) {
+      if (parsed.max_completion_tokens !== undefined) {
+        parsed.max_completion_tokens = 256;
+      } else {
+        parsed.max_tokens = 256;
+      }
+    }
+
+    return { body: Buffer.from(JSON.stringify(parsed)), requestedModel };
+  }
+
+  return { body, requestedModel };
+}
+
 function isJsonChatCompletion(target, contentType) {
   return (
     target.pathname.endsWith("/chat/completions") &&
@@ -162,6 +195,7 @@ const server = http.createServer(async (req, res) => {
     for (const [key, value] of Object.entries(req.headers)) {
       if (value === undefined) continue;
       if (key.toLowerCase() === "host") continue;
+      if (key.toLowerCase() === "content-length") continue;
       if (Array.isArray(value)) {
         for (const item of value) headers.append(key, item);
       } else {
@@ -173,17 +207,17 @@ const server = http.createServer(async (req, res) => {
       req.method === "GET" || req.method === "HEAD"
         ? undefined
         : await readRequestBody(req);
-    const requestedModel = requestBody
-      ? getRequestedModel(
+    const preparedRequest = requestBody
+      ? prepareChatCompletionRequest(
           target,
           headers.get("content-type") || "",
           requestBody,
         )
-      : null;
+      : { body: undefined, requestedModel: null };
     const response = await fetch(target, {
       method: req.method,
       headers,
-      body: requestBody,
+      body: preparedRequest.body,
       duplex: "half",
     });
     const responseContentType = response.headers.get("content-type") || "";
@@ -194,7 +228,11 @@ const server = http.createServer(async (req, res) => {
     );
     if (isJsonChatCompletion(target, responseContentType)) {
       const responseBody = Buffer.from(await response.arrayBuffer());
-      auditJsonCompletionCost(response, requestedModel, responseBody);
+      auditJsonCompletionCost(
+        response,
+        preparedRequest.requestedModel,
+        responseBody,
+      );
       res.end(responseBody);
       return;
     }

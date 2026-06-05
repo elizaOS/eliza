@@ -33,7 +33,6 @@ import {
   SelectTrigger,
 } from "@elizaos/ui/components/ui/select";
 import {
-  Activity,
   Archive,
   ArrowDownToLine,
   ArrowLeft,
@@ -91,9 +90,7 @@ import { buildConversation } from "./orchestrator-stream.helpers";
 import {
   BackChip,
   TaskCard,
-  TaskCountChip,
   TaskEmptyState,
-  TaskListHeader,
   TaskMetaChip,
   TaskStatusChip,
 } from "./TaskCardList";

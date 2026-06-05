@@ -237,7 +237,10 @@ export function TaskCard({
             {title}
           </span>
           {forked ? (
-            <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
+            <GitBranch
+              className="h-3.5 w-3.5 shrink-0 text-muted"
+              aria-hidden
+            />
           ) : null}
           <TaskStatusChip status={status} t={t} />
         </span>
@@ -316,9 +319,11 @@ function EmptyMotif() {
       height="148"
       viewBox="0 0 148 148"
       fill="none"
-      aria-hidden
+      role="img"
+      aria-label="Decorative orbiting rings"
       className="text-accent"
     >
+      <title>Decorative orbiting rings</title>
       <defs>
         <linearGradient id="tc-ring" x1="0" y1="0" x2="148" y2="148">
           <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.9" />
