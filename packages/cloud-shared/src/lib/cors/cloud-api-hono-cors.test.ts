@@ -22,12 +22,7 @@ function appWithCors() {
   return app;
 }
 
-async function req(
-  method: string,
-  origin: string | null,
-  isPreflight = false,
-  path = "/ping",
-) {
+async function req(method: string, origin: string | null, isPreflight = false, path = "/ping") {
   const app = appWithCors();
   const headers: Record<string, string> = {};
   if (origin) headers.Origin = origin;

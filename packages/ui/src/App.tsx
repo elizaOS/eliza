@@ -883,11 +883,7 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
             Honors reduced motion (a plain, still fade). */}
         <motion.p
           className="-translate-y-8 select-none text-center text-3xl font-light italic text-muted"
-          initial={
-            reduceMotion
-              ? { opacity: 0 }
-              : { opacity: 0, y: 16 }
-          }
+          initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 16 }}
           animate={
             reduceMotion
               ? { opacity: 0.38 }
@@ -896,10 +892,10 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
           transition={
             reduceMotion
               ? { duration: 0.6 }
-                : {
-                    y: { duration: 1.9, ease: [0.22, 1, 0.36, 1] },
-                    opacity: { duration: 8, repeat: Infinity, ease: "easeInOut" },
-                  }
+              : {
+                  y: { duration: 1.9, ease: [0.22, 1, 0.36, 1] },
+                  opacity: { duration: 8, repeat: Infinity, ease: "easeInOut" },
+                }
           }
         >
           {minimalHomeGreeting()}
