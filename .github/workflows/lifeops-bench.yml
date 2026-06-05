@@ -169,7 +169,7 @@ jobs:
           RUN_DIR="${GITHUB_WORKSPACE}/runs/lifeops-${ELIZA_BENCH_AGENT}-${GITHUB_RUN_ID}"
           mkdir -p "$RUN_DIR/${ELIZA_BENCH_AGENT}"
           set +e
-          lifeops-bench \
+          timeout 1200s lifeops-bench \
             --agent "$ELIZA_BENCH_AGENT" \
             --suite full \
             --limit "$ELIZA_BENCH_LIMIT" \
