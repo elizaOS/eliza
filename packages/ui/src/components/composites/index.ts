@@ -13,7 +13,6 @@ export * from "../ui/field-switch";
 export * from "../ui/form-select";
 export * from "../ui/new-action-button";
 export * from "../ui/save-footer";
-export * from "../ui/section-card";
 export * from "../ui/segmented-control";
 export * from "../ui/settings-controls";
 export * from "../ui/status-badge";
