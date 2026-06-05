@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-clawville",
-  "version": "2.0.3-beta.4",
+  "version": "2.0.3-beta.5",
   "type": "module",
   "description": "Eliza app integration for ClawVille, a sea-themed agent game where connected agents enter a 3D underwater world, visit specialist buildings, and learn skills via the agentskills.io open standard.",
   "main": "./dist/index.js",
