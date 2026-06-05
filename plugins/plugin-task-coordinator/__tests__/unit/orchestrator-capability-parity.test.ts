@@ -9,7 +9,7 @@ import taskCoordinatorPlugin from "../../src/index";
  *
  * The orchestrator views declare their capabilities in `src/index.ts`
  * (`ORCHESTRATOR_CAPABILITIES`); `runOrchestratorCapability()` in
- * `src/OrchestratorWorkbench.tsx` dispatches on the same ids. If the two drift
+ * `src/orchestrator-capabilities.ts` dispatches on the same ids. If the two drift
  * — a capability declared but not handled, or handled but not declared — a
  * voice/NL planner either surfaces an action that no-ops or can't discover one
  * that works. This locks the two in step so the drift can't reopen silently
@@ -17,8 +17,7 @@ import taskCoordinatorPlugin from "../../src/index";
  * dispatched but undeclared).
  *
  * The dispatch side is read from source text rather than imported so the test
- * stays free of the React/runtime dependencies that `OrchestratorWorkbench.tsx`
- * pulls in.
+ * stays free of runtime client dependencies.
  */
 function manifestCapabilityIds(): Set<string> {
   const ids = new Set<string>();
@@ -34,7 +33,7 @@ function manifestCapabilityIds(): Set<string> {
 function dispatchedCapabilityIds(): Set<string> {
   const source = readFileSync(
     fileURLToPath(
-      new URL("../../src/OrchestratorWorkbench.tsx", import.meta.url),
+      new URL("../../src/orchestrator-capabilities.ts", import.meta.url),
     ),
     "utf8",
   );
