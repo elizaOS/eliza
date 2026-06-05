@@ -29,6 +29,7 @@ import { getBootConfig } from "@elizaos/ui/config";
 import { useRenderGuard } from "@elizaos/ui/hooks";
 import { WorkspaceLayout } from "@elizaos/ui/layouts";
 import { useApp } from "@elizaos/ui/state";
+import { Clock3, Database, Hash, Layers3 } from "lucide-react";
 import type { ReactNode } from "react";
 import {
   useCallback,
@@ -51,6 +52,50 @@ function resolveVectorBrowserRuntime(): VectorBrowserRuntime {
     throw new Error("Vector browser runtime is not registered in boot config.");
   }
   return runtime as VectorBrowserRuntime;
+}
+
+function formatMemoryDate(value: string | null | undefined): string {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value.slice(0, 16);
+  return parsed.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function VectorMetric({
+  icon,
+  value,
+  label,
+  tone,
+}: {
+  icon: ReactNode;
+  value: string;
+  label: string;
+  tone: "accent" | "neutral";
+}) {
+  return (
+    <div className="flex min-h-12 items-center gap-2 rounded-sm border border-border/35 bg-card/50 px-3">
+      <span
+        className={`grid h-7 w-7 shrink-0 place-items-center rounded-sm ${
+          tone === "accent"
+            ? "bg-accent/15 text-accent"
+            : "bg-bg-muted/50 text-muted"
+        }`}
+      >
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold text-txt">
+          {value}
+        </span>
+        <span className="block truncate text-[0.65rem] uppercase tracking-[0.08em] text-muted">
+          {label}
+        </span>
+      </span>
+    </div>
+  );
 }
 
 // ── Graph sub-component ────────────────────────────────────────────────
@@ -1361,22 +1406,29 @@ export function VectorBrowserView({
       ) : null}
 
       {stats ? (
-        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs-tight text-muted">
-          <span>
-            {Number(stats.dimensions) > 0
-              ? t("vectorbrowserview.DimensionsEmbeddings", {
-                  defaultValue: "{dimensions}D embeddings",
-                }).replace("{dimensions}", String(stats.dimensions))
-              : t("vectorbrowserview.Loading", {
-                  defaultValue: "loading...",
-                })}
-          </span>
-          {Number(stats.uniqueCount) > 0 ? (
-            <span>
-              {Number(stats.uniqueCount).toLocaleString()}{" "}
-              {t("vectorbrowserview.unique")}
-            </span>
-          ) : null}
+        <div className="grid grid-cols-3 gap-2">
+          <VectorMetric
+            icon={<Database className="h-3.5 w-3.5" aria-hidden />}
+            value={Number(stats.total).toLocaleString()}
+            label={t("vectorbrowserview.memories")}
+            tone="accent"
+          />
+          <VectorMetric
+            icon={<Layers3 className="h-3.5 w-3.5" aria-hidden />}
+            value={
+              Number(stats.dimensions) > 0
+                ? `${Number(stats.dimensions).toLocaleString()}D`
+                : "—"
+            }
+            label="embed"
+            tone="neutral"
+          />
+          <VectorMetric
+            icon={<Hash className="h-3.5 w-3.5" aria-hidden />}
+            value={Number(stats.uniqueCount).toLocaleString()}
+            label={t("vectorbrowserview.unique")}
+            tone="neutral"
+          />
         </div>
       ) : null}
     </div>
@@ -1401,30 +1453,39 @@ export function VectorBrowserView({
       ) : (
         memories.map((mem) => {
           const isActive = selectedMemory?.id === mem.id;
+          const createdLabel = formatMemoryDate(mem.createdAt);
           return (
             <button
               type="button"
               key={mem.id || `${mem.content.slice(0, 30)}-${mem.createdAt}`}
               onClick={() => openDetail(mem)}
-              className={`flex w-full items-start gap-3 rounded-sm border px-3 py-2.5 text-left transition-colors ${
+              className={`flex w-full items-center gap-3 rounded-sm border px-3 py-2.5 text-left transition-colors ${
                 isActive
                   ? "border-accent/45 bg-accent/12"
                   : "border-border/40 bg-card/40 hover:border-border/60 hover:bg-bg-hover"
               }`}
             >
-              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-border/50 bg-bg/50 text-xs font-semibold uppercase text-muted">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-border/50 bg-bg/50 text-xs font-semibold uppercase text-muted">
                 {mem.type && mem.type !== "undefined"
                   ? mem.type.slice(0, 1)
                   : "M"}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="line-clamp-2 block text-sm text-txt">
+                <span className="line-clamp-1 block text-sm font-medium text-txt">
                   {mem.content || "(empty)"}
                 </span>
-                <span className="mt-1 flex flex-wrap gap-x-3 text-2xs text-muted">
-                  {mem.embedding ? <span>{mem.embedding.length}D</span> : null}
-                  {mem.createdAt ? (
-                    <span className="truncate">{mem.createdAt}</span>
+                <span className="mt-1 flex flex-wrap gap-1.5 text-2xs text-muted">
+                  {mem.embedding ? (
+                    <span className="inline-flex items-center gap-1 rounded-sm bg-bg-muted/55 px-1.5 py-0.5">
+                      <Layers3 className="h-3 w-3" aria-hidden />
+                      {mem.embedding.length}D
+                    </span>
+                  ) : null}
+                  {createdLabel ? (
+                    <span className="inline-flex items-center gap-1 rounded-sm bg-bg-muted/55 px-1.5 py-0.5">
+                      <Clock3 className="h-3 w-3" aria-hidden />
+                      {createdLabel}
+                    </span>
                   ) : null}
                 </span>
               </span>
@@ -1550,7 +1611,7 @@ export function VectorBrowserView({
           </div>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4 md:p-6">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-4 pb-32 pt-4 md:px-6 md:pb-36 md:pt-6">
           {summaryHeader}
           {toolbar}
           {error ? (
