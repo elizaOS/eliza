@@ -9,8 +9,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildBitRouterPreparedEntries,
-  chooseBestCandidatePricingEntry,
   canonicalModelId,
+  chooseBestCandidatePricingEntry,
   expandPricingCatalogModelCandidates,
   inferProviderFromCanonicalModel,
   stripVersionedSnapshotSuffix,
@@ -198,15 +198,11 @@ describe("forced provider route pricing ids", () => {
     expect(canonicalModelId("openrouter:openai/gpt-oss-120b", "openrouter")).toBe(
       "openrouter:openai/gpt-oss-120b",
     );
-    expect(canonicalModelId("cerebras:gpt-oss-120b", "cerebras")).toBe(
-      "cerebras:gpt-oss-120b",
-    );
+    expect(canonicalModelId("cerebras:gpt-oss-120b", "cerebras")).toBe("cerebras:gpt-oss-120b");
   });
 
   test("infers provider from forced route prefixes", () => {
-    expect(inferProviderFromCanonicalModel("openrouter:openai/gpt-oss-120b")).toBe(
-      "openrouter",
-    );
+    expect(inferProviderFromCanonicalModel("openrouter:openai/gpt-oss-120b")).toBe("openrouter");
     expect(inferProviderFromCanonicalModel("cerebras:zai-glm-4.7")).toBe("cerebras");
   });
 
