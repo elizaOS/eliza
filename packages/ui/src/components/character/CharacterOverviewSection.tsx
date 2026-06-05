@@ -42,15 +42,15 @@ const WIDGET_ICONS = {
  */
 const SECTION_GRADIENT: Record<OverviewSection, string> = {
   personality:
-    "radial-gradient(120% 90% at 12% 0%, rgba(var(--accent-rgb), 0.22), transparent 60%), linear-gradient(135deg, rgba(var(--accent-rgb), 0.10), transparent 70%)",
+    "radial-gradient(125% 95% at 10% -5%, rgba(var(--accent-rgb), 0.32), transparent 62%), linear-gradient(135deg, rgba(var(--accent-rgb), 0.16), transparent 72%)",
   relationships:
-    "radial-gradient(130% 100% at 88% 0%, rgba(var(--accent-rgb), 0.18), transparent 62%), linear-gradient(215deg, rgba(var(--accent-rgb), 0.08), transparent 72%)",
+    "radial-gradient(135% 105% at 92% -5%, rgba(var(--accent-rgb), 0.28), transparent 64%), linear-gradient(215deg, rgba(var(--accent-rgb), 0.14), transparent 74%)",
   documents:
-    "radial-gradient(120% 90% at 0% 100%, rgba(var(--accent-rgb), 0.16), transparent 60%), linear-gradient(160deg, rgba(var(--accent-rgb), 0.06), transparent 74%)",
+    "radial-gradient(125% 95% at -5% 105%, rgba(var(--accent-rgb), 0.26), transparent 62%), linear-gradient(160deg, rgba(var(--accent-rgb), 0.12), transparent 76%)",
   skills:
-    "radial-gradient(120% 90% at 100% 0%, rgba(var(--accent-rgb), 0.20), transparent 58%), linear-gradient(125deg, rgba(var(--accent-rgb), 0.07), transparent 72%)",
+    "radial-gradient(125% 95% at 105% -5%, rgba(var(--accent-rgb), 0.3), transparent 60%), linear-gradient(125deg, rgba(var(--accent-rgb), 0.13), transparent 74%)",
   experience:
-    "radial-gradient(120% 100% at 50% 110%, rgba(var(--accent-rgb), 0.18), transparent 62%), linear-gradient(200deg, rgba(var(--accent-rgb), 0.06), transparent 76%)",
+    "radial-gradient(125% 105% at 50% 115%, rgba(var(--accent-rgb), 0.28), transparent 64%), linear-gradient(200deg, rgba(var(--accent-rgb), 0.12), transparent 78%)",
 };
 
 /** Per-section medallion gradient (stronger accent for the icon disc). */

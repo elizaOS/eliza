@@ -1693,7 +1693,7 @@ export class AcpService extends Service {
       // entries [{content, status, priority}] (driven by its todowrite tool).
       // Forward a sanitized snapshot as a `plan` event so the task's currentPlan
       // can drive the plan/todo dock. Validated at this boundary (raw -> typed);
-      // an adapter that never emits a plan simply no-ops here.
+      // an adapter that never emits a plan simply does not enter this branch.
       else if (sessionUpdate === "plan") {
         const rawEntries = updateBlock?.entries;
         if (Array.isArray(rawEntries)) {
@@ -2644,12 +2644,12 @@ function killProcessTree(
       // (Windows). Fall through to a direct signal on the lead process.
     }
   }
-  // Lead-process signal: covers the no-pid case (e.g. unit-test mocks where
+  // Lead-process signal: covers the no-pid case (e.g. unit-test doubles where
   // the child has not actually been forked) and the post-group-kill fallback.
   try {
     proc.kill(signal);
   } catch {
-    // best-effort
+    // Best-effort termination only.
   }
 }
 

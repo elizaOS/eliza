@@ -2,10 +2,10 @@ import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { useRenderGuard } from "@elizaos/ui/hooks";
 import { useApp } from "@elizaos/ui/state";
 import { type CSSProperties, memo, type ReactNode } from "react";
-import { useCompanionSceneStatus } from "./companion-scene-status-context";
 import { AGENT_EMOTE_CATALOG, EMOTE_CATALOG } from "../../emotes/catalog";
 import { CompanionSceneHost } from "./CompanionSceneHost";
 import { countByCategory } from "./CompanionView.helpers";
+import { useCompanionSceneStatus } from "./companion-scene-status-context";
 import { EmotePicker } from "./EmotePicker";
 import { resolveCompanionInferenceNotice } from "./resolve-companion-inference-notice";
 
@@ -65,7 +65,9 @@ function StatusChip({ ready }: { ready: boolean }) {
           boxShadow: ready
             ? "0 0 0 3px var(--status-success-bg)"
             : "0 0 0 3px var(--accent-subtle)",
-          animation: ready ? undefined : "companion-chip-pulse 1.4s ease-in-out infinite",
+          animation: ready
+            ? undefined
+            : "companion-chip-pulse 1.4s ease-in-out infinite",
         }}
       />
       {ready ? "ready" : "loading"}

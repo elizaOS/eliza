@@ -17,7 +17,7 @@ import {
   toneForViewerAttachment,
   useApp,
 } from "@elizaos/app-core/ui-compat";
-import { Button, Input, TerminalPluginView } from "@elizaos/ui";
+import { Button, TerminalPluginView } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -153,7 +153,6 @@ export function FeedOperatorSurface({
   );
   const [wallet, setWallet] = useState<FeedWallet | null>(null);
   const [tradingBalance, setTradingBalance] = useState(0);
-  const [chatInput, setChatInput] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -192,24 +191,6 @@ export function FeedOperatorSurface({
     description: "Pause or resume Feed autonomous play",
     onActivate: () => void handleToggleAgent(),
   });
-  const chatInputElement = useAgentElement<HTMLInputElement>({
-    id: "steering-operator-message",
-    role: "text-input",
-    label: "Operator message",
-    group: "Steering",
-    description: "Tell Feed what to prioritize, avoid, or explain",
-    getValue: () => chatInput,
-    onFill: (value) => setChatInput(value),
-  });
-  const sendChatButton = useAgentElement<HTMLButtonElement>({
-    id: "steering-send-message",
-    role: "button",
-    label: "Send",
-    group: "Steering",
-    description: "Send the operator message to Feed",
-    onActivate: () => void handleSendChat(),
-  });
-
   const loadDashboard = useCallback(async () => {
     if (!run) return;
 
@@ -304,28 +285,6 @@ export function FeedOperatorSurface({
       );
     }
   }, [controlAction, loadDashboard, run]);
-
-  const handleSendChat = useCallback(async () => {
-    const content = chatInput.trim();
-    if (!run || content.length === 0 || sending) return;
-
-    setSending(true);
-    setStatusMessage(null);
-    try {
-      const result = await client.sendAppRunMessage(run.runId, content);
-      setChatInput("");
-      setStatusMessage(result.message ?? "Suggestion sent to Feed.");
-      await loadDashboard();
-    } catch (error) {
-      setStatusMessage(
-        error instanceof Error
-          ? error.message
-          : "Failed to send the Feed operator message.",
-      );
-    } finally {
-      setSending(false);
-    }
-  }, [chatInput, loadDashboard, run, sending]);
 
   const handleSuggestedPrompt = useCallback(
     async (prompt: string) => {
@@ -647,32 +606,6 @@ export function FeedOperatorSurface({
               {...toggleAgentButton.agentProps}
             >
               {controlAction === "pause" ? "Pause" : "Resume"}
-            </Button>
-          </div>
-          <div className="grid gap-2">
-            <Input
-              ref={chatInputElement.ref}
-              value={chatInput}
-              onChange={(event) => setChatInput(event.target.value)}
-              placeholder="Steer Feed..."
-              className="min-h-11 rounded-xl"
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void handleSendChat();
-                }
-              }}
-              {...chatInputElement.agentProps}
-            />
-            <Button
-              ref={sendChatButton.ref}
-              type="button"
-              className="min-h-11 rounded-xl px-4 shadow-sm"
-              onClick={() => void handleSendChat()}
-              disabled={sending || chatInput.trim().length === 0}
-              {...sendChatButton.agentProps}
-            >
-              {sending ? "Sending" : "Send"}
             </Button>
           </div>
         </SurfaceSection>

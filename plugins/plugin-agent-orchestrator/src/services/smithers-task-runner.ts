@@ -341,7 +341,7 @@ export async function runTaskWithSmithers(
       | ((ctx: TaskStepContext) => Promise<unknown>)
       | undefined;
     if (typeof handler !== "function") {
-      // Optional step with no executor method → degrade to a no-op default
+      // Optional step with no executor method → use an empty default response
       // rather than wedging the run (turn always has a handler — it's required).
       const fallback = request.kind === "approval" ? { approved: true } : {};
       writeResponse({

@@ -182,7 +182,7 @@ export function GeneratedViewHero({
       {/* Oversized, cropped icon as artwork. */}
       <div
         className={`pointer-events-none absolute ${CORNER_CLASS[corner]}`}
-        style={{ color: palette.glyph, opacity: 0.22 }}
+        style={{ color: palette.glyph, opacity: 0.26 }}
         aria-hidden="true"
       >
         <ViewIcon
@@ -191,15 +191,19 @@ export function GeneratedViewHero({
           className={compact ? "h-24 w-24" : "h-40 w-40"}
         />
       </div>
-      {/* Centered small foreground glyph for legibility at a glance. */}
-      <div className="absolute inset-0 flex items-center justify-center text-white/90">
-        <ViewIcon
-          icon={icon}
-          label={label}
-          className={
-            compact ? "h-6 w-6 drop-shadow-sm" : "h-9 w-9 drop-shadow-sm"
-          }
-        />
+      {/* Centered foreground glyph on a soft disc so it reads on any palette. */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span
+          className={`flex items-center justify-center rounded-full bg-white/15 text-white shadow-[0_2px_8px_rgba(0,0,0,0.18)] ring-1 ring-white/25 backdrop-blur-[2px] ${
+            compact ? "h-10 w-10" : "h-14 w-14"
+          }`}
+        >
+          <ViewIcon
+            icon={icon}
+            label={label}
+            className={compact ? "h-5 w-5" : "h-7 w-7"}
+          />
+        </span>
       </div>
       {/* Subtle bottom scrim so the label area below stays readable. */}
       <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/15 to-transparent" />

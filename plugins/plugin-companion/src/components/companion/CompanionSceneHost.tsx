@@ -23,8 +23,8 @@ import {
 } from "react";
 import type { VrmEngine } from "../avatar/VrmEngine";
 import { prefetchVrmToCache } from "../avatar/VrmEngine";
-import { CompanionSceneStatusContext } from "./companion-scene-status-context";
 import { CompanionStageBackdrop } from "./CompanionStageBackdrop";
+import { CompanionSceneStatusContext } from "./companion-scene-status-context";
 import { SharedCompanionSceneContext } from "./shared-companion-scene-context";
 import { VrmStage } from "./VrmStage";
 

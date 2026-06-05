@@ -5,6 +5,11 @@ import {
 } from "@elizaos/ui";
 import { useMemo } from "react";
 
+type AppRunEvent = NonNullable<AppRunSummary["recentEvents"]>[number];
+type AppSessionActivity = NonNullable<
+  NonNullable<AppRunSummary["session"]>["activity"]
+>[number];
+
 export function ClawvilleDetailExtension({ app }: AppDetailExtensionProps) {
   const { appRuns } = useApp();
   const run = useMemo(() => selectRun(app.name, appRuns), [app.name, appRuns]);
@@ -76,13 +81,13 @@ function selectRun(appName: string, appRuns: AppRunSummary[]) {
 
 function collectActivity(run: AppRunSummary) {
   return [
-    ...(run.recentEvents ?? []).map((event) => ({
+    ...(run.recentEvents ?? []).map((event: AppRunEvent) => ({
       id: event.eventId,
       label: event.kind,
       detail: event.message,
       timestamp: event.createdAt,
     })),
-    ...(run.session?.activity ?? []).map((event) => ({
+    ...(run.session?.activity ?? []).map((event: AppSessionActivity) => ({
       id: event.id,
       label: event.type,
       detail: event.message,

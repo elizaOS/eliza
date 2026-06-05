@@ -690,7 +690,7 @@ export class SubAgentRouter extends Service {
           this.acp.getChangedPaths(sessionId),
           baselineDirty,
         );
-        // Persist only a real change set. A no-op completion stores nothing,
+        // Persist only a real change set. An unchanged completion stores nothing,
         // so the provider — which selects the most-recently-completed session
         // and reads ITS change set — can't bleed an older task's diff.
         if (changeSet) {

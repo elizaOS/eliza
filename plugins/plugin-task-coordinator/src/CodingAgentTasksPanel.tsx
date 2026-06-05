@@ -867,7 +867,7 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
           {...archivedAgentProps}
         >
           <Archive className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">{showArchivedLabel}</span>
+          {showArchivedLabel}
         </button>
       </div>
 

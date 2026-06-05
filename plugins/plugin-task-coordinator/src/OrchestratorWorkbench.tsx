@@ -23,13 +23,15 @@ import {
   type CodingAgentTaskTimelineItem,
   type CodingAgentTaskUsageSummary,
   client,
-  Select,
-  SelectContent,
-  SelectItem,
   useApp,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { SelectTrigger } from "@elizaos/ui/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "@elizaos/ui/components/ui/select";
 import {
   Activity,
   Archive,
@@ -161,13 +163,6 @@ const PRIORITY_ICON: Record<TaskPriority, LucideIcon | null> = {
   normal: null,
   high: ChevronUp,
   urgent: ChevronsUp,
-};
-
-const PRIORITY_TONE: Record<TaskPriority, string> = {
-  low: "text-muted",
-  normal: "",
-  high: "text-warn",
-  urgent: "text-danger",
 };
 
 const SESSION_ICON: Record<string, LucideIcon> = {
@@ -302,30 +297,6 @@ function StatusGlyph({
       role="img"
     >
       <Icon className={`${size} ${STATUS_TONE[status]}${pulse}`} aria-hidden />
-    </span>
-  );
-}
-
-function PriorityGlyph({
-  priority,
-  t,
-  size = "h-3.5 w-3.5",
-}: {
-  priority: TaskPriority;
-  t: Translate;
-  size?: string;
-}) {
-  const Icon = PRIORITY_ICON[priority];
-  if (!Icon) return null;
-  const label = labelPriority(priority, t);
-  return (
-    <span
-      className="inline-flex shrink-0"
-      title={label}
-      aria-label={label}
-      role="img"
-    >
-      <Icon className={`${size} ${PRIORITY_TONE[priority]}`} aria-hidden />
     </span>
   );
 }
@@ -3712,7 +3683,7 @@ export function OrchestratorWorkbench() {
       onFill: (value) => setSearch(value),
     });
   const { ref: showArchivedRef, agentProps: showArchivedAgentProps } =
-    useAgentElement<HTMLInputElement>({
+    useAgentElement<HTMLButtonElement>({
       id: "rail-show-archived",
       role: "toggle",
       label: showArchivedLabel,
@@ -3775,14 +3746,14 @@ export function OrchestratorWorkbench() {
             className="flex flex-1 flex-col gap-3 px-4 pb-28 pt-4"
             data-testid="orchestrator-rail"
           >
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="flex flex-wrap items-center gap-2">
               <input
                 ref={searchRef}
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={searchLabel}
                 aria-label={searchLabel}
-                className="h-9 flex-1 rounded-xl border border-border/50 bg-bg-accent/30 px-3 text-sm text-txt outline-none transition-colors placeholder:text-muted focus:border-accent/50"
+                className="h-9 min-w-[12rem] flex-1 rounded-xl border border-border/50 bg-bg-accent/30 px-3 text-sm text-txt outline-none transition-colors placeholder:text-muted focus:border-accent/50"
                 data-testid="orchestrator-search"
                 {...searchAgentProps}
               />
@@ -3809,7 +3780,7 @@ export function OrchestratorWorkbench() {
                   {...showArchivedAgentProps}
                 >
                   <Archive className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">{showArchivedLabel}</span>
+                  {showArchivedLabel}
                 </button>
               </div>
             </div>
@@ -3853,7 +3824,6 @@ export function OrchestratorWorkbench() {
                     title={thread.title}
                     subtitle={thread.summary || thread.originalRequest}
                     status={thread.status}
-                    forked={Boolean(thread.parentTaskId)}
                     chips={orchestratorTaskChips(thread, t, locale)}
                     onOpen={(id) => setSelectedId(id)}
                     t={t}

@@ -101,7 +101,13 @@ function CompanionAvatarSilhouette({ dark }: { dark: boolean }) {
         </defs>
 
         {/* Soft halo behind the head/shoulders */}
-        <ellipse cx="150" cy="150" rx="135" ry="170" fill="url(#companion-halo)" />
+        <ellipse
+          cx="150"
+          cy="150"
+          rx="135"
+          ry="170"
+          fill="url(#companion-halo)"
+        />
 
         {/* Head */}
         <circle

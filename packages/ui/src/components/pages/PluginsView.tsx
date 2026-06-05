@@ -16,11 +16,8 @@ import { PageLayoutHeader } from "../../layouts/page-layout/page-layout-header";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { PagePanel } from "../composites/page-panel";
-import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
-import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
-import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { PluginCard } from "./PluginCard";
 import {
   buildPluginListState,
@@ -29,7 +26,10 @@ import {
   type PluginsViewMode,
   resolveIcon,
   type StatusFilter,
+  SUBGROUP_DISPLAY_ORDER,
+  SUBGROUP_LABELS,
   SUBGROUP_NAV_ICONS,
+  subgroupForPlugin,
 } from "./plugin-list-utils";
 import {
   ConnectorPluginGroups,
@@ -279,7 +279,6 @@ function PluginListView({
   const [subgroupFilter, setSubgroupFilter] = useState<string>("all");
   const showSubgroupFilters =
     mode !== "connectors" && mode !== "streaming" && mode !== "social";
-  const showDesktopSubgroupSidebar = showSubgroupFilters;
   const { nonDbPlugins, sorted, subgroupTags, visiblePlugins } = useMemo(
     () =>
       buildPluginListState({
@@ -1255,145 +1254,115 @@ function PluginListView({
       : (selectedSubgroupTag?.label ??
         t("pluginsview.PluginCatalog", { defaultValue: "Plugin Catalog" }));
 
+  const isAllFilter = subgroupFilter === "all";
+
   return (
     <PagePanel.Frame data-testid="plugins-view-page">
       <PagePanel
         as="div"
         variant="shell"
-        className="settings-shell plugins-game-modal plugins-game-modal--inline flex-col lg:flex-row"
+        className="settings-shell flex-col"
         data-testid="plugins-shell"
       >
-        {showDesktopSubgroupSidebar && (
-          <AppPageSidebar
-            className="hidden lg:flex"
-            testId="plugins-subgroup-sidebar"
-            collapsible
-            contentIdentity="plugins-subgroups"
-            aria-label={t("pluginsview.PluginTypes", {
-              defaultValue: "Plugin types",
-            })}
-            collapsedRailItems={subgroupTags.map((tag) => {
-              const Icon = SUBGROUP_NAV_ICONS[tag.id] ?? Package;
-              const isActive = subgroupFilter === tag.id;
-              return (
-                <SidebarContent.RailItem
-                  key={tag.id}
-                  aria-label={tag.label}
-                  title={tag.label}
-                  active={isActive}
-                  onClick={() => setSubgroupFilter(tag.id)}
-                >
-                  <Icon className="h-4 w-4" />
-                </SidebarContent.RailItem>
-              );
-            })}
-          >
-            <SidebarScrollRegion className="pt-4">
-              <SidebarPanel>
-                {subgroupTags.map((tag) =>
-                  renderSubgroupFilterButton(tag, { sidebar: true }),
-                )}
-              </SidebarPanel>
-            </SidebarScrollRegion>
-          </AppPageSidebar>
-        )}
-
         <PagePanel.ContentArea>
-          <div className="px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6">
-            <PagePanel variant="section">
-              {!isConnectorShellMode && (
-                <PagePanel.Header
-                  eyebrow={t("nav.advanced")}
-                  heading={pluginSectionTitle}
-                  className="border-border/35"
-                  actions={
-                    <PagePanel.Meta className="border-border/45 px-2.5 py-1 font-bold tracking-[0.16em] text-muted">
-                      {t("pluginsview.VisibleCount", {
-                        defaultValue: "{{count}} shown",
-                        count: visiblePlugins.length,
-                      })}
-                    </PagePanel.Meta>
-                  }
+          <main className="chat-native-scrollbar flex h-full flex-col overflow-y-auto px-4 pb-32 pt-5 sm:px-6 lg:px-8">
+            <header className="mb-5">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <span className="text-2xs font-bold uppercase tracking-[0.2em] text-accent">
+                    {t("nav.advanced")}
+                  </span>
+                  <h1 className="mt-1 text-2xl font-bold tracking-tight text-txt">
+                    {pluginSectionTitle}
+                  </h1>
+                </div>
+                <span className="rounded-full border border-border/45 px-3 py-1 text-2xs font-bold tracking-[0.14em] text-muted">
+                  {t("pluginsview.VisibleCount", {
+                    defaultValue: "{{count}} shown",
+                    count: visiblePlugins.length,
+                  })}
+                </span>
+              </div>
+
+              <div className="mt-4 max-w-md">
+                <Input
+                  type="search"
+                  value={pluginSearch}
+                  onChange={(e) => setState("pluginSearch", e.target.value)}
+                  placeholder={t("pluginsview.SearchPlaceholder", {
+                    defaultValue: "Search plugins…",
+                  })}
+                  className="h-9 rounded-full border-border/50 bg-card/50 px-4 text-sm backdrop-blur-sm"
+                  data-testid="plugins-search"
                 />
-              )}
+              </div>
 
-              <div className="bg-bg/18 px-4 py-4 sm:px-5">
-                {allowCustomOrder && pluginOrder.length > 0 ? (
-                  <div className="mb-4 flex flex-wrap items-center gap-3">
-                    {allowCustomOrder && pluginOrder.length > 0 && (
-                      <Button
-                        ref={resetOrderRef}
-                        variant="outline"
-                        size="sm"
-                        className="h-9 rounded-sm px-4 text-xs-tight font-bold tracking-[0.12em]"
-                        onClick={handleResetOrder}
-                        title={t("pluginsview.ResetToDefaultSor")}
-                        {...resetOrderAgentProps}
-                      >
-                        {t("pluginsview.ResetOrder")}
-                      </Button>
-                    )}
-                  </div>
-                ) : null}
-
-                {hasPluginToggleInFlight && (
-                  <PagePanel.Notice
-                    tone="accent"
-                    className="mb-4 text-xs-tight"
-                  >
-                    {t("pluginsview.ApplyingPluginChan")}
-                  </PagePanel.Notice>
-                )}
-
-                {showSubgroupFilters && (
-                  <div
-                    className="mb-5 flex items-center gap-2 flex-wrap lg:hidden"
-                    data-testid="plugins-subgroup-chips"
-                  >
-                    {subgroupTags.map((tag) => renderSubgroupFilterButton(tag))}
-                  </div>
-                )}
-
-                <div className="overflow-y-auto">
-                  {sorted.length === 0 ? (
-                    <PagePanel.Empty
-                      variant="surface"
-                      className="min-h-[18rem] rounded-sm px-5 py-10"
-                      description={t("pluginsview.NoneAvailableDesc", {
-                        defaultValue: "No {{label}} are available right now.",
-                        label: resultLabel,
-                      })}
-                      title={t("pluginsview.NoneAvailableTitle", {
-                        defaultValue: "No {{label}} available",
-                        label: label.toLowerCase(),
-                      })}
-                    />
-                  ) : visiblePlugins.length === 0 ? (
-                    <PagePanel.Empty
-                      variant="surface"
-                      className="min-h-[16rem] rounded-sm px-5 py-10"
-                      description={
-                        showSubgroupFilters
-                          ? t("pluginsview.NoPluginsMatchCategory", {
-                              defaultValue:
-                                "No plugins match the selected category.",
-                            })
-                          : t("pluginsview.NoPluginsMatchFilters", {
-                              defaultValue: "No {{label}} match your filters.",
-                              label: resultLabel,
-                            })
-                      }
-                      title={t("pluginsview.NothingToShow", {
-                        defaultValue: "Nothing to show",
-                      })}
-                    />
-                  ) : (
-                    renderPluginGrid(visiblePlugins)
+              {showSubgroupFilters && subgroupTags.length > 1 && (
+                <div
+                  className="mt-4 flex flex-wrap items-center gap-2"
+                  data-testid="plugins-subgroup-chips"
+                >
+                  {subgroupTags.map((tag) => renderSubgroupFilterButton(tag))}
+                  {allowCustomOrder && pluginOrder.length > 0 && (
+                    <Button
+                      ref={resetOrderRef}
+                      variant="outline"
+                      size="sm"
+                      className="ml-1 h-8 rounded-full px-3 text-2xs font-bold tracking-wide text-muted hover:text-txt"
+                      onClick={handleResetOrder}
+                      title={t("pluginsview.ResetToDefaultSor")}
+                      {...resetOrderAgentProps}
+                    >
+                      {t("pluginsview.ResetOrder")}
+                    </Button>
                   )}
                 </div>
-              </div>
-            </PagePanel>
-          </div>
+              )}
+            </header>
+
+            {hasPluginToggleInFlight && (
+              <PagePanel.Notice tone="accent" className="mb-4 text-xs-tight">
+                {t("pluginsview.ApplyingPluginChan")}
+              </PagePanel.Notice>
+            )}
+
+            {sorted.length === 0 ? (
+              <PagePanel.Empty
+                variant="surface"
+                className="min-h-[18rem] rounded-lg px-5 py-10"
+                description={t("pluginsview.NoneAvailableDesc", {
+                  defaultValue: "No {{label}} are available right now.",
+                  label: resultLabel,
+                })}
+                title={t("pluginsview.NoneAvailableTitle", {
+                  defaultValue: "No {{label}} available",
+                  label: label.toLowerCase(),
+                })}
+              />
+            ) : visiblePlugins.length === 0 ? (
+              <PagePanel.Empty
+                variant="surface"
+                className="min-h-[16rem] rounded-lg px-5 py-10"
+                description={
+                  showSubgroupFilters
+                    ? t("pluginsview.NoPluginsMatchCategory", {
+                        defaultValue: "No plugins match the selected category.",
+                      })
+                    : t("pluginsview.NoPluginsMatchFilters", {
+                        defaultValue: "No {{label}} match your filters.",
+                        label: resultLabel,
+                      })
+                }
+                title={t("pluginsview.NothingToShow", {
+                  defaultValue: "Nothing to show",
+                })}
+              />
+            ) : isAllFilter && !pluginSearch.trim() ? (
+              renderGroupedPlugins(visiblePlugins)
+            ) : (
+              renderPluginGrid(visiblePlugins)
+            )}
+          </main>
         </PagePanel.ContentArea>
         <PluginSettingsDialog
           installPluginLabel={installPluginLabel}
