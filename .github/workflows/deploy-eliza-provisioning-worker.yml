@@ -133,6 +133,14 @@ jobs:
             fi
             exit 0
           fi
+          if [ -z "$HEADSCALE_API_KEY" ] && [ "$AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK" != "1" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Missing HEADSCALE_API_KEY for GitHub environment $DEPLOY_ENVIRONMENT; provisioning would fail without routable internal ingress."
+            exit 1
+          fi
+          if [ -z "$HEADSCALE_API_KEY" ]; then
+            echo "::warning::HEADSCALE_API_KEY is missing; deploying with AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK=1."
+          fi
           echo "configured=true" >> "$GITHUB_OUTPUT"
 
       - name: Ensure host prereqs (Node 24, swap, bunx symlink)
