@@ -6016,6 +6016,24 @@ platform no-ops are separated from actionable runtime gaps.
   packaged app tests.
 - Verified with a focused marker scan on `packages/elizaos`.
 
+### plugin-agent-orchestrator status and sandbox-stub classification
+
+- Read `plugins/plugin-agent-orchestrator/CLAUDE.md` and confirmed
+  `AGENTS.md` parity before editing.
+- Reworded one service comment from an "unimplemented" native elizaOS ACP
+  default to an unsupported default with no ACP command. Routing behavior still
+  defaults to opencode for that path.
+- Remaining hits are intentional plugin contracts: `TaskRunStatus =
+  "incomplete"` for Smithers task runs that exhaust without completion,
+  incomplete-build verification retry/reporting copy, sandbox/no-terminal
+  `sandbox-stub` actions, gated live-smoke no-op skips, todo/plan snapshot
+  routing data, and unit-test fixtures using `placeholder`, `noop`, and ACP
+  stubs.
+- Verified with:
+  - `./node_modules/.bin/biome check` on the touched orchestrator service
+  - `git diff --check` on the touched orchestrator service and audit file
+  - focused marker scan on `plugins/plugin-agent-orchestrator`
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.

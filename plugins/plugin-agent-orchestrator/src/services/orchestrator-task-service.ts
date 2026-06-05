@@ -1342,7 +1342,7 @@ export class OrchestratorTaskService extends Service {
     const result = await acp.spawnSession({
       // Default the orchestrator's coding agent to the vendored opencode
       // backend (auto-detects the user's Cerebras key) rather than the
-      // unimplemented "elizaos" native default, which has no ACP command.
+      // unsupported "elizaos" native default, which has no ACP command.
       agentType: opts.framework ?? policy.preferredFramework ?? "opencode",
       workdir,
       initialTask: goalPrompt,
