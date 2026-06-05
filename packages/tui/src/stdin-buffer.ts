@@ -17,7 +17,7 @@
  * MIT License - Copyright (c) 2025 opentui
  */
 
-import { EventEmitter } from "events";
+import { EventEmitter } from "node:events";
 
 const ESC = "\x1b";
 const BRACKETED_PASTE_START = "\x1b[200~";
@@ -109,7 +109,7 @@ function isCompleteCsiSequence(data: string): "complete" | "incomplete" {
       if (mouseMatch) {
         return "complete";
       }
-      // If it ends with M or m but doesn't match the pattern, still incomplete
+      // If it ends with M or m but doesn't match the pattern, still partial
       if (lastChar === "M" || lastChar === "m") {
         // Check if we have the right structure
         const parts = payload.slice(1, -1).split(";");
@@ -220,7 +220,7 @@ function extractCompleteSequences(buffer: string): {
       }
     } else {
       // Not an escape sequence - take a single character
-      sequences.push(remaining[0]!);
+      sequences.push(remaining.charAt(0));
       pos++;
     }
   }
@@ -231,7 +231,7 @@ function extractCompleteSequences(buffer: string): {
 export type StdinBufferOptions = {
   /**
    * Maximum time to wait for sequence completion (default: 10ms)
-   * After this time, the buffer is flushed even if incomplete
+   * After this time, the buffer is flushed even if the sequence is still partial
    */
   timeout?: number;
 };
@@ -268,8 +268,9 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
     // If buffer has single byte > 127, convert to ESC + (byte - 128)
     let str: string;
     if (Buffer.isBuffer(data)) {
-      if (data.length === 1 && data[0]! > 127) {
-        const byte = data[0]! - 128;
+      const firstByte = data[0];
+      if (data.length === 1 && firstByte !== undefined && firstByte > 127) {
+        const byte = firstByte - 128;
         str = `\x1b${String.fromCharCode(byte)}`;
       } else {
         str = data.toString();

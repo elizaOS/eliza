@@ -45,8 +45,6 @@ export { visibleWidth };
 import { Container } from "./core/container.js";
 import {
   isOverlayVisible as isOverlayVisibleFn,
-  resolveAnchorCol,
-  resolveAnchorRow,
   resolveOverlayLayout,
 } from "./core/overlay.js";
 // Import for internal use
@@ -331,7 +329,7 @@ export class TUI extends Container {
   private parseCellSizeResponse(): string {
     // Response format: ESC [ 6 ; height ; width t
     // Match the response pattern
-    const responsePattern = /\x1b\[6;(\d+);(\d+)t/;
+    const responsePattern = new RegExp("\\x1b\\[6;(\\d+);(\\d+)t");
     const match = this.inputBuffer.match(responsePattern);
 
     if (match) {
@@ -351,14 +349,14 @@ export class TUI extends Container {
     }
 
     // Check if we have a partial cell size response starting (wait for more data)
-    // Patterns that could be incomplete cell size response: \x1b, \x1b[, \x1b[6, \x1b[6;...(no t yet)
-    const partialCellSizePattern = /\x1b(\[6?;?[\d;]*)?$/;
+    // Patterns that could be a partial cell size response: \x1b, \x1b[, \x1b[6, \x1b[6;...(no t yet)
+    const partialCellSizePattern = new RegExp("\\x1b(\\[6?;?[\\d;]*)?$");
     if (partialCellSizePattern.test(this.inputBuffer)) {
       // Check if it's actually a complete different escape sequence (ends with a letter)
       // Cell size response ends with 't', Kitty keyboard ends with 'u', arrows end with A-D, etc.
       const lastChar = this.inputBuffer[this.inputBuffer.length - 1];
       if (!/[a-zA-Z~]/.test(lastChar)) {
-        // Doesn't end with a terminator, might be incomplete - wait for more
+        // Doesn't end with a terminator, might be partial - wait for more
         return "";
       }
     }

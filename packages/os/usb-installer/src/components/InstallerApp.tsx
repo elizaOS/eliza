@@ -1005,7 +1005,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
             <h2>Write Failed ❌</h2>
             {writeError && <p className="error">{writeError}</p>}
             <p className="muted">
-              The drive may be in an incomplete state. Do not use it until the
+              The drive may contain a partial write. Do not use it until the
               write succeeds.
             </p>
             <div className="panel-actions">

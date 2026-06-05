@@ -65,7 +65,7 @@ export function TrajectoryLoggerView({ exitToApps }: OverlayAppContext) {
         )}
       </header>
 
-      <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2">
+      <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 pb-32">
         <PhaseStrip
           live
           slot="now"
@@ -133,36 +133,36 @@ function PhaseStrip({
 }) {
   const Icon = live ? Activity : History;
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-sm border border-border/20 bg-card/20 px-2 py-1.5">
+    <div className="flex min-w-0 flex-col gap-2 rounded-xl border border-border/24 bg-card/40 px-3 py-3 shadow-sm">
       <span
         title={live ? "Current turn" : "Last turn"}
         className={[
-          "flex w-5 shrink-0 justify-center",
-          live ? "text-blue-400" : "text-muted/60",
+          "flex items-center gap-2 text-[11px] font-semibold uppercase tracking-normal",
+          live ? "text-info" : "text-muted",
         ].join(" ")}
       >
         <Icon
           className={["h-3.5 w-3.5", live ? "animate-pulse" : ""].join(" ")}
           aria-label={live ? "Current turn" : "Last turn"}
         />
+        {live ? "Now" : "Last"}
       </span>
-      {trajectory ? (
-        <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
-          {phases.map((p) => (
-            <PhaseChip
-              key={p.phase}
-              slot={slot}
-              phase={p.phase}
-              status={p.status}
-              summary={p.summary}
-              selected={selectedPhase === p.phase}
-              onClick={() => onSelect(p.phase)}
-            />
-          ))}
-        </div>
-      ) : (
-        <span className="text-2xs text-muted/40">None</span>
-      )}
+      <div
+        className="grid min-w-0 flex-1 grid-cols-2 gap-2 overflow-x-auto md:grid-cols-4"
+        title={trajectory ? undefined : "No trajectory captured yet"}
+      >
+        {phases.map((p) => (
+          <PhaseChip
+            key={p.phase}
+            slot={slot}
+            phase={p.phase}
+            status={p.status}
+            summary={p.summary}
+            selected={selectedPhase === p.phase}
+            onClick={() => onSelect(p.phase)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -172,7 +172,7 @@ function PhaseStrip({
  */
 function LoggingStatusBadge({ active }: { active: boolean }) {
   const tone = active
-    ? "border-blue-500/40 bg-blue-500/10 text-blue-300"
+    ? "border-info/40 bg-info/10 text-info"
     : "border-border/30 bg-bg-elevated text-muted";
   const label = active ? "recording" : "idle";
   return (

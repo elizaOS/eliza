@@ -5577,6 +5577,23 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd packages/app-core typecheck`
   - focused strong-marker scan on the touched app-core files
 
+### packages/os usb-installer partial-write wording
+
+- `packages/os/usb-installer` has no local guide; read `packages/os/CLAUDE.md`
+  and confirmed `AGENTS.md` parity before editing.
+- Reworded USB write failure UI and error text from incomplete-drive/write
+  wording to partial-write wording. The exported `WriteIncompleteError` class
+  name is unchanged to preserve callers and type imports.
+- Remaining usb-installer marker hits are intentional: `WriteIncompleteError`
+  as the public error class name, `placeholderChecksumPattern` rejecting
+  non-real checksum values, and the confirmation input `placeholder` prop.
+- Verified with:
+  - `./node_modules/.bin/biome check
+    packages/os/usb-installer/src/components/InstallerApp.tsx
+    packages/os/usb-installer/src/backend/errors.ts`
+  - `bun run --cwd packages/os/usb-installer typecheck`
+  - focused marker scan on `packages/os/usb-installer/src`
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.

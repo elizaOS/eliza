@@ -63,4 +63,3 @@ export interface SidebarBodyProps
 
 export interface SidebarHeaderStackProps
   extends React.HTMLAttributes<HTMLDivElement> {}
-

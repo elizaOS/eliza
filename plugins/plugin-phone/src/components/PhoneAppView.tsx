@@ -680,7 +680,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
           value="dialer"
           className="flex-1 overflow-y-auto focus-visible:outline-none"
         >
-          <div className="flex min-h-full flex-col items-center justify-between px-4 py-6">
+          <div className="flex min-h-full flex-col items-center px-4 pb-32 pt-6">
             <div className="flex w-full max-w-sm flex-col items-center gap-3 pt-2">
               <output
                 className="block min-h-[3rem] w-full select-text rounded-xl border border-border bg-bg-accent px-4 py-3 text-center font-mono text-2xl text-txt"
@@ -756,7 +756,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
           value="recent"
           className="flex-1 overflow-hidden focus-visible:outline-none"
         >
-          <div className="chat-native-scrollbar h-full overflow-y-auto px-4 py-3">
+          <div className="chat-native-scrollbar h-full overflow-y-auto px-4 pb-32 pt-3">
             {callsError ? (
               <p className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
                 {callsError}
@@ -823,7 +823,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
           value="contacts"
           className="flex-1 overflow-hidden focus-visible:outline-none"
         >
-          <div className="chat-native-scrollbar h-full overflow-y-auto px-4 py-3">
+          <div className="chat-native-scrollbar h-full overflow-y-auto px-4 pb-32 pt-3">
             {!contactsAvailable ? (
               <div className="flex h-full items-center justify-center px-6 text-center">
                 <div className="max-w-sm">

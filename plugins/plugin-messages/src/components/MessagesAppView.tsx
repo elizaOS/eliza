@@ -544,8 +544,9 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                 <Button
                   ref={emptyNewMessage.ref}
                   {...emptyNewMessage.agentProps}
+                  variant="ghost"
                   size="sm"
-                  className="min-h-14 justify-start gap-3 rounded-xl border border-border/30 bg-bg/78 px-4 text-left shadow-sm"
+                  className="min-h-14 justify-start gap-3 rounded-xl border border-border/30 bg-bg/78 px-4 text-left text-txt shadow-sm hover:bg-bg-accent hover:text-txt"
                   onClick={openNewComposer}
                 >
                   <span className="grid h-10 w-10 place-items-center rounded-lg bg-info text-bg">
