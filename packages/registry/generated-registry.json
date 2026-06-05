@@ -45,54 +45,6 @@
       "registryKind": "plugin",
       "directory": null
     },
-    "@madeonsol/plugin-madeonsol": {
-      "git": {
-        "repo": "LamboPoewert/plugin-madeonsol",
-        "v0": {
-          "branch": null
-        },
-        "v1": {
-          "branch": null
-        },
-        "v2": {
-          "branch": "main"
-        }
-      },
-      "npm": {
-        "repo": "@madeonsol/plugin-madeonsol",
-        "v0": null,
-        "v1": null,
-        "v2": "1.9.1"
-      },
-      "supports": {
-        "v0": false,
-        "v1": false,
-        "v2": true
-      },
-      "description": "Real-time Solana memecoin intelligence for elizaOS agents — KOL trade feeds from 1,000+ tracked wallets, multi-KOL coordination signals, pump.fun deployer reputation, and wallet PnL. Auth via MadeOnSol API key or x402 USDC micropayments.",
-      "homepage": "https://github.com/LamboPoewert/plugin-madeonsol",
-      "topics": [
-        "solana",
-        "kol",
-        "memecoin",
-        "smart-money",
-        "trading",
-        "x402",
-        "deployer-hunter",
-        "copy-trading"
-      ],
-      "stargazers_count": 0,
-      "language": "TypeScript",
-      "origin": "third-party",
-      "source": "community",
-      "support": "community",
-      "builtIn": false,
-      "firstParty": false,
-      "thirdParty": true,
-      "kind": "plugin",
-      "registryKind": "plugin",
-      "directory": null
-    },
     "elizaos-plugin-echo": {
       "git": {
         "repo": "elizaOS/eliza",
