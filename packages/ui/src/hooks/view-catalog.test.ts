@@ -64,9 +64,14 @@ describe("mergeViewCatalog", () => {
 
   it("dedupes: a catalog app whose plugin is already a loaded view is not shown twice", () => {
     const entries = merge({
-      views: [makeView("clawville", { pluginName: "@elizaos/plugin-clawville" })],
+      views: [
+        makeView("clawville", { pluginName: "@elizaos/plugin-clawville" }),
+      ],
       catalog: [
-        makeApp({ name: "@elizaos/plugin-clawville", displayName: "ClawVille" }),
+        makeApp({
+          name: "@elizaos/plugin-clawville",
+          displayName: "ClawVille",
+        }),
       ],
     });
     expect(entries).toHaveLength(1);
@@ -76,7 +81,9 @@ describe("mergeViewCatalog", () => {
 
   it("marks an active/installed catalog app as loaded even without a bundled view", () => {
     const entries = merge({
-      catalog: [makeApp({ name: "@elizaos/plugin-external", displayName: "Ext" })],
+      catalog: [
+        makeApp({ name: "@elizaos/plugin-external", displayName: "Ext" }),
+      ],
       installed: [{ name: "@elizaos/plugin-external" }],
     });
     expect(entries[0]?.state).toBe("loaded");
@@ -94,7 +101,9 @@ describe("mergeViewCatalog", () => {
   it("respects visibleInManager:false and visibleInAppStore:false", () => {
     const entries = merge({
       views: [makeView("hidden", { visibleInManager: false })],
-      catalog: [makeApp({ name: "@elizaos/plugin-hidden", visibleInAppStore: false })],
+      catalog: [
+        makeApp({ name: "@elizaos/plugin-hidden", visibleInAppStore: false }),
+      ],
     });
     expect(entries).toHaveLength(0);
   });

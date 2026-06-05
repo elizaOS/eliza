@@ -1,133 +1,214 @@
-import {
-  type ComponentPropsWithoutRef,
-  forwardRef,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { ArrowLeft, ChevronRight } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
-import { useLinkedSidebarSelection } from "../../hooks/useLinkedSidebarSelection";
-import { PageLayout } from "../../layouts/page-layout/page-layout";
+import { ContentLayout } from "../../layouts/content-layout";
 import { cn } from "../../lib/utils";
 import { useApp } from "../../state";
 import { PagePanel } from "../composites/page-panel";
-import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
-import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import {
   readSettingsHashSection,
   replaceSettingsHash,
-  SECTION_TONE_ICON_CLASS,
+  SECTION_HUE_MEDALLION_CLASS,
+  SETTINGS_GROUP_LABEL,
+  SETTINGS_GROUP_ORDER,
   SETTINGS_SECTIONS,
   type SettingsSectionDef,
+  type SettingsSectionGroup,
   settingsSectionLabel,
   settingsSectionTitle,
 } from "../settings/settings-sections";
-import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
-const SETTINGS_CONTENT_CLASS =
-  "[scroll-padding-top:7rem] [scrollbar-gutter:stable] scroll-smooth bg-bg/10 pb-4 pt-2 sm:pb-6 sm:pt-3";
-const SETTINGS_CONTENT_WIDTH_CLASS = "w-full min-h-0";
-const SETTINGS_SECTION_STACK_CLASS = "space-y-3 pb-10 sm:space-y-4";
+// Keep section content clear of the bottom-center floating chat pill (~90px).
+const HUB_CLASS = "pb-32 w-full max-w-5xl mx-auto";
+const SECTION_CLASS = "pb-32 w-full max-w-4xl mx-auto";
 
-interface SettingsSectionProps extends ComponentPropsWithoutRef<"section"> {
-  title?: string;
-  bodyClassName?: string;
+type Translate = (key: string, vars?: Record<string, unknown>) => string;
+
+/** Tiny status chip shown on a tile. Derived only where genuinely cheap. */
+function tileChip(
+  section: SettingsSectionDef,
+  walletEnabled: boolean | undefined,
+): string | null {
+  if (section.id === "wallet-rpc") {
+    return walletEnabled ? "enabled" : null;
+  }
+  return null;
 }
 
-const SettingsSection = forwardRef<HTMLElement, SettingsSectionProps>(
-  function SettingsSection(
-    { title, bodyClassName, className, children, ...props },
-    ref,
-  ) {
-    if (title) {
-      return (
-        <PagePanel.CollapsibleSection
-          ref={ref}
-          as="section"
-          expanded
-          variant="section"
-          heading={title}
-          headingClassName="text-base sm:text-lg font-semibold tracking-tight text-txt-strong"
-          bodyClassName={cn("px-4 pb-3 pt-0 sm:px-5 sm:pb-4", bodyClassName)}
-          className={cn("rounded-sm", className)}
-          {...props}
-        >
-          {children}
-        </PagePanel.CollapsibleSection>
-      );
-    }
-
-    return (
-      <section
-        ref={ref}
-        data-content-align-offset={4}
-        className={className}
-        {...props}
-      >
-        <PagePanel variant="section">
-          <div className={cn("p-4 sm:p-5", bodyClassName)}>{children}</div>
-        </PagePanel>
-      </section>
-    );
-  },
-);
-
-function SettingsNavButton({
+function HubTile({
   section,
   label,
-  isActive,
+  chip,
   onSelect,
 }: {
   section: SettingsSectionDef;
   label: string;
-  isActive: boolean;
+  chip: string | null;
   onSelect: (id: string) => void;
 }) {
-  const { agentProps } = useAgentElement({
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: `section-${section.id}`,
-    role: "tab",
+    role: "card",
     label,
     group: "settings-sections",
-    status: isActive ? "active" : "inactive",
     description: `Open the ${label} settings section`,
     onActivate: () => onSelect(section.id),
   });
   const Icon = section.icon;
-  const toneClass = SECTION_TONE_ICON_CLASS[section.tone];
   return (
-    <SidebarContent.ItemButton
+    <button
+      ref={ref}
+      type="button"
       onClick={() => onSelect(section.id)}
-      aria-current={isActive ? "page" : undefined}
-      className="items-center gap-2.5"
+      className={cn(
+        "group relative flex flex-col items-start gap-3 rounded-lg border border-border bg-card p-4 text-left",
+        "transition-colors hover:border-accent/40 hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
+      )}
       {...agentProps}
     >
-      <SidebarContent.ItemIcon
-        active={isActive}
-        className={cn("mt-0 h-8 w-8 rounded-sm p-1.5", !isActive && toneClass)}
+      <div
+        className={cn(
+          "flex h-11 w-11 items-center justify-center rounded-md",
+          SECTION_HUE_MEDALLION_CLASS[section.hue],
+        )}
       >
-        <Icon className="h-4 w-4" aria-hidden />
-      </SidebarContent.ItemIcon>
-      <SidebarContent.ItemBody>
-        <SidebarContent.ItemTitle
+        <Icon className="h-5 w-5" aria-hidden />
+      </div>
+      <div className="flex w-full items-center justify-between gap-2">
+        <span className="truncate text-sm font-semibold leading-5 text-txt-strong">
+          {label}
+        </span>
+        <ChevronRight
+          className="h-4 w-4 shrink-0 text-muted transition-colors group-hover:text-accent"
+          aria-hidden
+        />
+      </div>
+      {chip ? (
+        <span className="inline-flex items-center rounded-full bg-accent/12 px-2 py-0.5 text-[11px] font-medium text-accent ring-1 ring-accent/20">
+          {chip}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function SettingsHub({
+  sections,
+  t,
+  walletEnabled,
+  onSelect,
+}: {
+  sections: SettingsSectionDef[];
+  t: Translate;
+  walletEnabled: boolean | undefined;
+  onSelect: (id: string) => void;
+}) {
+  const grouped = useMemo(() => {
+    const map = new Map<SettingsSectionGroup, SettingsSectionDef[]>();
+    for (const group of SETTINGS_GROUP_ORDER) map.set(group, []);
+    for (const section of sections) {
+      const bucket = map.get(section.group);
+      if (bucket) bucket.push(section);
+    }
+    return SETTINGS_GROUP_ORDER.map((group) => ({
+      group,
+      items: map.get(group) ?? [],
+    })).filter((g) => g.items.length > 0);
+  }, [sections]);
+
+  return (
+    <div className={HUB_CLASS}>
+      <h1 className="mb-1 text-2xl font-semibold tracking-tight text-txt-strong">
+        {t("nav.settings", { defaultValue: "Settings" })}
+      </h1>
+      <div className="mt-6 space-y-8">
+        {grouped.map(({ group, items }) => (
+          <section key={group}>
+            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">
+              {SETTINGS_GROUP_LABEL[group]}
+            </h2>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {items.map((section) => (
+                <HubTile
+                  key={section.id}
+                  section={section}
+                  label={settingsSectionLabel(section, t)}
+                  chip={tileChip(section, walletEnabled)}
+                  onSelect={onSelect}
+                />
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SectionBackButton({ onBack }: { onBack: () => void }) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "section-back",
+    role: "button",
+    label: "Back to Settings",
+    description: "Return to the settings hub",
+    onActivate: onBack,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onBack}
+      className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-txt transition-colors hover:border-accent/40 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+      {...agentProps}
+    >
+      <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
+      Settings
+    </button>
+  );
+}
+
+function SettingsSectionPage({
+  section,
+  t,
+  onBack,
+}: {
+  section: SettingsSectionDef;
+  t: Translate;
+  onBack: () => void;
+}) {
+  const Component = section.Component;
+  const Icon = section.icon;
+  const title = settingsSectionTitle(section, t);
+  return (
+    <div className={SECTION_CLASS}>
+      <div className="mb-4 flex items-center gap-3">
+        <SectionBackButton onBack={onBack} />
+      </div>
+      <div className="mb-4 flex items-center gap-3">
+        <div
           className={cn(
-            "text-sm leading-5",
-            isActive ? "font-semibold" : "font-medium",
+            "flex h-10 w-10 items-center justify-center rounded-md",
+            SECTION_HUE_MEDALLION_CLASS[section.hue],
           )}
         >
-          {label}
-        </SidebarContent.ItemTitle>
-      </SidebarContent.ItemBody>
-    </SidebarContent.ItemButton>
+          <Icon className="h-5 w-5" aria-hidden />
+        </div>
+        <h1 className="text-xl font-semibold tracking-tight text-txt-strong">
+          {title}
+        </h1>
+      </div>
+      <PagePanel variant="section">
+        <div className={cn("p-4 sm:p-5", section.bodyClassName)}>
+          <Component />
+        </div>
+      </PagePanel>
+    </div>
   );
 }
 
 export function SettingsView({
   inModal,
-  onClose: _onClose,
   initialSection,
 }: {
   inModal?: boolean;
@@ -135,41 +216,9 @@ export function SettingsView({
   initialSection?: string;
 } = {}) {
   const { t, loadPlugins, walletEnabled } = useApp();
-  const [activeSection, setActiveSection] = useState(
-    () => initialSection ?? readSettingsHashSection() ?? "identity",
+  const [activeSection, setActiveSection] = useState<string | null>(
+    () => initialSection ?? readSettingsHashSection(),
   );
-  const shellRef = useRef<HTMLDivElement>(null);
-  const initialAlignmentPendingRef = useRef(true);
-  const scrollSelectionSuppressionTimerRef = useRef<number | null>(null);
-  const alignmentRafRef = useRef<number | null>(null);
-  const alignmentTimerRef = useRef<number | null>(null);
-
-  const suppressScrollSelection = useCallback((durationMs = 700) => {
-    if (typeof window === "undefined") return;
-    initialAlignmentPendingRef.current = true;
-    if (scrollSelectionSuppressionTimerRef.current != null) {
-      window.clearTimeout(scrollSelectionSuppressionTimerRef.current);
-    }
-    scrollSelectionSuppressionTimerRef.current = window.setTimeout(() => {
-      initialAlignmentPendingRef.current = false;
-      scrollSelectionSuppressionTimerRef.current = null;
-    }, durationMs);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (typeof window === "undefined") return;
-      if (scrollSelectionSuppressionTimerRef.current != null) {
-        window.clearTimeout(scrollSelectionSuppressionTimerRef.current);
-      }
-      if (alignmentRafRef.current != null) {
-        window.cancelAnimationFrame(alignmentRafRef.current);
-      }
-      if (alignmentTimerRef.current != null) {
-        window.clearTimeout(alignmentTimerRef.current);
-      }
-    };
-  }, []);
 
   const visibleSections = useMemo(() => {
     return SETTINGS_SECTIONS.filter((section) => {
@@ -181,229 +230,66 @@ export function SettingsView({
     () => new Set(visibleSections.map((section) => section.id)),
     [visibleSections],
   );
-  const {
-    contentContainerRef,
-    queueContentAlignment,
-    registerContentItem,
-    registerSidebarItem,
-  } = useLinkedSidebarSelection<string>({
-    contentTopOffset: 24,
-    enabled: visibleSections.length > 0,
-    selectedId: visibleSectionIds.has(activeSection) ? activeSection : null,
-    topAlignedId: visibleSections[0]?.id ?? null,
-  });
-
-  const alignContentToSection = useCallback(
-    (sectionId: string): boolean => {
-      const root = contentContainerRef.current;
-      const shell = shellRef.current;
-      const target = shell?.querySelector(`#${sectionId}`);
-      if (!(root instanceof HTMLElement) || !(target instanceof HTMLElement)) {
-        return false;
-      }
-
-      const rootRect = root.getBoundingClientRect();
-      const targetRect = target.getBoundingClientRect();
-      root.scrollTo({
-        top: root.scrollTop + targetRect.top - rootRect.top - 24,
-        behavior: "auto",
-      });
-      return true;
-    },
-    [contentContainerRef],
-  );
-
-  const queueSectionAlignment = useCallback(
-    (sectionId: string) => {
-      suppressScrollSelection();
-      queueContentAlignment(sectionId);
-      if (typeof window === "undefined") return;
-      if (alignmentRafRef.current != null) {
-        window.cancelAnimationFrame(alignmentRafRef.current);
-      }
-      alignmentRafRef.current = window.requestAnimationFrame(() => {
-        alignmentRafRef.current = null;
-        if (!alignContentToSection(sectionId)) {
-          alignmentTimerRef.current = window.setTimeout(() => {
-            alignmentTimerRef.current = null;
-            alignContentToSection(sectionId);
-          }, 50);
-        }
-      });
-    },
-    [alignContentToSection, queueContentAlignment, suppressScrollSelection],
-  );
 
   useEffect(() => {
     void loadPlugins();
   }, [loadPlugins]);
 
-  const handleSectionChange = useCallback(
-    (sectionId: string) => {
-      setActiveSection(sectionId);
-      replaceSettingsHash(sectionId);
-      queueSectionAlignment(sectionId);
-    },
-    [queueSectionAlignment],
-  );
+  const openSection = useCallback((sectionId: string) => {
+    setActiveSection(sectionId);
+    replaceSettingsHash(sectionId);
+  }, []);
 
-  useEffect(() => {
-    if (visibleSections.length === 0) return;
-    if (!visibleSectionIds.has(activeSection)) {
-      setActiveSection(visibleSections[0].id);
+  const backToHub = useCallback(() => {
+    setActiveSection(null);
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", "#");
     }
-  }, [activeSection, visibleSectionIds, visibleSections]);
-
-  useEffect(() => {
-    if (!initialAlignmentPendingRef.current) return;
-    if (!visibleSectionIds.has(activeSection)) return;
-    queueSectionAlignment(activeSection);
-  }, [activeSection, queueSectionAlignment, visibleSectionIds]);
+  }, []);
 
   useEffect(() => {
     if (!initialSection) return;
-    handleSectionChange(initialSection);
-  }, [handleSectionChange, initialSection]);
+    openSection(initialSection);
+  }, [initialSection, openSection]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handleHashChange = () => {
       const nextSection = readSettingsHashSection();
-      if (!nextSection || !visibleSectionIds.has(nextSection)) return;
-      handleSectionChange(nextSection);
+      if (nextSection && visibleSectionIds.has(nextSection)) {
+        setActiveSection(nextSection);
+      } else {
+        setActiveSection(null);
+      }
     };
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
-  }, [handleSectionChange, visibleSectionIds]);
-
-  useEffect(() => {
-    const shell = shellRef.current;
-    const root = contentContainerRef.current;
-    if (!shell || !root) return;
-
-    const handleScroll = () => {
-      if (initialAlignmentPendingRef.current) return;
-
-      const sections = visibleSections
-        .map((section) => {
-          const el = shell.querySelector(`#${section.id}`);
-          return { id: section.id, el };
-        })
-        .filter(
-          (section): section is { id: string; el: HTMLElement } =>
-            section.el instanceof HTMLElement,
-        );
-
-      if (sections.length === 0) return;
-
-      const rootRect = root.getBoundingClientRect();
-      const activeAnchorOffset = Math.min(
-        120,
-        Math.max(72, root.clientHeight * 0.12),
-      );
-      let currentSection = sections[0].id;
-
-      for (const { id, el } of sections) {
-        const elRect = el.getBoundingClientRect();
-        if (elRect.top - rootRect.top <= activeAnchorOffset) {
-          currentSection = id;
-        }
-      }
-
-      setActiveSection((prev) => {
-        if (prev === currentSection) return prev;
-        replaceSettingsHash(currentSection);
-        return currentSection;
-      });
-    };
-
-    root.addEventListener("scroll", handleScroll, { passive: true });
-    handleScroll();
-
-    return () => root.removeEventListener("scroll", handleScroll);
-  }, [contentContainerRef, visibleSections]);
+  }, [visibleSectionIds]);
 
   const activeSectionDef: SettingsSectionDef | null =
-    visibleSections.find((section) => section.id === activeSection) ??
-    SETTINGS_SECTIONS.find((section) => section.id === activeSection) ??
-    visibleSections[0] ??
-    null;
-
-  const settingsSidebar = (
-    <AppPageSidebar
-      testId="settings-sidebar"
-      collapsible
-      resizable
-      contentIdentity="settings"
-      collapseButtonTestId="settings-sidebar-collapse-toggle"
-      expandButtonTestId="settings-sidebar-expand-toggle"
-      collapseButtonAriaLabel="Collapse settings"
-      expandButtonAriaLabel="Expand settings"
-      mobileTitle={t("nav.settings")}
-      mobileMeta={
-        activeSectionDef ? settingsSectionLabel(activeSectionDef, t) : undefined
-      }
-    >
-      <SidebarScrollRegion className="pt-0">
-        <SidebarPanel>
-          <nav className="space-y-1.5" aria-label={t("nav.settings")}>
-            {visibleSections.map((section) => (
-              <SidebarContent.Item
-                key={section.id}
-                as="div"
-                active={activeSection === section.id}
-                className="gap-2 py-2"
-                ref={registerSidebarItem(section.id)}
-              >
-                <SettingsNavButton
-                  section={section}
-                  label={settingsSectionLabel(section, t)}
-                  isActive={activeSection === section.id}
-                  onSelect={handleSectionChange}
-                />
-              </SidebarContent.Item>
-            ))}
-          </nav>
-        </SidebarPanel>
-      </SidebarScrollRegion>
-    </AppPageSidebar>
-  );
+    activeSection && visibleSectionIds.has(activeSection)
+      ? (visibleSections.find((section) => section.id === activeSection) ??
+        null)
+      : null;
 
   return (
     <ShellViewAgentSurface viewId="settings">
-      <PageLayout
-        className={cn("h-full", inModal && "min-h-0")}
-        data-testid="settings-shell"
-        sidebar={settingsSidebar}
-        contentRef={contentContainerRef}
-        contentClassName={SETTINGS_CONTENT_CLASS}
-        contentInnerClassName={SETTINGS_CONTENT_WIDTH_CLASS}
-        mobileSidebarLabel={
-          activeSectionDef
-            ? settingsSectionLabel(activeSectionDef, t)
-            : t("nav.settings")
-        }
-      >
-        <div
-          ref={shellRef}
-          className={`w-full ${SETTINGS_SECTION_STACK_CLASS}`}
-        >
-          {visibleSections.map((section) => {
-            const Component = section.Component;
-            return (
-              <SettingsSection
-                key={section.id}
-                id={section.id}
-                title={settingsSectionTitle(section, t)}
-                bodyClassName={section.bodyClassName}
-                ref={registerContentItem(section.id)}
-              >
-                <Component />
-              </SettingsSection>
-            );
-          })}
-        </div>
-      </PageLayout>
+      <ContentLayout inModal={inModal}>
+        {activeSectionDef ? (
+          <SettingsSectionPage
+            section={activeSectionDef}
+            t={t}
+            onBack={backToHub}
+          />
+        ) : (
+          <SettingsHub
+            sections={visibleSections}
+            t={t}
+            walletEnabled={walletEnabled}
+            onSelect={openSection}
+          />
+        )}
+      </ContentLayout>
     </ShellViewAgentSurface>
   );
 }

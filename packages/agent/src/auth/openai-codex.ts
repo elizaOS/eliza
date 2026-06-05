@@ -74,7 +74,7 @@ export function startCodexLogin(): Promise<CodexFlow> {
         // server can't bind), resolveFlow was never called and the outer
         // Promise<CodexFlow> would hang forever. Reject it so the caller of
         // startCodexLogin() gets the error instead of awaiting indefinitely.
-        // After onAuth has resolved the flow this reject is a no-op.
+        // After onAuth has resolved the flow this reject has no additional effect.
         rejectFlow(err);
         logger.warn(`[auth] OpenAI Codex credential flow failed: ${err}`);
       });

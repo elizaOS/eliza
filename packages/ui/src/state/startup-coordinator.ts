@@ -415,7 +415,7 @@ export function isStartupTerminal(state: StartupState): boolean {
  * to "ready" — this looks counterintuitive but is correct because App.tsx's
  * coordinator gate (`startupCoordinator.phase !== "ready"`) catches these
  * phases BEFORE the legacy startupPhase/startupStatus rendering logic runs.
- * The legacy "ready" value is a no-op passthrough that never renders.
+ * The legacy "ready" value is a passthrough state that never renders.
  */
 export function toLegacyStartupPhase(
   state: StartupState,

@@ -1,29 +1,16 @@
 // odysseus composer (static/index.html .chat-input-bar + .chat-input-bottom): a
-// borderless textarea with a model-picker chip pinned top-right, a bottom row
-// (.chat-input-bottom) with the odysseus left icon group (overflow chevron /
-// web-search magnifier / shell terminal) and, on the right, the Agent|Chat
-// segmented mode toggle followed by the send/stop action. A slash-command menu
-// (type "/" → filtered commands) sits above the bar. The send button swaps to a
-// stop control while the agent is working — matching odysseus and the eliza
-// ChatComposer.
+// borderless textarea with a model-picker chip pinned top-right, a compact
+// send/stop row, and a slash-command menu (type "/" → filtered commands). The
+// send button swaps to a stop control while the agent is working.
 //
 // Faithfulness note — what the orchestrator backend actually supports:
 // `postOrchestratorTaskMessage(taskId, content)` and `createOrchestratorTask`
-// take a plain message; there is no web/shell/document toggle, per-message mode,
-// or quick-toggle slash path on the orchestrator client. Odysseus surfaces those
-// because its backend has them. For pixel-1:1 chrome the controls below are
-// rendered faithfully — the left web/shell icons and the Agent|Chat toggle, and
-// the odysseus slash rows for those toggles — but the ones with no orchestrator
-// backend are rendered INERT/disabled with an honest title rather than wired to
-// a no-op (no fabricated behaviour, no dead-but-clickable rows). Controls that DO
-// map to a real handler (new chat / search / open Brain·Notes·Theme·Settings /
-// open Models) are fully active. The Agent|Chat toggle is a faithful
-// local visual control (the orchestrator has a single message path), defaulting
-// to "Chat" to match the captured odysseus frame.
+// take a plain message; there is no web/shell/document toggle or per-message
+// mode on the orchestrator client. The visible controls below therefore only
+// include actions that map to real handlers.
 
-import { ArrowUp, ChevronUp, Search, Square, Terminal } from "lucide-react";
+import { ArrowUp, ChevronUp, Square } from "lucide-react";
 import {
-  Fragment,
   type KeyboardEvent,
   type ReactNode,
   useEffect,
@@ -37,10 +24,7 @@ import {
 // shown ("/new"), `aliases` are alternative spellings the scorer also matches,
 // `category` drives the grouped section headers, `help` is the description,
 // `usage` is the right-aligned hint (only rendered when it differs from token).
-// `run` is the wired handler when the command maps to a real Composer prop;
-// `disabled` rows are rendered faithfully (1:1 chrome + copy) but inert with an
-// `note` explaining the orchestrator has no backend for them — never a silent
-// no-op, never fabricated behaviour.
+// `run` is the wired handler when the command maps to a real Composer prop.
 interface SlashCommand {
   token: string;
   aliases: string[];
@@ -48,16 +32,9 @@ interface SlashCommand {
   help: string;
   usage: string;
   run?: () => void;
-  disabled?: boolean;
-  note?: string;
 }
 
-const MAX_VISIBLE = 12;
-
-// Honest reason shown on slash rows that odysseus exposes but the orchestrator
-// backend has no path for (web/document/bash quick-toggles, todos, tours, fork).
-// They render for 1:1 chrome but stay inert rather than no-op or fabricate.
-const NO_BACKEND = "Not available in the Orchestrator";
+const MAX_VISIBLE = 8;
 
 // Prefix wins over substring; an alias match scores below a token match; a
 // help-text hit is the weakest signal. Mirrors slashAutocomplete.js
@@ -112,12 +89,6 @@ export function Composer({
   const taRef = useRef<HTMLTextAreaElement>(null);
   const [sel, setSel] = useState(0);
   const [dismissed, setDismissed] = useState(false);
-  // Agent|Chat mode toggle. The orchestrator has a single message path, so this
-  // is a faithful local visual control (not wired to a backend mode field).
-  // Defaults to "chat" to match the captured odysseus slash-menu frame, where
-  // the Chat segment is the active one.
-  const [mode, setMode] = useState<"agent" | "chat">("chat");
-
   // Auto-grow textarea (24px → 200px), matching odysseus. `input` is a
   // trigger-only dep: the effect re-measures the textarea whenever the value
   // changes, even though it reads scrollHeight rather than `input` directly.
@@ -129,17 +100,9 @@ export function Composer({
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, [input]);
 
-  // The command registry, ported to mirror the deployed odysseus slash menu
-  // (static/js/slashAutocomplete.js _flatten + PROMOTED_ALIASES short forms).
-  // The rows, their category headers, help, and usage strings are verbatim from
-  // slashCommands.js COMMANDS — the same set/order the real frame renders:
-  // /new, /web, /doc, /todo, /demo, /note, /fork, /bash (then /clear, /memory,
-  // /settings below the fold). Rows whose target surface exists in the clone are
-  // wired to a real Composer prop (onNewChat / onSearch / onOpenPanel /
-  // onOpenModels); odysseus's quick-toggle / todo / tour / fork / clear rows have
-  // no orchestrator backend, so they render faithfully but DISABLED with an
-  // honest title — not omitted (1:1 chrome), not faked. Memoized on the wired
-  // handlers.
+  // Only surface commands that are wired in this runtime. Upstream odysseus
+  // also carries tour/toggle rows for backends this plugin does not expose; the
+  // cleanup omits those placeholder commands instead of rendering disabled rows.
   const commands = useMemo<SlashCommand[]>(
     () => [
       {
@@ -149,85 +112,6 @@ export function Composer({
         help: "Create new chat",
         usage: "/new",
         run: onNewChat,
-      },
-      {
-        token: "/web",
-        aliases: ["/search web", "/toggle web"],
-        category: "Quick toggles",
-        help: "Toggle web search",
-        usage: "/web",
-        disabled: true,
-        note: NO_BACKEND,
-      },
-      {
-        token: "/doc",
-        aliases: ["/toggle doc"],
-        category: "Quick toggles",
-        help: "Toggle document editor",
-        usage: "/doc",
-        disabled: true,
-        note: NO_BACKEND,
-      },
-      {
-        token: "/todo",
-        aliases: ["/td"],
-        category: "Productivity",
-        help: "Add or list todos",
-        usage: "/todo Your task  ·  /todo list",
-        disabled: true,
-        note: NO_BACKEND,
-      },
-      {
-        token: "/demo",
-        aliases: ["/tour"],
-        category: "Tours",
-        help: "Full guided product tour",
-        usage: "/demo",
-        disabled: true,
-        note: NO_BACKEND,
-      },
-      {
-        token: "/note",
-        aliases: ["/n"],
-        category: "Memory",
-        help: "Quick-save a note",
-        usage: "/note text",
-        disabled: true,
-        note: NO_BACKEND,
-      },
-      {
-        token: "/fork",
-        aliases: ["/cp", "/chats fork"],
-        category: "Chats",
-        help: "Fork chat (keep first N msgs)",
-        usage: "/fork",
-        disabled: true,
-        note: NO_BACKEND,
-      },
-      {
-        token: "/bash",
-        aliases: ["/shell", "/toggle bash"],
-        category: "Quick toggles",
-        help: "Toggle bash/shell",
-        usage: "/bash",
-        disabled: true,
-        note: NO_BACKEND,
-      },
-      // ── below-the-fold rows (MAX_VISIBLE cap) — mostly wired to real surfaces
-      //    (/clear has no orchestrator backend, so it stays disabled) ──
-      {
-        // Odysseus's /clear wipes the chat display surface; the orchestrator
-        // room is read-only (no clear-display path), so this renders faithfully
-        // but inert. Wiring it to onInput("") only clears the composer (which
-        // runCommand already does pre-run), making it a silent no-op — disabled
-        // is the honest treatment, matching the other no-backend rows.
-        token: "/clear",
-        aliases: ["/chats clear"],
-        category: "Chats",
-        help: "Clear chat display",
-        usage: "/clear",
-        disabled: true,
-        note: NO_BACKEND,
       },
       {
         token: "/memory",
@@ -299,11 +183,8 @@ export function Composer({
   // command is allowed so a typed-out command still resolves to its row.
   const query =
     input.startsWith("/") && !input.includes("\n") ? input.trim() : null;
-  // A bare "/" is the "show everything" case: render the registry in its
-  // definition order (which preserves odysseus's repeated/non-contiguous
-  // category headers — Quick toggles appears for /web,/doc and again for /bash),
-  // capped at MAX_VISIBLE exactly like slashAutocomplete.js's all.slice(0,12).
-  // Scoring a bare "/" would reorder rows by token length, so we skip it.
+  // A bare "/" renders the wired registry in definition order. Scored queries
+  // are capped so the menu stays overlay-chat friendly.
   const visible: SlashCommand[] =
     query === null
       ? []
@@ -319,7 +200,7 @@ export function Composer({
   const selClamped = Math.min(sel, Math.max(0, visible.length - 1));
 
   const runCommand = (command: SlashCommand) => {
-    if (command.disabled || !command.run) return;
+    if (!command.run) return;
     onInput("");
     setDismissed(false);
     setSel(0);
@@ -343,9 +224,8 @@ export function Composer({
       }
       // Tab always inserts/runs the highlighted row. Enter runs the highlighted
       // row while still completing; once the typed text exactly matches a
-      // command token/alias (slashAutocomplete.js exactHit), Enter runs THAT
-      // command if it's wired, and only falls through to onSubmit() for a
-      // disabled / non-command row.
+      // command token/alias (slashAutocomplete.js exactHit), Enter runs that
+      // command so "/new" does not get posted as chat text.
       if (event.key === "Tab") {
         event.preventDefault();
         runCommand(visible[selClamped]);
@@ -372,8 +252,7 @@ export function Composer({
         // The typed text exactly matches a command. If it's a wired row, run it
         // (odysseus's submit path parses and executes the slash — here our
         // onSubmit() would post the literal "/new" as a chat message instead).
-        // Only a disabled / non-command row falls through to onSubmit().
-        if (!matchedEntry.disabled && matchedEntry.run) {
+        if (matchedEntry.run) {
           event.preventDefault();
           runCommand(matchedEntry);
           return;
@@ -406,36 +285,26 @@ export function Composer({
       {slashOpen ? (
         <div className="od-slash-ac" role="listbox" aria-label="Slash commands">
           {visible.map((command, i) => {
-            const prev = i > 0 ? visible[i - 1] : null;
-            const showCat = prev === null || prev.category !== command.category;
             const showUsage = command.usage !== command.token;
             return (
-              <Fragment key={command.token}>
-                {showCat ? (
-                  <div className="od-slash-ac-cat">{command.category}</div>
+              <button
+                key={command.token}
+                type="button"
+                role="option"
+                aria-selected={i === selClamped}
+                className={`od-slash-ac-row${i === selClamped ? " active" : ""}`}
+                onMouseEnter={() => setSel(i)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  runCommand(command);
+                }}
+              >
+                <span className="od-slash-ac-token">{command.token}</span>
+                <span className="od-slash-ac-help">{command.help}</span>
+                {showUsage ? (
+                  <span className="od-slash-ac-usage">{command.usage}</span>
                 ) : null}
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={i === selClamped}
-                  aria-disabled={command.disabled ? true : undefined}
-                  title={command.disabled ? command.note : undefined}
-                  className={`od-slash-ac-row${i === selClamped ? " active" : ""}${
-                    command.disabled ? " od-slash-ac-disabled" : ""
-                  }`}
-                  onMouseEnter={() => setSel(i)}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    runCommand(command);
-                  }}
-                >
-                  <span className="od-slash-ac-token">{command.token}</span>
-                  <span className="od-slash-ac-help">{command.help}</span>
-                  {showUsage ? (
-                    <span className="od-slash-ac-usage">{command.usage}</span>
-                  ) : null}
-                </button>
-              </Fragment>
+              </button>
             );
           })}
         </div>
@@ -468,70 +337,8 @@ export function Composer({
         )}
       </div>
       <div className="od-input-bottom">
-        <div className="od-input-left">
-          {/* Overflow / expand chevron (odysseus .overflow-plus-btn). The
-              orchestrator has no attach/RAG/doc tools menu, so it renders inert
-              for 1:1 chrome rather than opening a fabricated menu. */}
-          <button
-            type="button"
-            className="od-icon-btn"
-            title="More tools (not available in the Orchestrator)"
-            aria-label="More tools"
-            aria-disabled="true"
-            disabled
-          >
-            <ChevronUp size={16} />
-          </button>
-          {/* Web search (odysseus #web-toggle-btn). No orchestrator web-search
-              toggle — inert for chrome parity. */}
-          <button
-            type="button"
-            className="od-icon-btn"
-            title="Web search (not available in the Orchestrator)"
-            aria-label="Web search"
-            aria-disabled="true"
-            disabled
-          >
-            <Search size={16} />
-          </button>
-          {/* Shell access (odysseus #bash-toggle-btn). No orchestrator shell
-              toggle — inert for chrome parity. */}
-          <button
-            type="button"
-            className="od-icon-btn"
-            title="Shell access (not available in the Orchestrator)"
-            aria-label="Shell access"
-            aria-disabled="true"
-            disabled
-          >
-            <Terminal size={16} />
-          </button>
-        </div>
+        <div className="od-input-left" aria-hidden="true" />
         <div className="od-input-right">
-          {/* Agent | Chat segmented toggle (odysseus .mode-toggle). Faithful
-              local visual control — the orchestrator has one message path, so
-              this does not switch a backend mode; it defaults to Chat to match
-              the captured frame. */}
-          <div
-            className={`od-mode-toggle${mode === "chat" ? " od-mode-chat" : ""}`}
-          >
-            <button
-              type="button"
-              className={`od-mode-btn${mode === "agent" ? " active" : ""}`}
-              aria-pressed={mode === "agent"}
-              onClick={() => setMode("agent")}
-            >
-              Agent
-            </button>
-            <button
-              type="button"
-              className={`od-mode-btn${mode === "chat" ? " active" : ""}`}
-              aria-pressed={mode === "chat"}
-              onClick={() => setMode("chat")}
-            >
-              Chat
-            </button>
-          </div>
           {isActive ? (
             <button
               type="button"

@@ -90,8 +90,8 @@ environment variables via `dotenvy`).
    cargo build
    cargo test   # optional
    ```
-   *Note:* `make format` currently fails if the HiaN module is disabled. See
-   `crates/hl-evaluator/src/main.rs` for the pending `mod hian` stub.
+   *Note:* `hl-evaluator` defaults to coverage mode; pass `hian` as the first
+   argument to run the long-context validator.
 
 ---
 
@@ -316,14 +316,14 @@ scenarios to grow coverage.
 
 ### HiaN cases (`dataset/hian/*`)
 
-- `case_128k/prompt.txt` – placeholder noisy context containing a single needle
+- `case_128k/prompt.txt` – compact noisy-context seed containing a single needle
   instruction: transfer 7.5 USDC to perps, place an ALO bid mid−1% on ETH.
-- `case_128k/ground_truth.json` – required signatures for PASS.
-- `case_128k/meta.json` – metadata (case ID, token estimate, prompt hash placeholder).
+- `case_128k/ground_truth.json` – required ordered effects for PASS.
+- `case_128k/meta.json` – metadata (case ID, token estimate, prompt hash).
 
-The validator plan in `docs/PLAN_3_3.md` describes how the future HiaN CLI will
-parse these files, match effects, and emit `eval_hian.json` plus diffs. You can
-scale prompts to the desired token count and update metadata accordingly.
+The HiaN CLI parses these files, matches effects, and emits `eval_hian.json`
+plus diffs. You can scale prompts to the desired token count and update
+metadata accordingly.
 
 ### Versioning & reproducibility
 
@@ -380,8 +380,8 @@ JSON under `frontend/data/` whenever you publish new runs.
   carefully and bump `version` for scoring changes.
 - **Penalty spikes:** Check `per_signature_counts` inside `eval_score.json` to see
   which signatures exceeded the cap. Adjust plans or caps as needed.
-- **HiaN development:** Follow `docs/PLAN_3_3.md` to wire the validator. Until
-  then, `scripts/run_hian.sh` exits with a placeholder message.
+- **HiaN development:** `scripts/run_hian.sh` runs a local demo plan and invokes
+  `hl-evaluator hian`, writing `eval_hian.json` and a diff on failure.
 - **CI integration:** Use `scripts/run_cov.sh` in GitHub Actions to guard lagoon
   runs. Persist the `runs/<ts>/` directory as an artifact for inspection.
 
@@ -392,7 +392,7 @@ JSON under `frontend/data/` whenever you publish new runs.
 - `docs/TECHSPEC_MASTER.md` – track alignment, prize narrative, and architecture.
 - `docs/PLAN_3_1.md` – runner action requirements and artifact contracts.
 - `docs/PLAN_3_2.md` – evaluator normalization and scoring rules.
-- `docs/PLAN_3_3.md` – forthcoming HiaN validator design.
+- `docs/PLAN_3_3.md` – HiaN validator design and acceptance notes.
 - `docs/PLAN_4.md` – domains, dataset layout, acceptance tests, and versioning.
 - `docs/TODO_PLAN_MASTER.md` – high-level success checklist for the hackathon.
 

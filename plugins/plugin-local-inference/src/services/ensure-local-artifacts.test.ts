@@ -1,5 +1,5 @@
 /**
- * Tests for the local-artifact orchestrator. Every test injects a fake
+ * Tests for the local-artifact orchestrator. Every test injects a test-double
  * `LocalInferenceService` so the real downloader / hardware probe stay out
  * of the picture — the orchestrator's contract is "trigger parallel
  * downloads via the service facade", and the test verifies exactly that.
@@ -91,7 +91,7 @@ describe("ensureLocalArtifacts", () => {
 		vi.clearAllMocks();
 	});
 
-	it("is a no-op in cloud mode (no downloads, complete=true)", async () => {
+	it("skips downloads in cloud mode (complete=true)", async () => {
 		const { service, state } = makeService();
 		const logger = makeLogger();
 
@@ -109,7 +109,7 @@ describe("ensureLocalArtifacts", () => {
 		expect(state.getInstalled).not.toHaveBeenCalled();
 	});
 
-	it("is a no-op in remote mode", async () => {
+	it("skips downloads in remote mode", async () => {
 		const { service, state } = makeService();
 
 		const result = await ensureLocalArtifacts({

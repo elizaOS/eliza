@@ -15,13 +15,7 @@ import type { WalletAddresses } from "@elizaos/shared";
 import type { OverlayAppContext } from "@elizaos/ui";
 import { Button, PagePanel, Spinner, useApp } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import {
-  ArrowLeft,
-  RefreshCw,
-  ShieldCheck,
-  TrendingUp,
-  Wallet,
-} from "lucide-react";
+import { ArrowLeft, RefreshCw, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { TradingProfileCard } from "./TradingProfileCard";
 import { TradingStrategyPanel } from "./TradingStrategyPanel";
@@ -136,69 +130,39 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
             </div>
           )}
 
-          {/* Two-column grid: main cards left, wallet summary top-right */}
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_minmax(280px,340px)] gap-4 items-start">
-            {/* Left column — main cards */}
+          <div className="flex flex-col gap-4">
             <div className="space-y-4">
               <VincentConnectionCard setActionNotice={setActionNotice} t={t} />
 
               {vincentConnected && (
                 <>
+                  <WalletStatusCard
+                    walletAddresses={walletAddresses}
+                    walletBalances={walletBalances}
+                    setActionNotice={setActionNotice}
+                  />
+
                   <TradingStrategyPanel strategy={strategy} />
 
                   <TradingProfileCard tradingProfile={tradingProfile} />
                 </>
               )}
 
-              {/* Not-connected informational card */}
               {!vincentConnected && !loading && (
-                <div className="rounded-3xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-7 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-accent/25 bg-accent/12 text-accent">
-                    <ShieldCheck className="h-7 w-7" />
-                  </div>
-                  <div className="mt-4 text-sm font-medium text-txt">
-                    {t("vincent.connectPrompt", {
-                      defaultValue:
-                        "Connect your Vincent account to get started",
-                    })}
-                  </div>
-                  <div className="mt-5 grid gap-2 sm:grid-cols-3">
-                    {[
-                      { label: "Wallet", icon: Wallet, tone: "text-info" },
-                      { label: "Rules", icon: ShieldCheck, tone: "text-ok" },
-                      { label: "PnL", icon: TrendingUp, tone: "text-warning" },
-                    ].map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <div
-                          key={item.label}
-                          className="rounded-xl border border-border/24 bg-bg/45 px-3 py-3"
-                        >
-                          <Icon className={`mx-auto h-4 w-4 ${item.tone}`} />
-                          <div className="mt-2 text-xs font-semibold text-muted">
-                            {item.label}
-                          </div>
-                        </div>
-                      );
-                    })}
+                <div className="rounded-lg border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-accent/25 bg-accent/12 text-accent">
+                      <ShieldCheck className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 text-sm font-medium text-txt">
+                      {t("vincent.connectPrompt", {
+                        defaultValue: "Connect Vincent to enable trading.",
+                      })}
+                    </div>
                   </div>
                 </div>
               )}
             </div>
-
-            {/* Right column — wallet status (top-right, sticky on desktop) */}
-            {vincentConnected && (
-              <div
-                data-testid="vincent-wallet-status-area"
-                className="lg:sticky lg:top-4"
-              >
-                <WalletStatusCard
-                  walletAddresses={walletAddresses}
-                  walletBalances={walletBalances}
-                  setActionNotice={setActionNotice}
-                />
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -298,7 +262,7 @@ export function VincentTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -373,7 +337,8 @@ export function VincentTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>strategy</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | start-login | disconnect | update-strategy
+            {strategy?.running ? "running" : "idle"} /{" "}
+            {strategy?.dryRun ? "dry-run" : "live"}
           </div>
           <div>
             <span style={{ color: "#64748b" }}>name</span>{" "}

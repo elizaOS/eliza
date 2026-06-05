@@ -1,7 +1,5 @@
 import { MoreHorizontal } from "lucide-react";
 import type { ComponentType, MouseEvent, ReactNode } from "react";
-import { cn } from "../../lib/utils";
-import { BrandButton } from "../brand";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,7 +7,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "../dropdown-menu";
+} from "../../../components/ui/dropdown-menu";
+import { cn } from "../../lib/utils";
+import { BrandButton } from "../brand";
 
 type ListActionMenuItem =
   | {

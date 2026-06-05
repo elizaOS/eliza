@@ -30,7 +30,7 @@ The script applies the gates defined in the config (`config.gates`) and
 emits a `passed: true|false` summary plus per-metric pass/fail. If
 `--allow-gate-fail` is not set, a failed gate exits non-zero.
 
-Synthetic-smoke (`--synthetic-smoke`) writes a stub eval.json with placeholder
+Synthetic-smoke (`--synthetic-smoke`) writes a synthetic eval.json with fallback
 metrics so downstream tooling can be tested without a real model.
 """
 

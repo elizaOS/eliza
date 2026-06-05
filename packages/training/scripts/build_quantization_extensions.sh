@@ -56,7 +56,7 @@ fi
 # Defer to the in-tree build.sh which already auto-detects compute_cap
 # from nvidia-smi and wires up TORCH_CUDA_ARCH_LIST. Inside Docker the
 # Dockerfile pre-sets TORCH_CUDA_ARCH_LIST and the auto-detect is a
-# no-op; on bare metal we get the local GPU's arch.
+# skipped branch; on bare metal we get the local GPU's arch.
 echo "[build_quantization_extensions] building QJL CUDA extensions..."
 pushd "${QJL_DIR}" >/dev/null
 PYTHON="${PYTHON_BIN}" bash ./build.sh

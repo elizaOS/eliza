@@ -23,8 +23,8 @@ export interface ViewRegistryEntry extends ViewDeclaration {
   heroImageUrl?: string;
   /**
    * True when a real hero image asset exists on disk for this view. When false,
-   * `heroImageUrl` still resolves (the route serves a generated placeholder),
-   * but the client should render the view's icon instead of the placeholder.
+   * `heroImageUrl` still resolves (the route serves a generated fallback),
+   * but the client should render the view's icon instead of that fallback.
    */
   hasHeroImage: boolean;
   /** True when the bundle file exists on disk. */

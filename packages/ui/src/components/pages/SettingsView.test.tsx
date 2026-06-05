@@ -11,26 +11,31 @@ import { Settings } from "lucide-react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsView } from "./SettingsView";
 
-// SettingsView's own responsibility is section navigation + a loadPlugins
+// SettingsView's own responsibility is hub → section navigation + a loadPlugins
 // kickoff on mount — the individual section bodies are heavy, independently
 // data-fetching components. To test the view in isolation (its real, non-
 // trivial logic) we replace the section registry with lightweight stub
 // components. This is deliberate partial coverage: we exercise SettingsView's
 // navigation/lifecycle behavior, not each section's internals (which warrant
-// their own tests). The useApp + section-registry mocks are the seams the Q2
+// their own tests). The useApp + section-registry mocks are the seams this
 // refactor must keep stable.
 const appMock = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 
 vi.mock("../../state", () => ({ useApp: () => appMock.value }));
 
 vi.mock("../settings/settings-sections", () => ({
-  SECTION_TONE_ICON_CLASS: {
-    ok: "",
-    warn: "",
-    muted: "",
+  SECTION_HUE_MEDALLION_CLASS: {
     accent: "",
-    neutral: "",
+    amber: "",
+    rose: "",
+    slate: "",
   },
+  SETTINGS_GROUP_LABEL: {
+    agent: "Agent",
+    system: "System",
+    security: "Security",
+  },
+  SETTINGS_GROUP_ORDER: ["agent", "system", "security"],
   SETTINGS_SECTIONS: [
     {
       id: "identity",
@@ -38,6 +43,8 @@ vi.mock("../settings/settings-sections", () => ({
       defaultLabel: "Basics",
       icon: Settings,
       tone: "neutral",
+      hue: "slate",
+      group: "agent",
       titleKey: "settings.sections.identity.label",
       defaultTitle: "Basics",
       Component: () => <div data-testid="stub-identity">Identity body</div>,
@@ -48,6 +55,8 @@ vi.mock("../settings/settings-sections", () => ({
       defaultLabel: "Runtime",
       icon: Settings,
       tone: "neutral",
+      hue: "slate",
+      group: "system",
       titleKey: "settings.sections.runtime.label",
       defaultTitle: "Runtime",
       Component: () => <div data-testid="stub-runtime">Runtime body</div>,
@@ -77,53 +86,58 @@ function makeContext(
 }
 
 beforeEach(() => {
-  // jsdom doesn't implement these layout APIs the section-alignment effects use.
-  Element.prototype.scrollIntoView = vi.fn();
-  Element.prototype.scrollTo =
-    vi.fn() as unknown as typeof Element.prototype.scrollTo;
   appMock.value = makeContext();
 });
 
 afterEach(() => cleanup());
 
 describe("SettingsView", () => {
-  it("calls loadPlugins on mount and renders the section bodies + nav entries", async () => {
+  it("calls loadPlugins on mount and renders the hub tiles", async () => {
     render(<SettingsView />);
 
     await waitFor(() => {
       expect(appMock.value.loadPlugins).toHaveBeenCalled();
     });
-    // Both registered sections render their bodies.
-    expect(screen.getByTestId("stub-identity")).toBeTruthy();
-    expect(screen.getByTestId("stub-runtime")).toBeTruthy();
-    // Both appear as navigation entries (label rendered in the sidebar nav).
-    expect(screen.getAllByText("Basics").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Runtime").length).toBeGreaterThan(0);
+    // The hub shows a tile per registered section; no section body is mounted
+    // until a tile is selected.
+    expect(screen.getByText("Basics")).toBeTruthy();
+    expect(screen.getByText("Runtime")).toBeTruthy();
+    expect(screen.queryByTestId("stub-identity")).toBeNull();
+    expect(screen.queryByTestId("stub-runtime")).toBeNull();
   });
 
-  it("clicking a sidebar section marks it as the current page", () => {
+  it("clicking a hub tile opens that section full-width", () => {
     render(<SettingsView />);
 
-    const runtimeNav = screen
-      .getAllByText("Runtime")
-      .map((node) => node.closest("button"))
-      .find((btn): btn is HTMLButtonElement => btn !== null);
-    expect(runtimeNav).toBeTruthy();
+    const runtimeTile = screen
+      .getByText("Runtime")
+      .closest("button") as HTMLButtonElement;
+    expect(runtimeTile).toBeTruthy();
 
-    fireEvent.click(runtimeNav as HTMLButtonElement);
+    fireEvent.click(runtimeTile);
 
-    // The activated nav item is marked aria-current="page".
-    expect(runtimeNav?.getAttribute("aria-current")).toBe("page");
+    // The section body is now mounted, and a back affordance is present.
+    expect(screen.getByTestId("stub-runtime")).toBeTruthy();
+    expect(screen.queryByTestId("stub-identity")).toBeNull();
+    expect(screen.getByText("Settings")).toBeTruthy();
   });
 
-  it("respects an initialSection prop by activating that section", () => {
+  it("respects an initialSection prop by opening that section directly", () => {
     render(<SettingsView initialSection="runtime" />);
 
-    const runtimeNav = screen
-      .getAllByText("Runtime")
-      .map((node) => node.closest("button"))
-      .find((btn): btn is HTMLButtonElement => btn !== null);
+    expect(screen.getByTestId("stub-runtime")).toBeTruthy();
+    expect(screen.queryByTestId("stub-identity")).toBeNull();
+  });
 
-    expect(runtimeNav?.getAttribute("aria-current")).toBe("page");
+  it("back affordance returns to the hub", () => {
+    render(<SettingsView initialSection="runtime" />);
+
+    const back = screen.getByText("Settings").closest("button");
+    expect(back).toBeTruthy();
+    fireEvent.click(back as HTMLButtonElement);
+
+    // Both tiles are visible again and no section body is mounted.
+    expect(screen.getByText("Basics")).toBeTruthy();
+    expect(screen.queryByTestId("stub-runtime")).toBeNull();
   });
 });

@@ -7,7 +7,6 @@ import {
   isWebPlatform,
   openExternalUrl,
   PagePanel,
-  PageScopedChatPane,
   useApp,
   useMediaQuery,
 } from "@elizaos/ui";
@@ -32,10 +31,7 @@ import {
   loadLifeOpsTuiState,
 } from "./LifeOpsPageView.interact.js";
 import { LifeOpsSectionContent } from "./LifeOpsSectionContent.js";
-import {
-  type LifeOpsSelection,
-  useLifeOpsSelection,
-} from "./LifeOpsSelectionContext.helpers.js";
+import { useLifeOpsSelection } from "./LifeOpsSelectionContext.helpers.js";
 import { LifeOpsSelectionProvider } from "./LifeOpsSelectionContext.js";
 import { LifeOpsSettingsSection } from "./LifeOpsSettingsSection";
 import { clearLifeOpsSetupGateDismissed } from "./LifeOpsSetupGate.helpers.js";
@@ -474,32 +470,6 @@ function LifeOpsSettingsSectionView({
   );
 }
 
-function resolveLifeOpsChatPlaceholder(
-  selection: LifeOpsSelection,
-): string | undefined {
-  if (selection.reminderId) {
-    return "Ask about this reminder";
-  }
-  if (selection.eventId) {
-    return "Ask about this event";
-  }
-  if (selection.messageId) {
-    return "Ask about this message";
-  }
-  return undefined;
-}
-
-function LifeOpsPageChat() {
-  const { selection } = useLifeOpsSelection();
-  return (
-    <PageScopedChatPane
-      scope="page-lifeops"
-      title="LifeOps"
-      placeholderOverride={resolveLifeOpsChatPlaceholder(selection)}
-    />
-  );
-}
-
 /* ── Inner view — rendered inside SelectionProvider ────────────────── */
 export function LifeOpsPageView() {
   return (
@@ -617,7 +587,7 @@ export function LifeOpsTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(300px, 1fr) minmax(300px, 1fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -679,7 +649,7 @@ export function LifeOpsTuiView() {
           {!loading && !error && occurrences.length === 0 && (
             <div style={{ color: "#64748b" }}>no active occurrences</div>
           )}
-          {occurrences.slice(0, 14).map((occurrence, index) => (
+          {occurrences.slice(0, 8).map((occurrence, index) => (
             <div
               key={occurrence.id}
               style={{
@@ -740,9 +710,9 @@ export function LifeOpsTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>definitions</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | enable | complete | skip | snooze
+            {definitions.length} definitions / {state.activeGoalCount} goals
           </div>
-          {definitions.slice(0, 10).map((record, index) => (
+          {definitions.slice(0, 6).map((record, index) => (
             <div
               key={record.definition?.id ?? String(index)}
               style={{
@@ -765,7 +735,7 @@ export function LifeOpsTuiView() {
 
           <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>goals</div>
           {(overview?.owner?.goals ?? overview?.goals ?? [])
-            .slice(0, 8)
+            .slice(0, 4)
             .map((goal) => (
               <div key={goal.id} style={{ padding: "4px 0" }}>
                 {goal.title ?? goal.id}{" "}
@@ -1309,9 +1279,14 @@ function LifeOpsWorkspaceInner() {
     );
   })();
 
+  // Single-pane layout: the workspace shell renders one vertical column (top
+  // section-tab bar over the scrollable content). The right chat rail is
+  // disabled — the global floating chat pill owns LifeOps chat via the
+  // `page-lifeops` scope, and the shell's top bar keeps quick chat/voice access.
   return (
     <AppWorkspaceChrome
       testId="lifeops-shell"
+      chatDisabled
       main={
         <LifeOpsWorkspaceShell
           compactLayout={compactLayout}
@@ -1321,7 +1296,6 @@ function LifeOpsWorkspaceInner() {
           {mainContent}
         </LifeOpsWorkspaceShell>
       }
-      chat={<LifeOpsPageChat />}
     />
   );
 }

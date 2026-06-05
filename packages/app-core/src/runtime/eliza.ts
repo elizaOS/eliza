@@ -366,6 +366,8 @@ async function loadAppRoutePluginFromSpecifier(
   return resolvePluginExport(module, exportName);
 }
 
+const WORKFLOW_ROUTE_PLUGIN_ID = "@elizaos/plugin-workflow:routes";
+
 function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   return getApps(loadRegistry()).flatMap((app) => {
     const routePlugin = app.launch.routePlugin;
@@ -446,6 +448,23 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   }
   for (const entry of listAppRoutePluginLoaders()) {
     byId.set(entry.id, entry);
+  }
+  // plugin-workflow is default-enabled and registers its rawPath route plugin
+  // (`/api/automations`, `/api/workflow/*`) only as a side effect of its
+  // `register-routes` import. That side effect runs inside the plugin's own
+  // module init, which is not guaranteed to have executed before this snapshot
+  // is taken on the post-ready boot tail — so the loader can be missing and the
+  // routes 404. Register it explicitly here (load-order independent), mirroring
+  // how every other rawPath route plugin is wired via the registry.
+  if (!byId.has(WORKFLOW_ROUTE_PLUGIN_ID)) {
+    byId.set(WORKFLOW_ROUTE_PLUGIN_ID, {
+      id: WORKFLOW_ROUTE_PLUGIN_ID,
+      load: () =>
+        loadAppRoutePluginFromSpecifier(
+          "@elizaos/plugin-workflow/plugin-routes",
+          "workflowRoutePlugin",
+        ),
+    });
   }
 
   const skip = getSkippedAppRoutePluginIds();

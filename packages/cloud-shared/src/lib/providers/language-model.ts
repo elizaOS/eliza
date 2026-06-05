@@ -178,7 +178,9 @@ function isAnthropicNativeModel(model: string): boolean {
 }
 
 function normalizeCerebrasModelId(model: string): string {
-  return model.startsWith("cerebras/") ? model.slice("cerebras/".length) : model;
+  if (model.startsWith("cerebras/")) return model.slice("cerebras/".length);
+  if (model.startsWith("cerebras:")) return model.slice("cerebras:".length);
+  return model;
 }
 
 function isCerebrasNativeModel(model: string): boolean {
@@ -186,6 +188,14 @@ function isCerebrasNativeModel(model: string): boolean {
   return (
     modelId === CEREBRAS_DEFAULT_TEXT_SMALL_MODEL || modelId === CEREBRAS_DEFAULT_TEXT_LARGE_MODEL
   );
+}
+
+function normalizeBitRouterLanguageModelId(model: string): string {
+  if (isCerebrasNativeModel(model)) {
+    return `cerebras:${normalizeCerebrasModelId(model)}`;
+  }
+
+  return toBitRouterModelId(model);
 }
 
 function requiresBitRouterRouting(model: string): boolean {
@@ -275,7 +285,7 @@ export function getLanguageModel(model: string) {
   }
 
   if (getBitRouterApiKey()) {
-    return getBitRouterClient().languageModel(toBitRouterModelId(model));
+    return getBitRouterClient().chat(normalizeBitRouterLanguageModelId(model));
   }
 
   if (requiresBitRouterRouting(model)) {

@@ -366,7 +366,7 @@ export async function runPollingBackend(
       // Preserve backend-complete installs even when this browser has no prior
       // local state (for example headless/VPS setups or a fresh visit to a
       // cloud-provisioned container). Only clear the optimistic completion
-      // flag when the backend itself still reports firstRun as incomplete.
+      // flag when the backend itself still reports firstRun as not complete.
       if (
         sessionComplete &&
         !complete &&

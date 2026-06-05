@@ -642,10 +642,6 @@ export function CookbookView({
                 </button>
                 {downloadCardOpen ? (
                   <div className="od-cb-section-body">
-                    <p className="od-cb-desc">
-                      Download directly from Scan, or paste a HuggingFace model
-                      link.
-                    </p>
                     <div className="od-cb-dl-serverrow">
                       <select
                         className="od-cb-select"
@@ -661,7 +657,7 @@ export function CookbookView({
                         title="Add server in Settings"
                         onClick={() => setTab("settings")}
                       >
-                        add server
+                        <Server size={12} />
                       </button>
                     </div>
                     <div className="od-cb-dl-input">
@@ -673,7 +669,7 @@ export function CookbookView({
                         onKeyDown={(e) => {
                           if (e.key === "Enter") startDownload();
                         }}
-                        placeholder="org/model-name, HF URL, or org/model:QUANT_TAG"
+                        placeholder="HF repo or URL"
                         aria-label="Model repo or HuggingFace URL"
                       />
                       <button
@@ -699,7 +695,7 @@ export function CookbookView({
                         >
                           ▸
                         </span>
-                        Trending models that fit your hardware
+                        Fits hardware
                       </button>
                       {trendingOpen ? (
                         <div className="od-cb-trending-list">
@@ -743,11 +739,6 @@ export function CookbookView({
               {/* Scan / Download admin-card (cookbook.js Search section) */}
               <div className="od-cb-card-section od-cb-scan-section">
                 <span className="od-cb-section-h2">Scan / Download</span>
-                <p className="od-cb-desc">
-                  Scans your hardware for what models you can run. Hardware is
-                  cached; hit the scan button to re-probe after changing GPUs.
-                </p>
-
                 {/* Toolbar row 1: Type / Search / Quant / Engine */}
                 <div className="od-cb-toolbar">
                   <select
@@ -774,7 +765,7 @@ export function CookbookView({
                     className="od-cb-field-input od-cb-quant"
                     value="Q4_K_M"
                     aria-label="Quantization"
-                    title="eliza's catalog ships one GGUF variant per tier, so quant can't narrow the scan here."
+                    title="Catalog quant is fixed"
                     disabled
                   >
                     {QUANT_OPTIONS.map((o) => (
@@ -796,23 +787,17 @@ export function CookbookView({
                       </option>
                     ))}
                   </select>
-                  <span
-                    className="od-cb-help-chip"
-                    title="Higher numbers usually mean better quality, but they need more memory. Lower numbers fit on more hardware."
-                  >
+                  <span className="od-cb-help-chip" title="Quality vs memory">
                     ?
                   </span>
                   {/* Ctx target-context slider (cookbook-hwfit.js #hwfit-context).
                       Disabled: eliza's fit estimate isn't context-aware, so the
                       chosen context can't change which models fit. */}
-                  <label
-                    className="od-cb-ctx-control"
-                    title="Context length. eliza's fit estimate isn't context-aware in this runtime, so the chosen context doesn't change which models fit."
-                  >
+                  <label className="od-cb-ctx-control" title="Context length">
                     <span>Ctx</span>
                     <span
                       className="od-cb-help-chip od-cb-help-chip-inline"
-                      title="Context length. eliza's fit estimate isn't context-aware in this runtime, so the chosen context doesn't change which models fit."
+                      title="Context length"
                     >
                       ?
                     </span>
@@ -824,7 +809,7 @@ export function CookbookView({
                       value={ctxIndex}
                       onChange={(e) => onCtxChange(Number(e.target.value))}
                       aria-label="Target context length"
-                      title="eliza's fit estimate isn't context-aware in this runtime, so the chosen context doesn't change which models fit."
+                      title="Context length"
                       disabled
                     />
                     <output>{ctxLabel(CTX_PRESETS[ctxIndex])}</output>
@@ -860,7 +845,7 @@ export function CookbookView({
                   <button
                     type="button"
                     className="od-cb-gpu-btn od-cb-edit"
-                    title="Set hardware manually — eliza probes hardware directly, so manual override is disabled here."
+                    title="Manual hardware override unavailable"
                     disabled
                   >
                     EDIT
@@ -914,14 +899,11 @@ export function CookbookView({
                   catalog.status === "loading" ? (
                     <div className="od-cb-loading">Scanning hardware…</div>
                   ) : hardware.status === "error" ? (
-                    <div className="od-cb-loading">
-                      No hardware probe available — eliza couldn't reach the
-                      local-inference runtime to scan this machine.
-                    </div>
+                    <div className="od-cb-loading">Hardware probe offline.</div>
                   ) : fitRows.length === 0 ? (
                     <div className="od-cb-loading">
                       {scanQuery.trim() || usecase
-                        ? "No models match these filters — try clearing the search or use-case."
+                        ? "No matches."
                         : "No models fit your hardware."}
                     </div>
                   ) : (
@@ -1017,15 +999,9 @@ export function CookbookView({
                 {installed.status === "loading" ? (
                   <div className="od-cb-loading">Loading cached models…</div>
                 ) : installed.status === "error" ? (
-                  <div className="od-cb-loading">
-                    No serve runtime — eliza couldn't reach the local-inference
-                    backend, so there are no cached models to serve.
-                  </div>
+                  <div className="od-cb-loading">Serve runtime offline.</div>
                 ) : installedRows.length === 0 ? (
-                  <div className="od-cb-loading">
-                    No cached models yet. Download one from the Download tab to
-                    serve it locally.
-                  </div>
+                  <div className="od-cb-loading">No cached models.</div>
                 ) : (
                   installedRows.map((m) => (
                     <div className="od-cb-card" key={m.id}>
@@ -1067,7 +1043,6 @@ export function CookbookView({
             <div className="od-cb-card-section">
               <div className="od-cb-deps-head">
                 <span className="od-cb-section-h2">Dependencies</span>
-                <span className="od-cb-deps-server-label">Server</span>
                 <select
                   className="od-cb-field-input od-cb-deps-server"
                   aria-label="Dependencies server"
@@ -1077,15 +1052,8 @@ export function CookbookView({
                   <option value="local">Local</option>
                 </select>
               </div>
-              <p className="od-cb-desc">
-                Optional packages that extend Orchestrator capabilities.
-              </p>
               <div className="od-cb-deps-grid">
-                <div className="od-cb-loading">
-                  No optional-package manager — eliza has no
-                  install-from-Cookbook backend, so there are no dependency
-                  packages to list or install here.
-                </div>
+                <div className="od-cb-loading">Package manager offline.</div>
               </div>
             </div>
           ) : null}
@@ -1096,14 +1064,10 @@ export function CookbookView({
               {/* HuggingFace Token block */}
               <div className="od-cb-card-section">
                 <span className="od-cb-section-h2">HuggingFace Token</span>
-                <p className="od-cb-desc">
-                  Personal access token for downloading gated and private
-                  models.
-                </p>
                 <input
                   type="password"
                   className="od-cb-field-input"
-                  placeholder="hf_… — token storage is disabled in this orchestrator"
+                  placeholder="hf_..."
                   aria-label="HuggingFace token"
                   disabled
                 />
@@ -1128,17 +1092,12 @@ export function CookbookView({
                     />
                   </button>
                 </div>
-                <p className="od-cb-desc">
-                  Local inference providers and where each model is served.
-                  Local is this machine.
-                </p>
                 <div className="od-cb-servers-list">
                   {providers.status === "loading" ? (
                     <div className="od-cb-loading">Loading providers…</div>
                   ) : providers.status === "error" ? (
                     <div className="od-cb-loading">
-                      No provider registry — eliza couldn't reach the
-                      local-inference backend.
+                      Provider registry offline.
                     </div>
                   ) : providers.data.length === 0 ? (
                     <div className="od-cb-loading">

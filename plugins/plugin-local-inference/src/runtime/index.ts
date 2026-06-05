@@ -18,3 +18,10 @@ export { detectEmbeddingPreset } from "./embedding-presets.js";
 export { shouldWarmupLocalEmbeddingModel } from "./embedding-warmup-policy.js";
 export { ensureLocalInferenceHandler } from "./ensure-local-inference-handler.js";
 export { shouldEnableMobileLocalInference } from "./mobile-local-inference-gate.js";
+export {
+	type EmitVoiceTurnObservedArgs,
+	emitVoiceTurnObserved,
+	getVoiceProfileStore,
+	handleVoiceEntityBound,
+	setVoiceEntityBindingStore,
+} from "./voice-entity-binding.js";

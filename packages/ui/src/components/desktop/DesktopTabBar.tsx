@@ -6,7 +6,7 @@
  * and mobile.
  *
  * Each tab can be closed (unpinned ephemeral) or pinned (persisted across
- * restarts). A "+" button opens the ViewManagerPage so users can pin more views.
+ * restarts). A "+" button opens the ViewCatalog so users can pin more views.
  */
 
 import { Plus, X } from "lucide-react";

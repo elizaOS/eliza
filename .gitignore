@@ -294,6 +294,9 @@ tasks/
 !packages/benchmarks/app-eval/tasks/*_evaluator.py
 !packages/benchmarks/eliza-1/src/tasks/
 !packages/benchmarks/eliza-1/src/tasks/*.ts
+!packages/benchmarks/HyperliquidBench/dataset/tasks/
+!packages/benchmarks/HyperliquidBench/dataset/tasks/README.md
+!packages/benchmarks/HyperliquidBench/dataset/tasks/*.jsonl
 !plugins/plugin-agent-skills/src/tasks/
 # Vendored benchmark task fixtures — these ARE the benchmark, not generated.
 # We own all benchmark code in-tree; no submodules (only llama.cpp is a submodule).

@@ -354,7 +354,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # Persist the bundle-side eval blobs (the manifest cites these paths).
     # When the eval suite ran, keep its full output (results + gateReport +
-    # per-axis JSON it already wrote into evals/). Otherwise write a stub.
+    # per-axis JSON it already wrote into evals/). Otherwise write explicit
+    # not-run evidence so the candidate manifest records the missing eval.
     if eval_aggregate_full is not None:
         (out / "evals" / "aggregate.json").write_text(
             json.dumps(eval_aggregate_full, indent=2) + "\n"
@@ -366,7 +367,7 @@ def main(argv: list[str] | None = None) -> int:
             "results": {"note": "eval suite not run; see eliza-1.manifest.json"},
         }, indent=2) + "\n")
     for backend in ("metal", "vulkan", "cuda", "rocm", "cpu"):
-        # placeholder per-backend file the manifest points at; the real
+        # Candidate per-backend file the manifest points at; the real
         # verify evidence lives in packages/inference/verify/.
         (out / "evals" / f"{backend}_verify.json").write_text(json.dumps({
             "schemaVersion": 1, "backend": backend,

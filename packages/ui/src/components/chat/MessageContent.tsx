@@ -103,7 +103,7 @@ const HIDDEN_TAG_BLOCK_RE =
   /<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
 
 /**
- * Strip partial/incomplete hidden tags at the end of a streaming text chunk.
+ * Strip trailing partial hidden tags at the end of a streaming text chunk.
  * During streaming, the buffer may end mid-tag (e.g. `"Hello<thi"`,
  * `"Hello</respon"`, or just `"Hello<"`).  These fragments are not
  * user-facing content and must be hidden from both the display and voice
@@ -121,7 +121,7 @@ function normalizeDisplayText(text: string): string {
   normalized = normalized.replace(HIDDEN_TAG_BLOCK_RE, " ");
 
   // During streaming, a chunk may end mid-tag (e.g. "<thi").
-  // Strip any incomplete opening or closing tag at the very end so the
+  // Strip any unterminated opening or closing tag at the very end so the
   // user never sees hidden-tag fragments while tokens arrive.
   normalized = normalized.replace(TRAILING_PARTIAL_TAG_RE, "");
 
@@ -1074,8 +1074,8 @@ export function MessageContent({
   useRenderGuard(`MessageContent:${message.id ?? "unknown"}`);
   const app = useApp();
   const { sendActionMessage } = app;
-  // Composer prefill for followup `prompt` chips. `useChatComposer` has a
-  // no-op default outside the chat provider, so this is safe everywhere.
+  // Composer prefill for followup `prompt` chips. Outside the chat provider,
+  // `useChatComposer` returns an inert setter, so this is safe everywhere.
   const { setChatInput } = useChatComposer();
   const [localDownloadState, setLocalDownloadState] = useState<
     "idle" | "busy" | "queued" | "failed"

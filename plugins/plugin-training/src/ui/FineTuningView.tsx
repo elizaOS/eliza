@@ -60,7 +60,6 @@ import {
   FINE_TUNING_PANEL_CLASS,
   FINE_TUNING_SECTION_CLASS,
   FINE_TUNING_SECTION_HEADER_CLASS,
-  FINE_TUNING_SECTION_KICKER_CLASS,
   FINE_TUNING_STATUS_CARD_CLASS,
 } from "./fine-tuning-panels.helpers";
 import {
@@ -707,7 +706,7 @@ function ReadinessCheckRow({
     },
   });
   return (
-    <div className="grid gap-2 border-t border-border/40 pt-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <div className="grid gap-2 border-t border-border/40 pt-2">
       <div>
         <div className="font-mono text-xs text-txt">
           {check.label} · {check.status}
@@ -2210,16 +2209,10 @@ export function FineTuningView({
       <div data-testid="fine-tuning-view" className="space-y-6 pb-8">
         <section className={FINE_TUNING_SECTION_CLASS}>
           <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
-            <div className="space-y-2">
-              <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
-                {t("finetuningview.FineTuning")}
-              </div>
+            <div>
               <h2 className="text-xl font-semibold text-txt">
                 {t("finetuningview.FineTuning")}
               </h2>
-              <p className="max-w-2xl text-sm leading-relaxed text-muted">
-                {t("finetuningview.BuildDatasetsFrom")}
-              </p>
             </div>
             <TrainingActionButton
               agentId="action-refresh-all"
@@ -2242,13 +2235,8 @@ export function FineTuningView({
 
         <section className={FINE_TUNING_SECTION_CLASS}>
           <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
-            <div className="space-y-1">
-              <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
-                {t("finetuningview.Overview")}
-              </div>
-              <div className="text-lg font-semibold text-txt">
-                {t("finetuningview.Status")}
-              </div>
+            <div className="text-lg font-semibold text-txt">
+              {t("finetuningview.Status")}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-3 xl:grid-cols-6">
@@ -2325,13 +2313,8 @@ export function FineTuningView({
 
         <section className={FINE_TUNING_SECTION_CLASS}>
           <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
-            <div className="space-y-1">
-              <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
-                {t("finetuningview.Analysis")}
-              </div>
-              <div className="text-lg font-semibold text-txt">
-                {t("finetuningview.TrainingAnalysisIndex")}
-              </div>
+            <div className="text-lg font-semibold text-txt">
+              {t("finetuningview.TrainingAnalysisIndex")}
             </div>
             <div className="flex flex-wrap gap-2">
               <TrainingActionButton
@@ -2394,7 +2377,7 @@ export function FineTuningView({
           </div>
           <div className={`${FINE_TUNING_PANEL_CLASS} p-3 text-sm`}>
             <div className="mb-3 border-b border-border/50 pb-3">
-              <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="analysis-probe-endpoints"
                   label="Probe live endpoints"
@@ -2404,14 +2387,14 @@ export function FineTuningView({
                   onChange={setCollectionPreflightProbe}
                 />
                 Probe live endpoints
-              </label>
+              </div>
             </div>
             <div className="mb-3 border-b border-border/50 pb-3">
               <div className="mb-2 text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
                 Natural trajectory import
               </div>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <label className="space-y-1 text-xs text-muted md:col-span-2">
+                <div className="space-y-1 text-xs text-muted md:col-span-2">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     Sanitized JSONL
                   </span>
@@ -2425,8 +2408,8 @@ export function FineTuningView({
                     onChange={setNaturalSanitizedJsonlPath}
                     placeholder="/path/to/trajectories.sanitized.jsonl"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted md:col-span-2">
+                </div>
+                <div className="space-y-1 text-xs text-muted md:col-span-2">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     Raw JSONL
                   </span>
@@ -2440,8 +2423,8 @@ export function FineTuningView({
                     onChange={setNaturalRawJsonlPath}
                     placeholder="/path/to/trajectories.raw.jsonl"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     Run ID
                   </span>
@@ -2455,8 +2438,8 @@ export function FineTuningView({
                     onChange={setNaturalRunId}
                     placeholder="app-run-1"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     Task buckets
                   </span>
@@ -2470,8 +2453,8 @@ export function FineTuningView({
                     onChange={setNaturalTasks}
                     placeholder="response,action_planner"
                   />
-                </label>
-                <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                </div>
+                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="natural-include-raw"
                     label="Include raw trajectories"
@@ -2481,7 +2464,7 @@ export function FineTuningView({
                     onChange={setNaturalIncludeRaw}
                   />
                   Include raw
-                </label>
+                </div>
               </div>
             </div>
             {readinessReport ? (
@@ -3632,7 +3615,7 @@ export function FineTuningView({
           <div className={`${FINE_TUNING_PANEL_CLASS} mt-4 p-3 text-sm`}>
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <label className="space-y-1 text-xs text-muted">
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.HuggingFaceRepo")}
                   </span>
@@ -3646,8 +3629,8 @@ export function FineTuningView({
                     onChange={setHfRepoId}
                     placeholder="elizaos/eliza-1-training"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Revision")}
                   </span>
@@ -3661,8 +3644,8 @@ export function FineTuningView({
                     onChange={setHfRevision}
                     placeholder="main"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted md:col-span-2">
+                </div>
+                <div className="space-y-1 text-xs text-muted md:col-span-2">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Output")}
                   </span>
@@ -3676,8 +3659,8 @@ export function FineTuningView({
                     onChange={setHfOutputDir}
                     placeholder="default"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted md:col-span-2 xl:col-span-4">
+                </div>
+                <div className="space-y-1 text-xs text-muted md:col-span-2 xl:col-span-4">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Files")}
                   </span>
@@ -3690,10 +3673,10 @@ export function FineTuningView({
                     value={hfFiles}
                     onChange={setHfFiles}
                   />
-                </label>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="hf-dry-run"
                     label="HuggingFace ingest dry run"
@@ -3703,7 +3686,7 @@ export function FineTuningView({
                     onChange={setHfDryRun}
                   />
                   {t("finetuningview.DryRun")}
-                </label>
+                </div>
                 <TrainingActionButton
                   agentId="action-ingest-hf-dataset"
                   label={t("finetuningview.IngestHuggingFaceDataset")}
@@ -3793,7 +3776,7 @@ export function FineTuningView({
           <div className={`${FINE_TUNING_PANEL_CLASS} mt-4 p-3 text-sm`}>
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                <label className="space-y-1 text-xs text-muted">
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Archetypes")}
                   </span>
@@ -3807,8 +3790,8 @@ export function FineTuningView({
                     onChange={setFeedArchetypes}
                     placeholder="trader"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Agents")}
                   </span>
@@ -3822,8 +3805,8 @@ export function FineTuningView({
                     onChange={setFeedNumAgents}
                     type="number"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Ticks")}
                   </span>
@@ -3837,8 +3820,8 @@ export function FineTuningView({
                     onChange={setFeedTicks}
                     type="number"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Parallel")}
                   </span>
@@ -3852,8 +3835,8 @@ export function FineTuningView({
                     onChange={setFeedParallel}
                     type="number"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Output")}
                   </span>
@@ -3867,10 +3850,10 @@ export function FineTuningView({
                     onChange={setFeedOutputDir}
                     placeholder="default"
                   />
-                </label>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="feed-cleanup"
                     label="Feed cleanup"
@@ -3880,8 +3863,8 @@ export function FineTuningView({
                     onChange={setFeedCleanup}
                   />
                   {t("finetuningview.Cleanup")}
-                </label>
-                <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                </div>
+                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="feed-dry-run"
                     label="Feed generation dry run"
@@ -3891,7 +3874,7 @@ export function FineTuningView({
                     onChange={setFeedDryRun}
                   />
                   {t("finetuningview.DryRun")}
-                </label>
+                </div>
                 <TrainingActionButton
                   agentId="action-generate-feed-trajectories"
                   label={t("finetuningview.GenerateFeedTrajectories")}
@@ -4022,7 +4005,7 @@ export function FineTuningView({
           <div className={`${FINE_TUNING_PANEL_CLASS} mt-4 p-3 text-sm`}>
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <label className="space-y-1 text-xs text-muted">
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Scenario")}
                   </span>
@@ -4036,8 +4019,8 @@ export function FineTuningView({
                     onChange={setScenarioFilter}
                     placeholder="deterministic-pr-smoke"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted sm:col-span-2">
+                </div>
+                <div className="space-y-1 text-xs text-muted sm:col-span-2">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Output")}
                   </span>
@@ -4051,10 +4034,10 @@ export function FineTuningView({
                     onChange={setScenarioOutputDir}
                     placeholder="default"
                   />
-                </label>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="scenario-export-native"
                     label="Export native trajectories"
@@ -4064,8 +4047,8 @@ export function FineTuningView({
                     onChange={setScenarioExportNative}
                   />
                   {t("finetuningview.ExportNative")}
-                </label>
-                <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                </div>
+                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="scenario-deterministic-proxy"
                     label="Deterministic proxy"
@@ -4075,8 +4058,8 @@ export function FineTuningView({
                     onChange={setScenarioDeterministicProxy}
                   />
                   {t("finetuningview.Proxy")}
-                </label>
-                <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                </div>
+                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="scenario-dry-run"
                     label="Scenario dry run"
@@ -4086,7 +4069,7 @@ export function FineTuningView({
                     onChange={setScenarioDryRun}
                   />
                   {t("finetuningview.DryRun")}
-                </label>
+                </div>
                 <TrainingActionButton
                   agentId="action-run-scenarios"
                   label={t("finetuningview.RunScenarios")}
@@ -4215,7 +4198,7 @@ export function FineTuningView({
           <div className={`${FINE_TUNING_PANEL_CLASS} mt-4 p-3 text-sm`}>
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                <label className="space-y-1 text-xs text-muted md:col-span-2">
+                <div className="space-y-1 text-xs text-muted md:col-span-2">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Manifest")}
                   </span>
@@ -4229,8 +4212,8 @@ export function FineTuningView({
                     onChange={setEvalComparisonManifestPath}
                     placeholder="training manifest path"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.BaseModel")}
                   </span>
@@ -4244,8 +4227,8 @@ export function FineTuningView({
                     onChange={setEvalComparisonBaseModel}
                     placeholder="eliza-1-0_8b-base"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.TrainedModel")}
                   </span>
@@ -4259,8 +4242,8 @@ export function FineTuningView({
                     onChange={setEvalComparisonTrainedModelPath}
                     placeholder="eliza-1-0_8b-trained"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Backend")}
                   </span>
@@ -4280,8 +4263,8 @@ export function FineTuningView({
                     <option value="mlx">mlx</option>
                     <option value="cuda">cuda</option>
                   </AgentNativeSelect>
-                </label>
-                <label className="space-y-1 text-xs text-muted md:col-span-2 xl:col-span-5">
+                </div>
+                <div className="space-y-1 text-xs text-muted md:col-span-2 xl:col-span-5">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Output")}
                   </span>
@@ -4295,10 +4278,10 @@ export function FineTuningView({
                     onChange={setEvalComparisonOutputDir}
                     placeholder="default"
                   />
-                </label>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="eval-include-in-collection"
                     label="Include eval in collection"
@@ -4308,8 +4291,8 @@ export function FineTuningView({
                     onChange={setEvalComparisonEnabled}
                   />
                   {t("finetuningview.IncludeInCollection")}
-                </label>
-                <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                </div>
+                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="eval-dry-run"
                     label="Eval comparison dry run"
@@ -4319,7 +4302,7 @@ export function FineTuningView({
                     onChange={setEvalComparisonDryRun}
                   />
                   {t("finetuningview.DryRun")}
-                </label>
+                </div>
                 <TrainingActionButton
                   agentId="action-run-eval-comparison"
                   label={t("finetuningview.RunEvalComparison")}
@@ -4431,7 +4414,7 @@ export function FineTuningView({
           </div>
           <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-              <label className="space-y-1 text-xs text-muted">
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Tiers")}
                 </span>
@@ -4445,8 +4428,8 @@ export function FineTuningView({
                   onChange={setBenchmarkTiers}
                   placeholder={ELIZA_ONE_BENCHMARK_TIER_LIST}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Benchmark")}
                 </span>
@@ -4480,8 +4463,8 @@ export function FineTuningView({
                   <option value="clawbench">clawbench</option>
                   <option value="all">all</option>
                 </AgentNativeSelect>
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Variants")}
                 </span>
@@ -4501,8 +4484,8 @@ export function FineTuningView({
                   <option value="base">base</option>
                   <option value="trained">trained</option>
                 </AgentNativeSelect>
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.MaxSamples")}
                 </span>
@@ -4517,8 +4500,8 @@ export function FineTuningView({
                   type="number"
                   placeholder="50"
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.ResultsDb")}
                 </span>
@@ -4532,8 +4515,8 @@ export function FineTuningView({
                   onChange={setBenchmarkResultsDb}
                   placeholder="default"
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted sm:col-span-2 xl:col-span-2">
+              </div>
+              <div className="space-y-1 text-xs text-muted sm:col-span-2 xl:col-span-2">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.TrainedModelPath")}
                 </span>
@@ -4547,8 +4530,8 @@ export function FineTuningView({
                   onChange={setBenchmarkTrainedModelPath}
                   placeholder="packages/training/checkpoints/eliza-1-0_8b/final"
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.MatrixOutput")}
                 </span>
@@ -4562,10 +4545,10 @@ export function FineTuningView({
                   onChange={setBenchmarkMatrixOutputDir}
                   placeholder="default"
                 />
-              </label>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="benchmark-dry-run"
                   label="Benchmark dry run"
@@ -4575,7 +4558,7 @@ export function FineTuningView({
                   onChange={setBenchmarkDryRun}
                 />
                 {t("finetuningview.DryRun")}
-              </label>
+              </div>
               <TrainingActionButton
                 agentId="action-run-benchmark-vs-cerebras"
                 label={t("finetuningview.RunBenchmarkVsCerebras")}
@@ -4686,7 +4669,7 @@ export function FineTuningView({
           )}
           <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-              <label className="space-y-1 text-xs text-muted">
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.BundleRepo")}
                 </span>
@@ -4700,8 +4683,8 @@ export function FineTuningView({
                   onChange={setBundleStageRepoId}
                   placeholder="elizaos/eliza-1"
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.BundleTier")}
                 </span>
@@ -4722,8 +4705,8 @@ export function FineTuningView({
                   <option value="27b">27b</option>
                   <option value="27b-256k">27b-256k</option>
                 </AgentNativeSelect>
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.LocalDir")}
                 </span>
@@ -4737,8 +4720,8 @@ export function FineTuningView({
                   onChange={setBundleStageLocalDir}
                   placeholder="/tmp/eliza-1-bundles"
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.MaxBytes")}
                 </span>
@@ -4752,8 +4735,8 @@ export function FineTuningView({
                   onChange={setBundleStageMaxBytes}
                   type="number"
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted sm:col-span-2 xl:col-span-1">
+              </div>
+              <div className="space-y-1 text-xs text-muted sm:col-span-2 xl:col-span-1">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.ManifestOutput")}
                 </span>
@@ -4767,10 +4750,10 @@ export function FineTuningView({
                   onChange={setBundleStageOutputDir}
                   placeholder="default"
                 />
-              </label>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="bundle-apply"
                   label="Apply bundle"
@@ -4780,7 +4763,7 @@ export function FineTuningView({
                   onChange={setBundleStageApply}
                 />
                 {t("finetuningview.Apply")}
-              </label>
+              </div>
               <TrainingActionButton
                 agentId="action-stage-eliza1-bundle"
                 label={t("finetuningview.StageEliza1Bundle")}
@@ -4911,7 +4894,7 @@ export function FineTuningView({
           )}
           <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <label className="space-y-1 text-xs text-muted">
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.ActionBenchmarkFilter")}
                 </span>
@@ -4925,8 +4908,8 @@ export function FineTuningView({
                   onChange={setActionBenchmarkFilter}
                   placeholder="case-id[,case-id]"
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.RunsPerCase")}
                 </span>
@@ -4940,8 +4923,8 @@ export function FineTuningView({
                   onChange={setActionBenchmarkRunsPerCase}
                   type="number"
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted sm:col-span-2">
+              </div>
+              <div className="space-y-1 text-xs text-muted sm:col-span-2">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Output")}
                 </span>
@@ -4955,8 +4938,8 @@ export function FineTuningView({
                   onChange={setActionBenchmarkOutputDir}
                   placeholder="default"
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Model")}
                 </span>
@@ -4969,8 +4952,8 @@ export function FineTuningView({
                   value={actionBenchmarkModelId}
                   onChange={setActionBenchmarkModelId}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.BaseModel")}
                 </span>
@@ -4983,8 +4966,8 @@ export function FineTuningView({
                   value={actionBenchmarkBaseModelId}
                   onChange={setActionBenchmarkBaseModelId}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.CollectionTiers")}
                 </span>
@@ -4998,8 +4981,8 @@ export function FineTuningView({
                   onChange={setActionBenchmarkPairTiers}
                   placeholder={`${ELIZA_ONE_BENCHMARK_TIER_LIST} or all`}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.RuntimeModel")}
                 </span>
@@ -5012,8 +4995,8 @@ export function FineTuningView({
                   value={actionBenchmarkRuntimeModel}
                   onChange={setActionBenchmarkRuntimeModel}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.BaseRuntimeModel")}
                 </span>
@@ -5026,8 +5009,8 @@ export function FineTuningView({
                   value={actionBenchmarkBaseRuntimeModel}
                   onChange={setActionBenchmarkBaseRuntimeModel}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Provider")}
                 </span>
@@ -5040,8 +5023,8 @@ export function FineTuningView({
                   value={actionBenchmarkProvider}
                   onChange={setActionBenchmarkProvider}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.BaseUrl")}
                 </span>
@@ -5054,8 +5037,8 @@ export function FineTuningView({
                   value={actionBenchmarkBaseUrl}
                   onChange={setActionBenchmarkBaseUrl}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Variant")}
                 </span>
@@ -5077,8 +5060,8 @@ export function FineTuningView({
                   <option value="base">base</option>
                   <option value="reference">reference</option>
                 </AgentNativeSelect>
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Tier")}
                 </span>
@@ -5091,8 +5074,8 @@ export function FineTuningView({
                   value={actionBenchmarkTier}
                   onChange={setActionBenchmarkTier}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Benchmark")}
                 </span>
@@ -5105,8 +5088,8 @@ export function FineTuningView({
                   value={actionBenchmarkMatrixBenchmark}
                   onChange={setActionBenchmarkMatrixBenchmark}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted sm:col-span-2">
+              </div>
+              <div className="space-y-1 text-xs text-muted sm:col-span-2">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.DatasetVersion")}
                 </span>
@@ -5119,10 +5102,10 @@ export function FineTuningView({
                   value={actionBenchmarkDatasetVersion}
                   onChange={setActionBenchmarkDatasetVersion}
                 />
-              </label>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="action-benchmark-pair-enabled"
                   label="Pair base and trained"
@@ -5132,8 +5115,8 @@ export function FineTuningView({
                   onChange={setActionBenchmarkPairEnabled}
                 />
                 {t("finetuningview.PairBaseTrained")}
-              </label>
-              <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              </div>
+              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="action-benchmark-use-mocks"
                   label="Use mocks"
@@ -5143,8 +5126,8 @@ export function FineTuningView({
                   onChange={setActionBenchmarkUseMocks}
                 />
                 {t("finetuningview.UseMocks")}
-              </label>
-              <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              </div>
+              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="action-benchmark-capture"
                   label="Capture trajectories"
@@ -5154,8 +5137,8 @@ export function FineTuningView({
                   onChange={setActionBenchmarkCapture}
                 />
                 {t("finetuningview.CaptureTrajectories")}
-              </label>
-              <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              </div>
+              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="action-benchmark-dry-run"
                   label="Action benchmark dry run"
@@ -5165,7 +5148,7 @@ export function FineTuningView({
                   onChange={setActionBenchmarkDryRun}
                 />
                 {t("finetuningview.DryRun")}
-              </label>
+              </div>
               <TrainingActionButton
                 agentId="action-run-action-benchmark"
                 label={t("finetuningview.RunActionBenchmark")}
@@ -5491,7 +5474,7 @@ export function FineTuningTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -5557,12 +5540,9 @@ export function FineTuningTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>jobs and models</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | build-dataset | start-job | cancel-job |
-            import-model | activate-model | benchmark-model | ingest-hf-dataset
-            | feed-generate | run-scenarios | run-eval-comparison |
-            run-collection | build-analysis-index | build-readiness-report |
-            write-benchmark-matrix | run-benchmark-vs-cerebras |
-            stage-eliza1-bundle | run-action-benchmark
+            {state?.jobs.jobs.length ?? 0} jobs /{" "}
+            {state?.models.models.length ?? 0} models /{" "}
+            {state?.datasets.datasets.length ?? 0} datasets
           </div>
           <div style={{ color: "#a7f3d0", marginBottom: 8 }}>jobs</div>
           {(state?.jobs.jobs ?? []).slice(0, 10).map((job) => (

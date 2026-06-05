@@ -22,11 +22,11 @@ components/settings/
   └── tabs/
       ├── index.ts                 # Barrel export
       ├── general-tab.tsx          # General settings (fully implemented)
-      ├── account-tab.tsx          # Account settings (placeholder)
-      ├── usage-tab.tsx            # Usage & quotas (placeholder)
-      ├── billing-tab.tsx          # Billing & payments (placeholder)
-      ├── apis-tab.tsx             # API configuration (placeholder)
-      └── analytics-tab.tsx        # Analytics & insights (placeholder)
+      ├── account-tab.tsx          # Account settings, stats, and logout
+      ├── usage-tab.tsx            # Credits, quotas, and session usage
+      ├── billing-tab.tsx          # Credit purchases, invoices, and auto top-up
+      ├── apis-tab.tsx             # API key management
+      └── analytics-tab.tsx        # Usage analytics and metrics
 ```
 
 ## Features Implemented
@@ -57,11 +57,39 @@ components/settings/
 - ✅ Orange accent color (#FF5800) for active switches
 - ✅ Corner brackets decoration
 
-### Other Tabs (Placeholders)
+### Account Tab
 
-- Account, Usage, Billing, APIs, and Analytics tabs have placeholder content
-- Each shows an icon, title, and description
-- Ready to be filled with actual functionality
+- ✅ Organization ID copy action
+- ✅ Account statistics fetch
+- ✅ Recent activity and quick links
+- ✅ Logout flow with Steward session cleanup
+
+### Usage Tab
+
+- ✅ Credit balance and daily burn display
+- ✅ Current session statistics
+- ✅ Quota usage by model/provider
+- ✅ Periodic session refresh
+
+### Billing Tab
+
+- ✅ Credit purchase flow
+- ✅ Card and crypto payment options
+- ✅ Invoice listing
+- ✅ Auto top-up controls
+
+### APIs Tab
+
+- ✅ API key listing
+- ✅ API key creation dialog
+- ✅ One-time key reveal and copy flow
+- ✅ Delete confirmation
+
+### Analytics Tab
+
+- ✅ Time range selector
+- ✅ Cadence and focus metric controls
+- ✅ Request, cost, token, and success-rate summaries
 
 ## Design System Integration
 
@@ -114,30 +142,13 @@ All Figma assets are stored in `/public/assets/settings/`
 // 4. Persists user preferences
 ```
 
-## Next Steps
+## Maintenance Notes
 
-To complete the implementation:
-
-1. **General Tab:**
-   - Add form submission logic
-   - Connect to user update API
-   - Add validation
-   - Add success/error toasts
-
-2. **Other Tabs:**
-   - Replace placeholders with actual content
-   - Implement Account management UI
-   - Add Usage statistics and charts
-   - Integrate Billing/Stripe UI
-   - Create API key management interface
-   - Add Analytics dashboard
-
-3. **Enhancements:**
-   - Add loading states
-   - Add error handling
-   - Add confirmation dialogs for sensitive actions
-   - Add keyboard navigation
-   - Add mobile responsiveness improvements
+- Keep tab copy and endpoint references synchronized with the dashboard data
+  hooks and Cloud API DTOs.
+- Run the cloud visual-review protocol for UI changes in this directory:
+  `bun run --cwd packages/cloud-frontend audit:cloud`.
+- Run typecheck and targeted tests after changing tab behavior.
 
 ## Testing
 

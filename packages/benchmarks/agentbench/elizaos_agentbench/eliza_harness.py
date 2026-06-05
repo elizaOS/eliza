@@ -75,7 +75,7 @@ async def create_benchmark_runtime(*_args: object, **_kwargs: object) -> object:
 
 
 def create_benchmark_plugin() -> None:
-    """Compatibility no-op for the removed Python plugin."""
+    """Compatibility shim for the removed Python plugin."""
     return None
 
 

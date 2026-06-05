@@ -3537,6 +3537,8 @@ export const ODYSSEUS_CSS = `
   gap: 5px;
   flex-wrap: wrap;
   margin-bottom: 8px;
+  max-height: 49px;
+  overflow: hidden;
 }
 .odysseus-root .od-tasks-chip {
   background: none;
@@ -3696,6 +3698,9 @@ export const ODYSSEUS_CSS = `
   color: var(--accent, var(--red));
   background: color-mix(in srgb, var(--accent, var(--red)) 16%, transparent);
   border-color: color-mix(in srgb, var(--accent, var(--red)) 34%, transparent);
+  width: 24px;
+  padding: 0;
+  justify-content: center;
 }
 .odysseus-root .od-tasks-run-badge:hover {
   background: color-mix(in srgb, var(--accent, var(--red)) 24%, transparent);
@@ -5240,36 +5245,29 @@ export const ODYSSEUS_CSS = `
   flex-shrink: 0;
 }
 
-/* ── Body: left rail + panels ── */
+/* ── Body: single column — horizontal tab bar above the panel ── */
 .odysseus-root .od-admin-body {
   display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
   gap: 0;
 }
 .odysseus-root .od-admin-rail {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 2px;
-  width: 178px;
+  width: 100%;
   flex-shrink: 0;
-  padding: 12px 10px;
-  border-right: 1px solid var(--border);
-  overflow-y: auto;
-}
-.odysseus-root .od-admin-rail-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-weight: 600;
-  opacity: 0.35;
-  padding: 4px 8px 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
 }
 .odysseus-root .od-admin-rail-item {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 7px 10px;
+  padding: 7px 12px;
   border: none;
   border-radius: 7px;
   background: none;
@@ -5277,6 +5275,7 @@ export const ODYSSEUS_CSS = `
   font-size: 13px;
   font-family: inherit;
   text-align: left;
+  white-space: nowrap;
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
@@ -5290,7 +5289,8 @@ export const ODYSSEUS_CSS = `
 }
 .odysseus-root .od-admin-panels {
   flex: 1;
-  min-width: 0;
+  width: 100%;
+  min-height: 0;
   padding: 14px;
   overflow-y: auto;
 }
@@ -8171,7 +8171,7 @@ export const ODYSSEUS_CSS = `
 .odysseus-root .od-doclib-toolbar-btn-active { border-color:var(--red); color:var(--red); }
 
 /* Extension filter chips (odysseus .memory-cat-chip, style.css L10649). */
-.odysseus-root .od-doclib-chips { display:flex; gap:4px; flex-wrap:wrap; flex-basis:100%; }
+.odysseus-root .od-doclib-chips { display:flex; gap:4px; flex-wrap:wrap; flex-basis:100%; max-height:48px; overflow:hidden; }
 .odysseus-root .od-doclib-chip { background:none; border:1px solid var(--border);
   color:color-mix(in srgb, var(--fg) 60%, transparent); font-size:10px; height:22px; padding:0 8px;
   display:inline-flex; align-items:center; border-radius:10px; cursor:pointer; font-family:inherit;

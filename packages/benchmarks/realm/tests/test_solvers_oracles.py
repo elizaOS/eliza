@@ -198,9 +198,45 @@ def test_darp_falls_back_to_greedy_on_unreachable_pickup() -> None:
         vehicles, passengers, distances, timeout_s=2.0, use_time_windows=False
     )
     # Either greedy can't find a path (returns None) or routing returns
-    # a no-op route (cost 0 with the passenger dropped via disjunction).
+    # an empty route (cost 0 with the passenger dropped via disjunction).
     # Both are acceptable; the assert is that we don't raise.
     assert cost is None or cost >= 0.0
+
+
+# ---------------------------------------------------------------------------
+# Supply chain — deterministic least-cost reference plan.
+# ---------------------------------------------------------------------------
+
+
+def test_supply_chain_oracle_prefers_cheapest_on_time_supplier() -> None:
+    instance = {
+        "suppliers": [
+            {
+                "supplier_id": "cheap_late",
+                "capacity": 100,
+                "lead_time": 10,
+                "cost_multiplier": 1.0,
+            },
+            {
+                "supplier_id": "fast_expensive",
+                "capacity": 100,
+                "lead_time": 4,
+                "cost_multiplier": 2.0,
+            },
+        ],
+        "facilities": [{"facility_id": "assembly", "cost_per_unit": 10}],
+        "budget": 100,
+        "delivery_deadlines": {"gpu_chips": 5, "memory": 20},
+    }
+
+    cost, orders, details = solvers.supply_chain_oracle(instance)
+
+    assert cost == pytest.approx(30.0)
+    assert details["on_time"] == 2
+    assert details["within_budget"] is True
+    by_component = {order["component"]: order for order in orders}
+    assert by_component["gpu_chips"]["supplier"] == "fast_expensive"
+    assert by_component["memory"]["supplier"] == "cheap_late"
 
 
 # ---------------------------------------------------------------------------

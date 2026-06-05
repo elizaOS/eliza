@@ -1,5 +1,6 @@
 import {
   type ActionResult,
+  EventType,
   getDefaultTriageService,
   type HandlerCallback,
   type HandlerOptions,
@@ -13,6 +14,11 @@ import {
   registerSendPolicy,
   type State,
 } from "@elizaos/core";
+import { BrowserBridgeAdapter } from "@elizaos/plugin-browser";
+import { calendarPlugin } from "@elizaos/plugin-calendar";
+import { CalendlyAdapter } from "@elizaos/plugin-calendly";
+import { GoogleGmailAdapter } from "@elizaos/plugin-google";
+import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";
 import { calendarAction } from "./actions/calendar.js";
@@ -55,6 +61,7 @@ import {
 import { InboxTriageRepository } from "./inbox/repository.js";
 import { createApprovalQueue } from "./lifeops/approval-queue.js";
 import type { ApprovalChannel } from "./lifeops/approval-queue.types.js";
+import { registerLifeOpsCalendarGate } from "./lifeops/calendar-gate.js";
 import {
   createChannelRegistry,
   registerChannelRegistry,
@@ -66,17 +73,13 @@ import {
   registerDefaultConnectorPack,
 } from "./lifeops/connectors/index.js";
 import { applyMockoonEnvOverrides } from "./lifeops/connectors/mockoon-redirect.js";
+import { handleVoiceTurnObserved } from "./lifeops/entities/voice-observer-bridge.js";
 import { createOwnerLocaleExamplesProvider } from "./lifeops/i18n/localized-examples-provider.js";
 import {
   createMultilingualPromptRegistry,
   registerDefaultPromptPack,
   registerMultilingualPromptRegistry,
 } from "./lifeops/i18n/prompt-registry.js";
-import { BrowserBridgeAdapter } from "@elizaos/plugin-browser";
-import { calendarPlugin } from "@elizaos/plugin-calendar";
-import { CalendlyAdapter } from "@elizaos/plugin-calendly";
-import { GoogleGmailAdapter } from "@elizaos/plugin-google";
-import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import { createOwnerSendPolicy } from "./lifeops/messaging/owner-send-policy.js";
 import {
   createOwnerFactStore,
@@ -141,7 +144,6 @@ import {
   type SelfControlPluginConfig,
   setSelfControlPluginConfig,
 } from "./website-blocker/engine.js";
-import { registerLifeOpsCalendarGate } from "./lifeops/calendar-gate.js";
 import { WebsiteBlockerService } from "./website-blocker/service.js";
 
 const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
@@ -711,6 +713,12 @@ const rawAppLifeOpsPlugin: Plugin = {
   ],
   responseHandlerEvaluators: [ownerProfileExtractionEvaluator],
   responseHandlerFieldEvaluators: [threadOpsFieldEvaluator],
+  events: {
+    // Fold recognized voice turns into the entity/relationship graph via
+    // the merge engine, then round-trip the binding to the voice-profile
+    // owner. See lifeops/entities/voice-observer-bridge.ts.
+    [EventType.VOICE_TURN_OBSERVED]: [handleVoiceTurnObserved],
+  },
   init: async (
     pluginConfig: Record<string, unknown>,
     runtime: IAgentRuntime,

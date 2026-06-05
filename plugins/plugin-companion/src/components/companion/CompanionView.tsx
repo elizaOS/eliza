@@ -5,6 +5,7 @@ import { type CSSProperties, memo, type ReactNode } from "react";
 import { AGENT_EMOTE_CATALOG, EMOTE_CATALOG } from "../../emotes/catalog";
 import { CompanionSceneHost } from "./CompanionSceneHost";
 import { countByCategory } from "./CompanionView.helpers";
+import { useCompanionSceneStatus } from "./companion-scene-status-context";
 import { EmotePicker } from "./EmotePicker";
 import { resolveCompanionInferenceNotice } from "./resolve-companion-inference-notice";
 
@@ -16,17 +17,96 @@ import { resolveCompanionInferenceNotice } from "./resolve-companion-inference-n
  */
 const CompanionViewOverlay = memo(function CompanionViewOverlay() {
   useRenderGuard("CompanionView");
+  const emoteCategories = countByCategory();
+  const categoryCount = Object.keys(emoteCategories).length;
+  const { avatarReady } = useCompanionSceneStatus();
+
   return (
     <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
       <EmotePicker />
 
-      {/* Center (empty to show the avatar) */}
-      <div className="flex-1 grid grid-cols-[1fr_auto] gap-6 min-h-0 relative">
-        <div className="w-full h-full" />
+      {/* Compact aesthetic status chip cluster — theme-token driven, not a
+          devtools panel. Lives top-left, translucent + blurred over the stage. */}
+      <div
+        className="absolute left-4 top-4 z-20 flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-1.5 rounded-full border px-1.5 py-1.5 backdrop-blur-md"
+        style={{
+          borderColor: "var(--border)",
+          background: "var(--bg-elevated)",
+          boxShadow: "0 8px 28px rgba(0,0,0,0.18)",
+        }}
+        title="Companion avatar surface"
+      >
+        <StatusChip ready={avatarReady} />
+        <CompanionChip
+          icon="☻"
+          label={String(AGENT_EMOTE_CATALOG.length)}
+          title="Agent emotes"
+        />
+        <CompanionChip
+          icon="◆"
+          label={`${EMOTE_CATALOG.length}/${categoryCount}`}
+          title="Emote catalog"
+        />
+        <CompanionChip icon="⌁" label="" title="Global chat relay" subtle />
       </div>
+
+      <div className="min-h-0 flex-1" />
     </div>
   );
 });
+
+function StatusChip({ ready }: { ready: boolean }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+      style={{
+        background: ready ? "var(--status-success-bg)" : "var(--accent-subtle)",
+        color: ready ? "var(--status-success)" : "var(--accent)",
+      }}
+    >
+      <span
+        className="h-1.5 w-1.5 shrink-0 rounded-full"
+        style={{
+          background: ready ? "var(--status-success)" : "var(--accent)",
+          boxShadow: ready
+            ? "0 0 0 3px var(--status-success-bg)"
+            : "0 0 0 3px var(--accent-subtle)",
+          animation: ready
+            ? undefined
+            : "companion-chip-pulse 1.4s ease-in-out infinite",
+        }}
+      />
+      <span className="sr-only">{ready ? "ready" : "loading"}</span>
+      <style>{`@keyframes companion-chip-pulse{0%,100%{opacity:1}50%{opacity:0.35}}`}</style>
+    </span>
+  );
+}
+
+function CompanionChip({
+  icon,
+  label,
+  title,
+  subtle = false,
+}: {
+  icon: string;
+  label: string;
+  title: string;
+  subtle?: boolean;
+}) {
+  return (
+    <span
+      className="inline-flex min-h-7 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+      style={{
+        background: "var(--surface)",
+        color: subtle ? "var(--muted)" : "var(--text-strong)",
+      }}
+      title={title}
+    >
+      <span aria-hidden>{icon}</span>
+      {label ? <span>{label}</span> : null}
+    </span>
+  );
+}
 
 /**
  * CompanionView — thin shell that composes CompanionSceneHost + overlay.
@@ -173,7 +253,7 @@ export function CompanionTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -210,7 +290,8 @@ export function CompanionTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>controls</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | emotes | play-emote | stop-emote | toggle-voice
+            {AGENT_EMOTE_CATALOG.length} agent emotes / voice{" "}
+            {chatAgentVoiceMuted ? "muted" : "live"}
           </div>
           <CompanionTuiButton
             agentId="tui-toggle-voice"
@@ -242,13 +323,13 @@ export function CompanionTuiView() {
             settings
           </CompanionTuiButton>
           <div style={{ marginTop: 14 }}>
-            {Object.entries(viewState.emotesByCategory).map(
-              ([category, count]) => (
+            {Object.entries(viewState.emotesByCategory)
+              .slice(0, 6)
+              .map(([category, count]) => (
                 <div key={category}>
                   <span style={{ color: "#64748b" }}>{category}</span> {count}
                 </div>
-              ),
-            )}
+              ))}
           </div>
         </section>
       </div>

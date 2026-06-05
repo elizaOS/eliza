@@ -6,17 +6,23 @@ database:
 
 providers:
   bitrouter: {}
-  cerebras: {}
   openai: {}
   anthropic: {}
   google: {}
   groq: {}
+  openrouter: {}
   cerebras:
     api_base: "https://api.cerebras.ai/v1"
     api_key: "${BITROUTER_CEREBRAS_API_KEY}"
-    api_protocol: openai
+    api_protocol: chat_completions
     models:
-      gpt-oss-120b: {}
-      zai-glm-4.7: {}
+      - id: gpt-oss-120b
+        pricing:
+          input_micro_usd_per_token: 0.35
+          output_micro_usd_per_token: 0.75
+      - id: zai-glm-4.7
+        pricing:
+          input_micro_usd_per_token: 2.25
+          output_micro_usd_per_token: 2.75
 
 inherit_defaults: true

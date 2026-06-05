@@ -18,5 +18,5 @@ pytest tests/ -v
 | `test_random_baseline.py` | `lib/random_baseline.py` — strategy registry, per-kind random-response generators (multiple-choice, function-call, empty-patch, trajectory, freeform), lift math, and CLI subcommands. |
 | `test_random_baseline_harness.py` | `orchestrator/random_baseline_runner.py` + `orchestrator/compare_vs_random.py` — in-process synthesizer output shape, SQLite-backed compare-vs-random lift check (seeds a real DB via `tmp_path`), and CLI dispatch wiring. |
 | `test_registry_scores.py` | `registry/scores.py` — validation rules for Hermes env JSON (placeholder-only rejection, incomplete-rollout rejection, mixed-metric acceptance). |
-| `test_runner_normalization.py` | `orchestrator/trajectory_normalize_hook.py` — per-harness canonical JSONL output for eliza, openclaw, and hermes; no-op on unknown artifacts; corrupt-input resilience. |
+| `test_runner_normalization.py` | `orchestrator/trajectory_normalize_hook.py` — per-harness canonical JSONL output for eliza, openclaw, and hermes; unchanged output on unknown artifacts; corrupt-input resilience. |
 | `test_trajectory_normalizer.py` | `lib/trajectory_normalizer.py` — `CanonicalEntry` schema, normalizers for all three harness formats, `align_by_step`, JSON compactness, and the `normalize`/`diff` CLI subcommands (invoked as a subprocess). |

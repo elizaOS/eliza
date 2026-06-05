@@ -59,11 +59,13 @@ const createChainableMock = (
     innerJoin: () => chainable,
     groupBy: () => chainable,
     having: () => chainable,
+    // biome-ignore lint/suspicious/noThenProperty: Intentional Drizzle-style thenable test double.
     then: (resolve: (value: Array<Record<string, unknown>>) => void) =>
       resolve(returnValue),
     [Symbol.toStringTag]: "Promise",
   };
   // Make it awaitable
+  // biome-ignore lint/suspicious/noThenProperty: Intentional Drizzle-style thenable test double.
   Object.defineProperty(chainable, "then", {
     value: (resolve: (value: Array<Record<string, unknown>>) => void) =>
       Promise.resolve(returnValue).then(resolve),

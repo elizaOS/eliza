@@ -264,7 +264,7 @@ export function weightedRandomSample<T extends { probability: number }>(
     let selectedIdx = 0;
 
     for (let i = 0; i < remaining.length; i++) {
-      random -= remaining[i]?.probability;
+      random -= remaining[i]?.probability ?? 0;
       if (random <= 0) {
         selectedIdx = i;
         break;

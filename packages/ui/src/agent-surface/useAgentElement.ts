@@ -14,7 +14,7 @@
  * The returned `ref` gives the registry a live handle to the DOM node, and
  * `agentProps` stamps `data-agent-*` / `data-state` so the element is both
  * machine-addressable and counted as a visual signal. Outside a view (no
- * provider) the hook is an inert no-op that still returns valid props.
+ * provider) the hook still returns valid inert props.
  */
 
 import type { RefObject } from "react";

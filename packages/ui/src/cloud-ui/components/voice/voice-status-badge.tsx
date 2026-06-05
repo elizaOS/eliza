@@ -7,7 +7,7 @@
 "use client";
 
 import { AlertCircle, CheckCircle2, Clock, Loader2 } from "lucide-react";
-import { StatusBadge } from "../status-badge";
+import { StatusBadge } from "../../../components/ui/status-badge";
 
 interface VoiceStatusBadgeProps {
   voice: {

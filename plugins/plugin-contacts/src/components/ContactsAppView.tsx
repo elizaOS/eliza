@@ -1045,13 +1045,7 @@ export function ContactsTuiView() {
         {loading ? "loading" : `${contacts.length} contacts`} | {lastAction}
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(240px, 0.9fr) minmax(300px, 1.1fr)",
-          gap: 16,
-        }}
-      >
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
         <section
           aria-label="Contacts list"
           style={{
@@ -1121,7 +1115,7 @@ export function ContactsTuiView() {
           {!loading && !error && contacts.length === 0 && (
             <div style={{ color: "#64748b" }}>no contacts</div>
           )}
-          {contacts.map((contact, index) => (
+          {contacts.slice(0, 32).map((contact, index) => (
             <ContactsTuiListItem
               key={contact.id}
               contact={contact}
@@ -1148,7 +1142,7 @@ export function ContactsTuiView() {
             {selected ? selected.displayName || "Unnamed" : "create contact"}
           </strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: list | create | import-vcard
+            {contacts.length} contacts / {query ? "filtered" : "all"}
           </div>
 
           {selected && (

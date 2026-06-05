@@ -23,6 +23,7 @@ function tokenMatches(expected: string, provided: string): boolean {
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
 import path from "node:path";
+import { handleCloudPairRoute } from "@elizaos/app-core/api/cloud-pair-route";
 import {
   type AgentRuntime,
   type IAgentRuntime,
@@ -41,7 +42,6 @@ import type {
   AppManagerLike,
   FavoriteAppsStore,
 } from "@elizaos/plugin-app-manager";
-import { handleCloudPairRoute } from "@elizaos/app-core/api/cloud-pair-route";
 import type { WalletRouteDependencies } from "@elizaos/plugin-wallet";
 import {
   getStylePresets,
@@ -2804,11 +2804,11 @@ async function handleRequest(
   // /api/issues/*) are now provided by the @elizaos/plugin-agent-orchestrator
   // plugin via the runtime route registry. Most of those paths genuinely need
   // the runtime, so a pre-runtime 503 is correct. The GET capability probes
-  // below are the exception: they have graceful builtin stubs
+  // below are the exception: they have graceful builtin probe handlers
   // (handleBuiltinOptionalRoutes → { available: false } / "unavailable"). The
   // dashboard polls /preflight the instant agentStatus flips to "running", which
   // can race ahead of state.runtime being assigned during a restart; serve those
-  // from the stub instead of a 503 the browser logs as a red console error.
+  // from the builtin probe handler instead of a 503 the browser logs as a red console error.
   const isCodingAgentBuiltinProbe =
     pathname === "/api/coding-agents/preflight" ||
     pathname === "/api/coding-agents/coordinator/status";
@@ -4049,14 +4049,14 @@ export async function startApiServer(opts?: {
         // `handleStreamRoute` is exported by `@elizaos/plugin-streaming`,
         // which the mobile bundle replaces with a null-plugin proxy (see
         // `packages/agent/scripts/build-mobile-bundle.mjs` —
-        // `@elizaos/plugin-streaming` is in the stub allowlist because the
+        // `@elizaos/plugin-streaming` is in the mobile replacement allowlist because the
         // TTS / SSE worker pool has zero mobile use). On mobile the
         // dynamic import resolves successfully but `handleStreamRoute` is
         // `undefined`, and the closure here gets pushed into
         // `connectorRouteHandlers` anyway — so every inbound HTTP request
         // (including `/api/local-inference/device-bridge/status`) errors
         // with `handleStreamRoute is not a function`. Skip the push when
-        // the import returned a stub.
+        // the import returned a null-plugin proxy.
         if (typeof handleStreamRoute === "function") {
           state.connectorRouteHandlers.push((req, res, pathname, method) =>
             handleStreamRoute(req, res, pathname, method, streamState as never),

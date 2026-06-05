@@ -1,6 +1,4 @@
-type SupportedEnvKey =
-  | "EMAIL_FROM"
-  | "NOTIFICATION_EMAIL_FROM";
+type SupportedEnvKey = "EMAIL_FROM" | "NOTIFICATION_EMAIL_FROM";
 
 export function getTrimmedEnv(name: SupportedEnvKey): string | undefined {
   // Intentionally avoid dynamic environment lookups so `env:audit` can keep

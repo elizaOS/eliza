@@ -18,6 +18,7 @@ import type {
 import { WiFi } from "@elizaos/capacitor-wifi";
 import { Button, type OverlayAppContext } from "@elizaos/ui";
 import {
+  CheckCircle2,
   ChevronLeft,
   Lock,
   RefreshCw,
@@ -30,6 +31,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 interface SignalBarsProps {
   rssi: number;
 }
+
+const VISIBLE_NETWORK_LIMIT = 12;
 
 /**
  * Map dBm to a 0–4 bar count. Standard Android thresholds:
@@ -91,8 +94,7 @@ function ConnectedCard({
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium text-txt">Wi-Fi is off</div>
             <div className="mt-1 text-xs text-muted">
-              Turn on Wi-Fi from Android settings, then scan again to load
-              nearby networks.
+              Enable it in Android settings.
             </div>
             <Button
               variant="outline"
@@ -122,9 +124,9 @@ function ConnectedCard({
     <div className="rounded-lg border border-border/30 bg-card/40 p-4">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <WifiIcon className="h-5 w-5 text-txt" />
+          <CheckCircle2 className="h-5 w-5 text-ok" />
           <div>
-            <div className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
+            <div className="text-2xs font-semibold uppercase text-muted/70">
               Connected
             </div>
             <div className="text-base font-semibold text-txt">
@@ -310,26 +312,33 @@ export function WifiAppView(props: OverlayAppContext) {
         </Button>
       </header>
 
-      <div className="grid flex-1 auto-rows-max gap-4 overflow-y-auto px-4 py-4 md:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
-        <section>
-          <ConnectedCard
-            state={state}
-            network={connected}
-            onDisconnect={handleDisconnect}
-            onOpenSettings={openNetworkSettings}
-            busy={busy}
-          />
-        </section>
+      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
+        <ConnectedCard
+          state={state}
+          network={connected}
+          onDisconnect={handleDisconnect}
+          onOpenSettings={openNetworkSettings}
+          busy={busy}
+        />
 
         {error ? (
-          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400 md:col-span-2">
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
             {error}
           </div>
         ) : null}
 
         <div className="flex flex-col gap-2">
-          <div className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-            Nearby networks
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-txt">
+              <WifiIcon className="h-4 w-4 text-muted" />
+              Networks
+            </div>
+            <span className="text-xs text-muted">
+              {sortedNetworks.length}
+              {sortedNetworks.length > VISIBLE_NETWORK_LIMIT
+                ? ` / ${VISIBLE_NETWORK_LIMIT} shown`
+                : ""}
+            </span>
           </div>
           {sortedNetworks.length === 0 && !scanning ? (
             <div className="rounded-lg border border-border/24 bg-bg/40 px-4 py-8 text-center">
@@ -338,8 +347,7 @@ export function WifiAppView(props: OverlayAppContext) {
                 No networks found
               </div>
               <div className="mx-auto mt-1 max-w-sm text-xs text-muted">
-                Scans need Wi-Fi and Android location access. If the device has
-                Wi-Fi disabled, open network settings first.
+                Check Wi-Fi and location access.
               </div>
               <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
                 <Button
@@ -366,7 +374,7 @@ export function WifiAppView(props: OverlayAppContext) {
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              {sortedNetworks.map((network) => (
+              {sortedNetworks.slice(0, VISIBLE_NETWORK_LIMIT).map((network) => (
                 <NetworkRow
                   key={`${network.bssid}-${network.ssid}`}
                   network={network}

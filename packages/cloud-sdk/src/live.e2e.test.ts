@@ -311,7 +311,9 @@ agentDescribe("ElizaCloudClient real API e2e: Eliza agent lifecycle", () => {
       agentName: `sdk-e2e-${Date.now()}`,
       agentConfig: {},
     });
-    const agentId = created.data.id;
+    expect(created.data).toBeDefined();
+    const agent = created.data!;
+    const agentId = agent.id;
     expect(agentId).toBeTruthy();
 
     try {
@@ -321,7 +323,7 @@ agentDescribe("ElizaCloudClient real API e2e: Eliza agent lifecycle", () => {
       );
       await expect(
         client.updateAgent(agentId, {
-          agentName: created.data.agentName ?? undefined,
+          agentName: agent.agentName ?? undefined,
         }),
       ).resolves.toBeTruthy();
       await expect(client.listAgentBackups(agentId)).resolves.toBeTruthy();

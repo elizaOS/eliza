@@ -144,6 +144,7 @@ export interface CreatePlanRevisionInput {
   editSummary?: string;
   createdBy?: string;
   metadata?: Record<string, unknown>;
+  makeCurrent?: boolean;
 }
 
 export interface RestartWithEditedPlanInput extends RestartTaskInput {
@@ -1026,7 +1027,9 @@ export class OrchestratorTaskService extends Service {
       createdAt: nowIso(),
     };
     await this.store.addPlanRevision(revision);
-    await this.store.updateTask(taskId, { currentPlan: revision.plan });
+    if (input.makeCurrent !== false) {
+      await this.store.updateTask(taskId, { currentPlan: revision.plan });
+    }
     await this.store.addEvent({
       id: randomUUID(),
       taskId,
@@ -1074,30 +1077,29 @@ export class OrchestratorTaskService extends Service {
       planRevision,
     );
     const mode = input.mode ?? "same-session";
-    if (planRevision) {
-      await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
-    }
-    await this.store.addEvent({
-      id: randomUUID(),
-      taskId,
-      sessionId: input.sessionId ?? source?.sessionId,
-      eventType: "retry_turn_requested",
-      summary: "Retry turn requested",
-      data: {
-        messageId: input.messageId,
-        sessionId: input.sessionId,
-        mode,
-        instruction: input.instruction,
-        planRevisionId: planRevision?.id,
-      },
-      timestamp: Date.now(),
-      createdAt: nowIso(),
-    });
-    await this.store.updateTask(taskId, { paused: false, status: "active" });
     if (mode === "new-session") {
       await this.spawnAgentForTask(taskId, {
         ...input.agent,
         task: instruction,
+      });
+      if (planRevision) {
+        await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
+      }
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        sessionId: input.sessionId ?? source?.sessionId,
+        eventType: "retry_turn_requested",
+        summary: "Retry turn requested",
+        data: {
+          messageId: input.messageId,
+          sessionId: input.sessionId,
+          mode,
+          instruction: input.instruction,
+          planRevisionId: planRevision?.id,
+        },
+        timestamp: Date.now(),
+        createdAt: nowIso(),
       });
       return this.getTask(taskId);
     }
@@ -1125,6 +1127,26 @@ export class OrchestratorTaskService extends Service {
       "validation_failed",
     );
     if (!sent) throw new Error("Failed to send retry instruction");
+    if (planRevision) {
+      await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
+    }
+    await this.store.addEvent({
+      id: randomUUID(),
+      taskId,
+      sessionId,
+      eventType: "retry_turn_requested",
+      summary: "Retry turn requested",
+      data: {
+        messageId: input.messageId,
+        sessionId,
+        mode,
+        instruction: input.instruction,
+        planRevisionId: planRevision?.id,
+      },
+      timestamp: Date.now(),
+      createdAt: nowIso(),
+    });
+    await this.store.updateTask(taskId, { paused: false, status: "active" });
     return this.getTask(taskId);
   }
 
@@ -1185,12 +1207,16 @@ export class OrchestratorTaskService extends Service {
     if (input.planRevisionId && !planRevision) {
       throw new RecoveryConflictError("Plan revision not found");
     }
-    if (input.stopActive !== false) await this.stopActiveSessions(doc);
     const instruction = withPlanRevisionContext(
       input.instruction?.trim() ||
         "Restart this task from the current durable context. Reinspect the task timeline, then continue until the goal is met or you are blocked.",
       planRevision,
     );
+    await this.spawnAgentForTask(taskId, {
+      ...input.agent,
+      task: instruction,
+    });
+    if (input.stopActive !== false) await this.stopActiveSessions(doc);
     if (planRevision) {
       await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
     }
@@ -1214,10 +1240,6 @@ export class OrchestratorTaskService extends Service {
       closedAt: null,
       status: "active",
     });
-    await this.spawnAgentForTask(taskId, {
-      ...input.agent,
-      task: instruction,
-    });
     return this.getTask(taskId);
   }
 
@@ -1230,6 +1252,7 @@ export class OrchestratorTaskService extends Service {
       basePlanRevisionId: input.basePlanRevisionId,
       editSummary: input.editSummary,
       createdBy: "operator",
+      makeCurrent: false,
     });
     if (!revision) return null;
     return this.restartTask(taskId, {
@@ -1524,7 +1547,9 @@ export class OrchestratorTaskService extends Service {
         ),
       );
       await this.store.updateTask(doc.task.id, { status: "interrupted" });
-      throw new Error("ACP service unavailable; cannot stop active sessions");
+      throw new RecoveryConflictError(
+        "ACP service unavailable; cannot stop active sessions",
+      );
     }
     const failures: Array<{ sessionId: string; error: string }> = [];
     await Promise.all(
@@ -1547,7 +1572,7 @@ export class OrchestratorTaskService extends Service {
     );
     if (failures.length > 0) {
       await this.store.updateTask(doc.task.id, { status: "interrupted" });
-      throw new Error(
+      throw new RecoveryConflictError(
         `Failed to stop ${failures.length} active session${
           failures.length === 1 ? "" : "s"
         }`,

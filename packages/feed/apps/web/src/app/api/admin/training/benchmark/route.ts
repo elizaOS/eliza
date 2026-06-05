@@ -63,9 +63,9 @@
  * ```
  */
 
+import { benchmarkService } from "@feed/agents/training";
 import { requireAdmin, successResponse, withErrorHandling } from "@feed/api";
 import { logger } from "@feed/shared";
-import { benchmarkService } from "@feed/training";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 

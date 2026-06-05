@@ -438,7 +438,7 @@ export function VoiceView({
             onClick={() => setTtsCardOpen((v) => !v)}
             aria-expanded={ttsCardOpen}
           >
-            {ttsCardOpen ? "Hide" : "Text to Speech"}
+            {ttsCardOpen ? "Hide" : "TTS"}
           </button>
         </div>
 
@@ -475,9 +475,6 @@ export function VoiceView({
                 <span className="od-admin-slider" />
               </label>
             </h2>
-            <div className="od-admin-toggle-sub">
-              Configure TTS provider for assistant message read-aloud.
-            </div>
             <div className="od-tts-fields">
               <div className="od-tts-row">
                 <span className="od-settings-label">Provider</span>
@@ -547,17 +544,17 @@ export function VoiceView({
                 title={
                   ttsAttached
                     ? "Preview the assistant voice"
-                    : `No voice service attached (provider: ${providerLabel}). Preview is unavailable.`
+                    : `Voice offline: ${providerLabel}`
                 }
               >
                 Preview
               </button>
               <div className="od-tts-msg">
                 {status.loading
-                  ? "Checking voice service…"
+                  ? "Checking…"
                   : ttsAttached
                     ? previewMsg
-                    : `No voice service is attached to the orchestrator (${presetHints.length} fallback voices available). Read-aloud stays off until a provider is configured.`}
+                    : `Offline · ${presetHints.length} fallback voices`}
               </div>
             </div>
           </div>

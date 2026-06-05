@@ -93,6 +93,30 @@ function resolveSmithersDbPath(workflowId: string): string {
   return join(process.cwd(), '.eliza', 'smithers', `${safeId}.sqlite`);
 }
 
+/**
+ * Resolve the Smithers storage backend configuration from environment variables.
+ *
+ * SMITHERS_DB_PROVIDER: "sqlite" (default) | "postgres" | "pglite"
+ * SMITHERS_DB_URL:      PostgreSQL connection string (used when provider = "postgres")
+ * SMITHERS_DB_DATA_DIR: PGlite data directory (used when provider = "pglite")
+ *
+ * The resolved config is threaded through the subprocess payload so the layer
+ * selection runs inside the subprocess script string.
+ */
+export function resolveSmithersDbConfig(): {
+  provider: 'sqlite' | 'postgres' | 'pglite';
+  connectionString?: string;
+  dataDir?: string;
+} {
+  const raw = process.env.SMITHERS_DB_PROVIDER ?? 'sqlite';
+  const provider = raw === 'postgres' || raw === 'pglite' ? raw : 'sqlite';
+  return {
+    provider,
+    connectionString: process.env.SMITHERS_DB_URL,
+    dataDir: process.env.SMITHERS_DB_DATA_DIR,
+  };
+}
+
 async function resolvePluginRoot(): Promise<string> {
   let dir = dirname(fileURLToPath(import.meta.url));
   for (let depth = 0; depth < 8; depth += 1) {
@@ -300,6 +324,24 @@ function createSmithersScript(): string {
 
       const graph = workflow.sequence(...levelGraphs, resultStep);
       const built = workflow.from(graph);
+      // Select the storage backend based on the provider field threaded through
+      // the payload. Feature-detect non-sqlite APIs: smithers-orchestrator@0.22.0
+      // does not yet expose Smithers.postgres / Smithers.pglite; if the method is
+      // absent we degrade to sqlite so old and new builds both work correctly.
+      const dbConfig = payload.dbConfig ?? {};
+      const provider = dbConfig.provider ?? 'sqlite';
+      let smithersLayer;
+      if (provider !== 'sqlite' && typeof Smithers[provider] === 'function') {
+        if (provider === 'postgres') {
+          smithersLayer = Smithers.postgres({ connectionString: dbConfig.connectionString });
+        } else if (provider === 'pglite') {
+          smithersLayer = Smithers.pglite({ dataDir: dbConfig.dataDir });
+        } else {
+          smithersLayer = Smithers.sqlite({ filename: payload.dbPath });
+        }
+      } else {
+        smithersLayer = Smithers.sqlite({ filename: payload.dbPath });
+      }
       const execution = await Effect.runPromise(
         built
           .execute(payload.input, {
@@ -308,7 +350,7 @@ function createSmithersScript(): string {
             rootDir: payload.rootDir ?? process.cwd(),
             allowNetwork: true,
           })
-          .pipe(Effect.provide(Smithers.sqlite({ filename: payload.dbPath })))
+          .pipe(Effect.provide(smithersLayer))
       );
       emit({ type: 'workflowResult', execution, metrics });
       process.exit(0);
@@ -330,9 +372,11 @@ export async function runWorkflowWithSmithers({
 }: SmithersWorkflowRunOptions): Promise<WorkflowExecution> {
   const dbPath = resolveSmithersDbPath(workflow.id ?? workflow.name);
   await mkdir(dirname(dbPath), { recursive: true });
+  const dbConfig = resolveSmithersDbConfig();
 
   const payload = JSON.stringify({
     dbPath,
+    dbConfig,
     executionId,
     workflowName: sanitizeWorkflowName(workflow.name),
     input: { mode, triggerData: triggerData ?? {}, workflowId: workflow.id ?? '' },

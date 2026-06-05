@@ -90,7 +90,7 @@ export function MentionAutocomplete({
       aria-label="Mention suggestions"
       aria-activedescendant={activeDescendantId}
       className="absolute right-0 bottom-full left-0 z-50 mb-2 overflow-hidden rounded-lg border border-border bg-popover shadow-lg sm:right-auto sm:w-80"
-      tabIndex="0"
+      tabIndex={0}
     >
       <div className="max-h-48 overflow-y-auto">
         {filteredAgents.map((agent, index) => (

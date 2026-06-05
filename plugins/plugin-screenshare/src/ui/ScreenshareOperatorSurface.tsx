@@ -6,7 +6,6 @@ import {
   client,
   Input,
   type InputProps,
-  SurfaceBadge,
   SurfaceEmptyState,
   SurfaceSection,
   selectLatestRunForApp,
@@ -14,12 +13,15 @@ import {
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
+  CheckCircle2,
   Copy,
   ExternalLink,
+  type LucideIcon,
   MonitorUp,
   PlugZap,
   Power,
   RefreshCw,
+  XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -55,6 +57,30 @@ function formatTime(value: string | null): string {
   }
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Not yet" : date.toLocaleTimeString();
+}
+
+function ScreenshareMetric({
+  icon: Icon,
+  label,
+  value,
+  active,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string | number;
+  active?: boolean;
+}) {
+  return (
+    <div
+      className="flex min-h-16 items-center justify-center gap-2 rounded-lg border border-border/35 bg-bg/65 px-3 py-2"
+      title={label}
+      role="status"
+      aria-label={`${label}: ${value}`}
+    >
+      <Icon className={`h-4 w-4 ${active ? "text-ok" : "text-muted"}`} />
+      <span className="truncate text-sm font-semibold text-txt">{value}</span>
+    </div>
+  );
 }
 
 function ScreenshareActionButton({
@@ -288,48 +314,28 @@ export function ScreenshareOperatorSurface({
   return (
     <section className="flex min-h-0 flex-col gap-3 p-3">
       <SurfaceSection title="Host">
-        <div className="flex flex-wrap items-center gap-2">
-          <SurfaceBadge
-            tone={hostSession?.status === "active" ? "success" : "neutral"}
-          >
-            {hostSession?.status ?? "idle"}
-          </SurfaceBadge>
-          <SurfaceBadge tone="neutral">
-            {capabilities?.platform ?? hostSession?.platform ?? "desktop"}
-          </SurfaceBadge>
-          {capabilities?.capabilities.headfulGui ? (
-            <SurfaceBadge
-              tone={
-                capabilities.capabilities.headfulGui.available
-                  ? "success"
-                  : "warn"
-              }
-            >
-              GUI
-            </SurfaceBadge>
-          ) : null}
-        </div>
-
-        <div className="mt-3 grid gap-2">
-          <ScreenshareField
-            agentId="host-session-id"
-            label="Host session id"
-            group="host"
-            description="Active host screen share session id"
-            value={hostSession?.id ?? ""}
-            readOnly
-            placeholder="Session"
-            className="h-9 bg-bg text-xs"
+        <div className="grid grid-cols-3 gap-2">
+          <ScreenshareMetric
+            icon={MonitorUp}
+            label="Session"
+            value={hostSession?.status ?? "idle"}
+            active={hostSession?.status === "active"}
           />
-          <ScreenshareField
-            agentId="host-token"
-            label="Host session token"
-            group="host"
-            description="Token for the active host screen share session"
-            value={hostToken}
-            readOnly
-            placeholder="Token"
-            className="h-9 bg-bg text-xs"
+          <ScreenshareMetric
+            icon={PlugZap}
+            label="Platform"
+            value={capabilities?.platform ?? hostSession?.platform ?? "desktop"}
+            active={Boolean(capabilities?.platform || hostSession?.platform)}
+          />
+          <ScreenshareMetric
+            icon={
+              capabilities?.capabilities.headfulGui?.available
+                ? CheckCircle2
+                : XCircle
+            }
+            label="GUI"
+            value="GUI"
+            active={capabilities?.capabilities.headfulGui?.available}
           />
         </div>
 
@@ -393,7 +399,7 @@ export function ScreenshareOperatorSurface({
             variant="outline"
             className="h-9 gap-2"
             onClick={() => void stopHostSession()}
-            disabled={!hostSession || hostSession.status !== "active"}
+            disabled={hostSession?.status !== "active"}
           >
             <Power className="h-4 w-4" />
             Stop
@@ -401,11 +407,31 @@ export function ScreenshareOperatorSurface({
         </div>
 
         {hostSession ? (
-          <div className="mt-3 grid grid-cols-2 gap-2 text-xs-tight text-muted-strong">
-            <span>Frames: {hostSession.frameCount}</span>
-            <span>Inputs: {hostSession.inputCount}</span>
-            <span>Frame: {formatTime(hostSession.lastFrameAt)}</span>
-            <span>Input: {formatTime(hostSession.lastInputAt)}</span>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <ScreenshareMetric
+              icon={MonitorUp}
+              label="Frames"
+              value={hostSession.frameCount}
+              active={hostSession.frameCount > 0}
+            />
+            <ScreenshareMetric
+              icon={PlugZap}
+              label="Inputs"
+              value={hostSession.inputCount}
+              active={hostSession.inputCount > 0}
+            />
+            <ScreenshareMetric
+              icon={RefreshCw}
+              label="Last frame"
+              value={formatTime(hostSession.lastFrameAt)}
+              active={hostSession.lastFrameAt !== null}
+            />
+            <ScreenshareMetric
+              icon={Power}
+              label="Last input"
+              value={formatTime(hostSession.lastInputAt)}
+              active={hostSession.lastInputAt !== null}
+            />
           </div>
         ) : null}
       </SurfaceSection>
@@ -478,20 +504,27 @@ export function ScreenshareOperatorSurface({
 
       {capabilities ? (
         <SurfaceSection title="Capabilities">
-          <div className="grid gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {Object.entries(capabilities.capabilities).map(
               ([name, capability]) => (
                 <div
                   key={name}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-border/35 bg-bg/65 px-3 py-2 text-xs"
+                  className="flex min-h-14 items-center justify-center gap-2 rounded-lg border border-border/35 bg-bg/65 px-3 py-2"
+                  title={`${name}: ${capability.tool}`}
                 >
-                  <span className="font-medium text-txt">{name}</span>
+                  {capability.available ? (
+                    <CheckCircle2 className="h-4 w-4 text-ok" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-muted" />
+                  )}
                   <span
                     className={
-                      capability.available ? "text-ok" : "text-muted-strong"
+                      capability.available
+                        ? "truncate text-xs font-semibold text-txt"
+                        : "truncate text-xs font-semibold text-muted-strong"
                     }
                   >
-                    {capability.tool}
+                    {name}
                   </span>
                 </div>
               ),
@@ -590,7 +623,7 @@ export function ScreenshareTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -667,7 +700,12 @@ export function ScreenshareTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>capabilities</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | start | session | stop | input | viewer-url
+            {
+              Object.values(state?.capabilities.capabilities ?? {}).filter(
+                (capability) => capability.available,
+              ).length
+            }{" "}
+            live / {state?.sessions.length ?? 0} sessions
           </div>
           <div>
             <span style={{ color: "#64748b" }}>platform</span>{" "}

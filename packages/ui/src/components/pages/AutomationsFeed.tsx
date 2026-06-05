@@ -5,31 +5,37 @@
  *
  * This component is intentionally separate from the existing
  * `AutomationsView` — that surface is the full dashboard with sidebar
- * chat, palette, node catalog, etc. This is the "obvious nobody thinks
- * about it" feed for users who just want to see what's running.
+ * chat, palette, node catalog, etc. This is the visual feed for users who
+ * just want to see what's running.
  *
- * Backend dependencies:
- *   GET  /api/automations          (existing)
- *   GET  /api/workbench/tasks      (existing, via WorkbenchTask types)
- *   POST /api/workbench/tasks      (existing)
- *   POST /api/workflow/workflows   (existing)
- *   POST /api/workflow/workflows/generate  (existing)
- *   POST /api/workflow/workflows/:id/activate (existing)
- *
- * No backend changes are required.
+ * Backend: the list is fetched from `GET /api/automations` (served by
+ * `@elizaos/plugin-workflow`), which already aggregates workbench tasks,
+ * triggers, and workflows into one `AutomationListResponse`. Editing routes
+ * through the workflow CRUD endpoints under `/api/workflow/*`.
  */
 
 import {
-  Calendar,
+  CalendarClock,
   CheckCircle2,
-  ListChecks,
+  CircleSlash,
+  Clock,
+  History,
+  Layers,
   Pause,
   Play,
   Plus,
   RefreshCw,
   Workflow,
+  Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
 import type { WorkflowDefinition } from "../../api/client-types-chat";
@@ -93,6 +99,13 @@ const FILTER_LABELS: Record<FeedFilter, { key: string; defaultLabel: string }> =
       defaultLabel: "Inactive",
     },
   };
+const FILTER_ICONS: Record<FeedFilter, ReactNode> = {
+  all: <Layers className="h-3.5 w-3.5" aria-hidden />,
+  tasks: <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />,
+  workflows: <Workflow className="h-3.5 w-3.5" aria-hidden />,
+  active: <Play className="h-3.5 w-3.5" aria-hidden />,
+  inactive: <CircleSlash className="h-3.5 w-3.5" aria-hidden />,
+};
 const NEW_AUTOMATION_LINK_ID = "__new__";
 
 interface FeedRow {
@@ -103,6 +116,7 @@ interface FeedRow {
   active: boolean;
   status: string;
   lastUpdated: string | null;
+  lastRunStatus: NonNullable<AutomationItem["lastExecution"]>["status"] | null;
   source: AutomationItem;
 }
 
@@ -144,6 +158,7 @@ function automationToRow(
     active: item.enabled,
     status: item.status,
     lastUpdated: item.updatedAt,
+    lastRunStatus: item.lastExecution?.status ?? null,
     source: item,
   };
 }
@@ -273,11 +288,13 @@ export function AutomationsFeed({
     return () => window.removeEventListener(VISUALIZE_WORKFLOW_EVENT, handler);
   }, [setLink]);
 
+  const allRows = useMemo(
+    () => automations.map((item) => automationToRow(item, t)),
+    [automations, t],
+  );
   const rows = useMemo(() => {
-    return automations
-      .map((item) => automationToRow(item, t))
-      .filter((r) => passesFilter(r, filter));
-  }, [automations, filter, t]);
+    return allRows.filter((r) => passesFilter(r, filter));
+  }, [allRows, filter]);
 
   const tasksCount = useMemo(
     () => automations.filter((a) => a.type !== "workflow").length,
@@ -287,6 +304,17 @@ export function AutomationsFeed({
     typeof data?.summary?.workflowCount === "number"
       ? data.summary.workflowCount
       : automations.filter((a) => a.type === "workflow").length;
+
+  const filterCounts = useMemo<Record<FeedFilter, number>>(
+    () => ({
+      all: allRows.length,
+      tasks: allRows.filter((r) => r.kind === "task").length,
+      workflows: allRows.filter((r) => r.kind === "workflow").length,
+      active: allRows.filter((r) => r.active).length,
+      inactive: allRows.filter((r) => !r.active).length,
+    }),
+    [allRows],
+  );
 
   // Editor mode
   if (editor.kind === "task") {
@@ -333,22 +361,37 @@ export function AutomationsFeed({
         className="device-layout mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-4 lg:px-6"
       >
         {/* Header */}
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="space-y-1.5">
-            <h1 className="text-lg font-semibold tracking-[-0.01em] text-txt">
-              {t("automationsfeed.title", { defaultValue: "Automations" })}
-            </h1>
-            <p className="text-sm text-muted-strong">
-              {t("automationsfeed.taskCount", {
-                count: tasksCount,
-                defaultValue: "{{count}} task",
-              })}{" "}
-              ·{" "}
-              {t("automationsfeed.workflowCount", {
-                count: workflowsCount,
-                defaultValue: "{{count}} workflow",
-              })}
-            </p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-accent/30 bg-gradient-to-br from-accent/20 to-accent/5 text-accent"
+              aria-hidden
+            >
+              <Zap className="h-5 w-5" />
+            </span>
+            <div className="space-y-1">
+              <h1 className="text-lg font-semibold tracking-[-0.01em] text-txt">
+                {t("automationsfeed.title", { defaultValue: "Automations" })}
+              </h1>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <StatChip
+                  icon={<CheckCircle2 className="h-3 w-3" />}
+                  count={tasksCount}
+                  label={t("automationsfeed.tasksStat", {
+                    defaultValue: "tasks",
+                  })}
+                  tone="neutral"
+                />
+                <StatChip
+                  icon={<Workflow className="h-3 w-3" />}
+                  count={workflowsCount}
+                  label={t("automationsfeed.workflowsStat", {
+                    defaultValue: "workflows",
+                  })}
+                  tone="accent"
+                />
+              </div>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -389,6 +432,8 @@ export function AutomationsFeed({
               label={t(FILTER_LABELS[key].key, {
                 defaultValue: FILTER_LABELS[key].defaultLabel,
               })}
+              icon={FILTER_ICONS[key]}
+              count={filterCounts[key]}
               isActive={filter === key}
               onSelect={setFilter}
             />
@@ -406,12 +451,19 @@ export function AutomationsFeed({
           {loading && !data ? (
             <ListSkeleton rows={6} className="p-3" />
           ) : rows.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 p-10 text-center text-sm text-muted-strong">
-              <ListChecks className="h-6 w-6" aria-hidden />
-              <div>
-                {t("automationsfeed.empty", {
-                  defaultValue: "No automations yet.",
-                })}
+            <div className="flex flex-col items-center gap-5 px-6 py-14 text-center">
+              <AutomationEmptyIllustration />
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-txt">
+                  {t("automationsfeed.emptyHeadline", {
+                    defaultValue: "Nothing scheduled yet",
+                  })}
+                </p>
+                <p className="text-xs text-muted-strong">
+                  {t("automationsfeed.emptySub", {
+                    defaultValue: "Tasks and workflows you create run here.",
+                  })}
+                </p>
               </div>
               <Button
                 variant="default"
@@ -494,14 +546,44 @@ export function AutomationsFeed({
   return feedContent;
 }
 
+function StatChip({
+  icon,
+  count,
+  label,
+  tone,
+}: {
+  icon: ReactNode;
+  count: number;
+  label: string;
+  tone: "accent" | "neutral";
+}) {
+  const toneClasses =
+    tone === "accent"
+      ? "border-accent/25 bg-accent/10 text-accent"
+      : "border-border/50 bg-bg-accent text-muted-strong";
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium ${toneClasses}`}
+    >
+      <span className="[&>svg]:h-3 [&>svg]:w-3">{icon}</span>
+      <span className="tabular-nums font-semibold">{count}</span>
+      <span className="text-[0.7rem] opacity-80">{label}</span>
+    </span>
+  );
+}
+
 function FilterChipButton({
   filter,
   label,
+  icon,
+  count,
   isActive,
   onSelect,
 }: {
   filter: FeedFilter;
   label: string;
+  icon: ReactNode;
+  count: number;
   isActive: boolean;
   onSelect: (filter: FeedFilter) => void;
 }) {
@@ -520,14 +602,24 @@ function FilterChipButton({
       type="button"
       onClick={() => onSelect(filter)}
       aria-current={isActive ? "true" : undefined}
-      className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
         isActive
           ? "border-accent bg-accent/10 text-accent"
-          : "border-border/40 text-muted-strong hover:border-border"
+          : "border-border/40 text-muted-strong hover:border-border hover:bg-bg-accent/40"
       }`}
       {...agentProps}
     >
-      {label}
+      <span className="[&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
+      <span>{label}</span>
+      <span
+        className={`min-w-4 rounded-full px-1 text-center text-[0.65rem] font-semibold tabular-nums ${
+          isActive
+            ? "bg-accent/20 text-accent"
+            : "bg-bg-accent text-muted-strong"
+        }`}
+      >
+        {count}
+      </span>
     </button>
   );
 }
@@ -546,7 +638,11 @@ function FeedRowItem({
   registerRef?: (el: HTMLLIElement | null) => void;
 }) {
   const { t } = useTranslation();
-  const Icon = row.kind === "workflow" ? Workflow : CheckCircle2;
+  const isWorkflow = row.kind === "workflow";
+  const Icon = isWorkflow ? Workflow : CheckCircle2;
+  const medallionClasses = isWorkflow
+    ? "border-accent/30 bg-gradient-to-br from-accent/20 to-accent/5 text-accent"
+    : "border-border/60 bg-bg-accent text-muted-strong";
   return (
     <li
       ref={registerRef}
@@ -557,56 +653,74 @@ function FeedRowItem({
         onClick={onOpen}
         className="flex min-w-0 flex-1 items-center gap-3 text-left"
       >
-        <Icon
-          className={`h-4 w-4 shrink-0 ${row.kind === "workflow" ? "text-accent" : "text-info"}`}
+        <span
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${medallionClasses}`}
           aria-hidden
-        />
+        >
+          <Icon className="h-4 w-4" />
+        </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="truncate text-sm font-medium text-txt">
               {row.title}
             </span>
             <StatusBadge
-              tone="muted"
+              withDot
+              tone={row.active ? "success" : "muted"}
               label={
-                row.kind === "workflow"
+                row.active
+                  ? t("automationsfeed.active", { defaultValue: "Active" })
+                  : t("automationsfeed.inactive", { defaultValue: "Inactive" })
+              }
+            />
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-strong">
+            <RowChip
+              icon={
+                isWorkflow ? (
+                  <Workflow className="h-3 w-3" />
+                ) : (
+                  <CheckCircle2 className="h-3 w-3" />
+                )
+              }
+              label={
+                isWorkflow
                   ? t("automationsfeed.workflow", { defaultValue: "Workflow" })
                   : t("automationsfeed.task", { defaultValue: "Task" })
               }
             />
-            {row.active ? (
-              <StatusBadge
-                tone="success"
-                label={t("automationsfeed.active", { defaultValue: "Active" })}
-              />
-            ) : (
-              <StatusBadge
-                tone="muted"
-                label={t("automationsfeed.inactive", {
-                  defaultValue: "Inactive",
-                })}
-              />
-            )}
-          </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-strong">
             {row.schedule && (
-              <span className="inline-flex items-center gap-1">
-                <Calendar className="h-3 w-3" aria-hidden />
-                {row.schedule}
-              </span>
+              <RowChip
+                icon={<CalendarClock className="h-3 w-3" />}
+                label={row.schedule}
+                tone="accent"
+              />
             )}
-            {row.lastUpdated && (
-              <span>
-                {t("automationsfeed.updated", {
-                  date: new Date(row.lastUpdated).toLocaleString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                    hour: "numeric",
-                    minute: "2-digit",
-                  }),
-                  defaultValue: "Updated {{date}}",
+            {row.lastRunStatus && (
+              <RowChip
+                icon={<History className="h-3 w-3" />}
+                label={t(`automationsfeed.run.${row.lastRunStatus}`, {
+                  defaultValue: row.lastRunStatus,
                 })}
-              </span>
+                tone={
+                  row.lastRunStatus === "error"
+                    ? "danger"
+                    : row.lastRunStatus === "success"
+                      ? "success"
+                      : "muted"
+                }
+              />
+            )}
+            {!row.schedule && row.lastUpdated && (
+              <RowChip
+                icon={<Clock className="h-3 w-3" />}
+                label={new Date(row.lastUpdated).toLocaleString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}
+              />
             )}
           </div>
         </div>
@@ -634,6 +748,120 @@ function FeedRowItem({
         </button>
       )}
     </li>
+  );
+}
+
+function RowChip({
+  icon,
+  label,
+  tone = "muted",
+}: {
+  icon: ReactNode;
+  label: string;
+  tone?: "muted" | "accent" | "success" | "danger";
+}) {
+  const toneClasses = {
+    muted: "border-border/40 bg-bg-accent/40 text-muted-strong",
+    accent: "border-accent/25 bg-accent/10 text-accent",
+    success: "border-ok/30 bg-ok/10 text-ok",
+    danger: "border-destructive/30 bg-destructive/10 text-destructive",
+  }[tone];
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 ${toneClasses}`}
+    >
+      <span className="[&>svg]:h-3 [&>svg]:w-3">{icon}</span>
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
+
+/**
+ * Generative clock + workflow-node motif for the empty state. Pure SVG with
+ * gradient fills driven by the theme accent token, so it tracks light/dark and
+ * brand color without bitmap assets.
+ */
+function AutomationEmptyIllustration() {
+  return (
+    <svg
+      width="148"
+      height="120"
+      viewBox="0 0 148 120"
+      fill="none"
+      aria-hidden="true"
+      className="text-accent"
+    >
+      <defs>
+        <linearGradient id="autoFill" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.22" />
+          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.04" />
+        </linearGradient>
+        <linearGradient id="autoRing" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.9" />
+          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.4" />
+        </linearGradient>
+      </defs>
+      {/* connector lines from clock to nodes */}
+      <path
+        d="M96 60 H120 M120 60 V36 M120 60 V84"
+        stroke="var(--accent)"
+        strokeOpacity="0.35"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      {/* clock dial */}
+      <circle cx="60" cy="60" r="34" fill="url(#autoFill)" />
+      <circle
+        cx="60"
+        cy="60"
+        r="34"
+        stroke="url(#autoRing)"
+        strokeWidth="2.5"
+      />
+      {/* clock hands */}
+      <path
+        d="M60 60 V40 M60 60 L74 68"
+        stroke="var(--accent)"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+      <circle cx="60" cy="60" r="3.5" fill="var(--accent)" />
+      {/* tick marks */}
+      <g
+        stroke="var(--accent)"
+        strokeOpacity="0.5"
+        strokeWidth="2"
+        strokeLinecap="round"
+      >
+        <path d="M60 30 V34" />
+        <path d="M60 86 V90" />
+        <path d="M30 60 H34" />
+        <path d="M86 60 H90" />
+      </g>
+      {/* workflow nodes */}
+      <g>
+        <rect
+          x="108"
+          y="26"
+          width="20"
+          height="20"
+          rx="5"
+          fill="url(#autoFill)"
+          stroke="url(#autoRing)"
+          strokeWidth="2"
+        />
+        <rect
+          x="108"
+          y="74"
+          width="20"
+          height="20"
+          rx="5"
+          fill="url(#autoFill)"
+          stroke="url(#autoRing)"
+          strokeWidth="2"
+        />
+      </g>
+    </svg>
   );
 }
 
@@ -672,7 +900,7 @@ function ChooserSheet({
             className="flex items-start gap-3 rounded-sm border border-border/40 p-3 text-left transition-colors hover:border-accent hover:bg-accent/5"
           >
             <CheckCircle2
-              className="mt-0.5 h-5 w-5 shrink-0 text-info"
+              className="mt-0.5 h-5 w-5 shrink-0 text-muted-strong"
               aria-hidden
             />
             <div>

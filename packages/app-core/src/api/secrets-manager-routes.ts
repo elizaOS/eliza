@@ -94,7 +94,7 @@ export function _resetSecretsManagerForTesting(): void {
   _resetSecretsManagerInstallerForTesting();
 }
 
-/** Test hook: inject a manager built around a test vault + fake exec. */
+/** Test hook: inject a manager built around a test vault + exec double. */
 export function _setSecretsManagerForTesting(
   next: SecretsManager | null,
 ): void {

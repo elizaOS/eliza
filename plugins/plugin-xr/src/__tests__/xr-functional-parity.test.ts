@@ -362,12 +362,13 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
     capabilities: ["terminal-screenshare-state", "terminal-screenshare-start"],
   },
   "plugins/plugin-task-coordinator": {
-    srcFile: "plugins/plugin-task-coordinator/src/CodingAgentTasksPanel.tsx",
+    srcFile:
+      "plugins/plugin-task-coordinator/src/CodingAgentTasksPanel.interact.ts",
     capabilities: ["list-sessions", "list-task-threads"],
   },
   "plugins/plugin-trajectory-logger": {
     srcFile:
-      "plugins/plugin-trajectory-logger/src/components/TrajectoryLoggerView.tsx",
+      "plugins/plugin-trajectory-logger/src/components/TrajectoryLoggerView.interact.ts",
     capabilities: ["list-trajectories", "open-latest"],
   },
 };

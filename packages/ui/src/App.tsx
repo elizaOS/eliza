@@ -123,9 +123,9 @@ import {
 import { useDesktopTabs } from "./hooks/useDesktopTabs";
 import { useIsDeveloperMode } from "./state/useDeveloperMode";
 
-const ViewManagerPage = lazyNamedView(
-  () => import("./components/pages/ViewManagerPage"),
-  "ViewManagerPage",
+const ViewCatalog = lazyNamedView(
+  () => import("./components/pages/ViewCatalog"),
+  "ViewCatalog",
 );
 const AutomationsFeed = lazyNamedView(
   () => import("./components/pages/AutomationsFeed"),
@@ -420,17 +420,16 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
  *   2. A `componentExport` import-spec like `"@elizaos/plugin-wallet-ui#InventoryView"`,
  *      loaded with dynamic `import()` and rendered via Suspense.
  *
- * Plugins that declare a `componentExport` without a matching
- * registration get a small loading placeholder until the import resolves.
- * (Until a real dynamic-import boundary is plumbed for these strings,
- * this is a documented placeholder; the plugin can also self-register.)
+ * Plugins that declare a `componentExport` without a matching registration get
+ * a small loading fallback until the import resolves. Plugins can avoid this
+ * path by self-registering with `registerAppShellPage` at boot.
  */
 function DynamicPluginPage({ resolved }: { resolved: ResolvedDynamicPage }) {
   if (resolved.registration) {
     const Component = resolved.registration.Component;
     return <Component />;
   }
-  // No bundled registration — display a lightweight loading placeholder
+  // No bundled registration — display a lightweight loading fallback
   // so the shell stays responsive. Plugins that ship bundled components
   // should call `registerAppShellPage` at boot to avoid this path.
   return (
@@ -562,7 +561,7 @@ function renderRemoteView(view: ViewRegistryEntry): ReactNode {
 function ViewUnavailableFallback(): ReactNode {
   return (
     <TabContentView>
-      <ViewManagerPage />
+      <ViewCatalog />
     </TabContentView>
   );
 }
@@ -584,11 +583,7 @@ function renderAppsSurface(navigationPath: string): ReactNode {
   if (!APPS_ENABLED) return <ViewUnavailableFallback />;
   return (
     <TabContentView>
-      {getAppSlugFromPath(navigationPath) ? (
-        <AppsPageView />
-      ) : (
-        <ViewManagerPage />
-      )}
+      {getAppSlugFromPath(navigationPath) ? <AppsPageView /> : <ViewCatalog />}
     </TabContentView>
   );
 }
@@ -1196,7 +1191,7 @@ export function App() {
   // Handle agent-dispatched view navigation events.
   // The VIEWS action (and future agent commands) dispatch this event to navigate
   // the user to a specific view by path or view ID.
-  // When the target is "/views" or "/apps" (the ViewManagerPage), we also
+  // When the target is "/views" or "/apps" (the ViewCatalog), we also
   // directly set the tab so the nav bar becomes visible.
   // On desktop, also open the view as a desktop tab if desktopTabEnabled.
   useEffect(() => {

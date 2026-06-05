@@ -31,7 +31,7 @@ PRODUCT_PACKAGES += \
 
 # Strip every stock app whose role Eliza owns. Trebuchet is LineageOS's
 # launcher; absent from AOSP but harmless to list. SetupWizard ships with
-# Pixel partner blobs only — stripping it here is a no-op on Cuttlefish
+# Pixel partner blobs only; stripping it here has no effect on Cuttlefish
 # and load-bearing on Pixel targets.
 PRODUCT_PACKAGES -= \
     Browser2 \
@@ -85,7 +85,7 @@ PRODUCT_COPY_FILES += \
 # TEE protected-agent profile (plan §5 / measured-boot contract "AOSP Path").
 # The signed golden TEE policy + release measurements ship at
 # /product/etc/eliza/ in the same schema as the Linux path. On the bring-up
-# track these are placeholders with confidentialityBlocked=true; a real
+# track these are draft measurements with confidentialityBlocked=true; a real
 # release replaces tee-measurements.json with generate-tee-measurements.mjs
 # output. eliza_pvm_mgr (vendor/eliza/sepolicy/eliza_pvm_mgr.te) reads them.
 PRODUCT_COPY_FILES += \

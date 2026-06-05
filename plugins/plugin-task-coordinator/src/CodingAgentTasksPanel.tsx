@@ -1,17 +1,13 @@
 import {
-  Badge,
   Button,
-  type CodingAgentSession,
   type CodingAgentTaskThread,
   type CodingAgentTaskThreadDetail,
   client,
-  EmptyWidgetState,
   TerminalPluginView,
   useApp,
-  WidgetSection,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Activity, SquareArrowOutUpRight } from "lucide-react";
+import { Archive, Bot, ListChecks, Terminal } from "lucide-react";
 import {
   type ReactNode,
   useDeferredValue,
@@ -19,6 +15,15 @@ import {
   useMemo,
   useState,
 } from "react";
+import {
+  BackChip,
+  TaskCard,
+  TaskCountChip,
+  TaskEmptyState,
+  TaskListHeader,
+  TaskMetaChip,
+  TaskStatusMedallion,
+} from "./TaskCardList";
 
 const ANSI_ESCAPE_PATTERN = new RegExp(
   [
@@ -27,42 +32,10 @@ const ANSI_ESCAPE_PATTERN = new RegExp(
   ].join(""),
   "g",
 );
-const TERMINAL_STATUSES = new Set(["completed", "stopped", "error", "errored"]);
-const PULSE_STATUSES = new Set(["active", "running", "blocked"]);
-const STATUS_DOT: Record<string, string> = {
-  active: "bg-ok",
-  running: "bg-ok",
-  blocked: "bg-warn",
-  completed: "bg-muted",
-  stopped: "bg-muted",
-  error: "bg-danger",
-  errored: "bg-danger",
-};
-
 const fallbackTranslate = (
   key: string,
   vars?: Record<string, unknown>,
 ): string => String(vars?.defaultValue ?? key);
-
-function deriveSessionActivity(
-  session: CodingAgentSession,
-  t: typeof fallbackTranslate,
-): string {
-  if (session.status === "tool_running" && session.toolDescription) {
-    return t("codingagenttaskspanel.runningTool", {
-      defaultValue: "Running {{tool}}",
-      tool: session.toolDescription,
-    }).slice(0, 60);
-  }
-  if (session.status === "blocked") {
-    return t("codingagenttaskspanel.waitingForInput", {
-      defaultValue: "Waiting for input",
-    });
-  }
-  return t("codingagenttaskspanel.running", {
-    defaultValue: "Running",
-  });
-}
 
 function formatRelativeTime(ts: number, locale?: string): string {
   const delta = Math.max(0, Math.floor((Date.now() - ts) / 1000));
@@ -157,84 +130,8 @@ function getWorkspaceChangesSummary(
   };
 }
 
-const THREAD_STATUS_BADGE: Record<string, string> = {
-  open: "bg-muted/20 text-muted",
-  active: "bg-ok/20 text-ok",
-  waiting_on_user: "bg-warn/20 text-warn",
-  blocked: "bg-warn/20 text-warn",
-  validating: "bg-accent/20 text-accent",
-  done: "bg-ok/20 text-ok",
-  failed: "bg-danger/20 text-danger",
-  archived: "bg-muted/20 text-muted",
-  interrupted: "bg-warn/20 text-warn",
-};
-
 function getClientErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
-}
-
-function TaskCard({
-  session,
-  t,
-}: {
-  session: CodingAgentSession;
-  t: typeof fallbackTranslate;
-}) {
-  const activity = session.lastActivity ?? deriveSessionActivity(session, t);
-
-  return (
-    <div className="rounded-lg border border-border/50 bg-bg-accent/30 p-3 text-left">
-      <div className="mb-1 flex items-center gap-2">
-        <span
-          className={`inline-block h-2 w-2 shrink-0 rounded-full ${
-            STATUS_DOT[session.status] ?? "bg-muted"
-          }${PULSE_STATUSES.has(session.status) ? " animate-pulse" : ""}`}
-        />
-        <span className="flex-1 truncate text-xs font-semibold text-txt">
-          {session.label}
-        </span>
-      </div>
-      {session.originalTask ? (
-        <p className="mb-1 line-clamp-2 text-xs text-muted">
-          {session.originalTask}
-        </p>
-      ) : null}
-      <p
-        className={`truncate text-[11px] ${
-          session.status === "blocked" ? "text-warn" : "text-muted"
-        }`}
-      >
-        {activity}
-      </p>
-    </div>
-  );
-}
-
-function TaskItemsContent({
-  sessions,
-  t,
-}: {
-  sessions: CodingAgentSession[];
-  t: typeof fallbackTranslate;
-}) {
-  if (sessions.length === 0) {
-    return (
-      <EmptyWidgetState
-        icon={<Activity className="h-8 w-8" />}
-        title={t("codingagenttaskspanel.noWorkRunning", {
-          defaultValue: "No orchestrator work running",
-        })}
-      />
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-2">
-      {sessions.map((session) => (
-        <TaskCard key={session.sessionId} session={session} t={t} />
-      ))}
-    </div>
-  );
 }
 
 function DetailList({
@@ -586,130 +483,97 @@ function ThreadDetailContent({
   );
 }
 
-function TaskThreadCard({
+/** Visual chips summarizing a thread for the card list. */
+function threadChips(
+  thread: CodingAgentTaskThread,
+  t: typeof fallbackTranslate,
+  locale?: string,
+): ReactNode {
+  return (
+    <>
+      <TaskMetaChip icon={<Bot className="h-3 w-3" />}>
+        {thread.sessionCount}
+      </TaskMetaChip>
+      <TaskMetaChip icon={<ListChecks className="h-3 w-3" />}>
+        {thread.decisionCount}
+      </TaskMetaChip>
+      <TaskMetaChip icon={<Terminal className="h-3 w-3" />}>
+        {formatThreadKind(thread.kind, t)}
+      </TaskMetaChip>
+      <span className="text-2xs text-muted/80">
+        {formatIsoTime(thread.updatedAt, locale, t)}
+      </span>
+    </>
+  );
+}
+
+/** Full-pane task detail entered by clicking a card. Header medallion + back. */
+function ThreadDetailPane({
   thread,
-  selected,
-  onSelect,
   detail,
   detailLoading,
   busy,
+  onBack,
   onDelete,
   onReopen,
   t,
   locale,
 }: {
   thread: CodingAgentTaskThread;
-  selected: boolean;
-  onSelect: (threadId: string) => void;
-  detail?: CodingAgentTaskThreadDetail | null;
-  detailLoading?: boolean;
-  busy?: boolean;
-  onDelete?: () => void;
-  onReopen?: () => void;
+  detail: CodingAgentTaskThreadDetail | null;
+  detailLoading: boolean;
+  busy: boolean;
+  onBack: () => void;
+  onDelete: () => void;
+  onReopen: () => void;
   t: typeof fallbackTranslate;
   locale?: string;
 }) {
-  const { ref: selectRef, agentProps: selectAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `thread-select-${thread.id}`,
-      role: "list-item",
-      label: thread.title,
-      group: "task-threads",
-      status: selected ? "active" : "inactive",
-      description: `Open the "${thread.title}" task thread`,
-    });
   return (
-    <div
-      className={`flex flex-col rounded-lg border transition-colors ${
-        selected
-          ? "border-accent/50 bg-bg-hover/70"
-          : "border-border/50 bg-bg-accent/30"
-      }`}
-    >
-      <button
-        ref={selectRef}
-        type="button"
-        onClick={() => onSelect(thread.id)}
-        className="flex w-full flex-col gap-1 p-3 text-left hover:bg-bg-hover/30"
-        aria-current={selected ? "true" : undefined}
-        {...selectAgentProps}
-      >
-        <div className="flex items-start gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-xs font-semibold text-txt">
-              {thread.title}
-            </div>
-            <div className="mt-0.5 truncate text-xs-tight text-muted">
+    <div className="flex flex-col gap-3" data-testid="task-detail-pane">
+      <BackChip
+        label={t("codingagenttaskspanel.backToTasks", {
+          defaultValue: "Tasks",
+        })}
+        onClick={onBack}
+        testId="task-detail-back"
+      />
+      <div className="flex items-start gap-3 rounded-2xl border border-border/50 bg-bg-accent/30 p-3">
+        <TaskStatusMedallion status={thread.status} />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold text-txt-strong">
+            {thread.title}
+          </div>
+          {thread.originalRequest ? (
+            <div className="mt-0.5 line-clamp-2 text-xs text-muted">
               {thread.originalRequest}
             </div>
-          </div>
-          <Badge
-            variant="secondary"
-            className={`shrink-0 text-3xs ${
-              THREAD_STATUS_BADGE[thread.status] ?? "bg-muted/20 text-muted"
-            }`}
-          >
-            {formatThreadStatus(thread.status, t)}
-          </Badge>
-        </div>
-        <div className="flex items-center gap-3 text-2xs text-muted">
-          <span>{formatThreadKind(thread.kind, t)}</span>
-          <span>
-            {t("codingagenttaskspanel.sessionsCount", {
-              defaultValue: "{{count}} sessions",
-              count: thread.sessionCount,
-            })}
-          </span>
-          <span>
-            {t("codingagenttaskspanel.decisionsCount", {
-              defaultValue: "{{count}} decisions",
-              count: thread.decisionCount,
-            })}
-          </span>
-          <span>{formatIsoTime(thread.updatedAt, locale, t)}</span>
-        </div>
-        {thread.summary ? (
-          <div className="line-clamp-2 text-xs-tight text-txt">
-            {thread.summary}
-          </div>
-        ) : null}
-      </button>
-
-      {selected ? (
-        <div className="px-3 pb-3 pt-2.5">
-          {!detail && detailLoading ? (
-            <div className="text-xs-tight text-muted">
-              {t("common.loading", { defaultValue: "Loading…" })}
-            </div>
-          ) : detail ? (
-            <ThreadDetailContent
-              detail={detail}
-              busy={busy ?? false}
-              onDelete={onDelete ?? (() => {})}
-              onReopen={onReopen ?? (() => {})}
-              t={t}
-              locale={locale}
-            />
           ) : null}
         </div>
+      </div>
+      {!detail && detailLoading ? (
+        <div className="text-xs-tight text-muted">
+          {t("common.loading", { defaultValue: "Loading…" })}
+        </div>
+      ) : detail ? (
+        <ThreadDetailContent
+          detail={detail}
+          busy={busy}
+          onDelete={onDelete}
+          onReopen={onReopen}
+          t={t}
+          locale={locale}
+        />
       ) : null}
     </div>
   );
 }
 
-export function CodingAgentTasksPanel({
-  fullPage = false,
-}: {
-  fullPage?: boolean;
-} = {}) {
+export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
   const app = useApp() as ReturnType<typeof useApp> | undefined;
   const t = app?.t ?? fallbackTranslate;
   const uiLanguage =
     typeof app?.uiLanguage === "string" ? app.uiLanguage : undefined;
-  const setTab = app?.setTab ?? (() => undefined);
-  const [activeSessions, setActiveSessions] = useState<CodingAgentSession[]>(
-    [],
-  );
   const [threads, setThreads] = useState<CodingAgentTaskThread[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [selectedThread, setSelectedThread] =
@@ -729,8 +593,8 @@ export function CodingAgentTasksPanel({
   const searchLabel = t("codingagenttaskspanel.searchPlaceholder", {
     defaultValue: "Search tasks",
   });
-  const openViewLabel = t("taskseventspanel.OpenView", {
-    defaultValue: "Open Tasks view",
+  const showArchivedLabel = t("codingagenttaskspanel.showArchived", {
+    defaultValue: "Show archived",
   });
   const { ref: searchRef, agentProps: searchAgentProps } =
     useAgentElement<HTMLInputElement>({
@@ -740,13 +604,15 @@ export function CodingAgentTasksPanel({
       group: "task-filters",
       description: "Filter task threads by title or request text",
     });
-  const { ref: openViewRef, agentProps: openViewAgentProps } =
+  const { ref: archivedRef, agentProps: archivedAgentProps } =
     useAgentElement<HTMLButtonElement>({
-      id: "action-open-tasks-view",
-      role: "button",
-      label: openViewLabel,
-      group: "task-actions",
-      description: "Open the full Tasks view",
+      id: "toggle-show-archived",
+      role: "toggle",
+      label: showArchivedLabel,
+      group: "task-filters",
+      status: showArchived ? "active" : "inactive",
+      description: "Toggle showing archived tasks",
+      onActivate: () => setShowArchived((value) => !value),
     });
 
   useEffect(() => {
@@ -808,25 +674,6 @@ export function CodingAgentTasksPanel({
       clearInterval(timer);
     };
   }, [deferredSearch, showArchived, t]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const refreshSessions = async () => {
-      const status = await client.getCodingAgentStatus();
-      if (cancelled) return;
-      setActiveSessions(
-        (status?.tasks ?? []).filter(
-          (session) => !TERMINAL_STATUSES.has(session.status),
-        ),
-      );
-    };
-    void refreshSessions();
-    const timer = window.setInterval(() => void refreshSessions(), 5000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -937,40 +784,95 @@ export function CodingAgentTasksPanel({
     }
   };
 
+  const activeCount = threads.filter((t) => t.status === "active").length;
+  const doneCount = threads.filter((t) => t.status === "done").length;
+
+  // Full-pane detail state — clicking a card swaps the list for its detail.
+  if (selectedThreadId && selectedThreadSummary) {
+    return (
+      <div
+        className="flex h-full min-h-0 w-full flex-col gap-3 overflow-y-auto bg-bg px-4 pb-28 pt-4 text-txt"
+        data-testid="task-coordinator-panel"
+      >
+        {detailError ? (
+          <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
+            {t("codingagenttaskspanel.loadTaskDetailFailed", {
+              defaultValue: "Failed to load task detail: {{error}}",
+              error: detailError,
+            })}
+          </div>
+        ) : null}
+        {mutationError ? (
+          <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
+            {mutationError}
+          </div>
+        ) : null}
+        <ThreadDetailPane
+          thread={selectedThreadSummary}
+          detail={selectedThread}
+          detailLoading={loading}
+          busy={mutating}
+          onBack={() => setSelectedThreadId(null)}
+          onDelete={handleDelete}
+          onReopen={handleReopen}
+          t={t}
+          locale={uiLanguage}
+        />
+      </div>
+    );
+  }
+
   return (
-    <WidgetSection
-      title={t("taskseventspanel.Tasks", { defaultValue: "Tasks" })}
-      icon={<Activity className="h-4 w-4" />}
-      action={
-        !fullPage ? (
-          <Button
-            ref={openViewRef}
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0"
-            onClick={() => setTab("tasks")}
-            aria-label={openViewLabel}
-            {...openViewAgentProps}
-          >
-            <SquareArrowOutUpRight className="h-3.5 w-3.5" />
-          </Button>
-        ) : null
-      }
-      testId="chat-widget-orchestrator"
+    <div
+      className="flex h-full min-h-0 w-full flex-col gap-3 overflow-y-auto bg-bg px-4 pb-28 pt-4 text-txt"
+      data-testid="task-coordinator-panel"
     >
-      <div className="mb-2">
+      <TaskListHeader
+        icon={<ListChecks className="h-5 w-5" />}
+        title={t("taskseventspanel.Tasks", { defaultValue: "Coding Tasks" })}
+        counts={
+          <>
+            <TaskCountChip value={threads.length} label="total" />
+            {activeCount > 0 ? (
+              <TaskCountChip value={activeCount} label="active" tone="active" />
+            ) : null}
+            {doneCount > 0 ? (
+              <TaskCountChip value={doneCount} label="done" tone="accent" />
+            ) : null}
+          </>
+        }
+      />
+
+      <div className="flex items-center gap-2">
         <input
           ref={searchRef}
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder={searchLabel}
           aria-label={searchLabel}
-          className="h-8 w-full rounded-md border border-border/50 bg-bg px-2 text-xs text-txt outline-none transition-colors placeholder:text-muted focus:border-accent/50"
+          className="h-9 flex-1 rounded-xl border border-border/50 bg-bg-accent/30 px-3 text-sm text-txt outline-none transition-colors placeholder:text-muted focus:border-accent/50"
           {...searchAgentProps}
         />
+        <button
+          ref={archivedRef}
+          type="button"
+          onClick={() => setShowArchived((value) => !value)}
+          aria-pressed={showArchived}
+          data-testid="task-show-archived"
+          className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-medium transition-colors ${
+            showArchived
+              ? "border-accent/40 bg-accent-subtle text-accent"
+              : "border-border/50 bg-bg-accent/30 text-muted hover:text-txt"
+          }`}
+          {...archivedAgentProps}
+        >
+          <Archive className="h-3.5 w-3.5" />
+          {showArchivedLabel}
+        </button>
       </div>
+
       {loadError ? (
-        <div className="mb-2 rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
+        <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
           {t("codingagenttaskspanel.loadThreadsFailed", {
             defaultValue: "Failed to load task threads: {{error}}",
             error: loadError,
@@ -978,52 +880,44 @@ export function CodingAgentTasksPanel({
         </div>
       ) : null}
       {mutationError ? (
-        <div className="mb-2 rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
+        <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
           {mutationError}
         </div>
       ) : null}
+
       {threads.length > 0 ? (
         <div className="flex flex-col gap-2.5">
-          {detailError ? (
-            <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
-              {t("codingagenttaskspanel.loadTaskDetailFailed", {
-                defaultValue: "Failed to load task detail: {{error}}",
-                error: detailError,
-              })}
-            </div>
-          ) : null}
-          <div className="flex flex-col gap-2">
-            {threads.map((thread) => (
-              <TaskThreadCard
-                key={thread.id}
-                thread={thread}
-                selected={thread.id === selectedThreadId}
-                onSelect={(id) =>
-                  setSelectedThreadId((current) => (current === id ? null : id))
-                }
-                detail={thread.id === selectedThreadId ? selectedThread : null}
-                detailLoading={loading}
-                busy={mutating}
-                onDelete={handleDelete}
-                onReopen={handleReopen}
-                t={t}
-                locale={uiLanguage}
-              />
-            ))}
-          </div>
+          {threads.map((thread) => (
+            <TaskCard
+              key={thread.id}
+              id={thread.id}
+              title={thread.title}
+              subtitle={thread.summary || thread.originalRequest}
+              status={thread.status}
+              chips={threadChips(thread, t, uiLanguage)}
+              onOpen={setSelectedThreadId}
+              t={t}
+            />
+          ))}
         </div>
       ) : loading ? (
-        <div className="text-xs text-muted">
+        <div className="text-sm text-muted">
           {t("codingagenttaskspanel.loadingTasks", {
             defaultValue: "Loading tasks…",
           })}
         </div>
       ) : (
-        <div className="flex flex-col gap-2.5">
-          <TaskItemsContent sessions={activeSessions} t={t} />
-        </div>
+        <TaskEmptyState
+          title={t("codingagenttaskspanel.empty.title", {
+            defaultValue: "No coding tasks yet",
+          })}
+          hint={t("codingagenttaskspanel.empty.hint", {
+            defaultValue:
+              "Coding agents you dispatch will appear here with their sessions, decisions, and live console output.",
+          })}
+        />
       )}
-    </WidgetSection>
+    </div>
   );
 }
 
@@ -1033,13 +927,7 @@ export function TaskCoordinatorTuiView() {
       id="task-coordinator"
       label="Task Coordinator TUI"
       description="Terminal coding agent task coordinator"
-      commands={[
-        "list-sessions",
-        "list-task-threads",
-        "open-thread",
-        "stop-session",
-        "refresh",
-      ]}
+      commands={[]}
       endpoints={[
         "/api/coding-agents",
         "/api/orchestrator/tasks",
@@ -1055,23 +943,7 @@ export function OrchestratorTuiView() {
       id="orchestrator"
       label="Orchestrator TUI"
       description="Terminal multi-agent task orchestration workbench"
-      commands={[
-        "orchestrator-status",
-        "orchestrator-list-tasks",
-        "orchestrator-open-task",
-        "orchestrator-create-task",
-        "orchestrator-pause-task",
-        "orchestrator-resume-task",
-        "orchestrator-pause-all",
-        "orchestrator-resume-all",
-        "orchestrator-delete-task",
-        "orchestrator-fork-task",
-        "orchestrator-update-task",
-        "orchestrator-validate-task",
-        "orchestrator-add-agent",
-        "orchestrator-stop-agent",
-        "orchestrator-send-message",
-      ]}
+      commands={[]}
       endpoints={["/api/orchestrator/status", "/api/orchestrator/tasks"]}
     />
   );

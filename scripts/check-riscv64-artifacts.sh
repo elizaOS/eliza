@@ -327,7 +327,7 @@ NATIVE_PLUGINS=(
 
     "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/libvoice_classifier.a"
     "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/libvoice_classifier.so"
-    "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/voice_classifier_stub_smoke"
+    "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/voice_classifier_abi_smoke"
     "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/voice_diarizer_parity_test"
     "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/voice_emotion_classes_test"
     "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/voice_gguf_loader_test"
@@ -344,7 +344,7 @@ NATIVE_PLUGINS=(
 
     "yolo-cpp             packages/native/plugins/yolo-cpp/build/riscv64/libyolo.a"
     "yolo-cpp             packages/native/plugins/yolo-cpp/build/riscv64/libyolo.so"
-    "yolo-cpp             packages/native/plugins/yolo-cpp/build/riscv64/yolo_stub_smoke"
+    "yolo-cpp             packages/native/plugins/yolo-cpp/build/riscv64/yolo_abi_smoke"
     "yolo-cpp             packages/native/plugins/yolo-cpp/build/riscv64/yolo_classes_test"
     "yolo-cpp             packages/native/plugins/yolo-cpp/build/riscv64/yolo_letterbox_test"
     "yolo-cpp             packages/native/plugins/yolo-cpp/build/riscv64/yolo_nms_test"

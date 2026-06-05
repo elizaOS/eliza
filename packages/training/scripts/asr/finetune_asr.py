@@ -310,7 +310,7 @@ def _write_eval(
 
 
 def _run_synthetic_smoke(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
-    """CI path: walk the file layout, emit manifest + eval stubs, no GPU."""
+    """CI path: walk the file layout, emit manifest + synthetic eval, no GPU."""
     log.info("synthetic-smoke: ASR fine-tune pipeline shape (no torch / no GPU)")
 
     run_dir = Path(args.run_dir).resolve()
@@ -365,7 +365,7 @@ def _run_synthetic_smoke(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
     manifest["checkpoints"] = checkpoints
     (ckpt_dir / "train_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
-    # Emit a stub eval.json.
+    # Emit a synthetic eval.json.
     baseline_path = Path(args.baseline_eval) if getattr(args, "baseline_eval", None) else None
     eval_result = _write_eval(
         run_dir=run_dir,

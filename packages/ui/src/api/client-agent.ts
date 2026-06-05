@@ -1033,7 +1033,8 @@ declare module "./client-base" {
     /**
      * Subscribe to a task's live change stream (SSE). Invokes `onChange` each
      * time the task room mutates so the caller can refetch the tail. Returns an
-     * unsubscribe function. No-op (returns a noop) where EventSource is absent.
+     * unsubscribe function. Where EventSource is absent, returns an inactive
+     * unsubscribe function.
      */
     streamOrchestratorTask(taskId: string, onChange: () => void): () => void;
     updateOrchestratorTask(
@@ -1321,7 +1322,7 @@ ElizaClient.prototype.getAuthStatus = async function (this: ElizaClient) {
   // agent has no port yet — we catch and fall through to HTTP so the
   // existing retry/backoff loop handles the "not ready" semantic
   // exactly as it did before RPC was in the picture. NEVER fabricates
-  // a 401-shaped placeholder (see the auth-client.ts authMe wrapper
+  // a 401-shaped fallback response (see the auth-client.ts authMe wrapper
   // history if you need the bug story).
   try {
     const viaRpc = await invokeDesktopBridgeRequest<{

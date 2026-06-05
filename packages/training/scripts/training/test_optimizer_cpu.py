@@ -101,7 +101,7 @@ def test_apollo_mini_state_smaller_than_full_apollo() -> None:
 @pytest.mark.parametrize("builder_name", ["apollo", "apollo_mini"])
 def test_apollo_step_decreases_loss_on_synthetic_problem(builder_name: str) -> None:
     """An APOLLO / APOLLO-Mini optimizer step must actually reduce a tiny
-    cross-entropy loss — the projector + norm-growth scaling is a no-op proxy
+    cross-entropy loss — the projector + norm-growth scaling is a zero-effect proxy
     for AdamW only if the update direction is right. Fixed-input, fixed-target
     overfit: 30 steps on a 2-layer toy LM, loss must drop monotonically enough
     to land well below the starting value."""

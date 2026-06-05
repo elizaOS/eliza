@@ -34,61 +34,30 @@ import { StoreOverviewCard } from "./StoreOverviewCard";
 import { useShopifyDashboard } from "./useShopifyDashboard";
 
 function ShopifySetupCard() {
-  const setupItems = [
-    { label: "Domain", value: "STORE_DOMAIN", icon: Globe2, tone: "text-info" },
-    {
-      label: "Token",
-      value: "ACCESS_TOKEN",
-      icon: KeyRound,
-      tone: "text-warning",
-    },
-    { label: "Scopes", value: "read_*", icon: ShieldCheck, tone: "text-ok" },
-  ] as const;
-
   return (
-    <div className="mx-auto w-full max-w-2xl">
-      <div className="rounded-2xl border border-border/30 bg-card/40 px-5 py-6">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-ok/25 bg-ok/12">
-            <Store className="h-7 w-7 text-ok" />
+    <div className="mx-auto w-full max-w-md">
+      <div className="rounded-xl border border-border/30 bg-card/40 px-4 py-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-ok/25 bg-ok/12">
+            <Store className="h-5 w-5 text-ok" />
           </div>
-          <div className="text-lg font-semibold text-txt">Connect Shopify</div>
-
-          <div className="grid w-full gap-2 sm:grid-cols-3">
-            {setupItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <div
-                  key={item.label}
-                  className="rounded-xl border border-border/24 bg-bg/50 px-3 py-3"
-                >
-                  <Icon className={`mx-auto h-4 w-4 ${item.tone}`} />
-                  <div className="mt-2 text-xs font-semibold text-txt">
-                    {item.label}
-                  </div>
-                  <div className="mt-1 font-mono text-2xs text-muted">
-                    {item.value}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="text-center text-xs text-muted">
-            <div className="flex flex-wrap justify-center gap-1">
-              {[
-                "read_products",
-                "read_orders",
-                "read_inventory",
-                "read_customers",
-              ].map((scope) => (
-                <code
-                  key={scope}
-                  className="rounded bg-bg-accent px-1.5 py-0.5 font-mono text-2xs"
-                >
-                  {scope}
-                </code>
-              ))}
+          <div className="min-w-0 flex-1">
+            <div className="text-base font-semibold text-txt">
+              Connect Shopify
+            </div>
+            <div className="mt-2 grid gap-1.5 text-xs text-muted">
+              <div className="flex items-center gap-2">
+                <Globe2 className="h-3.5 w-3.5 text-info" />
+                <code className="font-mono">SHOPIFY_STORE_DOMAIN</code>
+              </div>
+              <div className="flex items-center gap-2">
+                <KeyRound className="h-3.5 w-3.5 text-warning" />
+                <code className="font-mono">SHOPIFY_ACCESS_TOKEN</code>
+              </div>
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-3.5 w-3.5 text-ok" />
+                <span>products, orders, inventory, customers</span>
+              </div>
             </div>
           </div>
         </div>
@@ -169,12 +138,13 @@ function ShopifyDashboardTabTrigger({
     <TabsTrigger
       ref={ref}
       value={value}
-      className="gap-1.5"
+      className="h-9 w-9 gap-0 px-0 sm:w-auto sm:gap-1.5 sm:px-3"
       aria-current={active ? "true" : undefined}
+      title={label}
       {...agentProps}
     >
       <Icon className="h-3.5 w-3.5" />
-      {label}
+      <span className="hidden sm:inline">{label}</span>
     </TabsTrigger>
   );
 }
@@ -221,6 +191,9 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
 
   const connected = status?.connected ?? false;
   const shop = status?.shop ?? null;
+  const lowInventoryItems = inventoryItems.filter(
+    (item) => item.available <= 5,
+  );
 
   const backButton = useAgentElement<HTMLButtonElement>({
     id: "action-back",
@@ -318,12 +291,12 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
             <Skeleton className="h-80 w-full max-w-lg rounded-2xl mx-4" />
           </div>
         ) : (
-          <div className="px-4 py-4">
+          <div className="mx-auto w-full max-w-3xl px-4 py-4">
             <Tabs
               value={activeTab}
               onValueChange={(v) => setActiveTab(v as DashboardTab)}
             >
-              <TabsList className="mb-4 h-auto flex-wrap gap-1 p-1">
+              <TabsList className="sticky top-3 z-10 mb-4 h-auto w-full justify-between gap-1 p-1 shadow-sm backdrop-blur sm:w-auto sm:justify-start">
                 {DASHBOARD_TABS.map((tab) => (
                   <ShopifyDashboardTabTrigger
                     key={tab.value}
@@ -341,17 +314,31 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                     <StoreOverviewCard shop={shop} counts={counts} />
                   ) : null}
 
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <div className="rounded-2xl border border-border/24 bg-card/32 px-4 py-4">
-                      <div className="flex items-center gap-2">
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-border/24 bg-card/32 px-3 py-3">
+                      <div className="flex items-center justify-between gap-2">
                         <span
                           className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-bg-accent text-muted-strong"
                           title="Recent orders"
                         >
                           <ShoppingCart className="h-4 w-4" aria-hidden />
                         </span>
+                        {ordersTotal > 3 ? (
+                          <Button
+                            ref={viewAllOrdersButton.ref}
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 rounded-full px-2 text-xs-tight"
+                            onClick={() => setActiveTab("orders")}
+                            title={`View all ${ordersTotal.toLocaleString()} orders`}
+                            {...viewAllOrdersButton.agentProps}
+                          >
+                            +{(ordersTotal - 3).toLocaleString()}
+                          </Button>
+                        ) : null}
                       </div>
-                      <div className="mt-3 space-y-2">
+                      <div className="mt-2 space-y-1.5">
                         {ordersLoading && orders.length === 0 ? (
                           <>
                             <Skeleton className="h-8 w-full rounded-lg" />
@@ -359,10 +346,10 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                             <Skeleton className="h-8 w-full rounded-lg" />
                           </>
                         ) : (
-                          orders.slice(0, 5).map((order) => (
+                          orders.slice(0, 3).map((order) => (
                             <div
                               key={order.id}
-                              className="flex items-center justify-between gap-2 rounded-lg bg-card/40 px-3 py-2"
+                              className="grid grid-cols-[5rem_minmax(0,1fr)_auto] items-center gap-2 rounded-lg bg-card/40 px-3 py-2"
                             >
                               <span className="text-xs font-semibold text-txt">
                                 {order.name}
@@ -382,91 +369,68 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                           </p>
                         ) : null}
                       </div>
-                      {ordersTotal > 5 ? (
-                        <Button
-                          ref={viewAllOrdersButton.ref}
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="mt-2 h-7 rounded-full px-2 text-xs-tight"
-                          onClick={() => setActiveTab("orders")}
-                          title={`View all ${ordersTotal.toLocaleString()} orders`}
-                          {...viewAllOrdersButton.agentProps}
-                        >
-                          +{(ordersTotal - 5).toLocaleString()}
-                        </Button>
-                      ) : null}
                     </div>
 
-                    <div className="rounded-2xl border border-border/24 bg-card/32 px-4 py-4">
-                      <div className="flex items-center gap-2">
+                    <div className="rounded-xl border border-border/24 bg-card/32 px-3 py-3">
+                      <div className="flex items-center justify-between gap-2">
                         <span
                           className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-bg-accent text-muted-strong"
                           title="Low inventory"
                         >
                           <Package className="h-4 w-4" aria-hidden />
                         </span>
+                        {lowInventoryItems.length > 3 ? (
+                          <Button
+                            ref={viewAllInventoryButton.ref}
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 rounded-full px-2 text-xs-tight"
+                            onClick={() => setActiveTab("inventory")}
+                            title="View inventory"
+                            {...viewAllInventoryButton.agentProps}
+                          >
+                            +{(lowInventoryItems.length - 3).toLocaleString()}
+                          </Button>
+                        ) : null}
                       </div>
-                      <div className="mt-3 space-y-2">
+                      <div className="mt-2 space-y-1.5">
                         {inventoryLoading && inventoryItems.length === 0 ? (
                           <>
                             <Skeleton className="h-8 w-full rounded-lg" />
                             <Skeleton className="h-8 w-full rounded-lg" />
                           </>
                         ) : (
-                          inventoryItems
-                            .filter((item) => item.available <= 5)
-                            .slice(0, 5)
-                            .map((item) => (
-                              <div
-                                key={`${item.id}:${item.locationName}`}
-                                className="flex items-center justify-between gap-2 rounded-lg bg-card/40 px-3 py-2"
+                          lowInventoryItems.slice(0, 3).map((item) => (
+                            <div
+                              key={`${item.id}:${item.locationName}`}
+                              className="flex items-center justify-between gap-2 rounded-lg bg-card/40 px-3 py-2"
+                            >
+                              <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
+                                {item.productTitle}
+                                {item.variantTitle
+                                  ? ` — ${item.variantTitle}`
+                                  : ""}
+                              </span>
+                              <Badge
+                                variant={
+                                  item.available === 0
+                                    ? "destructive"
+                                    : "secondary"
+                                }
+                                className="shrink-0 rounded-full text-2xs"
                               >
-                                <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
-                                  {item.productTitle}
-                                  {item.variantTitle
-                                    ? ` — ${item.variantTitle}`
-                                    : ""}
-                                </span>
-                                <Badge
-                                  variant={
-                                    item.available === 0
-                                      ? "destructive"
-                                      : "secondary"
-                                  }
-                                  className="shrink-0 rounded-full text-2xs"
-                                >
-                                  {item.available}
-                                </Badge>
-                              </div>
-                            ))
+                                {item.available}
+                              </Badge>
+                            </div>
+                          ))
                         )}
-                        {inventoryItems.filter((i) => i.available <= 5)
-                          .length === 0 && !inventoryLoading ? (
+                        {lowInventoryItems.length === 0 && !inventoryLoading ? (
                           <p className="text-xs text-muted">
-                            All items sufficiently stocked.
+                            Stock levels look good.
                           </p>
                         ) : null}
                       </div>
-                      {inventoryItems.filter((i) => i.available <= 5).length >
-                      5 ? (
-                        <Button
-                          ref={viewAllInventoryButton.ref}
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="mt-2 h-7 rounded-full px-2 text-xs-tight"
-                          onClick={() => setActiveTab("inventory")}
-                          title="View inventory"
-                          {...viewAllInventoryButton.agentProps}
-                        >
-                          +
-                          {(
-                            inventoryItems.filter((i) => i.available <= 5)
-                              .length - 5
-                          ).toLocaleString()}
-                        </Button>
-                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -596,7 +560,7 @@ export function ShopifyTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -677,11 +641,10 @@ export function ShopifyTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>commerce</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | products | orders | inventory | customers |
-            create-product | adjust-inventory
+            {state?.orders?.total ?? 0} orders / {lowInventory.length} low stock
           </div>
           <div style={{ color: "#a7f3d0", marginBottom: 8 }}>recent orders</div>
-          {(state?.orders?.orders ?? []).slice(0, 6).map((order) => (
+          {(state?.orders?.orders ?? []).slice(0, 4).map((order) => (
             <div
               key={order.id}
               style={{
@@ -702,7 +665,7 @@ export function ShopifyTuiView() {
           <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>
             low inventory
           </div>
-          {lowInventory.slice(0, 8).map((item) => (
+          {lowInventory.slice(0, 4).map((item) => (
             <div
               key={`${item.id}:${item.locationName}`}
               style={{ padding: "5px 0" }}

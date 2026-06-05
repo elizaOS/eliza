@@ -12,11 +12,10 @@
  * behaviour of the original `YOLODetector` TS implementation that
  * this library replaces.
  *
- * This TU is independent of ggml — it ports as-is into the Phase 2
- * implementation. The Phase 1 stub `yolo_detect` does NOT call this;
- * it returns `-ENOSYS` before any postprocessing. NMS is exposed to
- * tests through the internal header below so the algorithm can be
- * verified ahead of the ggml graph landing.
+ * This TU is independent of ggml. The staged-forward `yolo_detect`
+ * path does not call this yet; NMS is exposed to tests through the
+ * internal header below so the algorithm can be verified ahead of the
+ * ggml graph landing.
  */
 
 #include "yolo/yolo.h"

@@ -44,6 +44,7 @@ class FakeAcp {
   readonly stopped: string[] = [];
   failSend = false;
   failStop = false;
+  failSpawn = false;
 
   onSessionEvent(
     cb: (sessionId: string, event: string, data: unknown) => void,
@@ -59,6 +60,7 @@ class FakeAcp {
   }
 
   spawnSession(opts: Record<string, unknown>): Promise<SpawnResult> {
+    if (this.failSpawn) return Promise.reject(new Error("spawn failed"));
     this.spawnArgs.push(opts);
     this.counter += 1;
     return Promise.resolve({
@@ -868,6 +870,28 @@ describe("OrchestratorTaskService — recovery controls", () => {
     ).rejects.toThrow(/Plan revision not found/);
   });
 
+  it("does not mutate task state when same-session retry has no usable session", async () => {
+    const acp = new FakeAcp();
+    const service = makeService(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+    await service.pauseTask(task.id);
+
+    await expect(
+      service.retryTaskTurn(task.id, {
+        instruction: "retry",
+      }),
+    ).rejects.toThrow(/sessionId is required/);
+
+    const detail = must(await service.getTask(task.id), "detail");
+    expect(detail.paused).toBe(true);
+    expect(detail.status).toBe("open");
+    expect(detail.events.map((event) => event.eventType)).not.toContain(
+      "retry_turn_requested",
+    );
+    expect(acp.sent).toHaveLength(0);
+  });
+
   it("applies a selected plan revision to retry prompts and task state", async () => {
     const { service, acp, taskId, sessionId } = await withSpawnedSession();
     const revision = must(
@@ -927,6 +951,48 @@ describe("OrchestratorTaskService — recovery controls", () => {
       eventType: "restart_requested",
       data: { planRevisionId: revision.id },
     });
+  });
+
+  it("does not stop active sessions when restart replacement spawn fails", async () => {
+    const { service, acp, taskId, sessionId } = await withSpawnedSession();
+    acp.failSpawn = true;
+
+    await expect(
+      service.restartTask(taskId, { instruction: "restart cleanly" }),
+    ).rejects.toThrow(/spawn failed/);
+
+    const detail = must(await service.getTask(taskId), "detail");
+    expect(acp.stopped).not.toContain(sessionId);
+    expect(detail.sessions).toHaveLength(1);
+    expect(detail.sessions[0]?.status).toBe("ready");
+    expect(detail.events.map((event) => event.eventType)).not.toContain(
+      "restart_requested",
+    );
+  });
+
+  it("does not promote an edited restart plan when replacement spawn fails", async () => {
+    const { service, acp, taskId } = await withSpawnedSession();
+    await service.createPlanRevision(taskId, {
+      plan: { summary: "original plan" },
+      editSummary: "baseline",
+    });
+    acp.failSpawn = true;
+
+    await expect(
+      service.restartWithEditedPlan(taskId, {
+        plan: { summary: "failed restart plan" },
+        editSummary: "operator retry",
+      }),
+    ).rejects.toThrow(/spawn failed/);
+
+    const detail = must(await service.getTask(taskId), "detail");
+    expect(detail.currentPlan).toEqual({ summary: "original plan" });
+    expect(detail.planRevisions.at(-1)?.plan).toEqual({
+      summary: "failed restart plan",
+    });
+    expect(detail.events.map((event) => event.eventType)).not.toContain(
+      "restart_requested",
+    );
   });
 });
 

@@ -4,8 +4,8 @@
  */
 "use client";
 
+import { Skeleton } from "../../../components/ui/skeleton";
 import { Spinner } from "../../../components/ui/spinner";
-import { Skeleton } from "../skeleton";
 
 export function LoadingState() {
   return (

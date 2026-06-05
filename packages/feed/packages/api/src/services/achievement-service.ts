@@ -103,6 +103,10 @@ function getEndOfISOWeek(date: Date = new Date()): Date {
   return new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
 }
 
+function countValue(rows: ReadonlyArray<{ c?: number | null }>): number {
+  return rows[0]?.c ?? 0;
+}
+
 // ── Deterministic Challenge Rotation ───────────────────────────────
 
 function selectChallengeIds(
@@ -122,7 +126,9 @@ function selectChallengeIds(
     offset += 4;
   }
 
-  return selected.map((i) => pool[i]?.id);
+  return selected
+    .map((i) => pool[i]?.id)
+    .filter((id): id is string => typeof id === "string");
 }
 
 export function getActiveDailyChallengeIds(date: Date = new Date()): string[] {
@@ -152,7 +158,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .select({ c: count() })
       .from(positions)
       .where(eq(positions.userId, userId));
-    return result[0]?.c;
+    return countValue(result);
   },
 
   perp_trade_count: async (userId) => {
@@ -160,7 +166,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .select({ c: count() })
       .from(perpPositions)
       .where(eq(perpPositions.userId, userId));
-    return result[0]?.c;
+    return countValue(result);
   },
 
   total_trade_count: async (userId) => {
@@ -172,7 +178,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .select({ c: count() })
       .from(perpPositions)
       .where(eq(perpPositions.userId, userId));
-    return predResult[0]?.c + perpResult[0]?.c;
+    return countValue(predResult) + countValue(perpResult);
   },
 
   distinct_markets: async (userId) => {
@@ -180,7 +186,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .select({ c: sql<number>`COUNT(DISTINCT ${positions.marketId})` })
       .from(positions)
       .where(eq(positions.userId, userId));
-    return Number(result[0]?.c);
+    return countValue(result);
   },
 
   prediction_win_count: async (userId) => {
@@ -188,7 +194,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .select({ c: count() })
       .from(positions)
       .where(and(eq(positions.userId, userId), eq(positions.outcome, true)));
-    return result[0]?.c;
+    return countValue(result);
   },
 
   agent_count: async (userId) => {
@@ -196,7 +202,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .select({ c: count() })
       .from(users)
       .where(and(eq(users.managedBy, userId), eq(users.isAgent, true)));
-    return result[0]?.c;
+    return countValue(result);
   },
 
   agent_message_count: async (userId) => {
@@ -206,7 +212,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .from(agentMessages)
       .innerJoin(users, eq(agentMessages.agentUserId, users.id))
       .where(eq(users.managedBy, userId));
-    return result[0]?.c;
+    return countValue(result);
   },
 
   agent_trade_count: async (userId) => {
@@ -217,7 +223,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .from(sql`"AgentTrade" at2`)
       .innerJoin(users, sql`at2."agentUserId" = ${users.id}`)
       .where(eq(users.managedBy, userId));
-    return result[0]?.c;
+    return countValue(result);
   },
 
   group_message_count: async (userId) => {
@@ -226,7 +232,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .from(messages)
       .innerJoin(chats, eq(messages.chatId, chats.id))
       .where(and(eq(messages.senderId, userId), eq(chats.isGroup, true)));
-    return result[0]?.c;
+    return countValue(result);
   },
 
   comment_count: async (userId) => {
@@ -234,7 +240,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
       .select({ c: count() })
       .from(comments)
       .where(and(eq(comments.authorId, userId), isNull(comments.deletedAt)));
-    return result[0]?.c;
+    return countValue(result);
   },
 
   terminal_visit_count: async (userId) => {
@@ -247,7 +253,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
           eq(userActivityLogs.activityType, "open_terminal"),
         ),
       );
-    return result[0]?.c;
+    return countValue(result);
   },
 
   agents_visit_count: async (userId) => {
@@ -260,7 +266,7 @@ const ACHIEVEMENT_RESOLVERS: Record<string, ProgressResolver> = {
           eq(userActivityLogs.activityType, "open_agents"),
         ),
       );
-    return result[0]?.c;
+    return countValue(result);
   },
 
   login_streak: async (userId) => {
@@ -295,7 +301,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(positions.createdAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   daily_perp_trade: async (userId, start, end) => {
@@ -309,7 +315,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(perpPositions.openedAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   daily_total_trade: async (userId, start, end) => {
@@ -333,7 +339,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(perpPositions.openedAt, end),
         ),
       );
-    return pred[0]?.c + perp[0]?.c;
+    return countValue(pred) + countValue(perp);
   },
 
   daily_distinct_markets: async (userId, start, end) => {
@@ -347,7 +353,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(positions.createdAt, end),
         ),
       );
-    return Number(r[0]?.c);
+    return countValue(r);
   },
 
   daily_post: async (userId, start, end) => {
@@ -361,7 +367,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(posts.timestamp, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   daily_comment: async (userId, start, end) => {
@@ -376,7 +382,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(comments.createdAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   daily_reaction: async (userId, start, end) => {
@@ -390,7 +396,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(reactions.createdAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   daily_group_message: async (userId, start, end) => {
@@ -406,7 +412,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(messages.createdAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   daily_agent_message: async (userId, start, end) => {
@@ -421,7 +427,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(agentMessages.createdAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   daily_follow: async (userId, start, end) => {
@@ -435,7 +441,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(follows.createdAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   daily_share: async (userId, start, end) => {
@@ -449,7 +455,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(shares.createdAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   // ── Page visits (UserActivityLog) ──
@@ -466,7 +472,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           eq(userActivityLogs.activityDate, dateOnly),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   daily_agents_visit: async (userId, start, _end) => {
@@ -481,7 +487,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           eq(userActivityLogs.activityDate, dateOnly),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   daily_markets_visit: async (userId, start, _end) => {
@@ -496,7 +502,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           eq(userActivityLogs.activityDate, dateOnly),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   daily_feed_visit: async (userId, start, _end) => {
@@ -511,7 +517,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           eq(userActivityLogs.activityDate, dateOnly),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   daily_leaderboard_visit: async (userId, start, _end) => {
@@ -526,7 +532,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           eq(userActivityLogs.activityDate, dateOnly),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   daily_notifications_visit: async (userId, start, _end) => {
@@ -541,7 +547,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           eq(userActivityLogs.activityDate, dateOnly),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   daily_market_detail_visit: async (userId, start, _end) => {
@@ -556,7 +562,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           eq(userActivityLogs.activityDate, dateOnly),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   daily_group_join: async (userId, start, end) => {
@@ -570,7 +576,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(groupMembers.joinedAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   // ── Compound daily ──
@@ -596,7 +602,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(perpPositions.openedAt, end),
         ),
       );
-    return pred[0]?.c > 0 && perp[0]?.c > 0 ? 1 : 0;
+    return countValue(pred) > 0 && countValue(perp) > 0 ? 1 : 0;
   },
 
   // ── Weekly resolvers ──
@@ -612,7 +618,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(positions.createdAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   weekly_perp_trade: async (userId, start, end) => {
@@ -626,7 +632,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(perpPositions.openedAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   weekly_total_trade: async (userId, start, end) => {
@@ -650,7 +656,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(perpPositions.openedAt, end),
         ),
       );
-    return pred[0]?.c + perp[0]?.c;
+    return countValue(pred) + countValue(perp);
   },
 
   weekly_distinct_markets: async (userId, start, end) => {
@@ -664,7 +670,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(positions.createdAt, end),
         ),
       );
-    return Number(r[0]?.c);
+    return countValue(r);
   },
 
   weekly_trade_win: async (userId, start, end) => {
@@ -679,7 +685,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(positions.resolvedAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   weekly_post: async (userId, start, end) => {
@@ -693,7 +699,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(posts.timestamp, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   weekly_comment: async (userId, start, end) => {
@@ -708,7 +714,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(comments.createdAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   weekly_reaction: async (userId, start, end) => {
@@ -722,7 +728,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(reactions.createdAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   weekly_group_message: async (userId, start, end) => {
@@ -738,7 +744,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(messages.createdAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   weekly_agent_message: async (userId, start, end) => {
@@ -753,7 +759,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(agentMessages.createdAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   weekly_agent_trade: async (userId, start, end) => {
@@ -768,7 +774,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           sql`at2."executedAt" < ${end}`,
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   weekly_follow: async (userId, start, end) => {
@@ -782,7 +788,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(follows.createdAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   weekly_share: async (userId, start, end) => {
@@ -796,7 +802,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(shares.createdAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   weekly_group_join: async (userId, start, end) => {
@@ -810,7 +816,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(groupMembers.joinedAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   weekly_group_create: async (userId, start, end) => {
@@ -824,7 +830,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(groups.createdAt, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   weekly_login_days: async (userId, start, end) => {
@@ -839,7 +845,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(userActivityLogs.activityDate, end),
         ),
       );
-    return r[0]?.c;
+    return countValue(r);
   },
 
   weekly_trade_days: async (userId, start, end) => {
@@ -853,7 +859,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(positions.createdAt, end),
         ),
       );
-    return Number(r[0]?.c);
+    return countValue(r);
   },
 
   // ── Compound weekly ──
@@ -879,7 +885,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(perpPositions.openedAt, end),
         ),
       );
-    return pred[0]?.c > 0 && perp[0]?.c > 0 ? 1 : 0;
+    return countValue(pred) > 0 && countValue(perp) > 0 ? 1 : 0;
   },
 
   weekly_agent_and_group: async (userId, start, end) => {
@@ -906,7 +912,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(messages.createdAt, end),
         ),
       );
-    return hasAgent[0]?.c > 0 && hasGroup[0]?.c > 0 ? 1 : 0;
+    return countValue(hasAgent) > 0 && countValue(hasGroup) > 0 ? 1 : 0;
   },
 
   weekly_agent_interact: async (userId, start, end) => {
@@ -994,7 +1000,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
         ),
       );
     // Threshold is applied to the minimum of both (must have >= threshold of each)
-    return Math.min(Number(likedPosts[0]?.c), Number(commentedPosts[0]?.c));
+    return Math.min(countValue(likedPosts), countValue(commentedPosts));
   },
 
   weekly_referral_play: async (userId, start, end) => {
@@ -1009,7 +1015,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(positions.createdAt, end),
         ),
       );
-    return r[0]?.c > 0 ? 1 : 0;
+    return countValue(r) > 0 ? 1 : 0;
   },
 
   weekly_top_market: async (userId, start, end) => {
@@ -1034,7 +1040,7 @@ const CHALLENGE_RESOLVERS: Record<string, WindowedResolver> = {
           lt(positions.createdAt, end),
         ),
       );
-    return userTrade[0]?.c > 0 ? 1 : 0;
+    return countValue(userTrade) > 0 ? 1 : 0;
   },
 };
 
@@ -1371,7 +1377,7 @@ async function checkCompletionBonus(
     );
 
   const target = pool === "daily" ? 3 : 2;
-  if (completedCount[0]?.c !== target) return;
+  if (countValue(completedCount) !== target) return;
 
   // Check if bonus already awarded (use a special periodKey suffix)
   const bonusPeriodKey = `${periodKey}:bonus`;
@@ -1384,7 +1390,7 @@ async function checkCompletionBonus(
         eq(userChallengeProgress.periodKey, bonusPeriodKey),
       ),
     );
-  if (existing[0]?.c > 0) return; // Already awarded
+  if (countValue(existing) > 0) return; // Already awarded
 
   const bonus =
     pool === "daily"

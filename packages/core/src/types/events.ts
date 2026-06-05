@@ -37,6 +37,16 @@ export enum EventType {
 	VOICE_MESSAGE_RECEIVED = "VOICE_MESSAGE_RECEIVED",
 	VOICE_MESSAGE_SENT = "VOICE_MESSAGE_SENT",
 
+	// Voice-attribution → entity-binding seam.
+	// A recognized voice turn was attributed to an imprint cluster
+	// (producer: a voice/speaker-ID plugin). A merge-engine owner
+	// (e.g. plugin-lifeops) consumes it to create/merge the Entity.
+	VOICE_TURN_OBSERVED = "VOICE_TURN_OBSERVED",
+	// The merge engine bound an imprint cluster to an Entity id
+	// (producer: the merge-engine owner). The voice-profile owner
+	// consumes it to persist the binding back onto its profile.
+	VOICE_ENTITY_BOUND = "VOICE_ENTITY_BOUND",
+
 	// Interaction events
 	REACTION_RECEIVED = "REACTION_RECEIVED",
 	POST_GENERATED = "POST_GENERATED",
@@ -243,6 +253,49 @@ export interface ControlMessagePayload extends EventPayload {
 	message: ControlMessage;
 }
 
+/**
+ * Payload for {@link EventType.VOICE_TURN_OBSERVED}.
+ *
+ * Emitted by a voice/speaker-ID plugin when a turn is attributed to an
+ * imprint cluster. Consumed by the merge-engine owner (plugin-lifeops)
+ * to create or merge the corresponding Entity. Entity / cluster ids are
+ * opaque strings (the merge engine uses non-UUID ids such as `"self"`).
+ */
+export interface VoiceTurnObservedPayload extends EventPayload {
+	/** Stable utterance id (the transcriber turn id is fine). */
+	turnId: string;
+	/** Recognized text for the turn (drives name/partner-claim extraction). */
+	text: string;
+	/** Imprint cluster id from the voice-profile store. */
+	imprintClusterId: string;
+	/** Confidence of the imprint match (0..1). */
+	matchConfidence: number;
+	/** Entity the imprint already resolved to, or `null` when unbound. */
+	matchedEntityId: string | null;
+	/** True when this turn was spoken by the OWNER. */
+	isOwner?: boolean;
+	/** ISO timestamp of the observation. */
+	observedAt?: string;
+}
+
+/**
+ * Payload for {@link EventType.VOICE_ENTITY_BOUND}.
+ *
+ * Emitted by the merge-engine owner once an imprint cluster is bound to
+ * an Entity id. Consumed by the voice-profile owner to persist the
+ * binding back onto every profile in that cluster.
+ */
+export interface VoiceEntityBoundPayload extends EventPayload {
+	/** Imprint cluster the binding applies to. */
+	imprintClusterId: string;
+	/** Entity id the cluster is now bound to. */
+	entityId: string;
+	/** Display name resolved for the entity, when known. */
+	displayName?: string;
+	/** True when the merge engine created a new entity (vs. matched one). */
+	wasCreated?: boolean;
+}
+
 export interface FormFieldEventPayload extends EventPayload {
 	sessionId: string;
 	entityId: UUID;
@@ -436,6 +489,8 @@ export interface EventPayloadMap {
 	[EventType.MESSAGE_DELETED]: MessagePayload;
 	[EventType.VOICE_MESSAGE_RECEIVED]: MessagePayload;
 	[EventType.VOICE_MESSAGE_SENT]: MessagePayload;
+	[EventType.VOICE_TURN_OBSERVED]: VoiceTurnObservedPayload;
+	[EventType.VOICE_ENTITY_BOUND]: VoiceEntityBoundPayload;
 	[EventType.CHANNEL_CLEARED]: ChannelClearedPayload;
 	[EventType.REACTION_RECEIVED]: MessagePayload;
 	[EventType.POST_GENERATED]: InvokePayload;

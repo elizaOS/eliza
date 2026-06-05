@@ -131,7 +131,7 @@ bun scripts/prompt-diff.ts \
 - **This is not an `@elizaos/*` package.** The npm name is `@feed/root` and all internal packages use the `@feed/` scope. Do not publish or import from `@elizaos/` unless explicitly integrating with upstream elizaOS packages.
 - **Ruler manages CLAUDE.md and AGENTS.md.** These files are generated from `.ruler/`. Edit `.ruler/**` and run `bun run ruler:apply` — never hand-edit CLAUDE.md or AGENTS.md directly (changes will be overwritten).
 - **Default branch is `staging`**, not `main`.
-- **Root quality gates are real.** `bun run lint` runs Biome in check mode and `bun run typecheck` typechecks the stable `packages/shared` and `packages/contracts` roots. `bun run check` remains the auto-fix format/lint command.
+- **Root quality gates are real.** `bun run lint` runs Biome in check mode and `bun run typecheck` typechecks the stable `packages/shared`, `packages/contracts`, `packages/db`, `packages/core`, `packages/engine`, `packages/sim`, `packages/agents`, `packages/api`, `packages/a2a`, `packages/mcp`, the `packages/testing` public surface, `apps/cli`, the `apps/mobile` native shell, and `apps/web` roots. `bun run check` remains the auto-fix format/lint command.
 - **DB connections are lazy**: client objects are created only when the first query executes, not at import time. Prefer `DATABASE_URL` (pooled) in production; use `DIRECT_DATABASE_URL` only for migrations.
 - **No network/LLM calls inside `db.transaction()`** — transactions must be short to avoid lock escalation.
 - **Architecture rule**: `apps/* → packages/* → packages/contracts` — domain logic never imports from app or infra layers.

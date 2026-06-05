@@ -83,6 +83,44 @@ function cleanClawvilleMessage(message: string): string {
   return message;
 }
 
+function ClawvilleReadyCard({
+  icon,
+  label,
+  value,
+  tone = "cyan",
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  tone?: "cyan" | "emerald" | "amber" | "violet";
+}) {
+  const toneClass = {
+    amber: "border-amber-300/35 bg-amber-400/10 text-amber-700",
+    cyan: "border-cyan-300/35 bg-cyan-400/10 text-cyan-700",
+    emerald: "border-emerald-300/35 bg-emerald-400/10 text-emerald-700",
+    violet: "border-violet-300/35 bg-violet-400/10 text-violet-700",
+  }[tone];
+
+  return (
+    <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+      <div
+        aria-hidden
+        className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border text-lg ${toneClass}`}
+      >
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+          {label}
+        </div>
+        <div className="truncate text-sm font-semibold text-foreground">
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function collectRunEvents(
   run: AppRunSummary,
   localEvents: GameOperatorEvent[],
@@ -150,7 +188,6 @@ export function ClawvilleOperatorSurface({
     readString(telemetry, "nearestBuildingLabel") ??
     readString(telemetry, "nearestBuildingId") ??
     "the reef";
-  const knowledgeCount = readNumber(telemetry, "knowledgeCount");
   const canSend = Boolean(run?.runId && run.session?.canSendCommands);
 
   const sendCommand = useCallback(
@@ -223,11 +260,56 @@ export function ClawvilleOperatorSurface({
   if (!run) {
     return (
       <section
-        className={variant === "live" ? "p-3" : ""}
+        className={variant === "live" ? "p-3" : "p-4"}
         data-testid="clawville-operator-empty"
       >
-        <div className="rounded-2xl border border-border/35 bg-card/74 p-4 text-xs text-muted-strong">
-          Launch ClawVille to open game chat.
+        <div className="mx-auto flex max-w-3xl flex-col gap-3">
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/45 bg-card/82 px-4 py-3 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div
+                aria-hidden
+                className="grid h-10 w-10 place-items-center rounded-xl bg-rose-500 text-xl text-white shadow-sm"
+              >
+                🦀
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-foreground">
+                  ClawVille
+                </div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  game relay ready
+                </div>
+              </div>
+            </div>
+            <div className="h-3 w-3 rounded-full bg-amber-400 shadow-[0_0_0_4px_rgba(251,191,36,0.18)]" />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3">
+            <ClawvilleReadyCard
+              icon="🏘"
+              label="Map"
+              value="Town buildings staged"
+              tone="emerald"
+            />
+            <ClawvilleReadyCard
+              icon="💬"
+              label="Chat"
+              value="Use overlay relay"
+              tone="cyan"
+            />
+            <ClawvilleReadyCard
+              icon="⚡"
+              label="Commands"
+              value={`${PRIMARY_COMMANDS.length} quick actions`}
+              tone="amber"
+            />
+            <ClawvilleReadyCard
+              icon="↗"
+              label="Path"
+              value="/clawville"
+              tone="violet"
+            />
+          </div>
         </div>
       </section>
     );
@@ -236,14 +318,14 @@ export function ClawvilleOperatorSurface({
   const primaryActions: GameOperatorAction[] = PRIMARY_COMMANDS.map((item) => ({
     ...item,
   }));
-  const suggestedPrompts = run.session?.suggestedPrompts ?? [];
+  const suggestedPrompts = (run.session?.suggestedPrompts ?? []).slice(0, 2);
   const suggestedActions = suggestedPrompts.map((prompt: string) => ({
     id: prompt,
     label: prompt,
     command: prompt,
     testId: "clawville-suggested-command",
   }));
-  const events = collectRunEvents(run, localEvents);
+  const events = collectRunEvents(run, localEvents).slice(0, 3);
 
   return (
     <>
@@ -264,20 +346,11 @@ export function ClawvilleOperatorSurface({
         statusLabel={statusLabel(run.status)}
         statusTone={statusTone(run.status)}
         objective={run.session?.goalLabel ?? `Near ${nearestBuilding}`}
-        detailItems={[
-          { label: "Location", value: nearestBuilding },
-          {
-            label: "Skills",
-            value:
-              knowledgeCount === null
-                ? "Not loaded"
-                : `${knowledgeCount} learned`,
-          },
-        ]}
+        detailItems={[{ label: "Location", value: nearestBuilding }]}
         primaryActions={primaryActions}
         suggestedActions={suggestedActions}
         events={events}
-        emptyEventsLabel="Movement, NPC chat, and visit results will appear here. Start by visiting the nearest building or asking an NPC what to learn."
+        emptyEventsLabel="No events yet."
         draft={draft}
         inputPlaceholder="Tell ClawVille what to do..."
         canSend={canSend}

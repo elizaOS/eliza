@@ -2847,7 +2847,7 @@ ${req.previousMessages.map((pm) => `   [Day ${pm.day}] ${pm.actorName}: "${pm.me
    
    `
        : ""
-   }PRIVATE CHAT RULES:
+}PRIVATE CHAT RULES:
    ✅ Share insider info about YOUR orgs (be strategic about what you reveal)
    ✅ Discuss vulnerabilities, doubts, real plans
    ✅ Gossip about outsiders

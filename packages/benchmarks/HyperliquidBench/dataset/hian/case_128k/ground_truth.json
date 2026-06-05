@@ -1,7 +1,23 @@
 {
-  "require": [
-    { "signature": "account.usdClassTransfer.toPerp" },
-    { "signature": "perp.order.ALO:false:none" }
-  ],
-  "optional": []
+  "caseId": "case_128k",
+  "withinMs": 2000,
+  "steps": [
+    {
+      "usdClassTransfer": {
+        "toPerp": true,
+        "usdc": { "eq": 7.5, "tol": 0.01 }
+      }
+    },
+    {
+      "perpOrder": {
+        "coin": "ETH",
+        "side": "buy",
+        "tif": "ALO",
+        "reduceOnly": false,
+        "sz": { "eq": 0.01, "tol": 0.0001 },
+        "px": { "mode": "ignore" },
+        "requireFill": false
+      }
+    }
+  ]
 }

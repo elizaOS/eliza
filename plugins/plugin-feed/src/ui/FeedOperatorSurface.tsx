@@ -10,8 +10,6 @@ import {
   formatDetailTimestamp,
   SurfaceBadge,
   SurfaceCard,
-  SurfaceEmptyState,
-  SurfaceGrid,
   SurfaceSection,
   selectLatestRunForApp,
   toneForHealthState,
@@ -19,7 +17,7 @@ import {
   toneForViewerAttachment,
   useApp,
 } from "@elizaos/app-core/ui-compat";
-import { Button, Input, TerminalPluginView } from "@elizaos/ui";
+import { Button, TerminalPluginView } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -155,10 +153,11 @@ export function FeedOperatorSurface({
   );
   const [wallet, setWallet] = useState<FeedWallet | null>(null);
   const [tradingBalance, setTradingBalance] = useState(0);
-  const [chatInput, setChatInput] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const suggestedPrompts = (run?.session?.suggestedPrompts ?? []).slice(0, 2);
+  const recentChatMessages = agentChatMessages.slice(-2);
 
   const activeGoal =
     agentGoals.find((goal) => goal.status === "active") ??
@@ -192,24 +191,6 @@ export function FeedOperatorSurface({
     description: "Pause or resume Feed autonomous play",
     onActivate: () => void handleToggleAgent(),
   });
-  const chatInputElement = useAgentElement<HTMLInputElement>({
-    id: "steering-operator-message",
-    role: "text-input",
-    label: "Operator message",
-    group: "Steering",
-    description: "Tell Feed what to prioritize, avoid, or explain",
-    getValue: () => chatInput,
-    onFill: (value) => setChatInput(value),
-  });
-  const sendChatButton = useAgentElement<HTMLButtonElement>({
-    id: "steering-send-message",
-    role: "button",
-    label: "Send",
-    group: "Steering",
-    description: "Send the operator message to Feed",
-    onActivate: () => void handleSendChat(),
-  });
-
   const loadDashboard = useCallback(async () => {
     if (!run) return;
 
@@ -305,28 +286,6 @@ export function FeedOperatorSurface({
     }
   }, [controlAction, loadDashboard, run]);
 
-  const handleSendChat = useCallback(async () => {
-    const content = chatInput.trim();
-    if (!run || content.length === 0 || sending) return;
-
-    setSending(true);
-    setStatusMessage(null);
-    try {
-      const result = await client.sendAppRunMessage(run.runId, content);
-      setChatInput("");
-      setStatusMessage(result.message ?? "Suggestion sent to Feed.");
-      await loadDashboard();
-    } catch (error) {
-      setStatusMessage(
-        error instanceof Error
-          ? error.message
-          : "Failed to send the Feed operator message.",
-      );
-    } finally {
-      setSending(false);
-    }
-  }, [chatInput, loadDashboard, run, sending]);
-
   const handleSuggestedPrompt = useCallback(
     async (prompt: string) => {
       const content = prompt.trim();
@@ -353,10 +312,84 @@ export function FeedOperatorSurface({
 
   if (!run) {
     return (
-      <SurfaceEmptyState
-        title="Feed operator surface"
-        body="Launch Feed to see live team coordination, market activity, and the agent chat stream here."
-      />
+      <section className="p-4" data-testid="feed-operator-ready">
+        <div className="mx-auto flex max-w-3xl flex-col gap-3">
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/45 bg-card/82 px-4 py-3 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div
+                aria-hidden
+                className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500 text-lg font-black text-white shadow-sm"
+              >
+                $
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-foreground">
+                  Feed
+                </div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  market dashboard ready
+                </div>
+              </div>
+            </div>
+            <div className="h-3 w-3 rounded-full bg-amber-400 shadow-[0_0_0_4px_rgba(251,191,36,0.18)]" />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3">
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-emerald-300/35 bg-emerald-400/10 text-lg text-emerald-700">
+                ◉
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Agent
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  Session pending
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-cyan-300/35 bg-cyan-400/10 text-lg text-cyan-700">
+                ◒
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Portfolio
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  PnL · positions
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-orange-300/35 bg-orange-400/10 text-lg text-orange-700">
+                ▲
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Markets
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  Prices · trades
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-violet-300/35 bg-violet-400/10 text-lg text-violet-700">
+                ↗
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Path
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  /feed
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     );
   }
 
@@ -391,19 +424,19 @@ export function FeedOperatorSurface({
 
       {showDashboard ? (
         <SurfaceSection title="Live Status">
-          <SurfaceGrid>
+          <div className="space-y-2">
             <SurfaceCard
               label="Agent"
               value={agentStatus?.displayName ?? agentStatus?.name ?? "Waiting"}
               subtitle={
                 agentStatus
                   ? `${agentStatus.agentStatus ?? "idle"} · ${agentStatus.autonomous ? "autonomous" : "operator-led"}`
-                  : "The Feed agent has not published status yet."
+                  : "No status"
               }
             />
             <SurfaceCard
               label="Current Focus"
-              value={activeGoal?.description ?? "No active goal recorded."}
+              value={activeGoal?.description ?? "—"}
               subtitle={
                 activeGoal
                   ? (() => {
@@ -420,7 +453,7 @@ export function FeedOperatorSurface({
               value={
                 agentPortfolio
                   ? `${formatCurrency(agentPortfolio.totalAssets)} total assets`
-                  : "Portfolio not available yet."
+                  : "—"
               }
               subtitle={
                 agentPortfolio
@@ -444,17 +477,14 @@ export function FeedOperatorSurface({
                   : "Team summary is not available yet."
               }
             />
-          </SurfaceGrid>
+          </div>
         </SurfaceSection>
       ) : null}
 
       {showDashboard ? (
         <SurfaceSection title="Market Watch">
-          <SurfaceCard
-            label="Prediction Markets"
-            value={listPreview(predictionMarkets)}
-          />
-          <div className="grid gap-2 md:grid-cols-3">
+          <SurfaceCard label="Markets" value={listPreview(predictionMarkets)} />
+          <div className="space-y-2">
             {recentTrades.slice(0, 3).map((trade) => (
               <SurfaceCard
                 key={trade.id}
@@ -466,18 +496,15 @@ export function FeedOperatorSurface({
               />
             ))}
             {recentTrades.length === 0 ? (
-              <SurfaceCard
-                label="Recent Trades"
-                value="No recent trades recorded."
-              />
+              <SurfaceCard label="Trades" value="—" />
             ) : null}
           </div>
         </SurfaceSection>
       ) : null}
 
       {showChat ? (
-        <SurfaceSection title="Team & Chat">
-          <div className="grid gap-2 md:grid-cols-2">
+        <SurfaceSection title="Team">
+          <div className="space-y-2">
             <SurfaceCard
               label="Team Conversations"
               value={
@@ -486,7 +513,7 @@ export function FeedOperatorSurface({
                       .slice(0, 3)
                       .map((conversation) => conversation.name || "Untitled")
                       .join(" · ")
-                  : "No team conversations yet."
+                  : "—"
               }
               subtitle={
                 teamConversations.length > 0
@@ -496,18 +523,14 @@ export function FeedOperatorSurface({
             />
             <SurfaceCard
               label="Operator Channel"
-              value={
-                run.session?.canSendCommands
-                  ? "Ready for live suggestions."
-                  : "Command bridge reconnecting."
-              }
+              value={run.session?.canSendCommands ? "Ready" : "Reconnecting"}
               subtitle={formatDetailTimestamp(
                 run.lastHeartbeatAt ?? run.updatedAt,
               )}
             />
           </div>
           <div className="space-y-2">
-            {agentChatMessages.slice(-3).map((message) => (
+            {recentChatMessages.map((message) => (
               <div
                 key={message.id}
                 className="rounded-xl border border-border/30 bg-bg/60 px-3 py-2"
@@ -525,9 +548,9 @@ export function FeedOperatorSurface({
                 </div>
               </div>
             ))}
-            {agentChatMessages.length === 0 ? (
+            {recentChatMessages.length === 0 ? (
               <div className="rounded-xl border border-border/30 bg-bg/60 px-3 py-2 text-xs-tight italic text-muted">
-                No agent chat history yet.
+                No relay yet.
               </div>
             ) : null}
           </div>
@@ -536,9 +559,9 @@ export function FeedOperatorSurface({
 
       {showChat ? (
         <SurfaceSection title="Steering">
-          {run.session?.suggestedPrompts?.length ? (
+          {suggestedPrompts.length ? (
             <div className="flex flex-wrap gap-2">
-              {run.session.suggestedPrompts.slice(0, 4).map((prompt, index) => (
+              {suggestedPrompts.map((prompt, index) => (
                 <FeedSuggestedPromptButton
                   key={prompt}
                   prompt={prompt}
@@ -549,14 +572,10 @@ export function FeedOperatorSurface({
               ))}
             </div>
           ) : null}
-          <div className="grid gap-2 md:grid-cols-2">
+          <div className="space-y-2">
             <SurfaceCard
               label="Autonomy"
-              value={
-                agentStatus?.autonomous
-                  ? "Autonomous play is active."
-                  : "Agent is paused or operator-led."
-              }
+              value={agentStatus?.autonomous ? "Active" : "Paused"}
               subtitle={
                 agentStatus
                   ? `${agentStatus.autonomousTrading ? "Trading" : "Trading paused"} · ${agentStatus.autonomousPosting ? "Posting" : "Posting paused"}`
@@ -586,33 +605,7 @@ export function FeedOperatorSurface({
               onClick={() => void handleToggleAgent()}
               {...toggleAgentButton.agentProps}
             >
-              {controlAction === "pause" ? "Pause agent" : "Resume agent"}
-            </Button>
-          </div>
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-            <Input
-              ref={chatInputElement.ref}
-              value={chatInput}
-              onChange={(event) => setChatInput(event.target.value)}
-              placeholder="Tell Feed what to prioritize, avoid, or explain."
-              className="min-h-11 rounded-xl"
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void handleSendChat();
-                }
-              }}
-              {...chatInputElement.agentProps}
-            />
-            <Button
-              ref={sendChatButton.ref}
-              type="button"
-              className="min-h-11 rounded-xl px-4 shadow-sm"
-              onClick={() => void handleSendChat()}
-              disabled={sending || chatInput.trim().length === 0}
-              {...sendChatButton.agentProps}
-            >
-              {sending ? "Sending" : "Send"}
+              {controlAction === "pause" ? "Pause" : "Resume"}
             </Button>
           </div>
         </SurfaceSection>
@@ -624,7 +617,7 @@ export function FeedOperatorSurface({
         </div>
       ) : null}
       <div className="text-2xs uppercase tracking-[0.18em] text-muted">
-        {loading ? "Refreshing Feed surface..." : "Feed surface ready."}
+        {loading ? "Refreshing..." : "Ready"}
       </div>
     </section>
   );
@@ -636,12 +629,7 @@ export function FeedTuiView() {
       id="feed"
       label="Feed TUI"
       description="Terminal Feed prediction market operator dashboard"
-      commands={[
-        "get-state",
-        "refresh-agent-status",
-        "open-live-dashboard",
-        "send-team-message",
-      ]}
+      commands={[]}
       endpoints={[
         "/api/apps/feed/agent/status",
         "/api/apps/feed/team/dashboard",

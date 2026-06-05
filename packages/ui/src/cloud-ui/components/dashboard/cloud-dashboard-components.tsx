@@ -17,13 +17,13 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { EmptyState } from "../../../components/ui/empty-state";
 import { Skeleton } from "../../../components/ui/skeleton";
+import { ListSkeleton } from "../../../components/ui/skeleton-layouts";
 import { cn } from "../../lib/utils";
 import { BrandButton } from "../brand/brand-button";
 import { DashboardTableSkeleton } from "../data-list/dashboard-table-skeleton";
-import { EmptyState } from "../empty-state";
 import { DashboardRoutePage } from "../layout/dashboard-route-page";
-import { ListSkeleton } from "../list-skeleton";
 
 interface DashboardActionLinkProps {
   to: string;
@@ -216,7 +216,7 @@ export function AppsEmptyState({ description, action }: AppsEmptyStateProps) {
 }
 
 export function AppsSkeleton() {
-  return <ListSkeleton rows={3} variant="card" />;
+  return <ListSkeleton rows={3} />;
 }
 
 export function ContainersSkeleton() {

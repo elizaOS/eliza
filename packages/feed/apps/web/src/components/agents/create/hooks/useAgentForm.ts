@@ -139,7 +139,10 @@ export function useAgentForm(): UseAgentFormResult {
         }
 
         const randomTemplate =
-          index.templates[Math.floor(Math.random() * index.templates.length)]!;
+          index.templates[Math.floor(Math.random() * index.templates.length)];
+        if (!randomTemplate) {
+          return;
+        }
         const templateResponse = await fetch(
           `/api/agent-templates/${randomTemplate}`,
         );
@@ -211,9 +214,10 @@ export function useAgentForm(): UseAgentFormResult {
         if (avatarRes.ok) {
           const payload = (await avatarRes.json()) as { url?: string };
           if (payload.url?.trim()) {
+            const profileImageUrl = payload.url.trim();
             setProfileData((prev) => ({
               ...prev,
-              profileImageUrl: payload.url?.trim(),
+              profileImageUrl,
             }));
           }
         }

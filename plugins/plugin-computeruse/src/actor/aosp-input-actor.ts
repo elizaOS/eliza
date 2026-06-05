@@ -76,7 +76,7 @@ export const MOTION_EVENT_ACTION_MOVE = 2 as const;
  *   - click / double_click / right_click → tap(s)
  *   - drag                              → DOWN at start, MOVE/UP at end
  *   - scroll                            → swipe (DOWN, MOVE, UP)
- *   - wait / finish                     → success: true (no-op)
+ *   - wait / finish                     → success: true (no input event)
  *   - type / key / hotkey               → invalid_args (use AccessibilityNodeInfo
  *                                         or a separate keymap actor; out of
  *                                         scope for this privileged path).

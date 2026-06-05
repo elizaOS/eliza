@@ -43,7 +43,6 @@ import {
   getChatFailureReply,
   hasRecentVisibleAssistantMemorySince,
   initSse,
-  isDuplicateChatMessage,
   normalizeChatResponseText,
   persistAssistantConversationMemory,
   persistConversationMemory,
@@ -1592,7 +1591,6 @@ export async function handleConversationRoutes(
       preferredLanguage,
       source,
       metadata: chatMetadata,
-      clientMessageId,
     } = chatPayload;
 
     const runtime = state.runtime;
@@ -1940,7 +1938,6 @@ export async function handleConversationRoutes(
       preferredLanguage,
       source,
       metadata: restMetadata,
-      clientMessageId,
     } = chatPayload;
     const runtime = state.runtime;
     if (!runtime) {

@@ -10,17 +10,19 @@
 
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import { corsMiddleware, isFirstPartyOrigin } from "./cloud-api-hono-cors";
+import { corsMiddleware, isFirstPartyOrigin, isPublicTokenApiPath } from "./cloud-api-hono-cors";
 
 function appWithCors() {
   const app = new Hono();
   app.use("*", corsMiddleware);
   app.get("/ping", (c) => c.json({ ok: true }));
   app.post("/ping", (c) => c.json({ ok: true }));
+  app.get("/api/v1/models", (c) => c.json({ ok: true }));
+  app.post("/api/v1/chat/completions", (c) => c.json({ ok: true }));
   return app;
 }
 
-async function req(method: string, origin: string | null, isPreflight = false) {
+async function req(method: string, origin: string | null, isPreflight = false, path = "/ping") {
   const app = appWithCors();
   const headers: Record<string, string> = {};
   if (origin) headers.Origin = origin;
@@ -28,7 +30,7 @@ async function req(method: string, origin: string | null, isPreflight = false) {
     headers["Access-Control-Request-Method"] = "POST";
     headers["Access-Control-Request-Headers"] = "authorization,x-app-id";
   }
-  return app.request("/ping", { method, headers });
+  return app.request(path, { method, headers });
 }
 
 describe("isFirstPartyOrigin", () => {
@@ -38,6 +40,16 @@ describe("isFirstPartyOrigin", () => {
     expect(isFirstPartyOrigin("http://localhost:5173")).toBe(true);
     expect(isFirstPartyOrigin("https://supakan.nubs.site")).toBe(false);
     expect(isFirstPartyOrigin("https://evil.example.com")).toBe(false);
+  });
+});
+
+describe("isPublicTokenApiPath", () => {
+  test("recognizes explicit public token API paths", () => {
+    expect(isPublicTokenApiPath("/api/v1/chat/completions")).toBe(true);
+    expect(isPublicTokenApiPath("/api/v1/app-credits/balance")).toBe(true);
+    expect(isPublicTokenApiPath("/api/v1/models/openai/gpt-oss-120b")).toBe(true);
+    expect(isPublicTokenApiPath("/api/v1/twilio/connect")).toBe(false);
+    expect(isPublicTokenApiPath("/api/v1/api-keys")).toBe(false);
   });
 });
 
@@ -51,14 +63,14 @@ describe("corsMiddleware — first-party origins (credentialed)", () => {
 
 describe("corsMiddleware — third-party app origins (open, NO credentials)", () => {
   test("allows the origin (wildcard) WITHOUT credentials so the browser permits it", async () => {
-    const res = await req("GET", "https://supakan.nubs.site");
+    const res = await req("GET", "https://supakan.nubs.site", false, "/api/v1/models");
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     // critical: no credentials on the public (non-first-party) path
     expect(res.headers.get("access-control-allow-credentials")).toBeNull();
   });
 
   test("preflight (OPTIONS) returns wildcard origin + methods + headers", async () => {
-    const res = await req("OPTIONS", "https://supakan.nubs.site", true);
+    const res = await req("OPTIONS", "https://supakan.nubs.site", true, "/api/v1/chat/completions");
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     expect(res.headers.get("access-control-allow-credentials")).toBeNull();
     expect(res.headers.get("access-control-allow-methods")).toBeTruthy();
@@ -68,9 +80,14 @@ describe("corsMiddleware — third-party app origins (open, NO credentials)", ()
   });
 
   test("any third-party origin is allowed (open API)", async () => {
-    const res = await req("GET", "https://milady.nubs.site");
+    const res = await req("GET", "https://milady.nubs.site", false, "/api/v1/models");
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     expect(res.headers.get("access-control-allow-credentials")).toBeNull();
+  });
+
+  test("does not allow wildcard CORS on session-capable non-public paths", async () => {
+    const res = await req("OPTIONS", "https://malicious.apps.elizacloud.ai", true, "/ping");
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
   });
 });
 

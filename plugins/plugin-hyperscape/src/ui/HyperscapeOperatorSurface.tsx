@@ -6,8 +6,6 @@ import {
   formatDetailTimestamp,
   SurfaceBadge,
   SurfaceCard,
-  SurfaceEmptyState,
-  SurfaceGrid,
   SurfaceSection,
   selectLatestRunForApp,
   toneForHealthState,
@@ -191,7 +189,7 @@ export function HyperscapeOperatorSurface({
 
   const session = run?.session ?? null;
   const recentActivity = useMemo(
-    () => (run ? extractRecentActivity(run) : []),
+    () => (run ? extractRecentActivity(run).slice(0, 2) : []),
     [run],
   );
   const showDashboard = focus !== "chat";
@@ -298,10 +296,84 @@ export function HyperscapeOperatorSurface({
 
   if (!run) {
     return (
-      <SurfaceEmptyState
-        title="Hyperscape host surface"
-        body="Launch Hyperscape to verify auth, follow-target attachment, and host-side recovery controls around the native embedded agent screen."
-      />
+      <section className="p-4" data-testid="hyperscape-operator-ready">
+        <div className="mx-auto flex max-w-3xl flex-col gap-3">
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/45 bg-card/82 px-4 py-3 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div
+                aria-hidden
+                className="grid h-10 w-10 place-items-center rounded-xl bg-cyan-600 text-lg font-black text-white shadow-sm"
+              >
+                H
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-foreground">
+                  Hyperscape
+                </div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  host surface ready
+                </div>
+              </div>
+            </div>
+            <div className="h-3 w-3 rounded-full bg-amber-400 shadow-[0_0_0_4px_rgba(251,191,36,0.18)]" />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3">
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-amber-300/35 bg-amber-400/10 text-lg text-amber-700">
+                ◇
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Auth
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  Wallet pending
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-cyan-300/35 bg-cyan-400/10 text-lg text-cyan-700">
+                ◎
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Viewer
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  Embed attaches
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-emerald-300/35 bg-emerald-400/10 text-lg text-emerald-700">
+                ⌖
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Follow
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  Target sync
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-violet-300/35 bg-violet-400/10 text-lg text-violet-700">
+                ↗
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Path
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  /hyperscape
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     );
   }
 
@@ -330,55 +402,43 @@ export function HyperscapeOperatorSurface({
 
       {showDashboard ? (
         <>
-          <SurfaceSection title="Viewer Host">
-            <SurfaceGrid>
+          <SurfaceSection title="Host">
+            <div className="space-y-2">
               <SurfaceCard
                 label="Auth"
                 value={formatViewerAuthLabel(run)}
-                subtitle={
-                  run.viewer?.url
-                    ? `Viewer ${run.viewer.url}`
-                    : "Viewer URL is not available."
-                }
+                subtitle={variant === "live" ? run.viewer?.url : undefined}
               />
               <SurfaceCard
-                label="Follow Target"
+                label="Follow"
                 value={
                   session?.followEntity ??
                   run.viewer?.authMessage?.followEntity ??
-                  "Awaiting live follow target"
+                  "Pending"
                 }
-                subtitle={
-                  session?.characterId
-                    ? `Character ${session.characterId}`
-                    : "The followed entity will appear after the viewer attaches."
-                }
+                subtitle={session?.characterId ?? undefined}
               />
               <SurfaceCard
                 label="Runtime"
-                value={
-                  run.supportsBackground
-                    ? "Background run stays alive"
-                    : "Foreground viewer keeps the run alive"
-                }
-                subtitle={session?.summary ?? run.summary ?? "Run active."}
+                value={run.supportsBackground ? "Background" : "Foreground"}
+                subtitle={session?.summary ?? run.summary ?? undefined}
               />
               <SurfaceCard
-                label="Viewer Attachment"
+                label="Viewer"
                 value={run.viewerAttachment}
                 subtitle={
                   run.awaySummary?.message ??
-                  `Last heartbeat ${formatDetailTimestamp(run.lastHeartbeatAt ?? run.updatedAt)}`
+                  formatDetailTimestamp(run.lastHeartbeatAt ?? run.updatedAt)
                 }
               />
-            </SurfaceGrid>
+            </div>
           </SurfaceSection>
 
-          <SurfaceSection title="Runtime State">
-            <SurfaceGrid>
+          <SurfaceSection title="State">
+            <div className="space-y-2">
               <SurfaceCard
                 label="Goal"
-                value={session?.goalLabel ?? "No goal published yet."}
+                value={session?.goalLabel ?? "No goal"}
                 subtitle={run.summary ?? run.health.message ?? undefined}
               />
               <SurfaceCard
@@ -386,28 +446,15 @@ export function HyperscapeOperatorSurface({
                 value={run.health.state}
                 tone={toneForHealthState(run.health.state)}
                 subtitle={
-                  run.health.message ??
-                  run.healthDetails?.message ??
-                  "Health checks have not reported a message yet."
+                  run.health.message ?? run.healthDetails?.message ?? undefined
                 }
               />
               <SurfaceCard
-                label="Operator Relay"
-                value={
-                  session?.canSendCommands
-                    ? "Ready for live steering"
-                    : "Waiting for command relay"
-                }
-                subtitle={session?.sessionId ?? "No session ID yet."}
+                label="Relay"
+                value={session?.canSendCommands ? "Ready" : "Waiting"}
+                subtitle={session?.sessionId ?? undefined}
               />
-              <SurfaceCard
-                label="Last Verified"
-                value={formatDetailTimestamp(
-                  run.lastHeartbeatAt ?? run.updatedAt,
-                )}
-                subtitle={`Started ${formatDetailTimestamp(run.startedAt)}`}
-              />
-            </SurfaceGrid>
+            </div>
             {recentActivity.length > 0 ? (
               <div className="space-y-2">
                 {recentActivity.map((entry) => (
@@ -429,7 +476,7 @@ export function HyperscapeOperatorSurface({
               </div>
             ) : (
               <div className="rounded-xl border border-border/30 bg-bg/60 px-3 py-2 text-xs-tight italic text-muted">
-                No host-side activity has been captured yet.
+                No activity.
               </div>
             )}
           </SurfaceSection>
@@ -440,7 +487,7 @@ export function HyperscapeOperatorSurface({
         <SurfaceSection title="Operator Relay">
           {session?.suggestedPrompts?.length ? (
             <div className="flex flex-wrap gap-2">
-              {session.suggestedPrompts.map((prompt, index) => (
+              {session.suggestedPrompts.slice(0, 2).map((prompt, index) => (
                 <HyperscapeSuggestedPromptButton
                   key={prompt}
                   prompt={prompt}
@@ -465,7 +512,7 @@ export function HyperscapeOperatorSurface({
                 aria-label="Pause autonomy"
                 {...pauseControl.agentProps}
               >
-                {controlAction === "pause" ? "Pausing..." : "Pause autonomy"}
+                {controlAction === "pause" ? "Pausing..." : "Pause"}
               </Button>
             ) : null}
             {session?.controls?.includes("resume") ? (
@@ -481,16 +528,16 @@ export function HyperscapeOperatorSurface({
                 aria-label="Resume autonomy"
                 {...resumeControl.agentProps}
               >
-                {controlAction === "resume" ? "Resuming..." : "Resume autonomy"}
+                {controlAction === "resume" ? "Resuming..." : "Resume"}
               </Button>
             ) : null}
           </div>
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="grid gap-2">
             <Input
               ref={operatorInput.ref}
               value={operatorMessage}
               onChange={(event) => setOperatorMessage(event.target.value)}
-              placeholder="Tell Hyperscape what to prioritize, avoid, or explain."
+              placeholder="Steer Hyperscape..."
               className="min-h-11 rounded-xl"
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {

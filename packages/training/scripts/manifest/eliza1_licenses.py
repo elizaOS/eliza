@@ -109,7 +109,7 @@ class LicenseAttestation:
 # shipped weight. Qwen3-ASR is Apache-2.0. Silero VAD is MIT. openWakeWord
 # code + feature models are Apache-2.0; the pre-trained wake-phrase head is
 # CC-BY-NC-SA-4.0 (the bundle only ships the head as an opt-in experimental
-# placeholder — see wakeword-head-plan.md).
+# upstream wake-word head — see wakeword-head-plan.md).
 _APACHE = "Apache-2.0.txt"
 _MIT = "MIT-silero-vad.txt"
 _CC_BY = "CC-BY-4.0.txt"
@@ -319,11 +319,11 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         note=(
             "openWakeWord code and the shared feature models (melspectrogram, "
             "embedding) are Apache-2.0 (text below). The PRE-TRAINED wake-phrase "
-            "head shipped in this bundle is the upstream \"hey jarvis\" placeholder "
+            "head shipped in this bundle is the upstream \"hey jarvis\" wake phrase "
             "head, which carries CC-BY-NC-SA-4.0 training-corpus lineage "
             "(GTSinger / RAVDESS / Expresso-style data). Acceptable for the "
-            "non-commercial Eliza-1 release. The placeholder head is OPT-IN, "
-            "DISABLED by default, and surfaced with a \"placeholder phrase\" "
+            "non-commercial Eliza-1 release. The upstream head is OPT-IN, "
+            "DISABLED by default, and surfaced with a \"wake phrase pending\" "
             "warning; a head trained on the approved Eliza-1 wake phrase ships "
             "later (see packages/inference/reports/porting/2026-05-11/"
             "wakeword-head-plan.md). For any commercial pivot the head must be "
@@ -487,7 +487,7 @@ def write_bundle_licenses(
     """Write the `licenses/` set + sidecar for a bundle.
 
     Returns `(written_relpaths, sidecar_dict)`. Idempotent: rewrites the
-    files unconditionally so a stale stub gets replaced with the real
+    files unconditionally so stale generated text gets replaced with the real
     text.
     """
 

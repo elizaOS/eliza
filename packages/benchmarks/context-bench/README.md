@@ -295,17 +295,17 @@ bun run scripts/benchmark/drift-harness.ts \
   --plant-facts 5 \
   --output ./benchmark_results/drift/none.jsonl
 
-# Offline plumbing smoke test (no API calls, deterministic fake model)
+# Offline plumbing smoke test (no API calls, deterministic local model)
 bun run scripts/benchmark/drift-harness.ts \
   --strategy none --turns 3 --compact-every 100 --plant-facts 1 \
   --output /tmp/drift-smoke.jsonl --dry-run
 ```
 
 Strategies: `none`, `prompt-stripping`, `naive-summary`, `structured-state`,
-`hierarchical-summary`, `hybrid-ledger`. The four runtime strategies are
-loaded dynamically from `packages/agent/src/runtime/conversation-compactor.ts`;
-if that module isn't present yet (parallel work), the harness logs
-`[harness] strategy <name> not yet implemented — skipping` and continues.
+`hierarchical-summary`, `hybrid-ledger`. The four conversation-history
+strategies load from `packages/agent/src/runtime/conversation-compactor.ts`;
+`none` is the baseline and `prompt-stripping` is a deterministic harness-local
+stripper for prompt-style history noise.
 
 ### Aggregate from Python
 

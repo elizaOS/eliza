@@ -1,15 +1,15 @@
 /**
- * Sandbox-build stub for the TASKS coding-agent surface.
+ * Sandbox-build fallback for the TASKS coding-agent surface.
  *
  * Store-distributed builds (Mac App Store, Microsoft Store, Flathub) run in
  * an OS sandbox that forbids forking arbitrary user-installed binaries. The
  * orchestrator's spawn paths (claude / codex / opencode CLIs via ACP) are
  * therefore not viable in those builds, so we replace the TASKS action with
- * a single stub that explains the limitation and points the user at the
+ * a single unavailable action that explains the limitation and points the user at the
  * direct-download artifact.
  *
  * Behavior:
- *   - validate(): always true — we want this stub to win whenever the
+ *   - validate(): always true — we want this action to win whenever the
  *     planner reaches for any coding-agent simile under sandbox.
  *   - handler(): returns a single user-facing error result; no spawn
  *     attempt, no workspace allocation, no subprocess session.
@@ -29,7 +29,7 @@ import type { OrchestratorTerminalSupport } from "../services/terminal-capabilit
 
 const BLOCKED_MESSAGE = buildStoreVariantBlockedMessage("Coding agents");
 
-type UnsupportedStubOptions = {
+type UnsupportedActionOptions = {
   message: string;
   reason: string;
   description?: string;
@@ -39,7 +39,7 @@ function buildTasksUnsupportedAction({
   message,
   reason,
   description = "Coding-agent surface is unavailable in this runtime environment.",
-}: UnsupportedStubOptions): Action & {
+}: UnsupportedActionOptions): Action & {
   suppressPostActionContinuation: true;
 } {
   return {

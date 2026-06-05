@@ -22,17 +22,8 @@ export * from "./permissions/types";
 // `./platform/empty-node-module` is intentionally NOT re-exported here.
 // It exists as a tsconfig-paths target for browser builds — re-exporting it
 // would shadow the real api/server, runtime/eliza, etc. exports above with
-// noop stubs. Browser bundlers alias it in via the path map; Node imports
+// inert browser aliases. Browser bundlers alias it in via the path map; Node imports
 // the originals directly through this barrel.
-// === Phase 5D ===
-// Browser/shell-only platform bootstrap. Re-exported here so the app shell
-// (`packages/app/src/main.tsx`) can import a single `@elizaos/app-core` entry
-// point. The modules themselves only touch browser globals + Capacitor APIs.
-export {
-  type InitializeAppBootstrapClientsArgs,
-  initializeAppBootstrapBridges,
-  installAppBootstrapClientPatches,
-} from "./platform/capacitor-bootstrap";
 export * from "./platform/ios-runtime-backends";
 export {
   IOS_FULL_BUN_SMOKE_REQUEST_KEY,

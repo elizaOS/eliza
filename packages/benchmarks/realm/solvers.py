@@ -26,6 +26,8 @@ P3/P4 (DARP/CVRP-TW)
                    only on infeasibility/timeout, with a logged warning.
 P7  (Disaster)     Closed-form priority-weighted coverage (no solver
                    needed — the optimum is computable in O(n log n)).
+P10 (Supply Chain) Deterministic least-cost supplier selection under
+                   deadline and budget constraints from the vendored schema.
 P11 (JSSP)         OR-Tools CP-SAT (NoOverlap + interval makespan
                    minimisation). The configurable timeout controls
                    when a solution is reported as ``OPTIMAL`` vs
@@ -906,3 +908,90 @@ def disaster_max_coverage_score(
         per_region[rid] = {"allocated": allocated, "needed": n, "coverage": coverage}
 
     return agent_score, oracle, {"per_region": per_region}
+
+
+# ---------------------------------------------------------------------------
+# P10 — supply-chain reference plan.
+# ---------------------------------------------------------------------------
+
+
+def supply_chain_oracle(
+    instance: dict[str, Any],
+) -> tuple[float | None, list[dict[str, Any]], dict[str, Any]]:
+    """Return a deterministic least-cost P10 reference plan.
+
+    The vendored P10 JSON schema does not include a full MIP demand matrix; it
+    provides suppliers, component deadlines, supplier lead times/cost
+    multipliers, facilities, and a budget. The reference plan therefore solves
+    the concrete optimization problem available in the data: for each component
+    with a deadline, pick the cheapest supplier that can arrive on time, falling
+    back to the fastest supplier when no supplier can meet the deadline. The
+    returned cost is the independent baseline used by the evaluator.
+    """
+    deadlines = instance.get("delivery_deadlines", {}) or {}
+    suppliers = instance.get("suppliers", []) or []
+    facilities = instance.get("facilities", []) or []
+    budget = float(instance.get("budget", 0) or 0)
+    if not isinstance(deadlines, dict) or not deadlines:
+        return 0.0, [], {"on_time": 0, "total_components": 0, "within_budget": True}
+    if not suppliers:
+        return None, [], {
+            "on_time": 0,
+            "total_components": len(deadlines),
+            "within_budget": budget >= 0,
+            "reason": "no_suppliers",
+        }
+
+    base_unit_costs = [
+        float(f.get("cost_per_unit", 0))
+        for f in facilities
+        if float(f.get("cost_per_unit", 0) or 0) > 0
+    ]
+    base_unit_cost = min(base_unit_costs) if base_unit_costs else 1.0
+
+    orders: list[dict[str, Any]] = []
+    total_cost = 0.0
+    on_time = 0
+    for component, raw_deadline in deadlines.items():
+        deadline = float(raw_deadline)
+        candidates = [
+            supplier
+            for supplier in suppliers
+            if float(supplier.get("capacity", 0) or 0) > 0
+        ]
+        on_time_candidates = [
+            supplier
+            for supplier in candidates
+            if float(supplier.get("lead_time", float("inf"))) <= deadline
+        ]
+        pool = on_time_candidates or candidates
+        if not pool:
+            continue
+        supplier = min(
+            pool,
+            key=lambda s: (
+                base_unit_cost * float(s.get("cost_multiplier", 1.0) or 1.0),
+                float(s.get("lead_time", float("inf"))),
+                str(s.get("supplier_id", "")),
+            ),
+        )
+        eta = float(supplier.get("lead_time", float("inf")))
+        cost = base_unit_cost * float(supplier.get("cost_multiplier", 1.0) or 1.0)
+        if eta <= deadline:
+            on_time += 1
+        total_cost += cost
+        orders.append(
+            {
+                "component": component,
+                "supplier": supplier.get("supplier_id"),
+                "cost": cost,
+                "eta": eta,
+            }
+        )
+
+    return total_cost, orders, {
+        "on_time": on_time,
+        "total_components": len(deadlines),
+        "within_budget": budget <= 0 or total_cost <= budget,
+        "budget": budget,
+    }

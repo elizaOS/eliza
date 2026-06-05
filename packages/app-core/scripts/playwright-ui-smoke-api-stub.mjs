@@ -2732,7 +2732,7 @@ async function handleDemoOrchestratorRoute(req, res, url) {
 
   if (req.method === "POST" && url.pathname === "/api/orchestrator/pause-all") {
     for (const task of demoOrchestratorState.tasks) task.paused = true;
-    sendJson(req, res, 200, { updated: demoOrchestratorState.tasks.length });
+    sendJson(req, res, 200, { paused: demoOrchestratorState.tasks.length });
     return true;
   }
 
@@ -2741,7 +2741,7 @@ async function handleDemoOrchestratorRoute(req, res, url) {
     url.pathname === "/api/orchestrator/resume-all"
   ) {
     for (const task of demoOrchestratorState.tasks) task.paused = false;
-    sendJson(req, res, 200, { updated: demoOrchestratorState.tasks.length });
+    sendJson(req, res, 200, { resumed: demoOrchestratorState.tasks.length });
     return true;
   }
 

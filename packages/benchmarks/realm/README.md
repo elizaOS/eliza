@@ -194,14 +194,15 @@ realm/
   tests/                   # Smoke tests + dataset / runner invariants
 ```
 
-## Limitations / stubs
+## Scoring notes
 
 - **Event coordination (P5/6/8/9)** has no closed-form oracle. We
   score on coverage of the upstream-declared `guests`, `errands`,
   `cooking_tasks` plus deadline respect. The paper itself does not
   publish a numeric oracle for these scenarios.
 - **Supply chain (P10)** scoring uses on-time delivery count, total
-  cost, and budget compliance. A full MIP oracle is not implemented.
+  cost, budget compliance, and a deterministic least-cost supplier
+  reference plan over the vendored supplier/deadline schema.
 - **Multi-agent** support is currently single-process: the runner
   prompts the eliza agent once with the problem context and reads the
   full N-vehicle / N-guide solution back. Distributed multi-agent

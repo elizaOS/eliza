@@ -10,15 +10,16 @@
  *    allow-listed and get the credentialed policy.
  *
  * 2. Every other browser origin — third-party apps registered on Eliza Cloud
- *    (e.g. `supakan.nubs.site`, `*.apps.elizacloud.ai`) calling the public,
- *    token-authed API (`/api/v1/chat/completions`, `/api/v1/app-credits/*`,
- *    `/api/v1/models`, …). These callers authenticate with a `Bearer eliza_*`
- *    key, never cookies, so CORS is open (`Access-Control-Allow-Origin: *`)
- *    WITHOUT credentials. This matches the documented model in
- *    `lib/middleware/cors-apps.ts` ("CORS open for the API; security is enforced
- *    by auth tokens, not origin"). A wildcard without credentials is safe: a
- *    cross-origin page still cannot read a response it has no valid token to
- *    request, and no cookies are ever sent to a non-first-party origin.
+ *    (e.g. `supakan.nubs.site`, `*.apps.elizacloud.ai`) calling explicit
+ *    public, token-authed API paths (`/api/v1/chat/completions`,
+ *    `/api/v1/app-credits/*`, `/api/v1/models`, …). These callers
+ *    authenticate with a `Bearer eliza_*` key, never cookies, so CORS is open
+ *    (`Access-Control-Allow-Origin: *`) WITHOUT credentials on those paths.
+ *    This matches the documented model in `lib/middleware/cors-apps.ts`
+ *    ("CORS open for the API; security is enforced by auth tokens, not
+ *    origin"). We intentionally do not apply wildcard CORS to every route:
+ *    user-controlled same-site subdomains can still send parent-domain cookies,
+ *    so cookie/session-capable routes must stay first-party-only.
  *
  * Non-browser callers (servers, SDKs) don't enforce CORS and are unaffected.
  */
@@ -40,6 +41,24 @@ const STATIC_ALLOWED_ORIGINS = new Set<string>([
   "https://www.eliza.ai",
 ]);
 const PAGES_PREVIEW_SUFFIX = ".eliza-cloud-enq.pages.dev";
+const PUBLIC_TOKEN_API_PATH_PREFIXES = [
+  "/api/v1/app-credits/",
+  "/api/v1/voice/",
+  "/api/v1/models/",
+];
+const PUBLIC_TOKEN_API_PATHS = new Set<string>([
+  "/api/v1/app-credits",
+  "/api/v1/chat",
+  "/api/v1/chat/completions",
+  "/api/v1/embeddings",
+  "/api/v1/generate-image",
+  "/api/v1/generate-video",
+  "/api/v1/models",
+  "/api/v1/responses",
+  "/api/v1/voice",
+  "/api/v1/voice-models",
+  "/api/v1/voice-models/catalog",
+]);
 
 /**
  * First-party origins that may use cookie/session credentials. These get
@@ -56,6 +75,13 @@ export function isFirstPartyOrigin(origin: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function isPublicTokenApiPath(pathname: string): boolean {
+  return (
+    PUBLIC_TOKEN_API_PATHS.has(pathname) ||
+    PUBLIC_TOKEN_API_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+  );
 }
 
 // First-party: reflect the specific origin + allow credentials (cookie auth).
@@ -93,5 +119,8 @@ export const corsMiddleware: MiddlewareHandler = (c, next) => {
   if (origin && isFirstPartyOrigin(origin)) {
     return firstPartyCors(c, next);
   }
-  return publicCors(c, next);
+  if (!origin || isPublicTokenApiPath(new URL(c.req.url).pathname)) {
+    return publicCors(c, next);
+  }
+  return firstPartyCors(c, next);
 };

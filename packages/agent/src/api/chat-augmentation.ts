@@ -198,7 +198,7 @@ export async function maybeAugmentChatMessageWithDocuments(
   const userPrompt = extractCompatTextContent(message.content).trim();
   if (!userPrompt || !runtime.agentId) return message;
 
-  // Hosts that run with a no-op embedding handler — e.g. Capacitor mobile
+  // Hosts that run with an empty-vector embedding handler — e.g. Capacitor mobile
   // where loading the bge GGUF on top of the chat GGUF would OOM the
   // process — get only zero-vector embeddings back. The retrieval branch
   // therefore never lands a match above `CHAT_DOCUMENTS_THRESHOLD`, and

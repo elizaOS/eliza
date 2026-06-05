@@ -1,5 +1,4 @@
 import {
-  ArrowRight,
   BookOpen,
   Brain,
   type LucideIcon,
@@ -13,20 +12,17 @@ import type { CharacterHubSection } from "./character-hub-helpers";
 type OverviewSection = Exclude<CharacterHubSection, "overview">;
 
 export interface CharacterOverviewWidget {
-  /** Section the widget links to. */
+  /** Section the tile links to. */
   section: OverviewSection;
-  /** Header title. */
+  /** Tile title. */
   title: string;
-  /** Optional small text on the right side of the header. */
+  /** One short stat/chip line (e.g. "3 docs", "12 skills"). Null when empty. */
   meta?: string | null;
-  /**
-   * Content rendered in the widget body. Should always be present so the widget
-   * shows useful copy even when there is no real data yet.
-   */
+  /** Optional small visual content (chips/avatars) rendered under the title. */
   body?: ReactNode | null;
-  /** True while the widget's data source is fetching for the first time. */
+  /** True while the tile's data source is fetching for the first time. */
   isLoading?: boolean;
-  /** True when no real content exists; widget still renders with hint copy. */
+  /** True when no real content exists yet. */
   isEmpty: boolean;
 }
 
@@ -38,70 +34,85 @@ const WIDGET_ICONS = {
   relationships: Network,
 } satisfies Record<OverviewSection, LucideIcon>;
 
-const WIDGET_TONE = {
-  personality: "text-accent",
-  documents: "text-status-info",
-  skills: "text-accent",
-  experience: "text-status-success",
-  relationships: "text-status-warning",
-} satisfies Record<OverviewSection, string>;
+/**
+ * Deterministic accent-orange-tinted gradient art per section. Uses theme CSS
+ * vars only (accent + neutrals) so both light/dark themes track correctly. The
+ * angle + accent-opacity vary per section to read as distinct generated art
+ * without introducing any non-accent hues.
+ */
+const SECTION_GRADIENT: Record<OverviewSection, string> = {
+  personality:
+    "radial-gradient(125% 95% at 10% -5%, rgba(var(--accent-rgb), 0.32), transparent 62%), linear-gradient(135deg, rgba(var(--accent-rgb), 0.16), transparent 72%)",
+  relationships:
+    "radial-gradient(135% 105% at 92% -5%, rgba(var(--accent-rgb), 0.28), transparent 64%), linear-gradient(215deg, rgba(var(--accent-rgb), 0.14), transparent 74%)",
+  documents:
+    "radial-gradient(125% 95% at -5% 105%, rgba(var(--accent-rgb), 0.26), transparent 62%), linear-gradient(160deg, rgba(var(--accent-rgb), 0.12), transparent 76%)",
+  skills:
+    "radial-gradient(125% 95% at 105% -5%, rgba(var(--accent-rgb), 0.3), transparent 60%), linear-gradient(125deg, rgba(var(--accent-rgb), 0.13), transparent 74%)",
+  experience:
+    "radial-gradient(125% 105% at 50% 115%, rgba(var(--accent-rgb), 0.28), transparent 64%), linear-gradient(200deg, rgba(var(--accent-rgb), 0.12), transparent 78%)",
+};
 
-const PRIMARY_SECTIONS: OverviewSection[] = ["personality", "relationships"];
+/** Per-section medallion gradient (stronger accent for the icon disc). */
+const MEDALLION_GRADIENT: Record<OverviewSection, string> = {
+  personality:
+    "linear-gradient(135deg, rgba(var(--accent-rgb), 0.95), rgba(var(--accent-rgb), 0.55))",
+  relationships:
+    "linear-gradient(215deg, rgba(var(--accent-rgb), 0.9), rgba(var(--accent-rgb), 0.45))",
+  documents:
+    "linear-gradient(160deg, rgba(var(--accent-rgb), 0.85), rgba(var(--accent-rgb), 0.4))",
+  skills:
+    "linear-gradient(125deg, rgba(var(--accent-rgb), 0.95), rgba(var(--accent-rgb), 0.5))",
+  experience:
+    "linear-gradient(200deg, rgba(var(--accent-rgb), 0.85), rgba(var(--accent-rgb), 0.45))",
+};
 
-function WidgetSkeleton() {
-  return (
-    <div className="flex flex-col gap-2" role="status" aria-label="Loading">
-      <div className="h-3 w-3/4 animate-pulse rounded-full bg-bg-muted/50" />
-      <div className="h-3 w-2/3 animate-pulse rounded-full bg-bg-muted/40" />
-      <div className="h-3 w-1/2 animate-pulse rounded-full bg-bg-muted/30" />
-    </div>
-  );
-}
-
-function OverviewWidget({
+function HubTile({
   onOpenSection,
-  size = "default",
+  size,
   widget,
 }: {
   onOpenSection: (section: OverviewSection) => void;
-  size?: "default" | "tall";
+  size: "lg" | "sm";
   widget: CharacterOverviewWidget;
 }) {
   const Icon = WIDGET_ICONS[widget.section];
-  const accent = WIDGET_TONE[widget.section];
-  const showSkeleton = Boolean(widget.isLoading) && !widget.body;
-  const heightClass = size === "tall" ? "h-64" : "h-44";
+  const heightClass = size === "lg" ? "h-56 sm:h-60" : "h-48";
+  const medallionSize = size === "lg" ? "h-16 w-16" : "h-14 w-14";
+  const iconSize = size === "lg" ? "h-8 w-8" : "h-7 w-7";
 
   return (
     <button
       type="button"
       onClick={() => onOpenSection(widget.section)}
-      className={`group flex ${heightClass} min-w-0 flex-col gap-3 rounded-sm border border-border/30 bg-card/40 p-4 text-left transition-colors hover:border-border/55 hover:bg-card/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50`}
+      className={`group relative flex ${heightClass} min-w-0 flex-col justify-between overflow-hidden rounded-xl border border-border/40 bg-card/50 p-5 text-left transition-all hover:border-accent/40 hover:bg-card/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50`}
       aria-label={`Open ${widget.title}`}
     >
-      <div className="flex min-w-0 items-center gap-2">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-90 transition-opacity group-hover:opacity-100"
+        style={{ background: SECTION_GRADIENT[widget.section] }}
+      />
+      <div className="relative flex items-start justify-between gap-3">
         <span
-          className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-bg-muted/40 ${accent}`}
+          className={`inline-flex ${medallionSize} shrink-0 items-center justify-center rounded-2xl text-accent-foreground shadow-sm ring-1 ring-inset ring-white/10 transition-transform group-hover:scale-105`}
+          style={{ background: MEDALLION_GRADIENT[widget.section] }}
         >
-          <Icon className="h-4 w-4" aria-hidden />
+          <Icon className={iconSize} aria-hidden />
         </span>
-        <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-txt">
-          {widget.title}
-        </h3>
         {widget.meta ? (
-          <span className="shrink-0 text-2xs font-medium text-muted">
+          <span className="shrink-0 rounded-full border border-border/40 bg-bg/60 px-2.5 py-1 text-2xs font-semibold uppercase tracking-wide text-txt backdrop-blur-sm">
             {widget.meta}
           </span>
         ) : null}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col">
-        {showSkeleton ? <WidgetSkeleton /> : (widget.body ?? null)}
-      </div>
-      <div className="flex justify-end">
-        <ArrowRight
-          className="h-4 w-4 text-muted transition-colors group-hover:text-txt"
-          aria-hidden
-        />
+      <div className="relative flex flex-col gap-2">
+        <h3 className="truncate text-lg font-semibold text-txt">
+          {widget.title}
+        </h3>
+        {widget.body ? (
+          <div className="flex min-h-0 flex-col">{widget.body}</div>
+        ) : null}
       </div>
     </button>
   );
@@ -115,45 +126,36 @@ export function CharacterOverviewSection({
   onOpenSection: (section: OverviewSection) => void;
   widgets: CharacterOverviewWidget[];
 }) {
+  const order: OverviewSection[] = [
+    "personality",
+    "relationships",
+    "documents",
+    "skills",
+    "experience",
+  ];
   const widgetMap = new Map<OverviewSection, CharacterOverviewWidget>();
   for (const widget of widgets) {
     widgetMap.set(widget.section, widget);
   }
-  const primary = PRIMARY_SECTIONS.map((section) =>
-    widgetMap.get(section),
-  ).filter((widget): widget is CharacterOverviewWidget => widget !== undefined);
-  const secondary = widgets.filter(
-    (widget) => !PRIMARY_SECTIONS.includes(widget.section),
-  );
+  const ordered = order
+    .map((section) => widgetMap.get(section))
+    .filter(
+      (widget): widget is CharacterOverviewWidget => widget !== undefined,
+    );
 
   return (
     <section
-      className="flex min-w-0 flex-col gap-3"
+      className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
       aria-label="Character overview"
     >
-      {primary.length > 0 ? (
-        <div className="grid items-stretch gap-3 md:grid-cols-2">
-          {primary.map((widget) => (
-            <OverviewWidget
-              key={widget.section}
-              widget={widget}
-              size="tall"
-              onOpenSection={onOpenSection}
-            />
-          ))}
-        </div>
-      ) : null}
-      {secondary.length > 0 ? (
-        <div className="grid items-stretch gap-3 md:grid-cols-3">
-          {secondary.map((widget) => (
-            <OverviewWidget
-              key={widget.section}
-              widget={widget}
-              onOpenSection={onOpenSection}
-            />
-          ))}
-        </div>
-      ) : null}
+      {ordered.map((widget, index) => (
+        <HubTile
+          key={widget.section}
+          widget={widget}
+          size={index < 2 ? "lg" : "sm"}
+          onOpenSection={onOpenSection}
+        />
+      ))}
     </section>
   );
 }

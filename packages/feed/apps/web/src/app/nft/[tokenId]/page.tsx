@@ -119,6 +119,7 @@ export default function NftDetailPage() {
           ← Back
         </Link>
         <button
+          type="button"
           onClick={handleShare}
           className="rounded-full border border-border px-3 py-1.5 text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground"
         >
@@ -226,9 +227,11 @@ export default function NftDetailPage() {
                     </Link>
                   ) : (
                     <button
-                      onClick={() =>
-                        handleCopy(nft.currentOwner?.walletAddress)
-                      }
+                      type="button"
+                      onClick={() => {
+                        const walletAddress = nft.currentOwner?.walletAddress;
+                        if (walletAddress) handleCopy(walletAddress);
+                      }}
                       className="font-mono text-foreground text-sm hover:text-[#0066FF]"
                     >
                       {ownerName}
@@ -260,9 +263,9 @@ export default function NftDetailPage() {
                 Attributes
               </p>
               <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 sm:gap-2">
-                {nft.attributes.map((attr, i) => (
+                {nft.attributes.map((attr) => (
                   <div
-                    key={i}
+                    key={`${attr.trait_type}-${String(attr.value)}`}
                     className="rounded bg-muted/50 p-1.5 text-center sm:p-2"
                   >
                     <p className="text-[10px] text-muted-foreground sm:text-xs">
@@ -324,6 +327,7 @@ export default function NftDetailPage() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Address</span>
                 <button
+                  type="button"
                   onClick={() => handleCopy(nft.contractAddress)}
                   className="font-mono text-foreground hover:text-[#0066FF]"
                 >

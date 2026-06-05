@@ -3,14 +3,7 @@
  * Renders inside the Wallets tab as a sub-section or alongside inventory.
  */
 
-import {
-  PageLayout,
-  PagePanel,
-  Sidebar,
-  SidebarContent,
-  SidebarPanel,
-  useApp,
-} from "@elizaos/ui";
+import { cn, PagePanel, useApp } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { FileText } from "lucide-react";
 import type { ReactNode } from "react";
@@ -26,19 +19,17 @@ type StewardTab = "history" | "approvals";
 function StewardTabItem({
   tab,
   label,
-  description,
   active,
   onSelect,
   icon,
 }: {
   tab: StewardTab;
   label: string;
-  description: string;
   active: boolean;
   onSelect: (tab: StewardTab) => void;
   icon: ReactNode;
 }) {
-  const { ref, agentProps } = useAgentElement<HTMLElement>({
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: `tab-${tab}`,
     role: "tab",
     label,
@@ -47,23 +38,23 @@ function StewardTabItem({
     description: `Switch to the ${label} view`,
   });
   return (
-    <SidebarContent.Item
+    <button
       ref={ref}
-      active={active}
+      type="button"
+      role="tab"
+      aria-selected={active}
       onClick={() => onSelect(tab)}
-      aria-current={active ? "true" : undefined}
+      className={cn(
+        "inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors sm:flex-none",
+        active
+          ? "bg-bg-elevated text-txt-strong shadow-sm"
+          : "text-muted hover:bg-bg-hover hover:text-txt-strong",
+      )}
       {...agentProps}
     >
-      <SidebarContent.ItemIcon active={active} className="relative">
-        {icon}
-      </SidebarContent.ItemIcon>
-      <SidebarContent.ItemBody>
-        <SidebarContent.ItemTitle>{label}</SidebarContent.ItemTitle>
-        <SidebarContent.ItemDescription>
-          {description}
-        </SidebarContent.ItemDescription>
-      </SidebarContent.ItemBody>
-    </SidebarContent.Item>
+      <span className="relative inline-flex">{icon}</span>
+      <span>{label}</span>
+    </button>
   );
 }
 
@@ -108,15 +99,14 @@ export function StewardView() {
       <div className="flex flex-1 items-center justify-center p-6">
         <PagePanel
           variant="surface"
-          className="mx-4 w-full max-w-xl px-6 py-10 text-center"
+          className="mx-4 w-full max-w-md px-5 py-6 text-center"
         >
-          <StewardLogo size={40} className="mx-auto opacity-40" />
-          <h2 className="mt-4 text-lg font-semibold text-txt-strong">
-            Steward Not Connected
+          <StewardLogo size={36} className="mx-auto opacity-50" />
+          <h2 className="mt-3 text-base font-semibold text-txt-strong">
+            Steward disconnected
           </h2>
-          <div className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted">
-            Set STEWARD_API_URL and STEWARD_API_KEY in agent settings to enable
-            vault management.
+          <div className="mt-2 font-mono text-xs text-muted">
+            STEWARD_API_URL + STEWARD_API_KEY
           </div>
           {stewardStatus.error && (
             <div className="mt-3 rounded-lg border border-danger/20 bg-danger/5 px-3 py-2 text-xs text-danger">
@@ -128,103 +118,92 @@ export function StewardView() {
     );
   }
 
-  const stewardSidebar = (
-    <Sidebar testId="steward-sidebar">
-      <SidebarPanel>
-        <SidebarContent.SectionLabel>Steward</SidebarContent.SectionLabel>
-        <div className="mt-1.5 text-xs text-muted">
-          {stewardStatus?.connected ? "Vault management" : "Connecting…"}
-        </div>
+  return (
+    <div
+      data-testid="steward-view"
+      className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-4"
+    >
+      <PagePanel variant="surface" className="px-4 py-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/30 bg-bg-accent">
+              <StewardLogo size={18} />
+            </div>
+            <div className="min-w-0">
+              <h1 className="truncate text-base font-semibold text-txt-strong">
+                {activeTab === "approvals" ? "Approvals" : "History"}
+              </h1>
+              {stewardStatus?.evmAddress ? (
+                <div className="font-mono text-2xs text-muted">
+                  {stewardStatus.evmAddress.slice(0, 6)}...
+                  {stewardStatus.evmAddress.slice(-4)}
+                </div>
+              ) : null}
+            </div>
+          </div>
 
-        <nav className="mt-4 space-y-1.5">
-          <StewardTabItem
-            tab="approvals"
-            label="Approvals"
-            description={
-              pendingCount > 0 ? `${pendingCount} pending` : "None pending"
-            }
-            active={activeTab === "approvals"}
-            onSelect={setActiveTab}
-            icon={
-              <>
-                <StewardLogo size={16} />
-                {pendingCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-status-danger px-1 text-3xs font-bold text-[var(--destructive-foreground)]">
-                    {pendingCount > 99 ? "99+" : pendingCount}
-                  </span>
-                )}
-              </>
-            }
-          />
-
-          <StewardTabItem
-            tab="history"
-            label="History"
-            description="All transactions"
-            active={activeTab === "history"}
-            onSelect={setActiveTab}
-            icon={<FileText className="h-4 w-4" />}
-          />
-        </nav>
-
-        {/* Steward status */}
-        {stewardStatus?.connected && (
-          <div className="mt-auto pt-4">
-            <div className="inline-flex items-center gap-1.5 rounded-2xl border border-accent/25 bg-accent/10 px-3 py-2 text-xs-tight text-accent-fg">
+          {stewardStatus?.connected ? (
+            <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-accent/25 bg-accent/10 px-2.5 py-1.5 text-xs-tight text-accent-fg">
               <StewardLogo size={12} />
               <span>Connected</span>
             </div>
-            {stewardStatus.evmAddress && (
-              <div className="mt-1.5 font-mono text-2xs text-muted/60">
-                {stewardStatus.evmAddress.slice(0, 6)}…
-                {stewardStatus.evmAddress.slice(-4)}
-              </div>
-            )}
-          </div>
-        )}
-      </SidebarPanel>
-    </Sidebar>
-  );
-
-  return (
-    <PageLayout sidebar={stewardSidebar}>
-      <div className="mx-auto max-w-[76rem]">
-        {/* Header */}
-        <PagePanel variant="surface" className="px-5 py-5 sm:px-6">
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
-            Steward
-          </div>
-          <h1 className="mt-1 text-2xl font-semibold text-txt-strong">
-            {activeTab === "approvals" ? "Approvals" : "Transaction History"}
-          </h1>
-          <div className="mt-1.5 max-w-2xl text-sm text-muted">
-            {activeTab === "approvals"
-              ? "Transactions that need your sign-off."
-              : "All signed and broadcast transactions from the vault."}
-          </div>
-        </PagePanel>
-
-        {/* Content */}
-        <div className="mt-4">
-          {activeTab === "approvals" ? (
-            <ApprovalQueue
-              getStewardPending={getStewardPending}
-              approveStewardTx={approveStewardTx}
-              rejectStewardTx={rejectStewardTx}
-              copyToClipboard={copyToClipboard}
-              setActionNotice={setActionNotice}
-              onPendingCountChange={handlePendingCountChange}
-            />
           ) : (
-            <TransactionHistory
-              getStewardHistory={getStewardHistory}
-              copyToClipboard={copyToClipboard}
-              setActionNotice={setActionNotice}
-            />
+            <div className="shrink-0 text-xs text-muted">
+              {stewardStatus ? "Offline" : "Connecting..."}
+            </div>
           )}
         </div>
+      </PagePanel>
+
+      <div
+        role="tablist"
+        aria-label="Steward sections"
+        className="mt-3 inline-flex w-full items-center gap-1 rounded-xl border border-border bg-surface p-1 shadow-sm sm:w-auto sm:self-start"
+      >
+        <StewardTabItem
+          tab="approvals"
+          label="Approvals"
+          active={activeTab === "approvals"}
+          onSelect={setActiveTab}
+          icon={
+            <>
+              <StewardLogo size={16} />
+              {pendingCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-status-danger px-1 text-3xs font-bold text-[var(--destructive-foreground)]">
+                  {pendingCount > 99 ? "99+" : pendingCount}
+                </span>
+              )}
+            </>
+          }
+        />
+        <StewardTabItem
+          tab="history"
+          label="History"
+          active={activeTab === "history"}
+          onSelect={setActiveTab}
+          icon={<FileText className="h-4 w-4" />}
+        />
       </div>
-    </PageLayout>
+
+      <div className="mt-4">
+        {activeTab === "approvals" ? (
+          <ApprovalQueue
+            getStewardPending={getStewardPending}
+            approveStewardTx={approveStewardTx}
+            rejectStewardTx={rejectStewardTx}
+            copyToClipboard={copyToClipboard}
+            setActionNotice={setActionNotice}
+            onPendingCountChange={handlePendingCountChange}
+          />
+        ) : (
+          <TransactionHistory
+            getStewardHistory={getStewardHistory}
+            copyToClipboard={copyToClipboard}
+            setActionNotice={setActionNotice}
+          />
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -300,7 +279,7 @@ export function StewardTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -394,9 +373,9 @@ export function StewardTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>transaction history</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | pending | history | approve | deny
+            {state?.pending.length ?? 0} pending / {recent.length} recent
           </div>
-          {recent.map((tx) => (
+          {recent.slice(0, 8).map((tx) => (
             <div
               key={tx.id}
               style={{

@@ -22,7 +22,7 @@ export const maxDuration = 120;
  * When fan-out is active (both staging and production execute), each environment
  * processes a deterministic subset based on user ID hash to avoid double-processing.
  */
-export function shouldProcessUser(userId: string, isFanOut: boolean): boolean {
+function shouldProcessUser(userId: string, isFanOut: boolean): boolean {
   if (!isFanOut) {
     return true;
   }

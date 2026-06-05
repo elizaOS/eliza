@@ -117,7 +117,16 @@ export async function checkLookaheadStatus(): Promise<{
     };
   }
 
-  const latest = new Date(latestPostResult[0]?.timestamp);
+  const latestPost = latestPostResult[0];
+  if (!latestPost) {
+    return {
+      minutesAhead: 0,
+      latestTimestamp: null,
+      needsGeneration: true,
+    };
+  }
+
+  const latest = new Date(latestPost.timestamp);
   const minutesAhead = (latest.getTime() - now.getTime()) / (60 * 1000);
   const needsGeneration = minutesAhead < LOOKAHEAD_MINUTES;
 

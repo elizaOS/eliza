@@ -239,7 +239,7 @@ def test_aggregate_run_handles_skipped_strategy() -> None:
             compacted_tokens=100,
             latency_ms=0.0,
             unavailable=True,
-            unavailable_reason="not yet implemented",
+            unavailable_reason="strategy unavailable",
         )
     ]
     probes: list[DriftProbeEvent] = []
@@ -257,7 +257,7 @@ def test_aggregate_run_handles_skipped_strategy() -> None:
     )
     result = aggregate_run(probes, compacts, summary)
     assert result.skipped is True
-    assert result.skip_reason == "not yet implemented"
+    assert result.skip_reason == "strategy unavailable"
     assert result.total_compactions == 0
     assert result.overall_accuracy == 0.0
 
@@ -365,6 +365,7 @@ def test_repo_root_autodetected_in_real_workspace() -> None:
     assert (suite.repo_root / "packages").is_dir()
     assert (suite.repo_root / "scripts").is_dir()
     assert suite.harness_script.name == "drift-harness.ts"
+    assert suite.harness_script.exists()
 
 
 def test_parse_jsonl_rejects_non_object_lines(tmp_path: Path) -> None:

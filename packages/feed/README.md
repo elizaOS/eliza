@@ -215,7 +215,7 @@ Details, env migration notes, and follow-ups: **[docs/observability/speed-insigh
 | `bun run dev:web` | Web only (no cron simulator) |
 | `bun run check` | Biome format + lint (auto-fix) |
 | `bun run lint` | Biome format + lint check (no writes) |
-| `bun run typecheck` | Typecheck stable root packages (`shared`, `contracts`) |
+| `bun run typecheck` | Typecheck stable root packages/apps (`shared`, `contracts`, `db`, `core`, `engine`, `sim`, `agents`, `api`, `a2a`, `mcp`, `testing` public surface, `apps/cli`, `apps/mobile` native shell, `apps/web`) |
 | `bun run build` | Production build (per-package; runs each package's `tsc`) |
 | `bun run db:generate` | Generate Drizzle migration files |
 | `bun run db:migrate` | Apply migrations |
@@ -228,7 +228,7 @@ Details, env migration notes, and follow-ups: **[docs/observability/speed-insigh
 ```bash
 bun run check       # Biome format + lint (auto-fix)
 bun run lint        # Biome format + lint check (no writes)
-bun run typecheck   # Typecheck stable root packages
+bun run typecheck   # Typecheck stable root packages/apps (shared, contracts, db, core, engine, sim, agents, api, a2a, mcp, testing public surface, apps/cli, apps/mobile native shell, apps/web)
 bun run build       # Production build — typechecks each package via its own tsc
 bun run test:unit   # Unit tests
 ```

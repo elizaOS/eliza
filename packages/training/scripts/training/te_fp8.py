@@ -8,7 +8,7 @@ Hardware support
 - RTX 6000 Blackwell, RTX 5090 (sm_120 consumer Blackwell): TE loads but
   FP8 recipes silently fall back to bf16. vLLM #31085, FlashInfer #2577 and
   TE family-check confirm sm_120 is not on the FP8 enable path. We gate on
-  the cuda capability so this module is a no-op there.
+  the cuda capability so this module leaves those runs unchanged.
 - A100 (sm_80) and earlier: no FP8 tensor cores; we skip silently.
 
 What this swaps
@@ -32,13 +32,13 @@ Usage
 ::
 
     from training.te_fp8 import maybe_enable_fp8
-    handle = maybe_enable_fp8(model)            # no-op off-target
+    handle = maybe_enable_fp8(model)            # disabled off-target
     if handle.enabled:
         with handle.autocast():                  # wrap the train step
             loss = model(**batch).loss
 
 The caller can also set the env var ``ELIZA_FP8_TRAIN=1`` to opt in
-explicitly when ``maybe_enable_fp8`` would otherwise no-op (e.g., to test
+explicitly when ``maybe_enable_fp8`` would otherwise stay disabled (e.g., to test
 the patch on an A100).
 """
 

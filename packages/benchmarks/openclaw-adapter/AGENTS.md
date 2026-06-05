@@ -45,7 +45,7 @@ pytest openclaw-adapter/tests/ -v
 | Path | Role |
 | --- | --- |
 | `openclaw_adapter/client.py` | `OpenClawClient` — spawns `openclaw agent --local --json` per turn |
-| `openclaw_adapter/server_manager.py` | `OpenClawCLIManager` — lifecycle (start = validate binary; stop = no-op) |
+| `openclaw_adapter/server_manager.py` | `OpenClawCLIManager` — lifecycle (start = validate binary; stop = clear started state) |
 | `openclaw_adapter/clawbench.py` | `build_clawbench_agent_fn` — ClawBench factory |
 | `openclaw_adapter/bfcl.py` | `build_bfcl_agent_fn` — function-call benchmark factory |
 | `openclaw_adapter/lifeops_bench.py` | `build_lifeops_bench_agent_fn` — LifeOpsBench factory |

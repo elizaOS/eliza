@@ -829,7 +829,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         }
 
         // Action callbacks can persist additional assistant turns that are not
-        // mirrored by the optimistic streaming placeholder in local state.
+        // mirrored by the optimistic streaming draft in local state.
         if (activeConversationIdRef.current === convId) {
           await loadConversationMessages(convId);
         }

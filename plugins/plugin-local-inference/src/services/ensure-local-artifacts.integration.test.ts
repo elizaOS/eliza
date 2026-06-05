@@ -3,7 +3,7 @@
  *
  * The orchestrator's unit tests (`ensure-local-artifacts.test.ts`) inject a
  * tiny `vi.fn()`-shaped service. These integration tests stand up a more
- * realistic shape of `LocalInferenceService` — full method fakes with
+ * realistic shape of `LocalInferenceService` — full method test doubles with
  * `vi.fn` recording and configurable behavior — so the wiring inside the
  * service surface (`startDownload`, `getInstalled`, `getHardware`) is
  * exercised the way the real boot path would call it. The four-mode matrix
@@ -94,7 +94,7 @@ describe("ensureLocalArtifacts integration", () => {
 	});
 
 	describe("mode matrix", () => {
-		it("cloud mode is a no-op (no service calls, artifacts: [], complete: true)", async () => {
+		it("cloud mode skips downloads (no service calls, artifacts: [], complete: true)", async () => {
 			const mock = makeMockService();
 
 			const result = await ensureLocalArtifacts({
@@ -110,7 +110,7 @@ describe("ensureLocalArtifacts integration", () => {
 			expect(mock.getInstalled).not.toHaveBeenCalled();
 		});
 
-		it("remote mode is a no-op (no service calls, artifacts: [], complete: true)", async () => {
+		it("remote mode skips downloads (no service calls, artifacts: [], complete: true)", async () => {
 			const mock = makeMockService();
 
 			const result = await ensureLocalArtifacts({

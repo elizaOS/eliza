@@ -103,17 +103,17 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import { AutonomousCoordinator, agentRuntimeManager } from "@feed/agents";
-import { authenticateUser, withErrorHandling } from "@feed/api";
-import { db, type JsonValue } from "@feed/db";
-import { logger } from "@feed/shared";
-import type { BenchmarkGameSnapshot } from "@feed/training";
+import type { BenchmarkGameSnapshot } from "@feed/agents/training";
 import {
   MetricsVisualizer,
   SimulationA2AInterface,
   type SimulationConfig,
   SimulationEngine,
   type SimulationResult,
-} from "@feed/training";
+} from "@feed/agents/training";
+import { authenticateUser, withErrorHandling } from "@feed/api";
+import { db, type JsonValue } from "@feed/db";
+import { logger } from "@feed/shared";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
@@ -189,7 +189,7 @@ export const POST = withErrorHandling(async function POST(
   );
 
   // Load benchmark snapshot
-  let snapshot;
+  let snapshot: JsonValue;
   if (body.benchmarkData) {
     snapshot = body.benchmarkData;
   } else if (body.benchmarkPath) {
@@ -222,11 +222,22 @@ export const POST = withErrorHandling(async function POST(
     );
   }
 
+  const snapshotMetadata =
+    typeof snapshot === "object" &&
+    snapshot !== null &&
+    !Array.isArray(snapshot)
+      ? snapshot
+      : {};
+  const snapshotTicks = snapshotMetadata.ticks;
+
   logger.info(
     "Benchmark loaded",
     {
-      id: snapshot.id,
-      ticks: snapshot.ticks?.length || 0,
+      id:
+        typeof snapshotMetadata.id === "string"
+          ? snapshotMetadata.id
+          : undefined,
+      ticks: Array.isArray(snapshotTicks) ? snapshotTicks.length : 0,
     },
     "AgentBenchmark",
   );

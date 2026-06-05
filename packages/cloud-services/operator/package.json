@@ -37,7 +37,7 @@
     "typecheck": "tsgo --noEmit",
     "build": "ELIZA_OPERATOR_SKIP_CRD_REGISTER=1 PATH=./scripts:$PATH bunx pepr build",
     "dev": "bunx pepr dev",
-    "deploy:local": "bunx pepr build && ./scripts/deploy-local.sh"
+    "deploy:local": "ELIZA_OPERATOR_SKIP_CRD_REGISTER=1 PATH=./scripts:$PATH bunx pepr build && ./scripts/deploy-local.sh"
   },
   "dependencies": {
     "ioredis": "^5.10.1",

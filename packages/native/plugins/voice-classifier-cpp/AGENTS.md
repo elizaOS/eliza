@@ -180,8 +180,8 @@ The converters follow the same metadata discipline (mirror of
   mel parameters, output dim);
 - pinned upstream commit recorded both in code and in the GGUF
   metadata key — runtime refuses unknown commits;
-- explicit `NotImplementedError` in incomplete converter branches so a
-  half-built converter cannot pass for working;
+- explicit converter validation and hard errors on unknown checkpoints so a
+  mismatched upstream cannot pass for working;
 - per-head metadata key: `voice_emotion.variant`, `voice_eot.variant`,
   `voice_speaker.variant`, `voice_diarizer.variant` — the runtime checks each.
 
@@ -252,9 +252,10 @@ large GGUF/reference fixture bundles are absent.
 
 - Pinned upstream commit + recorded weight download recipe for the
   audio-side EOT head.
-- Real `discover_*_tensors`, `load_*`, and `write_gguf` implementations
-  in the remaining incomplete converter branches, especially
-  `scripts/voice_eot_to_gguf.py`.
+- Audio-side EOT scoring graph selection and parity fixtures after an upstream
+  audio-turn model is pinned. `scripts/voice_eot_to_gguf.py` already discovers
+  encoder/head tensors and writes the locked GGUF metadata/payload; the runtime
+  keeps scoring fail-closed until the graph contract is selected.
 - Production TS binding promotion after parity gates pass.
 - Per-head parity fixture bundles staged for local/CI runs where they are
   currently optional.

@@ -4,6 +4,8 @@ import { Bluetooth, Glasses, Wifi, Zap } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { FacewearDeviceType } from "../devices/registry.ts";
 
+const ACTIVE_DEVICE_LIMIT = 4;
+
 interface ConnectedDevice {
   id: string;
   kind: "xr" | "smartglasses";
@@ -29,7 +31,7 @@ const DEVICE_PROFILES: Array<{
     manufacturer: "Meta",
     connectionType: "WebXR",
     icon: Glasses,
-    description: "Full passthrough AR/VR with hand tracking and room scale.",
+    description: "Passthrough AR/VR",
   },
   {
     type: "xreal",
@@ -37,7 +39,7 @@ const DEVICE_PROFILES: Array<{
     manufacturer: "XREAL",
     connectionType: "WebXR",
     icon: Glasses,
-    description: "3DoF AR glasses with spatial display and passthrough.",
+    description: "Spatial display",
   },
   {
     type: "even-realities",
@@ -45,7 +47,7 @@ const DEVICE_PROFILES: Array<{
     manufacturer: "Even Realities",
     connectionType: "Bluetooth BLE",
     icon: Bluetooth,
-    description: "OLED smartglasses with microphone and side-tap controls.",
+    description: "OLED display and mic",
   },
   {
     type: "apple-vision-pro",
@@ -53,7 +55,7 @@ const DEVICE_PROFILES: Array<{
     manufacturer: "Apple",
     connectionType: "WebXR",
     icon: Glasses,
-    description: "Spatial computing with eye and hand tracking on visionOS.",
+    description: "visionOS headset",
   },
 ];
 
@@ -183,22 +185,11 @@ export function FacewearView() {
   }, [fetchStatus]);
 
   function handleConnect(deviceType: FacewearDeviceType): void {
-    const instructions: Record<FacewearDeviceType, string> = {
-      "meta-quest":
-        "Put on your Quest headset, open the browser, and navigate to the connect URL shown at /api/xr/connect",
-      xreal:
-        "Open the XReal browser on your glasses and navigate to the connect URL shown at /api/xr/connect",
-      "even-realities":
-        "Put on your Even Realities glasses — the agent will auto-detect them via Bluetooth BLE",
-      "apple-vision-pro":
-        "Open Safari on your Vision Pro and navigate to the connect URL shown at /api/xr/connect",
-      simulator:
-        "The WebXR simulator connects automatically when you open the emulator page",
-    };
-    alert(
-      instructions[deviceType] ??
-        "Follow the connection instructions for your device.",
-    );
+    if (deviceType === "even-realities") {
+      window.location.assign("/apps/smartglasses");
+      return;
+    }
+    window.open("/api/xr/connect", "_blank", "noopener,noreferrer");
   }
 
   const activeCount = status.devices.length;
@@ -207,7 +198,7 @@ export function FacewearView() {
     useAgentElement<HTMLAnchorElement>({
       id: "link-xr-connect",
       role: "link",
-      label: "XR Connect Page",
+      label: "Connect",
       group: "quick-actions",
       description: "Open the XR device connect page in a new tab",
     });
@@ -215,7 +206,7 @@ export function FacewearView() {
     useAgentElement<HTMLAnchorElement>({
       id: "link-xr-status",
       role: "link",
-      label: "XR Status API",
+      label: "Status",
       group: "quick-actions",
       description: "Open the XR status API in a new tab",
     });
@@ -230,7 +221,6 @@ export function FacewearView() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-bg text-txt">
-      {/* Header */}
       <div className="border-b border-border/60 px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -254,8 +244,7 @@ export function FacewearView() {
         </div>
       </div>
 
-      {/* Content */}
-      <div className="p-4">
+      <div className="mx-auto w-full max-w-3xl p-4">
         {loading && (
           <div className="flex items-center justify-center py-8">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-accent" />
@@ -270,27 +259,29 @@ export function FacewearView() {
 
         {!loading && (
           <>
-            {/* Connected devices summary */}
             {activeCount > 0 && (
               <div className="mb-4 rounded-lg border border-green-500/20 bg-green-500/5 p-3">
-                <p className="text-xs font-medium text-green-600 dark:text-green-400">
-                  Active connections
-                </p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {status.devices.map((device) => (
-                    <span
-                      key={device.id}
-                      className="inline-flex items-center gap-1 rounded-md bg-green-500/10 px-2 py-0.5 text-xs text-green-700 dark:text-green-300"
-                    >
-                      {device.deviceType ?? device.kind}
+                  {status.devices
+                    .slice(0, ACTIVE_DEVICE_LIMIT)
+                    .map((device) => (
+                      <span
+                        key={device.id}
+                        className="inline-flex items-center gap-1 rounded-md bg-green-500/10 px-2 py-0.5 text-xs text-green-700 dark:text-green-300"
+                      >
+                        {device.deviceType ?? device.kind}
+                      </span>
+                    ))}
+                  {status.devices.length > ACTIVE_DEVICE_LIMIT ? (
+                    <span className="inline-flex items-center rounded-md bg-muted/20 px-2 py-0.5 text-xs text-muted">
+                      +{status.devices.length - ACTIVE_DEVICE_LIMIT}
                     </span>
-                  ))}
+                  ) : null}
                 </div>
               </div>
             )}
 
-            {/* Device cards */}
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3">
               {DEVICE_PROFILES.map((profile) => (
                 <div key={profile.type}>
                   <DeviceCard
@@ -302,32 +293,31 @@ export function FacewearView() {
               ))}
             </div>
 
-            {/* Quick actions */}
             <div className="mt-4 rounded-lg border border-border/60 bg-card p-4">
-              <h2 className="text-sm font-semibold">Quick Actions</h2>
+              <h2 className="text-sm font-semibold">Actions</h2>
               <div className="mt-3 flex flex-wrap gap-2">
                 <a
                   ref={xrConnectRef}
                   href="/api/xr/connect"
                   target="_blank"
                   rel="noreferrer"
-                  aria-label="XR Connect Page"
+                  aria-label="XR connect"
                   className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium hover:bg-muted/20 transition-colors"
                   {...xrConnectAgentProps}
                 >
                   <Zap className="h-3.5 w-3.5" />
-                  XR Connect Page
+                  Connect
                 </a>
                 <a
                   ref={xrStatusRef}
                   href="/api/xr/status"
                   target="_blank"
                   rel="noreferrer"
-                  aria-label="XR Status API"
+                  aria-label="XR status"
                   className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium hover:bg-muted/20 transition-colors"
                   {...xrStatusAgentProps}
                 >
-                  XR Status API
+                  Status
                 </a>
                 <button
                   ref={refreshRef}
@@ -353,13 +343,8 @@ export function FacewearTuiView() {
     <TerminalPluginView
       id="facewear"
       label="Hearwear TUI"
-      description="Terminal UI for hearwear device management"
-      commands={[
-        "connect-device",
-        "manage-views",
-        "device-diagnostics",
-        "emulator",
-      ]}
+      description="Hearwear device status endpoints"
+      commands={[]}
       endpoints={[
         "/api/facewear/status",
         "/api/facewear/devices",
@@ -374,13 +359,8 @@ export function SmartglassesTuiView() {
     <TerminalPluginView
       id="smartglasses"
       label="Smartglasses TUI"
-      description="Terminal UI for smartglasses setup, status, and diagnostics"
-      commands={[
-        "connect-headset",
-        "run-hardware-check",
-        "guided-side-tap-audio-validation",
-        "configure-wifi",
-      ]}
+      description="Smartglasses status endpoints"
+      commands={[]}
       endpoints={["/api/facewear/status", "/api/facewear/devices"]}
     />
   );

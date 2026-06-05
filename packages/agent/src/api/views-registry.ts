@@ -155,7 +155,7 @@ export async function findHeroOnDisk(
 }
 
 /**
- * Build a minimal SVG placeholder when no hero image is available.
+ * Build a minimal generated SVG fallback when no hero image is available.
  */
 export function generateViewHeroSvg(label: string, icon?: string): string {
   const displayIcon = escapeSvgText(icon ?? label.slice(0, 2).toUpperCase());
@@ -271,8 +271,9 @@ export function unregisterPluginViews(pluginName: string): void {
  * by registering the same id only when a conflict is logged (built-in wins
  * under the existing conflict resolution rule).
  *
- * Safe to call multiple times — subsequent calls are no-ops because the
- * conflict guard in `registerPluginViews` keeps the first registration.
+ * Safe to call multiple times — subsequent calls have no additional effect
+ * because the conflict guard in `registerPluginViews` keeps the first
+ * registration.
  *
  * @param runtime - Optional agent runtime. When provided, embeddings for the
  *   built-in views are queued in the background search index.
@@ -309,7 +310,7 @@ export function registerBuiltinViews(runtime?: IAgentRuntime): void {
   }
   // Called on every /api/views request and again during deferred startup, but
   // registration is idempotent — only the first call adds entries. Stay silent
-  // on the no-op re-calls so the boot log isn't spammed with the same line.
+  // on idempotent re-calls so the boot log isn't spammed with the same line.
   if (registered.length > 0) {
     logger.info(
       { src: "ViewRegistry", count: registered.length },
@@ -482,8 +483,10 @@ async function buildEntry(
   const heroImageUrl = buildAssetUrl("hero");
   // Probe for a real hero asset so the client can choose a photo vs. its icon.
   const hasHeroImage = pluginDir
-    ? (await findHeroOnDisk({ pluginDir, heroImagePath: view.heroImagePath })) !==
-      null
+    ? (await findHeroOnDisk({
+        pluginDir,
+        heroImagePath: view.heroImagePath,
+      })) !== null
     : false;
 
   // Derive a representative platform from the declaration's platforms list.

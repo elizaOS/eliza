@@ -1,7 +1,13 @@
 import type { OverlayAppContext } from "@elizaos/app-core";
 import { Button, PagePanel, Spinner } from "@elizaos/app-core";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { ArrowLeft, LockKeyhole, RefreshCw } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  LockKeyhole,
+  RefreshCw,
+  XCircle,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { loadPolymarketTuiState } from "./PolymarketAppView.helpers";
 import type { PolymarketMarket } from "./polymarket-contracts";
@@ -17,6 +23,8 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
     error,
     refresh,
   } = usePolymarketState();
+
+  const selectedMarketId = selectedMarket?.id;
 
   const backLabel = t("nav.back", { defaultValue: "Back" });
   const refreshLabel = t("actions.refresh", { defaultValue: "Refresh" });
@@ -75,130 +83,104 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
       </div>
 
       <div className="chat-native-scrollbar flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-        <div className="mx-auto grid max-w-6xl grid-cols-1 gap-4 lg:grid-cols-[360px_1fr]">
-          <section className="space-y-3">
-            {error && (
-              <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>
-            )}
+        <div className="mx-auto flex max-w-3xl flex-col gap-4">
+          {error && <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>}
 
-            <div className="rounded-lg border border-border/20 bg-bg-accent/60 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-sm font-semibold text-txt">
-                    Read access
+          {selectedMarket ? (
+            <section className="min-w-0 rounded-lg border border-border/20 bg-bg-accent/60 p-5">
+              <button
+                type="button"
+                onClick={() => setSelectedMarket(null)}
+                className="mb-4 inline-flex items-center gap-1.5 text-xs font-medium text-muted hover:text-txt"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Markets
+              </button>
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h2 className="mt-2 text-xl font-semibold leading-tight text-txt">
+                    {selectedMarket.question ?? selectedMarket.slug}
                   </h2>
-                  <div className="mt-1 text-xs leading-relaxed text-muted">
-                    Gamma and Data API reads are public.
-                  </div>
                 </div>
-                <StatusPill ready={status?.publicReads.ready ?? false} />
+                <StatusPill ready={selectedMarket.active === true} />
               </div>
-            </div>
 
-            <div className="rounded-lg border border-border/20 bg-bg-accent/60 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-sm font-semibold text-txt">
-                    Trading readiness
-                  </h2>
-                  <div className="mt-1 text-xs leading-relaxed text-muted">
-                    Orders stay disabled until signed CLOB calls are
-                    implemented.
-                  </div>
-                </div>
-                <StatusPill ready={status?.trading.ready ?? false} />
+              <div className="mt-5 grid gap-3">
+                <Metric label="Liquidity" value={selectedMarket.liquidity} />
+                <Metric label="Volume" value={selectedMarket.volume} />
+                <Metric
+                  label="Last trade"
+                  value={selectedMarket.lastTradePrice}
+                />
               </div>
-              {status?.trading.missing.length ? (
-                <div className="mt-3 flex items-start gap-2 rounded-md border border-warn/25 bg-warn/10 p-3 text-xs text-muted">
-                  <LockKeyhole className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warn" />
-                  <span>{status.trading.reason}</span>
-                </div>
-              ) : null}
-            </div>
 
-            <div className="overflow-hidden rounded-lg border border-border/20 bg-bg-accent/60">
-              <div className="border-b border-border/20 px-4 py-3">
-                <h2 className="text-sm font-semibold text-txt">
-                  Active markets
-                </h2>
-              </div>
-              {loading && markets.length === 0 ? (
-                <div className="flex items-center gap-3 p-4 text-sm text-muted">
-                  <Spinner className="h-4 w-4" />
-                  <span>Loading markets…</span>
+              <div className="mt-5 overflow-hidden rounded-lg border border-border/20">
+                <div className="border-b border-border/20 px-4 py-3 text-sm font-semibold text-txt">
+                  Outcomes
                 </div>
-              ) : (
-                <div className="max-h-[55vh] divide-y divide-border/15 overflow-y-auto">
-                  {markets.map((market) => (
-                    <MarketListItem
-                      key={market.id}
-                      market={market}
-                      active={selectedMarket?.id === market.id}
-                      onSelect={setSelectedMarket}
-                    />
+                <div className="divide-y divide-border/15">
+                  {selectedMarket.outcomes.map((outcome) => (
+                    <div
+                      key={outcome.name}
+                      className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                    >
+                      <span className="min-w-0 flex-1 truncate font-medium text-txt">
+                        {outcome.name}
+                      </span>
+                      <span className="shrink-0 text-muted">
+                        {outcome.price ?? "n/a"}
+                      </span>
+                    </div>
                   ))}
                 </div>
-              )}
-            </div>
-          </section>
+              </div>
+            </section>
+          ) : (
+            <section className="space-y-3">
+              <div className="grid gap-3">
+                <StatusTile
+                  label="Reads"
+                  ready={status?.publicReads.ready ?? false}
+                />
+                <StatusTile
+                  label="Trading"
+                  ready={status?.trading.ready ?? false}
+                />
+              </div>
 
-          <section className="min-w-0 rounded-lg border border-border/20 bg-bg-accent/60 p-5">
-            {selectedMarket ? (
-              <div>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="text-xs font-semibold uppercase tracking-normal text-muted">
-                      {selectedMarket.category ?? "Market"}
-                    </div>
-                    <h2 className="mt-2 text-xl font-semibold leading-tight text-txt">
-                      {selectedMarket.question ?? selectedMarket.slug}
-                    </h2>
-                  </div>
-                  <StatusPill ready={selectedMarket.active === true} />
+              {status?.trading.missing.length ? (
+                <div className="flex items-center gap-2 rounded-md border border-warn/25 bg-warn/10 p-3 text-xs text-muted">
+                  <LockKeyhole className="h-3.5 w-3.5 shrink-0 text-warn" />
+                  <span className="truncate">{status.trading.reason}</span>
                 </div>
+              ) : null}
 
-                {selectedMarket.description ? (
-                  <div className="mt-4 text-sm leading-relaxed text-muted">
-                    {selectedMarket.description}
-                  </div>
-                ) : null}
-
-                <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <Metric label="Liquidity" value={selectedMarket.liquidity} />
-                  <Metric label="Volume" value={selectedMarket.volume} />
-                  <Metric
-                    label="Last trade"
-                    value={selectedMarket.lastTradePrice}
-                  />
+              <div className="overflow-hidden rounded-lg border border-border/20 bg-bg-accent/60">
+                <div className="flex items-center justify-between border-b border-border/20 px-4 py-3">
+                  <h2 className="text-sm font-semibold text-txt">Markets</h2>
+                  <span className="text-xs font-semibold tabular-nums text-muted">
+                    {markets.length}
+                  </span>
                 </div>
-
-                <div className="mt-5 overflow-hidden rounded-lg border border-border/20">
-                  <div className="border-b border-border/20 px-4 py-3 text-sm font-semibold text-txt">
-                    Outcomes
+                {loading && markets.length === 0 ? (
+                  <div className="flex items-center justify-center gap-3 p-4 text-sm text-muted">
+                    <Spinner className="h-4 w-4" />
                   </div>
+                ) : (
                   <div className="divide-y divide-border/15">
-                    {selectedMarket.outcomes.map((outcome) => (
-                      <div
-                        key={outcome.name}
-                        className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
-                      >
-                        <span className="min-w-0 flex-1 truncate font-medium text-txt">
-                          {outcome.name}
-                        </span>
-                        <span className="shrink-0 text-muted">
-                          {outcome.price ?? "n/a"}
-                        </span>
-                      </div>
+                    {markets.slice(0, 24).map((market) => (
+                      <MarketListItem
+                        key={market.id}
+                        market={market}
+                        active={selectedMarketId === market.id}
+                        onSelect={setSelectedMarket}
+                      />
                     ))}
                   </div>
-                </div>
+                )}
               </div>
-            ) : (
-              <div className="flex h-full min-h-64 items-center justify-center text-sm text-muted">
-                No Polymarket market selected.
-              </div>
-            )}
-          </section>
+            </section>
+          )}
         </div>
       </div>
     </div>
@@ -235,10 +217,8 @@ function MarketListItem({
       }`}
     >
       <span className="line-clamp-2 text-sm font-medium text-txt">{label}</span>
-      <span className="mt-1 block text-xs text-muted">
-        {market.volume24hr
-          ? `24h volume ${market.volume24hr}`
-          : (market.category ?? "Market")}
+      <span className="mt-1 block truncate text-xs text-muted">
+        {market.volume24hr ?? market.category ?? "—"}
       </span>
     </button>
   );
@@ -303,17 +283,37 @@ function PolymarketTuiMarketRow({
 function StatusPill({ ready }: { ready: boolean }) {
   return (
     <span
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs-tight font-semibold ${
+      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
         ready
           ? "border-ok/35 bg-ok/12 text-ok"
           : "border-border bg-bg text-muted"
       }`}
+      role="status"
+      aria-label={ready ? "Ready" : "Disabled"}
+      title={ready ? "Ready" : "Disabled"}
     >
-      <span
-        className={`h-1.5 w-1.5 rounded-full ${ready ? "bg-ok" : "bg-muted"}`}
-      />
-      {ready ? "Ready" : "Disabled"}
+      {ready ? (
+        <CheckCircle2 className="h-4 w-4" />
+      ) : (
+        <XCircle className="h-4 w-4" />
+      )}
     </span>
+  );
+}
+
+function StatusTile({ label, ready }: { label: string; ready: boolean }) {
+  return (
+    <div
+      className="flex min-h-16 items-center justify-center gap-2 rounded-lg border border-border/20 bg-bg-accent/60 px-3"
+      title={label}
+    >
+      {ready ? (
+        <CheckCircle2 className="h-4 w-4 text-ok" />
+      ) : (
+        <XCircle className="h-4 w-4 text-muted" />
+      )}
+      <span className="text-sm font-semibold text-txt">{label}</span>
+    </div>
   );
 }
 
@@ -412,13 +412,7 @@ export function PolymarketTuiView() {
         {state?.status.trading.ready ? "ready" : "disabled"} | {lastAction}
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
-          gap: 16,
-        }}
-      >
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
         <section
           aria-label="Polymarket markets"
           style={{
@@ -457,7 +451,7 @@ export function PolymarketTuiView() {
             </button>
           </div>
           {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
-          {(state?.markets.markets ?? []).map((market, index) => (
+          {(state?.markets.markets ?? []).slice(0, 24).map((market, index) => (
             <PolymarketTuiMarketRow
               key={market.id}
               market={market}
@@ -479,7 +473,8 @@ export function PolymarketTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>market detail</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | market | orderbook | positions | trading-check
+            {state?.positions?.positions.length ?? 0} positions / trading{" "}
+            {state?.status.trading.ready ? "ready" : "disabled"}
           </div>
           {selectedMarket ? (
             <>
@@ -487,9 +482,7 @@ export function PolymarketTuiView() {
                 {selectedMarket.question ?? selectedMarket.slug}
               </div>
               <div style={{ color: "#94a3b8", marginBottom: 12 }}>
-                {selectedMarket.description ??
-                  selectedMarket.category ??
-                  "No description"}
+                {selectedMarket.category ?? selectedMarket.id}
               </div>
               <div style={{ color: "#a7f3d0", marginBottom: 8 }}>outcomes</div>
               {selectedMarket.outcomes.map((outcome) => (

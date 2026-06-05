@@ -210,8 +210,8 @@ def main() -> int:
     ap.add_argument("--max-workers", type=int, default=2)
     ap.add_argument("--sample-per-source", type=int, default=0,
                     help="Accepted for pipeline-flag parity. Downloads are "
-                         "file-level (snapshot_download), so this is a no-op "
-                         "here — per-source record sampling happens in "
+                         "file-level (snapshot_download), so this does no "
+                         "download-time filtering — per-source record sampling happens in "
                          "normalize.py / pack_dataset.py.")
     ap.add_argument("--force", action="store_true",
                     help="ignore the disk-budget guard")
@@ -220,7 +220,7 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.sample_per_source:
-        log.info("--sample-per-source=%d is a no-op at download time; "
+        log.info("--sample-per-source=%d accepted; no download-time filtering; "
                  "per-source record limits apply in normalize/pack",
                  args.sample_per_source)
 

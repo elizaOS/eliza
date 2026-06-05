@@ -8,10 +8,10 @@
     "dev:next-only": "SKIP_ENV_VALIDATION=1 bun x next dev",
     "build": "NODE_ENV=production NODE_OPTIONS='--max-old-space-size=8192' bun x next build --webpack && bun ../../scripts/prune-next-server-sourcemaps.ts .next",
     "start": "bun x next start",
-    "lint": "echo skip (feed) >&2",
+    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched apps/web/package.json apps/web/tsconfig.json apps/web/tsconfig.typecheck.json apps/web/next.config.ts apps/web/src/types/feed-testing.d.ts apps/web/src/app/admin/dag-visualizer/DagVisualizerClient.tsx apps/web/src/app/admin/dag-visualizer/TickSelector.tsx apps/web/src/app/api/admin/load-test/route.ts apps/web/src/app/api/admin/training apps/web/src/app/api/agents/[agentId]/benchmark/route.ts apps/web/src/app/api/agents/[agentId]/chat/route.ts apps/web/src/app/api/agents/[agentId]/route.ts apps/web/src/app/api/chats/[id]/route.ts apps/web/src/app/api/cron/notifications-digest/route.ts apps/web/src/app/api/cron/organization-tick/route.ts apps/web/src/app/api/cron/training-check/route.ts apps/web/src/app/api/cron/training/route.ts apps/web/src/app/api/cron/weekly-dataset-upload/route.ts apps/web/src/app/api/debug/trigger-training/route.ts apps/web/src/app/api/feed/for-you/pipeline.ts apps/web/src/app/api/feed/for-you/scoring.ts apps/web/src/app/api/feed/narrative/route.ts apps/web/src/app/api/feed/stories/pipeline.ts apps/web/src/app/api/huggingface/status/route.ts apps/web/src/app/api/notifications/route.ts apps/web/src/app/api/npc/[actorId]/invest/route.ts apps/web/src/app/api/reputation/[userId]/route.ts apps/web/src/app/nft/[tokenId]/page.tsx apps/web/src/components/agents/create/hooks/useAgentForm.ts apps/web/src/components/chats/MentionAutocomplete.tsx apps/web/src/components/profile/ProfileReplyCard.tsx apps/web/src/hooks/usePerpHistory.ts",
     "lint:fix": "bunx @biomejs/biome check --write .",
     "format": "bunx @biomejs/biome format --write .",
-    "typecheck": "echo skip (feed) >&2",
+    "typecheck": "cd ../.. && bun run scripts/typecheck-workspace.ts apps/web",
     "clean": "rm -rf .next .turbo node_modules/.cache"
   },
   "dependencies": {

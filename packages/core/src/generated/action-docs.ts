@@ -5446,6 +5446,20 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "IDENTIFY_SPEAKER",
+			description:
+				'Attach a name to the most recently heard, still-unidentified voice so the agent recognizes that person across sessions. Use when the owner says who a recent speaker is ("that was Jill", "this is my friend Sam").',
+			parameters: [],
+			similes: [
+				"NAME_SPEAKER",
+				"REMEMBER_VOICE",
+				"THIS_IS_SPEAKER",
+				"TAG_VOICE",
+			],
+			descriptionCompressed:
+				"Attach a name to the most recently heard, still-unidentified voice so agent recognizes that person across sessions. Use when the owner says who a recent...",
+		},
+		{
 			name: "INBOX",
 			description:
 				"Inbox: Gmail, Slack, Discord, Telegram, Signal, iMessage, WhatsApp. Merge recency feed. Subactions: list, search, summarize.",
