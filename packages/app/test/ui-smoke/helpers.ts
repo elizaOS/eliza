@@ -361,6 +361,14 @@ export async function openSettingsSection(
   }
   await expect(settingsShell).toBeVisible({ timeout: READY_CHECK_TIMEOUT_MS });
 
+  const hubSectionButton = settingsShell
+    .getByRole("button", { name: sectionName })
+    .first();
+  if (await locatorVisible(hubSectionButton, 1_000)) {
+    await hubSectionButton.click();
+    return;
+  }
+
   const settingsNav = page.getByRole("navigation", { name: "Settings" });
   const sectionButton = settingsNav.getByRole("button", { name: sectionName });
   if (await locatorVisible(sectionButton, 1_000)) {

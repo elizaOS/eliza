@@ -118,7 +118,7 @@ function SettingsHub({
   }, [sections]);
 
   return (
-    <div className={HUB_CLASS}>
+    <div className={HUB_CLASS} data-testid="settings-shell">
       <h1 className="mb-1 text-2xl font-semibold tracking-tight text-txt-strong">
         {t("nav.settings", { defaultValue: "Settings" })}
       </h1>
@@ -181,7 +181,7 @@ function SettingsSectionPage({
   const Icon = section.icon;
   const title = settingsSectionTitle(section, t);
   return (
-    <div className={SECTION_CLASS}>
+    <div id={section.id} className={SECTION_CLASS} data-testid="settings-shell">
       <div className="mb-4 flex items-center gap-3">
         <SectionBackButton onBack={onBack} />
       </div>
