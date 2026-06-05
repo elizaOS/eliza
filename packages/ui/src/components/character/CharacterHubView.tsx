@@ -1,14 +1,5 @@
 import type { MessageExampleGroup } from "@elizaos/core";
-import {
-  BookOpen,
-  Brain,
-  LayoutDashboard,
-  type LucideIcon,
-  MessageCircle,
-  Network,
-  PencilLine,
-  Sparkles,
-} from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -26,7 +17,7 @@ import type {
   RelationshipsActivityItem,
 } from "../../api/client-types";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { PageLayout } from "../../layouts/page-layout/page-layout";
+import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
 import {
   getWindowNavigationPath,
   shouldUseHashNavigation,
@@ -35,13 +26,9 @@ import { useApp } from "../../state/useApp";
 // Direct sub-path import to avoid the widgets/index.ts ↔ WidgetHost.tsx
 // chunk-level circular dependency.
 import { WidgetHost } from "../../widgets/WidgetHost";
-import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
-import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { getBrandIcon } from "../conversations/brand-icons";
 import { DocumentsView } from "../pages/DocumentsView";
 import { RelationshipsWorkspaceView } from "../pages/relationships/RelationshipsWorkspaceView";
-import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
 import {
   CharacterExamplesPanel,
@@ -55,7 +42,6 @@ import {
   type CharacterOverviewWidget,
 } from "./CharacterOverviewSection";
 import {
-  CHARACTER_HUB_SECTIONS,
   type CharacterHubSection,
   getCharacterHubSectionLabel,
   mapExperienceRecordToHubRecord,
@@ -81,32 +67,6 @@ const CHARACTER_SECTION_PATHS: Record<CharacterHubSection, string> = {
   skills: "/character/skills",
   experience: "/character/experience",
   relationships: "/character/relationships",
-};
-
-const CHARACTER_SECTION_META: Record<
-  CharacterHubSection,
-  {
-    icon: LucideIcon;
-  }
-> = {
-  overview: {
-    icon: LayoutDashboard,
-  },
-  personality: {
-    icon: PencilLine,
-  },
-  documents: {
-    icon: BookOpen,
-  },
-  skills: {
-    icon: Sparkles,
-  },
-  experience: {
-    icon: Brain,
-  },
-  relationships: {
-    icon: Network,
-  },
 };
 
 function getSectionFromLocation(tab: string): CharacterHubSection {
@@ -197,31 +157,6 @@ function writeHubCache<T>(suffix: string, value: T): void {
   } catch {
     /* ignore quota / serialization errors */
   }
-}
-
-function formatRelativeTime(value: number | string | null | undefined): string {
-  if (value === null || value === undefined) return "";
-  const time = typeof value === "number" ? value : new Date(value).getTime();
-  if (Number.isNaN(time) || time <= 0) return "";
-  const diff = Date.now() - time;
-  if (diff < 0) return "just now";
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  if (diff < minute) return "just now";
-  if (diff < hour) {
-    const value = Math.round(diff / minute);
-    return `${value}m ago`;
-  }
-  if (diff < day) {
-    const value = Math.round(diff / hour);
-    return `${value}h ago`;
-  }
-  if (diff < 7 * day) {
-    const value = Math.round(diff / day);
-    return `${value}d ago`;
-  }
-  return new Date(time).toLocaleDateString();
 }
 
 export function CharacterHubView({
@@ -564,210 +499,122 @@ export function CharacterHubView({
       0,
     );
     const exampleCount = normalizedMessageExamples.length;
-    const recentHistory = [...historyEntries]
-      .sort(
-        (left, right) =>
-          latestTimestamp(right.timestamp) - latestTimestamp(left.timestamp),
-      )
-      .slice(0, 3);
     const activeSkills = learnedSkills.filter(
       (skill) => skill.status !== "disabled",
     );
-    const recentDocs = [...customDocumentRecords]
-      .sort(
-        (left, right) =>
-          latestTimestamp(right.createdAt) - latestTimestamp(left.createdAt),
-      )
-      .slice(0, 3);
     const recentExperience = [...experienceRecords].sort(
       (left, right) =>
         latestTimestamp(right.updatedAt ?? right.createdAt) -
         latestTimestamp(left.updatedAt ?? left.createdAt),
     )[0];
-    const recentRelationshipActivity = [...relationshipActivity]
-      .filter((item) => item.type !== "relationship")
-      .sort(
-        (left, right) =>
-          latestTimestamp(right.timestamp) - latestTimestamp(left.timestamp),
-      )
-      .slice(0, 5);
+    // Unique people the agent knows (drop edge-only "relationship" rows).
+    const peopleNames = Array.from(
+      new Set(
+        relationshipActivity
+          .filter((item) => item.type !== "relationship")
+          .map((item) => item.personName?.trim())
+          .filter((name): name is string => Boolean(name)),
+      ),
+    );
 
-    const personalityHasHistory = recentHistory.length > 0;
     const trimmedBio = bioText.trim();
     const personalityHasContent =
-      personalityHasHistory ||
+      historyEntries.length > 0 ||
       trimmedBio.length > 0 ||
       styleItems > 0 ||
       exampleCount > 0;
-    const personalityBody: ReactNode = personalityHasHistory ? (
-      <ul className="flex flex-col divide-y divide-border/10 text-xs text-muted">
-        {recentHistory.map((entry, index) => {
-          const fields = entry.fieldsChanged ?? [];
-          const headField = fields[0];
-          const extraCount = Math.max(fields.length - 1, 0);
-          const actor =
-            entry.source === "agent"
-              ? d.name?.trim() || "agent"
-              : entry.source === "restore"
-                ? "system"
-                : "you";
-          const fieldLabel = headField
-            ? extraCount > 0
-              ? `${headField} +${extraCount} more`
-              : headField
-            : (entry.summary?.trim() ?? "personality");
-          return (
-            <li
-              key={entry.id ?? `history-${index}`}
-              className="flex min-w-0 items-baseline gap-2 py-1.5 first:pt-0 last:pb-0"
-            >
-              <span className="shrink-0 rounded-full border border-border/40 bg-bg-muted/30 px-1.5 py-0.5 text-2xs font-medium text-muted">
-                @{actor}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-muted">
-                edited <span className="text-txt">{fieldLabel}</span>
-              </span>
-              <span className="shrink-0 text-2xs text-muted/70">
-                {formatRelativeTime(entry.timestamp)}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    ) : trimmedBio ? (
-      <p className="line-clamp-3 text-xs leading-relaxed text-muted">
-        {trimmedBio}
-      </p>
-    ) : (
-      <div className="flex flex-wrap gap-1.5 text-2xs">
-        {styleItems > 0 ? (
-          <span className="rounded-full border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-muted">
-            {styleItems} style rule{styleItems === 1 ? "" : "s"}
-          </span>
-        ) : null}
-        {exampleCount > 0 ? (
-          <span className="rounded-full border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-muted">
-            {exampleCount} example{exampleCount === 1 ? "" : "s"}
-          </span>
-        ) : null}
-      </div>
-    );
 
-    function parseConnectorsFromDetail(detail: string | null): string[] {
-      if (!detail) return [];
-      const match = detail.match(/identity on ([^·]+?)(?:\s+·|$)/i);
-      if (!match) return [];
-      return match[1]
-        .split(/[, ]+/)
-        .map((value) => value.trim())
-        .filter(Boolean);
-    }
-
-    function shortenConnectorLabel(value: string): string {
-      const lower = value.toLowerCase();
-      if (lower === "client_chat") return "chat";
-      if (lower === "telegram") return "tg";
-      return lower;
-    }
-
-    function ConnectorBadge({ connector }: { connector: string }) {
-      const Brand = getBrandIcon(connector);
-      const label = shortenConnectorLabel(connector);
-      const Icon =
-        Brand ?? (connector === "client_chat" ? MessageCircle : null);
-      if (Icon) {
-        return (
-          <span
-            className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted/80"
-            title={label}
-            role="img"
-            aria-label={label}
-          >
-            <Icon className="h-3.5 w-3.5" />
-          </span>
-        );
-      }
+    function StatChip({ children }: { children: ReactNode }) {
       return (
-        <span
-          className="rounded-full border border-border/30 bg-bg-muted/20 px-1.5 py-0.5 text-2xs lowercase text-muted/80"
-          title={label}
-        >
-          {label}
+        <span className="rounded-full border border-border/40 bg-bg/60 px-2.5 py-1 text-xs font-medium text-muted backdrop-blur-sm">
+          {children}
         </span>
       );
     }
 
-    const emptyHint = (text: string): ReactNode => (
-      <p className="text-xs leading-relaxed text-muted">{text}</p>
+    /** Clean person chip: avatar initial + name + optional platform badge. */
+    function PersonChip({ name }: { name: string }) {
+      const Brand = getBrandIcon(name);
+      return (
+        <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/40 bg-bg/70 py-1 pl-1 pr-2.5 text-xs font-medium text-txt backdrop-blur-sm">
+          <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/15 text-2xs font-semibold uppercase text-accent">
+            {name.slice(0, 1)}
+          </span>
+          <span className="truncate">{name}</span>
+          {Brand ? (
+            <Brand className="h-3 w-3 shrink-0 text-muted/70" aria-hidden />
+          ) : null}
+        </span>
+      );
+    }
+
+    const personalityBody: ReactNode = personalityHasContent ? (
+      <div className="flex flex-wrap gap-1.5">
+        {styleItems > 0 ? (
+          <StatChip>
+            {styleItems} style rule{styleItems === 1 ? "" : "s"}
+          </StatChip>
+        ) : null}
+        {exampleCount > 0 ? (
+          <StatChip>
+            {exampleCount} example{exampleCount === 1 ? "" : "s"}
+          </StatChip>
+        ) : null}
+        {styleItems === 0 && exampleCount === 0 && trimmedBio ? (
+          <StatChip>bio set</StatChip>
+        ) : null}
+      </div>
+    ) : (
+      <span className="text-xs text-muted">Tap to define voice + bio</span>
     );
+
+    const relationshipsBody: ReactNode =
+      peopleNames.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {peopleNames.slice(0, 4).map((name) => (
+            <PersonChip key={name} name={name} />
+          ))}
+          {peopleNames.length > 4 ? (
+            <StatChip>+{peopleNames.length - 4}</StatChip>
+          ) : null}
+        </div>
+      ) : (
+        <span className="text-xs text-muted">Builds up as we talk</span>
+      );
+
+    const skillsBody: ReactNode =
+      activeSkills.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {activeSkills.slice(0, 4).map((skill) => (
+            <StatChip key={skill.name}>{skill.name}</StatChip>
+          ))}
+          {activeSkills.length > 4 ? (
+            <StatChip>+{activeSkills.length - 4}</StatChip>
+          ) : null}
+        </div>
+      ) : (
+        <span className="text-xs text-muted">Learned over time</span>
+      );
 
     return [
       {
         section: "personality",
         title: "Personality",
-        meta: null,
-        body: personalityHasContent
-          ? personalityBody
-          : emptyHint(
-              "Bio, voice, and how I show up. Tell me who I am — I'll keep this in mind every conversation.",
-            ),
+        meta: styleItems > 0 ? `${styleItems} rules` : null,
+        body: personalityBody,
         isLoading: historyLoading && !personalityHasContent,
         isEmpty: !personalityHasContent,
       },
       {
         section: "relationships",
         title: "Relationships",
-        meta: null,
-        body:
-          recentRelationshipActivity.length > 0 ? (
-            <ul className="flex flex-col divide-y divide-border/10 text-xs text-muted">
-              {recentRelationshipActivity.map((item) => {
-                const connectors = parseConnectorsFromDetail(item.detail);
-                const memoryText =
-                  item.type === "fact"
-                    ? item.summary?.trim() || item.detail?.trim() || "fact"
-                    : item.type === "identity"
-                      ? "joined"
-                      : item.summary?.trim() || item.type;
-                return (
-                  <li
-                    key={[
-                      item.personId,
-                      item.personName,
-                      item.type,
-                      item.timestamp ?? "no-time",
-                      item.summary,
-                      item.detail ?? "",
-                    ].join(":")}
-                    className="flex min-w-0 items-center gap-2 py-1.5 first:pt-0 last:pb-0"
-                  >
-                    <span className="inline-flex shrink-0 items-center gap-1">
-                      <span className="rounded-full border border-border/40 bg-bg-muted/30 px-1.5 py-0.5 text-2xs font-medium text-muted">
-                        @{item.personName?.trim() || "unknown"}
-                      </span>
-                      {connectors.map((connector) => (
-                        <ConnectorBadge key={connector} connector={connector} />
-                      ))}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate">
-                      {memoryText}
-                    </span>
-                    <span className="shrink-0 text-2xs text-muted/70">
-                      {formatRelativeTime(item.timestamp)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            emptyHint(
-              "People I know — names, facts, preferences. Builds up as we talk.",
-            )
-          ),
-        isLoading:
-          relationshipActivityLoading &&
-          recentRelationshipActivity.length === 0,
-        isEmpty: recentRelationshipActivity.length === 0,
+        meta:
+          peopleNames.length > 0
+            ? `${peopleNames.length} ${peopleNames.length === 1 ? "person" : "people"}`
+            : null,
+        body: relationshipsBody,
+        isLoading: relationshipActivityLoading && peopleNames.length === 0,
+        isEmpty: peopleNames.length === 0,
       },
       {
         section: "documents",
@@ -779,53 +626,24 @@ export function CharacterHubView({
               }`
             : null,
         body:
-          recentDocs.length > 0 ? (
-            <ul className="flex flex-col gap-1 text-xs text-muted">
-              {recentDocs.map((doc) => (
-                <li key={doc.id} className="truncate">
-                  {doc.filename}
-                </li>
-              ))}
-            </ul>
-          ) : documentRecords.length > 0 ? (
-            emptyHint(
-              "Just the default knowledge so far. Upload notes, docs, or links to teach me what matters.",
-            )
+          customDocumentRecords.length > 0 ? (
+            <span className="text-xs text-muted">
+              {customDocumentRecords.length} custom document
+              {customDocumentRecords.length === 1 ? "" : "s"}
+            </span>
           ) : (
-            emptyHint(
-              "Things I should read and remember. Upload notes, docs, or links.",
-            )
+            <span className="text-xs text-muted">
+              Upload notes, docs, links
+            </span>
           ),
         isLoading: documentsLoading && documentRecords.length === 0,
-        isEmpty: documentRecords.length === 0,
+        isEmpty: customDocumentRecords.length === 0,
       },
       {
         section: "skills",
         title: "Skills",
         meta: activeSkills.length > 0 ? `${activeSkills.length} active` : null,
-        body:
-          activeSkills.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5">
-              {activeSkills.slice(0, 5).map((skill) => (
-                <span
-                  key={skill.name}
-                  className="truncate rounded-full border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-2xs text-muted"
-                  title={skill.name}
-                >
-                  {skill.name}
-                </span>
-              ))}
-              {activeSkills.length > 5 ? (
-                <span className="text-2xs text-muted">
-                  +{activeSkills.length - 5} more
-                </span>
-              ) : null}
-            </div>
-          ) : (
-            emptyHint(
-              "Abilities I'll pick up over time. Browse the catalog or teach me by example.",
-            )
-          ),
+        body: skillsBody,
         isLoading: learnedSkillsLoading && activeSkills.length === 0,
         isEmpty: activeSkills.length === 0,
       },
@@ -839,16 +657,14 @@ export function CharacterHubView({
               }`
             : null,
         body: recentExperience ? (
-          <p className="line-clamp-3 text-xs italic leading-relaxed text-muted">
+          <span className="line-clamp-2 text-xs italic text-muted">
             {recentExperience.learning ||
               recentExperience.result ||
               recentExperience.context ||
               recentExperience.type}
-          </p>
+          </span>
         ) : (
-          emptyHint(
-            "Lessons from what worked and what didn't. I'll add these as we go.",
-          )
+          <span className="text-xs text-muted">Lessons added as we go</span>
         ),
         isLoading: experienceLoading && experienceRecords.length === 0,
         isEmpty: experienceRecords.length === 0,
@@ -857,11 +673,10 @@ export function CharacterHubView({
   }, [
     bioText,
     customDocumentRecords,
-    d.name,
     d.style,
     experienceLoading,
     experienceRecords,
-    historyEntries,
+    historyEntries.length,
     historyLoading,
     documentRecords.length,
     documentsLoading,
@@ -1040,50 +855,6 @@ export function CharacterHubView({
     }
   }, [flushPendingAutoSave, onSave]);
 
-  const sectionNav = (
-    <SidebarPanel className="min-h-0 gap-2 bg-transparent p-0 shadow-none">
-      <nav
-        className="flex flex-col gap-0"
-        aria-label={t("character.characterHubSections")}
-      >
-        {CHARACTER_HUB_SECTIONS.map((section) =>
-          (() => {
-            const meta = CHARACTER_SECTION_META[section];
-            const Icon = meta.icon;
-            const active = activeSection === section;
-            return (
-              <SidebarContent.Item
-                key={section}
-                active={active}
-                onClick={() => navigateToSection(section)}
-                aria-current={active ? "page" : undefined}
-                className="items-center gap-2 rounded-none px-5 py-2"
-              >
-                <SidebarContent.ItemIcon
-                  active={active}
-                  className={`mt-0 h-8 w-8 bg-transparent p-0 group-hover:bg-transparent ${
-                    active ? "text-accent" : "text-muted"
-                  }`}
-                >
-                  <Icon className="h-4 w-4" aria-hidden />
-                </SidebarContent.ItemIcon>
-                <SidebarContent.ItemBody>
-                  <SidebarContent.ItemTitle
-                    className={`truncate text-sm leading-5 ${
-                      active ? "font-semibold" : "font-medium"
-                    }`}
-                  >
-                    {getCharacterHubSectionLabel(section)}
-                  </SidebarContent.ItemTitle>
-                </SidebarContent.ItemBody>
-              </SidebarContent.Item>
-            );
-          })(),
-        )}
-      </nav>
-    </SidebarPanel>
-  );
-
   const renderSection = (): ReactNode => {
     if (activeSection === "overview") {
       return (
@@ -1099,13 +870,6 @@ export function CharacterHubView({
       return (
         <div className="flex min-w-0 flex-col gap-8">
           <section className="rounded-sm border border-border/40 bg-bg/70 px-4 py-4">
-            <div className="mb-4">
-              <h2 className="text-lg font-semibold text-txt">Personality</h2>
-              <p className="text-sm text-muted">
-                Save your bio manually. Style rules and examples autosave as you
-                edit them.
-              </p>
-            </div>
             <CharacterIdentityPanel
               bioText={bioText}
               handleFieldEdit={handleFieldEdit}
@@ -1241,32 +1005,38 @@ export function CharacterHubView({
     );
   };
 
+  const isSubPage = activeSection !== "overview";
+
   return (
-    <PageLayout
+    <WorkspaceLayout
       className="h-full"
       contentPadding={false}
       contentInnerClassName="flex w-full min-h-0 flex-1 flex-col px-4 py-4 sm:px-5 sm:py-5 lg:px-6"
-      sidebar={
-        <AppPageSidebar
-          testId="character-editor-sidebar"
-          collapsible
-          contentIdentity="character-hub"
-        >
-          <SidebarScrollRegion className="scrollbar-hide !px-0 pb-3 pt-0 [scrollbar-width:none] [scrollbar-gutter:auto] supports-[scrollbar-gutter:stable]:[scrollbar-gutter:auto] [&::-webkit-scrollbar]:hidden">
-            {sectionNav}
-          </SidebarScrollRegion>
-        </AppPageSidebar>
-      }
-      mobileSidebarLabel={activeSectionLabel}
       data-testid="character-editor-view"
     >
       <div
         ref={contentScrollRef}
-        className="custom-scrollbar flex min-h-0 flex-1 min-w-0 flex-col overflow-y-auto overflow-x-hidden"
+        className="custom-scrollbar mx-auto flex min-h-0 w-full min-w-0 max-w-6xl flex-1 flex-col overflow-y-auto overflow-x-hidden pb-32"
       >
         <WidgetHost slot="character" className="mb-4" />
+        {isSubPage ? (
+          <div className="mb-5 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigateToSection("overview")}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-card/50 py-1.5 pl-2 pr-3.5 text-sm font-medium text-muted transition-colors hover:border-accent/40 hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+              aria-label="Back to Character hub"
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden />
+              Character
+            </button>
+            <span className="text-lg font-semibold text-txt">
+              {activeSectionLabel}
+            </span>
+          </div>
+        ) : null}
         {renderSection()}
       </div>
-    </PageLayout>
+    </WorkspaceLayout>
   );
 }

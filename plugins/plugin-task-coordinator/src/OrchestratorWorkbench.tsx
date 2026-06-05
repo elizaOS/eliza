@@ -23,6 +23,10 @@ import {
   type CodingAgentTaskTimelineItem,
   type CodingAgentTaskUsageSummary,
   client,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
   useApp,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
@@ -82,6 +86,15 @@ import {
   ToolBody,
 } from "./orchestrator-stream";
 import { buildConversation } from "./orchestrator-stream.helpers";
+import {
+  BackChip,
+  TaskCard,
+  TaskCountChip,
+  TaskEmptyState,
+  TaskListHeader,
+  TaskMetaChip,
+  TaskStatusChip,
+} from "./TaskCardList";
 import {
   formatClockTime,
   formatCompactNumber,
@@ -819,12 +832,13 @@ function FilterSelect({
     if (filter === "all") return status.taskCount;
     return status.byStatus[filter] ?? 0;
   };
-  const { ref, agentProps } = useAgentElement<HTMLSelectElement>({
+  const filterLabel = t("orchestrator.filter.label", {
+    defaultValue: "Filter by status",
+  });
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: "rail-filter-status",
     role: "select",
-    label: t("orchestrator.filter.label", {
-      defaultValue: "Filter by status",
-    }),
+    label: filterLabel,
     group: "orchestrator-rail",
     description: "Filter the task list by status",
     options: FILTER_OPTIONS,
@@ -835,46 +849,57 @@ function FilterSelect({
       }
     },
   });
+  const labelFor = (filter: StatusFilter) =>
+    filter === "all"
+      ? t("orchestrator.filter.all", { defaultValue: "All" })
+      : labelStatus(filter, t);
   return (
-    <select
-      ref={ref}
+    <Select
       value={active}
-      onChange={(event) => onSelect(event.target.value as StatusFilter)}
-      className={FIELD_CLASS}
-      aria-label={t("orchestrator.filter.label", {
-        defaultValue: "Filter by status",
-      })}
-      data-testid="orchestrator-filter"
-      {...agentProps}
+      onValueChange={(value) => onSelect(value as StatusFilter)}
     >
-      {FILTER_OPTIONS.map((filter) => {
-        const label =
-          filter === "all"
-            ? t("orchestrator.filter.all", { defaultValue: "All" })
-            : labelStatus(filter, t);
-        return (
-          <option key={filter} value={filter}>
-            {label} ({countFor(filter)})
-          </option>
-        );
-      })}
-    </select>
+      <SelectTrigger
+        ref={ref}
+        aria-label={filterLabel}
+        data-testid="orchestrator-filter"
+        className="h-9 rounded-xl border-border/50 bg-bg-accent/30 text-xs"
+        {...agentProps}
+      >
+        <span className="flex items-center gap-2">
+          {active !== "all" ? (
+            <TaskStatusChip status={active} t={t} />
+          ) : (
+            <span className="text-txt">{labelFor("all")}</span>
+          )}
+          <span className="text-muted tabular-nums">({countFor(active)})</span>
+        </span>
+      </SelectTrigger>
+      <SelectContent>
+        {FILTER_OPTIONS.map((filter) => (
+          <SelectItem key={filter} value={filter} className="text-xs">
+            <span className="flex items-center gap-2">
+              {filter === "all" ? (
+                <span>{labelFor("all")}</span>
+              ) : (
+                <TaskStatusChip status={filter} t={t} />
+              )}
+              <span className="text-muted tabular-nums">
+                ({countFor(filter)})
+              </span>
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
-function TaskRailItem({
-  thread,
-  selected,
-  onSelect,
-  t,
-  locale,
-}: {
-  thread: CodingAgentTaskThread;
-  selected: boolean;
-  onSelect: (id: string) => void;
-  t: Translate;
-  locale?: string;
-}) {
+/** Visual metadata chips for an orchestrator task card. */
+function orchestratorTaskChips(
+  thread: CodingAgentTaskThread,
+  t: Translate,
+  locale?: string,
+): ReactNode {
   const lastActivity =
     thread.latestActivityAt != null
       ? formatRelativeTime(thread.latestActivityAt, locale)
@@ -883,64 +908,27 @@ function TaskRailItem({
           locale,
           t("orchestrator.unknown", { defaultValue: "—" }),
         );
-  // A left accent bar surfaces in-progress/selected at a glance without parsing
-  // the small status glyph. Idle rows are borderless (hover-fill only) so the
-  // rail reads as a list, not a stack of boxes.
-  const barTone = selected
-    ? "before:bg-accent"
-    : thread.status === "active"
-      ? "before:bg-ok"
-      : thread.status === "validating"
-        ? "before:bg-accent"
-        : thread.status === "blocked" || thread.status === "waiting_on_user"
-          ? "before:bg-warn"
-          : "before:bg-transparent";
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `task-rail-${thread.id}`,
-    role: "list-item",
-    label: thread.title,
-    group: "orchestrator-rail",
-    status: selected ? "active" : "inactive",
-    description: `Open the "${thread.title}" task`,
-  });
+  const PriorityIcon = PRIORITY_ICON[thread.priority];
   return (
-    <div
-      className={`relative rounded-sm transition-colors before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:content-[''] ${barTone} ${
-        selected ? "bg-accent-subtle" : "hover:bg-surface"
-      }`}
-      data-testid="orchestrator-task-item"
-    >
-      <button
-        ref={ref}
-        type="button"
-        onClick={() => onSelect(thread.id)}
-        className="flex w-full flex-col gap-0.5 px-2.5 py-2 pl-3 text-left"
-        aria-current={selected ? "true" : undefined}
-        {...agentProps}
+    <>
+      <TaskMetaChip
+        icon={<Bot className="h-3 w-3" />}
+        tone={thread.activeSessionCount > 0 ? "accent" : "muted"}
       >
-        <div className="flex items-center gap-1.5">
-          <StatusGlyph status={thread.status} paused={thread.paused} t={t} />
-          <span
-            className={`min-w-0 flex-1 truncate text-xs-tight font-medium ${
-              selected ? "text-txt-strong" : "text-txt"
-            }`}
-          >
-            {thread.title}
-          </span>
-          {thread.paused ? (
-            <Pause className="h-3 w-3 shrink-0 text-warn" />
-          ) : null}
-          <PriorityGlyph priority={thread.priority} t={t} />
-        </div>
-        <div className="flex items-center gap-2 text-2xs text-muted">
-          <span className="flex items-center gap-0.5">
-            <Bot className="h-3 w-3" />
-            {thread.activeSessionCount}/{thread.sessionCount}
-          </span>
-          <span className="ml-auto truncate">{lastActivity}</span>
-        </div>
-      </button>
-    </div>
+        {thread.activeSessionCount}/{thread.sessionCount}
+      </TaskMetaChip>
+      {thread.paused ? (
+        <TaskMetaChip icon={<Pause className="h-3 w-3" />}>
+          {t("orchestrator.status.paused", { defaultValue: "Paused" })}
+        </TaskMetaChip>
+      ) : null}
+      {PriorityIcon && thread.priority !== "normal" ? (
+        <TaskMetaChip icon={<PriorityIcon className="h-3 w-3" />}>
+          {labelPriority(thread.priority, t)}
+        </TaskMetaChip>
+      ) : null}
+      <span className="text-2xs text-muted/80">{lastActivity}</span>
+    </>
   );
 }
 
@@ -3779,92 +3767,107 @@ export function OrchestratorWorkbench() {
       ) : null}
 
       <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
-        {/* Dashboard rail — full-width in every viewport so tasks stay one-column. */}
-        <aside
-          className="flex shrink-0 flex-col border-b border-border/60 bg-bg"
-          data-testid="orchestrator-rail"
-        >
-          <div className="space-y-2 border-b border-border/50 p-2.5">
-            <input
-              ref={searchRef}
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={searchLabel}
-              aria-label={searchLabel}
-              className={FIELD_CLASS}
-              data-testid="orchestrator-search"
-              {...searchAgentProps}
-            />
-            <FilterSelect
-              status={status}
-              active={statusFilter}
-              onSelect={setStatusFilter}
-              t={t}
-            />
-            <label className="flex items-center gap-1.5 text-2xs text-muted">
+        {/* Single-pane landing: visual task card list. Hidden once a task room
+            is open so the workbench is never a side-by-side list+detail. */}
+        {!selectedId ? (
+          <div
+            className="flex flex-1 flex-col gap-3 px-4 pb-28 pt-4"
+            data-testid="orchestrator-rail"
+          >
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <input
-                ref={showArchivedRef}
-                type="checkbox"
-                checked={showArchived}
-                onChange={(event) => setShowArchived(event.target.checked)}
-                className="h-3 w-3"
-                style={{ accentColor: "var(--accent)" }}
-                aria-label={showArchivedLabel}
-                data-testid="orchestrator-show-archived"
-                {...showArchivedAgentProps}
+                ref={searchRef}
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={searchLabel}
+                aria-label={searchLabel}
+                className="h-9 flex-1 rounded-xl border border-border/50 bg-bg-accent/30 px-3 text-sm text-txt outline-none transition-colors placeholder:text-muted focus:border-accent/50"
+                data-testid="orchestrator-search"
+                {...searchAgentProps}
               />
-              {showArchivedLabel}
-            </label>
-          </div>
-          <div className="space-y-1.5 p-2">
+              <div className="flex items-center gap-2">
+                <div className="w-40">
+                  <FilterSelect
+                    status={status}
+                    active={statusFilter}
+                    onSelect={setStatusFilter}
+                    t={t}
+                  />
+                </div>
+                <button
+                  ref={showArchivedRef}
+                  type="button"
+                  onClick={() => setShowArchived((value) => !value)}
+                  aria-pressed={showArchived}
+                  className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-medium transition-colors ${
+                    showArchived
+                      ? "border-accent/40 bg-accent-subtle text-accent"
+                      : "border-border/50 bg-bg-accent/30 text-muted hover:text-txt"
+                  }`}
+                  data-testid="orchestrator-show-archived"
+                  {...showArchivedAgentProps}
+                >
+                  <Archive className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">{showArchivedLabel}</span>
+                </button>
+              </div>
+            </div>
+
             {tasks.length === 0 ? (
               loading ? (
-                <p className="p-2 text-xs text-muted">
+                <p className="p-2 text-sm text-muted">
                   {t("orchestrator.loadingTasks", {
                     defaultValue: "Loading tasks…",
                   })}
                 </p>
               ) : (
-                <div className="flex flex-col items-center gap-2 px-3 py-10 text-center">
-                  <Activity className="h-7 w-7 text-muted/50" />
-                  <p className="text-xs text-muted">
-                    {t("orchestrator.empty.title", {
-                      defaultValue: "No tasks yet",
-                    })}
-                  </p>
-                  <Button
-                    size="sm"
-                    onClick={() => setCreateOpen(true)}
-                    className="h-7 gap-1.5 px-2.5 text-xs-tight font-semibold"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    {t("orchestrator.action.newTask", {
-                      defaultValue: "New task",
-                    })}
-                  </Button>
-                </div>
+                <TaskEmptyState
+                  title={t("orchestrator.empty.title", {
+                    defaultValue: "No tasks yet",
+                  })}
+                  hint={t("orchestrator.empty.hint", {
+                    defaultValue:
+                      "Dispatch a coding task and the orchestrator will spin up sub-agents, track their plans, and stream their work here.",
+                  })}
+                  action={
+                    <Button
+                      size="sm"
+                      onClick={() => setCreateOpen(true)}
+                      className="h-8 gap-1.5 px-3 text-xs-tight font-semibold"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      {t("orchestrator.action.newTask", {
+                        defaultValue: "New task",
+                      })}
+                    </Button>
+                  }
+                />
               )
             ) : (
-              tasks.map((thread) => (
-                <TaskRailItem
-                  key={thread.id}
-                  thread={thread}
-                  selected={thread.id === selectedId}
-                  onSelect={(id) =>
-                    setSelectedId((prev) => (prev === id ? null : id))
-                  }
-                  t={t}
-                  locale={locale}
-                />
-              ))
+              <div className="flex flex-col gap-2.5">
+                {tasks.map((thread) => (
+                  <TaskCard
+                    key={thread.id}
+                    id={thread.id}
+                    title={thread.title}
+                    subtitle={thread.summary || thread.originalRequest}
+                    status={thread.status}
+                    forked={Boolean(thread.parentTaskId)}
+                    chips={orchestratorTaskChips(thread, t, locale)}
+                    onOpen={(id) => setSelectedId(id)}
+                    t={t}
+                  />
+                ))}
+              </div>
             )}
           </div>
-        </aside>
+        ) : null}
 
-        {/* Activity stack — selected task detail stays below the dashboard list. */}
+        {/* Task room — full-pane detail, entered by clicking a card. */}
         <main
-          className="flex min-h-[20rem] min-w-0 flex-col bg-bg-accent/10"
+          className="flex min-h-0 min-w-0 flex-1 flex-col bg-bg-accent/10"
           data-testid="orchestrator-timeline"
+          style={selectedId ? undefined : HIDDEN_STYLE}
         >
           {detail ? (
             <>

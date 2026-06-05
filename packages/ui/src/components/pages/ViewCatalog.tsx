@@ -9,7 +9,18 @@
  * or via the `eliza:navigate:view` custom event dispatched by VIEWS actions.
  */
 
-import { Pencil, Pin, Plus, Search, Trash2 } from "lucide-react";
+import {
+  Boxes,
+  Layers,
+  type LucideIcon,
+  Pencil,
+  Pin,
+  Plus,
+  Search,
+  Sparkles,
+  Star,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { fetchWithCsrf } from "../../api/csrf-client";
@@ -38,7 +49,7 @@ import {
   TOP_VIEW_LIMIT,
 } from "../../view-recents";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
-import { ViewIcon } from "../views/ViewIcon";
+import { GeneratedViewHero } from "./GeneratedViewHero";
 
 const VIEW_LOADING_SKELETON_KEYS = [
   "view-skeleton-1",
@@ -48,6 +59,51 @@ const VIEW_LOADING_SKELETON_KEYS = [
   "view-skeleton-5",
   "view-skeleton-6",
 ];
+
+/** A small uppercase modality chip (GUI / TUI / XR). */
+function ModalityChip({ modality }: { modality: ViewModality }) {
+  return (
+    <span className="rounded-full border border-border/60 bg-card/70 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-strong backdrop-blur-sm">
+      {modality}
+    </span>
+  );
+}
+
+/** A "loaded" status chip with a green status dot. */
+function LoadedChip({ label }: { label: string }) {
+  return (
+    <span className="flex items-center gap-1 rounded-full border border-border/60 bg-card/70 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-strong backdrop-blur-sm">
+      <span className="h-1.5 w-1.5 rounded-full bg-[#4caf50] shadow-[0_0_4px_rgba(76,175,80,0.7)]" />
+      {label}
+    </span>
+  );
+}
+
+/** Compact section header: icon + uppercase label + count chip. */
+function SectionHeader({
+  icon: Icon,
+  title,
+  count,
+  testId,
+}: {
+  icon: LucideIcon;
+  title: string;
+  count: number;
+  testId?: string;
+}) {
+  return (
+    <h2
+      className="mb-2.5 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-strong"
+      data-testid={testId}
+    >
+      <Icon className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+      <span>{title}</span>
+      <span className="rounded-full bg-muted/15 px-1.5 py-0.5 text-[9px] font-semibold tabular-nums text-muted">
+        {count}
+      </span>
+    </h2>
+  );
+}
 
 function ViewCardPinButton({
   view,
@@ -220,18 +276,20 @@ function ViewCard({
   onDelete?: (view: ViewRegistryEntry) => void;
   compact?: boolean;
 }) {
+  const { t } = useTranslation();
   const isDesktop = isElectrobunRuntime();
   const showPinButton = isDesktop && view.desktopTabEnabled !== false && onPin;
   const showManagementButtons = Boolean(onEdit || onDelete);
   const showHero = Boolean(view.hasHeroImage && view.heroImageUrl);
+  const modality = view.viewType ?? "gui";
 
   return (
     <div
-      className="group relative flex flex-col overflow-hidden rounded-md border border-border/50 bg-card text-left transition-colors hover:border-accent/60"
+      className="group relative flex flex-col overflow-hidden rounded-lg border border-border/50 bg-card text-left shadow-sm transition-[border-color,box-shadow] hover:border-accent/60 hover:shadow-md"
       data-testid={`view-card-${view.id}`}
     >
       {(showPinButton || showManagementButtons) && (
-        <div className="absolute right-2 top-2 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+        <div className="absolute right-2 top-2 z-20 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           {showPinButton && <ViewCardPinButton view={view} onPin={onPin} />}
           {onEdit && <ViewCardEditButton view={view} onEdit={onEdit} />}
           {onDelete && <ViewCardDeleteButton view={view} onDelete={onDelete} />}
@@ -240,7 +298,7 @@ function ViewCard({
 
       <ViewCardOpenButton view={view} onClick={onClick}>
         <div
-          className={`w-full overflow-hidden ${compact ? "aspect-square" : "aspect-video"}`}
+          className={`relative w-full overflow-hidden ${compact ? "aspect-square" : "aspect-video"}`}
         >
           {showHero ? (
             <img
@@ -250,16 +308,21 @@ function ViewCard({
               loading="lazy"
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-accent/25 via-accent/10 to-card text-accent transition-colors group-hover:from-accent/35">
-              <ViewIcon
-                icon={view.icon}
-                label={view.label}
-                className={compact ? "h-7 w-7" : "h-12 w-12"}
-              />
-            </div>
+            <GeneratedViewHero
+              viewId={view.id}
+              icon={view.icon}
+              label={view.label}
+              compact={compact}
+            />
           )}
+          <div className="pointer-events-none absolute left-2 top-2 z-10 flex flex-wrap gap-1">
+            <LoadedChip
+              label={t("viewmanager.chip.loaded", { defaultValue: "Loaded" })}
+            />
+            {!compact && <ModalityChip modality={modality} />}
+          </div>
         </div>
-        <p className="truncate px-3 pb-2 text-sm font-semibold text-txt transition-colors group-hover:text-accent">
+        <p className="truncate px-3 py-2 text-sm font-semibold text-txt transition-colors group-hover:text-accent">
           {view.label}
         </p>
       </ViewCardOpenButton>
@@ -328,7 +391,7 @@ function CatalogGetCard({
       : t("viewmanager.catalog.get", { defaultValue: "Get" });
   return (
     <div
-      className="group relative flex flex-col overflow-hidden rounded-md border border-border/50 bg-card text-left transition-colors hover:border-accent/60"
+      className="group relative flex flex-col overflow-hidden rounded-lg border border-border/50 bg-card text-left shadow-sm transition-[border-color,box-shadow] hover:border-accent/60 hover:shadow-md"
       data-testid={`view-card-${entry.id}`}
     >
       <button
@@ -341,7 +404,7 @@ function CatalogGetCard({
         })}
         className="flex flex-col text-left focus:outline-none disabled:cursor-not-allowed"
       >
-        <div className="aspect-video w-full overflow-hidden">
+        <div className="relative aspect-video w-full overflow-hidden">
           {showHero ? (
             <img
               src={entry.heroUrl}
@@ -350,30 +413,26 @@ function CatalogGetCard({
               loading="lazy"
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-accent/25 via-accent/10 to-card text-accent transition-colors group-hover:from-accent/35">
-              <ViewIcon
-                icon={entry.icon}
-                label={entry.label}
-                className="h-12 w-12"
-              />
-            </div>
+            <GeneratedViewHero
+              viewId={entry.id}
+              icon={entry.icon}
+              label={entry.label}
+            />
           )}
-        </div>
-        <div className="flex items-center justify-between gap-2 px-3 py-2">
-          <span className="truncate text-sm font-semibold text-txt transition-colors group-hover:text-accent">
-            {entry.label}
-          </span>
           <span
             data-testid={`view-get-${entry.id}`}
-            className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+            className={`absolute right-2 top-2 z-10 shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold shadow-sm transition-colors ${
               errored
                 ? "bg-destructive/15 text-destructive"
-                : "bg-accent text-accent-foreground"
+                : "bg-accent text-accent-foreground group-hover:bg-[#cc4600]"
             } ${busy ? "opacity-70" : ""}`}
           >
             {actionLabel}
           </span>
         </div>
+        <p className="truncate px-3 py-2 text-sm font-semibold text-txt transition-colors group-hover:text-accent">
+          {entry.label}
+        </p>
       </button>
     </div>
   );
@@ -390,10 +449,13 @@ function CatalogSection({
 }) {
   if (entries.length === 0) return null;
   return (
-    <div className="mb-5" data-testid="views-catalog-section">
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted/70">
-        {title}
-      </h2>
+    <div className="mb-6" data-testid="views-catalog-section">
+      <SectionHeader
+        icon={Sparkles}
+        title={title}
+        count={entries.length}
+        testId="views-catalog-header"
+      />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {entries.map((entry) => (
           <CatalogGetCard key={entry.key} entry={entry} onGet={onGet} />
@@ -405,6 +467,7 @@ function CatalogSection({
 
 function ViewSection({
   title,
+  icon,
   views,
   onViewClick,
   onViewPin,
@@ -412,6 +475,7 @@ function ViewSection({
   onViewDelete,
 }: {
   title: string;
+  icon: LucideIcon;
   views: ViewRegistryEntry[];
   onViewClick: (view: ViewRegistryEntry) => void;
   onViewPin: (view: ViewRegistryEntry) => void;
@@ -420,10 +484,8 @@ function ViewSection({
 }) {
   if (views.length === 0) return null;
   return (
-    <div className="mb-5">
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted/70">
-        {title}
-      </h2>
+    <div className="mb-6">
+      <SectionHeader icon={icon} title={title} count={views.length} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {views.map((view) => (
           <ViewCard
@@ -452,12 +514,15 @@ function TopViewsSection({
   const { t } = useTranslation();
   if (views.length === 0) return null;
   return (
-    <div className="mb-5" data-testid="views-top-section">
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted/70">
-        {t("viewmanager.section.pinnedRecent", {
+    <div className="mb-6" data-testid="views-top-section">
+      <SectionHeader
+        icon={Star}
+        title={t("viewmanager.section.pinnedRecent", {
           defaultValue: "Pinned & recent",
         })}
-      </h2>
+        count={views.length}
+        testId="views-top-header"
+      />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {views.map((view) => (
           <ViewCard
@@ -933,8 +998,8 @@ export function ViewCatalog() {
           </form>
         )}
 
-        {/* Content */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
+        {/* Content — extra bottom padding clears the floating chat pill. */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-1 pb-28">
           {error && (
             <div className="mb-3 rounded-sm border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
               {t("viewmanager.loadError", {
@@ -957,6 +1022,7 @@ export function ViewCatalog() {
               />
               <ViewSection
                 title={t("viewmanager.section.core", { defaultValue: "Core" })}
+                icon={Boxes}
                 views={builtinViews}
                 onViewClick={handleViewClick}
                 onViewPin={handleViewPin}
@@ -965,6 +1031,7 @@ export function ViewCatalog() {
                 title={t("viewmanager.section.plugins", {
                   defaultValue: "Plugins",
                 })}
+                icon={Layers}
                 views={pluginViews}
                 onViewClick={handleViewClick}
                 onViewPin={handleViewPin}

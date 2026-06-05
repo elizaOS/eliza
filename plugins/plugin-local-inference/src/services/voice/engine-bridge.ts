@@ -537,7 +537,7 @@ export interface EngineVoiceBridgeOptions {
 	/**
 	 * When true, use `FfiOmniVoiceBackend`. When false, use the deterministic test backend
 	 * only for lifecycle/unit tests; live sessions and direct synthesis reject
-	 * the stub before user-visible audio can be emitted.
+	 * the deterministic test backend before user-visible audio can be emitted.
 	 */
 	useFfiBackend: boolean;
 	/** Override sample rate. Defaults to 24 kHz. */
@@ -1335,7 +1335,7 @@ export class EngineVoiceBridge {
 		if (!this.hasRealTtsBackend()) {
 			throw new VoiceStartupError(
 				"missing-fused-build",
-				"[voice] Direct speech synthesis requires a fused OmniVoice backend. The stub backend is only allowed in scheduler/unit tests.",
+				"[voice] Direct speech synthesis requires a fused OmniVoice backend. The deterministic test backend is only allowed in scheduler/unit tests.",
 			);
 		}
 		const chunk = await this.scheduler.synthesizeText(text, signal);

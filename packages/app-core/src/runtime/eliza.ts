@@ -447,6 +447,9 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   for (const entry of listAppRoutePluginLoaders()) {
     byId.set(entry.id, entry);
   }
+  logger.info(
+    `[eliza][DEBUG-WF] app-route loader ids: ${[...byId.keys()].join(", ")}`,
+  );
 
   const skip = getSkippedAppRoutePluginIds();
   if (skip.size === 0) {

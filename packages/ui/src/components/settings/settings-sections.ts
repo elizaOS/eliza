@@ -42,12 +42,20 @@ export type SettingsSectionTone =
   | "accent"
   | "neutral";
 
+/** Curated, token-safe medallion tints for the settings hub tiles. No blue. */
+export type SettingsSectionHue = "accent" | "amber" | "rose" | "slate";
+
+/** Top-level grouping for the visual hub. */
+export type SettingsSectionGroup = "agent" | "system" | "security";
+
 export interface SettingsSectionDef {
   id: string;
   label: string;
   defaultLabel: string;
   icon: LucideIcon;
   tone: SettingsSectionTone;
+  hue: SettingsSectionHue;
+  group: SettingsSectionGroup;
   titleKey: string;
   defaultTitle: string;
   bodyClassName?: string;
@@ -62,6 +70,29 @@ export const SECTION_TONE_ICON_CLASS: Record<SettingsSectionTone, string> = {
   neutral: "",
 };
 
+/**
+ * Medallion styling per hue. All colors resolve from theme tokens (orange
+ * accent + neutrals) so light and dark themes both work, and there is no blue.
+ */
+export const SECTION_HUE_MEDALLION_CLASS: Record<SettingsSectionHue, string> = {
+  accent: "bg-accent/12 text-accent ring-1 ring-accent/20",
+  amber: "bg-warn/12 text-warn ring-1 ring-warn/20",
+  rose: "bg-[color-mix(in_oklab,var(--accent)_14%,var(--surface))] text-accent ring-1 ring-accent/15",
+  slate: "bg-surface text-txt-strong ring-1 ring-border",
+};
+
+export const SETTINGS_GROUP_LABEL: Record<SettingsSectionGroup, string> = {
+  agent: "Agent",
+  system: "System",
+  security: "Security",
+};
+
+export const SETTINGS_GROUP_ORDER: SettingsSectionGroup[] = [
+  "agent",
+  "system",
+  "security",
+];
+
 export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   {
     id: "identity",
@@ -69,6 +100,8 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Basics",
     icon: User,
     tone: "neutral",
+    hue: "slate",
+    group: "agent",
     titleKey: "settings.sections.identity.label",
     defaultTitle: "Basics",
     Component: IdentitySettingsSection,
@@ -79,6 +112,8 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Providers",
     icon: Brain,
     tone: "accent",
+    hue: "accent",
+    group: "agent",
     titleKey: "common.providers",
     defaultTitle: "Providers",
     Component: ProviderSwitcher,
@@ -89,6 +124,8 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Runtime",
     icon: Server,
     tone: "neutral",
+    hue: "slate",
+    group: "system",
     titleKey: "settings.sections.runtime.label",
     defaultTitle: "Runtime",
     Component: RuntimeSettingsSection,
@@ -99,6 +136,8 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Appearance",
     icon: Palette,
     tone: "neutral",
+    hue: "rose",
+    group: "system",
     titleKey: "settings.sections.appearance.label",
     defaultTitle: "Appearance",
     Component: AppearanceSettingsSection,
@@ -109,6 +148,8 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Voice",
     icon: Mic,
     tone: "accent",
+    hue: "accent",
+    group: "agent",
     titleKey: "settings.sections.voice.label",
     defaultTitle: "Voice",
     Component: VoiceSectionMount,
@@ -119,6 +160,8 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Capabilities",
     icon: SlidersHorizontal,
     tone: "accent",
+    hue: "accent",
+    group: "agent",
     titleKey: "common.capabilities",
     defaultTitle: "Capabilities",
     Component: CapabilitiesSection,
@@ -129,6 +172,8 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Apps",
     icon: LayoutGrid,
     tone: "accent",
+    hue: "accent",
+    group: "agent",
     titleKey: "settings.sections.apps.label",
     defaultTitle: "Apps",
     Component: AppsManagementSection,
@@ -139,6 +184,8 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Remote Plugins",
     icon: Puzzle,
     tone: "accent",
+    hue: "rose",
+    group: "system",
     titleKey: "settings.sections.remote-plugins.label",
     defaultTitle: "Remote Plugins",
     Component: RemotePluginHostSection,
@@ -149,6 +196,8 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Connectors",
     icon: Webhook,
     tone: "accent",
+    hue: "accent",
+    group: "agent",
     titleKey: "settings.sections.connectors.label",
     defaultTitle: "Connectors",
     Component: ConnectorsSection,
@@ -159,6 +208,8 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "App Permissions",
     icon: ShieldCheck,
     tone: "warn",
+    hue: "amber",
+    group: "security",
     titleKey: "settings.sections.apppermissions.label",
     defaultTitle: "App Permissions",
     Component: AppPermissionsSection,
@@ -169,6 +220,8 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Wallet & RPC",
     icon: Wallet,
     tone: "neutral",
+    hue: "slate",
+    group: "system",
     titleKey: "settings.sections.walletrpc.label",
     defaultTitle: "Wallet & RPC",
     bodyClassName: "p-4 sm:p-5",
@@ -180,6 +233,8 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Permissions",
     icon: Shield,
     tone: "warn",
+    hue: "amber",
+    group: "security",
     titleKey: "common.permissions",
     defaultTitle: "Permissions",
     Component: PermissionsSection,
@@ -190,6 +245,8 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Vault",
     icon: KeyRound,
     tone: "warn",
+    hue: "amber",
+    group: "security",
     titleKey: "settings.sections.secrets.label",
     defaultTitle: "Vault",
     Component: SecretsManagerSection,
@@ -200,6 +257,8 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Security",
     icon: Lock,
     tone: "warn",
+    hue: "amber",
+    group: "security",
     titleKey: "settings.sections.security.label",
     defaultTitle: "Security",
     Component: SecuritySettingsSection,
@@ -210,6 +269,8 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Updates",
     icon: RefreshCw,
     tone: "neutral",
+    hue: "slate",
+    group: "system",
     titleKey: "settings.sections.updates.label",
     defaultTitle: "Updates",
     Component: ReleaseCenterView,
@@ -220,6 +281,8 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Backup & Reset",
     icon: Archive,
     tone: "neutral",
+    hue: "slate",
+    group: "system",
     titleKey: "settings.sections.backupReset.label",
     defaultTitle: "Backup & Reset",
     Component: AdvancedSection,

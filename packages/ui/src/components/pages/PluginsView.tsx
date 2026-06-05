@@ -272,14 +272,22 @@ function PluginListView({
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const dragRef = useRef<string | null>(null);
   const isConnectorShellMode = mode === "social";
-  const isSocialMode = mode === "social" || mode === "all-social";
-  const isSidebarEditorShellMode = mode === "social" || mode === "all-social";
+  const isSocialMode = mode === "social";
+  // The connector-accordion shell (inline OAuth / managed-Discord setup) is
+  // reserved for the dedicated Connectors surface. The /apps/plugins page
+  // ("all-social") renders the visual card grid below.
+  const isSidebarEditorShellMode = mode === "social";
+  // The card grid honors the live search + status filters from the app bar.
+  const isGridSearchMode = mode === "all-social" || mode === "all";
   const isConnectorLikeMode = mode === "connectors" || mode === "social";
   const resultLabel = mode === "social" ? "connectors" : label.toLowerCase();
   const effectiveStatusFilter: StatusFilter = isSidebarEditorShellMode
     ? pluginStatusFilter
-    : "all";
-  const effectiveSearch = isSidebarEditorShellMode ? pluginSearch : "";
+    : isGridSearchMode
+      ? pluginStatusFilter
+      : "all";
+  const effectiveSearch =
+    isSidebarEditorShellMode || isGridSearchMode ? pluginSearch : "";
 
   const allowCustomOrder = !isSocialMode;
 
@@ -368,44 +376,29 @@ function PluginListView({
   }, [showSubgroupFilters, subgroupFilter, subgroupTags]);
 
   const renderSubgroupFilterButton = useCallback(
-    (
-      tag: { id: string; label: string; count: number },
-      options?: { sidebar?: boolean },
-    ) => {
+    (tag: { id: string; label: string; count: number }) => {
       const isActive = subgroupFilter === tag.id;
-      if (options?.sidebar) {
-        return (
-          <PluginSubgroupNavItem
-            key={tag.id}
-            tag={tag}
-            isActive={isActive}
-            onSelect={setSubgroupFilter}
-            availableCountLabel={t("pluginsview.AvailableCount", {
-              count: tag.count,
-              defaultValue: "{{count}} available",
-            })}
-          />
-        );
-      }
+      const Icon = SUBGROUP_NAV_ICONS[tag.id] ?? Package;
 
       return (
         <Button
           key={tag.id}
           variant={isActive ? "default" : "outline"}
           size="sm"
-          className={`h-7 px-3 text-xs-tight font-bold tracking-wide rounded-sm transition-all ${
+          className={`h-8 gap-1.5 rounded-full px-3 text-xs-tight font-bold tracking-wide transition-all ${
             isActive
-              ? "border-accent/55 bg-accent/16 text-txt-strong "
-              : "bg-card/40 backdrop-blur-sm border-border/40 text-muted hover:text-txt hover:border-accent/30"
+              ? "border-accent bg-accent text-accent-fg hover:bg-accent/90"
+              : "border-border/50 bg-card/50 text-muted backdrop-blur-sm hover:border-accent/40 hover:text-txt"
           }`}
           onClick={() => setSubgroupFilter(tag.id)}
         >
+          <Icon className="h-3.5 w-3.5 shrink-0" />
           {tag.label}
           <span
-            className={`ml-1.5 rounded-sm border px-1.5 py-0.5 text-3xs font-mono leading-none ${
+            className={`ml-0.5 rounded-full px-1.5 py-0.5 text-3xs font-mono leading-none ${
               isActive
-                ? "border-accent/30 bg-accent/12 text-txt-strong"
-                : "border-border/50 bg-bg-accent/80 text-muted-strong"
+                ? "bg-accent-fg/20 text-accent-fg"
+                : "bg-bg-accent/80 text-muted-strong"
             }`}
           >
             {tag.count}
