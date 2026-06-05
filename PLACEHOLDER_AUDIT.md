@@ -5534,6 +5534,49 @@ platform no-ops are separated from actionable runtime gaps.
   - focused `no-op|noop|stub|placeholder|not implemented|unfinished` scan on
     `plugins/plugin-agent-orchestrator/src` excluding tests
 
+### packages/elizaos project template checkout wording
+
+- Read `packages/elizaos/CLAUDE.md` and confirmed `AGENTS.md` parity before
+  editing.
+- Reworded the project template's source-mode helper so an interrupted
+  `eliza/` checkout is described as a partial checkout rather than an
+  incomplete directory. The helper still removes the partial tree and reclones
+  when `.git` is missing.
+- Verified with:
+  - `node --check
+    packages/elizaos/templates/project/scripts/eliza-source-mode.mjs`
+  - focused marker scan on
+    `packages/elizaos/templates/project/scripts/eliza-source-mode.mjs`
+- `./node_modules/.bin/biome check` was attempted for the file, but Biome
+  reports the template script is ignored by repository configuration.
+
+### packages/app-core partial asset and benchmark fallback wording
+
+- Read `packages/app-core/CLAUDE.md` and confirmed `AGENTS.md` parity before
+  editing.
+- Reworded submodule, Electrobun, avatar, Docker-dist, CocoaPods, Android
+  staging, voice-latency, and benchmark comments/messages so partial checkouts,
+  missing extraction files, partial asset sets, unavailable provider paths, and
+  empty transitions are described concretely instead of as incomplete/no-op/stub
+  work.
+- Formatted `packages/app-core/scripts/lib/stage-android-agent.mjs` with Biome
+  after the focused check surfaced existing formatting drift in that touched
+  file.
+- Remaining app-core marker hits are intentional compatibility/test classes:
+  browser-safe alias modules that intentionally export no-op proxies for Node
+  runtime surfaces, the `ffi-stub` ABI compatibility library and verifier that
+  rejects it for fused runtime use, the Playwright UI smoke API fixture, live
+  test-surface audit scripts that count stub references, benchmark fake-backend
+  `noop` result fields that mirror the benchmark protocol, and registry
+  `placeholder` UI hints.
+- Verified with:
+  - `./node_modules/.bin/biome check` on the touched app-core TypeScript/MJS
+    files
+  - `bash -n` on the touched shell scripts
+  - `node --check` on the touched app-core MJS scripts
+  - `bun run --cwd packages/app-core typecheck`
+  - focused strong-marker scan on the touched app-core files
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.

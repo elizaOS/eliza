@@ -17,6 +17,7 @@ describe("BitRouter Railway service", () => {
 
     expect(dockerfile).toContain("npm install -g bitrouter");
     expect(dockerfile).toContain("expect");
+    expect(dockerfile).toContain('grep -q "buffer-v2"');
     expect(dockerfile).toContain('grep -q "openrouter: {}"');
     expect(dockerfile).toContain(
       'grep -q "api_protocol: chat_completions"',
@@ -39,6 +40,8 @@ describe("BitRouter Railway service", () => {
     expect(proxy).toContain("BITROUTER_PROXY_TOKEN");
     expect(proxy).toContain("BITROUTER_INTERNAL_JWT_FILE");
     expect(proxy).toContain("bitrouter_proxy_usage_cost");
+    expect(proxy).toContain('const auditMode = "buffer-v2"');
+    expect(proxy).toContain("cerebras-zai-glm-4.7-token-floor");
     expect(proxy).toContain("prepareChatCompletionRequest");
     expect(proxy).toContain('requestedModel === "zai-glm-4.7"');
     expect(proxy).toContain('parsed.reasoning_effort = "none"');

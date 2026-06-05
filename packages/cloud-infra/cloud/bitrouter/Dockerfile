@@ -10,7 +10,7 @@ WORKDIR /app
 COPY bitrouter.yaml /app/bitrouter.yaml
 COPY auth-proxy.mjs /app/auth-proxy.mjs
 COPY entrypoint.sh /app/entrypoint.sh
-RUN grep -q "buffer-v1" /app/auth-proxy.mjs \
+RUN grep -q "buffer-v2" /app/auth-proxy.mjs \
   && grep -q "openrouter: {}" /app/bitrouter.yaml \
   && grep -q "api_protocol: chat_completions" /app/bitrouter.yaml \
   && grep -q "input_micro_usd_per_token: 0.35" /app/bitrouter.yaml \

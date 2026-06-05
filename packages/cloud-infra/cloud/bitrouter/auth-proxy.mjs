@@ -9,7 +9,7 @@ const upstream = (
 const token = process.env.BITROUTER_PROXY_TOKEN;
 const internalJwtFile =
   process.env.BITROUTER_INTERNAL_JWT_FILE || "/data/internal.jwt";
-const auditMode = "buffer-v1";
+const auditMode = "buffer-v2";
 const cerebrasPricingPerMillion = new Map([
   ["gpt-oss-120b", { input: 0.35, cacheRead: 0, cacheWrite: 0, output: 0.75 }],
   ["zai-glm-4.7", { input: 2.25, cacheRead: 0, cacheWrite: 0, output: 2.75 }],
@@ -174,7 +174,12 @@ function auditJsonCompletionCost(response, requestedModel, responseBody) {
 
 const server = http.createServer(async (req, res) => {
   if (req.url === "/health") {
-    writeJson(res, 200, { status: "ok", costAudit: true, auditMode });
+    writeJson(res, 200, {
+      status: "ok",
+      costAudit: true,
+      auditMode,
+      requestFixes: ["cerebras-zai-glm-4.7-token-floor"],
+    });
     return;
   }
 

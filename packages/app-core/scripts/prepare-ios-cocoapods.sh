@@ -56,7 +56,7 @@ if [ -d "${TRUNK_REPO_DIR}/.git" ] || [ -f "${TRUNK_REPO_DIR}/CocoaPods-version.
 fi
 
 if [ -e "${TRUNK_REPO_DIR}" ]; then
-  echo "Removing incomplete CocoaPods trunk repo at ${TRUNK_REPO_DIR}"
+  echo "Removing partial CocoaPods trunk repo at ${TRUNK_REPO_DIR}"
   rm -rf "${TRUNK_REPO_DIR}"
 fi
 

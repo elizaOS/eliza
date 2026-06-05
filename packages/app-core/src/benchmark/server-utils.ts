@@ -1178,7 +1178,7 @@ export function parseRoleSeedPayload(
  * Always-clear the in-memory PersonalityStore so stale slots do not bleed
  * across benchmark scenarios sharing one runtime process (synthesis P1-14).
  * Returns true when the store was cleared; false when the runtime did not
- * load advanced capabilities (no-op).
+ * load advanced capabilities.
  */
 export function clearPersonalityStateOnReset(runtime: AgentRuntime): boolean {
   const store = getBenchPersonalityStore(runtime);
