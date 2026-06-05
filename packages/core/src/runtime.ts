@@ -2325,15 +2325,13 @@ export class AgentRuntime implements IAgentRuntime {
 
 		if (pluginsWithSchemas.length === 0) {
 			this.logger.debug(
-				{ src: "agent", agentId: this.agentId },
-				"No plugins with schemas, skipping migrations",
+				`[agent] No plugins with schemas, skipping migrations (agentId=${this.agentId})`,
 			);
 			return;
 		}
 
 		this.logger.debug(
-			{ src: "agent", agentId: this.agentId, count: pluginsWithSchemas.length },
-			"Found plugins with schemas",
+			`[agent] Found plugins with schemas (agentId=${this.agentId}, count=${pluginsWithSchemas.length})`,
 		);
 
 		const isProduction = process.env.NODE_ENV === "production";
