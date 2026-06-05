@@ -107,16 +107,17 @@ implementation plan is preserved at the bottom for archival.
 ## Vision describe (mmproj/mtmd) — wired against mtmd ABI, opt-in build flag
 
 **Status**: wired against the mtmd ABI; requires `ELIZA_ENABLE_VISION=1`
-build flag + image decoding via `sharp` on the JS side; needs runtime
-smoke test before flipping default-on.
+build flag; needs runtime smoke test against a real text GGUF + mmproj GGUF
+before flipping default-on.
 
 The shim now exposes the mtmd pointer-style wrappers (`eliza_mtmd_init`,
-`eliza_mtmd_free`, `eliza_mtmd_bitmap_init_rgb`,
+`eliza_mtmd_free`, `eliza_mtmd_default_marker`,
+`eliza_mtmd_bitmap_init_rgb`, `eliza_mtmd_bitmap_init_from_buf`,
 `eliza_mtmd_input_chunks_init`, `eliza_mtmd_tokenize`,
 `eliza_mtmd_input_chunks_{size,get}`, `eliza_mtmd_input_chunk_{type,n_tokens}`,
-`eliza_mtmd_encode_chunk`, `eliza_mtmd_output_embd`, plus the matching
-`*_free` symbols), gated by `#ifdef ELIZA_ENABLE_VISION` in
-`eliza_llama_shim.c`. Upstream llama.cpp HEAD removed the historical
+`eliza_mtmd_encode_chunk`, `eliza_mtmd_output_embd`,
+`eliza_mtmd_eval_chunks`, plus the matching `*_free` symbols), gated by
+`#ifdef ELIZA_ENABLE_VISION` in `eliza_llama_shim.c`. Upstream llama.cpp HEAD removed the historical
 `examples/llava/` path and consolidated multimodal under `tools/mtmd/`;
 the shim targets that ABI exclusively.
 
@@ -130,8 +131,10 @@ shim's rpath (`@loader_path` on darwin, `$ORIGIN` on linux) resolves
 The TS adapter (`desktop-llama-adapter.ts`) has `bindVision()` that
 returns null when the shim was compiled without the flag.
 `DesktopLlamaAdapter.loadMmproj(mmprojPath)` calls `mtmd_init_from_file`
-against the loaded text model. `describeImage(...)` is currently a stub
-that throws an actionable error — see "Remaining work" below.
+against the loaded text model. `describeImage(...)` now uses
+`mtmd_helper_bitmap_init_from_buf` for image decode, `mtmd_tokenize` for
+prompt+bitmap chunks, `mtmd_helper_eval_chunks` for multimodal KV prefill,
+and the existing sampler/session loop for text generation.
 
 **Default builds skip vision entirely.** No mtmd target, no shim
 vision wrappers, `bindVision()` returns null, `describeImage` throws an
@@ -151,27 +154,9 @@ ELIZA_ENABLE_VISION=1 bun run --cwd packages/app-core \
 records it on `FfiBackendSession.mmprojPath`; `describeImage` reads it
 back and feeds the mtmd ctx with it lazily on first call.
 
-**Remaining work to land the full describeImage path**:
-
-1. JS-side image decode. `args.imageBytes` (PNG/JPEG/WebP) must be
-   decoded to a raw RGB buffer before `eliza_mtmd_bitmap_init_rgb`.
-   `sharp` is in `packages/app-core/package.json` but NOT in
-   `plugins/plugin-local-inference/package.json`. Either add `sharp`
-   as a direct plugin dep or move the decode step into a shared
-   adapter that lives in app-core.
-2. Embedding-batch shim wrapper. After `mtmd_encode_chunk` the
-   adapter needs to drive `llama_decode` with the resulting embedding
-   buffer (`mtmd_get_output_embd`). The current
-   `eliza_llama_batch_get_one` only wraps the *token* variant of
-   `llama_batch`; add a sibling like
-   `eliza_llama_batch_get_one_embd(float*, n_tokens, n_embd)` to
-   `eliza_llama_shim.{c,h}` and bind it in `ShimSymbols`.
-
-Once both gaps are closed, replace the stub body of `describeImage`
-with the documented flow (init mtmd → bitmap_init → input_chunks_init →
-tokenize → encode_chunk per image-chunk → fetch embeddings → drive
-llama_decode → generate loop) and run a runtime smoke test against a
-known mmproj GGUF.
+**Remaining validation**: run a runtime smoke test against a known mmproj
+GGUF on a host built with `ELIZA_ENABLE_VISION=1`. The default build remains
+vision-off until that hardware/mmproj coverage is in place.
 
 ## What's still on the subprocess `FFI runtime` fallback
 

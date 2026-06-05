@@ -10,10 +10,9 @@
  *   - `yolo_detect` against a NULL handle drains `out_count` to 0 and
  *     returns a negative errno (`-EINVAL` from the real runtime).
  *
- * This test was the Phase 1 ENOSYS probe; the file name is kept for
- * git-history continuity. Phase 2 widens the contract to "the real
- * runtime is now linked and reports the documented errno codes" — the
- * stub-era `-ENOSYS` is no longer the expected value here.
+ * This test used to be the ENOSYS probe. Phase 2 widens the contract
+ * to "the real runtime is linked and reports the documented errno
+ * codes"; staged-forward `-ENOSYS` is covered by yolo_runtime_test.
  */
 
 #include "yolo/yolo.h"

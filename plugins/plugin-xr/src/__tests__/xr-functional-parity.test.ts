@@ -110,7 +110,7 @@ const PLUGIN_REGISTRY: Array<{
     manifestPath: "plugins/plugin-companion/src/plugin.ts",
     xrComponentSrc:
       "plugins/plugin-companion/src/components/companion/CompanionView.tsx",
-    requiredTerms: ["useState", "Button", "CompanionView"],
+    requiredTerms: ["CompanionView", "CompanionSceneHost", "EmotePicker"],
   },
   {
     pluginDir: "plugins/plugin-contacts",
@@ -184,7 +184,7 @@ const PLUGIN_REGISTRY: Array<{
     pluginDir: "plugins/plugin-wallet-ui",
     manifestPath: "plugins/plugin-wallet-ui/src/plugin.ts",
     xrComponentSrc: "plugins/plugin-wallet-ui/src/InventoryView.tsx",
-    requiredTerms: ["InventoryView", "Button", "WalletBalancesResponse"],
+    requiredTerms: ["InventoryView", "Button", "useInventoryData"],
   },
   {
     pluginDir: "plugins/plugin-2004scape",
@@ -277,61 +277,68 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
 > = {
   "plugins/plugin-companion": {
     srcFile:
-      "plugins/plugin-companion/src/components/companion/CompanionView.tsx",
+      "plugins/plugin-companion/src/components/companion/CompanionView.interact.ts",
     capabilities: ["terminal-companion-state", "terminal-companion-emotes"],
   },
   "plugins/plugin-contacts": {
-    srcFile: "plugins/plugin-contacts/src/components/ContactsAppView.tsx",
+    srcFile:
+      "plugins/plugin-contacts/src/components/ContactsAppView.interact.ts",
     capabilities: ["terminal-list-contacts", "terminal-create-contact"],
   },
   "plugins/plugin-hyperliquid-app": {
-    srcFile: "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.tsx",
+    srcFile:
+      "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.interact.ts",
     capabilities: ["terminal-hyperliquid-state"],
   },
   "plugins/plugin-lifeops": {
-    srcFile: "plugins/plugin-lifeops/src/components/LifeOpsPageView.tsx",
+    srcFile:
+      "plugins/plugin-lifeops/src/components/LifeOpsPageView.interact.ts",
     capabilities: ["terminal-lifeops-state", "terminal-lifeops-enable"],
   },
   "plugins/plugin-messages": {
-    srcFile: "plugins/plugin-messages/src/components/MessagesAppView.tsx",
+    srcFile:
+      "plugins/plugin-messages/src/components/MessagesAppView.interact.ts",
     capabilities: ["terminal-list-threads", "terminal-send-sms"],
   },
   "plugins/plugin-phone": {
-    srcFile: "plugins/plugin-phone/src/components/PhoneAppView.tsx",
+    srcFile: "plugins/plugin-phone/src/components/PhoneAppView.interact.ts",
     capabilities: ["terminal-phone-state", "terminal-place-call"],
   },
   "plugins/plugin-wallet-ui": {
-    srcFile: "plugins/plugin-wallet-ui/src/InventoryView.tsx",
+    srcFile: "plugins/plugin-wallet-ui/src/InventoryView.interact.ts",
     capabilities: ["terminal-wallet-state"],
   },
   "plugins/plugin-2004scape": {
     srcFile:
-      "plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.tsx",
+      "plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.interact.ts",
     capabilities: ["terminal-2004scape-state", "terminal-2004scape-command"],
   },
   "plugins/plugin-feed": {
-    srcFile: "plugins/plugin-feed/src/ui/FeedOperatorSurface.tsx",
+    srcFile: "plugins/plugin-feed/src/ui/FeedOperatorSurface.interact.ts",
     capabilities: ["get-state", "refresh-agent-status"],
   },
   "plugins/plugin-clawville": {
-    srcFile: "plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx",
+    srcFile:
+      "plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.interact.ts",
     capabilities: ["terminal-clawville-state", "terminal-clawville-command"],
   },
   "plugins/plugin-defense-of-the-agents": {
     srcFile:
-      "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.tsx",
+      "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.interact.ts",
     capabilities: ["terminal-defense-state", "terminal-defense-command"],
   },
   "plugins/plugin-hyperscape": {
-    srcFile: "plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.tsx",
+    srcFile:
+      "plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.interact.ts",
     capabilities: ["terminal-hyperscape-state", "terminal-hyperscape-command"],
   },
   "plugins/plugin-scape": {
-    srcFile: "plugins/plugin-scape/src/ui/ScapeOperatorSurface.tsx",
+    srcFile: "plugins/plugin-scape/src/ui/ScapeOperatorSurface.interact.ts",
     capabilities: ["terminal-scape-state", "terminal-scape-command"],
   },
   "plugins/plugin-screenshare": {
-    srcFile: "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.tsx",
+    srcFile:
+      "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.interact.ts",
     capabilities: ["terminal-screenshare-state", "terminal-screenshare-start"],
   },
   "plugins/plugin-task-coordinator": {
@@ -453,7 +460,8 @@ describe("XR feature-by-feature functional parity — all 24 views", () => {
         !src.includes("useState") &&
         !src.includes("useEffect") &&
         !src.includes("useRef") &&
-        !src.includes("useCallback")
+        !src.includes("useCallback") &&
+        !src.includes("useRenderGuard")
       ) {
         noHooks.push(`${pluginDir}: ${xrComponentSrc}`);
       }

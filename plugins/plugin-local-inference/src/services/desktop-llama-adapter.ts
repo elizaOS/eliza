@@ -15,12 +15,11 @@
  *      open/prefill/next/cancel/close sessions, one sampler chain per
  *      session, single-flight serialised at the runner layer.
  *
- * Implemented surface:
- *   - Text generation, embeddings, slot save/restore, prewarm via the runner,
- *     parallel resize, same-file MTP, and separate-drafter MTP.
- *   - Vision describe validates the mtmd build and mmproj state, but the full
- *     image-bytes-to-embedding path still needs the native embedding-batch shim
- *     wrapper and a direct image decoder dependency.
+	 * Implemented surface:
+	 *   - Text generation, embeddings, slot save/restore, prewarm via the runner,
+	 *     parallel resize, same-file MTP, and separate-drafter MTP.
+	 *   - Vision describe uses the mtmd build flag, mmproj state, native image
+	 *     decode, mtmd chunk evaluation, and the normal sampler loop.
  *   - Same-file MTP speculative decoding: when `LlmStreamConfig` sets
  *     `draftMin/draftMax > 0` with no `draftModelPath`, the session routes
  *     through a native MTP engine (`eliza_llama_mtp_engine_*`) that owns the
@@ -307,6 +306,7 @@ interface ShimSymbols {
  * HEAD (the older `examples/llava/` path has been removed upstream).
  */
 interface VisionShimSymbols {
+	eliza_mtmd_default_marker: () => unknown;
 	eliza_mtmd_init: (
 		mmproj_path: Pointer,
 		text_model: Pointer,
@@ -315,6 +315,11 @@ interface VisionShimSymbols {
 	) => Pointer;
 	eliza_mtmd_free: (ctx: Pointer) => void;
 	eliza_mtmd_bitmap_init_rgb: (nx: number, ny: number, rgb: Pointer) => Pointer;
+	eliza_mtmd_bitmap_init_from_buf: (
+		ctx: Pointer,
+		buf: Pointer,
+		len: bigint,
+	) => Pointer;
 	eliza_mtmd_bitmap_free: (bm: Pointer) => void;
 	eliza_mtmd_input_chunks_init: () => Pointer;
 	eliza_mtmd_input_chunks_free: (c: Pointer) => void;
@@ -335,6 +340,16 @@ interface VisionShimSymbols {
 	eliza_mtmd_input_chunk_n_tokens: (ch: Pointer) => bigint;
 	eliza_mtmd_encode_chunk: (ctx: Pointer, chunk: Pointer) => number;
 	eliza_mtmd_output_embd: (ctx: Pointer) => Pointer;
+	eliza_mtmd_eval_chunks: (
+		ctx: Pointer,
+		lctx: Pointer,
+		chunks: Pointer,
+		nPast: number,
+		seqId: number,
+		nBatch: number,
+		logitsLast: boolean,
+		newNPast: Pointer,
+	) => number;
 }
 
 // === Path resolution =======================================================
@@ -621,6 +636,7 @@ function bindVision(
 	const T = ffi.FFIType;
 	try {
 		const handle = ffi.dlopen<VisionShimSymbols>(libPath, {
+			eliza_mtmd_default_marker: { args: [], returns: T.cstring },
 			eliza_mtmd_init: {
 				args: [T.ptr, T.ptr, T.bool, T.i32],
 				returns: T.ptr,
@@ -628,6 +644,10 @@ function bindVision(
 			eliza_mtmd_free: { args: [T.ptr], returns: T.void },
 			eliza_mtmd_bitmap_init_rgb: {
 				args: [T.u32, T.u32, T.ptr],
+				returns: T.ptr,
+			},
+			eliza_mtmd_bitmap_init_from_buf: {
+				args: [T.ptr, T.ptr, T.u64],
 				returns: T.ptr,
 			},
 			eliza_mtmd_bitmap_free: { args: [T.ptr], returns: T.void },
@@ -649,6 +669,10 @@ function bindVision(
 				returns: T.i32,
 			},
 			eliza_mtmd_output_embd: { args: [T.ptr], returns: T.ptr },
+			eliza_mtmd_eval_chunks: {
+				args: [T.ptr, T.ptr, T.ptr, T.i32, T.i32, T.i32, T.bool, T.ptr],
+				returns: T.i32,
+			},
 		});
 		return handle.symbols;
 	} catch {
@@ -666,6 +690,21 @@ function encodeCString(text: string): Uint8Array {
 	out.set(enc);
 	out[enc.length] = 0;
 	return out;
+}
+
+function readCString(value: unknown, ffi: BunFFIModule): string {
+	if (typeof value === "string") return value;
+	if (value === null || value === undefined) return "";
+	if (typeof value === "object" && "toString" in value) {
+		return (value as { toString(): string }).toString();
+	}
+	if (typeof value === "number") {
+		return new ffi.CString(value).toString();
+	}
+	if (typeof value === "bigint") {
+		return new ffi.CString(Number(value)).toString();
+	}
+	return String(value);
 }
 
 /** Default thread count: half the logical cores (a sensible P-core proxy on Apple Silicon). */
@@ -931,18 +970,11 @@ export class DesktopLlamaAdapter {
 	 *
 	 * Flow:
 	 *   1. Init an mtmd ctx against the loaded text model + mmproj GGUF.
-	 *   2. Decode `args.imageBytes` to raw RGB on the JS side. This step
-	 *      requires an image-decoding library (sharp / jimp). `sharp` is
-	 *      present in `packages/app-core` but NOT in this plugin's deps.
-	 *      Until that's resolved this method throws an actionable error.
-	 *   3. mtmd_bitmap_init_rgb → input_chunks_init → mtmd_tokenize.
-	 *   4. mtmd_encode_chunk per image-chunk; pipe the resulting embedding
-	 *      vector through llama_decode (requires an `embd`-flavour
-	 *      llama_batch — the shim's current `eliza_llama_batch_get_one`
-	 *      only wraps the *token* variant, so a new shim function
-	 *      `eliza_llama_batch_get_one_embd(float*, n, n_embd)` will be
-	 *      needed for the full path).
-	 *   5. Standard generate loop with the user's prompt prefix.
+	 *   2. Decode `args.imageBytes` to an mtmd bitmap via libmtmd's helper.
+	 *   3. input_chunks_init → mtmd_tokenize with one media marker.
+	 *   4. mtmd_helper_eval_chunks drives text decode, image encode,
+	 *      embedding decode, M-RoPE positions, and non-causal toggles.
+	 *   5. Standard generate loop with the existing sampler/session path.
 	 *
 	 * `args.imageBytes` is the raw image (PNG/JPEG/WebP). `args.mmprojPath`
 	 * is the path to the multimodal projector GGUF (e.g. mmproj-eliza-1.gguf).
@@ -965,50 +997,124 @@ export class DesktopLlamaAdapter {
 		if (!ctx || !this.vocabPtr) {
 			throw new Error("[desktop-llama] describeImage before model load");
 		}
+		if (this.loadOpts?.embedding) {
+			throw new Error(
+				"[desktop-llama] describeImage requires a generation context, not embeddings mode",
+			);
+		}
+		if (args.imageBytes.length === 0) {
+			throw new Error("[desktop-llama] describeImage: empty image buffer");
+		}
 		this.loadMmproj(args.mmprojPath);
 		if (!this.mtmdCtxPtr) {
 			throw new Error("[desktop-llama] mtmd ctx unexpectedly null");
 		}
 
-		// Clear KV between image-describe turns so each call starts fresh.
-		if (this.hasDecodedFlags[0]) {
-			const mem = this.llama.llama_get_memory(ctx);
-			this.llama.llama_memory_clear(mem, true);
+		const startedAt = Date.now();
+		const marker =
+			readCString(this.vision.eliza_mtmd_default_marker(), this.ffi) ||
+			"<__media__>";
+		const userPrompt = (args.prompt ?? "Describe what is in this image.").trim();
+		const promptText = userPrompt.includes(marker)
+			? userPrompt
+			: `${marker}\n${userPrompt}`;
+		const promptBuf = encodeCString(promptText);
+
+		const stream = this.openSession({
+			maxTokens: Math.max(1, args.maxTokens ?? 256),
+			temperature: args.temperature ?? 0,
+			topP: 0.9,
+			topK: 40,
+			repeatPenalty: 1.1,
+			slotId: 0,
+			promptCacheKey: null,
+			draftMin: 0,
+			draftMax: 0,
+			draftModelPath: null,
+		});
+		let bitmap: Pointer = 0;
+		let chunks: Pointer = 0;
+		try {
+			const sess = this.requireSession(stream);
+			const visionCtx = this.mtmdCtxPtr;
+			const evalCtx = this.ctxPool[sess.ctxIdx];
+			if (!visionCtx || !evalCtx) {
+				throw new Error("[desktop-llama] describeImage: context gone");
+			}
+
+			bitmap =
+				this.vision.eliza_mtmd_bitmap_init_from_buf(
+					visionCtx,
+					this.ffi.ptr(args.imageBytes),
+					BigInt(args.imageBytes.length),
+				) ?? 0;
+			if (!bitmap) {
+				throw new Error("[desktop-llama] describeImage: image decode failed");
+			}
+			chunks = this.vision.eliza_mtmd_input_chunks_init() ?? 0;
+			if (!chunks) {
+				throw new Error("[desktop-llama] describeImage: chunks allocation failed");
+			}
+			const bitmapPtrs = new BigUint64Array([BigInt(bitmap)]);
+			const tokenizeRc = this.vision.eliza_mtmd_tokenize(
+				visionCtx,
+				chunks,
+				this.ffi.ptr(promptBuf),
+				true,
+				true,
+				this.ffi.ptr(bitmapPtrs),
+				1n,
+			);
+			if (tokenizeRc !== 0) {
+				throw new Error(`[desktop-llama] describeImage tokenize rc=${tokenizeRc}`);
+			}
+
+			const newNPast = new Int32Array(1);
+			const evalRc = this.vision.eliza_mtmd_eval_chunks(
+				visionCtx,
+				evalCtx,
+				chunks,
+				0,
+				0,
+				normalizeBatchSize(this.loadOpts?.nBatch),
+				true,
+				this.ffi.ptr(newNPast),
+			);
+			if (evalRc !== 0) {
+				throw new Error(`[desktop-llama] describeImage eval rc=${evalRc}`);
+			}
+			this.hasDecodedFlags[sess.ctxIdx] = true;
+			const generationStartedAt = Date.now();
+
+			let text = "";
+			let generated = 0;
+			const maxTokens = Math.max(1, args.maxTokens ?? 256);
+			while (generated < maxTokens) {
+				if (args.signal?.aborted) {
+					this.cancelSession(stream);
+					throw new Error("[desktop-llama] describeImage aborted");
+				}
+				const step = this.nextStep(stream, Math.min(32, maxTokens - generated));
+				text += step.text;
+				generated += step.tokens.length;
+				if (step.done) break;
+				if (step.tokens.length === 0) break;
+			}
+
+			return {
+				text,
+				projectorMs: generationStartedAt - startedAt,
+				decodeMs: Date.now() - generationStartedAt,
+			};
+		} finally {
+			if (chunks && this.vision) {
+				this.vision.eliza_mtmd_input_chunks_free(chunks);
+			}
+			if (bitmap && this.vision) {
+				this.vision.eliza_mtmd_bitmap_free(bitmap);
+			}
+			this.closeSession(stream);
 		}
-		// llama.cpp MTP + mtmd/mmproj is still a moving target. Keep the
-		// vision ctx target-only so image embeddings cannot inherit a drafter
-		// attached by a previous text session on the same pooled ctx.
-		this.detachDrafterFromCtx(0);
-
-		// Reference args explicitly so unused-warnings stay quiet while the
-		// native mtmd bridge is partial. Once the JS-side RGB decode +
-		// embedding-batch shim wrapper
-		// land, this method should consume `imageBytes`, `prompt`,
-		// `maxTokens`, `temperature`, and `signal` end-to-end.
-		void args.imageBytes;
-		void args.prompt;
-		void args.maxTokens;
-		void args.temperature;
-		void args.signal;
-
-		// Remaining vision/mtmd bridge work. Two missing pieces:
-		//   1. JS-side image-bytes → RGB decode. `sharp` exists in
-		//      `packages/app-core/package.json` but NOT in
-		//      `plugins/plugin-local-inference/package.json`. Add it as
-		//      a direct dep (or move the decode into a shared adapter
-		//      that lives in app-core) before wiring this up.
-		//   2. Shim wrapper for the embeddings-batch variant of
-		//      `llama_batch` (`llama_batch_get_one` only handles tokens).
-		//      Add e.g. `eliza_llama_batch_get_one_embd(float*, n, n_embd)`
-		//      to `eliza_llama_shim.{c,h}` and bind it in `ShimSymbols`.
-		throw new Error(
-			"[desktop-llama] describeImage (mtmd path) requires native bridge work. " +
-				"Required: (a) image bytes → RGB decode (add `sharp` to " +
-				"plugin-local-inference deps; it is already in app-core) and " +
-				"(b) an embeddings-batch shim wrapper around llama_batch_get_one. " +
-				"Until both land, callers should use the subprocess native " +
-				"vision path.",
-		);
 	}
 
 	/**

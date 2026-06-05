@@ -5142,6 +5142,239 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd packages/examples/roblox typecheck`
   - `git diff --check -- packages/examples/roblox PLACEHOLDER_AUDIT.md`
 
+### plugins/plugin-hyperliquid-app read-only execution wording
+
+- Read `plugins/plugin-hyperliquid-app/CLAUDE.md` and confirmed `AGENTS.md`
+  parity. The package guide states order execution is intentionally disabled:
+  the plugin is a read-only app with GET routes, disabled POST routes, and a
+  `place_order` action that reports the blocked-execution reason.
+- Updated stale README wording that described signing credentials as tied to a
+  pending execution implementation. The README now says signing credentials are
+  status-only because execution is disabled by design.
+- Corrected another README drift item: funding-rate reads are wired to the live
+  Hyperliquid `metaAndAssetCtxs` Info API response, matching `routes.ts` and
+  `PERPETUAL_MARKET kind=funding`.
+- Remaining marker hits are intentional Vitest `stubGlobal`/`unstubAllGlobals`
+  test-double APIs.
+- Verified with:
+  - `diff -q plugins/plugin-hyperliquid-app/CLAUDE.md
+    plugins/plugin-hyperliquid-app/AGENTS.md`
+  - focused marker scan on `plugins/plugin-hyperliquid-app`
+  - `bun run --cwd plugins/plugin-hyperliquid-app test`
+  - `bun run --cwd plugins/plugin-hyperliquid-app build:types`
+  - `git diff --check -- plugins/plugin-hyperliquid-app PLACEHOLDER_AUDIT.md`
+
+### packages/benchmarks/HyperliquidBench HiaN and task dataset wiring
+
+- Read `packages/benchmarks/HyperliquidBench/CLAUDE.md` and confirmed
+  `AGENTS.md` parity. The guide described HiaN and coverage tasks as partly
+  unwired; the source already had most HiaN validator logic but it was not
+  reachable from the evaluator CLI.
+- Wired `hl-evaluator hian` by loading `hian.rs` from `main.rs` while preserving
+  the existing coverage-default CLI. The HiaN command now writes
+  `eval_hian.json`, prints `PASS`/`FAIL`, and keeps the existing coverage
+  invocation unchanged.
+- Made the HiaN ground-truth parser accept the documented camelCase schema,
+  updated the checked-in case to ordered effect expectations, corrected the
+  prompt metadata hash, and adjusted transfer matching to accept the runner's
+  demo `userNonFundingLedgerUpdates` artifact shape.
+- Replaced `scripts/run_hian.sh`'s placeholder exit with a local demo plan that
+  runs `hl-runner --demo` and then invokes `hl-evaluator hian`. Also fixed both
+  `run_hian.sh` and `run_cov.sh` so the documented `-- <runner args>`
+  separator is stripped before forwarding arguments.
+- Added the documented coverage task JSONL files under `dataset/tasks/` and a
+  task README, then narrowed `.gitignore` so this package's benchmark task
+  files are tracked despite the root `tasks/` ignore rule.
+- Reworded trigger-order errors from "not yet supported" to explicit
+  out-of-scope errors, and updated README/guide wording that claimed HiaN or
+  task data was still missing.
+- Remaining marker hits are intentional: planning documents and historical
+  roadmap files under `docs/`, coverage evaluator `incomplete` ack-state
+  terminology, ignored no-op scoring flags in design docs, and demo-safe
+  placeholder wording in the Python prompt guidance.
+- Verified with:
+  - `diff -q packages/benchmarks/HyperliquidBench/CLAUDE.md
+    packages/benchmarks/HyperliquidBench/AGENTS.md`
+  - focused stale-phrase scan on the touched HyperliquidBench source/docs/data
+  - `python3 -m py_compile __main__.py eliza_agent.py types.py`
+  - `bash -n packages/benchmarks/HyperliquidBench/scripts/run_cov.sh
+    packages/benchmarks/HyperliquidBench/scripts/run_hian.sh`
+  - `cargo fmt --check` from `packages/benchmarks/HyperliquidBench`
+  - `cargo test` from `packages/benchmarks/HyperliquidBench`
+  - `OUT_DIR="$(mktemp -d /tmp/eliza-cov.XXXXXX)" NETWORK=local
+    scripts/run_cov.sh dataset/tasks/hl_perp_basic_01.jsonl:1 -- --demo`
+  - `OUT_DIR="$(mktemp -d /tmp/eliza-hian.XXXXXX)"
+    scripts/run_hian.sh dataset/hian/case_128k -- --effect-timeout-ms 100`
+  - `git diff --check -- .gitignore packages/benchmarks/HyperliquidBench
+    PLACEHOLDER_AUDIT.md`
+
+### packages/cloud-frontend settings README drift
+
+- Read `packages/cloud-frontend/CLAUDE.md` and confirmed `AGENTS.md` parity.
+  The scan hit `src/dashboard/settings/_components/README.md`, which described
+  Account, Usage, Billing, APIs, and Analytics settings tabs as placeholder
+  content.
+- Inspected the tab components and found implemented UI/API flows: Account
+  stats/logout, Usage credits/session/quota views, Billing purchases/invoices,
+  API key management, and Analytics controls/metrics. The source marker was a
+  stale README, not missing UI.
+- Updated the README component map, implemented-feature list, and maintenance
+  notes to match the current source. This was documentation-only, so the
+  cloud-frontend visual-review gate was not required.
+- Remaining settings marker hits are intentional form `placeholder` props and
+  `rel="noopener"` link-security strings in TSX.
+- Verified with:
+  - `diff -q packages/cloud-frontend/CLAUDE.md packages/cloud-frontend/AGENTS.md`
+  - focused marker scan on
+    `packages/cloud-frontend/src/dashboard/settings/_components/README.md`
+  - `git diff --check -- packages/cloud-frontend/src/dashboard/settings/_components/README.md
+    PLACEHOLDER_AUDIT.md`
+
+### packages/native/plugins/voice-classifier-cpp converter status wording
+
+- Read `packages/native/plugins/voice-classifier-cpp/CLAUDE.md` and confirmed
+  `AGENTS.md` parity.
+- The guide still said remaining converter branches needed real
+  `discover_*_tensors`, load, and `write_gguf` implementations, especially for
+  `voice_eot_to_gguf.py`. Current source shows all four converter scripts have
+  concrete tensor discovery and GGUF writing paths; audio EOT remains
+  fail-closed at scoring time because the upstream audio-turn graph is not
+  pinned yet.
+- Updated both local guides to describe the actual remaining work: EOT scoring
+  graph selection and parity fixtures, not unfinished converter functions.
+- Remaining marker hits are intentional ABI/backward-compatibility terminology:
+  legacy `"stub"` active-backend strings, `voice_classifier_abi_smoke` no-op
+  close behavior, and EOT `-ENOSYS` fail-closed scoring until an upstream graph
+  is selected.
+- Verified with:
+  - `diff -q packages/native/plugins/voice-classifier-cpp/CLAUDE.md
+    packages/native/plugins/voice-classifier-cpp/AGENTS.md`
+  - `python3 -m py_compile` on all four converter scripts
+  - focused stale-phrase scan on the guides and converter scripts
+  - `git diff --check -- packages/native/plugins/voice-classifier-cpp
+    PLACEHOLDER_AUDIT.md`
+
+### packages/benchmarks/context-bench drift harness wiring
+
+- Read `packages/benchmarks/context-bench/CLAUDE.md` and confirmed
+  `AGENTS.md` parity before editing.
+- The package docs and drift aggregator referenced
+  `scripts/benchmark/drift-harness.ts`, but that TypeScript harness was absent;
+  the local guide also described it as uncommitted, and README/test fixtures
+  still used "not yet implemented" wording.
+- Added `scripts/benchmark/drift-harness.ts` with deterministic dry-run
+  support, OpenAI-compatible real-run calls, planted-fact generation, fixed
+  compaction cadence, JSONL `turn`/`compact`/`probe`/`summary` events,
+  per-kind summary metrics, prompt-stripping baseline handling, and runtime
+  compactor integration for `naive-summary`, `structured-state`,
+  `hierarchical-summary`, and `hybrid-ledger`.
+- Updated the context-bench README and local guides to describe the committed
+  harness and changed skipped-strategy fixtures from "not yet implemented" to
+  explicit "strategy unavailable" semantics. Also tightened a test comment that
+  used "placeholder" for a fixed smoke-test answer.
+- Verified with:
+  - `diff -q packages/benchmarks/context-bench/CLAUDE.md
+    packages/benchmarks/context-bench/AGENTS.md`
+  - focused marker scan on `packages/benchmarks/context-bench` and
+    `scripts/benchmark/drift-harness.ts`
+  - dry-run/aggregate loop for all six strategies:
+    `none`, `prompt-stripping`, `naive-summary`, `structured-state`,
+    `hierarchical-summary`, `hybrid-ledger`
+  - `PYTHONPATH=packages/benchmarks/context-bench python3 -m pytest
+    packages/benchmarks/context-bench/tests -q`
+  - `./node_modules/.bin/biome check scripts/benchmark/drift-harness.ts`
+  - `git diff --check -- packages/benchmarks/context-bench`
+
+### packages/benchmarks/realm P10 supply-chain oracle
+
+- Read `packages/benchmarks/realm/CLAUDE.md` and confirmed `AGENTS.md` parity.
+- The scan hit `README.md`'s "Limitations / stubs" section and a solver test
+  comment. Inspection showed event-coordination scoring is intentionally
+  coverage-based because the paper does not publish numeric oracles, but P10
+  supply-chain scoring only compared declared order cost against budget and
+  lacked an independent reference plan.
+- Added `supply_chain_oracle()` in `solvers.py`: for the current vendored P10
+  schema it picks the cheapest on-time supplier for each component deadline,
+  falls back to the fastest supplier when no on-time supplier exists, and
+  returns reference cost, orders, and budget/on-time details.
+- Wired `_score_supply_chain()` to report `oracle_makespan` from that reference
+  cost and compute optimality from oracle cost versus agent cost. Added a unit
+  test that verifies cheapest on-time supplier selection.
+- Renamed the README section to "Scoring notes", updated P10 wording to the
+  deterministic reference plan, and changed the DARP disconnected-graph test
+  comment from "no-op route" to "empty route".
+- Verified with:
+  - `diff -q packages/benchmarks/realm/CLAUDE.md
+    packages/benchmarks/realm/AGENTS.md`
+  - focused marker scan on `packages/benchmarks/realm`
+  - `python3 -m py_compile packages/benchmarks/realm/solvers.py
+    packages/benchmarks/realm/evaluator.py`
+  - `PYTHONPATH=packages python3 -m pytest packages/benchmarks/realm/tests -q`
+    (38 passed; 3 OR-Tools/SWIG deprecation warnings)
+  - `git diff --check -- packages/benchmarks/realm`
+
+### packages/native/plugins/yolo-cpp Phase 2 runtime wording
+
+- Read `packages/native/plugins/yolo-cpp/CLAUDE.md` and confirmed
+  `AGENTS.md` parity before editing.
+- The package still had Phase 1 wording for `src/yolo_stub.c`, stub backend
+  strings, and a three-test build even though the current source is a Phase 2
+  runtime: GGUF reader, letterbox preprocessor, scalar kernels,
+  `yolo_runtime.c`, shared library target, and five CTests.
+- Renamed the ABI smoke probe from `yolo_stub_smoke` to `yolo_abi_smoke` in
+  CMake, the test filename, and the RISC-V artifact gate. Updated README,
+  local guides, header comments, and internal comments to describe the real
+  `cpu-ref` runtime and the explicit staged-forward `-ENOSYS` path.
+- The full YOLO forward pass remains a documented Phase 3 task; this cleanup
+  removes stale stub claims while preserving the fail-closed detection contract
+  and existing fallback behavior in the TS binding.
+- Remaining marker hits are intentional test wording for `yolo_close(NULL)` and
+  a letterbox identity/no-resize case.
+- Verified with:
+  - `diff -q packages/native/plugins/yolo-cpp/CLAUDE.md
+    packages/native/plugins/yolo-cpp/AGENTS.md`
+  - focused stale-phrase scan on `packages/native/plugins/yolo-cpp` and
+    `scripts/check-riscv64-artifacts.sh`
+  - `cmake -B packages/native/plugins/yolo-cpp/build -S
+    packages/native/plugins/yolo-cpp`
+  - `cmake --build packages/native/plugins/yolo-cpp/build -j`
+  - `ctest --test-dir packages/native/plugins/yolo-cpp/build
+    --output-on-failure` (5/5 passed)
+  - `git diff --check -- packages/native/plugins/yolo-cpp
+    scripts/check-riscv64-artifacts.sh PLACEHOLDER_AUDIT.md`
+
+### plugins/plugin-vision BlazeFace shim wording
+
+- Read `plugins/plugin-vision/CLAUDE.md` and confirmed `AGENTS.md` parity.
+- The guide labelled `face-detector-mediapipe.ts` as a deprecated BlazeFace
+  "stub". The source is an intentional migration shim: it reports unavailable
+  and throws clear ONNX-backend-removed errors, while production uses the
+  configured face-recognition backend.
+- Updated both local guides to call it a migration shim instead of a stub.
+- Remaining plugin-vision marker hits are intentional test helper stubs and the
+  WS1 memory-arbiter bridge's documented no-op `acquire`/`release` adapter.
+- Verified with:
+  - `diff -q plugins/plugin-vision/CLAUDE.md plugins/plugin-vision/AGENTS.md`
+  - focused marker scan on `plugins/plugin-vision`
+  - `git diff --check -- plugins/plugin-vision/CLAUDE.md
+    plugins/plugin-vision/AGENTS.md PLACEHOLDER_AUDIT.md`
+
+### packages/alberta security reward baseline wording
+
+- `packages/alberta` has no package-local `CLAUDE.md` / `AGENTS.md`; only a
+  README is present.
+- The scan hit `alberta_framework/security.py`, where `SecurityRewardWeights`
+  described its defaults as conservative placeholders. The values are the real
+  integration-test baseline weights used by the security-gym contract, not
+  missing production values.
+- Updated the docstring to call them conservative integration-test baselines
+  and kept the production guidance to record exact rollout weights.
+- Verified with:
+  - `python3 -m py_compile packages/alberta/alberta_framework/security.py`
+  - focused marker scan on `packages/alberta/alberta_framework/security.py`
+  - `git diff --check -- packages/alberta/alberta_framework/security.py
+    PLACEHOLDER_AUDIT.md`
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.

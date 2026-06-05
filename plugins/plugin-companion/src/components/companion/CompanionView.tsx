@@ -16,24 +16,78 @@ import { resolveCompanionInferenceNotice } from "./resolve-companion-inference-n
  */
 const CompanionViewOverlay = memo(function CompanionViewOverlay() {
   useRenderGuard("CompanionView");
+  const emoteCategories = countByCategory();
+  const categoryCount = Object.keys(emoteCategories).length;
+
   return (
     <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
       <EmotePicker />
 
       <div
-        className="absolute bottom-4 left-4 z-20 flex items-center gap-2 rounded-full border border-white/15 bg-black/50 px-3 py-2 backdrop-blur-md"
+        className="absolute left-4 top-4 z-20 w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-white/15 bg-black/55 p-3 text-white shadow-2xl backdrop-blur-md"
         title="Companion avatar surface"
       >
-        <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-        <span className="text-2xs font-semibold uppercase tracking-normal text-white/80">
-          Companion avatar surface
-        </span>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_0_4px_rgba(52,211,153,0.18)]" />
+            <span className="truncate text-xs font-semibold uppercase tracking-normal text-white/80">
+              Companion
+            </span>
+          </div>
+          <span className="rounded-full border border-emerald-300/25 bg-emerald-400/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-normal text-emerald-100">
+            Ready
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-2">
+          <CompanionMetric icon="◉" label="Avatar" value="Scene live" />
+          <CompanionMetric
+            icon="☻"
+            label="Agent"
+            value={`${AGENT_EMOTE_CATALOG.length} emotes`}
+          />
+          <CompanionMetric
+            icon="◆"
+            label="Catalog"
+            value={`${EMOTE_CATALOG.length} / ${categoryCount}`}
+          />
+          <CompanionMetric icon="⌁" label="Chat" value="Overlay relay" />
+        </div>
       </div>
 
       <div className="min-h-0 flex-1" />
     </div>
   );
 });
+
+function CompanionMetric({
+  icon,
+  label,
+  value,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex min-h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/8 px-3 py-2">
+      <span
+        aria-hidden
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/10 text-sm text-white"
+      >
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <div className="text-[10px] font-semibold uppercase tracking-normal text-white/45">
+          {label}
+        </div>
+        <div className="truncate text-xs font-semibold text-white/90">
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /**
  * CompanionView — thin shell that composes CompanionSceneHost + overlay.

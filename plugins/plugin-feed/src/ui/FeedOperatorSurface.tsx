@@ -10,7 +10,6 @@ import {
   formatDetailTimestamp,
   SurfaceBadge,
   SurfaceCard,
-  SurfaceEmptyState,
   SurfaceSection,
   selectLatestRunForApp,
   toneForHealthState,
@@ -354,10 +353,56 @@ export function FeedOperatorSurface({
 
   if (!run) {
     return (
-      <SurfaceEmptyState
-        title="Feed operator"
-        body="Launch Feed to open the live market dashboard."
-      />
+      <section className="space-y-3" data-testid="feed-operator-ready">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
+            Feed Operator
+          </div>
+          <SurfaceBadge tone="warn">Standby</SurfaceBadge>
+          <SurfaceBadge tone="accent">Markets</SurfaceBadge>
+          <span className="ml-auto text-2xs uppercase tracking-[0.18em] text-muted">
+            /feed
+          </span>
+        </div>
+
+        <SurfaceSection title="Market Dashboard">
+          <div className="space-y-2">
+            <SurfaceCard
+              label="Agent"
+              value="Awaiting Feed session"
+              tone="warn"
+              subtitle="Status, autonomy, posting, and trading controls load after launch."
+            />
+            <SurfaceCard
+              label="Portfolio"
+              value="Wallet · PnL · positions"
+              subtitle="Balances and open market exposure replace this readiness state."
+            />
+            <SurfaceCard
+              label="Market Watch"
+              value="Prediction prices"
+              tone="accent"
+              subtitle="Top markets, recent trades, and team totals render in one column."
+            />
+            <SurfaceCard
+              label="Operator Relay"
+              value="Overlay-chat friendly"
+              subtitle="Use the global chat to steer Feed; this surface shows live state."
+            />
+          </div>
+        </SurfaceSection>
+
+        <SurfaceSection title="Links">
+          <div className="space-y-2">
+            <SurfaceCard label="Live view" value="/feed" />
+            <SurfaceCard label="Terminal view" value="/feed/tui" />
+            <SurfaceCard
+              label="API status"
+              value="/api/apps/feed/agent/status"
+            />
+          </div>
+        </SurfaceSection>
+      </section>
     );
   }
 

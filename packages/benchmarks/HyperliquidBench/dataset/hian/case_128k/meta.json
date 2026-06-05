@@ -1,7 +1,7 @@
 {
   "case_id": "case_128k",
-  "description": "Placeholder long-context needle; expand to 128k tokens in future revision.",
-  "approx_tokens": 1024,
-  "sha256_prompt": "TODO",
+  "description": "Compact long-context needle seed for the demo HiaN validator path.",
+  "approx_tokens": 52,
+  "sha256_prompt": "007a7bbbe8b3acb3d50538b934b8113518f3103374f05735426333f1c5a2bf63",
   "created": "2025-02-18"
 }

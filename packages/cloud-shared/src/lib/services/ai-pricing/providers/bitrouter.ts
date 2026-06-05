@@ -45,6 +45,36 @@ function nestedPrice(pricing: Record<string, unknown>, group: string, key: strin
   return (value as Record<string, unknown>)[key];
 }
 
+const TOKENS_PER_MILLION = 1_000_000;
+
+/**
+ * Resolves a per-token unit price from a BitRouter catalog `pricing` object.
+ *
+ * BitRouter exposes two shapes with DIFFERENT units:
+ *  - legacy flat field (`prompt` / `completion`): USD **per token** (OpenRouter
+ *    form) — used as-is;
+ *  - structured field (`input_tokens.no_cache` / `output_tokens.text`): USD
+ *    **per million tokens** — divided by 1e6 to normalize to per token.
+ *
+ * The catalog stores per-token unit prices, so the per-million form must be
+ * converted or every cost is inflated ~1,000,000× (e.g. claude-sonnet at
+ * input_tokens.no_cache=3 would bill $3/token instead of $0.000003/token).
+ */
+function resolveTokenUnitPrice(
+  pricing: Record<string, unknown>,
+  flatKey: "prompt" | "completion",
+  group: "input_tokens" | "output_tokens",
+  nestedKey: string,
+): number | null {
+  const flat = parseNumericPrice(pricing[flatKey]);
+  if (flat != null) return flat;
+
+  const perMillion = parseNumericPrice(nestedPrice(pricing, group, nestedKey));
+  if (perMillion != null) return perMillion / TOKENS_PER_MILLION;
+
+  return null;
+}
+
 export function buildBitRouterPreparedEntries(
   model: BitRouterCatalogModel,
 ): PreparedPricingEntry[] {
@@ -77,9 +107,7 @@ export function buildBitRouterPreparedEntries(
   });
 
   const entries: PreparedPricingEntry[] = [];
-  const promptPrice = parseNumericPrice(
-    pricing.prompt ?? nestedPrice(pricing, "input_tokens", "no_cache"),
-  );
+  const promptPrice = resolveTokenUnitPrice(pricing, "prompt", "input_tokens", "no_cache");
   if (promptPrice != null) {
     entries.push(buildEntry(model.id, "input", promptPrice));
     if (baseId !== null) {
@@ -87,9 +115,7 @@ export function buildBitRouterPreparedEntries(
     }
   }
 
-  const completionPrice = parseNumericPrice(
-    pricing.completion ?? nestedPrice(pricing, "output_tokens", "text"),
-  );
+  const completionPrice = resolveTokenUnitPrice(pricing, "completion", "output_tokens", "text");
   if (completionPrice != null) {
     entries.push(buildEntry(model.id, "output", completionPrice));
     if (baseId !== null) {

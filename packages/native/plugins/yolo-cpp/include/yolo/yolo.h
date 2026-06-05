@@ -6,10 +6,10 @@
  * Upstream:
  *   https://github.com/ultralytics/ultralytics
  *
- * This header is the *interface* that the eventual ggml-backed
- * implementation must satisfy. The companion stub in
- * `src/yolo_stub.c` returns ENOSYS for every entry point so callers
- * can compile and link against this library while the real port lands.
+ * This header is the interface that the native runtime in
+ * `src/yolo_runtime.c` satisfies. The runtime can load and validate
+ * YOLO GGUF files today; `yolo_detect` reports `-ENOSYS` only for the
+ * staged forward pass until the backbone/neck/head schedule lands.
  *
  * One head is exposed:
  *   1. yolov8n / yolov11n — COCO-pretrained 80-class object detector.
@@ -26,8 +26,9 @@
  * the caller's own mutex.
  *
  * Error handling: all entry points return `int` — zero on success,
- * negative `errno`-style codes on failure. The stub returns `-ENOSYS`
- * so callers can probe for "real" availability with a single call.
+ * negative `errno`-style codes on failure. The staged forward path
+ * returns `-ENOSYS` so callers can probe native detection readiness
+ * with a single call after opening a GGUF successfully.
  */
 
 #ifndef YOLO_YOLO_H
@@ -90,8 +91,8 @@ typedef struct yolo_session *yolo_handle;
  * Open a session against a YOLO GGUF file produced by
  * `scripts/yolo_to_gguf.py`. The GGUF must declare its `yolo.detector`
  * key as one of the pinned variants above. Returns 0 on success and
- * writes the new handle into `*out`. Returns `-ENOSYS` from the stub,
- * `-ENOENT` for missing GGUF, `-EINVAL` for shape/version mismatch.
+ * writes the new handle into `*out`. Returns `-ENOENT` for missing
+ * GGUF and `-EINVAL` for shape/version mismatch.
  */
 int yolo_open(const char *gguf_path, yolo_handle *out);
 
@@ -122,8 +123,8 @@ int yolo_close(yolo_handle h);
 
 /*
  * Capability string of the active backend, e.g. "ggml-cpu",
- * "ggml-vulkan", "ggml-metal", "stub". Reflects the *runtime*-selected
- * path. The stub returns "stub".
+ * "ggml-vulkan", "ggml-metal", "cpu-ref". Reflects the
+ * *runtime*-selected path.
  */
 const char *yolo_active_backend(void);
 

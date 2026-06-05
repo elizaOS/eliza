@@ -5,7 +5,6 @@ import {
   formatDetailTimestamp,
   SurfaceBadge,
   SurfaceCard,
-  SurfaceEmptyState,
   SurfaceSection,
   selectLatestRunForApp,
   toneForHealthState,
@@ -651,10 +650,53 @@ export function ScapeOperatorSurface({
 
   if (!run) {
     return (
-      <SurfaceEmptyState
-        title="'scape operator surface"
-        body="Launch 'scape to watch the agent spawn in xRSPS, then steer it from here with natural-language directives."
-      />
+      <section className="space-y-3" data-testid="scape-operator-ready">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
+            &apos;scape Operator
+          </div>
+          <SurfaceBadge tone="warn">Standby</SurfaceBadge>
+          <SurfaceBadge tone="accent">xRSPS</SurfaceBadge>
+          <span className="ml-auto text-2xs uppercase tracking-[0.18em] text-muted">
+            /scape
+          </span>
+        </div>
+
+        <SurfaceSection title="Spawn Dashboard">
+          <div className="space-y-2">
+            <SurfaceCard
+              label="Bot SDK"
+              value="Waiting for token"
+              tone="warn"
+              subtitle="Connection, auth, spawn, and reconnect states render here."
+            />
+            <SurfaceCard
+              label="Agent"
+              value="Character not spawned"
+              subtitle="Combat, HP, position, run energy, and tick appear after connect."
+            />
+            <SurfaceCard
+              label="Journal"
+              value="Goals and memories"
+              tone="accent"
+              subtitle="The entity journal, active goal, and recent memories fill this column."
+            />
+            <SurfaceCard
+              label="Nearby"
+              value="NPCs · players · items"
+              subtitle="Perception lists replace this summary as soon as frames arrive."
+            />
+          </div>
+        </SurfaceSection>
+
+        <SurfaceSection title="Operator Paths">
+          <div className="space-y-2">
+            <SurfaceCard label="Live view" value="/scape" />
+            <SurfaceCard label="Terminal view" value="/scape/tui" />
+            <SurfaceCard label="Viewer client" value="xRSPS embedded app" />
+          </div>
+        </SurfaceSection>
+      </section>
     );
   }
 

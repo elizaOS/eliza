@@ -11,8 +11,8 @@ const internalJwtFile =
   process.env.BITROUTER_INTERNAL_JWT_FILE || "/data/internal.jwt";
 const auditMode = "buffer-v1";
 const cerebrasPricingPerMillion = new Map([
-  ["gpt-oss-120b", { input: 0.35, output: 0.75 }],
-  ["zai-glm-4.7", { input: 2.25, output: 2.75 }],
+  ["gpt-oss-120b", { input: 0.35, cacheRead: 0, cacheWrite: 0, output: 0.75 }],
+  ["zai-glm-4.7", { input: 2.25, cacheRead: 0, cacheWrite: 0, output: 2.75 }],
 ]);
 
 if (!token) {
@@ -89,21 +89,42 @@ function auditJsonCompletionCost(response, requestedModel, responseBody) {
     if (!pricing) return;
 
     const usage = body.usage || {};
-    const inputTokens = numberFromUsage(
+    const inputTotalTokens = numberFromUsage(
       usage.prompt_tokens ?? usage.input_tokens,
+    );
+    const cachedInputTokens = numberFromUsage(
+      usage.prompt_tokens_details?.cached_tokens ??
+        usage.input_tokens_details?.cached_tokens ??
+        usage.input_token_details?.cached_tokens,
+    );
+    const cacheWriteTokens = numberFromUsage(
+      usage.prompt_tokens_details?.cache_write_tokens ??
+        usage.input_tokens_details?.cache_write_tokens ??
+        usage.input_token_details?.cache_write_tokens,
+    );
+    const uncachedInputTokens = Math.max(
+      0,
+      inputTotalTokens - cachedInputTokens - cacheWriteTokens,
     );
     const outputTokens = numberFromUsage(
       usage.completion_tokens ?? usage.output_tokens,
     );
     const costUsd =
-      (inputTokens * pricing.input + outputTokens * pricing.output) / 1_000_000;
+      (uncachedInputTokens * pricing.input +
+        cachedInputTokens * pricing.cacheRead +
+        cacheWriteTokens * pricing.cacheWrite +
+        outputTokens * pricing.output) /
+      1_000_000;
 
     console.log(
       JSON.stringify({
         event: "bitrouter_proxy_usage_cost",
         provider: "cerebras",
         model,
-        input_tokens: inputTokens,
+        input_tokens: inputTotalTokens,
+        uncached_input_tokens: uncachedInputTokens,
+        cached_input_tokens: cachedInputTokens,
+        cache_write_tokens: cacheWriteTokens,
         output_tokens: outputTokens,
         cost_usd: Number(costUsd.toFixed(8)),
       }),

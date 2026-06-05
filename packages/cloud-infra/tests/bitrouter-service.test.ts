@@ -27,8 +27,12 @@ describe("BitRouter Railway service", () => {
     expect(proxy).toContain("BITROUTER_PROXY_TOKEN");
     expect(proxy).toContain("BITROUTER_INTERNAL_JWT_FILE");
     expect(proxy).toContain("bitrouter_proxy_usage_cost");
-    expect(proxy).toContain('"gpt-oss-120b", { input: 0.35, output: 0.75 }');
-    expect(proxy).toContain('"zai-glm-4.7", { input: 2.25, output: 2.75 }');
+    expect(proxy).toContain(
+      '"gpt-oss-120b", { input: 0.35, cacheRead: 0, cacheWrite: 0, output: 0.75 }',
+    );
+    expect(proxy).toContain(
+      '"zai-glm-4.7", { input: 2.25, cacheRead: 0, cacheWrite: 0, output: 2.75 }',
+    );
     expect(proxy).toContain("header === `Bearer $");
     expect(proxy).toContain(
       'headers.set("authorization", getInternalAuthorization())',
@@ -75,12 +79,12 @@ describe("BitRouter Railway service", () => {
     expect(
       config.providers.cerebras?.models?.["gpt-oss-120b"]?.pricing,
     ).toEqual({
-      input_tokens: { no_cache: 0.35, cache_read: 0.35, cache_write: 0.35 },
+      input_tokens: { no_cache: 0.35, cache_read: 0, cache_write: 0 },
       output_tokens: { text: 0.75, reasoning: 0 },
     });
     expect(config.providers.cerebras?.models?.["zai-glm-4.7"]?.pricing).toEqual(
       {
-        input_tokens: { no_cache: 2.25, cache_read: 2.25, cache_write: 2.25 },
+        input_tokens: { no_cache: 2.25, cache_read: 0, cache_write: 0 },
         output_tokens: { text: 2.75, reasoning: 0 },
       },
     );
@@ -90,7 +94,7 @@ describe("BitRouter Railway service", () => {
         service_id: "gpt-oss-120b",
       });
       expect(config.models[route]?.pricing).toEqual({
-        input_tokens: { no_cache: 0.35, cache_read: 0.35, cache_write: 0.35 },
+        input_tokens: { no_cache: 0.35, cache_read: 0, cache_write: 0 },
         output_tokens: { text: 0.75, reasoning: 0 },
       });
     }
@@ -100,7 +104,7 @@ describe("BitRouter Railway service", () => {
         service_id: "zai-glm-4.7",
       });
       expect(config.models[route]?.pricing).toEqual({
-        input_tokens: { no_cache: 2.25, cache_read: 2.25, cache_write: 2.25 },
+        input_tokens: { no_cache: 2.25, cache_read: 0, cache_write: 0 },
         output_tokens: { text: 2.75, reasoning: 0 },
       });
     }

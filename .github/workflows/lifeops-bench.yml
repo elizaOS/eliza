@@ -124,12 +124,27 @@ jobs:
 
       - name: Verify Cerebras wiring
         if: steps.gate.outputs.skip != 'true'
+        id: cerebras
         env:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-        run: bun run lifeops:verify-cerebras
+        run: |
+          set +e
+          bun run lifeops:verify-cerebras 2>&1 | tee verify-cerebras.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "provider-throttled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if grep -Eq 'cerebras error 429|too_many_requests_error|too_many_tokens_error|queue_exceeded|request_quota_exceeded|token_quota_exceeded|Tokens per day limit exceeded' verify-cerebras.log; then
+            echo "::notice::LifeOps benchmark skipped — Cerebras is currently rate limited or queue saturated."
+            echo "provider-throttled=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit "$status"
 
       - name: Check OpenClaw CLI
-        if: steps.gate.outputs.skip != 'true' && matrix.agent == 'openclaw'
+        if: steps.gate.outputs.skip != 'true' && steps.cerebras.outputs.provider-throttled != 'true' && matrix.agent == 'openclaw'
         id: openclaw
         run: |
           set -euo pipefail
@@ -142,7 +157,7 @@ jobs:
           fi
 
       - name: Run lifeops multi-agent bench (matrix leg)
-        if: steps.gate.outputs.skip != 'true' && steps.openclaw.outputs.skip != 'true'
+        if: steps.gate.outputs.skip != 'true' && steps.cerebras.outputs.provider-throttled != 'true' && steps.openclaw.outputs.skip != 'true'
         id: run
         env:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
@@ -152,7 +167,8 @@ jobs:
           set -e
           RUN_DIR="${GITHUB_WORKSPACE}/runs/lifeops-${ELIZA_BENCH_AGENT}-${GITHUB_RUN_ID}"
           mkdir -p "$RUN_DIR/${ELIZA_BENCH_AGENT}"
-          lifeops-bench \
+          set +e
+          timeout 1200s lifeops-bench \
             --agent "$ELIZA_BENCH_AGENT" \
             --suite full \
             --limit "$ELIZA_BENCH_LIMIT" \
@@ -162,6 +178,17 @@ jobs:
             --per-scenario-timeout-s 300 \
             --output-dir "$RUN_DIR/${ELIZA_BENCH_AGENT}" \
             2>&1 | tee lifeops-full.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            if grep -Eq 'cerebras error 429|too_many_requests_error|too_many_tokens_error|queue_exceeded|request_quota_exceeded|token_quota_exceeded|Tokens per day limit exceeded' lifeops-full.log; then
+              echo "::notice::LifeOps benchmark skipped — Cerebras quota or rate limit was reached during benchmark execution."
+              echo "provider-throttled=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            exit "$status"
+          fi
+          echo "provider-throttled=false" >> "$GITHUB_OUTPUT"
           echo "RUN_DIR=$RUN_DIR" | tee -a lifeops-full.log
 
           RESULT_JSON=$(ls -t "$RUN_DIR/${ELIZA_BENCH_AGENT}"/lifeops_*.json 2>/dev/null | head -n1 || true)
@@ -194,7 +221,7 @@ jobs:
           echo "run-id=$(basename "$RUN_DIR")" >> "$GITHUB_OUTPUT"
 
       - name: Upload run artifacts
-        if: steps.gate.outputs.skip != 'true' && always() && steps.run.outputs.run-dir != ''
+        if: steps.gate.outputs.skip != 'true' && steps.cerebras.outputs.provider-throttled != 'true' && steps.run.outputs.provider-throttled != 'true' && always() && steps.run.outputs.run-dir != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: lifeops-run-${{ matrix.agent }}-${{ github.run_id }}
@@ -208,7 +235,7 @@ jobs:
           retention-days: 30
 
       - name: Annotate PR with side-by-side summary
-        if: steps.gate.outputs.skip != 'true' && github.event_name == 'pull_request' && steps.run.outputs.run-dir != ''
+        if: steps.gate.outputs.skip != 'true' && steps.cerebras.outputs.provider-throttled != 'true' && steps.run.outputs.provider-throttled != 'true' && github.event_name == 'pull_request' && steps.run.outputs.run-dir != ''
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
           RUN_DIR: ${{ steps.run.outputs.run-dir }}
@@ -249,7 +276,12 @@ jobs:
         run: |
           echo "::notice::LifeOps benchmark skipped — CEREBRAS_API_KEY is not configured for this repo."
 
+      - name: Cerebras throttled notice
+        if: steps.gate.outputs.skip != 'true' && (steps.cerebras.outputs.provider-throttled == 'true' || steps.run.outputs.provider-throttled == 'true')
+        run: |
+          echo "::notice::LifeOps benchmark skipped — Cerebras is currently rate limited or queue saturated."
+
       - name: OpenClaw skipped notice
-        if: steps.gate.outputs.skip != 'true' && matrix.agent == 'openclaw' && steps.openclaw.outputs.skip == 'true'
+        if: steps.gate.outputs.skip != 'true' && steps.cerebras.outputs.provider-throttled != 'true' && matrix.agent == 'openclaw' && steps.openclaw.outputs.skip == 'true'
         run: |
           echo "::notice::LifeOps openclaw benchmark skipped — OpenClaw CLI is not installed in this runner."

@@ -4,7 +4,6 @@ import {
   formatDetailTimestamp,
   SurfaceBadge,
   SurfaceCard,
-  SurfaceEmptyState,
   SurfaceSection,
   selectLatestRunForApp,
   toneForHealthState,
@@ -935,10 +934,65 @@ export function TwoThousandFourScapeOperatorSurface({
 
   if (!run) {
     return (
-      <SurfaceEmptyState
-        title="2004scape operator surface"
-        body="Launch 2004scape to verify auto-login, background runtime, and the live agent loop here."
-      />
+      <section className="space-y-3" data-testid="2004scape-operator-ready">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
+            2004scape Operator
+          </div>
+          <SurfaceBadge tone="warn">Standby</SurfaceBadge>
+          <SurfaceBadge tone="accent">Bot SDK</SurfaceBadge>
+          <span className="ml-auto text-2xs uppercase tracking-[0.18em] text-muted">
+            /2004scape
+          </span>
+        </div>
+
+        <SurfaceSection title="Launch Dashboard">
+          <div className="space-y-2">
+            <SurfaceCard
+              label="Gateway"
+              value="Waiting for RS SDK bridge"
+              tone="warn"
+              subtitle="WebSocket gateway, browser client, and BotSDK attach here."
+            />
+            <SurfaceCard
+              label="Autoplay Loop"
+              value="15s planner cadence"
+              tone="accent"
+              subtitle="Provider context feeds goals, map area, inventory, combat, and dialog."
+            />
+            <SurfaceCard
+              label="Auto-login"
+              value="Credentials staged at launch"
+              subtitle="Bot name, password, and viewer session are checked before the iframe opens."
+            />
+            <SurfaceCard
+              label="Operator Chat"
+              value="Use overlay chat after launch"
+              subtitle="The view keeps state and controls; steering language belongs in the global chat."
+            />
+          </div>
+        </SurfaceSection>
+
+        <SurfaceSection title="Run Surface">
+          <div className="space-y-2">
+            <SurfaceCard
+              label="Live Player"
+              value="HP · coords · combat style"
+              subtitle="Player telemetry appears as soon as the game client syncs."
+            />
+            <SurfaceCard
+              label="Nearby Targets"
+              value="NPCs · objects · ground items"
+              subtitle="Nearest actionable targets replace this readiness summary."
+            />
+            <SurfaceCard
+              label="Game Feed"
+              value="Dialog · tutorial · activity"
+              subtitle="Recent game messages and planner actions stream into this column."
+            />
+          </div>
+        </SurfaceSection>
+      </section>
     );
   }
 

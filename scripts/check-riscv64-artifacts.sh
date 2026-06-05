@@ -344,7 +344,7 @@ NATIVE_PLUGINS=(
 
     "yolo-cpp             packages/native/plugins/yolo-cpp/build/riscv64/libyolo.a"
     "yolo-cpp             packages/native/plugins/yolo-cpp/build/riscv64/libyolo.so"
-    "yolo-cpp             packages/native/plugins/yolo-cpp/build/riscv64/yolo_stub_smoke"
+    "yolo-cpp             packages/native/plugins/yolo-cpp/build/riscv64/yolo_abi_smoke"
     "yolo-cpp             packages/native/plugins/yolo-cpp/build/riscv64/yolo_classes_test"
     "yolo-cpp             packages/native/plugins/yolo-cpp/build/riscv64/yolo_letterbox_test"
     "yolo-cpp             packages/native/plugins/yolo-cpp/build/riscv64/yolo_nms_test"

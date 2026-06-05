@@ -6,7 +6,6 @@ import {
   formatDetailTimestamp,
   SurfaceBadge,
   SurfaceCard,
-  SurfaceEmptyState,
   SurfaceSection,
   selectLatestRunForApp,
   toneForHealthState,
@@ -297,10 +296,53 @@ export function HyperscapeOperatorSurface({
 
   if (!run) {
     return (
-      <SurfaceEmptyState
-        title="Hyperscape host surface"
-        body="Launch Hyperscape to verify auth, follow-target attachment, and host-side recovery controls around the native embedded agent screen."
-      />
+      <section className="space-y-3" data-testid="hyperscape-operator-ready">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
+            Hyperscape Host
+          </div>
+          <SurfaceBadge tone="warn">Standby</SurfaceBadge>
+          <SurfaceBadge tone="accent">Wallet Auth</SurfaceBadge>
+          <span className="ml-auto text-2xs uppercase tracking-[0.18em] text-muted">
+            /hyperscape
+          </span>
+        </div>
+
+        <SurfaceSection title="Host Dashboard">
+          <div className="space-y-2">
+            <SurfaceCard
+              label="Auth"
+              value="Wallet login pending"
+              tone="warn"
+              subtitle="EVM wallet auth and postMessage credentials are checked on launch."
+            />
+            <SurfaceCard
+              label="Follow Target"
+              value="Character attach point"
+              subtitle="Character ID and follow entity populate once the session resolves."
+            />
+            <SurfaceCard
+              label="Viewer"
+              value="Native embedded screen"
+              tone="accent"
+              subtitle="Attachment, health, and recovery controls replace this standby state."
+            />
+            <SurfaceCard
+              label="Relay"
+              value="Overlay chat for steering"
+              subtitle="This surface stays focused on state, auth, and recovery."
+            />
+          </div>
+        </SurfaceSection>
+
+        <SurfaceSection title="Recovery Paths">
+          <div className="space-y-2">
+            <SurfaceCard label="Reconnect viewer" value="Session refresh" />
+            <SurfaceCard label="Re-auth" value="Wallet token bootstrap" />
+            <SurfaceCard label="Terminal view" value="/hyperscape/tui" />
+          </div>
+        </SurfaceSection>
+      </section>
     );
   }
 
