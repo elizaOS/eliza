@@ -1,0 +1,18 @@
+{
+  "package": "@madeonsol/plugin-madeonsol",
+  "repository": "github:LamboPoewert/plugin-madeonsol",
+  "kind": "plugin",
+  "description": "Real-time Solana memecoin intelligence for elizaOS agents — KOL trade feeds from 1,000+ tracked wallets, multi-KOL coordination signals, pump.fun deployer reputation, and wallet PnL. Auth via MadeOnSol API key or x402 USDC micropayments.",
+  "homepage": "https://github.com/LamboPoewert/plugin-madeonsol",
+  "version": "1.9.0",
+  "tags": [
+    "solana",
+    "kol",
+    "memecoin",
+    "smart-money",
+    "trading",
+    "x402",
+    "deployer-hunter",
+    "copy-trading"
+  ]
+}
