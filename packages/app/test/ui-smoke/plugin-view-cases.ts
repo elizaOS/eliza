@@ -3,6 +3,13 @@ export type ViewCase = {
   viewType: "gui" | "tui";
   path: string;
   shellPill: "expected" | "suppressed";
+  /**
+   * "text" (default) views render readable copy and are audited for it.
+   * "canvas" views (e.g. the avatar-only companion) render a 3D scene with no
+   * readable text by design — they are gated on mounting their canvas root,
+   * not on visible text.
+   */
+  content: "text" | "canvas";
 };
 
 type ViewCaseTuple = readonly [
@@ -10,13 +17,14 @@ type ViewCaseTuple = readonly [
   viewType: ViewCase["viewType"],
   path: string,
   options?: {
-    shellPill: ViewCase["shellPill"];
+    shellPill?: ViewCase["shellPill"];
+    content?: ViewCase["content"];
   },
 ];
 
 export const VIEW_CASES: ViewCase[] = (
   [
-    ["companion", "gui", "/companion"],
+    ["companion", "gui", "/companion", { content: "canvas" }],
     ["companion", "tui", "/companion/tui"],
     ["contacts", "gui", "/contacts"],
     ["contacts", "tui", "/contacts/tui"],
@@ -75,4 +83,5 @@ export const VIEW_CASES: ViewCase[] = (
   viewType,
   path: viewPath,
   shellPill: options?.shellPill === "suppressed" ? "suppressed" : "expected",
+  content: options?.content === "canvas" ? "canvas" : "text",
 }));

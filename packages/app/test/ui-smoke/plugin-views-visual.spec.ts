@@ -76,11 +76,25 @@ test.describe("registered plugin views visual coverage", () => {
         `${view.id} ${view.viewType} initial load`,
       );
 
+      const isCanvasView = view.content === "canvas";
       const viewRoot = page.locator("main").first();
       await expect(viewRoot).toBeVisible({ timeout: 60_000 });
       await expect
         .poll(
           async () => {
+            if (isCanvasView) {
+              // Avatar/3D views render no readable text by design. Wait until
+              // the dynamic bundle resolves past the "Loading view" placeholder
+              // and the canvas root element has mounted.
+              if ((await page.getByText(/Loading view/).count()) > 0) {
+                return false;
+              }
+              return (
+                (await viewRoot
+                  .locator('[data-testid$="-root"], canvas')
+                  .count()) > 0
+              );
+            }
             const text = await viewRoot.evaluate((root) =>
               root.innerText.trim().replace(/\s+/g, " "),
             );
@@ -139,11 +153,18 @@ test.describe("registered plugin views visual coverage", () => {
         },
       );
 
-      expect(
-        preOverlayAudit.visibleText.length,
-        `${view.id} ${view.viewType} should expose readable view text before opening the assistant overlay`,
-      ).toBeGreaterThan(20);
-      if (view.id !== "views-manager") {
+      if (isCanvasView) {
+        await expect(
+          viewRoot.locator('[data-testid$="-root"], canvas').first(),
+          `${view.id} ${view.viewType} should mount its canvas root`,
+        ).toBeVisible();
+      } else {
+        expect(
+          preOverlayAudit.visibleText.length,
+          `${view.id} ${view.viewType} should expose readable view text before opening the assistant overlay`,
+        ).toBeGreaterThan(20);
+      }
+      if (!isCanvasView && view.id !== "views-manager") {
         expect(
           preOverlayAudit.visibleText,
           `${view.id} ${view.viewType} should not fall through to the View Manager`,
@@ -286,10 +307,12 @@ test.describe("registered plugin views visual coverage", () => {
         },
       );
 
-      expect(
-        audit.visibleText.length,
-        `${view.id} ${view.viewType} should expose readable text`,
-      ).toBeGreaterThan(20);
+      if (!isCanvasView) {
+        expect(
+          audit.visibleText.length,
+          `${view.id} ${view.viewType} should expose readable text`,
+        ).toBeGreaterThan(20);
+      }
       if (view.viewType === "tui") {
         expect(
           audit.controls.length,
