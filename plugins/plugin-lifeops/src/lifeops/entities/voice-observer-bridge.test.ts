@@ -197,4 +197,15 @@ describe("handleVoiceTurnObserved", () => {
     ).resolves.toBeUndefined();
     expect(emitted).toHaveLength(0);
   });
+
+  it("is registered on appLifeOpsPlugin.events (runtime reachability, issue #8234)", async () => {
+    // Companion assertion to test/voice-entity-binding.e2e.test.ts, which
+    // exercises the cross-plugin round-trip but cannot import the lifeops
+    // plugin barrel (it drags the @elizaos/agent server graph into the e2e
+    // lane). Together they prove the registered handler IS this handler.
+    const { appLifeOpsPlugin } = await import("../../plugin.js");
+    expect(appLifeOpsPlugin.events?.[EventType.VOICE_TURN_OBSERVED]).toContain(
+      handleVoiceTurnObserved,
+    );
+  });
 });

@@ -17,16 +17,32 @@ describe("BitRouter Railway service", () => {
 
     expect(dockerfile).toContain("npm install -g bitrouter");
     expect(dockerfile).toContain("expect");
+    expect(dockerfile).toContain('grep -q "openrouter: {}"');
+    expect(dockerfile).toContain(
+      'grep -q "api_protocol: chat_completions"',
+    );
+    expect(dockerfile).toContain(
+      'grep -q "input_micro_usd_per_token: 0.35"',
+    );
+    expect(dockerfile).toContain(
+      'grep -q "input_micro_usd_per_token: 2.25"',
+    );
     expect(dockerfile).toContain('CMD ["/app/entrypoint.sh"]');
     expect(entrypoint).toContain(
       "bitrouter serve --config-file /app/bitrouter.yaml",
     );
+    expect(entrypoint).toContain("BITROUTER_OPENROUTER_API_KEY");
+    expect(entrypoint).toContain("OPENROUTER_API_KEY");
     expect(entrypoint).toContain("bitrouter wallet create --name eliza-cloud");
     expect(entrypoint).toContain("bitrouter key sign --wallet eliza-cloud");
     expect(entrypoint).toContain("exec node /app/auth-proxy.mjs");
     expect(proxy).toContain("BITROUTER_PROXY_TOKEN");
     expect(proxy).toContain("BITROUTER_INTERNAL_JWT_FILE");
     expect(proxy).toContain("bitrouter_proxy_usage_cost");
+    expect(proxy).toContain("prepareChatCompletionRequest");
+    expect(proxy).toContain('requestedModel === "zai-glm-4.7"');
+    expect(proxy).toContain('parsed.reasoning_effort = "none"');
+    expect(proxy).toContain("parsed.max_tokens = 256");
     expect(proxy).toContain(
       '"gpt-oss-120b", { input: 0.35, cacheRead: 0, cacheWrite: 0, output: 0.75 }',
     );
@@ -48,25 +64,15 @@ describe("BitRouter Railway service", () => {
         string,
         {
           api_protocol?: string;
-          models?: Record<
-            string,
+          models?: Array<
             {
+              id: string;
               pricing?: {
-                input_tokens?: { no_cache?: number };
-                output_tokens?: { text?: number };
+                input_micro_usd_per_token?: number;
+                output_micro_usd_per_token?: number;
               };
             }
           >;
-        }
-      >;
-      models: Record<
-        string,
-        {
-          endpoints: Array<{ provider: string; service_id: string }>;
-          pricing?: {
-            input_tokens?: { no_cache?: number };
-            output_tokens?: { text?: number };
-          };
         }
       >;
     };
@@ -75,39 +81,26 @@ describe("BitRouter Railway service", () => {
     expect(config.server.listen).toBe("127.0.0.1:4356");
     expect(config.database.url).toBe("sqlite:/data/bitrouter.db");
     expect(config.providers).toHaveProperty("bitrouter");
-    expect(config.providers.cerebras?.api_protocol).toBe("openai");
+    expect(config.providers).toHaveProperty("openrouter");
+    expect(config.providers.openrouter).toEqual({});
+    expect(config.providers.cerebras?.api_protocol).toBe("chat_completions");
     expect(
-      config.providers.cerebras?.models?.["gpt-oss-120b"]?.pricing,
+      config.providers.cerebras?.models?.find(
+        (model) => model.id === "gpt-oss-120b",
+      )?.pricing,
     ).toEqual({
-      input_tokens: { no_cache: 0.35, cache_read: 0, cache_write: 0 },
-      output_tokens: { text: 0.75, reasoning: 0 },
+      input_micro_usd_per_token: 0.35,
+      output_micro_usd_per_token: 0.75,
     });
-    expect(config.providers.cerebras?.models?.["zai-glm-4.7"]?.pricing).toEqual(
-      {
-        input_tokens: { no_cache: 2.25, cache_read: 0, cache_write: 0 },
-        output_tokens: { text: 2.75, reasoning: 0 },
-      },
-    );
-    for (const route of ["gpt-oss-120b", "cerebras:gpt-oss-120b"]) {
-      expect(config.models[route]?.endpoints).toContainEqual({
-        provider: "cerebras",
-        service_id: "gpt-oss-120b",
-      });
-      expect(config.models[route]?.pricing).toEqual({
-        input_tokens: { no_cache: 0.35, cache_read: 0, cache_write: 0 },
-        output_tokens: { text: 0.75, reasoning: 0 },
-      });
-    }
-    for (const route of ["zai-glm-4.7", "cerebras:zai-glm-4.7"]) {
-      expect(config.models[route]?.endpoints).toContainEqual({
-        provider: "cerebras",
-        service_id: "zai-glm-4.7",
-      });
-      expect(config.models[route]?.pricing).toEqual({
-        input_tokens: { no_cache: 2.25, cache_read: 0, cache_write: 0 },
-        output_tokens: { text: 2.75, reasoning: 0 },
-      });
-    }
+    expect(
+      config.providers.cerebras?.models?.find(
+        (model) => model.id === "zai-glm-4.7",
+      )?.pricing,
+    ).toEqual({
+      input_micro_usd_per_token: 2.25,
+      output_micro_usd_per_token: 2.75,
+    });
+    expect(config).not.toHaveProperty("models");
     expect(railway).toContain("[deploy]");
     expect(railway).toContain('healthcheckPath = "/health"');
   });

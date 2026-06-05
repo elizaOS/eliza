@@ -380,7 +380,7 @@ export function AutomationsFeed({
                   label={t("automationsfeed.tasksStat", {
                     defaultValue: "tasks",
                   })}
-                  tone="info"
+                  tone="neutral"
                 />
                 <StatChip
                   icon={<Workflow className="h-3 w-3" />}
@@ -555,12 +555,12 @@ function StatChip({
   icon: ReactNode;
   count: number;
   label: string;
-  tone: "accent" | "info";
+  tone: "accent" | "neutral";
 }) {
   const toneClasses =
     tone === "accent"
       ? "border-accent/25 bg-accent/10 text-accent"
-      : "border-status-info/25 bg-status-info-bg text-status-info";
+      : "border-border/50 bg-bg-accent text-muted-strong";
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium ${toneClasses}`}
@@ -642,7 +642,7 @@ function FeedRowItem({
   const Icon = isWorkflow ? Workflow : CheckCircle2;
   const medallionClasses = isWorkflow
     ? "border-accent/30 bg-gradient-to-br from-accent/20 to-accent/5 text-accent"
-    : "border-status-info/30 bg-gradient-to-br from-status-info-bg to-transparent text-status-info";
+    : "border-border/60 bg-bg-accent text-muted-strong";
   return (
     <li
       ref={registerRef}
@@ -900,7 +900,7 @@ function ChooserSheet({
             className="flex items-start gap-3 rounded-sm border border-border/40 p-3 text-left transition-colors hover:border-accent hover:bg-accent/5"
           >
             <CheckCircle2
-              className="mt-0.5 h-5 w-5 shrink-0 text-status-info"
+              className="mt-0.5 h-5 w-5 shrink-0 text-muted-strong"
               aria-hidden
             />
             <div>

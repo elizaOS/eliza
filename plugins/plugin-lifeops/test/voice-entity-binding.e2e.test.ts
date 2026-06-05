@@ -35,24 +35,31 @@ import {
   type Memory,
   type Plugin,
 } from "@elizaos/core";
+// plugin-local-inference modules are imported by relative source path:
+// the package's subpath export aliases resolve to (possibly stale) dist
+// bundles in the test graph, while the root barrel resolves to src — mixing
+// them would split module identity and the injectable store seams
+// (`setVoiceEntityBindingStore` etc.) would target the wrong module copy.
 import {
   identifySpeakerAction,
   localInferencePlugin,
 } from "@elizaos/plugin-local-inference";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   handleVoiceProfilesManagementRoutes,
+  setVoiceProfilesManagementStore,
+} from "../../plugin-local-inference/src/routes/voice-profiles-management-routes.js";
+import {
   handleVoiceSpeakerProfileRoutes,
-} from "@elizaos/plugin-local-inference/routes";
+  setVoiceSpeakerProfileStore,
+} from "../../plugin-local-inference/src/routes/voice-speaker-profile-routes.js";
 import {
   emitVoiceTurnObserved,
   handleVoiceEntityBound,
   setVoiceEntityBindingStore,
-} from "@elizaos/plugin-local-inference/runtime";
-import {
-  VoiceProfileStore,
-  WESPEAKER_RESNET34_LM_INT8_MODEL_ID,
-} from "@elizaos/plugin-local-inference/services";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+} from "../../plugin-local-inference/src/runtime/voice-entity-binding.js";
+import { VoiceProfileStore } from "../../plugin-local-inference/src/services/voice/profile-store.js";
+import { WESPEAKER_RESNET34_LM_INT8_MODEL_ID } from "../../plugin-local-inference/src/services/voice/speaker/encoder.js";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
@@ -254,8 +261,6 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
   });
 
   it("serves HTTP bind/unbind from the plugin route handlers", async () => {
-    const { setVoiceProfilesManagementStore, setVoiceSpeakerProfileStore } =
-      await import("@elizaos/plugin-local-inference/routes");
     setVoiceSpeakerProfileStore(store);
     setVoiceProfilesManagementStore(store);
 

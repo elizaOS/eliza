@@ -37,11 +37,17 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
         title="Companion avatar surface"
       >
         <StatusChip ready={avatarReady} />
-        <CompanionChip label={`${AGENT_EMOTE_CATALOG.length} emotes`} />
         <CompanionChip
-          label={`${EMOTE_CATALOG.length}/${categoryCount} catalog`}
+          icon="☻"
+          label={String(AGENT_EMOTE_CATALOG.length)}
+          title="Agent emotes"
         />
-        <CompanionChip label="overlay relay" subtle />
+        <CompanionChip
+          icon="◆"
+          label={`${EMOTE_CATALOG.length}/${categoryCount}`}
+          title="Emote catalog"
+        />
+        <CompanionChip icon="⌁" label="" title="Global chat relay" subtle />
       </div>
 
       <div className="min-h-0 flex-1" />
@@ -70,28 +76,34 @@ function StatusChip({ ready }: { ready: boolean }) {
             : "companion-chip-pulse 1.4s ease-in-out infinite",
         }}
       />
-      {ready ? "ready" : "loading"}
+      <span className="sr-only">{ready ? "ready" : "loading"}</span>
       <style>{`@keyframes companion-chip-pulse{0%,100%{opacity:1}50%{opacity:0.35}}`}</style>
     </span>
   );
 }
 
 function CompanionChip({
+  icon,
   label,
+  title,
   subtle = false,
 }: {
+  icon: string;
   label: string;
+  title: string;
   subtle?: boolean;
 }) {
   return (
     <span
-      className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium"
+      className="inline-flex min-h-7 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
       style={{
         background: "var(--surface)",
         color: subtle ? "var(--muted)" : "var(--text-strong)",
       }}
+      title={title}
     >
-      {label}
+      <span aria-hidden>{icon}</span>
+      {label ? <span>{label}</span> : null}
     </span>
   );
 }
