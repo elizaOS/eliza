@@ -6,7 +6,14 @@ import {
   getConnectorAccountManager,
   type IAgentRuntime,
 } from "@elizaos/core";
-import { type Credentials, OAuth2Client } from "google-auth-library";
+// Use googleapis' re-exported auth module so the OAuth2Client identity always
+// matches the copy googleapis' Options type expects (bun's isolated linker can
+// install two google-auth-library copies, splitting the nominal type).
+import { Auth } from "googleapis";
+
+type Credentials = Auth.Credentials;
+const { OAuth2Client } = Auth;
+
 import { credentialRefRecordsFromMetadata } from "./connector-credential-refs.js";
 import type {
   GoogleAuthClient,
