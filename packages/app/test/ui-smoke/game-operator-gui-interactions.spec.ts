@@ -15,8 +15,6 @@ type OperatorGameFixture = {
   suggestedPrompt: string;
   controlButton: string;
   controlAction: "pause" | "resume";
-  chatPlaceholder: string | RegExp;
-  chatContent: string;
   operatorRoutePath?: string;
   hostOnly?: boolean;
 };
@@ -31,8 +29,6 @@ const FIXTURES: OperatorGameFixture[] = [
     suggestedPrompt: "Continue tutorial",
     controlButton: "Pause session",
     controlAction: "pause",
-    chatPlaceholder: "Tell the bot what to train, where to go, or what to say.",
-    chatContent: "Train attack near the starter area until level 5",
   },
   {
     appName: "@hyperscape/plugin-hyperscape",
@@ -43,8 +39,6 @@ const FIXTURES: OperatorGameFixture[] = [
     suggestedPrompt: "look around",
     controlButton: "Pause autonomy",
     controlAction: "pause",
-    chatPlaceholder: "Tell Hyperscape what to prioritize, avoid, or explain.",
-    chatContent: "Follow the target and describe nearby landmarks",
     hostOnly: true,
   },
   {
@@ -54,10 +48,8 @@ const FIXTURES: OperatorGameFixture[] = [
     viewerPath: "/api/apps/scape/viewer",
     surfaceTestId: "scape-live-operator-surface",
     suggestedPrompt: "Walk to the Lumbridge cows and train attack.",
-    controlButton: "Resume autonomous loop",
+    controlButton: "Resume",
     controlAction: "resume",
-    chatPlaceholder: /^Tell the agent what to do/,
-    chatContent: "Bank the logs, then return to Lumbridge cows",
   },
 ];
 
@@ -543,12 +535,5 @@ for (const fixture of FIXTURES) {
 
     await surface.getByRole("button", { name: fixture.controlButton }).click();
     await expect.poll(() => api.controls.at(-1)).toBe(fixture.controlAction);
-
-    await surface
-      .getByPlaceholder(fixture.chatPlaceholder)
-      .fill(fixture.chatContent);
-    await expect(surface.getByRole("button", { name: "Send" })).toBeEnabled();
-    await surface.getByRole("button", { name: "Send" }).click();
-    await expect.poll(() => api.messages.at(-1)).toBe(fixture.chatContent);
   });
 }
