@@ -668,18 +668,25 @@ export function CreateElizaAgentDialog({
                     })}
                     className="grid grid-cols-2 gap-2"
                   >
-                    <button
-                      type="button"
-                      role="radio"
-                      aria-checked={!isDedicated}
-                      disabled={busy}
-                      onClick={() => setExecutionMode("shared")}
-                      className={`flex flex-col items-start gap-1.5 border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5800]/50 disabled:opacity-50 cursor-pointer ${
+                    <label
+                      className={`flex flex-col items-start gap-1.5 border px-3 py-2.5 text-left transition-colors focus-within:outline-none focus-within:ring-2 focus-within:ring-[#FF5800]/50 ${
+                        busy
+                          ? "cursor-not-allowed opacity-50"
+                          : "cursor-pointer"
+                      } ${
                         !isDedicated
                           ? "border-[#FF5800]/60 bg-[#FF5800]/[0.06]"
                           : "border-white/10 bg-black/20 hover:border-white/20"
                       }`}
                     >
+                      <input
+                        type="radio"
+                        name="execution-mode"
+                        checked={!isDedicated}
+                        disabled={busy}
+                        onChange={() => setExecutionMode("shared")}
+                        className="sr-only"
+                      />
                       <div className="flex w-full items-center justify-between gap-2">
                         <span className="inline-flex items-center gap-1.5 text-sm text-white">
                           <Cloud className="h-3.5 w-3.5" />
@@ -699,20 +706,27 @@ export function CreateElizaAgentDialog({
                             "Multi-tenant runtime. No container. Best for chat, webhooks and cron agents.",
                         })}
                       </p>
-                    </button>
+                    </label>
 
-                    <button
-                      type="button"
-                      role="radio"
-                      aria-checked={isDedicated}
-                      disabled={busy}
-                      onClick={() => setExecutionMode("dedicated")}
-                      className={`flex flex-col items-start gap-1.5 border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5800]/50 disabled:opacity-50 cursor-pointer ${
+                    <label
+                      className={`flex flex-col items-start gap-1.5 border px-3 py-2.5 text-left transition-colors focus-within:outline-none focus-within:ring-2 focus-within:ring-[#FF5800]/50 ${
+                        busy
+                          ? "cursor-not-allowed opacity-50"
+                          : "cursor-pointer"
+                      } ${
                         isDedicated
                           ? "border-[#FF5800]/60 bg-[#FF5800]/[0.06]"
                           : "border-white/10 bg-black/20 hover:border-white/20"
                       }`}
                     >
+                      <input
+                        type="radio"
+                        name="execution-mode"
+                        checked={isDedicated}
+                        disabled={busy}
+                        onChange={() => setExecutionMode("dedicated")}
+                        className="sr-only"
+                      />
                       <div className="flex w-full items-center justify-between gap-2">
                         <span className="inline-flex items-center gap-1.5 text-sm text-white">
                           <Server className="h-3.5 w-3.5" />
@@ -730,7 +744,7 @@ export function CreateElizaAgentDialog({
                             "Own Docker container on a Hetzner node. Required for custom images, always-on plugins (Discord/Telegram), or BYO runtime.",
                         })}
                       </p>
-                    </button>
+                    </label>
                   </div>
                 </div>
 
