@@ -44,7 +44,7 @@ void silero_vad_state_reset(silero_vad_state_t *state);
  * Promote the just-written `*_out` arrays to the next inference's
  * `*_in` arrays. Runtime backends call this between windows so the
  * LSTM advances its recurrent state in lock-step with the input
- * stream. Memory-safe with NULL (no-op).
+ * stream. Memory-safe with NULL (returns without changing state).
  */
 void silero_vad_state_promote(silero_vad_state_t *state);
 

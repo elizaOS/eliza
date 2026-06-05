@@ -53,7 +53,7 @@ if(QJL_X86)
     )
     # AVX-VNNI: GCC 11+/Clang 12+ accept -mavxvnni. The TU also builds when
     # the toolchain only exposes the AVX512-VL VNNI flavour (the body picks
-    # the right intrinsic). If neither is available the TU is a no-op.
+    # the right intrinsic). If neither is available the TU compiles empty.
     include(CheckCCompilerFlag)
     check_c_compiler_flag("-mavxvnni" QJL_CC_HAS_MAVXVNNI)
     target_compile_definitions(qjl PUBLIC QJL_HAVE_AVX2=1)
