@@ -52,7 +52,12 @@ test.describe("dashboard session", () => {
     await authenticatedPage
       .getByLabel("Agent Name")
       .fill("e2e-dashboard-agent");
-    await authenticatedPage.getByLabel("Type").click();
+    // The wizard now exposes execution mode explicitly (#8261): a custom image
+    // is only available under the Dedicated card, which reveals the image
+    // selector + Docker Image input and switches the CTA to
+    // "Deploy Docker container".
+    await authenticatedPage.getByRole("radio", { name: /Dedicated/ }).click();
+    await authenticatedPage.getByLabel("Image").click();
     await authenticatedPage
       .getByRole("option", { name: "Custom Image" })
       .click();
@@ -65,7 +70,9 @@ test.describe("dashboard session", () => {
         [201, 202].includes(response.status()),
     );
 
-    await authenticatedPage.getByRole("button", { name: "Deploy" }).click();
+    await authenticatedPage
+      .getByRole("button", { name: "Deploy Docker container" })
+      .click();
     const createResponse = await createResponsePromise;
 
     const createBody = (await createResponse.json()) as {
