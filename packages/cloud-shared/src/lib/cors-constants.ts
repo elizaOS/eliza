@@ -31,6 +31,11 @@ export const CORS_ALLOW_HEADER_NAMES = [
   "X-PAYMENT-RESPONSE",
   "X-PAYMENT-STATUS",
   "X-Steward-Tenant",
+  // Read by /api/v1/chat/completions for safe retries (idempotency-key) and
+  // affiliate attribution (X-Affiliate-Code); must be in the allow-list or the
+  // browser CORS preflight rejects requests that send them.
+  "Idempotency-Key",
+  "X-Affiliate-Code",
 ] as const;
 
 export const CORS_ALLOW_HEADERS = CORS_ALLOW_HEADER_NAMES.join(", ");
