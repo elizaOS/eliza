@@ -1547,7 +1547,9 @@ export class OrchestratorTaskService extends Service {
         ),
       );
       await this.store.updateTask(doc.task.id, { status: "interrupted" });
-      throw new Error("ACP service unavailable; cannot stop active sessions");
+      throw new RecoveryConflictError(
+        "ACP service unavailable; cannot stop active sessions",
+      );
     }
     const failures: Array<{ sessionId: string; error: string }> = [];
     await Promise.all(
@@ -1570,7 +1572,7 @@ export class OrchestratorTaskService extends Service {
     );
     if (failures.length > 0) {
       await this.store.updateTask(doc.task.id, { status: "interrupted" });
-      throw new Error(
+      throw new RecoveryConflictError(
         `Failed to stop ${failures.length} active session${
           failures.length === 1 ? "" : "s"
         }`,
