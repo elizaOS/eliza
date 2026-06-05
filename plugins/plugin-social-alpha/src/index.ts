@@ -8,15 +8,6 @@ import { CommunityInvestorService } from "./service";
 export { socialAlphaProvider } from "./providers/socialAlphaProvider";
 export * from "./types";
 
-// AgentPanel interface defined locally for UI integration
-export interface AgentPanel {
-	name: string;
-	path: string;
-	component: string;
-	icon?: string;
-	public?: boolean;
-}
-
 /**
  * Social Alpha Plugin for ElizaOS.
  *
@@ -57,6 +48,21 @@ export const socialAlphaPlugin: Plugin = {
 	providers: [socialAlphaProvider],
 	routes: communityInvestorRoutes,
 	events: events as unknown as Plugin["events"],
+	views: [
+		{
+			id: "social-alpha",
+			label: "Social Alpha",
+			description:
+				"Trust leaderboard for token calls — win rate, rank, and P&L-backed recommender analytics. Requires an agent wallet.",
+			icon: "UsersRound",
+			path: "/social-alpha",
+			bundlePath: "dist/views/bundle.js",
+			componentExport: "SocialAlphaView",
+			tags: ["finance", "crypto", "social", "trust", "leaderboard"],
+			visibleInManager: true,
+			desktopTabEnabled: true,
+		},
+	],
 	tests: [],
 	async dispose(runtime) {
 		await runtime
@@ -66,15 +72,5 @@ export const socialAlphaPlugin: Plugin = {
 			?.stop();
 	},
 };
-
-export const panels: AgentPanel[] = [
-	{
-		name: "Social Alpha",
-		path: "display",
-		component: "LeaderboardPanelPage",
-		icon: "UsersRound",
-		public: true,
-	},
-];
 
 export default socialAlphaPlugin;
