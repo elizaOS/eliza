@@ -141,9 +141,26 @@ test.describe("provision", () => {
     const pairingBody = (await pairingResponse.json()) as {
       data?: { redirectUrl?: string };
     };
-    expect(
-      pairingBody.data?.redirectUrl?.startsWith(`https://${sandboxId}.`),
-    ).toBe(true);
+    // After #8262 the pairing redirect prefers the agent's stored bridge_url
+    // (the local-docker provider sets http://127.0.0.1:<port>) over the legacy
+    // <uuid>.<baseDomain> subdomain, which has no billing proxy behind it. The
+    // redirect should therefore point at the bridge origin's /pair handler, not
+    // the broken sandbox-id subdomain.
+    const redirectUrl = pairingBody.data?.redirectUrl;
+    expect(redirectUrl, `redirectUrl was ${redirectUrl}`).toBeDefined();
+    const parsed = new URL(redirectUrl as string);
+    expect(parsed.protocol === "http:" || parsed.protocol === "https:").toBe(
+      true,
+    );
+    // Must point at the bridge origin, not the legacy <uuid>.<baseDomain>
+    // subdomain that has no billing proxy behind it.
+    expect(parsed.hostname).not.toBe(sandboxId);
+    expect(redirectUrl?.startsWith(`https://${sandboxId}.`)).toBe(false);
+    // When the agent advertises ELIZA_API_TOKEN the redirect carries the
+    // one-time pairing token at /pair; otherwise it is the bare bridge origin.
+    if (parsed.pathname === "/pair") {
+      expect(parsed.searchParams.get("token")).toBeTruthy();
+    }
   });
 
   test("coding-container API deploys populate the dashboard agent list", async ({

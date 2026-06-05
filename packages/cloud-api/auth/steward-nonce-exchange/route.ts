@@ -29,6 +29,7 @@ import {
 } from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
+import { signStewardMutatingRequest } from "@/api-app/steward/sign";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import {
   type StewardVerifyEnv,
@@ -183,31 +184,58 @@ interface StewardExchangeErr {
  */
 async function callStewardExchange(
   baseUrl: string,
-  body: { code: string; redirect_uri: string; tenant_id: string | null },
+  body: {
+    code: string;
+    redirect_uri: string;
+    tenant_id: string | null;
+    code_verifier?: string;
+  },
   pinnedTenantId?: string,
+  signingSecret?: string | null,
 ): Promise<
   | { kind: "ok"; data: StewardExchangeOk }
   | { kind: "error"; status: number; data: StewardExchangeErr }
   | { kind: "transport"; message: string }
 > {
-  const headers: Record<string, string> = {
+  const exchangeUrl = new URL(`${baseUrl}/auth/oauth/exchange`);
+  const headers = new Headers({
     "Content-Type": "application/json",
     Accept: "application/json",
-  };
+  });
   // Pin the tenant per-env: this route bypasses the /steward/* proxy in
   // bootstrap-app.ts. Steward's `/auth/oauth/exchange` reads tenant from
   // the body (auth.ts:2557-2563), but if a caller sends `tenant_id=null`
   // Steward falls back to STEWARD_DEFAULT_TENANT_ID. The header is a
   // belt-and-suspenders pin in case future Steward versions consult it.
   if (typeof pinnedTenantId === "string" && pinnedTenantId.trim().length > 0) {
-    headers["X-Steward-Tenant"] = pinnedTenantId.trim();
+    headers.set("X-Steward-Tenant", pinnedTenantId.trim());
+  }
+  // Steward gates mutating `/auth/*` on a freshness header AND an HMAC
+  // signature (`X-Steward-Signature: v1=<hex>`). The `/steward/*` proxy signs
+  // for browser-driven flows, but this route forwards to Steward directly (to
+  // pin the tenant), so it must sign here too — otherwise the exchange 401s
+  // with "X-Steward-Signature header required". Sign over the EXACT bytes we
+  // send. Without a configured secret we send unsigned (same as the proxy) and
+  // let Steward decide. See packages/cloud-api/src/steward/{embedded,sign}.ts.
+  // (The signer mints a fresh Idempotency-Key per attempt — fine here because
+  // the OAuth code is single-use; Steward 401s a replayed code anyway.)
+  const bodyText = JSON.stringify(body);
+  const bodyBytes = new TextEncoder().encode(bodyText);
+  if (typeof signingSecret === "string" && signingSecret.length > 0) {
+    await signStewardMutatingRequest(
+      signingSecret,
+      "POST",
+      `${exchangeUrl.pathname}${exchangeUrl.search}`,
+      headers,
+      bodyBytes,
+    );
   }
   let response: Response;
   try {
-    response = await fetch(`${baseUrl}/auth/oauth/exchange`, {
+    response = await fetch(exchangeUrl.toString(), {
       method: "POST",
       headers,
-      body: JSON.stringify(body),
+      body: bodyText,
     });
   } catch (err) {
     return {
@@ -260,6 +288,8 @@ app.post("/", async (c) => {
     redirect_uri?: unknown;
     tenantId?: unknown;
     tenant_id?: unknown;
+    codeVerifier?: unknown;
+    code_verifier?: unknown;
   };
 
   const code = typeof body.code === "string" ? body.code.trim() : "";
@@ -282,6 +312,16 @@ app.post("/", async (c) => {
   const envTenant = c.env.STEWARD_TENANT_ID?.trim() ?? "";
   const tenantId =
     rawTenant.length > 0 ? rawTenant : envTenant.length > 0 ? envTenant : null;
+  // PKCE verifier for `response_type=code`. The SPA stashes it before the
+  // /authorize redirect and replays it here; we forward it to Steward, which
+  // checks it against the challenge bound at /authorize. Absent for the legacy
+  // (pre-PKCE) and wallet flows — forward only when present.
+  const codeVerifier =
+    typeof body.codeVerifier === "string"
+      ? body.codeVerifier.trim()
+      : typeof body.code_verifier === "string"
+        ? body.code_verifier.trim()
+        : "";
 
   if (!code) {
     logExchange("missing-code");
@@ -320,8 +360,10 @@ app.post("/", async (c) => {
       code,
       redirect_uri: redirectUri,
       tenant_id: tenantId,
+      ...(codeVerifier ? { code_verifier: codeVerifier } : {}),
     },
     c.env.STEWARD_TENANT_ID,
+    c.env.STEWARD_REQUEST_SIGNING_SECRET,
   );
 
   if (exchange.kind === "transport") {

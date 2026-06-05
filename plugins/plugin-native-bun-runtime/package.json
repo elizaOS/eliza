@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-bun-runtime",
-  "version": "2.0.3-beta.5",
+  "version": "2.0.3-beta.6",
   "description": "Embedded Bun-shape JS runtime bridge for iOS and Android",
   "keywords": [
     "capacitor",

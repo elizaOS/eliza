@@ -28,7 +28,10 @@ import { resolveLoginReturnTo } from "./login-return-to";
 import {
   buildStewardOAuthAuthorizeUrl,
   buildStewardOAuthRedirectUri,
+  consumeStewardPkceVerifier,
+  createStewardPkcePair,
   type StewardOAuthProvider,
+  storeStewardPkceVerifier,
 } from "./steward-oauth-url";
 import { StewardWalletProviders } from "./steward-wallet-providers";
 import { WalletButtons } from "./wallet-buttons";
@@ -201,12 +204,18 @@ export default function StewardLoginSection() {
     // and sets HttpOnly cookies. Access + refresh tokens never enter JS.
     const code = consumeStewardCodeFromQuery();
     if (code) {
+      // Replay the PKCE verifier stashed before the /authorize redirect so
+      // Steward can match it against the bound challenge. Null when the flow
+      // predates PKCE (rollout window) or sessionStorage was cleared — the
+      // exchange then omits it and Steward surfaces the mismatch.
+      const codeVerifier = consumeStewardPkceVerifier() ?? undefined;
       exchangeStewardCodeViaApi(code, {
         redirectUri: buildStewardOAuthRedirectUri(
           window.location.origin,
           window.location.search,
         ),
         tenantId: STEWARD_TENANT_ID,
+        codeVerifier,
       })
         .then((res) => {
           // Mirror the JWT into localStorage so `@stwd/react`'s `useAuth()`
@@ -380,6 +389,30 @@ export default function StewardLoginSection() {
     const oauthOrigin = host.endsWith(".pages.dev")
       ? "https://staging.elizacloud.ai"
       : window.location.origin;
+    // Steward requires a PKCE challenge on `response_type=code`. Mint the
+    // verifier/challenge pair, stash the verifier for the post-redirect
+    // /exchange step, and send only the challenge to /authorize. If crypto is
+    // unavailable, surface the error instead of redirecting into a guaranteed
+    // 400 ("code_challenge is required for response_type=code").
+    let codeChallenge: string;
+    try {
+      const pkce = await createStewardPkcePair();
+      // Fail fast if the verifier can't be persisted: redirecting with a
+      // challenge we can't later answer would just 401 after a full OAuth
+      // round-trip. Better to tell the user upfront.
+      if (!storeStewardPkceVerifier(pkce.verifier)) {
+        setError(
+          "Could not start sign-in — browser storage is unavailable. Enable cookies / site data and try again.",
+        );
+        setLoading(null);
+        return;
+      }
+      codeChallenge = pkce.challenge;
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, "Could not start sign-in"));
+      setLoading(null);
+      return;
+    }
     window.location.href = buildStewardOAuthAuthorizeUrl(
       provider,
       oauthOrigin,
@@ -387,6 +420,7 @@ export default function StewardLoginSection() {
         redirectSearch: window.location.search,
         stewardApiUrl,
         stewardTenantId: STEWARD_TENANT_ID,
+        codeChallenge,
       },
     );
   }
