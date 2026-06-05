@@ -96,7 +96,8 @@ function AgentBridgeChat({ agent }: { agent: AgentDetailDto }) {
   const [chatAvailable, setChatAvailable] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const isRunning = agent.status === "running";
-  const hasWebUi = Boolean(agent.webUiUrl);
+  const hasStandaloneWebUi =
+    agent.executionTier !== "shared" && Boolean(agent.webUiUrl);
   const canUseBridgeChat = isRunning && chatAvailable;
 
   useEffect(() => {
@@ -250,7 +251,7 @@ function AgentBridgeChat({ agent }: { agent: AgentDetailDto }) {
             )}
             {t("cloud.agents.chat.refresh", { defaultValue: "Refresh" })}
           </BrandButton>
-          {hasWebUi && isRunning && (
+          {hasStandaloneWebUi && isRunning && (
             <BrandButton
               variant="primary"
               size="sm"
