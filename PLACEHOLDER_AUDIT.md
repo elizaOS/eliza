@@ -6125,6 +6125,33 @@ platform no-ops are separated from actionable runtime gaps.
   - `git diff --check -- packages/cloud-api`
   - focused marker scan on `packages/cloud-api`
 
+### packages/benchmarks orchestrator and Solana environment cleanup
+
+- Re-read `packages/benchmarks/CLAUDE.md` before editing orchestrator code.
+  Read `packages/benchmarks/solana/CLAUDE.md` and
+  `packages/benchmarks/solana/solana-gym-env/CLAUDE.md`, confirming local
+  `AGENTS.md` parity, before editing the Solana environment.
+- Reworded the vision-language orchestrator unavailable reason from
+  not-implemented adapter wording to the concrete fixed-runtime limitation.
+  Behavior is unchanged: Hermes/OpenClaw VLM runs stay outside the fixed
+  eliza-1 runtime path.
+- Finished the Solana `SurfpoolEnv.render("human")` path with a deterministic
+  in-memory summary, tracked the latest observation for render output, and made
+  omitted SPL token balances explicit as an empty observation field because the
+  benchmark scores instruction discovery rather than holdings.
+- Reworded the Solana trajectory-viewer copy from no-operation wording to
+  do-nothing program wording. The remaining Solana scan hits are only
+  `noopener` link attributes.
+- Verified with:
+  - `python3 -m py_compile packages/benchmarks/orchestrator/adapters.py
+    packages/benchmarks/solana/solana-gym-env/voyager/surfpool_env.py`
+  - `./node_modules/.bin/biome check
+    packages/benchmarks/solana/solana-gym-env/docs/trajectory-viewer/src/components/LandingPage.tsx`
+  - `git diff --check -- packages/benchmarks/orchestrator/adapters.py
+    packages/benchmarks/solana`
+  - focused marker scans on `packages/benchmarks/solana` and the stricter
+    first-party `not implemented|unimplemented|unfinished` set
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.
