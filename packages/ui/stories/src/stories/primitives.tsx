@@ -106,15 +106,6 @@ import {
   SelectValue,
 } from "@ui-src/components/ui/select.tsx";
 import { Separator } from "@ui-src/components/ui/separator.tsx";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@ui-src/components/ui/sheet.tsx";
 import { Skeleton } from "@ui-src/components/ui/skeleton.tsx";
 import { Slider } from "@ui-src/components/ui/slider.tsx";
 import { Spinner } from "@ui-src/components/ui/spinner.tsx";
@@ -691,30 +682,6 @@ export const primitiveStories: StoryDefinition[] = [
         <Separator />
         <Text>Below</Text>
       </div>
-    ),
-  },
-  {
-    id: "p-sheet",
-    name: "Sheet",
-    importPath:
-      'import { Sheet, SheetTrigger, SheetContent, ... } from "@elizaos/ui/components/ui/sheet"',
-    render: () => (
-      <Sheet>
-        <SheetTrigger asChild>
-          <Button variant="outline">Open sheet</Button>
-        </SheetTrigger>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>Agent settings</SheetTitle>
-            <SheetDescription>
-              Configure your local Eliza agent.
-            </SheetDescription>
-          </SheetHeader>
-          <SheetFooter>
-            <Button>Save</Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
     ),
   },
   {

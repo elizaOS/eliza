@@ -11,7 +11,6 @@ export * from "./eliza-avatar";
 export * from "./hooks/use-typewriter-text";
 export * from "./image";
 export * from "./inline-citation";
-export * from "./loader";
 export * from "./memoized-chat-message";
 export * from "./message";
 export * from "./node";
