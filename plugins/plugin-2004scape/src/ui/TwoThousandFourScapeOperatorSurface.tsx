@@ -15,7 +15,6 @@ import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   type ButtonHTMLAttributes,
   type CSSProperties,
-  type InputHTMLAttributes,
   type Ref,
   useCallback,
   useMemo,
@@ -321,25 +320,6 @@ const tuiInputStyle: CSSProperties = {
   padding: "8px",
   fontFamily: "inherit",
 };
-
-function Input({
-  className,
-  ref,
-  ...props
-}: InputHTMLAttributes<HTMLInputElement> & {
-  ref?: Ref<HTMLInputElement>;
-}) {
-  return (
-    <input
-      ref={ref}
-      className={joinClasses(
-        "flex w-full rounded-md border border-border bg-bg px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted focus-visible:ring-2 focus-visible:ring-primary/35 disabled:cursor-not-allowed disabled:opacity-50",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
 
 interface RecentActivityEntry {
   id: string;

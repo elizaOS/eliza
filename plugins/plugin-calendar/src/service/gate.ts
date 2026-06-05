@@ -108,7 +108,7 @@ async function requireGoogleCalendarGrant(
     requestedSide: side,
     grantId,
   });
-  if (!account || account.status !== "connected") {
+  if (account?.status !== "connected") {
     fail(409, "Google Calendar is not connected.");
   }
   const status = googleAccountStatus({ account, agentId });
@@ -123,7 +123,7 @@ async function requireGoogleCalendarGrant(
 }
 
 /**
- * Default gate: faithful Google connector resolution, no-op reminder/audit.
+ * Default gate: faithful Google connector resolution, no reminder/audit writes.
  * LifeOps replaces this with its own implementation so calendar events get
  * reminder plans and audit rows.
  */
@@ -150,16 +150,10 @@ export function createDefaultCalendarHostGate(
         googleAccountStatus({ account, agentId }),
       );
     },
-    requireGoogleCalendarGrant(requestUrl, mode, side, grantId) {
-      return requireGoogleCalendarGrant(
-        runtime,
-        agentId,
-        mode,
-        side,
-        grantId,
-      );
+    requireGoogleCalendarGrant(_requestUrl, mode, side, grantId) {
+      return requireGoogleCalendarGrant(runtime, agentId, mode, side, grantId);
     },
-    async requireGoogleCalendarWriteGrant(requestUrl, mode, side, grantId) {
+    async requireGoogleCalendarWriteGrant(_requestUrl, mode, side, grantId) {
       const grant = await requireGoogleCalendarGrant(
         runtime,
         agentId,
@@ -174,7 +168,7 @@ export function createDefaultCalendarHostGate(
     },
     async createReminderPlan(): Promise<void> {
       logger.debug(
-        "[CalendarService] default gate: createReminderPlan is a no-op (no host gate registered)",
+        "[CalendarService] default gate: createReminderPlan skipped (no host gate registered)",
       );
     },
     async updateReminderPlan(): Promise<void> {},

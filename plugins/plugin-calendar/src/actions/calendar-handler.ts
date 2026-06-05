@@ -381,7 +381,7 @@ function buildCalendarPlanRepairPrompt(args: {
   return [
     "Your last reply for the calendar planner was invalid or used the wrong schema.",
     "Return JSON only as a single object with exactly these fields:",
-    "  subaction: one of the allowed subactions below, or null when this should be reply-only/no-op",
+    "  subaction: one of the allowed subactions below, or null when this should be reply-only/no-action",
     "  shouldAct: boolean",
     "  response: short natural-language reply when shouldAct is false, otherwise empty or null",
     "  queries: array or ||-delimited string of up to 3 search queries",
@@ -1996,7 +1996,7 @@ export async function extractCalendarPlanWithLlm(
     "When shouldAct=false, provide a short natural response that asks only for what is missing.",
     "",
     "Return JSON only as a single object with exactly these fields:",
-    "  subaction: one of the allowed subactions below, or null when this should be reply-only/no-op",
+    "  subaction: one of the allowed subactions below, or null when this should be reply-only/no-action",
     "  shouldAct: boolean",
     "  response: short natural-language reply when shouldAct is false, otherwise empty or null",
     "  queries: array or ||-delimited string of up to 3 search queries",
@@ -2480,7 +2480,9 @@ function formatUpdateEventTargetContext(
   ].join("\n");
 }
 
-function shouldRetryCreateEventExtraction(error: CalendarServiceError): boolean {
+function shouldRetryCreateEventExtraction(
+  error: CalendarServiceError,
+): boolean {
   const normalized = normalizeText(error.message);
   if (error.status === 401 || error.status === 403) {
     return false;
@@ -3171,7 +3173,6 @@ const calendarAction: CalendarHandlerAction = {
     options,
     callback?: HandlerCallback,
   ) => {
-
     const rawParams = (options as HandlerOptions | undefined)?.parameters as
       | CalendarActionParams
       | undefined;

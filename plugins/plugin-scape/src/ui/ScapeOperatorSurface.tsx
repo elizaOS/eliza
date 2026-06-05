@@ -12,7 +12,7 @@ import {
   toneForViewerAttachment,
   useApp,
 } from "@elizaos/app-core/ui-compat";
-import { Button, Input } from "@elizaos/ui";
+import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
 

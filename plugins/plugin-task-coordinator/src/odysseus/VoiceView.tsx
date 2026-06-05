@@ -243,7 +243,7 @@ export function VoiceView({
       teardownCapture();
       // Reset the recorder so a close mid-recording (or after a mic error)
       // doesn't leave a stuck "Recording…"/error toast over a now-null
-      // captureRef whose Stop button would no-op on reopen.
+      // captureRef whose Stop button would be inert on reopen.
       setRecState("idle");
       setRecError(null);
     }

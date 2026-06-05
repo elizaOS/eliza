@@ -37,7 +37,7 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
       {/* Compact aesthetic status chip cluster — theme-token driven, not a
           devtools panel. Lives top-left, translucent + blurred over the stage.
           Layout is inline-styled: the companion view bundle ships no compiled
-          Tailwind, so arbitrary/utility classes would silently no-op here. */}
+          Tailwind, so arbitrary/utility classes would have no effect here. */}
       <div
         style={{
           position: "absolute",

@@ -1218,7 +1218,7 @@ export function CalendarView({
     setFormState({ existing: null, date: date ?? selectedDay ?? today });
   // Provider events are read-only: opening the edit form would expose Save /
   // Delete against a feed this surface cannot write back to, so clicking one is
-  // a no-op (the row also renders a "synced" badge instead of the more-menu).
+  // ignored (the row also renders a "synced" badge instead of the more-menu).
   const openEdit = (ev: CalEvent) => {
     if (isProviderRef(ev.uid)) return;
     setFormState({ existing: ev, date: ev.date });

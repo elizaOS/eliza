@@ -87,6 +87,27 @@ const PLATFORM_COPY: Record<
   },
 };
 
+const DISPLAY_PRESETS = [
+  {
+    id: "status",
+    label: "Status",
+    text: "elizaOS smartglasses link online.",
+    className: "border-green-500/40 bg-green-500/10 text-green-700",
+  },
+  {
+    id: "ping",
+    label: "Ping",
+    text: "Display ping. Confirm both lenses render this page.",
+    className: "border-accent/45 bg-accent/10 text-accent",
+  },
+  {
+    id: "nav",
+    label: "Nav",
+    text: "Navigation card ready. Keep eyes forward.",
+    className: "border-amber-500/40 bg-amber-500/10 text-amber-700",
+  },
+] as const;
+
 function now(): string {
   return new Date().toISOString();
 }
@@ -269,16 +290,6 @@ export function SmartglassesView() {
       label: "Run Check",
       group: "test",
       description: "Request serial/battery and send display/settings packets",
-    });
-  const { ref: testTextRef, agentProps: testTextAgentProps } =
-    useAgentElement<HTMLTextAreaElement>({
-      id: "test-display-text",
-      role: "textarea",
-      label: "Display test text",
-      group: "test",
-      description: "Text sent to the smartglasses display during tests",
-      getValue: () => testText,
-      onFill: (value) => setTestText(value),
     });
   const { ref: wifiSsidRef, agentProps: wifiSsidAgentProps } =
     useAgentElement<HTMLInputElement>({
@@ -850,15 +861,23 @@ export function SmartglassesView() {
               Check
             </button>
           </div>
-          <textarea
-            ref={testTextRef}
-            value={testText}
-            onChange={(event) => setTestText(event.target.value)}
-            rows={4}
-            aria-label="Display test text"
-            className="mt-4 w-full resize-none rounded-md border border-border bg-bg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-            {...testTextAgentProps}
-          />
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {DISPLAY_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => setTestText(preset.text)}
+                aria-pressed={testText === preset.text}
+                className={`h-14 rounded-md border px-3 text-left text-xs font-semibold transition ${
+                  testText === preset.text
+                    ? preset.className
+                    : "border-border/60 bg-muted/10 text-muted hover:text-txt"
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <ActionButton
               onClick={sendDisplay}

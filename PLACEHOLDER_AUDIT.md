@@ -5728,6 +5728,96 @@ platform no-ops are separated from actionable runtime gaps.
     Google connector files
   - focused marker scan on `packages/cloud-shared/src/lib/services/agent-google-connector`
 
+### packages/feed validation partial-data wording
+
+- Read `packages/feed/CLAUDE.md` and confirmed `AGENTS.md` parity before
+  editing.
+- Reworded Feed API/auth comments and validation messages from incomplete
+  error/profile/user wording to partial wording. Validation behavior and return
+  shapes are unchanged.
+- Remaining Feed marker hits are intentional electron/browser stubs, disabled
+  refresh/no-op fallbacks, prediction-market no-op semantics, fixture/template
+  copy, and API decision values such as `"noop"`.
+- Verified with:
+  - `bunx @biomejs/biome check` from `packages/feed` on the touched files
+    (no errors; one pre-existing `DailyLoginService` static-only-class warning)
+  - `bun run --cwd packages/feed typecheck`
+  - `git diff --check` on the touched Feed files and audit file
+
+### packages/examples partial-line and compatibility-shim wording
+
+- `packages/examples` has no package-local guide, so the root repository guide
+  applies.
+- Reworded the smartglasses guided-validation log and clone-ur-crush stream
+  buffer comment from incomplete wording to partial wording. Reworded the avatar
+  SAM TTS compile fallback from stub wording to compatibility-shim wording.
+- Remaining examples marker hit is the browser-extension Node-only empty stub,
+  which is an intentional webpack compatibility module.
+- Verified with:
+  - `./node_modules/.bin/biome check` on the touched example files
+  - `bun run --cwd packages/examples/smartglasses typecheck`
+  - `bun run --cwd packages/examples/avatar typecheck`
+  - `bun run --cwd packages/examples/cloud/clone-ur-crush typecheck`
+  - focused marker scan on `packages/examples`
+
+### packages/cloud-api route fallback wording
+
+- Read `packages/cloud-api/CLAUDE.md` and confirmed `AGENTS.md` parity before
+  editing.
+- Reworded route comments for idempotent provisioning, Worker restart
+  migration, daemon-owned cron handling, app-credit reservation behavior, and
+  temporary Hono connection routes so they describe concrete outcomes instead
+  of no-op/stub wording. Route behavior is unchanged.
+- Remaining cloud-api marker hits are intentional: the frontend-gap audit's
+  `hono-stub` taxonomy for routes that still return 501, and wrangler alias
+  comments for Worker-incompatible Node dependencies.
+- Verified with:
+  - `./node_modules/.bin/biome check` on the touched cloud-api route files
+  - `bun run --cwd packages/cloud-api typecheck`
+  - focused marker scan on `packages/cloud-api`
+
+### plugins/plugin-task-coordinator disabled-ui wording
+
+- Read `plugins/plugin-task-coordinator/CLAUDE.md` and confirmed `AGENTS.md`
+  parity before editing.
+- Reworded Odysseus UI comments from no-op wording to disabled, ignored,
+  inert, or cancelled behavior. No UI logic changed.
+- Verified with:
+  - `./node_modules/.bin/biome check` on the touched task-coordinator TSX files
+  - `bun run --cwd plugins/plugin-task-coordinator build:types`
+  - focused marker scan on `plugins/plugin-task-coordinator/src` excluding tests
+
+### plugins/plugin-calendar default-gate and planner wording
+
+- Read `plugins/plugin-calendar/CLAUDE.md` and confirmed `AGENTS.md` parity
+  before editing.
+- Reworded default calendar host-gate and planner prompt text from no-op
+  wording to skipped/no-action wording. Also fixed local Biome findings in the
+  touched files (unused interface-compatible parameters, optional chaining, and
+  formatting).
+- Remaining calendar marker hits are intentional `noop: true` response data
+  flags used for reply-only calendar outcomes.
+- Verified with:
+  - `./node_modules/.bin/biome check` on the touched calendar files
+  - `bun run --cwd plugins/plugin-calendar typecheck`
+  - `git diff --check` on the touched calendar files and audit file
+  - focused marker scan on `plugins/plugin-calendar/src` excluding tests
+
+### plugins/plugin-companion and plugin-native-wifi fallback wording
+
+- Read `plugins/plugin-companion/CLAUDE.md` and
+  `plugins/plugin-native-wifi/CLAUDE.md`, confirming `AGENTS.md` parity for
+  both before editing.
+- Reworded the Companion inline-style comment from silent no-op utility classes
+  to no-effect utility classes, and reworded the Wi-Fi Capacitor interface
+  comment from no-op web fallback to empty-data web fallback. Behavior is
+  unchanged.
+- Verified with:
+  - `./node_modules/.bin/biome check` on the touched plugin files
+  - `bun run --cwd plugins/plugin-companion build:types`
+  - `bun run --cwd plugins/plugin-native-wifi build`
+  - focused marker scan on both plugin `src` trees
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.

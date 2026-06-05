@@ -643,7 +643,7 @@ export function OdysseusShell(): ReactNode {
         ) : null}
         {/* Desktop renders the sidebar only when expanded (in-flow, resizable).
           Mobile keeps it mounted so the drawer can slide in/out via CSS
-          transform; the .od-mobile class makes width/resize a no-op there. */}
+          transform; the .od-mobile class disables width/resize there. */}
         {isMobile || !sidebarCollapsed ? (
           <SessionSidebar
             threads={threads}
