@@ -1,9 +1,26 @@
-import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { cache } from "../cache/client";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
+import * as realAiBillingNs from "./ai-billing";
+import * as realAiBillingRecordsNs from "./ai-billing-records";
+import * as realRunSharedAgentTurnNs from "./shared-runtime/run-shared-agent-turn";
+
+// Bun runs every cloud-shared test file in a single process, and `mock.module`
+// overrides are process-global with no built-in per-file teardown. The mocks
+// below replace `./shared-runtime/run-shared-agent-turn`, `./ai-billing`, and
+// `./ai-billing-records`; without an explicit restore they leak into later
+// files that import the real modules (e.g. `agent-tier.test.ts` picking up the
+// stub `runSharedAgentTurn` that always returns `degraded: false`), producing
+// order-dependent failures. Snapshot the real exports into plain objects at
+// module-evaluation time (the `import *` namespaces above are hoisted before
+// the `mock.module` calls run, but they are live bindings, so the eager spread
+// is what captures the real exports) and re-install them in `afterAll`.
+const realRunSharedAgentTurn = { ...realRunSharedAgentTurnNs };
+const realAiBilling = { ...realAiBillingNs };
+const realAiBillingRecords = { ...realAiBillingRecordsNs };
 
 const reconcileReservation = mock(async (actualCost: number) => ({
   reservedAmount: 0.002,
@@ -102,6 +119,12 @@ mock.module("./shared-runtime/run-shared-agent-turn", () => ({
   runSharedAgentTurn,
   resolveSharedAgentTurnModel,
 }));
+
+afterAll(() => {
+  mock.module("./shared-runtime/run-shared-agent-turn", () => realRunSharedAgentTurn);
+  mock.module("./ai-billing", () => realAiBilling);
+  mock.module("./ai-billing-records", () => realAiBillingRecords);
+});
 
 function sharedSandbox(): AgentSandbox {
   const now = new Date("2026-06-04T12:00:00.000Z");
