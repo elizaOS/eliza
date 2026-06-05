@@ -715,8 +715,9 @@ test.describe("orchestrator GUI workbench", () => {
       .getByTestId("task-card");
     await expect(railTaskCard).toContainText("Build Kanban planner app");
     await expect(railTaskCard).toContainText("2/2");
+    // The status filter defaults to "All" with the total task count.
     await expect(page.getByTestId("orchestrator-filter")).toContainText(
-      /active \(1\)/,
+      /All\s*\(1\)/,
     );
     await expect(page.getByTitle("Usage").first()).toContainText("12.3K");
     await expect(page.getByTitle("Usage").first()).toContainText("$0.42");
@@ -941,24 +942,14 @@ test.describe("orchestrator GUI workbench", () => {
           acceptanceCriteria: ["Task appears in rail", "Message posts"],
         },
       ]);
-    // Creating a task drops straight into its full-pane room.
+    // Creating a task drops straight into its full-pane room. The in-room
+    // composer was removed with the overlay-only chat redesign — operator
+    // messages now flow through the agent-surface capability
+    // `orchestrator-send-message` (covered by the plugin's unit suite), so the
+    // visible-control contract ends at the rendered room.
     await expect(page.getByTestId("orchestrator-timeline")).toContainText(
       "Audit orchestrator surface",
     );
     await expect(page.getByTestId("orchestrator-message-list")).toBeVisible();
-    await expect(page.getByTestId("orchestrator-composer")).toBeVisible();
-
-    await page
-      .getByTestId("orchestrator-composer")
-      .fill("Please verify the smoke task.");
-    await expect(page.getByTestId("orchestrator-send")).toBeEnabled();
-    await page.getByTestId("orchestrator-send").click();
-
-    await expect
-      .poll(() => requests.messageBodies)
-      .toEqual([{ content: "Please verify the smoke task." }]);
-    await expect(page.getByTestId("orchestrator-message-list")).toContainText(
-      "Please verify the smoke task.",
-    );
   });
 });
