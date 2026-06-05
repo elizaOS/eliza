@@ -61,7 +61,7 @@ export interface OAuthFlowHandle {
   needsCodeSubmission: boolean;
   /** Resolves with the saved AccountCredentialRecord; rejects on cancel/timeout/error. */
   completion: Promise<{ account: AccountCredentialRecord }>;
-  /** Anthropic only — submit `code#state` from the redirect page. No-op for Codex. */
+  /** Anthropic only — submit `code#state` from the redirect page. Ignored for Codex. */
   submitCode: (code: string) => void;
   cancel: (reason?: string) => void;
 }

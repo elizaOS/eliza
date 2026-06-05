@@ -5448,6 +5448,43 @@ platform no-ops are separated from actionable runtime gaps.
   - focused marker scan on
     `packages/cloud-shared/src/db/schemas/identity-links.ts`
 
+### packages/shared voice cancellation idempotency wording
+
+- Read `packages/shared/CLAUDE.md` and confirmed `AGENTS.md` parity before
+  editing.
+- Reworded `VoiceCancellationToken` documentation so idempotent abort behavior
+  says later calls are ignored and leave the recorded reason unchanged, instead
+  of using marker wording that looked like an unfinished path. Runtime behavior
+  is unchanged.
+- Verified with:
+  - `./node_modules/.bin/biome check
+    packages/shared/src/voice/voice-cancellation-token.ts`
+  - `bun run --cwd packages/shared typecheck`
+  - focused marker scan on
+    `packages/shared/src/voice/voice-cancellation-token.ts`
+
+### packages/agent runtime guard wording
+
+- Read `packages/agent/CLAUDE.md` and confirmed `AGENTS.md` parity before
+  editing.
+- Reworded production comments that described intentional guard behavior as
+  no-op/stub paths across mobile bootstrapping, tool-call cache writes,
+  sandbox connector/character routing, conversation compaction, cloud wallet
+  binding, deferred wallet initialization, sandbox registry registration,
+  view-affinity indexing, OAuth flow callbacks, boot telemetry, chat snapshots,
+  pending request resolution, connector disconnect emits, chat document
+  augmentation, provider switching, registry refresh, optional mobile routes,
+  and pre-runtime builtin probe handling. Runtime behavior is unchanged.
+- The remaining `packages/agent/src` marker hits are intentional API/schema
+  fields (`placeholder` props and UI schema examples), sentinel-value filters
+  for redacted placeholder credentials, TEE mock/simulated attestation
+  rejection logic, workbench todo naming, and the `noopener` HTML relation
+  token.
+- Verified with:
+  - `./node_modules/.bin/biome check` on all touched agent files
+  - `bun run --cwd packages/agent typecheck`
+  - focused `no-op|noop|stub` scan on `packages/agent/src` excluding tests
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.

@@ -1860,7 +1860,7 @@ export async function generateChatResponse(
     };
     const emitSnapshot = (text: string): void => {
       if (!text) return;
-      // No-op when the snapshot matches the current responseText exactly:
+      // Skip when the snapshot matches the current responseText exactly:
       // re-emitting the same fullText forces clients to re-render an identical
       // bubble (and on-the-wire bytes for nothing).
       if (text === responseText) return;

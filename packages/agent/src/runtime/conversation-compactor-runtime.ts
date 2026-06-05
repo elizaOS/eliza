@@ -665,8 +665,8 @@ type CompactionArtifactStats = {
 /**
  * Main entry point for runtime conversation-level compaction.
  *
- * No-ops when `currentTokens <= targetTokens`. Otherwise parses the prompt,
- * runs the selected strategy, serializes back, and returns the result.
+ * Returns the original prompt when `currentTokens <= targetTokens`. Otherwise
+ * parses the prompt, runs the selected strategy, serializes back, and returns the result.
  * Always returns; never throws on a parse-failure path (falls back to
  * the original prompt with `didCompact: false`).
  */

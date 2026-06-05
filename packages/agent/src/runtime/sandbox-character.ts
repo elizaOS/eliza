@@ -222,7 +222,7 @@ const CONNECTOR_CONFIG_KEYS = ["discord", "telegram"] as const;
  * repopulate the env tokens from config.connectors) and BEFORE plugin
  * auto-enable / resolvePlugins.
  *
- * No-op outside a provisioned container (ELIZA_CLOUD_PROVISIONED != "1"), so
+ * Skipped outside a provisioned container (ELIZA_CLOUD_PROVISIONED != "1"), so
  * local dev and the in-worker path are unaffected.
  */
 export function applySandboxConnectorOwnership(

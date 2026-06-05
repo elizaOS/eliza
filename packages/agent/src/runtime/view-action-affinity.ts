@@ -64,7 +64,7 @@ export function clearActiveViewContext(): void {
  * Update the element snapshot for the active view. Gated on `viewId` matching
  * the current active view so a stale or background view's report (the shell may
  * have several mounted surfaces) can never overwrite the foreground view's
- * elements. No-op — returns false — when no view is active or the id differs.
+ * elements. Returns false when no view is active or the id differs.
  */
 export function setActiveViewElements(
   viewId: string,

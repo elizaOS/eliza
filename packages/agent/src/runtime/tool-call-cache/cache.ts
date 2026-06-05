@@ -83,7 +83,7 @@ export class ToolCallCache {
   }
 
   /**
-   * Record a fresh tool result. No-op when the descriptor is not cacheable.
+   * Record a fresh tool result. Returns immediately when the descriptor is not cacheable.
    * Both tiers are written synchronously; the disk tier runs through the
    * privacy redactor inside DiskStore.write.
    */
