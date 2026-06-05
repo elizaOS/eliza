@@ -562,18 +562,18 @@ export function ContinuousChatOverlay({
           contrast. Always mounted (so its testid is stable); opacity + the blur
           itself animate the takeover in/out. Captures pointer events only while
           fullscreen; clicking it exits via the outside-click handler. */}
-	      <motion.div
-	        aria-hidden="true"
-	        data-testid="chat-fullscreen-backdrop"
-	        data-active={fullscreen ? "true" : "false"}
-	        className={cn(
-	          "fixed inset-0",
-	          // The glass tint: a diagonal sheen over a gentle scrim, so the frosted
-	          // view keeps depth and the bubbles stay legible on light or dark views.
-	          "bg-[linear-gradient(135deg,rgba(255,255,255,0.10)_0%,rgba(255,255,255,0.02)_36%,rgba(8,10,18,0.18)_100%)]",
-	          fullscreen ? "pointer-events-auto" : "pointer-events-none",
-	        )}
-	        initial={false}
+      <motion.div
+        aria-hidden="true"
+        data-testid="chat-fullscreen-backdrop"
+        data-active={fullscreen ? "true" : "false"}
+        className={cn(
+          "fixed inset-0",
+          // The glass tint: a diagonal sheen over a gentle scrim, so the frosted
+          // view keeps depth and the bubbles stay legible on light or dark views.
+          "bg-[linear-gradient(135deg,rgba(255,255,255,0.10)_0%,rgba(255,255,255,0.02)_36%,rgba(8,10,18,0.18)_100%)]",
+          fullscreen ? "pointer-events-auto" : "pointer-events-none",
+        )}
+        initial={false}
         animate={{
           opacity: fullscreen ? 1 : 0,
           // Animate only the unprefixed property — framer-motion's animation
@@ -618,9 +618,9 @@ export function ContinuousChatOverlay({
                 collapse();
               }
             }}
-	            initial={
-	              reduce ? { opacity: 0 } : { opacity: 0, y: 36, scale: 0.92 }
-	            }
+            initial={
+              reduce ? { opacity: 0 } : { opacity: 0, y: 36, scale: 0.92 }
+            }
             animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
             exit={
               reduce
@@ -637,8 +637,8 @@ export function ContinuousChatOverlay({
                 ? { duration: 0.15 }
                 : { type: "spring", stiffness: 130, damping: 26, mass: 1.1 }
             }
-	            className={cn(
-	              "pointer-events-auto relative mb-3 min-h-0 w-full max-w-3xl flex-1 origin-bottom overflow-y-auto px-5 py-6",
+            className={cn(
+              "pointer-events-auto relative mb-3 min-h-0 w-full max-w-3xl flex-1 origin-bottom overflow-y-auto px-5 py-6",
               // The liquid-glass panel: frosted translucency, a bright top edge,
               // an inner glow and a deep drop shadow for floating-pane depth.
               "rounded-[28px] border border-white/12 bg-white/[0.045] backdrop-blur-2xl",
