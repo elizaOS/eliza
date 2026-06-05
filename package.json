@@ -171,7 +171,7 @@
     "build:cloud": "bun run --cwd packages/cloud-api build && bun run --cwd packages/cloud-frontend build",
     "build:android:cloud": "node packages/app-core/scripts/run-mobile-build.mjs android-cloud",
     "build:android:system": "node packages/app-core/scripts/run-mobile-build.mjs android-system",
-    "test:cloud": "mkdir -p .tmp/cloud-unit-bun && printf '[test]\\ntimeout = 120000\\ncoverage = false\\n' > .tmp/cloud-unit-bun/bunfig.toml && cd .tmp/cloud-unit-bun && SKIP_DB_DEPENDENT=1 SKIP_SERVER_CHECK=true bun test \"$OLDPWD/packages/cloud-shared/src\" \"$OLDPWD/packages/cloud-api/__tests__\" --timeout 120000",
+    "test:cloud": "mkdir -p .tmp/cloud-unit-bun && printf '[test]\\ntimeout = 120000\\ncoverage = false\\n' > .tmp/cloud-unit-bun/bunfig.toml && cd .tmp/cloud-unit-bun && SKIP_DB_DEPENDENT=1 SKIP_SERVER_CHECK=true bun test \"$OLDPWD/packages/cloud-shared/src\" \"$OLDPWD/packages/cloud-api/__tests__\" --timeout 120000 --isolate",
     "test:cloud:full": "bun run test:cloud && bun run test:cloud:e2e",
     "test:cloud:e2e": "bun run --cwd packages/cloud-api test:e2e",
     "test:cloud:integration": "node packages/scripts/cloud/admin/run-integration-tests.mjs",
