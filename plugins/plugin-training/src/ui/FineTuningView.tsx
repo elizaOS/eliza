@@ -2206,11 +2206,11 @@ export function FineTuningView({
 
   return (
     <ContentLayout contentHeader={contentHeader}>
-      <div data-testid="fine-tuning-view" className="space-y-6 pb-8">
-        <section className={FINE_TUNING_SECTION_CLASS}>
-          <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
+      <div data-testid="fine-tuning-view" className="space-y-4 pb-32">
+        <section className="rounded-xl border border-border/50 bg-card/65 px-4 py-3 shadow-sm ring-1 ring-border/10">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-xl font-semibold text-txt">
+              <h2 className="text-base font-semibold text-txt">
                 {t("finetuningview.FineTuning")}
               </h2>
             </div>
@@ -2314,12 +2314,16 @@ export function FineTuningView({
         <section className={FINE_TUNING_SECTION_CLASS}>
           <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
             <div className="text-lg font-semibold text-txt">
-              {t("finetuningview.TrainingAnalysisIndex")}
+              {t("finetuningview.TrainingAnalysisIndex", {
+                defaultValue: "Training analysis",
+              })}
             </div>
             <div className="flex flex-wrap gap-2">
               <TrainingActionButton
                 agentId="action-collect-and-index"
-                label={t("finetuningview.CollectAndIndex")}
+                label={t("finetuningview.CollectAndIndex", {
+                  defaultValue: "Collect and index",
+                })}
                 group="analysis"
                 description="Run the full training data collection and build the analysis index"
                 disabled={collectionRunning}
@@ -2328,8 +2332,12 @@ export function FineTuningView({
                 }}
               >
                 {collectionRunning
-                  ? t("finetuningview.Collecting")
-                  : t("finetuningview.CollectAndIndex")}
+                  ? t("finetuningview.Collecting", {
+                      defaultValue: "Collecting",
+                    })
+                  : t("finetuningview.CollectAndIndex", {
+                      defaultValue: "Collect and index",
+                    })}
               </TrainingActionButton>
               <TrainingActionButton
                 agentId="action-collection-preflight"
@@ -2347,7 +2355,9 @@ export function FineTuningView({
               </TrainingActionButton>
               <TrainingActionButton
                 agentId="action-build-analysis-index"
-                label={t("finetuningview.BuildAnalysisIndex")}
+                label={t("finetuningview.BuildAnalysisIndex", {
+                  defaultValue: "Build index",
+                })}
                 group="analysis"
                 description="Build the training analysis index from collected artifacts"
                 disabled={analysisBuilding}
@@ -2356,12 +2366,16 @@ export function FineTuningView({
                 }}
               >
                 {analysisBuilding
-                  ? t("finetuningview.Indexing")
-                  : t("finetuningview.BuildAnalysisIndex")}
+                  ? t("finetuningview.Indexing", { defaultValue: "Indexing" })
+                  : t("finetuningview.BuildAnalysisIndex", {
+                      defaultValue: "Build index",
+                    })}
               </TrainingActionButton>
               <TrainingActionButton
                 agentId="action-build-readiness-report"
-                label={t("finetuningview.BuildReadinessReport")}
+                label={t("finetuningview.BuildReadinessReport", {
+                  defaultValue: "Readiness report",
+                })}
                 group="analysis"
                 description="Build the training readiness report and surface missing checks"
                 disabled={readinessBuilding}
@@ -2370,8 +2384,12 @@ export function FineTuningView({
                 }}
               >
                 {readinessBuilding
-                  ? t("finetuningview.CheckingReadiness")
-                  : t("finetuningview.BuildReadinessReport")}
+                  ? t("finetuningview.CheckingReadiness", {
+                      defaultValue: "Checking",
+                    })
+                  : t("finetuningview.BuildReadinessReport", {
+                      defaultValue: "Readiness report",
+                    })}
               </TrainingActionButton>
             </div>
           </div>

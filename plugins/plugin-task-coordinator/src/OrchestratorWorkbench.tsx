@@ -3809,18 +3809,6 @@ export function OrchestratorWorkbench() {
                     defaultValue:
                       "Dispatch a coding task and the orchestrator will spin up sub-agents, track their plans, and stream their work here.",
                   })}
-                  action={
-                    <Button
-                      size="sm"
-                      onClick={() => setCreateOpen(true)}
-                      className="h-8 gap-1.5 px-3 text-xs-tight font-semibold"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      {t("orchestrator.action.newTask", {
-                        defaultValue: "New task",
-                      })}
-                    </Button>
-                  }
                 />
               )
             ) : (

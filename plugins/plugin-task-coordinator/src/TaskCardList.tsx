@@ -14,7 +14,6 @@ import {
   type LucideIcon,
   OctagonX,
   Search,
-  Sparkles,
   UserRound,
 } from "lucide-react";
 import type { ReactNode, Ref } from "react";
@@ -376,56 +375,7 @@ export function TaskCountChip({
   );
 }
 
-/** Generative SVG motif for the empty state — token-gradient orbiting rings. */
-function EmptyMotif() {
-  return (
-    <svg
-      width="148"
-      height="148"
-      viewBox="0 0 148 148"
-      fill="none"
-      role="img"
-      aria-label="Decorative orbiting rings"
-      className="text-accent"
-    >
-      <title>Decorative orbiting rings</title>
-      <defs>
-        <linearGradient id="tc-ring" x1="0" y1="0" x2="148" y2="148">
-          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.9" />
-          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.15" />
-        </linearGradient>
-        <radialGradient id="tc-core" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.35" />
-          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
-        </radialGradient>
-      </defs>
-      <circle cx="74" cy="74" r="60" fill="url(#tc-core)" />
-      <circle
-        cx="74"
-        cy="74"
-        r="58"
-        stroke="url(#tc-ring)"
-        strokeWidth="1.5"
-        strokeDasharray="4 7"
-        opacity="0.7"
-      />
-      <circle
-        cx="74"
-        cy="74"
-        r="42"
-        stroke="url(#tc-ring)"
-        strokeWidth="1.5"
-        opacity="0.55"
-      />
-      <circle cx="74" cy="16" r="3.5" fill="var(--accent)" opacity="0.9" />
-      <circle cx="132" cy="74" r="2.5" fill="var(--accent)" opacity="0.6" />
-      <circle cx="74" cy="116" r="2.5" fill="var(--accent)" opacity="0.5" />
-      <circle cx="32" cy="74" r="2.5" fill="var(--accent)" opacity="0.6" />
-    </svg>
-  );
-}
-
-/** Rich visual empty state shown when there are no tasks. */
+/** Compact visual empty state shown when there are no tasks. */
 export function TaskEmptyState({
   title,
   hint,
@@ -437,20 +387,49 @@ export function TaskEmptyState({
 }) {
   return (
     <div
-      className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border/50 bg-bg-accent/20 px-6 py-12 text-center"
+      className="grid gap-3 rounded-2xl border border-border/45 bg-bg-accent/20 p-3"
       data-testid="task-empty-state"
     >
-      <div className="relative flex items-center justify-center">
-        <EmptyMotif />
-        <Sparkles className="absolute h-7 w-7 text-accent" aria-hidden />
+      <p className="sr-only">{hint}</p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <CircleDashed className="h-4 w-4 text-accent" aria-hidden />
+          <p className="truncate text-sm font-semibold text-txt-strong">
+            {title}
+          </p>
+        </div>
+        {action ? <div className="shrink-0">{action}</div> : null}
       </div>
-      <div className="space-y-1.5">
-        <p className="text-base font-semibold text-txt-strong">{title}</p>
-        <p className="mx-auto max-w-sm text-sm leading-relaxed text-muted">
-          {hint}
-        </p>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <EmptyStateTile icon={CircleDashed} label="0 tasks" tone="accent" />
+        <EmptyStateTile icon={UserRound} label="Agents idle" tone="neutral" />
+        <EmptyStateTile icon={GitBranch} label="Timeline idle" tone="neutral" />
       </div>
-      {action ? <div className="pt-1">{action}</div> : null}
+    </div>
+  );
+}
+
+function EmptyStateTile({
+  icon: Icon,
+  label,
+  tone,
+}: {
+  icon: LucideIcon;
+  label: string;
+  tone: "accent" | "neutral";
+}) {
+  return (
+    <div className="flex h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/75 px-3">
+      <span
+        className={`grid h-9 w-9 place-items-center rounded-lg border ${
+          tone === "accent"
+            ? "border-accent/35 bg-accent-subtle text-accent"
+            : "border-border/45 bg-bg-accent/35 text-muted"
+        }`}
+      >
+        <Icon className="h-4 w-4" aria-hidden />
+      </span>
+      <span className="text-sm font-semibold text-txt">{label}</span>
     </div>
   );
 }
