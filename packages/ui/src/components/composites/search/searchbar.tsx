@@ -1,65 +1,12 @@
 import { Search, X } from "lucide-react";
 import * as React from "react";
 import { cn } from "../../../lib/utils";
-import { Button } from "../../ui/button";
-import { Input } from "../../ui/input";
-
-export interface SearchBarProps {
-  onSearch: (query: string) => void;
-  searching?: boolean;
-  placeholder?: string;
-  /** Label for the submit button when idle. Defaults to "Search". */
-  searchLabel?: string;
-  /** Label for the submit button when busy. Defaults to "Searching...". */
-  searchingLabel?: string;
-}
 
 export interface SidebarSearchBarProps
   extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "type"> {
   onClear?: () => void;
   loading?: boolean;
   clearLabel?: string;
-}
-
-export function SearchBar({
-  onSearch,
-  searching,
-  placeholder = "Search...",
-  searchLabel = "Search",
-  searchingLabel = "Searching...",
-}: SearchBarProps) {
-  const [query, setQuery] = React.useState("");
-
-  const handleSubmit = React.useCallback(() => {
-    if (query.trim()) {
-      onSearch(query.trim());
-    }
-  }, [query, onSearch]);
-
-  return (
-    <div className="mb-6">
-      <div className="flex gap-2">
-        <Input
-          type="text"
-          placeholder={placeholder}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-          className="h-9 border-border bg-bg text-sm focus-visible:ring-1 focus-visible:ring-accent"
-          disabled={searching}
-        />
-        <Button
-          variant="default"
-          size="sm"
-          className="h-9 px-4 "
-          onClick={handleSubmit}
-          disabled={!query.trim() || searching}
-        >
-          {searching ? searchingLabel : searchLabel}
-        </Button>
-      </div>
-    </div>
-  );
 }
 
 export const SidebarSearchBar = React.forwardRef<
