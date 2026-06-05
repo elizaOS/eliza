@@ -5818,6 +5818,78 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd plugins/plugin-native-wifi build`
   - focused marker scan on both plugin `src` trees
 
+### packages/docs partial-inventory wording and link gate
+
+- Read `packages/docs/CLAUDE.md` and confirmed `AGENTS.md` parity before
+  editing.
+- Reworded current docs from incomplete inventory/build/shutdown wording to
+  partial or truncated wording. Left historical changelog text unchanged.
+- While running the docs gate, fixed an unrelated broken link from the
+  developer diagnostics guide to the non-existent `roadmap.md`, pointing it to
+  the existing `direction.md` page instead.
+- Remaining docs marker hit is historical changelog text about a fixed Steward
+  wallet route stub.
+- Verified with:
+  - `bun run --cwd packages/docs test`
+  - `git diff --check` on the touched docs files and audit file
+  - focused marker scan on `packages/docs`
+
+### packages/prompts, packages/skills, and scenario-runner marker classification
+
+- Read `packages/prompts/CLAUDE.md`, `packages/skills/CLAUDE.md`, and
+  `packages/scenario-runner/CLAUDE.md`, confirming `AGENTS.md` parity for all
+  three before editing.
+- Reworded the skill-creator generated example resources from placeholder
+  script/reference/asset wording to starter example wording.
+- Left intentional contracts unchanged: prompt-template `{{providers}}`
+  placeholders, monetized-app `https://placeholder.invalid` registration URL
+  used before the real app URL exists, `TODO` action names in generated
+  prompt/scenario inventories, scenario-runner search-input placeholder
+  attributes, and the scenario final-check `noop/cancelled` response flag.
+- Verified with:
+  - `python3 -m py_compile
+    packages/skills/skills/skill-creator/scripts/init_skill.py`
+  - `git diff --check` on the touched skills files and audit file
+  - focused marker scans on `packages/prompts`, `packages/skills`, and
+    `packages/scenario-runner`
+
+### plugin-todos, plugin-form, plugin-browser, and plugin-discord marker classification
+
+- Read `plugins/plugin-todos/CLAUDE.md`, `plugins/plugin-form/CLAUDE.md`,
+  `plugins/plugin-browser/CLAUDE.md`, and `plugins/plugin-discord/CLAUDE.md`,
+  confirming `AGENTS.md` parity for all four before classification.
+- No code changes were needed. Remaining hits are intentional public contract
+  terms: the `TODO` action name and examples in plugin-todos; form-builder
+  `placeholder` UI metadata; browser-workspace lookup-by-placeholder support;
+  and Discord component `placeholder` fields.
+- Verified with focused marker scans on each plugin package.
+
+### homepage, os-homepage, and browser-bridge-extension UI placeholder classification
+
+- Read `packages/homepage/CLAUDE.md`, `packages/os-homepage/CLAUDE.md`, and
+  `packages/browser-bridge-extension/CLAUDE.md`, confirming `AGENTS.md` parity
+  for all three before classification.
+- No code changes were needed. Remaining hits are intentional form/input
+  placeholder attributes, translated phone-input placeholder strings, phone-mask
+  metadata, and browser-extension popup configuration placeholders.
+- Verified with focused marker scans on each package.
+
+### packages/app native-module browser fallback classification
+
+- Read `packages/app/CLAUDE.md` and confirmed `AGENTS.md` parity before
+  editing.
+- Reworded one incidental packaged-app test helper comment from no-op eval to
+  empty eval.
+- Remaining `packages/app` no-op/stub hits are intentional browser-bundle
+  fallbacks in `vite/native-module-stub-plugin.ts`, which replaces Node-only or
+  native-only modules so the Vite renderer build can statically import shared
+  code without bundling server/native dependencies.
+- Verified with:
+  - `./node_modules/.bin/biome check
+    packages/app/test/electrobun-packaged/packaged-app-helpers.ts`
+  - `git diff --check` on the touched app helper and audit file
+  - focused marker scan on `packages/app`
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.
