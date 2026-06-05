@@ -12,13 +12,23 @@ const CRON_SECRET = "test-cron-secret";
 
 export interface ProvisioningEndpoints {
   apiUrl: string;
+  controlPlaneUrl?: string;
+  databaseUrl?: string;
+}
+
+export interface CreateCloudAgentOptions {
+  dockerImage?: string;
+  alwaysOn?: boolean;
+  statefulRuntime?: boolean;
+  modelTooLargeForShared?: boolean;
+  autoProvision?: boolean;
 }
 
 export async function createCloudAgent(
   endpoints: ProvisioningEndpoints,
   apiKey: string,
   agentName: string,
-  options: { dockerImage?: string } = {},
+  options: CreateCloudAgentOptions = {},
 ): Promise<string> {
   const res = await fetch(`${endpoints.apiUrl}/api/v1/eliza/agents`, {
     method: "POST",
@@ -29,6 +39,16 @@ export async function createCloudAgent(
     body: JSON.stringify({
       agentName,
       ...(options.dockerImage ? { dockerImage: options.dockerImage } : {}),
+      ...(options.alwaysOn !== undefined ? { alwaysOn: options.alwaysOn } : {}),
+      ...(options.statefulRuntime !== undefined
+        ? { statefulRuntime: options.statefulRuntime }
+        : {}),
+      ...(options.modelTooLargeForShared !== undefined
+        ? { modelTooLargeForShared: options.modelTooLargeForShared }
+        : {}),
+      ...(options.autoProvision !== undefined
+        ? { autoProvision: options.autoProvision }
+        : {}),
     }),
   });
 
@@ -39,11 +59,17 @@ export async function createCloudAgent(
 
   const body = (await res.json()) as {
     id?: string;
+    agentId?: string;
     sandboxId?: string;
-    data?: { id?: string; sandboxId?: string };
+    data?: { id?: string; agentId?: string; sandboxId?: string };
   };
   const sandboxId =
-    body.sandboxId ?? body.id ?? body.data?.sandboxId ?? body.data?.id;
+    body.sandboxId ??
+    body.agentId ??
+    body.id ??
+    body.data?.sandboxId ??
+    body.data?.agentId ??
+    body.data?.id;
   expect(sandboxId, "expected sandbox id from create response").toBeTruthy();
   return sandboxId as string;
 }
@@ -61,6 +87,34 @@ export async function getPersistedDockerImage(
   );
   expect(row, `expected persisted sandbox ${sandboxId}`).toBeTruthy();
   return row?.docker_image ?? null;
+}
+
+export async function getPersistedAgentSummary(
+  sandboxId: string,
+  organizationId: string,
+): Promise<{
+  status: string;
+  executionTier: string;
+  sandboxId: string | null;
+  billingStatus: string;
+}> {
+  const { agentSandboxesRepository } = await import(
+    "@elizaos/cloud-shared/db/repositories/agent-sandboxes"
+  );
+  const row = await agentSandboxesRepository.findByIdAndOrg(
+    sandboxId,
+    organizationId,
+  );
+  expect(row, `expected persisted sandbox ${sandboxId}`).toBeTruthy();
+  if (!row) {
+    throw new Error(`Expected persisted sandbox ${sandboxId}`);
+  }
+  return {
+    status: row.status,
+    executionTier: row.execution_tier,
+    sandboxId: row.sandbox_id,
+    billingStatus: row.billing_status,
+  };
 }
 
 export async function startAgentProvisioning(
@@ -85,6 +139,21 @@ export async function tickProvisioning(
   endpoints: ProvisioningEndpoints,
   opts: { timeoutMs?: number } = {},
 ): Promise<Response> {
+  if (endpoints.controlPlaneUrl && endpoints.databaseUrl) {
+    return fetch(
+      `${endpoints.controlPlaneUrl}/api/v1/cron/process-provisioning-jobs`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${CRON_SECRET}`,
+          "Content-Type": "application/json",
+          "x-eliza-cloud-database-url": endpoints.databaseUrl,
+        },
+        signal: AbortSignal.timeout(opts.timeoutMs ?? 30_000),
+      },
+    );
+  }
+
   return fetch(`${endpoints.apiUrl}/api/v1/cron/process-provisioning-jobs`, {
     method: "POST",
     headers: {
@@ -177,6 +246,74 @@ export async function runScheduledBackups(
   ).toBe(200);
   const body = (await res.json()) as { scanned?: number; enqueued?: number };
   return { scanned: body.scanned ?? 0, enqueued: body.enqueued ?? 0 };
+}
+
+export interface ActiveBillingResourceSummary {
+  resourceType: string;
+  resourceId: string;
+}
+
+export async function listActiveBillingResources(
+  endpoints: ProvisioningEndpoints,
+  apiKey: string,
+): Promise<ActiveBillingResourceSummary[]> {
+  const res = await fetch(`${endpoints.apiUrl}/api/v1/billing/active`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  expect(
+    res.status,
+    `active billing returned ${res.status}: ${await res.clone().text()}`,
+  ).toBe(200);
+  const body = (await res.json()) as {
+    resources?: ActiveBillingResourceSummary[];
+  };
+  expect(body.resources, "expected active billing resources").toBeInstanceOf(
+    Array,
+  );
+  if (!body.resources) {
+    throw new Error("Expected active billing resources");
+  }
+  return body.resources;
+}
+
+export interface BridgeRpcRequest {
+  jsonrpc: "2.0";
+  id?: string | number;
+  method: string;
+  params?: Record<string, unknown>;
+}
+
+export interface BridgeRpcResponse {
+  jsonrpc: "2.0";
+  id?: string | number;
+  result?: Record<string, unknown>;
+  error?: { code: number; message: string };
+}
+
+export async function sendAgentBridgeRequest(
+  endpoints: ProvisioningEndpoints,
+  apiKey: string,
+  sandboxId: string,
+  rpc: BridgeRpcRequest,
+): Promise<BridgeRpcResponse> {
+  const res = await fetch(
+    `${endpoints.apiUrl}/api/v1/eliza/agents/${sandboxId}/bridge`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(rpc),
+    },
+  );
+  expect(
+    res.status,
+    `agent bridge returned ${res.status}: ${await res.clone().text()}`,
+  ).toBe(200);
+  const body = (await res.json()) as BridgeRpcResponse;
+  expect(body.jsonrpc).toBe("2.0");
+  return body;
 }
 
 export async function getSandboxState(

@@ -22,7 +22,6 @@ export const CloudCodingPatchFormatSchema = z.enum([
   "unified-diff",
   "json-patch",
 ]);
-export const CloudContainerArchitectureSchema = z.enum(["arm64", "x86_64"]);
 
 export const CloudVfsFileSchema = z
   .object({
@@ -87,17 +86,23 @@ export const PromoteVfsToCloudContainerRequestSchema = z
 
 export const RequestCodingAgentContainerRequestSchema = z
   .object({
-    agent: CloudCodingAgentSchema,
+    // The coding agent is meaningless for a self-contained image (which boots
+    // its own runtime), so callers may omit it. Defaults to "claude". The
+    // output type stays required, so downstream code that reads `request.agent`
+    // (env-var injection, session response) needs no change.
+    agent: CloudCodingAgentSchema.default("claude"),
     promotionId: z.string().regex(/\S/).optional(),
     source: CloudVfsBundleSchema.optional(),
     prompt: z.string().optional(),
     container: z
+      // NOTE: `cpu`, `memory`, and `architecture` are intentionally NOT accepted
+      // here. The provisioning daemon uses node defaults and the
+      // `agent_sandboxes` row has no columns for them, so accepting them would
+      // be a lie (silently dropped). `.strict()` rejects them with a clear
+      // "Unrecognized key" error rather than swallowing them.
       .object({
         name: z.string().optional(),
         image: z.string().optional(),
-        cpu: z.number().optional(),
-        memory: z.number().optional(),
-        architecture: CloudContainerArchitectureSchema.optional(),
         environmentVars: z.record(z.string(), z.string()).optional(),
       })
       .strict()
@@ -146,9 +151,6 @@ export type CloudVfsFileEncoding = z.infer<typeof CloudVfsFileEncodingSchema>;
 export type CloudVfsFile = z.infer<typeof CloudVfsFileSchema>;
 export type CloudVfsDeletedFile = z.infer<typeof CloudVfsDeletedFileSchema>;
 export type CloudVfsBundle = z.infer<typeof CloudVfsBundleSchema>;
-export type CloudContainerArchitecture = z.infer<
-  typeof CloudContainerArchitectureSchema
->;
 export type PromoteVfsToCloudContainerRequest = z.infer<
   typeof PromoteVfsToCloudContainerRequestSchema
 >;

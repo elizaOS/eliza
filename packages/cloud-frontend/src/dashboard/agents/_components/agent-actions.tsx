@@ -9,6 +9,7 @@ import {
   Camera,
   ExternalLink,
   Loader2,
+  MessageCircle,
   Pause,
   Play,
   Trash2,
@@ -18,14 +19,22 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { openWebUIWithPairing } from "@/lib/hooks/open-web-ui";
 import { useJobPoller } from "@/lib/hooks/use-job-poller";
+import type { AgentExecutionTier } from "@/lib/types/cloud-api";
 import { useT } from "@/providers/I18nProvider";
 
 interface ElizaAgentActionsProps {
   agentId: string;
+  executionTier: AgentExecutionTier;
   status: string;
+  webUiUrl: string | null;
 }
 
-export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
+export function ElizaAgentActions({
+  agentId,
+  executionTier,
+  status,
+  webUiUrl,
+}: ElizaAgentActionsProps) {
   const t = useT();
   const navigate = useNavigate();
   const [loading, setLoading] = useState<string | null>(null);
@@ -36,6 +45,15 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
     onComplete: (job) => {
       const action = jobActionById.current.get(job.jobId);
       jobActionById.current.delete(job.jobId);
+      if (action === "delete") {
+        toast.success(
+          t("cloud.containers.agentActions.agentDeleted", {
+            defaultValue: "Agent deleted",
+          }),
+        );
+        navigate("/dashboard/agents");
+        return;
+      }
       toast.success(
         t("cloud.containers.agentActions.jobCompleted", {
           defaultValue: "{action} completed",
@@ -57,9 +75,15 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
   });
 
   const trackedJob = poller.getStatus(agentId);
+  const trackedAction = trackedJob
+    ? jobActionById.current.get(trackedJob.jobId)
+    : undefined;
   const effectiveStatus = poller.isActive(agentId) ? "provisioning" : status;
 
   const isRunning = effectiveStatus === "running";
+  const hasStandaloneWebUi =
+    isRunning && executionTier !== "shared" && Boolean(webUiUrl);
+  const hasDashboardChat = isRunning;
   const isStopped = ["stopped", "error", "pending", "disconnected"].includes(
     effectiveStatus,
   );
@@ -113,16 +137,6 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
         );
       }
 
-      if (action === "delete") {
-        toast.success(
-          t("cloud.containers.agentActions.agentDeleted", {
-            defaultValue: "Agent deleted",
-          }),
-        );
-        navigate("/dashboard/agents");
-        return;
-      }
-
       // 202 + jobId — the backend enqueued a job; track it and tell the
       // user it's running. Avoids the toast lying ("Snapshot saved")
       // before the daemon actually finished.
@@ -145,6 +159,9 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
           shutdown: t("cloud.containers.agentActions.suspendQueued", {
             defaultValue: "Suspend queued",
           }),
+          delete: t("cloud.containers.agentActions.deleteQueued", {
+            defaultValue: "Delete queued",
+          }),
         };
         toast.success(
           queuedMessages[action] ??
@@ -153,6 +170,16 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
               action,
             }),
         );
+        return;
+      }
+
+      if (action === "delete") {
+        toast.success(
+          t("cloud.containers.agentActions.agentDeleted", {
+            defaultValue: "Agent deleted",
+          }),
+        );
+        navigate("/dashboard/agents");
         return;
       }
 
@@ -205,7 +232,7 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
 
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex flex-wrap gap-3">
-            {isRunning && (
+            {hasStandaloneWebUi && (
               <BrandButton
                 variant="primary"
                 size="sm"
@@ -214,6 +241,19 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
                 <ExternalLink className="h-4 w-4" />
                 {t("cloud.containers.agentActions.openWebUi", {
                   defaultValue: "Open Web UI",
+                })}
+              </BrandButton>
+            )}
+
+            {hasDashboardChat && (
+              <BrandButton
+                variant="primary"
+                size="sm"
+                onClick={() => navigate(`/dashboard/agents/${agentId}/chat`)}
+              >
+                <MessageCircle className="h-4 w-4" />
+                {t("cloud.containers.agentActions.chat", {
+                  defaultValue: "Chat",
                 })}
               </BrandButton>
             )}
@@ -333,10 +373,15 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
               style={{ fontFamily: "var(--font-roboto-mono)" }}
             >
               <Loader2 className="h-4 w-4 animate-spin" />
-              {t("cloud.containers.agentActions.provisioningHint", {
-                defaultValue:
-                  "Agent is provisioning. This page will refresh when the job finishes.",
-              })}
+              {trackedAction === "delete"
+                ? t("cloud.containers.agentActions.deleteHint", {
+                    defaultValue:
+                      "Agent delete is running. This page will return to Instances when the job finishes.",
+                  })
+                : t("cloud.containers.agentActions.provisioningHint", {
+                    defaultValue:
+                      "Agent job is running. This page will refresh when the job finishes.",
+                  })}
             </p>
             {trackedJob && (
               <p

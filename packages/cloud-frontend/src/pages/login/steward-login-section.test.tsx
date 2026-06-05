@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type React from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   getProviders: vi.fn(),
   signInWithEmail: vi.fn(),
   signInWithPasskey: vi.fn(),
+  walletButtonProps: [] as unknown[],
 }));
 
 vi.mock("@stwd/sdk", () => ({
@@ -76,12 +77,15 @@ vi.mock("./steward-wallet-providers", () => ({
 }));
 
 vi.mock("./wallet-buttons", () => ({
-  WalletButtons: () => (
-    <div>
-      <button type="button">Ethereum</button>
-      <button type="button">Solana</button>
-    </div>
-  ),
+  WalletButtons: (props: unknown) => {
+    mocks.walletButtonProps.push(props);
+    return (
+      <div data-testid="wallet-buttons">
+        <button type="button">Ethereum</button>
+        <button type="button">Solana</button>
+      </div>
+    );
+  },
 }));
 
 import { I18nProvider } from "@/providers/I18nProvider";
@@ -103,6 +107,7 @@ beforeEach(() => {
   mocks.getProviders.mockReset();
   mocks.signInWithEmail.mockReset();
   mocks.signInWithPasskey.mockReset();
+  mocks.walletButtonProps.length = 0;
 });
 
 afterEach(() => {
@@ -153,7 +158,15 @@ describe("StewardLoginSection", () => {
     expect(screen.getByRole("button", { name: /google/i })).toBeVisible();
     expect(screen.getByRole("button", { name: /discord/i })).toBeVisible();
     expect(screen.getByRole("button", { name: /github/i })).toBeVisible();
-    expect(screen.getByRole("button", { name: /ethereum/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /^evm$/i })).toBeVisible();
     expect(screen.getByRole("button", { name: /solana/i })).toBeVisible();
+    expect(screen.queryByTestId("wallet-buttons")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /^evm$/i }));
+
+    expect(screen.getByTestId("wallet-buttons")).toBeVisible();
+    expect(mocks.walletButtonProps).toContainEqual(
+      expect.objectContaining({ autoStart: "ethereum" }),
+    );
   });
 });

@@ -34,11 +34,26 @@ on:
         options:
           - staging
           - production
+      deploy_branch:
+        description: 'Git branch to deploy; defaults to main for production and develop for staging'
+        required: false
+        default: ''
+        type: string
+      allow_bridge_host_fallback:
+        description: 'Temporarily allow legacy public host/port routing when HEADSCALE_API_KEY is unavailable'
+        required: false
+        default: false
+        type: boolean
+      diagnostic_agent_id:
+        description: 'Optional agent id to collect redacted provisioning diagnostics for after deploy'
+        required: false
+        default: ''
+        type: string
 
 # Per-env concurrency: a develop push (staging) and a main push (production)
 # can deploy in parallel without one cancelling the other.
 concurrency:
-  group: deploy-eliza-provisioning-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+  group: deploy-eliza-provisioning-worker-${{ inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
   cancel-in-progress: false
 
 # Default to least privilege. Override per-job where needed.
@@ -54,15 +69,23 @@ jobs:
       branch: ${{ steps.env.outputs.branch }}
     steps:
       - id: env
+        env:
+          DEPLOY_BRANCH_INPUT: ${{ inputs.deploy_branch }}
+          ENVIRONMENT_INPUT: ${{ inputs.environment }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            env="${{ github.event.inputs.environment }}"
-          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            env="$ENVIRONMENT_INPUT"
+          elif [ "$REF_NAME" = "refs/heads/main" ]; then
             env="production"
           else
             env="staging"
           fi
-          branch=$([ "$env" = "production" ] && echo "main" || echo "develop")
+          branch="$DEPLOY_BRANCH_INPUT"
+          if [ -z "$branch" ]; then
+            branch=$([ "$env" = "production" ] && echo "main" || echo "develop")
+          fi
           echo "environment=$env" >> "$GITHUB_OUTPUT"
           echo "branch=$branch"   >> "$GITHUB_OUTPUT"
           echo "Resolved: environment=$env branch=$branch"
@@ -78,6 +101,14 @@ jobs:
       DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
       DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
       DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
+      DEPLOY_ENVIRONMENT: ${{ needs.determine-env.outputs.environment }}
+      HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
+      HEADSCALE_API_URL: ${{ needs.determine-env.outputs.environment == 'production' && 'https://headscale.elizacloud.ai' || 'https://headscale-staging.elizacloud.ai' }}
+      HEADSCALE_PUBLIC_URL: ${{ needs.determine-env.outputs.environment == 'production' && 'https://headscale.elizacloud.ai' || 'https://headscale-staging.elizacloud.ai' }}
+      HEADSCALE_USER: agent
+      ELIZA_CLOUD_AGENT_BASE_DOMAIN: elizacloud.ai
+      AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_bridge_host_fallback && '1' || '0' }}
+      DIAGNOSTIC_AGENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_agent_id || '' }}
     steps:
       - name: Check deploy configuration
         id: deploy_config
@@ -101,6 +132,14 @@ jobs:
               exit 1
             fi
             exit 0
+          fi
+          if [ -z "$HEADSCALE_API_KEY" ] && [ "$AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK" != "1" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Missing HEADSCALE_API_KEY for GitHub environment $DEPLOY_ENVIRONMENT; provisioning would fail without routable internal ingress."
+            exit 1
+          fi
+          if [ -z "$HEADSCALE_API_KEY" ]; then
+            echo "::warning::HEADSCALE_API_KEY is missing; deploying with AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK=1."
           fi
           echo "configured=true" >> "$GITHUB_OUTPUT"
 
@@ -155,7 +194,7 @@ jobs:
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 10m
-          envs: DEPLOY_BRANCH,SYSTEMD_UNIT
+          envs: DEPLOY_BRANCH,SYSTEMD_UNIT,DEPLOY_ENVIRONMENT,HEADSCALE_API_KEY,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_USER,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK
           script: |
             set -euo pipefail
             echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH) ==="
@@ -253,6 +292,36 @@ jobs:
             mkdir -p node_modules/@elizaos
             ln -sfn ../../packages/cloud-shared node_modules/@elizaos/cloud-shared
 
+            sudo mkdir -p cloud
+            sudo touch cloud/.env.local
+            sudo chown deploy:deploy cloud cloud/.env.local
+            chmod 600 cloud/.env.local
+
+            upsert_env() {
+              key="$1"
+              value="$2"
+              if [ -z "$value" ]; then
+                return 0
+              fi
+              tmp="$(mktemp)"
+              if grep -q "^${key}=" cloud/.env.local; then
+                awk -v k="$key" -v v="$value" 'BEGIN { q=sprintf("%c", 39) } $0 ~ "^" k "=" { print k "=" q v q; next } { print }' cloud/.env.local > "$tmp"
+              else
+                cp cloud/.env.local "$tmp"
+                printf "%s='%s'\n" "$key" "$value" >> "$tmp"
+              fi
+              install -m 0600 "$tmp" cloud/.env.local
+              rm -f "$tmp"
+            }
+
+            upsert_env ENVIRONMENT "$DEPLOY_ENVIRONMENT"
+            upsert_env HEADSCALE_API_KEY "$HEADSCALE_API_KEY"
+            upsert_env HEADSCALE_API_URL "$HEADSCALE_API_URL"
+            upsert_env HEADSCALE_PUBLIC_URL "$HEADSCALE_PUBLIC_URL"
+            upsert_env HEADSCALE_USER "$HEADSCALE_USER"
+            upsert_env ELIZA_CLOUD_AGENT_BASE_DOMAIN "$ELIZA_CLOUD_AGENT_BASE_DOMAIN"
+            upsert_env AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK "$AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK"
+
             # Install/refresh both systemd units (provisioning worker + agent router).
             sudo install -m 0644 \
               packages/scripts/cloud/admin/eliza-provisioning-worker.service \
@@ -260,6 +329,79 @@ jobs:
             sudo install -m 0644 \
               packages/scripts/cloud/admin/eliza-agent-router.service \
               /etc/systemd/system/eliza-agent-router.service
+
+            if ! command -v nginx >/dev/null 2>&1 || ! command -v openssl >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y nginx openssl
+            fi
+
+            agent_domain="${ELIZA_CLOUD_AGENT_BASE_DOMAIN:-elizacloud.ai}"
+            sudo install -d -m 0755 /etc/nginx/ssl
+            if [ ! -f /etc/nginx/ssl/eliza-agent-router.crt ] || [ ! -f /etc/nginx/ssl/eliza-agent-router.key ]; then
+              sudo openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
+                -keyout /etc/nginx/ssl/eliza-agent-router.key \
+                -out /etc/nginx/ssl/eliza-agent-router.crt \
+                -subj "/CN=*.${agent_domain}" \
+                -addext "subjectAltName=DNS:*.${agent_domain},DNS:${agent_domain}"
+              sudo chmod 600 /etc/nginx/ssl/eliza-agent-router.key
+              sudo chmod 644 /etc/nginx/ssl/eliza-agent-router.crt
+            fi
+
+            sudo tee /etc/nginx/sites-available/eliza-agent-router >/dev/null <<NGINX
+            server {
+              listen 80;
+              listen [::]:80;
+              server_name .${agent_domain};
+              client_max_body_size 50m;
+
+              location / {
+                proxy_http_version 1.1;
+                proxy_set_header Host \$host;
+                proxy_set_header X-Real-IP \$remote_addr;
+                proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto \$scheme;
+                proxy_set_header Upgrade \$http_upgrade;
+                proxy_set_header Connection "upgrade";
+                proxy_buffering off;
+                proxy_read_timeout 120s;
+                proxy_send_timeout 120s;
+                proxy_pass http://127.0.0.1:3458;
+              }
+            }
+
+            server {
+              listen 443 ssl;
+              listen [::]:443 ssl;
+              server_name .${agent_domain};
+              client_max_body_size 50m;
+              ssl_certificate /etc/nginx/ssl/eliza-agent-router.crt;
+              ssl_certificate_key /etc/nginx/ssl/eliza-agent-router.key;
+
+              location / {
+                proxy_http_version 1.1;
+                proxy_set_header Host \$host;
+                proxy_set_header X-Real-IP \$remote_addr;
+                proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto \$scheme;
+                proxy_set_header Upgrade \$http_upgrade;
+                proxy_set_header Connection "upgrade";
+                proxy_buffering off;
+                proxy_read_timeout 120s;
+                proxy_send_timeout 120s;
+                proxy_pass http://127.0.0.1:3458;
+              }
+            }
+            NGINX
+            sudo ln -sfn /etc/nginx/sites-available/eliza-agent-router /etc/nginx/sites-enabled/eliza-agent-router
+            sudo rm -f /etc/nginx/sites-enabled/default
+            sudo nginx -t
+            sudo systemctl enable nginx
+            if sudo systemctl is-active --quiet nginx; then
+              sudo systemctl reload nginx
+            else
+              sudo systemctl start nginx
+            fi
+
             sudo systemctl daemon-reload
             sudo systemctl enable "$SYSTEMD_UNIT" eliza-agent-router.service
 
@@ -341,6 +483,100 @@ jobs:
             sudo systemctl status eliza-agent-router.service --no-pager || true
             sudo journalctl -u eliza-agent-router.service -n 200 --no-pager || true
             exit 1
+
+      - name: Collect redacted agent diagnostics
+        if: steps.deploy_config.outputs.configured == 'true' && env.DIAGNOSTIC_AGENT_ID != ''
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          command_timeout: 2m
+          envs: SYSTEMD_UNIT,DIAGNOSTIC_AGENT_ID
+          script: |
+            set -euo pipefail
+            agent_id="$DIAGNOSTIC_AGENT_ID"
+            safe_agent_id="$(printf '%s' "$agent_id" | tr -cd 'A-Za-z0-9._-')"
+            if [ "$safe_agent_id" != "$agent_id" ] || [ -z "$safe_agent_id" ]; then
+              echo "::error::Invalid diagnostic_agent_id"
+              exit 1
+            fi
+
+            redact_stream() {
+              sed -E \
+                -e 's#(postgres(ql)?://)[^[:space:]]+#\1[REDACTED]#g' \
+                -e 's#(Bearer )[A-Za-z0-9._~+/-]+=*#\1[REDACTED]#g' \
+                -e 's#eliza_[A-Za-z0-9._-]+#eliza_[REDACTED]#g' \
+                -e 's#(/telegram/)[A-Za-z0-9._~+/-]+=*#\1[REDACTED]#g' \
+                -e 's#([?&]token=)[A-Za-z0-9._~+/-]+=*#\1[REDACTED]#g' \
+                -e 's#[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}#[JWT_REDACTED]#g'
+            }
+
+            echo "=== Redacted provisioning diagnostics for ${safe_agent_id} ==="
+            sudo journalctl -u "$SYSTEMD_UNIT" --since "90 minutes ago" --no-pager 2>/dev/null \
+              | grep -F "$safe_agent_id" -A 40 -B 20 \
+              | tail -n 320 \
+              | redact_stream || true
+
+            echo "=== Redacted container-name diagnostics for agent-${safe_agent_id} ==="
+            sudo journalctl -u "$SYSTEMD_UNIT" --since "90 minutes ago" --no-pager 2>/dev/null \
+              | grep -F "agent-${safe_agent_id}" -A 60 -B 20 \
+              | tail -n 320 \
+              | redact_stream || true
+
+            echo "=== Agent router diagnostics for ${safe_agent_id} ==="
+            router_port="$(systemctl show eliza-agent-router.service --property=Environment --value | tr ' ' '\n' | awk -F= '$1=="AGENT_ROUTER_PORT" {print $2}')"
+            : "${router_port:=3458}"
+            agent_domain="$(systemctl show eliza-agent-router.service --property=Environment --value | tr ' ' '\n' | awk -F= '$1=="ELIZA_CLOUD_AGENT_BASE_DOMAIN" {print $2}')"
+            : "${agent_domain:=elizacloud.ai}"
+            router_pid="$(systemctl show eliza-agent-router.service --property=MainPID --value || true)"
+            if [ -n "$router_pid" ] && [ "$router_pid" != "0" ]; then
+              sudo tr '\0' '\n' <"/proc/${router_pid}/environ" \
+                | awk -F= '$1=="AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK" || $1=="ELIZA_CLOUD_AGENT_BASE_DOMAIN" { print } $1=="DATABASE_URL" { print "DATABASE_URL=[present]" }' \
+                | redact_stream || true
+            fi
+            routing_body="$(mktemp)"
+            routing_status="$(curl -s -o "$routing_body" -w "%{http_code}" -m 5 "http://127.0.0.1:${router_port}/agents/${safe_agent_id}/routing" 2>/dev/null || true)"
+            routing_json="$(cat "$routing_body")"
+            rm -f "$routing_body"
+            printf 'agent_router_status=%s\n' "${routing_status:-curl_failed}" | redact_stream
+            if [ -n "$routing_json" ]; then
+              printf '%s\n' "$routing_json" | redact_stream
+              target="$(ROUTING_JSON="$routing_json" node -e 'try { const data = JSON.parse(process.env.ROUTING_JSON || "{}"); if (typeof data.target === "string") console.log(data.target); } catch {}')"
+              bridge_target="$(ROUTING_JSON="$routing_json" node -e 'try { const data = JSON.parse(process.env.ROUTING_JSON || "{}"); if (typeof data.bridgeTarget === "string") console.log(data.bridgeTarget); } catch {}')"
+              if [ -n "$target" ]; then
+                for path in / /health /api/health /pair; do
+                  status="$(curl -s -o /dev/null -w "%{http_code}" -m 8 "http://${target}${path}" 2>/dev/null || true)"
+                  printf 'router_target_check target=%s path=%s status=%s\n' "$target" "$path" "$status" | redact_stream
+                done
+              fi
+              if [ -n "$bridge_target" ]; then
+                for path in /api/agents /api/conversations /bridge; do
+                  status="$(curl -s -o /dev/null -w "%{http_code}" -m 8 "http://${bridge_target}${path}" 2>/dev/null || true)"
+                  printf 'router_bridge_target_check target=%s path=%s status=%s\n' "$bridge_target" "$path" "$status" | redact_stream
+                done
+              fi
+            else
+              echo "agent-router returned no routing payload."
+            fi
+            for path in / /health /api/health /api/agents /api/conversations /bridge /pair; do
+              status="$(curl -s -o /dev/null -w "%{http_code}" -m 8 -H "Host: ${safe_agent_id}.${agent_domain}" "http://127.0.0.1${path}" 2>/dev/null || true)"
+              printf 'nginx_origin_check host=%s path=%s status=%s\n' "${safe_agent_id}.${agent_domain}" "$path" "$status" | redact_stream
+            done
+
+            container_name="agent-${safe_agent_id}"
+            if sudo docker inspect "$container_name" >/dev/null 2>&1; then
+              echo "=== Docker port diagnostics for ${container_name} ==="
+              sudo docker ps --filter "name=^/${container_name}$" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' \
+                | redact_stream || true
+              sudo docker inspect "$container_name" \
+                --format 'name={{.Name}} status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} ports={{json .NetworkSettings.Ports}}' \
+                | redact_stream || true
+              sudo docker exec "$container_name" sh -lc 'printf "PORT=%s HTTP_PORT=%s ELIZA_PORT=%s\n" "${PORT:-}" "${HTTP_PORT:-}" "${ELIZA_PORT:-}"; for port in "${PORT:-}" "${HTTP_PORT:-}" "${ELIZA_PORT:-}"; do case "$port" in ""|*[!0-9]*) continue ;; esac; for path in /health /api/health /; do status=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${port}${path}" 2>/dev/null || true); printf "container_check port=%s path=%s status=%s\n" "$port" "$path" "$status"; done; done' \
+                | redact_stream || true
+            else
+              echo "No Docker container named ${container_name} found."
+            fi
 
       - name: Notify Discord (Success)
         if: success() && steps.deploy_config.outputs.configured == 'true'

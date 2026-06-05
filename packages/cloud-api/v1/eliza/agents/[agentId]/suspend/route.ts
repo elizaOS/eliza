@@ -55,6 +55,23 @@ async function __hono_POST(
       );
     }
 
+    if (agent.execution_tier === "shared") {
+      return applyCorsHeaders(
+        Response.json({
+          success: true,
+          source: "shared_runtime",
+          data: {
+            agentId,
+            action: "suspend",
+            message: "Shared-runtime agents do not use dedicated compute",
+            previousStatus: agent.status,
+            executionTier: agent.execution_tier,
+          },
+        }),
+        CORS_METHODS,
+      );
+    }
+
     if (agent.status === "stopped") {
       return applyCorsHeaders(
         Response.json({

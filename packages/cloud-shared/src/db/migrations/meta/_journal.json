@@ -953,6 +953,27 @@
       "when": 1779408400000,
       "tag": "0135_agent_sandboxes_image_digest",
       "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1779408500000,
+      "tag": "0135_app_image_generation_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1779408600000,
+      "tag": "0136_agent_backup_incremental",
+      "breakpoints": true
+    },
+    {
+      "idx": 138,
+      "version": "7",
+      "when": 1779408700000,
+      "tag": "0137_agent_execution_tier",
+      "breakpoints": true
     }
   ]
 }

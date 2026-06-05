@@ -286,6 +286,24 @@ interface CreateElizaAgentDialogProps {
 
 type CreatePhase = "form" | "creating" | "provisioning";
 
+interface CreateAgentRequest {
+  agentName: string;
+  autoProvision: boolean;
+  dockerImage?: string;
+}
+
+interface CreateAgentResponse {
+  source?: string;
+  data?: {
+    id?: string;
+    agentId?: string;
+    sandboxId?: string;
+    jobId?: string;
+    status?: string;
+    executionTier?: string;
+  };
+}
+
 export function CreateElizaAgentDialog({
   trigger,
   onProvisionQueued,
@@ -377,8 +395,9 @@ export function CreateElizaAgentDialog({
     setPhase("creating");
 
     try {
-      const createBody: Record<string, string | undefined> = {
+      const createBody: CreateAgentRequest = {
         agentName: trimmedName,
+        autoProvision: autoStart,
       };
       if (resolvedDockerImage && flavorId !== getDefaultFlavor().id) {
         createBody.dockerImage = resolvedDockerImage;
@@ -401,7 +420,11 @@ export function CreateElizaAgentDialog({
         );
       }
 
-      const agentId = (createData as { data?: { id?: string } }).data?.id;
+      const createdAgent = createData as CreateAgentResponse;
+      const agentId =
+        createdAgent.data?.id ??
+        createdAgent.data?.agentId ??
+        createdAgent.data?.sandboxId;
       if (!agentId) {
         throw new Error(
           t("cloud.createAgent.noAgentId", {
@@ -413,9 +436,28 @@ export function CreateElizaAgentDialog({
       setCreatedAgentId(agentId);
 
       if (autoStart) {
-        // Transition to provisioning view instead of closing
         setPhase("provisioning");
         setProvisionStartTime(Date.now());
+
+        const createJobId = createdAgent.data?.jobId;
+        if (createJobId) {
+          onProvisionQueued?.(agentId, createJobId);
+          return;
+        }
+
+        if (
+          createRes.status === 201 &&
+          (createdAgent.data?.status === "running" ||
+            createdAgent.source === "shared_runtime")
+        ) {
+          toast.success(
+            t("cloud.createAgent.agentRunning", {
+              defaultValue: "Agent is running",
+            }),
+          );
+          handleClose();
+          return;
+        }
 
         const provisionRes = await fetch(
           `/api/v1/eliza/agents/${agentId}/provision`,
@@ -431,9 +473,7 @@ export function CreateElizaAgentDialog({
           if (jobId) {
             onProvisionQueued?.(agentId, jobId);
           }
-          // Stay in provisioning view — the polling hook will track status
         } else if (provisionRes.ok) {
-          // Already running (synchronous provision)
           toast.success(
             t("cloud.createAgent.agentRunning", {
               defaultValue: "Agent is running",

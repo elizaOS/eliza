@@ -51,9 +51,12 @@ function resolveContainerPort(config: SandboxCreateConfig): string {
   const requested =
     typeof config.environmentVars.PORT === "string" && config.environmentVars.PORT.trim()
       ? config.environmentVars.PORT.trim()
-      : typeof config.container?.port === "number"
-        ? String(config.container.port)
-        : containersEnv.agentPort();
+      : typeof config.environmentVars.HTTP_PORT === "string" &&
+          config.environmentVars.HTTP_PORT.trim()
+        ? config.environmentVars.HTTP_PORT.trim()
+        : typeof config.container?.port === "number"
+          ? String(config.container.port)
+          : containersEnv.agentPort();
   if (!/^\d+$/.test(requested)) {
     throw new Error(`${LOG_PREFIX} Invalid container port: ${requested}`);
   }

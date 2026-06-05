@@ -357,7 +357,7 @@ export class AgentSandboxesRepository {
       .where(
         and(
           eq(agentSandboxes.id, id),
-          sql`${agentSandboxes.status} IN ('pending', 'provisioning', 'stopped', 'disconnected', 'error')`,
+          sql`${agentSandboxes.status} IN ('pending', 'provisioning', 'stopped', 'sleeping', 'disconnected', 'error')`,
         ),
       )
       .returning();

@@ -165,8 +165,10 @@ export function buildCodingContainerCreatePayload(
     image,
     port: Number(containersEnv.agentPort()),
     desired_count: 1,
-    cpu: request.container?.cpu ?? DEFAULT_CPU,
-    memory: request.container?.memory ?? DEFAULT_MEMORY_MB,
+    // The provisioning daemon uses node defaults; callers cannot override CPU
+    // or memory (the request schema no longer accepts them — see contract).
+    cpu: DEFAULT_CPU,
+    memory: DEFAULT_MEMORY_MB,
     health_check_path: "/health",
     environment_vars: environmentVars,
     persist_volume: true,
