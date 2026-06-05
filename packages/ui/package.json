@@ -175,6 +175,11 @@
       "import": "./dist/layouts/index.js",
       "default": "./dist/layouts/index.js"
     },
+    "./lib/utils": {
+      "types": "./dist/lib/utils.d.ts",
+      "import": "./dist/lib/utils.js",
+      "default": "./dist/lib/utils.js"
+    },
     "./navigation": {
       "types": "./dist/navigation/index.d.ts",
       "import": "./dist/navigation/index.js",

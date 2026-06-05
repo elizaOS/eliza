@@ -55,14 +55,13 @@ src/
     trustScoreOptimizer.ts           ML-style parameter tuning for scoring weights
     index.ts                         Re-exports
   frontend/                   React leaderboard SPA (built by vite into dist/).
-                              KNOWN EXCEPTION: ships its own shadcn copies in
-                              frontend/ui/ (button, badge, card, input, table,
-                              tabs) + its own theme because the panel is a
-                              standalone bundle with its own React, not a
-                              view-bundle that externalises @elizaos/ui.
-                              Migrating it to the kit requires moving to the
-                              shared view-bundle pipeline first — do that
-                              rather than growing frontend/ui/.
+                              Uses the canonical @elizaos/ui primitives
+                              (Badge/Button/Card/Table/Spinner via
+                              @elizaos/ui/components/ui/*, cn via
+                              @elizaos/ui/lib/utils) and the kit theme
+                              (index.css imports ui base.css +
+                              tailwind-theme.css). Do not re-add local
+                              primitive copies.
   index.test.ts               Vitest smoke tests
 ```
 

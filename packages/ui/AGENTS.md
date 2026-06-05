@@ -96,6 +96,9 @@ entries (see `exports` in package.json) so importers avoid the giant barrel:
 - `@elizaos/ui/components`, `@elizaos/ui/components/*`, `@elizaos/ui/config`
 - `@elizaos/ui/hooks`, `@elizaos/ui/layouts`, `@elizaos/ui/navigation`
 - `@elizaos/ui/genui`, `@elizaos/ui/voice`, `@elizaos/ui/widgets`, `@elizaos/ui/events`
+- `@elizaos/ui/lib/utils` — just `cn()` (browser-safe; use this instead of the
+  `./utils` barrel when bundling the kit, since `./utils` re-exports Node-side
+  helpers from `@elizaos/shared`)
 - `@elizaos/ui/platform`, `@elizaos/ui/providers`, `@elizaos/ui/types`, `@elizaos/ui/utils`
 - `@elizaos/ui/app-shell-registry`, `@elizaos/ui/button`, `@elizaos/ui/card`,
   `@elizaos/ui/input`, `@elizaos/ui/dropdown-menu` — direct-component shortcuts

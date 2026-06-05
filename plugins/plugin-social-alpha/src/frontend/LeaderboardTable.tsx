@@ -1,3 +1,21 @@
+import { Badge } from "@elizaos/ui/components/ui/badge";
+import { Button } from "@elizaos/ui/components/ui/button";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@elizaos/ui/components/ui/card";
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@elizaos/ui/components/ui/table";
+import { cn } from "@elizaos/ui/lib/utils";
 import {
 	AlertTriangle,
 	Bot,
@@ -10,24 +28,6 @@ import {
 } from "lucide-react";
 import React from "react";
 import type { LeaderboardEntry, Recommendation } from "../types";
-import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "./ui/card";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "./ui/table";
-import { cn } from "./utils";
 
 interface RecommendationDetailsProps {
 	recommendations: Recommendation[];
@@ -90,10 +90,14 @@ const RecommendationDetails: React.FC<RecommendationDetailsProps> = ({
 									<Badge
 										variant={
 											rec.recommendationType === "BUY"
-												? "success"
+												? "secondary"
 												: "destructive"
 										}
-										className="text-xs px-2 py-0.5 self-start"
+										className={cn(
+											"text-xs px-2 py-0.5 self-start",
+											rec.recommendationType === "BUY" &&
+												"border-transparent bg-status-success-bg text-status-success",
+										)}
 									>
 										{rec.recommendationType}
 									</Badge>
