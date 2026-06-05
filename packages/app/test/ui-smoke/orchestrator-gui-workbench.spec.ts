@@ -704,21 +704,25 @@ test.describe("orchestrator GUI workbench", () => {
     const fixture = richOrchestratorFixture();
     const requests = await installOrchestratorWorkbenchRoutes(page, fixture);
 
-    await openAppPath(page, "/orchestrator?task=smoke-task-1");
+    await openAppPath(page, "/orchestrator");
 
     await expect(page.getByTestId("orchestrator-workbench")).toBeVisible();
     await expect(page.getByText("Orchestrator")).toBeVisible();
-    await expect(page.getByTestId("orchestrator-task-item")).toContainText(
-      "Build Kanban planner app",
-    );
-    await expect(page.getByTestId("orchestrator-task-item")).toContainText(
-      "2/2",
-    );
+
+    // Single-pane landing: the rail lists the task card with its agent count.
+    const railTaskCard = page
+      .getByTestId("orchestrator-rail")
+      .getByTestId("task-card");
+    await expect(railTaskCard).toContainText("Build Kanban planner app");
+    await expect(railTaskCard).toContainText("2/2");
     await expect(page.getByTestId("orchestrator-filter")).toContainText(
       /active \(1\)/,
     );
     await expect(page.getByTitle("Usage").first()).toContainText("12.3K");
     await expect(page.getByTitle("Usage").first()).toContainText("$0.42");
+
+    // Opening the card swaps the rail for the full-pane task room.
+    await railTaskCard.click();
 
     await expect(page.getByTestId("orchestrator-timeline")).toContainText(
       "Build Kanban planner app",
@@ -937,7 +941,8 @@ test.describe("orchestrator GUI workbench", () => {
           acceptanceCriteria: ["Task appears in rail", "Message posts"],
         },
       ]);
-    await expect(page.getByTestId("orchestrator-task-item")).toContainText(
+    // Creating a task drops straight into its full-pane room.
+    await expect(page.getByTestId("orchestrator-timeline")).toContainText(
       "Audit orchestrator surface",
     );
     await expect(page.getByTestId("orchestrator-message-list")).toBeVisible();
