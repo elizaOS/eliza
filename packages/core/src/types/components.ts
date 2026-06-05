@@ -783,7 +783,7 @@ export interface HandlerOptions {
 	parameters?: ActionParameters;
 
 	/**
-	 * Parameter validation errors, if the action defined parameters but extraction/validation was incomplete.
+	 * Parameter validation errors, if the action defined parameters but extraction/validation was partial.
 	 *
 	 * Actions SHOULD handle these errors gracefully (e.g. ask the user for missing required values,
 	 * or infer from context when safe).

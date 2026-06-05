@@ -134,7 +134,8 @@ function ensureGradleMtpContract(pkgDir) {
   // GradleResolveVisitor NPE ("source is null") and break every Android
   // build. If we see more than one copy, collapse the entire region between
   // the ext{} block and `buildscript {` back to a single canonical block.
-  const repoRootCount = (next.match(/def resolveElizaRepoRoot\b/g) || []).length;
+  const repoRootCount = (next.match(/def resolveElizaRepoRoot\b/g) || [])
+    .length;
   if (repoRootCount > 1) {
     next = next.replace(
       /(ext\s*\{[\s\S]*?\n\}\n)[\s\S]*?(\nbuildscript \{)/,
@@ -218,7 +219,7 @@ function ensureCmakeMtpContract(pkgDir) {
     !next.includes("ELIZA_SKIP_MTP_ANDROID_LIB")
   ) {
     const smokeLibraryBlock =
-      `\noption(ELIZA_SKIP_MTP_ANDROID_LIB "Build a no-op JNI library for Android smoke builds without MTP libs" OFF)\n` +
+      `\noption(ELIZA_SKIP_MTP_ANDROID_LIB "Build a minimal JNI library for Android smoke builds without MTP libs" OFF)\n` +
       `\n` +
       `find_library(LOG_LIB log)\n` +
       `find_library(ANDROID_LIB android)\n` +

@@ -218,7 +218,6 @@ export function DefenseAgentsOperatorSurface({
         )[0] ?? null,
     [appName, appRuns],
   );
-  const [draft, setDraft] = useState("");
   const [localEvents, setLocalEvents] = useState<GameOperatorEvent[]>([]);
   const [sendingCommand, setSendingCommand] = useState<string | null>(null);
 
@@ -235,7 +234,7 @@ export function DefenseAgentsOperatorSurface({
     .filter((prompt) => !/^auto[- ]?play/i.test(prompt));
 
   const sendCommand = useCallback(
-    async (content: string, clearDraftOnSuccess = false) => {
+    async (content: string) => {
       const trimmed = content.trim();
       if (!run?.runId || !trimmed || sendingCommand) return;
 
@@ -257,9 +256,6 @@ export function DefenseAgentsOperatorSurface({
           response.run?.session ?? response.session ?? null;
         if (response.run) {
           setState("appRuns", replaceRun(appRuns, response.run));
-        }
-        if (clearDraftOnSuccess) {
-          setDraft((current) => (current.trim() === trimmed ? "" : current));
         }
         if (persistedSession) {
           setLocalEvents([]);
@@ -398,10 +394,7 @@ export function DefenseAgentsOperatorSurface({
       <DefenseOperatorRegistrar
         primaryActions={primaryActions}
         suggestedActions={suggestedActions}
-        getDraft={() => draft}
-        onDraftChange={setDraft}
         onCommand={(command) => void sendCommand(command)}
-        onSendDraft={() => void sendCommand(draft, true)}
       />
       <GameOperatorShell
         surfaceTestId={
@@ -421,16 +414,10 @@ export function DefenseAgentsOperatorSurface({
         suggestedActions={suggestedActions}
         events={events}
         emptyEventsLabel="No match events yet."
-        draft={draft}
-        inputPlaceholder="Command the hero..."
         canSend={canSend}
         sending={Boolean(sendingCommand)}
-        chatInputTestId="defense-chat-input"
-        chatSendTestId="defense-chat-send"
         noticeTestId="defense-command-notice"
         variant={variant}
-        onDraftChange={setDraft}
-        onSendDraft={() => void sendCommand(draft, true)}
         onCommand={(command) => void sendCommand(command)}
       />
     </>
@@ -488,62 +475,20 @@ function DefenseSuggestedActionRegistrar({
   return null;
 }
 
-function DefenseDraftInputRegistrar({
-  getDraft,
-  onDraftChange,
-}: {
-  getDraft: () => string;
-  onDraftChange: (value: string) => void;
-}) {
-  useAgentElement<HTMLInputElement>({
-    id: "chat-command-input",
-    role: "text-input",
-    label: "Defense command",
-    group: "defense-chat",
-    description: "Type a command for the hero, then send it",
-    getValue: getDraft,
-    onFill: onDraftChange,
-  });
-  return null;
-}
-
-function DefenseSendDraftRegistrar({
-  onSendDraft,
-}: {
-  onSendDraft: () => void;
-}) {
-  useAgentElement<HTMLButtonElement>({
-    id: "chat-send",
-    role: "button",
-    label: "Send command",
-    group: "defense-chat",
-    description: "Send the typed command to the hero",
-    onActivate: onSendDraft,
-  });
-  return null;
-}
-
 /**
  * Registers the operator surface's interactive controls with the agent surface.
  * GameOperatorShell renders these controls and does not forward refs, so each is
  * registered as a callback-driven element wired to the same handlers the shell
- * invokes (primary lane/recall/autoplay commands, suggested commands, the chat
- * input, and the send button).
+ * invokes (primary lane/recall/autoplay commands and suggested commands).
  */
 function DefenseOperatorRegistrar({
   primaryActions,
   suggestedActions,
-  getDraft,
-  onDraftChange,
   onCommand,
-  onSendDraft,
 }: {
   primaryActions: GameOperatorAction[];
   suggestedActions: GameOperatorAction[];
-  getDraft: () => string;
-  onDraftChange: (value: string) => void;
   onCommand: (command: string) => void;
-  onSendDraft: () => void;
 }) {
   return (
     <>
@@ -562,11 +507,6 @@ function DefenseOperatorRegistrar({
           onCommand={onCommand}
         />
       ))}
-      <DefenseDraftInputRegistrar
-        getDraft={getDraft}
-        onDraftChange={onDraftChange}
-      />
-      <DefenseSendDraftRegistrar onSendDraft={onSendDraft} />
     </>
   );
 }

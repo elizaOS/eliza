@@ -329,6 +329,7 @@ export class TUI extends Container {
   private parseCellSizeResponse(): string {
     // Response format: ESC [ 6 ; height ; width t
     // Match the response pattern
+    // biome-ignore lint/complexity/useRegexLiterals: regex literals with ESC trigger noControlCharactersInRegex.
     const responsePattern = new RegExp("\\x1b\\[6;(\\d+);(\\d+)t");
     const match = this.inputBuffer.match(responsePattern);
 
@@ -350,6 +351,7 @@ export class TUI extends Container {
 
     // Check if we have a partial cell size response starting (wait for more data)
     // Patterns that could be a partial cell size response: \x1b, \x1b[, \x1b[6, \x1b[6;...(no t yet)
+    // biome-ignore lint/complexity/useRegexLiterals: regex literals with ESC trigger noControlCharactersInRegex.
     const partialCellSizePattern = new RegExp("\\x1b(\\[6?;?[\\d;]*)?$");
     if (partialCellSizePattern.test(this.inputBuffer)) {
       // Check if it's actually a complete different escape sequence (ends with a letter)

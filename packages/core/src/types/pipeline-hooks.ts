@@ -46,7 +46,7 @@ export type OutgoingContentSource =
 	| (string & {});
 
 export interface OutgoingContentContext {
-	/** Lets plugins no-op for terminal payloads (`excluded`) or apply different rules per pipeline leg. */
+	/** Lets plugins skip terminal payloads (`excluded`) or apply different rules per pipeline leg. */
 	source: OutgoingContentSource;
 	roomId: UUID;
 	message?: Memory;

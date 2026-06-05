@@ -1051,7 +1051,7 @@ async function callPlanner(params: {
 		// literal action name + a sub-grammar for that action's parameter
 		// shape. Chosen `action` and parameter shape are co-determined by the
 		// grammar in one call; the `validate-tool-args.ts` re-plan round
-		// becomes a no-op when the model lands inside the strict grammar.
+		// is skipped when the model lands inside the strict grammar.
 		// Cloud adapters can use `tools` carrying the same schemas if they do not
 		// honor local skeleton/grammar hints.
 		const plannerActionGrammar =
@@ -1650,7 +1650,7 @@ function appendTerminalContinuationEvent(args: {
 		`terminal_only_continuations: ${args.terminalOnlyContinuations}`,
 		unsafe
 			? "The previous planner output exposed internal tool planning. Emit native toolCalls for remaining work, or a concise user-safe message only if the request is complete."
-			: "The evaluator found the previous terminal planner output incomplete. Emit native toolCalls for remaining work.",
+			: "The evaluator found the previous terminal planner output partial. Emit native toolCalls for remaining work.",
 	].join("\n");
 	return appendContextEvent(args.context, {
 		id: `terminal-planner-retry:${args.iteration}:${createdAt}`,

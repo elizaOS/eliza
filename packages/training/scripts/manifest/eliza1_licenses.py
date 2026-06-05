@@ -8,7 +8,7 @@ text to embed.
 The publish orchestrator consumes this module to (a) write the
 `licenses/` set + the `licenses/license-manifest.json` sidecar when
 finalizing a bundle, and (b) refuse to publish a bundle whose
-`licenses/` set is incomplete or whose embedded text does not match the
+`licenses/` set is partial or whose embedded text does not match the
 canonical SPDX text.
 
 License texts live next to this module under `license_texts/`:

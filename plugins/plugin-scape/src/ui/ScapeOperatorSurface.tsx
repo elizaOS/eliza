@@ -510,7 +510,6 @@ export function ScapeOperatorSurface({
     [appName, appRuns],
   );
 
-  const [operatorMessage, setOperatorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [controlling, setControlling] = useState(false);
@@ -577,13 +576,6 @@ export function ScapeOperatorSurface({
     [run, sending],
   );
 
-  const handleSendMessage = useCallback(async () => {
-    const content = operatorMessage.trim();
-    if (content.length === 0) return;
-    const sent = await sendOperatorMessage(content);
-    if (sent) setOperatorMessage("");
-  }, [operatorMessage, sendOperatorMessage]);
-
   const handleSuggestedPrompt = useCallback(
     async (prompt: string) => {
       await sendOperatorMessage(prompt.trim());
@@ -633,21 +625,6 @@ export function ScapeOperatorSurface({
     description: "Let the 'scape agent act again after a pause",
     status: paused ? "inactive" : "active",
   });
-  const operatorInput = useAgentElement<HTMLInputElement>({
-    id: "operator-message",
-    role: "text-input",
-    label: "Operator directive",
-    group: "operator-chat",
-    description: "Natural-language directive to steer the 'scape agent",
-  });
-  const sendControl = useAgentElement<HTMLButtonElement>({
-    id: "control-send",
-    role: "button",
-    label: "Send directive",
-    group: "operator-chat",
-    description: "Send the typed directive to the 'scape agent",
-  });
-
   if (!run) {
     return (
       <section className="p-4" data-testid="scape-operator-ready">
@@ -871,39 +848,9 @@ export function ScapeOperatorSurface({
         </SurfaceSection>
       ) : null}
 
-      {/* Operator chat */}
       {showChat ? (
         <SurfaceSection title="Steering">
           <div className="space-y-2">
-            <div className="flex gap-2">
-              <Input
-                ref={operatorInput.ref}
-                value={operatorMessage}
-                onChange={(event) => {
-                  setOperatorMessage(event.target.value);
-                }}
-                placeholder="Steer 'scape..."
-                disabled={sending}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void handleSendMessage();
-                  }
-                }}
-                {...operatorInput.agentProps}
-              />
-              <Button
-                ref={sendControl.ref}
-                size="sm"
-                disabled={sending || operatorMessage.trim().length === 0}
-                onClick={() => {
-                  void handleSendMessage();
-                }}
-                {...sendControl.agentProps}
-              >
-                Send
-              </Button>
-            </div>
             {suggestedPrompts.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
                 {suggestedPrompts.map((prompt, index) => (

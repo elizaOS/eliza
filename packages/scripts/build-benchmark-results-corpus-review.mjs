@@ -1203,7 +1203,7 @@ function reviewFindings(families, runHistory) {
       (entry) => entry.has_previous && Number(entry.deltas?.score || 0) > 0,
     ).length;
     if (family.matrix_complete === false) {
-      reasons.push(`matrix incomplete; unsupported cells=${family.unsupported_cells}`);
+      reasons.push(`matrix partial; unsupported cells=${family.unsupported_cells}`);
     }
     if (family.latest_rows === 0) {
       reasons.push("no latest published rows");
@@ -1341,7 +1341,7 @@ function html() {
       ["Benchmarks", data.summary?.benchmarkCount],
       ["Matrix benchmarks", data.summary?.matrixBenchmarkCount],
       ["Comparable", data.summary?.comparableBenchmarkCount],
-      ["Incomplete", data.summary?.incompleteBenchmarkCount],
+      ["Partial matrix", data.summary?.incompleteBenchmarkCount],
       ["Insufficient latest rows", data.summary?.insufficientLatestRows],
       ["Missing trajectory rows", data.summary?.missingTrajectoryLatestRows],
       ["SQLite trajectory rows", data.trajectory?.trajectory_rows],
@@ -1364,7 +1364,7 @@ function html() {
     const warnings = Object.entries(data.summary?.warningCounts || {}).sort((a,b) => b[1]-a[1]);
     const gaps = [
       ["Publication warnings", warnings.map(([k,v]) => k + ": " + v).join("; ") || "none"],
-      ["Incomplete matrix benchmarks", data.summary?.incompleteBenchmarkCount || 0],
+      ["Partial matrix benchmarks", data.summary?.incompleteBenchmarkCount || 0],
       ["Canonical trajectory files", data.summary?.canonicalTrajectoryFiles || 0],
       ["Tokenless replay families", (data.telemetryGapSummary?.tokenlessFamilies || []).map(f => f.benchmark_id + " (" + f.normalized_calls + " records)").join("; ") || "none"],
       ["Zero-metric latest rows", (data.telemetryGapSummary?.zeroMetricLatestRows || 0) + " total; " + (data.telemetryGapSummary?.replayableButTokenlessRows || 0) + " have replayable previews/files; " + (data.telemetryGapSummary?.evidenceAbsentLatestRows || 0) + " lack previews/files"],
@@ -1398,7 +1398,7 @@ function renderMarkdown(payload) {
     `Matrix benchmarks: ${payload.summary.matrixBenchmarkCount}`,
     `Agents: ${payload.summary.agents.join(", ")}`,
     `Comparable benchmarks: ${payload.summary.comparableBenchmarkCount}`,
-    `Incomplete benchmarks: ${payload.summary.incompleteBenchmarkCount}`,
+    `Partial matrix benchmarks: ${payload.summary.incompleteBenchmarkCount}`,
     `Latest rows with insufficient-* warnings: ${payload.summary.insufficientLatestRows}`,
     `Latest rows with zero calls or zero trajectory turns: ${payload.summary.missingTrajectoryLatestRows}`,
     `Latest rows with discovered trajectory-like files: ${payload.summary.latestRowsWithTrajectoryFiles}`,

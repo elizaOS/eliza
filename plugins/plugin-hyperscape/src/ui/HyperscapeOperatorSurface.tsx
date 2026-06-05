@@ -180,7 +180,6 @@ export function HyperscapeOperatorSurface({
     () => selectLatestRunForApp(appName, appRuns),
     [appName, appRuns],
   );
-  const [operatorMessage, setOperatorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [controlAction, setControlAction] = useState<"pause" | "resume" | null>(
@@ -224,15 +223,6 @@ export function HyperscapeOperatorSurface({
     },
     [run, sending],
   );
-
-  const handleSendMessage = useCallback(async () => {
-    const content = operatorMessage.trim();
-    if (content.length === 0) return;
-    const sent = await sendOperatorMessage(content);
-    if (sent) {
-      setOperatorMessage("");
-    }
-  }, [operatorMessage, sendOperatorMessage]);
 
   const handleSuggestedPrompt = useCallback(
     async (prompt: string) => {
@@ -278,22 +268,6 @@ export function HyperscapeOperatorSurface({
     description: "Resume the Hyperscape agent's autonomous run",
     status: controlAction === "resume" ? "active" : "inactive",
   });
-  const operatorInput = useAgentElement<HTMLInputElement>({
-    id: "input-operator-message",
-    role: "text-input",
-    label: "Operator message",
-    group: "operator-relay",
-    description:
-      "Type an operator message telling Hyperscape what to prioritize, avoid, or explain",
-  });
-  const sendControl = useAgentElement<HTMLButtonElement>({
-    id: "action-send",
-    role: "button",
-    label: "Send",
-    group: "operator-relay",
-    description: "Send the operator message to Hyperscape",
-  });
-
   if (!run) {
     return (
       <section className="p-4" data-testid="hyperscape-operator-ready">
@@ -531,39 +505,6 @@ export function HyperscapeOperatorSurface({
                 {controlAction === "resume" ? "Resuming..." : "Resume"}
               </Button>
             ) : null}
-          </div>
-          <div className="grid gap-2">
-            <Input
-              ref={operatorInput.ref}
-              value={operatorMessage}
-              onChange={(event) => setOperatorMessage(event.target.value)}
-              placeholder="Steer Hyperscape..."
-              className="min-h-11 rounded-xl"
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void handleSendMessage();
-                }
-              }}
-              disabled={!session?.canSendCommands}
-              aria-label="Operator message"
-              {...operatorInput.agentProps}
-            />
-            <Button
-              ref={sendControl.ref}
-              type="button"
-              className="min-h-11 rounded-xl px-4 shadow-sm"
-              onClick={() => void handleSendMessage()}
-              disabled={
-                sending ||
-                !session?.canSendCommands ||
-                operatorMessage.trim().length === 0
-              }
-              aria-label="Send"
-              {...sendControl.agentProps}
-            >
-              {sending ? "Sending" : "Send"}
-            </Button>
           </div>
         </SurfaceSection>
       ) : null}

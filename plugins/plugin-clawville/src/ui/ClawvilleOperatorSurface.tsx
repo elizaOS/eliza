@@ -178,7 +178,6 @@ export function ClawvilleOperatorSurface({
         )[0] ?? null,
     [appName, appRuns],
   );
-  const [draft, setDraft] = useState("");
   const [localEvents, setLocalEvents] = useState<GameOperatorEvent[]>([]);
   const [sendingCommand, setSendingCommand] = useState<string | null>(null);
 
@@ -193,7 +192,7 @@ export function ClawvilleOperatorSurface({
   const canSend = Boolean(run?.runId && run.session?.canSendCommands);
 
   const sendCommand = useCallback(
-    async (content: string, clearDraftOnSuccess = false) => {
+    async (content: string) => {
       const trimmed = content.trim();
       if (!run?.runId || !trimmed || sendingCommand) return;
 
@@ -215,9 +214,6 @@ export function ClawvilleOperatorSurface({
           response.run?.session ?? response.session ?? null;
         if (response.run) {
           setState("appRuns", replaceRun(appRuns, response.run));
-        }
-        if (clearDraftOnSuccess) {
-          setDraft((current) => (current.trim() === trimmed ? "" : current));
         }
         if (persistedSession) {
           setLocalEvents([]);
@@ -333,10 +329,7 @@ export function ClawvilleOperatorSurface({
     <>
       <ClawvilleOperatorRegistrar
         suggestedPrompts={suggestedPrompts}
-        getDraft={() => draft}
-        onDraftChange={setDraft}
         onCommand={(command) => void sendCommand(command)}
-        onSendDraft={() => void sendCommand(draft, true)}
       />
       <GameOperatorShell
         surfaceTestId={
@@ -353,16 +346,10 @@ export function ClawvilleOperatorSurface({
         suggestedActions={suggestedActions}
         events={events}
         emptyEventsLabel="No events yet."
-        draft={draft}
-        inputPlaceholder="Tell ClawVille what to do..."
         canSend={canSend}
         sending={Boolean(sendingCommand)}
-        chatInputTestId="clawville-chat-input"
-        chatSendTestId="clawville-chat-send"
         noticeTestId="clawville-command-notice"
         variant={variant}
-        onDraftChange={setDraft}
-        onSendDraft={() => void sendCommand(draft, true)}
         onCommand={(command: string) => void sendCommand(command)}
       />
     </>
@@ -420,59 +407,18 @@ function ClawvilleSuggestedCommandRegistrar({
   return null;
 }
 
-function ClawvilleDraftInputRegistrar({
-  getDraft,
-  onDraftChange,
-}: {
-  getDraft: () => string;
-  onDraftChange: (value: string) => void;
-}) {
-  useAgentElement<HTMLInputElement>({
-    id: "chat-command-input",
-    role: "text-input",
-    label: "ClawVille command",
-    group: "clawville-chat",
-    description: "Type a command to send to ClawVille",
-    getValue: getDraft,
-    onFill: onDraftChange,
-  });
-  return null;
-}
-
-function ClawvilleSendDraftRegistrar({
-  onSendDraft,
-}: {
-  onSendDraft: () => void;
-}) {
-  useAgentElement<HTMLButtonElement>({
-    id: "chat-send",
-    role: "button",
-    label: "Send command",
-    group: "clawville-chat",
-    description: "Send the typed command to ClawVille",
-    onActivate: onSendDraft,
-  });
-  return null;
-}
-
 /**
  * Registers the operator surface's interactive controls with the agent surface.
  * The controls themselves are rendered by GameOperatorShell (which does not
- * forward refs), so each control is registered as a callback-driven element
- * wired to the same handlers the shell invokes.
+ * forward refs), so each visible action is registered as a callback-driven
+ * element wired to the same handlers the shell invokes.
  */
 function ClawvilleOperatorRegistrar({
   suggestedPrompts,
-  getDraft,
-  onDraftChange,
   onCommand,
-  onSendDraft,
 }: {
   suggestedPrompts: string[];
-  getDraft: () => string;
-  onDraftChange: (value: string) => void;
   onCommand: (command: string) => void;
-  onSendDraft: () => void;
 }) {
   return (
     <>
@@ -493,11 +439,6 @@ function ClawvilleOperatorRegistrar({
           onCommand={onCommand}
         />
       ))}
-      <ClawvilleDraftInputRegistrar
-        getDraft={getDraft}
-        onDraftChange={onDraftChange}
-      />
-      <ClawvilleSendDraftRegistrar onSendDraft={onSendDraft} />
     </>
   );
 }

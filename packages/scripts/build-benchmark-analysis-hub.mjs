@@ -690,7 +690,7 @@ function main() {
             ? "warn"
             : "ok",
         title: "Broader benchmark-results corpus has publication warnings",
-        evidence: `${benchmarkResultsCorpus.summary.rowCount} latest rows across ${benchmarkResultsCorpus.summary.benchmarkCount} benchmark families; ${benchmarkResultsCorpus.summary.insufficientLatestRows} latest rows carry insufficient-* warnings; ${benchmarkResultsCorpus.summary.incompleteBenchmarkCount} benchmark family is incomplete in the matrix contract.`,
+        evidence: `${benchmarkResultsCorpus.summary.rowCount} latest rows across ${benchmarkResultsCorpus.summary.benchmarkCount} benchmark families; ${benchmarkResultsCorpus.summary.insufficientLatestRows} latest rows carry insufficient-* warnings; ${benchmarkResultsCorpus.summary.incompleteBenchmarkCount} benchmark family is partial in the matrix contract.`,
         nextAction:
           "Open the benchmark results corpus viewer to inspect non-code-agent benchmark rows, warning counts, and SQLite trajectory records.",
       },

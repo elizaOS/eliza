@@ -934,7 +934,7 @@ export class AutonomyService extends Service {
 				{
 					field: "actions",
 					description:
-						"Required comma-separated action names. Use REPLY to persist the text note, or IGNORE as the safe no-op.",
+						"Required comma-separated action names. Use REPLY to persist the text note, or IGNORE as the safe empty action.",
 					required: true,
 				},
 				{
@@ -1050,7 +1050,7 @@ export class AutonomyService extends Service {
 			},
 			maxRetries: 1,
 			minCycleMs: this.intervalMs,
-			// WHY: Fallback ensures the section always delivers something; IGNORE is the safe no-op so we don't run actions on invalid/empty model output.
+			// WHY: Fallback ensures the section always delivers something; IGNORE avoids running actions on invalid/empty model output.
 			fallback: {
 				thought: "Autonomy fallback: no response.",
 				actions: ["IGNORE"],

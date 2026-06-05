@@ -657,73 +657,6 @@ function ControlButton({
   );
 }
 
-function OperatorMessageInput({
-  value,
-  onChange,
-  onSubmit,
-  disabled,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  onSubmit: () => void;
-  disabled: boolean;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
-    id: "operator-message",
-    role: "text-input",
-    label: "Operator instruction",
-    group: "steering",
-    description: "Tell the bot what to train, where to go, or what to say",
-  });
-  return (
-    <Input
-      ref={ref}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      placeholder="Tell the bot what to train, where to go, or what to say."
-      className="min-h-11 rounded-xl"
-      onKeyDown={(event) => {
-        if (event.key === "Enter" && !event.shiftKey) {
-          event.preventDefault();
-          onSubmit();
-        }
-      }}
-      disabled={disabled}
-      {...agentProps}
-    />
-  );
-}
-
-function SendMessageButton({
-  sending,
-  disabled,
-  onActivate,
-}: {
-  sending: boolean;
-  disabled: boolean;
-  onActivate: () => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "send-message",
-    role: "button",
-    label: "Send",
-    group: "steering",
-    description: "Send the typed operator instruction to the bot",
-  });
-  return (
-    <Button
-      ref={ref}
-      type="button"
-      className="min-h-11 rounded-xl px-4 shadow-sm"
-      onClick={onActivate}
-      disabled={disabled}
-      {...agentProps}
-    >
-      {sending ? "Sending" : "Send"}
-    </Button>
-  );
-}
-
 export function TwoThousandFourScapeOperatorSurface({
   appName,
   variant = "detail",
@@ -734,7 +667,6 @@ export function TwoThousandFourScapeOperatorSurface({
     () => selectLatestRunForApp(appName, appRuns),
     [appName, appRuns],
   );
-  const [operatorMessage, setOperatorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
@@ -890,15 +822,6 @@ export function TwoThousandFourScapeOperatorSurface({
     },
     [run, sending],
   );
-
-  const handleSendMessage = useCallback(async () => {
-    const content = operatorMessage.trim();
-    if (content.length === 0) return;
-    const sent = await sendOperatorMessage(content);
-    if (sent) {
-      setOperatorMessage("");
-    }
-  }, [operatorMessage, sendOperatorMessage]);
 
   const handleSuggestedPrompt = useCallback(
     async (prompt: string) => {
@@ -1207,23 +1130,6 @@ export function TwoThousandFourScapeOperatorSurface({
                 onActivate={() => void handleControl("resume")}
               />
             ) : null}
-          </div>
-          <div className="grid gap-2">
-            <OperatorMessageInput
-              value={operatorMessage}
-              onChange={setOperatorMessage}
-              onSubmit={() => void handleSendMessage()}
-              disabled={!session?.sessionId}
-            />
-            <SendMessageButton
-              sending={sending}
-              disabled={
-                sending ||
-                !session?.sessionId ||
-                operatorMessage.trim().length === 0
-              }
-              onActivate={() => void handleSendMessage()}
-            />
           </div>
         </SurfaceSection>
       ) : null}

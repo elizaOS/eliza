@@ -5594,6 +5594,140 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd packages/os/usb-installer typecheck`
   - focused marker scan on `packages/os/usb-installer/src`
 
+### packages/tui partial escape-sequence wording
+
+- Read `packages/tui/CLAUDE.md` and confirmed `AGENTS.md` parity before
+  editing.
+- Reworded terminal input-buffer comments from incomplete-sequence wording to
+  partial-sequence wording. The parser's `"incomplete"` discriminant remains
+  because it is the explicit protocol state returned while waiting for the rest
+  of an escape sequence.
+- While checking touched files, fixed local Biome findings in the same files:
+  switched the Node builtin import to `node:events`, removed non-null
+  assertions, removed unused overlay imports, and documented why the cell-size
+  response regexes use `RegExp` constructors instead of literals.
+- Verified with:
+  - `./node_modules/.bin/biome check packages/tui/src/constants.ts
+    packages/tui/src/tui.ts packages/tui/src/stdin-buffer.ts`
+  - `bun run --cwd packages/tui build`
+  - focused marker scan on `packages/tui/src`
+
+### packages/scripts report and bootstrap wording
+
+- `packages/scripts` has no package-local guide, so the root repository guide
+  applies.
+- Reworded benchmark/report messages from incomplete/no-op/stub wording to
+  partial evidence, partial matrix, unavailable service, staged bootstrap, and
+  minimal JNI-library wording. Removed an unused benchmark-closure read in the
+  touched review-pack generator while fixing local lint fallout.
+- Left intentional marker contracts unchanged: HTML search-input `placeholder`
+  attributes, the SQL parameter `placeholder()` helper, the
+  `--allow-incomplete-env` admin flag name/help text, and provisioning-worker
+  `"noop"` decision values.
+- Verified with:
+  - `node --check` on the touched MJS scripts
+  - `./node_modules/.bin/biome lint` on the touched scripts
+  - `git diff --check` on the touched scripts and audit file
+  - focused marker scan on `packages/scripts`
+- Note: full `biome check` on the large report generators still asks for broad
+  pre-existing formatter changes; this pass kept that churn out and used
+  lint-only Biome plus syntax checks for the touched scripts.
+
+### packages/core runtime fallback wording
+
+- Read `packages/core/CLAUDE.md` and confirmed `AGENTS.md` parity before
+  editing.
+- Reworded runtime, planner, trajectory, setup, plugin-manager, pipeline hook,
+  action-tool, response-handler, autonomy, and messaging-triage comments/errors
+  so skipped callbacks, absent optional services, disabled recorders, partial
+  payloads, unchanged installs, and IGNORE fallback behavior are described
+  concretely instead of as incomplete/no-op work.
+- Left intentional marker contracts unchanged: prompt text that explicitly
+  forbids echo-placeholder commands, `placeholder` schema/UI metadata fields,
+  secret-placeholder validation, public `getNoopTrajectoryRecorder`/`tj-noop`
+  compatibility names, the `TODO` action name, task-completion `"incomplete"`
+  reflection status, and the CodeQL `incomplete-sanitization` rule name.
+- Verified with:
+  - `./node_modules/.bin/biome check` on the touched core files
+  - `bun run --cwd packages/core typecheck`
+  - `git diff --check` on the touched core files and audit file
+  - focused marker scan on `packages/core/src` excluding generated/tests
+
+### packages/agent transfer-route partial-body wording
+
+- Reused the previously read `packages/agent/CLAUDE.md` guidance and
+  `AGENTS.md` parity.
+- Reworded the agent-transfer upload validation error from incomplete request
+  body to partial request body while preserving the same size/password/file-data
+  validation behavior.
+- Remaining agent marker hits are intentional UI/config placeholder metadata,
+  redacted credential placeholder guards, and UI-catalog prompt examples.
+- Verified with:
+  - `./node_modules/.bin/biome check
+    packages/agent/src/api/agent-transfer-routes.ts`
+  - `bun run --cwd packages/agent typecheck`
+  - focused marker scan on `packages/agent/src` excluding tests
+
+### plugins/plugin-telegram account-auth credential wording
+
+- Read `plugins/plugin-telegram/CLAUDE.md` and confirmed `AGENTS.md` parity
+  before editing.
+- Reworded the GramJS account-auth credential validation error from incomplete
+  credentials to partial credentials, preserving the same login-state checks.
+- Verified with:
+  - `./node_modules/.bin/biome check
+    plugins/plugin-telegram/src/account-auth-service.ts`
+  - `bun run --cwd plugins/plugin-telegram build`
+  - focused marker scan on `plugins/plugin-telegram/src` excluding tests
+
+### plugins/plugin-workflow generation-prompt partial wording
+
+- Read `plugins/plugin-workflow/CLAUDE.md` and confirmed `AGENTS.md` parity
+  before editing.
+- Reworded workflow-generation prompt headings/instructions from incomplete
+  prompt/node wording to partial prompt/node wording while preserving the
+  explicit ban on emitted placeholder values.
+- Remaining workflow marker hits are intentional workflow-contract placeholder
+  fields and prompt guardrails that tell the model never to emit placeholder
+  IDs or pseudo-values when runtime facts are available.
+- Verified with:
+  - `./node_modules/.bin/biome check
+    plugins/plugin-workflow/src/utils/workflow-prompts/workflowGeneration.ts`
+  - `bun run --cwd plugins/plugin-workflow typecheck`
+  - focused marker scan on `plugins/plugin-workflow/src` excluding tests
+
+### packages/training release-evidence wording
+
+- Read `packages/training/CLAUDE.md` and confirmed `AGENTS.md` parity before
+  editing.
+- Reworded publish/manifest license and sidecar blockers, license attestation
+  docs, and an RL response-shape comment from incomplete wording to partial
+  wording. Release-blocking behavior is unchanged.
+- Remaining training script marker hits are intentional tests, turn-detector
+  class labels (`complete/incomplete/backchannel/wait`), and artifact checks
+  that distinguish real GGUF/model files from stub-sized fixtures.
+- Verified with:
+  - `python3 -m py_compile` on the touched training Python files
+  - `git diff --check` on the touched training files and audit file
+  - focused marker scan on `packages/training/scripts`
+
+### packages/cloud-shared Google connector partial-payload wording
+
+- Read `packages/cloud-shared/CLAUDE.md` and confirmed `AGENTS.md` parity
+  before editing.
+- Reworded Google Calendar and Gmail connector normalization failures from
+  incomplete payload errors to partial payload errors. The 502 failure behavior
+  and normalization guards are unchanged.
+- Remaining cloud-shared marker hits are intentional disabled-service
+  no-op/perf-trace objects, dev stub responses gated by explicit dev flags,
+  historical append-only migrations, and provisioning/warm-pool decision
+  strings.
+- Verified with:
+  - `./node_modules/.bin/biome check` on the touched Google connector files
+  - `bun run --cwd packages/cloud-shared typecheck` filtered for the touched
+    Google connector files
+  - focused marker scan on `packages/cloud-shared/src/lib/services/agent-google-connector`
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.

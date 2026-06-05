@@ -361,7 +361,7 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
         </div>
       </div>
 
-      <div className="chat-native-scrollbar flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+      <div className="chat-native-scrollbar flex-1 overflow-y-auto px-4 pb-32 pt-4 sm:px-6">
         <div className="mx-auto flex max-w-5xl flex-col gap-4">
           <section className="rounded-lg border border-border/20 bg-bg-accent/60 p-4">
             <div className="grid grid-cols-3 gap-2">

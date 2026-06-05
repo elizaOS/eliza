@@ -209,7 +209,7 @@ function validateRuntimeEnv(env) {
  * platform messages to them. The orchestrator reads `KV_REST_API_URL` and
  * `KV_REST_API_TOKEN` from its own env and injects them into every new
  * sandbox via docker-sandbox-provider. Without these on the orchestrator
- * host the registration step silently no-ops, so Discord / WhatsApp /
+ * host the registration step has no credentials to publish, so Discord / WhatsApp /
  * Telegram / SMS traffic to those sandboxes is black-holed. Warn loud —
  * we deploy either way (some hosts intentionally skip platform routing)
  * but the operator must opt-in to that silent path.

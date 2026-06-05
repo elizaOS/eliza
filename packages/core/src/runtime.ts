@@ -3525,7 +3525,7 @@ export class AgentRuntime implements IAgentRuntime {
 				(a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name),
 		);
 
-		// Optional trajectory logging service (no-op by default).
+		// Optional trajectory logging service; absent unless configured.
 		const trajLogger = (await this._ensureServiceStarted("trajectories")) as
 			| (Service & TrajectoryProviderAccessLogger)
 			| null;
@@ -6170,7 +6170,7 @@ ${section_end}`;
 			}
 			if (diagnosis.incompleteFields.length > 0) {
 				diagnosticParts.push(
-					`incomplete: ${diagnosis.incompleteFields.join(", ")}`,
+					`partial: ${diagnosis.incompleteFields.join(", ")}`,
 				);
 			}
 			extractor.signalError(

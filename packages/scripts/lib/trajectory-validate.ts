@@ -428,7 +428,7 @@ function validateModel(
       issues,
       "warning",
       `${path}.modelName`,
-      "is missing; cost validation may be incomplete",
+      "is missing; cost validation may be partial",
     );
   }
 
