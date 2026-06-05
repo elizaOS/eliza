@@ -350,15 +350,12 @@ export function formatFullReport(
 
 	const tokenReports = tokens.map((token) => formatTokenPerformance(token));
 
-	const filteredPositions = positions.filter((position) =>
-		tokenMap.has(position.tokenAddress),
-	);
-
-	const positionsWithData = filteredPositions.map((position) => ({
-		position,
-		token: tokenMap.get(position.tokenAddress)!,
-		transactions: txMap.get(position.id) || [],
-	}));
+	const positionsWithData = positions.flatMap((position) => {
+		const token = tokenMap.get(position.tokenAddress);
+		return token
+			? [{ position, token, transactions: txMap.get(position.id) || [] }]
+			: [];
+	});
 
 	const positionReports = positionsWithData.map(
 		({ position, token, transactions }) =>

@@ -1,6 +1,9 @@
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  __loadAppRoutePluginFromSpecifierForTest,
   getSkippedAppRoutePluginIds,
   normalizeAppRoutePluginId,
 } from "./eliza.ts";
@@ -87,5 +90,50 @@ describe("normalizeAppRoutePluginId", () => {
     expect(normalizeAppRoutePluginId("@elizaos/plugin-steward-app")).toBe(
       normalizeAppRoutePluginId("steward"),
     );
+  });
+});
+
+describe("__loadAppRoutePluginFromSpecifierForTest", () => {
+  const packageRoot = path.resolve(
+    process.cwd(),
+    "node_modules/@elizaos/plugin-broken-route-loader-test",
+  );
+
+  afterEach(async () => {
+    await rm(packageRoot, { force: true, recursive: true });
+  });
+
+  it("does not classify missing transitive source imports as optional unavailable", async () => {
+    await mkdir(path.join(packageRoot, "src"), { recursive: true });
+    await writeFile(
+      path.join(packageRoot, "package.json"),
+      JSON.stringify({
+        name: "@elizaos/plugin-broken-route-loader-test",
+        type: "module",
+        exports: {
+          "./package.json": "./package.json",
+          "./plugin-routes": "./src/plugin-routes.js",
+        },
+      }),
+      { encoding: "utf-8" },
+    );
+    await writeFile(
+      path.join(packageRoot, "src/plugin-routes.js"),
+      [
+        'import "@elizaos/definitely-missing-transitive-route-test";',
+        "export const routePlugin = {",
+        '  name: "broken-route-loader-test",',
+        "  routes: [],",
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    await expect(
+      __loadAppRoutePluginFromSpecifierForTest(
+        "@elizaos/plugin-broken-route-loader-test/plugin-routes",
+        "routePlugin",
+      ),
+    ).rejects.toThrow(/definitely-missing-transitive-route-test/);
   });
 });

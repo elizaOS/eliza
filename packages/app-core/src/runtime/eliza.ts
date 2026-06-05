@@ -433,22 +433,16 @@ async function loadAppRoutePluginFromSpecifier(
     logger.debug(
       `[eliza] Loading app route plugin ${specifier} from workspace source at ${sourceEntry}`,
     );
-    try {
-      module = (await import(
-        pathToFileURL(sourceEntry).href
-      )) as AppRoutePluginModule;
-    } catch (sourceErr) {
-      if (isModuleNotFoundError(sourceErr)) {
-        throw new OptionalAppRoutePluginUnavailableError(
-          specifier,
-          sourceErr,
-        );
-      }
-      throw sourceErr;
-    }
+    module = (await import(
+      pathToFileURL(sourceEntry).href
+    )) as AppRoutePluginModule;
   }
   return resolvePluginExport(module, exportName);
 }
+
+/** @internal Exported for focused loader regression tests. */
+export const __loadAppRoutePluginFromSpecifierForTest =
+  loadAppRoutePluginFromSpecifier;
 
 const WORKFLOW_ROUTE_PLUGIN_ID = "@elizaos/plugin-workflow:routes";
 

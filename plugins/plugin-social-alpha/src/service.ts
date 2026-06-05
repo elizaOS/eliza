@@ -3412,8 +3412,8 @@ ${report.tokenReports.join("\n")}
 			consistency,
 		};
 
-			// Classify the user's archetype from observed performance metrics.
-			let archetype = "newbie"; // Default
+		// Classify the user's archetype from observed performance metrics.
+		let archetype = "newbie"; // Default
 		if (winRate > 0.7 && averageProfit > 30) {
 			archetype = "elite_analyst";
 		} else if (winRate > 0.6 && averageProfit > 15) {
