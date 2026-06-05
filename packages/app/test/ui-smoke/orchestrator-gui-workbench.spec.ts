@@ -828,7 +828,14 @@ test.describe("orchestrator GUI workbench", () => {
       .poll(() => requests.actionLog)
       .toContain("rerun:event-tool-write");
 
-    await page.getByTestId("orchestrator-open-inspector").click();
+    // The operator detail drawer and the task inspector are mutually exclusive
+    // panels in the one-column workbench. On desktop the inspector is the
+    // default panel, so closing the drawer brings it back without a separate
+    // open step (the open-inspector trigger only gates the mobile slide-over).
+    await operatorDetail
+      .getByTestId("orchestrator-close-operator-detail")
+      .click();
+    await expect(operatorDetail).toBeHidden();
     await expect(page.getByTestId("orchestrator-inspector")).toBeVisible();
 
     await page.getByTestId("orchestrator-priority-select").selectOption("high");
