@@ -21,12 +21,12 @@ const TABS: Tab[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Placeholder panels
+// Linked installer panels
 // ---------------------------------------------------------------------------
 
-// USB installer integration note: currently launches the
-// standalone `packages/os/usb-installer` either as a separate dev server or
-// as the packaged `elizaOS USB Installer.app`. Tracking issue: pending.
+// USB installer integration note: this shell launches the standalone
+// `packages/os/usb-installer` as a separate dev server or the packaged
+// `elizaOS USB Installer.app`, so raw USB writes stay in the dedicated app.
 const USB_INSTALLER_DEV_URL = "http://127.0.0.1:3742";
 const USB_INSTALLER_DOWNLOAD_URL = "https://elizaos.ai/downloads#usb-installer";
 

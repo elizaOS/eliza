@@ -5744,6 +5744,36 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd packages/feed typecheck`
   - `git diff --check` on the touched Feed files and audit file
 
+### packages/feed paper values and sentinel wording
+
+- Re-read `packages/feed/CLAUDE.md` and confirmed `AGENTS.md` parity.
+- Replaced stale `\placeholder{}` notation in `PAPER_UPDATES.md` and
+  `EXPERIMENTS.md` with the concrete V3 threat-taxonomy values already listed
+  in the memo. No TeX paper file with those markers exists under
+  `packages/feed`; the checked-in source of truth here is the update memo.
+- Reworded code comments in `QuestionManager.ts`, `GameTick.ts`,
+  `monitored-storage.ts`, `seed-nft-collection.ts`, the Discord OAuth initiate
+  route, and the actor historical-stats route. The behaviors are unchanged:
+  resolution article events are not day-scheduled, core ticks return zero
+  content counts unless a host wires content adapters, storage monitoring only
+  wraps uploads because the client has no delete API, NFT seed defaults are
+  local-dev sentinels, Discord uses a non-PKCE verifier sentinel, and
+  historical prediction metrics remain null until resolved-question post
+  analysis is persisted.
+- Remaining Feed marker hits are classified as UI input placeholders, E2E
+  selectors, Storybook/test shims, generated/loading skeleton copy, template
+  substitution terminology, SQL parameter placeholders, satirical character
+  text, dev-only fixture seed data, no-op web/mobile behavior documented in
+  planning docs, and previously audited package-quality-gate notes.
+- Verified with:
+  - focused marker scan on the edited Feed files
+  - `git diff --check -- packages/feed PLACEHOLDER_AUDIT.md`
+  - `bun run --cwd packages/feed/packages/engine typecheck`
+  - `bun run --cwd packages/feed/packages/api typecheck`
+- Biome note: `bunx @biomejs/biome check` from `packages/feed` processed zero
+  of these edited paths because the Feed lint configuration ignores them from
+  that entry point; no formatter changes were needed for comment-only edits.
+
 ### packages/examples partial-line and compatibility-shim wording
 
 - `packages/examples` has no package-local guide, so the root repository guide
@@ -5967,6 +5997,14 @@ platform no-ops are separated from actionable runtime gaps.
   - `./node_modules/.bin/biome check` on the touched TypeScript UI files
   - `git diff --check` on the touched UI files and audit file
   - focused marker scan on `packages/ui`
+
+### packages/ui workflow graph no-op vocabulary
+
+- Re-read `packages/ui/CLAUDE.md` and confirmed `AGENTS.md` parity.
+- Inspected `src/components/pages/WorkflowGraphViewer.tsx`; its remaining
+  `noop` marker is workflow-domain vocabulary used to color no-operation nodes
+  as flow-control steps alongside `if`, `switch`, `merge`, `split`, `wait`, and
+  `start`. It is not an empty component or unfinished renderer path.
 
 ### packages/app-core browser-alias and native-shim classification
 
@@ -6259,6 +6297,43 @@ platform no-ops are separated from actionable runtime gaps.
   responses gated by `ELIZA_CF_REGISTRAR_DEV_STUB=1`, test doubles, idempotent
   no-op semantics, disabled tracing/COT fallbacks, and domain words such as
   Mastodon or todo-list state detection.
+
+### packages/os setup shell linked-installer wording
+
+- Read `packages/os/CLAUDE.md` and confirmed `AGENTS.md` parity; `setup/` has
+  no narrower local guide.
+- Reworded `packages/os/setup/src/components/InstallerShell.tsx` from
+  "placeholder panels" and a pending-tracking note to "linked installer
+  panels". The USB tab intentionally launches `packages/os/usb-installer` in
+  dev or the packaged `elizaOS USB Installer.app` in production, keeping raw USB
+  writes isolated to the dedicated installer app instead of duplicating that
+  backend inside setup.
+- Remaining `packages/os` hits are classified as generated/staged app bundles,
+  upstream Tails files, UI input placeholders, checksum-sentinel validation,
+  release-manifest template placeholders, documented build-host-blocked TEE
+  fixtures, test doubles, and already-covered USB partial-write terminology.
+
+### plugins/plugin-local-inference Samantha preset sentinel contract
+
+- Read `plugins/plugin-local-inference/CLAUDE.md` and confirmed `AGENTS.md`
+  parity.
+- Inspected the Samantha preset regeneration path:
+  `scripts/regenerate-samantha-preset.mjs`,
+  `src/services/voice/samantha-preset-placeholder.ts`,
+  `src/services/voice/samantha-preset-regenerator.ts`, and the engine warnings
+  that route users to the regeneration script.
+- No code change was needed: this is not an unfinished local-inference path.
+  The shipped I-wave zero-fill voice preset is detected narrowly by byte length,
+  ELZ1 magic/version, zero speaker embedding, and empty reference/phrase
+  sections. Runtime regeneration writes real preset bytes when the OmniVoice FFI
+  is available; otherwise the engine logs a specific warning and falls back to
+  Kokoro when staged. The operator script also refuses to overwrite real presets
+  without `--force`.
+- Remaining plugin-local-inference marker hits are classified as tests and test
+  doubles, optional-dependency declaration shims, generated `.d.ts.map` files,
+  documented disabled-path/no-op semantics, native llama.cpp upstream TODO/FIXME
+  comments, and the public `placeholder` vocabulary required by the Samantha
+  detection API and voice-preset generator tests.
 
 ## Intentional / False-Positive Marker Classes
 

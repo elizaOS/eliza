@@ -643,7 +643,7 @@ ${s.involvedOrganizations?.length ? `Organizations: ${s.involvedOrganizations.jo
     // Create a synthetic event for the article generator
     const event: WorldEvent = {
       id: `resolution-${question.id}`,
-      day: 0, // Placeholder, not critical for article generation logic here
+      day: 0, // Resolution articles are not scheduled by simulation day.
       type: "revelation",
       description: eventDescription,
       actors: [],
