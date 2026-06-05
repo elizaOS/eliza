@@ -5127,6 +5127,21 @@ platform no-ops are separated from actionable runtime gaps.
   - `python3 -m pytest packages/training/tests/rl/test_label_rewards.py -q`
   - `git diff --check -- packages/training PLACEHOLDER_AUDIT.md`
 
+### packages/examples/roblox stale poll-stub README
+
+- No package-local `CLAUDE.md`/`AGENTS.md` exists under
+  `packages/examples/roblox`, so the root guide applies.
+- The only marker hit was README wording claiming the TypeScript
+  implementation still had a `poll()` stub. The source no longer defines a
+  poll path; the example implements inbound Roblox chat through the HTTP bridge
+  in `app.ts`.
+- Updated the README to describe the implemented HTTP bridge and the Open Cloud
+  polling limitation without claiming a local stub remains.
+- Verified with:
+  - focused marker scan on `packages/examples/roblox`
+  - `bun run --cwd packages/examples/roblox typecheck`
+  - `git diff --check -- packages/examples/roblox PLACEHOLDER_AUDIT.md`
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.
