@@ -57,13 +57,11 @@ const CompanionOverlay = memo(function CompanionOverlay({
           }`}
         />
         <span className="text-2xs font-semibold uppercase tracking-normal text-white/80">
-          {avatarReady ? "Ready" : "Loading"}
+          {avatarReady ? "Companion avatar ready" : "Companion avatar loading"}
         </span>
       </div>
 
-      <div className="flex-1 grid grid-cols-[1fr_auto] gap-6 min-h-0 relative">
-        <div className="w-full h-full" />
-      </div>
+      <div className="min-h-0 flex-1" />
     </div>
   );
 });

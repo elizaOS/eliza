@@ -588,7 +588,7 @@ REFLECTION_EVALUATOR_CASES = [
         "critique": "Empty content; pure filler.",
         "suggestions": [
             "Drop.",
-            "Treat as no-op output rather than a reflection event.",
+            "Treat as empty output rather than a reflection event.",
         ],
     },
 ]

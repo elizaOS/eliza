@@ -20,10 +20,17 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
     <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
       <EmotePicker />
 
-      {/* Center (empty to show the avatar) */}
-      <div className="flex-1 grid grid-cols-[1fr_auto] gap-6 min-h-0 relative">
-        <div className="w-full h-full" />
+      <div
+        className="absolute bottom-4 left-4 z-20 flex items-center gap-2 rounded-full border border-white/15 bg-black/50 px-3 py-2 backdrop-blur-md"
+        title="Companion avatar surface"
+      >
+        <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+        <span className="text-2xs font-semibold uppercase tracking-normal text-white/80">
+          Companion avatar surface
+        </span>
       </div>
+
+      <div className="min-h-0 flex-1" />
     </div>
   );
 });

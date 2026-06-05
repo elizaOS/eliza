@@ -28,7 +28,7 @@ from typing import cast
 # Make ``scripts.lib.backends.*`` importable when this file is run as a
 # script (``python3 scripts/cloud_run.py ...``) — the repo root must be
 # on sys.path. When invoked as ``python3 -m scripts.cloud_run`` this is
-# already true, so the insert is a harmless no-op.
+# already true, so the guarded insert leaves sys.path unchanged.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))

@@ -1145,14 +1145,12 @@ class FeedOnlineEnv(BaseEnv):
                 reasoning=reasoning,
             )
         elif action_type == "wait":
-            # No action needed - balance unchanged
-            # NOTE: new_balance=0.0 is a placeholder since "wait" doesn't modify state.
-            # The caller should use the previous balance from the scenario if needed.
-            # We avoid an extra get_scenario() call here for performance.
+            # No action needed; report the current bridge balance explicitly.
+            scenario = await self.simulation_bridge.get_scenario(npc_id)
             return ActionOutcome(
                 success=True,
                 pnl=0.0,
-                new_balance=0.0,  # Placeholder - balance unchanged on wait
+                new_balance=scenario.balance,
                 new_positions=[],
                 social_impact={},
                 events=[],

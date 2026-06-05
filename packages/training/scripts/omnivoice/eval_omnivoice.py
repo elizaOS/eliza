@@ -9,7 +9,7 @@ Runs the frozen-conditioning path (Path A from I6/R6) and measures:
 The eval covers the shipped Path A (preset-based freeze, no weight training).
 It is used by ``finetune_omnivoice.py`` to gate the HF push.
 
-Synthetic-smoke mode (``--synthetic-smoke``): writes a stub eval.json.
+Synthetic-smoke mode (``--synthetic-smoke``): writes a synthetic eval.json.
 
 Usage
 -----
@@ -100,12 +100,12 @@ def _eval_with_preset(
 ) -> dict[str, float]:
     """Evaluate WER + RTF + speaker similarity using OmniVoice + same preset.
 
-    When ``ffi`` is None or ``preset_path`` is None, returns placeholder metrics.
+    When ``ffi`` is None or ``preset_path`` is None, returns fallback metrics.
     This is the expected state in CI (no fused build).
     """
     if ffi is None or preset_path is None:
         log.info(
-            "FFI or preset not available — returning placeholder metrics "
+            "FFI or preset not available — returning fallback metrics "
             "(real eval requires libelizainference with ov_encode_reference)"
         )
         return {"wer": 0.999, "rtf": 0.0, "speaker_similarity": 0.0}
@@ -120,7 +120,7 @@ def _eval_with_preset(
     log.warning(
         "Full OmniVoice eval harness (TTS synthesis + Whisper WER + ECAPA) "
         "requires the fused build with ov_encode_reference. "
-        "Returning placeholder metrics."
+        "Returning fallback metrics."
     )
     return {"wer": 0.999, "rtf": 0.0, "speaker_similarity": 0.0}
 

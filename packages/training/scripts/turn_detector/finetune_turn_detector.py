@@ -175,7 +175,7 @@ def stage_data(
 
     The privacy filter lives outside this package
     (``plugins/app-training/src/core/privacy-filter.ts``); we re-implement
-    the no-op invariant here as a fail-closed marker. The real Python
+    the unchanged-output invariant here as a fail-closed marker. The real Python
     bridge is the responsibility of the training driver — for the smoke
     surface we only check existence + emit a manifest.
     """

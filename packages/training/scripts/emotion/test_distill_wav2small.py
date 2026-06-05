@@ -142,7 +142,7 @@ class BudgetTests(unittest.TestCase):
 class HeavyPhasesTests(unittest.TestCase):
     """The heavy phases are now implemented. They still require torch +
     onnxruntime + a teacher checkpoint for the full run, but the contracts
-    below are enforced in pure Python: empty inputs no-op, missing teachers
+    below are enforced in pure Python: empty inputs return empty results, missing teachers
     fail loudly with the license-checked path, and the export rejects bad
     output paths before touching ONNX.
     """
@@ -168,7 +168,7 @@ class HeavyPhasesTests(unittest.TestCase):
             )
 
     def test_train_student_rejects_empty_labels(self) -> None:
-        """No labels means no-op — operator should be told loudly to
+        """No labels means training cannot proceed — operator should be told loudly to
         run `teacher_pseudo_labels` first."""
         with self.assertRaisesRegex(RuntimeError, "empty teacher_labels"):
             dw.train_student(

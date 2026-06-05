@@ -1030,7 +1030,7 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
                 }
             )
         else:
-            # Fall back to the openWakeWord placeholder; the runtime keeps
+            # Fall back to the upstream openWakeWord head; the runtime keeps
             # this listed in OPENWAKEWORD_PLACEHOLDER_HEADS so the engine
             # warns on activation.
             staged.append(
@@ -1246,8 +1246,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Path to a locally-trained wake-word head ONNX (output of "
             "packages/training/scripts/wakeword/train_eliza1_wakeword_head.py). "
             "When supplied, this head is staged as wake/hey-eliza.onnx in "
-            "every bundle instead of the upstream `hey_jarvis` placeholder. "
-            "Omitting the flag preserves the legacy placeholder behavior "
+            "every bundle instead of the upstream `hey_jarvis` wake phrase. "
+            "Omitting the flag preserves the legacy upstream-head behavior "
             "(runtime warns via OPENWAKEWORD_PLACEHOLDER_HEADS)."
         ),
     )

@@ -75,13 +75,13 @@ describe("BitRouter Railway service", () => {
     expect(
       config.providers.cerebras?.models?.["gpt-oss-120b"]?.pricing,
     ).toEqual({
-      input_tokens: { no_cache: 0.35 },
-      output_tokens: { text: 0.75 },
+      input_tokens: { no_cache: 0.35, cache_read: 0.35, cache_write: 0.35 },
+      output_tokens: { text: 0.75, reasoning: 0 },
     });
     expect(config.providers.cerebras?.models?.["zai-glm-4.7"]?.pricing).toEqual(
       {
-        input_tokens: { no_cache: 2.25 },
-        output_tokens: { text: 2.75 },
+        input_tokens: { no_cache: 2.25, cache_read: 2.25, cache_write: 2.25 },
+        output_tokens: { text: 2.75, reasoning: 0 },
       },
     );
     for (const route of ["gpt-oss-120b", "cerebras:gpt-oss-120b"]) {
@@ -90,8 +90,8 @@ describe("BitRouter Railway service", () => {
         service_id: "gpt-oss-120b",
       });
       expect(config.models[route]?.pricing).toEqual({
-        input_tokens: { no_cache: 0.35 },
-        output_tokens: { text: 0.75 },
+        input_tokens: { no_cache: 0.35, cache_read: 0.35, cache_write: 0.35 },
+        output_tokens: { text: 0.75, reasoning: 0 },
       });
     }
     for (const route of ["zai-glm-4.7", "cerebras:zai-glm-4.7"]) {
@@ -100,8 +100,8 @@ describe("BitRouter Railway service", () => {
         service_id: "zai-glm-4.7",
       });
       expect(config.models[route]?.pricing).toEqual({
-        input_tokens: { no_cache: 2.25 },
-        output_tokens: { text: 2.75 },
+        input_tokens: { no_cache: 2.25, cache_read: 2.25, cache_write: 2.25 },
+        output_tokens: { text: 2.75, reasoning: 0 },
       });
     }
     expect(railway).toContain("[deploy]");

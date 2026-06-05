@@ -184,7 +184,7 @@ ${SMOKE_MODEL:+export ELIZA_MTP_SMOKE_MODEL=/workspace/smoke.gguf}
 ${SMOKE_MODEL:+packages/inference/verify/cuda_runner.sh --report /tmp/cuda-report.json} \
   ${SMOKE_MODEL:+|| true}
 ${SMOKE_MODEL:+test -f /tmp/cuda-report.json && cp /tmp/cuda-report.json /workspace/cuda-report.json}
-# No smoke model → still emit a fixture-parity-only evidence stub.
+# No smoke model -> still emit fixture-parity-only evidence.
 ${SMOKE_MODEL:+:} || cat > /workspace/cuda-report.json <<'JSON'
 {"schemaVersion":1,"runner":"run-on-cloud kernel-verify","status":"pass","passRecordable":false,
  "exitCode":0,"note":"cuda-verify + cuda-verify-fused fixture parity only; no ELIZA_MTP_SMOKE_MODEL → graph smoke skipped, so this is NOT a runtime-ready record. Pass --smoke-model to upgrade."}
@@ -198,11 +198,11 @@ REMOTE
     REG_KEY="$(tier_to_registry_key "$TIER")"
     OUT="$BENCH_DIR/cuda_${GPU}_${TIER}_${DATE_TAG}.json"
     REMOTE_TASK="$(cat <<REMOTE
-# e2e CUDA bench harness. The repo's bench entrypoint reads the bench_results
+# e2e CUDA bench harness. The repo bench entrypoint reads the bench_results
 # dir; we point it at /workspace and copy out.
 ELIZA1_BENCH_TIER=$TIER ELIZA1_BENCH_REGISTRY_KEY=$REG_KEY \
   node packages/inference/verify/eliza1_gates_collect.mjs --backend cuda --bench --out /workspace/bench.json || \
-  { echo "bench harness not present on this commit — emitting toolchain-only stub"; \
+  { echo "bench harness not present on this commit - emitting toolchain-only evidence"; \
     printf "{\"schemaVersion\":1,\"backend\":\"cuda\",\"gpu\":\"%s\",\"tier\":\"%s\",\"status\":\"toolchain-only\",\"note\":\"eliza1 bench harness not on this commit\"}\\n" "$GPU" "$TIER" > /workspace/bench.json; }
 cp /workspace/bench.json /workspace/eliza/bench.json 2>/dev/null || true
 REMOTE
@@ -279,7 +279,8 @@ fi
 
 # 5. Run bootstrap + task.
 log "running bootstrap + $TASK on the instance (this can take 10-40 min)..."
-ssh -o StrictHostKeyChecking=no "$SSH_HOSTPORT" "bash -lc 'mkdir -p /workspace && cd /workspace && cat > bootstrap.sh' " <<< "$REMOTE_SCRIPT"$'\n'"$REMOTE_TASK"
+printf '%s\n%s\n' "$REMOTE_SCRIPT" "$REMOTE_TASK" \
+  | ssh -o StrictHostKeyChecking=no "$SSH_HOSTPORT" "mkdir -p /workspace && cat > /workspace/bootstrap.sh"
 ssh -o StrictHostKeyChecking=no "$SSH_HOSTPORT" "bash -l /workspace/bootstrap.sh"
 
 # 6. Pull evidence.

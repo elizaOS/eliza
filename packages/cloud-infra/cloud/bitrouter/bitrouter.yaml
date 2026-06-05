@@ -26,8 +26,11 @@ providers:
         pricing:
           input_tokens:
             no_cache: 0.35
+            cache_read: 0.35
+            cache_write: 0.35
           output_tokens:
             text: 0.75
+            reasoning: 0
       zai-glm-4.7:
         name: "ZAI GLM 4.7"
         max_input_tokens: 131072
@@ -39,8 +42,11 @@ providers:
         pricing:
           input_tokens:
             no_cache: 2.25
+            cache_read: 2.25
+            cache_write: 2.25
           output_tokens:
             text: 2.75
+            reasoning: 0
 
 models:
   gpt-oss-120b:
@@ -50,8 +56,11 @@ models:
     pricing:
       input_tokens:
         no_cache: 0.35
+        cache_read: 0.35
+        cache_write: 0.35
       output_tokens:
         text: 0.75
+        reasoning: 0
   "cerebras:gpt-oss-120b":
     endpoints:
       - provider: cerebras
@@ -59,8 +68,11 @@ models:
     pricing:
       input_tokens:
         no_cache: 0.35
+        cache_read: 0.35
+        cache_write: 0.35
       output_tokens:
         text: 0.75
+        reasoning: 0
   zai-glm-4.7:
     endpoints:
       - provider: cerebras
@@ -68,8 +80,11 @@ models:
     pricing:
       input_tokens:
         no_cache: 2.25
+        cache_read: 2.25
+        cache_write: 2.25
       output_tokens:
         text: 2.75
+        reasoning: 0
   "cerebras:zai-glm-4.7":
     endpoints:
       - provider: cerebras
@@ -77,7 +92,10 @@ models:
     pricing:
       input_tokens:
         no_cache: 2.25
+        cache_read: 2.25
+        cache_write: 2.25
       output_tokens:
         text: 2.75
+        reasoning: 0
 
 inherit_defaults: true

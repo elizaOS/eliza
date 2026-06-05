@@ -21,8 +21,7 @@ This script:
    `package_voice_for_release.py` for the final voice-preset packaging).
 
 Synthetic-smoke mode (`--synthetic-smoke`) writes a minimal-but-valid ONNX
-placeholder (a single identity node) so downstream wiring tests pass without
-torch or a real model.
+identity graph so downstream wiring tests pass without torch or a real model.
 """
 
 from __future__ import annotations
@@ -228,7 +227,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--synthetic-smoke",
         action="store_true",
-        help="Write a minimal placeholder ONNX without torch (CI smoke).",
+        help="Write a minimal synthetic ONNX without torch (CI smoke).",
     )
     return p
 

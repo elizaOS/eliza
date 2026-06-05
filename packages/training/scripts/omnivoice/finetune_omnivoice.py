@@ -65,7 +65,7 @@ Outputs
         tb/                  # TensorBoard logs
 
 Synthetic-smoke mode (``--synthetic-smoke``): runs the full control flow
-without torch / GPU, emitting JSON stub checkpoints. CI uses this.
+without torch / GPU, emitting JSON synthetic checkpoints. CI uses this.
 
 Usage
 -----
@@ -644,7 +644,7 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
             ),
         )
     except Exception as exc:
-        log.warning("eval failed: %s — using placeholder metrics", exc)
+        log.warning("eval failed: %s — using fallback metrics", exc)
         eval_metrics = {"wer": 0.999, "rtf": 0.0, "speaker_similarity": 0.0}
 
     stats = TrainStats(

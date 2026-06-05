@@ -5077,6 +5077,56 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd packages/os/setup typecheck`
   - `git diff --check -- packages/os PLACEHOLDER_AUDIT.md`
 
+### packages/training Kokoro mode routing and synthetic evidence wording
+
+- Read `packages/training/CLAUDE.md` and confirmed `AGENTS.md` parity before
+  editing. The package's marker hits are heavily fixture/evidence oriented:
+  synthetic corpora, privacy placeholders, config placeholder provider labels,
+  wake-word upstream placeholder flags, and tests that reject incomplete
+  release evidence are expected to remain visible.
+- Promoted the tracked stale Kokoro `.tmp` implementation into the canonical
+  `finetune_kokoro.py` where it was useful, then deleted the temp file. The
+  canonical script now has explicit `--mode` routing for
+  `full-finetune` versus `lora-experimental`, maps legacy `full`/`lora`
+  config values, sends full fine-tune runs through the native
+  `kokoro_training` adapter, preserves synthetic-smoke behavior, and writes a
+  concrete train manifest for adapter-backed runs.
+- Removed one actual placeholder value from the RL bridge wait path:
+  `execute_action_via_bridge(..., action="wait")` now reads the current
+  scenario and returns the bridge balance instead of hard-coding `0.0`.
+- Reworded implemented idempotent, synthetic-smoke, fallback, and evidence
+  paths that were described as no-ops, stubs, or placeholders across ASR,
+  Kokoro, OmniVoice, cloud dispatch, quantization, publish, TE FP8, hybrid
+  cache, wake-word staging, and fixture tests. The `run-on-cloud.sh` wording
+  pass also exposed an existing Bash parse ambiguity in a remote here-doc; the
+  script upload now pipes the composed bootstrap content into `ssh` and the
+  apostrophe-bearing remote comment was removed.
+- Remaining training marker hits are intentional: generated/synthetic data,
+  privacy placeholder examples, provider labels
+  `openai-placeholder`/`opus-placeholder` that cannot execute, tests that
+  assert placeholder rejection, fixture template placeholder APIs, wake-word
+  placeholder metadata for the upstream `hey_jarvis` head, fake/stub test
+  doubles, and explicit release blockers for incomplete uploaded evidence.
+- Verified with:
+  - `diff -q packages/training/CLAUDE.md packages/training/AGENTS.md`
+  - focused source marker scans on `packages/training`
+  - `python3 -m py_compile` on all touched Python files in the training pass
+  - `bash -n packages/training/scripts/cloud/run-on-cloud.sh
+    packages/training/scripts/cloud/dispatch-vast.sh
+    packages/training/scripts/nebius_watcher.sh
+    packages/training/scripts/build_quantization_extensions.sh
+    packages/training/scripts/publish_custom_kokoro_voice.sh`
+  - `python3 -m pytest packages/training/scripts/test_cap_distribution.py
+    packages/training/scripts/training/test_optimizer_cpu.py
+    packages/training/scripts/test_append_voice_model_version.py
+    packages/training/scripts/test_backends_vast.py
+    packages/training/scripts/emotion/test_distill_wav2small.py
+    packages/training/scripts/test_vast_watcher_budget.py -q`
+  - `python3 -m pytest packages/training/scripts/kokoro/__tests__/test_train_smoke.py
+    packages/training/scripts/omnivoice/__tests__/test_omnivoice_pipeline.py -q`
+  - `python3 -m pytest packages/training/tests/rl/test_label_rewards.py -q`
+  - `git diff --check -- packages/training PLACEHOLDER_AUDIT.md`
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.
