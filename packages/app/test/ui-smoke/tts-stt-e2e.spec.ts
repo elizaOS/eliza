@@ -826,8 +826,10 @@ test("always-on chat mode starts passive browser STT and keeps capture open afte
     .poll(async () => page.locator("body").innerText(), { timeout: 5_000 })
     .toContain("always on browser turn");
 
+  // The continuous-chat overlay keeps both the resting and fullscreen thread
+  // mounted, so the same turn text exists in two nodes — assert the first.
   await expect(
-    page.getByText("Always-on assistant heard the browser turn"),
+    page.getByText("Always-on assistant heard the browser turn").first(),
   ).toBeVisible({
     timeout: 5_000,
   });
