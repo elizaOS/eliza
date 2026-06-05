@@ -11,6 +11,7 @@ export const CloudCodingContainerStatusSchema = z.enum([
   "stopped",
 ]);
 
+export const CloudContainerArchitectureSchema = z.enum(["arm64", "x86_64"]);
 export const CloudVfsSourceKindSchema = z.enum(["project", "workspace"]);
 export const CloudVfsFileEncodingSchema = z.enum(["utf-8", "base64"]);
 export const CloudCodingSyncDirectionSchema = z.enum([
@@ -145,6 +146,9 @@ export const SyncCloudCodingContainerRequestSchema = z
 export type CloudCodingAgent = z.infer<typeof CloudCodingAgentSchema>;
 export type CloudCodingContainerStatus = z.infer<
   typeof CloudCodingContainerStatusSchema
+>;
+export type CloudContainerArchitecture = z.infer<
+  typeof CloudContainerArchitectureSchema
 >;
 export type CloudVfsSourceKind = z.infer<typeof CloudVfsSourceKindSchema>;
 export type CloudVfsFileEncoding = z.infer<typeof CloudVfsFileEncodingSchema>;
