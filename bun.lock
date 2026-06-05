@@ -5609,6 +5609,7 @@
     "@solana/rpc-transport-http@5.5.1": "patches/@solana%2Frpc-transport-http@5.5.1.patch",
     "@solana/rpc-subscriptions-api@5.5.1": "patches/@solana%2Frpc-subscriptions-api@5.5.1.patch",
     "@solana/functional@5.5.1": "patches/@solana%2Ffunctional@5.5.1.patch",
+    "bigint-buffer@1.1.5": "patches/bigint-buffer@1.1.5.patch",
     "@solana/addresses@5.5.1": "patches/@solana%2Faddresses@5.5.1.patch",
     "telegraf@4.16.3": "patches/telegraf@4.16.3.patch",
     "@solana/kit@5.5.1": "patches/@solana%2Fkit@5.5.1.patch",
