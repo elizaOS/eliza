@@ -23,7 +23,7 @@ research idea reduced to silicon-grade evidence."
 | --- | --- | --- | --- |
 | Macro-placement supervised/imitation (Torch + dep-free) | Yes | Trained + verified on CPU; 2340/200/240 split; candidates quarantined | Model is a small MLP; gains only provable via OpenLane replay, which needs real E1 movable macros |
 | Macro-placement deterministic baselines (center/grid/repair + CT/SA/Hier-RTLMP/ChipDiffusion proxies) | Yes | 133 candidates, 7 policies | CT/SA/Hier-RTLMP/ChipDiffusion are deterministic *proxies*; real method wrappers need each upstream tool fetched + reviewed |
-| Routability/timing/power surrogate (CircuitNet3) | Yes | Trained (bounded 16-case sample); mean-baseline | A real heterogeneous GNN is **unimplemented** (net-new code, out of current scope); scaling to 2004 cases is a knob |
+| Routability/timing/power surrogate (CircuitNet3) | Yes | Trained (bounded 16-case sample); mean-baseline | A real heterogeneous GNN is **out of scope** (net-new code); scaling to 2004 cases is a knob |
 | PD surrogate on E1 labels | Yes | Trained on **real** OpenLane signoff label | Only one real label point (smoke run); needs many seeded runs for generalization |
 | Logic-synthesis recipe policy | Yes | Real Yosys/ABC baseline (6 pass / 4 blocked) | RL policy (ABC-RL/MapTune) is a search baseline; needs equivalence-gated replay before any netlist change |
 | AlphaChip Circuit Training RL | **No** | Blocked | **Irreducible**: `plc_wrapper_main` is closed-source (maintainer confirmed un-open-sourceable), GCS 403 since Feb 2026, DREAMPlace tarball also 403. No compute fixes this. |

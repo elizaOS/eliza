@@ -6152,6 +6152,89 @@ platform no-ops are separated from actionable runtime gaps.
   - focused marker scans on `packages/benchmarks/solana` and the stricter
     first-party `not implemented|unimplemented|unfinished` set
 
+### packages/benchmarks/woobench wording cleanup
+
+- Read `packages/benchmarks/woobench/CLAUDE.md` before editing.
+- Reworded the deterministic dry-run agent docstring from placeholder wording
+  and changed the I Ching scenario theme/condition from unfinished-work wording
+  to life-work wording. Scenario semantics and scoring weights are unchanged.
+- The focused WooBench marker scan is now clean.
+- Verified with:
+  - `python3 -m py_compile packages/benchmarks/woobench/__main__.py
+    packages/benchmarks/woobench/scenarios/iching_scenarios.py`
+  - `PYTHONPATH=packages/benchmarks python3 -m pytest
+    packages/benchmarks/woobench/tests -q`
+  - focused marker scan on `packages/benchmarks/woobench`
+  - `git diff --check -- packages/benchmarks/woobench`
+
+### packages/chip strict-marker prose cleanup
+
+- Re-read `packages/chip/CLAUDE.md` and confirmed `AGENTS.md` parity before
+  editing.
+- Reworded CHIP risk, NPU target, ChampSim evidence, and macro-placement
+  research prose from unimplemented/not-implemented wording to absent,
+  out-of-scope, or outside-current-coverage wording. These edits preserve the
+  same blocker/evidence meaning while avoiding task-marker language.
+- Remaining CHIP strict hits are intentional: the keyword-inventory detector
+  regex, the generated boot-gap survey row naming the detector class, and
+  captured Android logcat lines where the kernel reports optional proc files as
+  absent on that device.
+- Verified with:
+  - `python3 -m json.tool
+    packages/chip/docs/evidence/cache/champsim_external_prefetchers_report.json`
+  - `python3 packages/chip/scripts/test_chip_os_gap_keyword_inventory.py`
+  - `python3 packages/chip/scripts/test_chip_os_evidence_provenance.py`
+  - focused strict-marker scan on `packages/chip`
+  - `git diff --check -- packages/chip`
+
+### packages/benchmarks docs and Qwen guide strict-marker classification
+
+- Reworded `packages/benchmarks/docs/BENCHMARK_PARITY_ASSESSMENT.md` from
+  unfinished/incomplete section wording to open-work/open-items wording.
+- Read `packages/benchmarks/qwen-web-bench/CLAUDE.md` and confirmed
+  `AGENTS.md` parity. Its remaining strict-marker hits are intentional: the
+  local guide tells agents to run a marker-search command against that package
+  because QwenWebBench has no released upstream runner or dataset yet.
+- After this pass, the narrowed first-party strict scan is limited to:
+  CHIP marker detector/evidence terms and the Qwen guide's verification
+  command.
+- Verified with:
+  - focused strict scan excluding known vendored/generated/corpus paths
+  - `git diff --check -- packages/benchmarks/docs/BENCHMARK_PARITY_ASSESSMENT.md
+    packages/benchmarks/qwen-web-bench/CLAUDE.md
+    packages/benchmarks/qwen-web-bench/AGENTS.md`
+
+### packages/benchmarks/skillsbench research metric wording
+
+- Read `packages/benchmarks/skillsbench/CLAUDE.md` and confirmed
+  `AGENTS.md` parity before editing.
+- Replaced `TBD` metric cells in
+  `docs/skills-research/RESEARCH_QUESTIONS.md` with explicit
+  `Not yet measured` values. The research gap remains visible without generic
+  task-marker shorthand.
+- Remaining SkillsBench marker hits are intentional: external repository names
+  containing `todo`/`noop`, Word/PPT template placeholder terminology, UI
+  placeholder attributes, `XXX-XXX-` phone-mask example text, and dashboard
+  status wording for incomplete trials.
+- Verified with:
+  - focused `FIXME|HACK|TBD|XXX` scan on `packages/benchmarks/skillsbench`
+  - focused marker scan on SkillsBench docs/experiments
+  - `git diff --check -- packages/benchmarks/skillsbench/docs/skills-research/RESEARCH_QUESTIONS.md`
+
+### Remaining `FIXME|HACK|TBD|XXX` classifications
+
+- Read `packages/benchmarks/social-alpha/CLAUDE.md` and confirmed
+  `AGENTS.md` parity. Its remaining `TBD` hit is part of the
+  `_NOT_TOKENS` uppercase chat-acronym filter in `smart_baseline.py`, not a
+  benchmark task marker.
+- The remaining app-core `HACK` hit is vendored OpenZeppelin/forge-std code
+  under `packages/app-core/test/contracts/lib`; it is third-party contract test
+  tooling, not local unfinished app-core work.
+- The remaining CHIP `XXX`/`HACK`/`TBD` hits are owned by the keyword-inventory
+  detector and are already covered by the CHIP strict-marker classification.
+- The remaining QwenWebBench `FIXME` hit is the package-local marker-search
+  command and is already covered by the Qwen guide classification.
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.

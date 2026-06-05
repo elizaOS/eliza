@@ -46,7 +46,7 @@ def _create_skeptic_iching_persona() -> Persona:
         background="42-year-old philosophy professor at Columbia. Views I Ching as philosophical text, not divination. Here on a colleague's dare.",
         hidden_context=HiddenContext(
             life_situation="Just offered department chair -- first Black woman in the role. But it means giving up sabbatical for her 5-year book on Daoist ethics.",
-            key_themes=["duty_vs_passion", "institutional_power", "intellectual_integrity", "gender_in_academia", "unfinished_work"],
+            key_themes=["duty_vs_passion", "institutional_power", "intellectual_integrity", "gender_in_academia", "life_work"],
             emotional_state="intellectually engaged but privately agonizing over the decision",
             specific_details=[
                 "First Black woman offered the department chair",
@@ -170,7 +170,7 @@ SKEPTIC_ICHING = Scenario(
                 neutral_response="There's a responsibility angle, yes. What does the hexagram suggest?",
                 points_if_positive=12.0, points_if_negative=-2.0, follow_up_nodes=["iching_book_passion"], opens_up=True),
             ResponseNode(id="iching_book_passion",
-                condition="Agent touches on the book as a calling -- the unfinished work that has its own demands",
+                condition="Agent touches on the book as a calling -- the life work that has its own demands",
                 positive_response="Five years of research. Monks in Japan, Daoist priests in Taiwan. This book IS my life's work. If I take the chair I lose the sabbatical. At 42, how many three-year delays can I afford? *pause* I can't believe an I Ching reading is making me say this out loud.",
                 negative_response="The book is important but it's not the only factor.",
                 neutral_response="Yes, the book matters. But there's more to consider.",

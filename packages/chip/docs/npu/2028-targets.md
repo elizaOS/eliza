@@ -167,7 +167,7 @@ sizing, GEMM MMIO preamble values, and the descriptor image under
 GEMM preamble writes, descriptor-memory staging writes, descriptor submission
 MMIO writes, and the `DESC_STATUS` completion-poll condition. However,
 arena-base assignment, tensor data population, DMA runtime ownership, and
-Android delegate integration remain unimplemented. The runtime lowering evidence now includes bounded INT8/INT4 matmul,
+Android delegate integration remain outside current runtime coverage. The runtime lowering evidence now includes bounded INT8/INT4 matmul,
 scalar-dot sparse INT4 2:4, scalar Q8.8 group-scaled INT4, INT2, FP8 E4M3,
 and scalar Q8.8 FP16/BF16 matmul, im2col Conv2D, direct depthwise/grouped Conv2D, attention
 QK/softmax/AV plus composed multi-head attention with host-generated causal and
