@@ -38,7 +38,7 @@ __filename = '"/worker.js"'
 # accidental runtime instantiation throws a clear error.
 "ssh2" = "./src/stubs/ssh2.ts"
 # undici is Node's fetch impl; references node:net, MessagePort, perf_hooks
-# that don't exist on Workers. Re-export runtime globals + stub the
+# that don't exist on Workers. Re-export runtime globals + map the
 # Agent/Pool/Dispatcher classes.
 "undici" = "./src/stubs/undici.ts"
 
@@ -178,7 +178,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   OPENAI_API_KEY                     OpenAI direct
 #   AI_GATEWAY_API_KEY
 #   GROQ_API_KEY                       Groq
-#   CEREBRAS_API_KEY                   Cerebras — ultra-fast inference for provisioning placeholder agent
+#   CEREBRAS_API_KEY                   Cerebras — ultra-fast inference for provisioning chat agent
 #   FAL_KEY                            Fal.ai video gen
 #   ELEVENLABS_API_KEY                 ElevenLabs TTS
 #   VAST_API_KEY                       Vast.ai Serverless endpoint API token (Bearer)

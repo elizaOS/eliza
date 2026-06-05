@@ -78,7 +78,7 @@ describe("credit-markup wiring (used by monetized routes)", () => {
     expect(breakdown.totalCredits).toBeCloseTo(0.0055, 10);
   });
 
-  test("zero markup → total equals base (free routes are a no-op)", () => {
+  test("zero markup → total equals base for free routes", () => {
     const breakdown = calculateCreditMarkup({
       baseCredits: 7.5,
       markupPercent: 0,

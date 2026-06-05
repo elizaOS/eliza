@@ -3,7 +3,7 @@
  *
  * Returns the provisioning status of the caller's most recent agent sandbox.
  * Used by the onboarding UI to determine whether to show the provisioning
- * placeholder agent or hand off to the running container.
+ * setup chat agent or hand off to the running container.
  */
 
 import { Hono } from "hono";

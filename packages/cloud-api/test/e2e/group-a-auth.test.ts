@@ -450,7 +450,7 @@ describe("Group A: auth + sessions", () => {
 
   // --------------------------------------------------------------------
   // /api/internal/auth/refresh — rotates an internal JWT when JWKS is configured.
-  // Local e2e lacks JWKS, so the handler should fail closed rather than using a stub.
+  // Local e2e lacks JWKS, so the handler should fail closed rather than using a fake key.
   // --------------------------------------------------------------------
   describe("POST /api/internal/auth/refresh", () => {
     test("rejects missing internal bearer with 401 or JWKS config failure", async () => {

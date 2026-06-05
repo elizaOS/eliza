@@ -6064,6 +6064,67 @@ platform no-ops are separated from actionable runtime gaps.
   no-action/plugin-surface contracts documented in package guides.
 - Verified with focused marker scans on each of the five plugin packages.
 
+### plugin-wifi, plugin-vector-browser, plugin-steward-app, and plugin-messages UI classification
+
+- Read each available plugin-local `CLAUDE.md` and confirmed `AGENTS.md`
+  parity for `plugin-wifi`, `plugin-steward-app`, and `plugin-messages`.
+  `plugin-vector-browser` has no package-local guide, so the root guide applies.
+- No code changes were needed. Remaining hits are intentional user-facing input
+  placeholders: Wi-Fi password, vector-browser search, Steward approval reason,
+  and SMS address/message fields.
+- Verified with focused marker scans on each of the four plugin packages.
+
+### plugin-social-alpha, plugin-scape, plugin-native-bun-runtime, and plugin-hyperscape classification
+
+- Read each plugin-local `CLAUDE.md` and confirmed `AGENTS.md` parity before
+  classification.
+- No code changes were needed. `plugin-social-alpha`, `plugin-scape`, and
+  `plugin-hyperscape` hits are intentional UI placeholder classes or operator
+  message input placeholders.
+- The `plugin-native-bun-runtime` hit is the Spanish word `todo` inside a
+  Kokoro CoreML pronunciation dictionary entry, not a task marker.
+- Verified with focused marker scans on each of the four plugin packages.
+
+### Remaining one-hit plugin and research-package classification
+
+- Read local guides and confirmed `AGENTS.md` parity for
+  `plugin-defense-of-the-agents`, `plugin-contacts`, `plugin-computeruse`,
+  `plugin-clawville`, `plugin-agent-skills`, and `plugin-2004scape`.
+  `packages/research` has no package-local guide, so the root guide applies.
+- No code changes were needed. Remaining hits are intentional: operator command
+  input placeholders in game/app plugins, Contacts form placeholders, a
+  `plugin-computeruse` regression test asserting `scroll dx=dy=0` is a no-op,
+  a `plugin-agent-skills` productivity keyword list containing `todo`, and
+  historical `packages/research` evidence output where the test runner reports
+  `todo 0`.
+- `packages/os-homepage` and `packages/browser-bridge-extension` one-hit
+  placeholder results are already covered by the earlier homepage/browser
+  extension UI classification.
+- Verified with focused marker scans on each package/plugin listed above.
+
+### packages/cloud-api affiliate e2e and fallback taxonomy
+
+- Re-read `packages/cloud-api/CLAUDE.md` and confirmed `AGENTS.md` parity before
+  editing.
+- Finished the stale affiliate Worker e2e path: the preload now seeds a
+  distinct API key with `affiliate:create-character`, and
+  `group-k-affiliate.test.ts` now runs the missing-auth, standard-key forbidden,
+  and affiliate happy-path tests instead of skipping them as a 501 migration
+  fallback.
+- Reworded Cloud API comments/tests from stub/placeholder wording to concrete
+  Worker-fallback, fake-dispatcher, test-token, or provisioning-chat-agent
+  wording. The frontend gap script now reports `hono-fallback` rather than
+  `hono-stub`.
+- Remaining Cloud API hits are intentional contracts: the `noop` tool-choice
+  fixture, the frontend-gap regex that detects legacy fallback wording in route
+  files, and the reserved `https://placeholder.invalid` app-domain sentinel.
+- Verified with:
+  - `./node_modules/.bin/biome check` on the touched Cloud API files
+  - `node --check packages/cloud-api/test/_frontend-gaps.mjs`
+  - `bun run --cwd packages/cloud-api typecheck`
+  - `git diff --check -- packages/cloud-api`
+  - focused marker scan on `packages/cloud-api`
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.

@@ -1,7 +1,7 @@
 /**
  * POST /api/v1/provisioning-agent/chat
  *
- * Chat with the serverless provisioning placeholder agent while the user's
+ * Chat with the serverless provisioning agent while the user's
  * dedicated container is being set up. Uses Cerebras for ultra-fast inference.
  * Conversation history is stored in Redis per user (TTL 7 days, capped at 20
  * messages). When the container is ready the response includes bridgeUrl so
