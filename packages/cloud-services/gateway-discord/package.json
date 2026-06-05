@@ -26,7 +26,7 @@
     "@upstash/redis": "^1.37.0",
     "discord.js": "^14.26.4",
     "hashring": "^3.2.0",
-    "hono": "4.12.18"
+    "hono": "4.12.21"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.16",

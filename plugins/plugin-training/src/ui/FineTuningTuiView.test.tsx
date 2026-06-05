@@ -127,8 +127,8 @@ import {
   FineTuningDetailExtension,
   FineTuningTuiView,
   FineTuningView,
-  interact,
 } from "./FineTuningView";
+import { interact } from "./FineTuningView.interact";
 
 const sampleStatus = {
   runningJobs: 1,
