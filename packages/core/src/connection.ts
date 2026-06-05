@@ -36,6 +36,10 @@ export interface EnsureConnectionsParams {
 	connections: EnsureConnectionParams[];
 }
 
+export interface EnsureConnectionsResult {
+	createdRoomParticipants: number;
+}
+
 /** WHY: World is required for room hierarchy; derive a stable worldId from messageServerId when not provided. */
 function resolveWorldId(
 	worldId: UUID | undefined,
@@ -55,9 +59,9 @@ function resolveWorldId(
 export async function ensureConnections(
 	adapter: IDatabaseAdapter,
 	params: EnsureConnectionsParams,
-): Promise<void> {
+): Promise<EnsureConnectionsResult> {
 	const { agentId, connections } = params;
-	if (!connections.length) return;
+	if (!connections.length) return { createdRoomParticipants: 0 };
 
 	const entityMap = new Map<
 		string,
@@ -172,6 +176,7 @@ export async function ensureConnections(
 	}));
 	if (rooms.length) await adapter.upsertRooms(rooms);
 
+	let createdRoomParticipants = 0;
 	for (const [roomId, entityIdsSet] of roomParticipants) {
 		const currentResult = await adapter.getParticipantsForRooms([
 			roomId as UUID,
@@ -180,8 +185,11 @@ export async function ensureConnections(
 		const missing = [...entityIdsSet].filter((id) => !current.includes(id));
 		if (missing.length) {
 			await adapter.createRoomParticipants(missing, roomId as UUID);
+			createdRoomParticipants += missing.length;
 		}
 	}
+
+	return { createdRoomParticipants };
 }
 
 /**
@@ -191,7 +199,7 @@ export async function ensureConnections(
 export async function ensureConnection(
 	adapter: IDatabaseAdapter,
 	params: EnsureConnectionParams,
-): Promise<void> {
+): Promise<EnsureConnectionsResult> {
 	if (!params.source) {
 		throw new Error("Source is required for ensureConnection");
 	}
@@ -200,7 +208,7 @@ export async function ensureConnection(
 		params.messageServerId,
 		params.agentId,
 	);
-	await ensureConnections(adapter, {
+	return ensureConnections(adapter, {
 		agentId: params.agentId,
 		connections: [{ ...params, worldId }],
 	});
