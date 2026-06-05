@@ -79,7 +79,7 @@ export function LifeOpsWorkspaceShell({
         </div>
       </div>
 
-      <div className="min-h-0 min-w-0 flex-1 overflow-auto px-4 pb-6 pt-4 sm:px-6 sm:pb-8 sm:pt-5 lg:px-8 lg:pt-6">
+      <div className="min-h-0 min-w-0 flex-1 overflow-auto px-4 pb-32 pt-4 sm:px-6 sm:pb-36 sm:pt-5 lg:px-8 lg:pt-6">
         {children}
       </div>
     </div>

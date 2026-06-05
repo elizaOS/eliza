@@ -58,6 +58,27 @@ interface AudioPayload {
 const DEFAULT_PROMPT =
   "Say exactly one short sentence about the Eliza-1 model tester working.";
 
+const PROMPT_PRESETS = [
+  {
+    id: "smoke",
+    label: "Smoke",
+    prompt: DEFAULT_PROMPT,
+    tone: "border-accent/40 bg-accent/10 text-accent",
+  },
+  {
+    id: "vision",
+    label: "Vision",
+    prompt: "Describe the attached image in one compact sentence.",
+    tone: "border-cyan-500/40 bg-cyan-500/10 text-cyan-700",
+  },
+  {
+    id: "voice",
+    label: "Voice",
+    prompt: "Say a short warm audio check for the model tester.",
+    tone: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700",
+  },
+] as const;
+
 const TEST_ORDER: TestId[] = [
   "text-small",
   "text-large",
@@ -218,15 +239,6 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
     group: "header",
     description: "Run every model probe in sequence",
   });
-  const promptControl = useAgentElement<HTMLTextAreaElement>({
-    id: "input-prompt",
-    role: "textarea",
-    label: "Prompt",
-    group: "inputs",
-    description: "Prompt text sent to text, voice, and image generation probes",
-    getValue: () => prompt,
-    onFill: setPrompt,
-  });
   const imageInputControl = useAgentElement<HTMLInputElement>({
     id: "input-image-asset",
     role: "button",
@@ -385,19 +397,23 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
               />
             </div>
 
-            <label htmlFor="model-tester-prompt" className="sr-only">
-              Prompt
-            </label>
-            <textarea
-              ref={promptControl.ref}
-              {...promptControl.agentProps}
-              id="model-tester-prompt"
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              rows={3}
-              className="mt-3 w-full resize-none rounded-lg border border-border/30 bg-bg px-3 py-2 text-sm text-txt outline-none focus:border-border"
-              aria-label="Prompt"
-            />
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {PROMPT_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => setPrompt(preset.prompt)}
+                  aria-pressed={prompt === preset.prompt}
+                  className={`h-12 rounded-lg border px-3 text-left text-xs font-semibold transition ${
+                    prompt === preset.prompt
+                      ? preset.tone
+                      : "border-border/24 bg-bg text-muted hover:bg-bg-accent hover:text-txt"
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
 
             <div className="mt-3 grid grid-cols-2 gap-2">
               <label className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-lg border border-border/24 bg-bg px-3 py-2 text-sm text-txt hover:bg-bg-accent">

@@ -30,11 +30,11 @@ function AssistantIntentGridButton({
       title={intent.label}
       data-testid="lifeops-assistant-intent"
       data-intent-id={intent.id}
-      className="group flex h-16 min-w-0 flex-col items-center justify-center gap-1.5 rounded-lg border border-border/35 bg-bg/70 px-1.5 text-center transition-colors hover:bg-bg-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
+      className="group flex h-12 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-border/35 bg-bg/70 px-2 text-center transition-colors hover:bg-bg-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
       onClick={() => onLaunch(intent)}
       {...agentProps}
     >
-      <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-bg-muted/60 text-txt">
+      <span className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-bg-muted/60 text-txt">
         <span
           aria-hidden
           className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full ${intent.tone}`}
@@ -48,34 +48,6 @@ function AssistantIntentGridButton({
   );
 }
 
-function AssistantQuickIntentButton({
-  intent,
-  onLaunch,
-}: {
-  intent: AssistantIntent;
-  onLaunch: (intent: AssistantIntent) => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `assistant-quick-${intent.id}`,
-    role: "button",
-    label: `Quick ${intent.label}`,
-    group: "lifeops-assistant",
-    description: `Quick-run the ${intent.label} assistant command`,
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      aria-label={`Quick ${intent.label}`}
-      className="flex h-10 items-center justify-center rounded-lg bg-bg-muted/35 text-txt transition-colors hover:bg-bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
-      onClick={() => onLaunch(intent)}
-      {...agentProps}
-    >
-      {intent.icon}
-    </button>
-  );
-}
-
 export function LifeOpsAssistantIntentGrid({
   intents = LIFEOPS_ASSISTANT_INTENTS,
   onLaunch,
@@ -85,7 +57,7 @@ export function LifeOpsAssistantIntentGrid({
 }) {
   return (
     <div
-      className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10"
+      className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-10"
       data-testid="lifeops-assistant-intents"
     >
       {intents.map((intent) => (
@@ -119,9 +91,9 @@ export function LifeOpsAssistantSection() {
   });
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
-      <div className="flex min-h-[11rem] flex-col justify-end rounded-lg border border-border/30 bg-bg/70 p-4 sm:p-5">
-        <div className="mb-4 flex items-center justify-between gap-3 text-muted">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-3">
+      <div className="flex flex-col justify-end rounded-lg border border-border/30 bg-bg/70 p-3 sm:p-4">
+        <div className="mb-3 flex items-center justify-between gap-3 text-muted">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4" aria-hidden />
             <span className="text-xs font-semibold uppercase tracking-wide">
@@ -140,7 +112,7 @@ export function LifeOpsAssistantSection() {
             type="button"
             aria-label="Open LifeOps command brief"
             data-testid="lifeops-assistant-command-brief"
-            className="group grid min-h-[5rem] w-full grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border border-border/35 bg-bg-muted/35 p-3 text-left transition-colors hover:bg-bg-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
+            className="group grid min-h-[4.25rem] w-full grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border border-border/35 bg-bg-muted/35 p-3 text-left transition-colors hover:bg-bg-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
             onClick={() =>
               openLifeOpsChat(commandBriefPrompt, {}, { select: true })
             }
@@ -167,7 +139,7 @@ export function LifeOpsAssistantSection() {
             type="button"
             aria-label="Open LifeOps voice command"
             data-testid="lifeops-assistant-voice-command"
-            className="group flex min-h-[5rem] items-center justify-center gap-2 rounded-lg border border-border/35 bg-bg-muted/35 px-4 text-txt transition-colors hover:bg-bg-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 sm:w-24 sm:flex-col"
+            className="group flex min-h-[4.25rem] items-center justify-center gap-2 rounded-lg border border-border/35 bg-bg-muted/35 px-4 text-txt transition-colors hover:bg-bg-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 sm:w-24 sm:flex-col"
             onClick={() =>
               openLifeOpsChat(
                 LIFEOPS_VOICE_COMMAND_PROMPT,
@@ -187,19 +159,8 @@ export function LifeOpsAssistantSection() {
         </div>
       </div>
 
-      <div className="grid grid-cols-5 gap-2 rounded-lg border border-border/25 bg-bg/55 p-2">
-        {ASSISTANT_INTENTS.slice(0, 5).map((intent) => (
-          <AssistantQuickIntentButton
-            key={`quick-${intent.id}`}
-            intent={intent}
-            onLaunch={(launched) =>
-              openLifeOpsChat(launched.prompt, {}, { select: true })
-            }
-          />
-        ))}
-      </div>
-
       <LifeOpsAssistantIntentGrid
+        intents={ASSISTANT_INTENTS.slice(0, 10)}
         onLaunch={(intent) => {
           openLifeOpsChat(intent.prompt, {}, { select: true });
         }}

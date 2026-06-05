@@ -114,7 +114,8 @@ function LifeOpsNavTabItem({
         data-sidebar-item
         {...agentProps}
         className={[
-          "group relative flex shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left transition-colors",
+          "group relative flex h-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] px-2 transition-colors",
+          isActive ? "w-auto gap-1.5 pr-2.5" : "w-8",
           isActive ? "bg-accent/15 text-txt" : "text-txt hover:bg-bg-muted/50",
         ].join(" ")}
       >
@@ -128,10 +129,17 @@ function LifeOpsNavTabItem({
         >
           {item.icon}
         </span>
-        <span className="truncate text-xs-tight font-medium">{item.label}</span>
+        {isActive ? (
+          <span className="max-w-24 truncate text-xs-tight font-medium">
+            {item.label}
+          </span>
+        ) : null}
         <span
           aria-hidden
-          className={`h-1.5 w-1.5 shrink-0 rounded-full ${item.dotColor} opacity-60`}
+          className={[
+            `h-1.5 w-1.5 shrink-0 rounded-full ${item.dotColor} opacity-60`,
+            isActive ? "" : "absolute right-1 top-1",
+          ].join(" ")}
         />
       </button>
     </TooltipHint>
