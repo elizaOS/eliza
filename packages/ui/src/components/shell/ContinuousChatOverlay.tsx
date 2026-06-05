@@ -577,10 +577,11 @@ export function ContinuousChatOverlay({
         initial={false}
         animate={{
           opacity: fullscreen ? 1 : 0,
+          // Animate only the unprefixed property — framer-motion's animation
+          // target type doesn't include `WebkitBackdropFilter`. Modern targets
+          // (Chromium/Electrobun, Safari 18+/iOS WebView) support unprefixed
+          // `backdrop-filter`, so the frosted-glass takeover still animates.
           backdropFilter: fullscreen
-            ? "blur(28px) saturate(160%)"
-            : "blur(0px) saturate(100%)",
-          WebkitBackdropFilter: fullscreen
             ? "blur(28px) saturate(160%)"
             : "blur(0px) saturate(100%)",
         }}
