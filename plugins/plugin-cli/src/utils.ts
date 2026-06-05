@@ -136,9 +136,14 @@ export async function withProgress<T>(
 export function parseDurationMs(input: string): ParsedDuration {
 	const trimmed = input.trim().toLowerCase();
 
-	// Check for number only (milliseconds)
+	// Check for number only (milliseconds). Negative or non-safe-integer values
+	// are invalid durations — return the {valid:false, ms:0} sentinel rather than
+	// a negative ms (matches the unit branch below and the documented contract).
 	const numOnly = parseInt(trimmed, 10);
 	if (!Number.isNaN(numOnly) && String(numOnly) === trimmed) {
+		if (numOnly < 0 || !Number.isSafeInteger(numOnly)) {
+			return { ms: 0, original: input, valid: false };
+		}
 		return { ms: numOnly, original: input, valid: true };
 	}
 
