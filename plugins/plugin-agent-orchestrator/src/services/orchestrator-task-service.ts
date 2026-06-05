@@ -65,6 +65,23 @@ import {
   resolveAllowedWorkdir,
 } from "./workdir-validation.js";
 
+/**
+ * Recoverable operator-recovery conflict.
+ *
+ * Thrown by the recovery methods (createPlanRevision / retry / rerun / restart)
+ * when the requested recovery cannot proceed against the current task state
+ * (missing plan revision, missing source message/event, no/terminal session,
+ * unsupported destructive rerun). The orchestrator recovery routes map this
+ * class to HTTP 409, so the status code is decoupled from the message wording —
+ * callers must not regex-match the message to derive the status.
+ */
+export class RecoveryConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RecoveryConflictError";
+  }
+}
+
 type RuntimeLike = IAgentRuntime & {
   logger?: Partial<
     Record<
@@ -994,7 +1011,7 @@ export class OrchestratorTaskService extends Service {
       input.basePlanRevisionId &&
       !findPlanRevision(doc, input.basePlanRevisionId)
     ) {
-      throw new Error("Base plan revision not found");
+      throw new RecoveryConflictError("Base plan revision not found");
     }
     const timestamp = Date.now();
     const revision = {
@@ -1044,13 +1061,13 @@ export class OrchestratorTaskService extends Service {
     if (!doc) return null;
     const planRevision = findPlanRevision(doc, input.planRevisionId);
     if (input.planRevisionId && !planRevision) {
-      throw new Error("Plan revision not found");
+      throw new RecoveryConflictError("Plan revision not found");
     }
     const source = input.messageId
       ? doc.messages.find((message) => message.id === input.messageId)
       : undefined;
     if (input.messageId && !source) {
-      throw new Error("Source message not found");
+      throw new RecoveryConflictError("Source message not found");
     }
     const instruction = withPlanRevisionContext(
       retryInstruction(doc, input),
@@ -1090,12 +1107,14 @@ export class OrchestratorTaskService extends Service {
       source?.sessionId ??
       latestActiveSession(doc)?.sessionId;
     if (!sessionId) {
-      throw new Error("sessionId is required for same-session retry");
+      throw new RecoveryConflictError(
+        "sessionId is required for same-session retry",
+      );
     }
     const session = doc.sessions.find((item) => item.sessionId === sessionId);
-    if (!session) throw new Error("Session not found");
+    if (!session) throw new RecoveryConflictError("Session not found");
     if (TERMINAL_TASK_SESSION_STATUSES.has(session.status)) {
-      throw new Error(
+      throw new RecoveryConflictError(
         "Cannot retry in a terminal session; use new-session mode",
       );
     }
@@ -1117,15 +1136,15 @@ export class OrchestratorTaskService extends Service {
     if (!doc) return null;
     const planRevision = findPlanRevision(doc, input.planRevisionId);
     if (input.planRevisionId && !planRevision) {
-      throw new Error("Plan revision not found");
+      throw new RecoveryConflictError("Plan revision not found");
     }
     if (input.preserveHistory === false) {
-      throw new Error(
+      throw new RecoveryConflictError(
         "Destructive rerun is not supported; preserveHistory must be true",
       );
     }
     const event = doc.events.find((item) => item.id === input.eventId);
-    if (!event) throw new Error("Source event not found");
+    if (!event) throw new RecoveryConflictError("Source event not found");
     if (input.stopActive === true) await this.stopActiveSessions(doc);
     if (planRevision) {
       await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
@@ -1164,7 +1183,7 @@ export class OrchestratorTaskService extends Service {
     if (!doc) return null;
     const planRevision = findPlanRevision(doc, input.planRevisionId);
     if (input.planRevisionId && !planRevision) {
-      throw new Error("Plan revision not found");
+      throw new RecoveryConflictError("Plan revision not found");
     }
     if (input.stopActive !== false) await this.stopActiveSessions(doc);
     const instruction = withPlanRevisionContext(
