@@ -136,7 +136,7 @@ struct eliza_mtp_stats {
 };
 
 // Legacy 4-int32 telemetry getter (kept for ABI compatibility with the
-// earlier Phase-A stub surface). Writes:
+// earlier Phase-A unsupported surface). Writes:
 //   [0] drafted_tokens
 //   [1] accepted_tokens
 //   [2] rejected_tokens

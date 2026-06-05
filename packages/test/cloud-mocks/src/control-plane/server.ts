@@ -820,7 +820,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       string,
       unknown
     > | null;
-    if (!body || body.jsonrpc !== "2.0" || typeof body.method !== "string") {
+    if (body?.jsonrpc !== "2.0" || typeof body.method !== "string") {
       return c.json(
         {
           jsonrpc: "2.0",
@@ -880,7 +880,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       connection: "keep-alive",
       "x-accel-buffering": "no",
     };
-    if (!body || body.jsonrpc !== "2.0" || typeof body.method !== "string") {
+    if (body?.jsonrpc !== "2.0" || typeof body.method !== "string") {
       return new Response(
         `event: error\ndata: ${JSON.stringify({ message: "Invalid JSON-RPC stream request" })}\n\n`,
         { status: 400, headers: streamHeaders },
@@ -1082,7 +1082,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       data: {
         id,
         name: "Mock Agent",
-        bio: ["A stub agent character returned by the control-plane mock."],
+        bio: ["A mock agent character returned by the control-plane mock."],
         system: "You are a mock agent.",
         plugins: [],
       },

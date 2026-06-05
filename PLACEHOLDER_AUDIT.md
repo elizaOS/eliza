@@ -5890,6 +5890,120 @@ platform no-ops are separated from actionable runtime gaps.
   - `git diff --check` on the touched app helper and audit file
   - focused marker scan on `packages/app`
 
+### packages/native ABI wording and legacy-backend classification
+
+- Read the local guides and confirmed `AGENTS.md` parity for the touched native
+  plugin directories: `silero-vad-cpp`, `qjl-cpu`, `face-cpp`, `yolo-cpp`, and
+  `voice-classifier-cpp`.
+- Reworded incidental native comments/test diagnostics from no-op/placeholder
+  wording to NULL-safe success, empty translation unit, temporary offsets, and
+  identity resize wording. ABI behavior and test checks are unchanged.
+- Remaining native marker hits are intentional: vendored patch context in
+  `bun-runtime/patches`, and voice-classifier legacy backend/diagnostic strings
+  where `"stub"` is an ABI-visible backend state accepted by smoke tests.
+- Verified with:
+  - `cmake -S packages/native/plugins/qjl-cpu -B /tmp/eliza-qjl-cpu-cmake-check`
+  - `git diff --check` on the touched native files and audit file
+  - focused marker scan on `packages/native`
+
+### packages/test mock and protocol marker classification
+
+- `packages/test` has no package-local guide, so the root repository guide
+  applies.
+- Reworded mock-control-plane and scenario comments from stub/no-op wording to
+  mock/absence wording where the marker was not part of a protocol value. Fixed
+  local optional-chain Biome findings in the touched mock server.
+- Remaining hits are intentional test/mocking contracts: optional plugin
+  fallback stubs, silent logger `noop` shim functions, mock OpenAI placeholder
+  image URLs, Mockoon/mock environment descriptions, `action: "noop"` protocol
+  values, self-control no-op scenario names/tags, and CodeQL
+  `incomplete-url-sanitization` rule identifiers.
+- Verified with:
+  - `./node_modules/.bin/biome check` on the touched TypeScript scenario/mock
+    files
+  - JSON parse check for `cloud-mocks/mockoon/control-plane-static.json`
+  - `git diff --check` on the touched test files and audit file
+  - focused marker scan on `packages/test`
+
+### packages/robot status wording and CAD terminology classification
+
+- Read `packages/robot/CLAUDE.md` and confirmed `AGENTS.md` parity before
+  editing robot source scripts.
+- Reworded generated blocker/result prose from marker-looking `incomplete`
+  phrasing to explicit not-complete/not-proved/missing wording where the string
+  is status text, not a code gap. Also clarified the ArUco fused-anchor bridge
+  helper docstring so the mirror-absent path describes an intentional return
+  instead of a no-op.
+- Left intentional contracts unchanged: the Nebius launch report
+  `state: "incomplete"` enum, the public `--allow-incomplete` CLI flag,
+  the learning-signal regression test phrase about catching no-op PPO
+  regressions, and mechanical CAD terminology such as stub shafts, journal
+  stubs, and mounting stubs in `eliza_robot/erobot/subsystems`.
+- Evidence files under `packages/robot/evidence` still contain historical
+  generated `Result: incomplete` and gap text; those are retained until their
+  generating scripts are rerun from actual production evidence.
+- Verified with:
+  - `python3 -m py_compile` on the touched robot scripts
+  - `git diff --check` on the touched robot scripts and audit file
+  - focused marker scan on `packages/robot/scripts`,
+    `packages/robot/eliza_robot`, `packages/robot/tests`, and
+    `packages/robot/docs`
+
+### packages/ui browser-shim and placeholder classification
+
+- Read `packages/ui/CLAUDE.md` and confirmed `AGENTS.md` parity before editing.
+- Reworded source comments and review prose that made intentional browser
+  shims or optional runtime surfaces look like unfinished stubs. Also cleaned
+  unused rest-parameter names in the touched Storybook `node:fs` and
+  `node:crypto` shims so the focused Biome check stays green.
+- No visual component behavior or styling changed, so the cloud-frontend visual
+  audit gate was not triggered.
+- Remaining hits are intentional: UI `placeholder` props and i18n keys,
+  Storybook/test shim files under `test/stubs` and story fixtures, explicit
+  no-op reducer/idempotence test cases, the cloud API `stopScope: "no-op"`
+  protocol value, generated agent-surface e2e fixture output, and failure/error
+  copy such as "AI generation was incomplete."
+- Verified with:
+  - `./node_modules/.bin/biome check` on the touched TypeScript UI files
+  - `git diff --check` on the touched UI files and audit file
+  - focused marker scan on `packages/ui`
+
+### packages/app-core browser-alias and native-shim classification
+
+- Read `packages/app-core/CLAUDE.md` and confirmed `AGENTS.md` parity before
+  editing.
+- Reworded native MTP shim comments that described explicit unsupported
+  `-ENOSYS` paths as unfinished stub/no-op work. ABI behavior is unchanged.
+- Reworded one registry schema validation message from "incomplete manifest" to
+  "invalid manifest"; the zod refinement remains identical.
+- Remaining hits are intentional: `src/platform/*browser-stub.ts` and
+  `empty-node-module.ts` inert browser aliases documented by the package guide,
+  the fail-closed `ffi-stub`/voice fused-build verifier fixtures, Playwright UI
+  smoke API stub data, package/installer placeholder assets and hash guards,
+  registry `placeholder` config-field metadata, Commander lazy-command
+  placeholder variables, native shim no-op compatibility branches, generated or
+  vendored contract/patch fixtures, and benchmark protocol values such as
+  `{ noop: true }`.
+- Verified with:
+  - `./node_modules/.bin/biome check packages/app-core/src/registry/schema.ts`
+  - `git diff --check` on the touched app-core files and audit file
+  - focused marker scans on the app-core registry schema, platform aliases, and
+    native llama shim files
+
+### packages/shared contract and keyword classification
+
+- Read `packages/shared/CLAUDE.md` and confirmed `AGENTS.md` parity before
+  classification.
+- No code changes were needed. The only non-placeholder/non-todo marker hits
+  are literal local-inference CLI option names (`--op-offload` /
+  `--no-op-offload`) in `src/local-inference/types.ts` and its declaration
+  file.
+- Remaining marker hits are intentional shared contracts: `placeholder` fields
+  in config/UI hint types, hand-authored and generated i18n keywords for todo
+  actions, and generated validation keyword data that the package guide says not
+  to hand-edit.
+- Verified with focused marker scans on `packages/shared`.
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.

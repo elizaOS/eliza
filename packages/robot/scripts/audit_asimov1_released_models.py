@@ -508,7 +508,7 @@ def audit_released_models(
             "released ASIMOV policy/model artifacts found; inspect artifact list before choosing a training baseline"
             if found
             else (
-                "no released ASIMOV-1 policy/model artifacts found in completed audited public sources; some GitHub checks were incomplete"
+                "no released ASIMOV-1 policy/model artifacts found in completed audited public sources; some GitHub checks did not finish"
                 if warnings
                 else "no released ASIMOV-1 policy/model artifacts found in audited public sources"
             )

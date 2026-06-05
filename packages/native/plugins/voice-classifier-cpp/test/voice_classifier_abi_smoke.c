@@ -71,10 +71,10 @@ int main(void) {
             break;
         }
     }
-    /* NULL-handle close is a no-op success. */
+    /* NULL-handle close returns success. */
     if (voice_emotion_close(NULL) != 0) {
         fprintf(stderr,
-                "[voice-classifier-smoke] voice_emotion_close(NULL) was not a no-op\n");
+                "[voice-classifier-smoke] voice_emotion_close(NULL) did not return success\n");
         ++failures;
     }
 
@@ -107,7 +107,7 @@ int main(void) {
     }
     if (voice_eot_close(NULL) != 0) {
         fprintf(stderr,
-                "[voice-classifier-smoke] voice_eot_close(NULL) was not a no-op\n");
+                "[voice-classifier-smoke] voice_eot_close(NULL) did not return success\n");
         ++failures;
     }
 
@@ -145,7 +145,7 @@ int main(void) {
     }
     if (voice_speaker_close(NULL) != 0) {
         fprintf(stderr,
-                "[voice-classifier-smoke] voice_speaker_close(NULL) was not a no-op\n");
+                "[voice-classifier-smoke] voice_speaker_close(NULL) did not return success\n");
         ++failures;
     }
 
@@ -175,7 +175,7 @@ int main(void) {
     }
     if (voice_diarizer_close(NULL) != 0) {
         fprintf(stderr,
-                "[voice-classifier-smoke] voice_diarizer_close(NULL) was not a no-op\n");
+                "[voice-classifier-smoke] voice_diarizer_close(NULL) did not return success\n");
         ++failures;
     }
 

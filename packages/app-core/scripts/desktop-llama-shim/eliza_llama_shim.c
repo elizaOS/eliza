@@ -184,16 +184,15 @@ int32_t eliza_llama_decode_unified(void* ctx, void* batch) {
 }
 
 void eliza_llama_context_detach_drafter(void* main_ctx) {
-    // Stub: no-op until the C++ wrapper over common_speculative lands.
-    // The adapter calls this on context teardown; a no-op is safe because
-    // attach_drafter is itself a stub returning -ENOSYS, so there's no
-    // drafter to detach.
+    // Unsupported MTP drafter path. The adapter calls this on context teardown;
+    // returning without work is safe because attach_drafter returns -ENOSYS, so
+    // there is no drafter to detach.
     (void)main_ctx;
 }
 
 int32_t eliza_llama_context_has_drafter(void* main_ctx) {
-    // Stub: paired with attach_drafter — until that's wired, no context
-    // ever has a drafter attached.
+    // Unsupported MTP drafter path paired with attach_drafter: no context can
+    // report a drafter while attach support returns -ENOSYS.
     (void)main_ctx;
     return 0;
 }

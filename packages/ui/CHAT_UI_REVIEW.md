@@ -67,7 +67,7 @@ switch. These are polish, not blockers.
 
 ## 2. Upload button in chat
 
-**Current state. Already implemented and wired** (not a stub).
+**Current state. Already implemented and wired.**
 - Overlay: attach button at `ContinuousChatOverlay.tsx:639+`
   (`SoftButton` "attach image" → `fileInputRef.current?.click()`), hidden
   `<input type="file" accept="image/*" multiple>` at
@@ -177,7 +177,8 @@ avatar mouth bridge both work (`useContinuousChat.ts:200–230`,
   "passive" mode (`useContinuousChat.ts:162–183`) but rely entirely on the
   backend/TalkMode plugin to emit `isFinal:true`. `LocalAsrAutoStopOptions`
   exist (`voice/local-asr-capture.ts`) but are **not surfaced in settings**.
-- **Push-to-talk has no shell "listening" phase.** Reserved but unimplemented
+- **Push-to-talk has no shell "listening" phase.** Reserved in the type surface
+  but not yet surfaced in shell UI
   (`components/shell/shell-state.d.ts:8–10`); PTT records via
   `useShellController.ts:159–198` but the pill shows no listening state.
 - Browser SpeechRecognition silently auto-restarts on drop

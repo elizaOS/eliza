@@ -1,9 +1,9 @@
-// Browser stub for the Node built-ins (`node:fs`, `node:fs/promises`,
+// Browser shim for the Node built-ins (`node:fs`, `node:fs/promises`,
 // `node:path`, `node:url`, `node:os`) that leak into the catalog through the
 // `@elizaos/shared` barrel and `@elizaos/ui` services (package-root resolution,
 // local-inference disk-space probing, etc.). The catalog never invokes those
 // code paths, but Vite's dev server externalizes `node:*` to a proxy that
-// throws on the named-import binding — so we supply non-throwing stubs. The
+// throws on the named-import binding, so we supply non-throwing shims. The
 // pure path/url helpers do real string work; the fs helpers throw only if
 // actually called (which the catalog never does).
 

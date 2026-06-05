@@ -865,7 +865,7 @@ def _objective_requirements(
                 []
                 if "alberta_framework_integrated" in passed
                 and integration_surfaces.get("ok") is True
-                else ["objective audit or Alberta integration surface validation is incomplete"]
+                else ["objective audit or Alberta integration surface validation is not complete"]
             ),
         ),
         "unified_robot_interface_all_profiles": _requirement(
@@ -875,7 +875,7 @@ def _objective_requirements(
                 "video_profiles": video_review.get("profiles"),
                 "manifest_review_consistent": manifest_review_consistent,
             },
-            gaps=[] if "unified_robot_interface_all_profiles" in passed else ["multi-robot readiness evidence is incomplete"],
+            gaps=[] if "unified_robot_interface_all_profiles" in passed else ["multi-robot readiness evidence is not complete"],
         ),
         "traditional_and_sota_baselines": _requirement(
             status="proved" if "traditional_and_sota_baselines_available" in passed else "partial",
@@ -936,7 +936,7 @@ def _objective_requirements(
                 and training_inputs.get("text_variant_collision_count") == 0
                 and training_inputs.get("blocker_count") == 0
             )
-            else ["training input, text-conditioning, or dataset validation is incomplete"],
+            else ["training input, text-conditioning, or dataset validation is not complete"],
         ),
         "alberta_checkpoint_inference_contract": _requirement(
             status="proved"
@@ -1002,7 +1002,7 @@ def _objective_requirements(
             gaps=(
                 []
                 if "alberta_vs_ppo_side_by_side_comparison" in passed
-                else ["side-by-side baseline comparison is incomplete"]
+                else ["side-by-side baseline comparison is not complete"]
             ),
         ),
         "continual_unseen_obstacle_learning_no_forgetting": _requirement(
@@ -1031,7 +1031,7 @@ def _objective_requirements(
             gaps=(
                 []
                 if "continual_learning_obstacle_demo_no_forgetting" in passed
-                else ["continual obstacle-course no-forgetting proof is incomplete"]
+                else ["continual obstacle-course no-forgetting proof is not complete"]
             ),
         ),
         "robot_action_videos_self_reviewed": _requirement(
@@ -1049,7 +1049,7 @@ def _objective_requirements(
             },
             gaps=[]
             if videos_proved and checkpoint_videos_proved
-            else ["video review, manifest consistency, or checkpoint-bound local policy videos are incomplete"],
+            else ["video review, manifest consistency, or checkpoint-bound local policy videos are not complete"],
         ),
         "checkpoint_bound_local_policy_videos_reviewed": _requirement(
             status="proved" if checkpoint_videos_proved else "missing",

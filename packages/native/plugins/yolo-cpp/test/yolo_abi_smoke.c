@@ -6,7 +6,7 @@
  *   - `yolo_active_backend` reports a non-NULL string.
  *   - `yolo_open` against a nonexistent path returns a negative errno
  *     (`-ENOENT` from the real runtime) and clears the out handle.
- *   - `yolo_close(NULL)` is a no-op that returns 0.
+ *   - `yolo_close(NULL)` returns 0.
  *   - `yolo_detect` against a NULL handle drains `out_count` to 0 and
  *     returns a negative errno (`-EINVAL` from the real runtime).
  *

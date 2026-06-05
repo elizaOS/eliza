@@ -1,11 +1,11 @@
-// AUTO-COMPLETE node:fs / node:fs/promises stub for the Storybook browser
+// AUTO-COMPLETE node:fs / node:fs/promises shim for the Storybook browser
 // catalog. Both specifiers alias here (see .storybook/main.ts). The browser
 // never reaches a real fs call — these exist only so static ESM named imports
 // from deps reached by the @elizaos/* graph resolve. Calls throw (surfacing
 // genuine misuse) except harmless probes (existsSync->false, readdir->[]).
 
 const notAvailable = (name: string) => {
-  throw new Error(`node:fs stub cannot ${name} in Storybook`);
+  throw new Error(`node:fs browser shim cannot ${name} in Storybook`);
 };
 
 export const constants = {};
@@ -19,116 +19,116 @@ export class Stats {}
 export class WriteStream {}
 
 // node:fs (sync + callback)
-export const _toUnixTimestamp = (...args: unknown[]) =>
+export const _toUnixTimestamp = (..._args: unknown[]) =>
   notAvailable("_toUnixTimestamp");
-export const access = (...args: unknown[]) => notAvailable("access");
-export const accessSync = (...args: unknown[]) => notAvailable("accessSync");
-export const appendFile = (...args: unknown[]) => notAvailable("appendFile");
-export const appendFileSync = (...args: unknown[]) =>
+export const access = (..._args: unknown[]) => notAvailable("access");
+export const accessSync = (..._args: unknown[]) => notAvailable("accessSync");
+export const appendFile = (..._args: unknown[]) => notAvailable("appendFile");
+export const appendFileSync = (..._args: unknown[]) =>
   notAvailable("appendFileSync");
-export const chmod = (...args: unknown[]) => notAvailable("chmod");
-export const chmodSync = (...args: unknown[]) => notAvailable("chmodSync");
-export const chown = (...args: unknown[]) => notAvailable("chown");
-export const chownSync = (...args: unknown[]) => notAvailable("chownSync");
-export const close = (...args: unknown[]) => notAvailable("close");
-export const closeSync = (...args: unknown[]) => notAvailable("closeSync");
-export const copyFile = (...args: unknown[]) => notAvailable("copyFile");
-export const copyFileSync = (...args: unknown[]) =>
+export const chmod = (..._args: unknown[]) => notAvailable("chmod");
+export const chmodSync = (..._args: unknown[]) => notAvailable("chmodSync");
+export const chown = (..._args: unknown[]) => notAvailable("chown");
+export const chownSync = (..._args: unknown[]) => notAvailable("chownSync");
+export const close = (..._args: unknown[]) => notAvailable("close");
+export const closeSync = (..._args: unknown[]) => notAvailable("closeSync");
+export const copyFile = (..._args: unknown[]) => notAvailable("copyFile");
+export const copyFileSync = (..._args: unknown[]) =>
   notAvailable("copyFileSync");
-export const cp = (...args: unknown[]) => notAvailable("cp");
-export const cpSync = (...args: unknown[]) => notAvailable("cpSync");
-export const createReadStream = (...args: unknown[]) =>
+export const cp = (..._args: unknown[]) => notAvailable("cp");
+export const cpSync = (..._args: unknown[]) => notAvailable("cpSync");
+export const createReadStream = (..._args: unknown[]) =>
   notAvailable("createReadStream");
-export const createWriteStream = (...args: unknown[]) =>
+export const createWriteStream = (..._args: unknown[]) =>
   notAvailable("createWriteStream");
 export const exists = () => false;
 export const existsSync = () => false;
-export const fchmod = (...args: unknown[]) => notAvailable("fchmod");
-export const fchmodSync = (...args: unknown[]) => notAvailable("fchmodSync");
-export const fchown = (...args: unknown[]) => notAvailable("fchown");
-export const fchownSync = (...args: unknown[]) => notAvailable("fchownSync");
-export const fdatasync = (...args: unknown[]) => notAvailable("fdatasync");
-export const fdatasyncSync = (...args: unknown[]) =>
+export const fchmod = (..._args: unknown[]) => notAvailable("fchmod");
+export const fchmodSync = (..._args: unknown[]) => notAvailable("fchmodSync");
+export const fchown = (..._args: unknown[]) => notAvailable("fchown");
+export const fchownSync = (..._args: unknown[]) => notAvailable("fchownSync");
+export const fdatasync = (..._args: unknown[]) => notAvailable("fdatasync");
+export const fdatasyncSync = (..._args: unknown[]) =>
   notAvailable("fdatasyncSync");
-export const fstat = (...args: unknown[]) => notAvailable("fstat");
-export const fstatSync = (...args: unknown[]) => notAvailable("fstatSync");
-export const fsync = (...args: unknown[]) => notAvailable("fsync");
-export const fsyncSync = (...args: unknown[]) => notAvailable("fsyncSync");
-export const ftruncate = (...args: unknown[]) => notAvailable("ftruncate");
-export const ftruncateSync = (...args: unknown[]) =>
+export const fstat = (..._args: unknown[]) => notAvailable("fstat");
+export const fstatSync = (..._args: unknown[]) => notAvailable("fstatSync");
+export const fsync = (..._args: unknown[]) => notAvailable("fsync");
+export const fsyncSync = (..._args: unknown[]) => notAvailable("fsyncSync");
+export const ftruncate = (..._args: unknown[]) => notAvailable("ftruncate");
+export const ftruncateSync = (..._args: unknown[]) =>
   notAvailable("ftruncateSync");
-export const futimes = (...args: unknown[]) => notAvailable("futimes");
-export const futimesSync = (...args: unknown[]) => notAvailable("futimesSync");
-export const glob = (...args: unknown[]) => notAvailable("glob");
-export const globSync = (...args: unknown[]) => notAvailable("globSync");
-export const lchmod = (...args: unknown[]) => notAvailable("lchmod");
-export const lchmodSync = (...args: unknown[]) => notAvailable("lchmodSync");
-export const lchown = (...args: unknown[]) => notAvailable("lchown");
-export const lchownSync = (...args: unknown[]) => notAvailable("lchownSync");
-export const link = (...args: unknown[]) => notAvailable("link");
-export const linkSync = (...args: unknown[]) => notAvailable("linkSync");
-export const lstat = (...args: unknown[]) => notAvailable("lstat");
-export const lstatSync = (...args: unknown[]) => notAvailable("lstatSync");
-export const lutimes = (...args: unknown[]) => notAvailable("lutimes");
-export const lutimesSync = (...args: unknown[]) => notAvailable("lutimesSync");
-export const mkdir = (...args: unknown[]) => notAvailable("mkdir");
-export const mkdirSync = (...args: unknown[]) => notAvailable("mkdirSync");
-export const mkdtemp = (...args: unknown[]) => notAvailable("mkdtemp");
-export const mkdtempDisposableSync = (...args: unknown[]) =>
+export const futimes = (..._args: unknown[]) => notAvailable("futimes");
+export const futimesSync = (..._args: unknown[]) => notAvailable("futimesSync");
+export const glob = (..._args: unknown[]) => notAvailable("glob");
+export const globSync = (..._args: unknown[]) => notAvailable("globSync");
+export const lchmod = (..._args: unknown[]) => notAvailable("lchmod");
+export const lchmodSync = (..._args: unknown[]) => notAvailable("lchmodSync");
+export const lchown = (..._args: unknown[]) => notAvailable("lchown");
+export const lchownSync = (..._args: unknown[]) => notAvailable("lchownSync");
+export const link = (..._args: unknown[]) => notAvailable("link");
+export const linkSync = (..._args: unknown[]) => notAvailable("linkSync");
+export const lstat = (..._args: unknown[]) => notAvailable("lstat");
+export const lstatSync = (..._args: unknown[]) => notAvailable("lstatSync");
+export const lutimes = (..._args: unknown[]) => notAvailable("lutimes");
+export const lutimesSync = (..._args: unknown[]) => notAvailable("lutimesSync");
+export const mkdir = (..._args: unknown[]) => notAvailable("mkdir");
+export const mkdirSync = (..._args: unknown[]) => notAvailable("mkdirSync");
+export const mkdtemp = (..._args: unknown[]) => notAvailable("mkdtemp");
+export const mkdtempDisposableSync = (..._args: unknown[]) =>
   notAvailable("mkdtempDisposableSync");
-export const mkdtempSync = (...args: unknown[]) => notAvailable("mkdtempSync");
-export const open = (...args: unknown[]) => notAvailable("open");
-export const openAsBlob = (...args: unknown[]) => notAvailable("openAsBlob");
-export const openSync = (...args: unknown[]) => notAvailable("openSync");
-export const opendir = (...args: unknown[]) => notAvailable("opendir");
-export const opendirSync = (...args: unknown[]) => notAvailable("opendirSync");
-export const read = (...args: unknown[]) => notAvailable("read");
-export const readFile = (...args: unknown[]) => notAvailable("readFile");
-export const readFileSync = (...args: unknown[]) =>
+export const mkdtempSync = (..._args: unknown[]) => notAvailable("mkdtempSync");
+export const open = (..._args: unknown[]) => notAvailable("open");
+export const openAsBlob = (..._args: unknown[]) => notAvailable("openAsBlob");
+export const openSync = (..._args: unknown[]) => notAvailable("openSync");
+export const opendir = (..._args: unknown[]) => notAvailable("opendir");
+export const opendirSync = (..._args: unknown[]) => notAvailable("opendirSync");
+export const read = (..._args: unknown[]) => notAvailable("read");
+export const readFile = (..._args: unknown[]) => notAvailable("readFile");
+export const readFileSync = (..._args: unknown[]) =>
   notAvailable("readFileSync");
-export const readSync = (...args: unknown[]) => notAvailable("readSync");
+export const readSync = (..._args: unknown[]) => notAvailable("readSync");
 export const readdir = () => [];
 export const readdirSync = () => [];
-export const readlink = (...args: unknown[]) => notAvailable("readlink");
-export const readlinkSync = (...args: unknown[]) =>
+export const readlink = (..._args: unknown[]) => notAvailable("readlink");
+export const readlinkSync = (..._args: unknown[]) =>
   notAvailable("readlinkSync");
-export const readv = (...args: unknown[]) => notAvailable("readv");
-export const readvSync = (...args: unknown[]) => notAvailable("readvSync");
-export const realpath = (...args: unknown[]) => notAvailable("realpath");
-export const realpathSync = (...args: unknown[]) =>
+export const readv = (..._args: unknown[]) => notAvailable("readv");
+export const readvSync = (..._args: unknown[]) => notAvailable("readvSync");
+export const realpath = (..._args: unknown[]) => notAvailable("realpath");
+export const realpathSync = (..._args: unknown[]) =>
   notAvailable("realpathSync");
-export const rename = (...args: unknown[]) => notAvailable("rename");
-export const renameSync = (...args: unknown[]) => notAvailable("renameSync");
-export const rm = (...args: unknown[]) => notAvailable("rm");
-export const rmSync = (...args: unknown[]) => notAvailable("rmSync");
-export const rmdir = (...args: unknown[]) => notAvailable("rmdir");
-export const rmdirSync = (...args: unknown[]) => notAvailable("rmdirSync");
-export const stat = (...args: unknown[]) => notAvailable("stat");
-export const statSync = (...args: unknown[]) => notAvailable("statSync");
-export const statfs = (...args: unknown[]) => notAvailable("statfs");
-export const statfsSync = (...args: unknown[]) => notAvailable("statfsSync");
-export const symlink = (...args: unknown[]) => notAvailable("symlink");
-export const symlinkSync = (...args: unknown[]) => notAvailable("symlinkSync");
-export const truncate = (...args: unknown[]) => notAvailable("truncate");
-export const truncateSync = (...args: unknown[]) =>
+export const rename = (..._args: unknown[]) => notAvailable("rename");
+export const renameSync = (..._args: unknown[]) => notAvailable("renameSync");
+export const rm = (..._args: unknown[]) => notAvailable("rm");
+export const rmSync = (..._args: unknown[]) => notAvailable("rmSync");
+export const rmdir = (..._args: unknown[]) => notAvailable("rmdir");
+export const rmdirSync = (..._args: unknown[]) => notAvailable("rmdirSync");
+export const stat = (..._args: unknown[]) => notAvailable("stat");
+export const statSync = (..._args: unknown[]) => notAvailable("statSync");
+export const statfs = (..._args: unknown[]) => notAvailable("statfs");
+export const statfsSync = (..._args: unknown[]) => notAvailable("statfsSync");
+export const symlink = (..._args: unknown[]) => notAvailable("symlink");
+export const symlinkSync = (..._args: unknown[]) => notAvailable("symlinkSync");
+export const truncate = (..._args: unknown[]) => notAvailable("truncate");
+export const truncateSync = (..._args: unknown[]) =>
   notAvailable("truncateSync");
-export const unlink = (...args: unknown[]) => notAvailable("unlink");
-export const unlinkSync = (...args: unknown[]) => notAvailable("unlinkSync");
-export const unwatchFile = (...args: unknown[]) => notAvailable("unwatchFile");
-export const utimes = (...args: unknown[]) => notAvailable("utimes");
-export const utimesSync = (...args: unknown[]) => notAvailable("utimesSync");
-export const watch = (...args: unknown[]) => notAvailable("watch");
-export const watchFile = (...args: unknown[]) => notAvailable("watchFile");
-export const write = (...args: unknown[]) => notAvailable("write");
-export const writeFile = (...args: unknown[]) => notAvailable("writeFile");
-export const writeFileSync = (...args: unknown[]) =>
+export const unlink = (..._args: unknown[]) => notAvailable("unlink");
+export const unlinkSync = (..._args: unknown[]) => notAvailable("unlinkSync");
+export const unwatchFile = (..._args: unknown[]) => notAvailable("unwatchFile");
+export const utimes = (..._args: unknown[]) => notAvailable("utimes");
+export const utimesSync = (..._args: unknown[]) => notAvailable("utimesSync");
+export const watch = (..._args: unknown[]) => notAvailable("watch");
+export const watchFile = (..._args: unknown[]) => notAvailable("watchFile");
+export const write = (..._args: unknown[]) => notAvailable("write");
+export const writeFile = (..._args: unknown[]) => notAvailable("writeFile");
+export const writeFileSync = (..._args: unknown[]) =>
   notAvailable("writeFileSync");
-export const writeSync = (...args: unknown[]) => notAvailable("writeSync");
-export const writev = (...args: unknown[]) => notAvailable("writev");
-export const writevSync = (...args: unknown[]) => notAvailable("writevSync");
+export const writeSync = (..._args: unknown[]) => notAvailable("writeSync");
+export const writev = (..._args: unknown[]) => notAvailable("writev");
+export const writevSync = (..._args: unknown[]) => notAvailable("writevSync");
 
 // node:fs/promises
-export const mkdtempDisposable = async (...args: unknown[]) =>
+export const mkdtempDisposable = async (..._args: unknown[]) =>
   notAvailable("mkdtempDisposable");
 
 export const promises = {
