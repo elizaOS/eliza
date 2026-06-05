@@ -625,7 +625,16 @@ function FirstRunControls(props: {
               defaultValue:
                 "Runs on your machine. Use local inference or connect Eliza Cloud.",
             })}
-            onClick={() => props.updateDraft("runtime", "local")}
+            onClick={() => {
+              const wasLocal = props.draft.runtime === "local";
+              props.updateDraft("runtime", "local");
+              if (
+                !wasLocal &&
+                props.draft.localInference === "cloud-inference"
+              ) {
+                props.updateDraft("localInference", "all-local");
+              }
+            }}
           >
             {props.draft.runtime === "local" ? (
               <LocalInferenceChoice
