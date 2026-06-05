@@ -6235,6 +6235,31 @@ platform no-ops are separated from actionable runtime gaps.
 - The remaining QwenWebBench `FIXME` hit is the package-local marker-search
   command and is already covered by the Qwen guide classification.
 
+### packages/cloud-shared sentinel and disabled-path wording
+
+- Read `packages/cloud-shared/CLAUDE.md` and confirmed `AGENTS.md` parity.
+- Reworded testnet payout comments in
+  `src/lib/config/payout-networks.ts` to describe zero-address and
+  Solana-system-program sentinels as env-override requirements, not generic
+  placeholders.
+- Reworded importable DOM polyfill initialization, draft app URL comments,
+  promotion-asset draft URL handling, cache credential warnings, and the OAuth
+  Basic-auth token-template comment so they describe the actual contract:
+  explicit module initialization, sentinel URL filtering, disabled COT budget
+  behavior for non-Anthropic image models, sentinel credential rejection, and a
+  token header template.
+- Renamed local helpers in `cache/client.ts` and `app-factory.ts` from
+  placeholder-centric names to sentinel/draft names. Remaining touched-file
+  hits are intentional string contracts (`placeholder.local` and
+  `url.includes("placeholder")`) used to suppress Discord launch alerts and
+  outbound website fetches for draft app URLs.
+- Remaining broader `packages/cloud-shared` marker hits are classified as:
+  append-only historical migrations, schema/UI fields named `placeholder`,
+  third-party/example masks such as `xxx`, dev-stub Cloudflare registrar/DNS
+  responses gated by `ELIZA_CF_REGISTRAR_DEV_STUB=1`, test doubles, idempotent
+  no-op semantics, disabled tracing/COT fallbacks, and domain words such as
+  Mastodon or todo-list state detection.
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.
