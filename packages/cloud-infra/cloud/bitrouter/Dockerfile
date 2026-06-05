@@ -10,7 +10,9 @@ WORKDIR /app
 COPY bitrouter.yaml /app/bitrouter.yaml
 COPY auth-proxy.mjs /app/auth-proxy.mjs
 COPY entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+RUN grep -q "forced-provider-v1" /app/auth-proxy.mjs \
+  && grep -q "input_micro_usd_per_token: 0.35" /app/bitrouter.yaml \
+  && chmod +x /app/entrypoint.sh
 
 ENV BITROUTER_HOME=/app
 ENV BITROUTER_UPSTREAM=http://127.0.0.1:4356

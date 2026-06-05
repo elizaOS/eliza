@@ -171,5 +171,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(port, "0.0.0.0", () => {
-  console.log(`bitrouter auth proxy listening on ${port}`);
+  console.log(`bitrouter auth proxy ${proxyVersion} listening on ${port}`);
 });
