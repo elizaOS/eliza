@@ -17,11 +17,13 @@ import {
 } from "react";
 import {
   BackChip,
+  SparseWatermark,
   TaskCard,
   TaskCountChip,
   TaskEmptyState,
   TaskListHeader,
   TaskMetaChip,
+  TaskSearchInput,
   TaskStatusMedallion,
 } from "./TaskCardList";
 
@@ -92,13 +94,19 @@ function formatThreadStatus(
   });
 }
 
-function formatThreadKind(kind: string, t: typeof fallbackTranslate): string {
-  const mapped: Record<string, string> = {
-    coding: "codingagenttaskspanel.kind.coding",
-  };
-  return t(mapped[kind] ?? "codingagenttaskspanel.kind.unknown", {
-    defaultValue: kind,
-  });
+// Only meaningful kinds get a label; generic/unknown kinds (e.g. "task") carry
+// no signal and must not render a chip.
+const THREAD_KIND_LABELS: Record<string, string> = {
+  coding: "codingagenttaskspanel.kind.coding",
+};
+
+function formatThreadKind(
+  kind: string,
+  t: typeof fallbackTranslate,
+): string | null {
+  const key = THREAD_KIND_LABELS[kind];
+  if (!key) return null;
+  return t(key, { defaultValue: kind });
 }
 
 function getWorkspaceChangesSummary(
@@ -483,23 +491,37 @@ function ThreadDetailContent({
   );
 }
 
-/** Visual chips summarizing a thread for the card list. */
+/** Visual chips summarizing a thread for the card list. Zero-value and unknown
+ * metadata is omitted so a fresh task never shows bare "0" / "unknown" chips. */
 function threadChips(
   thread: CodingAgentTaskThread,
   t: typeof fallbackTranslate,
   locale?: string,
 ): ReactNode {
+  const kindLabel = thread.kind ? formatThreadKind(thread.kind, t) : null;
   return (
     <>
-      <TaskMetaChip icon={<Bot className="h-3 w-3" />}>
-        {thread.sessionCount}
-      </TaskMetaChip>
-      <TaskMetaChip icon={<ListChecks className="h-3 w-3" />}>
-        {thread.decisionCount}
-      </TaskMetaChip>
-      <TaskMetaChip icon={<Terminal className="h-3 w-3" />}>
-        {formatThreadKind(thread.kind, t)}
-      </TaskMetaChip>
+      {thread.sessionCount > 0 ? (
+        <TaskMetaChip icon={<Bot className="h-3 w-3" />}>
+          {t("codingagenttaskspanel.sessionsCount", {
+            defaultValue: "{{count}} sessions",
+            count: thread.sessionCount,
+          })}
+        </TaskMetaChip>
+      ) : null}
+      {thread.decisionCount > 0 ? (
+        <TaskMetaChip icon={<ListChecks className="h-3 w-3" />}>
+          {t("codingagenttaskspanel.decisionsCount", {
+            defaultValue: "{{count}} decisions",
+            count: thread.decisionCount,
+          })}
+        </TaskMetaChip>
+      ) : null}
+      {kindLabel ? (
+        <TaskMetaChip icon={<Terminal className="h-3 w-3" />}>
+          {kindLabel}
+        </TaskMetaChip>
+      ) : null}
       <span className="text-2xs text-muted/80">
         {formatIsoTime(thread.updatedAt, locale, t)}
       </span>
@@ -824,7 +846,7 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
 
   return (
     <div
-      className="flex h-full min-h-0 w-full flex-col gap-3 overflow-y-auto bg-bg px-4 pb-28 pt-4 text-txt"
+      className="relative flex h-full min-h-0 w-full flex-col gap-3 overflow-y-auto bg-bg px-4 pb-28 pt-4 text-txt"
       data-testid="task-coordinator-panel"
     >
       <TaskListHeader
@@ -844,14 +866,12 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
       />
 
       <div className="flex items-center gap-2">
-        <input
-          ref={searchRef}
+        <TaskSearchInput
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={setSearch}
           placeholder={searchLabel}
-          aria-label={searchLabel}
-          className="h-9 flex-1 rounded-xl border border-border/50 bg-bg-accent/30 px-3 text-sm text-txt outline-none transition-colors placeholder:text-muted focus:border-accent/50"
-          {...searchAgentProps}
+          inputRef={searchRef}
+          agentProps={searchAgentProps}
         />
         <button
           ref={archivedRef}
@@ -886,20 +906,23 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
       ) : null}
 
       {threads.length > 0 ? (
-        <div className="flex flex-col gap-2.5">
-          {threads.map((thread) => (
-            <TaskCard
-              key={thread.id}
-              id={thread.id}
-              title={thread.title}
-              subtitle={thread.summary || thread.originalRequest}
-              status={thread.status}
-              chips={threadChips(thread, t, uiLanguage)}
-              onOpen={setSelectedThreadId}
-              t={t}
-            />
-          ))}
-        </div>
+        <>
+          <div className="flex flex-col gap-2.5">
+            {threads.map((thread) => (
+              <TaskCard
+                key={thread.id}
+                id={thread.id}
+                title={thread.title}
+                subtitle={thread.summary || thread.originalRequest}
+                status={thread.status}
+                chips={threadChips(thread, t, uiLanguage)}
+                onOpen={setSelectedThreadId}
+                t={t}
+              />
+            ))}
+          </div>
+          {threads.length < 4 ? <SparseWatermark icon={ListChecks} /> : null}
+        </>
       ) : loading ? (
         <div className="text-sm text-muted">
           {t("codingagenttaskspanel.loadingTasks", {

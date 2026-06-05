@@ -13,10 +13,11 @@ import {
   GitBranch,
   type LucideIcon,
   OctagonX,
+  Search,
   Sparkles,
   UserRound,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 
 export type TaskCardStatus =
   | "open"
@@ -37,6 +38,8 @@ interface StatusVisual {
   fg: string;
   /** Medallion background tint. */
   tint: string;
+  /** Medallion ring tone — keeps the circle legible against the card. */
+  ring: string;
   /** Status-dot color for the trailing chip. */
   dot: string;
   pulse: boolean;
@@ -47,15 +50,17 @@ interface StatusVisual {
 const STATUS_VISUAL: Record<TaskCardStatus, StatusVisual> = {
   open: {
     icon: Circle,
-    fg: "text-muted",
-    tint: "bg-surface",
-    dot: "bg-muted",
+    fg: "text-accent",
+    tint: "bg-accent-subtle",
+    ring: "ring-accent/25",
+    dot: "bg-accent",
     pulse: false,
   },
   active: {
     icon: CirclePlay,
     fg: "text-ok",
     tint: "bg-ok/12",
+    ring: "ring-ok/25",
     dot: "bg-ok",
     pulse: true,
   },
@@ -63,6 +68,7 @@ const STATUS_VISUAL: Record<TaskCardStatus, StatusVisual> = {
     icon: CircleDashed,
     fg: "text-accent",
     tint: "bg-accent-subtle",
+    ring: "ring-accent/25",
     dot: "bg-accent",
     pulse: true,
   },
@@ -70,6 +76,7 @@ const STATUS_VISUAL: Record<TaskCardStatus, StatusVisual> = {
     icon: UserRound,
     fg: "text-warn",
     tint: "bg-warn/12",
+    ring: "ring-warn/25",
     dot: "bg-warn",
     pulse: false,
   },
@@ -77,6 +84,7 @@ const STATUS_VISUAL: Record<TaskCardStatus, StatusVisual> = {
     icon: OctagonX,
     fg: "text-warn",
     tint: "bg-warn/12",
+    ring: "ring-warn/25",
     dot: "bg-warn",
     pulse: false,
   },
@@ -84,6 +92,7 @@ const STATUS_VISUAL: Record<TaskCardStatus, StatusVisual> = {
     icon: CircleAlert,
     fg: "text-warn",
     tint: "bg-warn/12",
+    ring: "ring-warn/25",
     dot: "bg-warn",
     pulse: false,
   },
@@ -91,6 +100,7 @@ const STATUS_VISUAL: Record<TaskCardStatus, StatusVisual> = {
     icon: CircleCheck,
     fg: "text-ok",
     tint: "bg-ok/12",
+    ring: "ring-ok/25",
     dot: "bg-ok",
     pulse: false,
   },
@@ -98,6 +108,7 @@ const STATUS_VISUAL: Record<TaskCardStatus, StatusVisual> = {
     icon: CircleX,
     fg: "text-danger",
     tint: "bg-danger/12",
+    ring: "ring-danger/25",
     dot: "bg-danger",
     pulse: false,
   },
@@ -105,6 +116,7 @@ const STATUS_VISUAL: Record<TaskCardStatus, StatusVisual> = {
     icon: Archive,
     fg: "text-muted",
     tint: "bg-surface",
+    ring: "ring-border",
     dot: "bg-muted",
     pulse: false,
   },
@@ -134,7 +146,7 @@ export function TaskStatusMedallion({
   const Icon = visual.icon;
   return (
     <span
-      className={`relative inline-flex shrink-0 items-center justify-center rounded-2xl ${size} ${visual.tint}`}
+      className={`relative inline-flex shrink-0 items-center justify-center rounded-2xl ring-1 ${size} ${visual.tint} ${visual.ring}`}
     >
       <Icon
         className={`${iconSize} ${visual.fg}${visual.pulse ? " animate-pulse" : ""}`}
@@ -186,6 +198,61 @@ export function TaskMetaChip({
       </span>
       {children}
     </span>
+  );
+}
+
+/** Softened search field — rounded surface pill with an inset search glyph.
+ * Shared so both landings read identically. */
+export function TaskSearchInput({
+  value,
+  onChange,
+  placeholder,
+  inputRef,
+  testId,
+  className,
+  agentProps,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  inputRef?: Ref<HTMLInputElement>;
+  testId?: string;
+  className?: string;
+  agentProps?: Record<string, unknown>;
+}) {
+  return (
+    <div
+      className={`relative flex h-9 items-center rounded-full border border-border/50 bg-surface/60 transition-colors focus-within:border-accent/50 focus-within:bg-surface ${className ?? "flex-1"}`}
+    >
+      <Search
+        className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-muted"
+        aria-hidden
+      />
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        aria-label={placeholder}
+        data-testid={testId}
+        className="h-full w-full bg-transparent pl-9 pr-3 text-sm text-txt outline-none placeholder:text-muted"
+        {...agentProps}
+      />
+    </div>
+  );
+}
+
+/** A quiet oversized watermark glyph pinned bottom-right, used to ground the
+ * empty void beneath a short task list. Decorative only, very low opacity. */
+export function SparseWatermark({ icon }: { icon: LucideIcon }) {
+  const Icon = icon;
+  return (
+    <div
+      className="pointer-events-none absolute bottom-6 right-4 select-none"
+      aria-hidden
+    >
+      <Icon className="h-44 w-44 text-accent opacity-[0.05]" strokeWidth={1} />
+    </div>
   );
 }
 
@@ -301,12 +368,10 @@ export function TaskCountChip({
           : "bg-surface text-muted";
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-semibold ${toneClass}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-2xs ${toneClass}`}
     >
-      <span className="tabular-nums">{value}</span>
-      <span className="font-medium uppercase tracking-[0.06em] opacity-80">
-        {label}
-      </span>
+      <span className="font-semibold tabular-nums">{value}</span>
+      <span className="uppercase tracking-[0.08em] opacity-70">{label}</span>
     </span>
   );
 }

@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { type CSSProperties, memo } from "react";
 
 /**
  * CompanionStageBackdrop — the aesthetic stage that lives *behind* the
@@ -8,9 +8,16 @@ import { memo } from "react";
  * visible centerpiece: a gradient stage plus a gradient-filled avatar
  * silhouette, so the companion is never an empty void.
  *
- * Pure presentation, theme-token driven (no hard-coded brand values beyond the
- * shared --accent / surface CSS vars). No business logic, no computation.
+ * Sizing/positioning use inline styles, NOT Tailwind arbitrary utilities: the
+ * companion view ships as a standalone bundle with no compiled Tailwind CSS, so
+ * arbitrary classes like `h-[120%]` / `w-[34%]` resolve to nothing and collapse
+ * the layer to 0×0. Inline styles are self-contained and always paint.
  */
+const fill: CSSProperties = {
+  position: "absolute",
+  inset: 0,
+};
+
 export const CompanionStageBackdrop = memo(function CompanionStageBackdrop({
   theme,
   showSilhouette,
@@ -23,25 +30,30 @@ export const CompanionStageBackdrop = memo(function CompanionStageBackdrop({
     <div
       data-testid="companion-stage-backdrop"
       aria-hidden
-      className="pointer-events-none absolute inset-0 overflow-hidden"
+      style={{ position: "absolute", inset: 0, overflow: "hidden" }}
     >
       {/* Ambient stage wash — soft accent halo over a neutral vignette. */}
       <div
-        className="absolute inset-0"
         style={{
+          ...fill,
           background: dark
-            ? "radial-gradient(120% 90% at 50% 18%, rgba(255,88,0,0.10) 0%, rgba(255,88,0,0) 46%), radial-gradient(140% 120% at 50% 120%, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 55%), linear-gradient(180deg, #0a0810 0%, #0e0b16 48%, #060509 100%)"
-            : "radial-gradient(120% 90% at 50% 16%, rgba(255,88,0,0.12) 0%, rgba(255,88,0,0) 46%), radial-gradient(140% 120% at 50% 122%, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0) 55%), linear-gradient(180deg, #fafafa 0%, #f3f3f5 52%, #ececef 100%)",
+            ? "radial-gradient(120% 90% at 50% 18%, rgba(255,88,0,0.12) 0%, rgba(255,88,0,0) 46%), radial-gradient(140% 120% at 50% 120%, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 55%), linear-gradient(180deg, #0a0810 0%, #0e0b16 48%, #060509 100%)"
+            : "radial-gradient(120% 90% at 50% 16%, rgba(255,88,0,0.14) 0%, rgba(255,88,0,0) 46%), radial-gradient(140% 120% at 50% 122%, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0) 55%), linear-gradient(180deg, #fafafa 0%, #f3f3f5 52%, #ececef 100%)",
         }}
       />
 
       {/* Centre spotlight that grounds the avatar. */}
       <div
-        className="absolute left-1/2 top-1/2 h-[120%] w-[120%] -translate-x-1/2 -translate-y-1/2"
         style={{
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          width: "120%",
+          height: "120%",
+          transform: "translate(-50%, -50%)",
           background: dark
-            ? "radial-gradient(closest-side, rgba(255,88,0,0.07) 0%, rgba(255,88,0,0) 70%)"
-            : "radial-gradient(closest-side, rgba(255,88,0,0.06) 0%, rgba(255,88,0,0) 70%)",
+            ? "radial-gradient(closest-side, rgba(255,88,0,0.09) 0%, rgba(255,88,0,0) 70%)"
+            : "radial-gradient(closest-side, rgba(255,88,0,0.08) 0%, rgba(255,88,0,0) 70%)",
         }}
       />
 
@@ -49,11 +61,18 @@ export const CompanionStageBackdrop = memo(function CompanionStageBackdrop({
 
       {/* Floor reflection ellipse so the figure feels planted. */}
       <div
-        className="absolute left-1/2 bottom-[10%] h-[7%] w-[34%] -translate-x-1/2 rounded-[50%] blur-2xl"
         style={{
+          position: "absolute",
+          left: "50%",
+          bottom: "9%",
+          width: "34%",
+          height: "8%",
+          transform: "translateX(-50%)",
+          borderRadius: "50%",
+          filter: "blur(40px)",
           background: dark
-            ? "radial-gradient(50% 50% at 50% 50%, rgba(255,88,0,0.22) 0%, rgba(255,88,0,0) 72%)"
-            : "radial-gradient(50% 50% at 50% 50%, rgba(255,88,0,0.16) 0%, rgba(255,88,0,0) 72%)",
+            ? "radial-gradient(50% 50% at 50% 50%, rgba(255,88,0,0.24) 0%, rgba(255,88,0,0) 72%)"
+            : "radial-gradient(50% 50% at 50% 50%, rgba(255,88,0,0.18) 0%, rgba(255,88,0,0) 72%)",
         }}
       />
     </div>
@@ -69,13 +88,23 @@ function CompanionAvatarSilhouette({ dark }: { dark: boolean }) {
   const stroke = dark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)";
   return (
     <div
-      className="absolute left-1/2 top-[52%] h-[78%] -translate-x-1/2 -translate-y-1/2 opacity-90"
-      style={{ aspectRatio: "3 / 5" }}
+      style={{
+        position: "absolute",
+        left: "50%",
+        top: "50%",
+        height: "74%",
+        aspectRatio: "3 / 5",
+        transform: "translate(-50%, -50%)",
+        opacity: 0.95,
+      }}
     >
       <svg
         viewBox="0 0 300 500"
-        className="h-full w-full"
+        preserveAspectRatio="xMidYMid meet"
         style={{
+          width: "100%",
+          height: "100%",
+          display: "block",
           filter: dark
             ? "drop-shadow(0 24px 60px rgba(255,88,0,0.22))"
             : "drop-shadow(0 24px 60px rgba(255,88,0,0.16))",

@@ -89,9 +89,11 @@ import {
 import { buildConversation } from "./orchestrator-stream.helpers";
 import {
   BackChip,
+  SparseWatermark,
   TaskCard,
   TaskEmptyState,
   TaskMetaChip,
+  TaskSearchInput,
   TaskStatusChip,
 } from "./TaskCardList";
 import {
@@ -668,17 +670,20 @@ function WorkbenchHeader({
       ) : null}
     </div>
   );
-  const usageReadout = status ? (
-    <span
-      className="flex shrink-0 items-center gap-1.5 text-xs tabular-nums text-muted"
-      title={t("orchestrator.stat.usage", { defaultValue: "Usage" })}
-    >
-      <Gauge className="h-3 w-3 text-muted/70" />
-      {renderTokens(status.usage, t, locale)}
-      <span className="text-muted/50">·</span>
-      {renderCost(status.usage, t, locale)}
-    </span>
-  ) : null;
+  // Only surface the usage readout once there is real spend to report. An
+  // unavailable usage state renders "— · —", which looks like a debug leftover.
+  const usageReadout =
+    status && status.usage.state !== "unavailable" ? (
+      <span
+        className="flex shrink-0 items-center gap-1.5 text-xs tabular-nums text-muted"
+        title={t("orchestrator.stat.usage", { defaultValue: "Usage" })}
+      >
+        <Gauge className="h-3 w-3 text-muted/70" />
+        {renderTokens(status.usage, t, locale)}
+        <span className="text-muted/50">·</span>
+        {renderCost(status.usage, t, locale)}
+      </span>
+    ) : null;
   const pauseAllLabel = t("orchestrator.action.pauseAll", {
     defaultValue: "Pause all",
   });
@@ -777,6 +782,7 @@ function WorkbenchHeader({
   return (
     <header className="flex items-center gap-3 border-b border-border/50 bg-bg px-4 py-2.5">
       {title}
+      <HeaderDivider />
       {summary}
       {usageReadout}
       {actions}
@@ -879,12 +885,18 @@ function orchestratorTaskChips(
   const PriorityIcon = PRIORITY_ICON[thread.priority];
   return (
     <>
-      <TaskMetaChip
-        icon={<Bot className="h-3 w-3" />}
-        tone={thread.activeSessionCount > 0 ? "accent" : "muted"}
-      >
-        {thread.activeSessionCount}/{thread.sessionCount}
-      </TaskMetaChip>
+      {thread.sessionCount > 0 ? (
+        <TaskMetaChip
+          icon={<Bot className="h-3 w-3" />}
+          tone={thread.activeSessionCount > 0 ? "accent" : "muted"}
+        >
+          {t("orchestrator.chip.agents", {
+            defaultValue: "{{active}}/{{total}} agents",
+            active: thread.activeSessionCount,
+            total: thread.sessionCount,
+          })}
+        </TaskMetaChip>
+      ) : null}
       {thread.paused ? (
         <TaskMetaChip icon={<Pause className="h-3 w-3" />}>
           {t("orchestrator.status.paused", { defaultValue: "Paused" })}
@@ -3740,19 +3752,18 @@ export function OrchestratorWorkbench() {
             is open so the workbench is never a side-by-side list+detail. */}
         {!selectedId ? (
           <div
-            className="flex flex-1 flex-col gap-3 px-4 pb-28 pt-4"
+            className="relative flex flex-1 flex-col gap-3 px-4 pb-28 pt-4"
             data-testid="orchestrator-rail"
           >
             <div className="flex flex-wrap items-center gap-2">
-              <input
-                ref={searchRef}
+              <TaskSearchInput
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={setSearch}
                 placeholder={searchLabel}
-                aria-label={searchLabel}
-                className="h-9 min-w-[12rem] flex-1 rounded-xl border border-border/50 bg-bg-accent/30 px-3 text-sm text-txt outline-none transition-colors placeholder:text-muted focus:border-accent/50"
-                data-testid="orchestrator-search"
-                {...searchAgentProps}
+                inputRef={searchRef}
+                testId="orchestrator-search"
+                className="min-w-[12rem] flex-1"
+                agentProps={searchAgentProps}
               />
               <div className="flex items-center gap-2">
                 <div className="w-40">
@@ -3813,20 +3824,23 @@ export function OrchestratorWorkbench() {
                 />
               )
             ) : (
-              <div className="flex flex-col gap-2.5">
-                {tasks.map((thread) => (
-                  <TaskCard
-                    key={thread.id}
-                    id={thread.id}
-                    title={thread.title}
-                    subtitle={thread.summary || thread.originalRequest}
-                    status={thread.status}
-                    chips={orchestratorTaskChips(thread, t, locale)}
-                    onOpen={(id) => setSelectedId(id)}
-                    t={t}
-                  />
-                ))}
-              </div>
+              <>
+                <div className="flex flex-col gap-2.5">
+                  {tasks.map((thread) => (
+                    <TaskCard
+                      key={thread.id}
+                      id={thread.id}
+                      title={thread.title}
+                      subtitle={thread.summary || thread.originalRequest}
+                      status={thread.status}
+                      chips={orchestratorTaskChips(thread, t, locale)}
+                      onOpen={(id) => setSelectedId(id)}
+                      t={t}
+                    />
+                  ))}
+                </div>
+                {tasks.length < 4 ? <SparseWatermark icon={Layers} /> : null}
+              </>
             )}
           </div>
         ) : null}

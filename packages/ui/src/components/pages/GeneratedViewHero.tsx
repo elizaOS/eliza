@@ -2,12 +2,16 @@
  * GeneratedViewHero — deterministic generative hero artwork for view cards that
  * lack a real preview image.
  *
- * Each view id is hashed into a stable seed that picks a curated, token-safe
- * palette entry (orange family + warm neutrals + greens for status — never
- * blue), a gradient geometry (linear / radial / conic), and a subtle SVG
+ * Each view id maps to a stable, curated warm palette (orange / peach /
+ * terracotta / clay / amber-gold / warm sand / warm stone — never green, never
+ * blue) plus a gradient geometry (linear / radial / conic) and a subtle SVG
  * pattern overlay (dots / grid / diagonal). The view's lucide icon is rendered
  * oversized, low-opacity, and offset into a corner so the card reads as
  * intentional artwork rather than a missing image.
+ *
+ * The ~6 builtin view ids are hand-pinned to distinct warm palettes so adjacent
+ * cards never collide into near-identical looks; every other id falls back to a
+ * deterministic FNV-1a hash → palette mapping. Same id → same art, always.
  *
  * This is presentation-only: colors are emitted as inline gradients (the curated
  * stop colors are hard hex, but every accent the surrounding card chrome uses
@@ -17,37 +21,51 @@
 import { ViewIcon } from "../views/ViewIcon";
 
 /**
- * Curated, brand-safe gradient palettes. Orange-forward, warm neutrals, and a
- * couple of greens reserved for status-y views — deliberately no blue so the
- * grid stays on-brand. Each palette is a pair of gradient stops plus a tint for
- * the oversized icon glyph.
+ * Curated, brand-safe gradient palettes. Warm orange family + warm neutrals
+ * only — no green (reserved for status chips), no blue — so the grid stays
+ * on-brand. Each palette is a pair of gradient stops plus a tint for the
+ * oversized icon glyph. Ordered so consecutive entries read as visibly
+ * different hues/lightness.
  */
 const PALETTES: ReadonlyArray<{
   from: string;
   to: string;
   glyph: string;
 }> = [
-  // Signature orange
+  // 0 — Signature orange
   { from: "#ff5800", to: "#ffb070", glyph: "#7a2600" },
-  // Ember / deep orange-red
-  { from: "#e23c00", to: "#ff8a3d", glyph: "#5e1f00" },
-  // Amber / gold
-  { from: "#ff9500", to: "#ffd99e", glyph: "#7a4a00" },
-  // Warm sand neutral
+  // 1 — Warm sand neutral (light, low-chroma)
   { from: "#c9956b", to: "#f3dcc4", glyph: "#5c3d22" },
-  // Terracotta
+  // 2 — Ember / deep orange-red
+  { from: "#e23c00", to: "#ff8a3d", glyph: "#5e1f00" },
+  // 3 — Amber / gold (brighter, more yellow to separate from terracotta)
+  { from: "#ffba2e", to: "#ffeec2", glyph: "#7a5200" },
+  // 4 — Terracotta
   { from: "#d2612f", to: "#f0a878", glyph: "#5a2810" },
-  // Warm stone (neutral)
+  // 5 — Warm stone (neutral, cool-warm taupe)
   { from: "#8c7d70", to: "#ddd0c4", glyph: "#3f352c" },
-  // Moss green (status / active surfaces)
-  { from: "#5c8a3a", to: "#bcd99a", glyph: "#2c441a" },
-  // Olive / warm green
-  { from: "#7a8c3a", to: "#d6dd9a", glyph: "#3c451a" },
-  // Peach
+  // 6 — Peach (bright, high-light)
   { from: "#ff7a4d", to: "#ffceb3", glyph: "#7a3318" },
-  // Clay
-  { from: "#b5563a", to: "#e7a98f", glyph: "#52201288" },
+  // 7 — Clay (muted brick)
+  { from: "#b5563a", to: "#e7a98f", glyph: "#522012" },
 ];
+
+/**
+ * Hand-pinned palette index per builtin view id so the launcher's fixed cards
+ * each get a distinct warm hue and never collide with a neighbour. Ids not
+ * listed here fall back to the deterministic hash mapping.
+ */
+const BUILTIN_PALETTE_INDEX: Readonly<Record<string, number>> = {
+  chat: 0, // signature orange
+  character: 3, // amber / gold
+  automations: 4, // terracotta
+  "plugins-page": 1, // warm sand
+  settings: 5, // warm stone
+  "views-manager": 6, // peach
+  companion: 2, // ember
+  orchestrator: 7, // clay
+  "task-coordinator": 2, // ember (separated from companion in the grid order)
+};
 
 type GradientShape = "linear" | "radial" | "conic";
 const SHAPES: ReadonlyArray<GradientShape> = ["linear", "radial", "conic"];
@@ -165,7 +183,9 @@ export function GeneratedViewHero({
   compact?: boolean;
 }) {
   const seed = hashId(viewId);
-  const palette = PALETTES[seed % PALETTES.length];
+  const pinned = BUILTIN_PALETTE_INDEX[viewId];
+  const palette =
+    PALETTES[pinned !== undefined ? pinned : seed % PALETTES.length];
   const shape = SHAPES[(seed >> 4) % SHAPES.length];
   const pattern = PATTERNS[(seed >> 8) % PATTERNS.length];
   const corner = CORNERS[(seed >> 12) % CORNERS.length];

@@ -625,14 +625,6 @@ function CompanionSceneSurface({
           visibility: active ? "visible" : "hidden",
         }}
       >
-        {/* Aesthetic stage behind the transparent VRM canvas. Doubles as the
-            visible centerpiece (gradient backdrop + avatar silhouette) until
-            the live avatar paints, so the companion is never an empty void. */}
-        <CompanionStageBackdrop
-          theme={uiTheme === "dark" ? "dark" : "light"}
-          showSilhouette={!avatarReady}
-        />
-
         {shouldMountVrm && (
           <VrmStage
             active={active}
@@ -649,6 +641,30 @@ function CompanionSceneSurface({
             t={t}
           />
         )}
+
+        {/* Aesthetic loading stage. The VRM canvas renders an opaque "Construct"
+            environment (white/dark void + grid + fog), so a backdrop placed
+            *behind* it never shows. Instead this overlays the canvas while the
+            avatar is still teleporting in: a gradient wash + accent silhouette so
+            the companion reads as a designed stage, never a flat void. It fades
+            out the instant the live avatar is ready. pointer-events:none keeps
+            camera drag / zoom working through it. */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 5,
+            pointerEvents: "none",
+            opacity: avatarReady ? 0 : 1,
+            transition: "opacity 600ms ease",
+          }}
+        >
+          <CompanionStageBackdrop
+            theme={uiTheme === "dark" ? "dark" : "light"}
+            showSilhouette={!avatarReady}
+          />
+        </div>
       </div>
 
       <CompanionSceneStatusContext.Provider value={sceneStatus}>
