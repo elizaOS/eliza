@@ -341,6 +341,8 @@ app.post("/", async (c) => {
         model: `elevenlabs/${cloneType}`,
         provider: "elevenlabs",
         billingSource: "elevenlabs",
+        // Affiliate revenue-share via X-Affiliate-Code (existing billFlatUsage branch).
+        affiliateCode: c.req.header("X-Affiliate-Code") ?? null,
         description: `Voice cloning (${cloneType}): ${voiceName}`,
       },
       cloneCost,
