@@ -1686,7 +1686,7 @@ describe("FineTuningTuiView", () => {
       ).toBe("/tmp/app-trajectories/raw.jsonl");
     });
     const collectButton = await screen.findByText(
-      "finetuningview.CollectAndIndex",
+      "Collect and index",
     );
     fireEvent.click(collectButton);
     await waitFor(() => {
@@ -1982,7 +1982,7 @@ describe("FineTuningTuiView", () => {
     render(React.createElement(FineTuningView));
 
     const readinessButton = await screen.findByText(
-      "finetuningview.BuildReadinessReport",
+      "Readiness report",
     );
     fireEvent.click(readinessButton);
 
@@ -2092,7 +2092,7 @@ describe("FineTuningTuiView", () => {
     render(React.createElement(FineTuningView));
 
     const readinessButton = await screen.findByText(
-      "finetuningview.BuildReadinessReport",
+      "Readiness report",
     );
     fireEvent.click(readinessButton);
 
