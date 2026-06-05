@@ -10,19 +10,39 @@ providers:
   anthropic: {}
   google: {}
   groq: {}
-  openrouter: {}
+  openrouter:
+    models:
+      "openai/gpt-oss-120b":
+        pricing:
+          input_tokens:
+            no_cache: 0.039
+            cache_read: 0
+            cache_write: 0
+          output_tokens:
+            text: 0.18
+            reasoning: 0
   cerebras:
     api_base: "https://api.cerebras.ai/v1"
     api_key: "${BITROUTER_CEREBRAS_API_KEY}"
-    api_protocol: chat_completions
+    api_protocol: openai
     models:
-      - id: gpt-oss-120b
+      gpt-oss-120b:
         pricing:
-          input_micro_usd_per_token: 0.35
-          output_micro_usd_per_token: 0.75
-      - id: zai-glm-4.7
+          input_tokens:
+            no_cache: 0.35
+            cache_read: 0
+            cache_write: 0
+          output_tokens:
+            text: 0.75
+            reasoning: 0
+      zai-glm-4.7:
         pricing:
-          input_micro_usd_per_token: 2.25
-          output_micro_usd_per_token: 2.75
+          input_tokens:
+            no_cache: 2.25
+            cache_read: 0
+            cache_write: 0
+          output_tokens:
+            text: 2.75
+            reasoning: 0
 
 inherit_defaults: true

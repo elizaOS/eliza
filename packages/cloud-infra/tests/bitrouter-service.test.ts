@@ -18,16 +18,13 @@ describe("BitRouter Railway service", () => {
     expect(dockerfile).toContain("npm install -g bitrouter");
     expect(dockerfile).toContain("expect");
     expect(dockerfile).toContain('grep -q "buffer-v2"');
-    expect(dockerfile).toContain('grep -q "openrouter: {}"');
+    expect(dockerfile).toContain('grep -q "openrouter:"');
     expect(dockerfile).toContain(
-      'grep -q "api_protocol: chat_completions"',
+      'grep -q "api_protocol: openai"',
     );
-    expect(dockerfile).toContain(
-      'grep -q "input_micro_usd_per_token: 0.35"',
-    );
-    expect(dockerfile).toContain(
-      'grep -q "input_micro_usd_per_token: 2.25"',
-    );
+    expect(dockerfile).toContain('grep -q "no_cache: 0.039"');
+    expect(dockerfile).toContain('grep -q "no_cache: 0.35"');
+    expect(dockerfile).toContain('grep -q "no_cache: 2.25"');
     expect(dockerfile).toContain('CMD ["/app/entrypoint.sh"]');
     expect(entrypoint).toContain(
       "bitrouter serve --config-file /app/bitrouter.yaml",
@@ -67,12 +64,12 @@ describe("BitRouter Railway service", () => {
         string,
         {
           api_protocol?: string;
-          models?: Array<
+          models?: Record<
+            string,
             {
-              id: string;
               pricing?: {
-                input_micro_usd_per_token?: number;
-                output_micro_usd_per_token?: number;
+                input_tokens?: { no_cache?: number };
+                output_tokens?: { text?: number };
               };
             }
           >;
@@ -85,23 +82,24 @@ describe("BitRouter Railway service", () => {
     expect(config.database.url).toBe("sqlite:/data/bitrouter.db");
     expect(config.providers).toHaveProperty("bitrouter");
     expect(config.providers).toHaveProperty("openrouter");
-    expect(config.providers.openrouter).toEqual({});
-    expect(config.providers.cerebras?.api_protocol).toBe("chat_completions");
     expect(
-      config.providers.cerebras?.models?.find(
-        (model) => model.id === "gpt-oss-120b",
-      )?.pricing,
+      config.providers.openrouter?.models?.["openai/gpt-oss-120b"]?.pricing,
     ).toEqual({
-      input_micro_usd_per_token: 0.35,
-      output_micro_usd_per_token: 0.75,
+      input_tokens: { no_cache: 0.039, cache_read: 0, cache_write: 0 },
+      output_tokens: { text: 0.18, reasoning: 0 },
+    });
+    expect(config.providers.cerebras?.api_protocol).toBe("openai");
+    expect(
+      config.providers.cerebras?.models?.["gpt-oss-120b"]?.pricing,
+    ).toEqual({
+      input_tokens: { no_cache: 0.35, cache_read: 0, cache_write: 0 },
+      output_tokens: { text: 0.75, reasoning: 0 },
     });
     expect(
-      config.providers.cerebras?.models?.find(
-        (model) => model.id === "zai-glm-4.7",
-      )?.pricing,
+      config.providers.cerebras?.models?.["zai-glm-4.7"]?.pricing,
     ).toEqual({
-      input_micro_usd_per_token: 2.25,
-      output_micro_usd_per_token: 2.75,
+      input_tokens: { no_cache: 2.25, cache_read: 0, cache_write: 0 },
+      output_tokens: { text: 2.75, reasoning: 0 },
     });
     expect(config).not.toHaveProperty("models");
     expect(railway).toContain("[deploy]");
