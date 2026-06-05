@@ -20,10 +20,14 @@ import {
   useState,
 } from "react";
 import type { ModelId } from "tokenlens";
+import { Button } from "../../../components/ui/button";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "../../../components/ui/hover-card";
+import { Progress } from "../../../components/ui/progress";
 import { cn } from "../../lib/utils";
-import { Button } from "../button";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "../hover-card";
-import { Progress } from "../progress";
 
 const PERCENT_MAX = 100;
 const ICON_RADIUS = 10;

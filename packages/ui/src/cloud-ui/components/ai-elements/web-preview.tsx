@@ -18,15 +18,19 @@ import {
   useMemo,
   useState,
 } from "react";
-import { cn } from "../../lib/utils";
-import { Button } from "../button";
+import { Button } from "../../../components/ui/button";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "../collapsible";
-import { Input } from "../input";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
+} from "../../../components/ui/collapsible";
+import { Input } from "../../../components/ui/input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../../../components/ui/tooltip";
+import { cn } from "../../lib/utils";
 
 export type WebPreviewContextValue = {
   url: string;

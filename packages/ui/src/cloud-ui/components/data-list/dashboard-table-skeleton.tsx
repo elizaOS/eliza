@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
-import { cn } from "../../lib/utils";
-import { Skeleton } from "../skeleton";
+import { Skeleton } from "../../../components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -8,7 +7,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "../table";
+} from "../../../components/ui/table";
+import { cn } from "../../lib/utils";
 
 interface DashboardTableSkeletonColumn {
   key: string;

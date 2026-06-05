@@ -5,8 +5,8 @@ import type { ComponentProps, HTMLAttributes, ReactNode } from "react";
 import { createContext, useContext, useMemo, useState } from "react";
 import oneDark from "react-syntax-highlighter/dist/esm/styles/prism/one-dark";
 import oneLight from "react-syntax-highlighter/dist/esm/styles/prism/one-light";
+import { Button } from "../../../components/ui/button";
 import { cn } from "../../lib/utils";
-import { Button } from "../button";
 import { SyntaxHighlighter } from "../code/prism-light";
 
 type CodeBlockContextType = {

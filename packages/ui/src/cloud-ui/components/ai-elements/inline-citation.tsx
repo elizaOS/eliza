@@ -14,15 +14,19 @@ import {
   useEffect,
   useState,
 } from "react";
-import { cn } from "../../lib/utils";
-import { Badge } from "../badge";
+import { Badge } from "../../../components/ui/badge";
 import {
   Carousel,
   type CarouselApi,
   CarouselContent,
   CarouselItem,
-} from "../carousel";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "../hover-card";
+} from "../../../components/ui/carousel";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "../../../components/ui/hover-card";
+import { cn } from "../../lib/utils";
 
 export type InlineCitationProps = ComponentProps<"span">;
 

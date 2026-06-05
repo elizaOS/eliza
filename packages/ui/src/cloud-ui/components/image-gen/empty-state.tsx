@@ -4,7 +4,7 @@
 "use client";
 
 import { Image as ImageIcon } from "lucide-react";
-import { EmptyState } from "../empty-state";
+import { EmptyState } from "../../../components/ui/empty-state";
 
 export function ImageEmptyState() {
   return (

@@ -64,27 +64,31 @@ export type {
 } from "./prompt-input.helpers";
 
 // Native img used for framework agnosticism
-import { Button } from "../button";
+import { Button } from "../../../components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "../dropdown-menu";
+} from "../../../components/ui/dropdown-menu";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupTextarea,
-} from "../input-group";
+} from "../../../components/ui/input-group";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../select";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
+} from "../../../components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../../../components/ui/tooltip";
 
 // ============================================================================
 // Components

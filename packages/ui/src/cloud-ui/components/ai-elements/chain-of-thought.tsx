@@ -18,13 +18,13 @@ import {
 } from "lucide-react";
 import type { ComponentProps } from "react";
 import { createContext, memo, useContext, useMemo } from "react";
-import { cn } from "../../lib/utils";
-import { Badge } from "../badge";
+import { Badge } from "../../../components/ui/badge";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "../collapsible";
+} from "../../../components/ui/collapsible";
+import { cn } from "../../lib/utils";
 
 type ChainOfThoughtContextValue = {
   isOpen: boolean;

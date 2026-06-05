@@ -1,8 +1,8 @@
 import type { UIMessage } from "ai";
 import { cva, type VariantProps } from "class-variance-authority";
 import type { ComponentProps, HTMLAttributes } from "react";
+import { Avatar, AvatarFallback } from "../../../components/ui/avatar";
 import { cn } from "../../lib/utils";
-import { Avatar, AvatarFallback } from "../avatar";
 // Native img used for framework agnosticism
 
 /**

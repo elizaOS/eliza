@@ -21,9 +21,9 @@ import {
   useMemo,
   useState,
 } from "react";
+import { Button } from "../../../components/ui/button";
 import { cn } from "../../lib/utils";
 import { useRenderGuard } from "../../runtime/render-telemetry.helpers";
-import { Button } from "../button";
 
 type BranchContextType = {
   currentBranch: number;

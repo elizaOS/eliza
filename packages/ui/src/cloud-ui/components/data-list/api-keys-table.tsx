@@ -5,9 +5,6 @@ import {
   ShieldOff,
   Trash2,
 } from "lucide-react";
-
-import { BrandButton } from "../brand/brand-button";
-import { StatusBadge } from "../status-badge";
 import {
   Table,
   TableBody,
@@ -15,7 +12,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "../table";
+} from "../../../components/ui/table";
+import { BrandButton } from "../brand/brand-button";
+import { StatusBadge } from "../status-badge";
 import {
   DashboardDataListDesktop,
   DashboardDataListMobile,

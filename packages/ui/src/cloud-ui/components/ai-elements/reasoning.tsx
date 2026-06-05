@@ -12,12 +12,12 @@ import {
   useRef,
   useState,
 } from "react";
-import { cn } from "../../lib/utils";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "../collapsible";
+} from "../../../components/ui/collapsible";
+import { cn } from "../../lib/utils";
 import { Response } from "./response";
 
 type ReasoningContextValue = {
