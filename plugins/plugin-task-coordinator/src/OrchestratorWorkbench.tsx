@@ -26,10 +26,10 @@ import {
   Select,
   SelectContent,
   SelectItem,
-  SelectTrigger,
   useApp,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { SelectTrigger } from "@elizaos/ui/components/ui/select";
 import {
   Activity,
   Archive,
@@ -3242,7 +3242,8 @@ function TimelineHeader({
   }
 
   return (
-    <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2">
+    <div className="flex items-center gap-2.5 border-b border-border/50 px-4 py-2.5">
+      <BackChip label={backLabel} onClick={onBack} testId="orchestrator-back" />
       {statusDot}
       {title}
       {pausedBadge}
@@ -3979,7 +3980,7 @@ export function OrchestratorWorkbench() {
                   </button>
                 </div>
               ) : null}
-              <div className="border-t border-border/50 bg-bg px-4 py-2">
+              <div className="border-t border-border/50 bg-bg px-4 pb-24 pt-2">
                 <div className="flex items-center gap-2 text-2xs text-muted">
                   <MessageSquare className="h-3.5 w-3.5 text-accent" />
                   {t("orchestrator.overlayChatHint", {
@@ -3989,28 +3990,22 @@ export function OrchestratorWorkbench() {
                 </div>
               </div>
             </>
-          ) : selectedId ? (
+          ) : (
             <>
-              {isMobile ? (
-                <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedId(null)}
-                    className="-ml-1 shrink-0 rounded p-1 text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
-                    aria-label={t("orchestrator.action.backToList", {
-                      defaultValue: "Back to tasks",
-                    })}
-                    data-testid="orchestrator-back-loading"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                  </button>
-                  <span className="text-sm font-medium text-muted">
-                    {t("orchestrator.loadingTask", {
-                      defaultValue: "Loading task…",
-                    })}
-                  </span>
-                </div>
-              ) : null}
+              <div className="flex items-center gap-2.5 border-b border-border/50 px-4 py-2.5">
+                <BackChip
+                  label={t("orchestrator.action.backToList", {
+                    defaultValue: "Tasks",
+                  })}
+                  onClick={() => setSelectedId(null)}
+                  testId="orchestrator-back-loading"
+                />
+                <span className="text-sm font-medium text-muted">
+                  {t("orchestrator.loadingTask", {
+                    defaultValue: "Loading task…",
+                  })}
+                </span>
+              </div>
               <div className="flex flex-1 items-center justify-center p-6">
                 <p className="text-xs text-muted">
                   {t("orchestrator.loadingTask", {
@@ -4019,33 +4014,6 @@ export function OrchestratorWorkbench() {
                 </p>
               </div>
             </>
-          ) : (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-sm bg-accent-subtle">
-                <Layers className="h-6 w-6 text-accent" />
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-semibold text-txt-strong">
-                  {t("orchestrator.noSelection.title", {
-                    defaultValue: "No task open",
-                  })}
-                </p>
-                <p className="max-w-xs text-xs leading-relaxed text-muted">
-                  {t("orchestrator.noSelection.hint", {
-                    defaultValue:
-                      "Pick a task from the list to inspect its room — or start a new coding task.",
-                  })}
-                </p>
-              </div>
-              <Button
-                size="sm"
-                onClick={() => setCreateOpen(true)}
-                className="h-8 gap-1.5 px-3 text-xs-tight font-semibold"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                {t("orchestrator.action.newTask", { defaultValue: "New task" })}
-              </Button>
-            </div>
           )}
         </main>
 

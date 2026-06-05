@@ -24,6 +24,7 @@ import {
 import type { VrmEngine } from "../avatar/VrmEngine";
 import { prefetchVrmToCache } from "../avatar/VrmEngine";
 import { CompanionSceneStatusContext } from "./companion-scene-status-context";
+import { CompanionStageBackdrop } from "./CompanionStageBackdrop";
 import { SharedCompanionSceneContext } from "./shared-companion-scene-context";
 import { VrmStage } from "./VrmStage";
 
@@ -624,12 +625,12 @@ function CompanionSceneSurface({
           visibility: active ? "visible" : "hidden",
         }}
       >
-        <div
-          className={`absolute inset-0 z-0 bg-cover opacity-40 pointer-events-none ${
-            uiTheme === "dark"
-              ? "bg-[radial-gradient(circle_at_50%_40%,rgba(80,20,140,0.2)_0%,transparent_60%)]"
-              : "bg-[radial-gradient(circle_at_50%_40%,rgba(180,200,220,0.15)_0%,transparent_60%)]"
-          }`}
+        {/* Aesthetic stage behind the transparent VRM canvas. Doubles as the
+            visible centerpiece (gradient backdrop + avatar silhouette) until
+            the live avatar paints, so the companion is never an empty void. */}
+        <CompanionStageBackdrop
+          theme={uiTheme === "dark" ? "dark" : "light"}
+          showSilhouette={!avatarReady}
         />
 
         {shouldMountVrm && (

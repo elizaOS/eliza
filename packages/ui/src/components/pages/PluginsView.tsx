@@ -38,67 +38,6 @@ import {
 import { PluginSettingsDialog } from "./plugin-view-dialogs";
 import { PluginGameModal } from "./plugin-view-modal";
 
-/* ── Subgroup filter nav item (agent-addressable) ──────────────────── */
-
-interface PluginSubgroupNavItemProps {
-  tag: { id: string; label: string; count: number };
-  isActive: boolean;
-  onSelect: (id: string) => void;
-  availableCountLabel: string;
-}
-
-/**
- * Desktop sidebar entry for one plugin subgroup filter. Registered with the
- * agent surface as a tab so the agent can switch plugin categories by voice.
- */
-function PluginSubgroupNavItem({
-  tag,
-  isActive,
-  onSelect,
-  availableCountLabel,
-}: PluginSubgroupNavItemProps) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `subgroup-${tag.id}`,
-    role: "tab",
-    label: tag.label,
-    group: "plugin-subgroups",
-    status: isActive ? "active" : "inactive",
-    description: `Filter plugins by ${tag.label}`,
-    onActivate: () => onSelect(tag.id),
-  });
-  const Icon = SUBGROUP_NAV_ICONS[tag.id] ?? Package;
-  return (
-    <SidebarContent.Item
-      ref={ref}
-      as="button"
-      onClick={() => onSelect(tag.id)}
-      aria-current={isActive ? "page" : undefined}
-      active={isActive}
-      className="items-center"
-      {...agentProps}
-    >
-      <SidebarContent.ItemIcon active={isActive}>
-        <Icon className="h-4 w-4" />
-      </SidebarContent.ItemIcon>
-      <SidebarContent.ItemBody>
-        <SidebarContent.ItemTitle className="whitespace-nowrap break-normal [overflow-wrap:normal]">
-          {tag.label}
-        </SidebarContent.ItemTitle>
-        <SidebarContent.ItemDescription>
-          {availableCountLabel}
-        </SidebarContent.ItemDescription>
-      </SidebarContent.ItemBody>
-      <PagePanel.Meta
-        compact
-        tone={isActive ? "accent" : "default"}
-        className="text-2xs font-bold tracking-[0.16em]"
-      >
-        {tag.count}
-      </PagePanel.Meta>
-    </SidebarContent.Item>
-  );
-}
-
 /* ── Shared PluginListView ─────────────────────────────────────────── */
 
 interface PluginListViewProps {
@@ -406,7 +345,7 @@ function PluginListView({
         </Button>
       );
     },
-    [subgroupFilter, t],
+    [subgroupFilter],
   );
 
   const toggleSettings = (pluginId: string) => {
@@ -922,7 +861,7 @@ function PluginListView({
 
   /** Render a grid of plugin cards. */
   const renderPluginGrid = (plugins: PluginInfo[]) => (
-    <ul className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3 m-0 p-0 list-none">
+    <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
       {plugins.map((p: PluginInfo) => (
         <PluginCard
           key={p.id}
@@ -958,6 +897,53 @@ function PluginListView({
       ))}
     </ul>
   );
+
+  /**
+   * Render plugins split into labeled subgroup sections (light uppercase
+   * labels between grids). Used when the "All" filter chip is active so the
+   * single pane keeps section context without a nav sidebar.
+   */
+  const renderGroupedPlugins = (plugins: PluginInfo[]) => {
+    const groupMap = new Map<string, PluginInfo[]>();
+    for (const plugin of plugins) {
+      const groupId = subgroupForPlugin(plugin);
+      const bucket = groupMap.get(groupId);
+      if (bucket) bucket.push(plugin);
+      else groupMap.set(groupId, [plugin]);
+    }
+    const orderedGroups = SUBGROUP_DISPLAY_ORDER.filter((id) =>
+      groupMap.has(id),
+    );
+    for (const id of groupMap.keys()) {
+      if (
+        !orderedGroups.includes(id as (typeof SUBGROUP_DISPLAY_ORDER)[number])
+      )
+        orderedGroups.push(id as (typeof SUBGROUP_DISPLAY_ORDER)[number]);
+    }
+
+    return (
+      <div className="space-y-8">
+        {orderedGroups.map((groupId) => {
+          const groupPlugins = groupMap.get(groupId) ?? [];
+          if (groupPlugins.length === 0) return null;
+          return (
+            <section key={groupId}>
+              <div className="mb-3 flex items-baseline gap-2">
+                <h3 className="text-2xs font-bold uppercase tracking-[0.18em] text-muted-strong">
+                  {SUBGROUP_LABELS[groupId] ?? groupId}
+                </h3>
+                <span className="font-mono text-3xs text-muted/60">
+                  {groupPlugins.length}
+                </span>
+                <span className="h-px flex-1 bg-border/40" />
+              </div>
+              {renderPluginGrid(groupPlugins)}
+            </section>
+          );
+        })}
+      </div>
+    );
+  };
 
   // Resolve the plugin whose settings dialog is currently open.
   // Exclude ai-provider plugins — those are configured in Settings.

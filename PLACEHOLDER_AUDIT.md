@@ -5485,6 +5485,36 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd packages/agent typecheck`
   - focused `no-op|noop|stub` scan on `packages/agent/src` excluding tests
 
+### repository root smartglasses completion-gate fixture wording
+
+- The root scripts directory has no package-local `CLAUDE.md`/`AGENTS.md`; used
+  the repository guide.
+- Renamed a synthetic smartglasses hardware-gate failure fixture from
+  `staleIncomplete` / `incompleteFailures` to `staleFailureReport` /
+  `reportFailures`. The fixture still proves the gate catches missing audio,
+  `ok: false`, and stale report timestamps; only marker wording changed.
+- Verified with:
+  - `node --check scripts/check-smartglasses-completion-gate.mjs`
+  - focused marker scan on `scripts/check-smartglasses-completion-gate.mjs`
+
+### plugins/plugin-local-inference voice bridge diagnostic wording
+
+- Read `plugins/plugin-local-inference/CLAUDE.md` and confirmed `AGENTS.md`
+  parity before editing.
+- Reworded `engine-bridge.ts` comments and the direct-synthesis error string so
+  the deterministic test TTS backend and compatibility FFI diagnostics no
+  longer read as unfinished stub/no-op runtime paths. Runtime behavior and
+  exported identifiers are unchanged.
+- Remaining hits in the touched file are intentional: `id = "stub"` is the
+  existing backend id contract, `ffi-stub.c` is the compatibility C file name,
+  and `ELIZA_ERR_NOT_IMPLEMENTED` is the fused ABI diagnostic code.
+- Verified with:
+  - `./node_modules/.bin/biome check
+    plugins/plugin-local-inference/src/services/voice/engine-bridge.ts`
+  - `bun run --cwd plugins/plugin-local-inference typecheck`
+  - focused marker scan on
+    `plugins/plugin-local-inference/src/services/voice/engine-bridge.ts`
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.

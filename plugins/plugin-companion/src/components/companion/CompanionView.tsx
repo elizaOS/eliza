@@ -2,6 +2,7 @@ import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { useRenderGuard } from "@elizaos/ui/hooks";
 import { useApp } from "@elizaos/ui/state";
 import { type CSSProperties, memo, type ReactNode } from "react";
+import { useCompanionSceneStatus } from "./companion-scene-status-context";
 import { AGENT_EMOTE_CATALOG, EMOTE_CATALOG } from "../../emotes/catalog";
 import { CompanionSceneHost } from "./CompanionSceneHost";
 import { countByCategory } from "./CompanionView.helpers";
@@ -18,41 +19,29 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
   useRenderGuard("CompanionView");
   const emoteCategories = countByCategory();
   const categoryCount = Object.keys(emoteCategories).length;
+  const { avatarReady } = useCompanionSceneStatus();
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
       <EmotePicker />
 
+      {/* Compact aesthetic status chip cluster — theme-token driven, not a
+          devtools panel. Lives top-left, translucent + blurred over the stage. */}
       <div
-        className="absolute left-4 top-4 z-20 w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-white/15 bg-black/55 p-3 text-white shadow-2xl backdrop-blur-md"
+        className="absolute left-4 top-4 z-20 flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-1.5 rounded-full border px-1.5 py-1.5 backdrop-blur-md"
+        style={{
+          borderColor: "var(--border)",
+          background: "var(--bg-elevated)",
+          boxShadow: "0 8px 28px rgba(0,0,0,0.18)",
+        }}
         title="Companion avatar surface"
       >
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_0_4px_rgba(52,211,153,0.18)]" />
-            <span className="truncate text-xs font-semibold uppercase tracking-normal text-white/80">
-              Companion
-            </span>
-          </div>
-          <span className="rounded-full border border-emerald-300/25 bg-emerald-400/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-normal text-emerald-100">
-            Ready
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 gap-2">
-          <CompanionMetric icon="◉" label="Avatar" value="Scene live" />
-          <CompanionMetric
-            icon="☻"
-            label="Agent"
-            value={`${AGENT_EMOTE_CATALOG.length} emotes`}
-          />
-          <CompanionMetric
-            icon="◆"
-            label="Catalog"
-            value={`${EMOTE_CATALOG.length} / ${categoryCount}`}
-          />
-          <CompanionMetric icon="⌁" label="Chat" value="Overlay relay" />
-        </div>
+        <StatusChip ready={avatarReady} />
+        <CompanionChip label={`${AGENT_EMOTE_CATALOG.length} emotes`} />
+        <CompanionChip
+          label={`${EMOTE_CATALOG.length}/${categoryCount} catalog`}
+        />
+        <CompanionChip label="overlay relay" subtle />
       </div>
 
       <div className="min-h-0 flex-1" />
@@ -60,32 +49,48 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
   );
 });
 
-function CompanionMetric({
-  icon,
+function StatusChip({ ready }: { ready: boolean }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+      style={{
+        background: ready ? "var(--status-success-bg)" : "var(--accent-subtle)",
+        color: ready ? "var(--status-success)" : "var(--accent)",
+      }}
+    >
+      <span
+        className="h-1.5 w-1.5 shrink-0 rounded-full"
+        style={{
+          background: ready ? "var(--status-success)" : "var(--accent)",
+          boxShadow: ready
+            ? "0 0 0 3px var(--status-success-bg)"
+            : "0 0 0 3px var(--accent-subtle)",
+          animation: ready ? undefined : "companion-chip-pulse 1.4s ease-in-out infinite",
+        }}
+      />
+      {ready ? "ready" : "loading"}
+      <style>{`@keyframes companion-chip-pulse{0%,100%{opacity:1}50%{opacity:0.35}}`}</style>
+    </span>
+  );
+}
+
+function CompanionChip({
   label,
-  value,
+  subtle = false,
 }: {
-  icon: string;
   label: string;
-  value: string;
+  subtle?: boolean;
 }) {
   return (
-    <div className="flex min-h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/8 px-3 py-2">
-      <span
-        aria-hidden
-        className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/10 text-sm text-white"
-      >
-        {icon}
-      </span>
-      <div className="min-w-0">
-        <div className="text-[10px] font-semibold uppercase tracking-normal text-white/45">
-          {label}
-        </div>
-        <div className="truncate text-xs font-semibold text-white/90">
-          {value}
-        </div>
-      </div>
-    </div>
+    <span
+      className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium"
+      style={{
+        background: "var(--surface)",
+        color: subtle ? "var(--muted)" : "var(--text-strong)",
+      }}
+    >
+      {label}
+    </span>
   );
 }
 
