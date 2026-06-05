@@ -24,6 +24,7 @@ import { assignAgentName } from "./agent-name-assignment.js";
 import {
   buildGoalFollowUp,
   buildGoalPrompt,
+  coerceGoalCapabilityProfile,
   type GoalFollowUpReason,
 } from "./goal-prompt.js";
 import {
@@ -1329,6 +1330,12 @@ export class OrchestratorTaskService extends Service {
       activeNames: activeSessionNames(doc.sessions),
       mainAgentName: this.runtime.character?.name,
     });
+    // Opt a task into a wider capability fence (e.g. the monetized-app
+    // economics commands) via `metadata.capabilityProfile`. Unset → the
+    // coding-only default fence.
+    const capabilityProfile = coerceGoalCapabilityProfile(
+      doc.task.metadata?.capabilityProfile,
+    );
     const goalPrompt = buildGoalPrompt({
       agentName,
       goal: doc.task.goal,
@@ -1337,6 +1344,7 @@ export class OrchestratorTaskService extends Service {
       taskRoomId: doc.task.taskRoomId ?? doc.task.roomId,
       workdir,
       repo: opts.repo,
+      ...(capabilityProfile ? { capabilityProfile } : {}),
     });
 
     const result = await acp.spawnSession({

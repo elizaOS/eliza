@@ -1249,6 +1249,10 @@ export interface CodingAgentCreateTaskInput {
   priority?: CodingAgentTaskThread["priority"];
   acceptanceCriteria?: string[];
   providerPolicy?: CodingAgentTaskProviderPolicy;
+  /** Free-form task metadata forwarded to the orchestrator. Recognized keys
+   * include `autoVerify` and `capabilityProfile` (e.g. `"economics"` to let the
+   * spawned sub-agent drive the monetized-app Cloud commands). */
+  metadata?: Record<string, unknown>;
 }
 
 /** Structured payload for forking a task via `POST /api/orchestrator/tasks/:id/fork`. */

@@ -5,6 +5,7 @@
 
 import { client } from "@elizaos/ui";
 import { useCallback, useState } from "react";
+import { parseComposerDirectives } from "../util/composer-directives";
 
 function deriveTitle(text: string): string {
   const words = text.trim().split(/\s+/).slice(0, 6).join(" ");
@@ -42,10 +43,15 @@ export function useChatSubmit({
           const ok = await client.postOrchestratorTaskMessage(selectedId, text);
           if (!ok) throw new Error("Message not delivered");
         } else {
+          // A leading "/economics" directive opts the new task into the
+          // monetized-app capability fence; otherwise the goal is the message.
+          const { goal, capabilityProfile } = parseComposerDirectives(text);
+          const effectiveGoal = goal || text;
           const created = await client.createOrchestratorTask({
-            title: deriveTitle(text),
-            goal: text,
+            title: deriveTitle(effectiveGoal),
+            goal: effectiveGoal,
             originalRequest: text,
+            ...(capabilityProfile ? { metadata: { capabilityProfile } } : {}),
           });
           onCreated(created.id);
         }
