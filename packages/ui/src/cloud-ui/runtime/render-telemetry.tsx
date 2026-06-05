@@ -16,12 +16,12 @@ import {
   useRef,
 } from "react";
 import {
-  emitRenderTelemetry,
+  currentRoute,
   ERROR_THRESHOLD,
+  emitRenderTelemetry,
   INFO_THRESHOLD,
   isRenderTelemetryEnabled,
   nextRenderTelemetrySequence,
-  currentRoute,
   type RenderTelemetrySeverity,
   WINDOW_MS,
 } from "./render-telemetry.helpers";

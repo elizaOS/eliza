@@ -333,13 +333,14 @@ const reactDayPickerEntry = tryResolvePackageModuleEntryFrom(
 );
 const resolveDateFnsDir = (id: string): string | undefined => {
   if (!reactDayPickerEntry) return undefined;
-  const packageJson = _tryResolveFrom(`${id}/package.json`, reactDayPickerEntry);
+  const packageJson = _tryResolveFrom(
+    `${id}/package.json`,
+    reactDayPickerEntry,
+  );
   return packageJson ? path.dirname(packageJson) : undefined;
 };
 const dateFnsDir = resolveDateFnsDir("date-fns");
-const dateFnsEntry = dateFnsDir
-  ? path.join(dateFnsDir, "index.js")
-  : undefined;
+const dateFnsEntry = dateFnsDir ? path.join(dateFnsDir, "index.js") : undefined;
 const dateFnsLocaleEntry = dateFnsDir
   ? path.join(dateFnsDir, "locale.js")
   : undefined;

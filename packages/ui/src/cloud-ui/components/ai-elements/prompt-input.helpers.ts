@@ -58,8 +58,9 @@ export const ProviderAttachmentsContext =
   createContext<AttachmentsContext | null>(null);
 export const PromptInputProviderBridgeContext =
   createContext<PromptInputProviderBridge | null>(null);
-export const LocalAttachmentsContext =
-  createContext<AttachmentsContext | null>(null);
+export const LocalAttachmentsContext = createContext<AttachmentsContext | null>(
+  null,
+);
 
 export const usePromptInputController = () => {
   const ctx = useContext(PromptInputContext);
