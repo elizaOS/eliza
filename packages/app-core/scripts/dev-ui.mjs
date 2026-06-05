@@ -275,10 +275,13 @@ function appendNodeOption(value, option) {
 }
 
 function resolveApiRuntimeCommand(env) {
+  const requestedRuntime = env.ELIZA_RUNTIME?.trim().toLowerCase();
   const { runtime, warning } = chooseElizaRuntime({
-    requestedRuntime: env.ELIZA_RUNTIME,
+    requestedRuntime,
     platform: process.platform,
     bunVersion: process.versions?.bun,
+    hasBun,
+    hasNode,
   });
   if (warning) {
     console.warn(
@@ -286,7 +289,22 @@ function resolveApiRuntimeCommand(env) {
     );
   }
   if (runtime === "bun") {
-    return "bun";
+    if (!hasBun) {
+      throw new Error(
+        requestedRuntime === "bun"
+          ? "ELIZA_RUNTIME=bun was requested, but bun/bunx was not found in PATH."
+          : "Bun runtime was selected, but bun/bunx was not found in PATH.",
+      );
+    }
+    return which("bun") ?? "bun";
+  }
+
+  if (!hasNode) {
+    throw new Error(
+      requestedRuntime === "node"
+        ? "ELIZA_RUNTIME=node was requested, but Node.js was not found in PATH."
+        : "Node.js was selected for the API runtime, but Node.js was not found in PATH.",
+    );
   }
 
   const pathCandidates = (env.PATH ?? "")
@@ -385,13 +403,6 @@ if (!hasBun && !which("npx")) {
   console.error(
     'Neither "bun" nor "npx" was found in your PATH. ' +
       "Install Bun or Node.js with npx to run this dev script.",
-  );
-  process.exit(1);
-}
-
-if (!hasNode) {
-  console.error(
-    'Node.js was not found in your PATH. The app-core API runtime requires Node.js for built-in modules such as "node:sqlite".',
   );
   process.exit(1);
 }

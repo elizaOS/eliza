@@ -125,7 +125,11 @@ describe("subprocess layer-selection logic", () => {
 
   it("selects sqlite when provider=sqlite", () => {
     const Smithers = { sqlite: () => "sqlite-layer" };
-    const result = selectSmithersLayer(Smithers, { provider: "sqlite" }, DB_PATH);
+    const result = selectSmithersLayer(
+      Smithers,
+      { provider: "sqlite" },
+      DB_PATH,
+    );
     expect(result.method).toBe("sqlite");
     expect(result.arg).toEqual({ filename: DB_PATH });
   });
@@ -141,7 +145,9 @@ describe("subprocess layer-selection logic", () => {
       DB_PATH,
     );
     expect(result.method).toBe("postgres");
-    expect(result.arg).toEqual({ connectionString: "postgresql://localhost/db" });
+    expect(result.arg).toEqual({
+      connectionString: "postgresql://localhost/db",
+    });
   });
 
   it("selects pglite when provider=pglite and Smithers.pglite is a function", () => {

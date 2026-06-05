@@ -42,6 +42,16 @@
       "import": "./dist/ui.js",
       "default": "./dist/ui.js"
     },
+    "./api/client-calendar": {
+      "types": "./dist/api/client-calendar.d.ts",
+      "eliza-source": {
+        "types": "./src/api/client-calendar.ts",
+        "import": "./src/api/client-calendar.ts",
+        "default": "./src/api/client-calendar.ts"
+      },
+      "import": "./dist/api/client-calendar.js",
+      "default": "./dist/api/client-calendar.js"
+    },
     "./*.css": "./dist/*.css",
     "./*": {
       "types": "./dist/*.d.ts",

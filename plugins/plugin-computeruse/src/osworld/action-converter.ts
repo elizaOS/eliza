@@ -87,7 +87,7 @@ export function fromOSWorldAction(
       };
 
     case "KEY_UP":
-      // KEY_UP is a no-op in our model (keys are press-and-release)
+      // Ignored: this interface models keyboard input as full press-and-release.
       return null;
 
     case "HOTKEY":

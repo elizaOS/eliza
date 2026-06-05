@@ -13,7 +13,7 @@ import { users } from "./users";
  * (e.g. a Discord user-id linked to a cloud user-id via OAuth). The
  * authorization layer queries this table to satisfy
  * `owner_or_linked_identity` policies without leaning on connector-specific
- * stubs.
+ * fallbacks.
  */
 export const IDENTITY_LINK_SOURCES = ["oauth", "manual", "wallet"] as const;
 export type IdentityLinkSource = (typeof IDENTITY_LINK_SOURCES)[number];

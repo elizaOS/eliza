@@ -817,7 +817,10 @@ export class VoiceProfileStore {
 	async splitProfile(args: {
 		profileId: string;
 		sampleIds: string[];
-	}): Promise<{ original: VoiceProfileRecord; split: VoiceProfileRecord } | null> {
+	}): Promise<{
+		original: VoiceProfileRecord;
+		split: VoiceProfileRecord;
+	} | null> {
 		const record = await this.ensureLoaded(args.profileId);
 		if (!record) return null;
 		const moveSet = new Set(args.sampleIds);

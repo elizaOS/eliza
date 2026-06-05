@@ -5402,6 +5402,52 @@ platform no-ops are separated from actionable runtime gaps.
     `voice_diarizer` ENOSYS claims
   - `bash -n scripts/check-riscv64-artifacts.sh`
 
+### plugins/plugin-google root URL override wording
+
+- Read `plugins/plugin-google/CLAUDE.md` and confirmed `AGENTS.md` parity
+  before editing.
+- The production `GoogleApiClientFactory` helper was named `mockGoogleRootUrl`
+  even though it only normalizes the optional `ELIZA_MOCK_GOOGLE_BASE`
+  googleapis root URL override used by local loopback tests. Renamed the helper
+  to `googleRootUrlOverride` so package source no longer looks like it carries
+  a mock implementation.
+- Verified with:
+  - `bun run --cwd plugins/plugin-google typecheck`
+  - `./node_modules/.bin/biome check plugins/plugin-google/src/client-factory.ts`
+  - focused marker scan on `plugins/plugin-google/src` excluding tests
+
+### plugins/plugin-computeruse intentional input-boundary wording
+
+- Read `plugins/plugin-computeruse/CLAUDE.md` and confirmed `AGENTS.md`
+  parity before editing.
+- Reworded production comments that described intentional input-model
+  behavior as no-op paths: OSWorld `KEY_UP`, desktop/mobile `keyUp`,
+  zero-length mobile scrolls, AOSP wait/finish dispatch, and the empty OCR
+  provider fallback. These now describe explicit press-and-release or empty
+  provider semantics instead of looking unfinished.
+- Removed an unused `findDisplay` import surfaced by Biome while checking the
+  touched `computer-interface.ts` file.
+- Verified with:
+  - `bun run --cwd plugins/plugin-computeruse typecheck`
+  - `./node_modules/.bin/biome check` on the touched computer-use files
+  - focused marker scan on `plugins/plugin-computeruse/src` excluding tests
+  - `git diff --check -- plugins/plugin-computeruse PLACEHOLDER_AUDIT.md
+    plugins/plugin-google/src/client-factory.ts`
+
+### packages/cloud-shared identity-link schema wording
+
+- Read `packages/cloud-shared/CLAUDE.md` and confirmed `AGENTS.md` parity
+  before editing.
+- Reworded the `identity_links` schema comment from connector-specific
+  "stubs" to connector-specific fallbacks. The table is the real persistent
+  backing for `owner_or_linked_identity`; applied migration comments were left
+  untouched per the package append-only migration rule.
+- Verified with:
+  - `./node_modules/.bin/biome check
+    packages/cloud-shared/src/db/schemas/identity-links.ts`
+  - focused marker scan on
+    `packages/cloud-shared/src/db/schemas/identity-links.ts`
+
 ## Intentional / False-Positive Marker Classes
 
 - Input `placeholder=` props and i18n keys named `*Placeholder`.

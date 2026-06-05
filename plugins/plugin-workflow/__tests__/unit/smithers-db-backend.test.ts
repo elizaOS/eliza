@@ -87,7 +87,7 @@ describe('resolveSmithersDbConfig', () => {
 function selectSmithersLayer(
   Smithers: Record<string, unknown>,
   dbConfig: { provider?: string; connectionString?: string; dataDir?: string },
-  dbPath: string,
+  dbPath: string
 ): { method: string; arg: Record<string, unknown> } {
   const provider = dbConfig.provider ?? 'sqlite';
   if (provider !== 'sqlite' && typeof Smithers[provider] === 'function') {
@@ -126,7 +126,7 @@ describe('subprocess layer-selection logic', () => {
     const result = selectSmithersLayer(
       Smithers,
       { provider: 'postgres', connectionString: 'postgresql://localhost/db' },
-      DB_PATH,
+      DB_PATH
     );
     expect(result.method).toBe('postgres');
     expect(result.arg).toEqual({ connectionString: 'postgresql://localhost/db' });
@@ -140,7 +140,7 @@ describe('subprocess layer-selection logic', () => {
     const result = selectSmithersLayer(
       Smithers,
       { provider: 'pglite', dataDir: '/tmp/pglite' },
-      DB_PATH,
+      DB_PATH
     );
     expect(result.method).toBe('pglite');
     expect(result.arg).toEqual({ dataDir: '/tmp/pglite' });
@@ -152,7 +152,7 @@ describe('subprocess layer-selection logic', () => {
     const result = selectSmithersLayer(
       Smithers,
       { provider: 'postgres', connectionString: 'postgresql://localhost/db' },
-      DB_PATH,
+      DB_PATH
     );
     expect(result.method).toBe('sqlite');
     expect(result.arg).toEqual({ filename: DB_PATH });
@@ -163,7 +163,7 @@ describe('subprocess layer-selection logic', () => {
     const result = selectSmithersLayer(
       Smithers,
       { provider: 'pglite', dataDir: '/tmp/pglite' },
-      DB_PATH,
+      DB_PATH
     );
     expect(result.method).toBe('sqlite');
     expect(result.arg).toEqual({ filename: DB_PATH });

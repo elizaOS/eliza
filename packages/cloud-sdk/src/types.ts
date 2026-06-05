@@ -675,16 +675,28 @@ export interface CreateAgentRequest {
   characterId?: string;
   agentConfig?: Record<string, unknown>;
   environmentVars?: Record<string, string>;
+  dockerImage?: string;
+  alwaysOn?: boolean;
+  statefulRuntime?: boolean;
+  modelTooLargeForShared?: boolean;
+  autoProvision?: boolean;
 }
 
 export interface CreateAgentResponse {
   success: boolean;
-  data: {
+  data?: {
     id: string;
+    agentId?: string;
     agentName: string | null;
     status: import("./types.cloud-api.js").AgentSandboxStatus;
+    executionTier?: string;
+    jobId?: string;
     createdAt?: string;
   };
+  id?: string;
+  agentId?: string;
+  jobId?: string;
+  executionTier?: string;
 }
 
 export interface AgentLifecycleResponse extends Record<string, unknown> {

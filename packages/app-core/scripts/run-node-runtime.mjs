@@ -18,21 +18,34 @@ export function isKnownUnstableBunOnLinux({ platform, bunVersion }) {
 /**
  * Runtime selection priority:
  * 1) Explicit ELIZA_RUNTIME override (bun|node)
- * 2) Safety fallback for known unstable Bun/Linux combo
- * 3) Default to bun
+ * 2) Safety fallback for known unstable Bun/Linux combo when Node is available
+ * 3) Default to an available runtime, preferring bun
  */
-export function chooseElizaRuntime({ requestedRuntime, platform, bunVersion }) {
+export function chooseElizaRuntime({
+  requestedRuntime,
+  platform,
+  bunVersion,
+  hasBun,
+  hasNode,
+}) {
   const normalized = requestedRuntime?.trim().toLowerCase();
   if (normalized === "bun" || normalized === "node") {
     return { runtime: normalized, warning: null };
   }
 
-  if (isKnownUnstableBunOnLinux({ platform, bunVersion })) {
+  if (
+    hasNode !== false &&
+    isKnownUnstableBunOnLinux({ platform, bunVersion })
+  ) {
     return {
       runtime: "node",
       warning:
         "Detected Bun 1.3.9 on Linux (known segfault risk). Defaulting runtime to Node.js.",
     };
+  }
+
+  if (hasBun === false && hasNode) {
+    return { runtime: "node", warning: null };
   }
 
   return { runtime: "bun", warning: null };
@@ -226,9 +239,10 @@ export function resolveRuntimeExecPath({
   currentExecPath,
   platform,
   explicitNodePath,
+  bunPath,
 }) {
   if (runtime === "bun") {
-    return "bun";
+    return bunPath?.trim() || "bun";
   }
   return resolveNodeExecPath({
     currentExecPath,

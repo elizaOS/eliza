@@ -41,8 +41,8 @@ import {
 	sendJsonError,
 } from "@elizaos/core";
 import {
-	VoiceProfileStore,
 	type VoiceProfileRecord,
+	VoiceProfileStore,
 } from "../services/voice/profile-store.js";
 
 // ---------------------------------------------------------------------------
@@ -95,19 +95,27 @@ export interface VoiceProfileDto {
 	samplePreviewUri: string | null;
 }
 
-function metaString(meta: Record<string, unknown> | undefined, key: string): string | null {
+function metaString(
+	meta: Record<string, unknown> | undefined,
+	key: string,
+): string | null {
 	const v = meta?.[key];
 	return typeof v === "string" && v.length > 0 ? v : null;
 }
 
 function asCohort(value: unknown): Cohort | null {
-	return value === "owner" || value === "family" || value === "guest" || value === "unknown"
+	return value === "owner" ||
+		value === "family" ||
+		value === "guest" ||
+		value === "unknown"
 		? value
 		: null;
 }
 
 function asSource(value: unknown): Source | null {
-	return value === "first-run" || value === "auto-clustered" || value === "manual"
+	return value === "first-run" ||
+		value === "auto-clustered" ||
+		value === "manual"
 		? value
 		: null;
 }
@@ -143,7 +151,9 @@ function toDto(
 		id: record.profileId,
 		entityId: record.entityId,
 		displayName:
-			metaString(meta, "displayName") ?? metaString(meta, "label") ?? record.profileId,
+			metaString(meta, "displayName") ??
+			metaString(meta, "label") ??
+			record.profileId,
 		relationshipLabel:
 			metaString(meta, "relationship") ?? metaString(meta, "relationshipLabel"),
 		isOwner,
@@ -165,7 +175,8 @@ function toDto(
 // ---------------------------------------------------------------------------
 
 const PROFILE_ID_RE = /^[A-Za-z0-9._-]+$/;
-const ID_SUB = /^\/api\/voice\/profiles\/([^/]+)(?:\/(merge|split|bind|unbind|sample))?$/;
+const ID_SUB =
+	/^\/api\/voice\/profiles\/([^/]+)(?:\/(merge|split|bind|unbind|sample))?$/;
 
 function validId(id: string): boolean {
 	return PROFILE_ID_RE.test(id);
@@ -242,7 +253,8 @@ async function patchProfile(
 	}
 	if ("relationshipLabel" in body) {
 		patch.relationship =
-			typeof body.relationshipLabel === "string" && body.relationshipLabel.trim()
+			typeof body.relationshipLabel === "string" &&
+			body.relationshipLabel.trim()
 				? body.relationshipLabel.trim()
 				: null;
 	}
@@ -292,7 +304,10 @@ async function deleteAll(
 	let deleted = 0;
 	for (const record of records) {
 		if (!includeOwner && owner && record.entityId === owner) continue;
-		await store.deleteProfile({ profileId: record.profileId, allowBoundEntity: true });
+		await store.deleteProfile({
+			profileId: record.profileId,
+			allowBoundEntity: true,
+		});
 		deleted += 1;
 	}
 	sendJson(res, { deleted });
@@ -349,9 +364,16 @@ async function splitProfile(
 	const store = await getStore();
 	let result: Awaited<ReturnType<VoiceProfileStore["splitProfile"]>>;
 	try {
-		result = await store.splitProfile({ profileId: id, sampleIds: utteranceIds });
+		result = await store.splitProfile({
+			profileId: id,
+			sampleIds: utteranceIds,
+		});
 	} catch (err) {
-		sendJsonError(res, err instanceof Error ? err.message : "split failed", 400);
+		sendJsonError(
+			res,
+			err instanceof Error ? err.message : "split failed",
+			400,
+		);
 		return true;
 	}
 	if (!result) {
@@ -374,13 +396,16 @@ async function bindProfile(
 ): Promise<true> {
 	const body = await readJsonBody<Record<string, unknown>>(req, res);
 	if (!body) return true;
-	const entityId = typeof body.entityId === "string" ? body.entityId.trim() : "";
+	const entityId =
+		typeof body.entityId === "string" ? body.entityId.trim() : "";
 	if (!entityId) {
 		sendJsonError(res, "entityId is required", 400);
 		return true;
 	}
 	const label =
-		typeof body.label === "string" && body.label.trim() ? body.label.trim() : undefined;
+		typeof body.label === "string" && body.label.trim()
+			? body.label.trim()
+			: undefined;
 	const store = await getStore();
 	const updated = await store.bindEntity({ profileId: id, entityId, label });
 	if (!updated) {
@@ -441,7 +466,10 @@ async function serveSample(
 		});
 		res.end(bytes);
 	} catch (err) {
-		logger.error({ err, id }, "[voice-profiles-route] failed to read sample wav");
+		logger.error(
+			{ err, id },
+			"[voice-profiles-route] failed to read sample wav",
+		);
 		sendJsonError(res, "failed to read sample audio", 500);
 	}
 	return true;
