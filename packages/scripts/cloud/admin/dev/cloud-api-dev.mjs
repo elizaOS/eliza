@@ -193,12 +193,18 @@ async function main() {
   // routes to return 2xx with a working in-memory key store.
   const isE2eTestMode =
     process.env.NODE_ENV === "test" || process.env.CLOUD_E2E === "1";
+  // In e2e/test mode, also stub the Cloudflare registrar/DNS by default so the
+  // domain buy/check routes never hit the real Cloudflare API (overridable via
+  // ELIZA_CF_REGISTRAR_DEV_STUB).
+  const registrarStub = process.env.ELIZA_CF_REGISTRAR_DEV_STUB ?? "1";
   const testModeVars = isE2eTestMode
     ? [
         "--var",
         "NODE_ENV:test",
         "--var",
         "ELIZA_KMS_BACKEND:memory",
+        "--var",
+        `ELIZA_CF_REGISTRAR_DEV_STUB:${registrarStub}`,
       ]
     : [];
 
