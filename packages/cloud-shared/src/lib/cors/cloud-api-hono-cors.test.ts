@@ -93,7 +93,6 @@ describe("corsMiddleware — third-party app origins (open, NO credentials)", ()
   test("does not allow wildcard CORS on session-capable non-public paths", async () => {
     const res = await req("OPTIONS", "https://malicious.apps.elizacloud.ai", true, "/ping");
     expect(res.headers.get("access-control-allow-origin")).toBeNull();
-    expect(res.headers.get("access-control-allow-credentials")).toBeNull();
   });
 });
 

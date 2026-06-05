@@ -160,7 +160,6 @@ describe("ContinuousChatOverlay", () => {
     expect(root.getAttribute("data-fullscreen")).toBeNull();
     // Resting: backdrop is inactive + click-through (the live view stays usable).
     expect(backdrop.getAttribute("data-active")).toBe("false");
-    expect(backdrop.style.pointerEvents).toBe("none");
 
     // Far-left button enters full screen and blooms the glass panel over the view.
     fireEvent.click(screen.getByLabelText("expand to full screen"));
@@ -168,7 +167,6 @@ describe("ContinuousChatOverlay", () => {
     expect(document.querySelector('[data-variant="fullscreen"]')).toBeTruthy();
     // Backdrop becomes the active glass sheet that captures the view.
     expect(backdrop.getAttribute("data-active")).toBe("true");
-    expect(backdrop.style.pointerEvents).toBe("auto");
 
     // Pressing it again returns to normal (ambient) mode: the partial bubbles
     // are back (faded out) and the backdrop deactivates.

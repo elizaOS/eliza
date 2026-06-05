@@ -934,64 +934,83 @@ export function TwoThousandFourScapeOperatorSurface({
 
   if (!run) {
     return (
-      <section className="space-y-3" data-testid="2004scape-operator-ready">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
-            2004scape Operator
+      <section className="p-4" data-testid="2004scape-operator-ready">
+        <div className="mx-auto flex max-w-3xl flex-col gap-3">
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/45 bg-card/82 px-4 py-3 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div
+                aria-hidden
+                className="grid h-10 w-10 place-items-center rounded-xl bg-orange-500 text-lg font-black text-white shadow-sm"
+              >
+                04
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-foreground">
+                  2004scape
+                </div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Bot SDK standby
+                </div>
+              </div>
+            </div>
+            <div className="h-3 w-3 rounded-full bg-amber-400 shadow-[0_0_0_4px_rgba(251,191,36,0.18)]" />
           </div>
-          <SurfaceBadge tone="warn">Standby</SurfaceBadge>
-          <SurfaceBadge tone="accent">Bot SDK</SurfaceBadge>
-          <span className="ml-auto text-2xs uppercase tracking-[0.18em] text-muted">
-            /2004scape
-          </span>
+
+          <div className="grid grid-cols-1 gap-3">
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-orange-300/35 bg-orange-400/10 text-sm font-bold text-orange-700">
+                RS
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Gateway
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  Bridge pending
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-emerald-300/35 bg-emerald-400/10 text-lg text-emerald-700">
+                ▶
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Planner
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  15s loop
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-cyan-300/35 bg-cyan-400/10 text-lg text-cyan-700">
+                ◆
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Telemetry
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  HP · map · targets
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-violet-300/35 bg-violet-400/10 text-lg text-violet-700">
+                ↗
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Path
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  /2004scape
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-
-        <SurfaceSection title="Launch Dashboard">
-          <div className="space-y-2">
-            <SurfaceCard
-              label="Gateway"
-              value="Waiting for RS SDK bridge"
-              tone="warn"
-              subtitle="WebSocket gateway, browser client, and BotSDK attach here."
-            />
-            <SurfaceCard
-              label="Autoplay Loop"
-              value="15s planner cadence"
-              tone="accent"
-              subtitle="Provider context feeds goals, map area, inventory, combat, and dialog."
-            />
-            <SurfaceCard
-              label="Auto-login"
-              value="Credentials staged at launch"
-              subtitle="Bot name, password, and viewer session are checked before the iframe opens."
-            />
-            <SurfaceCard
-              label="Operator Chat"
-              value="Use overlay chat after launch"
-              subtitle="The view keeps state and controls; steering language belongs in the global chat."
-            />
-          </div>
-        </SurfaceSection>
-
-        <SurfaceSection title="Run Surface">
-          <div className="space-y-2">
-            <SurfaceCard
-              label="Live Player"
-              value="HP · coords · combat style"
-              subtitle="Player telemetry appears as soon as the game client syncs."
-            />
-            <SurfaceCard
-              label="Nearby Targets"
-              value="NPCs · objects · ground items"
-              subtitle="Nearest actionable targets replace this readiness summary."
-            />
-            <SurfaceCard
-              label="Game Feed"
-              value="Dialog · tutorial · activity"
-              subtitle="Recent game messages and planner actions stream into this column."
-            />
-          </div>
-        </SurfaceSection>
       </section>
     );
   }

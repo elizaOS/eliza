@@ -7,6 +7,7 @@ import { WebSocketServer } from "ws";
 const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
 const repoRoot = path.resolve(new URL("../../..", import.meta.url).pathname);
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
+const DEMO_ORCHESTRATOR = process.env.ELIZA_UI_SMOKE_DEMO_ORCHESTRATOR === "1";
 let browserWorkspaceCounter = 0;
 let browserWorkspaceTabs = [];
 let lifeOpsAppEnabled = true;
@@ -2193,6 +2194,872 @@ function emptyTrajectoryList(url) {
   };
 }
 
+function orchestratorUsage(overrides = {}) {
+  const createdAt = overrides.createdAt ?? new Date().toISOString();
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    cacheTokens: 0,
+    totalTokens: 0,
+    costUsd: 0,
+    state: "unavailable",
+    usageState: "unavailable",
+    byProvider: [],
+    metadata: {},
+    createdAt,
+    updatedAt: overrides.updatedAt ?? createdAt,
+    ...overrides,
+  };
+}
+
+function createDemoOrchestratorState() {
+  const startedAtMs = Date.now();
+  const startedAt = new Date(startedAtMs).toISOString();
+  const richUsage = orchestratorUsage({
+    inputTokens: 8400,
+    outputTokens: 2600,
+    reasoningTokens: 1345,
+    totalTokens: 12_345,
+    costUsd: 0.42,
+    state: "measured",
+    usageState: "measured",
+    byProvider: [
+      {
+        provider: "cerebras",
+        model: "gpt-oss-120b",
+        inputTokens: 8400,
+        outputTokens: 2600,
+        reasoningTokens: 1345,
+        cacheTokens: 0,
+        totalTokens: 12_345,
+        costUsd: 0.42,
+        state: "measured",
+      },
+      {
+        provider: "codex",
+        model: "codex-cli",
+        inputTokens: 1200,
+        outputTokens: 900,
+        reasoningTokens: 0,
+        cacheTokens: 0,
+        totalTokens: 2100,
+        costUsd: 0,
+        state: "estimated",
+      },
+    ],
+    createdAt: startedAt,
+    updatedAt: startedAt,
+  });
+  const detail = createDemoTaskDetail({
+    id: "smoke-task-1",
+    title: "Build Kanban planner app",
+    status: "active",
+    priority: "urgent",
+    goal: "Build and verify a tiny Kanban planner app with accessible columns, cards, and persistence.",
+    originalRequest:
+      "Use Codex plus Cerebras gpt-oss-120b to build a planner app.",
+    summary: "Codex has generated files; Cerebras is reviewing UX.",
+    sessionCount: 2,
+    activeSessionCount: 2,
+    latestSessionId: "session-codex",
+    latestSessionLabel: "Codex Builder",
+    latestWorkdir: "/tmp/orchestrator-kanban",
+    latestRepo: "/home/nubs/Git/iqlabs/eliza-labs/eliza",
+    latestActivityAt: startedAtMs,
+    createdAt: startedAt,
+    updatedAt: startedAt,
+    acceptanceCriteria: [
+      "Planner renders three workflow columns",
+      "Cards can be created and moved",
+      "Generated files pass syntax checks",
+    ],
+    currentPlan: {
+      summary: "Build, review, and verify the Kanban planner.",
+      steps: [
+        { title: "Generate app shell", status: "completed" },
+        { title: "Review visual affordances", status: "in_progress" },
+        { title: "Run browser smoke checks", status: "pending" },
+      ],
+    },
+    planRevisions: [
+      {
+        id: "plan-rev-1",
+        threadId: "smoke-task-1",
+        plan: {
+          summary: "Build, review, and verify the Kanban planner.",
+          steps: [
+            { title: "Generate app shell", status: "completed" },
+            { title: "Review visual affordances", status: "in_progress" },
+            { title: "Run browser smoke checks", status: "pending" },
+          ],
+        },
+        basePlanRevisionId: null,
+        editSummary: null,
+        createdBy: "system",
+        metadata: {},
+        timestamp: startedAtMs,
+        createdAt: startedAt,
+      },
+    ],
+    providerPolicy: {
+      preferredFramework: "codex",
+      providerSource: "cerebras",
+      model: "gpt-oss-120b",
+    },
+    sessions: [
+      {
+        id: "session-codex-record",
+        threadId: "smoke-task-1",
+        sessionId: "session-codex",
+        label: "Codex Builder",
+        status: "running",
+        framework: "codex",
+        providerSource: "local-auth",
+        model: "codex-cli",
+        originalTask:
+          "Generate the planner shell and persist card movement locally.",
+        workdir: "/tmp/orchestrator-kanban",
+        repo: "/home/nubs/Git/iqlabs/eliza-labs/eliza",
+        activeTool: "write",
+        decisionCount: 0,
+        autoResolvedCount: 0,
+        registeredAt: startedAtMs,
+        lastActivityAt: startedAtMs,
+        idleCheckCount: 0,
+        taskDelivered: true,
+        completionSummary: null,
+        lastSeenDecisionIndex: 0,
+        lastInputSentAt: null,
+        stoppedAt: null,
+        inputTokens: 1200,
+        outputTokens: 900,
+        reasoningTokens: 0,
+        totalTokens: 2100,
+        cacheTokens: 0,
+        costUsd: 0,
+        usageState: "estimated",
+        metadata: {},
+        createdAt: startedAt,
+        updatedAt: startedAt,
+      },
+      {
+        id: "session-cerebras-record",
+        threadId: "smoke-task-1",
+        sessionId: "session-cerebras",
+        label: "Cerebras Reviewer",
+        status: "running",
+        framework: "eliza",
+        providerSource: "cerebras",
+        model: "gpt-oss-120b",
+        originalTask:
+          "Review the planner visual affordances and interaction model.",
+        workdir: "/tmp/orchestrator-kanban",
+        repo: "/home/nubs/Git/iqlabs/eliza-labs/eliza",
+        activeTool: "review",
+        decisionCount: 0,
+        autoResolvedCount: 0,
+        registeredAt: startedAtMs,
+        lastActivityAt: startedAtMs,
+        idleCheckCount: 0,
+        taskDelivered: true,
+        completionSummary: null,
+        lastSeenDecisionIndex: 0,
+        lastInputSentAt: null,
+        stoppedAt: null,
+        inputTokens: 8400,
+        outputTokens: 2600,
+        reasoningTokens: 1345,
+        totalTokens: 12_345,
+        cacheTokens: 0,
+        costUsd: 0.42,
+        usageState: "measured",
+        metadata: {},
+        createdAt: startedAt,
+        updatedAt: startedAt,
+      },
+    ],
+    artifacts: [
+      {
+        id: "artifact-index",
+        threadId: "smoke-task-1",
+        sessionId: "session-codex",
+        title: "Kanban planner HTML",
+        artifactType: "file",
+        path: "planner/index.html",
+        uri: null,
+        mimeType: "text/html",
+        verificationStatus: "passed",
+        metadata: {},
+        createdAt: startedAt,
+      },
+      {
+        id: "artifact-test",
+        threadId: "smoke-task-1",
+        sessionId: "session-cerebras",
+        title: "Browser smoke report",
+        artifactType: "verification",
+        path: "reports/kanban-smoke.md",
+        uri: null,
+        mimeType: "text/markdown",
+        verificationStatus: "pending",
+        metadata: {},
+        createdAt: startedAt,
+      },
+    ],
+    usage: richUsage,
+  });
+
+  return {
+    tasks: [detail],
+    messages: [
+      {
+        id: "message-user-1",
+        threadId: "smoke-task-1",
+        sessionId: null,
+        senderKind: "user",
+        direction: "stdout",
+        content: "Create a compact Kanban planner app.",
+        timestamp: startedAtMs - 4000,
+        metadata: {},
+        createdAt: new Date(startedAtMs - 4000).toISOString(),
+      },
+      {
+        id: "message-agent-1",
+        threadId: "smoke-task-1",
+        sessionId: "session-codex",
+        senderKind: "sub_agent",
+        direction: "stdout",
+        content: "Generated the planner shell and wired card movement.",
+        timestamp: startedAtMs - 2000,
+        metadata: {},
+        createdAt: new Date(startedAtMs - 2000).toISOString(),
+      },
+    ],
+    events: [
+      {
+        id: "event-tool-write",
+        threadId: "smoke-task-1",
+        sessionId: "session-codex",
+        eventType: "tool_running",
+        summary: "write planner files",
+        timestamp: startedAtMs - 1000,
+        data: {
+          toolCall: {
+            id: "tool-write-index",
+            title: "write",
+            kind: "edit",
+            status: "completed",
+            rawInput: {
+              path: "planner/index.html",
+              content: '<main id="board"></main>',
+            },
+            output: "Wrote planner/index.html",
+          },
+        },
+        createdAt: new Date(startedAtMs - 1000).toISOString(),
+      },
+      {
+        id: "event-validation",
+        threadId: "smoke-task-1",
+        sessionId: "session-cerebras",
+        eventType: "task_registered",
+        summary: "Cerebras reviewer joined for UX validation",
+        timestamp: startedAtMs - 500,
+        data: {},
+        createdAt: new Date(startedAtMs - 500).toISOString(),
+      },
+    ],
+    nextTaskId: 2,
+    nextMessageId: 2,
+    nextEventId: 2,
+    nextSessionId: 3,
+  };
+}
+
+function createDemoTaskDetail(overrides = {}) {
+  const id = overrides.id ?? "smoke-task-1";
+  const createdAt = overrides.createdAt ?? new Date().toISOString();
+  return {
+    id,
+    title: "Audit orchestrator surface",
+    kind: "coding",
+    status: "open",
+    priority: "high",
+    paused: false,
+    originalRequest: "Audit orchestrator surface",
+    summary: "Created by ui-smoke demo mode.",
+    sessionCount: 0,
+    activeSessionCount: 0,
+    latestSessionId: null,
+    latestSessionLabel: null,
+    latestWorkdir: null,
+    latestRepo: null,
+    latestActivityAt: null,
+    decisionCount: 0,
+    usage: orchestratorUsage(),
+    createdAt,
+    updatedAt: overrides.updatedAt ?? createdAt,
+    closedAt: null,
+    archivedAt: null,
+    goal: "Verify controls, routing, and message flow.",
+    roomId: null,
+    taskRoomId: null,
+    worldId: null,
+    ownerUserId: null,
+    parentTaskId: null,
+    acceptanceCriteria: ["Task appears in rail", "Message posts"],
+    currentPlan: null,
+    providerPolicy: null,
+    lastUserTurnAt: null,
+    lastCoordinatorTurnAt: null,
+    metadata: {},
+    sessions: [],
+    decisions: [],
+    events: [],
+    artifacts: [],
+    messages: [],
+    transcripts: [],
+    planRevisions: [],
+    ...overrides,
+  };
+}
+
+function summarizeDemoTask(detail) {
+  return {
+    id: detail.id,
+    title: detail.title,
+    kind: detail.kind,
+    status: detail.status,
+    priority: detail.priority,
+    paused: detail.paused,
+    originalRequest: detail.originalRequest,
+    summary: detail.summary,
+    sessionCount: detail.sessionCount,
+    activeSessionCount: detail.activeSessionCount,
+    latestSessionId: detail.latestSessionId,
+    latestSessionLabel: detail.latestSessionLabel,
+    latestWorkdir: detail.latestWorkdir,
+    latestRepo: detail.latestRepo,
+    latestActivityAt: detail.latestActivityAt,
+    decisionCount: detail.decisionCount,
+    usage: detail.usage,
+    createdAt: detail.createdAt,
+    updatedAt: detail.updatedAt,
+    closedAt: detail.closedAt,
+    archivedAt: detail.archivedAt,
+  };
+}
+
+function demoOrchestratorStatus(state) {
+  const visibleTasks = state.tasks;
+  const byStatus = {
+    open: 0,
+    active: 0,
+    waiting_on_user: 0,
+    blocked: 0,
+    validating: 0,
+    done: 0,
+    failed: 0,
+    archived: 0,
+    interrupted: 0,
+  };
+  let sessionCount = 0;
+  let activeSessionCount = 0;
+  for (const task of visibleTasks) {
+    if (byStatus[task.status] !== undefined) byStatus[task.status] += 1;
+    sessionCount += Number(task.sessionCount ?? 0);
+    activeSessionCount += Number(task.activeSessionCount ?? 0);
+  }
+  return {
+    taskCount: visibleTasks.length,
+    activeTaskCount: byStatus.active,
+    pausedTaskCount: visibleTasks.filter((task) => task.paused === true).length,
+    blockedTaskCount: byStatus.blocked + byStatus.waiting_on_user,
+    validatingTaskCount: byStatus.validating,
+    sessionCount,
+    activeSessionCount,
+    usage: visibleTasks[0]?.usage ?? emptyOrchestratorUsage,
+    byStatus,
+  };
+}
+
+function demoTaskList(state, url) {
+  const status = url.searchParams.get("status");
+  const includeArchived = url.searchParams.get("includeArchived") === "true";
+  const search = (url.searchParams.get("search") ?? "").toLowerCase();
+  const limit = Math.max(1, Number(url.searchParams.get("limit") ?? 50));
+  return state.tasks
+    .filter((task) => includeArchived || task.status !== "archived")
+    .filter((task) => !status || task.status === status)
+    .filter((task) => {
+      if (!search) return true;
+      return [task.title, task.goal, task.summary, task.originalRequest]
+        .join(" ")
+        .toLowerCase()
+        .includes(search);
+    })
+    .slice(0, limit)
+    .map(summarizeDemoTask);
+}
+
+function demoTimelinePage(state, taskId, url) {
+  const limit =
+    Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "100", 10)) ||
+    100;
+  const start =
+    Math.max(0, Number.parseInt(url.searchParams.get("cursor") ?? "0", 10)) ||
+    0;
+  const items = [
+    ...state.messages
+      .filter((message) => message.threadId === taskId)
+      .map((message) => ({
+        id: `message:${message.id}`,
+        kind: "message",
+        threadId: message.threadId,
+        sessionId: message.sessionId ?? null,
+        timestamp: message.timestamp,
+        createdAt: message.createdAt,
+        message,
+      })),
+    ...state.events
+      .filter((event) => event.threadId === taskId)
+      .map((event) => ({
+        id: `event:${event.id}`,
+        kind: "event",
+        threadId: event.threadId,
+        sessionId: event.sessionId ?? null,
+        timestamp: event.timestamp,
+        createdAt: event.createdAt,
+        event,
+      })),
+  ].sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
+  const page = items.slice(start, start + limit);
+  const next = start + limit;
+  return {
+    items: page,
+    nextCursor: next < items.length ? String(next) : null,
+  };
+}
+
+function pushDemoEvent(state, taskId, summary, data = {}) {
+  const event = {
+    id: `demo-event-${state.nextEventId++}`,
+    threadId: taskId,
+    sessionId: null,
+    eventType: "operator_action",
+    summary,
+    timestamp: Date.now(),
+    data,
+    createdAt: new Date().toISOString(),
+  };
+  state.events.push(event);
+  return event;
+}
+
+function pushDemoMessage(state, taskId, senderKind, content, sessionId = null) {
+  const message = {
+    id: `demo-message-${state.nextMessageId++}`,
+    threadId: taskId,
+    sessionId,
+    senderKind,
+    direction: "stdout",
+    content,
+    timestamp: Date.now(),
+    metadata: {},
+    createdAt: new Date().toISOString(),
+  };
+  state.messages.push(message);
+  return message;
+}
+
+const demoOrchestratorState = DEMO_ORCHESTRATOR
+  ? createDemoOrchestratorState()
+  : null;
+
+async function handleDemoOrchestratorRoute(req, res, url) {
+  if (!demoOrchestratorState) return false;
+  if (!url.pathname.startsWith("/api/orchestrator")) return false;
+
+  if (req.method === "GET" && url.pathname === "/api/orchestrator/status") {
+    sendJson(req, res, 200, demoOrchestratorStatus(demoOrchestratorState));
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/orchestrator/tasks") {
+    sendJson(req, res, 200, {
+      tasks: demoTaskList(demoOrchestratorState, url),
+    });
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/orchestrator/tasks") {
+    const body = (await readJsonBody(req)) || {};
+    const id = `demo-task-${demoOrchestratorState.nextTaskId++}`;
+    const detail = createDemoTaskDetail({
+      id,
+      title: body.title || "Demo orchestrator task",
+      goal: body.goal || body.originalRequest || body.title || "Demo task",
+      originalRequest:
+        body.originalRequest || body.goal || body.title || "Demo task",
+      priority: body.priority || "normal",
+      acceptanceCriteria: Array.isArray(body.acceptanceCriteria)
+        ? body.acceptanceCriteria
+        : ["Created from the visible local UI"],
+      providerPolicy: body.providerPolicy ?? null,
+      status: "open",
+      summary: "Created locally in demo mode.",
+      currentPlan: {
+        summary: "Demo task created from the local UI.",
+        steps: [
+          { title: "Capture request", status: "completed" },
+          { title: "Assign sub-agent", status: "pending" },
+          { title: "Verify result", status: "pending" },
+        ],
+      },
+    });
+    demoOrchestratorState.tasks.unshift(detail);
+    pushDemoMessage(
+      demoOrchestratorState,
+      id,
+      "user",
+      detail.originalRequest || detail.goal,
+    );
+    pushDemoEvent(demoOrchestratorState, id, "Task created from local demo UI");
+    sendJson(req, res, 200, detail);
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/orchestrator/pause-all") {
+    for (const task of demoOrchestratorState.tasks) task.paused = true;
+    sendJson(req, res, 200, { updated: demoOrchestratorState.tasks.length });
+    return true;
+  }
+
+  if (
+    req.method === "POST" &&
+    url.pathname === "/api/orchestrator/resume-all"
+  ) {
+    for (const task of demoOrchestratorState.tasks) task.paused = false;
+    sendJson(req, res, 200, { updated: demoOrchestratorState.tasks.length });
+    return true;
+  }
+
+  const taskPath = url.pathname.slice("/api/orchestrator/tasks/".length);
+  if (!taskPath || taskPath === url.pathname) return false;
+  const parts = taskPath.split("/").map((part) => decodeURIComponent(part));
+  const [taskId, action, subId, subAction] = parts;
+  const task = demoOrchestratorState.tasks.find((item) => item.id === taskId);
+
+  if (action === "stream" && req.method === "GET") {
+    sendSseHeaders(req, res);
+    writeSseEvent(res, { type: "ready" });
+    const interval = setInterval(() => {
+      res.write(": heartbeat\n\n");
+    }, 15_000);
+    req.on("close", () => clearInterval(interval));
+    return true;
+  }
+
+  if (!task) {
+    sendJson(req, res, 404, { error: `Task not found: ${taskId}` });
+    return true;
+  }
+
+  if (!action) {
+    if (req.method === "GET") {
+      sendJson(req, res, 200, task);
+      return true;
+    }
+    if (req.method === "PATCH") {
+      const body = (await readJsonBody(req)) || {};
+      Object.assign(task, body, { updatedAt: new Date().toISOString() });
+      sendJson(req, res, 200, task);
+      return true;
+    }
+    if (req.method === "DELETE") {
+      demoOrchestratorState.tasks = demoOrchestratorState.tasks.filter(
+        (item) => item.id !== taskId,
+      );
+      demoOrchestratorState.messages = demoOrchestratorState.messages.filter(
+        (item) => item.threadId !== taskId,
+      );
+      demoOrchestratorState.events = demoOrchestratorState.events.filter(
+        (item) => item.threadId !== taskId,
+      );
+      sendJson(req, res, 200, { deleted: true });
+      return true;
+    }
+  }
+
+  if (action === "messages") {
+    if (req.method === "GET") {
+      sendJson(req, res, 200, {
+        items: demoOrchestratorState.messages.filter(
+          (item) => item.threadId === taskId,
+        ),
+        nextCursor: null,
+      });
+      return true;
+    }
+    if (req.method === "POST") {
+      const body = (await readJsonBody(req)) || {};
+      const content = String(body.content ?? "").trim();
+      if (content) {
+        pushDemoMessage(demoOrchestratorState, taskId, "user", content);
+        pushDemoMessage(
+          demoOrchestratorState,
+          taskId,
+          "orchestrator",
+          `Demo orchestrator received: ${content}`,
+        );
+        pushDemoEvent(demoOrchestratorState, taskId, "Message forwarded");
+        task.summary = "New demo message received from the local UI.";
+        task.updatedAt = new Date().toISOString();
+      }
+      sendJson(req, res, 200, { recorded: true, forwardedTo: [] });
+      return true;
+    }
+  }
+
+  if (action === "events" && req.method === "GET") {
+    sendJson(req, res, 200, {
+      items: demoOrchestratorState.events.filter(
+        (item) => item.threadId === taskId,
+      ),
+      nextCursor: null,
+    });
+    return true;
+  }
+
+  if (action === "timeline" && req.method === "GET") {
+    sendJson(
+      req,
+      res,
+      200,
+      demoTimelinePage(demoOrchestratorState, taskId, url),
+    );
+    return true;
+  }
+
+  if (action === "usage" && req.method === "GET") {
+    sendJson(req, res, 200, task.usage ?? emptyOrchestratorUsage);
+    return true;
+  }
+
+  if (action === "plan-revisions") {
+    if (req.method === "GET") {
+      sendJson(req, res, 200, {
+        items: task.planRevisions ?? [],
+        nextCursor: null,
+      });
+      return true;
+    }
+    if (req.method === "POST") {
+      const body = (await readJsonBody(req)) || {};
+      const revision = {
+        id: `plan-rev-${(task.planRevisions?.length ?? 0) + 1}`,
+        threadId: taskId,
+        plan: body.plan ?? task.currentPlan ?? {},
+        basePlanRevisionId: body.basePlanRevisionId ?? null,
+        editSummary: body.editSummary ?? "Edited in local demo mode",
+        createdBy: body.createdBy ?? "operator",
+        metadata: body.metadata ?? {},
+        timestamp: Date.now(),
+        createdAt: new Date().toISOString(),
+      };
+      task.planRevisions = [revision, ...(task.planRevisions ?? [])];
+      task.currentPlan = revision.plan;
+      sendJson(req, res, 200, revision);
+      return true;
+    }
+  }
+
+  if (action === "agents" && req.method === "POST" && !subId) {
+    const body = (await readJsonBody(req)) || {};
+    const sessionId = `demo-session-${demoOrchestratorState.nextSessionId++}`;
+    const session = {
+      id: `${sessionId}-record`,
+      threadId: taskId,
+      sessionId,
+      label: body.label || "Demo sub-agent",
+      status: "running",
+      framework: body.framework || "codex",
+      providerSource: body.providerSource || "local-demo",
+      model: body.model || "gpt-5.4",
+      originalTask: body.task || "Assist with the demo task.",
+      workdir: body.workdir || task.latestWorkdir || "/tmp/orchestrator-demo",
+      repo: body.repo || task.latestRepo || null,
+      activeTool: "thinking",
+      decisionCount: 0,
+      autoResolvedCount: 0,
+      registeredAt: Date.now(),
+      lastActivityAt: Date.now(),
+      idleCheckCount: 0,
+      taskDelivered: true,
+      completionSummary: null,
+      lastSeenDecisionIndex: 0,
+      lastInputSentAt: null,
+      stoppedAt: null,
+      inputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 0,
+      cacheTokens: 0,
+      costUsd: 0,
+      usageState: "estimated",
+      metadata: {},
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    task.sessions = [...(task.sessions ?? []), session];
+    task.sessionCount = task.sessions.length;
+    task.activeSessionCount = task.sessions.filter(
+      (item) => item.status === "running",
+    ).length;
+    task.latestSessionId = session.sessionId;
+    task.latestSessionLabel = session.label;
+    task.latestActivityAt = session.lastActivityAt;
+    pushDemoEvent(demoOrchestratorState, taskId, `Added ${session.label}`);
+    sendJson(req, res, 200, task);
+    return true;
+  }
+
+  if (
+    action === "agents" &&
+    subId &&
+    subAction === "stop" &&
+    req.method === "POST"
+  ) {
+    task.sessions = (task.sessions ?? []).map((session) =>
+      session.sessionId === subId
+        ? {
+            ...session,
+            status: "stopped",
+            stoppedAt: Date.now(),
+            activeTool: null,
+            updatedAt: new Date().toISOString(),
+          }
+        : session,
+    );
+    task.activeSessionCount = task.sessions.filter(
+      (item) => item.status === "running",
+    ).length;
+    pushDemoEvent(demoOrchestratorState, taskId, `Stopped agent ${subId}`);
+    sendJson(req, res, 200, { stopped: true });
+    return true;
+  }
+
+  if (req.method === "POST") {
+    const body = (await readJsonBody(req)) || {};
+    if (action === "pause") {
+      task.paused = true;
+      pushDemoEvent(demoOrchestratorState, taskId, "Task paused");
+      sendJson(req, res, 200, task);
+      return true;
+    }
+    if (action === "resume") {
+      task.paused = false;
+      pushDemoEvent(demoOrchestratorState, taskId, "Task resumed");
+      sendJson(req, res, 200, task);
+      return true;
+    }
+    if (action === "archive") {
+      task.status = "archived";
+      task.archivedAt = new Date().toISOString();
+      pushDemoEvent(demoOrchestratorState, taskId, "Task archived");
+      sendJson(req, res, 200, { archived: true });
+      return true;
+    }
+    if (action === "reopen") {
+      task.status = "open";
+      task.archivedAt = null;
+      pushDemoEvent(demoOrchestratorState, taskId, "Task reopened");
+      sendJson(req, res, 200, task);
+      return true;
+    }
+    if (action === "fork") {
+      const forked = createDemoTaskDetail({
+        ...task,
+        id: `demo-task-${demoOrchestratorState.nextTaskId++}`,
+        title: body.title || `Fork of ${task.title}`,
+        goal: body.goal || task.goal,
+        parentTaskId: task.id,
+        status: "open",
+        archivedAt: null,
+        sessions: [],
+        sessionCount: 0,
+        activeSessionCount: 0,
+      });
+      demoOrchestratorState.tasks.unshift(forked);
+      pushDemoEvent(demoOrchestratorState, forked.id, "Task forked");
+      sendJson(req, res, 200, forked);
+      return true;
+    }
+    if (action === "validate") {
+      task.status = body.passed === true ? "done" : "blocked";
+      task.summary = body.summary || task.summary;
+      pushDemoEvent(
+        demoOrchestratorState,
+        taskId,
+        "Validation submitted",
+        body,
+      );
+      sendJson(req, res, 200, task);
+      return true;
+    }
+    if (action === "retry-turn") {
+      pushDemoEvent(
+        demoOrchestratorState,
+        taskId,
+        "Retry turn requested",
+        body,
+      );
+      sendJson(req, res, 200, task);
+      return true;
+    }
+    if (action === "rerun-from-event") {
+      pushDemoEvent(
+        demoOrchestratorState,
+        taskId,
+        "Rerun from event requested",
+        body,
+      );
+      sendJson(req, res, 200, task);
+      return true;
+    }
+    if (action === "restart") {
+      task.status = "active";
+      pushDemoEvent(
+        demoOrchestratorState,
+        taskId,
+        "Task restart requested",
+        body,
+      );
+      sendJson(req, res, 200, task);
+      return true;
+    }
+    if (action === "restart-with-edited-plan") {
+      task.status = "active";
+      if (body.plan && typeof body.plan === "object")
+        task.currentPlan = body.plan;
+      pushDemoEvent(
+        demoOrchestratorState,
+        taskId,
+        "Restart with edited plan requested",
+        body,
+      );
+      sendJson(req, res, 200, task);
+      return true;
+    }
+  }
+
+  sendJson(req, res, 404, {
+    error: `Unhandled demo orchestrator route ${url.pathname}`,
+  });
+  return true;
+}
+
 function streamSettings(payload = {}) {
   return {
     ok: true,
@@ -3616,6 +4483,10 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/coding-agents") {
     sendJson(req, res, 200, []);
+    return;
+  }
+
+  if (await handleDemoOrchestratorRoute(req, res, url)) {
     return;
   }
 

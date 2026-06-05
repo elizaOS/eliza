@@ -1609,8 +1609,9 @@ platform no-ops are separated from actionable runtime gaps.
   compatibility behavior.
 - Updated the desktop FFI / libllama adapter comments to match current parity:
   slot save/restore, prewarm, parallel resize, and speculative decoding are no
-  longer described as unfinished. The remaining desktop mtmd vision bridge
-  now fails closed with a concrete native-dependency error.
+  longer described as unfinished. The desktop mtmd vision bridge now has an
+  opt-in `ELIZA_ENABLE_VISION=1` native path and remains default-off pending
+  runtime smoke coverage against a real text GGUF + mmproj GGUF.
 - Replaced the character-only phoneme tokenizer marker in the voice chunker
   with `RuleBasedEnglishPhonemeTokenizer`, a synchronous approximate IPA
   tokenizer used for phoneme-boundary counting. The public voice barrel now
@@ -2744,10 +2745,10 @@ platform no-ops are separated from actionable runtime gaps.
   adapters. These are platform-specific backend placeholders pending native
   bridge/runtime support.
 - Vision AOSP / GGML markers indicate native-model backend readiness gaps, not
-  simple TypeScript placeholders. Desktop FFI vision describe still needs the
-  native mtmd bridge pieces called out in `desktop-llama-adapter.ts`: direct
-  image-byte decoding in this package and an embeddings-batch shim wrapper
-  around `llama_batch_get_one`.
+  simple TypeScript placeholders. Desktop FFI vision describe now uses native
+  mtmd image-buffer decode, chunk tokenization/evaluation, and the normal
+  sampler loop; its remaining work is runtime smoke validation before enabling
+  the vision build by default.
 - Voice pipeline markers are fail-closed safety paths:
   - seeded Samantha/I-wave speaker presets trigger regeneration, Kokoro
     fallback, or a loud startup error;
@@ -5374,6 +5375,32 @@ platform no-ops are separated from actionable runtime gaps.
   - focused marker scan on `packages/alberta/alberta_framework/security.py`
   - `git diff --check -- packages/alberta/alberta_framework/security.py
     PLACEHOLDER_AUDIT.md`
+
+### plugin-local-inference native voice migration status
+
+- Read `plugins/plugin-local-inference/native/CLAUDE.md` and confirmed
+  `AGENTS.md` parity before editing; rechecked
+  `packages/native/plugins/voice-classifier-cpp/CLAUDE.md` parity as the
+  source-of-truth native guide.
+- The native migration table still claimed Wav2Small emotion, WeSpeaker, and
+  pyannote diarizer C sources returned `-ENOSYS`. The voice-classifier package
+  now documents and contains scalar C forward paths for all three heads; only
+  the production TypeScript promotion/parity gates remain.
+- Updated the plugin-local-inference native table to describe those as GGUF
+  binding/parity promotion gates, and updated the voice-classifier CMake source
+  comment so only the audio EOT head is described as metadata-validation plus
+  `-ENOSYS`.
+- Updated `scripts/check-riscv64-artifacts.sh` to expect the renamed
+  `voice_classifier_abi_smoke` executable instead of the old
+  `voice_classifier_stub_smoke` name.
+- Verified with:
+  - `diff -q plugins/plugin-local-inference/native/CLAUDE.md
+    plugins/plugin-local-inference/native/AGENTS.md`
+  - `diff -q packages/native/plugins/voice-classifier-cpp/CLAUDE.md
+    packages/native/plugins/voice-classifier-cpp/AGENTS.md`
+  - focused stale-phrase scan for `voice_emotion` / `voice_speaker` /
+    `voice_diarizer` ENOSYS claims
+  - `bash -n scripts/check-riscv64-artifacts.sh`
 
 ## Intentional / False-Positive Marker Classes
 

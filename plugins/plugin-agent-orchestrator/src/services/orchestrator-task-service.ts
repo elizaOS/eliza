@@ -65,6 +65,23 @@ import {
   resolveAllowedWorkdir,
 } from "./workdir-validation.js";
 
+/**
+ * Recoverable operator-recovery conflict.
+ *
+ * Thrown by the recovery methods (createPlanRevision / retry / rerun / restart)
+ * when the requested recovery cannot proceed against the current task state
+ * (missing plan revision, missing source message/event, no/terminal session,
+ * unsupported destructive rerun). The orchestrator recovery routes map this
+ * class to HTTP 409, so the status code is decoupled from the message wording —
+ * callers must not regex-match the message to derive the status.
+ */
+export class RecoveryConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RecoveryConflictError";
+  }
+}
+
 type RuntimeLike = IAgentRuntime & {
   logger?: Partial<
     Record<
@@ -127,6 +144,7 @@ export interface CreatePlanRevisionInput {
   editSummary?: string;
   createdBy?: string;
   metadata?: Record<string, unknown>;
+  makeCurrent?: boolean;
 }
 
 export interface RestartWithEditedPlanInput extends RestartTaskInput {
@@ -994,7 +1012,7 @@ export class OrchestratorTaskService extends Service {
       input.basePlanRevisionId &&
       !findPlanRevision(doc, input.basePlanRevisionId)
     ) {
-      throw new Error("Base plan revision not found");
+      throw new RecoveryConflictError("Base plan revision not found");
     }
     const timestamp = Date.now();
     const revision = {
@@ -1009,7 +1027,9 @@ export class OrchestratorTaskService extends Service {
       createdAt: nowIso(),
     };
     await this.store.addPlanRevision(revision);
-    await this.store.updateTask(taskId, { currentPlan: revision.plan });
+    if (input.makeCurrent !== false) {
+      await this.store.updateTask(taskId, { currentPlan: revision.plan });
+    }
     await this.store.addEvent({
       id: randomUUID(),
       taskId,
@@ -1044,43 +1064,42 @@ export class OrchestratorTaskService extends Service {
     if (!doc) return null;
     const planRevision = findPlanRevision(doc, input.planRevisionId);
     if (input.planRevisionId && !planRevision) {
-      throw new Error("Plan revision not found");
+      throw new RecoveryConflictError("Plan revision not found");
     }
     const source = input.messageId
       ? doc.messages.find((message) => message.id === input.messageId)
       : undefined;
     if (input.messageId && !source) {
-      throw new Error("Source message not found");
+      throw new RecoveryConflictError("Source message not found");
     }
     const instruction = withPlanRevisionContext(
       retryInstruction(doc, input),
       planRevision,
     );
     const mode = input.mode ?? "same-session";
-    if (planRevision) {
-      await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
-    }
-    await this.store.addEvent({
-      id: randomUUID(),
-      taskId,
-      sessionId: input.sessionId ?? source?.sessionId,
-      eventType: "retry_turn_requested",
-      summary: "Retry turn requested",
-      data: {
-        messageId: input.messageId,
-        sessionId: input.sessionId,
-        mode,
-        instruction: input.instruction,
-        planRevisionId: planRevision?.id,
-      },
-      timestamp: Date.now(),
-      createdAt: nowIso(),
-    });
-    await this.store.updateTask(taskId, { paused: false, status: "active" });
     if (mode === "new-session") {
       await this.spawnAgentForTask(taskId, {
         ...input.agent,
         task: instruction,
+      });
+      if (planRevision) {
+        await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
+      }
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        sessionId: input.sessionId ?? source?.sessionId,
+        eventType: "retry_turn_requested",
+        summary: "Retry turn requested",
+        data: {
+          messageId: input.messageId,
+          sessionId: input.sessionId,
+          mode,
+          instruction: input.instruction,
+          planRevisionId: planRevision?.id,
+        },
+        timestamp: Date.now(),
+        createdAt: nowIso(),
       });
       return this.getTask(taskId);
     }
@@ -1090,12 +1109,14 @@ export class OrchestratorTaskService extends Service {
       source?.sessionId ??
       latestActiveSession(doc)?.sessionId;
     if (!sessionId) {
-      throw new Error("sessionId is required for same-session retry");
+      throw new RecoveryConflictError(
+        "sessionId is required for same-session retry",
+      );
     }
     const session = doc.sessions.find((item) => item.sessionId === sessionId);
-    if (!session) throw new Error("Session not found");
+    if (!session) throw new RecoveryConflictError("Session not found");
     if (TERMINAL_TASK_SESSION_STATUSES.has(session.status)) {
-      throw new Error(
+      throw new RecoveryConflictError(
         "Cannot retry in a terminal session; use new-session mode",
       );
     }
@@ -1106,6 +1127,26 @@ export class OrchestratorTaskService extends Service {
       "validation_failed",
     );
     if (!sent) throw new Error("Failed to send retry instruction");
+    if (planRevision) {
+      await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
+    }
+    await this.store.addEvent({
+      id: randomUUID(),
+      taskId,
+      sessionId,
+      eventType: "retry_turn_requested",
+      summary: "Retry turn requested",
+      data: {
+        messageId: input.messageId,
+        sessionId,
+        mode,
+        instruction: input.instruction,
+        planRevisionId: planRevision?.id,
+      },
+      timestamp: Date.now(),
+      createdAt: nowIso(),
+    });
+    await this.store.updateTask(taskId, { paused: false, status: "active" });
     return this.getTask(taskId);
   }
 
@@ -1117,15 +1158,15 @@ export class OrchestratorTaskService extends Service {
     if (!doc) return null;
     const planRevision = findPlanRevision(doc, input.planRevisionId);
     if (input.planRevisionId && !planRevision) {
-      throw new Error("Plan revision not found");
+      throw new RecoveryConflictError("Plan revision not found");
     }
     if (input.preserveHistory === false) {
-      throw new Error(
+      throw new RecoveryConflictError(
         "Destructive rerun is not supported; preserveHistory must be true",
       );
     }
     const event = doc.events.find((item) => item.id === input.eventId);
-    if (!event) throw new Error("Source event not found");
+    if (!event) throw new RecoveryConflictError("Source event not found");
     if (input.stopActive === true) await this.stopActiveSessions(doc);
     if (planRevision) {
       await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
@@ -1164,14 +1205,18 @@ export class OrchestratorTaskService extends Service {
     if (!doc) return null;
     const planRevision = findPlanRevision(doc, input.planRevisionId);
     if (input.planRevisionId && !planRevision) {
-      throw new Error("Plan revision not found");
+      throw new RecoveryConflictError("Plan revision not found");
     }
-    if (input.stopActive !== false) await this.stopActiveSessions(doc);
     const instruction = withPlanRevisionContext(
       input.instruction?.trim() ||
         "Restart this task from the current durable context. Reinspect the task timeline, then continue until the goal is met or you are blocked.",
       planRevision,
     );
+    await this.spawnAgentForTask(taskId, {
+      ...input.agent,
+      task: instruction,
+    });
+    if (input.stopActive !== false) await this.stopActiveSessions(doc);
     if (planRevision) {
       await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
     }
@@ -1195,10 +1240,6 @@ export class OrchestratorTaskService extends Service {
       closedAt: null,
       status: "active",
     });
-    await this.spawnAgentForTask(taskId, {
-      ...input.agent,
-      task: instruction,
-    });
     return this.getTask(taskId);
   }
 
@@ -1211,6 +1252,7 @@ export class OrchestratorTaskService extends Service {
       basePlanRevisionId: input.basePlanRevisionId,
       editSummary: input.editSummary,
       createdBy: "operator",
+      makeCurrent: false,
     });
     if (!revision) return null;
     return this.restartTask(taskId, {

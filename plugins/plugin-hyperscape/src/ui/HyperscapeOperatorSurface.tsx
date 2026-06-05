@@ -296,52 +296,83 @@ export function HyperscapeOperatorSurface({
 
   if (!run) {
     return (
-      <section className="space-y-3" data-testid="hyperscape-operator-ready">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
-            Hyperscape Host
+      <section className="p-4" data-testid="hyperscape-operator-ready">
+        <div className="mx-auto flex max-w-3xl flex-col gap-3">
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/45 bg-card/82 px-4 py-3 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div
+                aria-hidden
+                className="grid h-10 w-10 place-items-center rounded-xl bg-cyan-600 text-lg font-black text-white shadow-sm"
+              >
+                H
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-foreground">
+                  Hyperscape
+                </div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  host surface ready
+                </div>
+              </div>
+            </div>
+            <div className="h-3 w-3 rounded-full bg-amber-400 shadow-[0_0_0_4px_rgba(251,191,36,0.18)]" />
           </div>
-          <SurfaceBadge tone="warn">Standby</SurfaceBadge>
-          <SurfaceBadge tone="accent">Wallet Auth</SurfaceBadge>
-          <span className="ml-auto text-2xs uppercase tracking-[0.18em] text-muted">
-            /hyperscape
-          </span>
+
+          <div className="grid grid-cols-1 gap-3">
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-amber-300/35 bg-amber-400/10 text-lg text-amber-700">
+                ◇
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Auth
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  Wallet pending
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-cyan-300/35 bg-cyan-400/10 text-lg text-cyan-700">
+                ◎
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Viewer
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  Embed attaches
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-emerald-300/35 bg-emerald-400/10 text-lg text-emerald-700">
+                ⌖
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Follow
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  Target sync
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-violet-300/35 bg-violet-400/10 text-lg text-violet-700">
+                ↗
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Path
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  /hyperscape
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-
-        <SurfaceSection title="Host Dashboard">
-          <div className="space-y-2">
-            <SurfaceCard
-              label="Auth"
-              value="Wallet login pending"
-              tone="warn"
-              subtitle="EVM wallet auth and postMessage credentials are checked on launch."
-            />
-            <SurfaceCard
-              label="Follow Target"
-              value="Character attach point"
-              subtitle="Character ID and follow entity populate once the session resolves."
-            />
-            <SurfaceCard
-              label="Viewer"
-              value="Native embedded screen"
-              tone="accent"
-              subtitle="Attachment, health, and recovery controls replace this standby state."
-            />
-            <SurfaceCard
-              label="Relay"
-              value="Overlay chat for steering"
-              subtitle="This surface stays focused on state, auth, and recovery."
-            />
-          </div>
-        </SurfaceSection>
-
-        <SurfaceSection title="Recovery Paths">
-          <div className="space-y-2">
-            <SurfaceCard label="Reconnect viewer" value="Session refresh" />
-            <SurfaceCard label="Re-auth" value="Wallet token bootstrap" />
-            <SurfaceCard label="Terminal view" value="/hyperscape/tui" />
-          </div>
-        </SurfaceSection>
       </section>
     );
   }

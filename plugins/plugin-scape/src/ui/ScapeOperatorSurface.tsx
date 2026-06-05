@@ -650,52 +650,83 @@ export function ScapeOperatorSurface({
 
   if (!run) {
     return (
-      <section className="space-y-3" data-testid="scape-operator-ready">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
-            &apos;scape Operator
+      <section className="p-4" data-testid="scape-operator-ready">
+        <div className="mx-auto flex max-w-3xl flex-col gap-3">
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/45 bg-card/82 px-4 py-3 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div
+                aria-hidden
+                className="grid h-10 w-10 place-items-center rounded-xl bg-lime-600 text-lg font-black text-white shadow-sm"
+              >
+                S
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-foreground">
+                  &apos;scape
+                </div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  xRSPS spawn ready
+                </div>
+              </div>
+            </div>
+            <div className="h-3 w-3 rounded-full bg-amber-400 shadow-[0_0_0_4px_rgba(251,191,36,0.18)]" />
           </div>
-          <SurfaceBadge tone="warn">Standby</SurfaceBadge>
-          <SurfaceBadge tone="accent">xRSPS</SurfaceBadge>
-          <span className="ml-auto text-2xs uppercase tracking-[0.18em] text-muted">
-            /scape
-          </span>
+
+          <div className="grid grid-cols-1 gap-3">
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-amber-300/35 bg-amber-400/10 text-lg text-amber-700">
+                ◇
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Bot SDK
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  Token pending
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-lime-300/35 bg-lime-400/10 text-lg text-lime-700">
+                ◉
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Agent
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  Spawn pending
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-cyan-300/35 bg-cyan-400/10 text-lg text-cyan-700">
+                ◆
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Journal
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  Goals · memory
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
+              <div className="grid h-9 w-9 place-items-center rounded-lg border border-violet-300/35 bg-violet-400/10 text-lg text-violet-700">
+                ↗
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
+                  Path
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  /scape
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-
-        <SurfaceSection title="Spawn Dashboard">
-          <div className="space-y-2">
-            <SurfaceCard
-              label="Bot SDK"
-              value="Waiting for token"
-              tone="warn"
-              subtitle="Connection, auth, spawn, and reconnect states render here."
-            />
-            <SurfaceCard
-              label="Agent"
-              value="Character not spawned"
-              subtitle="Combat, HP, position, run energy, and tick appear after connect."
-            />
-            <SurfaceCard
-              label="Journal"
-              value="Goals and memories"
-              tone="accent"
-              subtitle="The entity journal, active goal, and recent memories fill this column."
-            />
-            <SurfaceCard
-              label="Nearby"
-              value="NPCs · players · items"
-              subtitle="Perception lists replace this summary as soon as frames arrive."
-            />
-          </div>
-        </SurfaceSection>
-
-        <SurfaceSection title="Operator Paths">
-          <div className="space-y-2">
-            <SurfaceCard label="Live view" value="/scape" />
-            <SurfaceCard label="Terminal view" value="/scape/tui" />
-            <SurfaceCard label="Viewer client" value="xRSPS embedded app" />
-          </div>
-        </SurfaceSection>
       </section>
     );
   }

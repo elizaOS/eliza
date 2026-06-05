@@ -327,7 +327,7 @@ NATIVE_PLUGINS=(
 
     "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/libvoice_classifier.a"
     "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/libvoice_classifier.so"
-    "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/voice_classifier_stub_smoke"
+    "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/voice_classifier_abi_smoke"
     "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/voice_diarizer_parity_test"
     "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/voice_emotion_classes_test"
     "voice-classifier-cpp packages/native/plugins/voice-classifier-cpp/build/riscv64/voice_gguf_loader_test"

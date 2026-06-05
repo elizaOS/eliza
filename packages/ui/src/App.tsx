@@ -886,21 +886,20 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
           initial={
             reduceMotion
               ? { opacity: 0 }
-              : { opacity: 0, y: 16, filter: "blur(12px)" }
+              : { opacity: 0, y: 16 }
           }
           animate={
             reduceMotion
               ? { opacity: 0.38 }
-              : { opacity: [0.3, 0.5, 0.3], y: 0, filter: "blur(0px)" }
+              : { opacity: [0.3, 0.5, 0.3], y: 0 }
           }
           transition={
             reduceMotion
               ? { duration: 0.6 }
-              : {
-                  y: { duration: 1.9, ease: [0.22, 1, 0.36, 1] },
-                  filter: { duration: 1.9, ease: [0.22, 1, 0.36, 1] },
-                  opacity: { duration: 8, repeat: Infinity, ease: "easeInOut" },
-                }
+                : {
+                    y: { duration: 1.9, ease: [0.22, 1, 0.36, 1] },
+                    opacity: { duration: 8, repeat: Infinity, ease: "easeInOut" },
+                  }
           }
         >
           {minimalHomeGreeting()}
