@@ -294,7 +294,6 @@ export * from "./ui/empty-state";
 export * from "./ui/form";
 export * from "./ui/hover-card";
 export * from "./ui/input";
-export * from "./ui/input-group";
 export * from "./ui/label";
 export * from "./ui/pagination";
 export * from "./ui/progress";

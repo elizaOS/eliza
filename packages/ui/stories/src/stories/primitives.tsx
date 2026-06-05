@@ -74,12 +74,6 @@ import {
   HoverCardTrigger,
 } from "@ui-src/components/ui/hover-card.tsx";
 import { Input } from "@ui-src/components/ui/input.tsx";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-  InputGroupText,
-} from "@ui-src/components/ui/input-group.tsx";
 import { Label } from "@ui-src/components/ui/label.tsx";
 import {
   Pagination,
@@ -847,23 +841,6 @@ export const primitiveStories: StoryDefinition[] = [
           action={<Button size="sm">Create agent</Button>}
         />
       </div>
-    ),
-  },
-  {
-    id: "p-input-group",
-    name: "InputGroup",
-    importPath:
-      'import { InputGroup, InputGroupInput, InputGroupAddon, InputGroupText } from "@elizaos/ui/components/ui/input-group"',
-    render: () => (
-      <InputGroup style={{ width: 260 }}>
-        <InputGroupAddon>
-          <Search />
-        </InputGroupAddon>
-        <InputGroupInput placeholder="Search models..." />
-        <InputGroupAddon align="inline-end">
-          <InputGroupText>cmd+K</InputGroupText>
-        </InputGroupAddon>
-      </InputGroup>
     ),
   },
   {
