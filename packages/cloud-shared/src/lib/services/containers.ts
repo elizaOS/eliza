@@ -35,10 +35,7 @@ export class ContainersService {
     organizationId: string,
     projectName: string,
   ): Promise<Container | null> {
-    return await containersRepository.findActiveByProjectName(
-      organizationId,
-      projectName,
-    );
+    return await containersRepository.findActiveByProjectName(organizationId, projectName);
   }
 
   async getByCharacterId(characterId: string): Promise<Container | null> {
