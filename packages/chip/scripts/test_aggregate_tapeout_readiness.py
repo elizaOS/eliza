@@ -3057,11 +3057,15 @@ class E1PhoneBoardPackageGateTests(unittest.TestCase):
             check=False,
         )
         combined = completed.stdout + completed.stderr
-        self.assertEqual(completed.returncode, 2, combined[-4000:])
+        # A structurally consistent package exits 0: the fabrication-blocked state
+        # is recorded in the report and surfaced via the STATUS: BLOCKED planning
+        # line, not by failing the structural check (mirrors check_package_cross_probe).
+        self.assertEqual(completed.returncode, 0, combined[-4000:])
         self.assertEqual(agg._classify(completed.returncode, combined), "BLOCKED")
         report = json.loads(
             (ROOT / "build/reports/e1_phone_board_package.json").read_text(encoding="utf-8")
         )
+        self.assertEqual(report["summary"]["structural_package_checks"], "pass")
         self.assertIn("STATUS: BLOCKED E1 phone board package", combined)
         self.assertFalse(report["summary"]["fabrication_ready"])
         self.assertFalse(report["summary"]["release_evidence_complete"])

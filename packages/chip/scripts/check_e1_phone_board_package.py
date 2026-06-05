@@ -18213,9 +18213,11 @@ def main() -> int:
     check_release_gates_fail_closed(manifest)
     check_no_orphaned_board_files()
     write_board_package_report(manifest)
-    raise SystemExit(
+    print(
+        "STATUS: BLOCKED E1 phone board package validation: "
         "E1 phone board package structurally consistent; fabrication release remains blocked"
     )
+    return 0
 
 
 if __name__ == "__main__":
@@ -18223,10 +18225,7 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except SystemExit as exc:
         if exc.code and not isinstance(exc.code, int):
-            if str(exc.code) != (
-                "E1 phone board package structurally consistent; fabrication release remains blocked"
-            ):
-                write_board_package_failure_report(exc.code)
+            write_board_package_failure_report(exc.code)
             print(f"STATUS: BLOCKED E1 phone board package validation: {exc.code}")
             raise SystemExit(2) from exc
         raise
