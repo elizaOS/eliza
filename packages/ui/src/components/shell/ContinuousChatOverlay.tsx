@@ -568,15 +568,12 @@ export function ContinuousChatOverlay({
 	        data-active={fullscreen ? "true" : "false"}
 	        className={cn(
 	          "fixed inset-0",
-	          fullscreen ? "pointer-events-auto" : "pointer-events-none",
-	        )}
-	        style={{
 	          // The glass tint: a diagonal sheen over a gentle scrim, so the frosted
 	          // view keeps depth and the bubbles stay legible on light or dark views.
-	          backgroundImage:
-	            "linear-gradient(135deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.02) 36%, rgba(8,10,18,0.18) 100%)",
-        }}
-        initial={false}
+	          "bg-[linear-gradient(135deg,rgba(255,255,255,0.10)_0%,rgba(255,255,255,0.02)_36%,rgba(8,10,18,0.18)_100%)]",
+	          fullscreen ? "pointer-events-auto" : "pointer-events-none",
+	        )}
+	        initial={false}
         animate={{
           opacity: fullscreen ? 1 : 0,
           // Animate only the unprefixed property — framer-motion's animation
