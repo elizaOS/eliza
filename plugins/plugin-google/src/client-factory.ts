@@ -54,9 +54,7 @@ export class GoogleApiClientFactory {
     reason: string
   ): Promise<calendar_v3.Calendar> {
     const auth = await this.resolveAuthClient(account, capabilities, reason);
-    return google.calendar(
-      this.apiOptions("v3", auth) as unknown as calendar_v3.Options,
-    );
+    return google.calendar(this.apiOptions("v3", auth) as unknown as calendar_v3.Options);
   }
 
   async drive(
