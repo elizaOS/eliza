@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/native-activity-tracker",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.3-beta.8",
   "description": "macOS activity-tracker native helper (Swift) plus a small TypeScript driver that spawns and line-parses the collector process.",
   "type": "module",
   "main": "./dist/index.js",
