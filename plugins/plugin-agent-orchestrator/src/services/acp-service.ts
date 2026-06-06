@@ -1963,12 +1963,11 @@ export class AcpService extends Service {
     model?: string,
     agentType?: AgentType,
   ): NodeJS.ProcessEnv {
-    const env: NodeJS.ProcessEnv = {};
-    for (const [key, value] of Object.entries(process.env)) {
-      if (typeof value !== "string") continue;
-      if (isDeniedSubAgentEnvKey(key)) continue;
-      if (shouldForwardEnv(key)) env[key] = value;
-    }
+    // Deny-list-filtered, allowlisted, casing-canonicalized host env (see
+    // forwardableSubAgentEnv / canonicalForwardedEnvKey — Bun on Windows reports
+    // OS vars like `Path` with native casing, which a child must not inherit
+    // alongside an uppercase duplicate).
+    const env: NodeJS.ProcessEnv = forwardableSubAgentEnv(process.env);
     for (const [key, value] of Object.entries(customCredentials ?? {})) {
       if (typeof value !== "string") continue;
       // customCredentials arrive with the spawn request, not from the parent's
@@ -1981,10 +1980,10 @@ export class AcpService extends Service {
         });
         continue;
       }
-      env[key] = value;
+      env[canonicalForwardedEnvKey(key)] = value;
     }
     for (const [key, value] of Object.entries(extra ?? {})) {
-      if (typeof value === "string") env[key] = value;
+      if (typeof value === "string") env[canonicalForwardedEnvKey(key)] = value;
     }
     if (model) {
       env.OPENAI_MODEL = model;
@@ -2221,16 +2220,63 @@ export function isClaudeOAuthSubscriptionToken(
   return value?.startsWith("sk-ant-oat") ?? false;
 }
 
+/**
+ * OS-level environment variables a spawned coding agent needs to function.
+ * Matched case-insensitively (see `shouldForwardEnv`): the repo runtime is Bun,
+ * and Bun on Windows reports these with native casing — `Path`, not `PATH` —
+ * so a case-sensitive check would forward NONE of them, leaving the child with
+ * no search path (the opencode shim then fails with "'bun' is not recognized").
+ * Includes the Windows essentials cmd.exe + Bun + the agent's config/cache
+ * resolution rely on, alongside the POSIX names.
+ */
+const FORWARDED_SYSTEM_ENV: ReadonlySet<string> = new Set([
+  "PATH",
+  "PATHEXT",
+  "HOME",
+  "USER",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TZ",
+  "TERM",
+  // Windows essentials.
+  "SYSTEMROOT",
+  "WINDIR",
+  "COMSPEC",
+  "SYSTEMDRIVE",
+  "TEMP",
+  "TMP",
+  "USERPROFILE",
+  "HOMEDRIVE",
+  "HOMEPATH",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "PROGRAMDATA",
+  "PROGRAMFILES",
+  "PROGRAMFILES(X86)",
+  "COMMONPROGRAMFILES",
+  "NUMBER_OF_PROCESSORS",
+  "PROCESSOR_ARCHITECTURE",
+  "USERNAME",
+  "USERDOMAIN",
+]);
+
+/**
+ * The key a forwarded var is assigned under. OS system vars are canonicalized to
+ * their uppercase `FORWARDED_SYSTEM_ENV` form because Bun on Windows reports them
+ * with native casing (`Path`, `Pathext`, `SystemRoot`, `ProgramFiles`, …); a
+ * child must not inherit two casings of the same var (the winner is undefined on
+ * Windows), and JS consumers that read `env.PATH` case-sensitively need the
+ * canonical key. Non-system keys (ELIZA_*, API keys, model overrides) keep their
+ * original casing.
+ */
+export function canonicalForwardedEnvKey(key: string): string {
+  return FORWARDED_SYSTEM_ENV.has(key.toUpperCase()) ? key.toUpperCase() : key;
+}
+
 export function shouldForwardEnv(key: string): boolean {
   return (
-    key === "PATH" ||
-    key === "HOME" ||
-    key === "USER" ||
-    key === "LANG" ||
-    key === "LC_ALL" ||
-    key === "LC_CTYPE" ||
-    key === "TZ" ||
-    key === "TERM" ||
+    FORWARDED_SYSTEM_ENV.has(key.toUpperCase()) ||
     key.startsWith("ACPX_AUTH_") ||
     key.startsWith("ELIZA_") ||
     // Parent-context bridge session id (ELIZA_HOOK_PORT already passes via the
@@ -2263,6 +2309,25 @@ export function shouldForwardEnv(key: string): boolean {
 export function isEnvForwardableToSubAgent(key: string): boolean {
   if (isDeniedSubAgentEnvKey(key)) return false;
   return shouldForwardEnv(key);
+}
+
+/**
+ * The deny-list-filtered, allowlisted, casing-canonicalized subset of `source`
+ * to forward to a coding sub-agent. Pure (no process.env read) so it is unit
+ * testable: pass a synthetic env (e.g. `{ Path: "…" }`, the casing Bun reports
+ * on Windows) and assert the result is keyed by `PATH`. See
+ * `canonicalForwardedEnvKey` for why OS vars are canonicalized.
+ */
+export function forwardableSubAgentEnv(
+  source: Record<string, string | undefined>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value !== "string") continue;
+    if (!isEnvForwardableToSubAgent(key)) continue;
+    out[canonicalForwardedEnvKey(key)] = value;
+  }
+  return out;
 }
 
 function extractSessionId(event: AcpJsonRpcMessage): string | undefined {
