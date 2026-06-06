@@ -594,7 +594,7 @@
         "@solana/wallet-adapter-wallets": "^0.19.38",
         "@solana/web3.js": "1.98.4",
         "@stwd/react": "^0.7.2",
-        "@stwd/sdk": "^0.8.1",
+        "@stwd/sdk": "^0.10.1",
         "@tailwindcss/typography": "^0.5.19",
         "@tailwindcss/vite": "^4.1.18",
         "@tanstack/react-query": "^5.90.20",
@@ -829,7 +829,7 @@
         "@solana/kit": "^6.0.0",
         "@solana/spl-token": "^0.4.14",
         "@solana/web3.js": "1.98.4",
-        "@stwd/sdk": "^0.8.1",
+        "@stwd/sdk": "^0.10.1",
         "@upstash/redis": "^1.37.0",
         "@x402/svm": "2.11.0",
         "ai": "^6.0.170",
@@ -2412,7 +2412,7 @@
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "@fontsource/poppins": "^5.2.7",
-        "@stwd/sdk": "^0.8.1",
+        "@stwd/sdk": "^0.10.1",
         "@tailwindcss/vite": "^4",
         "@vitejs/plugin-react": "^6.0.0",
         "lucide-react": "^1.0.0",
@@ -4920,16 +4920,20 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "bignumber.js": "^11.0.0",
+        "class-variance-authority": "^0.7.1",
+        "clsx": "^2.1.1",
         "dotenv": "^17.0.0",
         "fast-xml-parser": "^5.7.2",
         "p-limit": "^5.0.0",
+        "tailwindcss-animate": "^1.0.7",
         "uuid": "^14.0.0",
         "zod": "^4.4.3",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.4.14",
         "@cypress/react": "^9.0.2",
-        "@elizaos/ui": "workspace:*",
+        "@radix-ui/react-slot": "^1.0.0",
+        "@radix-ui/react-tabs": "^1.0.0",
         "@tailwindcss/postcss": "4.2.4",
         "@tanstack/react-query": "^5.62.0",
         "@testing-library/cypress": "^10.0.0",
@@ -4942,6 +4946,7 @@
         "postcss": "^8.5.4",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
+        "tailwind-merge": "^3.4.0",
         "tailwindcss": "^4.0.0",
         "tsconfig-paths": "^4.2.0",
         "tsup": "^8.5.1",
@@ -8927,7 +8932,7 @@
 
     "@stwd/react": ["@stwd/react@0.7.2", "", { "dependencies": { "@stwd/sdk": "^0.8.0" }, "peerDependencies": { "@rainbow-me/rainbowkit": "^2.0.0", "@solana/wallet-adapter-react": "^0.15.0", "@solana/wallet-adapter-react-ui": "^0.9.0", "@solana/wallet-adapter-wallets": "^0.19.0", "@solana/web3.js": "^1.90.0", "@tanstack/react-query": "^5.0.0", "bs58": "^5.0.0", "react": ">=18.0.0", "react-dom": ">=18.0.0", "viem": "^2.0.0", "wagmi": "^2.0.0" }, "optionalPeers": ["@rainbow-me/rainbowkit", "@solana/wallet-adapter-react", "@solana/wallet-adapter-react-ui", "@solana/wallet-adapter-wallets", "@solana/web3.js", "@tanstack/react-query", "bs58", "viem", "wagmi"] }, "sha512-PI+jb17Nr7MJVmf+0NaZ4AQhYscEdK1VGAbAKF0gNfi5vEctut0oMUwwcoqy8JHeqaxZ29vIYdapZ8Dn4Dyg5g=="],
 
-    "@stwd/sdk": ["@stwd/sdk@0.8.1", "", { "dependencies": { "bs58": "^6.0.0" } }, "sha512-YKg3KvSMJy3+nRshwSgUSyylSj+r9piVCGCvR5Pkqxw6iHRjktfbJD5r8AbisZE6aZLBtUShsdgwnkKxiEsEgg=="],
+    "@stwd/sdk": ["@stwd/sdk@0.10.1", "", { "dependencies": { "bs58": "^6.0.0" } }, "sha512-ss0hRZIkkY3oHZBlFVnMkbAemqJJzSH1hJmW6lbsnFxSDJGu9rbGct5AveeKjC1Z2cpsam7c+LqdaoZf9bWIHA=="],
 
     "@swagger-api/apidom-ast": ["@swagger-api/apidom-ast@1.11.1", "", { "dependencies": { "@babel/runtime-corejs3": "^7.26.10", "@swagger-api/apidom-error": "^1.11.1", "@types/ramda": "~0.30.0", "ramda": "~0.30.0", "ramda-adjunct": "^5.0.0", "unraw": "^3.0.0" } }, "sha512-5vcFzXltmIpCsjQouVKzjj7pPPUxYmwIARHuenim96GDnmqqVTtAoBXpIX++cD5RcJA72EBEqepQ+VSAA12RPA=="],
 
@@ -14387,6 +14392,8 @@
 
     "@elizaos/plugin-starter/vite": ["vite@7.3.3", "", { "dependencies": { "esbuild": "^0.27.0", "fdir": "^6.5.0", "picomatch": "^4.0.3", "postcss": "^8.5.6", "rollup": "^4.43.0", "tinyglobby": "^0.2.15" }, "optionalDependencies": { "fsevents": "~2.3.3" }, "peerDependencies": { "@types/node": "^20.19.0 || >=22.12.0", "jiti": ">=1.21.0", "less": "^4.0.0", "lightningcss": "^1.21.0", "sass": "^1.70.0", "sass-embedded": "^1.70.0", "stylus": ">=0.54.8", "sugarss": "^5.0.0", "terser": "^5.16.0", "tsx": "^4.8.1", "yaml": "^2.4.2" }, "optionalPeers": ["@types/node", "jiti", "less", "lightningcss", "sass", "sass-embedded", "stylus", "sugarss", "terser", "tsx", "yaml"], "bin": { "vite": "bin/vite.js" } }, "sha512-/4XH147Ui7OGTjg3HbdWe5arnZQSbfuRzdr9Ec7TQi5I7R+ir0Rlc9GIvD4v0XZurELqA035KVXJXpR61xhiTA=="],
 
+    "@elizaos/plugin-steward-app/@stwd/sdk": ["@stwd/sdk@0.8.1", "", { "dependencies": { "bs58": "^6.0.0" } }, "sha512-YKg3KvSMJy3+nRshwSgUSyylSj+r9piVCGCvR5Pkqxw6iHRjktfbJD5r8AbisZE6aZLBtUShsdgwnkKxiEsEgg=="],
+
     "@elizaos/plugin-wallet/uuid": ["uuid@11.1.1", "", { "bin": { "uuid": "dist/esm/bin/uuid" } }, "sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ=="],
 
     "@elizaos/vitest-vite/esbuild": ["esbuild@0.27.7", "", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.27.7", "@esbuild/android-arm": "0.27.7", "@esbuild/android-arm64": "0.27.7", "@esbuild/android-x64": "0.27.7", "@esbuild/darwin-arm64": "0.27.7", "@esbuild/darwin-x64": "0.27.7", "@esbuild/freebsd-arm64": "0.27.7", "@esbuild/freebsd-x64": "0.27.7", "@esbuild/linux-arm": "0.27.7", "@esbuild/linux-arm64": "0.27.7", "@esbuild/linux-ia32": "0.27.7", "@esbuild/linux-loong64": "0.27.7", "@esbuild/linux-mips64el": "0.27.7", "@esbuild/linux-ppc64": "0.27.7", "@esbuild/linux-riscv64": "0.27.7", "@esbuild/linux-s390x": "0.27.7", "@esbuild/linux-x64": "0.27.7", "@esbuild/netbsd-arm64": "0.27.7", "@esbuild/netbsd-x64": "0.27.7", "@esbuild/openbsd-arm64": "0.27.7", "@esbuild/openbsd-x64": "0.27.7", "@esbuild/openharmony-arm64": "0.27.7", "@esbuild/sunos-x64": "0.27.7", "@esbuild/win32-arm64": "0.27.7", "@esbuild/win32-ia32": "0.27.7", "@esbuild/win32-x64": "0.27.7" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-IxpibTjyVnmrIQo5aqNpCgoACA/dTKLTlhMHihVHhdkxKyPO1uBBthumT0rdHmcsk9uMonIWS0m4FljWzILh3w=="],
@@ -15318,6 +15325,8 @@
     "@stellar/stellar-sdk/bignumber.js": ["bignumber.js@9.3.1", "", {}, "sha512-Ko0uX15oIUS7wJ3Rb30Fs6SkVbLmPBAKdlm7q9+ak9bbIeFf0MwuBsQV6z7+X768/cHsfg+WlysDWJcmthjsjQ=="],
 
     "@stellar/stellar-sdk/eventsource": ["eventsource@2.0.2", "", {}, "sha512-IzUmBGPR3+oUG9dUeXynyNmf91/3zUSJg1lCktzKw47OXuhco54U3r9B7O4XX+Rb1Itm9OZ2b0RkTs10bICOxA=="],
+
+    "@stwd/react/@stwd/sdk": ["@stwd/sdk@0.8.1", "", { "dependencies": { "bs58": "^6.0.0" } }, "sha512-YKg3KvSMJy3+nRshwSgUSyylSj+r9piVCGCvR5Pkqxw6iHRjktfbJD5r8AbisZE6aZLBtUShsdgwnkKxiEsEgg=="],
 
     "@swagger-api/apidom-ast/@types/ramda": ["@types/ramda@0.30.2", "", { "dependencies": { "types-ramda": "^0.30.1" } }, "sha512-PyzHvjCalm2BRYjAU6nIB3TprYwMNOUY/7P/N8bSzp9W/yM2YrtGtAnnVtaCNSeOZ8DzKyFDvaqQs7LnWwwmBA=="],
 
