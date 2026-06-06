@@ -252,7 +252,7 @@ describe("ViewCatalog", () => {
     expect(screen.queryByText("Terminal TUI")).toBeNull();
   });
 
-  it("renders cards image-forward: real hero as image, placeholder as icon, no description/tags", () => {
+  it("renders context-rich cards with real hero images, icons, and hidden raw tags", () => {
     getActiveViewModalityMock.mockReturnValue("gui");
     useAvailableViewsMock.mockReturnValue({
       views: [
@@ -261,7 +261,7 @@ describe("ViewCatalog", () => {
           path: "/apps/withhero",
           heroImageUrl: "/api/views/withhero/hero",
           hasHeroImage: true,
-          description: "hidden description",
+          description: "visible description",
           tags: ["hiddentag"],
         }),
         view("nohero", {
@@ -270,7 +270,7 @@ describe("ViewCatalog", () => {
           icon: "Wallet",
           heroImageUrl: "/api/views/nohero/hero",
           hasHeroImage: false,
-          description: "also hidden",
+          description: "also visible",
         }),
       ],
       loading: false,
@@ -288,8 +288,8 @@ describe("ViewCatalog", () => {
     expect(
       screen.getByTestId("view-card-nohero").querySelector("img"),
     ).toBeNull();
-    expect(screen.queryByText("hidden description")).toBeNull();
-    expect(screen.queryByText("also hidden")).toBeNull();
+    expect(screen.getByText("visible description")).toBeTruthy();
+    expect(screen.getByText("also visible")).toBeTruthy();
     expect(screen.queryByText("hiddentag")).toBeNull();
   });
 
@@ -406,6 +406,37 @@ describe("ViewCatalog", () => {
       topSection.querySelectorAll('[data-testid^="view-card-"]'),
     ).toHaveLength(8);
     expect(screen.getAllByText("Remote Ledger")).toHaveLength(1);
+  });
+
+  it("sorts cards alphabetically when A-Z is selected", () => {
+    useAvailableViewsMock.mockReturnValue({
+      views: [
+        view("plugin.z", {
+          label: "Zebra",
+          path: "/apps/zebra",
+          pluginName: "plugin-pack",
+        }),
+        view("plugin.a", {
+          label: "Alpha",
+          path: "/apps/alpha",
+          pluginName: "plugin-pack",
+        }),
+      ],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    const { container } = render(<ViewCatalog />);
+
+    fireEvent.click(screen.getByRole("button", { name: "A-Z" }));
+
+    const pluginCards = Array.from(
+      container.querySelectorAll('[data-testid^="view-card-plugin."]'),
+    );
+    expect(pluginCards.map((card) => card.getAttribute("data-testid"))).toEqual(
+      ["view-card-plugin.a", "view-card-plugin.z"],
+    );
   });
 
   it("uses the search input to render server-ranked remote results", async () => {
