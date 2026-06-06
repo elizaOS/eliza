@@ -26,6 +26,7 @@ import {
   consumeStewardCodeFromQuery,
   consumeStewardTokensFromHash,
   exchangeStewardCodeViaApi,
+  refreshStewardSessionViaCookie,
   syncStewardSessionCookie,
 } from "../../lib/steward-session";
 import {
@@ -236,17 +237,27 @@ export default function StewardLoginSection() {
         tenantId: STEWARD_TENANT_ID,
         codeVerifier,
       })
-        .then((res) => {
+        .then(async (res) => {
           // Mirror the JWT into localStorage so `@stwd/react`'s `useAuth()`
           // and `readStewardSessionFromStorage()` see the session on the
           // very next route mount. Without this, OAuth users land back on
           // `/login` after a successful exchange (HttpOnly cookies alone
           // aren't enough — the SPA auth check requires the localStorage
-          // copy until that's relaxed).
-          if (res?.token) {
-            writeStoredStewardToken(res.token);
-            window.dispatchEvent(new CustomEvent("steward-token-sync"));
+          // copy until that's relaxed). If an older Worker returns only
+          // cookies, hydrate through the cookie refresh endpoint before
+          // redirecting instead of bouncing into a login loop.
+          let token = res?.token;
+          if (!token && hasStewardAuthedCookie()) {
+            const refreshed = await refreshStewardSessionViaCookie();
+            token = refreshed?.token;
           }
+          if (!token) {
+            throw new Error(
+              "Sign-in completed, but the browser session could not be hydrated. Refresh and try again.",
+            );
+          }
+          writeStoredStewardToken(token);
+          window.dispatchEvent(new CustomEvent("steward-token-sync"));
           setRedirectTo(
             resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
           );
@@ -308,7 +319,19 @@ export default function StewardLoginSection() {
           return;
         }
 
-        if (!readStoredStewardToken() && !hasStewardAuthedCookie()) return;
+        const storedToken = readStoredStewardToken();
+        if (!storedToken && hasStewardAuthedCookie()) {
+          const refreshed = await refreshStewardSessionViaCookie();
+          if (cancelled) return;
+          if (refreshed?.token) {
+            writeStoredStewardToken(refreshed.token);
+            window.dispatchEvent(new CustomEvent("steward-token-sync"));
+            setRedirectTo(resolveLoginReturnTo(searchParams));
+          }
+          return;
+        }
+
+        if (!storedToken) return;
 
         const refreshed = await auth.refreshSession();
         if (cancelled) return;

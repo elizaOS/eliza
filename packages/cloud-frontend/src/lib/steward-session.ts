@@ -118,8 +118,9 @@ export function consumeStewardTokensFromHash(): {
  * `syncStewardSessionCookie`'s plumbing — same base URL, same credentials,
  * same skipAuth treatment). Posts the one-time OAuth code to the cloud-api
  * nonce-exchange route, which calls Steward `/auth/oauth/exchange`
- * server-side and sets HttpOnly steward-token cookies. Access and refresh
- * tokens never enter this process.
+ * server-side and sets HttpOnly steward-token cookies. Trusted Cloud origins
+ * also receive the short-lived access token so the SPA can hydrate its
+ * localStorage mirror until route auth no longer requires synchronous reads.
  *
  * Throws `StewardSessionError` on non-2xx so callers can surface the
  * specific code (`code_invalid`, `code_expired`, `code_redirect_mismatch`,
@@ -159,20 +160,30 @@ export async function exchangeStewardCodeViaApi(
 }
 
 /**
- * Cookie-only session refresh. Sends an empty POST to the cloud-api
+ * Cookie-backed session refresh. Sends an empty POST to the cloud-api
  * `steward-refresh` route with `credentials: "include"`; the HttpOnly
- * `steward-refresh-token` cookie travels automatically. The server
- * exchanges it with Steward, sets fresh HttpOnly cookies, and returns
- * `{ ok, expiresAt }`. No tokens enter JS.
+ * `steward-refresh-token` cookie travels automatically. The server exchanges
+ * it with Steward and sets fresh HttpOnly cookies. Trusted Cloud origins also
+ * receive a short-lived access token so the SPA can hydrate its localStorage
+ * mirror and avoid login loops while route auth still reads synchronously.
  *
- * Returns `true` on success, `false` when the server rejected the refresh
- * (cookie missing / revoked / Steward 401 — the server has already cleared
- * the stale cookies in that case).
+ * Throws `ApiError` when the cookie is missing/revoked or the server rejects
+ * the refresh.
  */
-export async function refreshStewardSessionViaCookie(): Promise<boolean> {
+export async function refreshStewardSessionViaCookie(): Promise<{
+  ok: true;
+  expiresAt?: number;
+  expiresIn?: number;
+  token?: string;
+}> {
   const response = await apiFetch(STEWARD_REFRESH_ENDPOINT, {
     method: "POST",
     skipAuth: true,
   });
-  return response.ok;
+  return (await response.json()) as {
+    ok: true;
+    expiresAt?: number;
+    expiresIn?: number;
+    token?: string;
+  };
 }
