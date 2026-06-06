@@ -3130,155 +3130,68 @@ export const allActionsSpec = {
 		},
 		{
 			name: "BLOCK",
-			description: "Block/unblock phone apps or desktop websites. ",
+			description:
+				"Focus / distraction control. Block or unblock websites (SelfControl-style hosts-file rules) and macOS apps, manage allow-lists, and review active block sessions. Targets: app (block/unblock/status) and website (block/unblock/status/request_permission/release/list_active).",
 			parameters: [
 				{
 					name: "target",
 					description:
-						"app phone apps | website desktop hosts-file/SelfControl. Omit ok: infer request_permission|release|list_active -> website, params, user text.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"app phone apps | website desktop hosts-file/SelfControl. Omit ok: infer request_permission|release|list_active -> website, params, user text.",
-				},
-				{
-					name: "action",
-					description:
-						"block | unblock | status | request_permission | release | list_active. request_permission|release|list_active website-only.",
+						"What to block: app (native macOS/mobile app) or website (hostname).",
 					required: true,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"block | unblock | status | request_permission | release | list_active. request_permission|release|list_active website-only.",
+						"What to block: app (native macOS/mobile app) or website (hostname).",
 				},
 				{
-					name: "intent",
-					description: "Owner intent text; extract apps/hostnames + duration.",
+					name: "action",
+					description:
+						"Subaction: block, unblock, status, request_permission, release, list_active.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Subaction: block, unblock, status, request_permission, release, list_active.",
+				},
+				{
+					name: "pattern",
+					description:
+						"Bundle id (target=app) or hostname / hostname pattern (target=website).",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Owner intent text. extract apps/hostnames + duration.",
+						"Bundle id (target=app) or hostname/hostname pattern (target=website).",
 				},
 				{
-					name: "hostnames",
-					description: "(target=website) Public hostnames/URLs.",
-					required: false,
-					schema: {
-						type: "array",
-						items: {
-							type: "string",
-						},
-					},
-					descriptionCompressed: "(target=website) Public hostnames/URLs.",
-				},
-				{
-					name: "confirmed",
+					name: "durationMs",
 					description:
-						"(target=website) true after owner confirmed. Without: block drafts. Required by release.",
-					required: false,
-					schema: {
-						type: "boolean",
-					},
-					descriptionCompressed:
-						"(target=website) true after owner confirmed. without: block drafts. Required by release.",
-				},
-				{
-					name: "ruleId",
-					description: "(target=website action=release) Managed block rule id.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"(target=website action=release) Managed block rule id.",
-				},
-				{
-					name: "reason",
-					description:
-						"(target=website action=release) Optional release reason; audit record.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"(target=website action=release) Optional release reason. audit record.",
-				},
-				{
-					name: "includeLiveStatus",
-					description:
-						"(target=website action=list_active) Include hosts-file/SelfControl live state. Default true.",
-					required: false,
-					schema: {
-						type: "boolean",
-					},
-					descriptionCompressed:
-						"(target=website action=list_active) Include hosts-file/SelfControl live state. Default true.",
-				},
-				{
-					name: "includeManagedRules",
-					description:
-						"(target=website action=list_active) Include managed rules. Default true.",
-					required: false,
-					schema: {
-						type: "boolean",
-					},
-					descriptionCompressed:
-						"(target=website action=list_active) Include managed rules. Default true.",
-				},
-				{
-					name: "packageNames",
-					description: "(target=app Android) Package names.",
-					required: false,
-					schema: {
-						type: "array",
-						items: {
-							type: "string",
-						},
-					},
-					descriptionCompressed: "(target=app Android) Package names.",
-				},
-				{
-					name: "appTokens",
-					description: "(target=app iOS) iPhone app tokens from selectApps().",
-					required: false,
-					schema: {
-						type: "array",
-						items: {
-							type: "string",
-						},
-					},
-					descriptionCompressed:
-						"(target=app iOS) iPhone app tokens from selectApps().",
-				},
-				{
-					name: "durationMinutes",
-					description:
-						"Block duration minutes. Omit/null = indefinite until manual removal.",
+						"Optional duration of the block session in milliseconds.",
 					required: false,
 					schema: {
 						type: "number",
 					},
 					descriptionCompressed:
-						"Block duration minutes. Omit/null = indefinite until manual removal.",
+						"Optional duration of the block session in milliseconds.",
 				},
 			],
 			descriptionCompressed:
-				"BLOCK apps+websites only; NOT calendar/focus; block|unblock|status|permission|release",
+				"focus: block|unblock|status|request_permission|release|list_active for target=app|website",
 			similes: [
-				"SELFCONTROL",
-				"SITE_BLOCKER",
-				"HOSTS_BLOCK",
+				"FOCUS",
+				"FOCUS_MODE",
 				"BLOCK_WEBSITE",
-				"SHIELD_APPS",
-				"FAMILY_CONTROLS",
-				"PHONE_FOCUS",
-				"PHONE_BLOCK_APPS",
-				"BLOCK_APPS",
+				"BLOCK_SITE",
+				"BLOCK_APP",
+				"UNBLOCK_WEBSITE",
+				"UNBLOCK_APP",
+				"START_FOCUS",
+				"END_FOCUS",
+				"STOP_DISTRACTION",
+				"SELFCONTROL",
 			],
 			exampleCalls: [
 				{
@@ -3288,16 +3201,8 @@ export const allActionsSpec = {
 						BLOCK: {
 							target: "example",
 							action: "example",
-							intent: "example",
-							hostnames: "example",
-							confirmed: false,
-							ruleId: "example",
-							reason: "example",
-							includeLiveStatus: false,
-							includeManagedRules: false,
-							packageNames: "example",
-							appTokens: "example",
-							durationMinutes: 1,
+							pattern: "example",
+							durationMs: 1,
 						},
 					},
 				},
@@ -3665,335 +3570,116 @@ export const allActionsSpec = {
 		{
 			name: "CALENDAR",
 			description:
-				"Live calendar: event CRUD, availability, meeting prefs. Subactions: ",
+				"Owner-facing calendar umbrella action. Op-based dispatch over the unified Google + Apple calendar feed: read_feed, create_event, update_event, delete_event, find_slots, next_event, describe_event, travel_buffer.",
 			parameters: [
 				{
-					name: "action",
-					description:
-						"Calendar op. feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, check_availability, propose_times, update_preferences.",
-					required: false,
+					name: "op",
+					description: "Which calendar sub-operation to run.",
+					required: true,
 					schema: {
 						type: "string",
 						enum: [
-							"feed",
-							"next_event",
-							"search_events",
+							"read_feed",
 							"create_event",
 							"update_event",
 							"delete_event",
-							"trip_window",
-							"bulk_reschedule",
-							"check_availability",
-							"propose_times",
-							"update_preferences",
+							"find_slots",
+							"next_event",
+							"describe_event",
+							"travel_buffer",
 						],
 					},
-					descriptionCompressed:
-						"Calendar op. feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, check_availability, propose_times...",
+					descriptionCompressed: "Which calendar sub-operation to run.",
 				},
 				{
-					name: "intent",
+					name: "eventId",
 					description:
-						'Natural-language request. Examples: "calendar today", "flights this week", "create meeting tomorrow 3pm".',
+						"Target event id (update_event/delete_event/describe_event).",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						'Natural-language request. Examples: "calendar today", "flights this week", "create meeting tomorrow 3pm".',
+						"Target event id (update_event/delete_event/describe_event).",
+				},
+				{
+					name: "startAt",
+					description: "ISO start (create_event/find_slots window start).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"ISO start (create_event/find_slots window start).",
+				},
+				{
+					name: "endAt",
+					description: "ISO end (create_event/find_slots window end).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"ISO end (create_event/find_slots window end).",
+				},
+				{
+					name: "timeZone",
+					description: "IANA timezone for relative time queries.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "IANA timezone for relative time queries.",
 				},
 				{
 					name: "title",
-					description: "Event title for create_event. TOP-LEVEL flat. ",
+					description: "Event title (create_event/update_event).",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"title TOP-LEVEL; NOT details. create_event needs title + details.start/end",
+					descriptionCompressed: "Event title (create_event/update_event).",
 				},
 				{
 					name: "query",
 					description:
-						"Search phrase for search_events/travel_itinerary: flight, dentist, Denver.",
+						"Free-text query (next_event/describe_event/find_slots).",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Search phrase for search_events/travel_itinerary: flight, dentist, Denver.",
-				},
-				{
-					name: "queries",
-					description:
-						"Optional search_events phrases array. Combined/deduped.",
-					required: false,
-					schema: {
-						type: "array",
-						items: {
-							type: "string",
-						},
-					},
-					descriptionCompressed:
-						"Optional search_events phrases array. Combined/deduped.",
-				},
-				{
-					name: "details",
-					description:
-						"Structured fields for create_event/update_event/delete_event. ",
-					required: false,
-					schema: {
-						type: "object",
-						properties: {
-							calendarId: {
-								type: "string",
-							},
-							timeMin: {
-								type: "string",
-							},
-							timeMax: {
-								type: "string",
-							},
-							timeZone: {
-								type: "string",
-							},
-							forceSync: {
-								type: "boolean",
-							},
-							windowDays: {
-								type: "number",
-							},
-							windowPreset: {
-								type: "string",
-							},
-							start: {
-								type: "string",
-							},
-							end: {
-								type: "string",
-							},
-							startAt: {
-								type: "string",
-							},
-							endAt: {
-								type: "string",
-							},
-							durationMinutes: {
-								type: "number",
-							},
-							eventId: {
-								type: "string",
-							},
-							newTitle: {
-								type: "string",
-							},
-							description: {
-								type: "string",
-							},
-							location: {
-								type: "string",
-							},
-							travelOriginAddress: {
-								type: "string",
-							},
-							attendees: {
-								type: "array",
-								items: {
-									type: "string",
-								},
-							},
-						},
-					},
-					descriptionCompressed:
-						"details create|update|delete: calendarId,start/end,eventId,location; title/window TOP",
-				},
-				{
-					name: "durationMinutes",
-					description: "TOP-LEVEL flat. propose_times length minutes. ",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed:
-						"TOP-LEVEL flat. propose_times length minutes.",
-				},
-				{
-					name: "daysAhead",
-					description:
-						"propose_times days ahead. Default 7. Ignored with windowStart/windowEnd.",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed:
-						"propose_times days ahead. Default 7. Ignored with windowStart/windowEnd.",
-				},
-				{
-					name: "slotCount",
-					description: "propose_times slot count. Default 3.",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed: "propose_times slot count. Default 3.",
-				},
-				{
-					name: "windowStart",
-					description: "propose_times window earliest start. ISO-8601.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"propose_times window earliest start. ISO-8601.",
-				},
-				{
-					name: "windowEnd",
-					description: "propose_times window latest end. ISO-8601.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "propose_times window latest end. ISO-8601.",
-				},
-				{
-					name: "startAt",
-					description: "TOP-LEVEL flat. check_availability start. ISO-8601. ",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"TOP-LEVEL flat. check_availability start. ISO-8601.",
-				},
-				{
-					name: "endAt",
-					description:
-						"TOP-LEVEL flat. check_availability end. ISO-8601. See `startAt`.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"TOP-LEVEL flat. check_availability end. ISO-8601. See `startAt`.",
-				},
-				{
-					name: "timeZone",
-					description: "IANA timeZone for update_preferences hours.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "IANA timeZone for update_preferences hours.",
-				},
-				{
-					name: "preferredStartLocal",
-					description:
-						"TOP-LEVEL flat for update_preferences. Earliest start local HH:MM 24h. ",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"TOP-LEVEL flat for update_preferences. Earliest start local HH:MM 24h.",
-				},
-				{
-					name: "preferredEndLocal",
-					description:
-						"TOP-LEVEL flat for update_preferences. Latest end local HH:MM 24h. See `preferredStartLocal`.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"TOP-LEVEL flat for update_preferences. Latest end local HH:MM 24h. See `preferredStartLocal`.",
-				},
-				{
-					name: "defaultDurationMinutes",
-					description: "Default duration minutes (5–480).",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed: "Default duration minutes (5-480).",
-				},
-				{
-					name: "travelBufferMinutes",
-					description: "Buffer minutes before/after meetings (0–240).",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed:
-						"Buffer minutes before/after meetings (0-240).",
-				},
-				{
-					name: "blackoutWindows",
-					description:
-						"Array: { label, startLocal HH:MM, endLocal HH:MM, daysOfWeek? 0=Sun..6=Sat }.",
-					required: false,
-					schema: {
-						type: "array",
-						items: {
-							type: "object",
-							properties: {
-								label: {
-									type: "string",
-								},
-								startLocal: {
-									type: "string",
-									pattern: "^[0-2][0-9]:[0-5][0-9]$",
-								},
-								endLocal: {
-									type: "string",
-									pattern: "^[0-2][0-9]:[0-5][0-9]$",
-								},
-								daysOfWeek: {
-									type: "array",
-									items: {
-										type: "number",
-										minimum: 0,
-										maximum: 6,
-									},
-								},
-							},
-						},
-					},
-					descriptionCompressed:
-						"blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
+						"Free-text query (next_event/describe_event/find_slots).",
 				},
 			],
-			descriptionCompressed:
-				"calendar feed|next|search|create|update|delete|trip_window|reschedule|availability|propose",
+			similes: [
+				"READ_CALENDAR",
+				"GET_CALENDAR",
+				"SCHEDULE_EVENT",
+				"CREATE_EVENT",
+				"UPDATE_EVENT",
+				"DELETE_EVENT",
+				"FIND_SLOTS",
+			],
 			exampleCalls: [
 				{
 					user: "Use CALENDAR with the provided parameters.",
 					actions: ["CALENDAR"],
 					params: {
 						CALENDAR: {
-							action: "feed",
-							intent: "example",
-							title: "example",
-							query: "example",
-							queries: "example",
-							details: "example",
-							durationMinutes: 1,
-							daysAhead: 1,
-							slotCount: 1,
-							windowStart: "example",
-							windowEnd: "example",
+							op: "read_feed",
+							eventId: "example",
 							startAt: "example",
 							endAt: "example",
 							timeZone: "example",
-							preferredStartLocal: "example",
-							preferredEndLocal: "example",
-							defaultDurationMinutes: 1,
-							travelBufferMinutes: 1,
-							blackoutWindows: "example",
+							title: "example",
+							query: "example",
 						},
 					},
 				},
 			],
+			descriptionCompressed:
+				"Owner-facing calendar umbrella action. Op-based dispatch over the unified Google + Apple calendar feed: read_feed, create_event, update_event, delete_event...",
 		},
 		{
 			name: "COMPUTER_USE",
@@ -4242,13 +3928,13 @@ export const allActionsSpec = {
 		{
 			name: "CONFLICT_DETECT",
 			description:
-				"Scan owner calendar overlaps. Compare proposed window vs owner feed. Subactions: scan_today, scan_week, scan_event_proposal.",
+				"Scan the owner calendar for overlaps. Subactions: scan_today, scan_week, scan_event_proposal. Returns a severity-graded conflict list.",
 			parameters: [
 				{
 					name: "action",
 					description:
 						"Conflict op: scan_today | scan_week | scan_event_proposal.",
-					required: false,
+					required: true,
 					schema: {
 						type: "string",
 						enum: ["scan_today", "scan_week", "scan_event_proposal"],
@@ -4279,8 +3965,13 @@ export const allActionsSpec = {
 						"scan_event_proposal candidate: { startISO, endISO, attendees? }.",
 				},
 			],
-			descriptionCompressed:
-				"calendar conflicts: scan_today|scan_week|scan_event_proposal; severity warning|hard",
+			similes: [
+				"DETECT_CONFLICTS",
+				"SCAN_CONFLICTS",
+				"CONFLICTS_TODAY",
+				"CONFLICTS_WEEK",
+				"CHECK_OVERLAP",
+			],
 			exampleCalls: [
 				{
 					user: "Use CONFLICT_DETECT with the provided parameters.",
@@ -4294,6 +3985,8 @@ export const allActionsSpec = {
 					},
 				},
 			],
+			descriptionCompressed:
+				"Scan the owner calendar for overlaps. Subactions: scan_today, scan_week, scan_event_proposal. Returns a severity-graded conflict list.",
 		},
 		{
 			name: "CONNECTOR",
@@ -5462,77 +5155,110 @@ export const allActionsSpec = {
 		{
 			name: "INBOX",
 			description:
-				"Inbox: Gmail, Slack, Discord, Telegram, Signal, iMessage, WhatsApp. Merge recency feed. Subactions: list, search, summarize.",
+				"Unified cross-channel inbox umbrella action. Op-based dispatch: list, triage, reply, snooze, archive, approve. Operates across email, Discord, Telegram, WhatsApp, Slack, X and similar non-SMS channels (Android SMS is handled by plugin-messages).",
 			parameters: [
 				{
-					name: "action",
-					description: "Inbox op: list | search | summarize.",
+					name: "op",
+					description: "Which inbox sub-operation to run.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Which inbox sub-operation to run.",
+				},
+				{
+					name: "threadId",
+					description:
+						"Target thread id (required for triage/reply/snooze/archive/approve).",
 					required: false,
 					schema: {
 						type: "string",
-						enum: ["list", "search", "summarize"],
-					},
-					descriptionCompressed: "Inbox op: list | search | summarize.",
-				},
-				{
-					name: "platforms",
-					description:
-						"Optional platform filter: gmail | slack | discord | telegram | signal | imessage | whatsapp. Default all.",
-					required: false,
-					schema: {
-						type: "array",
-						items: {
-							type: "string",
-						},
 					},
 					descriptionCompressed:
-						"Optional platform filter: gmail | slack | discord | telegram | signal | imessage | whatsapp. Default all.",
+						"Target thread id (required for triage/reply/snooze/archive/approve).",
 				},
 				{
-					name: "since",
-					description: "receivedAt lower bound. ISO-8601.",
+					name: "channel",
+					description: "Channel the thread lives on.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "receivedAt lower bound. ISO-8601.",
+					descriptionCompressed: "Channel the thread lives on.",
 				},
 				{
-					name: "limit",
-					description: "Limit per platform. Default 50.",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed: "Limit per platform. Default 50.",
-				},
-				{
-					name: "query",
-					description: "Required for search. Free-form query.",
+					name: "decision",
+					description:
+						"Triage decision (reply_now/snooze/archive/ignore/needs_approval/follow_up).",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Required for search. Free-form query.",
+					descriptionCompressed:
+						"Triage decision (reply_now/snooze/archive/ignore/needs_approval/follow_up).",
+				},
+				{
+					name: "rationale",
+					description:
+						"Why the agent chose this decision — surfaced in approval UI.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Why agent chose this decision - surfaced in approval UI.",
+				},
+				{
+					name: "body",
+					description: "Reply body (op=reply).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Reply body (op=reply).",
+				},
+				{
+					name: "wakeAt",
+					description:
+						"ISO timestamp the snoozed thread should re-surface (op=snooze).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"ISO timestamp the snoozed thread should re-surface (op=snooze).",
+				},
+				{
+					name: "reason",
+					description: "Free-text rationale (op=snooze/archive).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Free-text rationale (op=snooze/archive).",
 				},
 			],
-			descriptionCompressed:
-				"INBOX list|search|summarize gmail|slack|discord|telegram|signal|imessage|whatsapp",
+			similes: ["TRIAGE_INBOX", "INBOX_REPLY", "INBOX_SNOOZE", "INBOX_ARCHIVE"],
 			exampleCalls: [
 				{
 					user: "Use INBOX with the provided parameters.",
 					actions: ["INBOX"],
 					params: {
 						INBOX: {
-							action: "list",
-							platforms: "example",
-							since: "example",
-							limit: 1,
-							query: "example",
+							op: "example",
+							threadId: "example",
+							channel: "example",
+							decision: "example",
+							rationale: "example",
+							body: "example",
+							wakeAt: "example",
+							reason: "example",
 						},
 					},
 				},
 			],
+			descriptionCompressed:
+				"Unified cross-channel inbox umbrella action. Op-based dispatch: list, triage, reply, snooze, archive, approve. Operates across email, Discord, Telegram...",
 		},
 		{
 			name: "LINEAR",
@@ -6314,22 +6040,85 @@ export const allActionsSpec = {
 		{
 			name: "OWNER_ALARMS",
 			description:
-				"Owner alarms: create/update/delete/complete/skip/snooze/review alarm reminders.",
-			parameters: [],
-			descriptionCompressed:
-				"owner alarms: action=create|update|delete|complete|skip|snooze|review",
-			similes: ["ALARM", "ALARMS", "WAKE_ME", "WAKE_UP"],
-		},
-		{
-			name: "OWNER_DOCUMENTS",
-			description:
-				"Owner documents: signature requests, approvals, deadlines, portal uploads, ID/form collection, close-out. Ops: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request.",
+				"Manage the owner's alarms (one-shot or repeating wake/notification alarms). Actions: create, update, delete, snooze, dismiss, list.",
 			parameters: [
 				{
 					name: "action",
 					description:
-						"Document op: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request.",
+						"Action: create | update | delete | snooze | dismiss | list.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Action: create | update | delete | snooze | dismiss | list.",
+				},
+				{
+					name: "id",
+					description: "Alarm id.",
 					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Alarm id.",
+				},
+				{
+					name: "label",
+					description: "Alarm label (create/update).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Alarm label (create/update).",
+				},
+				{
+					name: "fireAt",
+					description: "ISO-8601 timestamp when the alarm should fire.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"ISO-8601 timestamp when the alarm should fire.",
+				},
+				{
+					name: "repeatRule",
+					description: "Repeat rule (RRULE-style, e.g. FREQ=DAILY).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Repeat rule (RRULE-style, e. g. FREQ=DAILY).",
+				},
+			],
+			descriptionCompressed:
+				"owner alarms: create|update|delete|snooze|dismiss|list",
+			similes: ["ALARM", "SET_ALARM", "WAKE_UP", "WAKE_ME"],
+			exampleCalls: [
+				{
+					user: "Use OWNER_ALARMS with the provided parameters.",
+					actions: ["OWNER_ALARMS"],
+					params: {
+						OWNER_ALARMS: {
+							action: "example",
+							id: "example",
+							label: "example",
+							fireAt: "example",
+							repeatRule: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "OWNER_DOCUMENTS",
+			description:
+				"Owner-facing Docs And Portals umbrella action. Subaction-based dispatch covering signature requests, approval flows, deadline tracking, asset uploads, ID/form collection, and request closure.",
+			parameters: [
+				{
+					name: "subaction",
+					description: "Which OWNER_DOCUMENTS sub-operation to run.",
+					required: true,
 					schema: {
 						type: "string",
 						enum: [
@@ -6341,164 +6130,138 @@ export const allActionsSpec = {
 							"close_request",
 						],
 					},
-					descriptionCompressed:
-						"Document op: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request.",
+					descriptionCompressed: "Which OWNER_DOCUMENTS sub-operation to run.",
 				},
 				{
-					name: "documentRequestId",
+					name: "requestId",
 					description:
-						"Existing DocumentRequest id; required track_deadline/close_request.",
+						"Existing document-request id (close_request / updates).",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Existing DocumentRequest id. required track_deadline/close_request.",
+						"Existing document-request id (close_request/updates).",
 				},
 				{
-					name: "requesteeEntityId",
+					name: "kind",
 					description:
-						"Requestee Entity id; required request_signature/collect_id.",
+						"Document-request kind (signature/approval/asset/id_form).",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Requestee Entity id. required request_signature/collect_id.",
+						"Document-request kind (signature/approval/asset/id_form).",
 				},
 				{
-					name: "documentTitle",
-					description: "Short doc label.",
+					name: "title",
+					description: "Human-readable title for the request.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Short doc label.",
+					descriptionCompressed: "Human-readable title for the request.",
+				},
+				{
+					name: "description",
+					description: "Free-text description of what is being requested.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Free-text description of what is being requested.",
+				},
+				{
+					name: "url",
+					description: "Portal URL or asset location.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Portal URL or asset location.",
 				},
 				{
 					name: "deadline",
-					description: "Deadline ISO-8601.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Deadline ISO-8601.",
-				},
-				{
-					name: "portalUrl",
-					description:
-						"Portal URL; required upload_asset, optional collect_id.",
+					description: "ISO timestamp the request must be completed by.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Portal URL. required upload_asset, optional collect_id.",
+						"ISO timestamp the request must be completed by.",
 				},
 				{
-					name: "assetPath",
-					description: "Asset path/URL; required upload_asset.",
+					name: "counterparty",
+					description: "Counterparty (signer, approver, recipient).",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Asset path/URL. required upload_asset.",
+					descriptionCompressed: "Counterparty (signer, approver, recipient).",
 				},
 				{
-					name: "assetKind",
-					description:
-						"Asset kind deck|headshot|id|form|etc.; required upload_asset/collect_id.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Asset kind deck|headshot|id|form|etc. required upload_asset/collect_id.",
-				},
-				{
-					name: "signatureUrl",
-					description: "Optional signing portal URL: DocuSign|HelloSign|etc.",
+					name: "documentId",
+					description: "Underlying document id to bind to the request.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Optional signing portal URL: DocuSign|HelloSign|etc.",
-				},
-				{
-					name: "approvalReason",
-					description: "request_approval reason label.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "request_approval reason label.",
-				},
-				{
-					name: "note",
-					description: "Free-form DocumentRequest note.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Free-form DocumentRequest note.",
-				},
-				{
-					name: "resolution",
-					description:
-						"close_request only: completed|expired|cancelled; default completed.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: ["completed", "expired", "cancelled"],
-					},
-					descriptionCompressed:
-						"close_request only: completed|expired|cancelled. default completed.",
+						"Underlying document id to bind to the request.",
 				},
 			],
-			descriptionCompressed:
-				"OWNER_DOCUMENTS signature|approval|deadline|upload_asset|collect_id|close_request",
+			similes: [
+				"OWNER_DOCUMENTS_REQUEST_SIGNATURE",
+				"OWNER_DOCUMENTS_REQUEST_APPROVAL",
+				"OWNER_DOCUMENTS_TRACK_DEADLINE",
+				"OWNER_DOCUMENTS_UPLOAD_ASSET",
+				"OWNER_DOCUMENTS_COLLECT_ID_OR_FORM",
+				"OWNER_DOCUMENTS_CLOSE_REQUEST",
+			],
 			exampleCalls: [
 				{
 					user: "Use OWNER_DOCUMENTS with the provided parameters.",
 					actions: ["OWNER_DOCUMENTS"],
 					params: {
 						OWNER_DOCUMENTS: {
-							action: "request_signature",
-							documentRequestId: "example",
-							requesteeEntityId: "example",
-							documentTitle: "example",
+							subaction: "request_signature",
+							requestId: "example",
+							kind: "example",
+							title: "example",
+							description: "example",
+							url: "example",
 							deadline: "example",
-							portalUrl: "example",
-							assetPath: "example",
-							assetKind: "example",
-							signatureUrl: "example",
-							approvalReason: "example",
-							note: "example",
-							resolution: "completed",
+							counterparty: "example",
+							documentId: "example",
 						},
 					},
 				},
 			],
+			descriptionCompressed:
+				"Owner-facing Docs And Portals umbrella action. Subaction-based dispatch covering signature requests, approval flows, deadline tracking, asset uploads...",
 		},
 		{
 			name: "OWNER_FINANCES",
 			description:
-				"Owner finances: sources, imports, spending, recurring charges, subscriptions.",
+				"Owner finances dashboard: sources, imports, spending, recurring charges, subscriptions. (Scaffold — implementation migrating from plugin-lifeops.)",
 			parameters: [
 				{
 					name: "action",
-					description: "Owner finance op.",
+					description:
+						"Owner finance op (passthrough until migration completes).",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Owner finance op.",
+					descriptionCompressed:
+						"Owner finance op (passthrough until migration completes).",
 				},
 			],
 			descriptionCompressed:
 				"owner finances dashboard|sources|csv|transactions|spending|recurring|subscription",
-			similes: ["FINANCES"],
+			similes: ["FINANCES", "FINANCE", "TRANSACTIONS", "RECURRING"],
 			exampleCalls: [
 				{
 					user: "Use OWNER_FINANCES with the provided parameters.",
@@ -6513,53 +6276,268 @@ export const allActionsSpec = {
 		},
 		{
 			name: "OWNER_GOALS",
-			description: "Owner goals: create/update/delete/review goals/progress.",
-			parameters: [],
-			descriptionCompressed:
-				"owner goals: action=create|update|delete|review; backing kind=goal",
-			similes: ["GOAL", "GOALS", "LONG_TERM_GOAL"],
-		},
-		{
-			name: "OWNER_REMINDERS",
 			description:
-				"Owner reminders: create/update/delete/complete/skip/snooze/review one-off/recurring.",
-			parameters: [],
-			descriptionCompressed:
-				"owner reminders: action=create|update|delete|complete|skip|snooze|review",
-			similes: [
-				"REMINDER",
-				"REMINDERS",
-				"SET_REMINDER",
-				"REMIND_ME",
-				"REMIND_ME_TO",
-			],
-		},
-		{
-			name: "OWNER_ROUTINES",
-			description:
-				"Owner routines/habits: recurring routines; passive schedule inference.",
+				"Manage the owner's long-horizon life goals. Actions: create, update, delete, review. Goals carry a horizon (e.g. quarter, year, life) and feed routine + reminder generation.",
 			parameters: [
 				{
 					name: "action",
+					description: "Action: create | update | delete | review.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Action: create | update | delete | review.",
+				},
+				{
+					name: "id",
+					description: "Goal id (update/delete/review).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Goal id (update/delete/review).",
+				},
+				{
+					name: "title",
+					description: "Goal title (create/update).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Goal title (create/update).",
+				},
+				{
+					name: "description",
+					description: "Longer goal description (create/update).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Longer goal description (create/update).",
+				},
+				{
+					name: "horizon",
+					description: "Time horizon: quarter | year | life | etc.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Time horizon: quarter | year | life | etc.",
+				},
+			],
+			descriptionCompressed:
+				"owner goals: create|update|delete|review; long-horizon, drives routines",
+			similes: [
+				"GOALS",
+				"LIFE_GOALS",
+				"SET_GOAL",
+				"UPDATE_GOAL",
+				"REVIEW_GOALS",
+			],
+			exampleCalls: [
+				{
+					user: "Use OWNER_GOALS with the provided parameters.",
+					actions: ["OWNER_GOALS"],
+					params: {
+						OWNER_GOALS: {
+							action: "example",
+							id: "example",
+							title: "example",
+							description: "example",
+							horizon: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "OWNER_HEALTH",
+			description:
+				"Owner-facing health umbrella action: surface today's health summary, multi-day trends, per-metric breakdowns, and connector status (Apple Health / Google Fit / Strava / Fitbit / Withings / Oura).",
+			parameters: [
+				{
+					name: "subaction",
+					description: "Which health sub-operation to run.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Which health sub-operation to run.",
+				},
+				{
+					name: "metric",
 					description:
-						"Routine op: create|update|delete|complete|skip|snooze|review|schedule_summary|schedule_inspect.",
+						"Specific metric to query (steps, heart_rate, sleep_hours, calories, distance_meters, active_minutes).",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Routine op: create|update|delete|complete|skip|snooze|review|schedule_summary|schedule_inspect.",
+						"Specific metric to query (steps, heart_rate, sleep_hours, calories, distance_meters, active_minutes).",
+				},
+				{
+					name: "date",
+					description: "ISO date (YYYY-MM-DD) to query.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "ISO date (YYYY-MM-DD) to query.",
+				},
+				{
+					name: "days",
+					description: "Trend window length in days.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Trend window length in days.",
+				},
+			],
+			similes: ["HEALTH_SUMMARY", "HEALTH_TODAY", "HEALTH_TREND"],
+			exampleCalls: [
+				{
+					user: "Use OWNER_HEALTH with the provided parameters.",
+					actions: ["OWNER_HEALTH"],
+					params: {
+						OWNER_HEALTH: {
+							subaction: "example",
+							metric: "example",
+							date: "example",
+							days: 1,
+						},
+					},
 				},
 			],
 			descriptionCompressed:
-				"owner routines create|update|delete|complete|skip|snooze|review|schedule_summary|inspect",
+				"Owner-facing health umbrella action: surface today's health summary, multi-day trends, per-metric breakdowns, and connector status (Apple Health/Google...",
+		},
+		{
+			name: "OWNER_REMINDERS",
+			description:
+				"Manage the owner's reminders. Actions: create, update, delete, complete, snooze, list. Bridges to Apple Reminders + Google Tasks live in their respective plugins; this action is the owner-facing surface.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Action: create | update | delete | complete | snooze | list.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Action: create | update | delete | complete | snooze | list.",
+				},
+				{
+					name: "id",
+					description: "Reminder id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Reminder id.",
+				},
+				{
+					name: "title",
+					description: "Reminder title (create/update).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Reminder title (create/update).",
+				},
+				{
+					name: "dueAt",
+					description: "ISO-8601 due timestamp (create/update/snooze).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"ISO-8601 due timestamp (create/update/snooze).",
+				},
+			],
+			descriptionCompressed:
+				"owner reminders: create|update|delete|complete|snooze|list",
+			similes: ["REMIND", "REMIND_ME", "REMINDER", "FOLLOWUP", "FOLLOW_UP"],
+			exampleCalls: [
+				{
+					user: "Use OWNER_REMINDERS with the provided parameters.",
+					actions: ["OWNER_REMINDERS"],
+					params: {
+						OWNER_REMINDERS: {
+							action: "example",
+							id: "example",
+							title: "example",
+							dueAt: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "OWNER_ROUTINES",
+			description:
+				"Manage the owner's recurring routines (daily/weekly habits and cadences). Actions: create, update, delete, complete, skip, snooze, review.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Action: create | update | delete | complete | skip | snooze | review.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Action: create | update | delete | complete | skip | snooze | review.",
+				},
+				{
+					name: "id",
+					description: "Routine id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Routine id.",
+				},
+				{
+					name: "name",
+					description: "Routine name (create/update).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Routine name (create/update).",
+				},
+				{
+					name: "cadence",
+					description: "Cadence: daily | weekdays | weekly | custom-cron.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Cadence: daily | weekdays | weekly | custom-cron.",
+				},
+				{
+					name: "timeOfDay",
+					description: "Local time of day, e.g. '07:00'.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Local time of day, e. g. '07:00'.",
+				},
+			],
+			descriptionCompressed:
+				"owner routines: create|update|delete|complete|skip|snooze|review",
 			similes: [
-				"HABIT",
-				"HABITS",
-				"ROUTINE",
 				"ROUTINES",
-				"DAILY_TASK",
-				"WEEKLY_TASK",
+				"DAILY_ROUTINE",
+				"WEEKLY_ROUTINE",
+				"HABIT",
+				"MORNING_ROUTINE",
+				"NIGHT_ROUTINE",
 			],
 			exampleCalls: [
 				{
@@ -6568,10 +6546,106 @@ export const allActionsSpec = {
 					params: {
 						OWNER_ROUTINES: {
 							action: "example",
+							id: "example",
+							name: "example",
+							cadence: "example",
+							timeOfDay: "example",
 						},
 					},
 				},
 			],
+		},
+		{
+			name: "OWNER_SCREENTIME",
+			description:
+				"Owner-facing screen-time umbrella action: summaries, daily/weekly breakdowns, per-app / per-website slices, browser activity reports, and time-on-target queries across iOS / Android / desktop signals.",
+			parameters: [
+				{
+					name: "subaction",
+					description: "Which screen-time sub-operation to run.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Which screen-time sub-operation to run.",
+				},
+				{
+					name: "source",
+					description: "Aggregation source — 'app' or 'website'.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Aggregation source - 'app' or 'website'.",
+				},
+				{
+					name: "identifier",
+					description: "Bundle id, package name, or domain to filter on.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Bundle id, package name, or domain to filter on.",
+				},
+				{
+					name: "date",
+					description: "ISO date (YYYY-MM-DD) to anchor a daily query.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"ISO date (YYYY-MM-DD) to anchor a daily query.",
+				},
+				{
+					name: "days",
+					description: "Multi-day window length.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Multi-day window length.",
+				},
+				{
+					name: "windowHours",
+					description: "Window length in hours (1..720).",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Window length in hours (1. 720).",
+				},
+				{
+					name: "deviceId",
+					description: "Restrict to a specific device id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Restrict to a specific device id.",
+				},
+			],
+			similes: ["SCREENTIME", "SCREEN_TIME_SUMMARY", "SCREEN_TIME_TODAY"],
+			exampleCalls: [
+				{
+					user: "Use OWNER_SCREENTIME with the provided parameters.",
+					actions: ["OWNER_SCREENTIME"],
+					params: {
+						OWNER_SCREENTIME: {
+							subaction: "example",
+							source: "example",
+							identifier: "example",
+							date: "example",
+							days: 1,
+							windowHours: 1,
+							deviceId: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Owner-facing screen-time umbrella action: summaries, daily/weekly breakdowns, per-app/per-website slices, browser activity reports, and time-on-target...",
 		},
 		{
 			name: "OWNER_TODOS",

@@ -76,9 +76,7 @@ describe("LocalFileStorageService", () => {
     const result = await service.uploadFile(source, "uploads");
 
     const { pathToFileURL: toUrl1 } = await import("node:url");
-    expect(result.url).toBe(
-      toUrl1(path.join(root, "uploads/1767323045000-input.txt")).href,
-    );
+    expect(result.url).toBe(toUrl1(path.join(root, "uploads/1767323045000-input.txt")).href);
     await service.downloadFile("ignored", "uploads/1767323045000-input.txt", destination);
     expect(readFileSync(destination, "utf8")).toBe("hello");
     vi.useRealTimers();
