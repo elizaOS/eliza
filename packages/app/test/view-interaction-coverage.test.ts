@@ -309,12 +309,9 @@ const GUI_INTERACTION_OWNERS: Readonly<
   ],
 };
 
-const INTERACTION_DEBT: Readonly<Record<string, string>> = {
-  "social-alpha:gui":
-    "Leaderboard view ships read-only (top recommenders table); no deterministic ui-smoke interaction spec drives its controls yet. Visual baseline captures the rendered table. Replace with an interaction owner once the surface gains clickable controls.",
-};
+const INTERACTION_DEBT: Readonly<Record<string, string>> = {};
 
-const MAX_INTERACTION_DEBT = 1;
+const MAX_INTERACTION_DEBT = 0;
 
 function viewKey(view: Pick<VisualViewCase, "id" | "viewType">) {
   return `${view.id}:${view.viewType}`;
