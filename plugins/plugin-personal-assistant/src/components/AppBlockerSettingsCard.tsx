@@ -7,13 +7,13 @@ import {
   RefreshCw,
   Search,
   ShieldBan,
-  Sparkles,
   Smartphone,
+  Sparkles,
   Square,
   Timer,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AppBlockerSettingsCardProps } from "../types";
+import type { AppBlockerSettingsCardProps } from "../types/app-blocker-settings-card";
 
 type AppBlockerPermission = Awaited<
   ReturnType<typeof client.checkAppBlockerPermissions>

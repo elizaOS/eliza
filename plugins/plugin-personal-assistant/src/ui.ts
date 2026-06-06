@@ -2,10 +2,8 @@ import * as React from "react";
 import { AppBlockerSettingsCard as AppBlockerSettingsCardImpl } from "./components/AppBlockerSettingsCard";
 import { WebsiteBlockerSettingsCard as WebsiteBlockerSettingsCardImpl } from "./components/WebsiteBlockerSettingsCard";
 import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "./platform/lifeops-github";
-import type {
-  AppBlockerSettingsCardProps,
-  WebsiteBlockerSettingsCardProps,
-} from "./types";
+import type { AppBlockerSettingsCardProps } from "./types/app-blocker-settings-card";
+import type { WebsiteBlockerSettingsCardProps } from "./types/website-blocker-settings-card";
 
 function EmptyComponent() {
   return null;
