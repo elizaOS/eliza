@@ -319,7 +319,6 @@ const SETTING_SECTIONS_TO_CLICK: readonly RegExp[] = [
   /^Remote Plugins$/,
   /^Connectors$/,
   /^App Permissions$/,
-  /^Wallet & RPC$/,
   /^Permissions$/,
   /^Vault$/,
   /^Security$/,
