@@ -1231,14 +1231,15 @@ function WalletConnectionChip({
 
 function WalletChainCluster() {
   return (
-    <span className="flex shrink-0 -space-x-1.5">
+    <span className="flex min-w-0 flex-wrap gap-1.5">
       {SUPPORTED_WALLET_CHAINS.map((chain) => (
-        <ChainLogoBadge
+        <span
           key={chain}
-          chain={chain}
-          size={24}
-          className="ring-2 ring-bg"
-        />
+          className="inline-flex items-center gap-1.5 rounded-full border border-border/25 bg-bg/35 px-2 py-1 text-[0.65rem] font-semibold uppercase text-muted"
+        >
+          <ChainLogoBadge chain={chain} size={16} className="ring-1 ring-bg" />
+          {chain === "ethereum" ? "ETH" : chain === "solana" ? "SOL" : chain}
+        </span>
       ))}
     </span>
   );
@@ -1364,14 +1365,14 @@ function WalletRailAccount({
   const solanaReady = Boolean(walletConfig?.solanaBalanceReady);
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
+      <div className="flex flex-wrap items-start gap-4">
         <div className="relative flex h-16 w-16 items-center justify-center rounded-[24px] border border-border/30 bg-bg/45">
           <Wallet className="h-7 w-7 text-accent" />
           <span className="absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full bg-bg ring-2 ring-bg">
             <CircleDot className="h-4 w-4 text-ok" />
           </span>
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1 basis-64">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <div className="font-mono text-2xl font-semibold leading-none text-txt">
               {formatUsd(portfolioValueUsd)}
@@ -1383,7 +1384,7 @@ function WalletRailAccount({
             <WalletConnectionChip label="SOL" ready={solanaReady} />
           </div>
         </div>
-        <div className="flex items-center gap-2 sm:justify-self-end">
+        <div className="flex items-center gap-2">
           <WalletRailRpcButton
             walletConfig={walletConfig}
             onOpenSettings={onOpenSettings}
