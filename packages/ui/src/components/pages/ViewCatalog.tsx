@@ -143,7 +143,7 @@ function ViewVisual({
   showHero: boolean;
   compact?: boolean;
 }) {
-  const sizeClass = compact ? "h-11 w-11" : "h-14 w-14";
+  const sizeClass = compact ? "h-14 w-14" : "h-[68px] w-[68px]";
   if (showHero && heroUrl) {
     return (
       <div
@@ -168,7 +168,7 @@ function ViewVisual({
         <ViewIcon
           icon={icon}
           label={label}
-          className={compact ? "h-5 w-5" : "h-6 w-6"}
+          className={compact ? "h-6 w-6" : "h-7 w-7"}
         />
       </div>
     </div>
