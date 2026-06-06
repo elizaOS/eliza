@@ -1,6 +1,7 @@
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
   assertReadyChecks,
+  hideContinuousChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -399,6 +400,7 @@ async function expectLifeOpsDynamicViewFallback(page: Page): Promise<boolean> {
 }
 
 test.beforeEach(async ({ page }) => {
+  await hideContinuousChatOverlay(page);
   await seedAppStorage(page, {
     "eliza:ui-theme": "dark",
     "elizaos:ui-theme": "dark",
@@ -411,7 +413,7 @@ test("LifeOps app supports deterministic reminders and alarm interactions", asyn
 }) => {
   const lifeOps = installLifeOpsInteractionRoutes(page);
 
-  await openAppPath(page, "/lifeops");
+  await openAppPath(page, "/apps/lifeops");
   if (await expectLifeOpsDynamicViewFallback(page)) {
     return;
   }
@@ -486,7 +488,7 @@ test("LifeOps assistant launches chat-first command prompts", async ({
 }) => {
   installLifeOpsInteractionRoutes(page);
 
-  await openAppPath(page, "/lifeops");
+  await openAppPath(page, "/apps/lifeops");
   if (await expectLifeOpsDynamicViewFallback(page)) {
     return;
   }
@@ -565,7 +567,8 @@ test("Feed routes expose reachable GUI state and deterministic TUI commands", as
     90_000,
   );
 
-  await openAppPath(page, "/feed/tui");
+  await page.goto("/feed/tui", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#root")).toBeVisible({ timeout: 90_000 });
   await assertReadyChecks(
     page,
     "feed tui",

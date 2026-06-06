@@ -210,6 +210,28 @@ export async function seedAppStorage(
   );
 }
 
+export async function hideContinuousChatOverlay(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const install = () => {
+      if (document.getElementById("ui-smoke-hide-continuous-chat-overlay")) {
+        return;
+      }
+      const style = document.createElement("style");
+      style.id = "ui-smoke-hide-continuous-chat-overlay";
+      style.textContent =
+        '[data-testid="continuous-chat-overlay"] { display: none !important; }';
+      (document.head ?? document.documentElement).appendChild(style);
+    };
+
+    if (document.head || document.documentElement) {
+      install();
+      return;
+    }
+
+    document.addEventListener("DOMContentLoaded", install, { once: true });
+  });
+}
+
 export async function installRenderTelemetryGuard(page: Page): Promise<void> {
   if (renderTelemetryGuardedPages.has(page)) return;
   renderTelemetryGuardedPages.add(page);

@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import {
   assertReadyChecks,
+  hideContinuousChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -249,12 +250,11 @@ async function openAppWindow(
 }
 
 async function openPhoneCompanionMode(page: Page): Promise<void> {
-  await page.goto("/?mode=companion", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#root")).toBeVisible({ timeout: 90_000 });
+  await openAppPath(page, "/phone-companion");
   await assertReadyChecks(
     page,
     "phone companion",
-    [{ text: "Eliza" }],
+    [{ text: "Companion" }],
     "any",
     90_000,
   );
@@ -1122,6 +1122,7 @@ test.describe("Android communications app interactions", () => {
     page,
   }) => {
     const issues = installIssueGuards(page);
+    await hideContinuousChatOverlay(page);
     await installDefaultAppRoutes(page);
     await page.route("http://127.0.0.1:31337/vnc**", async (route) => {
       await route.fulfill({
@@ -1132,7 +1133,7 @@ test.describe("Android communications app interactions", () => {
     });
 
     await openPhoneCompanionMode(page);
-    await expect(page.getByRole("heading", { name: "Eliza" })).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Companion" })).toBeVisible({
       timeout: 90_000,
     });
     await expect(
@@ -1191,7 +1192,7 @@ test.describe("Android communications app interactions", () => {
       .toContain("session-ui-smoke");
     await page.getByRole("button", { name: "Exit" }).click();
     await expect(
-      page.getByRole("heading", { name: /^(Eliza|Pair with Eliza)$/ }),
+      page.getByRole("heading", { name: /^(Companion|Pair with Eliza)$/ }),
     ).toBeVisible();
 
     await expectNoIssues(page, issues.splice(0), "phone companion pairing");
@@ -1209,6 +1210,7 @@ test.describe("Facewear and smartglasses GUI interactions", () => {
     const issues = installIssueGuards(page);
     let facewearStatusRequests = 0;
 
+    await hideContinuousChatOverlay(page);
     await installDefaultAppRoutes(page);
     await page.route("**/api/facewear/status", async (route) => {
       facewearStatusRequests += 1;

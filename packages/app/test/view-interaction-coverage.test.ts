@@ -75,7 +75,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
       proves:
         "Refreshes market data and verifies markets, positions, and orders.",
-      signals: ["hyperliquid refresh", "Markets", "Open orders"],
+      signals: ["hyperliquid refresh", "Markets", "Orders"],
     },
   ],
   lifeops: [
@@ -164,10 +164,10 @@ const GUI_INTERACTION_OWNERS: Readonly<
     {
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
       proves:
-        "Exercises wallet refresh, sidebar tabs, NFT/token state, swap, hide, and RPC settings navigation.",
+        "Exercises wallet refresh, sidebar tabs, NFT/token state, hide, and RPC settings navigation.",
       signals: [
         "wallet inventory interactions",
-        "Swap USDC",
+        "Hide USDC",
         "Open RPC settings",
       ],
     },
