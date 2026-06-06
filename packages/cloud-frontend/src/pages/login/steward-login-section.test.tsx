@@ -200,4 +200,26 @@ describe("StewardLoginSection", () => {
       "header.payload.signature",
     );
   });
+
+  test.each([
+    [
+      "invalid_link",
+      "We couldn't verify that sign-in link. Request a new one. If it keeps happening, contact support.",
+    ],
+    ["rate_limited", "Too many attempts. Wait a moment and try again."],
+    [
+      "mfa_required",
+      "Additional verification is required to finish signing in.",
+    ],
+  ])("shows Steward callback reason %s", async (reason, message) => {
+    mocks.getProviders.mockResolvedValue({
+      passkey: true,
+      email: true,
+      oauth: [],
+    });
+
+    renderLogin(`/login?error=email_auth_failed&reason=${reason}`);
+
+    expect(await screen.findByText(message)).toBeVisible();
+  });
 });
