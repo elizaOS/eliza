@@ -26,3 +26,8 @@ f9184d51cc60210ad6be388f3b1f1eae529a9904:packages/chip/scripts/test_release_arch
 # not a credential. The file path (elizaos-artifacts/elizaos-app/) and
 # extension (.js) confirm it is a build artifact, not source with secrets.
 20feed95fdf57b801635ef1dc69524b5184cdfc3:packages/os/linux/elizaos/config/includes.chroot/opt/elizaos-artifacts/elizaos-app/agent-bundle.js:generic-api-key:325543
+
+# Fake fixture value in a unit test asserting the containers route REDACTS
+# infra columns (deployment_log_key is a storage path, not a credential).
+# The test exists precisely to prove this field never reaches API responses.
+69e4235edffd5a526c7ff4b920d1c6b3d9a429f9:packages/cloud-api/v1/containers/route.test.ts:generic-api-key:148

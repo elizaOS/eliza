@@ -145,7 +145,7 @@ function rawContainer() {
     last_health_check: null,
     deployment_log: "contains internal pull output",
     deployment_log_storage: "inline",
-    deployment_log_key: "logs/private",
+    deployment_log_key: "fixture-internal-log-path",
     error_message: null,
     metadata: { hostname: "internal-host" },
     last_billed_at: null,
