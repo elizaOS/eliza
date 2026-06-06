@@ -24,8 +24,7 @@ function createRuntime(service: ShellService | null): IAgentRuntime {
 // the assertions are POSIX-shell-shaped. Skip on Windows; the unit tests
 // in `__tests__/shell.test.ts` cover the same code paths without
 // depending on shell-output formatting.
-const describePosixShell =
-  process.platform === "win32" ? describe.skip : describe;
+const describePosixShell = process.platform === "win32" ? describe.skip : describe;
 
 describePosixShell("shell plugin real local integration", () => {
   let allowedDirectory = "";

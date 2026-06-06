@@ -2308,6 +2308,10 @@ export const INVALID_TRACER_PROVIDER = {};
         find: /^@elizaos\/plugin-calendly$/,
         replacement: path.join(appCoreSrcRoot, "platform/empty-node-module.ts"),
       },
+      {
+        find: /^@elizaos\/plugin-google$/,
+        replacement: path.join(appCoreSrcRoot, "platform/empty-node-module.ts"),
+      },
       // The Steward app package root includes wallet route handlers and
       // server-side signing services. The renderer imports only these views.
       {
@@ -2497,6 +2501,13 @@ export const INVALID_TRACER_PROVIDER = {};
           },
           {
             find: /^@elizaos\/plugin-calendly$/,
+            replacement: path.join(
+              appCoreSrcRoot,
+              "platform/empty-node-module.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/plugin-google$/,
             replacement: path.join(
               appCoreSrcRoot,
               "platform/empty-node-module.ts",
