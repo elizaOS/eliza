@@ -2296,13 +2296,15 @@ export const INVALID_TRACER_PROVIDER = {};
       // plugin-personal-assistant no longer ships a renderer view (the
       // legacy /lifeops dashboard was killed in the lifeops decomposition);
       // domain views live in plugin-todos/inbox/goals/health/calendar/etc.
-      // Point the renderer at the plugin's package entry, which now exports
-      // headless orchestration (BRIEF/PRIORITIZE/PA actions) only.
+      // src/ui.ts is the browser-safe facade — it imports the side-effectful
+      // HTTP client and re-exports the surviving settings-card components,
+      // without dragging discord/health/phone/calendly/native deps into the
+      // browser bundle (those are pulled in by src/index.ts / src/plugin.ts).
       {
         find: /^@elizaos\/plugin-personal-assistant$/,
         replacement: path.resolve(
           elizaRoot,
-          "plugins/plugin-personal-assistant/src/index.ts",
+          "plugins/plugin-personal-assistant/src/ui.ts",
         ),
       },
       // The Steward app package root includes wallet route handlers and

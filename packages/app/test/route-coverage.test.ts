@@ -67,7 +67,14 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-companion/src/plugin.ts",
   "plugins/plugin-contacts/src/plugin.ts",
   "plugins/plugin-hyperliquid-app/src/plugin.ts",
-  "plugins/plugin-personal-assistant/src/plugin.ts",
+  "plugins/plugin-todos/src/index.ts",
+  "plugins/plugin-health/src/index.ts",
+  "plugins/plugin-inbox/src/plugin.ts",
+  "plugins/plugin-goals/src/plugin.ts",
+  "plugins/plugin-blocker/src/plugin.ts",
+  "plugins/plugin-finances/src/plugin.ts",
+  "plugins/plugin-calendar/src/plugin.ts",
+  "plugins/plugin-documents/src/plugin.ts",
   "plugins/plugin-messages/src/plugin.ts",
   "plugins/app-model-tester/src/plugin.ts",
   "plugins/plugin-phone/src/plugin.ts",
@@ -106,6 +113,22 @@ const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
     "Screenshare is registered by runtime capability loading, not the app boot side-effect loader.",
   "plugins/plugin-social-alpha/src/index.ts":
     "Social Alpha is an opt-in agent runtime plugin; its leaderboard view registers when the agent enables the plugin, not via the app boot loader.",
+  "plugins/plugin-todos/src/index.ts":
+    "Decomposed from lifeops; the todos domain view registers when the agent enables the plugin, not via the app boot loader.",
+  "plugins/plugin-health/src/index.ts":
+    "Decomposed from lifeops; the health domain view registers when the agent enables the plugin, not via the app boot loader.",
+  "plugins/plugin-inbox/src/plugin.ts":
+    "Decomposed from lifeops; the inbox domain view registers when the agent enables the plugin, not via the app boot loader.",
+  "plugins/plugin-goals/src/plugin.ts":
+    "Decomposed from lifeops; the goals domain view registers when the agent enables the plugin, not via the app boot loader.",
+  "plugins/plugin-blocker/src/plugin.ts":
+    "Decomposed from lifeops; the focus/blocker domain view registers when the agent enables the plugin, not via the app boot loader.",
+  "plugins/plugin-finances/src/plugin.ts":
+    "Decomposed from lifeops; the finances domain view registers when the agent enables the plugin, not via the app boot loader.",
+  "plugins/plugin-calendar/src/plugin.ts":
+    "Decomposed from lifeops; the calendar domain view registers when the agent enables the plugin, not via the app boot loader.",
+  "plugins/plugin-documents/src/plugin.ts":
+    "Decomposed from lifeops; the documents domain view registers when the agent enables the plugin, not via the app boot loader.",
 };
 
 const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
@@ -122,7 +145,7 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-hyperliquid-app":
     "plugins/plugin-hyperliquid-app/src/plugin.ts",
   "@elizaos/plugin-hyperscape": "plugins/plugin-hyperscape/src/index.ts",
-  "@elizaos/plugin-personal-assistant": "plugins/plugin-personal-assistant/src/plugin.ts",
+  "@elizaos/plugin-personal-assistant": null,
   "@elizaos/plugin-messages/register": "plugins/plugin-messages/src/plugin.ts",
   "@elizaos/plugin-phone": "plugins/plugin-phone/src/plugin.ts",
   "@elizaos/plugin-phone/register": "plugins/plugin-phone/src/plugin.ts",
@@ -164,12 +187,6 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     id: "hyperliquid",
     viewType: "xr",
     path: "/hyperliquid",
-  },
-  {
-    manifestPath: "plugins/plugin-personal-assistant/src/plugin.ts",
-    id: "lifeops",
-    viewType: "xr",
-    path: "/lifeops",
   },
   {
     manifestPath: "plugins/plugin-messages/src/plugin.ts",
