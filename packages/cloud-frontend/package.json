@@ -93,6 +93,7 @@
     "bs58": "^6.0.0",
     "create-hash": "^1.2.0",
     "create-hmac": "^1.1.7",
+    "elliptic": "^6.6.1",
     "hash-base": "^3.1.2",
     "jsdom": "^29.1.1",
     "secp256k1": "^5.0.1",
