@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-contacts",
-  "version": "2.0.3-beta.6",
+  "version": "2.0.3-beta.10",
   "description": "Android ContactsContract bridge for ElizaOS.",
   "main": "./dist/plugin.cjs.js",
   "module": "./dist/esm/index.js",

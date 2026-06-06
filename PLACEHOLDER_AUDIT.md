@@ -1553,7 +1553,7 @@ platform no-ops are separated from actionable runtime gaps.
   - marker scan and `git diff --check` on the touched Health file
 - Marker scan on the package is now clean.
 
-### plugins/plugin-lifeops
+### plugins/plugin-personal-assistant
 
 - Removed misleading stub/not-implemented wording from
   `src/activity-profile/proactive-planner.ts`. The GN planner comment now
@@ -1583,14 +1583,14 @@ platform no-ops are separated from actionable runtime gaps.
   resolution with an explicit validation failure, matching the existing
   candidate / playbook / service-name contract.
 - Verified with:
-  - `bun build plugins/plugin-lifeops/src/activity-profile/proactive-planner.ts --target=bun --outfile=/tmp/lifeops-proactive-planner-check.js`
+  - `bun build plugins/plugin-personal-assistant/src/activity-profile/proactive-planner.ts --target=bun --outfile=/tmp/lifeops-proactive-planner-check.js`
   - `bunx biome check` on touched LifeOps default-pack files and tests
-  - `bun run --cwd plugins/plugin-lifeops test test/default-packs.helpers.test.ts test/default-packs.schema.test.ts`
+  - `bun run --cwd plugins/plugin-personal-assistant test test/default-packs.helpers.test.ts test/default-packs.schema.test.ts`
   - `bunx biome check` on touched LifeOps scheduled-task, subscription,
     privacy/redaction, check-in, reminder, bill-extraction, first-run, and test
     files
-  - `bun run --cwd plugins/plugin-lifeops build:types`
-  - `bun run --cwd plugins/plugin-lifeops test src/lifeops/scheduled-task/consolidation-policy.test.ts src/lifeops/scheduled-task/scheduler.integration.test.ts test/default-packs.helpers.test.ts test/default-packs.schema.test.ts`
+  - `bun run --cwd plugins/plugin-personal-assistant build:types`
+  - `bun run --cwd plugins/plugin-personal-assistant test src/lifeops/scheduled-task/consolidation-policy.test.ts src/lifeops/scheduled-task/scheduler.integration.test.ts test/default-packs.helpers.test.ts test/default-packs.schema.test.ts`
   - marker scan and `git diff --check` on the touched LifeOps files
 - Remaining LifeOps gap: `test/signature-deadline.e2e.test.ts` explicitly
   notes that full automatic escalation timing for signature-deadline workflows
@@ -3493,7 +3493,7 @@ platform no-ops are separated from actionable runtime gaps.
   - marker scan on `plugins/plugin-mysticism`
   - `git diff --check -- PLACEHOLDER_AUDIT.md plugins/plugin-mysticism`
 
-### packages/agent, plugins/plugin-local-inference, plugins/plugin-health, plugins/plugin-lifeops
+### packages/agent, plugins/plugin-local-inference, plugins/plugin-health, plugins/plugin-personal-assistant
 
 - Removed TODO-style wording from agent cache-wrapper, lifecycle smoke,
   workspace-provider, view-eval, view-surface ratchet, and vault-bridge
@@ -3516,7 +3516,7 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd packages/agent typecheck`
   - `bun run --cwd plugins/plugin-local-inference typecheck`
   - `bun run --cwd plugins/plugin-health build:types`
-  - `bun run --cwd plugins/plugin-lifeops build:types`
+  - `bun run --cwd plugins/plugin-personal-assistant build:types`
   - `git diff --check --` on the touched files
 
 ### packages/core
@@ -3635,7 +3635,7 @@ platform no-ops are separated from actionable runtime gaps.
   completed by passing bundle manifest release metadata into wake-word head
   warning logic; no source edit in this pass pretends that work is done.
 
-### plugins/plugin-lifeops, plugins/plugin-local-inference
+### plugins/plugin-personal-assistant, plugins/plugin-local-inference
 
 - Reworded LifeOps privacy test runtime replacement comments from stub
   terminology.
@@ -3646,9 +3646,9 @@ platform no-ops are separated from actionable runtime gaps.
 - Verified with:
   - marker scan on the touched files
   - `bunx @biomejs/biome check` on the touched files
-  - `bunx vitest run --config ./vitest.config.ts src/__tests__/privacy.test.ts` from `plugins/plugin-lifeops`
+  - `bunx vitest run --config ./vitest.config.ts src/__tests__/privacy.test.ts` from `plugins/plugin-personal-assistant`
   - `bun run --cwd plugins/plugin-local-inference typecheck`
-  - `bun run --cwd plugins/plugin-lifeops build:types`
+  - `bun run --cwd plugins/plugin-personal-assistant build:types`
   - `git diff --check --` on the touched files
 
 ### packages/shared, packages/core
@@ -3680,7 +3680,7 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd plugins/plugin-local-inference typecheck`
   - `git diff --check --` on the touched files
 
-### packages/agent, plugins/plugin-lifeops, plugins/plugin-local-inference
+### packages/agent, plugins/plugin-personal-assistant, plugins/plugin-local-inference
 
 - Reworded LifeOps scheduler, follow-up, website-block, travel, activity,
   first-run, continuity, Duffel, and screen-time/status comments/prompts from
@@ -3704,15 +3704,15 @@ platform no-ops are separated from actionable runtime gaps.
 - Verified with:
   - focused marker scans on touched files
   - `bunx @biomejs/biome check` on the touched files; it exits 0 with existing
-    warnings in `plugins/plugin-lifeops/src/actions/website-block.ts` and
-    `plugins/plugin-lifeops/src/lifeops/scheduled-task/runner.ts`
-  - `bunx vitest run --config ./vitest.config.ts src/routes/scheduled-tasks.test.ts src/lifeops/scheduled-task/after-task-chain.test.ts src/lifeops/service-mixin-runtime-delegation.test.ts src/lifeops/connectors/duffel.test.ts` from `plugins/plugin-lifeops`
+    warnings in `plugins/plugin-personal-assistant/src/actions/website-block.ts` and
+    `plugins/plugin-personal-assistant/src/lifeops/scheduled-task/runner.ts`
+  - `bunx vitest run --config ./vitest.config.ts src/routes/scheduled-tasks.test.ts src/lifeops/scheduled-task/after-task-chain.test.ts src/lifeops/service-mixin-runtime-delegation.test.ts src/lifeops/connectors/duffel.test.ts` from `plugins/plugin-personal-assistant`
   - `bunx vitest run --config ./vitest.config.ts src/services/voice/barge-in.test.ts src/services/voice/__tests__/checkpoint-manager.test.ts` from `plugins/plugin-local-inference`
   - `bunx vitest run --config ./vitest.config.ts src/runtime/view-action-affinity.test.ts src/api/provider-switch-config.test.ts src/api/__tests__/persistence-after-done.test.ts src/__tests__/game-tui-mounted-surfaces.test.tsx src/services/e2b-capability-router.coding-remote-runner.test.ts src/runtime/__tests__/sandbox-registry.test.ts src/runtime/trajectory-steps.test.ts src/api/mobile-optional-routes.test.ts` from `packages/agent`
-  - `bun run --cwd plugins/plugin-lifeops build:types`
+  - `bun run --cwd plugins/plugin-personal-assistant build:types`
   - `bun run --cwd plugins/plugin-local-inference typecheck`
   - `bun run --cwd packages/agent typecheck`
-  - `git diff --check -- plugins/plugin-lifeops plugins/plugin-local-inference/src/services/voice packages/agent/src PLACEHOLDER_AUDIT.md`
+  - `git diff --check -- plugins/plugin-personal-assistant plugins/plugin-local-inference/src/services/voice packages/agent/src PLACEHOLDER_AUDIT.md`
 
 ### plugins/plugin-local-inference
 
@@ -3794,7 +3794,7 @@ platform no-ops are separated from actionable runtime gaps.
   - `bun run --cwd plugins/plugin-wallet check`
   - `git diff --check -- plugins/plugin-wallet/src/analytics/lpinfo/steer/services/steerLiquidityService.ts plugins/plugin-wallet/src/wallet/steward-backend.d.ts`
 
-### plugins/plugin-lifeops signature deadline
+### plugins/plugin-personal-assistant signature deadline
 
 - Removed the skipped `it.` + `todo` from the live signature-deadline journey and
   replaced it with deterministic scheduler coverage for the unsigned-document
@@ -3806,9 +3806,9 @@ platform no-ops are separated from actionable runtime gaps.
   adapter registration without reaching a real Google connector.
 - Verified with:
   - focused marker scan on touched LifeOps files
-  - `bunx @biomejs/biome check test/signature-deadline.e2e.test.ts test/signature-deadline-scheduler.test.ts test/stubs/plugin-google.ts src/lifeops/scheduled-task/scheduler.integration.test.ts` from `plugins/plugin-lifeops`
-  - `bunx vitest run --config ./vitest.config.ts test/signature-deadline-scheduler.test.ts` from `plugins/plugin-lifeops`
-  - `bun run --cwd plugins/plugin-lifeops build:types`
+  - `bunx @biomejs/biome check test/signature-deadline.e2e.test.ts test/signature-deadline-scheduler.test.ts test/stubs/plugin-google.ts src/lifeops/scheduled-task/scheduler.integration.test.ts` from `plugins/plugin-personal-assistant`
+  - `bunx vitest run --config ./vitest.config.ts test/signature-deadline-scheduler.test.ts` from `plugins/plugin-personal-assistant`
+  - `bun run --cwd plugins/plugin-personal-assistant build:types`
   - `git diff --check --` on the touched files
 
 ### plugins/plugin-vision
@@ -4190,7 +4190,7 @@ platform no-ops are separated from actionable runtime gaps.
 - Verified with focused marker scans and `git diff --check` on the touched
   documentation files.
 
-### plugins/plugin-lifeops prompt lint and portal e2e
+### plugins/plugin-personal-assistant prompt lint and portal e2e
 
 - Removed the skipped portal-upload e2e placeholder case. The existing test
   still covers the current no-portal-link/no-deck precondition behavior.
@@ -4201,7 +4201,7 @@ platform no-ops are separated from actionable runtime gaps.
   script.
 - Verified with focused marker scans, Biome check, `git diff --check`, and
   `bunx vitest run --config ./vitest.config.ts test/default-packs.lint.synthetic-fail.test.ts`
-  from `plugins/plugin-lifeops`.
+  from `plugins/plugin-personal-assistant`.
 - Verified the CLI script with Node syntax check, focused marker scan, and
   `git diff --check`.
 

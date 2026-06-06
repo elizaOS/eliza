@@ -454,15 +454,15 @@ export async function createScenarioRuntime(
   await runtime.registerPlugin(agentSkillsPlugin);
 
   const lifeOpsModule = (await import(
-    "@elizaos/plugin-lifeops/plugin"
+    "@elizaos/plugin-personal-assistant/plugin"
   )) as Record<string, unknown>;
   const lifeOpsPlugin = extractPlugin(lifeOpsModule, [
     "default",
-    "appLifeOpsPlugin",
+    "personalAssistantPlugin",
   ]);
   if (!lifeOpsPlugin) {
     throw new Error(
-      "[scenario-runner] @elizaos/plugin-lifeops did not export a Plugin",
+      "[scenario-runner] @elizaos/plugin-personal-assistant did not export a Plugin",
     );
   }
   await runtime.registerPlugin(lifeOpsPlugin);

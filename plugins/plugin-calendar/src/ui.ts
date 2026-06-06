@@ -3,7 +3,7 @@
  *
  * Exposes the owner-facing calendar components + hook without pulling in the
  * server-side action / service graph that the package root (`index.ts`)
- * re-exports. Host shells (e.g. `@elizaos/plugin-lifeops`) import from here so
+ * re-exports. Host shells (e.g. `@elizaos/plugin-personal-assistant`) import from here so
  * their renderer view bundles never reach the agent/connector dependency tree.
  */
 

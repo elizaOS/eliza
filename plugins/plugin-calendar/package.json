@@ -1,8 +1,8 @@
 {
   "name": "@elizaos/plugin-calendar",
-  "version": "2.0.3-beta.6",
+  "version": "2.0.3-beta.10",
   "type": "module",
-  "description": "First-class calendar plugin for elizaOS agents: Google + Apple calendar feed, event CRUD, scheduling, and owner-facing calendar views. Consumed by @elizaos/plugin-lifeops and the Odysseus task-coordinator surface.",
+  "description": "First-class calendar plugin for elizaOS agents: Google + Apple calendar feed, event CRUD, scheduling, and owner-facing calendar views. Consumed by @elizaos/plugin-personal-assistant and the Odysseus task-coordinator surface.",
   "sideEffects": [
     "./src/api/client-calendar.ts",
     "./src/ui.ts",
@@ -68,9 +68,10 @@
     "verify": "bun run build:types && bun run test",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsgo --noEmit",
-    "build": "bun run build:js && bun run build:types",
+    "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "rm -rf dist .turbo",
     "build:js": "bun run clean && tsup --config tsup.config.ts",
+    "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "dependencies": {

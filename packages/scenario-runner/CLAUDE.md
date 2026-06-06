@@ -151,7 +151,7 @@ Loader discovers files recursively; entries starting with `_` are ignored. The `
 - `message` — sends text through `runtime.messageService.handleMessage`. Default kind.
 - `action` — calls a named action's `validate` + `handler` directly (bypasses LLM routing).
 - `api` — sends an HTTP request to the scenario's loopback API server (routes registered on the runtime).
-- `tick` — invokes `executeLifeOpsSchedulerTask` from `@elizaos/plugin-lifeops/plugin` (tests scheduler ticks at a logical clock time).
+- `tick` — invokes `executeLifeOpsSchedulerTask` from `@elizaos/plugin-personal-assistant/plugin` (tests scheduler ticks at a logical clock time).
 
 ## Final check types (from `schema/index.js`)
 

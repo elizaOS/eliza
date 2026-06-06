@@ -26,6 +26,7 @@ import {
   consumeStewardCodeFromQuery,
   consumeStewardTokensFromHash,
   exchangeStewardCodeViaApi,
+  refreshStewardSessionViaCookie,
   syncStewardSessionCookie,
 } from "../../lib/steward-session";
 import {
@@ -67,6 +68,15 @@ const PLAYWRIGHT_TEST_AUTH_ENABLED =
     process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
 
 type AuthStep = "idle" | "loading" | "email-sent" | "success";
+
+function persistStewardToken(token: string): void {
+  writeStoredStewardToken(token);
+  if (readStoredStewardToken() !== token) {
+    throw new Error(
+      "Eliza Cloud sign-in needs browser storage. Enable storage for this site and try again.",
+    );
+  }
+}
 type Provider =
   | "passkey"
   | "email"
@@ -132,6 +142,41 @@ function getCallbackReasonMessage(
     case "server_error":
       return t("cloud.login.callback.serverError", {
         defaultValue: "Something went wrong on our end. Try again in a moment.",
+      });
+    case "invalid_link":
+      return t("cloud.login.callback.invalidLink", {
+        defaultValue:
+          "We couldn't verify that sign-in link. Request a new one. If it keeps happening, contact support.",
+      });
+    case "tenant_mismatch":
+      return t("cloud.login.callback.tenantMismatch", {
+        defaultValue: "That sign-in link is for a different workspace.",
+      });
+    case "rate_limited":
+      return t("cloud.login.callback.rateLimited", {
+        defaultValue: "Too many attempts. Wait a moment and try again.",
+      });
+    case "method_disabled":
+      return t("cloud.login.callback.methodDisabled", {
+        defaultValue: "That sign-in method isn't enabled for this workspace.",
+      });
+    case "sso_required":
+      return t("cloud.login.callback.ssoRequired", {
+        defaultValue: "Your organization requires SSO to sign in.",
+      });
+    case "tenant_not_found":
+    case "tenant_forbidden":
+      return t("cloud.login.callback.tenantUnavailable", {
+        defaultValue: "Workspace not found or access denied.",
+      });
+    case "missing_params":
+      return t("cloud.login.callback.missingParams", {
+        defaultValue: "That sign-in link is incomplete. Request a new one.",
+      });
+    case "mfa_required":
+      return t("cloud.login.callback.mfaRequired", {
+        defaultValue:
+          "Additional verification is required to finish signing in.",
       });
     default:
       return t("cloud.login.callback.unknown", {
@@ -236,17 +281,29 @@ export default function StewardLoginSection() {
         tenantId: STEWARD_TENANT_ID,
         codeVerifier,
       })
-        .then((res) => {
+        .then(async (res) => {
           // Mirror the JWT into localStorage so `@stwd/react`'s `useAuth()`
           // and `readStewardSessionFromStorage()` see the session on the
           // very next route mount. Without this, OAuth users land back on
           // `/login` after a successful exchange (HttpOnly cookies alone
           // aren't enough — the SPA auth check requires the localStorage
-          // copy until that's relaxed).
-          if (res?.token) {
-            writeStoredStewardToken(res.token);
-            window.dispatchEvent(new CustomEvent("steward-token-sync"));
+          // copy until that's relaxed). If an older Worker returns only
+          // cookies, hydrate through the cookie refresh endpoint before
+          // redirecting instead of bouncing into a login loop.
+          let token = res?.token;
+          if (!token) {
+            const refreshed = await refreshStewardSessionViaCookie().catch(
+              () => null,
+            );
+            token = refreshed?.token;
           }
+          if (!token) {
+            throw new Error(
+              "Sign-in completed, but the browser session could not be hydrated. Refresh and try again.",
+            );
+          }
+          persistStewardToken(token);
+          window.dispatchEvent(new CustomEvent("steward-token-sync"));
           setRedirectTo(
             resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
           );
@@ -272,7 +329,17 @@ export default function StewardLoginSection() {
     const refreshToken = fromHash?.refreshToken ?? queryRefreshToken ?? null;
     if (!token) return;
 
-    writeStoredStewardToken(token);
+    try {
+      persistStewardToken(token);
+    } catch (sessionError) {
+      setCallbackError(
+        getErrorMessage(
+          sessionError,
+          "Could not complete Eliza Cloud sign-in.",
+        ),
+      );
+      return;
+    }
     // Refresh token is forwarded to the server only so it can be set as the
     // HttpOnly steward-refresh-token cookie — it is NOT persisted in
     // localStorage (XSS-reachable). After first login the HttpOnly cookie
@@ -308,7 +375,19 @@ export default function StewardLoginSection() {
           return;
         }
 
-        if (!readStoredStewardToken() && !hasStewardAuthedCookie()) return;
+        const storedToken = readStoredStewardToken();
+        if (!storedToken && hasStewardAuthedCookie()) {
+          const refreshed = await refreshStewardSessionViaCookie();
+          if (cancelled) return;
+          if (refreshed?.token) {
+            writeStoredStewardToken(refreshed.token);
+            window.dispatchEvent(new CustomEvent("steward-token-sync"));
+            setRedirectTo(resolveLoginReturnTo(searchParams));
+          }
+          return;
+        }
+
+        if (!storedToken) return;
 
         const refreshed = await auth.refreshSession();
         if (cancelled) return;

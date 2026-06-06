@@ -41,7 +41,7 @@ const canRunLiveTests = liveModelTestsEnabled && selectedLiveProvider !== null;
 
 const DEFAULT_TEST_TIMEOUT_MS = 90_000;
 
-type LifeOpsModule = typeof import("@elizaos/plugin-lifeops");
+type LifeOpsModule = typeof import("@elizaos/plugin-personal-assistant");
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -229,14 +229,14 @@ describe("Action Invocation E2E", () => {
     previousDisableLifeOpsScheduler =
       process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
     process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
-    lifeOps = await import("@elizaos/plugin-lifeops");
+    lifeOps = await import("@elizaos/plugin-personal-assistant");
 
     const result = await createRealTestRuntime({
       withLLM: true,
       preferredProvider: selectedLiveProvider?.name,
       characterName: "ActionTestAgent",
       advancedCapabilities: true,
-      plugins: [lifeOps.appLifeOpsPlugin],
+      plugins: [lifeOps.personalAssistantPlugin],
     });
 
     runtime = result.runtime;

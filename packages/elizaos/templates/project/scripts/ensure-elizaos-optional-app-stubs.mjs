@@ -18,7 +18,7 @@ const optionalPackages = [
   "@elizaos/plugin-elizamaker",
   "@elizaos/plugin-hyperliquid-app",
   "@elizaos/plugin-documents",
-  "@elizaos/plugin-lifeops",
+  "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-polymarket-app",
   "@elizaos/plugin-shopify-ui",
   "@elizaos/plugin-steward-app",
@@ -41,7 +41,7 @@ export const appPlugin = optionalStub;
 export const defaultPlugin = optionalStub;
 export const hyperliquidPlugin = optionalStub;
 export const documentsPlugin = optionalStub;
-export const lifeopsPlugin = optionalStub;
+export const personalAssistantPlugin = optionalStub;
 export const polymarketPlugin = optionalStub;
 export const plugin = optionalStub;
 export const shopifyPlugin = optionalStub;

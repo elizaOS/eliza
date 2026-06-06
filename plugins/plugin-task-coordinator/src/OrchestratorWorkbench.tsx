@@ -157,6 +157,18 @@ const STATUS_PULSE: ReadonlySet<TaskStatus> = new Set<TaskStatus>([
   "validating",
 ]);
 
+/** Terminal task statuses — the task is settled and no longer mutable
+ * through the Edit-group actions (fork, restart, add agent, edit plan)
+ * or the priority dropdown. Reopen (when archived) and Delete remain the
+ * only meaningful affordances. Mirrors the design doc's
+ * {done, failed, archived} set; the `CodingAgentTaskThread["status"]`
+ * union has no `"closed"` member. */
+const TERMINAL_TASK_STATUSES: ReadonlySet<TaskStatus> = new Set<TaskStatus>([
+  "done",
+  "failed",
+  "archived",
+]);
+
 const PRIORITY_ICON: Record<TaskPriority, LucideIcon | null> = {
   low: ChevronDown,
   normal: null,
@@ -1879,7 +1891,7 @@ function RecoveryActionButton({
   );
 }
 
-function TaskInspector({
+export function TaskInspector({
   detail,
   className,
   style,
@@ -1940,8 +1952,7 @@ function TaskInspector({
       ? detail.planRevisions[detail.planRevisions.length - 1]?.id
       : undefined;
   const archived = detail.status === "archived";
-  const terminal =
-    archived || detail.status === "done" || detail.status === "failed";
+  const terminal = TERMINAL_TASK_STATUSES.has(detail.status);
   const providerPolicyLine = detail.providerPolicy
     ? [
         detail.providerPolicy.preferredFramework,
@@ -2076,16 +2087,18 @@ function TaskInspector({
             testId="orchestrator-inspector-archive"
           />
         )}
-        <ControlButton
-          agentId="inspector-fork"
-          description="Fork this task into a new task"
-          icon={<GitFork className="h-3 w-3" />}
-          label={t("orchestrator.action.fork", { defaultValue: "Fork" })}
-          onClick={onFork}
-          disabled={busy}
-          testId="orchestrator-fork"
-        />
-        {archived ? null : (
+        {terminal ? null : (
+          <ControlButton
+            agentId="inspector-fork"
+            description="Fork this task into a new task"
+            icon={<GitFork className="h-3 w-3" />}
+            label={t("orchestrator.action.fork", { defaultValue: "Fork" })}
+            onClick={onFork}
+            disabled={busy}
+            testId="orchestrator-fork"
+          />
+        )}
+        {terminal ? null : (
           <ControlButton
             agentId="inspector-restart"
             description="Restart this task with a fresh worker"
@@ -2098,7 +2111,7 @@ function TaskInspector({
             testId="orchestrator-inspector-restart"
           />
         )}
-        {archived ? null : (
+        {terminal ? null : (
           <ControlButton
             agentId="inspector-add-agent"
             description="Open the add-agent form for this task"
@@ -2186,7 +2199,7 @@ function TaskInspector({
         </AlertDialog>
       </div>
 
-      {addAgentOpen ? (
+      {addAgentOpen && !terminal ? (
         <AddAgentForm
           busy={busy}
           onClose={onToggleAddAgent}
@@ -2238,7 +2251,7 @@ function TaskInspector({
       </InspectorSection>
 
       {plan ? <PlanSection plan={plan} t={t} /> : null}
-      {detail.currentPlan && !archived ? (
+      {detail.currentPlan && !terminal ? (
         <EditedPlanRestartSection
           plan={detail.currentPlan}
           latestPlanRevisionId={latestPlanRevisionId}

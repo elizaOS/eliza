@@ -333,7 +333,7 @@ function scenarioCatalogHtml() {
     const catalogs = [
       ["defaultScenarios", "Default package scenarios"],
       ["includePendingScenarios", "Including pending"],
-      ["pluginLifeopsScenarios", "plugin-lifeops"],
+      ["pluginLifeopsScenarios", "plugin-personal-assistant"],
       ["pluginAppControlScenarios", "plugin-app-control"],
       ["scenarioRunnerScenarios", "scenario-runner tests"],
       ["allScenarios", "Unified catalog"],
@@ -343,7 +343,7 @@ function scenarioCatalogHtml() {
       const items = [
         ["Default", s.defaultScenarioCount || 0],
         ["Include pending", s.includePendingScenarioCount || 0],
-        ["plugin-lifeops", s.pluginLifeopsCount || 0],
+        ["plugin-personal-assistant", s.pluginLifeopsCount || 0],
         ["plugin-app-control", s.pluginAppControlCount || 0],
         ["runner tests", s.scenarioRunnerCount || 0],
         ["All catalog entries", s.allScenarioCount || 0],
@@ -435,7 +435,7 @@ function renderMarkdown(summary, runArtifacts = []) {
     "",
     `Default packages/test scenarios: ${summary.defaultScenarioCount}`,
     `With pending included: ${summary.includePendingScenarioCount}`,
-    `plugin-lifeops scenarios: ${summary.pluginLifeopsCount}`,
+    `plugin-personal-assistant scenarios: ${summary.pluginLifeopsCount}`,
     `plugin-app-control scenarios: ${summary.pluginAppControlCount}`,
     `scenario-runner test scenarios: ${summary.scenarioRunnerCount}`,
     `Unified scenario catalog entries: ${summary.allScenarioCount}`,
@@ -495,7 +495,7 @@ function main() {
     SCENARIO_INCLUDE_PENDING: "1",
   });
   const pluginLifeopsIds = runScenarioList(
-    "plugins/plugin-lifeops/test/scenarios",
+    "plugins/plugin-personal-assistant/test/scenarios",
   );
   const pluginAppControlIds = runScenarioList(
     "plugins/plugin-app-control/test/scenarios",
@@ -506,7 +506,7 @@ function main() {
   const allScenarioRows = [
     ...scopedScenarioRows("packages/test/scenarios", defaultIds),
     ...scopedScenarioRows(
-      "plugins/plugin-lifeops/test/scenarios",
+      "plugins/plugin-personal-assistant/test/scenarios",
       pluginLifeopsIds,
     ),
     ...scopedScenarioRows(
@@ -550,7 +550,7 @@ function main() {
     "packages-test-include-pending.txt",
     includePendingIds,
   );
-  writeList(options.reportDir, "plugin-lifeops.txt", pluginLifeopsIds);
+  writeList(options.reportDir, "plugin-personal-assistant.txt", pluginLifeopsIds);
   writeList(options.reportDir, "plugin-app-control.txt", pluginAppControlIds);
   writeList(options.reportDir, "scenario-runner-test.txt", scenarioRunnerIds);
   writeList(options.reportDir, "all-scenarios.txt", allScenarioRows);

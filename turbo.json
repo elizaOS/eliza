@@ -402,7 +402,7 @@
       "outputs": []
     },
     "@elizaos/app#typecheck": {
-      "dependsOn": ["@elizaos/plugin-lifeops#build", "@elizaos/ui#build"],
+      "dependsOn": ["@elizaos/plugin-personal-assistant#build", "@elizaos/ui#build"],
       "outputs": []
     },
     "@elizaos/plugin-contacts#typecheck": {

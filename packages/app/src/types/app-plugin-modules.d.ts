@@ -114,7 +114,7 @@ declare module "@elizaos/app-lifeops" {
   export function registerLifeOpsApp(): void;
 }
 
-declare module "@elizaos/plugin-lifeops" {
+declare module "@elizaos/plugin-personal-assistant" {
   export * from "@elizaos/app-lifeops";
 }
 

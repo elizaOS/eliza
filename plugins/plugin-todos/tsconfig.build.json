@@ -1,9 +1,13 @@
 {
-  "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "__tests__"],
-  "include": ["src/**/*"],
+  "extends": "../tsconfig.build.shared.json",
   "compilerOptions": {
-    "rootDir": "./src",
-    "types": ["node", "bun-types"]
-  }
+    "outDir": "dist",
+    "rootDir": "./src"
+  },
+  "include": ["src"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/__tests__/**"
+  ]
 }

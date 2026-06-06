@@ -91,10 +91,10 @@ const ciExcludedRealPaths = [
     "plugins/plugin-form/src/tests/json-integration.live.test.ts",
   ),
   elizaWorkspacePattern(
-    "plugins/plugin-lifeops/test/lifeops-life-chat.real.test.ts",
+    "plugins/plugin-personal-assistant/test/lifeops-life-chat.real.test.ts",
   ),
   elizaWorkspacePattern(
-    "plugins/plugin-lifeops/test/lifeops-llm-extraction.live.test.ts",
+    "plugins/plugin-personal-assistant/test/lifeops-llm-extraction.live.test.ts",
   ),
   elizaWorkspacePattern(
     "packages/agent/src/providers/media-provider.real.test.ts",
@@ -247,7 +247,7 @@ const realResolveAlias: ModuleAlias[] = [
   ...getWorkspacePluginAliases(repoRoot, [
     "plugin-companion",
     "plugin-documents",
-    "plugin-lifeops",
+    "plugin-personal-assistant",
     "plugin-local-inference",
     "plugin-shopify-ui",
     "plugin-training",

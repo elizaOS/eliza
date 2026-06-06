@@ -66,6 +66,14 @@ async function startNativeAgentIfAvailable(): Promise<void> {
   }
 }
 
+function shouldUseIosCloudLocalAgent(): boolean {
+  try {
+    return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
+  } catch {
+    return false;
+  }
+}
+
 import {
   getDesktopRuntimeMode,
   invokeDesktopBridgeRequest,
@@ -74,7 +82,10 @@ import {
 import { getBootConfig } from "../config/boot-config";
 import { ensureStoreBuildWorkspaceFolder } from "../first-run/ensure-store-build-workspace-folder";
 import { buildFirstRunRuntimeConfig } from "../first-run/first-run-config";
-import { persistMobileRuntimeModeForServerTarget } from "../first-run/mobile-runtime-mode";
+import {
+  IOS_LOCAL_AGENT_IPC_BASE,
+  persistMobileRuntimeModeForServerTarget,
+} from "../first-run/mobile-runtime-mode";
 import { isElizaCloudFirstRunTarget } from "../first-run/runtime-target";
 import {
   canRevertSetupTo,
@@ -636,20 +647,16 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
             name: firstRunName,
             bio: style?.bio ?? ["An autonomous AI agent."],
             onProgress: () => {},
+            allowSharedRuntime: shouldUseIosCloudLocalAgent(),
           });
 
-          // Use a server-provided reachable web UI URL when present, else the
-          // raw bridgeUrl. NOTE: a cloud-provisioned agent currently has no
-          // browser-reachable URL — the cloud returns only an internal
-          // `bridgeUrl` (firewalled + CSP-blocked) and the per-agent gateway
-          // isn't deployed — so this typically resolves to bridgeUrl, the
-          // connect fails, and the startup fallback recovers to localhost on
-          // reload. Reaching cloud agents from a browser is blocked on cloud
-          // infra (the per-agent HTTPS gateway); see resolveCloudAgentApiBase.
-          const cloudAgentApiBase = resolveCloudAgentApiBase({
-            bridgeUrl: provisionedAgent.bridgeUrl,
-            webUiUrl: provisionedAgent.webUiUrl,
-          });
+          const iosCloudLocalAgent = shouldUseIosCloudLocalAgent();
+          const cloudAgentApiBase = iosCloudLocalAgent
+            ? IOS_LOCAL_AGENT_IPC_BASE
+            : resolveCloudAgentApiBase({
+                bridgeUrl: provisionedAgent.bridgeUrl,
+                webUiUrl: provisionedAgent.webUiUrl,
+              });
           client.setBaseUrl(cloudAgentApiBase);
           client.setToken(authToken);
           persistMobileRuntimeModeForServerTarget(firstRunRuntimeTarget);

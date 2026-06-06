@@ -27,7 +27,7 @@ const config = {
   description: "Open-source AI agents for everyone",
   envPrefix: "ELIZA",
   namespace: "eliza",
-  defaultApps: ["@elizaos/plugin-lifeops"],
+  defaultApps: ["@elizaos/plugin-personal-assistant"],
 
   desktop: {
     bundleId: "ai.elizaos.app",

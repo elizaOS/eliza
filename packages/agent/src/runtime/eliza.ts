@@ -2938,7 +2938,7 @@ async function registerSqlPluginWithRecovery(
 const CORE_PLUGIN_BOOT_DEPENDENCIES = new Map<string, readonly string[]>([
   ["@elizaos/plugin-coding-tools", ["@elizaos/plugin-shell"]],
   ["@elizaos/plugin-agent-skills", ["@elizaos/plugin-shell"]],
-  ["@elizaos/plugin-lifeops", ["@elizaos/plugin-google"]],
+  ["@elizaos/plugin-personal-assistant", ["@elizaos/plugin-google"]],
 ]);
 
 async function preregisterCorePluginsInDependencyWaves(args: {

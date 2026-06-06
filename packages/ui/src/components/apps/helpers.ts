@@ -58,7 +58,7 @@ const APPS_VIEW_HIDDEN_APP_NAME_SET = new Set<string>(
 );
 
 const FEATURED_APP_NAMES = new Set<string>([
-  "@elizaos/plugin-lifeops",
+  "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-companion",
   "@elizaos/plugin-defense-of-the-agents",
   "@elizaos/plugin-clawville",

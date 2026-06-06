@@ -111,7 +111,7 @@
     "@elizaos/plugin-feed": "workspace:*",
     "@elizaos/plugin-hyperliquid-app": "workspace:*",
     "@elizaos/plugin-hyperscape": "workspace:*",
-    "@elizaos/plugin-lifeops": "workspace:*",
+    "@elizaos/plugin-personal-assistant": "workspace:*",
     "@elizaos/plugin-messages": "workspace:*",
     "@elizaos/plugin-phone": "workspace:*",
     "@elizaos/plugin-polymarket-app": "workspace:*",

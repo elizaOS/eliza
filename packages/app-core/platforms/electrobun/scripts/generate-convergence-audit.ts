@@ -248,7 +248,7 @@ const APP_PLUGIN_NAMES = new Set([
   "plugin-health",
   "plugin-hyperliquid-app",
   "plugin-hyperscape",
-  "plugin-lifeops",
+  "plugin-personal-assistant",
   "plugin-minecraft",
   "plugin-music",
   "plugin-mysticism",

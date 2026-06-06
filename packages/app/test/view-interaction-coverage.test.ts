@@ -80,7 +80,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
   ],
   lifeops: [
     {
-      spec: "packages/app/test/ui-smoke/apps-lifeops-feed-interactions.spec.ts",
+      spec: "packages/app/test/ui-smoke/apps-personal-assistant-feed-interactions.spec.ts",
       proves:
         "Exercises reminders, alarms, creation, snooze/complete flows, and deterministic LifeOps routes.",
       signals: [
@@ -182,7 +182,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
   ],
   feed: [
     {
-      spec: "packages/app/test/ui-smoke/apps-lifeops-feed-interactions.spec.ts",
+      spec: "packages/app/test/ui-smoke/apps-personal-assistant-feed-interactions.spec.ts",
       proves:
         "Exercises feed GUI no-run state and TUI command routing through deterministic interact routes.",
       signals: ["feed gui no-run state", "feed tui"],

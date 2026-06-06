@@ -108,11 +108,11 @@ const smokeViewDeclarations = [
     "HyperliquidTuiView",
     "tui",
   ],
-  ["lifeops", "LifeOps", "plugin-lifeops", "/lifeops", "LifeOpsPageView"],
+  ["lifeops", "LifeOps", "plugin-personal-assistant", "/lifeops", "LifeOpsPageView"],
   [
     "lifeops",
     "LifeOps TUI",
-    "plugin-lifeops",
+    "plugin-personal-assistant",
     "/lifeops/tui",
     "LifeOpsTuiView",
     "tui",
@@ -464,7 +464,7 @@ function stubCatalogApp({
 
 const stubCatalogApps = [
   stubCatalogApp({
-    name: "@elizaos/plugin-lifeops",
+    name: "@elizaos/plugin-personal-assistant",
     displayName: "LifeOps",
     description:
       "Run tasks, reminders, calendar, inbox, and connected workflows.",

@@ -89,7 +89,7 @@ export type {
   StartLifeOpsHealthConnectorRequest,
   StartLifeOpsHealthConnectorResponse,
   SyncLifeOpsHealthConnectorRequest,
-} from "./lifeops.js";
+} from "./personal-assistant.js";
 
 export {
   LIFEOPS_CIRCADIAN_STATES,
@@ -100,4 +100,4 @@ export {
   LIFEOPS_HEALTH_SIGNAL_SOURCES,
   LIFEOPS_HEALTH_SLEEP_STAGES,
   LIFEOPS_UNCLEAR_REASONS,
-} from "./lifeops.js";
+} from "./personal-assistant.js";

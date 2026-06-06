@@ -57,15 +57,21 @@ export function buildStewardOAuthAuthorizeUrl(
 // Steward hardened `/auth/oauth/:provider/authorize` to require a PKCE
 // `code_challenge` (S256) for `response_type=code`. We mint a high-entropy
 // verifier, send `base64url(sha256(verifier))` as the challenge at /authorize,
-// stash the verifier in sessionStorage, and replay it at /exchange. Steward
+// stash the verifier in browser storage, and replay it at /exchange. Steward
 // recomputes the challenge and rejects the exchange unless it matches what was
 // bound at /authorize — binding the redirect to the browser that began it
 // (RFC 7636 auth-code interception defense). Mirrors Steward's
 // `pkceChallengeForVerifier` (packages/api/src/routes/auth.ts).
 
 const STEWARD_PKCE_VERIFIER_STORAGE_KEY = "steward.oauth.pkce.verifier";
+const STEWARD_PKCE_VERIFIER_TTL_MS = 10 * 60 * 1000;
 // 48 random bytes → 64 base64url chars, comfortably inside RFC 7636's 43–128.
 const PKCE_VERIFIER_BYTES = 48;
+
+type StoredPkceVerifier = {
+  verifier: string;
+  expiresAt: number;
+};
 
 function base64UrlEncode(bytes: Uint8Array): string {
   let binary = "";
@@ -105,28 +111,57 @@ export async function createStewardPkcePair(): Promise<StewardPkcePair> {
 
 export function storeStewardPkceVerifier(verifier: string): boolean {
   if (typeof window === "undefined") return false;
+  const stored = JSON.stringify({
+    verifier,
+    expiresAt: Date.now() + STEWARD_PKCE_VERIFIER_TTL_MS,
+  } satisfies StoredPkceVerifier);
+  let storedAnywhere = false;
   try {
-    window.sessionStorage.setItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY, verifier);
-    return true;
+    window.sessionStorage.setItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY, stored);
+    storedAnywhere = true;
   } catch {
-    // sessionStorage can throw (private mode / storage disabled). Signal failure
-    // so the caller fails fast upfront instead of redirecting into a guaranteed
-    // post-OAuth verifier mismatch (Steward bound a challenge we can't answer).
-    return false;
+    // Storage can throw (private mode / disabled). Signal failure only if both
+    // stores fail so the caller does not redirect into a guaranteed mismatch.
   }
+  try {
+    window.localStorage.setItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY, stored);
+    storedAnywhere = true;
+  } catch {
+    // Same as above.
+  }
+  return storedAnywhere;
 }
 
 export function consumeStewardPkceVerifier(): string | null {
   if (typeof window === "undefined") return null;
+  const sessionVerifier = consumeStoredPkceVerifier(window.sessionStorage);
+  const localVerifier = consumeStoredPkceVerifier(window.localStorage);
+  return sessionVerifier ?? localVerifier;
+}
+
+function consumeStoredPkceVerifier(storage: Storage): string | null {
   try {
-    const verifier = window.sessionStorage.getItem(
-      STEWARD_PKCE_VERIFIER_STORAGE_KEY,
-    );
-    if (verifier) {
-      window.sessionStorage.removeItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY);
-    }
-    return verifier;
+    const verifier = storage.getItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY);
+    storage.removeItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY);
+    return parseStoredPkceVerifier(verifier);
   } catch {
     return null;
+  }
+}
+
+function parseStoredPkceVerifier(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as Partial<StoredPkceVerifier>;
+    if (
+      typeof parsed.verifier === "string" &&
+      typeof parsed.expiresAt === "number" &&
+      parsed.expiresAt >= Date.now()
+    ) {
+      return parsed.verifier;
+    }
+    return null;
+  } catch {
+    return value;
   }
 }

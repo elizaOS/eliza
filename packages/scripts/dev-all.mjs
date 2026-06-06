@@ -133,7 +133,7 @@ const agentEnv = {
   ELIZA_SKIP_PLUGINS: [
     process.env.ELIZA_SKIP_PLUGINS,
     "@elizaos/plugin-companion",
-    "@elizaos/plugin-lifeops",
+    "@elizaos/plugin-personal-assistant",
     "@elizaos/plugin-wallet",
   ]
     .filter(Boolean)

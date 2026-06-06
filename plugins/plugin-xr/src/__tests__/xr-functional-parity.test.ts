@@ -152,9 +152,9 @@ const PLUGIN_REGISTRY: Array<{
     requiredTerms: ["HyperliquidAppView", "useState"],
   },
   {
-    pluginDir: "plugins/plugin-lifeops",
-    manifestPath: "plugins/plugin-lifeops/src/plugin.ts",
-    xrComponentSrc: "plugins/plugin-lifeops/src/components/LifeOpsPageView.tsx",
+    pluginDir: "plugins/plugin-personal-assistant",
+    manifestPath: "plugins/plugin-personal-assistant/src/plugin.ts",
+    xrComponentSrc: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
     requiredTerms: ["LifeOpsPageView", "useState"],
   },
   {
@@ -310,9 +310,9 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
       "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.interact.ts",
     capabilities: ["terminal-hyperliquid-state"],
   },
-  "plugins/plugin-lifeops": {
+  "plugins/plugin-personal-assistant": {
     srcFile:
-      "plugins/plugin-lifeops/src/components/LifeOpsPageView.interact.ts",
+      "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.interact.ts",
     capabilities: ["terminal-lifeops-state", "terminal-lifeops-enable"],
   },
   "plugins/plugin-messages": {

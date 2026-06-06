@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -19,7 +23,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": [
+        "./*"
+      ]
     }
   },
   "include": [
@@ -36,7 +42,11 @@
     ".next-build-89207/types/**/*.ts",
     ".next-build-38745/types/**/*.ts",
     ".next-build-45305/types/**/*.ts",
-    ".next-build-23258/types/**/*.ts"
+    ".next-build-8628/types/**/*.ts",
+    ".next-build-23258/types/**/*.ts",
+    ".next-build-12836/types/**/*.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules"
+  ]
 }

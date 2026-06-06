@@ -11,7 +11,7 @@ import {
 import {
   executeRawSql,
   sqlQuote,
-} from "../../../../plugins/plugin-lifeops/src/lifeops/sql.ts";
+} from "../../../../plugins/plugin-personal-assistant/src/lifeops/sql.ts";
 import { seedCheckinDefinition } from "../_helpers/lifeops-seeds.ts";
 
 function scenarioNow(ctx: ScenarioContext): Date {

@@ -14,6 +14,20 @@ export const todosPlugin: Plugin = {
   providers: [currentTodosProvider],
   services: [TodosService],
   schema: dbSchema,
+  views: [
+    {
+      id: "todos",
+      label: "Todos",
+      description: "Three-lane todo board: Today / Upcoming / Someday",
+      icon: "ListChecks",
+      path: "/todos",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "TodosView",
+      tags: ["todos", "tasks", "productivity"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
   async dispose(runtime) {
     const svc = runtime.getService<TodosService>(TodosService.serviceType);
     await svc?.stop();
@@ -38,3 +52,5 @@ export {
   type UpdateTodoInput,
 } from "./service.js";
 export * from "./types.js";
+
+export { TodosView } from "./components/todos/TodosView.js";

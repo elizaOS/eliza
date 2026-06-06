@@ -57,6 +57,15 @@ export default defineConfig({
         replacement: require.resolve("react/jsx-runtime"),
       },
       {
+        // Vite's React plugin emits `import("react/jsx-dev-runtime")` in dev
+        // transforms. On Windows the workspace symlink chain to react is
+        // longer (no root-level `node_modules/react`) and the resolver
+        // doesn't reliably walk it, so anchor jsx-dev-runtime explicitly
+        // to the same nested path as jsx-runtime.
+        find: /^react\/jsx-dev-runtime$/,
+        replacement: require.resolve("react/jsx-dev-runtime"),
+      },
+      {
         find: /^react-dom$/,
         replacement: path.dirname(require.resolve("react-dom/package.json")),
       },

@@ -1,7 +1,15 @@
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
+import path from "node:path";
 import { Writable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The ACP implementation runs every workdir through `path.resolve`, which on
+// Windows turns `/tmp/acp-test` into `C:\tmp\acp-test`. Tests pass the
+// POSIX-style string in and compare the spawn cwd against the resolved
+// form so the same source compares correctly on both POSIX and Windows.
+const RESOLVED_ACP_WORKDIR = path.resolve("/tmp/acp-test");
+
 import type {
   AcpJsonRpcMessage,
   ApprovalPreset,
@@ -326,7 +334,7 @@ describe("AcpService", () => {
         "--name",
         "s1",
       ]),
-      expect.objectContaining({ cwd: "/tmp/acp-test" }),
+      expect.objectContaining({ cwd: RESOLVED_ACP_WORKDIR }),
     );
     const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
     expect(args).not.toContain("--no-terminal");
@@ -504,9 +512,18 @@ describe("AcpService", () => {
     const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
     const agentArgIndex = args?.indexOf("--agent") ?? -1;
     expect(agentArgIndex).toBeGreaterThanOrEqual(0);
-    expect(args?.[agentArgIndex + 1]).toMatch(
-      /plugin-agent-orchestrator\/bin.*opencode.* acp$/,
-    );
+    // The shim script lives at `<plugin>/bin/opencode*` and is referenced
+    // with platform-native path separators (`\` on Windows, `/` on POSIX).
+    // On Windows the spawn target is wrapped in double quotes (paths can
+    // contain spaces) and uses the `.cmd` shim, so accept either
+    // separator after `plugin-agent-orchestrator`, any extension on the
+    // opencode shim, and tolerate surrounding quotes / trailing tokens
+    // around the trailing `acp` subcommand.
+    const shimArg = args?.[agentArgIndex + 1];
+    expect(shimArg).toBeDefined();
+    expect(shimArg).toContain("plugin-agent-orchestrator");
+    expect(shimArg).toContain("opencode");
+    expect(shimArg).toMatch(/\sacp(\s|$)/);
     expect(args).not.toContain("opencode");
 
     const env = spawnMock.mock.calls[0]?.[2]?.env as
@@ -573,18 +590,20 @@ describe("AcpService", () => {
     );
     await service.start();
 
+    const nativeWorkdir = "/tmp/acp-native-test";
+    const resolvedNativeWorkdir = path.resolve(nativeWorkdir);
     const spawned = service.spawnSession({
       name: "native-codex",
       agentType: "codex",
-      workdir: "/tmp/acp-native-test",
+      workdir: nativeWorkdir,
     });
     const session = await spawned;
     const client = firstNativeClient();
 
     expect(spawnMock).not.toHaveBeenCalled();
     expect(client?.opts.command).toBe("codex-acp --stdio");
-    expect(client?.opts.cwd).toBe("/tmp/acp-native-test");
-    expect(client?.createSession).toHaveBeenCalledWith("/tmp/acp-native-test");
+    expect(client?.opts.cwd).toBe(resolvedNativeWorkdir);
+    expect(client?.createSession).toHaveBeenCalledWith(resolvedNativeWorkdir);
     expect(session.status).toBe("ready");
     expect(session.acpxSessionId).toBe("protocol-session");
     expect(events.some(([event]) => event === "ready")).toBe(true);
@@ -1375,9 +1394,11 @@ describe("AcpService", () => {
 
   it("honors public env aliases for workspace, approval, and prompt timeout", async () => {
     const create = nextProc();
+    const workspaceRoot = "/tmp/acp-workspace-root";
+    const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
     const service = new AcpService(
       runtime({
-        ELIZA_ACP_WORKSPACE_ROOT: "/tmp/acp-workspace-root",
+        ELIZA_ACP_WORKSPACE_ROOT: workspaceRoot,
         ELIZA_ACP_DEFAULT_APPROVAL: "read-only",
         ELIZA_ACP_PROMPT_TIMEOUT_MS: "123000",
       }),
@@ -1394,12 +1415,8 @@ describe("AcpService", () => {
 
     expect(spawnMock).toHaveBeenCalledWith(
       "acpx",
-      expect.arrayContaining([
-        "--cwd",
-        "/tmp/acp-workspace-root",
-        "--deny-all",
-      ]),
-      expect.objectContaining({ cwd: "/tmp/acp-workspace-root" }),
+      expect.arrayContaining(["--cwd", resolvedWorkspaceRoot, "--deny-all"]),
+      expect.objectContaining({ cwd: resolvedWorkspaceRoot }),
     );
 
     const prompt = nextProc();
@@ -1417,7 +1434,7 @@ describe("AcpService", () => {
     expect(spawnMock).toHaveBeenLastCalledWith(
       "acpx",
       expect.arrayContaining(["--timeout", "123"]),
-      expect.objectContaining({ cwd: "/tmp/acp-workspace-root" }),
+      expect.objectContaining({ cwd: resolvedWorkspaceRoot }),
     );
   });
 

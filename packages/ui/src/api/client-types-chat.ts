@@ -148,13 +148,32 @@ export interface SensitiveRequestFormField {
   required?: boolean;
 }
 
+/**
+ * `kind: "secret"` — render a per-field password/text form (today's behavior).
+ * `kind: "oauth"`  — render a single "Connect …" button that opens the
+ * authorization URL in a popup; the actual token never flows through the
+ * chat message stream. `fields` is unused for OAuth; the relevant fields are
+ * `provider`, `scopes`, and `authorizationUrl`.
+ */
 export interface SensitiveRequestForm {
   type: "sensitive_request_form";
-  kind: "secret";
+  kind: "secret" | "oauth";
   mode: SensitiveRequestDelivery["mode"];
   fields: SensitiveRequestFormField[];
   submitLabel?: string;
   statusOnly?: boolean;
+  /** OAuth-only: human-readable provider label (e.g. "GitHub"). */
+  provider?: string;
+  /** OAuth-only: scopes the consent screen will request. */
+  scopes?: string[];
+  /**
+   * OAuth-only: the consent URL to open. The widget opens this in a popup
+   * and never includes it in the rendered chat text. The OAuth callback
+   * lands the token in the vault server-side; the widget polls the
+   * `secretRequest.status` via `client.getSensitiveRequestStatus` (or
+   * receives a fresh `secretRequest` on the next assistant turn).
+   */
+  authorizationUrl?: string;
 }
 
 export interface ConversationSecretRequest {

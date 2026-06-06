@@ -1,5 +1,11 @@
 const DEFAULT_LOGIN_RETURN_TO = "/dashboard/agents";
 const PENDING_OAUTH_RETURN_TO_KEY = "eliza.login.oauth.returnTo";
+const PENDING_OAUTH_RETURN_TO_TTL_MS = 10 * 60 * 1000;
+
+type StoredReturnTo = {
+  returnTo: string;
+  expiresAt: number;
+};
 
 function sanitizeLoginReturnTo(
   value: string | null | undefined,
@@ -23,23 +29,54 @@ export function storePendingOAuthReturnTo(searchParams: {
 }): void {
   if (typeof window === "undefined") return;
   const returnTo = sanitizeLoginReturnTo(searchParams.get("returnTo"));
+  if (!returnTo) return;
+  const stored = JSON.stringify({
+    returnTo,
+    expiresAt: Date.now() + PENDING_OAUTH_RETURN_TO_TTL_MS,
+  } satisfies StoredReturnTo);
+  safeSet(window.sessionStorage, stored);
+  safeSet(window.localStorage, stored);
+}
+
+export function consumePendingOAuthReturnTo(): string | null {
+  if (typeof window === "undefined") return null;
+  const sessionReturnTo = safeConsume(window.sessionStorage);
+  const localReturnTo = safeConsume(window.localStorage);
+  return sessionReturnTo ?? localReturnTo;
+}
+
+function safeSet(storage: Storage, value: string): void {
   try {
-    if (returnTo) {
-      window.sessionStorage.setItem(PENDING_OAUTH_RETURN_TO_KEY, returnTo);
-    }
+    storage.setItem(PENDING_OAUTH_RETURN_TO_KEY, value);
   } catch {
     // Storage can be disabled in private browsing modes. Losing returnTo is
     // better than putting it back into OAuth redirect_uri and failing login.
   }
 }
 
-export function consumePendingOAuthReturnTo(): string | null {
-  if (typeof window === "undefined") return null;
+function safeConsume(storage: Storage): string | null {
   try {
-    const returnTo = window.sessionStorage.getItem(PENDING_OAUTH_RETURN_TO_KEY);
-    window.sessionStorage.removeItem(PENDING_OAUTH_RETURN_TO_KEY);
-    return sanitizeLoginReturnTo(returnTo);
+    const value = storage.getItem(PENDING_OAUTH_RETURN_TO_KEY);
+    storage.removeItem(PENDING_OAUTH_RETURN_TO_KEY);
+    return parseStoredReturnTo(value);
   } catch {
     return null;
+  }
+}
+
+function parseStoredReturnTo(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as Partial<StoredReturnTo>;
+    if (
+      typeof parsed.returnTo === "string" &&
+      typeof parsed.expiresAt === "number" &&
+      parsed.expiresAt >= Date.now()
+    ) {
+      return sanitizeLoginReturnTo(parsed.returnTo);
+    }
+    return null;
+  } catch {
+    return sanitizeLoginReturnTo(value);
   }
 }

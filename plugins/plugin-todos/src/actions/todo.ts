@@ -1,3 +1,18 @@
+/**
+ * TODO umbrella action.
+ *
+ * ABSORPTION NOTE — OWNER_TODOS from plugin-lifeops is collapsed into this
+ * existing action. The umbrella already covers list/create/update/complete/
+ * cancel/delete/write/clear, which is a superset of what the owner-facing
+ * surface needed; no new op is required.
+ *
+ * TODO(migrate: plugins/plugin-lifeops/src/actions/owner-surfaces.ts
+ *   ownerTodosAction): port any owner-only formatting (e.g. lane-based
+ *   grouping by Today/Upcoming/Someday, due-date defaults, recap rendering)
+ *   into the `list` op here. After migration, the OWNER_TODOS action and
+ *   its source can be deleted from plugin-lifeops.
+ */
+
 import type {
   Action,
   ActionResult,
@@ -451,7 +466,7 @@ async function actionClear({
 // Canonical planner-facing todo surface. Backed by the per-user @elizaos/core
 // TodosService store (filesystem under TODOS_BASE_PATH). The owner-store
 // equivalent — backed by app-lifeops definitions — is OWNER_TODOS in
-// plugins/plugin-lifeops/src/actions/owner-surfaces.ts. The two surfaces target
+// plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts. The two surfaces target
 // different stores and must not be merged.
 export const todoAction: Action = {
   name: "TODO",

@@ -250,7 +250,18 @@ async function loadPlugin(entryPath: string): Promise<{
 	error?: string;
 }> {
 	try {
-		const mod = (await import(entryPath)) as Record<string, unknown>;
+		// On Windows, `import('C:\\foo\\bar.js')` fails with "Only URLs with a
+		// scheme in: file, data, and node are supported by the default ESM
+		// loader" because absolute Windows paths use a drive-letter prefix
+		// that the URL parser treats as scheme `c:`. Route every absolute
+		// path through `pathToFileURL` so we always hand the ESM loader a
+		// proper `file://` URL on every platform.
+		const { pathToFileURL } = await import("node:url");
+		const { isAbsolute } = await import("node:path");
+		const importTarget = isAbsolute(entryPath)
+			? pathToFileURL(entryPath).href
+			: entryPath;
+		const mod = (await import(importTarget)) as Record<string, unknown>;
 		// Plugins are commonly exported as `default`, `plugin`, or
 		// matching the package's name. Be lenient.
 		const candidates: unknown[] = [

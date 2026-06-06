@@ -38,9 +38,11 @@ import {
   findFollowupsRegions,
 } from "./message-followups-parser";
 import { type FormRequestSpec, findFormRegions } from "./message-form-parser";
+import { findTaskRegions } from "./message-task-parser";
 import { type ChoiceOption, ChoiceWidget } from "./widgets/ChoiceWidget";
 import { FollowupsWidget } from "./widgets/followups";
 import { FormRequest, type FormResultValue } from "./widgets/form-request";
+import { TaskWidget } from "./widgets/task-widget";
 
 /** Reject prototype-pollution keys that should never be traversed or rendered. */
 const BLOCKED_IDS = new Set(["__proto__", "constructor", "prototype"]);
@@ -91,6 +93,7 @@ type Segment =
     }
   | { kind: "followups"; id: string; options: FollowupOption[] }
   | { kind: "form"; form: FormRequestSpec }
+  | { kind: "task-widget"; threadId: string; title: string }
   | { kind: "permission"; payload: PermissionCardPayload }
   | { kind: "analysis-xml"; tag: string; content: string };
 
@@ -399,6 +402,19 @@ function parseSegments(text: string, analysisMode: boolean): Segment[] {
       start: form.start,
       end: form.end,
       segment: { kind: "form", form: form.form },
+    });
+  }
+
+  // 1e. Find [TASK:<threadId>]<title>[/TASK] orchestrator task widgets
+  for (const task of findTaskRegions(targetText)) {
+    regions.push({
+      start: task.start,
+      end: task.end,
+      segment: {
+        kind: "task-widget",
+        threadId: task.threadId,
+        title: task.title,
+      },
     });
   }
 
@@ -958,12 +974,14 @@ function SensitiveRequestBlock({
   const [status, setStatus] = useState(request.status);
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [authorizing, setAuthorizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setStatus(request.status);
     setValues({});
     setSaving(false);
+    setAuthorizing(false);
     setError(null);
   }, [request]);
 
@@ -973,6 +991,11 @@ function SensitiveRequestBlock({
     request.form?.kind === "secret" &&
     request.delivery?.canCollectValueInCurrentChannel === true &&
     fields.length > 0;
+  const canStartOAuth =
+    status === "pending" &&
+    request.form?.kind === "oauth" &&
+    typeof request.form.authorizationUrl === "string" &&
+    request.form.authorizationUrl.length > 0;
 
   const canSubmit = fields.every((field) => {
     if (!field.required) return true;
@@ -1052,15 +1075,100 @@ function SensitiveRequestBlock({
               </label>
             );
           })}
-          <div className="text-xs text-muted">
-            The value will not be sent as a chat message.
-          </div>
-          <Button type="submit" size="sm" disabled={saving || !canSubmit}>
+          <Button
+            type="submit"
+            size="sm"
+            disabled={saving || !canSubmit}
+            data-testid="sensitive-request-submit"
+          >
             {saving ? "Saving..." : (request.form?.submitLabel ?? "Save")}
           </Button>
         </form>
       )}
+      {canStartOAuth && request.form?.kind === "oauth" && (
+        <OAuthRequestPanel
+          form={request.form}
+          authorizing={authorizing}
+          onStart={() => {
+            const url = request.form?.authorizationUrl;
+            if (!url) return;
+            try {
+              // SECURITY: we never embed the authorizationUrl in chat text.
+              // It is only opened in a popup. We deliberately do NOT pass
+              // `noopener` in the features string: per the HTML spec, when
+              // `noopener` is set `window.open` always returns null, so we
+              // would lose our popup-blocked signal and have to fall back to
+              // a guess-and-check heuristic. The consent page is to a
+              // trusted provider on a separate origin; `noreferrer` is kept,
+              // and we set `popup.opener = null` ourselves immediately after
+              // open as a belt-and-suspenders measure. If `window.open`
+              // returns null after this, that genuinely is a blocked popup.
+              if (typeof window === "undefined") return;
+              const popup = window.open(
+                url,
+                "eliza-oauth",
+                "width=520,height=720,noreferrer",
+              );
+              if (!popup) {
+                setError(
+                  "Pop-up blocked. Allow pop-ups for this site to continue.",
+                );
+                return;
+              }
+              try {
+                popup.opener = null;
+              } catch {
+                // Some browsers throw when reassigning opener cross-origin;
+                // `noreferrer` already mitigates this. Swallow.
+              }
+              setAuthorizing(true);
+              setError(null);
+            } catch (caught) {
+              setError(
+                caught instanceof Error
+                  ? caught.message
+                  : "Could not start authorization.",
+              );
+            }
+          }}
+        />
+      )}
       {error && <div className="text-xs text-danger">{error}</div>}
+    </div>
+  );
+}
+
+function OAuthRequestPanel({
+  form,
+  authorizing,
+  onStart,
+}: {
+  form: NonNullable<NonNullable<ConversationMessage["secretRequest"]>["form"]>;
+  authorizing: boolean;
+  onStart: () => void;
+}) {
+  const provider = form.provider ?? "provider";
+  const label = form.submitLabel ?? `Connect ${provider}`;
+  return (
+    <div data-testid="sensitive-request-oauth" className="space-y-2">
+      {form.scopes && form.scopes.length > 0 && (
+        <div className="text-xs text-muted">
+          Scopes: {form.scopes.join(", ")}
+        </div>
+      )}
+      <Button
+        type="button"
+        size="sm"
+        onClick={onStart}
+        disabled={authorizing}
+        data-testid="sensitive-request-oauth-start"
+      >
+        {authorizing ? "Authorizing..." : label}
+      </Button>
+      <div className="text-xs text-muted">
+        Authorization happens in a separate window. The token is stored securely
+        and is never shown in chat.
+      </div>
     </div>
   );
 }
@@ -1280,11 +1388,13 @@ export function MessageContent({
                     ? `followups:${seg.id}`
                     : seg.kind === "form"
                       ? `form:${seg.form.id}`
-                      : seg.kind === "permission"
-                        ? `permission:${seg.payload.feature}`
-                        : seg.kind === "analysis-xml"
-                          ? `analysis:${seg.tag}`
-                          : `ui:${seg.raw.slice(0, 80)}`;
+                      : seg.kind === "task-widget"
+                        ? `task:${seg.threadId}`
+                        : seg.kind === "permission"
+                          ? `permission:${seg.payload.feature}`
+                          : seg.kind === "analysis-xml"
+                            ? `analysis:${seg.tag}`
+                            : `ui:${seg.raw.slice(0, 80)}`;
           const segmentKey = nextKey(baseKey);
 
           switch (seg.kind) {
@@ -1346,6 +1456,14 @@ export function MessageContent({
                   key={segmentKey}
                   form={seg.form}
                   onSubmit={handleFormSubmit}
+                />
+              );
+            case "task-widget":
+              return (
+                <TaskWidget
+                  key={segmentKey}
+                  threadId={seg.threadId}
+                  fallbackTitle={seg.title}
                 />
               );
             case "permission":

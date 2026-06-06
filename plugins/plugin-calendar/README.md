@@ -1,7 +1,7 @@
 # @elizaos/plugin-calendar
 
 First-class calendar plugin for elizaOS agents. Owns the calendar domain that
-previously lived inside `@elizaos/plugin-lifeops`:
+previously lived inside `@elizaos/plugin-personal-assistant`:
 
 - **Calendar feed** aggregated across Google Calendar (via `@elizaos/plugin-google`)
   and Apple Calendar (native macOS/iOS bridge via `@elizaos/capacitor-calendar`).
@@ -17,7 +17,7 @@ previously lived inside `@elizaos/plugin-lifeops`:
 
 The calendar **storage and provider logic** live here. The **connector grant
 registry** (which Google account, which scopes, multi-account selection) is a
-cross-connector concern owned by `@elizaos/plugin-lifeops`; `plugin-lifeops`
+cross-connector concern owned by `@elizaos/plugin-personal-assistant`; `plugin-lifeops`
 injects a `CalendarConnectorGate` into the `CalendarService` at init so there is
 no dependency cycle. When `plugin-lifeops` is absent, the service falls back to
 talking to `@elizaos/plugin-google` and the native Apple bridge directly.

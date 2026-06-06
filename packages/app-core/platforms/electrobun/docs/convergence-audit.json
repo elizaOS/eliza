@@ -1101,8 +1101,8 @@
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
     },
     {
-      "id": "plugin-lifeops",
-      "path": "plugins/plugin-lifeops",
+      "id": "plugin-personal-assistant",
+      "path": "plugins/plugin-personal-assistant",
       "category": "app-plugin",
       "currentPurpose": "LifeOps app plugin: routines, goals, Google Workspace, Apple Calendar, Apple Reminders, Twilio, browser companion control, hosts-file blocking (self-control), and related agent surfaces.",
       "keepAs": "app-plugin",

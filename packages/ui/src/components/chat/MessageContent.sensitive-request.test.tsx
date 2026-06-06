@@ -125,6 +125,31 @@ function pendingOwnerInlineSecretRequest(): ConversationMessage["secretRequest"]
   };
 }
 
+function pendingOAuthRequest(): ConversationMessage["secretRequest"] {
+  return {
+    key: "GITHUB_OAUTH",
+    reason: "Connect GitHub for PR access",
+    status: "pending",
+    delivery: {
+      mode: "inline_owner_app",
+      instruction: "Connect GitHub to continue.",
+      privateRouteRequired: true,
+      canCollectValueInCurrentChannel: true,
+    },
+    form: {
+      type: "sensitive_request_form",
+      kind: "oauth",
+      mode: "inline_owner_app",
+      fields: [],
+      provider: "GitHub",
+      scopes: ["repo", "read:user"],
+      authorizationUrl: "https://example.test/oauth/authorize?state=abc",
+      submitLabel: "Connect GitHub",
+      statusOnly: true,
+    },
+  };
+}
+
 describe("MessageContent sensitive requests", () => {
   afterEach(() => {
     cleanup();
@@ -173,8 +198,12 @@ describe("MessageContent sensitive requests", () => {
     const input = screen.getByLabelText("OPENAI_API_KEY") as HTMLInputElement;
     expect(input.type).toBe("password");
     expect(screen.getByRole("button", { name: "Save secret" })).toBeTruthy();
-    expect(screen.getByTestId("sensitive-request").textContent).toContain(
-      "The value will not be sent as a chat message.",
+    // Trust-signage copy lives only on the OAuth panel where the user is
+    // navigating to a third-party origin. For a password field, the
+    // `type="password"` input is the signal — chatty reassurance copy was
+    // intentionally removed.
+    expect(screen.getByTestId("sensitive-request").textContent).not.toContain(
+      "will not be sent",
     );
   });
 
@@ -209,6 +238,80 @@ describe("MessageContent sensitive requests", () => {
     ]);
     expect(container.textContent?.includes(rawSecret)).toBe(false);
     expect(screen.queryByLabelText("OPENAI_API_KEY")).toBeNull();
+  });
+
+  it("renders an OAuth request with a Connect button and never shows the URL in chat", () => {
+    const { container } = render(
+      <MessageContent
+        message={baseMessage({ secretRequest: pendingOAuthRequest() })}
+      />,
+    );
+
+    const button = screen.getByTestId("sensitive-request-oauth-start");
+    expect(button.textContent).toBe("Connect GitHub");
+    expect(container.textContent).toContain("Scopes: repo, read:user");
+    expect(container.textContent).toContain("The token is stored securely");
+    // The raw authorization URL must never leak into the chat surface.
+    expect(
+      container.textContent?.includes("example.test/oauth/authorize"),
+    ).toBe(false);
+    // The form is OAuth, so no password field is rendered.
+    expect(screen.queryByLabelText("GITHUB_OAUTH")).toBeNull();
+    // updateSecrets must never be called for an OAuth flow — the token
+    // lands in the vault via the callback, never via chat.
+    expect(updateSecretsMock).not.toHaveBeenCalled();
+  });
+
+  it("opens the authorization URL in a popup when the Connect button is clicked", () => {
+    const fakePopup = { opener: { real: true } } as unknown as Window;
+    const openMock = vi.fn().mockReturnValue(fakePopup);
+    const originalOpen = window.open;
+    window.open = openMock as typeof window.open;
+
+    render(
+      <MessageContent
+        message={baseMessage({ secretRequest: pendingOAuthRequest() })}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("sensitive-request-oauth-start"));
+    expect(openMock).toHaveBeenCalledTimes(1);
+    expect(openMock.mock.calls[0]?.[0]).toBe(
+      "https://example.test/oauth/authorize?state=abc",
+    );
+    // SECURITY: the features string MUST include `noreferrer` so the
+    // consent origin can't read `document.referrer`. It must NOT include
+    // `noopener`, since that forces window.open to return null and
+    // destroys our popup-blocked signal. We additionally null out
+    // `popup.opener` ourselves immediately after open.
+    const features = String(openMock.mock.calls[0]?.[2] ?? "");
+    expect(features).toContain("noreferrer");
+    expect(features).not.toContain("noopener");
+    expect((fakePopup as { opener: unknown }).opener).toBeNull();
+    // The button flips to "Authorizing..." after a successful popup open.
+    expect(
+      screen.getByTestId("sensitive-request-oauth-start").textContent,
+    ).toContain("Authorizing");
+
+    window.open = originalOpen;
+  });
+
+  it("surfaces a clear error when the OAuth popup is blocked", () => {
+    const openMock = vi.fn().mockReturnValue(null);
+    const originalOpen = window.open;
+    window.open = openMock as typeof window.open;
+
+    const { container } = render(
+      <MessageContent
+        message={baseMessage({ secretRequest: pendingOAuthRequest() })}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("sensitive-request-oauth-start"));
+    expect(container.textContent).toContain("Pop-up blocked");
+    // No fallback message-stream emission on popup block.
+    expect(updateSecretsMock).not.toHaveBeenCalled();
+
+    window.open = originalOpen;
   });
 });
 

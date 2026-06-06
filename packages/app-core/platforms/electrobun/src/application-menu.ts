@@ -24,7 +24,7 @@ export interface AppMenuEntry {
 const APP_MENU_ENTRIES: readonly AppMenuEntry[] = [
   {
     slug: "lifeops",
-    name: "@elizaos/plugin-lifeops",
+    name: "@elizaos/plugin-personal-assistant",
     displayName: "LifeOps",
     windowPath: "/apps/lifeops",
     hasDetailsPage: true,

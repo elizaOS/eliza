@@ -3,24 +3,24 @@ import type {
   ScenarioCheckResult,
   ScenarioContext,
 } from "@elizaos/scenario-runner/schema";
-import { insertActivityEvent } from "../../../../plugins/plugin-lifeops/src/activity-profile/activity-tracker-repo.ts";
+import { insertActivityEvent } from "../../../../plugins/plugin-personal-assistant/src/activity-profile/activity-tracker-repo.ts";
 import {
   recordBrowserFocusWindow,
   recordBrowserSessionRegistration,
-} from "../../../../plugins/plugin-lifeops/src/lifeops/browser-extension-store.ts";
+} from "../../../../plugins/plugin-personal-assistant/src/lifeops/browser-extension-store.ts";
 import {
   type LifeOpsMeetingPreferencesPatch,
   updateLifeOpsMeetingPreferences,
-} from "../../../../plugins/plugin-lifeops/src/lifeops/owner-profile.ts";
+} from "../../../../plugins/plugin-personal-assistant/src/lifeops/owner-profile.ts";
 import {
   createLifeOpsCalendarSyncState,
   LifeOpsRepository,
-} from "../../../../plugins/plugin-lifeops/src/lifeops/repository.ts";
-import { LifeOpsService } from "../../../../plugins/plugin-lifeops/src/lifeops/service.ts";
+} from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
+import { LifeOpsService } from "../../../../plugins/plugin-personal-assistant/src/lifeops/service.ts";
 import {
   executeRawSql,
   sqlQuote,
-} from "../../../../plugins/plugin-lifeops/src/lifeops/sql.ts";
+} from "../../../../plugins/plugin-personal-assistant/src/lifeops/sql.ts";
 import { seedGoogleConnectorGrant } from "../../mocks/helpers/seed-grants.ts";
 
 type CalendarSeedEvent = {

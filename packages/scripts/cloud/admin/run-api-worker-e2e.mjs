@@ -1,7 +1,8 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
 import { createConnection } from "node:net";
-import { resolve } from "node:path";
+import { homedir } from "node:os";
+import { delimiter, resolve } from "node:path";
 import { config } from "dotenv";
 
 for (const envPath of [
@@ -36,10 +37,16 @@ const defaultE2eEnv = {
 
 function bunExecutable() {
   if (process.env.BUN && existsSync(process.env.BUN)) return process.env.BUN;
-  const homeBun = resolve(process.env.HOME || "", ".bun/bin/bun");
+  // Windows: HOME is unset, bun installs to `%USERPROFILE%\.bun\bin\bun.exe`
+  // and PATH uses `;` as delimiter; POSIX: `~/.bun/bin/bun` + `:` delimiter.
+  const isWindows = process.platform === "win32";
+  const bunBasename = isWindows ? "bun.exe" : "bun";
+  const userHome =
+    process.env.HOME || process.env.USERPROFILE || homedir() || "";
+  const homeBun = resolve(userHome, ".bun", "bin", bunBasename);
   if (existsSync(homeBun)) return homeBun;
-  const pathBun = process.env.PATH?.split(":")
-    .map((entry) => resolve(entry, "bun"))
+  const pathBun = process.env.PATH?.split(delimiter)
+    .map((entry) => resolve(entry, bunBasename))
     .find((candidate) => existsSync(candidate));
   if (pathBun) return pathBun;
   if (process.env.npm_execpath?.includes("bun"))

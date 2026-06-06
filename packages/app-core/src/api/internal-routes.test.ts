@@ -377,8 +377,15 @@ describe("getDeviceSecret", () => {
       const second = getDeviceSecret();
       expect(second).toBe(first);
       expect(fs.readFileSync(filePath, "utf8").trim()).toBe(first);
-      const mode = fs.statSync(filePath).mode & 0o777;
-      expect(mode).toBe(0o600);
+      // NTFS doesn't model the Unix permission bits and Node's
+      // `fs.chmodSync` only sets the read-only flag on Windows, so the
+      // POSIX `0o600` assertion can't hold there. The implementation still
+      // calls chmod; on POSIX it's enforced, on Windows the file-system
+      // ACL governs access instead.
+      if (process.platform !== "win32") {
+        const mode = fs.statSync(filePath).mode & 0o777;
+        expect(mode).toBe(0o600);
+      }
     } finally {
       __setDeviceSecretPathForTests(null);
       fs.rmSync(dir, { recursive: true, force: true });

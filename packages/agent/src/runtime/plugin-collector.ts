@@ -284,7 +284,7 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   appPolymarket: "@elizaos/plugin-polymarket-app",
   vision: "@elizaos/plugin-vision",
   elizacloud: "@elizaos/plugin-elizacloud",
-  selfcontrol: "@elizaos/plugin-lifeops",
+  selfcontrol: "@elizaos/plugin-personal-assistant",
   cua: "@elizaos/plugin-cua",
   computeruse: "@elizaos/plugin-computeruse",
   obsidian: "@elizaos/plugin-obsidian",

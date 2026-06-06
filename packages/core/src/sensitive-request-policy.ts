@@ -111,11 +111,32 @@ export interface SensitiveRequestOauthTarget {
 	[key: string]: unknown;
 }
 
+/**
+ * Tightened OAuth target shape used by the owner-app OAuth inline adapter
+ * and the chat OAuthRequestPanel widget. Carries the canonical fields the
+ * widget needs to render the "Connect <provider>" button and open the
+ * consent URL in a popup. The legacy {@link SensitiveRequestOauthTarget}
+ * (lowercase `a`) stays around as a permissive umbrella for callers that
+ * pre-date this shape; new code should prefer this interface.
+ */
+export interface SensitiveRequestOAuthTarget {
+	kind: "oauth";
+	/** Canonical provider id, e.g. "github", "google". */
+	provider: string;
+	/** OAuth scopes the consent screen will request. */
+	scopes?: string[];
+	/** The consent URL the widget opens in a popup. */
+	authorizationUrl: string;
+	/** Human-readable provider label shown in the "Connect <label>" button. */
+	label?: string;
+}
+
 export type SensitiveRequestTarget =
 	| SensitiveRequestSecretTarget
 	| SensitiveRequestPrivateInfoTarget
 	| SensitiveRequestPaymentTarget
-	| SensitiveRequestOauthTarget;
+	| SensitiveRequestOauthTarget
+	| SensitiveRequestOAuthTarget;
 
 export interface SensitiveRequestCallback {
 	kind?: string;

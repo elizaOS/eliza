@@ -24,7 +24,7 @@
     "paths": {
       "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
-      "@elizaos/plugin-lifeops": ["../plugin-lifeops/src/index.ts"],
+      "@elizaos/plugin-personal-assistant": ["../plugin-personal-assistant/src/index.ts"],
       "@elizaos/plugin-steward-app": ["../plugin-steward-app/src/index.ts"],
       "@elizaos/plugin-wallet-ui": ["../plugin-wallet-ui/src/index.ts"],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],

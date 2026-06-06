@@ -8,7 +8,7 @@
  *
  * Shell concerns (selection state, chat launching, and the primed-event
  * lookup cache) are injected as props so the component stays decoupled from
- * the LifeOps dashboard shell. `@elizaos/plugin-lifeops` wraps this with a
+ * the LifeOps dashboard shell. `@elizaos/plugin-personal-assistant` wraps this with a
  * thin adapter that wires its own selection context, chat launcher, and
  * event prime cache.
  */

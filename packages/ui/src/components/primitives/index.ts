@@ -9,6 +9,7 @@ export * from "../ui/dropdown-menu";
 export * from "../ui/error-boundary";
 export * from "../ui/grid";
 export * from "../ui/input";
+export * from "../ui/input-group";
 export * from "../ui/label";
 export * from "../ui/popover";
 export * from "../ui/progress";

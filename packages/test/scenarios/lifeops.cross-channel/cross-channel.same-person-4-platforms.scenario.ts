@@ -19,7 +19,7 @@ import {
   acceptCanonicalIdentityMerge,
   assertCanonicalIdentityMerged,
   seedCanonicalIdentityFixture,
-} from "../../../../plugins/plugin-lifeops/test/helpers/lifeops-identity-merge-fixtures.ts";
+} from "../../../../plugins/plugin-personal-assistant/test/helpers/lifeops-identity-merge-fixtures.ts";
 import {
   expectScenarioToCallAction,
   judgeRubric,

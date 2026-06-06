@@ -15,7 +15,7 @@ export interface HomeGridApp extends AppIdentitySource {
  * None are pinned by default — this is the full catalog available for pinning.
  */
 export const PINNABLE_INTERNAL_APPS: readonly string[] = [
-  "@elizaos/plugin-lifeops",
+  "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-task-coordinator",
   "@elizaos/plugin-steward-app",
   "@elizaos/plugin-elizamaker",

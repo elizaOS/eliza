@@ -133,9 +133,59 @@ function main() {
     }
   }
 
+  // Hoist a known set of transitive deps that workspace packages re-export
+  // but bun's isolated install left only at `node_modules/.bun/<name>@.../node_modules/<name>`.
+  // Vite + vitest cannot follow the realpath chain on Windows when a test
+  // file in `plugins/foo` imports `@elizaos/logger`, which in turn imports
+  // `adze` — the resolver walks up from the importer (the plugin), not from
+  // `@elizaos/logger`'s realpath. Adding a top-level `node_modules/<name>`
+  // symlink unblocks the resolution everywhere.
+  //
+  // Add an entry whenever a workspace package depends on a package that
+  // (a) appears in NO root manifest (and so isn't auto-hoisted) and
+  // (b) is imported across workspace boundaries.
+  const HOIST_TRANSITIVE = [
+    { name: "adze", consumer: "@elizaos/logger" },
+    { name: "fast-redact", consumer: "@elizaos/logger" },
+  ];
+  let hoisted = 0;
+  for (const root of NODE_MODULES_DIRS) {
+    const nodeModulesRoot = join(REPO_ROOT, root);
+    if (!existsSync(nodeModulesRoot)) continue;
+    for (const { name, consumer } of HOIST_TRANSITIVE) {
+      const linkPath = join(nodeModulesRoot, name);
+      if (existsSync(linkPath)) continue;
+      const segments = consumer.split("/");
+      const consumerDir = join(REPO_ROOT, "packages", segments[1]);
+      const consumerNested = join(consumerDir, "node_modules", name);
+      if (!existsSync(consumerNested)) continue;
+      // Vite's resolver doesn't reliably traverse double-symlinks on Windows.
+      // The nested workspace `node_modules/<name>` is itself a symlink into
+      // `node_modules/.bun/<name>@<ver>/node_modules/<name>`; point the
+      // hoisted top-level link straight at the real target so any consumer
+      // (Node ESM, Vite, vitest, bun) sees a one-hop chain.
+      let targetDir = consumerNested;
+      try {
+        targetDir = realpathSync(consumerNested);
+      } catch {
+        // Fall back to the nested path if realpath can't resolve.
+      }
+      try {
+        const made = ensureSymlink(linkPath, targetDir);
+        if (made) hoisted += 1;
+      } catch (err) {
+        console.warn(
+          `[ensure-workspace-symlinks] hoist failed for ${root}/${name}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+  }
+
   const missingUnique = new Set(missingRoots);
   console.log(
-    `[ensure-workspace-symlinks] created=${created.length} skipped=${skipped.length} missing-roots=${missingUnique.size}`,
+    `[ensure-workspace-symlinks] created=${created.length} skipped=${skipped.length} hoisted=${hoisted} missing-roots=${missingUnique.size}`,
   );
 }
 

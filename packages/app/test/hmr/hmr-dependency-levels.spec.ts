@@ -35,7 +35,7 @@ const LEVELS = [
   },
   {
     name: "plugin view lifeops",
-    file: "plugins/plugin-lifeops/src/components/LifeOpsPageView.tsx",
+    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
   },
   {
     name: "plugin view messages",

@@ -15,6 +15,7 @@
 export type DeliveryTarget =
 	| "dm"
 	| "owner_app_inline"
+	| "owner_app_oauth"
 	| "cloud_authenticated_link"
 	| "tunnel_authenticated_link"
 	| "public_link"

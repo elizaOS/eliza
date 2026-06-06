@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { ChannelType, type Plugin, stringToUuid } from "@elizaos/core";
-import { appLifeOpsPlugin } from "../../../../plugins/plugin-lifeops/src/plugin.ts";
+import { personalAssistantPlugin } from "../../../../plugins/plugin-personal-assistant/src/plugin.ts";
 import {
   createRealTestRuntime,
   type RealTestRuntimeOptions,
@@ -103,7 +103,7 @@ function mockRuntimePlugins(
   plugins: readonly Plugin[] | undefined,
   withLLM: boolean,
 ): Plugin[] {
-  const out: Plugin[] = [appLifeOpsPlugin];
+  const out: Plugin[] = [personalAssistantPlugin];
   const seen = new Set(out.map((plugin) => plugin.name));
   if (withLLM) {
     const proxy = createDeterministicLlmProxyPlugin();

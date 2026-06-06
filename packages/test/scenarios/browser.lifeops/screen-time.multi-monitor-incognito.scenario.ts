@@ -25,7 +25,7 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { recordBrowserSessionRegistration } from "../../../../plugins/plugin-lifeops/src/lifeops/browser-extension-store.ts";
+import { recordBrowserSessionRegistration } from "../../../../plugins/plugin-personal-assistant/src/lifeops/browser-extension-store.ts";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 import { seedBrowserExtensionTelemetry } from "../_helpers/lifeops-seeds.ts";
 
