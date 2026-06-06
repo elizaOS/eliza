@@ -5,7 +5,11 @@ import {
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { Alert, AlertDescription, DiscordIcon } from "@elizaos/ui";
-import type { StewardProviders } from "@stwd/sdk";
+import type {
+  StewardAuthResult,
+  StewardMfaRequiredResult,
+  StewardProviders,
+} from "@stwd/sdk";
 import { StewardAuth } from "@stwd/sdk";
 import { AlertCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -79,6 +83,7 @@ const DEFAULT_PROVIDERS: StewardProviders = {
   google: false,
   discord: false,
   github: false,
+  twitter: false,
   oauth: [],
 };
 
@@ -88,6 +93,19 @@ const TEST_PROVIDERS: StewardProviders = {
 };
 
 type LoginTranslator = ReturnType<typeof useT>;
+
+// SDK sign-in methods return `StewardAuthResult | StewardMfaRequiredResult`.
+// This client has no MFA-continuation UI, so a step-up challenge can't be
+// completed here — narrow on the `mfaRequired` discriminant and fail loudly
+// rather than mis-reading token fields off the MFA branch.
+function requireCompletedAuth(
+  result: StewardAuthResult | StewardMfaRequiredResult,
+): StewardAuthResult {
+  if ("mfaRequired" in result) {
+    throw new Error("MFA required — not yet supported in this client.");
+  }
+  return result;
+}
 
 function getCallbackReasonMessage(
   reason: string | null,
@@ -345,7 +363,9 @@ export default function StewardLoginSection() {
     setLoading("passkey");
     setError(null);
     try {
-      const result = await auth.signInWithPasskey(email.trim());
+      const result = requireCompletedAuth(
+        await auth.signInWithPasskey(email.trim()),
+      );
       await handleSuccess(result.token, result.refreshToken);
     } catch (e: unknown) {
       setError(getErrorMessage(e, "Passkey failed"));

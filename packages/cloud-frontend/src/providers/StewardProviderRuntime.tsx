@@ -1,5 +1,6 @@
 "use client";
 
+import type { StewardClient as StewardReactClient } from "@stwd/react";
 import { StewardProvider, useAuth as useStewardAuth } from "@stwd/react";
 import { StewardClient } from "@stwd/sdk";
 import { useEffect, useMemo, useRef } from "react";
@@ -168,12 +169,19 @@ export default function StewardAuthRuntimeProvider({
   children: React.ReactNode;
   tenantId?: string;
 }) {
+  // @stwd/react@0.7.2 bundles @stwd/sdk@^0.8.0, while this package pins
+  // @stwd/sdk@^0.10.1 (bumped for the passkey-login fix). The two StewardClient
+  // classes are public-API-identical and differ only by added private fields,
+  // so they are nominally incompatible. StewardProvider only calls the public
+  // `client.getBaseUrl()` at runtime, so the 0.10.1 client is safe to pass; the
+  // cast bridges the private-field nominal mismatch until @stwd/react ships a
+  // release tracking @stwd/sdk@0.10.x.
   const client = useMemo(
     () =>
       new StewardClient({
         baseUrl: apiUrl,
         ...(tenantId && !isPlaceholderValue(tenantId) ? { tenantId } : {}),
-      }),
+      }) as unknown as StewardReactClient,
     [apiUrl, tenantId],
   );
   const authConfig = useMemo(() => ({ baseUrl: apiUrl }), [apiUrl]);
