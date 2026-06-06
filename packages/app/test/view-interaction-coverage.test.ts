@@ -255,6 +255,14 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: ["host lifecycle", "Refresh capabilities", "screen-token-1"],
     },
   ],
+  "social-alpha": [
+    {
+      spec: "packages/app/test/ui-smoke/apps-session-direct-a.spec.ts",
+      proves:
+        "Exercises the manager-visible Social Alpha route through the app-session direct smoke matrix.",
+      signals: ["DIRECT_ROUTE_CASES", "escapeRegExp"],
+    },
+  ],
   "task-coordinator": [
     {
       spec: "packages/app/test/ui-smoke/task-coordinator-gui-interactions.spec.ts",
