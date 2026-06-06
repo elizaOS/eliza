@@ -1,12 +1,8 @@
 "use client";
 
-// Mirror of eliza/packages/ui/src/hooks/useRenderGuard.ts. The cloud workspace
-// is a separate package tree and cannot depend on @elizaos/ui, so this file is
-// kept in lock-step manually. When changing one, change the other.
-//
 // Only the RenderTelemetryProfiler component lives here so Vite React Fast
 // Refresh can hot-patch it. The telemetry primitives (constants, types,
-// setRenderTelemetrySink, useRenderGuard) live in ./render-telemetry.helpers.
+// setRenderTelemetrySink, useRenderGuard) live in hooks/useRenderGuard.
 
 import {
   Profiler,
@@ -24,7 +20,7 @@ import {
   nextRenderTelemetrySequence,
   type RenderTelemetrySeverity,
   WINDOW_MS,
-} from "./render-telemetry.helpers";
+} from "../../hooks/useRenderGuard";
 
 export function RenderTelemetryProfiler({
   children,

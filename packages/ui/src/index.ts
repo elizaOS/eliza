@@ -139,14 +139,6 @@ export { default as Image } from "./cloud-ui/runtime/image";
 export * from "./cloud-ui/runtime/navigation";
 export { RenderTelemetryProfiler } from "./cloud-ui/runtime/render-telemetry";
 export {
-  type AnyRenderTelemetryEvent,
-  type ProfilerRenderTelemetryEvent,
-  RENDER_TELEMETRY_EVENT,
-  type RenderTelemetryEvent,
-  type RenderTelemetrySeverity,
-  setRenderTelemetrySink,
-} from "./cloud-ui/runtime/render-telemetry.helpers";
-export {
   type ChatMediaAttachment,
   ContentType,
 } from "./cloud-ui/types/chat-media";
@@ -414,7 +406,15 @@ export type { ActivityEvent } from "./hooks/useActivityEvents";
 export { useActivityEvents } from "./hooks/useActivityEvents";
 export { useIntervalWhenDocumentVisible } from "./hooks/useDocumentVisibility";
 export { useMediaQuery } from "./hooks/useMediaQuery";
-export { useRenderGuard } from "./hooks/useRenderGuard";
+export {
+  type AnyRenderTelemetryEvent,
+  type ProfilerRenderTelemetryEvent,
+  RENDER_TELEMETRY_EVENT,
+  type RenderTelemetryEvent,
+  type RenderTelemetrySeverity,
+  setRenderTelemetrySink,
+  useRenderGuard,
+} from "./hooks/useRenderGuard";
 export { useTimeout } from "./hooks/useTimeout";
 export type { UiLanguage } from "./i18n/index";
 export * from "./i18n/index";

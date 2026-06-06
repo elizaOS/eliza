@@ -444,6 +444,7 @@ export const __loadAppRoutePluginFromSpecifierForTest =
   loadAppRoutePluginFromSpecifier;
 
 const WORKFLOW_ROUTE_PLUGIN_ID = "@elizaos/plugin-workflow:routes";
+const WALLET_ROUTE_PLUGIN_ID = "@elizaos/plugin-wallet:routes";
 
 function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   return getApps(loadRegistry()).flatMap((app) => {
@@ -540,6 +541,20 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
         loadAppRoutePluginFromSpecifier(
           "@elizaos/plugin-workflow/plugin-routes",
           "workflowRoutePlugin",
+        ),
+    });
+  }
+  // plugin-wallet has the same load-order hazard: its rawPath route plugin
+  // (`/api/wallet/market-overview`) registers only as a side effect of the
+  // `register-routes` import, which is not guaranteed to have run before this
+  // snapshot. Register it explicitly so the route is always mounted.
+  if (!byId.has(WALLET_ROUTE_PLUGIN_ID)) {
+    byId.set(WALLET_ROUTE_PLUGIN_ID, {
+      id: WALLET_ROUTE_PLUGIN_ID,
+      load: () =>
+        loadAppRoutePluginFromSpecifier(
+          "@elizaos/plugin-wallet/routes/plugin",
+          "walletRoutePlugin",
         ),
     });
   }

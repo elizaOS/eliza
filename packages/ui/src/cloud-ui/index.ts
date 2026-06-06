@@ -4,6 +4,7 @@ export {
   TabsList,
   TabsTrigger,
 } from "../components/ui/tabs";
+export * from "../hooks/useRenderGuard";
 export type {
   ElizaAvatarProps,
   MemoizedChatMessageMessage,
@@ -93,5 +94,4 @@ export { default as dynamic } from "./runtime/dynamic";
 export { default as Image } from "./runtime/image";
 export * from "./runtime/navigation";
 export * from "./runtime/render-telemetry";
-export * from "./runtime/render-telemetry.helpers";
 export * from "./types/chat-media";

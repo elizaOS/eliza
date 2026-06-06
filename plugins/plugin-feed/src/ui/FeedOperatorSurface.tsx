@@ -19,7 +19,14 @@ import {
 } from "@elizaos/app-core/ui-compat";
 import { Button, TerminalPluginView } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  GameSurfaceHero,
+  GameSurfaceShell,
+  GameSurfaceStrip,
+  type StatChip,
+  WaitingForSession,
+} from "./game-surface-shell";
 import {
   extractAgentSummary,
   extractChatMessages,

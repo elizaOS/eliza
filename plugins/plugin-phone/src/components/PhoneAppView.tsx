@@ -172,6 +172,14 @@ function PhoneTabTrigger({
       value={tab}
       disabled={disabled}
       aria-current={active ? "true" : undefined}
+      className="rounded-full font-semibold transition-colors"
+      style={{
+        background: active ? "var(--accent-subtle)" : "transparent",
+        color: active ? "var(--accent)" : "var(--muted)",
+        border: active
+          ? "1px solid var(--accent)"
+          : "1px solid transparent",
+      }}
       {...agentProps}
     >
       {label}
@@ -197,7 +205,12 @@ function PhoneDialKey({
     <button
       ref={ref}
       type="button"
-      className="h-16 rounded-full border border-border bg-bg-accent text-2xl font-semibold text-txt transition active:scale-95 hover:bg-bg-accent/70 sm:h-20"
+      className="h-16 rounded-full text-2xl font-semibold transition active:scale-95 sm:h-20"
+      style={{
+        background: "var(--surface)",
+        color: "var(--text)",
+        border: "1px solid var(--border)",
+      }}
       onClick={() => onPress(digit)}
       aria-label={`Dial ${digit}`}
       data-testid={`phone-dial-key-${digit}`}
