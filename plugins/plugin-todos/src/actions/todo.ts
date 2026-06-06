@@ -1,3 +1,18 @@
+/**
+ * TODO umbrella action.
+ *
+ * ABSORPTION NOTE — OWNER_TODOS from plugin-lifeops is collapsed into this
+ * existing action. The umbrella already covers list/create/update/complete/
+ * cancel/delete/write/clear, which is a superset of what the owner-facing
+ * surface needed; no new op is required.
+ *
+ * TODO(migrate: plugins/plugin-lifeops/src/actions/owner-surfaces.ts
+ *   ownerTodosAction): port any owner-only formatting (e.g. lane-based
+ *   grouping by Today/Upcoming/Someday, due-date defaults, recap rendering)
+ *   into the `list` op here. After migration, the OWNER_TODOS action and
+ *   its source can be deleted from plugin-lifeops.
+ */
+
 import type {
   Action,
   ActionResult,

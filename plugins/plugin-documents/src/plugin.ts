@@ -18,6 +18,7 @@ import {
   sendJsonError as httpSendJsonError,
 } from "@elizaos/core";
 import { readJsonBody as httpReadJsonBody } from "@elizaos/shared";
+import { ownerDocumentsAction } from "./actions/owner-documents.ts";
 import { handleDocumentsRoutes } from "./routes.js";
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
@@ -105,4 +106,20 @@ export const documentsPlugin: Plugin = {
   name: "@elizaos/plugin-documents-routes",
   description: "Document management, fragment listing, and search routes",
   routes: documentsRoutes,
+  actions: [ownerDocumentsAction],
+  views: [
+    {
+      id: "documents",
+      label: "Documents",
+      description:
+        "Browse, search, and triage owner-gated document requests (Recent, Search, Signature Queue).",
+      icon: "FileText",
+      path: "/documents",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "DocumentsView",
+      tags: ["documents", "files", "signatures"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
 };

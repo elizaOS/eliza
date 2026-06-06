@@ -20,6 +20,8 @@
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { ownerHealthAction } from "./actions/owner-health.js";
+import { ownerScreentimeAction } from "./actions/owner-screentime.js";
 import {
   HEALTH_ANCHORS,
   HEALTH_BUS_FAMILIES,
@@ -66,9 +68,27 @@ export const healthPlugin: Plugin = {
   description:
     "Health, sleep, circadian and screen-time domain plugin — extracted from app-lifeops in Wave-1 (W1-B).",
   services: [],
-  actions: [],
+  // Owner-facing action scaffolds extracted from plugin-lifeops. Handlers
+  // currently return typed `scaffold_stub` failures; see each action file for
+  // the TODO(migrate: …) pointer at the source.
+  actions: [ownerHealthAction, ownerScreentimeAction],
   providers: [],
   tests: [],
+  views: [
+    {
+      id: "health",
+      label: "Health",
+      description:
+        "Sleep, circadian, screen-time, activity, and connector status.",
+      icon: "Heart",
+      path: "/health",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "HealthView",
+      tags: ["health", "sleep", "screen-time", "activity"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
   init: async (
     _config: Record<string, string>,
     runtime: IAgentRuntime,

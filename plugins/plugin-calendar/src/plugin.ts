@@ -1,4 +1,6 @@
 import type { Plugin } from "@elizaos/core";
+import { calendarAction } from "./actions/calendar.js";
+import { conflictDetectAction } from "./actions/conflict-detect.js";
 import { CalendarService } from "./service/CalendarService.js";
 
 /**
@@ -15,8 +17,23 @@ export const calendarPlugin: Plugin = {
   description:
     "Calendar feed and event management (Google + Apple) for Eliza agents.",
   services: [CalendarService],
-  actions: [],
+  actions: [calendarAction, conflictDetectAction],
   providers: [],
+  views: [
+    {
+      id: "calendar",
+      label: "Calendar",
+      description:
+        "Unified Google + Apple calendar with day/week/month tabs and inline conflict detection.",
+      icon: "Calendar",
+      path: "/calendar",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "CalendarView",
+      tags: ["calendar", "schedule", "events"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
 };
 
 export default calendarPlugin;
