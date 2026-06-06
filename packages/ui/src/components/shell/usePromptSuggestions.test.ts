@@ -10,6 +10,7 @@ vi.mock("../../api/client", () => ({ client: { fetch: fetchMock } }));
 
 import {
   computePromptSuggestions,
+  pageScopeFromLocation,
   usePromptSuggestions,
 } from "./usePromptSuggestions";
 
@@ -110,5 +111,35 @@ describe("usePromptSuggestions (model-backed)", () => {
     const fallback = [...result.current];
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(result.current).toEqual(fallback);
+  });
+
+  it("sends the active page scope so the server can tailor per view (#8225)", async () => {
+    fetchMock.mockResolvedValue({ suggestions: ["A", "B", "C"] });
+    renderHook(() =>
+      usePromptSuggestions([], { enabled: true, scope: "page-lifeops" }),
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0][1] as { body: string }).body,
+    );
+    expect(body.scope).toBe("page-lifeops");
+  });
+});
+
+describe("pageScopeFromLocation", () => {
+  it("derives the scope from a path segment", () => {
+    expect(pageScopeFromLocation("/lifeops", "")).toBe("page-lifeops");
+    expect(pageScopeFromLocation("/wallet/send", "")).toBe("page-wallet");
+  });
+
+  it("prefers the hash segment when present (hash navigation)", () => {
+    expect(pageScopeFromLocation("/", "#/settings?x=1")).toBe("page-settings");
+    expect(pageScopeFromLocation("/lifeops", "#/apps")).toBe("page-apps");
+  });
+
+  it("returns undefined for unscoped or empty views", () => {
+    expect(pageScopeFromLocation("/", "")).toBeUndefined();
+    expect(pageScopeFromLocation("/chat", "")).toBeUndefined();
+    expect(pageScopeFromLocation("/not-a-real-tab", "")).toBeUndefined();
   });
 });

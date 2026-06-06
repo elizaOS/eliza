@@ -1,6 +1,10 @@
 import * as React from "react";
 
 import { client } from "../../api/client";
+import {
+  PAGE_SCOPES,
+  type PageScope,
+} from "../pages/page-scoped-conversations";
 import type { ShellMessage } from "./shell-state";
 
 /**
@@ -8,9 +12,11 @@ import type { ShellMessage } from "./shell-state";
  *
  * Returns EXACTLY 3 short prompts. The strip is backed by the small text model
  * (`POST /api/suggestions`, TEXT_SMALL) so the offered moves are tailored to the
- * character and the conversation so far. A deterministic, network-free set is
- * computed synchronously as the cold-start / offline fallback, so the strip is
- * never empty and never flashes while the model set is in flight.
+ * character, the conversation so far, and the active page scope (#8225 — the
+ * server tailors per view and pads from a deterministic heuristic tier, so its
+ * response is never empty). A deterministic, network-free set is computed
+ * synchronously as the cold-start / offline fallback, so the strip is never
+ * empty and never flashes while the model set is in flight.
  */
 
 const SUGGESTION_COUNT = 3;
@@ -58,6 +64,35 @@ export function computePromptSuggestions(
   return Array.from(new Set([lead, ...STARTERS])).slice(0, SUGGESTION_COUNT);
 }
 
+/**
+ * Derive the active {@link PageScope} from the current location so the server
+ * can tailor suggestions per view. The shell navigates by path or hash
+ * (`/lifeops`, `#/lifeops?...`), so the first segment of whichever is present
+ * is the tab id; `page-<tab>` counts only when it's a registered scope. Pure
+ * for unit tests; returns undefined off-DOM or on unscoped views.
+ */
+export function pageScopeFromLocation(
+  pathname: string,
+  hash: string,
+): PageScope | undefined {
+  const fromHash = hash.replace(/^#\/?/, "").split(/[/?#]/)[0] ?? "";
+  const fromPath = pathname.replace(/^\//, "").split(/[/?#]/)[0] ?? "";
+  const segment = (fromHash || fromPath).trim().toLowerCase();
+  if (!segment) return undefined;
+  const candidate = `page-${segment}`;
+  return (PAGE_SCOPES as readonly string[]).includes(candidate)
+    ? (candidate as PageScope)
+    : undefined;
+}
+
+function currentPageScope(): PageScope | undefined {
+  if (typeof window === "undefined") return undefined;
+  return pageScopeFromLocation(
+    window.location.pathname ?? "",
+    window.location.hash ?? "",
+  );
+}
+
 function normalizeModelSuggestions(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -78,6 +113,7 @@ function normalizeModelSuggestions(value: unknown): string[] {
 async function fetchModelSuggestions(
   messages: readonly ShellMessage[],
   hour: number,
+  scope: PageScope | undefined,
   signal: AbortSignal,
 ): Promise<string[]> {
   const recent = messages
@@ -91,7 +127,11 @@ async function fetchModelSuggestions(
     "/api/suggestions",
     {
       method: "POST",
-      body: JSON.stringify({ messages: recent, hour }),
+      body: JSON.stringify({
+        messages: recent,
+        hour,
+        ...(scope ? { scope } : {}),
+      }),
       signal,
     },
     { allowNonOk: true, timeoutMs: FETCH_TIMEOUT_MS },
@@ -109,7 +149,7 @@ async function fetchModelSuggestions(
  */
 export function usePromptSuggestions(
   messages: readonly ShellMessage[],
-  options?: { enabled?: boolean },
+  options?: { enabled?: boolean; scope?: PageScope },
 ): string[] {
   const enabled = options?.enabled ?? false;
   const hasThread = messages.some((m) => m.content.trim().length > 0);
@@ -117,6 +157,10 @@ export function usePromptSuggestions(
   const hour = new Date().getHours();
   const lastId =
     messages.filter((m) => m.content.trim().length > 0).at(-1)?.id ?? null;
+  // Active view scope: explicit override wins; otherwise derived from the
+  // location at fetch time (the overlay floats over every view, so the URL is
+  // the source of truth for "where the user is").
+  const scope = options?.scope ?? currentPageScope();
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: hasThread + hour are the only inputs that change the fallback; depending on the messages array identity would needlessly churn it on every unrelated re-render.
   const fallback = React.useMemo(
@@ -126,12 +170,12 @@ export function usePromptSuggestions(
 
   const [model, setModel] = React.useState<string[] | null>(null);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: messages is read inside, but the fetch is intentionally keyed on enabled/hasThread/hour/lastId (the dimensions worth a refresh); keying on the array identity would refetch on every render.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: messages is read inside, but the fetch is intentionally keyed on enabled/hasThread/hour/lastId/scope (the dimensions worth a refresh); keying on the array identity would refetch on every render.
   React.useEffect(() => {
     if (!enabled) return;
     const controller = new AbortController();
     let cancelled = false;
-    void fetchModelSuggestions(messages, hour, controller.signal)
+    void fetchModelSuggestions(messages, hour, scope, controller.signal)
       .then((next) => {
         if (!cancelled && next.length >= SUGGESTION_COUNT) setModel(next);
       })
@@ -142,7 +186,7 @@ export function usePromptSuggestions(
       cancelled = true;
       controller.abort();
     };
-  }, [enabled, hasThread, hour, lastId]);
+  }, [enabled, hasThread, hour, lastId, scope]);
 
   const source = model && model.length >= SUGGESTION_COUNT ? model : fallback;
   return source.slice(0, SUGGESTION_COUNT);

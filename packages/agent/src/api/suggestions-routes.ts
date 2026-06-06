@@ -1,12 +1,21 @@
 /**
- * POST /api/suggestions — model-generated tap-to-send prompt suggestions for
- * the continuous-chat overlay's resting composer strip.
+ * POST /api/suggestions — server-tailored tap-to-send prompt suggestions for
+ * the continuous-chat overlay's resting composer strip (#8225).
  *
- * The client sends recent conversation context + the local hour; we ask the
- * small text model for EXACTLY 3 short, first-person prompts the user might tap
- * next, tailored to the character and the conversation so far. Generation
- * failures degrade gracefully to an empty list — the overlay keeps its static
- * offline fallback, so the strip is never empty.
+ * The client sends recent conversation context, the local hour, and the
+ * active page scope ("page-lifeops", "page-browser", …). Two tiers:
+ *
+ * - `model`     — the small text model writes EXACTLY 3 short, first-person
+ *                 prompts tailored to the character, the conversation, and
+ *                 the active view.
+ * - `heuristic` — a deterministic, zero-model-call set derived from scope +
+ *                 thread state + time of day. Served when no runtime/model
+ *                 is available or generation fails, and used to pad a short
+ *                 model set — the response is never empty
+ *                 (degrade-not-empty).
+ *
+ * Response: `{ suggestions: string[3], tier: "model" | "heuristic",
+ * generatedAt: ISO }`. Clients that only read `suggestions` keep working.
  */
 
 import type http from "node:http";
@@ -22,6 +31,9 @@ const MAX_SUGGESTION_CHARS = 48;
 const MIN_SUGGESTION_CHARS = 2;
 const MAX_CONTEXT_MESSAGES = 6;
 const MAX_CONTEXT_CHARS = 240;
+
+/** Page scopes mirror `PageScope` in @elizaos/ui (page-scoped-conversations). */
+const PAGE_SCOPE_PATTERN = /^page-[a-z][a-z0-9-]{1,30}$/;
 
 export interface SuggestionsRouteContext {
   req: http.IncomingMessage;
@@ -41,18 +53,25 @@ interface ContextMessage {
 interface SuggestionsRequest {
   messages: ContextMessage[];
   hour: number | undefined;
+  scope: string | undefined;
 }
 
+const EMPTY_REQUEST: SuggestionsRequest = {
+  messages: [],
+  hour: undefined,
+  scope: undefined,
+};
+
 export function parseRequestBody(raw: string): SuggestionsRequest {
-  if (!raw.trim()) return { messages: [], hour: undefined };
+  if (!raw.trim()) return { ...EMPTY_REQUEST };
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return { messages: [], hour: undefined };
+    return { ...EMPTY_REQUEST };
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { messages: [], hour: undefined };
+    return { ...EMPTY_REQUEST };
   }
   const body = parsed as Record<string, unknown>;
 
@@ -78,7 +97,88 @@ export function parseRequestBody(raw: string): SuggestionsRequest {
       ? Math.floor(hourValue)
       : undefined;
 
-  return { messages: messages.slice(-MAX_CONTEXT_MESSAGES), hour };
+  const scope =
+    typeof body.scope === "string" && PAGE_SCOPE_PATTERN.test(body.scope)
+      ? body.scope
+      : undefined;
+
+  return { messages: messages.slice(-MAX_CONTEXT_MESSAGES), hour, scope };
+}
+
+// ---------------------------------------------------------------------------
+// Heuristic tier — deterministic, zero model calls (#8225 Phase-1)
+// ---------------------------------------------------------------------------
+
+/** Per-scope starters; each obeys the same 2–6-word, ≤48-char suggestion rules. */
+const SCOPE_STARTERS: Record<string, readonly string[]> = {
+  "page-browser": [
+    "Summarize this page",
+    "Search the web for me",
+    "Find sources for this",
+  ],
+  "page-character": [
+    "Tune your personality",
+    "Change your voice",
+    "What can you do?",
+  ],
+  "page-automations": [
+    "Create a daily routine",
+    "List my automations",
+    "What ran today?",
+  ],
+  "page-apps": ["What apps do I have?", "Recommend an app", "Build me an app"],
+  "page-connectors": [
+    "Check my connections",
+    "Connect a new service",
+    "Any connector errors?",
+  ],
+  "page-phone": ["Call a contact", "Read my messages", "Text someone for me"],
+  "page-plugins": [
+    "What plugins are active?",
+    "Suggest a plugin",
+    "Configure a plugin",
+  ],
+  "page-lifeops": ["Plan my day", "What's on my plate?", "Review my reminders"],
+  "page-settings": [
+    "Review my settings",
+    "Switch my model",
+    "Tighten my privacy",
+  ],
+  "page-wallet": ["Check my balance", "Recent transactions", "Send a payment"],
+};
+
+const GENERAL_STARTERS: readonly string[] = [
+  "What can you do?",
+  "Summarize my day",
+  "Draft a reply",
+  "What's on my plate?",
+  "Explain this for me",
+];
+
+const THREAD_FOLLOW_UP = "Continue where we left off";
+
+function heuristicLead(hour: number | undefined): string {
+  if (hour === undefined) return GENERAL_STARTERS[0];
+  if (hour >= 5 && hour < 12) return "Plan my day";
+  if (hour >= 12 && hour < 18) return "What's left today?";
+  return "Recap my day";
+}
+
+/**
+ * Deterministic suggestions from scope + thread state + time of day. Always
+ * returns exactly {@link SUGGESTION_COUNT} unique items — the
+ * degrade-not-empty floor under the model tier.
+ */
+export function computeHeuristicSuggestions(
+  request: SuggestionsRequest,
+): string[] {
+  const hasThread = request.messages.length > 0;
+  const lead = hasThread ? THREAD_FOLLOW_UP : heuristicLead(request.hour);
+  const scoped = (request.scope && SCOPE_STARTERS[request.scope]) || [];
+  return Array.from(new Set([lead, ...scoped, ...GENERAL_STARTERS])).slice(
+    0,
+    SUGGESTION_COUNT,
+  );
 }
 
 function timeOfDay(hour: number | undefined): string {
@@ -113,6 +213,9 @@ function buildPrompt(
         .join("\n")
     : "No conversation yet.";
 
+  // "page-lifeops" → "lifeops" — a human-readable view name for the prompt.
+  const viewName = request.scope?.replace(/^page-/, "");
+
   return [
     `You write tap-to-send prompt suggestions for a chat composer. ${characterHint(runtime)}`,
     "",
@@ -126,6 +229,11 @@ function buildPrompt(
     "- Concrete and immediately useful. No greetings, no 'hello', no emoji.",
     "- Do not number them, quote them, or add bullets inside the strings.",
     `- If a conversation is present, suggest natural follow-ups to it; otherwise offer broadly useful first moves for ${timeOfDay(request.hour)}.`,
+    ...(viewName
+      ? [
+          `- The user is currently on the "${viewName}" view of the app; bias at least one suggestion toward what they'd do there.`,
+        ]
+      : []),
     "",
     "Conversation so far:",
     conversation,
@@ -175,6 +283,32 @@ export function cleanSuggestions(value: unknown): string[] {
   return out;
 }
 
+interface SuggestionsPayload {
+  suggestions: string[];
+  tier: "model" | "heuristic";
+  generatedAt: string;
+}
+
+/** Pad a (possibly short) model set up to the full count from the heuristic tier. */
+function padWithHeuristics(
+  modelSuggestions: string[],
+  request: SuggestionsRequest,
+): SuggestionsPayload {
+  const seen = new Set(modelSuggestions.map((s) => s.toLowerCase()));
+  const padded = [...modelSuggestions];
+  for (const candidate of computeHeuristicSuggestions(request)) {
+    if (padded.length >= SUGGESTION_COUNT) break;
+    if (seen.has(candidate.toLowerCase())) continue;
+    seen.add(candidate.toLowerCase());
+    padded.push(candidate);
+  }
+  return {
+    suggestions: padded.slice(0, SUGGESTION_COUNT),
+    tier: modelSuggestions.length > 0 ? "model" : "heuristic",
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 export async function handleSuggestionsRoutes(
   ctx: SuggestionsRouteContext,
 ): Promise<boolean> {
@@ -184,16 +318,18 @@ export async function handleSuggestionsRoutes(
     error(res, "Method not allowed", 405);
     return true;
   }
-  if (!runtime) {
-    json(res, { suggestions: [] });
-    return true;
-  }
 
   const buffer = await readRequestBodyBuffer(req, {
     maxBytes: MAX_BODY_BYTES,
     returnNullOnTooLarge: true,
   });
   const request = parseRequestBody(buffer?.toString("utf8") ?? "");
+
+  // No runtime → serve the deterministic tier (degrade-not-empty, #8225).
+  if (!runtime) {
+    json(res, padWithHeuristics([], request));
+    return true;
+  }
 
   try {
     const raw = await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -203,16 +339,19 @@ export async function handleSuggestionsRoutes(
       responseFormat: { type: "json_object" },
     });
     const parsed = parseJsonObject(typeof raw === "string" ? raw : "");
-    json(res, { suggestions: cleanSuggestions(parsed?.suggestions) });
+    json(
+      res,
+      padWithHeuristics(cleanSuggestions(parsed?.suggestions), request),
+    );
   } catch (err) {
     runtime.logger.warn(
       {
         src: "api:suggestions",
         error: err instanceof Error ? err.message : String(err),
       },
-      "Prompt suggestion generation failed; returning empty set",
+      "Prompt suggestion generation failed; serving heuristic tier",
     );
-    json(res, { suggestions: [] });
+    json(res, padWithHeuristics([], request));
   }
   return true;
 }
