@@ -19,7 +19,6 @@ import {
   RefreshCw,
   Search,
   SlidersHorizontal,
-  Star,
   Trash2,
   X,
 } from "lucide-react";
@@ -281,6 +280,48 @@ function ViewModeButton({
   );
 }
 
+function ViewModeMenu({
+  group,
+  onClick,
+}: {
+  group: ViewGroup;
+  onClick: (view: ViewRegistryEntry) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const label = `${group.modes.length} modes`;
+  return (
+    <div className="flex min-w-0 flex-col items-end gap-1.5">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-label={`${open ? "Hide" : "Show"} ${group.label} mode options`}
+        onClick={() => setOpen((value) => !value)}
+        className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-border/45 bg-bg/35 px-2.5 text-xs font-semibold text-muted transition-colors hover:border-accent/40 hover:bg-accent/10 hover:text-txt"
+      >
+        {label}
+        <ChevronDown
+          className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`}
+          aria-hidden
+        />
+      </button>
+      {open && (
+        <div
+          className="flex max-w-full flex-wrap justify-end gap-1.5"
+          data-testid={`view-mode-options-${group.id}`}
+        >
+          {group.modes.map((mode) => (
+            <ViewModeButton
+              key={viewInstanceKey(mode)}
+              view={mode}
+              onClick={onClick}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function buildViewContext(view: ViewRegistryEntry) {
   const viewType = view.viewType ?? "gui";
   const route = view.path ?? `/apps/${view.id}`;
@@ -513,13 +554,7 @@ function ViewCard({
           }`}
         >
           {group.modes.length > 1 ? (
-            group.modes.map((mode) => (
-              <ViewModeButton
-                key={viewInstanceKey(mode)}
-                view={mode}
-                onClick={onClick}
-              />
-            ))
+            <ViewModeMenu group={group} onClick={onClick} />
           ) : (
             <>
               <ViewStatusBadge available={view.available} />
@@ -646,8 +681,8 @@ function TopViewsSection({
     >
       <div className="mb-2 flex items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted/80">
-          <Star className="h-3.5 w-3.5 text-accent" aria-hidden />
-          Featured views
+          <Pin className="h-3.5 w-3.5 text-accent" aria-hidden />
+          Quick access
         </h2>
         <span className="text-xs text-muted">{views.length}</span>
       </div>
@@ -1095,14 +1130,6 @@ export function ViewManagerPage() {
                   )}
                 </div>
               </div>
-              <button
-                type="button"
-                className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-border/45 bg-card/60 px-3 text-xs font-semibold text-muted hover:border-border/65 hover:text-txt"
-              >
-                <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />
-                Popular
-                <ChevronDown className="h-3.5 w-3.5" aria-hidden />
-              </button>
             </div>
 
             <div className="grid w-full min-w-0 gap-3 xl:grid-cols-[minmax(22rem,1fr)_auto_auto] xl:items-center">

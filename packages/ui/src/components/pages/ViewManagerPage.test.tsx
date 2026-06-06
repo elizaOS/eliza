@@ -198,7 +198,7 @@ describe("ViewManagerPage", () => {
     expect(context.agentDescription).toContain("Purpose:");
   });
 
-  it("groups GUI, XR, and TUI variants into one launcher row with mode buttons", () => {
+  it("groups GUI, XR, and TUI variants into one launcher row with a mode menu", () => {
     useAvailableViewsMock.mockReturnValue({
       views: [
         ...views,
@@ -231,7 +231,14 @@ describe("ViewManagerPage", () => {
     expect(card.textContent).toContain("Remote Ledger");
     expect(card.textContent).not.toContain("Remote Ledger XR");
     expect(card.textContent).not.toContain("Remote Ledger TUI");
+    expect(card.textContent).toContain("3 modes");
 
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Show Remote Ledger mode options",
+      }),
+    );
+    expect(screen.getByTestId("view-mode-options-remote.ledger")).toBeTruthy();
     fireEvent.click(
       screen.getByRole("button", { name: "Open Remote Ledger TUI" }),
     );
@@ -266,7 +273,7 @@ describe("ViewManagerPage", () => {
     window.removeEventListener("eliza:navigate:view", listener);
   });
 
-  it("shows pinned and recent views as the featured launcher without duplicates", () => {
+  it("shows pinned and recent views as the quick access launcher without duplicates", () => {
     const manyViews = [
       ...views,
       ...Array.from({ length: 10 }, (_, index) =>
@@ -313,6 +320,7 @@ describe("ViewManagerPage", () => {
     render(<ViewManagerPage />);
 
     const topSection = screen.getByTestId("views-top-section");
+    expect(topSection.textContent).toContain("Quick access");
     expect(topSection.textContent).toContain("Remote Ledger");
     expect(topSection.textContent).toContain("Plugin 0");
     expect(topSection.textContent).toContain("Plugin 2");
