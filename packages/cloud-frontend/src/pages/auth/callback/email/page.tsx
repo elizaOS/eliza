@@ -14,6 +14,17 @@ import { LocalStewardAuthContext } from "../../../../providers/StewardProvider";
 
 type CallbackStatus = "verifying" | "success" | "error";
 
+function isMfaRequiredAuthResult(
+  result: unknown,
+): result is { mfaRequired: true } {
+  return (
+    typeof result === "object" &&
+    result !== null &&
+    "mfaRequired" in result &&
+    result.mfaRequired === true
+  );
+}
+
 export default function StewardEmailCallbackPage() {
   const t = useT();
   const [searchParams] = useSearchParams();
@@ -77,6 +88,14 @@ export default function StewardEmailCallbackPage() {
     void (async () => {
       try {
         const result = await auth.verifyEmailCallback(token, email);
+        if (isMfaRequiredAuthResult(result)) {
+          throw new Error(
+            t("cloud.emailCallback.mfaNotSupported", {
+              defaultValue:
+                "This account requires multi-factor authentication, which isn't supported here yet. Use a different sign-in method.",
+            }),
+          );
+        }
         await syncStewardSessionCookie(result.token, result.refreshToken);
         finishSuccess();
       } catch (err) {

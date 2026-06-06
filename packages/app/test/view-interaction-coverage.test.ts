@@ -262,6 +262,15 @@ const GUI_INTERACTION_OWNERS: Readonly<
         "Exercises the manager-visible Social Alpha route through the app-session direct smoke matrix.",
       signals: ["DIRECT_ROUTE_CASES", "escapeRegExp"],
     },
+    {
+      spec: "plugins/plugin-social-alpha/src/index.test.ts",
+      proves:
+        "Locks the Social Alpha leaderboard view manifest, component export, and manager visibility contract.",
+      signals: [
+        "declares the Social Alpha leaderboard view",
+        "SocialAlphaView",
+      ],
+    },
   ],
   "task-coordinator": [
     {

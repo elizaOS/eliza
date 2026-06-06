@@ -1639,6 +1639,18 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route("**/api/social-alpha/leaderboard", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: [] }),
+    });
+  });
+
   await page.route("**/api/model-tester/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
