@@ -181,22 +181,6 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: bunx wrangler deploy ${{ steps.env.outputs.wrangler_args }}
 
-      # NOTE: a "Verify generated agent wildcard route" step used to live here
-      # that asserted https://00000000-0000-0000-0000-000000000000.elizacloud.ai/
-      # responded with "agent not found or not running". That contract was
-      # never actually wired — the only handler that returns that string is the
-      # Hetzner-side agent-router daemon (packages/scripts/cloud/admin/daemons/
-      # agent-router.ts), NOT the cloud-api Worker — so a `*.elizacloud.ai/*`
-      # Worker route would just return the Worker's root JSON instead. Each
-      # time the route got added to satisfy the verifier, it caught
-      # staging.elizacloud.ai/* before Pages could serve the dashboard, which
-      # broke staging end-to-end (the SPA host returned cloud-api JSON instead
-      # of HTML). Do NOT re-introduce the verifier or the wildcard until the
-      # Worker actually handles agent UUID hostnames. Until then, fall through
-      # to the default Pages routing for staging and the Hetzner nginx + Lua
-      # router for the agent subdomains (which use `agents-staging` /
-      # `agents` zones, not `elizacloud.ai`).
-
   # ---------------------------------------------------------------------------
   # Frontend (Cloudflare Pages)
   # ---------------------------------------------------------------------------
