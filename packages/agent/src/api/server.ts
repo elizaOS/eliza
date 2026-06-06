@@ -71,13 +71,6 @@ let x402PluginModule: X402PluginModule | null = null;
 let browserPluginModulePromise: Promise<BrowserPluginModule> | null = null;
 let x402PluginModulePromise: Promise<X402PluginModule> | null = null;
 
-function formatRequestHandlerError(err: unknown): string {
-  if (err instanceof Error) {
-    return err.stack || err.message;
-  }
-  return String(err);
-}
-
 async function getBrowserPlugin(): Promise<BrowserPluginModule> {
   if (browserPluginModule) return browserPluginModule;
   browserPluginModulePromise ??= import(
@@ -3562,9 +3555,7 @@ export async function startApiServer(opts?: {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "internal error";
-      logger.error(
-        `[eliza-api] Request handler failed: ${msg}\n${formatRequestHandlerError(err)}`,
-      );
+      logger.error({ err }, `[eliza-api] Request handler failed: ${msg}`);
       addLog("error", msg, "api", ["server", "api"]);
       error(res, msg, 500);
     }
