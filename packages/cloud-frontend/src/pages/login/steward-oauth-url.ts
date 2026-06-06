@@ -10,22 +10,18 @@ export type StewardOAuthProvider = "google" | "discord" | "github";
  * value we send at /authorize time exactly matches the value we send at
  * /exchange time — Steward rejects the exchange if they differ.
  */
-export function buildStewardOAuthRedirectUri(
-  origin: string,
-  redirectSearch?: string,
-): string {
-  let normalizedSearch = redirectSearch ?? "";
-  if (normalizedSearch && !normalizedSearch.startsWith("?")) {
-    normalizedSearch = `?${normalizedSearch}`;
-  }
-  return `${origin}/login${normalizedSearch}`;
+export function buildStewardOAuthRedirectUri(origin: string): string {
+  // Keep the OAuth redirect URI stable. Steward allowlists exact redirect URLs
+  // for tenant OAuth; putting volatile login query params (returnTo, app auth,
+  // CLI state, etc.) in redirect_uri makes legitimate production logins miss
+  // the allowlist. Preserve post-login destinations outside redirect_uri.
+  return `${origin}/login`;
 }
 
 export function buildStewardOAuthAuthorizeUrl(
   provider: StewardOAuthProvider,
   origin: string,
   options?: {
-    redirectSearch?: string;
     stewardApiUrl?: string;
     stewardTenantId?: string;
     /**
@@ -37,10 +33,7 @@ export function buildStewardOAuthAuthorizeUrl(
     codeChallenge?: string;
   },
 ): string {
-  const redirectUri = buildStewardOAuthRedirectUri(
-    origin,
-    options?.redirectSearch,
-  );
+  const redirectUri = buildStewardOAuthRedirectUri(origin);
   const params = new URLSearchParams({
     redirect_uri: redirectUri,
     tenant_id: options?.stewardTenantId ?? DEFAULT_STEWARD_TENANT_ID,
