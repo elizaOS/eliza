@@ -61,7 +61,7 @@ async function expectViewManagerPage(page: Page) {
     ).toBeVisible();
     await expect(
       main.getByRole("button", {
-        name: /^Companion(?:\s+@elizaos\/plugin-companion)?$/,
+        name: /^(?:Loaded\s+gui\s+)?Companion(?:\s+@elizaos\/plugin-companion)?$/i,
       }),
     ).toBeVisible();
   }
