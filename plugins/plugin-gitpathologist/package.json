@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-gitpathologist",
-  "version": "2.0.3-beta.8",
+  "version": "2.0.3-beta.9",
   "description": "Forensic git-history analysis for elizaOS agents: per-surface health timeline, drift inflection detection, rot post-mortem.",
   "type": "module",
   "main": "dist/node/index.js",

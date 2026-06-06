@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-shell",
-  "version": "2.0.3-beta.8",
+  "version": "2.0.3-beta.9",
   "description": "Shell history and observability plugin for ElizaOS",
   "type": "module",
   "main": "dist/index.js",

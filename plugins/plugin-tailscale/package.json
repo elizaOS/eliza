@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-tailscale",
-  "version": "2.0.3-beta.8",
+  "version": "2.0.3-beta.9",
   "description": "Tunnel plugin for elizaOS — local Tailscale serve/funnel or Eliza Cloud-routed Tailscale auth-key minter",
   "type": "module",
   "main": "dist/index.js",
