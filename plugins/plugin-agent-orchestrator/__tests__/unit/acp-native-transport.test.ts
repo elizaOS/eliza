@@ -311,6 +311,46 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     emitJson(p, { jsonrpc: "2.0", id: 3, result: {} });
   });
 
+  it("initialize honors the configured session timeout instead of the 300s default", async () => {
+    // Regression: the first opencode spawn compiles its TS tree and installs the
+    // provider npm package (e.g. @ai-sdk/cerebras), which can exceed the 300s
+    // default. The `initialize` handshake must honor the configured session
+    // timeout like `session/prompt` does, or a cold spawn aborts with
+    // "ACP request timed out: initialize" before the agent is ever usable.
+    vi.useFakeTimers();
+    const p = queueProc();
+    const client = new NativeAcpClient({
+      command: "agent-acp",
+      cwd: "/tmp/native-acp",
+      approvalPreset: "autonomous",
+      timeoutMs: 600_000, // 10 min — well past the 300s default
+    });
+    let settled = false;
+    const startResult = client.start().then(
+      (value) => {
+        settled = true;
+        return value;
+      },
+      (error: unknown) => {
+        settled = true;
+        return error;
+      },
+    );
+    await waitForWrites(p, 1);
+    expect(writeAt(p, 0)).toMatchObject({ method: "initialize" });
+
+    // Past the OLD 300s default — must NOT have fired yet (proves the override).
+    await vi.advanceTimersByTimeAsync(301_000);
+    expect(settled).toBe(false);
+
+    // Cross the configured 600s budget — now it times out.
+    await vi.advanceTimersByTimeAsync(300_000);
+    const error = await startResult;
+    expect(settled).toBe(true);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe("ACP request timed out: initialize");
+  });
+
   it("returns method-not-found for unsupported client request methods", async () => {
     const { p } = await startClient();
 
