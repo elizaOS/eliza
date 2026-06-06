@@ -902,12 +902,15 @@ export async function handleChatCompletionsPOST(
         user.id,
         costWithMarkup.totalCost,
       );
+      // checkBalance() reads the user's org (cloud) credit balance — the same
+      // source deductCredits()/reconcileCredits() debit — not a per-app pool.
+      // Keep the wording consistent with the org-credits branch (re #8253).
       if (!balanceCheck.sufficient) {
         return addCorsHeaders(
           Response.json(
             {
               error: {
-                message: `Insufficient app credits. Required: $${costWithMarkup.totalCost.toFixed(4)}`,
+                message: `Insufficient credits. Required: $${costWithMarkup.totalCost.toFixed(4)}`,
                 type: "insufficient_quota",
                 code: "insufficient_credits",
               },

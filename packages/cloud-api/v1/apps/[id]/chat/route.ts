@@ -308,7 +308,7 @@ async function handlePOST(
     });
 
     if (!deductionResult.success) {
-      logger.warn("[App Chat] Insufficient app credits", {
+      logger.warn("[App Chat] Insufficient cloud credits", {
         appId,
         userId: user.id,
         required: deductionResult.totalCost,
@@ -321,7 +321,7 @@ async function handlePOST(
             error: {
               message:
                 deductionResult.message ||
-                `Insufficient app credits. Required: $${deductionResult.totalCost.toFixed(4)}`,
+                `Insufficient credits. Required: $${deductionResult.totalCost.toFixed(4)}`,
               type: "insufficient_quota",
               code: "insufficient_app_credits",
               required: deductionResult.totalCost,

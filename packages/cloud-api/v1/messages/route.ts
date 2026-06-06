@@ -595,10 +595,12 @@ app.post("/", async (c) => {
       costWithMarkup.totalCost,
     );
 
+    // checkBalance() reads the org (cloud) credit balance — same source as the
+    // org-credits branch and deductCredits(); keep the wording identical (#8253).
     if (!balanceCheck.sufficient) {
       return anthropicError(
         "rate_limit_error",
-        `Insufficient app credits. Required: $${costWithMarkup.totalCost.toFixed(4)}`,
+        `Insufficient credits. Required: $${costWithMarkup.totalCost.toFixed(4)}`,
         429,
       );
     }

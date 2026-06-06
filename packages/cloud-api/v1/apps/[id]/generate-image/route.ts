@@ -427,7 +427,7 @@ app.post("/", async (c) => {
       return c.json(
         {
           success: false,
-          error: "Insufficient app credits",
+          error: "Insufficient credits",
           code: "insufficient_app_credits",
           required: deduction.totalCost,
           balance: deduction.newBalance,
