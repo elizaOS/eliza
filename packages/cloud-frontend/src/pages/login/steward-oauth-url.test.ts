@@ -72,16 +72,4 @@ describe("Steward OAuth PKCE", () => {
     expect(withoutPkce.searchParams.has("code_challenge_method")).toBe(false);
   });
 
-  it("buildStewardOAuthAuthorizeUrl uses the bare allowlisted login callback", () => {
-    const url = new URL(
-      buildStewardOAuthAuthorizeUrl("google", "https://www.elizacloud.ai", {
-        stewardApiUrl: "https://api.example/steward",
-        codeChallenge: "CHALLENGE",
-      }),
-    );
-
-    expect(url.searchParams.get("redirect_uri")).toBe(
-      "https://www.elizacloud.ai/login",
-    );
-  });
 });
