@@ -52,6 +52,7 @@ export * from "./generations";
 export * from "./idempotency-keys";
 export * from "./invoices";
 export * from "./jobs";
+export * from "./domain-purchase-idempotency";
 export * from "./llm-trajectories";
 export * from "./managed-domains";
 export * from "./model-pricing";

@@ -981,6 +981,13 @@
       "when": 1779408800000,
       "tag": "0140_tenant_db_clusters",
       "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1779408900000,
+      "tag": "0141_domain_purchase_idempotency",
+      "breakpoints": true
     }
   ]
 }
