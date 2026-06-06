@@ -61,15 +61,10 @@ export async function hasWalletConfigured(): Promise<boolean> {
 	}
 }
 
-/** Fetch + rank the leaderboard via the plugin's agent-scoped route. */
+/** Fetch + rank the leaderboard via the plugin's route. */
 export async function fetchLeaderboardData(): Promise<LeaderboardEntry[]> {
-	const status = await client.getStatus();
-	const agentId = status?.agentId;
-	if (!agentId) {
-		throw new Error("Agent is not ready yet");
-	}
 	const data = await client.fetch<{ message?: string; data?: unknown }>(
-		`/api/agents/${agentId}/plugins/community-investor/leaderboard`,
+		"/api/social-alpha/leaderboard",
 	);
 	const rows = data.data;
 	if (!Array.isArray(rows)) {

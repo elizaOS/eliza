@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import socialAlphaPlugin, { panels } from "./index";
+import socialAlphaPlugin from "./index";
 import { socialAlphaProvider } from "./providers/socialAlphaProvider";
 import { CommunityInvestorService } from "./service";
 
@@ -12,13 +12,14 @@ describe("socialAlphaPlugin", () => {
 		expect(Array.isArray(socialAlphaPlugin.routes)).toBe(true);
 	});
 
-	it("exports the Social Alpha panel", () => {
-		expect(panels).toEqual(
+	it("declares the Social Alpha leaderboard view", () => {
+		expect(socialAlphaPlugin.views).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
-					name: "Social Alpha",
-					path: "display",
-					component: "LeaderboardPanelPage",
+					id: "social-alpha",
+					label: "Social Alpha",
+					bundlePath: "dist/views/bundle.js",
+					componentExport: "SocialAlphaView",
 				}),
 			]),
 		);

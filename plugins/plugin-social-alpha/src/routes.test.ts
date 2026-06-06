@@ -36,7 +36,7 @@ function runtime(service: unknown): IAgentRuntime {
 describe("communityInvestorRoutes", () => {
 	it("returns leaderboard data and service failures with the route envelope", async () => {
 		const leaderboardRoute = communityInvestorRoutes.find(
-			(route) => route.path === "/leaderboard",
+			(route) => route.path === "/api/social-alpha/leaderboard",
 		);
 		const service = {
 			getLeaderboardData: vi.fn(async () => [
@@ -71,31 +71,5 @@ describe("communityInvestorRoutes", () => {
 				message: "CommunityInvestorService not found",
 			},
 		});
-	});
-
-	it.each([
-		"/assets/../package.json",
-		"/assets/%2e%2e/package.json",
-		"/assets/%00bad.js",
-		"/not-assets/index.js",
-	])("rejects hostile asset path %s before filesystem streaming", async (path) => {
-		const assetRoute = communityInvestorRoutes.find(
-			(route) => route.path === "/assets/*",
-		);
-		const response = makeResponse();
-
-		await assetRoute?.handler?.(
-			{ path } as RouteRequest,
-			response,
-			runtime(null),
-		);
-
-		expect(response.statusCode).toBe(400);
-		expect(JSON.parse(response.body)).toEqual(
-			expect.objectContaining({
-				success: false,
-				error: expect.objectContaining({ code: "BAD_REQUEST" }),
-			}),
-		);
 	});
 });

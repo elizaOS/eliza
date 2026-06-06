@@ -81,7 +81,7 @@ async function getLeaderboardDataHandler(
 export const communityInvestorRoutes: Route[] = [
 	{
 		type: "GET",
-		path: "/leaderboard", // This will be /api/agents/:agentId/plugins/community-investor/leaderboard
+		path: "/api/social-alpha/leaderboard",
 		handler: getLeaderboardDataHandler,
 	},
 ];
