@@ -107,10 +107,6 @@ const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
 const LifeOpsPageView = lazyNamedComponent<Record<string, never>>(
   async () => (await loadPlugin("@elizaos/app-lifeops")).LifeOpsPageView,
 );
-const BrowserBridgeSetupPanel = lazyNamedComponent<Record<string, never>>(
-  async () =>
-    (await loadPlugin("@elizaos/app-lifeops")).LifeOpsBrowserSetupPanel,
-);
 const LifeOpsActivitySignalsEffect = lazyNamedComponent<Record<string, never>>(
   async () =>
     (await loadPlugin("@elizaos/app-lifeops")).LifeOpsActivitySignalsEffect,
@@ -265,7 +261,6 @@ export function initializeAppPlugins(
       characterCatalog: args.characterCatalog,
       envAliases: args.envAliases,
       lifeOpsPageView: LifeOpsPageView,
-      lifeOpsBrowserSetupPanel: BrowserBridgeSetupPanel,
       appBlockerSettingsCard: AppBlockerSettingsCard,
       websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
       clientMiddleware: args.clientMiddleware,

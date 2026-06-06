@@ -241,9 +241,6 @@ const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
 const LifeOpsPageView = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppLifeOps()).LifeOpsPageView,
 );
-const BrowserBridgeSetupPanel = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppLifeOps()).LifeOpsBrowserSetupPanel,
-);
 const LifeOpsActivitySignalsEffect = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppLifeOps()).LifeOpsActivitySignalsEffect,
 );
@@ -500,7 +497,6 @@ function buildAppBootConfig({
     characterCatalog: APP_CHARACTER_CATALOG,
     envAliases: APP_ENV_ALIASES,
     lifeOpsPageView: LifeOpsPageView,
-    lifeOpsBrowserSetupPanel: BrowserBridgeSetupPanel,
     appBlockerSettingsCard: AppBlockerSettingsCard,
     websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
     clientMiddleware: {
