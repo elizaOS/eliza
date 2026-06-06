@@ -1,6 +1,6 @@
 import { registerLifeOpsAutomationNodeContributor } from "./automation-node-contributor.js";
 
-export { personalAssistantPlugin } from "./routes/plugin.js";
+export { personalAssistantRoutesPlugin } from "./routes/plugin.js";
 export {
   getSelfControlPermissionState,
   openSelfControlPermissionLocation,

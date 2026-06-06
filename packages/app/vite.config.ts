@@ -2293,13 +2293,16 @@ export const INVALID_TRACER_PROVIDER = {};
           "packages/shared/src/brand/index.ts",
         ),
       },
-      // The LifeOps package root also exports server/service internals.
-      // The renderer only needs the UI facade; keep it off Discord/native deps.
+      // plugin-personal-assistant no longer ships a renderer view (the
+      // legacy /lifeops dashboard was killed in the lifeops decomposition);
+      // domain views live in plugin-todos/inbox/goals/health/calendar/etc.
+      // Point the renderer at the plugin's package entry, which now exports
+      // headless orchestration (BRIEF/PRIORITIZE/PA actions) only.
       {
         find: /^@elizaos\/plugin-personal-assistant$/,
         replacement: path.resolve(
           elizaRoot,
-          "plugins/plugin-personal-assistant/src/ui.ts",
+          "plugins/plugin-personal-assistant/src/index.ts",
         ),
       },
       // The Steward app package root includes wallet route handlers and

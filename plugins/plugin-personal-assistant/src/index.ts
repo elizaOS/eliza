@@ -68,7 +68,7 @@ export {
   type CloudFeaturesRouteState,
   handleCloudFeaturesRoute,
 } from "./routes/cloud-features-routes.js";
-export { personalAssistantPlugin } from "./routes/plugin.js";
+export { personalAssistantRoutesPlugin } from "./routes/plugin.js";
 export * from "./types/app-blocker-settings-card.js";
 export type {
   AppBlockerSettingsCardProps,
