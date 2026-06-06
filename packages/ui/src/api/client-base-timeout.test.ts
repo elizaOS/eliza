@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setBootConfig } from "../config/boot-config";
 import { ElizaClient } from "./client-base";
 import "./client-chat";
+import "./client-local-inference";
 import type { AgentRequestTransport } from "./transport";
 
 function makeClientWithTransport() {
@@ -15,6 +16,14 @@ function makeClientWithTransport() {
   const client = new ElizaClient("http://agent.example:2138", "token");
   client.setRequestTransport({ request });
   return { client, request };
+}
+
+function makeDeferredResponse() {
+  let resolve: (response: Response) => void = () => {};
+  const promise = new Promise<Response>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
 }
 
 describe("ElizaClient request timeout policy", () => {
@@ -61,5 +70,37 @@ describe("ElizaClient request timeout policy", () => {
       expect.any(Object),
       { timeoutMs: 10_000 },
     );
+  });
+
+  it("coalesces concurrent local inference hub reads with a longer timeout", async () => {
+    const response = makeDeferredResponse();
+    const request = vi.fn<AgentRequestTransport["request"]>(
+      async () => response.promise,
+    );
+    const client = new ElizaClient("http://agent.example:2138", "token");
+    client.setRequestTransport({ request });
+
+    const first = client.getLocalInferenceHub();
+    const second = client.getLocalInferenceHub();
+    await Promise.resolve();
+
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith(
+      "http://agent.example:2138/api/local-inference/hub",
+      expect.any(Object),
+      { timeoutMs: 30_000 },
+    );
+
+    response.resolve(
+      new Response(JSON.stringify({ catalog: [], installed: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { catalog: [], installed: [] },
+      { catalog: [], installed: [] },
+    ]);
   });
 });

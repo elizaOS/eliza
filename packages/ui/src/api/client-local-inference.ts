@@ -26,6 +26,8 @@ import type {
 import type { VerifyResult } from "../services/local-inference/verify";
 import { ElizaClient } from "./client-base";
 
+let localInferenceHubRequest: Promise<ModelHubSnapshot> | null = null;
+
 export type {
   ActiveModelState,
   AgentModelSlot,
@@ -183,7 +185,14 @@ declare module "./client-base" {
 ElizaClient.prototype.getLocalInferenceHub = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/local-inference/hub");
+  localInferenceHubRequest ??= this.fetch<ModelHubSnapshot>(
+    "/api/local-inference/hub",
+    undefined,
+    { timeoutMs: 30_000 },
+  ).finally(() => {
+    localInferenceHubRequest = null;
+  });
+  return localInferenceHubRequest;
 };
 
 ElizaClient.prototype.getLocalInferenceHardware = async function (

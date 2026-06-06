@@ -19,6 +19,16 @@ interface RegistryFile {
 	models: InstalledModel[];
 }
 
+const EXTERNAL_SCAN_CACHE_TTL_MS = 5_000;
+
+let externalScanCache:
+	| {
+			expiresAt: number;
+			models: InstalledModel[];
+	  }
+	| null = null;
+let externalScanPromise: Promise<InstalledModel[]> | null = null;
+
 async function ensureRootDir(): Promise<void> {
 	await fs.mkdir(localInferenceRoot(), { recursive: true });
 }
@@ -53,12 +63,33 @@ function externalScanEnabled(): boolean {
 	return value === "1" || value === "true" || value === "yes";
 }
 
+async function scanExternalModelsCached(): Promise<InstalledModel[]> {
+	const now = Date.now();
+	if (externalScanCache && externalScanCache.expiresAt > now) {
+		return externalScanCache.models;
+	}
+	externalScanPromise ??= scanExternalModels()
+		.then((models) => {
+			externalScanCache = {
+				expiresAt: Date.now() + EXTERNAL_SCAN_CACHE_TTL_MS,
+				models,
+			};
+			return models;
+		})
+		.finally(() => {
+			externalScanPromise = null;
+	});
+	return externalScanPromise;
+}
+
 /**
  * Return models currently usable by the curated local-inference path.
  *
  * Normal product behavior is Eliza-1 only. The external scan remains available
  * only to developers who explicitly opt into the old arbitrary-GGUF diagnostic
- * path with `ELIZA_LOCAL_INFERENCE_ENABLE_EXTERNAL_SCAN=1`.
+ * path with `ELIZA_LOCAL_INFERENCE_ENABLE_EXTERNAL_SCAN=1`. External scans are
+ * cached briefly and shared while in flight because model-hub UI refreshes can
+ * arrive in bursts during active downloads.
  */
 export async function listInstalledModels(): Promise<InstalledModel[]> {
 	const owned = await readElizaOwned();
@@ -66,7 +97,7 @@ export async function listInstalledModels(): Promise<InstalledModel[]> {
 
 	// Filter out Eliza-owned files that also survived a reboot of the local
 	// file and got re-detected by the scanner.
-	const external = await scanExternalModels();
+	const external = await scanExternalModelsCached();
 	const ownedPaths = new Set(owned.map((m) => path.resolve(m.path)));
 	const dedupedExternal = external.filter(
 		(m) => !ownedPaths.has(path.resolve(m.path)),
