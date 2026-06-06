@@ -11,6 +11,7 @@ import {
   configuredSessionEndpoint,
   isPlaceholderValue,
   LocalStewardAuthContext,
+  type LocalStewardAuthValue,
   readStoredToken,
   tokenIsExpired,
   tokenSecsRemaining,
@@ -153,8 +154,38 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
     };
   }, [isAuthenticated, user]);
 
+  // Map the SDK context to the local context shape explicitly instead of
+  // passing the SDK object through. The structural pass-through is fragile
+  // across @stwd/sdk resolutions (0.8.x vs 0.10.x nest differently under
+  // @stwd/react), and verifyEmailCallback must narrow the 0.10.x
+  // MFA-required union before exposing tokens.
+  const localAuth = useMemo<LocalStewardAuthValue>(
+    () => ({
+      isAuthenticated: auth.isAuthenticated,
+      isLoading: auth.isLoading,
+      user: auth.user
+        ? {
+            id: auth.user.id,
+            email: auth.user.email ?? undefined,
+            walletAddress: auth.user.walletAddress,
+          }
+        : null,
+      session: auth.session,
+      signOut: () => auth.signOut(),
+      getToken: () => auth.getToken(),
+      verifyEmailCallback: async (token: string, email: string) => {
+        const result = await auth.verifyEmailCallback(token, email);
+        if ("mfaRequired" in result) {
+          throw new Error("MFA required — not yet supported in this client.");
+        }
+        return { token: result.token, refreshToken: result.refreshToken };
+      },
+    }),
+    [auth],
+  );
+
   return (
-    <LocalStewardAuthContext.Provider value={auth}>
+    <LocalStewardAuthContext.Provider value={localAuth}>
       {children}
     </LocalStewardAuthContext.Provider>
   );
