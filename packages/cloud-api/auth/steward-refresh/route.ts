@@ -13,7 +13,9 @@
  *     `/api/auth/steward-session`).
  *  4. Sets new HttpOnly cookies (`steward-token`, `steward-refresh-token`)
  *     and the non-HttpOnly `steward-authed=1` marker.
- *  5. Returns `{ ok, expiresAt }` — **no tokens in the response body**.
+ *  5. Returns `{ ok, expiresAt }`. Trusted first-party browser origins also
+ *     receive the short-lived access token so the SPA can hydrate its
+ *     localStorage mirror while route auth remains synchronous.
  *
  * Origin/Referer CSRF check mirrors `/api/auth/steward-session`.
  *
@@ -100,6 +102,21 @@ function checkOrigin(
     ok: false,
     reason: `origin=${origin ?? "null"} referer=${referer ?? "null"}`,
   };
+}
+
+function shouldReturnClientToken(
+  c: { req: { header: (name: string) => string | undefined } },
+  isProduction: boolean,
+): boolean {
+  const origin =
+    originHost(c.req.header("origin")) ?? originHost(c.req.header("referer"));
+  const host = (c.req.header("host") ?? "").split(":")[0]?.toLowerCase() ?? "";
+  if (!origin) return false;
+  // The SPA still uses a localStorage access-token mirror for synchronous
+  // route auth. Cookie refresh must hydrate that mirror for every origin the
+  // CSRF check already accepts, otherwise valid HttpOnly-cookie sessions can
+  // bounce back to /login on previews/custom same-origin hosts.
+  return isPermittedOrigin(origin, host, isProduction);
 }
 
 function stewardSecretConfigured(env: StewardVerifyEnv): boolean {
@@ -333,6 +350,7 @@ app.post("/", async (c) => {
     ok: true,
     expiresAt: refresh.data.expiresAt,
     expiresIn: refresh.data.expiresIn,
+    ...(shouldReturnClientToken(c, isProduction) ? { token } : {}),
   });
 });
 

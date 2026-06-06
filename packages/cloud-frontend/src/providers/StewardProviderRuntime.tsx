@@ -1,5 +1,6 @@
 "use client";
 
+import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import type { StewardClient as StewardReactClient } from "@stwd/react";
 import { StewardProvider, useAuth as useStewardAuth } from "@stwd/react";
 import { StewardClient } from "@stwd/sdk";
@@ -104,6 +105,14 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
           credentials: "include",
         });
         if (res.ok) {
+          const body = (await res.json().catch(() => null)) as {
+            token?: string;
+          } | null;
+          if (body?.token) {
+            writeStoredStewardToken(body.token);
+            lastSyncedToken.current = body.token;
+            wasAuthenticated.current = true;
+          }
           try {
             window.dispatchEvent(new CustomEvent("steward-token-sync"));
           } catch {
