@@ -24,7 +24,7 @@ export * from "./types";
  * from different users.
  */
 export const socialAlphaPlugin: Plugin = {
-	name: "social-alpha",
+	name: "@elizaos/plugin-social-alpha",
 	description:
 		"Tracks token shills and FUD, builds trust scores based on P&L outcomes, and provides a Social Alpha Provider with win rate, rank, and recommender analytics.",
 	config: {

@@ -106,7 +106,7 @@ function callIconFor(type: CallLogType) {
     case "answered_externally":
       return <PhoneIncoming className="h-4 w-4 text-ok" aria-hidden />;
     case "outgoing":
-      return <PhoneOutgoing className="h-4 w-4 text-info" aria-hidden />;
+      return <PhoneOutgoing className="h-4 w-4 text-accent" aria-hidden />;
     case "missed":
     case "rejected":
     case "blocked":
@@ -176,9 +176,7 @@ function PhoneTabTrigger({
       style={{
         background: active ? "var(--accent-subtle)" : "transparent",
         color: active ? "var(--accent)" : "var(--muted)",
-        border: active
-          ? "1px solid var(--accent)"
-          : "1px solid transparent",
+        border: active ? "1px solid var(--accent)" : "1px solid transparent",
       }}
       {...agentProps}
     >
@@ -246,10 +244,14 @@ function RecentCallButton({
       ref={ref}
       type="button"
       onClick={() => onCall(entry.number)}
-      className="flex w-full items-center gap-3 rounded-xl border border-transparent bg-bg-accent/40 px-3 py-2.5 text-left transition hover:border-border hover:bg-bg-accent active:scale-[0.99]"
+      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition active:scale-[0.99]"
+      style={{ background: "var(--surface)", border: "1px solid transparent" }}
       {...agentProps}
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg-accent">
+      <span
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+        style={{ background: "var(--accent-subtle)" }}
+      >
         {callIconFor(entry.type)}
       </span>
       <span className="min-w-0 flex-1">
@@ -292,11 +294,19 @@ function ContactButton({
       type="button"
       onClick={() => onCall(primary)}
       disabled={primary.length === 0}
-      className="flex w-full items-center gap-3 rounded-xl border border-transparent bg-bg-accent/40 px-3 py-2.5 text-left transition hover:border-border hover:bg-bg-accent active:scale-[0.99] disabled:opacity-50"
+      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition active:scale-[0.99] disabled:opacity-50"
+      style={{ background: "var(--surface)", border: "1px solid transparent" }}
       {...agentProps}
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg-accent">
-        <UserIcon className="h-4 w-4 text-muted" aria-hidden />
+      <span
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+        style={{ background: "var(--accent-subtle)" }}
+      >
+        <UserIcon
+          className="h-4 w-4"
+          style={{ color: "var(--accent)" }}
+          aria-hidden
+        />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-semibold text-txt">
@@ -668,7 +678,10 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
         className="flex flex-1 min-h-0 flex-col"
       >
         <div className="shrink-0 border-b border-border/20 bg-bg/60 px-3 py-2">
-          <TabsList className="grid w-full max-w-sm grid-cols-3">
+          <TabsList
+            className="grid w-full max-w-sm grid-cols-3 gap-1"
+            style={{ background: "var(--surface)" }}
+          >
             <PhoneTabTrigger
               tab="dialer"
               label={t("phone.tabs.dialer", { defaultValue: "Dialer" })}
@@ -696,7 +709,12 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
           <div className="flex min-h-full flex-col items-center px-4 pb-32 pt-6">
             <div className="flex w-full max-w-sm flex-col items-center gap-3 pt-2">
               <output
-                className="block min-h-[3rem] w-full select-text rounded-xl border border-border bg-bg-accent px-4 py-3 text-center font-mono text-2xl text-txt"
+                className="block min-h-[3rem] w-full select-text rounded-xl px-4 py-3 text-center font-mono text-2xl"
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text)",
+                }}
                 aria-live="polite"
                 aria-label={t("phone.dialer.display", {
                   defaultValue: "Number being dialed",
@@ -729,7 +747,12 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
               <button
                 ref={plusAgent.ref}
                 type="button"
-                className="h-12 rounded-full border border-border bg-bg-accent text-lg font-semibold text-txt active:scale-95"
+                className="h-12 rounded-full text-lg font-semibold active:scale-95"
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text)",
+                }}
                 onClick={appendPlus}
                 data-testid="phone-dial-plus"
                 aria-label={intlLabel}
@@ -737,21 +760,37 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
               >
                 +
               </button>
-              <Button
+              <button
                 ref={callAgent.ref}
+                type="button"
                 onClick={onDialerCall}
                 disabled={calling || dialed.length === 0}
-                className="h-14 rounded-full bg-ok text-bg hover:bg-ok/90 disabled:opacity-50"
+                className="flex h-14 items-center justify-center rounded-full transition-colors active:scale-95 disabled:opacity-50"
+                style={{
+                  background: "var(--accent)",
+                  color: "var(--accent-foreground)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--accent-hover)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "var(--accent)";
+                }}
                 aria-label={callLabel}
                 data-testid="phone-dial-call"
                 {...callAgent.agentProps}
               >
                 <PhoneIcon className="h-6 w-6" aria-hidden />
-              </Button>
+              </button>
               <button
                 ref={backspaceAgent.ref}
                 type="button"
-                className="flex h-12 items-center justify-center rounded-full border border-border bg-bg-accent text-txt active:scale-95 disabled:opacity-50"
+                className="flex h-12 items-center justify-center rounded-full active:scale-95 disabled:opacity-50"
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text)",
+                }}
                 onClick={backspace}
                 disabled={dialed.length === 0}
                 aria-label={backspaceLabel}

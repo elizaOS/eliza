@@ -18,7 +18,7 @@ import {
   type LucideIcon,
   Package,
   RefreshCw,
-  ShieldCheck,
+  ShoppingBag,
   ShoppingCart,
   Store,
   Users,
@@ -34,52 +34,227 @@ import { loadShopifyTuiState } from "./ShopifyAppView.helpers";
 import { StoreOverviewCard } from "./StoreOverviewCard";
 import { useShopifyDashboard } from "./useShopifyDashboard";
 
+const SH_ACCENT = "var(--accent, #ff5800)";
+const SH_TXT = "var(--txt, #111)";
+const SH_MUTED = "var(--muted, rgba(0,0,0,0.58))";
+const SH_BORDER = "var(--border, rgba(0,0,0,0.12))";
+const SH_SURFACE = "var(--surface, rgba(0,0,0,0.04))";
+const SH_OK = "var(--ok, #22c55e)";
+
+function SetupField({
+  icon: Icon,
+  label,
+  description,
+  envHint,
+}: {
+  icon: LucideIcon;
+  label: string;
+  description: string;
+  envHint: string;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 12,
+        padding: 14,
+        borderRadius: 14,
+        border: `1px solid ${SH_BORDER}`,
+        background: SH_SURFACE,
+      }}
+    >
+      <span
+        style={{
+          width: 34,
+          height: 34,
+          flexShrink: 0,
+          borderRadius: 10,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "var(--accent-subtle, rgba(255,88,0,0.14))",
+          color: SH_ACCENT,
+        }}
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+      <span
+        style={{
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
+        }}
+      >
+        <span style={{ fontSize: 13.5, fontWeight: 600, color: SH_TXT }}>
+          {label}
+        </span>
+        <span style={{ fontSize: 12, color: SH_MUTED, lineHeight: 1.4 }}>
+          {description}
+        </span>
+        <code
+          style={{
+            marginTop: 3,
+            fontSize: 10.5,
+            color: SH_MUTED,
+            opacity: 0.75,
+            fontFamily: "ui-monospace, monospace",
+          }}
+        >
+          {envHint}
+        </code>
+      </span>
+    </div>
+  );
+}
+
 function ShopifySetupCard() {
   return (
-    <div className="mx-auto w-full max-w-xl">
-      <div className="rounded-2xl border border-border/30 bg-card/35 p-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-danger/20 bg-danger/10">
-            <Store className="h-5 w-5 text-danger" />
-            <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-bg bg-danger" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-lg font-semibold text-txt">Shopify</div>
-            <div className="mt-1 flex items-center gap-1.5 text-xs text-muted">
-              <WifiOff className="h-3.5 w-3.5" />
-              <span>offline</span>
-            </div>
-          </div>
+    <div className="mx-auto w-full max-w-md">
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          textAlign: "center",
+          gap: 6,
+          marginBottom: 18,
+        }}
+      >
+        <div
+          style={{
+            position: "relative",
+            width: 84,
+            height: 84,
+            borderRadius: 24,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "var(--accent-subtle, rgba(255,88,0,0.14))",
+            border: `1px solid ${SH_BORDER}`,
+          }}
+        >
+          <ShoppingBag style={{ width: 38, height: 38, color: SH_ACCENT }} />
+        </div>
+        <h2
+          style={{
+            margin: "12px 0 0",
+            fontSize: 20,
+            fontWeight: 700,
+            color: SH_TXT,
+          }}
+        >
+          Connect your store
+        </h2>
+        <p
+          style={{
+            margin: 0,
+            maxWidth: 320,
+            fontSize: 13.5,
+            color: SH_MUTED,
+            lineHeight: 1.5,
+          }}
+        >
+          Link a Shopify store to manage products, orders, and inventory right
+          here.
+        </p>
+        <div
+          style={{
+            marginTop: 4,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "3px 10px",
+            borderRadius: 99,
+            border: `1px solid ${SH_BORDER}`,
+            background: SH_SURFACE,
+            fontSize: 11.5,
+            fontWeight: 600,
+            color: SH_MUTED,
+          }}
+        >
+          <WifiOff className="h-3 w-3" />
+          Not connected
+        </div>
+      </div>
+
+      <div
+        style={{
+          borderRadius: 18,
+          border: `1px solid ${SH_BORDER}`,
+          background: "var(--card, #fff)",
+          padding: 16,
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+        }}
+      >
+        <SetupField
+          icon={Globe2}
+          label="Store domain"
+          description="Your shop address, e.g. mystore.myshopify.com"
+          envHint="SHOPIFY_STORE_DOMAIN"
+        />
+        <SetupField
+          icon={KeyRound}
+          label="Access token"
+          description="Admin API token with product, order & inventory scopes"
+          envHint="SHOPIFY_ACCESS_TOKEN"
+        />
+
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 6,
+            padding: "2px 2px 6px",
+          }}
+        >
+          {[
+            { label: "Products", icon: Package },
+            { label: "Orders", icon: ShoppingCart },
+            { label: "Stock", icon: BarChart3 },
+          ].map(({ label, icon: Icon }) => (
+            <span
+              key={label}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "5px 10px",
+                borderRadius: 99,
+                border: `1px solid ${SH_BORDER}`,
+                background: SH_SURFACE,
+                fontSize: 12,
+                fontWeight: 600,
+                color: SH_TXT,
+              }}
+            >
+              <Icon style={{ width: 13, height: 13, color: SH_OK }} />
+              {label}
+            </span>
+          ))}
         </div>
 
-        <div className="mt-4 grid gap-2 sm:grid-cols-3">
-          <div className="rounded-xl border border-border/24 bg-bg/45 px-3 py-3">
-            <Globe2 className="h-4 w-4 text-info" />
-            <code className="mt-2 block truncate font-mono text-[11px] text-txt">
-              SHOPIFY_STORE_DOMAIN
-            </code>
-          </div>
-          <div className="rounded-xl border border-border/24 bg-bg/45 px-3 py-3">
-            <KeyRound className="h-4 w-4 text-warn" />
-            <code className="mt-2 block truncate font-mono text-[11px] text-txt">
-              SHOPIFY_ACCESS_TOKEN
-            </code>
-          </div>
-          <div className="rounded-xl border border-border/24 bg-bg/45 px-3 py-3">
-            <ShieldCheck className="h-4 w-4 text-ok" />
-            <div className="mt-2 flex flex-wrap gap-1">
-              {["Products", "Orders", "Stock"].map((label) => (
-                <Badge
-                  key={label}
-                  variant="secondary"
-                  className="rounded-full px-1.5 py-0 text-2xs"
-                >
-                  {label}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        </div>
+        <a
+          href="/settings"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            height: 42,
+            borderRadius: 12,
+            background: SH_ACCENT,
+            color: "var(--accent-foreground, #fff)",
+            fontSize: 14,
+            fontWeight: 600,
+            textDecoration: "none",
+          }}
+        >
+          <Store className="h-4 w-4" />
+          Configure in Settings
+        </a>
       </div>
     </div>
   );
@@ -307,8 +482,19 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
         </Button>
 
         <div className="flex min-w-0 items-center gap-2">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-ok/20 bg-ok/10">
-            <Store className="h-4 w-4 text-ok" />
+          <span
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border"
+            style={{
+              borderColor: connected
+                ? "var(--ok-subtle, rgba(34,197,94,0.4))"
+                : SH_BORDER,
+              background: connected
+                ? "var(--ok-subtle, rgba(34,197,94,0.1))"
+                : "var(--accent-subtle, rgba(255,88,0,0.14))",
+              color: connected ? SH_OK : SH_ACCENT,
+            }}
+          >
+            <Store className="h-4 w-4" />
           </span>
           <span className="truncate text-sm font-semibold text-txt">
             {shop?.name ?? "Shopify"}

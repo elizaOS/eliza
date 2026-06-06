@@ -6,7 +6,7 @@ import { CommunityInvestorService } from "./service";
 
 describe("socialAlphaPlugin", () => {
 	it("registers its core runtime surfaces", () => {
-		expect(socialAlphaPlugin.name).toBe("social-alpha");
+		expect(socialAlphaPlugin.name).toBe("@elizaos/plugin-social-alpha");
 		expect(socialAlphaPlugin.providers).toContain(socialAlphaProvider);
 		expect(socialAlphaPlugin.services).toContain(CommunityInvestorService);
 		expect(Array.isArray(socialAlphaPlugin.routes)).toBe(true);

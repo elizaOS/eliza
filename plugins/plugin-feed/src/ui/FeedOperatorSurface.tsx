@@ -19,14 +19,19 @@ import {
 } from "@elizaos/app-core/ui-compat";
 import { Button, TerminalPluginView } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   GameSurfaceHero,
   GameSurfaceShell,
   GameSurfaceStrip,
+  GameSurfaceZone,
+  HeroCta,
   type StatChip,
   WaitingForSession,
 } from "./game-surface-shell";
+
+const FEED_HERO = "/api/views/feed/hero";
+const FEED_ACCENT = "#ff8a00";
 import {
   extractAgentSummary,
   extractChatMessages,
@@ -318,91 +323,62 @@ export function FeedOperatorSurface({
   );
 
   if (!run) {
+    const chips: StatChip[] = [
+      { icon: "◉", label: "Agent", value: "Session pending", state: "pending" },
+      { icon: "◒", label: "Portfolio", value: "PnL · positions", state: "idle" },
+      { icon: "▲", label: "Markets", value: "Prices · trades", state: "idle" },
+      { icon: "◇", label: "Wallet", value: "Awaiting link", state: "idle" },
+    ];
     return (
-      <section className="p-4" data-testid="feed-operator-ready">
-        <div className="mx-auto flex max-w-3xl flex-col gap-3">
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/45 bg-card/82 px-4 py-3 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div
-                aria-hidden
-                className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500 text-lg font-black text-white shadow-sm"
-              >
-                $
-              </div>
-              <div>
-                <div className="text-sm font-semibold text-foreground">
-                  Feed
-                </div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  market dashboard ready
-                </div>
-              </div>
-            </div>
-            <div className="h-3 w-3 rounded-full bg-amber-400 shadow-[0_0_0_4px_rgba(251,191,36,0.18)]" />
-          </div>
-
-          <div className="grid grid-cols-1 gap-3">
-            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
-              <div className="grid h-9 w-9 place-items-center rounded-lg border border-emerald-300/35 bg-emerald-400/10 text-lg text-emerald-700">
-                ◉
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  Agent
-                </div>
-                <div className="text-sm font-semibold text-foreground">
-                  Session pending
-                </div>
-              </div>
-            </div>
-            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
-              <div className="grid h-9 w-9 place-items-center rounded-lg border border-cyan-300/35 bg-cyan-400/10 text-lg text-cyan-700">
-                ◒
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  Portfolio
-                </div>
-                <div className="text-sm font-semibold text-foreground">
-                  PnL · positions
-                </div>
-              </div>
-            </div>
-            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
-              <div className="grid h-9 w-9 place-items-center rounded-lg border border-orange-300/35 bg-orange-400/10 text-lg text-orange-700">
-                ▲
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  Markets
-                </div>
-                <div className="text-sm font-semibold text-foreground">
-                  Prices · trades
-                </div>
-              </div>
-            </div>
-            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
-              <div className="grid h-9 w-9 place-items-center rounded-lg border border-violet-300/35 bg-violet-400/10 text-lg text-violet-700">
-                ↗
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  Path
-                </div>
-                <div className="text-sm font-semibold text-foreground">
-                  /feed
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      <div data-testid="feed-operator-ready">
+        <GameSurfaceShell>
+          <GameSurfaceHero
+            heroUrl={FEED_HERO}
+            title="Feed"
+            statusLabel="Market dashboard ready"
+            statusState="pending"
+            cta={<HeroCta label="Spawn agent" accent={FEED_ACCENT} disabled />}
+          />
+          <GameSurfaceStrip chips={chips} />
+          <WaitingForSession
+            accent={FEED_ACCENT}
+            message="Waiting for a Feed session. Spawn the trading agent to stream live markets, portfolio PnL, and team coordination here."
+          />
+        </GameSurfaceShell>
+      </div>
     );
   }
 
+  const liveChips: StatChip[] = [
+    {
+      icon: "◉",
+      label: "Agent",
+      value: agentStatus?.autonomous ? "Autonomous" : "Operator-led",
+      state: run.health.state === "healthy" ? "ready" : "pending",
+    },
+    {
+      icon: "◒",
+      label: "Portfolio",
+      value: agentPortfolio
+        ? formatCurrency(agentPortfolio.totalAssets)
+        : "—",
+      state: agentPortfolio ? "active" : "idle",
+    },
+    {
+      icon: "▲",
+      label: "Markets",
+      value: `${predictionMarkets.length} live`,
+      state: predictionMarkets.length > 0 ? "active" : "idle",
+    },
+    {
+      icon: "◇",
+      label: "Wallet",
+      value: wallet ? formatCurrency(wallet.balance) : "—",
+      state: wallet ? "ready" : "idle",
+    },
+  ];
   return (
-    <section
-      className={`space-y-3 ${variant === "live" ? "p-3" : ""}`}
+    <div
       data-testid={
         variant === "live"
           ? "feed-live-operator-surface"
@@ -411,23 +387,37 @@ export function FeedOperatorSurface({
             : "feed-detail-operator-surface"
       }
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
-          {surfaceTitle}
-        </div>
-        <SurfaceBadge tone={toneForStatusText(run.status)}>
-          {run.status}
-        </SurfaceBadge>
-        <SurfaceBadge tone={toneForViewerAttachment(run.viewerAttachment)}>
-          {run.viewerAttachment}
-        </SurfaceBadge>
-        <SurfaceBadge tone={toneForHealthState(run.health.state)}>
-          {run.health.state}
-        </SurfaceBadge>
-        <span className="ml-auto text-2xs uppercase tracking-[0.18em] text-muted">
-          {matchingRuns.length} active run{matchingRuns.length === 1 ? "" : "s"}
-        </span>
-      </div>
+      <GameSurfaceShell>
+        <GameSurfaceHero
+          heroUrl={FEED_HERO}
+          title={surfaceTitle}
+          statusLabel={`${run.status} · ${run.health.state}`}
+          statusState={run.health.state === "healthy" ? "ready" : "pending"}
+          cta={
+            <HeroCta
+              label={autonomyActive ? "Pause agent" : "Resume agent"}
+              accent={FEED_ACCENT}
+              onClick={() => void handleToggleAgent()}
+            />
+          }
+        />
+        <GameSurfaceStrip chips={liveChips} />
+        <GameSurfaceZone>
+          <div className="flex flex-wrap items-center gap-2">
+            <SurfaceBadge tone={toneForStatusText(run.status)}>
+              {run.status}
+            </SurfaceBadge>
+            <SurfaceBadge tone={toneForViewerAttachment(run.viewerAttachment)}>
+              {run.viewerAttachment}
+            </SurfaceBadge>
+            <SurfaceBadge tone={toneForHealthState(run.health.state)}>
+              {run.health.state}
+            </SurfaceBadge>
+            <span className="ml-auto text-2xs uppercase tracking-[0.18em] text-muted">
+              {matchingRuns.length} active run
+              {matchingRuns.length === 1 ? "" : "s"}
+            </span>
+          </div>
 
       {showDashboard ? (
         <SurfaceSection title="Live Status">
@@ -618,15 +608,17 @@ export function FeedOperatorSurface({
         </SurfaceSection>
       ) : null}
 
-      {statusMessage ? (
-        <div className="rounded-2xl border border-border/35 bg-card/70 px-4 py-3 text-xs-tight leading-5 text-muted-strong">
-          {statusMessage}
-        </div>
-      ) : null}
-      <div className="text-2xs uppercase tracking-[0.18em] text-muted">
-        {loading ? "Refreshing..." : "Ready"}
-      </div>
-    </section>
+          {statusMessage ? (
+            <div className="rounded-2xl border border-border/35 bg-card/70 px-4 py-3 text-xs-tight leading-5 text-muted-strong">
+              {statusMessage}
+            </div>
+          ) : null}
+          <div className="text-2xs uppercase tracking-[0.18em] text-muted">
+            {loading ? "Refreshing..." : "Ready"}
+          </div>
+        </GameSurfaceZone>
+      </GameSurfaceShell>
+    </div>
   );
 }
 

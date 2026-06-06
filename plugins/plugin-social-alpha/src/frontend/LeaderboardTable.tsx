@@ -1,21 +1,19 @@
-import { Badge } from "@elizaos/ui/components/ui/badge";
-import { Button } from "@elizaos/ui/components/ui/button";
 import {
+	Badge,
+	Button,
 	Card,
 	CardContent,
 	CardDescription,
 	CardHeader,
 	CardTitle,
-} from "@elizaos/ui/components/ui/card";
-import {
 	Table,
 	TableBody,
 	TableCell,
 	TableHead,
 	TableHeader,
 	TableRow,
-} from "@elizaos/ui/components/ui/table";
-import { cn } from "@elizaos/ui/lib/utils";
+} from "@elizaos/ui/components";
+import { cn } from "@elizaos/ui/utils";
 import {
 	AlertTriangle,
 	Bot,

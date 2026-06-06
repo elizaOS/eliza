@@ -3,8 +3,8 @@ import {
 	CardContent,
 	CardHeader,
 	CardTitle,
-} from "@elizaos/ui/components/ui/card";
-import { EmptyState } from "@elizaos/ui/components/ui/empty-state";
+	EmptyState,
+} from "@elizaos/ui/components";
 import { Spinner } from "@elizaos/ui/components/ui/spinner";
 import { Wallet } from "lucide-react";
 import { useEffect, useState } from "react";

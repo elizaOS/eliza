@@ -906,30 +906,95 @@ function MarketMoverList({
   );
 }
 
+function WalletMotif() {
+  return (
+    <svg
+      viewBox="0 0 120 120"
+      role="img"
+      aria-label="Empty wallet"
+      className="h-24 w-24"
+    >
+      <defs>
+        <linearGradient id="walletMotifFill" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.9" />
+          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.35" />
+        </linearGradient>
+      </defs>
+      <circle
+        cx="60"
+        cy="60"
+        r="56"
+        fill="url(#walletMotifFill)"
+        opacity="0.12"
+      />
+      <rect
+        x="30"
+        y="42"
+        width="60"
+        height="40"
+        rx="10"
+        fill="url(#walletMotifFill)"
+        opacity="0.85"
+      />
+      <rect
+        x="30"
+        y="42"
+        width="60"
+        height="14"
+        rx="7"
+        fill="var(--accent)"
+        opacity="0.5"
+      />
+      <circle cx="78" cy="62" r="6" fill="var(--bg)" opacity="0.85" />
+      <circle cx="78" cy="62" r="2.5" fill="var(--accent)" />
+    </svg>
+  );
+}
+
+function WalletEmptyHero({
+  hasKeys,
+  onConfigureKeys,
+}: {
+  hasKeys: boolean;
+  onConfigureKeys: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-4 rounded-[28px] border border-border/30 bg-bg/30 px-6 py-12 text-center">
+      <WalletMotif />
+      <div className="text-base font-semibold text-txt">
+        {hasKeys ? "No assets yet" : "Wallet not configured"}
+      </div>
+      {hasKeys ? null : (
+        <Button
+          type="button"
+          variant="surfaceAccent"
+          size="sm"
+          onClick={onConfigureKeys}
+        >
+          Configure keys
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function MarketPulseHero({
   overview,
   loading,
-  error,
+  hasKeys,
+  onConfigureKeys,
 }: {
   overview: WalletMarketOverviewResponse | null;
   loading: boolean;
-  error: string | null;
+  hasKeys: boolean;
+  onConfigureKeys: () => void;
 }) {
   return (
     <section className="space-y-6">
-      <div className="max-w-2xl">
-        <h2 className="text-2xl font-semibold leading-tight text-txt md:text-[2rem]">
-          No balances or trade history yet.
-        </h2>
-        <div className="mt-2 max-w-xl text-sm text-muted">
-          {overview?.stale
-            ? "Here's the latest cached market snapshot."
-            : "Here's what the market looks like right now."}
-        </div>
-      </div>
+      <WalletEmptyHero hasKeys={hasKeys} onConfigureKeys={onConfigureKeys} />
 
       {overview ? (
-        <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.92fr)]">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.92fr)]">
           <div className="space-y-4">
             <div>
               <MarketSectionHeader
@@ -957,17 +1022,13 @@ function MarketPulseHero({
           </div>
         </div>
       ) : loading ? (
-        <div className="mt-6 grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-3">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-3">
           {["btc", "eth", "sol"].map((loadingCardId) => (
             <div
               key={loadingCardId}
               className="h-28 animate-pulse rounded-[26px] border border-border/30 bg-bg/35"
             />
           ))}
-        </div>
-      ) : error ? (
-        <div className="mt-6 rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger">
-          {error}
         </div>
       ) : null}
     </section>
@@ -2010,9 +2071,6 @@ export function InventoryView() {
   const [marketOverview, setMarketOverview] =
     useState<WalletMarketOverviewResponse | null>(null);
   const [marketOverviewLoading, setMarketOverviewLoading] = useState(false);
-  const [marketOverviewError, setMarketOverviewError] = useState<string | null>(
-    null,
-  );
   const initialLoadRef = useRef(false);
   const tradingProfileRequestRef = useRef(0);
   const marketOverviewRequestRef = useRef(0);
@@ -2050,20 +2108,18 @@ export function InventoryView() {
     const requestId = marketOverviewRequestRef.current + 1;
     marketOverviewRequestRef.current = requestId;
     setMarketOverviewLoading(true);
-    setMarketOverviewError(null);
 
     try {
       const overview = await client.getWalletMarketOverview();
       if (marketOverviewRequestRef.current === requestId) {
         setMarketOverview(overview);
       }
-    } catch (cause) {
-      const message =
-        cause instanceof Error && cause.message.trim().length > 0
-          ? cause.message.trim()
-          : "Failed to load market overview.";
+    } catch {
+      // Market overview is an optional capability — when the feed is
+      // unavailable the empty-wallet hero simply omits the market panels
+      // rather than surfacing an error.
       if (marketOverviewRequestRef.current === requestId) {
-        setMarketOverviewError(message);
+        setMarketOverview(null);
       }
     } finally {
       if (marketOverviewRequestRef.current === requestId) {
@@ -2215,7 +2271,10 @@ export function InventoryView() {
           <MarketPulseHero
             overview={marketOverview}
             loading={marketOverviewLoading}
-            error={marketOverviewError}
+            hasKeys={
+              addresses.evmAddress !== null || addresses.solanaAddress !== null
+            }
+            onConfigureKeys={handleOpenRpcSettings}
           />
         ) : null}
 
