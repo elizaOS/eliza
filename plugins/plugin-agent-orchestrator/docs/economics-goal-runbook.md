@@ -59,37 +59,36 @@ within a spend cap.
      `containers.create` has a built-in `$0.67/day` estimate, so it
      auto-authorizes without a hint.
 
-## Blocker: no production path from a sub-agent to the broker
+## Sub-agent → broker dispatcher (now wired)
 
-`runCloudCommand` (the only emitter of `spend_auto_authorized`) is **not reachable
-by a live agent today** — the mechanism is unit-tested but unwired:
+`runCloudCommand` (the only emitter of `spend_auto_authorized`) is now reachable
+by a live agent. The three gaps the earlier draft of this runbook called out are
+closed:
 
-- `runParentAgentBroker` / `PARENT_AGENT_BROKER_MANIFEST_ENTRY` have **no
-  production caller** (only the test invokes them).
-- `buildSkillsManifest({ virtualSkills })` is never called, so a spawned child
-  never receives a `SKILLS.md` advertising the `parent-agent` slug or its arg
-  shape.
-- There is **no `USE_SKILL parent-agent` dispatcher** — nothing parses a child's
-  `USE_SKILL parent-agent {…}` request and calls `runCloudCommand`.
+1. **Dispatch.** `SubAgentRouter.handleEvent` accumulates the child's streamed
+   `message` text and, when a complete `USE_SKILL parent-agent <json>` directive
+   appears, bridges it to `runParentAgentBroker({ runtime, sessionId, session,
+   args })` and streams `result.text` back via `acp.sendToSession`
+   (`src/services/parent-agent-dispatch.ts`). Detection is marker-guarded (it
+   only acts on text containing `USE_SKILL parent-agent`, which ordinary coding
+   tasks never emit) and capped by `ACPX_SUB_AGENT_ROUND_TRIP_CAP`.
+2. **Advertise.** `spawnAgentForTask` writes a `SKILLS.md` into the workdir for
+   `capabilityProfile === "economics"` tasks via `buildSkillsManifest(runtime, {
+   recommendedSlugs: ["build-monetized-app", "eliza-cloud"], virtualSkills:
+   [PARENT_AGENT_BROKER_MANIFEST_ENTRY] })`, so the child learns the `parent-agent`
+   slug and its arg contract.
+3. **Estimate.** The broker's unknown-cost stall now returns an *actionable*
+   instruction ("fetch a quote with `domains.check` and retry with
+   `params.spendEstimateUsd`") instead of a human-only yes/no, and the manifest
+   guidance advertises the same pattern — so an autonomous agent self-authorizes
+   `domains.buy` within the cap without a human turn.
 
-So a `/economics` sub-agent can read the (advisory) capability fence but has no
-executable path to run `apps.create` / `containers.create` / `domains.buy`
-through the capped broker. **Verifying `spend_auto_authorized` via the Vitest
-above is the current proof-of-mechanism.**
-
-### To close it (smallest path to a live demo)
-
-1. **Dispatch.** In the ACP session-event path (or `SubAgentRouter`), detect a
-   sub-agent message `USE_SKILL parent-agent <json>`, parse it, call
-   `runParentAgentBroker({ runtime, sessionId, session, args })`, and send
-   `result.text` back via `acp.sendToSession`.
-2. **Advertise.** In `spawnAgentForTask`, when `capabilityProfile === "economics"`,
-   call `buildSkillsManifest(runtime, { recommendedSlugs: ["build-monetized-app",
-   "eliza-cloud"], virtualSkills: [PARENT_AGENT_BROKER_MANIFEST_ENTRY] })` and write
-   it as `SKILLS.md` in the workdir so the child learns the slug + arg contract.
-3. **Estimate.** Encourage (skill prose) calling `domains.check` first and passing
-   the price as `spendEstimateUsd` on `domains.buy`, or seed a small built-in
-   estimate so the demo's first paid step auto-authorizes.
+The directive parser and the broker→`sendToSession` bridge are unit-tested in
+`src/__tests__/parent-agent-dispatch.test.ts`; `spend_auto_authorized` itself
+stays covered by `parent-agent-broker.test.ts`. End-to-end confirmation still
+needs a live ACP backend (`ELIZA_ACP_DEFAULT_AGENT=opencode`, the broker pointed
+at `cloud:mock`) — follow the runbook steps above to watch the
+`spend_auto_authorized` line on a real `domains.buy` / `containers.create`.
 
 See `default-eliza-skills-and-agent-bridge-plan.md` for the broader bridge design;
 this runbook is the economics-specific slice.
