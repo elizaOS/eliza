@@ -258,6 +258,13 @@ export const redeemableEarningsLedger = pgTable(
       table.earnings_source,
       table.source_id,
     ),
+    // Idempotency backstop for convertToCredits: at most one credit_conversion
+    // entry per idempotency key. Partial so it only constrains keyed rows.
+    conversion_idempotency_idx: uniqueIndex("redeemable_earnings_ledger_conversion_idempotency_idx")
+      .on(sql`(${table.metadata} ->> 'idempotency_key')`)
+      .where(
+        sql`${table.entry_type} = 'credit_conversion' and (${table.metadata} ->> 'idempotency_key') is not null`,
+      ),
   }),
 );
 

@@ -741,8 +741,16 @@ class RedeemableEarningsService {
     organizationId: string;
     description: string;
     metadata?: Record<string, unknown>;
+    /**
+     * Stable per-charge key (e.g. `container:<id>:<utc-day>`). When supplied,
+     * the conversion is idempotent: a re-run with the same key returns the
+     * original ledger entry instead of debiting earnings again. Enforced both
+     * here (lookup under the per-user advisory lock) and by a partial unique
+     * index on `redeemable_earnings_ledger((metadata->>'idempotency_key'))`.
+     */
+    idempotencyKey?: string;
   }): Promise<{ success: boolean; newBalance: number; ledgerEntryId: string; error?: string }> {
-    const { userId, amount, organizationId, description, metadata = {} } = params;
+    const { userId, amount, organizationId, description, metadata = {}, idempotencyKey } = params;
 
     if (amount <= 0) {
       return { success: false, newBalance: 0, ledgerEntryId: "", error: "Amount must be positive" };
@@ -752,6 +760,7 @@ class RedeemableEarningsService {
     const ledgerMetadata = normalizeLedgerMetadata({
       ...metadata,
       transaction_type: "credit_conversion",
+      ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
     });
 
     const result = await dbWrite.transaction(async (tx) => {
@@ -767,6 +776,27 @@ class RedeemableEarningsService {
 
       if (!earnings) {
         throw new Error("No earnings record found");
+      }
+
+      // Idempotency: if this exact charge was already converted, return the
+      // prior ledger entry without re-debiting. The advisory lock above
+      // serializes concurrent conversions for this user, so the prior entry is
+      // always visible here once committed.
+      if (idempotencyKey) {
+        const [existing] = await tx
+          .select({ id: redeemableEarningsLedger.id })
+          .from(redeemableEarningsLedger)
+          .where(
+            and(
+              eq(redeemableEarningsLedger.entry_type, "credit_conversion"),
+              sql`${redeemableEarningsLedger.metadata} ->> 'idempotency_key' = ${idempotencyKey}`,
+            ),
+          )
+          .limit(1);
+
+        if (existing) {
+          return { earnings, ledgerEntryId: existing.id, idempotent: true };
+        }
       }
 
       const available = new Decimal(earnings.available_balance);
@@ -809,15 +839,21 @@ class RedeemableEarningsService {
         })
         .returning();
 
-      return { earnings: updated, ledgerEntryId: ledgerEntry.id };
+      return { earnings: updated, ledgerEntryId: ledgerEntry.id, idempotent: false };
     });
 
-    logger.info("[RedeemableEarnings] Converted to org credits", {
-      userId: `${userId.slice(0, 8)}...`,
-      organizationId: `${organizationId.slice(0, 8)}...`,
-      amount,
-      newBalance: Number(result.earnings.available_balance),
-    });
+    logger.info(
+      result.idempotent
+        ? "[RedeemableEarnings] Skipped duplicate conversion (idempotent)"
+        : "[RedeemableEarnings] Converted to org credits",
+      {
+        userId: `${userId.slice(0, 8)}...`,
+        organizationId: `${organizationId.slice(0, 8)}...`,
+        amount,
+        idempotencyKey,
+        newBalance: Number(result.earnings.available_balance),
+      },
+    );
 
     return {
       success: true,

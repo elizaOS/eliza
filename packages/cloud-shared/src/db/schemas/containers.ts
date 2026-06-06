@@ -160,6 +160,11 @@ export const containerBillingRecords = pgTable(
     org_idx: index("container_billing_records_org_idx").on(table.organization_id),
     created_idx: index("container_billing_records_created_idx").on(table.created_at),
     status_idx: index("container_billing_records_status_idx").on(table.status),
+    // At most one successful charge per container per (day-aligned) period.
+    // Partial so retries of a failed/insufficient period are still allowed.
+    period_unique: uniqueIndex("container_billing_records_period_unique")
+      .on(table.container_id, table.billing_period_start)
+      .where(sql`${table.status} = 'success'`),
   }),
 );
 
