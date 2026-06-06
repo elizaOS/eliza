@@ -27,14 +27,14 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
   // Use | as separator instead of : to avoid conflicts with legacy provider IDs (steward:test:...)
   const state = `${userId}|${Date.now()}|${Math.random().toString(36).substring(7)}`;
 
-  // Store state temporarily (expires in 10 minutes)
-  // Discord doesn't use PKCE, but we need a placeholder for the DB schema
+  // Store state temporarily (expires in 10 minutes).
+  // Discord does not use PKCE; the schema still requires a verifier string.
   const oauthRecord = await db.oAuthState.create({
     data: {
       id: await generateSnowflakeId(),
       userId,
       state,
-      codeVerifier: "discord-oauth", // Placeholder since Discord doesn't use PKCE
+      codeVerifier: "discord-oauth", // Non-PKCE provider sentinel
       returnPath: "discord", // Use returnPath to store provider
       expiresAt: new Date(Date.now() + 10 * 60 * 1000),
     },

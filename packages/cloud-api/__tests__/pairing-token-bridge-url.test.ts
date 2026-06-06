@@ -47,9 +47,9 @@ describe("resolveSandboxBridgeUrl (pairing-token bridge fallback)", () => {
   });
 
   it("rejects non-http(s) schemes — no file://, no ftp://, no tcp://", () => {
-    expect(
-      resolveSandboxBridgeUrl({ bridge_url: "file:///etc/passwd" }),
-    ).toBe(null);
+    expect(resolveSandboxBridgeUrl({ bridge_url: "file:///etc/passwd" })).toBe(
+      null,
+    );
     expect(resolveSandboxBridgeUrl({ bridge_url: "ftp://x.y/" })).toBe(null);
   });
 

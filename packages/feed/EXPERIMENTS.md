@@ -256,7 +256,7 @@ bun run src/index.ts --model gpt-5.4 \
 
 1. **RLVR results identical to SFT** — need real RLVR separation or honest framing
 2. **4 ScamBench categories have zero training data** (advance-fee, credential-theft, impersonation, interpersonal-abuse)
-3. **Placeholders in tex** — 13 `\placeholder{}` values need filling with V3 numbers
+3. **Threat taxonomy values** — apply the 13 V3 values listed in `PAPER_UPDATES.md`
 4. **Missing sections**: adversarial co-training results, frontier model attack results, online RL results
 5. **Action vocabulary mismatch** — model outputs `comply` but scorer expects `engage`/`refuse`
 6. **9B scaling shows regression** — needs recipe adaptation before claiming scaling behavior

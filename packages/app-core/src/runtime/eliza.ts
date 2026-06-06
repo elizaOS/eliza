@@ -80,6 +80,7 @@ import {
 } from "../api/server.js";
 
 const _require = createRequire(import.meta.url);
+
 import { invalidateCorsAllowedPorts } from "../api/server-cors.js";
 import { isRuntimeAutonomyEnabled } from "./autonomy-policy.js";
 import {
@@ -345,12 +346,10 @@ function isOptionalAppRoutePluginUnavailableError(
   return err instanceof OptionalAppRoutePluginUnavailableError;
 }
 
-function splitPackageSpecifier(specifier: string):
-  | {
-      packageName: string;
-      exportSubpath: string;
-    }
-  | null {
+function splitPackageSpecifier(specifier: string): {
+  packageName: string;
+  exportSubpath: string;
+} | null {
   const parts = specifier.split("/");
   if (specifier.startsWith("@")) {
     if (parts.length < 2) return null;

@@ -4,10 +4,6 @@
 
 import { eq, sql } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
-import {
-  type AppCreditBalance,
-  appCreditBalancesRepository,
-} from "../../db/repositories/app-credit-balances";
 import { appEarningsRepository } from "../../db/repositories/app-earnings";
 import { type App, appsRepository } from "../../db/repositories/apps";
 import { organizationsRepository } from "../../db/repositories/organizations";
@@ -116,6 +112,9 @@ export interface AppCreditPurchaseParams {
 
 /**
  * Result of purchasing app credits.
+ *
+ * `newBalance` is the purchasing user's ORGANIZATION credit balance — app
+ * purchases and app inference share the single org ledger (#8253).
  */
 export interface AppCreditPurchaseResult {
   success: boolean;
@@ -123,7 +122,6 @@ export interface AppCreditPurchaseResult {
   platformOffset: number;
   creatorEarnings: number;
   newBalance: number;
-  balance: AppCreditBalance;
 }
 
 /**
@@ -182,68 +180,10 @@ export interface AppCreditReconciliationResult {
  * Service for managing app-specific credit balances, purchases, and deductions.
  */
 export class AppCreditsService {
-  async getBalance(
-    appId: string,
-    userId: string,
-  ): Promise<{
-    balance: number;
-    totalPurchased: number;
-    totalSpent: number;
-  } | null> {
-    const creditBalance = await appCreditBalancesRepository.findByAppAndUser(appId, userId);
-
-    if (!creditBalance) {
-      return null;
-    }
-
-    return {
-      balance: Number(creditBalance.credit_balance),
-      totalPurchased: Number(creditBalance.total_purchased),
-      totalSpent: Number(creditBalance.total_spent),
-    };
-  }
-
-  async getOrCreateBalance(
-    appId: string,
-    userId: string,
-    organizationId: string,
-  ): Promise<AppCreditBalance> {
-    return await appCreditBalancesRepository.getOrCreate(appId, userId, organizationId);
-  }
-
-  /**
-   * Add credits to an app-specific balance (for rewards, bonuses, etc.)
-   * Unlike processPurchase, this doesn't involve revenue sharing.
-   */
-  async addCredits(
-    appId: string,
-    userId: string,
-    amount: number,
-    description: string,
-  ): Promise<{ newBalance: number }> {
-    // Get user's organization ID to ensure balance exists
-    const user = await usersRepository.findById(userId);
-
-    if (!user?.organization_id) {
-      throw new Error(`User not found or has no organization: ${userId}`);
-    }
-
-    const { newBalance } = await appCreditBalancesRepository.addCredits(
-      appId,
-      userId,
-      user.organization_id,
-      amount,
-    );
-
-    logger.info("[AppCredits] Added credits (reward/bonus)", {
-      appId,
-      userId,
-      amount,
-      description,
-      newBalance,
-    });
-
-    return { newBalance };
+  /** The org credit balance — the single ledger app purchases fund and app inference debits (#8253). */
+  private async readOrgBalance(organizationId: string): Promise<number> {
+    const org = await organizationsRepository.findById(organizationId);
+    return org ? Number.parseFloat(String(org.credit_balance)) : 0;
   }
 
   async processPurchase(params: AppCreditPurchaseParams): Promise<AppCreditPurchaseResult> {
@@ -266,19 +206,12 @@ export class AppCreditsService {
           userId,
           stripePaymentIntentId,
         });
-        // Return existing balance info - get or create to ensure we always have a balance record
-        const balance = await appCreditBalancesRepository.getOrCreate(
-          appId,
-          userId,
-          organizationId,
-        );
         return {
           success: true,
           creditsAdded: 0, // Already processed
           platformOffset: 0,
           creatorEarnings: 0,
-          newBalance: Number(balance.credit_balance),
-          balance,
+          newBalance: await this.readOrgBalance(organizationId),
         };
       }
     }
@@ -304,12 +237,25 @@ export class AppCreditsService {
       creditsToAdd,
     });
 
-    const { balance, newBalance } = await appCreditBalancesRepository.addCredits(
-      appId,
-      userId,
+    // Credit the purchasing user's ORG balance — the same ledger
+    // `deductCredits()` debits — so purchased credits are spendable on app
+    // inference (#8253: previously this funded the per-app
+    // `app_credit_balances` pool, which the spend path no longer reads, so
+    // purchased credits were stranded).
+    const { newBalance } = await creditsService.addCredits({
       organizationId,
-      creditsToAdd,
-    );
+      amount: creditsToAdd,
+      description: `App credit purchase (${app.name ?? appId})`,
+      metadata: {
+        appId,
+        userId,
+        purchaseAmount,
+        platformOffset,
+        creatorEarnings,
+        type: "app_credit_purchase",
+      },
+      ...(stripePaymentIntentId && { stripePaymentIntentId }),
+    });
 
     // Track app user activity for purchase (this will create app_users record if new user)
     await this.trackAppUserActivity(app, userId, "0.00", {
@@ -367,7 +313,6 @@ export class AppCreditsService {
       platformOffset,
       creatorEarnings,
       newBalance,
-      balance,
     };
   }
 

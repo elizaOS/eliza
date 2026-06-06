@@ -1,6 +1,6 @@
 import type http from "node:http";
 import { logger } from "@elizaos/core";
-import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud";
+import { resolveCloudApiBaseUrl } from "@elizaos/shared";
 import type {
   WalletMarketMover,
   WalletMarketOverviewResponse,

@@ -6,7 +6,7 @@ An elizaOS plugin that tracks cryptocurrency token recommendations made by users
 
 - **Recommendation capture.** Every incoming message is analyzed with a single LLM call to detect buy/sell calls ("shills" and "FUD"). Detected calls are stored against the sender's trust profile as an elizaOS Component.
 - **Trust scoring.** Scores are calculated using a multi-factor algorithm: profit percentage, win rate, Sharpe ratio, alpha vs market, consistency, and a scam/rug penalty.
-- **Leaderboard.** Ranked leaderboard of all tracked recommenders is available as a JSON API and as a built-in React UI panel.
+- **Leaderboard.** Ranked leaderboard of all tracked recommenders is available as a JSON API and as a dashboard view (`SocialAlphaView`).
 - **Agent context injection.** The `socialAlpha` provider injects the current speaker's trust stats and the top/bottom leaderboard into the agent's context automatically, so the agent can factor reputation into its responses.
 
 ## Capabilities added to an Eliza agent
@@ -16,9 +16,8 @@ An elizaOS plugin that tracks cryptocurrency token recommendations made by users
 | `socialAlpha` provider | Injects trust scores, win rate, avg P&L, and leaderboard into agent context |
 | `MESSAGE_RECEIVED` event handler | Extracts buy/sell signals from messages in real time |
 | `CommunityInvestorService` | Manages all trust score and recommendation data |
-| `GET /leaderboard` route | Returns `LeaderboardEntry[]` JSON |
-| `GET /display` route | Serves the leaderboard React SPA |
-| Agent panel | "Social Alpha" UI panel (public, `display` path, `LeaderboardPanelPage` component) |
+| `GET /api/social-alpha/leaderboard` route | Returns `LeaderboardEntry[]` JSON |
+| `social-alpha` view | Leaderboard dashboard view — appears in the view manager when the plugin is enabled; requires a configured agent wallet |
 
 No actions are added — recommendation capture is event-driven, not agent-initiated.
 
@@ -78,9 +77,9 @@ The balanced trust score uses:
 
 Weights are tunable via `src/services/trustScoreOptimizer.ts`.
 
-## Building the frontend
+## Building the view
 
-The leaderboard UI (`/display` route) is a Vite/React SPA. It must be built before the route serves real HTML:
+The leaderboard UI is a plugin view served at `/api/views/social-alpha/bundle.js`. Build it (react + `@elizaos/ui` stay externalised to the host shell):
 
 ```bash
 bun run --cwd plugins/plugin-social-alpha build

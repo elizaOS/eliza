@@ -81,6 +81,5 @@ export async function monitoredUploadImage(options: {
 
 /**
  * Note: Storage client currently doesn't expose deleteFile method.
- * This is a placeholder for when that functionality is added.
- * For now, we only monitor uploads.
+ * Upload monitoring is the only storage metric this wrapper can record.
  */

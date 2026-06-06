@@ -39,7 +39,9 @@ type PairingSandbox = NonNullable<
  * `bridge_url` is the API/control listener, while `web_ui_port` is the UI
  * listener on the same host for local Docker and current Hetzner shapes.
  */
-function resolveDirectWebUiUrlFromBridgeHost(sandbox: PairingSandbox): string | null {
+function resolveDirectWebUiUrlFromBridgeHost(
+  sandbox: PairingSandbox,
+): string | null {
   if (!sandbox.web_ui_port) {
     return null;
   }

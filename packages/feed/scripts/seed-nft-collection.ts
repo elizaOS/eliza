@@ -3,8 +3,8 @@
 /**
  * NFT Collection Seed Script
  *
- * Seeds placeholder NFT collection data for development and testing.
- * Creates 100 NFT entries with generated placeholder images and stories.
+ * Seeds development NFT collection data for testing.
+ * Creates 100 NFT entries with generated images and stories.
  *
  * Usage:
  *   bun run scripts/seed-nft-collection.ts              # Seed if empty
@@ -29,7 +29,7 @@ import { nanoid } from "nanoid";
 
 const TOTAL_NFTS = 100;
 
-// Use environment variables if set, otherwise use placeholders
+// Use environment variables if set, otherwise fall back to local-dev sentinels.
 // Default chain IDs: 1 = Ethereum Mainnet, 11155111 = Sepolia, 31337 = Local
 const NFT_CONTRACT_ADDRESS =
   process.env.NFT_CONTRACT_ADDRESS ??

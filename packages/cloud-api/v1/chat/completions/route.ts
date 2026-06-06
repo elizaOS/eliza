@@ -907,7 +907,7 @@ export async function handleChatCompletionsPOST(
           Response.json(
             {
               error: {
-                message: `Insufficient app credits. Required: $${costWithMarkup.totalCost.toFixed(4)}`,
+                message: `Insufficient cloud credits. Required: $${costWithMarkup.totalCost.toFixed(4)}`,
                 type: "insufficient_quota",
                 code: "insufficient_credits",
               },

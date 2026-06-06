@@ -211,6 +211,33 @@ export class ContainersRepository {
   }
 
   /**
+   * Finds the most recent non-terminal container for an org's project key.
+   *
+   * Non-terminal means the container is still pending/building/deploying or
+   * running — i.e. a live deploy the caller would not want duplicated. Used by
+   * the deploy route to make POST idempotent on (organization_id, project_name).
+   */
+  async findActiveByProjectName(
+    organizationId: string,
+    projectName: string,
+  ): Promise<Container | null> {
+    const results = await dbRead
+      .select()
+      .from(containers)
+      .where(
+        and(
+          eq(containers.organization_id, organizationId),
+          eq(containers.project_name, projectName),
+          notInArray(containers.status, ["stopped", "failed", "deleting", "deleted"]),
+        ),
+      )
+      .orderBy(desc(containers.created_at))
+      .limit(1);
+
+    return results[0] ? await hydrateContainerDeploymentLog(results[0]) : null;
+  }
+
+  /**
    * Finds the most recent container for a character.
    */
   async findByCharacterId(characterId: string): Promise<Container | null> {

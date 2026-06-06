@@ -15,10 +15,8 @@ Loaded as `socialAlphaPlugin` (default export). Add it to an agent's `plugins` a
 | Service | `CommunityInvestorService` | Core engine: token data fetching, trust score calculation, position/recommendation storage, leaderboard assembly |
 | Provider | `socialAlpha` | Injects sender's trust profile + leaderboard summary into agent context (dynamic; gated to `finance` / `crypto` / `social_posting` contexts via `contextGate`) |
 | Event handler | `MESSAGE_RECEIVED` | Extracts buy/sell signals from incoming messages via a single combined LLM call; writes recommendations to the sender's component; enqueues `PROCESS_TRADE_DECISION` tasks |
-| Routes | `GET /leaderboard` | Returns `LeaderboardEntry[]` as JSON via `CommunityInvestorService.getLeaderboardData` |
-| Routes | `GET /display` | Serves the built React leaderboard SPA (public) |
-| Routes | `GET /assets/*` | Serves frontend static assets (public) |
-| Panel | `Social Alpha` | elizaOS agent-panel UI at path `display`, component `LeaderboardPanelPage` |
+| Routes | `GET /api/social-alpha/leaderboard` | Returns `LeaderboardEntry[]` as JSON via `CommunityInvestorService.getLeaderboardData` |
+| View | `social-alpha` | Leaderboard view (`SocialAlphaView`, `dist/views/bundle.js`) — registered via `Plugin.views`, shown when the plugin is enabled; gates on a configured agent wallet |
 
 No actions or evaluators are registered.
 
@@ -54,14 +52,15 @@ src/
     tokenSimulationService.ts        Per-token simulation
     trustScoreOptimizer.ts           ML-style parameter tuning for scoring weights
     index.ts                         Re-exports
-  frontend/                   React leaderboard SPA (built by vite into dist/).
-                              Uses the canonical @elizaos/ui primitives
-                              (Badge/Button/Card/Table/Spinner via
-                              @elizaos/ui/components/ui/*, cn via
-                              @elizaos/ui/lib/utils) and the kit theme
-                              (index.css imports ui base.css +
-                              tailwind-theme.css). Do not re-add local
-                              primitive copies.
+  social-alpha-view-bundle.ts Vite view-bundle entry (exports SocialAlphaView)
+  frontend/                   Leaderboard view (SocialAlphaView) built by
+                              vite.config.views.ts into dist/views/bundle.js
+                              with react + @elizaos/ui externalised to the
+                              host shell. Uses canonical @elizaos/ui
+                              primitives only — do not re-add local copies.
+                              Tailwind classes are emitted by the host
+                              (packages/ui/src/styles/styles.css @source's
+                              this directory).
   index.test.ts               Vitest smoke tests
 ```
 
@@ -70,8 +69,7 @@ src/
 Only scripts defined in this package's `package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-social-alpha build       # vite build → dist/
-bun run --cwd plugins/plugin-social-alpha dev         # vite dev server (frontend hot-reload)
+bun run --cwd plugins/plugin-social-alpha build       # tsup + view bundle + types → dist/
 bun run --cwd plugins/plugin-social-alpha test        # vitest run --passWithNoTests
 bun run --cwd plugins/plugin-social-alpha clean       # rm -rf dist .turbo node_modules
 ```
@@ -118,7 +116,7 @@ Plugin-level config keys (set in agent character or environment):
 - **Component storage.** Each user's trust profile is stored as an elizaOS Component of type `TRUST_MARKETPLACE_COMPONENT_TYPE` in a seeded world (`TRUST_LEADERBOARD_WORLD_SEED = "trust-leaderboard-world-v1"`). The world ID is deterministic per agent via `createUniqueUuid`.
 - **Single LLM call per message.** Relevance checking and recommendation extraction are merged into one `TEXT_LARGE` call (`RELEVANCE_AND_EXTRACTION_TEMPLATE` in `events.ts`). An empty `recommendations` array means "not relevant" — both cases are handled identically.
 - **Deduplication window.** Identical token+type recommendations within 30 minutes are dropped (`RECENT_REC_DUPLICATION_TIMEFRAME_MS`).
-- **Frontend.** The leaderboard UI is a standalone React/Vite SPA built into `dist/`. It is served via the `/display` route. Run `bun run build` before the frontend routes will work.
+- **Frontend.** The leaderboard UI is a plugin view (`SocialAlphaView`) served at `/api/views/social-alpha/bundle.js`. Run `bun run build` so `dist/views/bundle.js` exists before the view can load. The view shows a wallet-required empty state until the agent wallet is configured.
 - **`typecheck` / `lint` / `format` are skipped** — the package.json scripts intentionally echo release-skip messages. Use the repo-root biome/typecheck commands if you need type checks.
 - **`bignumber.js`** is used for precise arithmetic in price calculations (see `clients.ts`).
 - See repo root `AGENTS.md` for architecture commandments, logger rules, and ESM conventions.
