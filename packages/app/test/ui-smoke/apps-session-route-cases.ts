@@ -258,7 +258,6 @@ const managerVisibleViewTileCases = [
   { viewId: "scape", path: "/scape" },
   { viewId: "screenshare", path: "/screenshare" },
   { viewId: "shopify", path: "/shopify" },
-  { viewId: "social-alpha", path: "/social-alpha" },
   { viewId: "smartglasses", path: "/apps/smartglasses" },
   { viewId: "social-alpha", path: "/social-alpha" },
   { viewId: "steward", path: "/steward" },
