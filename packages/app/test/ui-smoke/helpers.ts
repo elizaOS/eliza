@@ -377,7 +377,7 @@ export async function openSettingsSection(
     const nextHubSectionButton = settingsShell
       .getByRole("button", { name: sectionName })
       .first();
-    if (await locatorVisible(nextHubSectionButton, 1_000)) {
+    if (await locatorVisible(nextHubSectionButton, READY_CHECK_TIMEOUT_MS)) {
       await nextHubSectionButton.click();
       return;
     }
