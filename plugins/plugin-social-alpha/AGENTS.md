@@ -35,18 +35,14 @@ src/
   clients.ts                  BirdeyeClient, DexscreenerClient, HeliusClient wrappers
   schemas.ts                  Zod schemas + DB-to-domain transforms for token/recommendation models
   reports.ts                  formatFullReport — human-readable trust report generator
-  utils.ts                    Misc utilities
   mockPriceService.ts         Mock price service for testing
   simulationActors.ts         Simulation actor helpers (legacy)
   providers/
     socialAlphaProvider.ts    socialAlpha Provider implementation
   services/
     balancedTrustScoreCalculator.ts  Core scoring algorithm (profit, win rate, Sharpe, alpha, …)
-    TrustScoreService.ts             Trust score service
-    PriceDataService.ts              Historical price data fetching
     priceEnrichmentService.ts        Price enrichment for past recommendations
     historicalPriceService.ts        Historical price lookups
-    SimulationService.ts             Consolidated simulation logic
     simulationRunner.ts              Runs simulations against past calls
     simulationActorsV2.ts            Simulation actor abstraction v2
     tokenSimulationService.ts        Per-token simulation
@@ -74,7 +70,7 @@ bun run --cwd plugins/plugin-social-alpha test        # vitest run --passWithNoT
 bun run --cwd plugins/plugin-social-alpha clean       # rm -rf dist .turbo node_modules
 ```
 
-`lint`, `format`, `typecheck` are release-skip scripts — the source is partially vendor-derived.
+`lint`, `format`, and `typecheck` are real gates (biome + `tsc --noEmit`).
 
 ## Config / env vars
 
@@ -117,6 +113,5 @@ Plugin-level config keys (set in agent character or environment):
 - **Single LLM call per message.** Relevance checking and recommendation extraction are merged into one `TEXT_LARGE` call (`RELEVANCE_AND_EXTRACTION_TEMPLATE` in `events.ts`). An empty `recommendations` array means "not relevant" — both cases are handled identically.
 - **Deduplication window.** Identical token+type recommendations within 30 minutes are dropped (`RECENT_REC_DUPLICATION_TIMEFRAME_MS`).
 - **Frontend.** The leaderboard UI is a plugin view (`SocialAlphaView`) served at `/api/views/social-alpha/bundle.js`. Run `bun run build` so `dist/views/bundle.js` exists before the view can load. The view shows a wallet-required empty state until the agent wallet is configured.
-- **`typecheck` / `lint` / `format` are skipped** — the package.json scripts intentionally echo release-skip messages. Use the repo-root biome/typecheck commands if you need type checks.
 - **`bignumber.js`** is used for precise arithmetic in price calculations (see `clients.ts`).
 - See repo root `AGENTS.md` for architecture commandments, logger rules, and ESM conventions.

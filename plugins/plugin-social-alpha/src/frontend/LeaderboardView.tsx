@@ -81,7 +81,7 @@ export function SocialAlphaView() {
 	}
 
 	return (
-		<div className="flex min-h-full flex-col gap-4 bg-background py-4 text-foreground">
+		<div className="flex min-h-full flex-col gap-4 bg-background pt-4 pb-24 text-foreground">
 			<div className="container mx-auto flex-grow px-4">
 				<header className="py-6 text-center">
 					<h1 className="bg-gradient-to-r from-primary via-orange-400 to-secondary bg-clip-text font-bold text-5xl text-transparent tracking-tight">

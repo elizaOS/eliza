@@ -3,10 +3,7 @@ import * as path from "node:path";
 import type { UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { Conviction, SupportedChain } from "../types";
-import {
-	type SimulatedActorV2,
-	SimulationActorsServiceV2,
-} from "./simulationActorsV2";
+import type { SimulatedActorV2 } from "./simulationActorsV2";
 import {
 	type TokenScenario as TokenScenarioInterface,
 	TokenSimulationService,
@@ -133,11 +130,9 @@ export interface SimulationResult {
 
 export class SimulationRunner {
 	private tokenService: TokenSimulationService;
-	private actorsService: SimulationActorsServiceV2;
 
 	constructor() {
 		this.tokenService = new TokenSimulationService();
-		this.actorsService = new SimulationActorsServiceV2();
 	}
 
 	async runSimulation(config: SimulationConfig): Promise<SimulationResult> {
@@ -147,7 +142,15 @@ export class SimulationRunner {
 		const calls: SimulatedCallData[] = [];
 		const tokens = new Map<string, SimulationToken>();
 		const priceHistory = new Map<string, TokenPrice[]>();
-		const actorPerformance = new Map<string, any>();
+		const actorPerformance = new Map<
+			string,
+			{
+				totalCalls: number;
+				profitableCalls: number;
+				totalProfit: number;
+				averageProfit: number;
+			}
+		>();
 
 		// Initialize actors
 		for (const actor of config.actors) {
@@ -232,7 +235,8 @@ export class SimulationRunner {
 
 		// Update actor performance metrics
 		for (const call of calls) {
-			const perf = actorPerformance.get(call.userId)!;
+			const perf = actorPerformance.get(call.userId);
+			if (!perf) continue;
 			perf.totalCalls++;
 
 			if (
@@ -540,10 +544,12 @@ export class SimulationRunner {
 			);
 
 			for (const token of targetTokens) {
+				const tokenPriceHistory = priceHistory.get(token.address);
+				if (!tokenPriceHistory) continue;
 				const call = this.generateActorCall(
 					actor,
 					token,
-					priceHistory.get(token.address)!,
+					tokenPriceHistory,
 					currentTime,
 				);
 

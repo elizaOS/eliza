@@ -6,6 +6,7 @@
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"exports": {
+		"./package.json": "./package.json",
 		".": {
 			"types": "./dist/index.d.ts",
 			"eliza-source": {
@@ -24,14 +25,15 @@
 		"build": "bun run build:js && bun run build:views && bun run build:types",
 		"test": "vitest run --passWithNoTests",
 		"clean": "rm -rf dist .turbo node_modules",
-		"lint": "echo \"Lint skipped for release\"",
+		"lint": "bunx @biomejs/biome check src",
 		"lint:check": "bun run lint",
-		"format": "echo \"Format skipped (source is gitignored vendor code)\"",
-		"format:check": "echo \"Format check skipped (source is gitignored vendor code)\"",
-		"typecheck": "echo \"Typecheck skipped for release\"",
+		"format": "bunx @biomejs/biome format --write src",
+		"format:check": "bunx @biomejs/biome format src",
+		"typecheck": "tsc --noEmit -p tsconfig.build.json",
 		"build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
 		"build:views": "bunx --bun vite build --config vite.config.views.ts",
-		"build:types": "tsc --noCheck -p tsconfig.build.json"
+		"build:types": "tsc --noCheck -p tsconfig.build.json",
+		"lint:fix": "bunx @biomejs/biome check --write src"
 	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*",

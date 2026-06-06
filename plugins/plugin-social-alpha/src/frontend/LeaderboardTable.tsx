@@ -132,7 +132,7 @@ const RecommendationDetails: React.FC<RecommendationDetailsProps> = ({
 								{rec.metrics && (
 									<div className="mt-2 pt-2.5 border-t border-border/30 text-xs space-y-1.5">
 										<p className="font-medium text-foreground/80 flex items-center">
-											<CheckCircle className="w-3.5 h-3.5 mr-1.5 text-blue-500" />
+											<CheckCircle className="w-3.5 h-3.5 mr-1.5 text-primary/70" />
 											Evaluation (as of{" "}
 											{new Date(
 												rec.metrics.evaluationTimestamp,

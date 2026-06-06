@@ -153,6 +153,9 @@ function actorRecordsFromDiscordData(data: unknown): DiscordActorRecord[] {
 			if (!id) continue;
 			const existing = byUser.get(id);
 			if (existing) {
+				if (!existing.messages) {
+					existing.messages = [];
+				}
 				existing.messages.push(message);
 				continue;
 			}
