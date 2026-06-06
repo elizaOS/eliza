@@ -78,6 +78,8 @@ import {
   type UpsertAffiliateCodeRequest,
   type UserProfileResponse,
   type VerifyAppCreditsCheckoutResponse,
+  type VoiceSttRequest,
+  type VoiceSttResponse,
   type WithdrawAppEarningsRequest,
   type WithdrawAppEarningsResponse,
   type X402FacilitatorPaymentRequest,
@@ -363,6 +365,30 @@ export class ElizaCloudClient {
       request,
       appIdRequestOptions(options.appId),
     );
+  }
+
+  /**
+   * Transcribe audio to text via POST /api/v1/voice/stt (multipart/form-data).
+   *
+   * Mirrors {@link createEmbeddings}/{@link generateImage}: routed through the
+   * v1 client with auth headers applied automatically, and `options.appId`
+   * bills a registered app's credits via the `X-App-Id` header. The audio is
+   * sent as a FormData `audio` field; Content-Type is intentionally left unset
+   * so the runtime fetch fills in the multipart boundary.
+   */
+  transcribeAudio(
+    request: VoiceSttRequest,
+    options: InferenceCallOptions = {},
+  ): Promise<VoiceSttResponse> {
+    const form = new FormData();
+    form.append("audio", request.audio, request.filename ?? "audio");
+    if (request.languageCode !== undefined) {
+      form.append("languageCode", request.languageCode);
+    }
+    return this.v1.request<VoiceSttResponse>("POST", "/voice/stt", {
+      ...appIdRequestOptions(options.appId),
+      body: form,
+    });
   }
 
   getCreditsBalance(
