@@ -108,6 +108,72 @@ describe("handleIosLocalAgentRequest", () => {
     });
   });
 
+  it("reports paired Cloud state and forwards chat through the Cloud bridge", async () => {
+    const localStorage = stubLocalStorage();
+    localStorage.setItem(
+      "elizaos:active-server",
+      JSON.stringify({
+        id: "cloud:agent-1",
+        kind: "cloud",
+        label: "Cloud Agent",
+        apiBase: "eliza-local-agent://ipc",
+        accessToken: "cloud-token",
+      }),
+    );
+    vi.stubGlobal("window", { localStorage });
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        Response.json({
+          jsonrpc: "2.0",
+          id: "cloud-1",
+          result: {
+            text: "cloud answer",
+            model: "cloud-model",
+          },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getJson("/api/auth/status")).resolves.toMatchObject({
+      cloudProvisioned: true,
+      cloudAgentId: "agent-1",
+      cloudConnectionStatus: "connected",
+    });
+    await expect(getJson("/api/status")).resolves.toMatchObject({
+      cloud: {
+        connectionStatus: "connected",
+        activeAgentId: "agent-1",
+        cloudProvisioned: true,
+        hasApiKey: true,
+      },
+    });
+    await expect(
+      postJson("/api/cloud/chat", { prompt: "hello" }),
+    ).resolves.toEqual({
+      text: "cloud answer",
+      promptTokens: 0,
+      completionTokens: 0,
+      modelId: "cloud-model",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/bridge",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          authorization: "Bearer cloud-token",
+        }),
+      }),
+    );
+    const requestBody = JSON.parse(
+      String(fetchMock.mock.calls[0]?.[1]?.body),
+    ) as Record<string, unknown>;
+    expect(requestBody).toMatchObject({
+      jsonrpc: "2.0",
+      method: "message.send",
+      params: { text: "hello" },
+    });
+  });
+
   it("does not invent a parallel background task runner", async () => {
     const response = await post("/api/background/run-due-tasks", {});
     expect(response.status).toBe(503);
