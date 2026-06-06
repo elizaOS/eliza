@@ -56,8 +56,8 @@ test.describe("dashboard session", () => {
     // is only available under the Dedicated card, which reveals the image
     // selector + Docker Image input and switches the CTA to
     // "Deploy Docker container".
-    await authenticatedPage.getByRole("radio", { name: /Dedicated/ }).click();
-    await authenticatedPage.getByLabel("Image").click();
+    await authenticatedPage.getByText("Dedicated", { exact: true }).click();
+    await authenticatedPage.getByRole("combobox", { name: "Image" }).click();
     await authenticatedPage
       .getByRole("option", { name: "Custom Image" })
       .click();

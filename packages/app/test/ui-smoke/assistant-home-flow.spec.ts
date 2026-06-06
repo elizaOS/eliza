@@ -739,7 +739,9 @@ test.describe("assistant home app flow", () => {
       .poll(() => assistantApi.streamRequests, { timeout: 10_000 })
       .toEqual(["show me my pinned views"]);
     await expect(
-      page.getByText("Opening the right view now and keeping voice ready."),
+      page
+        .getByText("Opening the right view now and keeping voice ready.")
+        .first(),
     ).toBeVisible();
     expect(assistantApi.streamRequests).toEqual(["show me my pinned views"]);
   });
@@ -794,7 +796,9 @@ test.describe("assistant home app flow", () => {
     await expect(assistantComposer(page)).toHaveValue("");
     await expect(conversationText(page, "open wallet by typing")).toBeVisible();
     await expect(
-      page.getByText("Opening the right view now and keeping voice ready."),
+      page
+        .getByText("Opening the right view now and keeping voice ready.")
+        .first(),
     ).toBeVisible();
     expect(assistantApi.streamRequests).toEqual(["open wallet by typing"]);
   });
@@ -846,7 +850,9 @@ test.describe("assistant home app flow", () => {
       .poll(() => assistantApi.streamRequests, { timeout: 10_000 })
       .toEqual(["push to talk works"]);
     await expect(
-      page.getByText("Opening the right view now and keeping voice ready."),
+      page
+        .getByText("Opening the right view now and keeping voice ready.")
+        .first(),
     ).toBeVisible();
     expect(assistantApi.streamRequests).toEqual(["push to talk works"]);
   });

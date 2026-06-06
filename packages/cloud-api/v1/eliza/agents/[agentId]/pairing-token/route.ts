@@ -62,11 +62,30 @@ function resolveDirectWebUiUrlFromBridgeHost(
   }
 }
 
+function resolveDirectWebUiUrlFromHealthUrl(
+  sandbox: PairingSandbox,
+): string | null {
+  const raw = sandbox.health_url?.trim();
+  if (!raw) return null;
+
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    url.pathname = "/";
+    url.search = "";
+    url.hash = "";
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
 function resolveManagedWebUiUrl(sandbox: PairingSandbox): string | null {
   if (sandbox.execution_tier === "shared") return null;
 
   return (
     resolveDirectWebUiUrlFromBridgeHost(sandbox) ??
+    resolveDirectWebUiUrlFromHealthUrl(sandbox) ??
     getElizaAgentDirectWebUiUrl(sandbox) ??
     getElizaAgentPublicWebUiUrl(sandbox, {
       baseDomain: containersEnv.publicBaseDomain(),

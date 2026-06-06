@@ -74,7 +74,7 @@ export type LocalStewardAuthValue = {
   isLoading: boolean;
   user: {
     id: string;
-    email?: string;
+    email?: string | null;
     walletAddress?: string;
     wallet_address?: string;
   } | null;

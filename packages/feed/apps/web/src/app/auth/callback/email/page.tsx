@@ -1,8 +1,18 @@
 "use client";
 
+import type { StewardAuthResult, StewardMfaRequiredResult } from "@stwd/sdk";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { useStewardAuthContext } from "@/components/providers/StewardAuthProvider";
+
+function requireCompletedAuth(
+  result: StewardAuthResult | StewardMfaRequiredResult,
+): StewardAuthResult {
+  if ("mfaRequired" in result) {
+    throw new Error("MFA required is not supported in this client yet.");
+  }
+  return result;
+}
 
 /**
  * Email magic-link callback page.
@@ -36,7 +46,10 @@ export default function EmailCallbackPage() {
 
     stewardAuth
       .verifyEmailCallback(token, email)
-      .then((result) => onLoginSuccess(result.token))
+      .then((result) => {
+        const completed = requireCompletedAuth(result);
+        return onLoginSuccess(completed.token, completed.refreshToken);
+      })
       .then(() => router.replace("/"))
       .catch((err: Error) => {
         router.replace(`/?auth_error=${encodeURIComponent(err.message)}`);
